@@ -53,7 +53,7 @@ function withTwo(fn: (a: Cache, b: Cache, proj: string) => Promise<void>): () =>
 }
 
 const noRemote: RemoteCacheLayer = {
-  has: async () => false,
+  has: async () => null,
   get: async () => null,
   put: async () => undefined,
 }
@@ -70,7 +70,7 @@ describe('resolveCache — a plugin returns the remote, core layers it', () => {
   /** A remote that records each lookup and upload under `name`. */
   const recording = (name: string, log: string[], hits: Map<string, Uint8Array> = new Map()) =>
     ({
-      has: async (h: string) => hits.has(h),
+      has: async (h: string) => (hits.has(h) ? {} : null),
       get: async (h: string) => {
         log.push(`get ${name}`)
         const body = hits.get(h)
@@ -180,7 +180,7 @@ describe('resolveCache — a plugin returns the remote, core layers it', () => {
       await saveEntry(a, 'h1', proj)
       const warned: string[] = []
       const broken: RemoteCacheLayer = {
-        has: async () => false,
+        has: async () => null,
         get: async () => {
           throw new Error('get boom')
         },
@@ -223,7 +223,7 @@ describe('LayeredCache — several remotes over one local store', () => {
     const puts: string[] = []
     return {
       puts,
-      has: async () => false,
+      has: async () => null,
       get: async () => null,
       put: async (hash: string) => {
         puts.push(hash)
@@ -281,7 +281,7 @@ describe('LayeredCache — several remotes over one local store', () => {
       await saveEntry(src.cache, 'h-prov', proj)
       const artifact = storedArtifact(src.cache, 'h-prov')!
       const second: RemoteCacheLayer = {
-        has: async () => true,
+        has: async () => ({}),
         get: async () => ({ body: new Blob([artifact]), durationMs: 1 }),
         put: async () => undefined,
       }
@@ -315,10 +315,10 @@ describe('LayeredCache — several remotes over one local store', () => {
     try {
       await saveEntry(src.cache, 'h-poison', proj)
       const artifact = storedArtifact(src.cache, 'h-poison')!
-      const remoteA: RemoteCacheLayer = { ...noRemote, hasMany: async () => new Set<string>() }
+      const remoteA: RemoteCacheLayer = { ...noRemote, hasMany: async () => new Map() }
       const remoteB: RemoteCacheLayer = {
         // No hasMany — an older serve / a wire without a batch probe.
-        has: async () => true,
+        has: async () => ({}),
         get: async () => ({ body: new Blob([artifact]), durationMs: 1 }),
         put: async () => undefined,
       }
@@ -351,15 +351,15 @@ describe('LayeredCache — several remotes over one local store', () => {
       const gets: string[] = []
       const remoteA: RemoteCacheLayer = {
         ...noRemote,
-        hasMany: async () => new Set<string>(),
+        hasMany: async () => new Map(),
         get: async (h) => {
           gets.push(`a ${h}`)
           return null
         },
       }
       const remoteB: RemoteCacheLayer = {
-        has: async () => true,
-        hasMany: async () => new Set(['h-b']),
+        has: async () => ({}),
+        hasMany: async () => new Map([['h-b', {}]]),
         get: async (h) => {
           gets.push(`b ${h}`)
           return { body: new Blob([artifact]), durationMs: 1 }
@@ -370,7 +370,7 @@ describe('LayeredCache — several remotes over one local store', () => {
         { remote: remoteA, ...both },
         { remote: remoteB, ...both },
       ])
-      expect(await layered.remoteHasMany(['h-b', 'h-none'])).toEqual(new Set(['h-b']))
+      expect(await layered.remoteHasMany(['h-b', 'h-none'])).toEqual(new Map([['h-b', {}]]))
       expect((await layered.get('h-b', { taskId: 'p#t', command: 'echo' }))?.source).toBe('remote')
       expect(gets).toEqual(['b h-b'])
     } finally {

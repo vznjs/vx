@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: run a task here when its download is slower
+
+Plugin API: RemoteCacheLayer.has resolves ArtifactInfo or null (`{ size, durationMs }`, either one, or `{}`), not a boolean; hasMany resolves a Map of the held keys to ArtifactInfo, not a Set.
+
 ## vx-migrate: scope Turbo cache reads by ref, keys stay plain
 
 Task keys no longer carry a branch scope and x-vx-cache-scope is gone from turboCache() and nxCache(). turboCache() sends x-artifact-read-scopes on every read (scope: 'header', default) or keys entries by ref (scope: 'key'); the server's OIDC trust policy decides writes. VX_CACHE_SCOPE now scopes only plugin entries.

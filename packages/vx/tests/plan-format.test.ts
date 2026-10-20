@@ -54,6 +54,17 @@ describe('formatPlanText', () => {
     expect(out).toContain('1 would run')
   })
 
+  it('remote hits the remote sized say what restoring them downloads', () => {
+    const out = formatPlanText({
+      tasks: [
+        { ...task('a#test', 'hit-remote', 'cccccccc33333333'), remoteBytes: 3 * 1024 * 1024 },
+        { ...task('b#test', 'hit-remote', 'dddddddd44444444'), remoteBytes: 1024 * 1024 },
+        task('c#test', 'hit-remote', 'eeeeeeee55555555'),
+      ],
+    })
+    expect(out).toContain('3 cache hits (3 remote, 4.0 MB)')
+  })
+
   it('an @noop task is counted as noop, not as a would-run with a cost', () => {
     const out = formatPlanText({
       tasks: [
@@ -295,7 +306,7 @@ describe('docs/modules/plan-format.md shows what the formatters print', () => {
     'd66cfed2a1b2c3d4',
     'hit-remote',
     [],
-    {},
+    { remoteBytes: 12 * 1024 * 1024 },
     'oxlint with tsgolint-backed type-aware checks',
   )
 

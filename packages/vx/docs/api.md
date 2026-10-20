@@ -75,6 +75,21 @@ export interface ApplyMigrationArgs {
 }
 ```
 
+## `ArtifactInfo`
+
+type · `src/cache/layered-cache.ts`
+
+What a remote knows of an artifact it holds, before it is downloaded:
+the body's size in bytes and the producing task's duration, each when
+the wire carries it (Turbo's batch query and `HEAD` do).
+
+```ts
+export interface ArtifactInfo {
+  readonly size?: number
+  readonly durationMs?: number
+}
+```
+
 ## `branchCacheScope`
 
 function · `src/workspace/config-schema.ts`
@@ -110,6 +125,7 @@ class · `src/cache/cache.ts`
 export class Cache implements CacheLayer {
   readonly hasRemote
   readonly uploads: UploadTally
+  readonly downloads: { count: number; bytes: number }
   readonly traffic: RemoteTraffic
   readonly storeDir: string | undefined
   readonly schemaReset: SchemaReset | null
@@ -245,7 +261,7 @@ union and we get a compile-time guarantee the surfaces stay congruent.
 export interface CacheLayer {
   readonly local?: Cache | undefined
   readonly hasRemote?: boolean
-  remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   localHasMany?(hashes: readonly string[]): Promise<Set<string>>
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
@@ -1375,6 +1391,7 @@ export interface PlannedTask {
   p50Ms?: number
   executor?: string
   download?: 'deferred'
+  remoteBytes?: number
   affected?: AffectedReason
 }
 ```
@@ -1805,8 +1822,8 @@ plugin guide's example shows it).
 export interface RemoteCacheLayer {
   readonly endpoint?: string
   open?(ctx: RemoteOpenContext): Promise<void>
-  has(hash: string): Promise<boolean>
-  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  has(hash: string): Promise<ArtifactInfo | null>
+  hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
 }

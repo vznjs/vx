@@ -192,7 +192,7 @@ it('the footer counts each task whose run bytes reached the remote', async () =>
   expect((await runAs(true, ['test', 'build'])).ok).toBe(false)
   const legend = lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]?.trim()
   // gen#build's entry, docs#test's log, lib#test's log and outputs.
-  expect(legend).toEndWith('remote 3\u2191')
+  expect(legend).toMatch(/remote 3\u2191 \d+ B$/)
 }, 30_000)
 
 it("a task's bytes leave when it ends, not when the run does", async () => {

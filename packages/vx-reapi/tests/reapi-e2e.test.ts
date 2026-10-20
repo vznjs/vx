@@ -62,9 +62,9 @@ describe.if(run)('REAPI round-trip against a live server', () => {
       const key = `vx-key-${nonce()}`
       const body = new Uint8Array(1024 * 1024)
       crypto.getRandomValues(body)
-      expect(await cache.has(key)).toBe(false)
+      expect(await cache.has(key)).toBeNull()
       await cache.put(key, new Blob([body]), { durationMs: 4242 })
-      expect(await cache.has(key)).toBe(true)
+      expect(await cache.has(key)).not.toBeNull()
       const got = await cache.get(key)
       expect(got).not.toBeNull()
       expect(Buffer.compare(Buffer.from(await got!.body.bytes()), Buffer.from(body))).toBe(0)
@@ -100,7 +100,7 @@ describe.if(run)('REAPI round-trip against a live server', () => {
     // NOT_FOUND has to degrade, or every cold key fails the run.
     const cache = new ReapiRemoteCache({ endpoint })
     try {
-      expect(await cache.has(`never-written-${nonce()}`)).toBe(false)
+      expect(await cache.has(`never-written-${nonce()}`)).toBeNull()
       expect(await cache.get(`never-written-${nonce()}`)).toBeNull()
     } finally {
       cache.close()

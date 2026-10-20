@@ -92,7 +92,7 @@ describe('what a status means', () => {
     await expect(c.has('aa')).rejects.toThrow(
       'HTTP 403: the token was refused; remote cache off for this run',
     )
-    expect(await c.has('aa')).toBe(false)
+    expect(await c.has('aa')).toBeNull()
     expect(calls.length).toBe(1)
   })
 
@@ -120,7 +120,7 @@ describe('what a status means', () => {
       }),
     )
     expect(await cacheWith(fetchImpl).hasMany(['aa', 'bb', 'cc', 'dd', 'ee'])).toEqual(
-      new Set(['aa']),
+      new Map([['aa', { size: 1, durationMs: 2 }]]),
     )
   })
 
@@ -295,7 +295,7 @@ describe('a put never replaces a stored artifact (M, 2026-10-15)', () => {
     )
     const c = cacheWith(fetchImpl)
     expect(await c.get('aa')).toBeNull()
-    expect(await c.hasMany(['bb'])).toEqual(new Set())
+    expect(await c.hasMany(['bb'])).toEqual(new Map())
     await c.put('aa', new Blob(['x']), { durationMs: 1 })
     await c.put('bb', new Blob(['x']), { durationMs: 1 })
     expect(calls.map((r) => r.method)).toEqual(['GET', 'POST', 'PUT', 'PUT'])
@@ -328,7 +328,7 @@ describe('a read-only token or server', () => {
     )
     expect(await c.put('bb', new Blob(['x']), { durationMs: 1 })).toBeUndefined()
     stored = true
-    expect(await c.has('aa')).toBe(true)
+    expect(await c.has('aa')).not.toBeNull()
     expect(await (await c.get('aa'))!.body.text()).toBe('bytes')
     expect(calls.map((r) => r.method)).toEqual(['HEAD', 'PUT', 'HEAD', 'GET'])
   })

@@ -163,14 +163,14 @@ describe('NxRemoteCache against the spec server', () => {
       { server: 'http://nx.invalid', accessToken: '', timeoutMs: 1_000, retries: 0 },
       streamed,
     )
-    expect(await c.has('aa11')).toBe(true)
+    expect(await c.has('aa11')).not.toBeNull()
     expect(cancelled).toEqual(['aa11'])
     const got = await c.get('aa11')
     const reader = got!.body.body!.getReader()
     expect(new TextDecoder().decode((await reader.read()).value)).toBe('aa11')
     await reader.cancel()
     expect({ fetched, cancelled }).toEqual({ fetched: 2, cancelled: ['aa11', 'aa11'] })
-    expect(await cache().has('bb22')).toBe(false)
+    expect(await cache().has('bb22')).toBeNull()
   })
 
   it('a bad token throws ONCE even when the calls are concurrent', async () => {
@@ -185,7 +185,7 @@ describe('NxRemoteCache against the spec server', () => {
     const miss: Record<string, unknown> = {
       'get-a': null,
       'get-b': null,
-      has: false,
+      has: null,
       put: undefined,
     }
     const settled = await Promise.allSettled([
@@ -212,15 +212,15 @@ describe('NxRemoteCache against the spec server', () => {
     await expect(bad.get('aa11')).rejects.toThrow(/401.*invalid token/)
     const n = srv.seen.length
     expect(await bad.get('aa11')).toBeNull()
-    expect(await bad.has('aa11')).toBe(false)
+    expect(await bad.has('aa11')).toBeNull()
     await bad.put('cc33', new Blob(['x']))
     expect(srv.seen.length).toBe(n)
     const ro = cache(READONLY)
-    expect(await ro.has('aa11')).toBe(true) // reads are allowed
+    expect(await ro.has('aa11')).not.toBeNull() // reads are allowed
     await expect(ro.put('dd44', new Blob(['x']))).rejects.toThrow(/403.*read-only/)
     // The read-only token's refused write turns off writes alone: a later
     // lookup still hits, and a later upload is not sent (nor said again).
-    expect(await ro.has('aa11')).toBe(true)
+    expect(await ro.has('aa11')).not.toBeNull()
     const m = srv.seen.length
     await ro.put('ee55', new Blob(['x']))
     expect(srv.seen.length).toBe(m)

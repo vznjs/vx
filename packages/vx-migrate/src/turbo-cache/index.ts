@@ -16,6 +16,7 @@ import { unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
+  type ArtifactInfo,
   definePlugin,
   type RemoteCacheLayer,
   type RemoteOpenContext,
@@ -135,6 +136,17 @@ export const MIN_SIGNATURE_KEY_LENGTH = 32
 // Bun's own hasher and the global `crypto`, not `node:crypto`: importing that
 // module cost every `@vzn/vx-migrate` user 6.6 ms at startup, remote cache
 // or not (G-121).
+/** A size and a duration as the wire spells them (a header string, a JSON number), kept when they are counts. */
+function infoOf(size: unknown, durationMs: unknown): ArtifactInfo {
+  const count = (v: unknown): number | undefined => {
+    const n = typeof v === 'string' && v !== '' ? Number(v) : v
+    return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : undefined
+  }
+  const s = count(size)
+  const d = count(durationMs)
+  return { ...(s === undefined ? {} : { size: s }), ...(d === undefined ? {} : { durationMs: d }) }
+}
+
 function updateLength(mac: Bun.CryptoHasher, byteLength: number): void {
   const len = Buffer.alloc(8)
   len.writeBigUInt64LE(BigInt(byteLength))
@@ -625,25 +637,26 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     await revokeOidc(this.config.oidc!, token, this.fetchImpl, this.wait)
   }
 
-  async has(hash: string): Promise<boolean> {
-    if (this.disabled) return false
+  async has(hash: string): Promise<ArtifactInfo | null> {
+    if (this.disabled) return null
     const res = await this.request('HEAD', `/${hash}`, { headers: this.reads })
-    if (res === undefined) return false
-    if (res.status === 200) return true
+    if (res === undefined) return null
+    if (res.status === 200)
+      return infoOf(res.headers.get('content-length'), res.headers.get('x-artifact-duration'))
     if (res.status === 404) {
       this.absent.add(hash)
-      return false
+      return null
     }
     throw new Error(`HTTP ${res.status}`)
   }
 
-  async hasMany(hashes: readonly string[]): Promise<Set<string> | null> {
-    if (this.disabled || hashes.length === 0) return this.disabled ? new Set() : null
+  async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
+    if (this.disabled || hashes.length === 0) return this.disabled ? new Map() : null
     const res = await this.request('POST', '', {
       body: JSON.stringify({ hashes }),
       headers: { 'Content-Type': 'application/json', ...this.reads },
     })
-    if (res === undefined) return new Set()
+    if (res === undefined) return new Map()
     if (res.status !== 200) return null
     // An answer per hash is a few hundred bytes of ArtifactInfo; a reply
     // past this bound is no answer, read no further than the bound (L-9).
@@ -654,13 +667,15 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     // Each hash answers ArtifactInfo, null, or `{ error: { message } }`; an
     // error entry is not a stored artifact, and it was counted as one (a GET
     // spent on a 404, item 929).
-    const held = new Set(
-      hashes.filter((h) => {
-        const v = info[h]
-        return typeof v === 'object' && v !== null && !('error' in v)
-      }),
-    )
-    for (const h of hashes) if (!held.has(h)) this.absent.add(h)
+    const held = new Map<string, ArtifactInfo>()
+    for (const h of hashes) {
+      const v = info[h]
+      if (typeof v !== 'object' || v === null || 'error' in v) this.absent.add(h)
+      else {
+        const { size, taskDurationMs } = v as { size?: unknown; taskDurationMs?: unknown }
+        held.set(h, infoOf(size, taskDurationMs))
+      }
+    }
     return held
   }
 

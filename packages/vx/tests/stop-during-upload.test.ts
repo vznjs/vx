@@ -30,7 +30,7 @@ it(
       const controller = new AbortController()
       let puts = 0
       const layer: RemoteCacheLayer = {
-        has: async () => false,
+        has: async () => null,
         get: async () => null,
         // Never answers: a remote that hangs on every upload.
         put: () => {

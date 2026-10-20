@@ -56,8 +56,10 @@ export interface RunContext {
       readonly inFlight: number // uploads queued or running
       readonly keys: ReadonlyMap<string, { uploading: number; failures: readonly string[] }>
     } // `Cache.traffic`, a live ref: each key's uploads and remote failures
+    downloads?: { readonly bytes: number } // `Cache.downloads`: what the remote hits pulled
+    uploads?: { readonly bytes: number } // `Cache.uploads`: what the landed uploads pushed
     notDownloaded: () => number
-  } // the layers the run used: the legend's `local 1✓ 1∅ 2↓ 1↑ · remote 3↓ 4↑ 2✗ 1⇡`
+  } // the layers the run used: the legend's `local 1✓ 1∅ 2↓ 1↑ · remote 3↓ 12 MB 4↑ 2.1 MB 2✗ 1⇡`
   workspaceProjectCount?: number // total projects → the bar's denominator
 }
 

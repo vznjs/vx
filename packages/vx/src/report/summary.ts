@@ -10,6 +10,7 @@ import { isGroupTask } from '../graph/index.js'
 import {
   barWidth,
   ERROR,
+  formatBytes,
   formatElapsed,
   gradientRule,
   paint,
@@ -203,6 +204,9 @@ export interface RunContext {
       readonly inFlight: number
       readonly keys: ReadonlyMap<string, { uploading: number; failures: readonly string[] }>
     }
+    /** Bytes the run's remote hits pulled, and its landed uploads pushed (live refs). */
+    downloads?: { readonly bytes: number }
+    uploads?: { readonly bytes: number }
     /** Tasks whose outputs are still in the remote store. */
     notDownloaded: () => number
   }
@@ -335,9 +339,17 @@ export function formatSummarySection(
       ]
       // The layer words are dim; only the counts carry colour (M, 2026-10-15).
       if (local.length > 0) cacheParts.push(`${dim('local')} ${local.join(' ')}`)
+      // Each transfer count is followed by its bytes, dim: what the
+      // remote moved is the cost a hit or an upload paid.
+      const sized = (count: number, glyph: string, bytes: number | undefined): string[] =>
+        count === 0
+          ? []
+          : bytes === undefined || bytes === 0
+            ? n(count, glyph, REMOTE)
+            : [...n(count, glyph, REMOTE), dim(formatBytes(bytes))]
       const remote = [
-        ...n(b.restoredRemote, '\u2193', REMOTE),
-        ...n(b.uploaded, '\u2191', REMOTE),
+        ...sized(b.restoredRemote, '\u2193', layers.downloads?.bytes),
+        ...sized(b.uploaded, '\u2191', layers.uploads?.bytes),
         ...n(b.remoteFailed, '\u2717', ERROR),
         ...n(b.uploading, '\u21e1', ACCENT),
       ]

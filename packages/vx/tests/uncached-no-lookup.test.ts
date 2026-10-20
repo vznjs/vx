@@ -22,11 +22,11 @@ function remote(): { layer: RemoteCacheLayer; keys: string[] } {
   const layer: RemoteCacheLayer = {
     async has(h) {
       keys.push(h)
-      return store.has(h)
+      return store.has(h) ? {} : null
     },
     async hasMany(hs) {
       keys.push(...hs)
-      return new Set(hs.filter((h) => store.has(h)))
+      return new Map(hs.filter((h) => store.has(h)).map((h) => [h, {}]))
     },
     async get(h) {
       keys.push(h)

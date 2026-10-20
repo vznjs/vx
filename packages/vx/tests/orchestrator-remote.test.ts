@@ -141,9 +141,9 @@ function startArtifactEndpoint(opts?: {
   const layer: RemoteCacheLayer = {
     async has(hash) {
       const res = await call(`${baseUrl}/artifacts/${hash}`, { method: 'HEAD' })
-      if (res.status === 404) return false
+      if (res.status === 404) return null
       if (!res.ok) throw new Error(`HEAD ${hash} → ${res.status}`)
-      return true
+      return {}
     },
     async hasMany(hashes) {
       const res = await call(`${baseUrl}/artifacts/batch`, {
@@ -152,7 +152,7 @@ function startArtifactEndpoint(opts?: {
       })
       if (!res.ok) throw new Error(`batch → ${res.status}`)
       const { present } = (await res.json()) as { present: string[] }
-      return new Set(present)
+      return new Map(present.map((h) => [h, {}]))
     },
     async get(hash) {
       const res = await call(`${baseUrl}/artifacts/${hash}`)
@@ -1470,7 +1470,7 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
       layer: {
         async has(hash) {
           state.heads++
-          return store.has(hash)
+          return store.has(hash) ? {} : null
         },
         async get(hash) {
           state.gets++
@@ -1539,7 +1539,7 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
         const store = new Map<string, Uint8Array>()
         let puts = 0
         const remoteCache = {
-          has: async (h: string) => store.has(h),
+          has: async (h: string) => (store.has(h) ? {} : null),
           get: async (h: string) => {
             const b = store.get(h)
             return b === undefined ? null : { body: new Blob([b]), durationMs: 1 }
@@ -1586,7 +1586,7 @@ describe('orchestrator: injected RemoteCacheLayer (RunOptions.remoteCache)', () 
           tasks: ['build'],
           log: silentLogger(fixture),
           remoteCache: {
-            has: async () => false,
+            has: async () => null,
             get: async () => {
               throw new Error('GET down')
             },
@@ -1733,7 +1733,7 @@ describe('cache layer: hasRemote is the remote-layer signal', () => {
       const local = new Cache(dir)
       const remote: RemoteCacheLayer = {
         async has() {
-          return false
+          return null
         },
         async get() {
           return null

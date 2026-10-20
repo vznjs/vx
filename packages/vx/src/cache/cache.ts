@@ -855,6 +855,8 @@ export class Cache implements CacheLayer {
    * so the run can report them without a method on the layer seam.
    */
   readonly uploads: UploadTally = { count: 0, bytes: 0, ms: 0, failed: 0 }
+  /** The run's hits pulled from those remotes, and their bytes on the wire. */
+  readonly downloads: { count: number; bytes: number } = { count: 0, bytes: 0 }
   /** The same remotes' traffic per key, filled by the same `LayeredCache`. */
   readonly traffic: RemoteTraffic = { inFlight: 0, keys: new Map() }
 

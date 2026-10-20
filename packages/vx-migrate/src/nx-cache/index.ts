@@ -227,11 +227,12 @@ export class NxRemoteCache implements RemoteCacheLayer {
     return res
   }
 
-  async has(hash: string): Promise<boolean> {
+  async has(hash: string): Promise<{ size?: number } | null> {
     const res = await this.fetch(hash)
-    if (res === null) return false
+    if (res === null) return null
     await res.body?.cancel()
-    return true
+    const size = Number(res.headers.get('content-length') ?? NaN)
+    return Number.isFinite(size) ? { size } : {}
   }
 
   // Nx's record carries no duration.

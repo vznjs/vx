@@ -260,7 +260,7 @@ describe('a remote artifact carrying a negated output', () => {
       const remote: RemoteCacheLayer = {
         endpoint: 'mem://test',
         async has() {
-          return true
+          return {}
         },
         async get(hash: string) {
           const outputs = new Map([

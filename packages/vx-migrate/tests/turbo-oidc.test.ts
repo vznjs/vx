@@ -220,7 +220,7 @@ describe('a failed exchange leaves the run local, and says why without a token',
       expect(msg).toBe(`oidc: ${why}; local cache only this run`)
       expect(msg).not.toContain('gh-bearer')
       expect(msg).not.toContain('gh-jwt')
-      expect(await c.has('aa')).toBe(false)
+      expect(await c.has('aa')).toBeNull()
       await c.revoke()
       expect(w.seen.some((s) => s.url.endsWith('/revoke'))).toBe(false)
     })
@@ -276,7 +276,7 @@ describe('another server', () => {
   it('a layer never opened (a plan, a remote-off run) exchanges nothing', async () => {
     const w = world()
     const c = cache({ oidc: true }, GH_ENV, w.fetchImpl)
-    expect(await c.has('aa')).toBe(false)
+    expect(await c.has('aa')).toBeNull()
     await c.revoke()
     expect(w.seen).toEqual([])
   })

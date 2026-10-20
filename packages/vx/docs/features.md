@@ -44,7 +44,7 @@ config key or an environment variable is missing here.
 
 - **Framed output** — each task's log in its own frame, never interleaved. [page](https://vznjs.github.io/vx/features/framed-output/) · post: [A run you can read](https://vznjs.github.io/vx/blog/a-run-you-can-read/)
 - **Output modes** (`--output-logs`, `VX_RUN_OUTPUT_LOGS`) — full, errors-only, hash-only or none; the default follows the flow. [page](https://vznjs.github.io/vx/features/output-modes/) · post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
-- **Run summary** — one block: projects, tasks, cache, the run id `vx last` opens, time; nothing prints below it. [page](https://vznjs.github.io/vx/features/run-summary/) · post: [A run you can read](https://vznjs.github.io/vx/blog/a-run-you-can-read/)
+- **Run summary** — one block: projects, tasks, cache (with the bytes each remote hit pulled and each upload pushed), the run id `vx last` opens, time; nothing prints below it. [page](https://vznjs.github.io/vx/features/run-summary/) · post: [A run you can read](https://vznjs.github.io/vx/blog/a-run-you-can-read/)
 - **Per-task table** (`--verbosity`) — a per-task summary after the run. [page](https://vznjs.github.io/vx/features/per-task-table/) · post: [One failure, and exactly what it takes down](https://vznjs.github.io/vx/blog/when-a-build-fails/)
 - **Failed output kept for agents** — a failure's full log is saved and pointed to. [page](https://vznjs.github.io/vx/features/failed-output-kept/) · post: [Built for the agent at the keyboard](https://vznjs.github.io/vx/blog/built-for-agents/)
 - **Trace profile** (`--profile`) — Chrome-trace JSON of the run. [page](https://vznjs.github.io/vx/features/profile/) · post: [Output that fits the run](https://vznjs.github.io/vx/blog/output-that-fits-the-run/)
@@ -60,7 +60,7 @@ config key or an environment variable is missing here.
 
 ## Plan and explain
 
-- **Dry run** (`--dry`) — the task graph and the predicted hits and misses, text or JSON (with the predicted wall time and its critical path), nothing runs. [page](https://vznjs.github.io/vx/features/dry-run/) · post: [See the plan before you run it](https://vznjs.github.io/vx/blog/dry-run/)
+- **Dry run** (`--dry`) — the task graph and the predicted hits and misses (with what the remote hits would download), text or JSON (with the predicted wall time and its critical path), nothing runs. [page](https://vznjs.github.io/vx/features/dry-run/) · post: [See the plan before you run it](https://vznjs.github.io/vx/blog/dry-run/)
 - **vx why** (`vx why`, `--run`) — why a task re-ran, down to the file, env var or config that changed, and the task that wrote a moved input. [page](https://vznjs.github.io/vx/features/vx-why/) · post: [Why did this re-run?](https://vznjs.github.io/vx/blog/why-did-this-rerun/)
 - **vx show** (`vx show`) — every project, a project's or a task's resolved config, read from the lock as a run reads it. [page](https://vznjs.github.io/vx/features/vx-show/) · post: [See what a task really is](https://vznjs.github.io/vx/blog/vx-show/)
 - **vx last** (`vx last`, `--list`, `--failed`, `--log`, `--stats`, `--branch`) — replay a recorded run's summary, list recent runs, print one task's output, or per-task history stats (p50 as the live estimate forecasts it on a branch, p99, pass and hit rate, failure mode, peak RSS). [page](https://vznjs.github.io/vx/features/vx-last/) · post: [The last run, on request](https://vznjs.github.io/vx/blog/vx-last/)
@@ -102,6 +102,7 @@ config key or an environment variable is missing here.
 - **Restore lane** — cache restores run on their own lane, up to twice `--concurrency`. [page](https://vznjs.github.io/vx/features/restore-lane/) · post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
 - **Line-ending-correct keys** — files git filters (`eol`, `core.autocrlf`) key on the bytes the build sees. [page](https://vznjs.github.io/vx/features/line-endings/) · post: [Your cache key is already in git's index](https://vznjs.github.io/vx/blog/keys-from-git/)
 - **Background remote uploads** — remote writes drain at the end of the run and never fail the build; the footer counts them running (`⇡`) and failed (`✗`). [page](https://vznjs.github.io/vx/features/background-uploads/) · post: [What goes into a key, and what comes back](https://vznjs.github.io/vx/blog/inside-a-cache-hit/)
+- **Run instead of a slow download** — a remote hit whose body would take longer than running the task (twice its stored time, judged from the body's pace) is given up and the task runs here; only when the remote says the entry's size and the task's time (Turbo's API does). no post
 - **Bring your own remote cache** (plugin `cache`) — plug any cache server in through one interface. [page](https://vznjs.github.io/vx/features/custom-remote-cache/) · post: [Extend vx in an afternoon](https://vznjs.github.io/vx/blog/extend-vx/)
 
 ## Correctness

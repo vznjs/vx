@@ -205,8 +205,9 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
         if (remote.hasMany === undefined) return null
         try {
           const got: unknown = await remote.hasMany(ask)
-          if (!(got instanceof Set)) return null
-          for (const key of got) if (byKey.has(key as string)) found.add(byKey.get(key as string)!)
+          if (!(got instanceof Map)) return null
+          for (const key of got.keys())
+            if (byKey.has(key as string)) found.add(byKey.get(key as string)!)
         } catch {
           return null
         }

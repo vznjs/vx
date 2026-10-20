@@ -85,12 +85,12 @@ function stubRemote(): StubRemote {
       async has(hash) {
         state.heads++
         if (state.failAll) throw new Error('remote down')
-        return state.store.has(hash)
+        return state.store.has(hash) ? {} : null
       },
       async hasMany(hashes) {
         state.hasManyCalls++
         if (state.failAll) throw new Error('remote down')
-        return new Set(hashes.filter((h) => state.store.has(h)))
+        return new Map(hashes.filter((h) => state.store.has(h)).map((h) => [h, {}]))
       },
       async get(hash) {
         state.gets++
@@ -285,7 +285,7 @@ describe('LayeredCache', () => {
   it('get() that resolves the wrong shape is named as the plugin bug and degraded to a miss', async () => {
     const errors: Error[] = []
     const shaped = {
-      has: async () => true,
+      has: async () => ({}),
       get: async () => ({ body: 'abc', durationMs: 1 }),
       put: async () => {},
     } as unknown as RemoteCacheLayer
@@ -305,7 +305,7 @@ describe('LayeredCache', () => {
     await wipeLocal()
     const errors: Error[] = []
     const old = {
-      has: async () => true,
+      has: async () => ({}),
       get: async () => ({ body: remote.store.get('h-old')!.slice(), durationMs: 1 }),
       put: async () => {},
     } as unknown as RemoteCacheLayer
@@ -344,7 +344,7 @@ describe('LayeredCache', () => {
       await wipeLocal()
       const errors: Error[] = []
       const cutting = {
-        has: async () => true,
+        has: async () => ({}),
         get: async () => ({
           body: new Response(
             new ReadableStream<Uint8Array>({
@@ -375,7 +375,7 @@ describe('LayeredCache', () => {
   it('hasMany() that resolves an array is named and read as no batch info', async () => {
     const errors: Error[] = []
     const shaped = {
-      has: async () => false,
+      has: async () => null,
       hasMany: async () => ['h-a'],
       get: async () => null,
       put: async () => {},
@@ -383,7 +383,7 @@ describe('LayeredCache', () => {
     const layered = layeredOver(local, shaped, { onRemoteError: (e) => errors.push(e) })
     expect(await layered.remoteHasMany(['h-a', 'h-b'])).toBeNull()
     expect(errors.map((e) => e.message)).toEqual([
-      'probe of 2 artifacts failed: remote cache layer returned an invalid result: hasMany() resolved an array (expected a Set of the hashes present, or null) — a plugin bug, degraded to a miss',
+      'probe of 2 artifacts failed: remote cache layer returned an invalid result: hasMany() resolved an array (expected a Map of the hashes present, or null) — a plugin bug, degraded to a miss',
     ])
   })
 
@@ -404,7 +404,7 @@ describe('LayeredCache', () => {
     const layered = makeLayered()
     const present = await layered.remoteHasMany(['h-a', 'h-b', 'h-c'])
     expect(present).not.toBeNull()
-    expect([...(present ?? [])].sort()).toEqual(['h-a', 'h-c'])
+    expect([...(present?.keys() ?? [])].sort()).toEqual(['h-a', 'h-c'])
     expect(remote.hasManyCalls).toBe(1)
   })
 
@@ -574,7 +574,7 @@ describe('LayeredCache', () => {
   it('remoteHasMany() reads a hasMany() that resolves undefined as no batch info', async () => {
     const layered = layeredOver(
       local,
-      { ...remote.layer, hasMany: async () => undefined as unknown as Set<string> },
+      { ...remote.layer, hasMany: async () => undefined as unknown as Map<string, never> },
       { onRemoteError: () => {} },
     )
     expect(await layered.remoteHasMany(['h1'])).toBeNull()
@@ -1151,7 +1151,7 @@ describe('LayeredCache', () => {
       let land!: () => void
       const landed = new Promise<void>((resolve) => (land = resolve))
       const layered = layeredOver(local, {
-        has: async () => false,
+        has: async () => null,
         get: async () => null,
         put: () => landed,
       })

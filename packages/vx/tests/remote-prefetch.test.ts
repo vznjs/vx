@@ -66,7 +66,7 @@ function recording(
       : {
           async remoteHasMany(hashes: readonly string[]) {
             rec.probed.push([...hashes])
-            return present(hashes)
+            return new Map([...present(hashes)].map((h) => [h, {}]))
           },
         }),
   }

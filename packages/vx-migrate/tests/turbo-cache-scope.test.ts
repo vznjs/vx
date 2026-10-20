@@ -14,12 +14,12 @@ function memory(batches = true): {
   const store = new Map<string, string>()
   const asked: string[][] = []
   const layer: RemoteCacheLayer = {
-    has: async (h) => (asked.push([h]), store.has(h)),
+    has: async (h) => (asked.push([h]), store.has(h) ? {} : null),
     ...(batches
       ? {
           hasMany: async (hs: readonly string[]) => (
             asked.push([...hs]),
-            new Set(hs.filter((h) => store.has(h)))
+            new Map(hs.filter((h) => store.has(h)).map((h) => [h, {}]))
           ),
         }
       : {}),
@@ -42,7 +42,7 @@ describe("scope: 'key'", () => {
     await keyedByRef(m.layer, [MAIN]).put('k1', new Blob(['main']), { durationMs: 1 })
     expect([...m.store.keys()]).toEqual([refKey(MAIN, 'k1')])
     const feat = keyedByRef(m.layer, [FEAT, MAIN])
-    expect(await feat.hasMany!(['k1', 'k2'])).toEqual(new Set(['k1']))
+    expect(await feat.hasMany!(['k1', 'k2'])).toEqual(new Map([['k1', {}]]))
     expect(m.asked.at(-1)).toEqual([
       refKey(FEAT, 'k1'),
       refKey(MAIN, 'k1'),
@@ -61,7 +61,7 @@ describe("scope: 'key'", () => {
     const feat = keyedByRef(m.layer, [FEAT, MAIN])
     expect(await (await feat.get('k1'))!.body.text()).toBe('main')
     expect(m.asked).toEqual([[refKey(FEAT, 'k1')], [refKey(MAIN, 'k1')]])
-    expect(await feat.has('k2')).toBe(false)
+    expect(await feat.has('k2')).toBeNull()
   })
 
   it('a merge queue writes and reads as its base branch', async () => {

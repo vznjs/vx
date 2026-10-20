@@ -179,7 +179,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'vx-cache-host-'))
     const local = new Cache(cacheDir, { read: true, write: true })
     const remote = (): RemoteCacheLayer => ({
-      has: async () => false,
+      has: async () => null,
       get: async () => null,
       put: async () => undefined,
     })
@@ -689,7 +689,7 @@ describe('executor capability — end-to-end via run()', () => {
         pluginSource(
           `org/${name}`,
           `{ cache: () => ({
-             has: async () => false,
+             has: async () => null,
              get: async () => null,
              put: async (hash) => { globalThis.__vxPuts.push('${name} ' + hash) },
            }) }`,

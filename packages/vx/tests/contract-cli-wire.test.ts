@@ -74,6 +74,7 @@ function fixturePlan(): Required<RunPlan> {
     p50Ms: 1200,
     executor: 'vx-reapi',
     download: 'deferred',
+    remoteBytes: 2048,
     affected: { kind: 'input', file: 'a/src/x.ts', project: 'a', via: ['a#gen'] },
   }
   const bare: PlannedTask = { node: node('a#gen'), hash: 'h0', cacheStatus: 'hit-local', deps: [] }

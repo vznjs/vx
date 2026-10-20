@@ -36,7 +36,7 @@ const serving = async (dir: string, entries: Record<string, string>): Promise<Re
   return {
     endpoint: 'mem://test',
     async has() {
-      return true
+      return {}
     },
     async get(hash: string) {
       const tar = await packArtifactBytes(
@@ -238,7 +238,7 @@ describe('a remote artifact names only what its task declares', () => {
         const remote: RemoteCacheLayer = {
           endpoint: 'mem://test',
           async has() {
-            return true
+            return {}
           },
           async get() {
             return { body: new Blob([Bun.zstdCompressSync(tar)]), durationMs: 1 }

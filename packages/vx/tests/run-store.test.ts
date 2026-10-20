@@ -12,7 +12,7 @@ describe('putRunEntry', () => {
     const remote: RemoteCacheLayer = {
       async has(h) {
         calls.push(`has ${h}`)
-        return true
+        return {}
       },
       async get() {
         return null

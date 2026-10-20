@@ -54,6 +54,8 @@ export interface PlannedTask {
    * eager task is the default and saying so on every line says nothing.
    */
   download?: 'deferred'
+  /** A remote hit's stored size, when the remote said it: what restoring it downloads. */
+  remoteBytes?: number
   /** Why `--affected` kept this requested task; absent without `--affected` and on a dependency it pulled in. */
   affected?: AffectedReason
 }
@@ -139,6 +141,7 @@ export interface PlanArgs {
  */
 export async function plan(args: PlanArgs): Promise<RunPlan> {
   const cacheStatusById = new Map<string, CacheStatus>()
+  const remoteBytesById = new Map<string, number>()
   // Keyed first, probed after: a remote that can batch (`hasMany`) is
   // asked once for every key, one that cannot is asked per key.
   const probed = new Map<string, string>()
@@ -191,13 +194,15 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
     },
   })
   if (probed.size > 0) {
-    await args.cache.remoteHasMany?.([...new Set(probed.values())])
+    const infos = await args.cache.remoteHasMany?.([...new Set(probed.values())])
     for (const [id, hash] of probed) {
       const where = await args.cache.has(hash)
       cacheStatusById.set(
         id,
         where === null ? 'miss' : where === 'remote' ? 'hit-remote' : 'hit-local',
       )
+      const size = where === 'remote' ? infos?.get(hash)?.size : undefined
+      if (size !== undefined) remoteBytesById.set(id, size)
     }
   }
 
@@ -225,6 +230,7 @@ export async function plan(args: PlanArgs): Promise<RunPlan> {
       deps: node.deps,
       ...(executor !== undefined ? { executor } : {}),
       ...(args.downloadOf?.(id) === 'deferred' ? { download: 'deferred' as const } : {}),
+      ...(remoteBytesById.has(id) ? { remoteBytes: remoteBytesById.get(id)! } : {}),
     })
   }
 

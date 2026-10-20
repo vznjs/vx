@@ -6,7 +6,7 @@
 
 import { machineParallelism } from '../util/index.js'
 import type { RemoteKeyTraffic, RemoteTraffic } from './cache.js'
-import type { RemoteCacheLayer } from './layered-cache.js'
+import type { ArtifactInfo, RemoteCacheLayer } from './layered-cache.js'
 
 /** One remote, resolved: its wire and what the run's policy and its `access` let it do. */
 export interface ResolvedRemote {
@@ -46,6 +46,14 @@ function invalidRemoteResult(what: string): Error {
   return new Error(
     `remote cache layer returned an invalid result: ${what} — a plugin bug, degraded to a miss`,
   )
+}
+
+/** A plugin's `ArtifactInfo`, keeping only the fields that are finite, non-negative numbers; null when it is no object. */
+function artifactInfo(value: unknown): ArtifactInfo | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+  const { size, durationMs } = value as Record<string, unknown>
+  const ok = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0
+  return { ...(ok(size) ? { size } : {}), ...(ok(durationMs) ? { durationMs } : {}) }
 }
 
 function isBody(value: unknown): value is Blob | Response {
@@ -106,14 +114,16 @@ export class RemoteLane {
    */
   private readonly absent = new Set<string>()
   /** What a `hasMany` said this remote holds, as `absent` records the rest. */
-  private readonly held = new Set<string>()
+  private readonly held = new Map<string, ArtifactInfo>()
 
   /**
    * A remote the run writes but does not read (`--force`): which of the
    * run's up-front keys it already holds, from one `hasMany`. `found` is
    * null when the probe failed.
    */
-  private presence: Promise<{ asked: Set<string>; found: Set<string> | null } | null> | undefined
+  private presence:
+    | Promise<{ asked: Set<string>; found: Map<string, ArtifactInfo> | null } | null>
+    | undefined
 
   private readonly uploadQueue: Array<() => Promise<void>> = []
   private activeUploads = 0
@@ -157,15 +167,28 @@ export class RemoteLane {
    * Existence probe; a failure is a miss. A key a `hasMany` this run
    * answered for is not asked again: `--dry` batches its keys first.
    */
-  async has(hash: string): Promise<boolean> {
-    if (this.held.has(hash)) return true
-    if (this.absent.has(hash)) return false
+  async has(hash: string): Promise<ArtifactInfo | null> {
+    const held = this.held.get(hash)
+    if (held !== undefined) return held
+    if (this.absent.has(hash)) return null
+    let found: unknown
     try {
-      return Boolean(await this.remote.has(hash))
+      found = await this.remote.has(hash)
     } catch (err) {
       this.report('probe', hash, err)
-      return false
+      return null
     }
+    if (found === null || found === undefined) return null
+    const info = artifactInfo(found)
+    if (info === null)
+      this.report(
+        'probe',
+        hash,
+        invalidRemoteResult(
+          `has() resolved ${describeValue(found)} (expected { size, durationMs } or null)`,
+        ),
+      )
+    return info
   }
 
   /**
@@ -173,7 +196,7 @@ export class RemoteLane {
    * rest as absent; `null` when this remote cannot batch or the probe
    * failed, which the caller reads as "no batch info".
    */
-  async hasMany(hashes: readonly string[]): Promise<Set<string> | null> {
+  async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
     if (this.remote.hasMany === undefined) return null
     let found: unknown
     try {
@@ -183,19 +206,26 @@ export class RemoteLane {
       return null
     }
     if (found === null || found === undefined) return null
-    if (!(found instanceof Set)) {
+    if (!(found instanceof Map)) {
       this.report(
         'probe',
         batchOf(hashes),
         invalidRemoteResult(
-          `hasMany() resolved ${describeValue(found)} (expected a Set of the hashes present, or null)`,
+          `hasMany() resolved ${describeValue(found)} (expected a Map of the hashes present, or null)`,
         ),
       )
       return null
     }
-    const set = found as Set<string>
-    for (const h of hashes) (set.has(h) ? this.held : this.absent).add(h)
-    return set
+    const out = new Map<string, ArtifactInfo>()
+    for (const h of hashes) {
+      const info = found.has(h) ? (artifactInfo(found.get(h)) ?? {}) : undefined
+      if (info === undefined) this.absent.add(h)
+      else {
+        this.held.set(h, info)
+        out.set(h, info)
+      }
+    }
+    return out
   }
 
   /** The artifact's body, or null on a miss, a known absence, a failure or a malformed answer. */
@@ -251,7 +281,7 @@ export class RemoteLane {
     const probed = await this.presence
     if (probed !== undefined && probed !== null && probed.found !== null && probed.asked.has(hash))
       return probed.found.has(hash)
-    return this.has(hash)
+    return (await this.has(hash)) !== null
   }
 
   /** Queue a PUT in this remote's bounded pool; `body` is asked for when the job starts. */
@@ -268,6 +298,7 @@ export class RemoteLane {
       let release: (() => Promise<void>) | undefined
       try {
         if (this.stopped) return
+        if (this.held.has(hash)) return
         if (!this.read && (await this.holds(hash))) return
         if (this.stopped) return
         const start = performance.now()

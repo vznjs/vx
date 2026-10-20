@@ -2,6 +2,7 @@
 export class Cache implements CacheLayer {
   readonly hasRemote
   readonly uploads: UploadTally
+  readonly downloads: { count: number; bytes: number }
   readonly traffic: RemoteTraffic
   readonly storeDir: string | undefined
   readonly schemaReset: SchemaReset | null
@@ -404,6 +405,11 @@ export interface ApplyMigrationArgs {
   steps?: readonly (readonly [label: string, value: string])[]
   plugins?: readonly WorkspacePlugin[]
 }
+== type ArtifactInfo (src/cache/layered-cache.ts)
+export interface ArtifactInfo {
+  readonly size?: number
+  readonly durationMs?: number
+}
 == type At (src/config.ts)
 type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? V : unknown
 == type BaseContext (src/orchestrator/plugin.ts)
@@ -486,7 +492,7 @@ export interface CacheKeyInput {
 export interface CacheLayer {
   readonly local?: Cache | undefined
   readonly hasRemote?: boolean
-  remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   localHasMany?(hashes: readonly string[]): Promise<Set<string>>
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
@@ -1055,6 +1061,7 @@ export interface PlannedTask {
   p50Ms?: number
   executor?: string
   download?: 'deferred'
+  remoteBytes?: number
   affected?: AffectedReason
 }
 == type PlanPrediction (src/orchestrator/plan.ts)
@@ -1235,8 +1242,8 @@ export interface RefusalParts {
 export interface RemoteCacheLayer {
   readonly endpoint?: string
   open?(ctx: RemoteOpenContext): Promise<void>
-  has(hash: string): Promise<boolean>
-  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  has(hash: string): Promise<ArtifactInfo | null>
+  hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
 }
@@ -1303,6 +1310,8 @@ export interface RunContext {
       readonly inFlight: number
       readonly keys: ReadonlyMap<string, { uploading: number; failures: readonly string[] }>
     }
+    downloads?: { readonly bytes: number }
+    uploads?: { readonly bytes: number }
     notDownloaded: () => number
   }
   workspaceProjectCount?: number

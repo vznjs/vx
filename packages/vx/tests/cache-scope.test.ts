@@ -38,11 +38,11 @@ function memoryRemote(probeDelayMs = 0): {
   const gets: string[] = []
   const layer: RemoteCacheLayer = {
     async has(hash) {
-      return store.has(hash)
+      return store.has(hash) ? {} : null
     },
     async hasMany(hashes) {
       if (probeDelayMs > 0) await Bun.sleep(probeDelayMs)
-      return new Set(hashes.filter((h) => store.has(h)))
+      return new Map(hashes.filter((h) => store.has(h)).map((h) => [h, {}]))
     },
     async get(hash) {
       gets.push(hash)
@@ -100,10 +100,10 @@ describe('cache.scope', () => {
         const legend = (): string =>
           fixture.log[fixture.log.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()
         // Each task counts once, under its strongest state: saved here and uploaded is `remote ↑`.
-        expect(legend()).toBe('remote 1↑')
+        expect(legend()).toMatch(/^remote 1↑ \d+ B$/)
         fixture.log.length = 0
         await runScoped(fixture, layer, scope, 'v1')
-        expect(legend()).toBe('remote 1↓')
+        expect(legend()).toMatch(/^remote 1↓ \d+ B$/)
         fixture.log.length = 0
         const failing: RemoteCacheLayer = {
           ...layer,
