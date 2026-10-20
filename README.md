@@ -189,9 +189,7 @@ vx. The schema may still change; 1.0's promise:
 
 ## Issues
 
-vx is maintained by one person, Maciej Kwaśniak
-([@Exelord](https://github.com/Exelord)). It takes issues, not pull
-requests: report a bug or ask for a feature in
+vx takes issues, not pull requests: report a bug or ask for a feature in
 [issues](https://github.com/vznjs/vx/issues).
 
 ## License
