@@ -6,7 +6,7 @@ authors:
 tags:
   - migration
   - dx
-excerpt: 'vx init turns package.json scripts into tasks, with npm pre and post hooks folded in the order npm runs them. A vite-plus repo converts the same way from its run.tasks.'
+excerpt: 'bunx @vzn/vx-migrate turns package.json scripts into tasks, with npm pre and post hooks folded in the order npm runs them. A vite-plus repo converts the same way from its run.tasks.'
 ---
 
 The [Turbo](../from-turborepo/) and [Nx](../from-nx/) paths have their
@@ -15,10 +15,9 @@ own posts. Two more starting points convert just as directly: plain
 
 ```mermaid
 flowchart LR
-  S[package.json scripts] --> I[vx init]
-  V[vite-plus run.tasks] --> M[bunx @vzn/vx-migrate]
-  I --> C[vx.config.ts per package]
-  M --> C
+  S[package.json scripts] --> M[bunx @vzn/vx-migrate]
+  V[vite-plus run.tasks] --> M
+  M --> C[vx.config.ts per package]
   style C stroke:#c6f84e,stroke-width:2px
 ```
 
@@ -26,14 +25,14 @@ flowchart LR
 
 npm runs `prebuild` before `build` and `postbuild` after it, without
 being asked. Copying the scripts one to one would lose that. So
-`vx init` folds the hooks into the task's command, in npm's order, and
+`bunx @vzn/vx-migrate` folds the hooks into the task's command, in npm's order, and
 says so:
 
 ```sh frame="terminal"
 $ cat packages/app/package.json
 {"name":"app","scripts":{"prebuild":"rimraf dist","build":"tsc","postbuild":"node scripts/copy.js"}}
 
-$ vx init --dry
+$ bunx @vzn/vx-migrate --dry
 
 ─ vx-migrate 0.0.637 ─────────────────────────────────────────
   from      package.json scripts

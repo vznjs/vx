@@ -1795,8 +1795,8 @@ worktree is its own; a submodule looks on into its superproject), and
 outside git it looks up to `/`. Nothing else marks the root: not a
 `package.json`, `pnpm-workspace.yaml` or a lockfile (owner, 2026-10-13).
 Without one, every verb but `vx init` stops with `VX_E_NO_WORKSPACE`;
-`vx init` writes one (`@vzn/vx-migrate` at the package manager's root,
-in a nested workspace the outer one does not list too). A project inside the
+`vx init` writes one (`@vzn/vx-migrate` beside a `turbo.json` or
+`nx.json`). A project inside the
 root is a directory holding a `vx.config.*`, which `vx lock` finds
 (see [`vx lock`](#vx-lock)); a `discover` plugin adds others.
 
@@ -1945,26 +1945,28 @@ or is missing.
 
 ## `vx init`
 
-`vx init` reads no `package.json` (M, 2026-10-14). When the directory it
-runs in, or one above it up to the git top-level, holds a
-`package.json`, `pnpm-workspace.yaml`, `turbo.json`, `turbo.jsonc` or
-`nx.json`, it runs `@vzn/vx-migrate` there, so `vx init` is the one
-command (owner, 2026-10-08): the latest release through `bun x`,
+`vx init` first installs `@vzn/vx` globally (the package manager that
+ran it, else npm; skipped when the `vx` on `PATH` is already that
+version) and, under the topmost `package.json`, as a root
+devDependency with that repo's own manager (M, 2026-10-20). A failed
+install stops init. When the directory it runs in, or one above it up
+to the git top-level, holds a `turbo.json`, `turbo.jsonc` or `nx.json`,
+it runs `@vzn/vx-migrate` there, so `vx init` is the one command
+(owner, 2026-10-08): the latest release through `bun x`,
 never an installed one, so init always installs the latest `@vzn/vx`
 and moves every `@vzn/vx-*` plugin the root lists to it (M,
 2026-10-16; a source checkout runs the nearest installed
 `node_modules/@vzn/vx-migrate` instead) (`BUN_BE_BUN=1` makes the compiled
 binary that runtime). `--dry`, `--format`, `--force`, `--mjs`,
 `--native` and `--keep` pass through, and the exit is vx-migrate's.
-vx-migrate maps a Turbo, Nx or Vite Task repo, else the `package.json`
-scripts, one `vx.config.ts` per package; writes the workspace file with
+vx-migrate maps the Turbo or Nx repo, one `vx.config.ts` per package; writes the workspace file with
 the plugins the repo calls for (the lockfile's, a remote cache the repo
 shows); installs them; and ends with `vx lock`. Its README holds the
 rules; [`bunx @vzn/vx-migrate`](#bunx-vznvx-migrate) below sums them up.
 
 With none of those files, it writes a workspace whose one project is
 the root, at the nearest workspace root up from the working directory,
-else there:
+else at the topmost `package.json`, else there:
 
 ```ts
 // .vx/workspace.ts
@@ -1990,7 +1992,8 @@ extension included (`replaced`). `--mjs` writes `.vx/workspace.mjs` and
 `vx.config.mjs`. `--dry` prints the files and writes nothing;
 `--dry --format json` prints the plan as one JSON document
 (`schemas/init.json`): `files` (each path and its whole text), `kept`,
-`replaced`, `todos`, `notes` and `next`. `--native` and `--keep` answer
+`replaced`, `todos`, `notes`, `next` and `installs` (the install
+commands the real run runs). `--native` and `--keep` answer
 a Turbo or Nx repo's question, so they are refused here. `--format json`
 without `--dry`, or with `--plugin`, is refused (`VX_E_USAGE`).
 
@@ -2019,7 +2022,7 @@ package, run before a workspace file exists (it writes one); `vx init`
 runs it in any repo with a `package.json` —
 
 ```
-bunx @vzn/vx-migrate           # turbo.json, an Nx graph, vite-plus run.tasks, else package.json scripts → vx.config.ts
+bunx @vzn/vx-migrate           # turbo.json, an Nx graph, vite-plus run.tasks, else package.json scripts → vx.config.ts (vx init hands it only Turbo and Nx)
 bunx @vzn/vx-migrate --dry     # print the generated files instead of writing
 bunx @vzn/vx-migrate --force   # overwrite existing vx.config.* / vx-preset.ts
 bunx @vzn/vx-migrate --from nx # disambiguate when several sources are checked in (turbo, nx, vite-task, scripts)

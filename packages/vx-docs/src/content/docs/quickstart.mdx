@@ -31,22 +31,22 @@ Cache your first task in two minutes, in a repo you already have.
      </TabItem>
    </Tabs>
 
-   `init` writes a `vx.config.ts` next to each `package.json`, with a task
-   for each script. A Turborepo or Nx repo gets its tasks from `turbo.json`
-   or the Nx graph instead.
+   `init` installs `vx` on your machine and in the repo, and writes an
+   empty `vx.config.ts` at the root. A Turborepo or Nx repo gets its tasks
+   from `turbo.json` or the Nx graph instead.
 
-2. **Cache the build**
+2. **Add a task**
 
-   Open one package's `vx.config.ts` and add the `cache` block that the
-   TODO above `build` shows. It names the files the build writes:
+   Give `vx.config.ts` a `build` task: its command, the files it reads,
+   and the files it writes.
 
-   ```ts title="packages/ui/vx.config.ts" ins={8}
-   import { defineProject } from '@vzn/vx/config'
+   ```ts title="vx.config.ts" ins={5-9}
+   import { defineProject } from '@vzn/vx'
 
    export default defineProject({
      tasks: {
        build: {
-         exec: { command: 'tsc -b' },
+         exec: { command: 'npm run build' },
          inputs: { files: ['src/**'] },
          cache: { outputs: { files: ['dist/**'] } },
        },
@@ -63,33 +63,28 @@ Cache your first task in two minutes, in a repo you already have.
 3. **Run it twice**
 
    ```sh
-   vx run build --all
-   vx run build --all
+   vx run build
+   vx run build
    ```
 
    The first run builds and stores the result. The second finds nothing
-   changed and finishes from the cache:
+   changed and skips the work:
 
    ```text frame="terminal" title="second run"
-     cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-               local 2✓
-     time      6ms
+   └─ //#build ── (2ms) up-to-date
    ```
 
 4. **Change a file and ask why**
 
-   Edit a file the build reads, run again, and ask vx what changed:
+   Edit a file in `src/`, run again, and ask vx what changed:
 
    ```sh
-   vx run build --all
-   vx why @acme/app#build
+   vx run build
+   vx why build
    ```
 
    ```text frame="terminal"
-     verdict    cache key changed: upstream @acme/ui#build
-
-     root cause:
-       @acme/app#build ← @acme/ui#build ← file packages/ui/src/index.ts
+     verdict    cache key changed: file src/index.ts
    ```
 
 </Steps>
