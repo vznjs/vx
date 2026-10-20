@@ -4,7 +4,7 @@ date: 2026-10-20T18:20:00Z
 authors:
   - vzn
 tags:
-  - design
+  - dx
   - config
 excerpt: 'vx once read [...] in a task glob literally, so a Next.js route like app/[id] needed no escape. It also meant src/*.[jt]s matched nothing, unlike Turbo, Nx and most glob tools. Why vx now reads brackets the standard way, and why that changed every cache key.'
 ---

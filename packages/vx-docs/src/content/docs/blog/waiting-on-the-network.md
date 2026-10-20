@@ -1,5 +1,5 @@
 ---
-title: 'A remote cache should wait on the network, not on your cores'
+title: 'Cache transfers wait on the network'
 date: 2026-10-20T18:10:00Z
 authors:
   - vzn
