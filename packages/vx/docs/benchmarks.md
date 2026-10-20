@@ -437,12 +437,12 @@ run recorded; cache wipes keep that file, as CI caches it. This machine: linux x
 
 **Time each tool adds over the ideal run:**
 
-|                                       | vx          | Turborepo | Nx         | Vite Task |
-| ------------------------------------- | ----------- | --------- | ---------- | --------- |
-| **Nothing changed**                   | **703 ms**  | 726 ms    | 22.66 s    | 11.57 s   |
-| **Nothing changed, outputs restored** | **1.00 s**  | 1.20 s    | 22.43 s    | 11.17 s   |
-| **Cold build**                        | **6.68 s**  | 8.43 s    | 3 min 19 s | 8.99 s    |
-| **Cold build: CPU the runner burns**  | **30.14 s** | 1 min 5 s | 5 min 42 s | 23.79 s   |
+|                                       | vx         | Turborepo | Nx         | Vite Task |
+| ------------------------------------- | ---------- | --------- | ---------- | --------- |
+| **Nothing changed**                   | **703 ms** | 726 ms    | 22.66 s    | 11.57 s   |
+| **Nothing changed, outputs restored** | **1.00 s** | 1.20 s    | 22.43 s    | 11.17 s   |
+| **Cold build**                        | **6.68 s** | 8.43 s    | 3 min 19 s | 8.99 s    |
+| **Cold build: CPU the runner burns**  | 30.14 s    | 1 min 5 s | 5 min 42 s | 23.79 s   |
 
 Time each tool adds over the ideal run; lower is better.
 

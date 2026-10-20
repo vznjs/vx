@@ -16,9 +16,9 @@ One number first, because it is the one that decides whether a runner
 is worth having. Imagine your tasks take two minutes on their own.
 What does the tool add on top? On the 9,603-task workspace below the
 tasks alone take 1 min 53 s under an ideal schedule. On a cold build vx
-adds **7.73 s**, the least of the four: Vite Task **9.44 s**, Turborepo
-**10.32 s** and Nx **3 min 23 s**. With nothing changed, vx adds **856 ms**
-and Turborepo **855 ms**. No tool leads every row, and the table says
+adds **6.68 s**, the least of the four: Vite Task **8.99 s**, Turborepo
+**8.43 s** and Nx **3 min 19 s**. With nothing changed, vx adds **703 ms**
+and Turborepo **726 ms**. No tool leads every row, and the table says
 where vx does not.
 
 ```mermaid
@@ -60,22 +60,22 @@ build over its ideal schedule; with nothing changed, over one git walk):
 
 | Runner    | Cold build overhead | Nothing changed | Cold build CPU |
 | --------- | ------------------- | --------------- | -------------- |
-| vx        | **7.73 s** | **856 ms** | **36.42 s** |
-| Turborepo | 10.32 s | 855 ms | 1 min 3 s |
-| Nx        | 3 min 23 s | 23.22 s | 5 min 35 s |
-| Vite Task | 9.44 s | 11.24 s | 25.64 s |
+| vx        | **6.68 s** | **703 ms** | 30.14 s |
+| Turborepo | 8.43 s | 726 ms | 1 min 5 s |
+| Nx        | 3 min 19 s | 22.66 s | 5 min 42 s |
+| Vite Task | 8.99 s | 11.57 s | 23.79 s |
 
 Time each tool adds over the ideal run; lower is better.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-Run 2026-10-12 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
+Run 2026-10-20 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.9, Nx 23.3.0, Vite Task (vite-plus) 1.3.0.
 
 The first two columns are wall clock; the third is CPU time (user plus
 system, of the invocation and every child it waited for, less what the
 task commands burn), because on a synthetic workspace the tasks sleep
 and that column measures the runner's own work. A daemon that outlives
 the invocation is not counted, so Turborepo's and Nx's are floors. Every
-row, the ideal run and the measured floors (one git walk is 59 ms on
+row, the ideal run and the measured floors (one git walk is 61 ms on
 that machine) are in [Benchmarks](../../benchmarks/).
 
 ## Real repositories: rerun pending
