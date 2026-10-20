@@ -16,8 +16,8 @@ One number first, because it is the one that decides whether a runner
 is worth having. Imagine your tasks take two minutes on their own.
 What does the tool add on top? On the 9,603-task workspace below the
 tasks alone take 1 min 53 s under an ideal schedule. On a cold build vx
-adds **6.68 s**, the least of the four: Vite Task **8.99 s**, Turborepo
-**8.43 s** and Nx **3 min 19 s**. With nothing changed, vx adds **703 ms**
+adds **6.68 s**, the least of the four: Turborepo **8.43 s**, Vite Task
+**8.99 s** and Nx **3 min 19 s**. With nothing changed, vx adds **703 ms**
 and Turborepo **726 ms**. No tool leads every row, and the table says
 where vx does not.
 
