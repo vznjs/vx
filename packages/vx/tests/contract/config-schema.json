@@ -17,7 +17,7 @@
       "cache.inputStability": ["severity", "strategy"],
       "cache.outputs": ["clean"],
       "cache.upload": ["failures"],
-      "cache.store": ["decompress", "embeddings", "verify"],
+      "cache.store": ["decompress", "embeddings"],
       "cache.concurrency": ["download", "restore", "upload"],
       "lock": ["reviewFiles"],
       "watch": ["poll"]
@@ -1189,7 +1189,7 @@
       },
       "cache.store": {
         "ok": ["<absent>", "{}", "<seed>"],
-        "$CONFIG: `cache.store` must be an object (fields: embeddings, decompress, verify)": [
+        "$CONFIG: `cache.store` must be an object (fields: embeddings, decompress)": [
           "null",
           "true",
           "false",
@@ -1220,7 +1220,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache.store` has unknown field \"x\" (allowed: decompress, embeddings, verify)": [
+        "$CONFIG: `cache.store` has unknown field \"x\" (allowed: decompress, embeddings)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -1334,82 +1334,6 @@
         "$CONFIG: `cache.store.decompress` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
         "$CONFIG: `cache.store.decompress` must be true or false (got {})": ["{}"],
         "$CONFIG: `cache.store.decompress` must be true or false (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
-      },
-      "cache.store.verify": {
-        "ok": ["<absent>", "\"stat\""],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got null)": ["null"],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got true)": ["true"],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got false)": [
-          "false"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got 0)": ["0"],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got 1)": ["1"],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got 1.5)": ["1.5"],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got -1)": ["-1"],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got \"\")": ["\"\""],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got [])": ["[]"],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got [1])": ["[1]"],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got [\"!!x\",\"y\"])": [
-          "[\"!!x\",\"y\"]"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got {})": ["{}"],
-        "$CONFIG: `cache.store.verify` must be one of 'stat', 'hash', 'none' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },

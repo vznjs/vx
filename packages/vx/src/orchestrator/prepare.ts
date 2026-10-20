@@ -34,7 +34,6 @@ import {
   lazyGitEnumeration,
   measureFsClockLag,
   DEFAULT_STORE,
-  type StoreOptions,
 } from '../cache/index.js'
 import {
   buildPackageGraph,
@@ -383,8 +382,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
         DEFAULT_STORE.embeddings) as number,
       decompress: (resolveSetting('cache.store.decompress', workspaceConfig).value ??
         DEFAULT_STORE.decompress) as boolean,
-      verify: (resolveSetting('cache.store.verify', workspaceConfig).value ??
-        DEFAULT_STORE.verify) as StoreOptions['verify'],
     },
   )
   const unwritable = localCache.readOnlyNotice()

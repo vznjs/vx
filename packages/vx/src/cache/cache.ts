@@ -78,7 +78,6 @@ import {
   planArtifact,
   planOfTree,
   sealTree,
-  treeIntact,
   writeTree,
 } from './archive.js'
 import { readUmask, restoredMode } from './umask.js'
@@ -814,14 +813,11 @@ export interface StoreOptions {
   embeddings: number
   /** A file-backed entry is a `<hash>.tree` of plain files; off, one `<hash>.tar.zst`. */
   decompress: boolean
-  /** What a tree restore checks first: each file's size and mtime, every byte, or nothing. */
-  verify: 'stat' | 'hash' | 'none'
 }
 
 export const DEFAULT_STORE: StoreOptions = {
   embeddings: 32 * 1024,
   decompress: true,
-  verify: 'stat',
 }
 
 /** What a run's background uploads moved: totals over the ones that landed. */
@@ -1924,9 +1920,8 @@ export class Cache implements CacheLayer {
   }
 
   /**
-   * Restore a tree-form entry: its files checked as `cache.store.verify`
-   * says, then copied (or cloned) out one by one where the outputs are
-   * absent, as on every restore after a clean. Anything else (a tree to
+   * Restore a tree-form entry: its files copied (or cloned) out one by
+   * one where the outputs are absent, as on every restore after a clean. Anything else (a tree to
    * restore into, a workspace output, a link) goes through the extractor
    * the tar form uses, fed the tree packed back into its tar.
    */
@@ -1947,21 +1942,6 @@ export class Cache implements CacheLayer {
         hash,
         `its outputs hold ${formatBytes(bytes)}, past the ${formatBytes(this.artifactCeiling)} artifact ceiling`,
       )
-    }
-    if (this.store.verify === 'stat') {
-      const changed = await Promise.all(
-        files.map((r) =>
-          stat(path.join(tree, treeName(r.path))).then(
-            (st) => st.size !== r.size || Math.floor(st.mtimeMs) !== r.mtimeMs,
-            () => true,
-          ),
-        ),
-      )
-      if (changed.includes(true)) {
-        throw new CorruptArtifactError(hash, 'a stored file changed since it was saved')
-      }
-    } else if (this.store.verify === 'hash' && !(await treeIntact(tree, this.stdoutText(hash)))) {
-      throw new CorruptArtifactError(hash, 'the stored files no longer sum to what was saved')
     }
     if (await this.copyTree(tree, rows, files, projectDir, accept)) return
     await extractArtifactStream(
@@ -2699,7 +2679,6 @@ export class Cache implements CacheLayer {
         const dir = this.tempTreePath(hash)
         tree = dir
         let scan: Awaited<ReturnType<typeof scanArtifact>> | undefined
-        let raw: { meta: string; sum: string } | undefined
         await extractArtifactStream(
           await decodedTar(
             compressed instanceof Uint8Array ? compressed : Bun.file(tmpPath!),
@@ -2711,13 +2690,12 @@ export class Cache implements CacheLayer {
           undefined,
           undefined,
           undefined,
-          (s, r) => {
+          (s) => {
             scan = s
-            raw = r
           },
         )
         scanned = scan!
-        await sealTree(dir, scanned, raw)
+        await sealTree(dir, scanned)
       } else if (tar !== undefined) {
         // Our own tar, in memory: read in place, on this thread.
         scanned = scanTarBytes(tar)

@@ -77,7 +77,7 @@ const [name, dir] = process.argv.slice(2)
 const proj = ${JSON.stringify(root)} + '/w-' + name
 mkdirSync(proj + '/dist', { recursive: true })
 writeFileSync(proj + '/dist/' + name, name.repeat(64))
-const cache = new Cache(dir, undefined, undefined, undefined, undefined, undefined, { embeddings: 32 * 1024, decompress: false, verify: 'stat' })
+const cache = new Cache(dir, undefined, undefined, undefined, undefined, undefined, { embeddings: 32 * 1024, decompress: false })
 let n = 0
 while (!existsSync(${JSON.stringify(stop)})) {
   await cache.save({ hash: 'h1', projectDir: proj, outputFiles: [proj + '/dist/' + name],
@@ -90,7 +90,6 @@ console.log(n)
     const reader = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     await save(reader, 'h1', 'a.js'.repeat(64), 'a.js')
     const writers = ['a.js', 'b.js'].map((n) =>
@@ -130,7 +129,6 @@ describe('3: one key moving file → inline → file', () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     try {
       const first = big()
@@ -157,7 +155,6 @@ describe('3: one key moving file → inline → file', () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     try {
       const old = big()
@@ -201,7 +198,6 @@ describe('4: a reset keeps the inline artifacts', () => {
     const writer = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     await save(writer, 'h1', 'kept')
     writer.close()
@@ -211,7 +207,6 @@ describe('4: a reset keeps the inline artifacts', () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     try {
       expect(cache.schemaReset?.from).toBe('v0')
@@ -229,7 +224,6 @@ describe('4: a reset keeps the inline artifacts', () => {
       new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
         embeddings: 32 * 1024,
         decompress: false,
-        verify: 'stat',
       })
     const writer = open()
     await save(writer, 'h1', 'kept')
@@ -263,7 +257,7 @@ describe('6: a small remote body is ingested inline', () => {
       undefined,
       undefined,
       undefined,
-      { embeddings: 32 * 1024, decompress: false, verify: 'stat' },
+      { embeddings: 32 * 1024, decompress: false },
     )
     try {
       await save(producer, hash, body)
@@ -291,7 +285,6 @@ describe('6: a small remote body is ingested inline', () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     try {
       await cache.ingest('h1', new Blob([bytes]), { ...ctx, durationMs: 1 })
@@ -311,7 +304,6 @@ describe('6: a small remote body is ingested inline', () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     try {
       await cache.ingest('h2', chunked(bytes), { ...ctx, durationMs: 1 })
@@ -332,7 +324,6 @@ describe('6: a small remote body is ingested inline', () => {
     const cache = new Cache(cacheDir, undefined, undefined, 8192, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     try {
       const refused = async (hash: string, body: Blob | Response): Promise<unknown> =>
@@ -376,7 +367,6 @@ describe('8: prune over inline artifacts', () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     try {
       await save(cache, 'h1', 'one')
@@ -415,7 +405,6 @@ describe('8: prune over inline artifacts', () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     try {
       for (const h of ['00000000000000a1', '00000000000000a2', '00000000000000a3']) {
@@ -457,7 +446,6 @@ describe('8: prune over inline artifacts', () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     try {
       await save(cache, '00000000000000a1', 'adopted')
@@ -487,14 +475,12 @@ describe('a workspace index that held its entries itself, moved to a store', () 
     const own = new Cache(cacheDir, undefined, undefined, undefined, 'open', null, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     await save(own, 'h0', 'before')
     own.close()
     const moved = new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     await save(moved, 'h1', 'shared')
     moved.close()
@@ -505,7 +491,7 @@ describe('a workspace index that held its entries itself, moved to a store', () 
       undefined,
       'open',
       store,
-      { embeddings: 32 * 1024, decompress: false, verify: 'stat' },
+      { embeddings: 32 * 1024, decompress: false },
     )
     try {
       expect((await other.get('h1'))?.hash).toBe('h1')
@@ -521,7 +507,6 @@ describe('12: the inline table’s own layout sentinel', () => {
     const writer = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     await save(writer, 'h1', 'kept')
     writer.close()
@@ -535,7 +520,6 @@ describe('12: the inline table’s own layout sentinel', () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     try {
       expect([err.mock.calls.length, out.mock.calls.length]).toEqual([0, 0])
@@ -554,14 +538,12 @@ describe('12: the inline table’s own layout sentinel', () => {
     const writer2 = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     await save(writer2, 'h2', 'kept')
     writer2.close()
     const again = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     try {
       expect(isInline(again, 'h2')).toBe(true)
@@ -577,7 +559,6 @@ describe('12: the inline table’s own layout sentinel', () => {
       new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
         embeddings: 32 * 1024,
         decompress: false,
-        verify: 'stat',
       })
     const writer = open()
     await save(writer, 'h1', 'kept')
@@ -602,12 +583,10 @@ describe('12: the inline table’s own layout sentinel', () => {
     new Cache(cacheDir, undefined, undefined, undefined, 'open', store, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     }).close()
     const own = new Cache(cacheDir, undefined, undefined, undefined, 'open', null, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     try {
       expect(
@@ -622,7 +601,6 @@ describe('12: the inline table’s own layout sentinel', () => {
     const writer = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     await save(writer, 'h1', 'kept')
     writer.close()
@@ -632,7 +610,6 @@ describe('12: the inline table’s own layout sentinel', () => {
     const cache = new Cache(cacheDir, undefined, undefined, undefined, undefined, undefined, {
       embeddings: 32 * 1024,
       decompress: false,
-      verify: 'stat',
     })
     try {
       expect(isInline(cache, 'h1')).toBe(true)

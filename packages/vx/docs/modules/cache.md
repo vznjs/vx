@@ -59,9 +59,8 @@ and key derivation logic live here.
 export interface StoreOptions {
   embeddings: number // bytes; 0 keeps every entry as files
   decompress: boolean
-  verify: 'stat' | 'hash' | 'none'
 }
-export const DEFAULT_STORE: StoreOptions // { embeddings: 32 * 1024, decompress: true, verify: 'stat' }
+export const DEFAULT_STORE: StoreOptions // { embeddings: 32 * 1024, decompress: true }
 
 /**
  * Shape every cache implementation honors. Both Cache (local v10) and
@@ -485,9 +484,8 @@ constructor argument) picks the local form: `embeddings` keeps an entry up
 to that size inline, `decompress: false` keeps a file-backed one as the
 tar.zst, and otherwise it is `<hash>.tree/`: the same entries unpacked (`writeTree`
 at save, the validated tar extracted at ingest, `sealTree`), stdout in
-its `entry_stdout` row. A tree restore checks `verify` (`stat`: size and
-mtime per file; `hash`: `treeIntact`, the CRC of `planOfTree`'s tar),
-then copies each file with `Bun.write` (copy_file_range, a clone where
+its `entry_stdout` row. A tree restore checks nothing (the tree holds no
+`.vx-sum`; the archive's sum is checked when it is unpacked) and copies each file with `Bun.write` (copy_file_range, a clone where
 the filesystem has one; never a hard link). Into existing outputs, a
 workspace output or a link it feeds `extractArtifactStream` the
 tree packed back (`packArtifactStream(planOfTree(…))`). `pinArtifact`

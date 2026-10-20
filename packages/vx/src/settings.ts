@@ -193,12 +193,6 @@ export const SETTINGS: readonly Setting[] = [
     doc: 'Keep a larger entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`.',
   },
   {
-    path: 'cache.store.verify',
-    kind: { type: 'enum', values: ['stat', 'hash', 'none'] },
-    default: 'stat',
-    doc: "What a hit on plain files checks first: each file's size and mtime, every byte, or nothing.",
-  },
-  {
     path: 'cache.upload.failures',
     kind: { type: 'enum', values: ['ci', 'local', 'always'] },
     default: 'ci',
