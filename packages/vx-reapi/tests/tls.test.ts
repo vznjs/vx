@@ -115,7 +115,13 @@ it('the plugin reads the PEM files its options or VX_REAPI_TLS_* name; an unread
   const cacheOf = async (opts: Parameters<typeof reapi>[0]): Promise<string> => {
     const p = reapi({ endpoint: 'localhost:1', ...opts })
     try {
-      await p.cache!({ warn, workspaceRoot: '/ws', cacheDir: '/ws/.vx/cache', scope: undefined, refs: [] })
+      await p.cache!({
+        warn,
+        workspaceRoot: '/ws',
+        cacheDir: '/ws/.vx/cache',
+        scope: undefined,
+        refs: [],
+      })
       return 'ok'
     } catch (err) {
       return (err as Error).message
