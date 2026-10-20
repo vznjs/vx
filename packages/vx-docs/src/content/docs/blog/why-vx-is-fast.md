@@ -6,14 +6,14 @@ authors:
 tags:
   - performance
   - internals
-excerpt: 'With nothing changed, vx adds 700 ms to a 9,603-task run, with no daemon. That number is the sum of five structural decisions, each of which is also a correctness win.'
+excerpt: 'With nothing changed, vx adds 757 ms to a 9,603-task run, with no daemon. That number is the sum of five structural decisions, each of which is also a correctness win.'
 ---
 
 The number this post explains is the runner's overhead: the time it adds on top
 of the tasks themselves. On a synthetic workspace of 1,601 projects and
-9,603 tasks, with nothing changed, vx adds 700 ms over one git walk,
-Turborepo 705 ms, Vite Task 12.20 s and
-Nx 22.57 s. On a cold build vx adds 6.13 s, Turborepo
+9,603 tasks, with nothing changed, vx adds 757 ms,
+Turborepo 761 ms, Vite Task 12.26 s and
+Nx 22.63 s. On a cold build vx adds 6.13 s, Turborepo
 8.87 s and Nx 3 min 20 s; Vite Task
 7.94 s. Each runner runs in its own native
 config.

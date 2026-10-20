@@ -167,10 +167,10 @@ Every gap, and when another tool is the better pick:
 
 | Time added over the ideal run, 1,601 projects, 9,603 tasks | vx         | Turborepo | Nx         | Vite Task |
 | ---------------------------------------------------------- | ---------- | --------- | ---------- | --------- |
-| Nothing changed                                            | **700 ms** | 705 ms    | 22.57 s    | 12.20 s   |
-| Nothing changed, outputs restored                          | **670 ms** | 1.17 s    | 21.56 s    | 11.06 s   |
+| Nothing changed                                            | **757 ms** | 761 ms    | 22.63 s    | 12.26 s   |
+| Nothing changed, outputs restored                          | **1.27 s** | 1.76 s    | 22.16 s    | 11.66 s   |
 | Cold build                                                 | **6.13 s** | 8.87 s    | 3 min 20 s | 7.94 s    |
-| Cold build: CPU the runner burns                           | 29.97 s    | 1 min 8 s | 5 min 44 s | 23.82 s   |
+| Cold build: CPU the runner burns                           | 30.06 s    | 1 min 8 s | 5 min 45 s | 23.91 s   |
 
 Time each tool adds over the ideal run; lower is better.
 

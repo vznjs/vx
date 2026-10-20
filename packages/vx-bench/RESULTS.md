@@ -14,16 +14,16 @@
 
 | Runner    | Version              | Warm overhead | Restore overhead | Cold overhead |
 | --------- | -------------------- | ------------- | ---------------- | ------------- |
-| vx        | vx 0.0.0 @ a88652b0b | 700 ms        | 670 ms           | 6.13 s        |
-| turbo     | 2.11.9               | 705 ms        | 1.17 s           | 8.87 s        |
-| nx        | 23.3.0               | 22.57 s       | 21.56 s          | 3m 20s        |
-| vite-task | 1.3.0                | 12.20 s       | 11.06 s          | 7.94 s        |
+| vx        | vx 0.0.0 @ a88652b0b | 757 ms        | 1.27 s           | 6.13 s        |
+| turbo     | 2.11.9               | 761 ms        | 1.76 s           | 8.87 s        |
+| nx        | 23.3.0               | 22.63 s       | 22.16 s          | 3m 20s        |
+| vite-task | 1.3.0                | 12.26 s       | 11.66 s          | 7.94 s        |
 
 ## Wall time (warm, restore)
 
 | Runner    | Warm    | Restore | CPU, cold | CPU, warm |
 | --------- | ------- | ------- | --------- | --------- |
-| ideal     | 56 ms   | 598 ms  | 25.73 s   | 90 ms     |
+| ideal     | 0 ms    | 0 ms    | 25.64 s   | 0 ms      |
 | vx        | 757 ms  | 1.27 s  | 55.70 s   | 1.54 s    |
 | turbo     | 761 ms  | 1.76 s  | 1m 34s    | 1.61 s    |
 | nx        | 22.63 s | 22.16 s | 6m 10s    | 27.46 s   |
@@ -31,9 +31,8 @@
 
 **Ideal** is the theoretical best case: cold is the tasks' own durations
 list-scheduled critical-path first on 10 workers (critical path
-9.15 s, work ÷ workers 1m 53s); warm is one
-`git status -uall` walk, the floor of asking what changed; restore adds a raw
-copy of every output.
+9.15 s, work ÷ workers 1m 53s); warm and
+restore are 0, so all a runner spends there is overhead.
 CPU is user + system of the invocation and the children it waited for; a
 daemon that outlives the invocation (Turbo's, Nx's) is not counted.
 

@@ -14,10 +14,10 @@ are on [vx, Turborepo, Nx, Bazel](../).
 
 | Time added over the ideal run, 1,601 projects, 9,603 tasks | vx          | Turborepo |
 | ---------------------------------------------------------- | ----------- | --------- |
-| Nothing changed                                            | **700 ms**  | 705 ms    |
-| Nothing changed, outputs restored                          | **670 ms**  | 1.17 s    |
+| Nothing changed                                            | **757 ms**  | 761 ms    |
+| Nothing changed, outputs restored                          | **1.27 s**  | 1.76 s    |
 | Cold build                                                 | **6.13 s**  | 8.87 s    |
-| Cold build: CPU the runner burns                           | **29.97 s** | 1 min 8 s |
+| Cold build: CPU the runner burns                           | **30.06 s** | 1 min 8 s |
 
 Time each tool adds over the ideal run; lower is better.
 

@@ -17,8 +17,8 @@ is worth having. Imagine your tasks take two minutes on their own.
 What does the tool add on top? On the 9,603-task workspace below the
 tasks alone take 1 min 53 s under an ideal schedule. On a cold build vx
 adds **6.13 s**, the least of the four: Vite Task **7.94 s**, Turborepo
-**8.87 s** and Nx **3 min 20 s**. With nothing changed, vx adds **700 ms**
-and Turborepo **705 ms**. No tool leads every row, and the table says
+**8.87 s** and Nx **3 min 20 s**. With nothing changed, vx adds **757 ms**
+and Turborepo **761 ms**. No tool leads every row, and the table says
 where vx does not.
 
 ```mermaid
@@ -56,14 +56,14 @@ idle-contend for CPU. Every task is a `sleep` in fixed ratios (build
 numbers isolate the runner's own overhead from compilation.
 
 The runner's overhead: the time it adds over the ideal run (a cold
-build over its ideal schedule; with nothing changed, over one git walk):
+build over its ideal schedule; with nothing changed the ideal is 0):
 
 | Runner    | Cold build overhead | Nothing changed | Cold build CPU |
 | --------- | ------------------- | --------------- | -------------- |
-| vx        | **6.13 s** | **700 ms** | 29.97 s |
-| Turborepo | 8.87 s | 705 ms | 1 min 8 s |
-| Nx        | 3 min 20 s | 22.57 s | 5 min 44 s |
-| Vite Task | 7.94 s | 12.20 s | 23.82 s |
+| vx        | **6.13 s** | **757 ms** | 30.06 s |
+| Turborepo | 8.87 s | 761 ms | 1 min 8 s |
+| Nx        | 3 min 20 s | 22.63 s | 5 min 45 s |
+| Vite Task | 7.94 s | 12.26 s | 23.91 s |
 
 Time each tool adds over the ideal run; lower is better.
 
@@ -75,8 +75,7 @@ system, of the invocation and every child it waited for, less what the
 task commands burn), because on a synthetic workspace the tasks sleep
 and that column measures the runner's own work. A daemon that outlives
 the invocation is not counted, so Turborepo's and Nx's are floors. Every
-row, the ideal run and the measured floors (one git walk is 56 ms on
-that machine) are in [Benchmarks](../../benchmarks/).
+row and the ideal run are in [Benchmarks](../../benchmarks/).
 
 ## Real repositories: rerun pending
 
