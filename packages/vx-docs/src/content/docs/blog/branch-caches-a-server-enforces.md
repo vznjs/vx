@@ -99,20 +99,20 @@ every claim in it matches.
 ```ts
 export default {
   trust: [
-    // GitHub: main, merge queue, release tags, only from the main-branch workflow
+    // GitHub: main and merge queue, only from the main-branch workflow
     {
       iss: 'https://token.actions.githubusercontent.com',
       repository_id: '123456789',
       event_name: ['push', 'merge_group'], // pull_request_target and issue_comment run PR code with ref=main
-      ref: ['refs/heads/main', 'refs/heads/gh-readonly-queue/main/*', 'refs/tags/v*'],
-      ref_protected: 'true', // an unprotected tag or branch can be pushed with unreviewed code
+      ref: ['refs/heads/main', 'refs/heads/gh-readonly-queue/main/*'],
+      ref_protected: 'true', // an unprotected branch can be pushed with unreviewed code
       job_workflow_ref: 'org/repo/.github/workflows/ci.yml@refs/heads/main',
     },
-    // GitLab: protected main or tags, on our own runners
+    // GitLab: protected main, on our own runners
     {
       iss: 'https://gitlab.com',
       project_id: '4567',
-      ref_path: ['refs/heads/main', 'refs/tags/v*'],
+      ref_path: 'refs/heads/main',
       ref_protected: 'true',
       pipeline_source: ['push', 'schedule'], // a manual pipeline can inject CI variables
       runner_environment: 'self-hosted',
@@ -122,8 +122,9 @@ export default {
 ```
 
 Pin `repository_id` or `project_id`, not the name: a re-created
-repository can take an old name, never an old id. Protect release tags
-with a ruleset too, or anyone who can push could tag unreviewed code.
+repository can take an old name, never an old id. Trusted is `main`
+and its merge queue only: anyone who can push can tag any commit, so a
+tag's run writes to its own scope, as a branch does.
 
 ### Write scope
 
