@@ -52,9 +52,8 @@ several runs. Run 2026-10-09 on linux x64, 4 cores: vx from source at
 This is how every cold run works from vx 0.0.634. Try it in your repo:
 
 ```sh
-npm install -D @vzn/vx
 npx @vzn/vx init
-npx @vzn/vx run build --all
+vx run build --all
 ```
 
 More on vx at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
