@@ -7,58 +7,58 @@
   "tasks": 9603,
   "buildMs": 300,
   "concurrency": 10,
-  "reps": 3,
+  "reps": 7,
   "coldReps": 1,
-  "date": "2026-10-20T18:50:45.299Z",
+  "date": "2026-10-20T19:43:22.266Z",
   "machine": "linux x64, 4 cores",
   "rows": [
     {
       "runner": "vx",
-      "version": "vx 0.0.0 @ a3e1aa99d",
-      "fresh": 119512.197541,
-      "warmNoRestore": 763.948844,
-      "warmRestore": 1432.346924,
-      "freshCpu": 58905.691,
-      "warmNoRestoreCpu": 1533.616,
-      "warmRestoreCpu": 3770.114
+      "version": "vx 0.0.0 @ a88652b0b",
+      "fresh": 118964.41002,
+      "warmNoRestore": 756.823023,
+      "warmRestore": 1267.793465,
+      "freshCpu": 55699.187,
+      "warmNoRestoreCpu": 1537.431,
+      "warmRestoreCpu": 3162.557
     },
     {
       "runner": "turbo",
       "version": "2.11.9",
-      "fresh": 121256.459209,
-      "warmNoRestore": 787.01509,
-      "warmRestore": 1630.18464,
-      "freshCpu": 93344.122,
-      "warmNoRestoreCpu": 1650.679,
-      "warmRestoreCpu": 4014.829
+      "fresh": 121702.84798,
+      "warmNoRestore": 761.421316,
+      "warmRestore": 1763.273053,
+      "freshCpu": 94102.045,
+      "warmNoRestoreCpu": 1613.685,
+      "warmRestoreCpu": 4272.948
     },
     {
       "runner": "nx",
       "version": "23.3.0",
-      "fresh": 311921.931193,
-      "warmNoRestore": 22723.461313,
-      "warmRestore": 22857.083432,
-      "freshCpu": 370287.09,
-      "warmNoRestoreCpu": 27963.395,
-      "warmRestoreCpu": 28334.824
+      "fresh": 312992.958228,
+      "warmNoRestore": 22626.488553,
+      "warmRestore": 22155.496258,
+      "freshCpu": 370164.464,
+      "warmNoRestoreCpu": 27460.911,
+      "warmRestoreCpu": 27617.397
     },
     {
       "runner": "vite-task",
       "version": "1.3.0",
-      "fresh": 121821.174885,
-      "warmNoRestore": 11635.695235,
-      "warmRestore": 11595.669003,
-      "freshCpu": 52555.971,
-      "warmNoRestoreCpu": 11533.978,
-      "warmRestoreCpu": 11468.74
+      "fresh": 120773.890976,
+      "warmNoRestore": 12260.328029,
+      "warmRestore": 11655.386534,
+      "freshCpu": 49550.753,
+      "warmNoRestoreCpu": 11296.557,
+      "warmRestoreCpu": 11581.357
     }
   ],
   "baseline": {
     "fresh": 112830,
-    "warmNoRestore": 61.142015,
-    "warmRestore": 430.60069000000004,
-    "freshCpu": 28770.228,
-    "warmNoRestoreCpu": 101.389,
+    "warmNoRestore": 56.340377,
+    "warmRestore": 598.089863,
+    "freshCpu": 25729.710000000003,
+    "warmNoRestoreCpu": 89.952,
     "criticalPathMs": 9150,
     "workBoundMs": 112822.5
   }

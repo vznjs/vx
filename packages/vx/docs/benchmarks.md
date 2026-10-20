@@ -439,23 +439,23 @@ run recorded; cache wipes keep that file, as CI caches it. This machine: linux x
 
 |                                       | vx         | Turborepo | Nx         | Vite Task |
 | ------------------------------------- | ---------- | --------- | ---------- | --------- |
-| **Nothing changed**                   | **703 ms** | 726 ms    | 22.66 s    | 11.57 s   |
-| **Nothing changed, outputs restored** | **1.00 s** | 1.20 s    | 22.43 s    | 11.17 s   |
-| **Cold build**                        | **6.68 s** | 8.43 s    | 3 min 19 s | 8.99 s    |
-| **Cold build: CPU the runner burns**  | 30.14 s    | 1 min 5 s | 5 min 42 s | 23.79 s   |
+| **Nothing changed**                   | **700 ms** | 705 ms    | 22.57 s    | 12.20 s   |
+| **Nothing changed, outputs restored** | **670 ms** | 1.17 s    | 21.56 s    | 11.06 s   |
+| **Cold build**                        | **6.13 s** | 8.87 s    | 3 min 20 s | 7.94 s    |
+| **Cold build: CPU the runner burns**  | 29.97 s    | 1 min 8 s | 5 min 44 s | 23.82 s   |
 
 Time each tool adds over the ideal run; lower is better.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
 
 **The ideal run** is the theoretical best case, so every row is overhead.
-Nothing changed: one `git status -uall` walk (61 ms), the floor of asking what changed.
-Outputs restored: that walk plus a raw copy of every output (431 ms).
+Nothing changed: one `git status -uall` walk (56 ms), the floor of asking what changed.
+Outputs restored: that walk plus a raw copy of every output (598 ms).
 Cold: every task list-scheduled critical-path first (critical path
 9.15 s, work ÷ workers 1 min 53 s).
 **CPU** is user + system of the invocation and the children it waited for,
 less what the task commands themselves burn under `xargs -P 10`
-(28.77 s); a daemon that outlives the invocation (Turborepo's, Nx's)
+(25.73 s); a daemon that outlives the invocation (Turborepo's, Nx's)
 is not counted, so theirs is a floor.
 vx burns more CPU cold than Vite Task: it hashes every input and saves every task, its log and its outputs, into its local store.
 

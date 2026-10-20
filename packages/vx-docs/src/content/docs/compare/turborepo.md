@@ -14,15 +14,15 @@ are on [vx, Turborepo, Nx, Bazel](../).
 
 | Time added over the ideal run, 1,601 projects, 9,603 tasks | vx          | Turborepo |
 | ---------------------------------------------------------- | ----------- | --------- |
-| Nothing changed                                            | **703 ms**  | 726 ms    |
-| Nothing changed, outputs restored                          | **1.00 s**  | 1.20 s    |
-| Cold build                                                 | **6.68 s**  | 8.43 s    |
-| Cold build: CPU the runner burns                           | **30.14 s** | 1 min 5 s |
+| Nothing changed                                            | **700 ms**  | 705 ms    |
+| Nothing changed, outputs restored                          | **670 ms**  | 1.17 s    |
+| Cold build                                                 | **6.13 s**  | 8.87 s    |
+| Cold build: CPU the runner burns                           | **29.97 s** | 1 min 8 s |
 
 Time each tool adds over the ideal run; lower is better.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-Run 2026-10-20 on linux x64, 4 cores: vx at commit a3e1aa99d, Turborepo 2.11.9, Nx 23.3.0, Vite Task (vite-plus) 1.3.0.
+Run 2026-10-20 on linux x64, 4 cores: vx at commit a88652b0b, Turborepo 2.11.9, Nx 23.3.0, Vite Task (vite-plus) 1.3.0.
 
 Same graph, commands and concurrency, each tool in its own native config: [how it is measured](../../benchmarks/).
 

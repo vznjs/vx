@@ -168,15 +168,15 @@ Every gap, and when another tool is the better pick:
 
 | Time added over the ideal run, 1,601 projects, 9,603 tasks | vx         | Turborepo | Nx         | Vite Task |
 | ---------------------------------------------------------- | ---------- | --------- | ---------- | --------- |
-| Nothing changed                                            | **703 ms** | 726 ms    | 22.66 s    | 11.57 s   |
-| Nothing changed, outputs restored                          | **1.00 s** | 1.20 s    | 22.43 s    | 11.17 s   |
-| Cold build                                                 | **6.68 s** | 8.43 s    | 3 min 19 s | 8.99 s    |
-| Cold build: CPU the runner burns                           | 30.14 s    | 1 min 5 s | 5 min 42 s | 23.79 s   |
+| Nothing changed                                            | **700 ms** | 705 ms    | 22.57 s    | 12.20 s   |
+| Nothing changed, outputs restored                          | **670 ms** | 1.17 s    | 21.56 s    | 11.06 s   |
+| Cold build                                                 | **6.13 s** | 8.87 s    | 3 min 20 s | 7.94 s    |
+| Cold build: CPU the runner burns                           | 29.97 s    | 1 min 8 s | 5 min 44 s | 23.82 s   |
 
 Time each tool adds over the ideal run; lower is better.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-Run 2026-10-20 on linux x64, 4 cores: vx at commit a3e1aa99d, Turborepo 2.11.9, Nx 23.3.0, Vite Task (vite-plus) 1.3.0.
+Run 2026-10-20 on linux x64, 4 cores: vx at commit a88652b0b, Turborepo 2.11.9, Nx 23.3.0, Vite Task (vite-plus) 1.3.0.
 
 Same graph, commands and concurrency: [how it is measured](https://vznjs.github.io/vx/benchmarks/).
 
