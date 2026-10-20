@@ -214,8 +214,7 @@ ${FORMULA}
 ${WORKLOAD}
 
 **The ideal run** is the theoretical best case, so every row is overhead.
-Nothing changed: one \`git status -uall\` walk (${disp(B.warmNoRestore)}), the floor of asking what changed.
-Outputs restored: that walk plus a raw copy of every output (${disp(B.warmRestore)}).
+Nothing changed and outputs restored: 0, so all a tool spends there is overhead.
 Cold: every task list-scheduled critical-path first (critical path
 ${disp(B.criticalPathMs)}, work ÷ workers ${disp(B.workBoundMs)}).
 **CPU** is user + system of the invocation and the children it waited for,

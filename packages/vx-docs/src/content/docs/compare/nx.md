@@ -14,10 +14,10 @@ says when Nx is the better choice. The design choices behind both are on
 
 | Time added over the ideal run, 1,601 projects, 9,603 tasks | vx          | Nx         |
 | ---------------------------------------------------------- | ----------- | ---------- |
-| Nothing changed                                            | **700 ms**  | 22.57 s    |
-| Nothing changed, outputs restored                          | **670 ms**  | 21.56 s    |
+| Nothing changed                                            | **757 ms**  | 22.63 s    |
+| Nothing changed, outputs restored                          | **1.27 s**  | 22.16 s    |
 | Cold build                                                 | **6.13 s**  | 3 min 20 s |
-| Cold build: CPU the runner burns                           | **29.97 s** | 5 min 44 s |
+| Cold build: CPU the runner burns                           | **30.06 s** | 5 min 45 s |
 
 Time each tool adds over the ideal run; lower is better.
 
