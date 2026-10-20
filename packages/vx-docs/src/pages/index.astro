@@ -74,14 +74,14 @@ const pillars = [
 ]
 
 const benchTable = [
-  { label: 'Nothing changed', vx: '856 ms', turbo: '855 ms', nx: '23.22 s', vt: '11.24 s' },
-  { label: 'Nothing changed, outputs restored', vx: '1.45 s', turbo: '1.50 s', nx: '21.64 s', vt: '11.21 s' },
-  { label: 'Cold build', vx: '7.73 s', turbo: '10.32 s', nx: '3 min 23 s', vt: '9.44 s' },
-  { label: 'Cold build: CPU the runner burns', vx: '36.42 s', turbo: '1 min 3 s', nx: '5 min 35 s', vt: '25.64 s' },
+  { label: 'Nothing changed', vx: '703 ms', turbo: '726 ms', nx: '22.66 s', vt: '11.57 s' },
+  { label: 'Nothing changed, outputs restored', vx: '1.00 s', turbo: '1.20 s', nx: '22.43 s', vt: '11.17 s' },
+  { label: 'Cold build', vx: '6.68 s', turbo: '8.43 s', nx: '3 min 19 s', vt: '8.99 s' },
+  { label: 'Cold build: CPU the runner burns', vx: '30.14 s', turbo: '1 min 5 s', nx: '5 min 42 s', vt: '23.79 s' },
 ]
 const benchFormula = 'Time each tool adds over the ideal run; lower is better.'
 const benchWorkload = 'Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.'
-const benchRun = 'Run 2026-10-12 on linux x64, 4 cores: vx at commit 126d60a93, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.'
+const benchRun = 'Run 2026-10-20 on linux x64, 4 cores: vx at commit a3e1aa99d, Turborepo 2.11.9, Nx 23.3.0, Vite Task (vite-plus) 1.3.0.'
 
 /** A competitor cell's value and its "vx N× faster". */
 const vsOf = (c: string): [string, string] => {

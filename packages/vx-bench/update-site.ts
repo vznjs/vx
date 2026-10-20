@@ -217,7 +217,7 @@ ${disp(B.criticalPathMs)}, work ÷ workers ${disp(B.workBoundMs)}).
 **CPU** is user + system of the invocation and the children it waited for,
 less what the task commands themselves burn under \`xargs -P ${d.concurrency}\`
 (${disp(B.freshCpu)}); a daemon that outlives the invocation (Turborepo's, Nx's)
-is not counted, so theirs is a floor.
+is not counted, so theirs is a floor.${cpu(vt) < cpu(vx) ? '\nvx burns more CPU cold than Vite Task: it hashes every input and packs every saved output into a zstd archive.' : ''}
 
 > Methodology note: a synthetic graph with \`sleep\`-based tasks isolates
 > _runner_ overhead from real compilation. All four runners are
