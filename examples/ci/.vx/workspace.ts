@@ -9,8 +9,7 @@ export default defineWorkspace({
   plugins: [
     // The package edges `^build` follows, from package-lock.json.
     npm(),
-    // On Actions: the job summary, the PR check, and the cache scope
-    // (a push to main writes the default keys, a PR from feat-x writes acme/app:feat-x).
+    // On Actions: the job summary, the PR check, and the PR's base for --affected.
     github(),
     // The shared cache. With no VX_REAPI_ENDPOINT it declines and vx
     // caches on this machine alone.

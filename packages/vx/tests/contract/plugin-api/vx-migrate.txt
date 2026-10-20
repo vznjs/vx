@@ -38,6 +38,8 @@ export interface NxPluginOptions {
   readonly graph?: string
   readonly executors?: NxExecutors
 }
+== type RemoteScope (src/turbo-cache/scope.ts)
+export type RemoteScope = 'header' | 'key'
 == type TurboCacheOptions (src/turbo-cache/index.ts)
 export interface TurboCacheOptions {
   apiUrl?: string
@@ -50,6 +52,7 @@ export interface TurboCacheOptions {
   uploadTimeoutMs?: number
   retries?: number
   preflight?: boolean
+  scope?: RemoteScope
 }
 == type TurboOidcOptions (src/turbo-cache/oidc.ts)
 export interface TurboOidcOptions {
