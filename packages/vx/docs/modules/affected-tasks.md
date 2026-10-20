@@ -66,15 +66,6 @@ export function affectedRoots(
   byKeys?: boolean, // a changed path no task declares reaches no task
 ): string[] // the ids whose closure the change reaches
 
-// The tasks a scoped run keys under its scope: affectedRoots over every
-// node, byKeys. A README edit reaches no `build`.
-export function keyedByChange(
-  nodes: ReadonlyMap<string, TaskNode>,
-  changes: AffectedChanges,
-  projects: ReadonlyMap<string, ProjectEntry>,
-  packageGraph: PackageGraph,
-): Set<string>
-
 export interface AffectedReason {
   kind: 'input' | 'project' | 'workspace' | 'package' | 'named' | 'selected'
   file?: string // workspace-relative

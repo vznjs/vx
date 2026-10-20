@@ -19,6 +19,7 @@ import {
   TurboRemoteCache,
 } from '../src/turbo-cache/index.js'
 import { turboCache } from '../src/index.js'
+import { readScopes } from '../src/turbo-cache/scope.js'
 
 const TOKEN = 'secret-token'
 const KEY = 'k'.repeat(40)
@@ -363,36 +364,28 @@ describe('TurboRemoteCache against the spec server', () => {
     expect(await c.get('bb22')).toBeNull()
   })
 
-  // Owner, 2026-10-18: every request names the bucket it means, `trusted`
-  // for a task's own key, so a server need not layer; the key is unchanged.
-  it('every request names its scope in x-vx-cache-scope: trusted for a default key', async () => {
+  // 2026-10-20: a read names the refs it may be answered from; a write
+  // names none, since the server files it by the caller's token.
+  it('every read names its refs in x-artifact-read-scopes; a PUT names none', async () => {
     const c = cache()
-    const at = { scope: 'acme/app:feat' }
+    c.reads = readScopes(['refs/heads/feat', 'refs/heads/main'])
     const from = srv.seen.length
     await c.put('a0c1', new Blob(['x']), { durationMs: 1 })
-    await c.put('a0c2', new Blob(['x']), { durationMs: 1, ...at })
     await c.get('a0c1')
-    await c.get('a0c2', at)
-    await c.has('a0c2', at)
-    await c.hasMany(['a0c1', 'a0c2', 'a0c3'], [{}, at, at])
+    await c.hasMany(['a0c1', 'a0c3'])
     expect(
       srv.seen
         .slice(from)
-        .map((r) => `${r.method} ${new URL(r.url).pathname} ${r.headers['x-vx-cache-scope']}`),
+        .map(
+          (r) =>
+            `${r.method} ${new URL(r.url).pathname} ${r.headers['x-artifact-read-scopes'] ?? '-'}`,
+        ),
     ).toEqual([
-      'HEAD /v8/artifacts/a0c1 trusted',
-      'PUT /v8/artifacts/a0c1 trusted',
-      'HEAD /v8/artifacts/a0c2 acme/app:feat',
-      'PUT /v8/artifacts/a0c2 acme/app:feat',
-      'GET /v8/artifacts/a0c1 trusted',
-      'GET /v8/artifacts/a0c2 acme/app:feat',
-      'HEAD /v8/artifacts/a0c2 acme/app:feat',
-      'POST /v8/artifacts trusted',
-      'POST /v8/artifacts acme/app:feat',
+      'HEAD /v8/artifacts/a0c1 refs/heads/feat, refs/heads/main',
+      'PUT /v8/artifacts/a0c1 -',
+      'GET /v8/artifacts/a0c1 refs/heads/feat, refs/heads/main',
+      'POST /v8/artifacts refs/heads/feat, refs/heads/main',
     ])
-    expect(await c.hasMany(['a0c1', 'a0c2', 'a0c3'], [{}, at, at])).toEqual(
-      new Set(['a0c1', 'a0c2']),
-    )
   })
 
   // Turbo's API client sends a team id only in Vercel's `team_` form; a
@@ -662,6 +655,7 @@ describe('vx run with turboCache() layered over the local cache', () => {
         warn: () => {},
         workspaceRoot: ws,
         cacheDir: ws,
+        refs: [],
       }
       const on = async (turbo: unknown) => {
         await writeFile(path.join(ws, 'turbo.json'), JSON.stringify(turbo))
@@ -687,7 +681,13 @@ describe('vx run with turboCache() layered over the local cache', () => {
       process.env['TURBO_API'] = 'https://c.example'
       const remote = (env: Record<string, string>) => {
         Object.assign(process.env, env)
-        const ctx = { warn: () => {}, workspaceRoot: root, cacheDir: root, scope: undefined }
+        const ctx = {
+          warn: () => {},
+          workspaceRoot: root,
+          cacheDir: root,
+          scope: undefined,
+          refs: [],
+        }
         const r = turboCache({}).cache?.(ctx) as RemoteCacheLayer | undefined
         return r === undefined ? 'declined' : Object.keys(r).includes('access')
       }
@@ -710,6 +710,7 @@ describe('vx run with turboCache() layered over the local cache', () => {
         warn: () => {},
         workspaceRoot: ws,
         cacheDir: ws,
+        refs: [],
       }
       const on = () => turboCache({}).cache?.(ctx as never) !== undefined
       const before = on()

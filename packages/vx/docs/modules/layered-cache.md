@@ -36,9 +36,8 @@ embedder via `RunOptions.remoteCache`. Core builds every
 - **One remote's boundary** is its `RemoteLane` (`remote-lane.ts`): what
   the run lets it do, its shape checks, its upload pool and its
   warnings. This layer owns the order, the local store and provenance.
-- **Scopes** reach the remotes only: a `BranchScope`
-  (`scoped-cache.ts`) picks each remote key, and the local store keeps
-  every entry under its task key.
+- **Task keys reach every remote plain.** Which branch a read may see is
+  the remote's call (`turboCache()`'s `scope`, below).
 
 ## Public surface
 
@@ -48,31 +47,23 @@ export interface RemoteOpenContext extends PluginSecrets {
   warn(message: string): void // one line naming the plugin; the remote stays on
 }
 
-/** The branch scope a scoped key was derived in; absent for a task's own key. */
-export interface RemoteKey {
-  readonly scope?: string
-}
-
 export interface RemoteCacheLayer {
   /** Where the artifacts live, named in every degrade warning; never a credential. */
   readonly endpoint?: string
   /** Optional: get ready (a credential). Once per run, before the first task, only when the policy reads or writes it. */
   open?(ctx: RemoteOpenContext): Promise<void>
   /** Existence probe (drives the plan path's `--dry` remote prediction). */
-  has(hash: string, at?: RemoteKey): Promise<boolean>
+  has(hash: string): Promise<boolean>
   /** Optional batch probe: the stored subset in one round-trip; `null` = use per-hash. */
-  hasMany?(hashes: readonly string[], at?: readonly RemoteKey[]): Promise<Set<string> | null>
+  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
   /** Fetch an artifact; `null` = miss. Errors THROW. `body` is read once, by core. */
-  get(
-    hash: string,
-    at?: RemoteKey,
-  ): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
+  get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   /** Store an artifact (fire-and-forget from LayeredCache's PoV). File-backed when local holds it. */
-  put(hash: string, body: Blob, meta: { durationMs: number } & RemoteKey): Promise<void>
+  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
 }
 
 export class LayeredCache implements CacheLayer {
-  constructor(local: Cache, remotes: readonly ResolvedRemote[], branch?: BranchScope) // declared order
+  constructor(local: Cache, remotes: readonly ResolvedRemote[], uploadConcurrency?: number) // declared order
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   drainUploads(): Promise<void>
   stopUploads(): void
@@ -80,19 +71,16 @@ export class LayeredCache implements CacheLayer {
 }
 ```
 
-## Each call names its scope
+## Which branch a read sees
 
-Every `has`, `hasMany`, `get` and `put` also says which branch scope its
-key was derived in (`RemoteKey.scope`, absent for a task's own key;
-owner, 2026-10-17). The key alone names the entry: a remote may ignore
-it. A backend that keeps one store per scope can use it to go straight
-to the default or the branch store. `turboCache()` and `nxCache()` send it as the `x-vx-cache-scope`
-header on every request: `trusted` for a task's own key, else the branch
-scope (owner, 2026-10-18). It states intent only: the key is unchanged,
-a server that keeps one bucket per scope skips its own layering, and
-whether a write to `trusted` is allowed stays the server's call (a CI ID
-token). A request without the header, from an older client, leaves the
-layering to the server. `vx-reapi` sends nothing new.
+A task key carries no branch (VZN, 2026-10-20). Each remote gets the
+run's refs (`ctx.refs`, own branch first, then its base and the default
+branch) and decides. `turboCache()` names them on every read in
+`x-artifact-read-scopes` (`scope: 'header'`, the default), or keys each
+entry on its ref and asks every ref's key in one batch (`scope: 'key'`,
+for a server that ignores the header). Where a write lands is never the
+client's call: the server checks the CI OIDC token against its trust
+policy. `nxCache()` and `vx-reapi` send no scope.
 
 ## Bodies stream, both ways
 

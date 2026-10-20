@@ -581,8 +581,6 @@ export interface CacheLayer {
    * about to call absent. Only meaningful with `hasRemote`.
    */
   probeFirst?(started: Promise<void>): void
-  /** `taskId`'s key is `hash`: a scoped run picks each remote key by its task (`BranchScope`). */
-  noteKey?(taskId: string, hash: string): void
   /**
    * Resolve once every background write-through upload settles. The
    * orchestrator awaits it before `close()` — an upload reading layer state

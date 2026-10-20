@@ -59,31 +59,21 @@ holds a token that writes the default keys, and a pull request's job
 holds one that cannot (read-only, or confined by the server to its own
 namespace), or none.
 
-The branch's cache scope is the client half. Under
-`vznjs/vx:feat-x` a task the branch changed reads the scope's key,
-every other task reads the default key, and a run that writes a remote
-saves every task it builds under the scope, never a default key.
-`github()` names it on Actions (`<owner>/<repo>:<branch>` of the
-repository the branch lives in, so a fork's names the fork; the default
-branch none), a checkout with a cache plugin derives it from `.git`,
-and `VX_CACHE_SCOPE` names it on any CI. Whether a run
-writes is `cache.policy`'s call: off CI the default reads the remote and
-writes nothing, since a key holds only declared inputs and a laptop's
-undeclared tool or file would replay on CI. A laptop that should never
-write gets a read-only token too. The local cache never knows a scope
-(owner, 2026-10-17): one disk is one pool under the task keys, and an
-entry fetched under a scope is kept there under its task key. So a
-persistent runner that runs untrusted pull requests and main on one
-disk shares their entries; give such a runner its own `cache.dir` per
-trust level, or an ephemeral disk.
-A fork's scope names the fork, so no laptop on the base repository
-derives it: its bytes reach a laptop only when `VX_CACHE_SCOPE` asks. A branch deleted and
-pushed again with other code under the same name shares the scope, not
-the keys: a task whose inputs differ misses.
-It keeps honest runs apart and stops a non-hermetic PR build from
-landing where main reads; it is not a boundary, since the PR's own
-config decides it and any run holding a write credential can write any
-key.
+Task keys carry no branch (2026-10-20): the server decides both halves.
+A write lands where the CI OIDC token, checked against the server's
+trust policy, allows it: trusted, the token's own branch, or nowhere.
+No header, key or client option changes that. `turboCache()` only
+steers reads: it names the run's refs (`x-artifact-read-scopes`), or
+keys each entry on its ref (`scope: 'key'`) for a server that ignores
+the header. Whether a run writes at all is `cache.policy`'s call: off
+CI the default reads the remote and writes nothing, since a key holds
+only declared inputs and a laptop's undeclared tool or file would
+replay on CI. A laptop that should never write gets a read-only token
+too. The local cache never knows a scope (owner, 2026-10-17): one disk
+is one pool under the task keys. So a persistent runner that runs
+untrusted pull requests and main on one disk shares their entries; give
+such a runner its own `cache.dir` per trust level, or an ephemeral
+disk.
 
 A boundary the server holds, with bazel-remote and `@vzn/vx-reapi`: reads
 are open, writes need a password, and only main's push job has it.

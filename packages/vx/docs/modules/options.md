@@ -26,8 +26,6 @@ export interface RunOptions {
   cacheFlags?: CacheFlags // with no `cache`: --no-cache / --force over the workspace's cache.policy
   remoteRequested?: boolean // a --cache-policy spec named a remote axis
   cacheScope?: string // an embedder's scope, above VX_CACHE_SCOPE, a plugin's and the branch's
-  scopeChanges?: AffectedChanges // what the branch changed: those tasks use the scope's key, the rest the default (absent: the run diffs from scopeBase)
-  scopeBase?: string // the commit a scoped run diffs from (--affected's); absent: a plugin's, else the merge base with the default branch
   remoteReadOnlyByDefault?: boolean // the default policy writes no remote; the CLI passes it off CI
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'

@@ -518,7 +518,6 @@ export async function resolveRunOptions(
   }
   if (parsed.profile !== undefined) opts.profile = parsed.profile
   // `--affected`'s base is the branch's for the cache scope too.
-  if (affectedFilter !== undefined) opts.scopeBase = affectedFilter.slice(4, -1)
 
   return opts
 }

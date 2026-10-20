@@ -63,10 +63,10 @@ links each claim to its source.
   [sandbox](../../guides/sandboxing/), and a workspace file it did not
   declare is out of its reach. A violation fails the task, and a failed
   task is never cached.
-- **Pull requests keep to their own scope.** A pull request run reads the
-  default keys and writes only its own, over any wire, Turbo's included.
-  The real boundary is a token your cache server limits; the scope keeps
-  honest runs apart ([security model](../../security/#cache-poisoning)).
+- **Pull requests keep to their own branch.** `turboCache()` names the
+  branches a read may see (`x-artifact-read-scopes`), and the server's
+  OIDC trust policy decides where a write lands, so a pull request reads
+  main's entries and never writes them ([security model](../../security/#cache-poisoning)).
 
 ## Where Turborepo wins
 

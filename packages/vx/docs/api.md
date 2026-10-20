@@ -90,10 +90,10 @@ type · `src/orchestrator/plugin.ts`
 What a CI knows of the run's branch (owner, 2026-10-17): `scope`, the
 cache scope (`'vznjs/vx:feat-x'`; `VX_CACHE_SCOPE` beats it, and it
 beats the one git names), and `base`, the commit the branch is compared
-with (a pull request's base), for a bare `--affected` and for which
-tasks read the scope. `trusted`: the run has no scope, whatever git
-names, and reads and writes only the default keys (a merge queue's run,
-owner 2026-10-18). A later plugin's field wins.
+with (a pull request's base), for a bare `--affected`. `trusted`: the
+run has no scope, whatever git names (a merge queue's run, owner
+2026-10-18). The scope keys only plugin entries; task keys never carry
+it. A later plugin's field wins.
 
 ```ts
 export interface BranchFacts {
@@ -250,7 +250,6 @@ export interface CacheLayer {
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
   probeFirst?(started: Promise<void>): void
-  noteKey?(taskId: string, hash: string): void
   drainUploads?(): Promise<void>
   stopUploads?(): void
   key(input: CacheKeyInput): Promise<string>
@@ -1806,28 +1805,10 @@ plugin guide's example shows it).
 export interface RemoteCacheLayer {
   readonly endpoint?: string
   open?(ctx: RemoteOpenContext): Promise<void>
-  has(hash: string, at?: RemoteKey): Promise<boolean>
-  hasMany?(hashes: readonly string[], at?: readonly RemoteKey[]): Promise<Set<string> | null>
-  get(
-    hash: string,
-    at?: RemoteKey,
-  ): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
-  put(hash: string, body: Blob, meta: { durationMs: number } & RemoteKey): Promise<void>
-}
-```
-
-## `RemoteKey`
-
-type · `src/cache/layered-cache.ts`
-
-Where a remote call's key lives: `scope` names the branch scope a scoped
-key was derived in (`scopedKey`), absent for a task's own key. The key
-alone is enough; a backend that keeps one store per scope may use it to
-go straight to that store. turboCache(), nxCache() and vx-reapi ignore it.
-
-```ts
-export interface RemoteKey {
-  readonly scope?: string
+  has(hash: string): Promise<boolean>
+  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
+  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
 }
 ```
 
@@ -1960,8 +1941,6 @@ export interface RunOptions {
   cacheFlags?: CacheFlags
   remoteRequested?: boolean
   cacheScope?: string
-  scopeChanges?: AffectedChanges
-  scopeBase?: string
   remoteReadOnlyByDefault?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'

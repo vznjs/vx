@@ -76,10 +76,9 @@ describe('the requests', () => {
     await new NxRemoteCache(
       { server: SERVER, accessToken: '', timeoutMs: 1000, retries: 0 },
       fetchImpl,
-    ).put('aa', new Blob(['12345']), { durationMs: 1 })
+    ).put('aa', new Blob(['12345']))
     expect(calls.map((c) => c.headers)).toEqual([
       {
-        'x-vx-cache-scope': 'trusted',
         'Content-Type': 'application/octet-stream',
         'Content-Length': '5',
       },

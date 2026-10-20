@@ -14,9 +14,9 @@ import {
 export interface GitlabPluginOptions {
   /**
    * Name the run's cache scope and base commit from GitLab's predefined
-   * variables: the default branch and a merge train read and write the
-   * default keys, any other branch `<project path>:<branch>`, and a merge
-   * request is compared with its diff base. `VX_CACHE_SCOPE` beats it.
+   * variables: none on the default branch or a merge train, else
+   * `<project path>:<branch>`; a merge request is compared with its diff
+   * base. The scope keys plugin entries only. `VX_CACHE_SCOPE` beats it.
    * Default: on; `false` opts out.
    */
   cacheScope?: boolean

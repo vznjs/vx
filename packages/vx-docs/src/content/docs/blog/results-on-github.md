@@ -64,16 +64,14 @@ flowchart LR
 
 ## A cache a pull request cannot poison
 
-On Actions the plugin names the cache scope from the branch. The default
-branch sets no scope, so it reads and writes the default keys. A pull
-request from `feat-x` becomes `acme/app:feat-x`, compared with the
-pull request's base commit: a task the branch changed reads that scope,
-every other task reads main's key, and every task it builds is saved
-under the scope. So a branch never writes what main reads, and a laptop
-on `feat-x` reads what CI built for it into its local cache, which keeps
-no scopes. Set
+Where a pull request may write is the cache server's call: the CI OIDC
+token, checked against its trust policy, sends main's writes to the
+trusted cache and a branch's to its own. On Actions the plugin names the
+pull request's base commit, so a bare `--affected` needs no history, and
+a scope for what plugins store themselves (`acme/app:feat-x`). Set
 `github({ cacheScope: false })` to opt out, or `VX_CACHE_SCOPE` to name
-one yourself.
+one yourself. [Branch caches a server enforces](../branch-caches-a-server-enforces/)
+has the rest.
 
 ## It never breaks the build
 

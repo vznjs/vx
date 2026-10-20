@@ -84,7 +84,6 @@ export type {
   CacheLayer,
   PluginCache,
   RemoteCacheLayer,
-  RemoteKey,
   RemoteOpenContext,
   RunRecord,
   InvocationRecord,

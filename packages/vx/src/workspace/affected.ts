@@ -14,7 +14,6 @@ import {
   gitSpawnRefusal,
   isExecutableMissing,
   isInstalledPath,
-  isUserError,
   notAWorkTree,
   relPosix,
   UserError,
@@ -739,44 +738,6 @@ function noHistoryRefusal(workspaceRoot: string): UserError | undefined {
     )
   }
   return undefined
-}
-
-/**
- * What a branch changed, for which of its tasks read its cache scope
- * (owner, 2026-10-17): from `base` (a plugin's: a pull request's base
- * commit), else from the merge base with the base branch. No base, or
- * one git cannot resolve (a CI checkout at `fetch-depth: 1`), is no
- * change: every task reads the default key, which costs hits, never
- * correctness, since a key must still match.
- */
-export async function branchChanges(
-  workspaceRoot: string,
-  base: string | undefined,
-  baseBranch: string | undefined,
-  projects: Promise<readonly ProjectMeta[]>,
-  /** The run's own enumeration, so the diff walks nothing a second time. */
-  walked: Pick<AffectedArgs, 'untracked' | 'links'> = {},
-): Promise<AffectedChanges> {
-  const none: AffectedChanges = {
-    projects: new Set(),
-    changed: [],
-    paths: new Map(),
-    whole: new Set(),
-  }
-  const since = base ?? (await baseBranchRef(workspaceRoot, baseBranch))?.ref
-  if (since === undefined) return none
-  try {
-    return await affectedChanges({
-      workspaceRoot,
-      since,
-      projects,
-      configImports: false,
-      ...walked,
-    })
-  } catch (err) {
-    if (!isUserError(err)) throw err
-    return none
-  }
 }
 
 /**

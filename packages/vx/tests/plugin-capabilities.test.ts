@@ -104,6 +104,7 @@ describe('the cache gate names EVERY remote method, not a count of them', () => 
     cacheDir: '/ws/.vx/cache',
     warn: () => undefined,
     scope: undefined,
+    refs: [],
   }
   const POLICY = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
   const required = requiredRemoteMethods()
@@ -171,6 +172,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     cacheDir: '/ws/.vx/cache',
     warn: () => undefined,
     scope: undefined,
+    refs: [],
   }
 
   it('resolveCache: every contributing remote is kept in order, each behind the local store', async () => {

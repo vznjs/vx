@@ -136,13 +136,11 @@ export class RemoteLane {
   constructor(
     resolved: ResolvedRemote,
     private readonly traffic: RemoteTraffic,
-    /** The wire as this run asks it: a branch scope's view of `resolved.remote`. */
-    remote: RemoteCacheLayer = resolved.remote,
     /** Background PUTs at once; excess uploads queue and drain FIFO. */
     private readonly uploadConcurrency: number = networkConcurrency(),
   ) {
     this.resolved = resolved
-    this.remote = remote
+    this.remote = resolved.remote
     this.onError = resolved.onError
     this.endpoint = printableEndpoint(resolved.remote.endpoint)
   }

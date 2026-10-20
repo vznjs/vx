@@ -81,15 +81,9 @@ export {
   type GitEnumeration,
   type BlobSizeMemo,
 } from './git-inputs.js'
-export {
-  LayeredCache,
-  type RemoteCacheLayer,
-  type RemoteKey,
-  type RemoteOpenContext,
-} from './layered-cache.js'
+export { LayeredCache, type RemoteCacheLayer, type RemoteOpenContext } from './layered-cache.js'
 export { networkConcurrency } from './remote-lane.js'
 export type { ResolvedRemote } from './remote-lane.js'
-export { BranchScope } from './scoped-cache.js'
 export {
   absentPluginCache,
   pluginCache,

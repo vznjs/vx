@@ -97,9 +97,7 @@ export interface ComputeHashArgs {
  */
 export async function computeTaskHash(args: ComputeHashArgs): Promise<string> {
   if (isKeyless(args.node.config)) return keylessHash(args.node.id)
-  const key = await taskHash(args)
-  args.cache.noteKey?.(args.node.id, key)
-  return key
+  return taskHash(args)
 }
 
 async function taskHash(args: ComputeHashArgs): Promise<string> {

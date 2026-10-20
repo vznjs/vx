@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-migrate: scope Turbo cache reads by ref, keys stay plain
+
+Task keys no longer carry a branch scope and x-vx-cache-scope is gone from turboCache() and nxCache(). turboCache() sends x-artifact-read-scopes on every read (scope: 'header', default) or keys entries by ref (scope: 'key'); the server's OIDC trust policy decides writes. VX_CACHE_SCOPE now scopes only plugin entries.
+
 ## cli: install vx on init, migrate only Turbo and Nx
 
 vx init no longer hands a repo with only a package.json to @vzn/vx-migrate: it writes an empty root project there. Map package.json scripts with bunx @vzn/vx-migrate. vx init now installs @vzn/vx globally and as a root devDependency.

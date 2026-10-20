@@ -50,7 +50,7 @@ github({
   title: 'build & test', // default: 'vx run'
   checks: true, // default: on with GITHUB_TOKEN; true warns when it is missing, false opts out
   checkName: 'ci', // default: 'vx', the check run's name
-  cacheScope: false, // default: on; scope remote cache writes by ref
+  cacheScope: false, // default: on; scope plugin cache entries by ref
 })
 ```
 
@@ -59,26 +59,19 @@ github({
 On Actions (`GITHUB_ACTIONS=true`) the plugin's `config` stage names the
 run's branch through `ctx.setBranch`, from the ref (`GITHUB_REF`,
 `GITHUB_REF_NAME`, `GITHUB_HEAD_REF`, `GITHUB_REPOSITORY`) and the
-`GITHUB_EVENT_PATH` payload. A push to the default branch names no scope (reads and writes
-the default keys). A push to, or a pull request from, a branch names
+`GITHUB_EVENT_PATH` payload. A push to the default branch names no scope.
+A push to, or a pull request from, a branch names
 `<owner>/<repo>:<branch>` of the repository the branch lives in, so a
 fork's pull request names the fork; so does a `pull_request_target` or
 `workflow_run` run on a PR's behalf (by `GITHUB_EVENT_NAME`, though its
 ref is main's), and an `issue_comment` on a PR, which names no branch,
 `pr-<n>`. A merge queue's run (`merge_group`) is trusted: no scope,
-whatever its `gh-readonly-queue/...` branch, so it reads and writes only
-the default keys (`x-vx-cache-scope: trusted`), compared with
+whatever its `gh-readonly-queue/...` branch, compared with
 `merge_group.base_sha`. A pull request also names its base commit
-(`pull_request.base.sha`), so vx diffs the merge checkout from it with
-no git call. A scoped run's changed tasks read the scope's remote entry,
-the rest the default keys, and every task it builds is saved to the
-remote under the scope; the local cache never knows a scope. A
-PR never writes what main reads, and a laptop on the branch derives the
-same scope. Whether a run writes at all is `cache.policy`'s call.
-`VX_CACHE_SCOPE` overrides it. This is a client-side convention: the
-real boundary is a cache token the server limits, so give PR jobs one
-that cannot write the default keys (`docs/security.md` § Cache
-poisoning).
+(`pull_request.base.sha`), the base of a bare `--affected`. The scope
+keys only what plugins store themselves (`ctx.cache`, run records):
+task keys never carry it, and the cache server decides from the CI OIDC
+token where a task's entry lands. `VX_CACHE_SCOPE` overrides it.
 
 ## GitLab CI
 
@@ -99,10 +92,10 @@ subgroup's project is `group/sub/app:feat-x`, the scope a laptop on
 `feat-x` derives. A merge request pipeline names its source branch
 (`CI_MERGE_REQUEST_SOURCE_BRANCH_NAME`) in the project it lives in (a
 fork's `CI_MERGE_REQUEST_SOURCE_PROJECT_PATH`) and its diff base
-(`CI_MERGE_REQUEST_DIFF_BASE_SHA`), so vx diffs from it with no git
-call. A merge train's pipeline (`CI_MERGE_REQUEST_EVENT_TYPE=merge_train`)
-builds what lands on the target, so it is trusted: no scope, only the
-default keys. `gitlab({ cacheScope: false })` (`GitlabPluginOptions`) turns it off;
+(`CI_MERGE_REQUEST_DIFF_BASE_SHA`), the base of a bare `--affected`.
+A merge train's pipeline (`CI_MERGE_REQUEST_EVENT_TYPE=merge_train`)
+builds what lands on the target, so it is trusted: no scope. As on
+Actions, the scope keys only plugin entries. `gitlab({ cacheScope: false })` (`GitlabPluginOptions`) turns it off;
 `VX_CACHE_SCOPE` overrides it. Anywhere else `gitlab()` returns
 `undefined`, so declaring both plugins is safe. Merge request comments
 and reports are not part of it yet.

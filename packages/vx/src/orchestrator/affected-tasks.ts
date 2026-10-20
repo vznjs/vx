@@ -230,24 +230,6 @@ export function affectedRoots(
 }
 
 /**
- * The tasks of `nodes` whose key the change can move (a branch's cache
- * scope, owner 2026-10-17): a changed path one of its inputs declares, a
- * whole project, or a task its closure holds. Unlike `--affected`, a path
- * no task declares (a README) reaches none: its key is the default
- * branch's, so it reads the default key.
- */
-export function keyedByChange(
-  nodes: ReadonlyMap<string, TaskNode>,
-  changes: AffectedChanges,
-  projects: ReadonlyMap<string, ProjectEntry>,
-  packageGraph: PackageGraph,
-): Set<string> {
-  return new Set(
-    affectedRoots(nodes, [...nodes.keys()], changes, projects, packageGraph, undefined, true),
-  )
-}
-
-/**
  * The requested tasks `--affected` keeps, in their order: one the user
  * named (`pkg#task`), one in a project another include selected outright
  * (X-10), and one whose closure the change reaches.

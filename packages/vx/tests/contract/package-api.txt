@@ -430,6 +430,7 @@ export interface CacheConfig {
 == type CacheContext (src/orchestrator/plugin.ts)
 export interface CacheContext extends BaseContext {
   readonly scope: string | undefined
+  readonly refs: readonly string[]
 }
 == type CacheEntry (src/cache/layer.ts)
 export interface CacheEntry {
@@ -490,7 +491,6 @@ export interface CacheLayer {
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
   probeFirst?(started: Promise<void>): void
-  noteKey?(taskId: string, hash: string): void
   drainUploads?(): Promise<void>
   stopUploads?(): void
   key(input: CacheKeyInput): Promise<string>
@@ -1235,17 +1235,10 @@ export interface RefusalParts {
 export interface RemoteCacheLayer {
   readonly endpoint?: string
   open?(ctx: RemoteOpenContext): Promise<void>
-  has(hash: string, at?: RemoteKey): Promise<boolean>
-  hasMany?(hashes: readonly string[], at?: readonly RemoteKey[]): Promise<Set<string> | null>
-  get(
-    hash: string,
-    at?: RemoteKey,
-  ): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
-  put(hash: string, body: Blob, meta: { durationMs: number } & RemoteKey): Promise<void>
-}
-== type RemoteKey (src/cache/layered-cache.ts)
-export interface RemoteKey {
-  readonly scope?: string
+  has(hash: string): Promise<boolean>
+  hasMany?(hashes: readonly string[]): Promise<Set<string> | null>
+  get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
+  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
 }
 == type RemoteKeyTraffic (src/cache/cache.ts)
 export interface RemoteKeyTraffic {
@@ -1375,8 +1368,6 @@ export interface RunOptions {
   cacheFlags?: CacheFlags
   remoteRequested?: boolean
   cacheScope?: string
-  scopeChanges?: AffectedChanges
-  scopeBase?: string
   remoteReadOnlyByDefault?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
   download?: 'all' | 'toplevel' | 'none'

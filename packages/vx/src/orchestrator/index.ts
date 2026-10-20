@@ -120,6 +120,7 @@ export {
   currentBranch,
   detectCi,
   localBranchScope,
+  cacheRefs,
   resolveCacheScope,
 } from './run-context.js'
 export type { CiContext, GitContext, HostContext, WorkspaceIdentity } from './run-context.js'

@@ -346,10 +346,9 @@ export interface WorkspaceHookContext {
  * What a CI knows of the run's branch (owner, 2026-10-17): `scope`, the
  * cache scope (`'vznjs/vx:feat-x'`; `VX_CACHE_SCOPE` beats it, and it
  * beats the one git names), and `base`, the commit the branch is compared
- * with (a pull request's base), for a bare `--affected` and for which
- * tasks read the scope. `trusted`: the run has no scope, whatever git
- * names, and reads and writes only the default keys (a merge queue's run,
- * owner 2026-10-18). A later plugin's field wins.
+ * with (a pull request's base), for a bare `--affected`. `trusted`: the
+ * run has no scope, whatever git names (a merge queue's run, owner
+ * 2026-10-18). The scope keys plugin entries only. A later plugin's field wins.
  */
 export interface BranchFacts {
   scope?: string
@@ -506,11 +505,16 @@ export interface ScheduleHookContext extends BaseContext {
 /** A `cache` hook's context: the workspace and the run's scope, never the local store or the policy, which core owns. */
 export interface CacheContext extends BaseContext {
   /**
-   * The run's cache scope (`'vznjs/vx:feat-x'`), `undefined` when none. Core already keys a scoped run's
-   * writes apart; a remote reads it to pick a credential or check a token's
-   * claims (an OIDC branch) for every call it makes.
+   * The run's cache scope (`'vznjs/vx:feat-x'`), `undefined` when none: what
+   * plugins' `ctx.cache` entries and stored runs are keyed apart by.
    */
   readonly scope: string | undefined
+  /**
+   * The refs the run reads, in order (`['refs/heads/feat-x', 'refs/heads/main']`):
+   * its own branch, the branch it merges into, the default branch. A remote
+   * keys or scopes its entries by them; core keys task entries by none.
+   */
+  readonly refs: readonly string[]
 }
 
 export interface OutputContext extends BaseContext {

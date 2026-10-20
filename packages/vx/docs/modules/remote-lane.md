@@ -22,7 +22,7 @@ export interface ResolvedRemote {
 export type RemoteOp = 'probe' | 'download' | 'upload'
 
 export class RemoteLane {
-  constructor(resolved: ResolvedRemote, traffic: RemoteTraffic, remote?: RemoteCacheLayer) // remote: a BranchScope's view
+  constructor(resolved: ResolvedRemote, traffic: RemoteTraffic, uploadConcurrency?: number)
   get read(): boolean // `resolved.read`, read live
   get write(): boolean
   has(hash: string): Promise<boolean> // a failure is false

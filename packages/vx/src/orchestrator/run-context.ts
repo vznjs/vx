@@ -554,6 +554,44 @@ export function localBranchScope(
 }
 
 /**
+ * The refs a remote reads, in order (2026-10-20): the run's own branch,
+ * then the branch it merges into, then the default branch, each once. On
+ * CI from its env (a GitHub pull request's head branch, a merge queue's
+ * queue ref, a GitLab pipeline's ref), else from git: the checked-out
+ * branch, then the default (`origin/HEAD`). A remote plugin keys or scopes
+ * its entries by them (`scope` on turboCache/nxCache); core keys nothing
+ * by them.
+ */
+export function cacheRefs(
+  workspaceRoot: string,
+  baseBranch: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const set = (v: string | undefined): string | undefined =>
+    v !== undefined && v.trim() !== '' ? v.trim() : undefined
+  const head = (b: string | undefined) => (b === undefined ? undefined : `refs/heads/${b}`)
+  let own: string | undefined
+  let base: string | undefined
+  if (env['GITHUB_ACTIONS'] === 'true') {
+    own = head(set(env['GITHUB_HEAD_REF'])) ?? set(env['GITHUB_REF'])
+    base = head(set(env['GITHUB_BASE_REF']))
+    const queue = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-[0-9a-f]+$/.exec(own ?? '')
+    if (queue !== null) base = head(queue[1])
+  } else if (env['GITLAB_CI'] === 'true') {
+    const tag = set(env['CI_COMMIT_TAG'])
+    own = tag !== undefined ? `refs/tags/${tag}` : head(set(env['CI_COMMIT_REF_NAME']))
+    base = head(set(env['CI_MERGE_REQUEST_TARGET_BRANCH_NAME']))
+  } else {
+    own = head(
+      (readHeadDirect(workspaceRoot) ?? captureGitContext(workspaceRoot, null, env)).branch ??
+        undefined,
+    )
+  }
+  const trunk = head(baseBranch ?? captureDefaultBranch(env, workspaceRoot) ?? undefined)
+  return [...new Set([own, base, trunk].filter((r): r is string => r !== undefined))]
+}
+
+/**
  * The repository's path on its host (`owner/repo`; a GitLab subgroup's
  * `group/sub/repo` whole, as `gitlab()` names it); undefined for a local path.
  */
@@ -591,7 +629,7 @@ function gitConfigSections(workspaceRoot: string): Map<string, Map<string, strin
  * The run's cache scope (owner, 2026-10-17): `VX_CACHE_SCOPE` (empty: none),
  * else a plugin's (`setBranch`, `github()` on Actions; null: the plugin
  * named the run trusted), else, with a cache plugin to share it, the
- * branch's from git. Undefined: the default keys.
+ * branch's from git. Undefined: no scope. It keys plugin entries only.
  */
 export function resolveCacheScope(
   workspaceRoot: string,

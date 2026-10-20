@@ -40,11 +40,11 @@ export interface GithubPluginOptions {
   /** Check-run name. Default: `'vx'`. */
   checkName?: string
   /**
-   * Name the run's cache scope and base commit from the Actions event: a
-   * push to the default branch keeps the default keys, a branch or its pull
-   * request writes to `<owner>/<repo>:<branch>` (a fork's names the fork),
-   * and a pull request is compared with its base commit. `VX_CACHE_SCOPE`
-   * beats it. Default: on; `false` opts out.
+   * Name the run's cache scope and base commit from the Actions event: none
+   * on the default branch, else `<owner>/<repo>:<branch>` (a fork's names
+   * the fork); a pull request is compared with its base commit. The scope
+   * keys plugin entries only. `VX_CACHE_SCOPE` beats it. Default: on;
+   * `false` opts out.
    */
   cacheScope?: boolean
   /** Test seam — inject the append. Defaults to fs appendFile. */

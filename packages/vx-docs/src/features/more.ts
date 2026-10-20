@@ -896,16 +896,16 @@ export const MORE: readonly Feature[] = [
   },
   {
     slug: 'cache-scope',
-    title: 'A branch writes only its own cache scope',
+    title: 'Branch caches the server enforces',
     category: 'cache',
-    hook: 'Main writes the shared cache; a branch reads it and writes only its own scope.',
+    hook: 'Main writes the shared cache; a branch reads it and writes only its own, as the server decides.',
     body: [
-      'A shared cache is only as trustworthy as the runs that write to it. A pull request from a fork should never be able to plant an artifact that main will replay.',
-      'On the default branch a run reads and writes the default entries. On another branch its entries live under `<owner>/<repo>:<branch>`, which CI’s plugin names and a checkout derives from `.git`. Each task asks the remote one key: a task the branch changed reads the scope’s, every other task reads main’s. A README edit leaves `build` on main’s entry. The local cache never knows a scope: what a laptop fetches for a branch it keeps under the task key. Whether a run writes at all is `cache.policy`: off CI, a run reads the remote and writes nothing. `VX_CACHE_SCOPE` names a scope by hand.',
+      'A shared cache is only as trustworthy as the runs that write to it. A pull request should never be able to plant an artifact that main will replay.',
+      "So the client never picks where a write lands. The CI OIDC token, checked against the cache server’s trust policy, does: main writes the trusted cache, a branch writes its own, a fork writes nothing. `turboCache()` only steers reads: every request names the run’s refs in `x-artifact-read-scopes` (`refs/heads/feat-x, refs/heads/main`), and the server answers from the first that holds the key. For a server that ignores the header, `scope: 'key'` folds the ref into each key and asks every ref’s key in one batch. The local cache never knows a branch.",
     ],
     example: {
-      lang: 'sh',
-      code: 'VX_CACHE_SCOPE=acme/app:feat-x vx run build',
+      lang: 'text',
+      code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { turboCache } from '@vzn/vx-migrate'\n\nexport default defineWorkspace({\n  plugins: [turboCache({ scope: 'header' })], // the default; 'key' for Vercel\n})",
     },
     image: 'cache-scope.png',
     imageAlt: 'CI writing the remote cache, a laptop only reading.',
@@ -914,8 +914,8 @@ export const MORE: readonly Feature[] = [
       href: 'guides/ci/#cache-scopes-and-tokens',
     },
     deepDive: {
-      label: 'The cache on your terms',
-      href: 'blog/the-cache-on-your-terms/',
+      label: 'Branch caches a server enforces',
+      href: 'blog/branch-caches-a-server-enforces/',
     },
   },
   {
@@ -1571,9 +1571,9 @@ export const MORE: readonly Feature[] = [
     slug: 'ref-cache-scope',
     title: 'Cache scope from the branch',
     category: 'ci',
-    hook: 'On Actions, main writes the default cache entries and a branch writes only its own.',
+    hook: 'On Actions, plugin entries follow the branch, and a bare `--affected` compares with the PR’s base.',
     body: [
-      'A shared cache needs a rule for who may write. On GitHub Actions, `@vzn/vx-ci` sets it from the branch: the default branch writes the default entries, a push or pull request from `feat-x` writes `acme/app:feat-x`, the scope a laptop on `feat-x` reads. A merge queue’s run is trusted: it reads and writes only the default entries. `gitlab()` does the same on GitLab CI, merge trains included.',
+      'Plugins keep their own entries in the cache (run timings, for one). On GitHub Actions, `@vzn/vx-ci` scopes them by branch: none on the default branch or a merge queue, `acme/app:feat-x` on a push or pull request from `feat-x`. A bare `--affected` compares with the pull request’s base commit. `gitlab()` does the same on GitLab CI, merge trains included. Task entries never carry a scope: the cache server decides where they land.',
       'No config needed; `VX_CACHE_SCOPE` overrides it.',
     ],
     example: {
@@ -1598,7 +1598,7 @@ export const MORE: readonly Feature[] = [
     hook: 'Point vx at the remote cache server you already run.',
     body: [
       'Switching runners should not mean switching cache servers. `turboCache()` talks to any server with Turbo’s artifacts API, Vercel’s included, and `nxCache()` to Nx’s self-hosted cache spec.',
-      'Your server stays; vx stores its own entries in it. Each request names its bucket in an `x-vx-cache-scope` header, `trusted` or the branch scope, so a server that keeps one per branch need not guess.',
+      'Your server stays; vx stores its own entries in it. `turboCache()` names the run’s refs on every read (`x-artifact-read-scopes`), so a server that keeps one cache per branch knows which to read; where a write lands stays the server’s call. `nxCache()` sends plain requests.',
     ],
     example: {
       lang: 'text',
