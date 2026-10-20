@@ -476,11 +476,10 @@ function streamOf(gen: AsyncGenerator<Uint8Array>): ReadableStream<Uint8Array> {
  * The tree form (`cache.store.decompress`, v47): an artifact's members
  * as plain files under one directory, `outputs/<rel>` and
  * `workspace-outputs/<rel>` as named in the tar, beside its sidecar.
- * stdout lives in the index. A restore copies (or
- * clones) each file out, so a hit decodes nothing; an upload packs the
- * tree back into the artifact a remote expects.
- */
-/**
+ * stdout lives in the index. A restore copies (or clones) each file out,
+ * so a hit decodes nothing; an upload packs the tree back into the
+ * artifact a remote expects.
+ *
  * Write `plan`'s outputs into the empty `dir` as the tree form, each copied
  * by the kernel (`copy_file_range`, or a clone where the filesystem has one)
  * and given its sidecar mtime, and return what a scan of the plan's tar
