@@ -53,7 +53,7 @@ the values it takes and each refusal's exact words are recorded in
 | `cache.inputStability` | `severity`, `strategy`                                                                     |
 | `cache.outputs`        | `clean`                                                                                    |
 | `cache.concurrency`    | `download`, `restore`, `upload`                                                            |
-| `cache.store`          | `decompress`, `embeddings`, `verify`                                                       |
+| `cache.store`          | `decompress`, `embeddings`                                                                 |
 | `cache.upload`         | `failures`                                                                                 |
 | `watch`                | `poll`                                                                                     |
 
