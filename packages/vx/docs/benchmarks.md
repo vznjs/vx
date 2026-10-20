@@ -457,7 +457,7 @@ Cold: every task list-scheduled critical-path first (critical path
 less what the task commands themselves burn under `xargs -P 10`
 (28.77 s); a daemon that outlives the invocation (Turborepo's, Nx's)
 is not counted, so theirs is a floor.
-vx burns more CPU cold than Vite Task: it hashes every input and packs every saved output into a zstd archive.
+vx burns more CPU cold than Vite Task: it hashes every input and saves every task, its log and its outputs, into its local store.
 
 > Methodology note: a synthetic graph with `sleep`-based tasks isolates
 > _runner_ overhead from real compilation. All four runners are
