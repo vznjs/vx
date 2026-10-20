@@ -18,6 +18,11 @@ export default defineConfig({
   cacheDir: './.astro/cache',
   vite: {
     cacheDir: './.astro/vite',
+    // Starlight's <Steps> and <Tabs> parse markdown at render time with
+    // satteri, a native module: bundled into a page chunk, it looks for its
+    // platform binding beside the chunk and finds none. Kept external, it
+    // needs to be the site's own dependency (package.json) to resolve.
+    build: { rollupOptions: { external: ['satteri'] } },
     // The site has no PostCSS config. Without an inline one Vite searches
     // every parent up to the workspace root, reading the root package.json
     // the build's sandbox hides: Linux answers ENOENT and the search goes
@@ -41,7 +46,7 @@ export default defineConfig({
     '/features/vx-prune/': `${root}features/`,
     '/blog/vx-prune/': `${root}blog/`,
     '/blog/prune-production/': `${root}blog/`,
-    '/add-to-existing-repo/': `${root}quickstart/#an-existing-repo`,
+    '/add-to-existing-repo/': `${root}quickstart/`,
     '/guides/tasks/': `${root}guides/configure/#tasks-and-dependencies`,
     '/guides/task-dependencies/': `${root}guides/configure/#tasks-and-dependencies`,
     '/guides/caching/': `${root}guides/configure/#caching`,

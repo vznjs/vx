@@ -1,0 +1,111 @@
+---
+title: Quickstart
+description: Cache your first task in two minutes, in a repo you already have.
+---
+
+import { Steps, Tabs, TabItem, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components'
+import Playground from '../../components/demos/Playground.astro'
+
+Cache your first task in two minutes, in a repo you already have.
+
+<Aside title="What you need">
+  Git, and macOS or Linux with glibc (not Alpine's musl). On Windows, use WSL2.
+</Aside>
+
+<Steps>
+
+1. **Set up vx**
+
+   Run this at the root of your git repository:
+
+   <Tabs syncKey="pm">
+     <TabItem label="npm">
+       ```sh
+       npx @vzn/vx init
+       ```
+     </TabItem>
+     <TabItem label="Bun">
+       ```sh
+       bunx @vzn/vx init
+       ```
+     </TabItem>
+   </Tabs>
+
+   `init` writes a `vx.config.ts` next to each `package.json`, with a task
+   for each script. A Turborepo or Nx repo gets its tasks from `turbo.json`
+   or the Nx graph instead.
+
+2. **Cache the build**
+
+   Open one package's `vx.config.ts` and add the `cache` block that the
+   TODO above `build` shows. It names the files the build writes:
+
+   ```ts title="packages/ui/vx.config.ts" ins={8}
+   import { defineProject } from '@vzn/vx/config'
+
+   export default defineProject({
+     tasks: {
+       build: {
+         exec: { command: 'tsc -b' },
+         inputs: { files: ['src/**'] },
+         cache: { outputs: { files: ['dist/**'] } },
+       },
+     },
+   })
+   ```
+
+   Then save the change for every run to read:
+
+   ```sh
+   vx lock
+   ```
+
+3. **Run it twice**
+
+   ```sh
+   vx run build --all
+   vx run build --all
+   ```
+
+   The first run builds and stores the result. The second finds nothing
+   changed and finishes from the cache:
+
+   ```text frame="terminal" title="second run"
+     cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
+               local 2✓
+     time      6ms
+   ```
+
+4. **Change a file and ask why**
+
+   Edit a file the build reads, run again, and ask vx what changed:
+
+   ```sh
+   vx run build --all
+   vx why @acme/app#build
+   ```
+
+   ```text frame="terminal"
+     verdict    cache key changed: upstream @acme/ui#build
+
+     root cause:
+       @acme/app#build ← @acme/ui#build ← file packages/ui/src/index.ts
+   ```
+
+</Steps>
+
+## Try it in your browser
+
+This is vx's own planner, running on four small packages. Edit a file or a
+config, press **Run**, and see which tasks would run and why.
+
+<Playground />
+
+## Next
+
+<CardGrid>
+  <LinkCard title="Configure tasks" description="Inputs, outputs, dependencies and environment." href="../guides/configure/" />
+  <LinkCard title="Run on CI" description="GitHub Actions and a shared remote cache." href="../guides/ci/" />
+  <LinkCard title="Coming from Turborepo or Nx" description="Keep your config, or convert it." href="../guides/migrate/" />
+  <LinkCard title="Something looks wrong" description="Every message vx prints, and its fix." href="../guides/troubleshooting/" />
+</CardGrid>

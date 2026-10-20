@@ -53,9 +53,8 @@ runner.
 
 ## Where to go next
 
-- [Quickstart](../../quickstart/): a workspace running under vx in a few
-  minutes, or [add vx to an existing repo](../../quickstart/#an-existing-repo)
-  one package at a time.
+- [Quickstart](../../quickstart/): your first cached task in two
+  minutes, in a repo you already have.
 - [What vx is, and what it refuses to be](../what-vx-is/): the next
   story.
 - [Benchmarks](../../benchmarks/): vx, Turborepo, Nx and Vite Task on the
