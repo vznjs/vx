@@ -1,54 +1,25 @@
-# `src/cache/scoped-cache.ts` — which remote key a scoped run asks
+# `src/cache/scoped-cache.ts` — the key a scope stores a plugin entry under
 
 ## Purpose
 
-A scoped run (`VX_CACHE_SCOPE=vznjs/vx:feat-x`, a plugin's or the branch's) asks each remote one key per task (owner,
-2026-10-17): a task the branch changed reads the scope's key; every other
-task reads the default key. The local store never knows a scope (owner,
-2026-10-17): every branch shares one local pool under the task keys.
-`prepare.ts` builds a `BranchScope` when the run names one, hands it to
-`LayeredCache`, which asks each remote through `remote()`, and routes the
-tasks (`routeTasks`) from what the branch changed
-(`RunOptions.scopeChanges`).
+A task key reaches every remote plain: core never scopes it (VZN,
+2026-10-20). Which branch a read may see is the remote's business:
+`turboCache()` names the run's refs on each read, or folds the ref into
+the key (`scope: 'key'`), and the server's OIDC trust policy decides
+where a write lands. A run's scope (`VX_CACHE_SCOPE`, a plugin's or the
+branch's) now keys only what plugins store themselves: `ctx.cache`
+entries (`plugin-cache.ts`) and run-store records (`run-store.ts`). So no
+`RemoteCacheLayer` method takes a scope.
 
 ## Public surface
 
 ```ts
 export function scopedKey(scope: string, hash: string): string
-export class BranchScope {
-  constructor(scope: string)
-  routeTasks(ids: () => Promise<ReadonlySet<string>>): void
-  noteKey(taskId: string, hash: string): void
-  remote(inner: RemoteCacheLayer): RemoteCacheLayer
-}
 ```
 
 ## Rules
 
-- **The scope's key** is `xxh3("vx-cache-scope", scope, task key)`, 16
-  hex like a task key, so every wire stores it unchanged. An artifact is
-  packed under its task key wherever it is stored, so a remote entry
-  ingests locally under that key; ingest refuses an artifact packed
-  under another, so a collision is a miss.
-- **Routes.** `computeTaskHash` tells the cache each task's key
-  (`noteKey`, through `LayeredCache`). A task `routeTasks` named is the
-  scope's: its own declared inputs match a changed path, or its
-  `dependsOn` closure holds such a task (`keyedByChange`, strict: a
-  changed path no task declares reaches none, so a README edit leaves
-  `build` on the default key). Before `routeTasks` is called every task
-  is the scope's; a run always routes (`branchChanges`, or an embedder's
-  `scopeChanges`). The routes are found at the first remote call, so a
-  run the local cache answers never diffs (20-60 ms at 1k-5k projects
-  when the diff ran beside discovery).
-- **Reads** (`has`, `hasMany`, `get`) ask one key: the scope's for a
-  scope task, the default key for any other. No fallthrough: a miss is a
-  miss.
-- **Each call names its scope** (`RemoteKey.scope`, the last argument;
-  absent for a default key), for a backend that keeps a store per
-  branch. The key alone names the entry; `turboCache()` and `nxCache()` send it
-  as `x-vx-cache-scope` (`trusted` for a default key, layered-cache.md).
-- **Writes** (`put`) go to the scope's key, every task's: a CI run saves
-  every task it builds under the scope, so a branch never writes a
-  default key. Whether a run writes at all is the policy's call.
-- **One disk, one pool**: a hit fetched under a scope is kept locally
-  under the task key, so the same inputs hit locally on any branch.
+- **The scope's key** is `xxh3("vx-cache-scope", scope, key)`, 16 hex
+  like a task key, so every wire stores it unchanged.
+- **The local store never knows a scope** (2026-10-17): every branch
+  shares one local pool under the task keys.

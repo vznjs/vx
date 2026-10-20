@@ -6,7 +6,6 @@ export {
   type AffectedChanges,
   affectedProjects,
   defaultAffectedBase,
-  branchChanges,
   type FingerprintClaims,
   refIsHead,
 } from './affected.js'

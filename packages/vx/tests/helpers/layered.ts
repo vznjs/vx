@@ -1,5 +1,4 @@
 import {
-  type BranchScope,
   LayeredCache,
   type Cache,
   type CachePolicy,
@@ -13,7 +12,6 @@ export function layeredOver(
   opts: {
     policy?: CachePolicy
     onRemoteError?: (err: Error) => void
-    branch?: BranchScope
     uploadConcurrency?: number
   } = {},
 ): LayeredCache {
@@ -27,7 +25,6 @@ export function layeredOver(
         ...(opts.onRemoteError !== undefined ? { onError: opts.onRemoteError } : {}),
       },
     ],
-    opts.branch,
     opts.uploadConcurrency,
   )
 }

@@ -50,17 +50,6 @@ export function defaultAffectedBase(
   workspaceRoot: string,
   baseBranch: string | undefined,
 ): Promise<string>
-// What a branch changed, for which tasks read its cache scope: from `base`
-// (a plugin's), else the merge base with the base branch. No base, or one
-// git cannot resolve, is no change. Its git calls start before `projects` resolves.
-export function branchChanges(
-  workspaceRoot: string,
-  base: string | undefined,
-  baseBranch: string | undefined, // configured; undefined lets git name it
-  projects: Promise<readonly ProjectMeta[]>,
-  walked?: Pick<AffectedArgs, 'untracked' | 'links'>, // the run's enumeration, walked once
-): Promise<AffectedChanges>
-
 /** Lockfiles a `fingerprint` plugin claims, so `--affected` can follow
  *  a per-project dependency closure instead of the whole fingerprint. */
 export interface FingerprintClaims {

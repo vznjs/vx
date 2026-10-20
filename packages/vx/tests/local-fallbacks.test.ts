@@ -17,6 +17,7 @@ const baseCtx = {
   cacheDir: '/ws/.vx/cache',
   warn: () => undefined,
   scope: undefined,
+  refs: [],
 }
 const policy = { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false }
 

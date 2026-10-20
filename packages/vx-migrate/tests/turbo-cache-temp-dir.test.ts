@@ -40,7 +40,7 @@ it('a signed download is checked in the cache directory, not the shared temp dir
     token: 't',
     teamId: 'team_1',
     signatureKey: KEY,
-  }).cache?.({ warn: () => {}, workspaceRoot: cacheDir, cacheDir, scope: undefined }) as {
+  }).cache?.({ warn: () => {}, workspaceRoot: cacheDir, cacheDir, scope: undefined, refs: [] }) as {
     get(h: string): Promise<unknown>
   }
   const hash = 'ab'.repeat(8)

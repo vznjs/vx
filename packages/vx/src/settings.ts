@@ -127,7 +127,7 @@ export const SETTINGS: readonly Setting[] = [
     path: 'cache.scope',
     kind: { type: 'string' },
     default: "the branch's, `<owner>/<repo>:<branch>`, with a remote cache off `baseBranch`",
-    doc: "A branch's remote entries (`'vznjs/vx:feat-x'`): tasks the branch changed read the scope's key, the rest the default key; the local cache never uses it. Empty: no scope.",
+    doc: "The branch scope plugin entries are keyed under (`'vznjs/vx:feat-x'`); task keys never carry it. Empty: no scope.",
     config: false,
   },
   {

@@ -8,7 +8,6 @@
 
 import type { Database } from 'bun:sqlite'
 import { xxh3hex } from '../util/index.js'
-import type { RemoteKey } from './layered-cache.js'
 import type { CachePolicy } from './policy.js'
 import type { ResolvedRemote } from './remote-lane.js'
 import { scopedKey } from './scoped-cache.js'
@@ -100,8 +99,6 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
   const { db, policy, scope } = host
   const readers = host.remotes.filter((r) => r.read)
   const writers = host.remotes.filter((r) => r.write)
-  const at: RemoteKey = scope === undefined ? {} : { scope }
-  const atOf = (key: string, name: string): RemoteKey => (key === entryKey(plugin, name) ? {} : at)
   const readKey = (name: string, scoped: boolean): string => {
     const key = entryKey(plugin, name)
     return scope === undefined || !scoped ? key : scopedKey(scope, key)
@@ -155,7 +152,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       const key = readKey(name, scoped)
       for (const { remote } of readers) {
         try {
-          const got = await remote.get(key, atOf(key, name))
+          const got = await remote.get(key)
           if (got === null) continue
           const bytes = await capped(got.body)
           if (bytes === null) continue
@@ -174,7 +171,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       if (policy.localWrite) localPut(entryKey(plugin, name), bytes)
       for (const { remote } of writers) {
         try {
-          await remote.put(key, new Blob([bytes]), { durationMs: 0, ...at })
+          await remote.put(key, new Blob([bytes]), { durationMs: 0 })
         } catch {
           // the other layers still keep it
         }
@@ -187,7 +184,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       let answered = policy.localRead
       for (const { remote } of readers) {
         try {
-          if (await remote.has(key, atOf(key, name))) return true
+          if (await remote.has(key)) return true
           answered = true
         } catch {
           // no answer from this remote
@@ -207,10 +204,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
         if (ask.length === 0) break
         if (remote.hasMany === undefined) return null
         try {
-          const got: unknown = await remote.hasMany(
-            ask,
-            ask.map((k) => atOf(k, byKey.get(k)!)),
-          )
+          const got: unknown = await remote.hasMany(ask)
           if (!(got instanceof Set)) return null
           for (const key of got) if (byKey.has(key as string)) found.add(byKey.get(key as string)!)
         } catch {
@@ -222,9 +216,9 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
 
     async getRun(name) {
       for (const { remote } of readers) {
-        for (const [i, key] of runReadKeys(name, scope).entries()) {
+        for (const key of runReadKeys(name, scope)) {
           try {
-            const got = await remote.get(key, i === 0 ? {} : at)
+            const got = await remote.get(key)
             if (got === null) continue
             const bytes = await capped(got.body, Infinity)
             if (bytes !== null) return bytes

@@ -14,14 +14,12 @@
 import {
   definePlugin,
   type RemoteCacheLayer,
-  type RemoteKey,
   type RemoteOpenContext,
   type VxPlugin,
   refuseUnknownOptions,
   type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadline } from '../remote-deadline.js'
-import { scopeHeader } from '../remote-scope.js'
 import { OutageBreaker } from '../remote-breaker.js'
 import { Cooldown, withRetry } from '../remote-retry.js'
 import {
@@ -155,11 +153,10 @@ export class NxRemoteCache implements RemoteCacheLayer {
   private async request(
     method: 'GET' | 'PUT',
     hash: string,
-    at: RemoteKey | undefined,
     body?: Blob,
   ): Promise<Response | undefined> {
     if (this.token === undefined) return undefined
-    const headers: Record<string, string> = scopeHeader(at)
+    const headers: Record<string, string> = {}
     if (this.token !== '') headers['Authorization'] = `Bearer ${this.token}`
     if (body !== undefined) {
       headers['Content-Type'] = 'application/octet-stream'
@@ -212,18 +209,15 @@ export class NxRemoteCache implements RemoteCacheLayer {
     return res
   }
 
-  async get(
-    hash: string,
-    at?: RemoteKey,
-  ): Promise<{ body: Response; durationMs: number | undefined } | null> {
-    const res = await this.fetch(hash, at)
+  async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
+    const res = await this.fetch(hash)
     // The Nx wire carries no producing-task duration.
     return res === null ? null : { body: res, durationMs: undefined }
   }
 
-  private async fetch(hash: string, at: RemoteKey | undefined): Promise<Response | null> {
+  private async fetch(hash: string): Promise<Response | null> {
     if (this.disabled) return null
-    const res = await this.request('GET', hash, at)
+    const res = await this.request('GET', hash)
     if (res === undefined) return null
     if (res.status !== 200) {
       await res.body?.cancel()
@@ -233,17 +227,17 @@ export class NxRemoteCache implements RemoteCacheLayer {
     return res
   }
 
-  async has(hash: string, at?: RemoteKey): Promise<boolean> {
-    const res = await this.fetch(hash, at)
+  async has(hash: string): Promise<boolean> {
+    const res = await this.fetch(hash)
     if (res === null) return false
     await res.body?.cancel()
     return true
   }
 
-  // Nx's record carries no duration; only `meta`'s scope is sent.
-  async put(hash: string, body: Blob, meta: { durationMs: number } & RemoteKey): Promise<void> {
+  // Nx's record carries no duration.
+  async put(hash: string, body: Blob): Promise<void> {
     if (this.disabled || this.writesRefused) return
-    const res = await this.request('PUT', hash, meta, body)
+    const res = await this.request('PUT', hash, body)
     if (res === undefined) return
     if (res.status === 200 || res.status === 202 || res.status === 409) return
     throw new Error(`HTTP ${res.status}`)

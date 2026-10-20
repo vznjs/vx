@@ -125,7 +125,7 @@ describe('NxRemoteCache against the spec server', () => {
   it('put → get round trip; a miss is 404 → null; a second put of the same hash is the spec’s 409 and fine', async () => {
     const c = cache()
     const body = new TextEncoder().encode('zstd-tar-bytes')
-    await c.put('aa11', new Blob([body]), { durationMs: 5 })
+    await c.put('aa11', new Blob([body]))
     const put = srv.seen.at(-1)!
     expect(put.method).toBe('PUT')
     expect(put.headers['authorization']).toBe(`Bearer ${TOKEN}`)
@@ -137,25 +137,8 @@ describe('NxRemoteCache against the spec server', () => {
     expect(await got!.body.bytes()).toEqual(body)
     expect(got!.durationMs).toBeUndefined()
     expect(await c.get('bb22')).toBeNull()
-    await c.put('aa11', new Blob(['other']), { durationMs: 5 })
+    await c.put('aa11', new Blob(['other']))
     expect(await (await c.get('aa11'))!.body.bytes()).toEqual(body) // immutable record kept
-  })
-
-  // Owner, 2026-10-18: every request names the bucket it means, `trusted`
-  // for a task's own key, so a server need not layer; the key is unchanged.
-  it('every request names its scope in x-vx-cache-scope: trusted for a default key', async () => {
-    const c = cache()
-    const scope = (n = -1) => srv.seen.at(n)!.headers['x-vx-cache-scope']
-    await c.put('a0c1', new Blob(['x']), { durationMs: 1 })
-    await c.get('a0c1')
-    await c.has('a0c1')
-    expect([scope(-3), scope(-2), scope(-1)]).toEqual(['trusted', 'trusted', 'trusted'])
-    const at = { scope: 'acme/app:feat' }
-    await c.put('a0c2', new Blob(['x']), { durationMs: 1, ...at })
-    await c.get('a0c2', at)
-    await c.has('a0c2', at)
-    expect([scope(-3), scope(-2), scope(-1)]).toEqual([at.scope, at.scope, at.scope])
-    expect(new URL(srv.seen.at(-1)!.url).pathname).toBe('/v1/cache/a0c2')
   })
 
   // Core asks `has` only for a `--dry` prediction; no `get` follows it.
@@ -209,7 +192,7 @@ describe('NxRemoteCache against the spec server', () => {
       c.get('aa11'),
       c.get('bb22'),
       c.has('cc33'),
-      c.put('dd44', new Blob(['x']), { durationMs: 1 }),
+      c.put('dd44', new Blob(['x'])),
     ])
     const rejected = settled.flatMap((r, i) =>
       r.status === 'rejected' ? [{ name: names[i]!, message: String(r.reason.message) }] : [],
@@ -230,18 +213,16 @@ describe('NxRemoteCache against the spec server', () => {
     const n = srv.seen.length
     expect(await bad.get('aa11')).toBeNull()
     expect(await bad.has('aa11')).toBe(false)
-    await bad.put('cc33', new Blob(['x']), { durationMs: 1 })
+    await bad.put('cc33', new Blob(['x']))
     expect(srv.seen.length).toBe(n)
     const ro = cache(READONLY)
     expect(await ro.has('aa11')).toBe(true) // reads are allowed
-    await expect(ro.put('dd44', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
-      /403.*read-only/,
-    )
+    await expect(ro.put('dd44', new Blob(['x']))).rejects.toThrow(/403.*read-only/)
     // The read-only token's refused write turns off writes alone: a later
     // lookup still hits, and a later upload is not sent (nor said again).
     expect(await ro.has('aa11')).toBe(true)
     const m = srv.seen.length
-    await ro.put('ee55', new Blob(['x']), { durationMs: 1 })
+    await ro.put('ee55', new Blob(['x']))
     expect(srv.seen.length).toBe(m)
   })
 })

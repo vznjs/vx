@@ -9,7 +9,6 @@
 
 import path from 'node:path'
 import {
-  type BranchScope,
   type Cache,
   type CacheLayer,
   type CachePolicy,
@@ -556,8 +555,6 @@ export interface CacheHost extends CacheContext {
   readonly policy: CachePolicy
   /** Filled with each remote and what its policy lets it do, for the plugins' `ctx.cache`. */
   readonly remotes?: ResolvedRemote[]
-  /** The run's branch scope, which picks each remote key. */
-  readonly branch?: BranchScope
   /** Uploads at once, per remote (`cache.concurrency.upload`). */
   readonly uploadConcurrency?: number
 }
@@ -574,7 +571,7 @@ export async function resolveCache(
   plugins: readonly VxPlugin[],
   host: CacheHost,
 ): Promise<CacheLayer> {
-  const { localCache, policy, remotes, branch, uploadConcurrency, ...ctx } = host
+  const { localCache, policy, remotes, uploadConcurrency, ...ctx } = host
   const resolved: ResolvedRemote[] = []
   for (const plugin of plugins) {
     if (plugin.cache === undefined) continue
@@ -593,7 +590,7 @@ export async function resolveCache(
   }
   return resolved.length === 0
     ? localCache
-    : new LayeredCache(localCache, resolved, branch, uploadConcurrency)
+    : new LayeredCache(localCache, resolved, uploadConcurrency)
 }
 
 /** The plugin each resolved executor came from, so a hook of it that throws is named. */

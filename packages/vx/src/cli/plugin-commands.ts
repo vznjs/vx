@@ -138,10 +138,8 @@ async function verbCache(
   ws: Exclude<Awaited<ReturnType<typeof workspacePlugins>>, UnresolvedPluginCommand | null>,
   plugin: string,
 ): Promise<PluginCache> {
-  const [{ Cache, pluginCache }, { resolveCache, resolveCacheScope }] = await Promise.all([
-    import('../cache/index.js'),
-    import('../orchestrator/index.js'),
-  ])
+  const [{ Cache, pluginCache }, { cacheRefs, resolveCache, resolveCacheScope }] =
+    await Promise.all([import('../cache/index.js'), import('../orchestrator/index.js')])
   const scope = resolveCacheScope(
     ws.workspaceRoot,
     ws.branch.trusted === true ? null : ws.branch.scope,
@@ -162,6 +160,7 @@ async function verbCache(
     cacheDir: ws.cacheDir,
     warn,
     scope,
+    refs: cacheRefs(ws.workspaceRoot, configuredBaseBranch(ws.workspaceConfig)),
     localCache,
     policy: VERB_POLICY,
     remotes,

@@ -59,6 +59,14 @@ export function resolveCacheScope(
   baseBranch: string | undefined,
   env?: NodeJS.ProcessEnv,
 ): string | undefined
+// The refs a remote reads, own first: CI's branch (a GitHub PR's head) or
+// git's current branch, then the PR or MR base (a merge queue's base),
+// then the default branch. Deduped; `turboCache()` sends them.
+export function cacheRefs(
+  workspaceRoot: string,
+  baseBranch: string | undefined,
+  env?: NodeJS.ProcessEnv,
+): string[]
 /** The run's branch: `run.branch` if set, else HEAD's, else CI's for a detached checkout. */
 export function currentBranch(
   workspaceRoot: string,

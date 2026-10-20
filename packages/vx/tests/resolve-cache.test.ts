@@ -64,6 +64,7 @@ describe('resolveCache — a plugin returns the remote, core layers it', () => {
     cacheDir: '/ws/.vx/cache',
     warn: () => undefined,
     scope: undefined,
+    refs: [],
   }
   const policy = { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true }
   /** A remote that records each lookup and upload under `name`. */

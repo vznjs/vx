@@ -75,7 +75,7 @@ jobs:
       - run: bun install --frozen-lockfile
       # A lock that no longer matches the configs fails here, before any task.
       - run: vx lock --check
-      # main runs everything and fills the default keys every pull request
+      # main runs everything and fills the cache every pull request
       # reads; a pull request runs only what it changed, and what depends on it.
       - run: >
           vx run ci
@@ -101,8 +101,7 @@ export default defineWorkspace({
   plugins: [
     // The package edges `^build` follows, from package-lock.json.
     npm(),
-    // On Actions: the job summary, the PR check, and the cache scope
-    // (a push to main writes the default keys, a PR from feat-x writes acme/app:feat-x).
+    // On Actions: the job summary, the PR check, and the PR's base for --affected.
     github(),
     // The shared cache. With no VX_REAPI_ENDPOINT it declines and vx
     // caches on this machine alone.
@@ -122,51 +121,33 @@ Each step, in order:
 
 ### Cache scopes and tokens
 
-`github()` names the run's cache scope after the repository and branch.
-A scope picks remote keys only: the local cache never knows one.
+A task key carries no branch, and the client never says where a write
+lands. The cache server decides: the CI OIDC token, checked against the
+server's trust policy, sends a write to the trusted cache, to its own
+branch's, or nowhere. No header, key or option changes that.
 
-| Run | Scope | Remote writes |
-| --- | --- | --- |
-| push to the default branch | none | the default keys |
-| push to, or pull request from, `feat-x` | `acme/app:feat-x` | that scope only |
-| pull request from a fork's `feat-x` | `eve/app:feat-x` | that scope only |
+`turboCache()` only steers reads. Every read names the run's refs, own
+branch first, in `x-artifact-read-scopes`, and the server answers from
+the first that holds the key:
 
-A scoped run asks each remote one key per task. A task the branch changed (its
-declared inputs match a changed file, or a task in its `dependsOn`
-closure is changed) reads the scope's key; every other task reads
-`main`'s key. A README edit leaves `build` on `main`'s entry. On a pull
-request the change is the diff from its base commit, which `github()`
-reads from the event, so the merge checkout needs only `fetch-depth: 2`.
-A run that writes the remote saves every task it builds under the
-scope, so a pull request reuses everything `main` built, and nothing it
-builds is ever read by `main` or by another branch. Keys still have to
-match, so a deleted branch pushed again with other code under the same
-name misses on every changed task.
+| Run | `x-artifact-read-scopes` |
+| --- | --- |
+| push to `main` | `refs/heads/main` |
+| pull request from `feat-x` | `refs/heads/feat-x, refs/heads/main` |
+| merge queue | `refs/heads/gh-readonly-queue/main/…, refs/heads/main` |
+| laptop on `feat-x` | `refs/heads/feat-x, refs/heads/main` |
 
-A laptop with a cache plugin derives the same scope from `.git`, with
-no network: the repository its upstream's remote names and the branch
-it tracks (`@{upstream}`), else its own on `origin`, none on the default
-branch (`baseBranch`, else `origin/HEAD`'s). The change is the diff
-from the merge base with `origin/<baseBranch>`. So `git checkout feat-x`
-reads what CI built for `feat-x`, read-only, and keeps it in the local
-cache under the task key: back on `main`, the same inputs hit it locally. The summary's `info` row names the scope. `VX_CACHE_SCOPE`
-names one by hand (a CI with a detached HEAD), and empty turns it off;
-`github({ cacheScope: false })` turns CI's off. Only a scoped run asks
-git for the diff, at its first remote call: a run the local cache
-answers asks it nothing.
-
-A merge queue's run (`merge_group`) builds what is about to land on
-`main`, so `github()` names it trusted: no scope, only the default keys,
-compared with the queue's base commit.
-
-`turboCache()` and `nxCache()` tell the server which bucket each request
-means in an `x-vx-cache-scope` header: `trusted` for a default key, else
-the branch scope. The key does not change; the header lets a server that
-keeps one bucket per branch skip its own layering, and the server still
-decides from the token whether a write to `trusted` is allowed.
-
-With no base to diff from (a laptop with no default branch fetched)
-every task reads `main`'s key.
+CI's refs come from its env, a laptop's from git (the current branch,
+then `origin/HEAD`'s), so `git checkout feat-x` reads what CI built for
+`feat-x`. A server that ignores the header keeps one shared cache. For
+one like that (Vercel), `turboCache({ scope: 'key' })` folds the ref
+into each key: a run writes under its own ref's key and asks every
+ref's key in one batch, first hit wins. That keeps branches apart but
+does not secure them: any writer can compute `main`'s key. The local
+cache never knows a branch: back on `main`, the same inputs hit locally.
+[Branch caches a server enforces](../../blog/branch-caches-a-server-enforces/)
+shows how a server implements the header. `nxCache()` sends plain
+requests.
 
 Which layers a run writes is the policy, not the scope:
 
@@ -176,9 +157,8 @@ Which layers a run writes is the policy, not the scope:
 | a laptop | `local:rw,remote:r` | read-only, in `VX_CACHE_TOKEN` |
 
 Both policies are the defaults; the workspace sets none. A pull request from a fork gets
-no secrets, so it runs without a token. The scope keeps honest runs
-apart; it is not a lock. A run holding a write token can write any key,
-so the token is the boundary: give write tokens only to CI you trust
+no secrets, so it runs without a token. A run holding a write token can
+write wherever the server lets it, so the token is the boundary: give write tokens only to CI you trust
 ([security](../../security/#cache-poisoning)).
 
 `github()` writes a job summary, failures first, and a PR check. The
@@ -268,14 +248,11 @@ import { gitlab } from '@vzn/vx-ci'
 export default defineWorkspace({ plugins: [gitlab()] })
 ```
 
-The default branch keeps the default keys. A branch or a tag writes
-`<project path>:<branch>`, so a subgroup's project is
-`group/sub/app:feat-x`, the scope a laptop on `feat-x` reads. A merge
-request pipeline writes its source branch's scope (a fork's in the fork)
-and is compared with the merge request's diff base, so the job needs no
-history beyond that commit. A merge train builds what lands on the
-target branch, so it reads and writes only the default keys.
-`gitlab({ cacheScope: false })` turns it off. It writes no merge
+A merge request pipeline is compared with the merge request's diff
+base, so a bare `--affected` needs no history beyond that commit, and
+`turboCache()` reads the source branch, then the target. Plugin entries
+are scoped `<project path>:<branch>` off the default branch and merge
+trains; `gitlab({ cacheScope: false })` turns that off. It writes no merge
 request comments or reports yet.
 
 ## Remote cache

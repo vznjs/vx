@@ -73,7 +73,6 @@ export interface CacheLayer {
   localHasMany?(hashes: readonly string[]): Promise<Set<string>> // the keys the local store holds; the prefetch probes the remote for the rest
   remoteHasMany?(hashes: readonly string[]): Promise<Set<string> | null> // one hasMany per readable remote; null = a remote cannot batch or did not answer
   markRemoteAbsent?(hashes: Iterable<string>): void
-  noteKey?(taskId: string, hash: string): void // computeTaskHash names each task's key, so a scoped cache routes it
   probeFirst?(started: Promise<void>): void // a pull waits until the run's batch probe starts, then for its answer
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void // `--force`: one batch probe per remote written but not read; a key it holds is not uploaded
   drainUploads?(): Promise<void> // await the background write-through uploads

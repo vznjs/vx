@@ -48,7 +48,7 @@ export function packRunOutputs(
   remote's policy (the run's) gates it. The local store keeps every
   entry under its name's key. A scoped run writes a remote only under the
   scope's key (`scopedKey`) and reads one key per request (M, 2026-10-18):
-  the scope's, or with `scoped` false the default, sent `trusted`. A run
+  the scope's, or with `scoped` false the default. A run
   with no scope uses the default key either way.
 - **Immutable.** A local write is `INSERT OR IGNORE`; a remote write
   asks `has` first and skips a present key.

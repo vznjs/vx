@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import {
+  cacheRefs,
   captureDefaultBranch,
   captureGitContext,
   captureHostContext,
@@ -551,5 +552,71 @@ describe('normalizeRemoteUrl — a port is only a port when a protocol said so',
     // for, so neither row above can pass by breaking normalization.
     expect(normalizeRemoteUrl('https://github.com/o/r.git')).toBe('github.com/o/r')
     expect(normalizeRemoteUrl('git@github.com:o/r.git')).toBe('github.com/o/r')
+  })
+})
+
+describe('cacheRefs', () => {
+  const none = '/nonexistent-vx-root'
+
+  it('a GitHub PR lists its head branch, then its base', () => {
+    const env = {
+      GITHUB_ACTIONS: 'true',
+      GITHUB_REF: 'refs/pull/12/merge',
+      GITHUB_HEAD_REF: 'feature',
+      GITHUB_BASE_REF: 'main',
+    }
+    expect(cacheRefs(none, 'main', env)).toEqual(['refs/heads/feature', 'refs/heads/main'])
+  })
+
+  it('a merge queue reads its base branch', () => {
+    const env = {
+      GITHUB_ACTIONS: 'true',
+      GITHUB_REF: 'refs/heads/gh-readonly-queue/main/pr-7-0123abcd',
+    }
+    expect(cacheRefs(none, 'trunk', env)).toEqual([
+      'refs/heads/gh-readonly-queue/main/pr-7-0123abcd',
+      'refs/heads/main',
+      'refs/heads/trunk',
+    ])
+  })
+
+  it('a GitLab MR lists its source branch, then its target; a tag names the tag', () => {
+    const mr = {
+      GITLAB_CI: 'true',
+      CI_COMMIT_REF_NAME: 'feature',
+      CI_MERGE_REQUEST_TARGET_BRANCH_NAME: 'main',
+    }
+    expect(cacheRefs(none, 'main', mr)).toEqual(['refs/heads/feature', 'refs/heads/main'])
+    expect(cacheRefs(none, 'main', { GITLAB_CI: 'true', CI_COMMIT_TAG: 'v1' })).toEqual([
+      'refs/tags/v1',
+      'refs/heads/main',
+    ])
+  })
+
+  describe('locally', () => {
+    let dir: string
+    beforeEach(async () => {
+      dir = await mkdtemp(path.join(os.tmpdir(), 'vx-refs-'))
+      git(dir, ['init', '-q', '-b', 'feature'])
+      git(dir, [
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@t',
+        'commit',
+        '-q',
+        '--allow-empty',
+        '-m',
+        'x',
+      ])
+    })
+    afterEach(async () => {
+      await rm(dir, { recursive: true, force: true })
+    })
+
+    it('reads the current branch from git, then the default branch', () => {
+      expect(cacheRefs(dir, 'main', {})).toEqual(['refs/heads/feature', 'refs/heads/main'])
+      expect(cacheRefs(dir, 'feature', {})).toEqual(['refs/heads/feature'])
+    })
   })
 })

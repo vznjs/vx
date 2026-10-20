@@ -26,7 +26,6 @@ import {
   writesRunStore,
   type PluginCache,
   type ResolvedRemote,
-  BranchScope,
   applyGitEnumeration,
   gitPathspecs,
   MAX_SCOPED_PATHSPECS,
@@ -39,8 +38,6 @@ import {
   buildPackageGraph,
   computeNestedProjectDirs,
   findWorkspaceRoot,
-  type AffectedChanges,
-  branchChanges,
   configuredBaseBranch,
   type LoadReads,
   PROJECT_CONFIG_FILENAMES,
@@ -80,13 +77,13 @@ import {
   lockReader,
   type LoadedProjects,
 } from './projects.js'
-import { keptByAffected, keyedByChange } from './affected-tasks.js'
+import { keptByAffected } from './affected-tasks.js'
 import { applyGraphStage } from './graph-stage.js'
 import { keyExcludedDependencies } from './excluded-keys.js'
 import { FingerprintWatch } from './fingerprint-watch.js'
 import type { VxPlugin } from './plugin.js'
 import { askIgnoredOutputs, gatedOutputs } from './stable-keys.js'
-import { currentBranch, resolveCacheScope } from './run-context.js'
+import { cacheRefs, currentBranch, resolveCacheScope } from './run-context.js'
 import { createHashCache, type HashCache } from './task-hash.js'
 import { type Logger, warnOf } from '../report/index.js'
 import type { RunOptions } from './options.js'
@@ -290,33 +287,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     reused !== undefined
       ? Promise.resolve(reused.projects)
       : discoverProjects(workspaceRoot, readLock, plugins, cacheDir, warnOf(log), git)
-  // What the branch changed decides which tasks read the scope (owner,
-  // 2026-10-17). Only a scoped run's first remote call asks git: a run the
-  // local cache answers makes no remote call, and diffing beside discovery
-  // cost it 20-60 ms at 1k-5k projects.
-  const scopeChanges: (() => Promise<AffectedChanges>) | undefined =
-    cacheScope === undefined
-      ? undefined
-      : options.scopeChanges !== undefined
-        ? async () => options.scopeChanges!
-        : () =>
-            branchChanges(
-              workspaceRoot,
-              options.scopeBase ?? branchFacts.base,
-              baseBranch,
-              discovering,
-              {
-                untracked: async () => (await git.start()).untracked,
-                // A scoped enumeration lists only its projects: null asks git.
-                links: async () => {
-                  const g = await git.start()
-                  if (!g.scopes.includes('.')) return null
-                  const out: string[] = []
-                  for (const [rel, oid] of g.trusted) if (oid.startsWith('120000:')) out.push(rel)
-                  return out
-                },
-              },
-            )
   const projectMetas = await discovering
   mark('discover projects')
 
@@ -516,9 +486,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   // cache plugin.
   let cache: CacheLayer
   const remotes: ResolvedRemote[] = []
-  // A scope only picks remote keys (owner, 2026-10-17): the local store
-  // keeps every branch's entries under the task keys.
-  const branchScope = cacheScope === undefined ? undefined : new BranchScope(cacheScope)
   if (options.remoteCache) {
     remotes.push({
       remote: options.remoteCache,
@@ -529,16 +496,16 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   }
   try {
     cache = options.remoteCache
-      ? new LayeredCache(localCache, remotes, branchScope, options.uploadConcurrency)
+      ? new LayeredCache(localCache, remotes, options.uploadConcurrency)
       : await resolveCache(plugins, {
           workspaceRoot,
           cacheDir,
           warn: warnOf(log),
           scope: cacheScope,
+          refs: cacheRefs(workspaceRoot, baseBranch),
           localCache,
           policy,
           remotes,
-          ...(branchScope !== undefined ? { branch: branchScope } : {}),
           ...(options.uploadConcurrency !== undefined
             ? { uploadConcurrency: options.uploadConcurrency }
             : {}),
@@ -772,13 +739,6 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     }
     if (hasHook(plugins, 'key')) {
       await applyKeyHooks(plugins, nodes, { workspaceRoot, cacheDir, warn: warnOf(log) })
-    }
-    // The final inputs decide which tasks the branch changed: they read
-    // the scope, every other task the default key.
-    if (branchScope !== undefined && scopeChanges !== undefined) {
-      branchScope.routeTasks(async () =>
-        keyedByChange(nodes, await scopeChanges(), projects, packageGraph),
-      )
     }
     refuseFiltersThroughGroups(nodes)
     const exclude = options.excludeDependencies

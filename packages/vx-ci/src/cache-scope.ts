@@ -1,6 +1,6 @@
 // The cache scope and base commit a GitHub Actions run names through
-// `setBranch`: the default branch writes the default keys, a branch its own
-// scope, the one a laptop on that branch reads (owner, 2026-10-17).
+// `setBranch`: none on the default branch, a branch its own scope, the one
+// a laptop on that branch derives (owner, 2026-10-17).
 import { readFile } from 'node:fs/promises'
 import { type BranchFacts, branchCacheScope } from '@vzn/vx'
 
@@ -13,10 +13,10 @@ import { type BranchFacts, branchCacheScope } from '@vzn/vx'
  * derives. An event that runs in the default branch's context on a pull
  * request's behalf (`pull_request_target`, `issue_comment` on a PR, a
  * `workflow_run` a PR started) is the PR's, whatever `GITHUB_REF` says: a
- * workflow that checks out the PR's head there would otherwise write the
- * default keys. `issue_comment` names no branch, so it writes `pr-<n>`.
+ * workflow that checks out the PR's head there would otherwise share main's
+ * scope. `issue_comment` names no branch, so it writes `pr-<n>`.
  * A merge queue's run (`merge_group`) is trusted (owner, 2026-10-18): no
- * scope, only the default keys, compared with `merge_group.base_sha`.
+ * scope, compared with `merge_group.base_sha`.
  * `base`: a pull request's base commit (`pull_request.base.sha`), what its
  * merge checkout is compared with, no git call needed.
  */

@@ -83,34 +83,29 @@ store in 22ms. To put the cache somewhere else, use `--cache-dir`,
 
 A remote cache is shared, so a write is a promise to everyone who reads
 it. Two settings decide it. The policy says whether a run writes at
-all: off CI the default reads the remote and writes nothing. The scope
-says where a branch's remote entries live:
+all: off CI the default reads the remote and writes nothing. The cache
+server says where a write lands:
 
 ```mermaid
 flowchart LR
-  M[main CI · no scope] -->|reads + writes| T[(default keys)]
-  P[PR CI · acme/app:feat-x] -->|unchanged tasks read| T
-  P -->|changed tasks read, builds write| S[(acme/app:feat-x keys)]
-  L[laptop on feat-x] -->|reads| T
-  L -->|changed tasks read| S
+  M[main CI] -->|reads + writes| T[(trusted)]
+  P[PR CI · feat-x] -->|reads| T
+  P -->|reads + writes| S[(feat-x)]
+  L[laptop on feat-x] -->|reads| S
+  L -->|reads| T
   style T stroke:#c6f84e,stroke-width:2px
 ```
 
-- On the default branch, a run reads and writes the default keys.
-- On another branch, the scope is `<owner>/<repo>:<branch>`. Each task
-  asks the remote one key: a task the branch changed reads the scope's,
-  every other task reads main's. A pull request never writes what main
-  reads.
-- The local cache never knows a scope. What a laptop fetches under a
-  branch's scope it keeps under the task key, so the same inputs hit
-  locally on any branch.
+- The CI OIDC token, checked against the server's trust policy, decides
+  where a write lands: trusted, the token's own branch, or nowhere.
+- `turboCache()` names the branches a read may see, own first, and the
+  server answers from the first that holds the key. A pull request never
+  writes what main reads.
+- The local cache never knows a branch, so the same inputs hit locally
+  on any branch.
 
-On GitHub Actions the
-[@vzn/vx-ci plugin](../results-on-github/)
-names the scope for you, and a checkout with a remote cache derives the
-same one from `.git`, so a laptop reads what CI built
-there. The scope is a client-side rule, so a cache server that
-checks tokens is still the real boundary.
+[Branch caches a server enforces](../branch-caches-a-server-enforces/)
+shows how a server builds its half.
 
 Every flag is in the [CLI reference](../../cli/), and `cache` is in
 the [schema](../../schema/).

@@ -414,15 +414,15 @@ per run (and once for `--dry` and `--force`); without it core GETs each
 key directly and asks `has` per key only for `--dry` and `--force`. An
 entry is immutable: core never asks `has` before a `put`, so a `put` of
 a key the remote holds must keep the stored bytes (check inside when
-your server would overwrite). Each call also names the branch scope its
-key belongs to (the last argument's `scope`, absent for a task's own
-key), for a backend that keeps one store per branch; the key alone is
-enough, so most remotes ignore it. Core owns the rest: the local cache is
-asked first, then each plugin's remote in the order `plugins` lists them;
-`--cache-policy`, `VX_CACHE_POLICY` and `cache.policy` gate every remote, and
-the branch scope keeps a branch's writes apart. The hook's `ctx.scope` is
-that scope (a name like `'acme/app:feat-x'`, `undefined` when none), so a
-remote can pick a credential per scope or check a token's branch. A remote error is a miss and one
+your server would overwrite). Keys are plain: no call names a branch,
+and where a write lands is your server's call, from the token it
+checks. The hook's `ctx.refs` lists the run's refs, own branch first
+(`['refs/heads/feat-x', 'refs/heads/main']`), for a wire that steers
+reads by branch, as `turboCache()` does; `ctx.scope` is the scope
+plugin entries use (`'acme/app:feat-x'`, `undefined` when none). Core
+owns the rest: the local cache is asked first, then each plugin's remote
+in the order `plugins` lists them; `--cache-policy`, `VX_CACHE_POLICY`
+and `cache.policy` gate every remote. A remote error is a miss and one
 warning per kind of failure, naming the plugin, the request, the artifact
 and the remote's `endpoint` (`download <hash> from <endpoint> failed: HTTP
 500`). A remote cannot narrow the policy: a read-only credential pairs
