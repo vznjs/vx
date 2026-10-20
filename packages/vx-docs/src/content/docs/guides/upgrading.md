@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: drop the local cache hit check
+
+cache.store.verify (VX_CACHE_STORE_VERIFY) is removed: a local hit restores its stored files unchecked.
+
 ## cache: drop run-end housekeeping and cache.retention
 
 cache.retention (VX_CACHE_RETENTION_OLDER_THAN, VX_CACHE_RETENTION_MAX_SIZE) is removed: no run evicts; run vx cache clean --older-than / --max-size instead. vx-migrate no longer maps Turbo's cacheMaxSize / cacheMaxAge or Nx's maxCacheSize.

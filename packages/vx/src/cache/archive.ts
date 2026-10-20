@@ -163,8 +163,6 @@ class SumCheck {
   add(bytes: Uint8Array): void {
     this.sum.add(bytes)
   }
-  /** The checked sum's text, once `verify` passed. */
-  checked = ''
   verify(got: string): void {
     if (got !== this.sum.hex()) {
       throw new TarFormatError(
@@ -172,7 +170,6 @@ class SumCheck {
       )
     }
     this.seen = true
-    this.checked = got
   }
   done(): void {
     if (!this.seen) throw new TarFormatError('artifact carries no checksum')
@@ -478,14 +475,11 @@ function streamOf(gen: AsyncGenerator<Uint8Array>): ReadableStream<Uint8Array> {
 /**
  * The tree form (`cache.store.decompress`, v47): an artifact's members
  * as plain files under one directory, `outputs/<rel>` and
- * `workspace-outputs/<rel>` as named in the tar, beside its sidecar and a
- * `.vx-sum` over them. stdout lives in the index. A restore copies (or
- * clones) each file out, so a hit decodes nothing; an upload packs the
- * tree back into the artifact a remote expects.
- */
-const TREE_SUM = SUM_ENTRY
-
-/**
+ * `workspace-outputs/<rel>` as named in the tar, beside its sidecar.
+ * stdout lives in the index. A restore copies (or clones) each file out,
+ * so a hit decodes nothing; an upload packs the tree back into the
+ * artifact a remote expects.
+ *
  * Write `plan`'s outputs into the empty `dir` as the tree form, each copied
  * by the kernel (`copy_file_range`, or a clone where the filesystem has one)
  * and given its sidecar mtime, and return what a scan of the plan's tar
@@ -515,24 +509,14 @@ export async function writeTree(plan: ArtifactPlan, dir: string): Promise<Artifa
     }),
   )
   await writeFile(path.join(dir, META_ENTRY), meta)
-  await writeFile(path.join(dir, TREE_SUM), await treeSum(dir, stdoutOf(plan)))
   return fold.result()
 }
 
-function stdoutOf(plan: ArtifactPlan): string {
-  return utf8.decode(plan.inputs.find((i) => i.name === STDOUT_ENTRY)!.body as Uint8Array)
-}
-
 /**
- * Write a scanned artifact's sidecar and sum into `dir`, whose outputs an
- * extract just wrote: an ingested remote hit kept as a tree.
+ * Write a scanned artifact's sidecar into `dir`, whose outputs an extract
+ * just wrote: an ingested remote hit kept as a tree.
  */
-export async function sealTree(
-  dir: string,
-  scan: ArtifactScan,
-  /** The archive's own sidecar text and checked sum (`extractArtifactStream`'s `onScan`). */
-  raw?: { meta: string; sum: string },
-): Promise<void> {
+export async function sealTree(dir: string, scan: ArtifactScan): Promise<void> {
   // An artifact with no outputs extracts nothing, so nothing made `dir`.
   await mkdir(dir, { recursive: true })
   const meta: MetaFile = { version: 1, files: {} }
@@ -543,20 +527,7 @@ export async function sealTree(
   if (scan.dirs.length > 0) meta.dirs = scan.dirs
   if (scan.links.length > 0) meta.links = Object.fromEntries(scan.links)
   if (scan.exec !== undefined) meta.exec = scan.exec
-  const text = JSON.stringify(meta)
-  await writeFile(path.join(dir, META_ENTRY), text)
-  // The tree packs back to the archive it came from when the sidecar is
-  // the same bytes and the entries came in its order (stdout first, the
-  // sidecar last): the sum the extract checked is then the tree's, and the
-  // tree is not read back to sum it.
-  const names = Object.keys(meta.files)
-  const same =
-    raw !== undefined &&
-    raw.meta === text &&
-    scan.entries[0]?.name === STDOUT_ENTRY &&
-    scan.entries.length === names.length + 1 &&
-    names.every((n, i) => scan.entries[i + 1]!.name === n)
-  await writeFile(path.join(dir, TREE_SUM), same ? raw.sum : await treeSum(dir, scan.stdout ?? ''))
+  await writeFile(path.join(dir, META_ENTRY), JSON.stringify(meta))
 }
 
 /** The plan that packs the tree in `dir` back into the artifact it holds. */
@@ -577,28 +548,6 @@ export function planOfTree(dir: string, stdout: string): ArtifactPlan {
   }
   inputs.push({ name: META_ENTRY, size: metaBytes.byteLength, body: new Uint8Array(metaBytes) })
   return { inputs, size: tarSize([...inputs, sumInput('0'.repeat(SUM_SIZE))]) }
-}
-
-/** The sum over the tree's members, as `SUM_ENTRY` defines it for the tar it packs to. */
-async function treeSum(dir: string, stdout: string): Promise<string> {
-  const sum = new EntrySum()
-  for (const i of planOfTree(dir, stdout).inputs) {
-    sum.entry(i.name)
-    if (i.body instanceof Blob && i.size > 1 << 20)
-      for await (const c of i.body.stream()) sum.add(c)
-    else if (i.body instanceof Blob) sum.add(await i.body.bytes())
-    else sum.add(i.body as Uint8Array)
-  }
-  return sum.hex()
-}
-
-/** Whether the tree's bytes still sum to what was stored (`cache.store.verify: 'hash'`). */
-export async function treeIntact(dir: string, stdout: string): Promise<boolean> {
-  try {
-    return (await treeSum(dir, stdout)) === readFileSync(path.join(dir, TREE_SUM), 'utf8')
-  } catch {
-    return false
-  }
 }
 
 /** What a scan of an artifact reads out of it. */
@@ -794,12 +743,8 @@ export async function extractArtifactStream(
   accept?: (name: string) => boolean,
   /** The workspace root whose `.vx/tmp/` stages the entries; absent, each stages beside its target. */
   stageRoot?: string,
-  /**
-   * Handed what `scanArtifact` would read of the same bytes, once their sum
-   * has checked, with the sidecar's text and the sum when the sidecar came
-   * last: what `sealTree` may reuse rather than read the tree back.
-   */
-  onScan?: (scan: ArtifactScan, raw: { meta: string; sum: string } | undefined) => void,
+  /** Handed what `scanArtifact` would read of the same bytes, once their sum has checked. */
+  onScan?: (scan: ArtifactScan) => void,
 ): Promise<Set<string>> {
   // No `mkdir -p` of the destination here: `stage` creates each entry's
   // directory chain, the destination included, and the cache restores
@@ -813,20 +758,15 @@ export async function extractArtifactStream(
   let dirs: string[] = []
   let links: Array<[string, string]> = []
   const fold = onScan === undefined ? undefined : new ScanFold()
-  let metaText: string | undefined
-  let metaLast = false
   try {
     const check = new SumCheck()
     for await (const e of tarEntries(tar)) {
       if (e.type !== '0') continue
       const body = await check.body(e.name, e.body)
       if (body === null) continue
-      metaLast = false
       if (e.name === META_ENTRY) {
         const text = await textOf(body)
         fold?.sidecar(text)
-        metaText = text
-        metaLast = true
         const parsed = JSON.parse(text) as MetaFile
         meta = parsed.files ?? {}
         dirs = dirsOf(parsed)
@@ -855,11 +795,7 @@ export async function extractArtifactStream(
       await x.stage(e.name, dest.base, target, e.size <= SMALL_ENTRY ? await bytesOf(body) : body)
     }
     check.done()
-    if (fold !== undefined)
-      onScan!(
-        fold.result(),
-        metaLast && metaText !== undefined ? { meta: metaText, sum: check.checked } : undefined,
-      )
+    if (fold !== undefined) onScan!(fold.result())
     for (const name of dirs) {
       if (accept !== undefined && !accept(name)) {
         throw new ArchiveSecurityError(

@@ -1337,10 +1337,8 @@ never a hard link: a later write to a restored output must not reach the
 store). A restore into outputs already on disk, a workspace output or a
 symlink takes the archive extractor, fed the tree packed back into its
 tar. An upload packs the tree into the tar.zst in the upload queue, off
-the save. `cache.store.verify` checks a tree file before it is copied:
-`stat` (default) its size and mtime against the meta, `hash` the whole
-tree against `.vx-sum`, `none` nothing. A failed check is a corrupt
-artifact: the entry is dropped and the task runs. A tree no row names
+the save. A hit trusts the tree and checks none of its files: the store
+is vx's own, and a check could not stop a write to it. A tree no row names
 is an orphan the sweep reaps; only the archive form is adopted back
 after a `SCHEMA_VERSION` reset, as a tree's stdout lives in its row.
 

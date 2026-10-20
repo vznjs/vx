@@ -558,7 +558,7 @@ export interface CacheSettings {
   inputStability?: InputStability
   outputs?: { clean?: boolean }
   upload?: { failures?: 'ci' | 'local' | 'always' }
-  store?: { embeddings?: false | string; decompress?: boolean; verify?: 'stat' | 'hash' | 'none' }
+  store?: { embeddings?: false | string; decompress?: boolean }
   concurrency?: { download?: number; upload?: number; restore?: number }
 }
 == type CacheSource (src/graph/task-status.ts)
@@ -1603,7 +1603,6 @@ export type SecretUnavailableReason = 'not-found' | 'no-terminal' | 'declined' |
 export interface StoreOptions {
   embeddings: number
   decompress: boolean
-  verify: 'stat' | 'hash' | 'none'
 }
 == type Style (src/util/ui.ts)
 type Style = Tone | 'dim' | 'bold' | 'id'

@@ -205,7 +205,7 @@ const fieldPath = (path: readonly Seg[]): string[] => {
 }
 
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-/** `a.b.c` as the messages spell it: `tasks.x.exec.timeout`, `` `cache.store.verify` ``. */
+/** `a.b.c` as the messages spell it: `tasks.x.exec.timeout`, `` `cache.store.decompress` ``. */
 const names = (field: readonly string[]): RegExp =>
   new RegExp(`(?<![\\w.])${field.map(escape).join('`?\\.`?')}(?![\\w.])`)
 

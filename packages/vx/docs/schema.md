@@ -1706,7 +1706,7 @@ export default defineWorkspace({
     inputStability: { strategy: 'immutable', severity: 'warn' },
     outputs: { clean: true },
     upload: { failures: 'ci' },
-    store: { embeddings: '32KiB', decompress: true, verify: 'stat' },
+    store: { embeddings: '32KiB', decompress: true },
     concurrency: { download: 64, upload: 64, restore: 16 },
   },
   lock: { reviewFiles: true },
@@ -1757,7 +1757,6 @@ default and where it came from.
 | `cache.outputs.clean`                          | —                                   | —                              | true or false                                                           | true                                                                          | Remove a task's declared outputs before it runs on a miss, for tasks without their own. A task's own `cache.outputs.clean` beats it.                                      |
 | `cache.store.embeddings`                       | `VX_CACHE_STORE_EMBEDDINGS`         | —                              | false, or a size like '32KiB'                                           | '32KiB'                                                                       | Keep an entry up to this size inside the cache index, one zstd tar, rather than as files; `false` keeps none.                                                             |
 | `cache.store.decompress`                       | `VX_CACHE_STORE_DECOMPRESS`         | —                              | true or false                                                           | true                                                                          | Keep a larger entry as its plain files, which a hit copies or clones out; off, as one `.tar.zst`.                                                                         |
-| `cache.store.verify`                           | `VX_CACHE_STORE_VERIFY`             | —                              | one of 'stat', 'hash', 'none'                                           | stat                                                                          | What a hit on plain files checks first: each file's size and mtime, every byte, or nothing.                                                                               |
 | `cache.upload.failures`                        | —                                   | —                              | one of 'ci', 'local', 'always'                                          | ci                                                                            | Where a failed task's log and outputs are kept in the remote: CI runs, local runs, or both.                                                                               |
 | `lock.reviewFiles`                             | `VX_LOCK_REVIEW_FILES`              | —                              | true or false                                                           | true                                                                          | `vx lock` writes each project's resolved config, pretty, to `vx.lock.json` beside its `vx.config`, for review; vx never reads it.                                         |
 | `watch.poll`                                   | `VX_WATCH_POLL`                     | `vx watch --poll`              | true or false                                                           | false                                                                         | Poll for changes from the start instead of the OS watcher.                                                                                                                |
@@ -1804,7 +1803,7 @@ interface CacheSettings {
   inputStability?: InputStability
   outputs?: { clean?: boolean }
   upload?: { failures?: 'ci' | 'local' | 'always' }
-  store?: { embeddings?: false | string; decompress?: boolean; verify?: 'stat' | 'hash' | 'none' }
+  store?: { embeddings?: false | string; decompress?: boolean }
   concurrency?: { download?: number; upload?: number; restore?: number }
 }
 ```
@@ -1891,10 +1890,6 @@ interface CacheSettings {
   plain files under `<hash>.tree/`, which a hit copies (or clones) out with
   no decode; off, it is one `<hash>.tar.zst`. A remote always gets the
   tar.zst.
-- **`cache.store.verify`** (default `'stat'`) — what a hit on plain files
-  checks before copying: each file's size and mtime (`'stat'`), every
-  byte against the entry's checksum (`'hash'`), or nothing (`'none'`). A
-  failed check drops the entry and runs the task.
 - **`cache.upload.failures`** — which runs keep a failed task's log and
   the files its outputs left in the remote: CI runs (`'ci'`, the
   default), runs off CI (`'local'`), or both (`'always'`). Only a run
