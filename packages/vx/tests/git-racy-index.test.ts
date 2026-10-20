@@ -15,6 +15,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -83,6 +84,21 @@ describe('a racily clean index', () => {
     expect(first.trusted.has('f3.txt')).toBe(false)
     const next = await startGitEnumeration(root, ['.'])
     expect(next.changed).toEqual(['f3.txt'])
+  })
+
+  // turborepo test_stale_index_package_hashes_match_fresh: `read-tree`
+  // leaves every entry without its stat, so nothing in it is trusted as is.
+  it('an index read-tree left without stats trusts what a fresh one does, and still sees an edit', async () => {
+    checkout(false)
+    const fresh = await startGitEnumeration(root, ['.'])
+    execFileSync('git', ['read-tree', 'HEAD'], { cwd: root })
+    const stale = await startGitEnumeration(root, ['.'])
+    expect(stale.trusted).toEqual(fresh.trusted)
+    writeFileSync(path.join(root, 'f3.txt'), 'x\n')
+    execFileSync('git', ['read-tree', 'HEAD'], { cwd: root })
+    const edited = await startGitEnumeration(root, ['.'])
+    expect(edited.changed).toEqual(['f3.txt'])
+    expect(edited.trusted.has('f3.txt')).toBe(false)
   })
 
   it('a clean index gets no copy', async () => {
