@@ -147,6 +147,48 @@ describe('stale cache hits', () => {
     },
     TIMEOUT,
   )
+  it(
+    'a project directory named with glob syntax still keys its files',
+    async () => {
+      // Port of Vite Task's input_glob_meta_in_path: joined unescaped, the
+      // project dir `packages/[lib]` reads as a class matching one of l, i,
+      // b, and the task's inputs match nothing.
+      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+      await writeLocalWorkspace(root)
+      const pkg = path.join(root, 'packages', '[lib]')
+      await write(path.join(pkg, 'src', 'main.ts'), 'initial')
+      await write(
+        path.join(pkg, 'vx.config.mjs'),
+        `export default { name: 'lib', tasks: { build: {
+           exec: { command: 'mkdir -p dist && cat src/* > dist/o' },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+         } } }\n`,
+      )
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'init')
+      const step = async (): Promise<[string, string]> => {
+        const said = vx(root, 'run', 'build', '--all')
+        const word = /1↑/.test(said) ? 'miss' : 'hit'
+        return [word, await readFile(path.join(pkg, 'dist', 'o'), 'utf8')]
+      }
+      const seen: Array<[string, string]> = [await step(), await step()]
+      await write(path.join(pkg, 'src', 'main.ts'), 'modified')
+      seen.push(await step())
+      git(root, 'commit', '-q', '-am', 'edit')
+      seen.push(await step())
+      await write(path.join(pkg, 'src', 'b.ts'), '+new')
+      seen.push(await step())
+      expect(seen).toEqual([
+        ['miss', 'initial'],
+        ['hit', 'initial'],
+        ['miss', 'modified'],
+        ['hit', 'modified'],
+        ['miss', '+newmodified'],
+      ])
+    },
+    TIMEOUT,
+  )
   // Every spelling git reads as false (A-33).
   for (const off of ['false', 'no', 'off', '0']) {
     it(
