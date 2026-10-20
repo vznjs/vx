@@ -274,6 +274,38 @@ describe('stale cache hits', () => {
     },
     TIMEOUT,
   )
+  it(
+    'an edit inside a git worktree checked out under the inputs re-keys the task',
+    async () => {
+      // Port of Nx's git-worktrees nestedWorktreeRoots: git lists a nested
+      // worktree as one untracked directory and never descends into it, so
+      // its files must still reach the key through vx's own walk.
+      await write(path.join(root, 'package.json'), JSON.stringify({ name: 'root', private: true }))
+      await writeLocalWorkspace(root)
+      const pkg = path.join(root, 'packages', 'lib')
+      await write(path.join(pkg, 'src', 'a'), '1')
+      await write(
+        path.join(pkg, 'vx.config.mjs'),
+        `export default { name: 'lib', tasks: { build: {
+           exec: { command: 'mkdir -p dist && cat src/a src/wt/packages/lib/src/a > dist/o' },
+           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+         } } }\n`,
+      )
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'init')
+      git(root, 'worktree', 'add', '-q', path.join(pkg, 'src', 'wt'))
+      const step = async (): Promise<string> => {
+        const word = /1↑/.test(vx(root, 'run', 'build', '--all')) ? 'miss' : 'hit'
+        return `${word} ${await readFile(path.join(pkg, 'dist', 'o'), 'utf8')}`
+      }
+      const seen = [await step(), await step()]
+      await write(path.join(pkg, 'src', 'wt', 'packages', 'lib', 'src', 'a'), '2')
+      seen.push(await step())
+      expect(seen).toEqual(['miss 11', 'hit 11', 'miss 12'])
+    },
+    TIMEOUT,
+  )
   // Every spelling git reads as false (A-33).
   for (const off of ['false', 'no', 'off', '0']) {
     it(
