@@ -386,7 +386,6 @@ describe('the landing page', () => {
       .split('\n')
       .map((l) => l.replace(/\s+#.*$/, '').trim())
     expect(lines).toEqual([
-      'npm install -D @vzn/vx',
       'npx @vzn/vx init',
       'npx @vzn/vx run build --all',
       'npx @vzn/vx run build --all',
