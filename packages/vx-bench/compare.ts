@@ -28,7 +28,7 @@
  * git what changed). vx runs as its compiled binary from a `vx lock`
  * snapshot, as every vx run does.
  */
-import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { summarize } from './ab.js'
@@ -488,11 +488,11 @@ async function measure(r: Runner, dir: string): Promise<Row> {
 
 // ---- baseline: the theoretical best case, so every row shows its overhead ----
 //
-// Cold: the tasks' own durations list-scheduled (critical path first) on
-// CONCURRENCY workers along the exact graph. Warm: ONE
-// `git status --porcelain -uall` walk, the floor of asking what changed.
-// Restore: that walk plus a raw copy of every output file. CPU: the
-// tasks' own commands with the sleeps taken out, under `xargs -P`.
+// Theoretical, never measured (owner, 2026-10-20): nothing changed and a
+// restore cost 0, so everything a runner spends there is overhead. Cold:
+// the tasks' own durations list-scheduled (critical path first) on
+// CONCURRENCY workers along the exact graph. CPU: the tasks' own commands
+// with the sleeps taken out, under `xargs -P`.
 type Baseline = {
   fresh: number
   warmNoRestore: number
@@ -505,25 +505,6 @@ type Baseline = {
 
 async function measureBaseline(dir: string): Promise<Baseline> {
   const all = listSchedule(idealOf(PROJECTS), CONCURRENCY)
-  const status = ['git', 'status', '--porcelain', '-z', '-uall']
-  const walks: Array<{ ms: number; cpuMs: number }> = []
-  for (let i = 0; i < 5; i++) walks.push(await sh(status, dir))
-  const walk = walks.sort((a, b) => a.ms - b.ms)[0]!
-  // Every output, copied back from a pristine snapshot, best of 3.
-  const snapshot = path.join(dir, '.baseline-outputs')
-  await rm(snapshot, { recursive: true, force: true })
-  for (const b of BUILT)
-    await cp(path.join(dir, b, 'dist'), path.join(snapshot, b), { recursive: true })
-  const copies: number[] = []
-  for (let i = 0; i < 3; i++) {
-    await deleteDist(dir)
-    const t0 = Bun.nanoseconds()
-    await Promise.all(
-      BUILT.map((b) => cp(path.join(snapshot, b), path.join(dir, b, 'dist'), { recursive: true })),
-    )
-    copies.push((Bun.nanoseconds() - t0) / 1e6)
-  }
-  await rm(snapshot, { recursive: true, force: true })
   const cmds: string[] = []
   for (const p of PROJECTS)
     for (const t of RUN_TASKS) {
@@ -542,10 +523,10 @@ async function measureBaseline(dir: string): Promise<Baseline> {
   await rm(list, { force: true })
   return {
     fresh: all.makespan,
-    warmNoRestore: walk.ms,
-    warmRestore: walk.ms + Math.min(...copies),
-    freshCpu: Math.min(...xargsCpu) + walk.cpuMs,
-    warmNoRestoreCpu: walk.cpuMs,
+    warmNoRestore: 0,
+    warmRestore: 0,
+    freshCpu: Math.min(...xargsCpu),
+    warmNoRestoreCpu: 0,
     criticalPathMs: all.critical,
     workBoundMs: all.work / CONCURRENCY,
   }
@@ -608,9 +589,8 @@ ${totals.join('\n')}
 
 **Ideal** is the theoretical best case: cold is the tasks' own durations
 list-scheduled critical-path first on ${CONCURRENCY} workers (critical path
-${fmt(b.criticalPathMs)}, work ÷ workers ${fmt(b.workBoundMs)}); warm is one
-\`git status -uall\` walk, the floor of asking what changed; restore adds a raw
-copy of every output.
+${fmt(b.criticalPathMs)}, work ÷ workers ${fmt(b.workBoundMs)}); warm and
+restore are 0, so all a runner spends there is overhead.
 CPU is user + system of the invocation and the children it waited for; a
 daemon that outlives the invocation (Turbo's, Nx's) is not counted.
 
@@ -672,7 +652,7 @@ for (const r of runners) {
 
 const ORDER = ['vx', 'turbo', 'nx', 'vite-task']
 rows.sort((a, b) => ORDER.indexOf(a.runner) - ORDER.indexOf(b.runner))
-console.error('measuring the baseline (ideal schedule, one git walk, a raw copy) …')
+console.error('measuring the baseline (ideal schedule, task CPU) …')
 const baseline = await measureBaseline(ws)
 const md = markdown(rows, baseline)
 await writeFile(path.join(OUT, 'RESULTS.md'), md)

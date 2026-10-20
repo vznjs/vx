@@ -55,10 +55,10 @@
   ],
   "baseline": {
     "fresh": 112830,
-    "warmNoRestore": 56.340377,
-    "warmRestore": 598.089863,
-    "freshCpu": 25729.710000000003,
-    "warmNoRestoreCpu": 89.952,
+    "warmNoRestore": 0,
+    "warmRestore": 0,
+    "freshCpu": 25639.758,
+    "warmNoRestoreCpu": 0,
     "criticalPathMs": 9150,
     "workBoundMs": 112822.5
   }
