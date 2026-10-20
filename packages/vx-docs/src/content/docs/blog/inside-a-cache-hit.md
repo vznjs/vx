@@ -6,7 +6,7 @@ authors:
 tags:
   - caching
   - correctness
-excerpt: 'Files, env vars, tool versions and upstream tasks go into the key. Outputs and both output streams come back. A warm hit restores nothing at all, and a damaged artifact is a miss, never a wrong build.'
+excerpt: 'Files, env vars, tool versions and upstream tasks go into the key. Outputs and both output streams come back. A warm hit restores nothing at all, and a damaged download is a miss, never a wrong build.'
 ---
 
 A cache is only as good as two lists: what it hashes, and what it hands
@@ -20,7 +20,7 @@ flowchart LR
   T[upstream tasks] --> K
   K --> H{hit?}
   H -->|outputs already on disk| N[restore nothing]
-  H -->|outputs missing| X[check the sum, then restore]
+  H -->|outputs missing| X[copy from the store]
   style N stroke:#c6f84e,stroke-width:2px
 ```
 
@@ -104,14 +104,16 @@ $ rm -rf packages/web/dist && vx run build --all
 Restores run on their own lane, so a warm run is never queued behind
 compilers.
 
-## A damaged artifact is a miss
+## A damaged download is a miss
 
-Every artifact ends with a CRC-32 over everything before it, and its own
-key. Tar checks only its headers, and a zstd block of incompressible
-bytes, like an image or a wasm file, decodes clean even with a byte
-flipped. So vx checks the sum before anything lands. A wrong sum, a
-wrong key, or an entry outside the declared outputs makes the hit a miss,
-and the task runs again. The check costs about 3 ms on a 32 MB restore.
+Every archive vx sends to a remote ends with a CRC-32 over everything
+before it, and its own key. Tar checks only its headers, and a zstd
+block of incompressible bytes, like an image or a wasm file, decodes
+clean even with a byte flipped. So vx checks the sum before the entry is
+used. A wrong sum, a wrong key, or an entry outside the declared outputs
+makes the hit a miss, and the task runs again. The local store is vx's
+own, so a local hit copies its files out unchecked
+([A cache hit is a file copy](../a-hit-is-a-file-copy/)).
 
 ## Uploads never hold the run
 
