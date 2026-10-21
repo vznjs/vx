@@ -483,13 +483,9 @@ export function formatStatusRegion(
       )
       continue
     }
-    // Handed to an executor that has no machine on it yet: no clock.
-    if (slot.waiting === true) {
-      lines.push(
-        formatTaskRow(' ', null, 'waiting', IDLE, '', '', paintPinnedId(slot.id, colors), colors),
-      )
-      continue
-    }
+    // Handed to an executor that has no machine on it yet: no row, only
+    // the tasks line's `scheduled` (M, 2026-10-21).
+    if (slot.waiting === true) continue
     const waiting = s.blocks?.get(slot.id) ?? 0
     const notes: string[] = []
     const at = s.where?.(slot.id)

@@ -443,9 +443,9 @@ describe('defaultLogger status line integration', () => {
     expect(s.text().endsWith('└─ one#test ── (100ms) success\n\n')).toBe(true)
   })
 
-  // M, 2026-10-21: a task an executor holds for a machine read `running`
-  // with a clock; it waits, and its clock starts when a machine begins it.
-  it('a task its executor holds says waiting, its clock starting when a machine begins it', async () => {
+  // M, 2026-10-21: a task an executor holds for a machine has no row, only
+  // a count (`scheduled`); its row and clock start when a machine begins it.
+  it('a task its executor holds is counted scheduled, its row starting when a machine begins it', async () => {
     const s = tty()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
     let at: string | null = null
@@ -465,12 +465,19 @@ describe('defaultLogger status line integration', () => {
         .text()
         .split(/[\n\r]/)
         .findLast((l) => l.includes('a#x')) ?? ''
+    const tasks = () =>
+      s
+        .text()
+        .split(/[\n\r]/)
+        .findLast((l) => l.includes(' total')) ?? ''
     log.taskStart?.(a)
-    expect(row()).toMatch(/^ +waiting +a#x$/)
+    expect(row()).toBe('')
+    expect(tasks()).toMatch(/^ +1 scheduled · 2 total$/)
     await Bun.sleep(1100)
     at = 'small#1'
     log.taskStart?.(mkNode('b#x'))
     expect(row()).toMatch(/ \d+ms running +a#x {2}on small#1$/)
+    expect(tasks()).toMatch(/^ +2 running · 2 total$/)
     log.runEnd?.()
   })
 

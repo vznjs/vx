@@ -299,8 +299,9 @@ with why, such as `exited 1: Cannot find package '@vzn/vx-dte'`), the tasks it
 has done and the ones it runs now. This machine is `local`. An agent the
 run started is named by its size and the order it was started in; one
 that joined on its own is `agent#N`. A task sent to an agent but not yet
-begun there reads `waiting` in the running list, with no clock; its
-clock starts when the agent begins it. Once the run is over, each agent
+begun there has no row; the tasks line counts it `scheduled`
+(`30 success · 4 running · 12 scheduled · 62 total`). Its row and clock
+start when the agent begins it. Once the run is over, each agent
 adds its warm-up (from asking the adapter to its join) and the cores and
 memory its machine reports, green when they are what its size declares
 and red when not, and a size whose agents reported other cores or memory

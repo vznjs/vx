@@ -3155,6 +3155,8 @@ run`). Neither reached the cache:
 
 The tasks legend counts them in the total as they land, each state its
 own segment of the bar: `2 success · 1 aborted · 2 not run · 5 total`.
+While the run goes it also counts the tasks running now and those an
+executor holds for a machine: `30 success · 4 running · 12 scheduled · 62 total`.
 The summary then replaces the live view. The total is
 always last on its line. A framed task (focused or `full`) that
 printed while it stopped shows its frame instead of a row.
