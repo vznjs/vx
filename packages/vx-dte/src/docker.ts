@@ -3,6 +3,7 @@
 // is the run's own on loopback; a container reaches it through the host's
 // network on Linux and through `host.docker.internal` elsewhere.
 
+import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
 import { loopbackRelay } from './local.js'
@@ -40,7 +41,8 @@ export function docker(options: DockerOptions): DteAdapter {
       }
       const top = git('rev-parse', '--show-toplevel')
       const sha = git('rev-parse', 'HEAD')
-      const rel = path.relative(top, a.workspaceRoot) || '.'
+      // git names the real path: through a link (macOS's /tmp) the relative one climbed out.
+      const rel = path.relative(top, realpathSync(a.workspaceRoot)) || '.'
       const script = [
         'set -e',
         'git clone -q /src /work',

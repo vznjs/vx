@@ -130,6 +130,9 @@
               "vfs.disk-space",
               "net.link.addr"
             ],
+            "machLookup": [
+              "com.apple.sysmond"
+            ],
             "localBinding": true
           }
         }

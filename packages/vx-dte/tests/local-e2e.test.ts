@@ -205,16 +205,19 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, local: 0 })] }
   }
 }, 60_000)
 
-/** The pids under `pid`, by `ps`. */
+/**
+ * The pids under `pid`, by `pgrep -P`: macOS's `ps` is setuid, which the
+ * sandbox will not spawn (EPERM on M's Mac, 2026-10-21).
+ */
 function descendants(pid: number): number[] {
-  const rows = Bun.spawnSync(['ps', '-axo', 'pid=,ppid=']).stdout.toString().trim().split('\n')
-  const kids = new Map<number, number[]>()
-  for (const r of rows) {
-    const [c, p] = r.trim().split(/\s+/).map(Number)
-    kids.set(p!, [...(kids.get(p!) ?? []), c!])
-  }
+  const kids = (p: number): number[] =>
+    Bun.spawnSync(['pgrep', '-P', String(p)])
+      .stdout.toString()
+      .split('\n')
+      .filter(Boolean)
+      .map(Number)
   const out: number[] = []
-  for (let i = -1; i < out.length; i++) out.push(...(kids.get(i < 0 ? pid : out[i]!) ?? []))
+  for (let i = -1; i < out.length; i++) out.push(...kids(i < 0 ? pid : out[i]!))
   return out
 }
 
