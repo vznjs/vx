@@ -17,6 +17,7 @@ const ctx = {
     hasMany: async () => null,
     getRun: async () => null,
   },
+  artifacts: { save: async () => {}, restore: async () => null },
 }
 
 it('prints the cache directory; an argument is exit 2', async () => {

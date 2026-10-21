@@ -2,7 +2,7 @@
 // through here (enforced by tests/module-boundaries.test.ts).
 
 export { run, planRun, nxProjectTarget, projectNamed } from './run.js'
-export { prepareRun, type PreparedRun } from './prepare.js'
+export { namesRemote, prepareRun, workspaceCachePolicy, type PreparedRun } from './prepare.js'
 export { affectedTaskProjects } from './affected-tasks.js'
 export { applyGraphStage } from './graph-stage.js'
 export type { AffectedReason } from './affected-tasks.js'
@@ -37,6 +37,12 @@ export { forwardedSignal } from './signals.js'
 // `vx cache clean` waits for a run on the workspace before it evicts.
 export { acquireRunLock } from './run-lock.js'
 export type { RunPlan, PlannedTask, PlanPrediction, CacheStatus } from './plan.js'
+export {
+  taskArtifacts,
+  type ArtifactRun,
+  type ArtifactTask,
+  type TaskArtifacts,
+} from './task-artifacts.js'
 export {
   installPlugins,
   type CacheContext,

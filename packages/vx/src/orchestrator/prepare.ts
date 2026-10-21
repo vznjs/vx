@@ -915,7 +915,7 @@ function pruneToClosure(nodes: Map<string, TaskNode>, roots: ReadonlySet<string>
   }
 }
 
-const namesRemote = (spec: string | undefined): boolean =>
+export const namesRemote = (spec: string | undefined): boolean =>
   spec !== undefined && /remote:[rw]/.test(spec)
 
 /**
@@ -923,7 +923,9 @@ const namesRemote = (spec: string | undefined): boolean =>
  * since the grammar lives in the cache module the workspace module may not
  * import. Undefined when it names none.
  */
-function workspaceCachePolicy(config: WorkspaceConfig | null | undefined): CachePolicy | undefined {
+export function workspaceCachePolicy(
+  config: WorkspaceConfig | null | undefined,
+): CachePolicy | undefined {
   const spec = config?.cache?.policy
   if (spec === undefined) return undefined
   try {

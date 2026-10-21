@@ -18,6 +18,7 @@ const baseCtx = {
   warn: () => undefined,
   scope: undefined,
   refs: [],
+  artifacts: { save: async () => {}, restore: async () => null },
 }
 const policy = { localRead: true, localWrite: true, remoteRead: false, remoteWrite: false }
 

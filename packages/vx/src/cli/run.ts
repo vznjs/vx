@@ -663,6 +663,6 @@ export async function runCmd(args: readonly string[]): Promise<number> {
 }
 
 /** CI=0 and CI=false are "not CI": several vendors set CI=true. */
-function onCI(v: string | undefined): boolean {
+export function onCI(v: string | undefined): boolean {
   return v !== undefined && v !== '' && v !== '0' && v !== 'false'
 }

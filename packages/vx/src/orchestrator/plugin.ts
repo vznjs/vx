@@ -24,6 +24,7 @@ import { maskedLine, nearest, type PluginSecrets, SecretBroker, UserError } from
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, Logger, RunStartInfo } from '../report/index.js'
 import type { CiContext } from './run-context.js'
+import type { TaskArtifacts } from './task-artifacts.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
 
 /**
@@ -334,6 +335,13 @@ export interface CommandContext extends BaseContext {
    * workspace's cache plugins supply, under the run's scope. Opened on first use.
    */
   readonly cache: PluginCache
+  /**
+   * Task entries by key in the workspace's cache, under a run's policy and
+   * scope (a laptop writes no remote unless the workspace's policy names
+   * it): what a verb that runs a run's tasks on this machine saves and
+   * restores through (`TaskArtifacts`). Opened on first use.
+   */
+  readonly artifacts: TaskArtifacts
 }
 
 /** `config` runs before the cache dir is known — it may be what the hook changes. */
@@ -527,6 +535,8 @@ export interface OutputContext extends BaseContext {
 export interface ExecutorContext extends BaseContext {
   /** The run's worker count — an executor that paces itself reads it here. */
   readonly concurrency: number
+  /** Task entries by key in the run's cache, for a task another machine ran (`TaskArtifacts`). */
+  readonly artifacts: TaskArtifacts
 }
 
 export interface PluginContext extends PluginSetupContext {
