@@ -6,7 +6,14 @@
 // then redraws, so the display can never interleave with task output.
 
 import { dumbTerminal, paint, ui, type ColorSupport } from '../util/index.js'
-import { formatTaskRow, paintIdParts, placeNote, TIME_COL } from './framed-output.js'
+import {
+  formatListHeader,
+  formatTaskRow,
+  paintIdParts,
+  pathNote,
+  placeNote,
+  TIME_COL,
+} from './framed-output.js'
 import type { BlockedTask } from './forecast.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
@@ -318,8 +325,6 @@ export interface WorkerSlot {
 export interface StatusRegionState {
   /** The terminal's height: a region taller folds its rows, never its summary. */
   rows?: number
-  /** A running task's unfinished dependents (`blocks 14` on its row); 0 says nothing. */
-  blocks?: ReadonlyMap<string, number>
   /** The running task at the head of the longest unfinished chain. */
   critical?: string
   /** Where a running task runs, when not here (`TaskExecutor.running`); its row shows it. */
@@ -455,9 +460,11 @@ export function formatStatusRegion(
   // place, dim, aligned under the status column: the blocked task the row
   // holds and what holds it back, else `idle`.
   // One task running has no path to compare against.
-  const busy = s.slots.filter((x) => x !== null).length
+  const busy = s.slots.filter((x) => x !== null && x.waiting !== true).length
   for (const [row, slot] of s.slots.entries()) {
-    if (slot === null && s.stopping === true) continue
+    // Placed by an executor (DTE), the list is what runs: blocked tasks are
+    // the tasks line's count alone (M, 2026-10-21).
+    if (slot === null && (s.stopping === true || s.where !== undefined)) continue
     if (slot === null) {
       const w = s.blocked?.[row]
       lines.push(
@@ -468,8 +475,6 @@ export function formatStatusRegion(
       )
       continue
     }
-    // What waits on it, after the id: the row to watch is the one the
-    // longest chain waits on, and the one the most tasks wait on.
     if (s.stopping === true) {
       lines.push(
         formatTaskRow(
@@ -488,11 +493,8 @@ export function formatStatusRegion(
     // Handed to an executor that has no machine on it yet: no row, only
     // the tasks line's `scheduled` (M, 2026-10-21).
     if (slot.waiting === true) continue
-    const waiting = s.blocks?.get(slot.id) ?? 0
-    const notes: string[] = []
     const at = s.where?.(slot.id)
-    if (s.critical === slot.id && busy > 1) notes.push(paint(WARN, 'critical path', colors))
-    if (waiting > 0) notes.push(dim(`blocks ${waiting}`))
+    const critical = s.critical === slot.id && busy > 1
     const usual = s.expected?.get(slot.id)
     lines.push(
       formatTaskRow(
@@ -505,8 +507,8 @@ export function formatStatusRegion(
         paintPinnedId(slot.id, colors),
         colors,
       ) +
-        (at != null ? placeNote(at, colors) : '') +
-        (notes.length > 0 ? `  ${notes.join(dim(' \u00b7 '))}` : ''),
+        (critical ? pathNote(colors) : '') +
+        (at != null ? placeNote(at, colors) : ''),
     )
   }
   for (const step of s.steps ?? []) {
@@ -523,6 +525,7 @@ export function formatStatusRegion(
       ),
     )
   }
+  if (lines.length > 1) lines.splice(1, 0, formatListHeader(s.where !== undefined, colors))
   // A region taller than the terminal (a row spared) folds the rows past
   // what fits into one line: the writer would cut the summary at its
   // foot, and lines never printed cannot be scrolled to (M, 2026-10-21).

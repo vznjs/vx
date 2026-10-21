@@ -10,8 +10,8 @@ export interface LiveForecast {
   etaMs?: number
   /** The running task at the head of the longest unfinished chain. */
   critical?: string
-  /** Each running task's unfinished dependents, direct and transitive. */
-  blocks: ReadonlyMap<string, number>
+  /** Tasks not started because a dependency has not finished: the tasks line's `blocked`. */
+  waiting: number
   /** Each running task's p50, where history knows it: the row's expected duration. */
   expected?: ReadonlyMap<string, number>
   /**
@@ -89,32 +89,10 @@ export function createForecast(
     return d !== 0 ? d > 0 : position.get(a)! < position.get(b)!
   }
 
-  const dependents = new Map<string, string[]>()
-  for (const n of order)
-    for (const d of n.deps) {
-      const list = dependents.get(d)
-      if (list === undefined) dependents.set(d, [n.id])
-      else list.push(n.id)
-    }
-
-  const blocked = (id: string, finished: ReadonlySet<string>): number => {
-    const seen = new Set<string>()
-    const stack = [id]
-    while (stack.length > 0) {
-      for (const next of dependents.get(stack.pop()!) ?? []) {
-        if (seen.has(next) || finished.has(next)) continue
-        seen.add(next)
-        stack.push(next)
-      }
-    }
-    return seen.size
-  }
-
   return (finished, running, nowMs) => {
-    const blocks = new Map<string, number>()
     const expected = new Map<string, number>()
+    let waiting = 0
     for (const id of running.keys()) {
-      blocks.set(id, blocked(id, finished))
       const p = cost.get(id)
       if (p !== undefined) expected.set(id, p)
     }
@@ -145,6 +123,7 @@ export function createForecast(
       const by =
         since === undefined ? (head.get(n.id) ?? n.deps.find((d) => end.has(d))) : undefined
       if (by !== undefined && !isGroupTask(n)) {
+        waiting++
         let at = held.length
         while (at > 0 && before(n.id, held[at - 1]!.id)) at--
         if (at < workers) {
@@ -167,12 +146,12 @@ export function createForecast(
       }
       work += own
     }
-    if (!known || overrun) return { blocks, expected, blocked: held }
+    if (!known || overrun) return { waiting, expected, blocked: held }
     const critical = chainEnd === undefined ? undefined : head.get(chainEnd)
     return {
       etaMs: Math.max(chain, work / workers),
       ...(critical !== undefined ? { critical } : {}),
-      blocks,
+      waiting,
       expected,
       blocked: held,
     }

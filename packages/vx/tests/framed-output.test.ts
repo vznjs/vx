@@ -173,9 +173,9 @@ describe('the compact one-liners', () => {
       ...outcome('@vzn/vx#lint', 'success', { durationMs: 327, where: 'small#2' }),
       node: cached,
     }
-    expect(formatTaskExecutedLine(cached, o)).toMatch(/@vzn\/vx#lint@small#2$/)
+    expect(formatTaskExecutedLine(cached, o)).toMatch(/ @vzn\/vx#lint · small#2$/)
     expect(formatTaskBlock(cached, o, {}).trimEnd().split('\n').at(-1)).toMatch(
-      /@vzn\/vx#lint@small#2 ── \(327ms\) success$/,
+      /@vzn\/vx#lint · small#2 ── \(327ms\) success$/,
     )
   })
 

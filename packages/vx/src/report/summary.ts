@@ -90,6 +90,8 @@ export interface SummaryStats {
   /** Live: running now, and handed to an executor whose machine has not begun them. */
   running?: number
   scheduled?: number
+  /** Live: not started because a dependency has not finished. */
+  blocked?: number
   total: number
   upToDate: number
   restoredLocal: number
@@ -248,8 +250,9 @@ export function formatSummarySection(
   const notRun = stats.notRun ?? 0
   const running = stats.running ?? 0
   const scheduled = stats.scheduled ?? 0
+  const blocked = stats.blocked ?? 0
   const remainder = {
-    n: Math.max(0, left - running - scheduled),
+    n: Math.max(0, left - running - scheduled - blocked),
     color: '',
     glyph: '\u25b1',
     dim: true,
@@ -272,6 +275,7 @@ export function formatSummarySection(
   if (notRun > 0) taskParts.push(paint(NOT_RUN, `${notRun} not run`, colors))
   if (running > 0) taskParts.push(paint(RUNNING, `${running} running`, colors))
   if (scheduled > 0) taskParts.push(dim(`${scheduled} scheduled`))
+  if (blocked > 0) taskParts.push(dim(`${blocked} blocked`))
   if (runTotal > 0) taskParts.push(dim(`${runTotal} total`))
   const taskBar = segmentBar(
     [
@@ -282,6 +286,7 @@ export function formatSummarySection(
       { n: notRun, color: NOT_RUN },
       { n: running, color: RUNNING },
       { n: scheduled, color: '', dim: true },
+      { n: blocked, color: '', dim: true },
       remainder,
     ],
     colors,
