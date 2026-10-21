@@ -253,20 +253,38 @@ export class LocalHistoryProvider implements HistoryProvider {
 
   /**
    * Keep default-branch commit `sha`'s timings (task id → ms) as forecast
-   * rows: one per task, so a repeat import, by this worktree or another
-   * at once, adds nothing.
+   * rows, each with the task's measured need from `needs` when it has one
+   * (what `resourcesFor` answers for a task with no run here): one row per
+   * task, so a repeat import, by this worktree or another at once, adds
+   * nothing.
    */
-  importTimings(sha: string, timings: ReadonlyMap<string, number>): void {
+  importTimings(
+    sha: string,
+    timings: ReadonlyMap<string, number>,
+    needs: ReadonlyMap<string, TaskResources> = new Map(),
+  ): void {
     const insert = this.db.query(
-      `INSERT OR IGNORE INTO task_durations(project, task, source, sha, duration_ms, recorded_at)
-       VALUES (?, ?, 'remote', ?, ?, ?)`,
+      `INSERT OR IGNORE INTO task_durations(project, task, source, sha, duration_ms, recorded_at,
+         cpu_parallelism, peak_rss_bytes, saturated_cores, saturated_memory_bytes)
+       VALUES (?, ?, 'remote', ?, ?, ?, ?, ?, ?, ?)`,
     )
     const now = Date.now()
     this.db
       .transaction(() => {
         for (const [id, ms] of timings) {
           const [project, task] = splitTaskId(id)
-          insert.run(project, task, sha, Math.round(ms), now)
+          const n = needs.get(id)
+          insert.run(
+            project,
+            task,
+            sha,
+            Math.round(ms),
+            now,
+            n?.maxCpuParallelism ?? null,
+            n?.maxPeakRssBytes ?? null,
+            n?.saturatedCores ?? null,
+            n?.saturatedMemoryBytes ?? null,
+          )
         }
       })
       .immediate()
@@ -430,7 +448,60 @@ export class LocalHistoryProvider implements HistoryProvider {
     }
     // A forecast reads past the window: a task with none in it still has one.
     for (const [key, p50] of p50s) if (!out.has(key)) out.set(key, { p50DurationMs: p50 })
+    this.remoteNeeds(wanted, out)
     return out
+  }
+
+  /**
+   * A task never measured here takes its need from the newest imported
+   * row that has one (`importTimings`): a fresh CI machine packs by what
+   * the default branch measured. One probe skips a store with none.
+   */
+  private remoteNeeds(wanted: ReadonlySet<string>, out: Map<string, TaskResources>): void {
+    const pending = [...wanted].filter((id) => out.get(id)?.maxCpuParallelism === undefined)
+    if (pending.length === 0) return
+    if (
+      this.db
+        .query(
+          `SELECT 1 FROM task_durations WHERE source = 'remote' AND cpu_parallelism IS NOT NULL LIMIT 1`,
+        )
+        .get() === null
+    )
+      return
+    const rows = this.db
+      .query(
+        `SELECT j.key AS i, d.cpu_parallelism AS cpu, d.peak_rss_bytes AS rss,
+           d.saturated_cores AS sc, d.saturated_memory_bytes AS sm
+         FROM json_each(?) AS j
+         JOIN task_durations d ON d.id = (
+           SELECT id FROM task_durations
+           WHERE project = j.value ->> 0 AND task = j.value ->> 1 AND source = 'remote'
+             AND cpu_parallelism IS NOT NULL
+           ORDER BY id DESC LIMIT 1)`,
+      )
+      .all(JSON.stringify(pending.map(splitTaskId))) as {
+      i: number
+      cpu: number
+      rss: number | null
+      sc: number | null
+      sm: number | null
+    }[]
+    for (const r of rows) {
+      const id = pending[r.i]!
+      const had = out.get(id)
+      out.set(id, {
+        p50DurationMs: had?.p50DurationMs,
+        maxCpuParallelism: r.cpu,
+        ...(r.rss !== null ? { maxPeakRssBytes: r.rss } : {}),
+        // A saturation measured here wins.
+        ...(r.sc !== null ? { saturatedCores: r.sc } : {}),
+        ...(r.sm !== null ? { saturatedMemoryBytes: r.sm } : {}),
+        ...(had?.saturatedCores !== undefined ? { saturatedCores: had.saturatedCores } : {}),
+        ...(had?.saturatedMemoryBytes !== undefined
+          ? { saturatedMemoryBytes: had.saturatedMemoryBytes }
+          : {}),
+      })
+    }
   }
 
   /** The first `runs` id of the newest `recent` invocations (see `loadFor`). */

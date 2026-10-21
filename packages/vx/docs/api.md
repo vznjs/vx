@@ -1063,7 +1063,11 @@ export class LocalHistoryProvider implements HistoryProvider {
   async p50sFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, number>>
   lackedBranchHistory
   hasImported(sha: string): boolean
-  importTimings(sha: string, timings: ReadonlyMap<string, number>): void
+  importTimings(
+    sha: string,
+    timings: ReadonlyMap<string, number>,
+    needs: ReadonlyMap<string, TaskResources> = new Map(),
+  ): void
   async resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
 }
 ```

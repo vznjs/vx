@@ -289,7 +289,13 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       source      TEXT NOT NULL,
       sha         TEXT,
       duration_ms INTEGER NOT NULL,
-      recorded_at INTEGER NOT NULL
+      recorded_at INTEGER NOT NULL,
+      -- v45: a 'remote' row's measured need (TaskResources); NULL on the
+      -- rest, whose need the run history holds.
+      cpu_parallelism        REAL,
+      peak_rss_bytes         INTEGER,
+      saturated_cores        INTEGER,
+      saturated_memory_bytes INTEGER
     );
     CREATE INDEX IF NOT EXISTS ${store}.task_durations_task
       ON task_durations(project, task, source, id);

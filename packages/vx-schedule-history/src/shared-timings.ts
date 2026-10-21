@@ -7,7 +7,7 @@
 // can only order a run, never change what runs, and every refusal is
 // silent (M: no extra runtime warnings).
 
-import type { LocalHistoryProvider, PluginCache } from '@vzn/vx'
+import type { LocalHistoryProvider, PluginCache, TaskResources } from '@vzn/vx'
 
 /**
  * How long an import may take. The run never waits on it (M, 2026-10-16:
@@ -20,6 +20,8 @@ const WALK = 5
 const MAX_BLOB_BYTES = 1024 * 1024
 const MAX_TASKS = 50_000
 const MAX_MS = 86_400_000
+const MAX_CORES = 65_536
+const MAX_BYTES = 2 ** 50
 
 const keyOf = (sha: string): string => `timings\0${sha}`
 
@@ -32,6 +34,19 @@ export function parseTimings(
   bytes: Uint8Array,
   graph: ReadonlySet<string>,
 ): Map<string, number> | null {
+  return parseBlob(bytes, graph)?.timings ?? null
+}
+
+/**
+ * `parseTimings`, and each timed task's measured need from the blob's
+ * optional `needs: { id: { cpu, rss?, cores?, memory? } }` (`cpu` its most
+ * cores busy, `rss` its peak memory, `cores` / `memory` the machine it
+ * filled): what a fresh machine packs by. A need out of range is dropped.
+ */
+function parseBlob(
+  bytes: Uint8Array,
+  graph: ReadonlySet<string>,
+): { timings: Map<string, number>; needs: Map<string, TaskResources> } | null {
   if (bytes.byteLength > MAX_BLOB_BYTES) return null
   let parsed: unknown
   try {
@@ -54,8 +69,26 @@ export function parseTimings(
     if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 && ms <= MAX_MS && graph.has(id))
       out.set(id, ms)
   }
-  return out
+  const needs = new Map<string, TaskResources>()
+  const raw = (parsed as { needs?: unknown }).needs
+  if (typeof raw === 'object' && raw !== null && !Array.isArray(raw))
+    for (const [id, n] of Object.entries(raw)) {
+      if (!out.has(id) || typeof n !== 'object' || n === null) continue
+      const { cpu, rss, cores, memory } = n as Record<string, unknown>
+      if (!within(cpu, MAX_CORES) || cpu === 0) continue
+      needs.set(id, {
+        p50DurationMs: out.get(id),
+        maxCpuParallelism: cpu,
+        ...(within(rss, MAX_BYTES) ? { maxPeakRssBytes: rss } : {}),
+        ...(within(cores, MAX_CORES) ? { saturatedCores: cores } : {}),
+        ...(within(memory, MAX_BYTES) ? { saturatedMemoryBytes: memory } : {}),
+      })
+    }
+  return { timings: out, needs }
 }
+
+const within = (v: unknown, max: number): v is number =>
+  typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max
 
 /** `git <args>`'s first lines in `root`, or null when it fails. */
 async function git(root: string, args: readonly string[]): Promise<string[] | null> {
@@ -172,10 +205,10 @@ const readTried = (file: string): Promise<string> =>
 
 /** Keep `blob`'s timings as `sha`'s rows; true when any were added. */
 function keep(args: ImportArgs, sha: string, blob: Uint8Array | null): boolean {
-  const timings = blob === null ? null : parseTimings(blob, new Set(args.ids))
-  if (timings === null) return false
-  args.provider.importTimings(sha, timings)
-  return timings.size > 0
+  const parsed = blob === null ? null : parseBlob(blob, new Set(args.ids))
+  if (parsed === null) return false
+  args.provider.importTimings(sha, parsed.timings, parsed.needs)
+  return parsed.timings.size > 0
 }
 
 export interface ExportArgs {
@@ -194,11 +227,21 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
   if (head?.[0] === undefined) return
   const p50s = await args.provider.p50sFor(args.ids)
   if (p50s.size === 0) return
+  const measured = await args.provider.resourcesFor(args.ids)
   const tasks: Record<string, number> = {}
-  for (const [id, ms] of [...p50s].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+  const needs: Record<string, Record<string, number>> = {}
+  for (const [id, ms] of [...p50s].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     tasks[id] = Math.round(ms)
-  await args.cache.put(
-    keyOf(head[0]),
-    new TextEncoder().encode(JSON.stringify({ version: 1, tasks })),
-  )
+    const r = measured.get(id)
+    if (r?.maxCpuParallelism === undefined) continue
+    needs[id] = {
+      cpu: Math.round(r.maxCpuParallelism * 100) / 100,
+      ...(r.maxPeakRssBytes === undefined ? {} : { rss: r.maxPeakRssBytes }),
+      ...(r.saturatedCores === undefined ? {} : { cores: r.saturatedCores }),
+      ...(r.saturatedMemoryBytes === undefined ? {} : { memory: r.saturatedMemoryBytes }),
+    }
+  }
+  const blob =
+    Object.keys(needs).length === 0 ? { version: 1, tasks } : { version: 1, tasks, needs }
+  await args.cache.put(keyOf(head[0]), new TextEncoder().encode(JSON.stringify(blob)))
 }

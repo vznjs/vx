@@ -80,11 +80,19 @@ The blob is untrusted input from a shared store:
 - Size cap 1 MiB before parsing; above it, ignored.
 - A missing or refused forecast is not the user's problem: no warning
   ever, only `VX_DEBUG` output (M: no extra runtime warnings).
-- Shape `{ version: 1, tasks: { id: ms } }`; `ms` a finite number in
-  `[0, 86_400_000]`; at most 50 000 ids; ids not in this run's graph are
-  dropped; nothing from it is ever evaluated, spawned or used as a path.
-- It changes only order and ETA. A poisoned file can at worst order a run
-  badly; it cannot change a key, an output or what runs.
+- Shape `{ version: 1, tasks: { id: ms }, needs?: { id: { cpu, rss?,
+cores?, memory? } } }`; `ms` a finite number in `[0, 86_400_000]`; at
+  most 50 000 ids; ids not in this run's graph are dropped; nothing from
+  it is ever evaluated, spawned or used as a path.
+- `needs` (2026-10-21) is each task's measured need: `cpu` its most cores
+  busy, `rss` its peak memory in bytes, `cores` / `memory` the machine it
+  filled. Core keeps it on the imported row (schema v45), and a task
+  never run on this machine takes it (`resourcesFor`), so `@vzn/vx-dte`
+  packs a fresh CI machine's agents by what the default branch measured.
+  A value out of range is dropped.
+- It changes only order, ETA and packing. A poisoned file can at worst
+  order or pack a run badly; it cannot change a key, an output or what
+  runs.
 
 ## Tests (each red first)
 
