@@ -3,7 +3,7 @@
 // loopback. For tests, demos
 // and trying a distributed run before a CI starts the agents.
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
@@ -136,11 +136,25 @@ export function local(options: LocalOptions = {}): DteAdapter {
       await Promise.allSettled([...pending])
       await Promise.all([...procs].map((p) => p.exited))
       clearTimeout(grace)
-      for (const t of trees.splice(0)) {
-        Bun.spawnSync(['git', 'worktree', 'remove', '--force', t.dir], { cwd: t.root })
+      // A detached shell removes the worktrees after vx exits: removing ones
+      // an install filled took seconds after a Ctrl-C (M, 2026-10-21), and a
+      // 300k-file tree 2.7 s. `prune` then drops git's record of each.
+      const roots = [...new Set(trees.splice(0).map((t) => t.root))]
+      if (base !== undefined) {
+        const dir = await base
+        base = undefined
+        Bun.spawn(
+          [
+            'sh',
+            '-c',
+            'rm -rf "$1"; shift; for r; do git -C "$r" worktree prune; done',
+            'sh',
+            dir,
+            ...roots,
+          ],
+          { stdio: ['ignore', 'ignore', 'ignore'], detached: true },
+        ).unref()
       }
-      if (base !== undefined) await rm(await base, { recursive: true, force: true })
-      base = undefined
     },
   }
 }

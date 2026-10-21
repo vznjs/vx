@@ -254,15 +254,81 @@ it.each(['SIGHUP', 'SIGINT'] as const)(
       expect(await run.exited).not.toBe(0)
       for (let i = 0; i < 100 && tree.some(alive); i++) await Bun.sleep(50)
       expect(tree.filter(alive)).toEqual([])
-      expect((await readdir(tmp)).filter((d) => d.startsWith('vx-dte-'))).toEqual([])
-      const trees = Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
-      expect(trees.stdout.toString().match(/^worktree /gm)).toHaveLength(1)
+      // Removed after vx exits (`local()`'s close leaves it to a detached shell).
+      const left = async (): Promise<string[]> =>
+        (await readdir(tmp)).filter((d) => d.startsWith('vx-dte-'))
+      for (let i = 0; i < 200 && (await left()).length > 0; i++) await Bun.sleep(50)
+      expect(await left()).toEqual([])
+      const trees = () => Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
+      for (
+        let i = 0;
+        i < 100 &&
+        trees()
+          .stdout.toString()
+          .match(/^worktree /gm)!.length > 1;
+        i++
+      )
+        await Bun.sleep(50)
+      expect(
+        trees()
+          .stdout.toString()
+          .match(/^worktree /gm),
+      ).toHaveLength(1)
     } finally {
       await rm(tmp, { recursive: true, force: true })
     }
   },
   60_000,
 )
+
+// M, 2026-10-21: "After I kill it, long delay". Removing a worktree an
+// install filled took seconds, all of them before vx exited.
+it('a stopped run exits before its installed worktrees are removed', async () => {
+  await writeFile(
+    path.join(root, '.vx/workspace.mjs'),
+    `import { dte, local } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'mkdir nm && cd nm && seq 1 300000 | xargs touch' }), local: 0 })] }
+`,
+  )
+  Bun.spawnSync(
+    ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'p'],
+    {
+      cwd: root,
+    },
+  )
+  const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-stop-'))
+  try {
+    const { VX_DTE_RUN: _, ...env } = process.env
+    const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#slow'], {
+      cwd: root,
+      env: { ...env, VX_DTE_RUN: 'stop', NO_COLOR: '1', TMPDIR: tmp },
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    const started = async (): Promise<boolean> => {
+      for (const d of await readdir(tmp)) {
+        if (await Bun.file(path.join(tmp, d, '1', 'b', 'started')).exists()) return true
+      }
+      return false
+    }
+    for (let i = 0; i < 1200 && !(await started()); i++) await Bun.sleep(50)
+    expect(await started()).toBe(true)
+    const t0 = performance.now()
+    run.kill('SIGINT')
+    await run.exited
+    const stopMs = performance.now() - t0
+    // The worktrees go after vx exits, and still go.
+    const gone = async (): Promise<boolean> =>
+      (await readdir(tmp)).every((d) => !d.startsWith('vx-dte-')) &&
+      Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
+        .stdout.toString()
+        .match(/^worktree /gm)?.length === 1
+    for (let i = 0; i < 400 && !(await gone()); i++) await Bun.sleep(50)
+    expect({ gone: await gone(), fast: stopMs < 1000 }).toEqual({ gone: true, fast: true })
+  } finally {
+    await rm(tmp, { recursive: true, force: true })
+  }
+}, 90_000)
 
 it('says why an agent never joined, and fails the run when none can', async () => {
   await writeFile(
