@@ -239,7 +239,11 @@ export class Cache implements CacheLayer {
   dbHandle(): Database
   recordRun(run: RunRecord): void
   recordRuns(runs: readonly RunRecord[]): void
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
+  recordRunBundle(bundle: {
+    runs: readonly RunRecord[]
+    invocation: InvocationRecord
+    listed?: false
+  }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats
   async prune(options: PruneOptions): Promise<PruneResult>
@@ -342,7 +346,11 @@ export interface CacheLayer {
     inputComponents?: readonly TaskInputRow[]
   }): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
+  recordRunBundle(bundle: {
+    runs: readonly RunRecord[]
+    invocation: InvocationRecord
+    listed?: false
+  }): void
   stats(opts?: CacheStatsOptions): CacheStats
   hashFile(filePath: string): Promise<string>
   outputsPath(hash: string): string
@@ -780,7 +788,7 @@ around it, as ONE sh command. Each part runs in its own subshell, so a
 `;` or an `exit` in one ends that part alone, and the chain stops at the
 first that fails, as npm stops. The parts sit in a function the
 forwarded `--` args are appended to, and only the body takes them, as
-npm appends them to the script and never to its hooks. A plain ` && `
+npm appends them to the script and never to its hooks. A plain `&&`
 join handed them to the post hook, and `test -f x && echo A; echo B` ran
 `echo B` after a failed pre hook and went green (item 905). npm appends
 them as TEXT: no part sees them as `$1`…, so the function quotes them
@@ -1185,7 +1193,7 @@ export interface LockSettings {
 const · `src/orchestrator/task-log-buffer.ts`
 
 Version of the drained-bundle shape below. It is the canonical drained
- logs format, not one transport's: every sink ships the same object.
+logs format, not one transport's: every sink ships the same object.
 
 ```ts
 export const LOG_WIRE_VERSION = 1
@@ -1379,13 +1387,13 @@ positive breaks a build that works today, which is worse than the defect
 being caught. So the three cases are exactly the ones that can be decided
 without a general glob-intersection algorithm:
 
-  both literal    — equal paths
-  literal vs glob — ask the glob whether it matches the literal (exact)
-  both globs      — identical strings, or one a whole subtree `P/**`
-                    and the other's literal prefix P or under it: every
-                    path the second matches is under P, so the first
-                    covers it (item 941). Anything else is undecided
-                    here and deliberately allowed through
+both literal — equal paths
+literal vs glob — ask the glob whether it matches the literal (exact)
+both globs — identical strings, or one a whole subtree `P/**`
+and the other's literal prefix P or under it: every
+path the second matches is under P, so the first
+covers it (item 941). Anything else is undecided
+here and deliberately allowed through
 
 The rejected alternative was comparing each glob's static prefix. It is
 cheaper and catches more, but it is UNSOUND for a refusal — measured:
@@ -1399,14 +1407,14 @@ and `cleanOutputs` is what actually does the deleting. That folds two
 things this check used to miss, both of them the data loss it exists to
 prevent:
 
-  - the SPELLING: `./dist/**` and `dist/**` are one tree to every
-    matcher in vx, and `Bun.Glob('dist/**')` does not match the literal
-    `./dist/app.js` either (item 441, probed one spelling at a time);
-  - the literal DIRECTORY: `outputs: ['dist']` means everything under
-    `dist` — `asTrees` compiles it to `dist` + `dist/**` — while this
-    compared it to `dist/app.js` as two unequal literals. Measured end
-    to end: the task declaring `dist` wiped the other's `dist/app.js`
-    and the run reported success (item 442).
+- the SPELLING: `./dist/**` and `dist/**` are one tree to every
+  matcher in vx, and `Bun.Glob('dist/**')` does not match the literal
+  `./dist/app.js` either (item 441, probed one spelling at a time);
+- the literal DIRECTORY: `outputs: ['dist']` means everything under
+  `dist` — `asTrees` compiles it to `dist` + `dist/**` — while this
+  compared it to `dist/app.js` as two unequal literals. Measured end
+  to end: the task declaring `dist` wiped the other's `dist/app.js`
+  and the run reported success (item 442).
 
 Neither is a widening. Both read the declaration the way the code that
 deletes reads it, which is the only reading that decides the hazard.
@@ -1431,20 +1439,20 @@ The default logger's per-task output policy. Resolved once per run
 from (in priority order) the explicit `--output-logs` override, a
 truthy `CI` env, and the CLI-detected flow:
 
-  full        — frames for executed work, one-liners for quiet hits.
-                Today's CI behavior; also the programmatic default.
-  errors-only — only failed tasks print.
-  none        — no per-task output at all.
-  hash-only   — one line per task: outcome word, task id, cache key.
-                No frames, no log replay (Turbo `--output-logs
+full — frames for executed work, one-liners for quiet hits.
+Today's CI behavior; also the programmatic default.
+errors-only — only failed tasks print.
+none — no per-task output at all.
+hash-only — one line per task: outcome word, task id, cache key.
+No frames, no log replay (Turbo `--output-logs
                 hash-only` parity); the end-of-run summary still
-                renders. The line is the run's audit trail: which key
-                each task resolved to, without any build output.
-  focused     — requested nodes stream raw output live (running the
-                task should feel like running the command directly);
-                dependency-pulled nodes are silent unless they fail.
-  broad       — news only: one `success` line per executed task,
-                full frames for failures, silence for cache hits.
+renders. The line is the run's audit trail: which key
+each task resolved to, without any build output.
+focused — requested nodes stream raw output live (running the
+task should feel like running the command directly);
+dependency-pulled nodes are silent unless they fail.
+broad — news only: one `success` line per executed task,
+full frames for failures, silence for cache hits.
 
 `gha` (on GitHub Actions, any mode): task output is fenced from
 workflow commands. In full mode each task's block is also wrapped in
@@ -2002,7 +2010,7 @@ export async function run(options: RunOptions): Promise<RunSummary>
 type · `src/orchestrator/telemetry.ts`
 
 Identifies which run a record belongs to + its captured context. Maps
- cleanly onto OTel CI/CD + VCS resource attributes.
+cleanly onto OTel CI/CD + VCS resource attributes.
 
 ```ts
 export interface RunContextRecord {
@@ -2652,12 +2660,7 @@ type · `src/graph/task-status.ts`
 
 ```ts
 export type TaskStatus =
-  | 'success'
-  | 'cache-hit'
-  | 'cache-hit-remote'
-  | 'failed'
-  | 'skipped'
-  | 'aborted'
+  'success' | 'cache-hit' | 'cache-hit-remote' | 'failed' | 'skipped' | 'aborted'
 ```
 
 ## `TaskTelemetry`
@@ -2665,7 +2668,7 @@ export type TaskStatus =
 type · `src/orchestrator/telemetry.ts`
 
 Denormalized per-task analytics — shared by the streaming `task.end`
- record and the per-run summary's `tasks[]`.
+record and the per-run summary's `tasks[]`.
 
 ```ts
 export interface TaskTelemetry {
@@ -2739,7 +2742,7 @@ export const TELEMETRY_SCHEMA_VERSION = 4
 type · `src/orchestrator/telemetry.ts`
 
 Read-only context a sink is created with. No mutable run handle — the
- isolation guarantee is structural.
+isolation guarantee is structural.
 
 ```ts
 export interface TelemetryContext {

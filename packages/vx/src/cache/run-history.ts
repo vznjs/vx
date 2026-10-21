@@ -177,7 +177,11 @@ export class RunHistory {
     }
   }
 
-  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
+  recordRunBundle(bundle: {
+    runs: readonly RunRecord[]
+    invocation: InvocationRecord
+    listed?: false
+  }): void {
     // Whole run records atomically — one transaction, one fsync: the
     // per-task `runs` rows and the one `invocations` header. The
     // input-fingerprint rows do NOT live here: they're written inside
@@ -194,7 +198,7 @@ export class RunHistory {
     this.db
       .transaction(() => {
         this.insertRuns(bundle.runs)
-        this.insertInvocation.run(...bindInvocation(bundle.invocation))
+        if (bundle.listed !== false) this.insertInvocation.run(...bindInvocation(bundle.invocation))
         this.insertDurations(
           bundle.runs,
           branchSource(bundle.invocation.branch),

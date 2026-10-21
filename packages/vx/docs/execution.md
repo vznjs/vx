@@ -308,7 +308,8 @@ terminal and a task succeeding or failing. Read it alongside
     4. recordRunBundle — one transaction writing a `runs` row per real
        task plus the `invocations` header row (command, git/CI/host
        context, counts). Group + aborted tasks skipped; a run
-       a signal stopped records nothing.
+       a signal stopped records only the tasks that finished, with no
+       header row, so `vx last` does not list it.
     5. Telemetry: emit the RunSummaryRecord to every active sink +
        await their flush (crash-isolated; skipped when no sink).
     6. Drain background remote prefetches/uploads; cache.close();

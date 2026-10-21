@@ -1309,6 +1309,13 @@ async function runOnBus(
         recordHistory(() => cache.recordRunBundle(records))
         recordFailures(list)
       })
+    } else if (stop.stoppedBy !== undefined) {
+      // Stopped: not a run `vx last` lists (item 854), but what finished is
+      // measured, or the next run knows none of it (M, 2026-10-21).
+      const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
+      stepSync('vx:history', () =>
+        recordHistory(() => cache.recordRunBundle({ ...recordsOf(ended, false), listed: false })),
+      )
     }
     mark('record history')
     runContext.runId = runId
