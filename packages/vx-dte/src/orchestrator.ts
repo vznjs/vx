@@ -725,19 +725,31 @@ export class Orchestrator {
       if (d === undefined) return text
       return ui.tone(matches(cores, memory, d) ? 'ok' : 'error', text)
     }
-    const lines: [string, string, string, ui.Inline][] = all.map((a) => [
-      a.label,
-      this.retired.has(a) ? 'left' : gone.has(a) ? 'gone' : 'online',
-      count(a.usage, gone.has(a) ? 0 : a.started.size) +
-        (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : ''),
-      res(a.cores, a.memory, a.declared),
-    ])
+    // Live, those that left are one line: a run that replaced many pushed
+    // the rows that run past the screen.
+    const left = this.ended ? [] : all.filter((a) => this.retired.has(a))
+    const lines: [string, string, string, ui.Inline][] = all
+      .filter((a) => !left.includes(a))
+      .map((a) => [
+        a.label,
+        this.retired.has(a) ? 'left' : gone.has(a) ? 'gone' : 'online',
+        count(a.usage, gone.has(a) ? 0 : a.started.size) +
+          (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : ''),
+        res(a.cores, a.memory, a.declared),
+      ])
     for (const id of this.spawnedAt.keys())
       if (!joined.has(id)) {
         const why = this.unstarted.get(id)
         lines.push(why === undefined ? [id, 'starting', '', ''] : [id, 'failed', why, ''])
       }
     lines.sort((x, y) => x[0].localeCompare(y[0], 'en', { numeric: true }))
+    if (left.length > 0)
+      lines.push([
+        `${left.length} agent${left.length === 1 ? '' : 's'}`,
+        'left',
+        `${left.reduce((n, a) => n + a.usage.done, 0)} done`,
+        '',
+      ])
     if (this.o.localSlots > 0 || this.ranHere > 0)
       lines.push([
         'local',

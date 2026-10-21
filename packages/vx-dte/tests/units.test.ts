@@ -7,7 +7,7 @@ import { localEnv, swapRoots } from '../src/agent.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes } from '../src/plugin.js'
-import type { ExecuteRequest, TaskArtifacts, TaskNode } from '@vzn/vx'
+import { type ExecuteRequest, type TaskArtifacts, type TaskNode, ui } from '@vzn/vx'
 import { Orchestrator, runKey, type Need } from '../src/orchestrator.js'
 import { outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
@@ -255,6 +255,27 @@ it('an idle agent the run no longer needs leaves; one a big task needs stays', a
     h.o.retire(0, () => false)
     expect(await a.types()).toContain('exit')
     expect(h.o.biggestCores()).toBe(0)
+  } finally {
+    await h.stop()
+  }
+})
+
+// Live, the agents that left are one line, so the rows that run fit.
+it('lists the agents that left as one line while the run goes', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.agent(4)
+    const b = await h.agent(2)
+    const c = await h.agent(2)
+    await Bun.sleep(50)
+    h.o.retire(0, (x) => x.cores >= 4)
+    expect(await b.types()).toContain('exit')
+    expect(await c.types()).toContain('exit')
+    const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatch(/^agent#1 +online/)
+    expect(rows[1]).toMatch(/^2 agents +left +0 done$/)
+    void a
   } finally {
     await h.stop()
   }
