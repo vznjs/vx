@@ -680,6 +680,16 @@ export class Orchestrator {
     this.lost = reason
   }
 
+  /**
+   * `left` when the run let it go as not needed, `lost` when it crashed or
+   * went silent, `stopped` when the run's end stopped it, else `online`.
+   */
+  private state(a: Agent, gone: ReadonlySet<Agent>): string {
+    if (this.retired.has(a)) return 'left'
+    if (gone.has(a)) return 'lost'
+    return this.ended ? 'stopped' : 'online'
+  }
+
   /** Each machine that joined, and this one when it ran tasks, with what it did: the run summary's `machines`. */
   machines(): MachineReport[] {
     const gone = new Set(this.gone)
@@ -708,7 +718,7 @@ export class Orchestrator {
       }
     }
     const out = [...this.agents.values(), ...this.gone].map((a) =>
-      report(a.label, gone.has(a) ? 'gone' : 'online', a.usage, a.cores, a.memory),
+      report(a.label, this.state(a, gone), a.usage, a.cores, a.memory),
     )
     if (this.ranHere > 0)
       out.push(report('local', 'online', this.local, machineParallelism(), machineMemoryBytes()))
@@ -718,8 +728,8 @@ export class Orchestrator {
   /**
    * The `agents` rows, live and at the end: one per agent by `size#index`
    * with its status, the tasks it has done and the ones it runs now, then
-   * this machine's; once over, each one's cores and memory, each joined
-   * agent's warm-up and each size whose machines are not what it says.
+   * this machine's; once over, each joined agent's warm-up and, under
+   * each, the cores and memory its size declares and its machine reports.
    */
   footer(): [string, ui.Inline][] {
     if (this.spawnedAt.size === 0 && this.agents.size === 0 && this.gone.length === 0) return []
@@ -732,30 +742,36 @@ export class Orchestrator {
         ...(u.failed > 0 ? [`${u.failed} failed`] : []),
         ...(running > 0 ? [`${running} running`] : []),
       ].join(' · ')
-    // What its machine reports, once the run is over: green when its size
-    // says the same, red when not.
-    const res = (cores: number, memory: number, d?: Declared): ui.Inline => {
-      if (!this.ended) return ''
-      const text = `${cores}c/${compact(memory)}`
-      if (d === undefined) return text
-      return ui.tone(matches(cores, memory, d) ? 'ok' : 'error', text)
+    // Once over, under its row: what its size declares and what its machine
+    // reports, green when they agree, red when not.
+    const res = new Map<string, ui.Inline>()
+    const resources = (label: string, cores: number, memory: number, d?: Declared): void => {
+      const actual = `${cores}c/${compact(memory)}`
+      res.set(
+        label,
+        d === undefined
+          ? ui.dim(`${indent}actual ${actual}`)
+          : [
+              ui.dim(`${indent}declared ${d.cpu}c/${compact(d.memory)} · actual `),
+              ui.tone(matches(cores, memory, d) ? 'ok' : 'error', actual),
+            ],
+      )
     }
     // Live, those that left are one line: a run that replaced many pushed
     // the rows that run past the screen.
     const left = this.ended ? [] : all.filter((a) => this.retired.has(a))
-    const lines: [string, string, string, ui.Inline][] = all
+    const lines: [string, string, string][] = all
       .filter((a) => !left.includes(a))
       .map((a) => [
         a.label,
-        this.retired.has(a) ? 'left' : gone.has(a) ? 'gone' : 'online',
+        this.state(a, gone),
         count(a.usage, gone.has(a) ? 0 : a.started.size) +
           (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : ''),
-        res(a.cores, a.memory, a.declared),
       ])
     for (const id of this.spawnedAt.keys())
       if (!joined.has(id)) {
         const why = this.unstarted.get(id)
-        lines.push(why === undefined ? [id, 'starting', '', ''] : [id, 'failed', why, ''])
+        lines.push(why === undefined ? [id, 'starting', ''] : [id, 'failed', why])
       }
     lines.sort((x, y) => x[0].localeCompare(y[0], 'en', { numeric: true }))
     if (left.length > 0)
@@ -763,28 +779,12 @@ export class Orchestrator {
         `${left.length} agent${left.length === 1 ? '' : 's'}`,
         'left',
         `${left.reduce((n, a) => n + a.usage.done, 0)} done`,
-        '',
       ])
     if (this.o.localSlots > 0 || this.ranHere > 0)
-      lines.push([
-        'local',
-        'online',
-        count(this.local, this.runningHere.size),
-        res(machineParallelism(), machineMemoryBytes()),
-      ])
+      lines.push(['local', 'online', count(this.local, this.runningHere.size)])
     const width = Math.max(...lines.map(([l]) => l.length))
+    const indent = ' '.repeat(width + 2)
     const status = Math.max(...lines.map(([, st]) => st.length))
-    // Once the run is over: each size whose machines are not what it says.
-    const off = new Map<string, string>()
-    for (const a of this.ended ? all : []) {
-      const d = a.declared
-      if (d === undefined || off.has(d.size)) continue
-      if (matches(a.cores, a.memory, d)) continue
-      off.set(
-        d.size,
-        `${d.size}: config ${d.cpu} cores ${gb(d.memory)}, reported ${a.cores} cores ${gb(a.memory)}`,
-      )
-    }
     // Once over, what each did, under its line.
     const usage = new Map<string, readonly string[]>()
     let cpuMs = 0
@@ -796,24 +796,26 @@ export class Orchestrator {
       usage.set(label, describe(st, u, relay))
     }
     if (this.ended) {
-      for (const a of all) detail(a.label, a.usage, a.cores, true)
-      if (lines.at(-1)?.[0] === 'local') detail('local', this.local, machineParallelism(), false)
+      for (const a of all) {
+        resources(a.label, a.cores, a.memory, a.declared)
+        detail(a.label, a.usage, a.cores, true)
+      }
+      if (lines.at(-1)?.[0] === 'local') {
+        resources('local', machineParallelism(), machineMemoryBytes())
+        detail('local', this.local, machineParallelism(), false)
+      }
     }
-    const indent = ' '.repeat(width + 2)
     return [
-      ...lines.flatMap(([l, st, t, r], i): [string, ui.Inline][] => [
+      ...lines.flatMap(([l, st, t], i): [string, ui.Inline][] => [
         [
           i === 0 ? 'agents' : '',
           st === 'failed'
             ? [ui.place(l), `${' '.repeat(width - l.length)}  `, ui.tone('error', st), `  ${t}`]
             : t === ''
               ? [ui.place(l), `${' '.repeat(width - l.length)}  ${st}`]
-              : [
-                  ui.place(l),
-                  `${' '.repeat(width - l.length)}  ${st.padEnd(status)}  ${t}`,
-                  ...(r === '' ? [] : ['  ', r]),
-                ],
+              : [ui.place(l), `${' '.repeat(width - l.length)}  ${st.padEnd(status)}  ${t}`],
         ],
+        ...(res.has(l) ? [['', res.get(l)!] as [string, ui.Inline]] : []),
         ...(usage.get(l) ?? []).map((d): [string, ui.Inline] => ['', ui.dim(`${indent}${d}`)]),
       ]),
       ...(coreMs > 0
@@ -824,7 +826,6 @@ export class Orchestrator {
             ],
           ]
         : []),
-      ...[...off.values()].map((t): [string, ui.Inline] => ['', `! ${t}`]),
     ]
   }
 
@@ -914,5 +915,3 @@ const compact = (n: number): string => {
 }
 
 const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)}s`
-
-const gb = (n: number): string => `${Math.round(n / 1e9)} GB`
