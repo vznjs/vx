@@ -288,7 +288,9 @@ agent's own color, by size and the order the run started it:
 An idle agent the rest of the run cannot keep busy leaves (`left`): one
 beyond the cores the remaining tasks keep busy for half of what is left,
 or, when no agent can start again, beyond their peak. One a remaining
-task needs for its size stays.
+task needs for its size stays. A lost agent's begun tasks run again on
+another, and the run starts one in its place. Agents start at the first
+task the cache does not answer, so a warm run starts none.
 
 The `agents` rows, live while the run goes and again in the footer,
 give each agent its status (`starting`, `online`, `left`, `gone`, or `failed`

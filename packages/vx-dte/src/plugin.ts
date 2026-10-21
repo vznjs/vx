@@ -317,9 +317,20 @@ export function dte(options: DteOptions) {
         artifacts: ctx.artifacts,
         run,
         keyOf: (id) => keys.get(id),
+        left: (id) => {
+          // A planned agent is not started again: its job is spent.
+          const s = sizeOf.get(id)
+          if (s === undefined || plannedAgents !== undefined) return
+          sizeOf.delete(id)
+          started.set(s.name, started.get(s.name)! - 1)
+          cores -= s.cpu
+          if (missed && pending !== undefined && !demanding) demand(pending)
+        },
       })
       orchestrator = o
       const started = new Map<string, number>()
+      const sizeOf = new Map<string, (typeof sizes)[number]>()
+      let demanding = false
       let index = 0
       let cores = 0
       // A planned run's first wave is on its way already; the rest, if
@@ -341,6 +352,14 @@ export function dte(options: DteOptions) {
       // busy (`busyCores`) beyond this machine's share; idle ones beyond
       // it leave.
       const demand = (remaining: ReadonlySet<string>): void => {
+        demanding = true
+        try {
+          shape(remaining)
+        } finally {
+          demanding = false
+        }
+      }
+      const shape = (remaining: ReadonlySet<string>): void => {
         // An unmeasured task takes the biggest agent there is.
         const biggest = Math.max(1, o.biggestCores(), ...sizes.map((s) => s.cpu))
         const width = (share?: number): number =>
@@ -370,6 +389,7 @@ export function dte(options: DteOptions) {
           const id =
             plannedAgents === undefined ? `${s.name}#${index}` : later.get(s.name)!.shift()!
           o.spawned(id, { size: s.name, cpu: s.cpu, memory: s.memory })
+          sizeOf.set(id, s)
           void Promise.resolve(
             adapter.spawn({
               run,
