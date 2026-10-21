@@ -6,4 +6,4 @@ COPY package.json index.ts PROTOCOL.md ./
 COPY src ./src
 USER bun
 EXPOSE 8080
-ENTRYPOINT ["bun", "--no-env-file", "--no-install", "src/bin.ts"]
+ENTRYPOINT ["bun", "--no-env-file", "--no-install", "src/bun.ts"]

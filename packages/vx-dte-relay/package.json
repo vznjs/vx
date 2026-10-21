@@ -14,7 +14,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "bin": {
-    "vx-dte-relay": "./src/bin.ts"
+    "vx-dte-relay": "./src/bun.ts"
   },
   "exports": {
     ".": {
@@ -26,6 +26,7 @@
     "index.ts",
     "src",
     "PROTOCOL.md",
+    "wrangler.jsonc",
     "README.md"
   ],
   "engines": {

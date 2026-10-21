@@ -15,7 +15,7 @@ server that speaks [PROTOCOL.md](./PROTOCOL.md) can take its place.
 It is not on npm yet. From a checkout of this repo:
 
 ```sh
-bun packages/vx-dte-relay/src/bin.ts --issuer https://gitlab.com --audience https://relay.example.com --port 8080
+bun packages/vx-dte-relay/src/bun.ts --issuer https://gitlab.com --audience https://relay.example.com --port 8080
 ```
 
 Or as a container, built from this directory:
@@ -36,6 +36,20 @@ docker run -p 8080:8080 vx-dte-relay --issuer https://gitlab.com --audience http
   locally: it listens on loopback only.
 
 Runs live in memory. Restarting the relay ends the runs it was carrying.
+
+### On Cloudflare Workers
+
+`src/worker.ts` is the same relay on Workers. Each run is one Durable
+Object, so its mailboxes and held polls live in one place. Fill in
+`ISSUERS` (comma separated) and `AUDIENCE` in `wrangler.jsonc`, then
+deploy from this directory:
+
+```sh
+bunx wrangler deploy
+```
+
+A run lives as long as its object does: it ends when its participants
+stop polling.
 
 ## API
 

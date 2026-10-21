@@ -1,0 +1,17 @@
+// The relay on Cloudflare Workers (src/worker.ts): `bunx wrangler deploy`
+// from this directory. Fill in ISSUERS and AUDIENCE.
+{
+  "name": "vx-dte-relay",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "vars": {
+    // e.g. "https://gitlab.com, https://token.actions.githubusercontent.com"
+    "ISSUERS": "",
+    // The URL your CI jobs ask their ID token for, e.g. this worker's.
+    "AUDIENCE": "",
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }],
+  },
+  "migrations": [{ "tag": "v1", "new_classes": ["RelayRun"] }],
+}

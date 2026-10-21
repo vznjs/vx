@@ -133,8 +133,8 @@ describe('the relay carries one run between its orchestrator and agents', () => 
   })
 })
 
-it('the bin serves the protocol, without auth on loopback only', async () => {
-  const bin = path.join(import.meta.dir, '..', 'src', 'bin.ts')
+it('the Bun entry serves the protocol, without auth on loopback only', async () => {
+  const bin = path.join(import.meta.dir, '..', 'src', 'bun.ts')
   const refused = Bun.spawnSync(['bun', bin, '--no-auth', '--host', '0.0.0.0'], { stderr: 'pipe' })
   expect([refused.exitCode, refused.stderr.toString().trim()]).toEqual([
     2,

@@ -86,7 +86,7 @@ export default defineWorkspace({ plugins: [dte({ relay: 'http://127.0.0.1:8080' 
 ```
 
 ```sh
-bun /path/to/vx/packages/vx-dte-relay/src/bin.ts --no-auth --port 8080   # the relay
+bun /path/to/vx/packages/vx-dte-relay/src/bun.ts --no-auth --port 8080   # the relay
 export VX_DTE_SECRET=$(openssl rand -base64 32)                          # in each terminal: the same one
 VX_DTE_RUN=try vx dte agent                                              # an agent, as many as you like
 VX_DTE_RUN=try vx run build --all                                        # the run

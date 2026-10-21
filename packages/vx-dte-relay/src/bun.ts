@@ -1,5 +1,5 @@
 #!/usr/bin/env -S bun --no-env-file --no-install
-// `bunx @vzn/vx-dte-relay` — serves the relay protocol (PROTOCOL.md).
+// `bunx @vzn/vx-dte-relay`: the relay on Bun, runs in memory (PROTOCOL.md).
 
 import { parseArgs } from 'node:util'
 import { createRelay } from './relay.js'
