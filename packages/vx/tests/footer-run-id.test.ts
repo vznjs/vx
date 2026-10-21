@@ -72,14 +72,13 @@ it('the live region has the run id from the run start', async () => {
     tasks: ['build'],
     handleSignals: false,
     log: {
-      runStart: (info: { context?: { runId?: string } }) => {
+      runStart: (info) => {
         live = info.context?.runId
       },
       taskStart: quiet,
       taskStdout: quiet,
       taskStderr: quiet,
       taskComplete: quiet,
-      runStatus: quiet,
       runEnd: quiet,
       status: quiet,
     },
