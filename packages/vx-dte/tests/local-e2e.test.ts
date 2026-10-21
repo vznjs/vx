@@ -3,7 +3,7 @@
 // orchestrator keeps no share (`local: 0`), so every task that may leave
 // this machine runs on an agent.
 
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -34,6 +34,7 @@ export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB
     cache: { outputs: { files: ['out/**'] } },
   },
   fail: { exec: { command: 'echo oops >&2; exit 3' } },
+  slow: { exec: { command: 'touch started && sleep 60' } },
 } }
 `,
   }
@@ -132,3 +133,62 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, local: 0 })] }
     await server.stop(true)
   }
 }, 60_000)
+
+/** The pids under `pid`, by `ps`. */
+function descendants(pid: number): number[] {
+  const rows = Bun.spawnSync(['ps', '-axo', 'pid=,ppid=']).stdout.toString().trim().split('\n')
+  const kids = new Map<number, number[]>()
+  for (const r of rows) {
+    const [c, p] = r.trim().split(/\s+/).map(Number)
+    kids.set(p!, [...(kids.get(p!) ?? []), c!])
+  }
+  const out: number[] = []
+  for (let i = -1; i < out.length; i++) out.push(...(kids.get(i < 0 ? pid : out[i]!) ?? []))
+  return out
+}
+
+const alive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+it.each(['SIGHUP', 'SIGINT'] as const)(
+  'a %s to the run stops its agents and removes their worktrees',
+  async (sig) => {
+    const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-sig-'))
+    try {
+      const { VX_DTE_RUN: _, ...env } = process.env
+      const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#slow'], {
+        cwd: root,
+        env: { ...env, VX_DTE_RUN: 'sig', NO_COLOR: '1', TMPDIR: tmp },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      // The agent's worktree is `<tmp>/vx-dte-*/1`; the task touches `started` in it.
+      const started = async (): Promise<boolean> => {
+        for (const d of await readdir(tmp)) {
+          if (await Bun.file(path.join(tmp, d, '1', 'b', 'started')).exists()) return true
+        }
+        return false
+      }
+      for (let i = 0; i < 600 && !(await started()); i++) await Bun.sleep(50)
+      expect(await started()).toBe(true)
+      const tree = descendants(run.pid)
+      expect(tree.length).toBeGreaterThan(0)
+      run.kill(sig)
+      expect(await run.exited).not.toBe(0)
+      for (let i = 0; i < 100 && tree.some(alive); i++) await Bun.sleep(50)
+      expect(tree.filter(alive)).toEqual([])
+      expect((await readdir(tmp)).filter((d) => d.startsWith('vx-dte-'))).toEqual([])
+      const trees = Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
+      expect(trees.stdout.toString().match(/^worktree /gm)).toHaveLength(1)
+    } finally {
+      await rm(tmp, { recursive: true, force: true })
+    }
+  },
+  60_000,
+)

@@ -1023,7 +1023,9 @@ function · `src/orchestrator/local-floor.ts`
 `sandboxes`, in a process that is no run, are the `exec.sandbox` configs
 of every sandboxed task the run holds: the runtime's proxy and its
 unix-socket filter are one per process, set from their union before the
-first sandboxed task (`prepareSandbox`).
+first sandboxed task (`prepareSandbox`). A request that carries a
+`signal` but no `liveChildren` has its children stopped here when it
+aborts, the way a run's stop ends its own.
 
 ```ts
 export function localFloor(

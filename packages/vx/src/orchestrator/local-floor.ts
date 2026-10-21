@@ -11,6 +11,7 @@ import {
   type ExecuteResult,
 } from '../exec/index.js'
 import { prepareSandbox } from './sandbox-request.js'
+import { forwardedSignal, terminateChildren } from './signals.js'
 
 export interface LocalFloor {
   execute(req: ExecuteRequest): Promise<ExecuteResult>
@@ -22,7 +23,9 @@ export interface LocalFloor {
  * `sandboxes`, in a process that is no run, are the `exec.sandbox` configs
  * of every sandboxed task the run holds: the runtime's proxy and its
  * unix-socket filter are one per process, set from their union before the
- * first sandboxed task (`prepareSandbox`).
+ * first sandboxed task (`prepareSandbox`). A request that carries a
+ * `signal` but no `liveChildren` has its children stopped here when it
+ * aborts, the way a run's stop ends its own.
  */
 export function localFloor(
   sandboxes: readonly NonNullable<ExecConfig['sandbox']>[] = [],
@@ -32,7 +35,17 @@ export function localFloor(
   return {
     async execute(req) {
       if (req.sandbox !== undefined) await armer?.arm()
-      return local.execute(req)
+      const stop = req.signal
+      if (stop === undefined || req.liveChildren !== undefined) return local.execute(req)
+      // No run holds this task's children (an agent's): its stop is ours to carry out.
+      const live = new Set<ReturnType<typeof Bun.spawn>>()
+      const end = (): void => void terminateChildren(() => [...live], forwardedSignal(stop.reason))
+      stop.addEventListener('abort', end, { once: true })
+      try {
+        return await local.execute({ ...req, liveChildren: live })
+      } finally {
+        stop.removeEventListener('abort', end)
+      }
     },
     async close() {
       if (armer?.armed === true) await resetSandbox()
