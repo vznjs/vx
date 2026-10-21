@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## history: keep a sampled run's peak cores and mean memory
+
+SCHEMA_VERSION is v43: the local cache index and run history from v42 are dropped on first open.
+
 ## cache: run a task here when its download is slower
 
 Plugin API: RemoteCacheLayer.has resolves ArtifactInfo or null (`{ size, durationMs }`, either one, or `{}`), not a boolean; hasMany resolves a Map of the held keys to ArtifactInfo, not a Set.

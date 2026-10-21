@@ -101,7 +101,11 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       restored            INTEGER,
       -- v40: each remote read or write of the key that failed, as
       -- 'upload: <message>', '; '-joined; NULL when none did.
-      remote_error        TEXT
+      remote_error        TEXT,
+      -- v43: the most cores one sampling interval burned and the mean
+      -- resident memory over the looks; NULL when nothing sampled.
+      peak_cores          REAL,
+      avg_rss_bytes       INTEGER
     );
     -- Two whole-table indexes only, and both APPEND: every row of a run carries the
     -- same run_id and a started_at newer than everything before it, so

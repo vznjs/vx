@@ -99,6 +99,12 @@ export interface TaskOutcome {
   cpuMs?: number
   peakRssBytes?: number
   /**
+   * The most cores one sampling interval burned and the mean resident
+   * memory over the looks; only when a sink samples and a look landed.
+   */
+  peakCores?: number
+  avgRssBytes?: number
+  /**
    * A GROUP task's own dependency outcomes — the tasks it stands for.
    * A group has no `exec` and therefore no outputs and no cache entry: its
    * hash is a synthetic roll-up (`computeGroupHash`), so asking the local

@@ -166,6 +166,8 @@
         "hash",
         "cpuMs",
         "peakRssBytes",
+        "peakCores",
+        "avgRssBytes",
         "wallclockStartNs",
         "wallclockEndNs",
         "blockedBy",
@@ -199,6 +201,14 @@
         "hash": { "type": "string" },
         "cpuMs": { "type": ["number", "null"] },
         "peakRssBytes": { "type": ["integer", "null"] },
+        "peakCores": {
+          "type": ["number", "null"],
+          "description": "most cores one sampling interval burned; null when nothing sampled"
+        },
+        "avgRssBytes": {
+          "type": ["integer", "null"],
+          "description": "mean resident memory over the samples; null when nothing sampled"
+        },
         "wallclockStartNs": {
           "type": ["string", "null"],
           "description": "decimal nanoseconds from the run's start"

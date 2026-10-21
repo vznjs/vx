@@ -113,6 +113,8 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
       runId,
       ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
       ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
+      ...(o.peakCores !== undefined ? { peakCores: o.peakCores } : {}),
+      ...(o.avgRssBytes !== undefined ? { avgRssBytes: o.avgRssBytes } : {}),
       ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: o.wallclockStartNs } : {}),
       ...(o.wallclockEndNs !== undefined ? { wallclockEndNs: o.wallclockEndNs } : {}),
       cacheHit: isCacheHit(o.status),

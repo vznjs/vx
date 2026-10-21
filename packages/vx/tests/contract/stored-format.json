@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v42",
+    "version": "v43",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -171,7 +171,9 @@
       "sandbox_violations  INTEGER,",
       "not_ready           TEXT,",
       "restored            INTEGER,",
-      "remote_error        TEXT",
+      "remote_error        TEXT,",
+      "peak_cores          REAL,",
+      "avg_rss_bytes       INTEGER",
       ")",
       "",
       "CREATE TABLE schema_meta (",

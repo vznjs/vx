@@ -179,8 +179,11 @@ Each streaming record carries `v` and `kind`, and:
   tracked task's live process tree every second (`sampleTrees`,
   `exec/proc-sample.ts`) and stops when nothing is tracked or the run
   ends. `cpuMs` is the tree's CPU so far (a descendant that exited leaves
-  the sum), `rssBytes` its resident memory now. No sink wanting it: no
-  timer, no read (`proc-sample.unsafe.test.ts`).
+  the sum), `rssBytes` its resident memory now. Stopping a track answers
+  its `TreeLoad`: the most cores one interval burned and the mean memory
+  over the looks, which the run history keeps (`runs.peak_cores`,
+  `avg_rss_bytes`). No sink wanting it: no timer, no read
+  (`proc-sample.unsafe.test.ts`).
 - Version bumps are additive-or-bump: a record whose shape changes bumps
   `TELEMETRY_SCHEMA_VERSION`, an integer, which a receiver may check to
   refuse what it cannot read; no first-party sink checks it.

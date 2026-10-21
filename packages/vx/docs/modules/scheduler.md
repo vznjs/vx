@@ -44,6 +44,8 @@ export interface TaskOutcome {
   inputChanges?: InputChanges // on one that ran with a sink listening: its key against the last saved entry
   cpuMs?: number
   peakRssBytes?: number
+  peakCores?: number // sampled: most cores one interval burned
+  avgRssBytes?: number // sampled: mean resident memory
   groupUpstream?: readonly TaskOutcome[] // a group's own dependency outcomes; never folded
   unkeyed?: true // ran over inputs its key no longer describes: no save, nor by a dependant (A-12)
   keyless?: true // its key folds a task with no `inputs` (or it is one): no read, no save

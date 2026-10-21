@@ -2034,6 +2034,8 @@ export interface RunRecord {
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
   remoteError?: string
+  peakCores?: number
+  avgRssBytes?: number
 }
 ```
 
@@ -2456,6 +2458,8 @@ export interface TaskOutcome {
   inputChanges?: InputChanges
   cpuMs?: number
   peakRssBytes?: number
+  peakCores?: number
+  avgRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
   unkeyed?: true
   keyless?: true

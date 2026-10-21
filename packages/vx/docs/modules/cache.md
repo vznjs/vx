@@ -339,6 +339,8 @@ export interface RunRecord {
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
   remoteError?: string // v40: each failed remote read or write of its key, `; `-joined
+  peakCores?: number // v43: sampled, most cores one interval burned
+  avgRssBytes?: number // v43: sampled, mean resident memory
 }
 
 export interface CacheStats {
@@ -367,7 +369,7 @@ export class FoldMemo {
   set(taskId: string, probe: string, key: string): void
   flush(cutoff: number, now?: number): void // at close: this run's folds; rows unwritten since `cutoff` go
 }
-export const SCHEMA_VERSION = 'v42'
+export const SCHEMA_VERSION = 'v43'
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
@@ -710,7 +712,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v48'`; `SCHEMA_VERSION` is
-`'v42'`. Bump `CACHE_VERSION` when:
+`'v43'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).
