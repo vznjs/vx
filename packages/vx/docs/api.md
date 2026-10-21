@@ -1066,7 +1066,7 @@ export class LocalHistoryProvider implements HistoryProvider {
   importTimings(
     sha: string,
     timings: ReadonlyMap<string, number>,
-    needs?: ReadonlyMap<string, TaskResources>,
+    needs: ReadonlyMap<string, TaskResources> = new Map(),
   ): void
   async resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
 }
