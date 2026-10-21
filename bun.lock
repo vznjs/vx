@@ -75,6 +75,20 @@
         "@vzn/vx-schedule-history": "workspace:*",
       },
     },
+    "packages/vx-dte": {
+      "name": "@vzn/vx-dte",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vzn/vx-dte-relay": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+      },
+      "peerDependencies": {
+        "@vzn/vx": "*",
+      },
+    },
     "packages/vx-dte-relay": {
       "name": "@vzn/vx-dte-relay",
       "version": "0.0.0",
@@ -684,6 +698,8 @@
     "@vzn/vx-ci": ["@vzn/vx-ci@workspace:packages/vx-ci"],
 
     "@vzn/vx-docs": ["@vzn/vx-docs@workspace:packages/vx-docs"],
+
+    "@vzn/vx-dte": ["@vzn/vx-dte@workspace:packages/vx-dte"],
 
     "@vzn/vx-dte-relay": ["@vzn/vx-dte-relay@workspace:packages/vx-dte-relay"],
 
