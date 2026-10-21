@@ -2360,7 +2360,7 @@ export interface TaskExecutor {
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void
-  footer?(): readonly (readonly [label: string, text: string])[]
+  footer?(): readonly (readonly [label: string, text: ui.Inline])[]
   running?(taskId: string): string | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
@@ -2738,6 +2738,7 @@ export const path = (text: string): Inline => ({ style: 'bold', text })
 export const cmd = (text: string): Inline => ({ style: 'bold', text })
 export const dim = (text: string): Inline => ({ style: 'dim', text })
 export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
+export function inline(x: Inline, c: ColorSupport): string
 export function status(t: Tone, verb: string, headline: Inline): Block
 export function text(...items: Inline[]): Block
 export function why(line: Inline): Block

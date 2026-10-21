@@ -14,6 +14,7 @@ import {
   localFloor,
   machineMemoryBytes,
   machineParallelism,
+  ui,
   withForwardArgs,
   type ExecuteRequest,
   type ExecuteResult,
@@ -447,30 +448,28 @@ export class Orchestrator {
    * this machine's; once over, each joined agent's warm-up and each size
    * whose machines are not what it says.
    */
-  footer(): [string, string][] {
+  footer(): [string, ui.Inline][] {
     if (this.spawnedAt.size === 0 && this.agents.size === 0) return []
     const gone = new Set(this.gone)
     const all = [...this.agents.values(), ...this.gone]
     const joined = new Set(all.map((a) => a.label))
     const count = (done: number, running: number): string =>
       [`${done} done`, ...(running > 0 ? [`${running} running`] : [])].join(' · ')
-    // What it reports, then what its size declares: `4c/16G real · 2c/8G set`.
-    const res = (cores: number | undefined, memory: number | undefined, d?: Declared): string =>
-      [
-        ...(cores === undefined || memory === undefined
-          ? []
-          : [`${cores}c/${compact(memory)} real`]),
-        ...(d === undefined ? [] : [`${d.cpu}c/${compact(d.memory)} set`]),
-      ].join(' · ')
-    const lines: [string, string, string, string][] = all.map((a) => [
+    // What its machine reports: green when its size says the same, red when not.
+    const res = (cores: number, memory: number, d?: Declared): ui.Inline => {
+      const text = `${cores}c/${compact(memory)}`
+      if (d === undefined) return text
+      return ui.tone(matches(cores, memory, d) ? 'ok' : 'error', text)
+    }
+    const lines: [string, string, string, ui.Inline][] = all.map((a) => [
       a.label,
       gone.has(a) ? 'gone' : 'online',
       count(a.ran, gone.has(a) ? 0 : a.busy.size) +
         (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : ''),
       res(a.cores, a.memory, a.declared),
     ])
-    for (const [id, s] of this.spawnedAt)
-      if (!joined.has(id)) lines.push([id, 'starting', '', res(undefined, undefined, s.declared)])
+    for (const id of this.spawnedAt.keys())
+      if (!joined.has(id)) lines.push([id, 'starting', '', ''])
     lines.sort((x, y) => x[0].localeCompare(y[0], 'en', { numeric: true }))
     if (this.o.localSlots > 0 || this.ranHere > 0)
       lines.push([
@@ -487,18 +486,20 @@ export class Orchestrator {
     for (const a of this.ended ? all : []) {
       const d = a.declared
       if (d === undefined || off.has(d.size)) continue
-      if (a.cores === d.cpu && Math.abs(a.memory - d.memory) <= d.memory * 0.1) continue
+      if (matches(a.cores, a.memory, d)) continue
       off.set(
         d.size,
         `${d.size}: config ${d.cpu} cores ${gb(d.memory)}, reported ${a.cores} cores ${gb(a.memory)}`,
       )
     }
     return [
-      ...lines.map(([l, st, t, r], i): [string, string] => [
+      ...lines.map(([l, st, t, r], i): [string, ui.Inline] => [
         i === 0 ? 'agents' : '',
-        `${l.padEnd(width)}  ${st.padEnd(status)}  ${t.padEnd(done)}  ${r}`.trimEnd(),
+        r === ''
+          ? `${l.padEnd(width)}  ${st}`
+          : [`${l.padEnd(width)}  ${st.padEnd(status)}  ${t.padEnd(done)}  `, r],
       ]),
-      ...[...off.values()].map((t): [string, string] => ['', `! ${t}`]),
+      ...[...off.values()].map((t): [string, ui.Inline] => ['', `! ${t}`]),
     ]
   }
 
@@ -544,6 +545,10 @@ function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string):
   walk(id)
   return seen
 }
+
+/** A machine is what its size says: the same cores, memory within a tenth. */
+const matches = (cores: number, memory: number, d: Declared): boolean =>
+  cores === d.cpu && Math.abs(memory - d.memory) <= d.memory * 0.1
 
 /** Bytes as whole gigabytes, one decimal under 10: `16G`, `0.5G`. */
 const compact = (n: number): string => {

@@ -45,7 +45,7 @@ export interface RunContext {
   version: string
   packageCount: number // projects with a task to run → the bar's "affected" half
   runId?: string | undefined // the whole id `vx last` takes (info row)
-  executorRows?: () => readonly (readonly [string, string])[] // executors' footer rows
+  executorRows?: () => readonly (readonly [string, ui.Inline])[] // executors' footer rows
   whereRunning?: (taskId: string) => string | undefined // a running task's executor
   concurrency?: number // worker-pool size (info row)
   remoteCacheEnabled: boolean

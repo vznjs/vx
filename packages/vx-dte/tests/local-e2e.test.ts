@@ -123,7 +123,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, local: 0 })] }
       0,
       expect.stringMatching(/└─ b#use ── .*success  on agent·1/),
     ])
-    expect(out).toMatch(/agents +agent·1  online  1 done  \d+c\/[\d.]+G real$/m)
+    expect(out).toMatch(/agents +agent·1  online  1 done  \d+c\/[\d.]+G$/m)
     const own = await new Response(agent.stdout).text()
     expect(await agent.exited).toBe(0)
     expect(own).toMatch(/agent +agent·1/)

@@ -51,6 +51,7 @@ import {
   detectColors,
   type ColorSupport,
   SecretBroker,
+  type ui,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { isDefaultBuild } from './projects.js'
@@ -1824,13 +1825,15 @@ function canonical(dir: string): string {
 }
 
 /** An executor's footer rows; a plugin's throw or bad shape shows none. */
-function executorFooter(e: TaskExecutor): (readonly [string, string])[] {
+function executorFooter(e: TaskExecutor): (readonly [string, ui.Inline])[] {
   try {
     const rows = e.footer?.()
     if (!Array.isArray(rows)) return []
     return rows.filter(
-      (r): r is readonly [string, string] =>
-        Array.isArray(r) && typeof r[0] === 'string' && typeof r[1] === 'string',
+      (r): r is readonly [string, ui.Inline] =>
+        Array.isArray(r) &&
+        typeof r[0] === 'string' &&
+        (typeof r[1] === 'string' || (typeof r[1] === 'object' && r[1] !== null)),
     )
   } catch {
     return []

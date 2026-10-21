@@ -14,7 +14,7 @@
 
 import type { CaptureConfig, RunResult } from './runner.js'
 import type { ResolvedSandboxConfig, SandboxViolation } from './sandbox-runtime.js'
-import { UserError } from '../util/index.js'
+import { UserError, type ui } from '../util/index.js'
 
 /** Sandbox baselines + the user's resolved sandbox block, when the task is sandboxed. */
 export interface ExecuteSandbox {
@@ -238,12 +238,12 @@ export interface TaskExecutor {
    */
   demand?(remaining: ReadonlySet<string>): void
   /**
-   * Rows the run's footer shows for this executor, `[label, text]`: what
-   * only it knows, such as the machines it ran tasks on. Asked on every
+   * Rows the run's footer shows for this executor, `[label, text]`, the
+   * text plain or a `ui` inline (a tone colors it): what only it knows, such as the machines it ran tasks on. Asked on every
    * frame of the live footer and once for the final one, so it is cheap;
    * a throw shows nothing.
    */
-  footer?(): readonly (readonly [label: string, text: string])[]
+  footer?(): readonly (readonly [label: string, text: ui.Inline])[]
   /** Where a task it is running runs (`small·2`), for the live row; asked per frame. */
   running?(taskId: string): string | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>

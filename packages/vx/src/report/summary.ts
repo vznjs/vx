@@ -15,6 +15,7 @@ import {
   gradientRule,
   paint,
   SUCCESS,
+  ui,
   WARN,
   type ColorSupport,
 } from '../util/index.js'
@@ -184,7 +185,7 @@ export interface RunContext {
   /** The run's whole id, as `vx last` takes it; shown on the `info` row. */
   runId?: string | undefined
   /** The executors' own footer rows (`TaskExecutor.footer`), above the `info` row. */
-  executorRows?: () => readonly (readonly [string, string])[]
+  executorRows?: () => readonly (readonly [string, ui.Inline])[]
   /** Where a running task runs, when an executor says (`TaskExecutor.running`): its live row. */
   whereRunning?: (taskId: string) => string | undefined
   /** Worker-pool size for this run; shown on the `info` row. */
@@ -415,7 +416,8 @@ export function formatSummarySection(
   // grouped with time under a blank line below the meters.
   if (context !== undefined) {
     const own = context.executorRows?.() ?? []
-    if (own.length > 0) lines.push('', ...own.map(([label, text]) => row(label, text)))
+    if (own.length > 0)
+      lines.push('', ...own.map(([label, text]) => row(label, ui.inline(text, colors))))
     const info: string[] = []
     // An executor that says where tasks ran says it better than the pool.
     if (context.concurrency !== undefined && own.length === 0)
