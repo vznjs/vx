@@ -19,6 +19,8 @@ export interface SummaryStats {
   skipped: number
   aborted?: number // killed by a shutdown signal (final summary only); not in `total`
   notRun?: number // reached by the stop before they ran (final summary only); not in `total`
+  running?: number // live: running now (not in the final summary)
+  scheduled?: number // live: handed to an executor whose machine has not begun them
   total: number
   upToDate: number
   restoredLocal: number

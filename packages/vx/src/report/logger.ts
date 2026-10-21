@@ -521,7 +521,8 @@ export function defaultLogger(
     }
     let running = 0
     let scheduled = 0
-    if (!tail)
+    // Stopping, the rows say `aborting`: nothing is running or scheduled.
+    if (!tail && !stopping)
       for (const x of [...slots, ...slotQueue]) {
         if (x === null) continue
         if (x.waiting === true) scheduled++
