@@ -1,6 +1,6 @@
 ---
 title: Migrate
-description: Move a Turborepo, Nx or Vite Task repo to native vx config with one command, `vx init`.
+description: Move a Turborepo or Nx repo to native vx config with `vx init`, or a Vite Task repo with `vx-migrate`.
 ---
 
 import { Steps, Tabs, TabItem, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
@@ -62,7 +62,7 @@ repo lists or the workspace file imports with it. It asks whether to
 migrate natively (a `vx.config.ts` per package, the default) or keep
 `turbo.json` / `nx.json` as the source (`turbo()` / `nx()`, see [Check the
 mapping first](#check-the-mapping-first)); `--native` or `--keep` answer
-it, and without a terminal, or from Vite Task, it is native. It declares
+it, and without a terminal it is native. It declares
 the plugins the repo calls for in `.vx/workspace.ts`: the lockfile's
 `@vzn/vx-lockfile` plugin (`pnpm()`, …), `scheduleHistoryPlugin()`, and
 `github()` when `.github/workflows` exists, installing each beside vx at
