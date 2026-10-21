@@ -118,7 +118,10 @@ export interface ArtifactTask {
   readonly id: string
   readonly projectDir: string
   readonly command: string
-  readonly outputs: { readonly files: readonly string[]; readonly workspaceFiles: readonly string[] }
+  readonly outputs: {
+    readonly files: readonly string[]
+    readonly workspaceFiles: readonly string[]
+  }
   readonly nestedProjectDirs?: readonly string[]
 }
 ```
