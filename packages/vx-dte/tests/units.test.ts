@@ -6,6 +6,7 @@ import { createRelay } from '@vzn/vx-dte-relay'
 import { localEnv, swapRoots } from '../src/agent.js'
 import { fromParts, outputFiles, pack, toParts, unpack } from '../src/bundle.js'
 import { dte, local } from '../src/index.js'
+import { bytes } from '../src/plugin.js'
 import type { ExecuteRequest, TaskNode } from '@vzn/vx'
 import { Orchestrator } from '../src/orchestrator.js'
 import { join } from '../src/wire.js'
@@ -114,7 +115,7 @@ it('an agent on another commit is refused', async () => {
       url,
       'r',
       'agent',
-      { v: 1, size: 's', cores: 1, memory: 1, commit: 'bbb' },
+      { v: 1, cores: 1, memory: 1, commit: 'bbb' },
       undefined,
     )
     let got: unknown[] = []
@@ -146,13 +147,7 @@ async function harness(nodes: Map<string, TaskNode>) {
     need: () => ({ cores: 1, memory: 10 }),
   })
   const agent = async (cores: number) => {
-    const me = await join(
-      url,
-      'r',
-      'agent',
-      { v: 1, size: 's', cores, memory: 100, commit: 'c' },
-      undefined,
-    )
+    const me = await join(url, 'r', 'agent', { v: 1, cores, memory: 100, commit: 'c' }, undefined)
     const batches = async (): Promise<string[][]> => {
       for (let i = 0; i < 20; i++) {
         const got = (await me.poll()).map(
@@ -229,6 +224,17 @@ it('sends a task to the agent that holds its dependency’s outputs', async () =
   }
 })
 
+it('reads memory as bytes or with a unit', () => {
+  expect([
+    bytes('8GB'),
+    bytes('512MiB'),
+    bytes(1024),
+    bytes('1.5 gb'),
+    bytes('8'),
+    bytes(0),
+  ]).toEqual([8e9, 512 * 1024 ** 2, 1024, 1.5e9, undefined, undefined])
+})
+
 const refusal = (make: () => unknown): string => {
   try {
     make()
@@ -243,9 +249,17 @@ it('refuses options it does not read and agents it cannot start', () => {
   expect(refusal(() => dte({ agents: {}, adapter, relays: 'x' } as never))).toContain(
     'dte() has unknown option "relays"',
   )
-  expect(refusal(() => dte({ agents: { s: { max: 1, cpu: 0 } }, adapter }))).toBe(
-    'dte(): agents.s needs a whole max ≥ 0 and cpu ≥ 1',
+  expect(refusal(() => dte({ agents: { s: { max: 1, cpu: 0, memory: '1GB' } }, adapter }))).toBe(
+    "dte(): agents.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any",
   )
+  expect(refusal(() => dte({ agents: { s: { max: 1, cpu: 1, memory: '8 lots' } }, adapter }))).toBe(
+    "dte(): agents.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any",
+  )
+  expect(refusal(() => dte({}))).toBe(
+    'dte(): with no adapter, set relay: the agents that join it run the tasks',
+  )
+  expect(refusal(() => dte({ relay: 'http://relay.test' }))).toBe('taken')
+  expect(refusal(() => dte({ agents: { s: { cpu: 2, memory: '8GB' } }, adapter }))).toBe('taken')
   expect(refusal(() => local({ prepar: 'x' } as never))).toContain(
     'local() has unknown option "prepar"',
   )

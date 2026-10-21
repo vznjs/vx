@@ -38,12 +38,13 @@ interface Job {
 
 interface Agent {
   readonly id: string
-  readonly size: string
   readonly cores: number
   readonly memory: number
   readonly label: string
   /** From its start to its join, when this run started it. */
   readonly warmUpMs: number | undefined
+  /** The size it was started as, when this run started it. */
+  readonly declared: Declared | undefined
   /** Tasks it finished. */
   ran: number
   /** Sent to it and not finished: running there or in its queue. */
@@ -56,6 +57,13 @@ interface Agent {
   chain: Promise<void>
   /** It was sent the run's sandbox configs. */
   sandboxes: boolean
+}
+
+/** What an agent was started as: its size's `cpu` and `memory` in bytes. */
+export interface Declared {
+  readonly size: string
+  readonly cpu: number
+  readonly memory: number
 }
 
 export interface OrchestratorOptions {
@@ -78,7 +86,8 @@ export class Orchestrator {
   private localBusy = 0
   private ranHere = 0
   /** When each agent this run started was asked for, by `AgentSpawn.index`. */
-  private readonly spawnedAt = new Map<number, number>()
+  private readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
+  private ended = false
   /** Agents that joined and left, for the footer. */
   private readonly gone: Agent[] = []
   private pumping = false
@@ -111,6 +120,7 @@ export class Orchestrator {
   }
 
   async close(): Promise<void> {
+    this.ended = true
     this.stop.abort()
     await this.loop
     await this.o.me.leave()
@@ -318,7 +328,7 @@ export class Orchestrator {
       }
       if (
         info?.v !== 1 ||
-        typeof info.size !== 'string' ||
+        !(info.id === undefined || typeof info.id === 'string') ||
         !(Number(info.cores) >= 1) ||
         !(Number(info.memory) >= 0)
       ) {
@@ -327,21 +337,29 @@ export class Orchestrator {
       if (info.commit !== this.o.commit) {
         return refuse(`checked out ${info.commit}, the run is on ${this.o.commit}`)
       }
-      const index = Number.isInteger(info.index) ? info.index! : undefined
-      const asked = index === undefined ? undefined : this.spawnedAt.get(index)
+      // An agent this run started keeps the name it was started under;
+      // one that joined on its own is numbered in the order it joined.
+      const spawn = info.id === undefined ? undefined : this.spawnedAt.get(info.id)
+      const asked = spawn?.at
+      const taken = new Set([...this.agents.values(), ...this.gone].map((a) => a.label))
+      let label = asked === undefined ? undefined : info.id
+      while (label === undefined || taken.has(label)) label = `agent·${++this.joined}`
       this.agents.set(id, {
         id,
-        size: info.size,
         warmUpMs: asked === undefined ? undefined : performance.now() - asked,
+        declared: spawn?.declared,
         ran: 0,
         cores: Number(info.cores),
         memory: Number(info.memory),
         usedCores: 0,
         usedMemory: 0,
-        label: `${info.size}·${index ?? `j${++this.joined}`}`,
+        label,
         busy: new Map(),
         has: new Set(),
-        chain: Promise.resolve(),
+        // Its name first, before any batch.
+        chain: this.o.me
+          .send(id, { type: 'welcome', name: label } satisfies ToAgent)
+          .catch(() => undefined),
         sandboxes: false,
       })
     } else if (body.type === 'lost') {
@@ -406,9 +424,9 @@ export class Orchestrator {
     }
   }
 
-  /** `demand` asked the adapter for agent `index`. */
-  spawned(index: number): void {
-    this.spawnedAt.set(index, performance.now())
+  /** `demand` asked the adapter for agent `id` (`AgentSpawn.id`). */
+  spawned(id: string, declared: Declared): void {
+    this.spawnedAt.set(id, { at: performance.now(), declared })
   }
 
   /**
@@ -421,8 +439,9 @@ export class Orchestrator {
     const all = [...this.agents.values(), ...this.gone]
     const joined = all.filter((a) => a.warmUpMs !== undefined).length
     const starting = Math.max(0, this.spawnedAt.size - joined)
+    // Over, the run says how many took part; until then, who is up.
     const head = [
-      `${this.agents.size} online`,
+      this.ended ? `${all.length} joined` : `${this.agents.size} online`,
       ...(starting > 0 ? [`${starting} starting`] : []),
       ...(this.gone.length > 0 ? [`${this.gone.length} gone`] : []),
     ].join(' · ')
@@ -434,9 +453,21 @@ export class Orchestrator {
       ])
     if (this.ranHere > 0) lines.push(['here', `${this.ranHere} ran`])
     const width = Math.max(0, ...lines.map(([l]) => l.length))
+    // Once the run is over: each size whose machines are not what it says.
+    const off = new Map<string, string>()
+    for (const a of this.ended ? all : []) {
+      const d = a.declared
+      if (d === undefined || off.has(d.size)) continue
+      if (a.cores === d.cpu && Math.abs(a.memory - d.memory) <= d.memory * 0.1) continue
+      off.set(
+        d.size,
+        `${d.size}: config ${d.cpu} cores ${gb(d.memory)}, reported ${a.cores} cores ${gb(a.memory)}`,
+      )
+    }
     return [
       ['agents', head],
       ...lines.map(([l, t]): [string, string] => ['', `${l.padEnd(width)}  ${t}`]),
+      ...[...off.values()].map((t): [string, string] => ['', `! ${t}`]),
     ]
   }
 
@@ -484,3 +515,5 @@ function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string):
 }
 
 const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)}s`
+
+const gb = (n: number): string => `${Math.round(n / 1e9)} GB`

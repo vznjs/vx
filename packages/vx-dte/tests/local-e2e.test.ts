@@ -18,7 +18,7 @@ beforeEach(async () => {
     'package.json': JSON.stringify({ name: 'ws', private: true }),
     '.gitignore': 'out\n.vx/cache\n',
     '.vx/workspace.mjs': `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1 } }, adapter: local(), local: 0 })] }
+export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB' } }, adapter: local(), local: 0 })] }
 `,
     'a/vx.config.mjs': `export default { name: 'a', tasks: { gen: {
   exec: { command: 'mkdir -p out && echo made > out/a.txt' },
@@ -82,4 +82,53 @@ it('fails a task that fails on its agent, with its output', () => {
   const r = vx(['run', 'b#fail'], 'e2e')
   expect(r.exitCode).not.toBe(0)
   expect(r.stdout.toString() + r.stderr.toString()).toContain('oops')
+}, 60_000)
+
+it('runs on an agent started by hand, with no adapter, under one name on both sides', async () => {
+  const { createRelay } = await import('@vzn/vx-dte-relay')
+  const relay = createRelay()
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+  const url = `http://127.0.0.1:${server.port}`
+  try {
+    await writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { dte } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ relay: ${JSON.stringify(url)}, local: 0 })] }
+`,
+    )
+    Bun.spawnSync(
+      ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'r'],
+      {
+        cwd: root,
+      },
+    )
+    expect(vx(['run', 'a#gen']).exitCode).toBe(0)
+    const { VX_DTE_RUN: _, ...env } = process.env
+    const agent = Bun.spawn([process.execPath, CORE_BIN, 'dte', 'agent'], {
+      cwd: root,
+      env: { ...env, VX_DTE_RUN: 'hand', NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    // Async: the relay is served by this process.
+    const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#use'], {
+      cwd: root,
+      env: { ...env, VX_DTE_RUN: 'hand', NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const out = await new Response(run.stdout).text()
+    expect([await run.exited, out]).toEqual([
+      0,
+      expect.stringMatching(/└─ b#use ── .*success  on agent·1/),
+    ])
+    expect(out).toContain('agent·1  1 ran')
+    const own = await new Response(agent.stdout).text()
+    expect(await agent.exited).toBe(0)
+    expect(own).toMatch(/agent +agent·1/)
+    expect(own).toContain('✓ b#use')
+  } finally {
+    relay.close()
+    await server.stop(true)
+  }
 }, 60_000)

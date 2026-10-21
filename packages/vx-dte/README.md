@@ -27,7 +27,10 @@ import { dte, local } from '/path/to/vx/packages/vx-dte/src/index.ts'
 
 export default defineWorkspace({
   plugins: [
-    dte({ agents: { small: { max: 4, cpu: 2 } }, adapter: local({ prepare: 'bun install' }) }),
+    dte({
+      agents: { small: { max: 4, cpu: 2, memory: '8GB' } },
+      adapter: local({ prepare: 'bun install' }),
+    }),
   ],
 })
 ```
@@ -39,6 +42,33 @@ VX_DTE_RUN=try vx run build --all
 `VX_DTE_RUN` names the run and turns distribution on; without it, `vx run`
 runs here as always. `local()` starts each agent as a process in its own
 git worktree of `HEAD`, so agents run committed code only.
+
+With no adapter, vx starts no agents: the run uses whichever join its
+relay. In three terminals on one checkout's commit:
+
+```ts
+// .vx/workspace.ts
+export default defineWorkspace({ plugins: [dte({ relay: 'http://127.0.0.1:8080' })] })
+```
+
+```sh
+bun /path/to/vx/packages/vx-dte-relay/src/bin.ts --no-auth --port 8080   # the relay
+VX_DTE_RUN=try vx dte agent                                              # an agent, as many as you like
+VX_DTE_RUN=try vx run build --all                                        # the run
+```
+
+An agent prints its name, the run, the relay and its machine, then a row
+as each task starts and ends:
+
+```
+─ vx dte agent ───────────────────────────────────────────────
+  agent     agent·1
+  run       try
+  relay     http://127.0.0.1:8080
+  machine   10 cores · 17.2 GB
+› b#build  running
+✓ b#build  308ms
+```
 
 ## What runs where
 
@@ -75,35 +105,43 @@ the order the run started it:
 The footer's `agents` row counts the agents online, starting and gone
 while the run goes, then lists each one with the tasks it ran and its
 warm-up (from asking the adapter to its join), and the tasks this
-machine ran:
+machine ran. An agent the run started is named by its size and the order
+it was started in; one that joined on its own is `agent·N`. Once the run
+is over, a size whose agents reported other cores or memory than it
+declares is named:
 
 ```
   agents    2 online
             small·1  5 ran, warm-up 0.1s
             small·2  0 ran, warm-up 0.2s
             here     1 ran
+            ! small: config 2 cores 8 GB, reported 4 cores 16 GB
 ```
 
 ## API
 
 - `dte(options: DteOptions)` is the plugin. `DteOptions` is
-  `{ agents, adapter, relay?, local?, token? }`:
-  - `agents` names each `AgentSize`, `{ max, cpu }`: how many of it one
-    run may start, and its cores, which the run counts on when it starts
-    one, until the agent reports what its machine has.
-    Agents start in declared order as ready work outgrows this machine's
-    share; none stops before the run ends.
-  - `adapter` is the `DteAdapter` that starts agents.
+  `{ agents?, adapter?, relay?, local?, token? }`:
+  - `agents` names each `AgentSize`, `{ cpu, memory, max? }`: its cores
+    and memory (bytes, or `'8GB'`, `'512MiB'`), which the run counts on
+    when it starts one, until the agent reports what its machine has, and
+    how many of it one run may start (absent, no cap). Agents start in
+    declared order until their cores and memory cover the remaining
+    tasks' recorded peaks beyond this machine's share; none stops before
+    the run ends.
+  - `adapter` is the `DteAdapter` that starts agents. Absent, the run
+    starts none and uses the agents that join `relay`.
   - `relay` is the relay's URL; absent, the adapter's own.
   - `local` is how many tasks this machine runs at once beside the agents
     (default: the run's worker count). `0` sends all of them to agents.
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`).
-- `vx dte agent` is an agent. It reads `VX_DTE_RUN`, `VX_DTE_SIZE` (one of
-  `agents`), `VX_DTE_AGENT` (its index, for its name in the output) and
-  `VX_DTE_RELAY` (else `relay`).
+- `vx dte agent` is an agent. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else
+  `relay`) and, when the run started it, `VX_DTE_AGENT` (its name). It is
+  described only by the cores and memory its machine reports.
 - `DteAdapter` is `{ spawn(agent: AgentSpawn), relay?(), close?() }`.
-  `AgentSpawn` is `{ run, relay, size, index, workspaceRoot, env }`, where
-  `env` holds the four variables the agent reads.
+  `AgentSpawn` is `{ run, relay, size, index, id, workspaceRoot, env }`,
+  where `id` is the agent's name (`small·2`) and `env` holds the three
+  variables the agent reads.
 - `local(options?: LocalOptions)` starts agents on this machine and a relay
   of its own on loopback. `LocalOptions` is `{ prepare? }`: a shell line
   each worktree runs before its agent starts.
