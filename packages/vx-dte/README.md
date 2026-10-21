@@ -283,7 +283,7 @@ Each task an agent ran says which one on its row and frame, in that
 agent's own color, by size and the order the run started it:
 
 ```
- ⏺︎   308ms success miss     c#build  on small#1
+ ⏺︎   308ms success miss     c#build@small#1
 ```
 
 An idle agent the rest of the run cannot keep busy leaves (`left`): one
@@ -300,8 +300,9 @@ has done and the ones it runs now; while the run goes, those that left
 are one line (`3 agents  left  9 done`). This machine is `local`. An agent the
 run started is named by its size and the order it was started in; one
 that joined on its own is `agent#N`. A task sent to an agent but not yet
-begun there reads `waiting` in the running list, with no clock; its
-clock starts when the agent begins it. Once the run is over, each agent
+begun there has no row; the tasks line counts it `scheduled`
+(`30 success · 4 running · 12 scheduled · 62 total`). Its row and clock
+start when the agent begins it. Once the run is over, each agent
 adds its warm-up (from asking the adapter to its join) and the cores and
 memory its machine reports, green when they are what its size declares
 and red when not, and a size whose agents reported other cores or memory

@@ -6,7 +6,7 @@
 // then redraws, so the display can never interleave with task output.
 
 import { dumbTerminal, paint, ui, type ColorSupport } from '../util/index.js'
-import { formatTaskRow, paintIdParts, TIME_COL } from './framed-output.js'
+import { formatTaskRow, paintIdParts, placeNote, TIME_COL } from './framed-output.js'
 import type { BlockedTask } from './forecast.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
@@ -316,6 +316,8 @@ export interface WorkerSlot {
 }
 
 export interface StatusRegionState {
+  /** The terminal's height: a region taller folds its rows, never its summary. */
+  rows?: number
   /** A running task's unfinished dependents (`blocks 14` on its row); 0 says nothing. */
   blocks?: ReadonlyMap<string, number>
   /** The running task at the head of the longest unfinished chain. */
@@ -483,17 +485,12 @@ export function formatStatusRegion(
       )
       continue
     }
-    // Handed to an executor that has no machine on it yet: no clock.
-    if (slot.waiting === true) {
-      lines.push(
-        formatTaskRow(' ', null, 'waiting', IDLE, '', '', paintPinnedId(slot.id, colors), colors),
-      )
-      continue
-    }
+    // Handed to an executor that has no machine on it yet: no row, only
+    // the tasks line's `scheduled` (M, 2026-10-21).
+    if (slot.waiting === true) continue
     const waiting = s.blocks?.get(slot.id) ?? 0
     const notes: string[] = []
     const at = s.where?.(slot.id)
-    if (at != null) notes.push(`${dim('on')} ${ui.inline(ui.place(at), colors)}`)
     if (s.critical === slot.id && busy > 1) notes.push(paint(WARN, 'critical path', colors))
     if (waiting > 0) notes.push(dim(`blocks ${waiting}`))
     const usual = s.expected?.get(slot.id)
@@ -507,7 +504,9 @@ export function formatStatusRegion(
         '',
         paintPinnedId(slot.id, colors),
         colors,
-      ) + (notes.length > 0 ? `  ${notes.join(dim(' \u00b7 '))}` : ''),
+      ) +
+        (at != null ? placeNote(at, colors) : '') +
+        (notes.length > 0 ? `  ${notes.join(dim(' \u00b7 '))}` : ''),
     )
   }
   for (const step of s.steps ?? []) {
@@ -523,6 +522,16 @@ export function formatStatusRegion(
         colors,
       ),
     )
+  }
+  // A region taller than the terminal (a row spared) folds the rows past
+  // what fits into one line: the writer would cut the summary at its
+  // foot, and lines never printed cannot be scrolled to (M, 2026-10-21).
+  const room = s.rows === undefined ? Infinity : s.rows - 1 - s.summaryLines.length
+  if (lines.length > room && room >= 3) {
+    const kept = room - 1
+    const more = lines.length - kept
+    lines.length = kept
+    lines.push(`${' '.repeat(3 + TIME_COL + 1)}${dim(`+${more} more`)}`)
   }
   // The live summary section — identical shape to the final printout,
   // so the region visually BECOMES the summary when the run ends.

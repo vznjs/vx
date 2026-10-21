@@ -519,6 +519,15 @@ export function defaultLogger(
         out.write(progressEscape(progressShown, progressRed))
       }
     }
+    let running = 0
+    let scheduled = 0
+    // Stopping, the rows say `aborting`: nothing is running or scheduled.
+    if (!tail && !stopping)
+      for (const x of [...slots, ...slotQueue]) {
+        if (x === null) continue
+        if (x.waiting === true) scheduled++
+        else running++
+      }
     // The live summary IS the final summary's section, built from the
     // same formatter so the region visually becomes the printout.
     const summaryLines =
@@ -540,6 +549,8 @@ export function defaultLogger(
               miss: succeeded + failed - noCache,
               noCache,
               left: total - done - stopped - notRun,
+              ...(running > 0 ? { running } : {}),
+              ...(scheduled > 0 ? { scheduled } : {}),
               ...(etaMs !== undefined && !tail && !stopping ? { etaMs } : {}),
               buckets,
               spread:
@@ -566,6 +577,7 @@ export function defaultLogger(
           ...(shownSteps.length > 0 ? { steps: shownSteps } : {}),
           nowMs: Date.now(),
           summaryLines,
+          ...(out.rows !== undefined && out.rows > 0 ? { rows: out.rows } : {}),
           ...(runContext?.whereRunning !== undefined ? { where: runContext.whereRunning } : {}),
           ...(blocks !== undefined ? { blocks } : {}),
           ...(expected !== undefined ? { expected } : {}),

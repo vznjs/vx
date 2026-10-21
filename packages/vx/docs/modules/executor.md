@@ -20,9 +20,9 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   machine `where` names, which the run history keeps
   — `footer()` returns `[label, text]` rows the run's footer shows, live
   and at the end (a throw or a bad shape shows none); `ExecuteResult.where`
-  is shown on the task's row and frame as `on <where>`; `running(id)`
+  is shown on the task's row and frame after its id, as `<id>@<where>`; `running(id)`
   says where a task it was handed runs, for the live row, or `null` while
-  it holds the task for a machine (the row reads `waiting`, no clock)
+  it holds the task for a machine (no row; the tasks line counts it `scheduled`)
   — `remote: true` declares that the executor runs the command somewhere
   else (so it is never offered a `pinnedLocal` task); `sandbox: true`
   says a remote one enforces `req.sandbox` where it runs and returns the

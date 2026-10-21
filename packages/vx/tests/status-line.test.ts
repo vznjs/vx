@@ -443,9 +443,9 @@ describe('defaultLogger status line integration', () => {
     expect(s.text().endsWith('└─ one#test ── (100ms) success\n\n')).toBe(true)
   })
 
-  // M, 2026-10-21: a task an executor holds for a machine read `running`
-  // with a clock; it waits, and its clock starts when a machine begins it.
-  it('a task its executor holds says waiting, its clock starting when a machine begins it', async () => {
+  // M, 2026-10-21: a task an executor holds for a machine has no row, only
+  // a count (`scheduled`); its row and clock start when a machine begins it.
+  it('a task its executor holds is counted scheduled, its row starting when a machine begins it', async () => {
     const s = tty()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
     let at: string | null = null
@@ -465,12 +465,19 @@ describe('defaultLogger status line integration', () => {
         .text()
         .split(/[\n\r]/)
         .findLast((l) => l.includes('a#x')) ?? ''
+    const tasks = () =>
+      s
+        .text()
+        .split(/[\n\r]/)
+        .findLast((l) => l.includes(' total')) ?? ''
     log.taskStart?.(a)
-    expect(row()).toMatch(/^ +waiting +a#x$/)
+    expect(row()).toBe('')
+    expect(tasks()).toMatch(/^ +1 scheduled · 2 total$/)
     await Bun.sleep(1100)
     at = 'small#1'
     log.taskStart?.(mkNode('b#x'))
-    expect(row()).toMatch(/ \d+ms running +a#x {2}on small#1$/)
+    expect(row()).toMatch(/ \d+ms running +a#x@small#1$/)
+    expect(tasks()).toMatch(/^ +2 running · 2 total$/)
     log.runEnd?.()
   })
 
@@ -663,10 +670,26 @@ describe('formatStatusRegion', () => {
     expect(lines.slice(3)).toEqual(SUMMARY)
   })
 
+  // M, 2026-10-21: a region taller than the terminal cut the summary, and
+  // what never printed cannot be scrolled to. The rows give way instead.
+  it('a region taller than the terminal keeps its summary and folds the rows it cannot fit', () => {
+    const slots = Array.from({ length: 10 }, (_, i) => slot(`p#t${i}`))
+    const lines = formatStatusRegion({ ...base, slots, rows: 8 })
+    expect(lines).toHaveLength(7)
+    expect(lines[1]).toContain('p#t0')
+    expect(lines[2]).toContain('p#t1')
+    expect(lines[3]).toBe('           +8 more')
+    expect(lines.slice(4)).toEqual(SUMMARY)
+    // One that fits is as it was.
+    expect(formatStatusRegion({ ...base, slots, rows: 40 })).toEqual(
+      formatStatusRegion({ ...base, slots }),
+    )
+  })
+
   it('a running row says where an executor runs it', () => {
     const where = (id: string) => (id === 'a#x' ? 'small#2' : undefined)
     const lines = formatStatusRegion({ ...base, slots: [slot('a#x'), slot('b#x')], where })
-    expect(lines[1]).toMatch(/a#x  on small#2$/)
+    expect(lines[1]).toMatch(/a#x@small#2$/)
     expect(lines[2]).toMatch(/b#x$/)
   })
 

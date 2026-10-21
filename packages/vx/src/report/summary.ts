@@ -28,6 +28,7 @@ const LOCAL = '#38bdf8' // sky-400
 const REMOTE = '#2563eb' // blue-600
 const ABORTED = '#f97316' // orange-500: red's neighbour, not a failure
 const NOT_RUN = '#a855f7' // purple-500: stopped before it began, apart from every other state
+const RUNNING = '#06b6d4' // cyan-500: ui's info
 const ACCENT = '#06b6d4' // cyan-500: the live region's running word
 
 /**
@@ -86,6 +87,9 @@ export interface SummaryStats {
   aborted?: number
   /** Reached by the stop before they ran. Not in `total`. */
   notRun?: number
+  /** Live: running now, and handed to an executor whose machine has not begun them. */
+  running?: number
+  scheduled?: number
   total: number
   upToDate: number
   restoredLocal: number
@@ -231,7 +235,14 @@ export function formatSummarySection(
   const left = stats.left ?? 0
   const aborted = stats.aborted ?? 0
   const notRun = stats.notRun ?? 0
-  const remainder = { n: left, color: '', glyph: '\u25b1', dim: true }
+  const running = stats.running ?? 0
+  const scheduled = stats.scheduled ?? 0
+  const remainder = {
+    n: Math.max(0, left - running - scheduled),
+    color: '',
+    glyph: '\u25b1',
+    dim: true,
+  }
 
   const dim = (txt: string) => paint('', txt, colors, { dim: true })
   const row = (label: string, value: string): string => `  ${dim(label.padEnd(8))}  ${value}`
@@ -248,6 +259,8 @@ export function formatSummarySection(
   if (stats.skipped > 0) taskParts.push(paint(WARN, `${stats.skipped} skipped`, colors))
   if (aborted > 0) taskParts.push(paint(ABORTED, `${aborted} aborted`, colors))
   if (notRun > 0) taskParts.push(paint(NOT_RUN, `${notRun} not run`, colors))
+  if (running > 0) taskParts.push(paint(RUNNING, `${running} running`, colors))
+  if (scheduled > 0) taskParts.push(dim(`${scheduled} scheduled`))
   if (runTotal > 0) taskParts.push(dim(`${runTotal} total`))
   const taskBar = segmentBar(
     [
@@ -256,6 +269,8 @@ export function formatSummarySection(
       { n: stats.skipped, color: WARN },
       { n: aborted, color: ABORTED },
       { n: notRun, color: NOT_RUN },
+      { n: running, color: RUNNING },
+      { n: scheduled, color: '', dim: true },
       remainder,
     ],
     colors,
