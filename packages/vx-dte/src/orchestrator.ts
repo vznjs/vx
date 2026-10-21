@@ -6,17 +6,20 @@
 // holds a task's dependencies. Each agent's result is written back here
 // before the task ends, so the run saves and reports it as its own.
 
+import { realpathSync } from 'node:fs'
+import { lstat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   executorFallback,
+  localFloor,
   withForwardArgs,
   type ExecuteRequest,
   type ExecuteResult,
+  type SandboxConfig,
   type TaskNode,
 } from '@vzn/vx'
 import { fromParts, outputFiles, pack, toParts, unpack } from './bundle.js'
 import type { AgentInfo, RunOrder, ToAgent, ToOrchestrator } from './messages.js'
-import { runCommand, type CommandResult } from './run-command.js'
 import { RelayError, type Participant } from './wire.js'
 
 /** What a task is expected to hold while it runs, from its history. */
@@ -47,6 +50,8 @@ interface Agent {
   readonly has: Set<string>
   /** Sends to it go out in order: a run's parts before the run. */
   chain: Promise<void>
+  /** It was sent the run's sandbox configs. */
+  sandboxes: boolean
 }
 
 export interface OrchestratorOptions {
@@ -71,8 +76,18 @@ export class Orchestrator {
   private joined = 0
   private readonly stop = new AbortController()
   private readonly loop: Promise<void>
+  private readonly floor = localFloor()
+  private readonly realRoot: string
 
   constructor(private readonly o: OrchestratorOptions) {
+    // A root that is gone fails the run's own reads first.
+    this.realRoot = (() => {
+      try {
+        return realpathSync(o.root)
+      } catch {
+        return o.root
+      }
+    })()
     this.loop = this.listen()
   }
 
@@ -90,6 +105,7 @@ export class Orchestrator {
     this.stop.abort()
     await this.loop
     await this.o.me.leave()
+    await this.floor.close()
   }
 
   private abort(job: Job): void {
@@ -168,17 +184,9 @@ export class Orchestrator {
 
   private runHere(job: Job): void {
     this.localBusy++
-    const { req } = job
-    runCommand({
-      command: withForwardArgs(req.command, req.forwardArgs),
-      cwd: req.cwd,
-      env: req.env,
-      signal: req.signal,
-      onStdout: req.onStdout,
-      onStderr: req.onStderr,
-      ...(req.onSpawn === undefined ? {} : { onSpawn: req.onSpawn }),
-    })
-      .then((r) => job.resolve(result(r)), job.reject)
+    this.floor
+      .execute(job.req)
+      .then(job.resolve, job.reject)
       .finally(() => {
         this.localBusy--
         this.pumpSoon()
@@ -212,12 +220,18 @@ export class Orchestrator {
           },
           cores: job.need.cores,
           memory: job.need.memory,
-        } satisfies RunOrder,
+          ...(req.sandbox === undefined ? {} : { sandbox: req.sandbox }),
+        } as RunOrder,
       }
     })
+    const sandboxed = orders.some((o) => o.order.sandbox !== undefined)
+    const sandboxes = sandboxed && !a.sandboxes ? sandboxConfigs(nodes) : undefined
+    if (sandboxed) a.sandboxes = true
     a.chain = a.chain
       .then(async () => {
         for (const { order, ship } of orders) {
+          if (order.sandbox !== undefined)
+            order.binds = await this.binds(order.sandbox.config.allowWrite)
           const files: string[] = []
           for (const id of ship) {
             const n = nodes!.get(id)!
@@ -238,7 +252,9 @@ export class Orchestrator {
         await this.o.me.send(a.id, {
           type: 'batch',
           root: this.o.root,
+          realRoot: this.realRoot,
           tasks: orders.map((o) => o.order),
+          ...(sandboxes === undefined ? {} : { sandboxes }),
         } satisfies ToAgent)
       })
       .catch((err: unknown) => {
@@ -249,6 +265,18 @@ export class Orchestrator {
       })
   }
 
+  /** The write grants in this checkout that exist, which a bind needs on the agent too. */
+  private async binds(writes: readonly string[]): Promise<{ path: string; dir: boolean }[]> {
+    const out: { path: string; dir: boolean }[] = []
+    for (const w of writes) {
+      if (!w.startsWith(this.realRoot + path.sep)) continue
+      const st = await lstat(w).catch(() => undefined)
+      if (st !== undefined)
+        out.push({ path: path.relative(this.realRoot, w), dir: st.isDirectory() })
+    }
+    return out
+  }
+
   private post(a: Agent, m: ToAgent): void {
     a.chain = a.chain.then(() => this.o.me.send(a.id, m)).catch(() => undefined)
   }
@@ -256,7 +284,7 @@ export class Orchestrator {
   private async finish(a: Agent, task: string, parts: string[]): Promise<void> {
     const job = a.busy.get(task)
     if (job === undefined) return
-    const head = (await unpack(this.o.root, fromParts(parts))) as CommandResult
+    const head = (await unpack(this.o.root, fromParts(parts))) as Wired
     a.busy.delete(task)
     a.usedCores -= job.need.cores
     a.usedMemory -= job.need.memory
@@ -297,6 +325,7 @@ export class Orchestrator {
         busy: new Map(),
         has: new Set(),
         chain: Promise.resolve(),
+        sandboxes: false,
       })
     } else if (body.type === 'lost') {
       const a = this.agents.get(body.id!)
@@ -368,8 +397,24 @@ function greater(a: readonly number[], b: readonly number[]): boolean {
   return false
 }
 
-function result(r: CommandResult): ExecuteResult {
-  return { ...r, violations: [], outputs: { kind: 'disk' } }
+/** A result as an agent sends it: JSON, so a violation's time is a string. */
+type Wired = Omit<ExecuteResult, 'violations' | 'outputs'> & {
+  violations?: (Omit<ExecuteResult['violations'][number], 'timestamp'> & { timestamp: string })[]
+}
+
+function result(r: Wired): ExecuteResult {
+  const violations = (r.violations ?? []).map((v) => ({ ...v, timestamp: new Date(v.timestamp) }))
+  return { ...r, violations, outputs: { kind: 'disk' } }
+}
+
+/** Each distinct `exec.sandbox` of the run, for an agent's sandbox runtime. */
+function sandboxConfigs(nodes: ReadonlyMap<string, TaskNode> | undefined): SandboxConfig[] {
+  const seen = new Map<string, SandboxConfig>()
+  for (const n of nodes?.values() ?? []) {
+    const s = n.config.exec?.sandbox
+    if (s !== undefined) seen.set(JSON.stringify(s), s)
+  }
+  return [...seen.values()]
 }
 
 /** Every task `id` depends on, transitively. */

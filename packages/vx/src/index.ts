@@ -197,6 +197,9 @@ export { executorFallback } from './exec/index.js'
 // trailing comment or a template literal's closing newline lost the args
 // there while the local floor kept them (X-112).
 export { withForwardArgs } from './exec/index.js'
+// Core's local executor, sandbox included, for a plugin that runs tasks
+// itself: `@vzn/vx-dte`'s orchestrator and its agents.
+export { localFloor, type LocalFloor } from './orchestrator/index.js'
 export type {
   ExecuteRequest,
   ExecuteResult,

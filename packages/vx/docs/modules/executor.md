@@ -11,9 +11,12 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 
 ## Public surface
 
-- `TaskExecutor { name; remote?; capacity?; accepts?(task); demand?(remaining); execute(req) }`
+- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining); execute(req) }`
   — `remote: true` declares that the executor runs the command somewhere
-  else (so it is never offered a `pinnedLocal` task); `capacity` is how
+  else (so it is never offered a `pinnedLocal` task); `sandbox: true`
+  says a remote one enforces `req.sandbox` where it runs and returns the
+  violations, so a sandboxed task and its dependants are not pinned for
+  it (`@vzn/vx-dte`'s agents run them through `localFloor`); `capacity` is how
   many tasks it runs at once (a positive integer, else the run is
   refused), which makes its tasks a POOL of that size instead of local
   worker slots.
@@ -143,7 +146,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
 - A task is `pinnedLocal` when it is persistent, transitively depends on a
   persistent task (a worker cannot reach a port on the submitter), is
   sandboxed (the sandbox is this machine's machinery), depends on a
-  sandboxed task, declares `exec.remote: false`, or folds a runtime
+  sandboxed task (both unless the executor declares `sandbox`), declares `exec.remote: false`, or folds a runtime
   probe (`inputs.runtime` / `workspaceRuntime`) into its key: the
   probe is this machine's answer, and a worker's output under it is a
   stale hit (C-2). `placement.ts`

@@ -50,7 +50,8 @@ export const UNPLACED_EXECUTOR: TaskExecutor
   persistent one (a worker cannot reach a port on the submitter), a
   sandboxed task and its dependants (the sandbox is this machine's
   machinery; a boundary "verified" where it is not enforced passes
-  vacuously), `exec.remote: false`, or a task whose key folds a runtime
+  vacuously; an executor that declares `sandbox` enforces it where it
+  runs and is offered them), `exec.remote: false`, or a task whose key folds a runtime
   probe (`inputs.runtime` / `workspaceRuntime`: this machine's
   answer, which a worker's own runtime may not match; its dependants stay
   free, C-2). Pinned tasks never reach a remote

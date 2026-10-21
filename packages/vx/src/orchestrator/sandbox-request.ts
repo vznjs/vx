@@ -55,6 +55,11 @@ export interface SandboxArmer {
  * it carries had no witness of any kind and three separate widenings of
  * them survived a whole-suite mutation sweep (item 537).
  */
+/** What the run's sandbox union reads of a task: a `TaskNode`, or an agent's order. */
+export interface SandboxedNode {
+  readonly config: { readonly exec?: { readonly sandbox?: ExecConfig['sandbox'] } }
+}
+
 export interface SandboxRunUnion {
   /** Domains the run's filtering proxy will accept, in declaration order. */
   domains: string[]
@@ -71,7 +76,7 @@ export interface SandboxRunUnion {
   weakerNested: boolean
 }
 
-export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | null {
+export function sandboxRunUnion(nodes: Iterable<SandboxedNode>): SandboxRunUnion | null {
   const sandboxed = [...nodes].filter((n) => n.config.exec?.sandbox !== undefined)
   if (sandboxed.length === 0) return null
   const weakerNested = sandboxed.every((n) => n.config.exec?.sandbox?.weakerWhenNested === true)
@@ -119,7 +124,7 @@ export function sandboxRunUnion(nodes: Iterable<TaskNode>): SandboxRunUnion | nu
  * port list (its bridge is a unix socket the task's side creates), lifts
  * it for the run. macOS keeps per-task precision through vx's own rules.
  */
-export function prepareSandbox(nodes: Iterable<TaskNode>): SandboxArmer | null {
+export function prepareSandbox(nodes: Iterable<SandboxedNode>): SandboxArmer | null {
   const union = sandboxRunUnion(nodes)
   if (union === null) return null
   const { domains, deniedDomains, unixSockets, gitConfig, weakerNested } = union

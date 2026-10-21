@@ -150,6 +150,8 @@ describe('package boundaries', () => {
       'isUserError',
       'loadProjectConfig',
       'loadResolvedProjects',
+      // Widened 2026-10-21: `@vzn/vx-dte` runs tasks itself, sandbox included.
+      'localFloor',
       'lockfileClaim',
       'machineMemoryBytes',
       'machineParallelism',

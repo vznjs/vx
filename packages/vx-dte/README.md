@@ -50,7 +50,10 @@ git worktree of `HEAD`, so agents run committed code only.
   alone on an idle one.
 - A task goes to the agent that holds most of its dependencies' outputs,
   so a chain stays on one machine.
-- Tasks that must run here stay here: sandboxed, persistent, interactive,
+- A sandboxed task runs on an agent inside the agent's own sandbox, with
+  the same `exec.sandbox`; a violation there fails it here, named in this
+  checkout's paths.
+- Tasks that must run here stay here: persistent, interactive,
   `exec.remote: false`, and their dependants (core's placement).
 - An agent receives the declared outputs of every task the one it runs
   depends on, unless it ran or received them before. Files a task writes

@@ -281,6 +281,40 @@ describe('placeTasks — what an executor is offered, and where a task lands', (
   })
 })
 
+describe('a remote executor that enforces the sandbox', () => {
+  const remote = (sandbox: boolean): TaskExecutor => ({
+    name: sandbox ? 'sandboxing' : 'plain',
+    remote: true,
+    sandbox,
+    execute: () => {
+      throw new Error('never runs')
+    },
+  })
+  const local: TaskExecutor = { name: 'local', execute: () => Promise.reject(new Error('no')) }
+  const g = () =>
+    graph(
+      node('a#lint', { sandbox: {} }),
+      node('a#test', {}, ['a#lint']),
+      node('a#dev', { persistent: {} }),
+      node('a#here', { remote: false }),
+    )
+
+  it('is offered sandboxed tasks and their dependants, never what pins otherwise', () => {
+    const p = placeTasks(g(), [remote(true), local])
+    expect([...p.executors].map(([id, e]) => [id, e.name])).toEqual([
+      ['a#lint', 'sandboxing'],
+      ['a#test', 'sandboxing'],
+      ['a#here', 'local'],
+    ])
+  })
+
+  it('without it, both stay here', () => {
+    const p = placeTasks(g(), [remote(false), local])
+    expect(p.executors.get('a#lint')!.name).toBe('local')
+    expect(p.executors.get('a#test')!.name).toBe('local')
+  })
+})
+
 describe('hasPooledExecutor / poolOfPlacement', () => {
   const exec = (name: string, capacity?: number): TaskExecutor =>
     ({
