@@ -4,6 +4,7 @@
 // here goes through the staged load, so the answer is the run's.
 
 import path from 'node:path'
+import { settingEnv } from '../settings.js'
 import fs from 'node:fs'
 import {
   affectedChanges,
@@ -244,12 +245,13 @@ function refusalOf(err: unknown): Refusal {
 
 /**
  * The filter `--affected[=<base>]` stands for: `...[<base>]`, the changed
- * projects and their dependents. An empty base is a plugin's (`setBranch`:
- * a pull request's base commit), else the merge base with `baseBranch`.
+ * projects and their dependents. An empty base is `VX_AFFECTED_BASE`'s,
+ * else a plugin's (`setBranch`: a pull request's base commit), else the
+ * merge base with `baseBranch`.
  */
 export async function affectedFilterFor(cwd: string, affected: string): Promise<string | Refusal> {
   const root = await findWorkspaceRoot(cwd)
-  let base = affected
+  let base = affected || ((settingEnv('affectedBase') as string | undefined) ?? '')
   if (base === '') {
     const ws = await loadCliWorkspace(root)
     try {
