@@ -75,7 +75,7 @@ $ vx run build --all
 ```
 
 A group with `inputs` and no `exec` is keyed too, and the
-[configure guide](../../guides/configure/#caching) has every rule.
+configure guide's [Caching](../../guides/configure/#caching) section has every rule.
 
 ## A gitignored file can be an input
 

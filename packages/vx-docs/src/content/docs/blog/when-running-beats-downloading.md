@@ -65,5 +65,5 @@ also say a duration gets the slow-download check.
 [Your own cache](../../guides/plugins/#your-own-cache) shows a whole
 remote.
 
-Remote caches are set up in [CI and remote](../../guides/ci/#remote-cache).
+[Remote cache](../../guides/ci/#remote-cache) shows how to set one up.
 More on vx at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
