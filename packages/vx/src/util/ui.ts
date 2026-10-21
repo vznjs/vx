@@ -40,6 +40,8 @@ export const path = (text: string): Inline => ({ style: 'bold', text })
 export const cmd = (text: string): Inline => ({ style: 'bold', text })
 /** A secondary fact. */
 export const dim = (text: string): Inline => ({ style: 'dim', text })
+/** Where a task runs (`small#1`): its name's hue in every row and block; `local` plain. */
+export const place = (text: string): Inline => (text === 'local' ? text : id(text))
 /** Text in a tone's color. */
 export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
 

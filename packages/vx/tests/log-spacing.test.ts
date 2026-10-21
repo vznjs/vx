@@ -47,7 +47,10 @@ it(
   'a failure frame and the footer are one blank line apart',
   async () => {
     const out = await runs('echo broke >&2; exit 1')
-    expect(out).toMatch(/└─ app#lint ── \([^)]+\) failed \(exit 1\)\n\n─ vx /)
+    // A slow `vx:close` on a loaded box prints its row between them.
+    expect(out).toMatch(
+      /└─ app#lint ── \([^)]+\) failed \(exit 1\)\n\n(?: ⏺︎ +\S+ success internal vx:\w+\n\n)?─ vx /,
+    )
   },
   TIMEOUT,
 )

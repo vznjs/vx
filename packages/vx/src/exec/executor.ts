@@ -244,7 +244,7 @@ export interface TaskExecutor {
    * a throw shows nothing.
    */
   footer?(): readonly (readonly [label: string, text: ui.Inline])[]
-  /** Where a task it is running runs (`small·2`), for the live row; asked per frame. */
+  /** Where a task it is running runs (`small#2`), for the live row; asked per frame. */
   running?(taskId: string): string | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }

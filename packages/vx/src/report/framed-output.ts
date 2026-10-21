@@ -32,6 +32,7 @@ import {
   identityColor,
   maskedCommand,
   paint,
+  ui,
   type ColorSupport,
 } from '../util/index.js'
 import { neverStarted } from './summary.js'
@@ -405,9 +406,11 @@ function formatOutcomeRow(
   )
 }
 
-/** Where an executor ran the task, when not here: `  on small·2`. */
+/** Where an executor ran the task, when not here: `  on small#2`, in the name's hue. */
 export function whereNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
-  return o.where === undefined ? '' : `  ${paint('', `on ${o.where}`, colors, { dim: true })}`
+  return o.where === undefined
+    ? ''
+    : `  ${paint('', 'on', colors, { dim: true })} ${ui.inline(ui.place(o.where), colors)}`
 }
 
 /**

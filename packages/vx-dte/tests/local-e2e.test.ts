@@ -121,12 +121,12 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, local: 0 })] }
     const out = await new Response(run.stdout).text()
     expect([await run.exited, out]).toEqual([
       0,
-      expect.stringMatching(/└─ b#use ── .*success  on agent·1/),
+      expect.stringMatching(/└─ b#use ── .*success  on agent#1/),
     ])
-    expect(out).toMatch(/agents +agent·1  online  1 done  \d+c\/[\d.]+G$/m)
+    expect(out).toMatch(/agents +agent#1  online  1 done  \d+c\/[\d.]+G$/m)
     const own = await new Response(agent.stdout).text()
     expect(await agent.exited).toBe(0)
-    expect(own).toMatch(/agent +agent·1/)
+    expect(own).toMatch(/agent +agent#1/)
     expect(own).toContain('✓ b#use')
   } finally {
     relay.close()
@@ -192,3 +192,23 @@ it.each(['SIGHUP', 'SIGINT'] as const)(
   },
   60_000,
 )
+
+it('says why an agent never joined, and fails the run when none can', async () => {
+  await writeFile(
+    path.join(root, '.vx/workspace.mjs'),
+    `import { dte, local } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'echo no bun here >&2; exit 4' }) })] }
+`,
+  )
+  Bun.spawnSync(
+    ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'p'],
+    {
+      cwd: root,
+    },
+  )
+  const r = vx(['run', 'a#gen'], 'e2e-none')
+  const out = r.stdout.toString() + r.stderr.toString()
+  expect(r.exitCode).not.toBe(0)
+  expect(out).toMatch(/small#1  failed  prepare exited 4: no bun here/)
+  expect(out).toContain('no agent could start')
+}, 60_000)

@@ -19,6 +19,8 @@ import { docker, dte, local } from '../src/index.js'
 import { bytes } from '../src/plugin.js'
 import type { ExecuteRequest, TaskNode } from '@vzn/vx'
 import { Orchestrator } from '../src/orchestrator.js'
+import { Usage } from '../src/usage.js'
+import { busyCores } from '../src/width.js'
 import { join } from '../src/wire.js'
 
 const dirs: string[] = []
@@ -332,9 +334,10 @@ it('docker() starts each agent as a container of its size, on a fresh clone of H
       cpu: 2,
       memory: 8e9,
       index: 3,
-      id: 'small·3',
+      id: 'small#3',
       workspaceRoot: path.join(ws, 'sub'),
-      env: { VX_DTE_RUN: 'r', VX_DTE_AGENT: 'small·3', VX_DTE_RELAY: 'http://127.0.0.1:9' },
+      env: { VX_DTE_RUN: 'r', VX_DTE_AGENT: 'small#3', VX_DTE_RELAY: 'http://127.0.0.1:9' },
+      exited: () => {},
     })
     for (let i = 0; i < 100 && !(await Bun.file(argv).exists()); i++) await Bun.sleep(20)
     const args = (await readFile(argv, 'utf8')).split('\0').slice(0, -1)
@@ -366,4 +369,59 @@ it('docker() starts each agent as a container of its size, on a fresh clone of H
   } finally {
     process.env['PATH'] = saved
   }
+})
+
+it('a machine’s usage: peaks of tasks at once, averages over its time online', () => {
+  const u = new Usage(0)
+  const at = (end: number, durationMs: number, cpuMs: number, peakRssBytes: number) => {
+    const now = performance.now
+    performance.now = () => end
+    try {
+      u.record({ exitCode: 0, durationMs, cpuMs, peakRssBytes })
+    } finally {
+      performance.now = now
+    }
+  }
+  // Two tasks overlap from 500 to 1000; a third starts as the first ends.
+  at(1000, 1000, 1000, 100)
+  at(1500, 1000, 2000, 200)
+  at(2000, 1000, 1000, 50)
+  u.failed = 1
+  expect(u.stats(4, 4000)).toEqual({
+    onlineMs: 4000,
+    busyMs: 2000,
+    cpuPeak: 3,
+    cpuAvg: 1,
+    memoryPeak: 300,
+    memoryAvg: 87.5,
+    utilization: 0.25,
+    cpuMs: 4000,
+  })
+})
+
+it('starts the cores the rest of the run keeps busy for half its length, not its peak', () => {
+  const graph = (entries: Array<[string, string[]]>) =>
+    new Map(
+      entries.map(([id, deps]) => [
+        id,
+        { id, deps, config: { exec: { command: 'true' } } } as unknown as TaskNode,
+      ]),
+    )
+  const one = () => 1
+  // Eight at once, all of the time.
+  const wide = graph(Array.from({ length: 8 }, (_, i): [string, string[]] => [`p#t${i}`, []]))
+  expect(busyCores(new Set(wide.keys()), wide, one, () => 1000)).toBe(8)
+  // Four at once for a third of it, between two lone tasks: one is busy.
+  const mid = graph([
+    ['p#a', []],
+    ...Array.from({ length: 4 }, (_, i): [string, string[]] => [`p#b${i}`, ['p#a']]),
+    ['p#c', ['p#b0', 'p#b1', 'p#b2', 'p#b3']],
+  ])
+  expect(busyCores(new Set(mid.keys()), mid, one, () => 1000)).toBe(1)
+  // The same, the wide part long: four.
+  expect(busyCores(new Set(mid.keys()), mid, one, (id) => (id.includes('#b') ? 5000 : 1000))).toBe(
+    4,
+  )
+  // Done tasks are not laid out.
+  expect(busyCores(new Set(['p#c']), mid, one, () => 1000)).toBe(1)
 })

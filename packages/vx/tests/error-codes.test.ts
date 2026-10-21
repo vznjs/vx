@@ -198,7 +198,9 @@ describe('a refusal under --format json', () => {
       taskAsVerb: 'VX_E_UNKNOWN_COMMAND',
       topFlag: 'VX_E_USAGE',
     })
-  })
+    // Fourteen vx spawns one after another: a loaded Linux runner took
+    // past bun's 5 s default.
+  }, 30_000)
 
   it('CONTROLS: without JSON, or with it only after `--`, stdout stays empty', async () => {
     const plain = await vx(['run', 'nope', '--all'])

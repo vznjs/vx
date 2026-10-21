@@ -341,7 +341,7 @@ describe('formatRunSummary', () => {
       executorRows: () =>
         [
           ['agents', '1 online'],
-          ['', 'small·1  1 ran'],
+          ['', 'small#1  1 ran'],
         ] as const,
     }
     const lines = formatRunSummary([outcome('a#x', 'success')], 10, { enabled: false }, ctx)
@@ -349,7 +349,7 @@ describe('formatRunSummary', () => {
     expect(lines.slice(at - 1, at + 4)).toEqual([
       '',
       '  agents    1 online',
-      '            small·1  1 ran',
+      '            small#1  1 ran',
       '',
       '  info      local cache',
     ])
