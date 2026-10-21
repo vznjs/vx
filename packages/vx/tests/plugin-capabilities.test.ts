@@ -9,6 +9,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { Database } from 'bun:sqlite'
+import type { RunSummaryRecord } from '../src/orchestrator/index.js'
 import { localWorkspaceSource, writeLocalWorkspace } from './helpers/local-workspace.js'
 import { planRun, run } from './helpers/orchestrator.js'
 import {
@@ -484,6 +486,54 @@ describe('executor capability — end-to-end via run()', () => {
       expect(summary.ok).toBe(true)
       const seen = (globalThis as unknown as { __vxExec: string[] }).__vxExec
       expect(seen).toEqual(['pkg-a#hello:echo hi'])
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("an executor's machines and where a task ran reach the run summary and history", async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
+        localWorkspaceSource(
+          [
+            pluginSource(
+              'org/fleet',
+              `{ executor() {
+               return {
+                 name: 'fleet',
+                 async execute() {
+                   return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [],
+                     where: 'small#1', machine: { cores: 2, memoryBytes: 8e9 } }
+                 },
+                 machines: () => [{ name: 'small#1', status: 'online', cores: 2, memoryBytes: 8e9,
+                   done: 1, failed: 0, onlineMs: 10, busyMs: 1, cpuPeak: 1, cpuAvg: 0.1,
+                   memoryPeakBytes: 1, memoryAvgBytes: 1, utilization: 0.05 }],
+               }
+             },
+             telemetry() { return { onRunSummary(s) { globalThis.__vxFleet = s } } },
+           }`,
+            ),
+          ],
+          '',
+        ),
+      )
+      await gitInit(workspaceRoot)
+      expect((await runHello(workspaceRoot)).ok).toBe(true)
+      const s = (globalThis as unknown as { __vxFleet: RunSummaryRecord }).__vxFleet
+      expect(s.tasks.map((t) => t.where)).toEqual(['small#1'])
+      expect(s.machines?.map((m) => [m.name, m.cores, m.utilization])).toEqual([
+        ['small#1', 2, 0.05],
+      ])
+      const db = new Database(path.join(workspaceRoot, '.vx/cache/cache.db'), { readonly: true })
+      try {
+        expect(
+          db.query('SELECT placement, placement_cores, placement_memory FROM runs').all(),
+        ).toEqual([{ placement: 'small#1', placement_cores: 2, placement_memory: 8e9 }])
+      } finally {
+        db.close()
+      }
     } finally {
       cleanup()
     }

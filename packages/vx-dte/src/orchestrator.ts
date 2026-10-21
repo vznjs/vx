@@ -17,6 +17,7 @@ import {
   withForwardArgs,
   type ExecuteRequest,
   type ExecuteResult,
+  type MachineReport,
   type SandboxConfig,
   type TaskNode,
 } from '@vzn/vx'
@@ -29,6 +30,8 @@ import { RelayError, type Participant } from './wire.js'
 export interface Need {
   readonly cores: number
   readonly memory: number
+  /** It filled a machine this big last time: only a bigger one takes it, if any agent is. */
+  readonly above?: { readonly cores: number; readonly memory: number }
 }
 
 interface Job {
@@ -75,7 +78,8 @@ export interface Declared {
 export interface OrchestratorOptions {
   readonly me: Participant
   readonly root: string
-  readonly commit: string
+  /** The tree of the run's tracked files (`tree.ts`). */
+  readonly tree: string
   /** Tasks this machine runs at once besides the agents. */
   readonly localSlots: number
   readonly nodes: () => ReadonlyMap<string, TaskNode> | undefined
@@ -202,7 +206,26 @@ export class Orchestrator {
     const up = upstream(this.o.nodes(), job.req.taskId)
     let best: Agent | undefined
     let bestScore: number[] = []
-    for (const a of this.agents.values()) {
+    const bigger = (a: Agent): boolean =>
+      job.need.above === undefined ||
+      a.cores > job.need.above.cores ||
+      a.memory > job.need.above.memory
+    // A bigger agent online takes it; one starting is waited for; else
+    // the biggest there is.
+    const agents = [...this.agents.values()]
+    if (job.need.above !== undefined && !agents.some(bigger)) {
+      const above = job.need.above
+      const joined = new Set([...agents, ...this.gone].map((x) => x.label))
+      for (const [id, { declared }] of this.spawnedAt)
+        if (
+          !joined.has(id) &&
+          !this.unstarted.has(id) &&
+          (declared.cpu > above.cores || declared.memory > above.memory)
+        )
+          return undefined
+    }
+    const pool = agents.some(bigger) ? agents.filter(bigger) : agents
+    for (const a of pool) {
       const fits =
         a.busy.size === 0 ||
         (a.usedCores + job.need.cores <= a.cores && a.usedMemory + job.need.memory <= a.memory)
@@ -337,7 +360,11 @@ export class Orchestrator {
     a.usage.record(head)
     if (head.stdout !== '') job.req.onStdout(head.stdout)
     if (head.stderr !== '') job.req.onStderr(head.stderr)
-    job.resolve({ ...result(head), where: a.label })
+    job.resolve({
+      ...result(head),
+      where: a.label,
+      machine: { cores: a.cores, memoryBytes: a.memory },
+    })
     this.pumpSoon()
   }
 
@@ -358,8 +385,8 @@ export class Orchestrator {
       ) {
         return refuse('speaks another vx-dte protocol')
       }
-      if (info.commit !== this.o.commit) {
-        return refuse(`checked out ${info.commit}, the run is on ${this.o.commit}`)
+      if (info.tree !== this.o.tree) {
+        return refuse(`checked out tree ${info.tree}, the run is on ${this.o.tree}`)
       }
       // An agent this run started keeps the name it was started under;
       // one that joined on its own is numbered in the order it joined.
@@ -481,6 +508,41 @@ export class Orchestrator {
     for (const j of this.queue.splice(0)) j.reject(new Error(reason))
     this.agents.clear()
     this.lost = reason
+  }
+
+  /** Each machine that joined, and this one when it ran tasks, with what it did: the run summary's `machines`. */
+  machines(): MachineReport[] {
+    const gone = new Set(this.gone)
+    const report = (
+      name: string,
+      status: string,
+      u: Usage,
+      cores: number,
+      memoryBytes: number,
+    ): MachineReport => {
+      const st = u.stats(cores, this.endedAt)
+      return {
+        name,
+        status,
+        cores,
+        memoryBytes,
+        done: u.done,
+        failed: u.failed,
+        onlineMs: st.onlineMs,
+        busyMs: st.busyMs,
+        cpuPeak: st.cpuPeak,
+        cpuAvg: st.cpuAvg,
+        memoryPeakBytes: st.memoryPeak,
+        memoryAvgBytes: st.memoryAvg,
+        utilization: st.utilization,
+      }
+    }
+    const out = [...this.agents.values(), ...this.gone].map((a) =>
+      report(a.label, gone.has(a) ? 'gone' : 'online', a.usage, a.cores, a.memory),
+    )
+    if (this.ranHere > 0)
+      out.push(report('local', 'online', this.local, machineParallelism(), machineMemoryBytes()))
+    return out
   }
 
   /**

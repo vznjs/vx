@@ -16,9 +16,10 @@ import { createRelay } from '@vzn/vx-dte-relay'
 import { localEnv, swapRoots } from '../src/agent.js'
 import { fromParts, outputFiles, pack, toParts, unpack } from '../src/bundle.js'
 import { docker, dte, local } from '../src/index.js'
+import { errorLine } from '../src/local.js'
 import { bytes } from '../src/plugin.js'
 import type { ExecuteRequest, TaskNode } from '@vzn/vx'
-import { Orchestrator } from '../src/orchestrator.js'
+import { Orchestrator, type Need } from '../src/orchestrator.js'
 import { Usage } from '../src/usage.js'
 import { busyCores } from '../src/width.js'
 import { join } from '../src/wire.js'
@@ -110,7 +111,7 @@ it('an agent swaps each root once, the first pair naming it winning', () => {
   ).toEqual({ a: '/agent/ws/p/x', b: ['/agent/ws', '/ws/q', '/private/ws/r'], c: 'x:/agent/ws/b' })
 })
 
-it('an agent on another commit is refused', async () => {
+it('an agent with other tracked files than the run is refused', async () => {
   const relay = createRelay()
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
   const url = `http://127.0.0.1:${server.port}`
@@ -118,7 +119,7 @@ it('an agent on another commit is refused', async () => {
     const o = new Orchestrator({
       me: await join(url, 'r', 'orchestrator', null, undefined),
       root: '/ws',
-      commit: 'aaa',
+      tree: 'aaa',
       localSlots: 0,
       nodes: () => undefined,
       need: () => ({ cores: 1, memory: 0 }),
@@ -127,7 +128,7 @@ it('an agent on another commit is refused', async () => {
       url,
       'r',
       'agent',
-      { v: 1, cores: 1, memory: 1, commit: 'bbb' },
+      { v: 1, cores: 1, memory: 1, tree: 'bbb' },
       undefined,
     )
     let got: unknown[] = []
@@ -135,7 +136,7 @@ it('an agent on another commit is refused', async () => {
     expect(got).toEqual([
       {
         from: 'orchestrator',
-        body: { type: 'refused', reason: 'checked out bbb, the run is on aaa' },
+        body: { type: 'refused', reason: 'checked out tree bbb, the run is on aaa' },
       },
     ])
     await o.close()
@@ -146,20 +147,23 @@ it('an agent on another commit is refused', async () => {
 })
 
 /** An orchestrator on a loopback relay, and agents of it that only listen. */
-async function harness(nodes: Map<string, TaskNode>) {
+async function harness(
+  nodes: Map<string, TaskNode>,
+  need: (id: string) => Need = () => ({ cores: 1, memory: 10 }),
+) {
   const relay = createRelay()
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
   const url = `http://127.0.0.1:${server.port}`
   const o = new Orchestrator({
     me: await join(url, 'r', 'orchestrator', null, undefined),
     root: '/ws',
-    commit: 'c',
+    tree: 'c',
     localSlots: 0,
     nodes: () => nodes,
-    need: () => ({ cores: 1, memory: 10 }),
+    need,
   })
   const agent = async (cores: number) => {
-    const me = await join(url, 'r', 'agent', { v: 1, cores, memory: 100, commit: 'c' }, undefined)
+    const me = await join(url, 'r', 'agent', { v: 1, cores, memory: 100, tree: 'c' }, undefined)
     const batches = async (): Promise<string[][]> => {
       for (let i = 0; i < 20; i++) {
         const got = (await me.poll()).map(
@@ -424,4 +428,42 @@ it('starts the cores the rest of the run keeps busy for half its length, not its
   )
   // Done tasks are not laid out.
   expect(busyCores(new Set(['p#c']), mid, one, () => 1000)).toBe(1)
+})
+
+it('gives an unmeasured task a whole agent, and one that filled its agent a bigger one', async () => {
+  const whole = { cores: Infinity, memory: Infinity }
+  const h = await harness(new Map([node('u1'), node('u2'), node('heavy')]), (id) =>
+    id === 'heavy' ? { ...whole, above: { cores: 2, memory: 100 } } : whole,
+  )
+  try {
+    const small = await h.agent(2)
+    await Bun.sleep(50)
+    // No history: alone on its agent.
+    const u1 = h.o.execute(h.req('u1'))
+    void h.o.execute(h.req('u2'))
+    expect(await small.batches()).toEqual([['u1']])
+    await small.finish('u1')
+    // The run keeps where it ran and that machine's size, for the next run.
+    expect(await u1).toMatchObject({ where: 'agent#1', machine: { cores: 2, memoryBytes: 100 } })
+    expect(await small.batches()).toEqual([['u2']])
+    await small.finish('u2')
+    // It filled a 2-core agent: the idle one is passed over for the
+    // bigger one starting.
+    h.o.spawned('big#2', { size: 'big', cpu: 8, memory: 1000 })
+    void h.o.execute(h.req('heavy'))
+    await Bun.sleep(50)
+    const big = await h.agent(8)
+    expect(await big.batches()).toEqual([['heavy']])
+  } finally {
+    await h.stop()
+  }
+}, 30_000)
+
+it('an agent’s reason is its error line, not the hint after it', () => {
+  expect([
+    errorLine("\u001b[31m✗\u001b[0m vx  'dte' is not a vx command\n  fix  vx run dev --all\n"),
+    errorLine('resolving\nerror: cannot find module\n  at x\n'),
+    errorLine('just this\n\n'),
+    errorLine(''),
+  ]).toEqual(["✗ vx  'dte' is not a vx command", 'error: cannot find module', 'just this', ''])
 })

@@ -105,7 +105,12 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       -- v43: the most cores one sampling interval burned and the mean
       -- resident memory over the looks; NULL when nothing sampled.
       peak_cores          REAL,
-      avg_rss_bytes       INTEGER
+      avg_rss_bytes       INTEGER,
+      -- v44: where an executor ran it (ExecuteResult.where) and that
+      -- machine's cores and memory; NULL = here.
+      placement           TEXT,
+      placement_cores     INTEGER,
+      placement_memory    INTEGER
     );
     -- Two whole-table indexes only, and both APPEND: every row of a run carries the
     -- same run_id and a started_at newer than everything before it, so

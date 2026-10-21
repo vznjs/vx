@@ -326,7 +326,9 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //        a token of their git records. The cache KEY is unchanged.
 //   v43: runs.peak_cores / avg_rss_bytes — what a sampled run burned at
 //        its peak and held on average. The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v43'
+//   v44: runs.placement — where an executor ran the task. The cache KEY
+//        is unchanged.
+export const SCHEMA_VERSION = 'v44'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON

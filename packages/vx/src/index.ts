@@ -204,6 +204,7 @@ export type {
   ExecuteRequest,
   ExecuteResult,
   ExecuteSandbox,
+  MachineReport,
   ResolvedSandboxConfig,
   TaskExecutor,
   TaskPlacement,

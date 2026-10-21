@@ -24,7 +24,7 @@ import {
 } from '../exec/index.js'
 import { DeferredOutputs } from './deferred-outputs.js'
 import { resolveDownloadModes } from './download-policy.js'
-import type { TaskExecutor } from '../exec/index.js'
+import type { MachineReport, TaskExecutor } from '../exec/index.js'
 import {
   deadServerBehind,
   declaredTask,
@@ -1352,6 +1352,7 @@ async function runOnBus(
         abortedCount: list.filter((o) => o.status === 'aborted' && !isGroupTask(o.node)).length,
         stages: stageTimes(),
         uploads: prepared.localCache.uploads,
+        machines: executors.flatMap(executorMachines),
       })
       telemetry.emitSummary(summary)
       const sinks = telemetry
@@ -1841,6 +1842,15 @@ function executorFooter(e: TaskExecutor): (readonly [string, ui.Inline])[] {
 }
 
 /** Where `e` says a running task is; a throw or a non-string says nothing. */
+function executorMachines(e: TaskExecutor): readonly MachineReport[] {
+  try {
+    const m = e.machines?.()
+    return Array.isArray(m) ? m : []
+  } catch {
+    return []
+  }
+}
+
 function executorWhere(e: TaskExecutor, id: string): string | undefined {
   try {
     const w = e.running?.(id)

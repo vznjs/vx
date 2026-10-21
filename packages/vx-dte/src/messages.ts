@@ -12,8 +12,8 @@ export interface AgentInfo {
   /** What its machine has (core's `machineParallelism`, `machineMemoryBytes`), not what its size says. */
   readonly cores: number
   readonly memory: number
-  /** Its checkout's `HEAD`: an agent on another commit is refused. */
-  readonly commit: string
+  /** Its checkout's tree: an agent with other tracked files than the run is refused. */
+  readonly tree: string
 }
 
 /** One task an agent is sent; its dependencies' files came first as `part`s. */

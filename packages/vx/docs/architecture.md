@@ -620,29 +620,31 @@ transaction (`recordRunBundle`), one row per real task (hits included) to the
 `runs` table plus one header row to the `invocations` table in
 `cache.db`. Per-task `runs` columns:
 
-| Column                                    | What                                                                      |
-| ----------------------------------------- | ------------------------------------------------------------------------- |
-| `hash`                                    | The task's cache key (also the join key into `entry_inputs`)              |
-| `project, task`                           | `${project}#${task}` split                                                |
-| `status`                                  | `success` / `failed` / `cache-hit` / `cache-hit-remote` / `skipped`       |
-| `exit_code`                               | from the child or 0 for cache-hits                                        |
-| `duration_ms`                             | wallclock the user perceived (cache-hit = restore op time)                |
-| `forward_args`                            | salted xxh3 of the JSON `--` args, never the text (null when none)        |
-| `started_at, ended_at`                    | ms-epoch wallclock                                                        |
-| `run_id`                                  | UUIDv7 shared across every task in the same invocation                    |
-| `cpu_ms`                                  | `Bun.spawn` resource-usage CPU (sum of user + system)                     |
-| `peak_rss_bytes`                          | resource-usage max RSS                                                    |
-| `peak_cores` / `avg_rss_bytes`            | sampled: most cores one 1 s interval burned, mean RSS (v43)               |
-| `wallclock_start_ns` / `wallclock_end_ns` | hrtime ns relative to run t=0                                             |
-| `cache_hit`                               | convenience boolean (derivable from status)                               |
-| `attempts`                                | attempts a retried task took (> 1); NULL for a once-run task              |
-| `cached`                                  | 1 when the task declared a cache block, 0 when it runs every time         |
-| `blocked_by`                              | a skip's blocker, or what a task ran behind (`project#task`)              |
-| `timed_out`                               | 1 when the failure was `exec.timeout`                                     |
-| `sandbox_violations`                      | the sandbox's violation count on a failure                                |
-| `not_ready`                               | a persistent task that never became ready: `timeout` / `exited` / `spawn` |
-| `restored`                                | on a hit: 1 when outputs were restored, 0 when they were already in place |
-| `remote_error`                            | each failed remote read or write of the key, `; `-joined (v40)            |
+| Column                                    | What                                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------- |
+| `hash`                                    | The task's cache key (also the join key into `entry_inputs`)                    |
+| `project, task`                           | `${project}#${task}` split                                                      |
+| `status`                                  | `success` / `failed` / `cache-hit` / `cache-hit-remote` / `skipped`             |
+| `exit_code`                               | from the child or 0 for cache-hits                                              |
+| `duration_ms`                             | wallclock the user perceived (cache-hit = restore op time)                      |
+| `forward_args`                            | salted xxh3 of the JSON `--` args, never the text (null when none)              |
+| `started_at, ended_at`                    | ms-epoch wallclock                                                              |
+| `run_id`                                  | UUIDv7 shared across every task in the same invocation                          |
+| `cpu_ms`                                  | `Bun.spawn` resource-usage CPU (sum of user + system)                           |
+| `peak_rss_bytes`                          | resource-usage max RSS                                                          |
+| `peak_cores` / `avg_rss_bytes`            | sampled: most cores one 1 s interval burned, mean RSS (v43)                     |
+| `placement`                               | where an executor ran it (`small#1`, `TaskExecutor.running`); NULL = here (v44) |
+| `placement_cores` / `placement_memory`    | that machine's cores and memory bytes (v44)                                     |
+| `wallclock_start_ns` / `wallclock_end_ns` | hrtime ns relative to run t=0                                                   |
+| `cache_hit`                               | convenience boolean (derivable from status)                                     |
+| `attempts`                                | attempts a retried task took (> 1); NULL for a once-run task                    |
+| `cached`                                  | 1 when the task declared a cache block, 0 when it runs every time               |
+| `blocked_by`                              | a skip's blocker, or what a task ran behind (`project#task`)                    |
+| `timed_out`                               | 1 when the failure was `exec.timeout`                                           |
+| `sandbox_violations`                      | the sandbox's violation count on a failure                                      |
+| `not_ready`                               | a persistent task that never became ready: `timeout` / `exited` / `spawn`       |
+| `restored`                                | on a hit: 1 when outputs were restored, 0 when they were already in place       |
+| `remote_error`                            | each failed remote read or write of the key, `; `-joined (v40)                  |
 
 The `invocations` header row carries the command line, requested
 tasks, compact cache policy, concurrency, flow, duration, task /

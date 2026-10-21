@@ -42,7 +42,9 @@ VX_DTE_RUN=try vx run build --all
 
 `VX_DTE_RUN` names the run and turns distribution on; without it, `vx run`
 runs here as always. `local()` starts each agent as a process in its own
-git worktree of `HEAD`, so agents run committed code only.
+git worktree of the tracked files as they are, uncommitted changes
+included (untracked files are not). When an agent fails, its row names
+the error line and the log that holds its whole stderr.
 
 `docker()` starts each agent as a container held to its size: `--cpus`
 and `--memory` come from `cpu` and `memory`. The container clones this
@@ -107,7 +109,9 @@ as each task starts and ends:
 - An agent receives the declared outputs of every task the one it runs
   depends on, unless it ran or received them before. Files a task writes
   without declaring them stay on the agent.
-- An agent on another commit than the orchestrator is refused.
+- An agent whose tracked files differ from the orchestrator's (another
+  tree) is refused. `docker()` clones `HEAD`, so its agents need a run
+  with no uncommitted changes.
 - An agent that stops answering is dropped, and its tasks run again.
 - A relay unreachable for three heartbeats fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller
@@ -177,7 +181,11 @@ utilization of every machine together:
     as early as their dependencies allow, each for its usual duration
     (1 s without history), the most cores in use at once for at least
     half the time left, less this machine's share. None stops before the
-    run ends.
+    run ends. A task the history has not measured runs alone on an agent;
+    one that used all of its agent's cores or memory (90%) last time runs
+    alone on the smallest bigger size, which the run starts for it. Each
+    run's history keeps where every task ran and that machine's size, so
+    sizing improves run by run.
   - `adapter` is the `DteAdapter` that starts agents. Absent, the run
     starts none and uses the agents that join `relay`.
   - `relay` is the relay's URL; absent, the adapter's own.

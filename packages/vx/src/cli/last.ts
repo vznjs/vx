@@ -384,6 +384,7 @@ export function formatTaskRows(tasks: readonly RunSummaryRow[]): string[] {
     lines.push(
       `  ${status.padEnd(17)} ${id.padEnd(idW)}  ${fmtMs(t.durationMs).padStart(8)}` +
         `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
+        (t.placement !== null ? `  on ${t.placement}` : '') +
         reasonParts(t),
     )
   }

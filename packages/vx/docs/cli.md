@@ -2470,7 +2470,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-  cache versions    keys vx-cache-v48 · index schema v43
+  cache versions    keys vx-cache-v48 · index schema v44
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
@@ -2730,7 +2730,8 @@ footer gave a reason, the row ends with it instead: `timed out`,
 `after lib#build failed` (the v27 columns; rows older than them read
 as before). A task whose key met a remote failure ends with it, read or
 write alike: `remote ✗ download: connection refused; upload: 503` (the
-v40 column, `remoteError` in `--format json`). Rows run failures first, then what executed or was
+v40 column, `remoteError` in `--format json`). A task an executor
+plugin ran elsewhere ends with where: `on small#1` (v44, `placement`). Rows run failures first, then what executed or was
 skipped, then hits; past sixteen hits the rest fold into one line with
 their count (`… +980 more cache hits`) — a thousand-task warm run is a
 thousand rows otherwise, with the one failure a screen above the
