@@ -108,6 +108,8 @@ export interface OrchestratorOptions {
   readonly run: string
   /** A task's cache key, once the run computed it (a hit's too); undefined when it has none. */
   readonly keyOf: (taskId: string) => string | undefined
+  /** Agent `id` (its label) left the run, lost or let go: room for another. */
+  readonly left?: (id: string) => void
 }
 
 /** Cores an agent is sent beyond its own, so a finished task's successor is already there. */
@@ -527,6 +529,10 @@ export class Orchestrator {
         if (again !== undefined) back.push(again)
       }
       this.queue.unshift(...back)
+      this.o.left?.(a.label)
+      // Agents that join on their own may yet join; ones this run starts
+      // are all it gets.
+      if (this.spawnedAt.size > 0) this.stranded(`${a.label} was lost and no agent is left`)
     } else {
       return
     }
@@ -630,6 +636,7 @@ export class Orchestrator {
       this.gone.push(a)
       this.retired.add(a)
       this.post(a, { type: 'exit' })
+      this.o.left?.(a.label)
     }
   }
 
@@ -637,12 +644,16 @@ export class Orchestrator {
   failed(id: string, reason: string): void {
     if (this.unstarted.has(id) || this.ended) return
     this.unstarted.set(id, reason)
-    // Nothing online, none still starting, no share here: no task can run.
+    this.stranded(`no agent could start: ${id} ${reason}`)
+  }
+
+  /** Nothing online, none still starting, no share here: no task can run. */
+  private stranded(reason: string): void {
+    const joined = new Set([...this.agents.values(), ...this.gone].map((a) => a.label))
     const starting = [...this.spawnedAt.keys()].some(
-      (s) => !this.unstarted.has(s) && ![...this.agents.values()].some((a) => a.label === s),
+      (s) => !this.unstarted.has(s) && !joined.has(s),
     )
-    if (this.agents.size === 0 && !starting && this.o.localSlots === 0)
-      this.fail(`no agent could start: ${id} ${reason}`)
+    if (this.agents.size === 0 && !starting && this.o.localSlots === 0) this.fail(reason)
   }
 
   /** Every task sent here and not done fails with `reason`; later ones too. */

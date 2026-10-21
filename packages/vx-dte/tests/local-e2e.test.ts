@@ -38,6 +38,7 @@ export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB
   },
   fail: { exec: { command: 'echo oops >&2; exit 3' } },
   slow: { exec: { command: 'touch started && sleep 60' } },
+  once: { exec: { command: 'if [ -e ../once ]; then echo again; else touch ../once && sleep 60; fi' } },
 } }
 `,
   }
@@ -80,7 +81,36 @@ it('runs a task on an agent with its dependency’s outputs, and brings its outp
   const second = vx(['run', 'b#use'], 'e2e-2')
   expect(second.exitCode).toBe(0)
   expect(second.stdout.toString()).toContain('local 2✓')
+  // Nothing to run: no agent starts.
+  expect(second.stdout.toString()).not.toContain('agents')
 }, 60_000)
+
+// The agent running a task is killed: the task runs again on one the run
+// starts in its place, where it once waited for it forever.
+it('runs a task again on a new agent when its agent is killed', async () => {
+  const { VX_DTE_RUN: _, ...env } = process.env
+  const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#once'], {
+    cwd: root,
+    env: { ...env, VX_DTE_RUN: 'e2e-kill', NO_COLOR: '1' },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  // `../once` from the agent's worktree of b: its worktree root.
+  const marker = async (): Promise<boolean> => {
+    const base = await readdir(os.tmpdir()).catch(() => [] as string[])
+    for (const d of base.filter((n) => n.startsWith('vx-dte-') && !n.startsWith('vx-dte-e2e')))
+      for (const i of await readdir(path.join(os.tmpdir(), d)).catch(() => [] as string[]))
+        if (await Bun.file(path.join(os.tmpdir(), d, i, 'once')).exists()) return true
+    return false
+  }
+  for (let i = 0; i < 200 && !(await marker()); i++) await Bun.sleep(100)
+  const agents = Bun.spawnSync(['pgrep', '-P', String(run.pid), '-f', 'dte agent'])
+  const pids = agents.stdout.toString().trim().split('\n').filter(Boolean)
+  expect(pids).toHaveLength(1)
+  process.kill(Number(pids[0]), 'SIGKILL')
+  const out = (await new Response(run.stdout).text()) + (await new Response(run.stderr).text())
+  expect([await run.exited, out]).toEqual([0, expect.stringContaining('again')])
+}, 90_000)
 
 it('fails a task that fails on its agent, with its output', () => {
   const r = vx(['run', 'b#fail'], 'e2e')
