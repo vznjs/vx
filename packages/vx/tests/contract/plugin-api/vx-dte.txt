@@ -2,6 +2,8 @@
 export function docker(options: DockerOptions): DteAdapter
 == function dte (src/plugin.ts)
 export function dte(options: DteOptions)
+== function gitlab (src/gitlab.ts)
+export function gitlab(options: GitlabOptions): DteAdapter
 == function local (src/local.ts)
 export function local(options: LocalOptions = {}): DteAdapter
 == type AgentSize (src/plugin.ts)
@@ -33,6 +35,8 @@ export interface DteAdapter {
   relay?(): Promise<string>
   spawn(agent: AgentSpawn): void | Promise<void>
   close?(): void | Promise<void>
+  render?(plan: DtePlan): Readonly<Record<string, string>>
+  runId?(): string | undefined
 }
 == type DteOptions (src/plugin.ts)
 export interface DteOptions {
@@ -41,6 +45,18 @@ export interface DteOptions {
   readonly relay?: string
   readonly local?: number
   readonly token?: () => string | undefined | Promise<string | undefined>
+}
+== type DtePlan (src/plugin.ts)
+export interface DtePlan {
+  readonly run: string
+  readonly relay: string
+  readonly workspaceRoot: string
+  readonly agents: readonly { id: string; size: string; cpu: number; memory: number }[]
+}
+== type GitlabOptions (src/gitlab.ts)
+export interface GitlabOptions {
+  readonly include: string
+  readonly tags?: Readonly<Record<string, readonly string[]>>
 }
 == type LocalOptions (src/local.ts)
 export interface LocalOptions {

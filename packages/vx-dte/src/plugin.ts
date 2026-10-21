@@ -7,6 +7,9 @@ import {
   type TaskNode,
   type TaskResources,
 } from '@vzn/vx'
+import { readFileSync } from 'node:fs'
+import { mkdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
 import type { Need, Orchestrator } from './orchestrator.js'
 
 /** One kind of agent the adapter can start. */
@@ -37,13 +40,30 @@ export interface AgentSpawn {
   readonly exited: (reason: string) => void
 }
 
-/** How one CI starts agents: `local()`, `docker()`. */
+/** What `vx dte plan` hands an adapter that writes its CI's agent jobs. */
+export interface DtePlan {
+  readonly run: string
+  readonly relay: string
+  readonly workspaceRoot: string
+  /** Every agent the run may start: `max` of each size, in declared order. */
+  readonly agents: readonly { id: string; size: string; cpu: number; memory: number }[]
+}
+
+/** How one CI starts agents: `local()`, `docker()`, `gitlab()`. */
 export interface DteAdapter {
   /** A relay of its own, for a run whose `dte()` names none. */
   relay?(): Promise<string>
   spawn(agent: AgentSpawn): void | Promise<void>
   /** At run end: stop what it started. */
   close?(): void | Promise<void>
+  /**
+   * The files that start the plan's agents (workspace-relative path to
+   * text), which `vx dte plan` writes. An adapter with it starts every
+   * planned agent up front: the run waits for them and starts no other.
+   */
+  render?(plan: DtePlan): Readonly<Record<string, string>>
+  /** The run id `vx dte plan` names when `VX_DTE_RUN` is unset. */
+  runId?(): string | undefined
 }
 
 export interface DteOptions {
@@ -116,23 +136,47 @@ export function dte(options: DteOptions) {
     await adapter?.close?.()
   }
 
+  /** `vx dte plan`: the run's id and secret, and the files its adapter starts agents with. */
+  const plan = async (root: string): Promise<number> => {
+    if (adapter?.render === undefined) throw new UserError('vx dte plan: the adapter plans nothing')
+    const run = process.env['VX_DTE_RUN'] || adapter.runId?.()
+    if (!run) throw new UserError('vx dte plan needs VX_DTE_RUN, or an adapter that names the run')
+    if (options.relay === undefined) throw new UserError('vx dte plan needs dte({ relay })')
+    const { runSecret } = await import('./seal.js')
+    const agents = planned(sizes)
+    const files: Record<string, string> = {
+      ...adapter.render({ run, relay: options.relay, workspaceRoot: root, agents }),
+    }
+    if (!process.env['VX_DTE_SECRET']) files[SECRET_FILE] = `${runSecret()}\n`
+    for (const [rel, text] of Object.entries(files)) {
+      const at = path.join(root, rel)
+      await mkdir(path.dirname(at), { recursive: true })
+      await writeFile(at, text, rel === SECRET_FILE ? { mode: 0o600 } : {})
+    }
+    process.stdout.write(
+      `vx dte plan: run ${run}, ${agents.length} agent${agents.length === 1 ? '' : 's'}; wrote ${Object.keys(files).join(', ')}\n`,
+    )
+    return 0
+  }
+
   return definePlugin(import.meta, {
     commands: {
       dte: {
         description:
-          'dte agent: run tasks for a distributed run (VX_DTE_RUN, VX_DTE_RELAY, VX_DTE_SECRET)',
+          'dte plan: write the CI jobs of a run’s agents; dte agent: run tasks for a distributed run',
         async run(argv, ctx) {
+          if (argv[0] === 'plan' && argv.length === 1) return plan(ctx.workspaceRoot)
           if (argv[0] !== 'agent' || argv.length > 1) {
-            throw new UserError('Usage: vx dte agent')
+            throw new UserError('Usage: vx dte plan | vx dte agent')
           }
           const run = process.env['VX_DTE_RUN']
           const relay = process.env['VX_DTE_RELAY'] ?? options.relay
           if (run === undefined || run === '' || relay === undefined) {
             throw new UserError('vx dte agent needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })')
           }
-          const secret = process.env['VX_DTE_SECRET']
-          if (secret === undefined || secret === '') {
-            throw new UserError('vx dte agent needs VX_DTE_SECRET, the run’s')
+          const secret = givenSecret(ctx.workspaceRoot)
+          if (secret === undefined) {
+            throw new UserError(`vx dte agent needs VX_DTE_SECRET or ${SECRET_FILE}, the run’s`)
           }
           const { runAgent } = await import('./agent.js')
           const id = process.env['VX_DTE_AGENT']
@@ -195,8 +239,12 @@ export function dte(options: DteOptions) {
       ])
       // The agents an adapter starts get one made for this run; agents
       // that join on their own must be given it.
-      let secret = process.env['VX_DTE_SECRET']
-      if (secret === undefined || secret === '') {
+      let secret = givenSecret(ctx.workspaceRoot)
+      if (secret === undefined) {
+        if (adapter?.render !== undefined)
+          throw new UserError(
+            `dte(): no ${SECRET_FILE}: run vx dte plan first, in a job this one needs`,
+          )
         if (adapter === undefined)
           throw new UserError('dte(): with no adapter, set VX_DTE_SECRET here and on each agent')
         secret = seal.runSecret()
@@ -236,6 +284,11 @@ export function dte(options: DteOptions) {
         keyOf: (id) => keys.get(id),
       })
       orchestrator = o
+      // A planned run's agents are all on their way already.
+      const plannedAll = adapter?.render !== undefined
+      if (plannedAll)
+        for (const a of planned(sizes))
+          o.spawned(a.id, { size: a.size, cpu: a.cpu, memory: a.memory })
       const started = new Map<string, number>()
       let index = 0
       let cores = 0
@@ -258,7 +311,7 @@ export function dte(options: DteOptions) {
         // busy (`busyCores`) beyond this machine's share; none are stopped
         // before the run ends.
         demand(remaining) {
-          if (adapter === undefined) return
+          if (adapter === undefined || plannedAll) return
           const start = (s: (typeof sizes)[number]): void => {
             started.set(s.name, (started.get(s.name) ?? 0) + 1)
             cores += s.cpu
@@ -315,6 +368,34 @@ export function dte(options: DteOptions) {
       await closing
     },
   })
+}
+
+/** Where `vx dte plan` keeps the run's secret, workspace-relative: a CI artifact no one downloads. */
+const SECRET_FILE = '.vx/dte/secret'
+
+/** `VX_DTE_SECRET`, else the one `vx dte plan` wrote. */
+function givenSecret(root: string): string | undefined {
+  const env = process.env['VX_DTE_SECRET']
+  if (env !== undefined && env !== '') return env
+  try {
+    return readFileSync(path.join(root, SECRET_FILE), 'utf8').trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+
+type Size = { name: string; max: number; cpu: number; memory: number }
+
+/** Each size's `max` agents, numbered across sizes as a run numbers those it starts. */
+function planned(sizes: readonly Size[]): DtePlan['agents'] {
+  const out: { id: string; size: string; cpu: number; memory: number }[] = []
+  for (const s of sizes) {
+    if (s.max === Infinity)
+      throw new UserError(`dte(): agents.${s.name} needs max: a plan writes that many`)
+    for (let i = 0; i < s.max; i++)
+      out.push({ id: `${s.name}#${out.length + 1}`, size: s.name, cpu: s.cpu, memory: s.memory })
+  }
+  return out
 }
 
 /** The executor's pool when agents are uncapped: more than any run starts at once. */
