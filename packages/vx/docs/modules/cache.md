@@ -339,6 +339,8 @@ export interface RunRecord {
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
   remoteError?: string // v40: each failed remote read or write of its key, `; `-joined
+  peakCores?: number // v43: sampled, most cores one interval burned
+  avgRssBytes?: number // v43: sampled, mean resident memory
 }
 
 export interface CacheStats {
