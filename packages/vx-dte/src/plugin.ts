@@ -323,7 +323,6 @@ export function dte(options: DteOptions) {
           if (s === undefined || plannedAgents !== undefined) return
           sizeOf.delete(id)
           started.set(s.name, started.get(s.name)! - 1)
-          cores -= s.cpu
           if (missed && pending !== undefined && !demanding) demand(pending)
         },
       })
@@ -332,7 +331,6 @@ export function dte(options: DteOptions) {
       const sizeOf = new Map<string, (typeof sizes)[number]>()
       let demanding = false
       let index = 0
-      let cores = 0
       // A planned run's first wave is on its way already; the rest, if
       // any, waits for the run to start it, by size.
       const later = new Map<string, string[]>()
@@ -345,7 +343,6 @@ export function dte(options: DteOptions) {
         }
         o.spawned(a.id, { size: a.size, cpu: a.cpu, memory: a.memory })
         started.set(a.size, (started.get(a.size) ?? 0) + 1)
-        cores += a.cpu
         index++
       }
       // Agents in declared order for the cores the remaining tasks keep
@@ -373,17 +370,15 @@ export function dte(options: DteOptions) {
         const wantCores = width()
         const above = [...remaining].flatMap((id) => need(id).above ?? [])
         const final = adapter === undefined || (plannedAgents !== undefined && later.size === 0)
-        // Idle agents beyond that leave; one a task bigger than the rest
-        // waits for stays. One that cannot come back stays for the peak.
-        // At the end the relay closing ends them all.
+        // Idle agents beyond the rest's peak leave; one a task bigger than
+        // the rest waits for stays. Leaving at `wantCores` left one in a
+        // lull and started another for the wide part after it. At the end
+        // the relay closing ends them all.
         if (remaining.size > 0)
-          o.retire(final ? width(0) : wantCores, (a) =>
-            above.some((x) => a.cores > x.cores || a.memory > x.memory),
-          )
+          o.retire(width(0), (a) => above.some((x) => a.cores > x.cores || a.memory > x.memory))
         if (final) return
         const start = (s: (typeof sizes)[number]): void => {
           started.set(s.name, (started.get(s.name) ?? 0) + 1)
-          cores += s.cpu
           ++index
           // Counted against its size's max, so a planned one is left.
           const id =
@@ -410,7 +405,7 @@ export function dte(options: DteOptions) {
             }),
           ).catch((err: unknown) => o.failed(id, err instanceof Error ? err.message : String(err)))
         }
-        for (const s of toStart(sizes, started, cores, wantCores, above)) start(s)
+        for (const s of toStart(sizes, started, o.cores(), wantCores, above)) start(s)
       }
       // Until a task misses, demand waits: a run all hits starts no agent.
       let missed = false
