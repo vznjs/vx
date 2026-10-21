@@ -20,8 +20,9 @@ import type { Size } from './width.js'
 export interface AgentSize {
   /** How many of it one run may start; absent, as many as the work needs. */
   readonly max?: number
-  /** Its cores and memory (bytes, or `'8GB'`): what starting one adds, until it reports what its machine has. */
+  /** Its cores: what starting one adds, until it reports what its machine has. */
   readonly cpu: number
+  /** Its memory, in bytes or as `'8GB'`, `'512MiB'`: what starting one adds, until it reports what its machine has. */
   readonly memory: number | string
 }
 
