@@ -718,8 +718,13 @@ export class Orchestrator {
     let cores = 0
     for (const a of online) if (a.busy.size > 0) cores += a.cores
     const idle = online.filter((a) => a.busy.size === 0).sort((x, y) => y.cores - x.cores)
+    // An idle one a waiting prefetched task can move to stays for it.
+    let movable = 0
+    for (const a of online)
+      for (const j of a.busy.values())
+        if (j.prefetched === true && !a.started.has(j.req.taskId)) movable++
     for (const a of idle) {
-      if (cores < wantCores || needed(a)) {
+      if (cores < wantCores || needed(a) || movable-- > 0) {
         cores += a.cores
         continue
       }

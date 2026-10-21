@@ -290,6 +290,8 @@ it('a task waiting in a busy agent’s queue moves to an agent that is free', as
     await a.begin('t1')
     const b = await h.agent(1)
     expect(await a.bodies()).toEqual([{ type: 'withdraw', task: 't2' }])
+    // Idle while t2 comes back, b is not let go: t2 is on its way to it.
+    h.o.retire(0, () => false)
     await a.say({ type: 'withdrawn', task: 't2' })
     expect(await b.batches()).toEqual([['t2']])
     // Begun already, a task stays where it is.
