@@ -19,6 +19,7 @@ import {
 } from '@vzn/vx'
 import type { AgentInfo, RunOrder, ToAgent, WiredResult } from './messages.js'
 import { outputFiles } from './outputs.js'
+import { sealAgent } from './seal.js'
 import { join, RelayError } from './wire.js'
 
 /** Names whose value is this machine's, never the orchestrator's. */
@@ -42,6 +43,8 @@ export async function runAgent(opts: {
   id?: string
   root: string
   token: string | undefined
+  /** `VX_DTE_SECRET`: what signs its key, as the orchestrator's. */
+  secret: string
   artifacts: TaskArtifacts
 }): Promise<number> {
   const tree = Bun.spawnSync(['git', 'rev-parse', 'HEAD^{tree}'], { cwd: opts.root })
@@ -56,7 +59,12 @@ export async function runAgent(opts: {
     memory,
     tree,
   }
-  const me = await join(opts.relay, opts.run, 'agent', info, opts.token)
+  const me = await sealAgent(
+    (signed) => join(opts.relay, opts.run, 'agent', signed, opts.token),
+    opts.run,
+    opts.secret,
+    { ...info },
+  )
   const running = new Map<string, AbortController>()
   const queue: RunOrder[] = []
   const work = new Set<Promise<void>>()

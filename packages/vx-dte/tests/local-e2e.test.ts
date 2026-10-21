@@ -110,14 +110,14 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, local: 0 })] }
     const { VX_DTE_RUN: _, ...env } = process.env
     const agent = Bun.spawn([process.execPath, CORE_BIN, 'dte', 'agent'], {
       cwd: root,
-      env: { ...env, VX_DTE_RUN: 'hand', NO_COLOR: '1' },
+      env: { ...env, VX_DTE_RUN: 'hand', VX_DTE_SECRET: 'hand-secret', NO_COLOR: '1' },
       stdout: 'pipe',
       stderr: 'pipe',
     })
     // Async: the relay is served by this process.
     const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#use'], {
       cwd: root,
-      env: { ...env, VX_DTE_RUN: 'hand', NO_COLOR: '1' },
+      env: { ...env, VX_DTE_RUN: 'hand', VX_DTE_SECRET: 'hand-secret', NO_COLOR: '1' },
       stdout: 'pipe',
       stderr: 'pipe',
     })
