@@ -21,6 +21,7 @@ export interface SummaryStats {
   notRun?: number // reached by the stop before they ran (final summary only); not in `total`
   running?: number // live: running now (not in the final summary)
   scheduled?: number // live: handed to an executor whose machine has not begun them
+  blocked?: number // live: not started because a dependency has not finished
   total: number
   upToDate: number
   restoredLocal: number

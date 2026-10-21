@@ -370,17 +370,17 @@ describe('defaultLogger status line integration', () => {
     const b = mkNode('bb#x')
     log.taskStart?.(a)
     log.taskStart?.(b)
-    // rows[0] is the region's leading blank separator; slots start at [1].
+    // rows[0] is the region's leading blank separator, [1] its header; slots start at [2].
     let rows = regionRows(s.chunks[s.chunks.length - 1]!)
-    expect(rows[1]).toContain('aa#x')
-    expect(rows[2]).toContain('bb#x')
+    expect(rows[2]).toContain('aa#x')
+    expect(rows[3]).toContain('bb#x')
     // a finishes; b must stay in row 2; c reuses row 1.
     log.taskComplete(a, mkOutcome(a, 'success'))
     const c = mkNode('cc#x')
     log.taskStart?.(c)
     rows = regionRows(s.chunks[s.chunks.length - 1]!)
-    expect(rows[1]).toContain('cc#x')
-    expect(rows[2]).toContain('bb#x')
+    expect(rows[2]).toContain('cc#x')
+    expect(rows[3]).toContain('bb#x')
     log.runEnd?.()
   })
 
@@ -391,16 +391,16 @@ describe('defaultLogger status line integration', () => {
     const nodes = ['a#x', 'b#x', 'c#x'].map((id) => mkNode(id))
     for (const n of nodes) log.taskStart?.(n)
     let last = s.chunks[s.chunks.length - 1]!
-    // rows[0] is the leading blank.
+    // rows[0] is the leading blank, [1] the header.
     expect(
       regionRows(last)
-        .slice(1, 4)
+        .slice(2, 5)
         .map((r) => r.trim().split(/\s+/).at(-1)),
     ).toEqual(['a#x', 'b#x', 'c#x'])
     expect(last).not.toContain('more')
     log.taskComplete(nodes[0]!, mkOutcome(nodes[0]!, 'success'))
     last = s.chunks[s.chunks.length - 1]!
-    expect(regionRows(last)[1]).toContain('c#x')
+    expect(regionRows(last)[2]).toContain('c#x')
     log.runEnd?.()
   })
 
@@ -476,7 +476,7 @@ describe('defaultLogger status line integration', () => {
     await Bun.sleep(1100)
     at = 'small#1'
     log.taskStart?.(mkNode('b#x'))
-    expect(row()).toMatch(/ \d+ms running +a#x@small#1$/)
+    expect(row()).toMatch(/ \d+ms running +a#x · small#1$/)
     expect(tasks()).toMatch(/^ +2 running · 2 total$/)
     log.runEnd?.()
   })
@@ -557,8 +557,8 @@ describe('defaultLogger status line integration', () => {
     // Persistent outcome arrives at READY while the child keeps
     // running — from here the pin is the visible evidence it's alive.
     log.taskComplete(dev, mkOutcome(dev, 'success'))
-    // [0] is the region's leading blank separator; the pin is [1].
-    expect(regionRows(s.chunks[s.chunks.length - 1]!)[1]).toBe(
+    // [0] is the region's leading blank separator, [1] the header; the pin is [2].
+    expect(regionRows(s.chunks[s.chunks.length - 1]!)[2]).toBe(
       ' ▸         running          web#dev',
     )
     log.runEnd?.()
@@ -660,14 +660,16 @@ describe('formatStatusRegion', () => {
   // completed-task list scrolling above (owner request).
   it('renders slot rows then the live summary section verbatim', () => {
     const lines = formatStatusRegion({ ...base, slots: [slot('a#build'), null] })
-    expect(lines).toHaveLength(6)
+    expect(lines).toHaveLength(7)
     expect(lines[0]).toBe('')
-    expect(lines[1]).toContain('a#build')
+    // A dim header names the grid's columns (M, 2026-10-21).
+    expect(lines[1]).toBe('      time status  cache    task')
+    expect(lines[2]).toContain('a#build')
     // Live elapsed (right-aligned) + the `running` tag, no spinner.
-    expect(lines[1]).toContain('2.00s')
-    expect(lines[1]).toContain('running')
-    expect(lines[2]).toContain('idle')
-    expect(lines.slice(3)).toEqual(SUMMARY)
+    expect(lines[2]).toContain('2.00s')
+    expect(lines[2]).toContain('running')
+    expect(lines[3]).toContain('idle')
+    expect(lines.slice(4)).toEqual(SUMMARY)
   })
 
   // M, 2026-10-21: a region taller than the terminal cut the summary, and
@@ -676,9 +678,8 @@ describe('formatStatusRegion', () => {
     const slots = Array.from({ length: 10 }, (_, i) => slot(`p#t${i}`))
     const lines = formatStatusRegion({ ...base, slots, rows: 8 })
     expect(lines).toHaveLength(7)
-    expect(lines[1]).toContain('p#t0')
-    expect(lines[2]).toContain('p#t1')
-    expect(lines[3]).toBe('           +8 more')
+    expect(lines[2]).toContain('p#t0')
+    expect(lines[3]).toBe('           +9 more')
     expect(lines.slice(4)).toEqual(SUMMARY)
     // One that fits is as it was.
     expect(formatStatusRegion({ ...base, slots, rows: 40 })).toEqual(
@@ -689,15 +690,16 @@ describe('formatStatusRegion', () => {
   it('a running row says where an executor runs it', () => {
     const where = (id: string) => (id === 'a#x' ? 'small#2' : undefined)
     const lines = formatStatusRegion({ ...base, slots: [slot('a#x'), slot('b#x')], where })
-    expect(lines[1]).toMatch(/a#x@small#2$/)
-    expect(lines[2]).toMatch(/b#x$/)
+    expect(lines[1]).toBe('      time status  cache    task · agent')
+    expect(lines[2]).toMatch(/ a#x · small#2$/)
+    expect(lines[3]).toMatch(/b#x$/)
   })
 
   it('idle rows hold their place so the slot zone height never changes', () => {
     const slots = Array.from({ length: 10 }, () => null)
     const lines = formatStatusRegion({ ...base, slots })
-    expect(lines).toHaveLength(14)
-    expect(lines.slice(1, 11).every((l) => l.includes('idle'))).toBe(true)
+    expect(lines).toHaveLength(15)
+    expect(lines.slice(2, 12).every((l) => l.includes('idle'))).toBe(true)
   })
 
   // M, 2026-10-14: a running row says how long the task usually takes, in
@@ -712,19 +714,19 @@ describe('formatStatusRegion', () => {
     ])
     const ids = ['a#x', 'b#x', 'c#x', 'd#x', 'e#x']
     const lines = formatStatusRegion({ ...base, slots: ids.map((id) => slot(id)), expected })
-    expect(lines[1]).toBe('     2.00s running ~5.2s    a#x')
-    expect(lines[2]).toBe('     2.00s running ~42s     b#x')
-    expect(lines[3]).toBe('     2.00s running ~2m 05s  c#x')
-    expect(lines[4]).toBe('     2.00s running ~300ms   d#x')
+    expect(lines[2]).toBe('     2.00s running ~5.2s    a#x')
+    expect(lines[3]).toBe('     2.00s running ~42s     b#x')
+    expect(lines[4]).toBe('     2.00s running ~2m 05s  c#x')
+    expect(lines[5]).toBe('     2.00s running ~300ms   d#x')
     // No history for it: the column holds its width, empty.
-    expect(lines[5]).toBe('     2.00s running          e#x')
+    expect(lines[6]).toBe('     2.00s running          e#x')
   })
 
   it('long ids are shown in full (never truncated — name is the last column)', () => {
     const long = '@scope/very-long-package-name-here#build-something-long'
     const lines = formatStatusRegion({ ...base, slots: [slot(long)] })
-    expect(lines[1]).toContain(long)
-    expect(lines[1]).not.toContain('…')
+    expect(lines[2]).toContain(long)
+    expect(lines[2]).not.toContain('…')
   })
 
   it('pinned persistent tasks render above the worker rows', () => {
@@ -733,11 +735,11 @@ describe('formatStatusRegion', () => {
       pinnedPersistent: ['web#dev', 'api#dev'],
       slots: [null],
     })
-    expect(lines).toHaveLength(7)
-    expect(lines[1]).toBe(' ▸         running          web#dev')
-    expect(lines[2]).toBe(' ▸         running          api#dev')
-    expect(lines[3]).toContain('idle')
-    expect(lines.slice(4)).toEqual(SUMMARY)
+    expect(lines).toHaveLength(8)
+    expect(lines[2]).toBe(' ▸         running          web#dev')
+    expect(lines[3]).toBe(' ▸         running          api#dev')
+    expect(lines[4]).toContain('idle')
+    expect(lines.slice(5)).toEqual(SUMMARY)
   })
 
   it('persistent pins keep ids identity-colored, never status-colored', () => {
@@ -745,8 +747,8 @@ describe('formatStatusRegion', () => {
       { ...base, pinnedPersistent: ['web#dev'], slots: [null] },
       { enabled: true },
     )
-    expect(lines[1]).toContain('running')
-    expect(lines[1]).toContain('\x1b[')
+    expect(lines[2]).toContain('running')
+    expect(lines[2]).toContain('\x1b[')
   })
 
   it('an idle row aligns its word under the running rows’ status column', () => {
@@ -766,7 +768,7 @@ describe('formatStatusRegion', () => {
       nowMs: 1000,
       summaryLines: [],
     })
-    expect(busy[1]!.indexOf('running')).toBe(idle[1]!.indexOf('idle'))
+    expect(busy[2]!.indexOf('running')).toBe(idle[2]!.indexOf('idle'))
   })
 
   it('a slot whose start is in the FUTURE renders zero, never a negative age', () => {
@@ -779,7 +781,7 @@ describe('formatStatusRegion', () => {
       nowMs: 1_000,
       summaryLines: [],
     })
-    expect(lines[1]).not.toContain('-')
+    expect(lines[2]).not.toContain('-')
     // CONTROL: an ordinary elapsed still renders.
     const ok = formatStatusRegion({
       pinnedPersistent: [],
@@ -787,7 +789,7 @@ describe('formatStatusRegion', () => {
       nowMs: 2_500,
       summaryLines: [],
     })
-    expect(ok[1]).toContain('2.50s')
+    expect(ok[2]).toContain('2.50s')
   })
 
   it('formatFailureLine: red ◼︎ glyph + exec time + failed + miss + id (no exit code)', () => {
@@ -1082,7 +1084,13 @@ describe('the task log opens with one blank line', () => {
         log.taskStart?.(b)
         log.taskComplete(b, mkOutcome(b, 'success'))
         log.runEnd?.()
-        const first = firstRow(s.chunks, 'one#a')
+        // On a terminal the list's header is its first row.
+        const first = s.chunks.find(
+          (c) =>
+            (c.includes('one#a') || c.includes(' time status')) &&
+            !c.startsWith('\x1b') &&
+            !c.startsWith('\r'),
+        )
         expect(first).toBeDefined()
         expect(first!.startsWith('\n')).toBe(true)
         expect(first!.startsWith('\n\n')).toBe(false)

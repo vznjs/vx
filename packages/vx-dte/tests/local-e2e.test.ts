@@ -192,7 +192,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, local: 0 })] }
     const out = await new Response(run.stdout).text()
     expect([await run.exited, out]).toEqual([
       0,
-      expect.stringMatching(/└─ b#use@agent#1 ── .*success/),
+      expect.stringMatching(/└─ b#use · agent#1 ── .*success/),
     ])
     expect(out).toMatch(/agents +agent#1  stopped  1 done\n +actual \d+c\/[\d.]+G$/m)
     const own = await new Response(agent.stdout).text()
@@ -368,7 +368,7 @@ it('agents run the tracked files as they are, uncommitted changes too', async ()
   await writeFile(ws, withDte)
   const r = vx(['run', 'a#gen'], 'e2e-dirty')
   const out = r.stdout.toString() + r.stderr.toString()
-  expect([r.exitCode, out]).toEqual([0, expect.stringContaining('@small#')])
+  expect([r.exitCode, out]).toEqual([0, expect.stringContaining(' · small#')])
   // Nothing was committed or reset to get there.
   expect(git('status', '--porcelain').stdout.toString()).toContain(' M .vx/workspace.mjs\n')
 }, 60_000)

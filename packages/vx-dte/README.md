@@ -286,11 +286,12 @@ the ones it never played when it ends.
 
 ## What the run shows
 
-Each task an agent ran says which one on its row and frame, in that
-agent's own color, by size and the order the run started it:
+Each task an agent ran says which one last on its row and after the id
+on its frame, in that agent's own color, by size and the order the run
+started it:
 
 ```
- ⏺︎   308ms success miss     c#build@small#1
+ ⏺︎   308ms success miss     c#build · small#1
 ```
 
 An idle agent the rest of the run cannot keep busy leaves (`left`): one
