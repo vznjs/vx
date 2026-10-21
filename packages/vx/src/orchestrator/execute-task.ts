@@ -76,6 +76,7 @@ import { sandboxFix } from './sandbox-fix.js'
 // The hit path's entry stays importable from here (tests).
 export { restoreHit, type RestoreHitArgs } from './hit-restore.js'
 import type { DeferredOutputs } from './deferred-outputs.js'
+import type { TreeLoad } from './telemetry.js'
 import { type Logger, warnOf } from '../report/index.js'
 import {
   computeGroupHash,
@@ -161,7 +162,7 @@ export interface ExecuteArgs {
    */
   liveChildren?: Set<ReturnType<typeof Bun.spawn>>
   /** Sample a spawned task's process tree (`TelemetrySource.track`); absent when nobody samples. */
-  track?: (taskId: string, pid: number) => () => void
+  track?: (taskId: string, pid: number) => () => TreeLoad | undefined
   /** Name what a missed key changed (`createMissExplainer`); absent when nobody listens. */
   explainMiss?: MissExplainer
   /**
@@ -964,7 +965,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         unlistenStop?.()
         unlistenStop = undefined
         flushMasked()
-        untrack?.()
+        load = untrack?.() ?? load
         untrack = undefined
       })
     endExec()
@@ -1088,7 +1089,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   const storedOutput = (): string => encodeOutputLog(output?.chunks() ?? [])
   const failedAttempts: { endedAt: number; exitCode: number; timedOut?: true }[] = []
   // The sampling of the attempt's process tree, stopped once it settles.
-  let untrack: (() => void) | undefined
+  let untrack: (() => TreeLoad | undefined) | undefined
+  // What the last attempt's samples saw, for the run history.
+  let load: TreeLoad | undefined
   // The entry's command is shown by `vx why` and sent with the entry to a
   // remote cache: a value a config interpolated stays out of both.
   const storedCommand = secrets?.mask(step.command) ?? step.command
@@ -1477,6 +1480,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(movedFails !== undefined ? { inputMoved: movedFails } : {}),
     ...(result.cpuMs !== undefined ? { cpuMs: result.cpuMs } : {}),
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
+    ...(load !== undefined ? { peakCores: load.peakCores, avgRssBytes: load.avgRssBytes } : {}),
     ...(result.where !== undefined ? { where: result.where } : {}),
     ...(deferralRequested && result.outputs?.kind === 'deferred'
       ? { outputs: 'deferred' as const }

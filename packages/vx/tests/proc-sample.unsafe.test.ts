@@ -3,6 +3,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { Database } from 'bun:sqlite'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { psTimeMs, sampleTrees } from '../src/exec/proc-sample.js'
 import { run } from './helpers/orchestrator.js'
@@ -132,6 +133,15 @@ describe('the telemetry source samples a tracked task', () => {
     expect([plain.track === undefined, typeof wanting.track]).toEqual([true, 'function'])
   })
 
+  it('a task untracked before its first look reports no load', () => {
+    const source = createTelemetrySource({
+      sinks: [{ wants: ['task.sample'], onRecord: () => {} }],
+      run: RUN,
+      every: () => () => {},
+    })
+    expect(source.track!('p#t', process.pid)()).toBeUndefined()
+  })
+
   it('each second until untracked, then never again', async () => {
     // The clock is ticked by hand: a 2.3 s wall sleep saw one sample, not
     // two, on a slow macOS runner. The period is asserted, the ticks driven.
@@ -158,8 +168,11 @@ describe('the telemetry source samples a tracked task', () => {
       }
       await clock.fire!()
       expect([records.length, clock.stops]).toEqual([2, 0])
-      untrack()
+      const load = untrack()
       expect(clock.stops).toBe(1)
+      // A burning tree shows cores at its peak and memory on average.
+      expect(load!.peakCores).toBeGreaterThan(0)
+      expect(load!.avgRssBytes).toBeGreaterThan(0)
       // A tick already due when the timer stopped delivers nothing.
       await clock.fire!()
       expect([clock.ms, records.length]).toEqual([[1_000], 2])
@@ -199,4 +212,16 @@ it('a run hands each spawned task to the sampler, keyed by its id', async () => 
   const samples = records.filter((r) => r.kind === 'task.sample')
   expect(samples.length).toBeGreaterThan(0)
   expect([...new Set(samples.map((r) => r.taskId))]).toEqual(['pkg-a#burn'])
+  // The history keeps what the samples saw.
+  const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'), { readonly: true })
+  try {
+    const row = db.query('SELECT peak_cores, avg_rss_bytes FROM runs').get() as {
+      peak_cores: number | null
+      avg_rss_bytes: number | null
+    }
+    expect(row.peak_cores).toBeGreaterThanOrEqual(0)
+    expect(row.avg_rss_bytes).toBeGreaterThan(0)
+  } finally {
+    db.close()
+  }
 }, 20_000)

@@ -400,8 +400,19 @@ export interface TelemetrySource {
    * Sample this task's process tree every `SAMPLE_MS` until the returned
    * function is called, the root exits, or the run ends. Present only when
    * a sink wants `task.sample`: nobody asking costs no timer and no read.
+   * The returned stop answers what the samples saw, for the run history.
    */
-  readonly track?: (taskId: string, pid: number) => () => void
+  readonly track?: (taskId: string, pid: number) => () => TreeLoad | undefined
+}
+
+/**
+ * What a tracked task's samples saw: the most cores one interval between
+ * looks burned, and the mean resident memory over the looks. Undefined
+ * when no look landed (a task shorter than `SAMPLE_MS`).
+ */
+export interface TreeLoad {
+  peakCores: number
+  avgRssBytes: number
 }
 
 /** How often a running task's process tree is sampled. */
@@ -476,10 +487,18 @@ export function createTelemetrySource(args: {
   const wantsLog = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.log'))
   const wantsSample = sinks.some((s) => (s.wants ?? DEFAULT_KINDS).includes('task.sample'))
 
-  // taskId → the pid of its running root. One timer for every task, alive
-  // only while one runs; a tick still reading when the next is due is not
-  // doubled.
-  const tracked = new Map<string, number>()
+  // taskId → its running root and what the looks at it saw. One timer for
+  // every task, alive only while one runs; a tick still reading when the
+  // next is due is not doubled.
+  interface Tracked {
+    pid: number
+    lastTs: number
+    lastCpuMs: number
+    peakCores: number
+    rssSum: number
+    looks: number
+  }
+  const tracked = new Map<string, Tracked>()
   const every = args.every ?? everyInterval
   let stopEvery: (() => void) | undefined
   let sampling = false
@@ -488,8 +507,8 @@ export function createTelemetrySource(args: {
     stopEvery?.()
     stopEvery = undefined
   }
-  const untrack = (taskId: string, pid: number): void => {
-    if (tracked.get(taskId) === pid) tracked.delete(taskId)
+  const untrack = (taskId: string, t: Tracked): void => {
+    if (tracked.get(taskId) === t) tracked.delete(taskId)
     if (tracked.size === 0) stopTimer()
   }
   const tick = async (): Promise<void> => {
@@ -497,15 +516,23 @@ export function createTelemetrySource(args: {
     sampling = true
     try {
       const entries = [...tracked]
-      const usage = await sampleTrees(entries.map(([, pid]) => pid))
+      const usage = await sampleTrees(entries.map(([, t]) => t.pid))
       const ts = Date.now()
-      for (const [taskId, pid] of entries) {
-        if (ended || tracked.get(taskId) !== pid) continue
-        const u = usage.get(pid)
+      for (const [taskId, t] of entries) {
+        if (ended || tracked.get(taskId) !== t) continue
+        const u = usage.get(t.pid)
         if (u === undefined) {
-          untrack(taskId, pid)
+          untrack(taskId, t)
           continue
         }
+        // A descendant that exited takes its CPU out of the live sum, so an
+        // interval can read negative: it says nothing of the peak.
+        const ms = ts - t.lastTs
+        if (ms > 0) t.peakCores = Math.max(t.peakCores, (u.cpuMs - t.lastCpuMs) / ms)
+        t.lastTs = ts
+        t.lastCpuMs = u.cpuMs
+        t.rssSum += u.rssBytes
+        t.looks++
         deliver({
           v: TELEMETRY_SCHEMA_VERSION,
           kind: 'task.sample',
@@ -522,11 +549,17 @@ export function createTelemetrySource(args: {
       sampling = false
     }
   }
-  const track = (taskId: string, pid: number): (() => void) => {
-    if (ended) return () => {}
-    tracked.set(taskId, pid)
+  const track = (taskId: string, pid: number): (() => TreeLoad | undefined) => {
+    if (ended) return () => undefined
+    const t: Tracked = { pid, lastTs: Date.now(), lastCpuMs: 0, peakCores: 0, rssSum: 0, looks: 0 }
+    tracked.set(taskId, t)
     stopEvery ??= every(SAMPLE_MS, tick)
-    return () => untrack(taskId, pid)
+    return () => {
+      untrack(taskId, t)
+      return t.looks === 0
+        ? undefined
+        : { peakCores: t.peakCores, avgRssBytes: Math.round(t.rssSum / t.looks) }
+    }
   }
 
   function deliver(record: TelemetryRecord): void {

@@ -324,7 +324,9 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //        is unchanged.
 //   v42: fold_memo — each task's last key by its fold up to the files and
 //        a token of their git records. The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v42'
+//   v43: runs.peak_cores / avg_rss_bytes — what a sampled run burned at
+//        its peak and held on average. The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v43'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON

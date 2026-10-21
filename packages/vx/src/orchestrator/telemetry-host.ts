@@ -18,6 +18,7 @@ import type {
   RunSummaryRecord,
   TelemetryContext,
   TelemetrySink,
+  TreeLoad,
 } from './telemetry.js'
 import { settleWithin, teardownTimeoutMs } from '../util/index.js'
 import { createTelemetrySource } from './telemetry.js'
@@ -32,7 +33,7 @@ export interface TelemetryHandle {
   /** Remove the bus subscription. Idempotent. */
   dispose(): void
   /** Sample a running task's process tree; see `TelemetrySource.track`. */
-  readonly track?: (taskId: string, pid: number) => () => void
+  readonly track?: (taskId: string, pid: number) => () => TreeLoad | undefined
 }
 
 /** Reject anything that is not sink-shaped, naming what arrived. */

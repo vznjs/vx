@@ -30,8 +30,10 @@ Pipeline stages a plugin can fill, in order: `config` → `discover` → `projec
 `commands` (CLI verbs). Design: `docs/design/pipeline-2026-09.md`.
 
 Decision drivers, in order: **performance, modularity, extensibility.**
-Nothing distributed ships in this repo (no agents, cloud, dashboards); the
-seams exist so someone can build those on top. `@vzn/vx-reapi` is the proof
+No cloud or dashboard ships in this repo; the seams exist so someone can
+build those on top. The one exception is `@vzn/vx-dte` (owner, 2026-10-21):
+one run spread over agents the user's own CI spawns, through a relay
+(`@vzn/vx-dte-relay`) anyone can host. `@vzn/vx-reapi` is the proof
 the seams are wide enough. Pre-alpha, owner-delegated: you own it, ship it.
 
 ## Stack
@@ -219,7 +221,7 @@ platform claim or a timed test, and add new lessons there.
 
 ## Live invariants (verify in source before quoting)
 
-- `CACHE_VERSION` `vx-cache-v48`, core `SCHEMA_VERSION` `v42`,
+- `CACHE_VERSION` `vx-cache-v48`, core `SCHEMA_VERSION` `v43`,
   `TELEMETRY_SCHEMA_VERSION` 4. Bump `CACHE_VERSION` when stored bytes are
   wrong under an unchanged key or the container changes; a key-derivation
   fix whose old key was already wrong is self-healing and does not bump.
@@ -247,7 +249,8 @@ platform claim or a timed test, and add new lessons there.
 Named inputs / `globalInputs` / `globalEnv` (TS configs compose); auto-input
 inference via tracing; folding `NODE_OPTIONS` into the key; lookahead /
 idle-insertion scheduling (measured: `remCP` already ties or wins); a
-first-party platform, dashboard, agents, cloud, or CI-provider features;
+first-party platform, dashboard, cloud, or CI-provider features (agents
+only as `@vzn/vx-dte`);
 Turbo remote-cache wire in core; HTTP/3.
 
 ## Operating directive
