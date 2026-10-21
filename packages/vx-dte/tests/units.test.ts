@@ -252,6 +252,8 @@ it('an agent reads the cache as the run does, and is lent its remotes’ access 
           lent: { '@vzn/vx-migrate': 't1' },
           expiresAt: expect.any(Number),
         },
+        cores: 2,
+        memory: 100,
       },
       { type: 'cache', cache: { refs: ['refs/heads/feat'], lent: { '@vzn/vx-migrate': 't2' } } },
     ])
@@ -297,6 +299,22 @@ it('a task waiting in a busy agent’s queue moves to an agent that is free', as
     // Begun already, a task stays where it is.
     await a.finish('t1')
     expect(h.o.where('t2')).toBeNull()
+  } finally {
+    await h.stop()
+  }
+})
+
+// Growth, 2026-10-21: four local() agents of 1 core on a 4-core host each
+// reported the host and took 4 tasks plus a prefetch, 16 wide on 4 cores.
+it('an agent of a declared size is sent work for that size, not its machine', async () => {
+  const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
+    const a = await h.agent(4, 'small#1')
+    await Bun.sleep(50)
+    for (const id of ['t1', 't2', 't3']) void h.o.execute(h.req(id))
+    // 1 core and 1 of prefetch.
+    expect(await a.batches()).toEqual([['t1', 't2']])
   } finally {
     await h.stop()
   }
@@ -351,9 +369,9 @@ it('the final summary says how each agent ended, its size and machine under it',
   const h = await harness(new Map([node('t1')]))
   const small = { size: 'small', cpu: 2, memory: 4e9 }
   h.o.spawned('small#1', small)
-  h.o.spawned('small#2', small)
+  h.o.spawned('big#1', { size: 'big', cpu: 4, memory: 4e9 })
   const a = await h.agent(2, 'small#1')
-  const b = await h.agent(4, 'small#2')
+  const b = await h.agent(4, 'big#1')
   const c = await h.agent(1)
   await Bun.sleep(50)
   await c.leave()
@@ -366,7 +384,7 @@ it('the final summary says how each agent ended, its size and machine under it',
   expect(rows[at('agent#1')]).toMatch(/^agent#1 +lost/)
   expect(rows[at('small#1')]).toMatch(/^small#1 +stopped/)
   expect(rows[at('small#1') + 1]).toMatch(/^ +declared 2c\/4G · actual 2c\/0G$/)
-  expect(rows[at('small#2')]).toMatch(/^small#2 +left/)
+  expect(rows[at('big#1')]).toMatch(/^big#1 +left/)
   expect(rows.some((r) => r.trimStart().startsWith('!'))).toBe(false)
   expect(rows.filter((r) => /^\S+ +online/.test(r))).toEqual([])
   void a

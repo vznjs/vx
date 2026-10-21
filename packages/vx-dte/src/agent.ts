@@ -54,6 +54,8 @@ export async function runAgent(opts: {
     .trim()
   const cores = machineParallelism()
   const memory = machineMemoryBytes()
+  // What the run holds it to, once welcomed: a local() agent shares its host.
+  let share = { cores, memory }
   const info: AgentInfo = {
     v: 1,
     ...(opts.id === undefined ? {} : { id: opts.id }),
@@ -113,7 +115,8 @@ export async function runAgent(opts: {
     for (let i = 0; i < queue.length;) {
       const m = queue[i]!
       const fits =
-        running.size === 0 || (usedCores + m.cores <= cores && usedMemory + m.memory <= memory)
+        running.size === 0 ||
+        (usedCores + m.cores <= share.cores && usedMemory + m.memory <= share.memory)
       if (!fits) {
         i++
         continue
@@ -250,6 +253,7 @@ export async function runAgent(opts: {
         if (m.type === 'cache') facts = m.cache
         else if (m.type === 'welcome') {
           facts = m.cache
+          share = { cores: m.cores, memory: m.memory }
           ui.print(
             'out',
             ui.report('vx dte agent', [
