@@ -1308,6 +1308,8 @@ export interface RunContext {
   version: string
   packageCount: number
   runId?: string | undefined
+  executorRows?: () => readonly (readonly [string, string])[]
+  whereRunning?: (taskId: string) => string | undefined
   concurrency?: number
   remoteCacheEnabled: boolean
   cacheScope?: string | undefined
@@ -1633,6 +1635,8 @@ export interface TaskExecutor {
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void
+  footer?(): readonly (readonly [label: string, text: string])[]
+  running?(taskId: string): string | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 == type TaskHistory (src/history/history.ts)

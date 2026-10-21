@@ -201,6 +201,7 @@ export function dte(options: DteOptions) {
             : Math.max(1, localSlots + sizes.reduce((n, s) => n + 2 * s.max * s.cpu, 0)),
         execute: (req) => o.execute(req),
         footer: () => o.footer(),
+        running: (id) => o.where(id),
         // Agents for what this machine's share cannot take, in declared
         // order, until their cores and memory cover the remaining tasks'
         // recorded peaks; none are stopped before the run ends.

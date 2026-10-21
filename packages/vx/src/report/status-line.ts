@@ -318,6 +318,8 @@ export interface StatusRegionState {
   blocks?: ReadonlyMap<string, number>
   /** The running task at the head of the longest unfinished chain. */
   critical?: string
+  /** Where a running task runs, when not here (`TaskExecutor.running`); its row shows it. */
+  where?: (taskId: string) => string | undefined
   /** A running task's usual duration from history; its row shows it. */
   expected?: ReadonlyMap<string, number>
   /**
@@ -483,6 +485,8 @@ export function formatStatusRegion(
     }
     const waiting = s.blocks?.get(slot.id) ?? 0
     const notes: string[] = []
+    const at = s.where?.(slot.id)
+    if (at !== undefined) notes.push(dim(`on ${at}`))
     if (s.critical === slot.id && busy > 1) notes.push(paint(WARN, 'critical path', colors))
     if (waiting > 0) notes.push(dim(`blocks ${waiting}`))
     const usual = s.expected?.get(slot.id)

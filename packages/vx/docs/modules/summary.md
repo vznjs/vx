@@ -46,6 +46,8 @@ export interface RunContext {
   packageCount: number // projects with a task to run → the bar's "affected" half
   runId?: string | undefined // the whole id `vx last` takes (info row)
   concurrency?: number // worker-pool size (info row)
+  executorRows?: () => readonly (readonly [string, string])[] // executors' footer rows
+  whereRunning?: (taskId: string) => string | undefined // a running task's executor
   remoteCacheEnabled: boolean
   cacheScope?: string | undefined // the run's scope (info row: `scope vznjs/vx:feat-x`)
   cache?: {

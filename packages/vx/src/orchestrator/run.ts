@@ -801,8 +801,12 @@ async function runOnBus(
     // Run context for the footer. The top-of-run header is gone — the
     // banner now lives in the summary, where the eye lands at the end.
     const footers = executors.filter((e) => e.footer !== undefined)
+    const placers = executors.filter((e) => e.running !== undefined)
     const runContext = {
       ...(footers.length > 0 ? { executorRows: () => footers.flatMap(executorFooter) } : {}),
+      ...(placers.length > 0
+        ? { whereRunning: (id: string) => placers.map((e) => executorWhere(e, id)).find(Boolean) }
+        : {}),
       version: VERSION,
       packageCount: packagesInScope.size,
       remoteCacheEnabled,
@@ -1830,5 +1834,15 @@ function executorFooter(e: TaskExecutor): (readonly [string, string])[] {
     )
   } catch {
     return []
+  }
+}
+
+/** Where `e` says a running task is; a throw or a non-string says nothing. */
+function executorWhere(e: TaskExecutor, id: string): string | undefined {
+  try {
+    const w = e.running?.(id)
+    return typeof w === 'string' && w !== '' ? w : undefined
+  } catch {
+    return undefined
   }
 }

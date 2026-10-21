@@ -85,6 +85,7 @@ export class Orchestrator {
   private readonly results = new Map<string, string[]>()
   private localBusy = 0
   private ranHere = 0
+  private readonly runningHere = new Set<string>()
   /** When each agent this run started was asked for, by `AgentSpawn.index`. */
   private readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
   private ended = false
@@ -203,6 +204,7 @@ export class Orchestrator {
 
   private runHere(job: Job): void {
     this.localBusy++
+    this.runningHere.add(job.req.taskId)
     this.floor
       .execute(job.req)
       .then((r) => {
@@ -210,6 +212,7 @@ export class Orchestrator {
         job.resolve(r)
       }, job.reject)
       .finally(() => {
+        this.runningHere.delete(job.req.taskId)
         this.localBusy--
         this.pumpSoon()
       })
@@ -422,6 +425,13 @@ export class Orchestrator {
         }
       }
     }
+  }
+
+  /** The agent a task was sent to, or `here`. */
+  where(taskId: string): string | undefined {
+    if (this.runningHere.has(taskId)) return 'here'
+    for (const a of this.agents.values()) if (a.busy.has(taskId)) return a.label
+    return undefined
   }
 
   /** `demand` asked the adapter for agent `id` (`AgentSpawn.id`). */

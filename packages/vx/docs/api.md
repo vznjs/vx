@@ -2358,6 +2358,8 @@ export interface TaskExecutor {
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void
+  footer?(): readonly (readonly [label: string, text: string])[]
+  running?(taskId: string): string | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 ```

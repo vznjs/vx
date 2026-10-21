@@ -557,6 +557,7 @@ export function defaultLogger(
           ...(shownSteps.length > 0 ? { steps: shownSteps } : {}),
           nowMs: Date.now(),
           summaryLines,
+          ...(runContext?.whereRunning !== undefined ? { where: runContext.whereRunning } : {}),
           ...(blocks !== undefined ? { blocks } : {}),
           ...(expected !== undefined ? { expected } : {}),
           ...(critical !== undefined ? { critical } : {}),

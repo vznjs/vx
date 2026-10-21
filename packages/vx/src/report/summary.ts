@@ -185,6 +185,8 @@ export interface RunContext {
   runId?: string | undefined
   /** The executors' own footer rows (`TaskExecutor.footer`), above the `info` row. */
   executorRows?: () => readonly (readonly [string, string])[]
+  /** Where a running task runs, when an executor says (`TaskExecutor.running`): its live row. */
+  whereRunning?: (taskId: string) => string | undefined
   /** Worker-pool size for this run; shown on the `info` row. */
   concurrency?: number
   remoteCacheEnabled: boolean
