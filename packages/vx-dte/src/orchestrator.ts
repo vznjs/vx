@@ -609,6 +609,21 @@ export class Orchestrator {
     this.spawnedAt.set(id, { at: performance.now(), declared })
   }
 
+  /**
+   * The cores the run's agents have: what each online reports, and what
+   * each still starting declares. `retire` counts the reported ones too;
+   * a start counted by the declared size beside it started an agent for
+   * every one that left (a local() agent reports its host).
+   */
+  cores(): number {
+    const joined = new Set([...this.agents.values(), ...this.gone].map((a) => a.label))
+    let n = 0
+    for (const a of this.agents.values()) if (!a.faulty) n += a.cores
+    for (const [id, { declared }] of this.spawnedAt)
+      if (!joined.has(id) && !this.unstarted.has(id)) n += declared.cpu
+    return n
+  }
+
   /** The most cores an agent online has; 0 with none. */
   biggestCores(): number {
     let most = 0

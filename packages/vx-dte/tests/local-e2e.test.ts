@@ -41,6 +41,12 @@ export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB
   once: { exec: { command: 'if [ -e ../once ]; then echo again; else touch ../once && sleep 60; fi' } },
 } }
 `,
+    // Wide, then a two-task lull, then wide again.
+    'c/vx.config.mjs': `const t = (dependsOn) => ({ exec: { command: 'sleep 0.3' }, dependsOn })
+export default { name: 'c', tasks: {
+  x1: t([]), x2: t([]), y1: t(['x1', 'x2']), y2: t(['y1']), z1: t(['y2']), z2: t(['y2']),
+} }
+`,
   }
   for (const [rel, text] of Object.entries(files)) {
     await mkdir(path.dirname(path.join(root, rel)), { recursive: true })
@@ -92,6 +98,15 @@ it('brings an agent’s outputs back under --force', async () => {
   const out = run.stdout.toString() + run.stderr.toString()
   expect([run.exitCode, out]).toEqual([0, expect.stringContaining('used')])
   expect(await readFile(path.join(root, 'b/out/b.txt'), 'utf8')).toBe('made\n')
+}, 60_000)
+
+// An idle agent stays while the rest of the run will need it again: one
+// left in the lull and another started for the wide part after it.
+it('keeps an idle agent the rest of the run needs again', () => {
+  const r = vx(['run', 'c#z1', 'c#z2'], 'e2e-lull')
+  const out = r.stdout.toString() + r.stderr.toString()
+  expect([r.exitCode, out]).toEqual([0, expect.stringContaining('small#2')])
+  expect(out).not.toContain('small#3')
 }, 60_000)
 
 // The agent running a task is killed: the task runs again on one the run
