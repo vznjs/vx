@@ -670,6 +670,22 @@ describe('formatStatusRegion', () => {
     expect(lines.slice(3)).toEqual(SUMMARY)
   })
 
+  // M, 2026-10-21: a region taller than the terminal cut the summary, and
+  // what never printed cannot be scrolled to. The rows give way instead.
+  it('a region taller than the terminal keeps its summary and folds the rows it cannot fit', () => {
+    const slots = Array.from({ length: 10 }, (_, i) => slot(`p#t${i}`))
+    const lines = formatStatusRegion({ ...base, slots, rows: 8 })
+    expect(lines).toHaveLength(7)
+    expect(lines[1]).toContain('p#t0')
+    expect(lines[2]).toContain('p#t1')
+    expect(lines[3]).toBe('           +8 more')
+    expect(lines.slice(4)).toEqual(SUMMARY)
+    // One that fits is as it was.
+    expect(formatStatusRegion({ ...base, slots, rows: 40 })).toEqual(
+      formatStatusRegion({ ...base, slots }),
+    )
+  })
+
   it('a running row says where an executor runs it', () => {
     const where = (id: string) => (id === 'a#x' ? 'small#2' : undefined)
     const lines = formatStatusRegion({ ...base, slots: [slot('a#x'), slot('b#x')], where })

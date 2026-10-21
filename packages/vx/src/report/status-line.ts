@@ -316,6 +316,8 @@ export interface WorkerSlot {
 }
 
 export interface StatusRegionState {
+  /** The terminal's height: a region taller folds its rows, never its summary. */
+  rows?: number
   /** A running task's unfinished dependents (`blocks 14` on its row); 0 says nothing. */
   blocks?: ReadonlyMap<string, number>
   /** The running task at the head of the longest unfinished chain. */
@@ -519,6 +521,16 @@ export function formatStatusRegion(
         colors,
       ),
     )
+  }
+  // A region taller than the terminal (a row spared) folds the rows past
+  // what fits into one line: the writer would cut the summary at its
+  // foot, and lines never printed cannot be scrolled to (M, 2026-10-21).
+  const room = s.rows === undefined ? Infinity : s.rows - 1 - s.summaryLines.length
+  if (lines.length > room && room >= 3) {
+    const kept = room - 1
+    const more = lines.length - kept
+    lines.length = kept
+    lines.push(`${' '.repeat(3 + TIME_COL + 1)}${dim(`+${more} more`)}`)
   }
   // The live summary section — identical shape to the final printout,
   // so the region visually BECOMES the summary when the run ends.
