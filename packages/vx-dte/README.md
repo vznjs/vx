@@ -113,7 +113,7 @@ as each task starts and ends:
   (`the relay is unreachable`); none runs here, which may be far smaller
   than the agents. What finished is saved, so a rerun resumes from it.
 - An agent that never joins says why on its row (`failed  exited 1:
-  …`); when none is online or starting and this machine has no share,
+…`); when none is online or starting and this machine has no share,
   the remaining tasks fail with `no agent could start`.
 
 ## What the run shows

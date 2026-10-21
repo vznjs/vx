@@ -20,14 +20,14 @@ export function local(options: LocalOptions = {}): DteAdapter {
   let relay: { url: string; stop(): void } | undefined
   let base: Promise<string> | undefined
   let closed = false
-  const procs = new Set<ReturnType<typeof Bun.spawn>>()
+  const procs = new Set<Bun.Subprocess>()
   /** A worktree add or a prepare: what close stops at once. */
-  const helpers = new Set<ReturnType<typeof Bun.spawn>>()
+  const helpers = new Set<Bun.Subprocess>()
   const trees: Array<{ root: string; dir: string }> = []
   const pending = new Set<Promise<unknown>>()
 
   // Async throughout: a run starts its agents while it shows its first rows.
-  const start = (p: ReturnType<typeof Bun.spawn>): ReturnType<typeof Bun.spawn> => {
+  const start = <P extends Bun.Subprocess>(p: P): P => {
     procs.add(p)
     void p.exited.then(() => procs.delete(p))
     return p
@@ -39,7 +39,13 @@ export function local(options: LocalOptions = {}): DteAdapter {
     helper = true,
   ) => {
     const p = start(
-      Bun.spawn(argv, { cwd, env, stdin: 'ignore', stdout: 'ignore', stderr: 'pipe' }),
+      Bun.spawn(argv, {
+        cwd,
+        env: env ?? process.env,
+        stdin: 'ignore',
+        stdout: 'ignore',
+        stderr: 'pipe',
+      }),
     )
     if (helper) {
       helpers.add(p)

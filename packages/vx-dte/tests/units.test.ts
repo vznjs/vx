@@ -337,6 +337,7 @@ it('docker() starts each agent as a container of its size, on a fresh clone of H
       id: 'small#3',
       workspaceRoot: path.join(ws, 'sub'),
       env: { VX_DTE_RUN: 'r', VX_DTE_AGENT: 'small#3', VX_DTE_RELAY: 'http://127.0.0.1:9' },
+      exited: () => {},
     })
     for (let i = 0; i < 100 && !(await Bun.file(argv).exists()); i++) await Bun.sleep(20)
     const args = (await readFile(argv, 'utf8')).split('\0').slice(0, -1)
