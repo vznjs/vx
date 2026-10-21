@@ -38,6 +38,15 @@ Every request naming an `id` counts as a heartbeat. A participant silent
 for three `heartbeatMs` is lost, as if it had left. Polling with a `wait`
 below `heartbeatMs` keeps a participant alive.
 
+## Leases (planned, above the relay)
+
+Leases are `@vzn/vx-dte`'s messages, so the relay stays body-blind. The
+orchestrator leases each task to one agent with an expiry, and every
+request that agent makes renews its leases. A lease that expires sends
+its task back to ready. The orchestrator accepts a result only from the
+task's current lease holder and drops any late one. The design is in
+`packages/vx/docs/design/dte-2026-10.md`.
+
 ## Messages from the relay
 
 The relay itself sends with `"from": "relay"`:
