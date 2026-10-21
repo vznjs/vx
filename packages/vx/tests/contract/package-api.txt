@@ -422,6 +422,26 @@ export interface ArtifactInfo {
   readonly size?: number
   readonly durationMs?: number
 }
+== type ArtifactRun (src/orchestrator/task-artifacts.ts)
+export interface ArtifactRun {
+  readonly stdout: string
+  readonly stderr: string
+  readonly durationMs: number
+  readonly cpuMs?: number
+  readonly peakRssBytes?: number
+  readonly env?: Readonly<Record<string, string | undefined>>
+}
+== type ArtifactTask (src/orchestrator/task-artifacts.ts)
+export interface ArtifactTask {
+  readonly id: string
+  readonly projectDir: string
+  readonly command: string
+  readonly outputs: {
+    readonly files: readonly string[]
+    readonly workspaceFiles: readonly string[]
+  }
+  readonly nestedProjectDirs?: readonly string[]
+}
 == type At (src/config.ts)
 type At<T, P extends PropertyKey> = T extends { readonly [Q in P]?: infer V } ? V : unknown
 == type BaseContext (src/orchestrator/plugin.ts)
@@ -631,6 +651,7 @@ export interface CommandContext extends BaseContext {
   readonly concurrency: number
   readonly vx: readonly string[]
   readonly cache: PluginCache
+  readonly artifacts: TaskArtifacts
 }
 == type ConfigContext (src/orchestrator/plugin.ts)
 export interface ConfigContext extends WorkspaceHookContext {
@@ -738,6 +759,7 @@ export interface ExecuteSandbox {
 == type ExecutorContext (src/orchestrator/plugin.ts)
 export interface ExecutorContext extends BaseContext {
   readonly concurrency: number
+  readonly artifacts: TaskArtifacts
 }
 == type FailedAttempt (src/orchestrator/telemetry.ts)
 export interface FailedAttempt {
@@ -1648,6 +1670,11 @@ export interface StoreOptions {
 }
 == type Style (src/util/ui.ts)
 type Style = Tone | 'dim' | 'bold' | 'id'
+== type TaskArtifacts (src/orchestrator/task-artifacts.ts)
+export interface TaskArtifacts {
+  save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
+  restore(key: string, task: ArtifactTask): Promise<{ stdout: string; stderr: string } | null>
+}
 == type TaskConfig (src/config.ts)
 export interface TaskConfig {
   description?: string

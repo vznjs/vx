@@ -90,6 +90,42 @@ export interface ArtifactInfo {
 }
 ```
 
+## `ArtifactRun`
+
+type · `src/orchestrator/task-artifacts.ts`
+
+What a task's run left besides its files: its output, and its time and usage.
+
+```ts
+export interface ArtifactRun {
+  readonly stdout: string
+  readonly stderr: string
+  readonly durationMs: number
+  readonly cpuMs?: number
+  readonly peakRssBytes?: number
+  readonly env?: Readonly<Record<string, string | undefined>>
+}
+```
+
+## `ArtifactTask`
+
+type · `src/orchestrator/task-artifacts.ts`
+
+The task a `TaskArtifacts` call names: where its outputs are and what ran.
+
+```ts
+export interface ArtifactTask {
+  readonly id: string
+  readonly projectDir: string
+  readonly command: string
+  readonly outputs: {
+    readonly files: readonly string[]
+    readonly workspaceFiles: readonly string[]
+  }
+  readonly nestedProjectDirs?: readonly string[]
+}
+```
+
 ## `branchCacheScope`
 
 function · `src/workspace/config-schema.ts`
@@ -403,6 +439,7 @@ export interface CommandContext extends BaseContext {
   readonly concurrency: number
   readonly vx: readonly string[]
   readonly cache: PluginCache
+  readonly artifacts: TaskArtifacts
 }
 ```
 
@@ -632,6 +669,7 @@ type · `src/orchestrator/plugin.ts`
 ```ts
 export interface ExecutorContext extends BaseContext {
   readonly concurrency: number
+  readonly artifacts: TaskArtifacts
 }
 ```
 
@@ -2365,6 +2403,17 @@ private copy until item 646; one rule, one place.
 
 ```ts
 export function splitTaskId(id: string): [project: string, task: string]
+```
+
+## `TaskArtifacts`
+
+type · `src/orchestrator/task-artifacts.ts`
+
+```ts
+export interface TaskArtifacts {
+  save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
+  restore(key: string, task: ArtifactTask): Promise<{ stdout: string; stderr: string } | null>
+}
 ```
 
 ## `TaskConfig`

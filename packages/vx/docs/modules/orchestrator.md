@@ -44,6 +44,16 @@ export function acquireRunLock(
   workspaceRoot: string,
   opts: { log: (line: string) => void; signal?: AbortSignal; dir?: string },
 ): Promise<() => Promise<void>>
+// What `vx run` and a plugin verb read of the workspace's cache policy.
+export function workspaceCachePolicy(config): CachePolicy | undefined
+export function namesRemote(spec: string | undefined): boolean // `cache.policy` names `remote:r` or `remote:w`
+// Task entries by key for a task run on another machine
+// (`ExecutorContext.artifacts`, `CommandContext.artifacts`).
+export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArtifacts
+export interface TaskArtifacts {
+  save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
+  restore(key: string, task: ArtifactTask): Promise<{ stdout: string; stderr: string } | null>
+}
 
 // RunOptions highlights (full list in options.md):
 //   cwd, tasks, projects?, concurrency?, cache?: CachePolicy,

@@ -253,7 +253,10 @@ export class RemoteLane {
       )
       return null
     }
-    return result as { body: Blob | Response; durationMs?: number }
+    // It holds the key: a save of it after this restore uploads nothing.
+    const got = result as { body: Blob | Response; durationMs?: number }
+    this.held.set(hash, got.durationMs === undefined ? {} : { durationMs: got.durationMs })
+    return got
   }
 
   /**

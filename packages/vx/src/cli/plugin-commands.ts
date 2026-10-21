@@ -9,7 +9,13 @@
 
 import type { CachePolicy, PluginCache, ResolvedRemote } from '../cache/index.js'
 import type { WorkspaceConfig } from '../config.js'
-import type { BranchFacts, VxPlugin, PluginCommand, CommandContext } from '../orchestrator/index.js'
+import type {
+  BranchFacts,
+  VxPlugin,
+  PluginCommand,
+  CommandContext,
+  TaskArtifacts,
+} from '../orchestrator/index.js'
 import { configuredBaseBranch, findWorkspaceRoot } from '../workspace/index.js'
 import { machineParallelism, maskedLine } from '../util/index.js'
 import { resolveSetting } from '../settings.js'
@@ -111,6 +117,7 @@ export async function resolvePluginCommand(
           : [process.execPath, Bun.main],
         warn,
         cache: lazyCache(() => verbCache(ws, plugin.name)),
+        artifacts: lazyArtifacts(() => verbArtifacts(ws)),
       },
     }
   }
@@ -166,6 +173,69 @@ async function verbCache(
     remotes,
   })
   return pluginCache(plugin, { db: localCache.dbHandle(), policy: VERB_POLICY, remotes, scope })
+}
+
+/**
+ * The verb's `ctx.artifacts`: the workspace's cache as a run opens it, its
+ * policy and scope, a laptop writing no remote unless the policy names it.
+ */
+async function verbArtifacts(
+  ws: Exclude<Awaited<ReturnType<typeof workspacePlugins>>, UnresolvedPluginCommand | null>,
+): Promise<TaskArtifacts> {
+  const [
+    { Cache, FULL_CACHE_POLICY },
+    {
+      cacheRefs,
+      namesRemote,
+      resolveCache,
+      resolveCacheScope,
+      taskArtifacts,
+      workspaceCachePolicy,
+    },
+    { onCI },
+  ] = await Promise.all([
+    import('../cache/index.js'),
+    import('../orchestrator/index.js'),
+    import('./run.js'),
+  ])
+  const asked = workspaceCachePolicy(ws.workspaceConfig) ?? FULL_CACHE_POLICY
+  const policy: CachePolicy =
+    onCI(process.env['CI']) || namesRemote(ws.workspaceConfig?.cache?.policy)
+      ? asked
+      : { ...asked, remoteWrite: false }
+  const scope = resolveCacheScope(
+    ws.workspaceRoot,
+    ws.branch.trusted === true ? null : ws.branch.scope,
+    ws.plugins.some((p) => p.cache !== undefined),
+    configuredBaseBranch(ws.workspaceConfig),
+  )
+  const localCache = new Cache(
+    ws.cacheDir,
+    { read: policy.localRead, write: policy.localWrite },
+    ws.workspaceRoot,
+    undefined,
+    'open',
+    await ws.storeRoot,
+  )
+  const cache = await resolveCache(ws.plugins, {
+    workspaceRoot: ws.workspaceRoot,
+    cacheDir: ws.cacheDir,
+    warn,
+    scope,
+    refs: cacheRefs(ws.workspaceRoot, configuredBaseBranch(ws.workspaceConfig)),
+    localCache,
+    policy,
+  })
+  return taskArtifacts(cache, ws.workspaceRoot)
+}
+
+function lazyArtifacts(open: () => Promise<TaskArtifacts>): TaskArtifacts {
+  let opened: Promise<TaskArtifacts> | undefined
+  const artifacts = (): Promise<TaskArtifacts> => (opened ??= open())
+  return {
+    save: async (key, task, run) => (await artifacts()).save(key, task, run),
+    restore: async (key, task) => (await artifacts()).restore(key, task),
+  }
 }
 
 function lazyCache(open: () => Promise<PluginCache>): PluginCache {

@@ -143,6 +143,7 @@ src/orchestrator/shell-verdict.ts
 src/orchestrator/signals.ts
 src/orchestrator/stable-keys.ts
 src/orchestrator/steps.ts
+src/orchestrator/task-artifacts.ts
 src/orchestrator/task-hash.ts
 src/orchestrator/task-log-buffer.ts
 src/orchestrator/task-process.ts
