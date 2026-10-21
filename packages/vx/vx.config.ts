@@ -327,8 +327,14 @@ export default defineProject({
           },
         },
       },
-      // Uncached on purpose: the runtime's version is not a key input, and a
-      // hit recorded under 1.4.2 must not answer for a later run under 1.3.11.
+      // Keyed but uncached: with no inputs the task is keyless, and a key
+      // that folds a keyless task is never read or saved, so every shard
+      // behind `install` missed on every run. Uncached still: the check must
+      // run under whatever Bun this run uses.
+      inputs: {
+        files: ['scripts/bun-floor.ts', 'src/util/**', 'package.json'],
+        runtime: BUN_VERSION,
+      },
     },
 
     // Core is consumed as source: what a dependant's `install` pulls

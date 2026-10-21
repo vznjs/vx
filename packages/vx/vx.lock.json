@@ -1053,6 +1053,16 @@
             ]
           }
         }
+      },
+      "inputs": {
+        "files": [
+          "scripts/bun-floor.ts",
+          "src/util/**",
+          "package.json"
+        ],
+        "runtime": [
+          "bun --version"
+        ]
       }
     },
     "build": {
