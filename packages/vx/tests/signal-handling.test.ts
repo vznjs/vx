@@ -681,6 +681,43 @@ describe('signal handling during vx run (e2e)', () => {
     TIMEOUT,
   )
 
+  // A Ctrl-C keeps what finished before it: a task that succeeded is a hit
+  // on the next run, whatever the run it ended in was cut short by.
+  it(
+    'a task that succeeded before a Ctrl-C is a hit on the next run',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `export default { tasks: {
+        done: { exec: { command: 'echo built > out.txt' }, inputs: { files: ['vx.config.mjs'] }, cache: { outputs: { files: ['out.txt'] } } },
+        slow: { dependsOn: ['done'], exec: { command: 'echo $$ > pid.txt; while :; do sleep 0.05; done' } },
+      } }`,
+      )
+      const env = { ...process.env, CI: 'true' }
+      const first = Bun.spawn([process.execPath, BIN, 'run', 'app#slow'], {
+        cwd: fixture.root,
+        env,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      first.kill('SIGINT')
+      expect(await first.exited).toBe(130)
+      const again = Bun.spawn([process.execPath, BIN, 'run', 'app#done'], {
+        cwd: fixture.root,
+        env,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const out = await new Response(again.stdout).text()
+      expect(await again.exited).toBe(0)
+      // `fresh`: a hit whose outputs are already on disk.
+      expect(out).toMatch(/ success fresh +app#done\n/)
+    },
+    TIMEOUT,
+  )
+
   // A Ctrl-C'd run records no history: since item 849 the stopped run
   // finishes its own path, and it landed in `vx last` as FAILED with 0
   // tasks, hiding the run the user wanted to look at (item 854).
