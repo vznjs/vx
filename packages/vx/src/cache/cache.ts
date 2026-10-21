@@ -3019,11 +3019,7 @@ export class Cache implements CacheLayer {
     if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRuns(runs))
   }
-  recordRunBundle(bundle: {
-    runs: readonly RunRecord[]
-    invocation: InvocationRecord
-    listed?: false
-  }): void {
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void {
     if (this.writeBlocked !== null) return
     return this.guard(() => this.history.recordRunBundle(bundle))
   }

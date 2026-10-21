@@ -80,11 +80,7 @@ export class Cache implements CacheLayer {
   dbHandle(): Database
   recordRun(run: RunRecord): void
   recordRuns(runs: readonly RunRecord[]): void
-  recordRunBundle(bundle: {
-    runs: readonly RunRecord[]
-    invocation: InvocationRecord
-    listed?: false
-  }): void
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   recordRemoteErrors(runId: string, errors: readonly (readonly [string, string])[]): void
   stats(opts: CacheStatsOptions = {}): CacheStats
   async prune(options: PruneOptions): Promise<PruneResult>
@@ -573,11 +569,7 @@ export interface CacheLayer {
     inputComponents?: readonly TaskInputRow[]
   }): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
-  recordRunBundle(bundle: {
-    runs: readonly RunRecord[]
-    invocation: InvocationRecord
-    listed?: false
-  }): void
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(opts?: CacheStatsOptions): CacheStats
   hashFile(filePath: string): Promise<string>
   outputsPath(hash: string): string

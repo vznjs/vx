@@ -115,11 +115,7 @@ export interface CacheLayer {
   // `runs` rows + one `invocations` header row in ONE transaction. The
   // input-fingerprint rows (entry_inputs) do NOT live here — they ride
   // the entry-save transaction (miss path only), so a warm run is free.
-  recordRunBundle(bundle: {
-    runs: readonly RunRecord[]
-    invocation: InvocationRecord
-    listed?: false
-  }): void // listed: false = a stopped run: no invocations row
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(opts?: CacheStatsOptions): CacheStats // { project? } narrows both aggregates
   hashFile(filePath: string): Promise<string>
   outputsPath(hash: string): string // a file-backed artifact's path; a small one lives in the index

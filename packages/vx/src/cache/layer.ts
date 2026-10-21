@@ -750,15 +750,9 @@ export interface CacheLayer {
    * `runs` rows and the one `invocations` header row — in a SINGLE
    * transaction (one fsync). Input-fingerprint rows are NOT written here — they
    * ride the entry-save transaction (`save`/`ingest`) so a warm
-   * all-cache-hit run writes nothing. `listed: false` (a run the signal
-   * stopped) writes no `invocations` row: what finished is measured, and
-   * `vx last` does not list the run.
+   * all-cache-hit run writes nothing.
    */
-  recordRunBundle(bundle: {
-    runs: readonly RunRecord[]
-    invocation: InvocationRecord
-    listed?: false
-  }): void
+  recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
   stats(opts?: CacheStatsOptions): CacheStats
   /**
    * Content-hash a file with an mtime+size fast path. If the
