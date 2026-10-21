@@ -155,8 +155,8 @@ async function harness(
     run: 'r',
     keyOf,
   })
-  const agent = async (cores: number) => {
-    const me = await join(url, 'r', 'agent', { v: 1, cores, memory: 100, tree: 'c' }, undefined)
+  const agent = async (cores: number, id?: string) => {
+    const me = await join(url, 'r', 'agent', { v: 1, cores, memory: 100, tree: 'c', id }, undefined)
     const orders: RunOrder[] = []
     const batches = async (): Promise<string[][]> => {
       for (let i = 0; i < 20; i++) {
@@ -308,6 +308,33 @@ it('an idle agent the run no longer needs leaves; one a big task needs stays', a
   } finally {
     await h.stop()
   }
+})
+
+// M, 2026-10-21: an agent the run's end stopped still read `online`, and
+// a size's machines were a `!` line apart from its agents.
+it('the final summary says how each agent ended, its size and machine under it', async () => {
+  const h = await harness(new Map([node('t1')]))
+  const small = { size: 'small', cpu: 2, memory: 4e9 }
+  h.o.spawned('small#1', small)
+  h.o.spawned('small#2', small)
+  const a = await h.agent(2, 'small#1')
+  const b = await h.agent(4, 'small#2')
+  const c = await h.agent(1)
+  await Bun.sleep(50)
+  await c.leave()
+  for (let i = 0; i < 40 && !JSON.stringify(h.o.footer()).includes('lost'); i++) await Bun.sleep(25)
+  h.o.retire(0, (x) => x.cores === 2)
+  expect(await b.types()).toContain('exit')
+  await h.stop()
+  const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+  const at = (label: string) => rows.findIndex((r) => r.startsWith(label + ' '))
+  expect(rows[at('agent#1')]).toMatch(/^agent#1 +lost/)
+  expect(rows[at('small#1')]).toMatch(/^small#1 +stopped/)
+  expect(rows[at('small#1') + 1]).toMatch(/^ +declared 2c\/4G · actual 2c\/0G$/)
+  expect(rows[at('small#2')]).toMatch(/^small#2 +left/)
+  expect(rows.some((r) => r.trimStart().startsWith('!'))).toBe(false)
+  expect(rows.filter((r) => /^\S+ +online/.test(r))).toEqual([])
+  void a
 })
 
 // Live, the agents that left are one line, so the rows that run fit.

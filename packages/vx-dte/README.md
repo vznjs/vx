@@ -307,11 +307,13 @@ run started is named by its size and the order it was started in; one
 that joined on its own is `agent#N`. A task sent to an agent but not yet
 begun there has no row; the tasks line counts it `scheduled`
 (`30 success · 4 running · 12 scheduled · 62 total`). Its row and clock
-start when the agent begins it. Once the run is over, each agent
-adds its warm-up (from asking the adapter to its join) and the cores and
-memory its machine reports, green when they are what its size declares
-and red when not, and a size whose agents reported other cores or memory
-than it declares is named:
+start when the agent begins it. An agent is `online` while the run
+goes; it ends `left` when the run let it go as not needed, `lost` when
+it crashed or went silent, and `stopped` when the run's end stopped it.
+Once the run is over, each agent adds its warm-up (from asking the
+adapter to its join), and under it the cores and memory its size
+declares and its machine reports, green when they agree and red when
+not:
 
 ```
   agents    small#1  online    3 done · 2 running
@@ -320,10 +322,12 @@ than it declares is named:
 ```
 
 ```
-  agents    small#1  online  5 done · warm-up 0.1s  4c/16G
-            small#2  gone    1 done · warm-up 0.2s  4c/16G
-            local    online  1 done  10c/32G
-            ! small: config 2 cores 8 GB, reported 4 cores 16 GB
+  agents    small#1  stopped  5 done · warm-up 0.1s
+                     declared 2c/8G · actual 4c/16G
+            small#2  lost     1 done · warm-up 0.2s
+                     declared 2c/8G · actual 4c/16G
+            local    online   1 done
+                     actual 10c/32G
 ```
 
 Under each agent, and `local`, the footer then spells out what it did:
@@ -334,7 +338,8 @@ bytes the run sent it and received from it. The `total` line is the cpu
 utilization of every machine together:
 
 ```
-            small#1  online  5 done · warm-up 0.2s  4c/14G
+            small#1  stopped  5 done · warm-up 0.2s
+                     declared 4c/14G · actual 4c/14G
                      online 12.1s · busy 9.8s · idle 2.3s
                      cpu peak 3.6 · avg 2.4 cores · cpu utilization 61%
                      memory peak 1.2 GB · avg 640.0 MB
