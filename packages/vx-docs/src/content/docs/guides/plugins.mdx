@@ -3,19 +3,43 @@ title: Plugins
 description: Write a plugin that fills one or more stages of every run, and export runs to OpenTelemetry.
 ---
 
+import { Steps, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
+
 Change every run from one place: add tasks, key material, a cache, an
-exporter or a CLI verb.
+exporter or a CLI verb. A plugin fills one or more stages of the run;
+everything else stays core's.
+
+```mermaid
+flowchart LR
+  config --> discover --> project --> G["graph"] --> key --> fingerprint --> schedule --> admit --> E["executor / cache"] --> T["telemetry / output"]
+```
 
 ## Write one
 
-A plugin is a function that returns `definePlugin(import.meta, hooks)`.
-Its name is its package's name. Fill only the hooks you need; an unfilled
-hook costs nothing. Declare it in `.vx/workspace.ts`
-(`plugins: [typecheck()]`), and `vx info` lists it with its hooks. To test
-it, call `run()` from `@vzn/vx` on a throwaway workspace. A runnable
-plugin for each of nine seams, each held by a test that runs it, is in
-[`packages/vx-plugin-examples`](https://github.com/vznjs/vx/tree/main/packages/vx-plugin-examples).
-`vx init --plugin <seam>` writes one, with its test, into your workspace.
+<Steps>
+
+1. **Start from a template**
+
+   `vx init --plugin <seam>` writes one, with its test, into your
+   workspace. A runnable plugin for each of nine seams, each held by a test
+   that runs it, is in
+   [`packages/vx-plugin-examples`](https://github.com/vznjs/vx/tree/main/packages/vx-plugin-examples).
+
+2. **Fill the hooks you need**
+
+   A plugin is a function that returns `definePlugin(import.meta, hooks)`.
+   Its name is its package's name. An unfilled hook costs nothing.
+
+3. **Declare it**
+
+   In `.vx/workspace.ts`: `plugins: [typecheck()]`. `vx info` lists it
+   with its hooks.
+
+4. **Test it**
+
+   Call `run()` from `@vzn/vx` on a throwaway workspace.
+
+</Steps>
 
 This one gives every project with a `tsconfig.json` a `typecheck` task:
 
@@ -577,6 +601,10 @@ A verb that throws anything but a `UserError` fails in one line, no stack:
 
 One plugin can fill several: `@vzn/vx-schedule-history` fills three at once.
 
+<Aside title="Published plugins">
+  Each one's README is in the reference: [Plugins](../../plugins/vx-ci/).
+</Aside>
+
 ## OpenTelemetry
 
 `@vzn/vx-otel` exports every run as OTLP traces, metrics and logs, with no
@@ -639,3 +667,10 @@ brew install --cask otel-desktop-viewer
 otel-desktop-viewer
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 vx run build --all
 ```
+
+## Next
+
+<CardGrid>
+  <LinkCard title="@vzn/vx API" description="Every type a plugin sees." href="../../api/" />
+  <LinkCard title="Plugin examples" description="One runnable plugin per seam, each with its test." href="https://github.com/vznjs/vx/tree/main/packages/vx-plugin-examples" />
+</CardGrid>

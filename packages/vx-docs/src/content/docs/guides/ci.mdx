@@ -1,17 +1,28 @@
 ---
 title: CI and remote
-description: Choose what a run covers, run only what a change affects in CI, share the cache between machines, and send tasks to a worker pool.
+description: Run only what a change affects in CI, share the cache between machines, and send tasks to a worker pool.
 # The job summary sample below carries its own headings; a table of contents
 # would list them as this page's sections.
 tableOfContents: false
 ---
 
+import { Steps, Tabs, TabItem, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
+
 Run what a change touched, and reuse what another machine already built.
+
+```mermaid
+flowchart LR
+  PR["pull request"] -->|--affected| R["vx run"]
+  R -->|1. ask| L[(local cache)]
+  R -->|2. ask| RC[(remote cache)]
+  R -->|3. miss| X["run the task"]
+  X -->|upload| RC
+```
 
 ## Run and filter
 
 `vx run build` runs `build` in the package you are in, and what it
-depends on.
+depends on. From the root, say which packages:
 
 ```bash
 vx run build --all                     # every package that has build
@@ -45,13 +56,12 @@ would run:
 | `--continue`        | keep going after a failure ([modes](../configure/#tasks-and-dependencies)) |
 | `--output-logs <m>` | `full`, `errors-only`, `hash-only` or `none`                |
 
-Every flag: [the CLI reference](../../cli/).
+A bare `--affected` compares with the merge base off your base branch;
+`VX_AFFECTED_BASE` names another commit. Every flag: [the CLI reference](../../cli/).
 
 ## GitHub Actions
 
-This workflow and workspace are [`examples/ci`](https://github.com/vznjs/vx/tree/main/examples/ci);
-vx's own CI runs their steps as a push to `main` and as a pull request
-on every commit. Copy both.
+### 1. Add the workflow
 
 ```yaml
 # .github/workflows/ci.yml
@@ -88,6 +98,8 @@ jobs:
           VX_CACHE_TOKEN: ${{ secrets.VX_CACHE_TOKEN }} # read-write
 ```
 
+### 2. Declare the plugins
+
 ```ts
 // .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
@@ -110,62 +122,19 @@ export default defineWorkspace({
 })
 ```
 
-Each step, in order:
+### 3. Push
 
-1. **`fetch-depth: 0`.** `--affected` needs the history to find the base.
-2. **`vx lock --check`.** It evaluates every config again and fails on
-   any difference from `.vx/projects.lock.json`, before a task runs
-   ([when to run `vx lock`](#when-to-run-vx-lock)).
-3. **`vx run ci`.** Its configs come from the lock. A push to `main` runs `--all`; a pull request runs
-   `--affected=origin/<base>`: what it changed, and what depends on that.
+A push to `main` runs `--all` and fills the cache. A pull request runs
+`--affected=origin/<base>`: what it changed, and what depends on that.
 
-### Cache scopes and tokens
 
-A task key carries no branch, and the client never says where a write
-lands. The cache server decides: the CI OIDC token, checked against the
-server's trust policy, sends a write to the trusted cache, to its own
-branch's, or nowhere. No header, key or option changes that.
+Both files are [`examples/ci`](https://github.com/vznjs/vx/tree/main/examples/ci);
+vx's own CI runs their steps on every commit.
 
-`turboCache()` only steers reads. Every read names the run's refs, own
-branch first, in `x-artifact-read-scopes`, and the server answers from
-the first that holds the key:
-
-| Run | `x-artifact-read-scopes` |
-| --- | --- |
-| push to `main` | `refs/heads/main` |
-| pull request from `feat-x` | `refs/heads/feat-x, refs/heads/main` |
-| merge queue | `refs/heads/gh-readonly-queue/main/…, refs/heads/main` |
-| laptop on `feat-x` | `refs/heads/feat-x, refs/heads/main` |
-
-CI's refs come from its env, a laptop's from git (the current branch,
-then `origin/HEAD`'s), so `git checkout feat-x` reads what CI built for
-`feat-x`. A server that ignores the header keeps one shared cache. For
-one like that (Vercel), `turboCache({ scope: 'key' })` folds the ref
-into each key: a run writes under its own ref's key and asks every
-ref's key in one batch, first hit wins. That keeps branches apart but
-does not secure them: any writer can compute `main`'s key. The local
-cache never knows a branch: back on `main`, the same inputs hit locally.
-[Branch caches a server enforces](../../blog/branch-caches-a-server-enforces/)
-shows how a server implements the header. `nxCache()` sends plain
-requests.
-
-Which layers a run writes is the policy, not the scope:
-
-| Where | Default `cache.policy` | Token |
-| --- | --- | --- |
-| CI (`CI` set) | every layer reads and writes | read-write, a repository secret |
-| a laptop | `local:rw,remote:r` | read-only, in `VX_CACHE_TOKEN` |
-
-Both policies are the defaults; the workspace sets none. A pull request from a fork gets
-no secrets, so it runs without a token. A run holding a write token can
-write wherever the server lets it, so the token is the boundary: give write tokens only to CI you trust
-([security](../../security/#cache-poisoning)).
-
-`github()` writes a job summary, failures first, and a PR check. The
-check needs `GITHUB_TOKEN` in the vx step's `env`, as above (the runner
-sets `GITHUB_REPOSITORY` and `GITHUB_SHA`); without it the check is
-skipped and the summary still writes. Outside GitHub Actions it declines.
-A test renders this sample:
+`github()` writes a job summary, failures first, and a PR check. The check
+needs `GITHUB_TOKEN` in the vx step's `env`, as above; without it the check
+is skipped and the summary still writes. Outside GitHub Actions it
+declines. A test renders this sample:
 
 > ## ❌ vx run
 >
@@ -193,27 +162,24 @@ A failure on inputs that passed before says so on its row:
 
 ### When to run vx lock
 
-`vx lock` writes each project's resolved config to `.vx/projects.lock.json`, and
-refuses a graph that breaks a `run.rules` rule (two tasks writing one
-output, an input that reads another task's output); commit it. Every
-run reads its configs from the lock and evaluates none, so after a
-change the runs keep the old configs until you run `vx lock` and commit
-the lock again; with no lock a run fails with `` no lock: run `vx lock` ``.
-Do it after you:
+`vx lock` writes each project's resolved config to `.vx/projects.lock.json`,
+and refuses a graph that breaks a `run.rules` rule (two tasks writing one
+output, an input that reads another task's output); commit it. Every run
+reads its configs from the lock, so after a change the runs keep the old
+configs until you run `vx lock` again; with no lock a run fails with
+`` no lock: run `vx lock` ``. Run it after you:
 
 - edit any `vx.config.ts` or `.vx/workspace.ts`,
 - update dependencies or plugins,
 - change a file a config imports.
 
-`vx lock --check` evaluates every config again and fails on any
-difference or broken rule, naming the project, so it is the workflow's
-first step.
+`vx lock --check` evaluates every config again and fails on any difference
+or broken rule, naming the project, so it is the workflow's first step.
 
 ### Skip a deploy nothing changed
 
-`vx show --affected --format json` lists the packages a change reaches:
-the ones it touched and every package that depends on one. Deploy an
-app only when it is in that list:
+`vx show --affected --format json` lists the packages a change reaches.
+Deploy an app only when it is in that list:
 
 ```yaml
       - id: web
@@ -226,8 +192,7 @@ app only when it is in that list:
 ```
 
 `jq -e` exits 1 when the app is not listed, and nothing affected lists
-`[]`. Give it the same `--affected=<ref>` as the run
-([above](#github-actions)), and it lists the packages that run reaches.
+`[]`. Give it the same `--affected=<ref>` as the run.
 
 ### Common problems
 
@@ -237,19 +202,18 @@ app only when it is in that list:
 
 ## GitLab CI
 
-`gitlab()` from `@vzn/vx-ci` names the cache scope on GitLab CI, as
-`github()` does on Actions:
+`gitlab()` from `@vzn/vx-ci` does on GitLab what `github()` does for the
+base and the cache scope:
 
-```ts
-// .vx/workspace.ts
+```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
 import { gitlab } from '@vzn/vx-ci'
 
 export default defineWorkspace({ plugins: [gitlab()] })
 ```
 
-A merge request pipeline is compared with the merge request's diff
-base, so a bare `--affected` needs no history beyond that commit, and
+A merge request pipeline is compared with the merge request's diff base,
+so a bare `--affected` needs no history beyond that commit, and
 `turboCache()` reads the source branch, then the target. Plugin entries
 are scoped `<project path>:<branch>` off the default branch and merge
 trains; `gitlab({ cacheScope: false })` turns that off. It writes no merge
@@ -257,49 +221,97 @@ request comments or reports yet.
 
 ## Remote cache
 
-A shared cache is a plugin. vx looks here, then asks the remote, and
+A shared cache is a plugin. vx looks here first, then asks the remote, and
 uploads new results in the background.
 
-```ts
-// .vx/workspace.ts
-import { defineWorkspace } from '@vzn/vx/config'
-import { reapi } from '@vzn/vx-reapi'
+<Tabs>
+  <TabItem label="Bazel REAPI">
+    ```ts title=".vx/workspace.ts"
+    import { defineWorkspace } from '@vzn/vx/config'
+    import { reapi } from '@vzn/vx-reapi'
 
-export default defineWorkspace({
-  plugins: [reapi({ endpoint: 'grpcs://cache.example.com:443' })], // or VX_REAPI_ENDPOINT
-})
-```
+    export default defineWorkspace({
+      plugins: [reapi({ endpoint: 'grpcs://cache.example.com:443' })], // or VX_REAPI_ENDPOINT
+    })
+    ```
 
-`@vzn/vx-reapi` speaks Bazel's Remote Execution API (NativeLink,
-BuildBuddy, Buildbarn, bazel-remote). It re-hashes every blob it reads: a
-corrupt download, a down server or a refused token is a miss, never wrong
-bytes. With no endpoint, it declines.
+    `@vzn/vx-reapi` speaks Bazel's Remote Execution API (NativeLink,
+    BuildBuddy, Buildbarn, bazel-remote). It re-hashes every blob it reads:
+    a corrupt download, a down server or a refused token is a miss, never
+    wrong bytes. With no endpoint, it declines.
+  </TabItem>
+  <TabItem label="Turborepo / Vercel">
+    ```sh
+    bun add -d @vzn/vx-migrate
+    npx turbo login && npx turbo link        # stores a token and a team
+    export TURBO_TOKEN=… TURBO_TEAM=…
+    ```
 
-`turboCache()` from `@vzn/vx-migrate` keeps a Turborepo cache, Vercel's
-included, and reads Turbo's own variables:
+    Then declare `plugins: [turboCache()]` from `@vzn/vx-migrate`. It keeps
+    a Turborepo cache, Vercel's included, and reads Turbo's own variables.
+    On GitHub Actions, `turboCache({ oidc: true })` needs no stored token:
+    with `permissions: id-token: write` it exchanges the job's OIDC token
+    for a short-lived one and revokes it when the run ends. A fork's or
+    Dependabot's pull request gets no OIDC token, so its runs stay local.
+  </TabItem>
+  <TabItem label="Nx">
+    `nxCache()` from `@vzn/vx-migrate` does the same for a self-hosted Nx
+    cache.
+  </TabItem>
+  <TabItem label="Your own">
+    Any backend is [a plugin](../plugins/#your-own-cache).
+  </TabItem>
+</Tabs>
 
-```sh
-bun add -d @vzn/vx-migrate
-npx turbo login && npx turbo link        # stores a token and a team
-export TURBO_TOKEN=… TURBO_TEAM=…
-```
-
-Then declare `plugins: [turboCache()]`. `nxCache()` does the same for a
-self-hosted Nx cache; your own backend is [a plugin](../plugins/#your-own-cache).
 A laptop needs no variable: with the URL or team known and no token, the
-first run in a terminal asks for one and keeps it in the OS keychain. On CI
-a missing token is one warning and a local-only run, never a failure;
+first run in a terminal asks for one and keeps it in the OS keychain. On
+CI a missing token is one warning and a local-only run, never a failure;
 `--cache-policy=remote:` skips the remote and the question.
-On GitHub Actions, `turboCache({ oidc: true })` needs no stored token: with
-`permissions: id-token: write` it exchanges the job's OIDC token for a
-short-lived one and revokes it when the run ends. A fork's or Dependabot's
-pull request gets no OIDC token, so its runs stay local.
-Off CI a run reads the remote and does not write it (`local:rw,remote:r`);
-the [scopes](#cache-scopes-and-tokens) keep a pull request's writes apart.
-vx's policy alone decides: the plugins do not read Turbo's
-`TURBO_REMOTE_CACHE_READ_ONLY` or `TURBO_CACHE`, or Nx's
-`NX_SKIP_REMOTE_CACHE`. A job you do not trust sets
-`--cache-policy=local:rw,remote:r` instead.
+
+vx's policy alone decides what a run writes: the plugins do not read
+Turbo's `TURBO_REMOTE_CACHE_READ_ONLY` or `TURBO_CACHE`, or Nx's
+`NX_SKIP_REMOTE_CACHE`.
+
+| Where | Default `cache.policy` | Token |
+| --- | --- | --- |
+| CI (`CI` set) | every layer reads and writes | read-write, a repository secret |
+| a laptop | `local:rw,remote:r` | read-only, in `VX_CACHE_TOKEN` |
+
+<Aside type="caution" title="The write token is the boundary">
+  A run holding a write token can write wherever the server lets it. Give
+  write tokens only to CI you trust; a job you do not trust sets
+  `--cache-policy=local:rw,remote:r`. A pull request from a fork gets no
+  secrets, so it runs without one ([security](../../security/#cache-poisoning)).
+</Aside>
+
+### Cache scopes and tokens
+
+A task key carries no branch, and the client never says where a write
+lands. The cache server decides: the CI OIDC token, checked against the
+server's trust policy, sends a write to the trusted cache, to its own
+branch's, or nowhere. No header, key or option changes that.
+
+`turboCache()` only steers reads. Every read names the run's refs, own
+branch first, in `x-artifact-read-scopes`, and the server answers from the
+first that holds the key:
+
+| Run | `x-artifact-read-scopes` |
+| --- | --- |
+| push to `main` | `refs/heads/main` |
+| pull request from `feat-x` | `refs/heads/feat-x, refs/heads/main` |
+| merge queue | `refs/heads/gh-readonly-queue/main/…, refs/heads/main` |
+| laptop on `feat-x` | `refs/heads/feat-x, refs/heads/main` |
+
+CI's refs come from its env, a laptop's from git (the current branch, then
+`origin/HEAD`'s), so `git checkout feat-x` reads what CI built for
+`feat-x`. A server that ignores the header keeps one shared cache. For one
+like that (Vercel), `turboCache({ scope: 'key' })` folds the ref into each
+key: a run writes under its own ref's key and asks every ref's key in one
+batch, first hit wins. That keeps branches apart but does not secure them:
+any writer can compute `main`'s key. The local cache never knows a branch:
+back on `main`, the same inputs hit locally.
+[Branch caches a server enforces](../../blog/branch-caches-a-server-enforces/)
+shows how a server implements the header. `nxCache()` sends plain requests.
 
 ## Remote execution
 
@@ -307,8 +319,7 @@ vx's policy alone decides: the plugins do not read Turbo's
 Buildbarn); the graph and the scheduling stay here. It is never on by
 default:
 
-```ts
-// .vx/workspace.ts
+```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 
@@ -325,16 +336,22 @@ export default defineWorkspace({
 ```
 
 `--dry` says where each task runs (`@vx/reapi` or `@local`).
-`exec.remote: false`, sandboxed and persistent tasks, and what depends on
-them, stay here. A task with no `cache` block stays here too, because the
-executor declines it, but what depends on it can still go remote. Workers have no `node_modules`: make
-the install a `remote: 'only'` task the others depend on. The image needs
-`/bin/sh` and your toolchain.
 
-A worker gets only what `inputs` declares, so a task that fails
-there and passes here reads a file it never declared.
-
+- `exec.remote: false`, sandboxed and persistent tasks, and what depends
+  on them, stay here. A task with no `cache` block stays here too, but what
+  depends on it can still go remote.
+- Workers have no `node_modules`: make the install a `remote: 'only'` task
+  the others depend on. The image needs `/bin/sh` and your toolchain.
+- A worker gets only what `inputs` declares, so a task that fails there
+  and passes here reads a file it never declared.
 - A down server is a cache miss, never a hung run.
 - Uploads chunk at 65535 bytes (`SAFE_CHUNK_BYTES`), the size no Bun http2
   stall has been seen at. A larger `chunkBytes` that stalls retries once at
   that size before the task fails.
+
+## Next
+
+<CardGrid>
+  <LinkCard title="Plugins" description="Write your own cache, executor or sink." href="../plugins/" />
+  <LinkCard title="Every CLI flag" description="The full command reference." href="../../cli/" />
+</CardGrid>

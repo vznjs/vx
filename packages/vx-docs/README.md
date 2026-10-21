@@ -79,7 +79,7 @@ docs and blog page raw beside its HTML (`quickstart.md`),
 `src/pages/llms.txt.ts` indexes them by section, and
 `src/pages/llms-full.txt.ts` is every Docs and Reference page in one
 file (internals and the blog left out). `src/llms/pages.ts` decides
-what is internal. The Docs page for agents is `guides/agents.md`.
+what is internal. The Docs page for agents is `guides/agents.mdx`.
 
 ## Features
 

@@ -184,7 +184,7 @@ describe('examples/turbo', () => {
 
   it('says in the migrate guide what each step printed', () => {
     const guide = readFileSync(
-      path.join(PACKAGES, 'vx-docs', 'src', 'content', 'docs', 'guides', 'migrate.md'),
+      path.join(PACKAGES, 'vx-docs', 'src', 'content', 'docs', 'guides', 'migrate.mdx'),
       'utf8',
     )
     const block = /### Try it in five minutes[\s\S]*?```sh\n([\s\S]*?)```/.exec(guide)![1]!
@@ -246,7 +246,7 @@ describe('examples/ci', () => {
 
   it('the CI guide shows the workflow and the workspace as they are here', () => {
     const guide = readFileSync(
-      path.join(PACKAGES, 'vx-docs', 'src', 'content', 'docs', 'guides', 'ci.md'),
+      path.join(PACKAGES, 'vx-docs', 'src', 'content', 'docs', 'guides', 'ci.mdx'),
       'utf8',
     )
     expect(guide).toContain('```yaml\n' + workflow + '```')

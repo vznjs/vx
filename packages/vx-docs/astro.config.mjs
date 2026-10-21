@@ -61,6 +61,7 @@ export default defineConfig({
     '/guides/extensibility/': `${root}guides/plugins/`,
     '/guides/otel-bridge/': `${root}guides/plugins/#opentelemetry`,
     '/guides/mcp/': `${root}guides/agents/`,
+    '/concepts/ai-first/': `${root}guides/agents/`,
     '/plugins/vx-mcp/': `${root}guides/agents/`,
     '/migrate/from-turborepo/': `${root}guides/migrate/#turborepo`,
     '/migrate/from-nx/': `${root}guides/migrate/#nx`,

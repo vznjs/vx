@@ -3,9 +3,16 @@ title: Troubleshooting
 description: What vx printed, what it means, and the fix.
 ---
 
-The messages and surprises of a first run, each with its fix. Problems
-specific to one guide stay there: [Sandboxing](../sandboxing/#common-problems),
-[CI](../ci/#common-problems), [Migrate](../migrate/#common-problems).
+import { Aside, CardGrid, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components'
+
+Find what vx printed, read what it means, apply the fix. Every message vx
+prints names its own fix too.
+
+<CardGrid>
+  <LinkCard title="Sandboxing problems" href="../sandboxing/#common-problems" />
+  <LinkCard title="CI problems" href="../ci/#common-problems" />
+  <LinkCard title="Migration problems" href="../migrate/#common-problems" />
+</CardGrid>
 
 ## vx printed an error
 
@@ -45,8 +52,8 @@ $ vx run build --filter @demo/ap
 - **`0 tasks · build has no command in these projects`.** No selected
   package gives `build` a command, so vx ran only its default group.
   Give `build` an `exec.command` in the packages that build.
-- **A task runs every time.** It has no `cache` block. `vx init` leaves
-  a TODO with the block to add. Or a task it depends on declares no
+- **A task runs every time.** It has no `cache` block. `vx-migrate` leaves
+  a `TODO(vx-migrate)` where it could not write one. Or a task it depends on declares no
   `inputs`: that task has no key, so nothing behind it hits. Give it
   `inputs`.
 - **A task hit after you changed a file.** The file is not in
@@ -101,15 +108,27 @@ $ vx run build --filter @demo/ap
 ## Platforms
 
 vx runs on Linux with glibc (not Alpine's musl) or macOS, in a git
-repository (sha1 or sha256, files or reftable refs). The release binary
-needs neither Node nor Bun; installed from npm, the `vx` command is a
-small Node script that runs that binary.
+repository (sha1 or sha256, files or reftable refs). The
+release binary needs neither Node nor Bun; installed from npm, the `vx`
+command is a small Node script that runs that binary.
 
-- **Windows:** run vx inside WSL2.
-- **From source:** Bun 1.4 or later.
-- **The Linux sandbox** needs `bubblewrap`, `socat` and `ripgrep`, and no
-  root in a container, or set `exec.sandbox.weakerWhenNested: true` on
-  each sandboxed task ([Sandboxing](../sandboxing/#requirements--platform-support)).
+<Tabs>
+  <TabItem label="Linux">
+    glibc, not Alpine's musl. The sandbox needs `bubblewrap`, `socat` and
+    `ripgrep`, and no root in a container, or set
+    `exec.sandbox.weakerWhenNested: true` on each sandboxed task
+    ([Sandboxing](../sandboxing/#requirements--platform-support)).
+  </TabItem>
+  <TabItem label="macOS">
+    The sandbox is the system's own; nothing to install.
+  </TabItem>
+  <TabItem label="Windows">
+    Run vx inside WSL2.
+  </TabItem>
+  <TabItem label="From source">
+    Bun 1.4 or later.
+  </TabItem>
+</Tabs>
 
 ## Known limits
 

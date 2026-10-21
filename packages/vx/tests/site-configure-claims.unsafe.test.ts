@@ -8,7 +8,7 @@ import { describe, expect, it } from 'bun:test'
 
 const SRC = path.resolve(import.meta.dir, '..', 'src')
 const PAGE = readFileSync(
-  path.resolve(import.meta.dir, '../../vx-docs/src/content/docs/guides/configure.md'),
+  path.resolve(import.meta.dir, '../../vx-docs/src/content/docs/guides/configure.mdx'),
   'utf8',
 )
 

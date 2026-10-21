@@ -130,7 +130,7 @@ describe('the documented configs load under the current schema', () => {
     expect(samples.filter((s) => s.where !== '').length).toBeGreaterThan(20)
     for (const file of [
       'packages/vx/docs/schema.md',
-      'packages/vx-docs/src/content/docs/guides/configure.md',
+      'packages/vx-docs/src/content/docs/guides/configure.mdx',
       'examples/basic/packages/app/vx.config.ts',
       'examples/turbo/.vx/workspace.ts',
     ]) {

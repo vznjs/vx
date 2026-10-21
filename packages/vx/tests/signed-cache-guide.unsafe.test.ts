@@ -12,7 +12,7 @@ import { CORE_INDEX } from './helpers/local-workspace.js'
 import { addProject, makeWorkspace, silentLogger, TIMEOUT } from './helpers/orchestrator-fixture.js'
 import { run } from './helpers/orchestrator.js'
 
-const GUIDE = path.resolve(import.meta.dir, '../../vx-docs/src/content/docs/guides/plugins.md')
+const GUIDE = path.resolve(import.meta.dir, '../../vx-docs/src/content/docs/guides/plugins.mdx')
 
 /** The guide's `signed-cache.ts` fence, importing core from source. */
 function example(): string {

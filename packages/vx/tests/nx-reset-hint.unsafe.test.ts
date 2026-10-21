@@ -11,7 +11,7 @@ import { afterAll, describe, expect, it } from 'bun:test'
 import { FOREIGN_VERBS } from '../src/cli/foreign-flags.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-const GUIDE = path.resolve(import.meta.dir, '../../vx-docs/src/content/docs/guides/migrate.md')
+const GUIDE = path.resolve(import.meta.dir, '../../vx-docs/src/content/docs/guides/migrate.mdx')
 let root: string | undefined
 
 afterAll(async () => {

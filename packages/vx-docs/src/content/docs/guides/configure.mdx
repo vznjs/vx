@@ -1,24 +1,40 @@
 ---
 title: Configure
-description: Tasks and dependencies, caching, environment variables, dev servers, the workspace file and lockfiles, one section each.
+description: Tell vx what each task runs, reads and writes, so it can run them in order and skip what has not changed.
 ---
 
-Tell vx what each project runs, what it reads and what it may see: a
-`vx.config.ts` per project, and one [`.vx/workspace.ts`](#workspace-config)
-at the root that marks the workspace. A project is any directory holding
-a `vx.config.ts`, in any language; `vx lock` finds them and records them
-in `.vx/projects.lock.json`, so run it after adding one. A project is
-named by its config's `name`, else by a plugin (`@vzn/vx-lockfile` gives
-the `package.json` name), else by its path (`apps/web`; `//` for the
-root). Every field: [the config reference](../../schema/).
+import { Steps, Tabs, TabItem, Aside, CardGrid, LinkCard, FileTree } from '@astrojs/starlight/components'
+
+Tell vx what each task runs, what it reads and what it writes. vx does the
+rest: it runs tasks in order, in parallel, and skips any task whose inputs
+have not changed.
+
+<FileTree>
+- .vx/
+  - workspace.ts the workspace: plugins and settings
+  - projects.lock.json written by `vx lock`, read by every run
+- packages/
+  - app/
+    - vx.config.ts one per project: its tasks
+    - src/
+  - ui/
+    - vx.config.ts
+</FileTree>
+
+A project is any directory with a `vx.config.ts`, in any language. Its
+name is the config's `name`, else a plugin's (`@vzn/vx-lockfile` gives
+the `package.json` name), else its path (`apps/web`; `//` for the root).
+
+<Aside type="caution" title="Run `vx lock` after every config change">
+  Runs read configs from `.vx/projects.lock.json`, never from the files.
+  After you add or edit a `vx.config.ts`, run `vx lock` and commit the lock.
+</Aside>
 
 ## Tasks and dependencies
 
-Each task in a package's `vx.config.ts` is one shell command (chain
-steps with `&&`). `dependsOn` says what finishes first.
+A task is one shell command. `dependsOn` says what must finish first.
 
-```ts
-// packages/app/vx.config.ts
+```ts title="packages/app/vx.config.ts"
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -45,6 +61,16 @@ export default defineProject({
 })
 ```
 
+```mermaid
+flowchart LR
+  codegen --> build
+  ubuild["ui#build"] -->|^build| build
+  build --> e2e
+  apibuild["api#build"] --> e2e
+  build --> ci
+  e2e --> ci
+```
+
 | `dependsOn`   | Runs first                                                        |
 | ------------- | ----------------------------------------------------------------- |
 | `'build'`     | `build` in this package                                           |
@@ -52,25 +78,32 @@ export default defineProject({
 | `'api#build'` | `build` in the `api` package                                      |
 | `'build.*'`   | every task in this package whose name matches                     |
 
-A task-name pattern is allowed: `dependsOn: ['build.*']` here, `'^build.*'`
-in dependencies. Bare wildcards and negation (`*`, `!task`) are not.
-A package that declares no `build` gets a default one: a group behind
-`^build`, keyed on all its files, so editing a package consumed as source
-re-runs its dependents (`vx show` lists it as a group; for a package
-with no config it says `default build`). A cycle or a
-missing `'pkg#task'` is an error.
+A task-name pattern is allowed: `dependsOn: ['build.*']`, or `'^build.*'`.
+Bare wildcards and negation (`*`, `!task`) are not.
+A cycle or a missing `'pkg#task'` is an error.
 
-| When a task fails            | vx                                                        |
+<Aside title="A package with no build">
+  A package that declares no `build` gets a default one: a group behind
+  `^build`, keyed on all its files, so editing a package consumed as source
+  re-runs its dependents. `vx show` lists it as a group.
+</Aside>
+
+When a task fails:
+
+| Flag | vx |
 | ---------------------------- | --------------------------------------------------------- |
 | `--continue=deps-ok` (default) | skips its transitive dependents and runs the rest       |
 | `--continue=never`           | stops at the first failure                                |
 | `--continue=always`          | runs the dependents, but saves none of them               |
 
+<details>
+<summary>Every <code>exec</code> field</summary>
+
 | Field             | Does                                                          |
 | ----------------- | ------------------------------------------------------------- |
-| `exec.command`    | the one shell command, run in the package's directory         |
+| `exec.command`    | the one shell command, run in the package's directory (chain steps with `&&`) |
 | `exec.env`        | what the command sees ([below](#environment-variables))       |
-| `exec.timeout`    | kill the task after this many ms                              |
+| `exec.timeout`    | kill the task after this long                                 |
 | `exec.retries`    | re-run a failed task this many times                          |
 | `exec.persistent` | a server or watcher that does not exit ([below](#dev-tasks))  |
 | `exec.sandbox`    | only the declared files and network ([Sandboxing](../sandboxing/)) |
@@ -81,21 +114,15 @@ missing `'pkg#task'` is an error.
 ran says nothing about what it made. The rest is in the key, `description`
 included, so editing a description costs one re-run.
 
+</details>
+
 ## Caching
 
-A task with a `cache` block runs once per set of inputs. List every file
-the command reads under `inputs`, and what it writes under
-`cache.outputs` (`[]` for test or lint). A task with no `cache` block is
-keyed on its `inputs` all the same, so a cached task behind it re-runs
-when they change; one that declares no `inputs` has no key, and every
-task behind it misses. Unsure the
-list is complete? Add [`exec.sandbox`](../sandboxing/) with `allow.read`
-listing the same files: a workspace read outside it fails the task. The
-sandbox checks `allow.read`, never `inputs`, so it catches a missing
-input only while the two lists match.
+A task with a `cache` block runs once per set of inputs. List what the
+command reads under `inputs`, and what it writes under `cache.outputs`
+(`[]` for test or lint).
 
-```ts
-// packages/app/vx.config.ts
+```ts title="packages/app/vx.config.ts" {9-14,16-18}
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -116,6 +143,25 @@ export default defineProject({
 })
 ```
 
+```mermaid
+flowchart LR
+  I["inputs + config + upstream keys"] --> K((key))
+  K -->|stored| H["hit: restore dist/"]
+  K -->|new| R["miss: run, then store"]
+```
+
+<Aside type="tip" title="Not sure the list is complete?">
+  Add [`exec.sandbox`](../sandboxing/) with `allow.read` listing the same
+  files. A workspace read outside it fails the task and names the file.
+</Aside>
+
+A task with no `cache` block is keyed on its `inputs` all the same, so a
+cached task behind it re-runs when they change. One that declares no
+`inputs` has no key, and every task behind it misses.
+
+<details>
+<summary>What the key holds</summary>
+
 | The key                | Holds                                                                                   |
 | ---------------------- | --------------------------------------------------------------------------------------- |
 | Always in it           | the keys of the tasks it depends on, the task's config, arguments after `--` |
@@ -125,27 +171,23 @@ export default defineProject({
 | In, when you say so    | a tool's version: `inputs.workspaceRuntime: ['node -v']` runs once per run at the root and folds its output; `runtime` runs in the package |
 | Out, when you say so   | a dependency only for order: `inputs.tasks: []`, as the [dev task](#dev-tasks) does |
 
-Declared outputs are wiped before every run that writes the cache. A hit
-rewrites in place only the files that differ from the entry, then
-removes the ones it does not hold, so `dist/` ends as the cache stored
-it and a reader never finds a file missing; a hit that finds them
-already as stored writes nothing. A restore writes only files the
-task's `cache.outputs` declare. A task that adds files beside an
-upstream task's outputs wipes nothing before a run and restores only
-the files it recorded. A failed task is never saved. `--force` runs
-and refreshes the cache; `--no-cache` ignores it.
+Every part, in order: [Caching in depth](../../caching/).
 
-Overhead on a 9,603-task run where nothing changed: vx 757 ms,
-Turborepo 761 ms, Nx 22.63 s
-([benchmarks](../../benchmarks/); the key, part by part:
-[Caching in depth](../../caching/)).
+</details>
 
-Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-Run 2026-10-12 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
+What happens to outputs:
+
+- Declared outputs are wiped before every run that writes the cache.
+- A hit rewrites only the files that differ from the entry, then removes
+  the ones it does not hold, so `dist/` ends as the cache stored it. A
+  hit that finds them already as stored writes nothing.
+- A restore writes only files the task's `cache.outputs` declare.
+- A failed task is never saved.
+- `--force` runs and refreshes the cache; `--no-cache` ignores it.
 
 ### Why did it re-run?
 
-```bash
+```sh
 vx why app#build
 ```
 
@@ -161,6 +203,11 @@ app#build — run 019f5a02-…
   what to do:
     file  an edit re-runs by design; a file the task does not read belongs out of inputs.files
 ```
+
+A hit after you changed something means that something is not declared.
+
+<details>
+<summary>Every verdict <code>vx why</code> prints</summary>
 
 | The verdict line says | It means |
 | --- | --- |
@@ -181,11 +228,12 @@ app#build — run 019f5a02-…
 | `this task recorded no cache key (skipped, or a persistent task) — nothing to compare` | no key to compare |
 | `no prior run for this (project, task)` | nothing to compare with yet |
 
-A hit after you changed something means that something is not declared.
+</details>
 
 ## Environment variables
 
-Past a small essential allowlist (below), a task sees only the variables you pass it:
+Past a small essential allowlist (below), a task sees only the variables
+you pass it.
 
 | List                   | The command sees it | The key sees it | Use it for                                          |
 | ---------------------- | ------------------- | --------------- | --------------------------------------------------- |
@@ -194,24 +242,26 @@ Past a small essential allowlist (below), a task sees only the variables you pas
 | `exec.env.define`      | yes                 | yes             | a literal value; a remote task gets it too          |
 | `exec.env.secret`      | —                   | —               | names whose values (6 characters or more) print as `***`; names holding `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or `CREDENTIAL` are masked without it |
 
-The child always gets a small essential allowlist so normal CLI tools
-work: `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `TEMP`,
-`TMP`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TERM`, `COLORTERM`, `FORCE_COLOR`,
-`NO_COLOR`, `CI`, `NODE_OPTIONS`, `COREPACK_HOME`, `PNPM_HOME`. vx sets
-`VX_RUN_WORKSPACE` (the workspace root) and `VX_RUN_TASK` (the
-`project#task` running) on every task, and `npm_execpath` to the
-workspace's package manager, as `pnpm run` does, so npm-run-all needs
-no global npm. The package's `node_modules/.bin`
-is first on `PATH`. What vx itself reads:
-[the CLI reference](../../cli/#environment-variables-vx-reads).
+<details>
+<summary>What every task gets</summary>
+
+Every task always gets a small essential allowlist so normal CLI tools
+work: `PATH`, `HOME`, `SHELL`, `USER`, `LOGNAME`, `TMPDIR`, `TEMP`, `TMP`, `LANG`, `LC_ALL`,
+`LC_CTYPE`, `TERM`, `COLORTERM`, `FORCE_COLOR`, `NO_COLOR`, `CI`,
+`NODE_OPTIONS`, `COREPACK_HOME`, `PNPM_HOME`. vx sets `VX_RUN_WORKSPACE` (the workspace root) and `VX_RUN_TASK`
+(the `project#task` running) on every task, and `npm_execpath` to the
+workspace's package manager, as `pnpm run` does, so npm-run-all needs no
+global npm. The package's `node_modules/.bin` is first on `PATH`. What vx
+itself reads: [the CLI reference](../../cli/#environment-variables-vx-reads).
+
+</details>
 
 ## Dev tasks
 
 A `persistent` task is a server or watcher. Its dependents start once it
 prints a line matching `readyWhen`; if none comes, `exec.timeout` fails it.
 
-```ts
-// packages/web/vx.config.ts
+```ts title="packages/web/vx.config.ts"
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -229,19 +279,17 @@ export default defineProject({
 })
 ```
 
-When the run ends, vx sends the server `SIGTERM`. One that ignores it gets
-a 2-second grace and is then `SIGKILL`ed. A persistent task has no `cache`
-block. A sandboxed server on Linux lists its port in
-`sandbox.allow.localBinding`.
+When the run ends, vx sends the server `SIGTERM`; one still alive after a
+2-second grace is `SIGKILL`ed. A persistent task has no `cache` block. A sandboxed server
+on Linux lists its port in `sandbox.allow.localBinding`.
 
 ## Workspace config
 
 `.vx/workspace.ts` is required: the nearest one up from where you run,
-within your git checkout, marks the workspace root (`vx init` writes
-it). With no plugins in it, vx runs and caches on this machine.
+within your git checkout, marks the workspace root (`vx init` writes it).
+With no plugins in it, vx runs and caches on this machine.
 
-```ts
-// .vx/workspace.ts
+```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
 import { reapi } from '@vzn/vx-reapi'
 
@@ -257,19 +305,20 @@ export default defineWorkspace({
 })
 ```
 
-Settings sit in groups, `run`, `cache` and `watch`, beside `plugins`.
-Each has one path, and its variable and flag come from it:
-`run.timeout` is `VX_RUN_TIMEOUT` and `vx run --timeout`. A flag beats
-the variable, which beats this file. Durations carry a unit (`'500ms'`,
-`'30s'`, `'10m'`), sizes too (`'32KiB'`). The
-[settings table](../../schema/#settings) lists all of them.
+Each setting has one path, and its variable and flag come from it:
+`run.timeout` is `VX_RUN_TIMEOUT` and `vx run --timeout`. A flag beats the
+variable, which beats this file. Durations and sizes carry a unit
+(`'30s'`, `'10m'`, `'32KiB'`). All of them: [the settings table](../../schema/#settings).
+
+<details>
+<summary>The fields you will reach for</summary>
 
 | Field            | Sets                                                                  |
 | ---------------- | --------------------------------------------------------------------- |
 | `plugins`        | asked in order; this machine runs what they decline, and its cache is asked first ([Plugins](../plugins/)) |
 | `run.concurrency` | tasks at once, a number or a share of the cores (`'50%'`) |
 | `run.timeout`, `run.retries` | a task's time limit and re-runs, for tasks without their own `exec.timeout` / `exec.retries` |
-| `baseBranch` | the default branch, by name; default `origin/HEAD`'s branch, then `main`, then `master`. A bare `--affected` compares with its merge base off it, and on it has no default |
+| `baseBranch` | the default branch, by name; default `origin/HEAD`'s branch, then `main`, then `master`. A bare `--affected` compares with its merge base off it, and on it has no default unless `VX_AFFECTED_BASE` names one |
 | `run.schedule` | which ready task starts first: `'most-work'` (default, most tasks waiting behind it), `'critical-path'` (longest chain), `'direct-dependents'`, `'ready-order'`; a `schedule` plugin's weights come first ([Blog](../../blog/scheduling-strategies/#pick-the-guess)) |
 | `run.rules` | graph checks: `exclusiveOutputs` (on unless `false`) refuses two tasks on one output path even when one depends on the other; `vx lock` and `vx lock --check` check it, never a run. A task whose inputs can match another task's outputs is always refused, unless it is a dependency the key leaves out of `inputs.tasks`, so every key is known before anything runs ([Schema](../../schema/#workspace-config-vxworkspacets)) |
 | `cache.dir`      | keep the whole cache here, shared with no other workspace; unset, entries live in `~/.vx/<id>/cache` and every checkout of the repo hits them |
@@ -279,28 +328,58 @@ the variable, which beats this file. Durations carry a unit (`'500ms'`,
 | `watch.poll` | `vx watch` polls instead of using the OS watcher |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then
-`--timeout`, then `VX_RUN_TIMEOUT`, then `run.timeout`. Only `exec.timeout` is in the
-cache key. There is no `globalInputs`: import a shared array instead.
+`--timeout`, then `VX_RUN_TIMEOUT`, then `run.timeout`. Only `exec.timeout`
+is in the cache key. There is no `globalInputs`: import a shared array instead.
+
+</details>
 
 ## Lockfiles
 
-Without a plugin, no lockfile or `package.json` is in any task's key,
-so an install re-keys nothing (an old build replays), and `^build` has no package edges: vx
-reads none from a `package.json`, so it refuses a `^` and names the
-plugin to add.
-With `@vzn/vx-lockfile` (`bun add -d @vzn/vx-lockfile`), each package is
-keyed on its own dependencies, `^build` follows what the manager
-installed, and `--affected` follows both.
+Add the plugin for your package manager. Without one, no lockfile or
+`package.json` is in any key, so an install re-keys nothing, and `^build`
+has no package edges (vx refuses a `^` and names the plugin to add).
 
-```ts
-// .vx/workspace.ts
-import { defineWorkspace } from '@vzn/vx/config'
-import { pnpm } from '@vzn/vx-lockfile' // or bun, npm, yarn
+<Tabs syncKey="pm">
+  <TabItem label="pnpm">
+    ```ts title=".vx/workspace.ts"
+    import { defineWorkspace } from '@vzn/vx/config'
+    import { pnpm } from '@vzn/vx-lockfile'
 
-export default defineWorkspace({
-  plugins: [pnpm()], // pnpm({ scope: 'workspace' }) keys the whole file instead
-})
-```
+    export default defineWorkspace({ plugins: [pnpm()] })
+    ```
+  </TabItem>
+  <TabItem label="Bun">
+    ```ts title=".vx/workspace.ts"
+    import { defineWorkspace } from '@vzn/vx/config'
+    import { bun } from '@vzn/vx-lockfile'
+
+    export default defineWorkspace({ plugins: [bun()] })
+    ```
+  </TabItem>
+  <TabItem label="npm">
+    ```ts title=".vx/workspace.ts"
+    import { defineWorkspace } from '@vzn/vx/config'
+    import { npm } from '@vzn/vx-lockfile'
+
+    export default defineWorkspace({ plugins: [npm()] })
+    ```
+  </TabItem>
+  <TabItem label="Yarn">
+    ```ts title=".vx/workspace.ts"
+    import { defineWorkspace } from '@vzn/vx/config'
+    import { yarn } from '@vzn/vx-lockfile'
+
+    export default defineWorkspace({ plugins: [yarn()] })
+    ```
+  </TabItem>
+</Tabs>
+
+Then each package is keyed on its own dependencies, `^build` follows what
+the manager installed, and `--affected` follows both. `pnpm({ scope:
+'workspace' })` keys the whole file instead.
+
+<details>
+<summary>What each plugin folds</summary>
 
 | Plugin   | A package's key folds                                                                 | Install-wide, for every package |
 | -------- | ------------------------------------------------------------------------------------- | ------------------------------- |
@@ -309,21 +388,29 @@ export default defineWorkspace({
 | `npm()`  | the same, from `npm-shrinkwrap.json` or `package-lock.json` versions 2 and 3                                | the `lockfileVersion`; root `overrides` reach a package through the entries they force |
 | `yarn()` | the same, from a berry lockfile, each entry with every field but its dependency lists; a yarn 1 lockfile records no workspaces, so every package folds the whole file | `__metadata`'s `version` and `cacheKey`, and the root workspace's entry (its `dependenciesMeta`) through the root's closure |
 
-Every package's key also folds the root package's own dependencies:
-their bins run from the root `node_modules/.bin`, which is on every
-task's PATH. So bumping a root devDependency re-runs every package.
+Every package's key also folds the root package's own dependencies: their
+bins run from the root `node_modules/.bin`, which is on every task's PATH.
+So bumping a root devDependency re-runs every package.
 
 Each plugin also folds its manager's install settings into every task
 (`pnpm()`: `pnpm-workspace.yaml` but its `patchedDependencies` and
-`overrides`, whose effect the lockfile records per package, and
-`.npmrc`; `bun()`: `bunfig.toml`,
-`.npmrc`; `npm()`: `.npmrc`; `yarn()`: `.yarnrc.yml`), adds a package's
-`package.json` to its tasks' inputs, and gives vx the project
-edges the lockfile records: what `^build` waits on, and what `--filter`
-and `--affected` follow. A yarn 1 lockfile records no workspaces, so
-`yarn()` takes its edges from the workspaces' `package.json` files, as
-Yarn 1 links them.
+`overrides`, whose effect the lockfile records per package, and `.npmrc`;
+`bun()`: `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`:
+`.yarnrc.yml`), and adds a package's `package.json` to its tasks' inputs.
+A yarn 1 lockfile records no workspaces, so `yarn()` takes its edges from
+the workspaces' `package.json` files, as Yarn 1 links them.
 
 `vx why` names the part `plugin @vzn/vx-lockfile/pnpm`. An unreadable
 lockfile stops the run and names the install to re-run. An import you
 never declared is in no package's key.
+
+</details>
+
+## Next
+
+<CardGrid>
+  <LinkCard title="Sandboxing" description="Prove a task reads only what it declares." href="../sandboxing/" />
+  <LinkCard title="CI and remote" description="Run what a change touched, share the cache." href="../ci/" />
+  <LinkCard title="Every field" description="The full config reference." href="../../schema/" />
+  <LinkCard title="Try it" description="Edit a config in your browser and see what would run." href="../../playground/" />
+</CardGrid>

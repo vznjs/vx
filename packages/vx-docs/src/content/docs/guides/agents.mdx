@@ -1,0 +1,143 @@
+---
+title: AI agents
+description: Let a coding agent run vx, read its answers as JSON, and branch on stable error codes. People get the same answers as text.
+---
+
+import { Steps, Tabs, TabItem, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
+
+vx is built to be run by agents as much as by people. An agent can ask
+what to run, run it, and learn why it failed, all as typed JSON, without
+scraping terminal output. People get the same answers, formatted for
+reading.
+
+## Set up your agent
+
+<Steps>
+
+1. **Install the vx skill**
+
+   One `SKILL.md` that teaches any coding agent to run tasks, read
+   failures and query the workspace as JSON:
+
+   <Tabs>
+     <TabItem label="Any agent">
+       ```sh
+       npx skills add vznjs/vx
+       ```
+     </TabItem>
+     <TabItem label="Claude Code, by hand">
+       Copy the one that matches the vx you installed:
+
+       ```sh
+       mkdir -p .claude/skills/vx
+       cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
+       ```
+     </TabItem>
+   </Tabs>
+
+2. **Give it the docs**
+
+   Point the agent at [llms.txt](https://vznjs.github.io/vx/llms.txt): an
+   index of every page as markdown.
+   [llms-full.txt](https://vznjs.github.io/vx/llms-full.txt) is every docs
+   page in one file. Any page is also served raw beside its HTML: add `.md`
+   to its path, as in [quickstart.md](https://vznjs.github.io/vx/quickstart.md).
+
+   `vx docs <query>` searches the reference as your vx's version wrote it,
+   read from its release tag on GitHub, and prints the matching sections
+   whole; `--format json` gives `{query, hits}`.
+
+3. **Let it run tasks**
+
+   The commands are the same as yours:
+
+   ```sh
+   vx run build --all
+   vx run test --affected=origin/main
+   ```
+
+   Outside a terminal vx prints plain lines, with no live status region. A
+   run missing its task name does not open the picker without a TTY; it
+   fails and lists the tasks it found.
+
+</Steps>
+
+The agent runs with your permissions, as you would; nothing sits between
+it and the shell.
+
+## Every question has a command
+
+| Question                                      | Command                                              |
+| --------------------------------------------- | ---------------------------------------------------- |
+| What can I run here?                          | `vx show --format json`                              |
+| What would run, and why?                      | `vx run test --dry=json`                             |
+| Run these tasks and tell me how it went.      | `vx run test`, then `vx last --format json`          |
+| Why did the run fail, at which file and line? | `vx last --failed --format json`                     |
+| What did a task print?                        | `vx last --log app#test`                             |
+| Why did this task run again?                  | `vx why app#test --format json`                      |
+| What does a task declare?                     | `vx show app#test --format json`                     |
+| What is this workspace?                       | `vx info --format json`                              |
+| What ran, how fast, what flaked?              | `vx last --stats --format json`                      |
+| Is the lock current? What would `vx init` do? | `vx lock --check --format json`, `vx init --dry --format json` |
+| Free cache space.                             | `vx cache clean --max-size 1G --dry-run`             |
+
+## Read answers as JSON
+
+`vx show`, `vx info`, `vx why`, `vx last`, `vx cache clean`,
+`vx lock --check` and `vx init --dry` take `--format json`. Each prints
+one JSON document to stdout, and every notice goes to stderr, so stdout
+always parses. Each shape is a JSON Schema shipped in the package
+(`node_modules/@vzn/vx/schemas/`), and every object closes its key set, so
+a new field is a schema change, never a surprise.
+
+Under `--affected`, `--dry=json` gives each kept task an `affected`
+reason: the changed input, or the `dependsOn` chain that reached it. A
+failed row of `vx last --format json` carries the task's `output` and the
+files it names (`locations`). `vx why --format json` gives each changed
+part of the key as one entry, so an agent fixes the cause instead of
+re-running to find it:
+
+```text
+{"kind":"file","name":"packages/app/src/a.ts","change":"changed","before":"a853d874…","after":"d14600f9…"}
+```
+
+## Branch on exit codes and error codes
+
+| Exit                  | Means                                                                  |
+| --------------------- | ---------------------------------------------------------------------- |
+| `0`                   | Every task passed or was a cache hit, or nothing was affected.         |
+| `1`                   | A task failed or was skipped, or vx refused the command (see below).   |
+| `130` / `143` / `129` | Interrupted by SIGINT / SIGTERM / SIGHUP; vx stopped every task first. |
+
+When vx refuses a command asked for JSON, stdout carries one line with a
+stable code, and the exit code stays `1`. The code stays; the message may
+change. Branch on the code:
+
+```sh frame="terminal"
+$ vx run biuld --all --dry=json
+{"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}
+```
+
+| Code                | What to do                                             |
+| ------------------- | ------------------------------------------------------ |
+| `VX_E_UNKNOWN_TASK` | Read the task names from `vx show --format json`.      |
+| `VX_E_USAGE`        | Fix the flag or argument; `vx help <verb>` lists them. |
+| `VX_E_CONFIG`       | Fix the config file named in the message.              |
+| `VX_E_NO_HISTORY`   | Run the task first; `vx why` and `vx last` need a run. |
+| `VX_E_INTERNAL`     | A defect in vx: report it with the stack from stderr.  |
+
+`docs` links the code's section of the [CLI reference](../../cli/#error-codes);
+`vx docs VX_E_UNKNOWN_TASK` prints the same section, and
+`node_modules/@vzn/vx/schemas/error.json` describes the line.
+
+<Aside type="tip">
+  A mistyped flag gets the right one back: `--concurency` hints
+  `--concurrency`, and `--json` hints `--format json`.
+</Aside>
+
+## Next
+
+<CardGrid>
+  <LinkCard title="Machine-readable output" description="Every JSON shape vx prints." href="../../cli/#machine-readable-output" />
+  <LinkCard title="Error codes" description="Every code, and what to do." href="../../cli/#error-codes" />
+</CardGrid>

@@ -32,7 +32,7 @@ import { gitIn, gitInit } from './helpers/workspace.js'
 const CORE = path.resolve(import.meta.dir, '..')
 const PACKAGES = path.dirname(CORE)
 const REPO = path.dirname(PACKAGES)
-const GUIDE = path.join(PACKAGES, 'vx-docs', 'src', 'content', 'docs', 'guides', 'migrate.md')
+const GUIDE = path.join(PACKAGES, 'vx-docs', 'src', 'content', 'docs', 'guides', 'migrate.mdx')
 
 /** The guide's `## <name>` section: its fences of `lang`, in order. */
 function guideFences(name: string, lang: string): string[] {
