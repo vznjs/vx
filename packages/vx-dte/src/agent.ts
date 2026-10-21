@@ -181,18 +181,22 @@ export async function runAgent(opts: {
       )
       // A bind the task never wrote is not its output.
       for (const f of made) if ((await lstat(f)).size === 0) await rm(f, { force: true })
-      // Its violations name the orchestrator's paths.
-      const back = swapRoots(res.violations, [
-        [myReal, realRoot],
-        [opts.root, root],
-      ])
+      // Its violations name the orchestrator's paths. As JSON first: the swap
+      // round-trips them through JSON, which leaves a Date a string.
+      const back = swapRoots(
+        res.violations.map((v) => ({ ...v, timestamp: v.timestamp.toISOString() })),
+        [
+          [myReal, realRoot],
+          [opts.root, root],
+        ],
+      )
       // Only a success the sandbox found nothing wrong with is the task's
       // entry; anything else is kept where no lookup finds it.
       const key =
         res.exitCode === 0 && res.violations.length === 0 && m.key !== undefined ? m.key : m.runKey
       await reply(m, key, {
         ...res,
-        violations: back.map((v) => ({ ...v, timestamp: v.timestamp.toISOString() })),
+        violations: back,
       })
     } finally {
       running.delete(m.task)
