@@ -180,7 +180,8 @@ export interface ExecuteResult extends RunResult {
    * Executor-reported placement label — which machine ran the command
    * (a REAPI worker id, a pool member). Absent = this host. Rides
    * `TaskOutcome.where` into telemetry so a task can be attributed to
-   * its worker; never persisted to the analytics store.
+   * its worker, and onto its row and frame (`on <where>`); never
+   * persisted to the analytics store.
    */
   readonly where?: string
 }
@@ -236,6 +237,13 @@ export interface TaskExecutor {
    * for it.
    */
   demand?(remaining: ReadonlySet<string>): void
+  /**
+   * Rows the run's footer shows for this executor, `[label, text]`: what
+   * only it knows, such as the machines it ran tasks on. Asked on every
+   * frame of the live footer and once for the final one, so it is cheap;
+   * a throw shows nothing.
+   */
+  footer?(): readonly (readonly [label: string, text: string])[]
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 

@@ -63,6 +63,27 @@ git worktree of `HEAD`, so agents run committed code only.
 - A relay unreachable for three heartbeats hands every task back to this
   machine.
 
+## What the run shows
+
+Each task an agent ran says which one on its row and frame, by size and
+the order the run started it:
+
+```
+ ⏺︎   308ms success miss     c#build  on small·1
+```
+
+The footer's `agents` row counts the agents online, starting and gone
+while the run goes, then lists each one with the tasks it ran and its
+warm-up (from asking the adapter to its join), and the tasks this
+machine ran:
+
+```
+  agents    2 online
+            small·1  5 ran, warm-up 0.1s
+            small·2  0 ran, warm-up 0.2s
+            here     1 ran
+```
+
 ## API
 
 - `dte(options: DteOptions)` is the plugin. `DteOptions` is
@@ -78,10 +99,11 @@ git worktree of `HEAD`, so agents run committed code only.
     (default: the run's worker count). `0` sends all of them to agents.
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`).
 - `vx dte agent` is an agent. It reads `VX_DTE_RUN`, `VX_DTE_SIZE` (one of
-  `agents`) and `VX_DTE_RELAY` (else `relay`).
+  `agents`), `VX_DTE_AGENT` (its index, for its name in the output) and
+  `VX_DTE_RELAY` (else `relay`).
 - `DteAdapter` is `{ spawn(agent: AgentSpawn), relay?(), close?() }`.
   `AgentSpawn` is `{ run, relay, size, index, workspaceRoot, env }`, where
-  `env` holds the three variables the agent reads.
+  `env` holds the four variables the agent reads.
 - `local(options?: LocalOptions)` starts agents on this machine and a relay
   of its own on loopback. `LocalOptions` is `{ prepare? }`: a shell line
   each worktree runs before its agent starts.

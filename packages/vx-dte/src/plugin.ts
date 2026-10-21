@@ -25,7 +25,7 @@ export interface AgentSpawn {
   /** 1 for the first agent this run starts, counting every size. */
   readonly index: number
   readonly workspaceRoot: string
-  /** What the agent's `vx dte agent` reads: `VX_DTE_RUN`, `VX_DTE_SIZE`, `VX_DTE_RELAY`. */
+  /** What the agent's `vx dte agent` reads: `VX_DTE_RUN`, `VX_DTE_SIZE`, `VX_DTE_AGENT` (`index`), `VX_DTE_RELAY`. */
   readonly env: Readonly<Record<string, string>>
 }
 
@@ -106,10 +106,12 @@ export function dte(options: DteOptions) {
             )
           }
           const { runAgent } = await import('./agent.js')
+          const index = Number(process.env['VX_DTE_AGENT'])
           return runAgent({
             relay,
             run,
             size,
+            ...(Number.isInteger(index) && index > 0 ? { index } : {}),
             root: ctx.workspaceRoot,
             token: await token(),
             log: (line) => console.error(line),
@@ -179,6 +181,7 @@ export function dte(options: DteOptions) {
         // the orchestrator holds the rest.
         capacity: Math.max(1, localSlots + sizes.reduce((n, [, s]) => n + 2 * s.max * s.cpu, 0)),
         execute: (req) => o.execute(req),
+        footer: () => o.footer(),
         // Agents for what this machine's share cannot take, largest
         // declared first; none are stopped before the run ends.
         demand(remaining) {
@@ -187,6 +190,7 @@ export function dte(options: DteOptions) {
               started.set(size, (started.get(size) ?? 0) + 1)
               slots += s.cpu
               index++
+              o.spawned(index)
               void Promise.resolve(
                 options.adapter.spawn({
                   run,
@@ -194,7 +198,12 @@ export function dte(options: DteOptions) {
                   size,
                   index,
                   workspaceRoot: ctx.workspaceRoot,
-                  env: { VX_DTE_RUN: run, VX_DTE_SIZE: size, VX_DTE_RELAY: relay },
+                  env: {
+                    VX_DTE_RUN: run,
+                    VX_DTE_SIZE: size,
+                    VX_DTE_AGENT: String(index),
+                    VX_DTE_RELAY: relay,
+                  },
                 }),
               ).catch((err: unknown) =>
                 ctx.warn(`dte: could not start a ${size} agent: ${String(err)}`),

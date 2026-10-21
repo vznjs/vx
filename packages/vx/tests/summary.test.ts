@@ -332,6 +332,29 @@ describe('formatRunSummary', () => {
     expect(plain.find((l) => l.startsWith('  info'))).toBe('  info      4 workers · local cache')
   })
 
+  it("an executor's own rows sit above the info row, which then names no pool", () => {
+    const ctx = {
+      version: '0.0.0',
+      packageCount: 1,
+      remoteCacheEnabled: false,
+      concurrency: 4,
+      executorRows: () =>
+        [
+          ['agents', '1 online'],
+          ['', 'small·1  1 ran'],
+        ] as const,
+    }
+    const lines = formatRunSummary([outcome('a#x', 'success')], 10, { enabled: false }, ctx)
+    const at = lines.findIndex((l) => l.startsWith('  agents'))
+    expect(lines.slice(at - 1, at + 4)).toEqual([
+      '',
+      '  agents    1 online',
+      '            small·1  1 ran',
+      '',
+      '  info      local cache',
+    ])
+  })
+
   it('leads with the projects bar (affected vs workspace total)', () => {
     const lines = formatRunSummary(
       [outcome('a#x', 'success')],

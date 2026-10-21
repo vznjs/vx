@@ -172,7 +172,7 @@ export interface TaskOutcome {
    */
   inputMoved?: string
   /** Executor-reported placement label (`ExecuteResult.where`) — set only
-   *  when the task ran somewhere other than this host. Telemetry-only. */
+   *  when the task ran somewhere other than this host: telemetry and the task's row. */
   where?: string
   /** `'deferred'` when the task's outputs were left in the remote store
    *  (`--cache-download=none`) instead of landing on this machine. Absent for

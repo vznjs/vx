@@ -168,6 +168,17 @@ describe('the compact one-liners', () => {
     expect(doc).toContain('// ` ⏺ <time> success miss <id>` — broad-mode executed task')
   })
 
+  it('a task an executor ran elsewhere says where, on its row and its frame', () => {
+    const o = {
+      ...outcome('@vzn/vx#lint', 'success', { durationMs: 327, where: 'small·2' }),
+      node: cached,
+    }
+    expect(formatTaskExecutedLine(cached, o)).toMatch(/@vzn\/vx#lint  on small·2$/)
+    expect(formatTaskBlock(cached, o, {}).trimEnd().split('\n').at(-1)).toMatch(
+      /\(327ms\) success  on small·2$/,
+    )
+  })
+
   it('the whole grid: glyph is the cache axis, the two words are the task axis', () => {
     // One guarantee instead of nine rows. Every member here moves exactly
     // one line — the failed word, the skipped word, a failed task's cache

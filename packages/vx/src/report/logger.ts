@@ -9,6 +9,7 @@ import {
   formatTaskBlock,
   formatTaskExecutedLine,
   flakyNote,
+  whereNote,
   formatTaskHitLine,
   formatTaskSkippedLine,
   type OutputChunk,
@@ -684,6 +685,7 @@ export function defaultLogger(
 
   const failureRow = (node: TaskNode, outcome: TaskOutcome): string =>
     formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(outcome)) +
+    whereNote(outcome, colors) +
     flakyNote(outcome, colors)
 
   return {

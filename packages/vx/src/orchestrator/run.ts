@@ -800,7 +800,9 @@ async function runOnBus(
 
     // Run context for the footer. The top-of-run header is gone — the
     // banner now lives in the summary, where the eye lands at the end.
+    const footers = executors.filter((e) => e.footer !== undefined)
     const runContext = {
+      ...(footers.length > 0 ? { executorRows: () => footers.flatMap(executorFooter) } : {}),
       version: VERSION,
       packageCount: packagesInScope.size,
       remoteCacheEnabled,
@@ -1814,5 +1816,19 @@ function canonical(dir: string): string {
     return realpathSync(dir)
   } catch {
     return path.resolve(dir)
+  }
+}
+
+/** An executor's footer rows; a plugin's throw or bad shape shows none. */
+function executorFooter(e: TaskExecutor): (readonly [string, string])[] {
+  try {
+    const rows = e.footer?.()
+    if (!Array.isArray(rows)) return []
+    return rows.filter(
+      (r): r is readonly [string, string] =>
+        Array.isArray(r) && typeof r[0] === 'string' && typeof r[1] === 'string',
+    )
+  } catch {
+    return []
   }
 }

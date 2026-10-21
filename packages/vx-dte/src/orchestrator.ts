@@ -42,6 +42,10 @@ interface Agent {
   readonly cores: number
   readonly memory: number
   readonly label: string
+  /** From its start to its join, when this run started it. */
+  readonly warmUpMs: number | undefined
+  /** Tasks it finished. */
+  ran: number
   /** Sent to it and not finished: running there or in its queue. */
   readonly busy: Map<string, Job>
   usedCores: number
@@ -72,6 +76,11 @@ export class Orchestrator {
   private readonly queue: Job[] = []
   private readonly results = new Map<string, string[]>()
   private localBusy = 0
+  private ranHere = 0
+  /** When each agent this run started was asked for, by `AgentSpawn.index`. */
+  private readonly spawnedAt = new Map<number, number>()
+  /** Agents that joined and left, for the footer. */
+  private readonly gone: Agent[] = []
   private pumping = false
   private joined = 0
   private readonly stop = new AbortController()
@@ -186,7 +195,10 @@ export class Orchestrator {
     this.localBusy++
     this.floor
       .execute(job.req)
-      .then(job.resolve, job.reject)
+      .then((r) => {
+        this.ranHere++
+        job.resolve(r)
+      }, job.reject)
       .finally(() => {
         this.localBusy--
         this.pumpSoon()
@@ -288,6 +300,7 @@ export class Orchestrator {
     a.busy.delete(task)
     a.usedCores -= job.need.cores
     a.usedMemory -= job.need.memory
+    a.ran++
     if (head.stdout !== '') job.req.onStdout(head.stdout)
     if (head.stderr !== '') job.req.onStderr(head.stderr)
     job.resolve({ ...result(head), where: a.label })
@@ -314,14 +327,18 @@ export class Orchestrator {
       if (info.commit !== this.o.commit) {
         return refuse(`checked out ${info.commit}, the run is on ${this.o.commit}`)
       }
+      const index = Number.isInteger(info.index) ? info.index! : undefined
+      const asked = index === undefined ? undefined : this.spawnedAt.get(index)
       this.agents.set(id, {
         id,
         size: info.size,
+        warmUpMs: asked === undefined ? undefined : performance.now() - asked,
+        ran: 0,
         cores: Number(info.cores),
         memory: Number(info.memory),
         usedCores: 0,
         usedMemory: 0,
-        label: `${info.size} agent ${++this.joined}`,
+        label: `${info.size}·${index ?? `j${++this.joined}`}`,
         busy: new Map(),
         has: new Set(),
         chain: Promise.resolve(),
@@ -331,6 +348,7 @@ export class Orchestrator {
       const a = this.agents.get(body.id!)
       if (a === undefined) return
       this.agents.delete(a.id)
+      this.gone.push(a)
       // Its tasks run again: first, as they were first to go.
       const back = [...a.busy.values()].filter((j) => j.req.signal?.aborted !== true)
       for (const j of back) delete j.agent
@@ -388,6 +406,40 @@ export class Orchestrator {
     }
   }
 
+  /** `demand` asked the adapter for agent `index`. */
+  spawned(index: number): void {
+    this.spawnedAt.set(index, performance.now())
+  }
+
+  /**
+   * The `agents` row: while the run goes, how many are starting, online
+   * and gone; each agent by `size·index` with the tasks it ran and its
+   * warm-up; the tasks this machine ran itself.
+   */
+  footer(): [string, string][] {
+    if (this.spawnedAt.size === 0 && this.agents.size === 0) return []
+    const all = [...this.agents.values(), ...this.gone]
+    const joined = all.filter((a) => a.warmUpMs !== undefined).length
+    const starting = Math.max(0, this.spawnedAt.size - joined)
+    const head = [
+      `${this.agents.size} online`,
+      ...(starting > 0 ? [`${starting} starting`] : []),
+      ...(this.gone.length > 0 ? [`${this.gone.length} gone`] : []),
+    ].join(' · ')
+    const lines: [string, string][] = all
+      .sort((x, y) => x.label.localeCompare(y.label, 'en', { numeric: true }))
+      .map((a) => [
+        a.label,
+        `${a.ran} ran${a.warmUpMs === undefined ? '' : `, warm-up ${seconds(a.warmUpMs)}`}`,
+      ])
+    if (this.ranHere > 0) lines.push(['here', `${this.ranHere} ran`])
+    const width = Math.max(0, ...lines.map(([l]) => l.length))
+    return [
+      ['agents', head],
+      ...lines.map(([l, t]): [string, string] => ['', `${l.padEnd(width)}  ${t}`]),
+    ]
+  }
+
   /** Why the relay was given up on; then every task runs here. */
   lost: string | undefined
 }
@@ -430,3 +482,5 @@ function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string):
   walk(id)
   return seen
 }
+
+const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)}s`

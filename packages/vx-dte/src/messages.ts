@@ -8,6 +8,8 @@ import type { ExecuteSandbox, SandboxConfig } from '@vzn/vx'
 export interface AgentInfo {
   readonly v: 1
   readonly size: string
+  /** `AgentSpawn.index` (`VX_DTE_AGENT`): it is `<size>·<index>` in the run's output. */
+  readonly index?: number
   /** What its machine has (core's `machineParallelism`, `machineMemoryBytes`), not what its size says. */
   readonly cores: number
   readonly memory: number

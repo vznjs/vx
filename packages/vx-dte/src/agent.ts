@@ -37,6 +37,7 @@ export async function runAgent(opts: {
   relay: string
   run: string
   size: string
+  index?: number
   root: string
   token: string | undefined
   log: (line: string) => void
@@ -46,7 +47,14 @@ export async function runAgent(opts: {
     .trim()
   const cores = machineParallelism()
   const memory = machineMemoryBytes()
-  const info: AgentInfo = { v: 1, size: opts.size, cores, memory, commit }
+  const info: AgentInfo = {
+    v: 1,
+    size: opts.size,
+    ...(opts.index === undefined ? {} : { index: opts.index }),
+    cores,
+    memory,
+    commit,
+  }
   const me = await join(opts.relay, opts.run, 'agent', info, opts.token)
   opts.log(`vx dte agent ${opts.size} joined run ${opts.run}`)
   const parts = new Map<string, string[]>()

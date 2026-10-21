@@ -3086,7 +3086,10 @@ local blue, remote dark blue, `✗` and a miss red, `⇡` cyan; the
 `--cache-policy` uses it. `N not saved` (ran, succeeded, saved
 nothing), `N not downloaded` (outputs left in the remote store) and
 every count show only when non-zero. `vx last` names each remote
-failure on its task's row. The `info` row ends with `run <id>`: the
+failure on its task's row. A task an executor plugin ran elsewhere
+says where on its row and its frame (`on small·2`), and the plugin may
+add rows of its own above `info` (`agents`), in which case `info`
+names no worker pool. The `info` row ends with `run <id>`: the
 run's whole id, as `vx last <id>` takes it. The
 `time` row is the wall time, then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a
