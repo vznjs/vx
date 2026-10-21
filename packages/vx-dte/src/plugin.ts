@@ -45,8 +45,14 @@ export interface DtePlan {
   readonly run: string
   readonly relay: string
   readonly workspaceRoot: string
-  /** Every agent the run may start: `max` of each size, in declared order. */
-  readonly agents: readonly { id: string; size: string; cpu: number; memory: number }[]
+  /** Every agent the run may start: `max` of each size, in declared order; `live` ones the run starts as it needs them (`spawn`). */
+  readonly agents: readonly {
+    id: string
+    size: string
+    cpu: number
+    memory: number
+    live: boolean
+  }[]
 }
 
 /** How one CI starts agents: `local()`, `docker()`, `gitlab()`. */
@@ -59,9 +65,12 @@ export interface DteAdapter {
   /**
    * The files that start the plan's agents (workspace-relative path to
    * text), which `vx dte plan` writes. An adapter with it starts every
-   * planned agent up front: the run waits for them and starts no other.
+   * planned agent that is not `live` up front, and `spawn`s a `live` one,
+   * by its `id`, when the run needs it.
    */
   render?(plan: DtePlan): Readonly<Record<string, string>>
+  /** Whether a plan's agents beyond the first wait for the run to start them. */
+  live?(): boolean
   /** The run id `vx dte plan` names when `VX_DTE_RUN` is unset. */
   runId?(): string | undefined
 }
@@ -143,7 +152,7 @@ export function dte(options: DteOptions) {
     if (!run) throw new UserError('vx dte plan needs VX_DTE_RUN, or an adapter that names the run')
     if (options.relay === undefined) throw new UserError('vx dte plan needs dte({ relay })')
     const { runSecret } = await import('./seal.js')
-    const agents = planned(sizes)
+    const agents = planned(sizes, adapter.live?.() === true)
     const files: Record<string, string> = {
       ...adapter.render({ run, relay: options.relay, workspaceRoot: root, agents }),
     }
@@ -284,14 +293,24 @@ export function dte(options: DteOptions) {
         keyOf: (id) => keys.get(id),
       })
       orchestrator = o
-      // A planned run's agents are all on their way already.
-      const plannedAll = adapter?.render !== undefined
-      if (plannedAll)
-        for (const a of planned(sizes))
-          o.spawned(a.id, { size: a.size, cpu: a.cpu, memory: a.memory })
       const started = new Map<string, number>()
       let index = 0
       let cores = 0
+      // A planned run's first plannedAgents is on its way already; the rest, if
+      // any, waits for the run to start it, by size.
+      const later = new Map<string, string[]>()
+      const plannedAgents =
+        adapter?.render === undefined ? undefined : planned(sizes, adapter.live?.() === true)
+      for (const a of plannedAgents ?? []) {
+        if (a.live) {
+          later.set(a.size, [...(later.get(a.size) ?? []), a.id])
+          continue
+        }
+        o.spawned(a.id, { size: a.size, cpu: a.cpu, memory: a.memory })
+        started.set(a.size, (started.get(a.size) ?? 0) + 1)
+        cores += a.cpu
+        index++
+      }
       return {
         name: 'dte',
         remote: true,
@@ -311,11 +330,14 @@ export function dte(options: DteOptions) {
         // busy (`busyCores`) beyond this machine's share; none are stopped
         // before the run ends.
         demand(remaining) {
-          if (adapter === undefined || plannedAll) return
+          if (adapter === undefined || (plannedAgents !== undefined && later.size === 0)) return
           const start = (s: (typeof sizes)[number]): void => {
             started.set(s.name, (started.get(s.name) ?? 0) + 1)
             cores += s.cpu
-            const id = `${s.name}#${++index}`
+            ++index
+            // Counted against its size's max, so a planned one is left.
+            const id =
+              plannedAgents === undefined ? `${s.name}#${index}` : later.get(s.name)!.shift()!
             o.spawned(id, { size: s.name, cpu: s.cpu, memory: s.memory })
             void Promise.resolve(
               adapter.spawn({
@@ -386,14 +408,24 @@ function givenSecret(root: string): string | undefined {
 
 type Size = { name: string; max: number; cpu: number; memory: number }
 
-/** Each size's `max` agents, numbered across sizes as a run numbers those it starts. */
-function planned(sizes: readonly Size[]): DtePlan['agents'] {
-  const out: { id: string; size: string; cpu: number; memory: number }[] = []
+/**
+ * Each size's `max` agents, numbered across sizes as a run numbers those
+ * it starts. Started `live`, only the first starts with the run: the run
+ * starts the rest as its work needs them.
+ */
+function planned(sizes: readonly Size[], live: boolean): DtePlan['agents'] {
+  const out: DtePlan['agents'][number][] = []
   for (const s of sizes) {
     if (s.max === Infinity)
       throw new UserError(`dte(): agents.${s.name} needs max: a plan writes that many`)
     for (let i = 0; i < s.max; i++)
-      out.push({ id: `${s.name}#${out.length + 1}`, size: s.name, cpu: s.cpu, memory: s.memory })
+      out.push({
+        id: `${s.name}#${out.length + 1}`,
+        size: s.name,
+        cpu: s.cpu,
+        memory: s.memory,
+        live: live && out.length > 0,
+      })
   }
   return out
 }
