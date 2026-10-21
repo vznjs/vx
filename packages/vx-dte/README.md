@@ -296,7 +296,8 @@ task the cache does not answer, so a warm run starts none.
 The `agents` rows, live while the run goes and again in the footer,
 give each agent its status (`starting`, `online`, `left`, `gone`, or `failed`
 with why, such as `exited 1: Cannot find package '@vzn/vx-dte'`), the tasks it
-has done and the ones it runs now. This machine is `local`. An agent the
+has done and the ones it runs now; while the run goes, those that left
+are one line (`3 agents  left  9 done`). This machine is `local`. An agent the
 run started is named by its size and the order it was started in; one
 that joined on its own is `agent#N`. A task sent to an agent but not yet
 begun there reads `waiting` in the running list, with no clock; its
