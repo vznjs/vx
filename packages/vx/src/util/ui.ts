@@ -43,7 +43,8 @@ export const dim = (text: string): Inline => ({ style: 'dim', text })
 /** Text in a tone's color. */
 export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
 
-function inline(x: Inline, c: ColorSupport): string {
+/** One inline as text, colored for `c`. */
+export function inline(x: Inline, c: ColorSupport): string {
   if (typeof x === 'string') return x
   if (Array.isArray(x)) return (x as readonly Inline[]).map((p) => inline(p, c)).join('')
   const { style, text } = x as { style: Style; text: string }

@@ -7,7 +7,8 @@ import type { ExecuteSandbox, SandboxConfig } from '@vzn/vx'
 /** An agent's `join` info. */
 export interface AgentInfo {
   readonly v: 1
-  readonly size: string
+  /** `AgentSpawn.id` (`VX_DTE_AGENT`), for an agent the run started. */
+  readonly id?: string
   /** What its machine has (core's `machineParallelism`, `machineMemoryBytes`), not what its size says. */
   readonly cores: number
   readonly memory: number
@@ -47,6 +48,8 @@ export type ToAgent =
       sandboxes?: SandboxConfig[]
     }
   | { type: 'cancel'; task: string }
+  /** It was taken into the run, under the name the run's output gives it. */
+  | { type: 'welcome'; name: string }
   | { type: 'refused'; reason: string }
 
 export type ToOrchestrator =

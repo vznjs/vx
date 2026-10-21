@@ -297,7 +297,6 @@ describe('a worker row says what waits on it', () => {
           { id: 'p#a', startedMs: 0 },
           { id: 'p#d', startedMs: 0 },
         ],
-        overflow: 0,
         nowMs: 500,
         summaryLines: [],
         blocks: new Map([
@@ -348,7 +347,6 @@ describe('idle worker rows hold blocked tasks', () => {
         pinnedPersistent: [],
         slots: [{ id: 'p#a', startedMs: 0 }, null, null],
         blocked: [null, { id: 'p#c', by: 'p#a' }, null],
-        overflow: 0,
         nowMs: 500,
         summaryLines: [],
       },

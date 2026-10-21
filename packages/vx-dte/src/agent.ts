@@ -10,6 +10,7 @@ import path from 'node:path'
 import {
   localFloor,
   machineMemoryBytes,
+  ui,
   machineParallelism,
   type ExecuteRequest,
   type ExecuteResult,
@@ -36,19 +37,24 @@ const HOST_ENV = [
 export async function runAgent(opts: {
   relay: string
   run: string
-  size: string
+  /** `AgentSpawn.id`, when the run started it. */
+  id?: string
   root: string
   token: string | undefined
-  log: (line: string) => void
 }): Promise<number> {
   const commit = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: opts.root })
     .stdout.toString()
     .trim()
   const cores = machineParallelism()
   const memory = machineMemoryBytes()
-  const info: AgentInfo = { v: 1, size: opts.size, cores, memory, commit }
+  const info: AgentInfo = {
+    v: 1,
+    ...(opts.id === undefined ? {} : { id: opts.id }),
+    cores,
+    memory,
+    commit,
+  }
   const me = await join(opts.relay, opts.run, 'agent', info, opts.token)
-  opts.log(`vx dte agent ${opts.size} joined run ${opts.run}`)
   const parts = new Map<string, string[]>()
   const running = new Map<string, AbortController>()
   const queue: RunOrder[] = []
@@ -84,7 +90,9 @@ export async function runAgent(opts: {
       usedCores += m.cores
       usedMemory += m.memory
       const p = runTask(m)
-        .catch((err: unknown) => opts.log(`vx dte agent: ${m.task}: ${String(err)}`))
+        .catch((err: unknown) =>
+          ui.print('err', ui.status('error', m.task, `could not run: ${String(err)}`)),
+        )
         .finally(() => {
           usedCores -= m.cores
           usedMemory -= m.memory
@@ -130,7 +138,15 @@ export async function runAgent(opts: {
         ...(m.sandbox === undefined ? {} : { sandbox: mine(m.sandbox) }),
       }
       floor ??= localFloor()
+      ui.print('out', ui.status('info', m.task, ui.dim('running')))
       const { outputs: _, ...res } = await floor.execute(req)
+      const took = ui.dim(`${Math.round(res.durationMs)}ms`)
+      ui.print(
+        'out',
+        res.exitCode === 0
+          ? ui.status('ok', m.task, took)
+          : ui.status('error', m.task, [`exit ${res.exitCode} `, took]),
+      )
       // A bind the task never wrote is not its output.
       for (const f of made) if ((await lstat(f)).size === 0) await rm(f, { force: true })
       // Its violations name the orchestrator's paths.
@@ -164,10 +180,20 @@ export async function runAgent(opts: {
         }
         const m = body as ToAgent
         if (m.type === 'refused') {
-          opts.log(`vx dte agent: refused: ${m.reason}`)
+          ui.print('err', ui.status('error', 'vx dte agent', `refused: ${m.reason}`))
           return 1
         }
-        if (m.type === 'part') {
+        if (m.type === 'welcome') {
+          ui.print(
+            'out',
+            ui.report('vx dte agent', [
+              ['agent', ui.id(m.name)],
+              ['run', opts.run],
+              ['relay', opts.relay],
+              ['machine', `${cores} cores · ${gb(memory)}`],
+            ]),
+          )
+        } else if (m.type === 'part') {
           const list = parts.get(m.task) ?? []
           list.push(m.data)
           parts.set(m.task, list)
@@ -266,3 +292,5 @@ async function bind(
   }
   return made
 }
+
+const gb = (n: number): string => `${(n / 1e9).toFixed(1)} GB`

@@ -12,6 +12,9 @@ import path from 'node:path'
 import {
   executorFallback,
   localFloor,
+  machineMemoryBytes,
+  machineParallelism,
+  ui,
   withForwardArgs,
   type ExecuteRequest,
   type ExecuteResult,
@@ -38,10 +41,15 @@ interface Job {
 
 interface Agent {
   readonly id: string
-  readonly size: string
   readonly cores: number
   readonly memory: number
   readonly label: string
+  /** From its start to its join, when this run started it. */
+  readonly warmUpMs: number | undefined
+  /** The size it was started as, when this run started it. */
+  readonly declared: Declared | undefined
+  /** Tasks it finished. */
+  ran: number
   /** Sent to it and not finished: running there or in its queue. */
   readonly busy: Map<string, Job>
   usedCores: number
@@ -52,6 +60,13 @@ interface Agent {
   chain: Promise<void>
   /** It was sent the run's sandbox configs. */
   sandboxes: boolean
+}
+
+/** What an agent was started as: its size's `cpu` and `memory` in bytes. */
+export interface Declared {
+  readonly size: string
+  readonly cpu: number
+  readonly memory: number
 }
 
 export interface OrchestratorOptions {
@@ -72,6 +87,13 @@ export class Orchestrator {
   private readonly queue: Job[] = []
   private readonly results = new Map<string, string[]>()
   private localBusy = 0
+  private ranHere = 0
+  private readonly runningHere = new Set<string>()
+  /** When each agent this run started was asked for, by `AgentSpawn.index`. */
+  private readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
+  private ended = false
+  /** Agents that joined and left, for the footer. */
+  private readonly gone: Agent[] = []
   private pumping = false
   private joined = 0
   private readonly stop = new AbortController()
@@ -102,6 +124,7 @@ export class Orchestrator {
   }
 
   async close(): Promise<void> {
+    this.ended = true
     this.stop.abort()
     await this.loop
     await this.o.me.leave()
@@ -184,10 +207,15 @@ export class Orchestrator {
 
   private runHere(job: Job): void {
     this.localBusy++
+    this.runningHere.add(job.req.taskId)
     this.floor
       .execute(job.req)
-      .then(job.resolve, job.reject)
+      .then((r) => {
+        this.ranHere++
+        job.resolve(r)
+      }, job.reject)
       .finally(() => {
+        this.runningHere.delete(job.req.taskId)
         this.localBusy--
         this.pumpSoon()
       })
@@ -288,6 +316,7 @@ export class Orchestrator {
     a.busy.delete(task)
     a.usedCores -= job.need.cores
     a.usedMemory -= job.need.memory
+    a.ran++
     if (head.stdout !== '') job.req.onStdout(head.stdout)
     if (head.stderr !== '') job.req.onStderr(head.stderr)
     job.resolve({ ...result(head), where: a.label })
@@ -305,7 +334,7 @@ export class Orchestrator {
       }
       if (
         info?.v !== 1 ||
-        typeof info.size !== 'string' ||
+        !(info.id === undefined || typeof info.id === 'string') ||
         !(Number(info.cores) >= 1) ||
         !(Number(info.memory) >= 0)
       ) {
@@ -314,23 +343,36 @@ export class Orchestrator {
       if (info.commit !== this.o.commit) {
         return refuse(`checked out ${info.commit}, the run is on ${this.o.commit}`)
       }
+      // An agent this run started keeps the name it was started under;
+      // one that joined on its own is numbered in the order it joined.
+      const spawn = info.id === undefined ? undefined : this.spawnedAt.get(info.id)
+      const asked = spawn?.at
+      const taken = new Set([...this.agents.values(), ...this.gone].map((a) => a.label))
+      let label = asked === undefined ? undefined : info.id
+      while (label === undefined || taken.has(label)) label = `agent·${++this.joined}`
       this.agents.set(id, {
         id,
-        size: info.size,
+        warmUpMs: asked === undefined ? undefined : performance.now() - asked,
+        declared: spawn?.declared,
+        ran: 0,
         cores: Number(info.cores),
         memory: Number(info.memory),
         usedCores: 0,
         usedMemory: 0,
-        label: `${info.size} agent ${++this.joined}`,
+        label,
         busy: new Map(),
         has: new Set(),
-        chain: Promise.resolve(),
+        // Its name first, before any batch.
+        chain: this.o.me
+          .send(id, { type: 'welcome', name: label } satisfies ToAgent)
+          .catch(() => undefined),
         sandboxes: false,
       })
     } else if (body.type === 'lost') {
       const a = this.agents.get(body.id!)
       if (a === undefined) return
       this.agents.delete(a.id)
+      this.gone.push(a)
       // Its tasks run again: first, as they were first to go.
       const back = [...a.busy.values()].filter((j) => j.req.signal?.aborted !== true)
       for (const j of back) delete j.agent
@@ -388,6 +430,78 @@ export class Orchestrator {
     }
   }
 
+  /** The agent a task was sent to, or `local`. */
+  where(taskId: string): string | undefined {
+    if (this.runningHere.has(taskId)) return 'local'
+    for (const a of this.agents.values()) if (a.busy.has(taskId)) return a.label
+    return undefined
+  }
+
+  /** `demand` asked the adapter for agent `id` (`AgentSpawn.id`). */
+  spawned(id: string, declared: Declared): void {
+    this.spawnedAt.set(id, { at: performance.now(), declared })
+  }
+
+  /**
+   * The `agents` rows, live and at the end: one per agent by `size·index`
+   * with its status, the tasks it has done and the ones it runs now, then
+   * this machine's; once over, each joined agent's warm-up and each size
+   * whose machines are not what it says.
+   */
+  footer(): [string, ui.Inline][] {
+    if (this.spawnedAt.size === 0 && this.agents.size === 0) return []
+    const gone = new Set(this.gone)
+    const all = [...this.agents.values(), ...this.gone]
+    const joined = new Set(all.map((a) => a.label))
+    const count = (done: number, running: number): string =>
+      [`${done} done`, ...(running > 0 ? [`${running} running`] : [])].join(' · ')
+    // What its machine reports: green when its size says the same, red when not.
+    const res = (cores: number, memory: number, d?: Declared): ui.Inline => {
+      const text = `${cores}c/${compact(memory)}`
+      if (d === undefined) return text
+      return ui.tone(matches(cores, memory, d) ? 'ok' : 'error', text)
+    }
+    const lines: [string, string, string, ui.Inline][] = all.map((a) => [
+      a.label,
+      gone.has(a) ? 'gone' : 'online',
+      count(a.ran, gone.has(a) ? 0 : a.busy.size) +
+        (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : ''),
+      res(a.cores, a.memory, a.declared),
+    ])
+    for (const id of this.spawnedAt.keys())
+      if (!joined.has(id)) lines.push([id, 'starting', '', ''])
+    lines.sort((x, y) => x[0].localeCompare(y[0], 'en', { numeric: true }))
+    if (this.o.localSlots > 0 || this.ranHere > 0)
+      lines.push([
+        'local',
+        'online',
+        count(this.ranHere, this.runningHere.size),
+        res(machineParallelism(), machineMemoryBytes()),
+      ])
+    const width = Math.max(...lines.map(([l]) => l.length))
+    const status = Math.max(...lines.map(([, st]) => st.length))
+    // Once the run is over: each size whose machines are not what it says.
+    const off = new Map<string, string>()
+    for (const a of this.ended ? all : []) {
+      const d = a.declared
+      if (d === undefined || off.has(d.size)) continue
+      if (matches(a.cores, a.memory, d)) continue
+      off.set(
+        d.size,
+        `${d.size}: config ${d.cpu} cores ${gb(d.memory)}, reported ${a.cores} cores ${gb(a.memory)}`,
+      )
+    }
+    return [
+      ...lines.map(([l, st, t, r], i): [string, ui.Inline] => [
+        i === 0 ? 'agents' : '',
+        r === ''
+          ? `${l.padEnd(width)}  ${st}`
+          : [`${l.padEnd(width)}  ${st.padEnd(status)}  ${t}  `, r],
+      ]),
+      ...[...off.values()].map((t): [string, ui.Inline] => ['', `! ${t}`]),
+    ]
+  }
+
   /** Why the relay was given up on; then every task runs here. */
   lost: string | undefined
 }
@@ -430,3 +544,17 @@ function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string):
   walk(id)
   return seen
 }
+
+/** A machine is what its size says: the same cores, memory within a tenth. */
+const matches = (cores: number, memory: number, d: Declared): boolean =>
+  cores === d.cpu && Math.abs(memory - d.memory) <= d.memory * 0.1
+
+/** Bytes as whole gigabytes, one decimal under 10: `16G`, `0.5G`. */
+const compact = (n: number): string => {
+  const g = n / 1e9
+  return `${g >= 10 ? Math.round(g) : Number(g.toFixed(1))}G`
+}
+
+const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)}s`
+
+const gb = (n: number): string => `${Math.round(n / 1e9)} GB`

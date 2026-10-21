@@ -11,12 +11,17 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 
 ## Public surface
 
-- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining); execute(req) }`
+- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining); footer?(); running?(id); execute(req) }`
+  — `footer()` returns `[label, text]` rows the run's footer shows, live
+  and at the end (a throw or a bad shape shows none); `ExecuteResult.where`
+  is shown on the task's row and frame as `on <where>`; `running(id)`
+  says where a task it is running runs, for the live row
   — `remote: true` declares that the executor runs the command somewhere
   else (so it is never offered a `pinnedLocal` task); `sandbox: true`
   says a remote one enforces `req.sandbox` where it runs and returns the
   violations, so a sandboxed task and its dependants are not pinned for
-  it (`@vzn/vx-dte`'s agents run them through `localFloor`); `capacity` is how
+  it (`@vzn/vx-dte`'s agents run them through `localFloor`, which also stops
+  a request's children when its `signal` aborts and no run holds them); `capacity` is how
   many tasks it runs at once (a positive integer, else the run is
   refused), which makes its tasks a POOL of that size instead of local
   worker slots.

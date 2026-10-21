@@ -282,6 +282,8 @@ export function foldScriptHooks(
   body: string,
   post: string | undefined,
 ): string
+== function inline (src/util/ui.ts)
+export function inline(x: Inline, c: ColorSupport): string
 == function isCacheHit (src/graph/task-status.ts)
 export function isCacheHit(status: string): boolean
 == function isLiteralPattern (src/util/paths.ts)
@@ -1308,6 +1310,8 @@ export interface RunContext {
   version: string
   packageCount: number
   runId?: string | undefined
+  executorRows?: () => readonly (readonly [string, ui.Inline])[]
+  whereRunning?: (taskId: string) => string | undefined
   concurrency?: number
   remoteCacheEnabled: boolean
   cacheScope?: string | undefined
@@ -1633,6 +1637,8 @@ export interface TaskExecutor {
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void
+  footer?(): readonly (readonly [label: string, text: ui.Inline])[]
+  running?(taskId: string): string | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 == type TaskHistory (src/history/history.ts)

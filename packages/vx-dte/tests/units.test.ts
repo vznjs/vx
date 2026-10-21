@@ -1,11 +1,22 @@
-import { lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readlink,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { createRelay } from '@vzn/vx-dte-relay'
 import { localEnv, swapRoots } from '../src/agent.js'
 import { fromParts, outputFiles, pack, toParts, unpack } from '../src/bundle.js'
-import { dte, local } from '../src/index.js'
+import { docker, dte, local } from '../src/index.js'
+import { bytes } from '../src/plugin.js'
 import type { ExecuteRequest, TaskNode } from '@vzn/vx'
 import { Orchestrator } from '../src/orchestrator.js'
 import { join } from '../src/wire.js'
@@ -114,7 +125,7 @@ it('an agent on another commit is refused', async () => {
       url,
       'r',
       'agent',
-      { v: 1, size: 's', cores: 1, memory: 1, commit: 'bbb' },
+      { v: 1, cores: 1, memory: 1, commit: 'bbb' },
       undefined,
     )
     let got: unknown[] = []
@@ -146,13 +157,7 @@ async function harness(nodes: Map<string, TaskNode>) {
     need: () => ({ cores: 1, memory: 10 }),
   })
   const agent = async (cores: number) => {
-    const me = await join(
-      url,
-      'r',
-      'agent',
-      { v: 1, size: 's', cores, memory: 100, commit: 'c' },
-      undefined,
-    )
+    const me = await join(url, 'r', 'agent', { v: 1, cores, memory: 100, commit: 'c' }, undefined)
     const batches = async (): Promise<string[][]> => {
       for (let i = 0; i < 20; i++) {
         const got = (await me.poll()).map(
@@ -229,6 +234,17 @@ it('sends a task to the agent that holds its dependency’s outputs', async () =
   }
 })
 
+it('reads memory as bytes or with a unit', () => {
+  expect([
+    bytes('8GB'),
+    bytes('512MiB'),
+    bytes(1024),
+    bytes('1.5 gb'),
+    bytes('8'),
+    bytes(0),
+  ]).toEqual([8e9, 512 * 1024 ** 2, 1024, 1.5e9, undefined, undefined])
+})
+
 const refusal = (make: () => unknown): string => {
   try {
     make()
@@ -243,13 +259,24 @@ it('refuses options it does not read and agents it cannot start', () => {
   expect(refusal(() => dte({ agents: {}, adapter, relays: 'x' } as never))).toContain(
     'dte() has unknown option "relays"',
   )
-  expect(refusal(() => dte({ agents: { s: { max: 1, cpu: 0 } }, adapter }))).toBe(
-    'dte(): agents.s needs a whole max ≥ 0 and cpu ≥ 1',
+  expect(refusal(() => dte({ agents: { s: { max: 1, cpu: 0, memory: '1GB' } }, adapter }))).toBe(
+    "dte(): agents.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any",
   )
+  expect(refusal(() => dte({ agents: { s: { max: 1, cpu: 1, memory: '8 lots' } }, adapter }))).toBe(
+    "dte(): agents.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any",
+  )
+  expect(refusal(() => dte({}))).toBe(
+    'dte(): with no adapter, set relay: the agents that join it run the tasks',
+  )
+  expect(refusal(() => dte({ relay: 'http://relay.test' }))).toBe('taken')
+  expect(refusal(() => dte({ agents: { s: { cpu: 2, memory: '8GB' } }, adapter }))).toBe('taken')
   expect(refusal(() => local({ prepar: 'x' } as never))).toContain(
     'local() has unknown option "prepar"',
   )
   expect(refusal(() => dte({ agents: {}, adapter }))).toBe('taken')
+  expect(refusal(() => docker({} as never))).toBe(
+    "docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git",
+  )
 })
 
 it('a run that is not distributed loads none of it', async () => {
@@ -274,8 +301,69 @@ console.log(JSON.stringify(seen.sort()))
     path.join(import.meta.dir, '..', 'src', 'index.ts'),
   ])
   expect(JSON.parse(p.stdout.toString())).toEqual([
+    'vx-dte/src/docker.ts',
     'vx-dte/src/index.ts',
     'vx-dte/src/local.ts',
     'vx-dte/src/plugin.ts',
   ])
+})
+
+it('docker() starts each agent as a container of its size, on a fresh clone of HEAD', async () => {
+  const ws = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: ws })
+  git('init', '-q')
+  git('commit', '-q', '--allow-empty', '-m', 'i')
+  const sha = git('rev-parse', 'HEAD').stdout.toString().trim()
+  await mkdir(path.join(ws, 'sub'))
+  const bin = await tmp()
+  const argv = path.join(bin, 'argv')
+  await writeFile(path.join(bin, 'docker'), `#!/bin/sh\nprintf '%s\\0' "$@" > ${argv}\n`, {
+    mode: 0o755,
+  })
+  const saved = process.env['PATH']
+  process.env['PATH'] = `${bin}:${saved}`
+  try {
+    const d = docker({ image: 'img', prepare: 'bun install' })
+    await d.spawn({
+      run: 'r',
+      relay: 'http://127.0.0.1:9',
+      size: 'small',
+      cpu: 2,
+      memory: 8e9,
+      index: 3,
+      id: 'small·3',
+      workspaceRoot: path.join(ws, 'sub'),
+      env: { VX_DTE_RUN: 'r', VX_DTE_AGENT: 'small·3', VX_DTE_RELAY: 'http://127.0.0.1:9' },
+    })
+    for (let i = 0; i < 100 && !(await Bun.file(argv).exists()); i++) await Bun.sleep(20)
+    const args = (await readFile(argv, 'utf8')).split('\0').slice(0, -1)
+    const script = args.at(-1)!
+    expect(args.slice(0, 8)).toEqual([
+      'run',
+      '--rm',
+      '--name',
+      `vx-dte-${process.pid}-3`,
+      '--cpus',
+      '2',
+      '--memory',
+      '8000000000b',
+    ])
+    expect(args).toContain(`${await realpath(ws)}:/src:ro`)
+    expect(args.slice(-4, -2)).toEqual(['img', 'sh'])
+    expect(script).toBe(
+      [
+        'set -e',
+        'git clone -q /src /work',
+        'cd /work',
+        `git checkout -q --detach ${sha}`,
+        "cd 'sub'",
+        'bun install',
+        'exec ./node_modules/.bin/vx dte agent',
+      ].join('\n'),
+    )
+    await d.close?.()
+  } finally {
+    process.env['PATH'] = saved
+  }
 })

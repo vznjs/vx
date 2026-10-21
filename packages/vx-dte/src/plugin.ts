@@ -7,14 +7,15 @@ import {
   type TaskNode,
   type TaskResources,
 } from '@vzn/vx'
-import type { Orchestrator } from './orchestrator.js'
+import type { Need, Orchestrator } from './orchestrator.js'
 
-/** One kind of agent the CI can start. */
+/** One kind of agent the adapter can start. */
 export interface AgentSize {
-  /** How many of it one run may start. */
-  readonly max: number
-  /** Its cores: what starting one adds, until it reports what its machine has. */
+  /** How many of it one run may start; absent, as many as the work needs. */
+  readonly max?: number
+  /** Its cores and memory (bytes, or `'8GB'`): what starting one adds, until it reports what its machine has. */
   readonly cpu: number
+  readonly memory: number | string
 }
 
 /** What an adapter is asked to start: one agent of `size`. */
@@ -22,14 +23,19 @@ export interface AgentSpawn {
   readonly run: string
   readonly relay: string
   readonly size: string
+  /** Its size's cores and memory (bytes), for an adapter that sets a machine's limits. */
+  readonly cpu: number
+  readonly memory: number
   /** 1 for the first agent this run starts, counting every size. */
   readonly index: number
+  /** Its name in the run's output and its own (`small·2`), which it reports back on joining. */
+  readonly id: string
   readonly workspaceRoot: string
-  /** What the agent's `vx dte agent` reads: `VX_DTE_RUN`, `VX_DTE_SIZE`, `VX_DTE_RELAY`. */
+  /** What the agent's `vx dte agent` reads: `VX_DTE_RUN`, `VX_DTE_AGENT` (`id`), `VX_DTE_RELAY`. */
   readonly env: Readonly<Record<string, string>>
 }
 
-/** How one CI starts agents: `gitlab()`, `local()`. */
+/** How one CI starts agents: `local()`, `docker()`. */
 export interface DteAdapter {
   /** A relay of its own, for a run whose `dte()` names none. */
   relay?(): Promise<string>
@@ -39,8 +45,10 @@ export interface DteAdapter {
 }
 
 export interface DteOptions {
-  readonly agents: Readonly<Record<string, AgentSize>>
-  readonly adapter: DteAdapter
+  /** What the adapter may start, by size name. */
+  readonly agents?: Readonly<Record<string, AgentSize>>
+  /** Starts agents; absent, the run uses the agents that join it, which needs `relay`. */
+  readonly adapter?: DteAdapter
   /** The relay's URL; absent, the adapter's own. */
   readonly relay?: string
   /** Tasks the orchestrator's own machine runs at once beside the agents (default: the run's worker count). */
@@ -59,14 +67,28 @@ const KEYS: PluginOptionKinds<DteOptions> = {
 
 export function dte(options: DteOptions) {
   refuseUnknownOptions('dte()', options, KEYS)
-  const sizes = Object.entries(options.agents ?? {})
-  for (const [name, s] of sizes) {
-    if (!(Number.isInteger(s?.max) && s.max >= 0 && Number.isInteger(s.cpu) && s.cpu >= 1)) {
-      throw new UserError(`dte(): agents.${name} needs a whole max ≥ 0 and cpu ≥ 1`)
+  const sizes = Object.entries(options.agents ?? {}).map(([name, s]) => {
+    const memory = bytes(s?.memory)
+    if (
+      !(
+        (s?.max === undefined || (Number.isInteger(s.max) && s.max >= 0)) &&
+        Number.isInteger(s?.cpu) &&
+        s.cpu >= 1
+      ) ||
+      memory === undefined
+    ) {
+      throw new UserError(
+        `dte(): agents.${name} needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any`,
+      )
     }
-  }
-  if (typeof options.adapter?.spawn !== 'function') {
+    return { name, max: s.max ?? Infinity, cpu: s.cpu, memory }
+  })
+  const adapter = options.adapter
+  if (adapter !== undefined && typeof adapter.spawn !== 'function') {
     throw new UserError('dte(): adapter is an adapter, such as local()')
+  }
+  if (adapter === undefined && options.relay === undefined) {
+    throw new UserError('dte(): with no adapter, set relay: the agents that join it run the tasks')
   }
   if (options.local !== undefined && !(Number.isInteger(options.local) && options.local >= 0)) {
     throw new UserError('dte(): local is a whole number ≥ 0')
@@ -85,34 +107,30 @@ export function dte(options: DteOptions) {
     nodes = undefined
     peaks = new Map()
     await o?.close()
-    await options.adapter.close?.()
+    await adapter?.close?.()
   }
 
   return definePlugin(import.meta, {
     commands: {
       dte: {
-        description: 'dte agent: run tasks for a distributed run (VX_DTE_RUN, VX_DTE_SIZE)',
+        description: 'dte agent: run tasks for a distributed run (VX_DTE_RUN, VX_DTE_RELAY)',
         async run(argv, ctx) {
           if (argv[0] !== 'agent' || argv.length > 1) {
             throw new UserError('Usage: vx dte agent')
           }
           const run = process.env['VX_DTE_RUN']
-          const size = process.env['VX_DTE_SIZE'] ?? ''
           const relay = process.env['VX_DTE_RELAY'] ?? options.relay
-          const agent = options.agents[size]
-          if (run === undefined || relay === undefined || agent === undefined) {
-            throw new UserError(
-              `vx dte agent needs VX_DTE_RUN, VX_DTE_SIZE (one of ${sizes.map(([n]) => n).join(', ')}) and a relay`,
-            )
+          if (run === undefined || run === '' || relay === undefined) {
+            throw new UserError('vx dte agent needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })')
           }
           const { runAgent } = await import('./agent.js')
+          const id = process.env['VX_DTE_AGENT']
           return runAgent({
             relay,
             run,
-            size,
+            ...(id === undefined || id === '' ? {} : { id }),
             root: ctx.workspaceRoot,
             token: await token(),
-            log: (line) => console.error(line),
           })
         },
       },
@@ -143,7 +161,7 @@ export function dte(options: DteOptions) {
       await closing
       const run = process.env['VX_DTE_RUN']
       if (run === undefined || run === '') return undefined
-      const relay = options.relay ?? (await options.adapter.relay?.())
+      const relay = options.relay ?? (await adapter?.relay?.())
       if (relay === undefined)
         throw new UserError('dte(): no relay: set relay, or use an adapter that has one')
       const commit = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: ctx.workspaceRoot })
@@ -153,51 +171,77 @@ export function dte(options: DteOptions) {
         import('./wire.js'),
       ])
       const localSlots = options.local ?? ctx.concurrency
+      const need = (id: string): Need => {
+        const r = peaks.get(id)
+        return {
+          cores: Math.max(1, Math.ceil(r?.maxCpuParallelism ?? 1)),
+          memory: r?.maxPeakRssBytes ?? 0,
+        }
+      }
       const o = new Orchestrator({
         me: await join(relay, run, 'orchestrator', null, await token()),
         root: ctx.workspaceRoot,
         commit: commit.stdout.toString().trim(),
         localSlots,
         nodes: () => nodes,
-        need: (id) => {
-          const r = peaks.get(id)
-          return {
-            cores: Math.max(1, Math.ceil(r?.maxCpuParallelism ?? 1)),
-            memory: r?.maxPeakRssBytes ?? 0,
-          }
-        },
+        need,
       })
       orchestrator = o
       const started = new Map<string, number>()
       let index = 0
-      let slots = 0
+      let cores = 0
+      let memory = 0
       return {
         name: 'dte',
         remote: true,
         sandbox: true,
         // Room for what agents report beyond their size and the prefetch;
-        // the orchestrator holds the rest.
-        capacity: Math.max(1, localSlots + sizes.reduce((n, [, s]) => n + 2 * s.max * s.cpu, 0)),
+        // the orchestrator holds the rest. Agents that join on their own
+        // are as many as join.
+        capacity:
+          adapter === undefined || sizes.some((s) => s.max === Infinity)
+            ? localSlots + JOINED_CAPACITY
+            : Math.max(1, localSlots + sizes.reduce((n, s) => n + 2 * s.max * s.cpu, 0)),
         execute: (req) => o.execute(req),
-        // Agents for what this machine's share cannot take, largest
-        // declared first; none are stopped before the run ends.
+        footer: () => o.footer(),
+        running: (id) => o.where(id),
+        // Agents for what this machine's share cannot take, in declared
+        // order, until their cores and memory cover the remaining tasks'
+        // recorded peaks; none are stopped before the run ends.
         demand(remaining) {
-          for (const [size, s] of sizes) {
-            while (slots < remaining.size - localSlots && (started.get(size) ?? 0) < s.max) {
-              started.set(size, (started.get(size) ?? 0) + 1)
-              slots += s.cpu
-              index++
+          if (adapter === undefined) return
+          let wantCores = 0
+          let wantMemory = 0
+          for (const id of remaining) {
+            const n = need(id)
+            wantCores += n.cores
+            wantMemory += n.memory
+          }
+          wantCores -= localSlots
+          for (const s of sizes) {
+            while (
+              (cores < wantCores || memory < wantMemory) &&
+              (started.get(s.name) ?? 0) < s.max
+            ) {
+              started.set(s.name, (started.get(s.name) ?? 0) + 1)
+              cores += s.cpu
+              memory += s.memory
+              const id = `${s.name}·${++index}`
+              o.spawned(id, { size: s.name, cpu: s.cpu, memory: s.memory })
               void Promise.resolve(
-                options.adapter.spawn({
+                adapter.spawn({
                   run,
                   relay,
-                  size,
+                  size: s.name,
+                  cpu: s.cpu,
+                  memory: s.memory,
                   index,
+                  id,
                   workspaceRoot: ctx.workspaceRoot,
-                  env: { VX_DTE_RUN: run, VX_DTE_SIZE: size, VX_DTE_RELAY: relay },
+                  env: { VX_DTE_RUN: run, VX_DTE_AGENT: id, VX_DTE_RELAY: relay },
                 }),
               ).catch((err: unknown) =>
-                ctx.warn(`dte: could not start a ${size} agent: ${String(err)}`),
+                ctx.warn(`dte: could not start a ${s.name} agent: ${String(err)}`),
               )
             }
           }
@@ -210,4 +254,28 @@ export function dte(options: DteOptions) {
       await closing
     },
   })
+}
+
+/** The executor's pool when agents are uncapped: more than any run starts at once. */
+const JOINED_CAPACITY = 1024
+
+const UNITS: Record<string, number> = {
+  B: 1,
+  KB: 1e3,
+  MB: 1e6,
+  GB: 1e9,
+  TB: 1e12,
+  KIB: 1024,
+  MIB: 1024 ** 2,
+  GIB: 1024 ** 3,
+  TIB: 1024 ** 4,
+}
+
+/** `8GB`, `512MiB` or a byte count; undefined for anything else. */
+export function bytes(v: unknown): number | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) && v > 0 ? v : undefined
+  if (typeof v !== 'string') return undefined
+  const m = /^\s*(\d+(?:\.\d+)?)\s*([a-z]+)\s*$/i.exec(v)
+  const unit = m === null ? undefined : UNITS[m[2]!.toUpperCase()]
+  return unit === undefined ? undefined : Number(m![1]) * unit
 }

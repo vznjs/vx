@@ -1023,7 +1023,9 @@ function · `src/orchestrator/local-floor.ts`
 `sandboxes`, in a process that is no run, are the `exec.sandbox` configs
 of every sandboxed task the run holds: the runtime's proxy and its
 unix-socket filter are one per process, set from their union before the
-first sandboxed task (`prepareSandbox`).
+first sandboxed task (`prepareSandbox`). A request that carries a
+`signal` but no `liveChildren` has its children stopped here when it
+aborts, the way a run's stop ends its own.
 
 ```ts
 export function localFloor(
@@ -2358,6 +2360,8 @@ export interface TaskExecutor {
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void
+  footer?(): readonly (readonly [label: string, text: ui.Inline])[]
+  running?(taskId: string): string | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 ```
@@ -2734,6 +2738,7 @@ export const path = (text: string): Inline => ({ style: 'bold', text })
 export const cmd = (text: string): Inline => ({ style: 'bold', text })
 export const dim = (text: string): Inline => ({ style: 'dim', text })
 export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
+export function inline(x: Inline, c: ColorSupport): string
 export function status(t: Tone, verb: string, headline: Inline): Block
 export function text(...items: Inline[]): Block
 export function why(line: Inline): Block

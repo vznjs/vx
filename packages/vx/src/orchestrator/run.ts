@@ -51,6 +51,7 @@ import {
   detectColors,
   type ColorSupport,
   SecretBroker,
+  type ui,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
 import { isDefaultBuild } from './projects.js'
@@ -800,7 +801,13 @@ async function runOnBus(
 
     // Run context for the footer. The top-of-run header is gone — the
     // banner now lives in the summary, where the eye lands at the end.
+    const footers = executors.filter((e) => e.footer !== undefined)
+    const placers = executors.filter((e) => e.running !== undefined)
     const runContext = {
+      ...(footers.length > 0 ? { executorRows: () => footers.flatMap(executorFooter) } : {}),
+      ...(placers.length > 0
+        ? { whereRunning: (id: string) => placers.map((e) => executorWhere(e, id)).find(Boolean) }
+        : {}),
       version: VERSION,
       packageCount: packagesInScope.size,
       remoteCacheEnabled,
@@ -1814,5 +1821,31 @@ function canonical(dir: string): string {
     return realpathSync(dir)
   } catch {
     return path.resolve(dir)
+  }
+}
+
+/** An executor's footer rows; a plugin's throw or bad shape shows none. */
+function executorFooter(e: TaskExecutor): (readonly [string, ui.Inline])[] {
+  try {
+    const rows = e.footer?.()
+    if (!Array.isArray(rows)) return []
+    return rows.filter(
+      (r): r is readonly [string, ui.Inline] =>
+        Array.isArray(r) &&
+        typeof r[0] === 'string' &&
+        (typeof r[1] === 'string' || (typeof r[1] === 'object' && r[1] !== null)),
+    )
+  } catch {
+    return []
+  }
+}
+
+/** Where `e` says a running task is; a throw or a non-string says nothing. */
+function executorWhere(e: TaskExecutor, id: string): string | undefined {
+  try {
+    const w = e.running?.(id)
+    return typeof w === 'string' && w !== '' ? w : undefined
+  } catch {
+    return undefined
   }
 }

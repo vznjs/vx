@@ -763,8 +763,8 @@ other persistent task`), and a non-zero exit makes the run exit 1
 3. **Worker rows** — one per worker slot that has been busy (at most
    `min(concurrency, 10)`), no glyph and no spinner: the live ticking
    elapsed time leads (`     568ms running  <id>`). A task stays in
-   its row for its whole life, so nothing jumps; overflow shows as
-   `+k more`. From the first frame, an idle worker row holds a task an
+   its row for its whole life, so nothing jumps; a task running beyond
+   the slots gets a row after them until one frees. From the first frame, an idle worker row holds a task an
    unfinished dependency blocks, one per row, in the order the
    scheduler starts them (most dependents first):
    `blocked  solid-js#build  by solid-js#types` (dim `blocked`, the id,
@@ -3086,7 +3086,10 @@ local blue, remote dark blue, `✗` and a miss red, `⇡` cyan; the
 `--cache-policy` uses it. `N not saved` (ran, succeeded, saved
 nothing), `N not downloaded` (outputs left in the remote store) and
 every count show only when non-zero. `vx last` names each remote
-failure on its task's row. The `info` row ends with `run <id>`: the
+failure on its task's row. A task an executor plugin ran elsewhere
+says where on its row and its frame (`on small·2`), and the plugin may
+add rows of its own above `info` (`agents`), in which case `info`
+names no worker pool. The `info` row ends with `run <id>`: the
 run's whole id, as `vx last <id>` takes it. The
 `time` row is the wall time, then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a

@@ -1,20 +1,31 @@
+== function docker (src/docker.ts)
+export function docker(options: DockerOptions): DteAdapter
 == function dte (src/plugin.ts)
 export function dte(options: DteOptions)
 == function local (src/local.ts)
 export function local(options: LocalOptions = {}): DteAdapter
 == type AgentSize (src/plugin.ts)
 export interface AgentSize {
-  readonly max: number
+  readonly max?: number
   readonly cpu: number
+  readonly memory: number | string
 }
 == type AgentSpawn (src/plugin.ts)
 export interface AgentSpawn {
   readonly run: string
   readonly relay: string
   readonly size: string
+  readonly cpu: number
+  readonly memory: number
   readonly index: number
+  readonly id: string
   readonly workspaceRoot: string
   readonly env: Readonly<Record<string, string>>
+}
+== type DockerOptions (src/docker.ts)
+export interface DockerOptions {
+  readonly image: string
+  readonly prepare?: string
 }
 == type DteAdapter (src/plugin.ts)
 export interface DteAdapter {
@@ -24,8 +35,8 @@ export interface DteAdapter {
 }
 == type DteOptions (src/plugin.ts)
 export interface DteOptions {
-  readonly agents: Readonly<Record<string, AgentSize>>
-  readonly adapter: DteAdapter
+  readonly agents?: Readonly<Record<string, AgentSize>>
+  readonly adapter?: DteAdapter
   readonly relay?: string
   readonly local?: number
   readonly token?: () => string | undefined | Promise<string | undefined>

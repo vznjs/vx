@@ -399,8 +399,15 @@ function formatOutcomeRow(
       ca.color,
       paintedId,
       colors,
-    ) + flakyNote(o, colors)
+    ) +
+    whereNote(o, colors) +
+    flakyNote(o, colors)
   )
+}
+
+/** Where an executor ran the task, when not here: `  on small·2`. */
+export function whereNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
+  return o.where === undefined ? '' : `  ${paint('', `on ${o.where}`, colors, { dim: true })}`
 }
 
 /**
@@ -677,7 +684,7 @@ function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
   // formatStatusTag.
   const dur = paint('', `(${formatElapsed(o.durationMs)})`, colors, { dim: true })
   const tag = formatStatusTag(o, colors)
-  return ` ${dur} ${tag}${flakyNote(o, colors)}`
+  return ` ${dur} ${tag}${whereNote(o, colors)}${flakyNote(o, colors)}`
 }
 
 function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {

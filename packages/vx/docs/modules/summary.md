@@ -45,6 +45,8 @@ export interface RunContext {
   version: string
   packageCount: number // projects with a task to run → the bar's "affected" half
   runId?: string | undefined // the whole id `vx last` takes (info row)
+  executorRows?: () => readonly (readonly [string, ui.Inline])[] // executors' footer rows
+  whereRunning?: (taskId: string) => string | undefined // a running task's executor
   concurrency?: number // worker-pool size (info row)
   remoteCacheEnabled: boolean
   cacheScope?: string | undefined // the run's scope (info row: `scope vznjs/vx:feat-x`)
@@ -122,7 +124,10 @@ a bare `vx` and the `projects` / `info` rows are skipped.
 Labels pad to 8, bars start at column 12, the rule + bars span 50
 cells. `projects` (the projects in the run vs the workspace total) leads the meter stack;
 `tasks` and `cache` follow, the tasks legend carrying a dim `N total`.
-A blank line separates the meters from the `info` row (worker pool +
+An executor's own rows (`TaskExecutor.footer`, such as `@vzn/vx-dte`'s
+`agents`) come next, live and at the end, under a blank line; with them
+the `info` row names no worker pool. A blank line separates the meters
+from the `info` row (worker pool +
 cache mode, `admit held N tasks · Ns` when a policy held any — a
 sum, said as one — and `run <id>`, the run's whole id as
 `vx last <id>` takes it) and the `time` row: the wall time, the live

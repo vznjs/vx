@@ -90,8 +90,9 @@ Slot rules (the point of the design — the display derives from the
 - `stopping: true` (a stop): running rows read `aborting` in the warn
   tone with their timers and no expected time; empty and blocked rows
   are left out.
-- More running tasks than rows queue for a freed row and surface as
-  a `… +k more running` line under the rows.
+- A task running beyond the slots gets its own row after them until a
+  slot frees. A region taller than the terminal keeps its leading rows
+  (the running list first), so the summary below gives way first.
 - A worker row leads with the ticking elapsed time (no glyph), then
   `running`, the task's usual duration from history when known
   (`~5.2s`, dim, in the cache column; `expected`), and the id. Ids are identity-colored (`paintIdParts`):

@@ -383,20 +383,23 @@ describe('defaultLogger status line integration', () => {
     log.runEnd?.()
   })
 
-  it('broad region: overflow beyond displayed slots surfaces as "+k more" and queues for a freed slot', () => {
+  it('broad region: a task running beyond the slots has its own row, and takes a freed slot', () => {
     const s = tty()
     const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
     log.runStart?.({ total: 4, concurrency: 2 })
     const nodes = ['a#x', 'b#x', 'c#x'].map((id) => mkNode(id))
     for (const n of nodes) log.taskStart?.(n)
     let last = s.chunks[s.chunks.length - 1]!
-    expect(last).toContain('+1 more')
-    expect(last).not.toContain('c#x')
+    // rows[0] is the leading blank.
+    expect(
+      regionRows(last)
+        .slice(1, 4)
+        .map((r) => r.trim().split(/\s+/).at(-1)),
+    ).toEqual(['a#x', 'b#x', 'c#x'])
+    expect(last).not.toContain('more')
     log.taskComplete(nodes[0]!, mkOutcome(nodes[0]!, 'success'))
     last = s.chunks[s.chunks.length - 1]!
-    // rows[0] is the leading blank; the freed slot's task is the first row.
     expect(regionRows(last)[1]).toContain('c#x')
-    expect(last).not.toContain('more')
     log.runEnd?.()
   })
 
@@ -609,7 +612,6 @@ describe('formatStatusRegion', () => {
   const SUMMARY = ['', '─ vx ──', '  tasks   …']
   const base = {
     pinnedPersistent: [],
-    overflow: 0,
     nowMs: 10_000,
     summaryLines: SUMMARY,
   }
@@ -627,6 +629,13 @@ describe('formatStatusRegion', () => {
     expect(lines[1]).toContain('running')
     expect(lines[2]).toContain('idle')
     expect(lines.slice(3)).toEqual(SUMMARY)
+  })
+
+  it('a running row says where an executor runs it', () => {
+    const where = (id: string) => (id === 'a#x' ? 'small·2' : undefined)
+    const lines = formatStatusRegion({ ...base, slots: [slot('a#x'), slot('b#x')], where })
+    expect(lines[1]).toMatch(/a#x  on small·2$/)
+    expect(lines[2]).toMatch(/b#x$/)
   })
 
   it('idle rows hold their place so the slot zone height never changes', () => {
@@ -654,12 +663,6 @@ describe('formatStatusRegion', () => {
     expect(lines[4]).toBe('     2.00s running ~300ms   d#x')
     // No history for it: the column holds its width, empty.
     expect(lines[5]).toBe('     2.00s running          e#x')
-  })
-
-  it('overflow gets its own dim line between slots and summary', () => {
-    const lines = formatStatusRegion({ ...base, slots: [slot('a#x')], overflow: 3 })
-    expect(lines[2]).toBe('… +3 more running')
-    expect(lines.slice(3)).toEqual(SUMMARY)
   })
 
   it('long ids are shown in full (never truncated — name is the last column)', () => {
@@ -699,14 +702,12 @@ describe('formatStatusRegion', () => {
     const busy = formatStatusRegion({
       pinnedPersistent: [],
       slots: [{ id: 'a#build', startedMs: 0 }],
-      overflow: 0,
       nowMs: 1000,
       summaryLines: [],
     })
     const idle = formatStatusRegion({
       pinnedPersistent: [],
       slots: [null],
-      overflow: 0,
       nowMs: 1000,
       summaryLines: [],
     })
@@ -720,7 +721,6 @@ describe('formatStatusRegion', () => {
     const lines = formatStatusRegion({
       pinnedPersistent: [],
       slots: [{ id: 'a#build', startedMs: 5_000 }],
-      overflow: 0,
       nowMs: 1_000,
       summaryLines: [],
     })
@@ -729,7 +729,6 @@ describe('formatStatusRegion', () => {
     const ok = formatStatusRegion({
       pinnedPersistent: [],
       slots: [{ id: 'a#build', startedMs: 0 }],
-      overflow: 0,
       nowMs: 2_500,
       summaryLines: [],
     })

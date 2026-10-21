@@ -9,6 +9,7 @@ import {
   formatTaskBlock,
   formatTaskExecutedLine,
   flakyNote,
+  whereNote,
   formatTaskHitLine,
   formatTaskSkippedLine,
   type OutputChunk,
@@ -364,8 +365,8 @@ export function defaultLogger(
   // one row per worker slot so a task's name never moves while it
   // runs (the display derives from the stable worker set, not the
   // churning task set). Sized at runStart from concurrency, capped at
-  // 10 rows; excess running tasks queue for a freed slot and surface
-  // as `+k more` on the stats line. Focused flow keeps its lifecycle:
+  // 10 rows; excess running tasks queue for a freed slot, each shown
+  // in its own row after the slots. Focused flow keeps its lifecycle:
   // the region dies the moment a requested node starts streaming.
   let slots: (WorkerSlot | null)[] = []
   // Rows shown: the most workers busy at once so far. An idle row past it
@@ -549,13 +550,14 @@ export function defaultLogger(
       formatStatusRegion(
         {
           pinnedPersistent,
-          slots: slots.slice(0, shownSlots),
+          // Every running task has a row: one beyond the slots follows them (M, 2026-10-21).
+          slots: [...slots.slice(0, shownSlots), ...slotQueue],
           ...(held !== undefined ? { blocked: held } : {}),
-          overflow: slotQueue.length,
           ...(stopping ? { stopping } : {}),
           ...(shownSteps.length > 0 ? { steps: shownSteps } : {}),
           nowMs: Date.now(),
           summaryLines,
+          ...(runContext?.whereRunning !== undefined ? { where: runContext.whereRunning } : {}),
           ...(blocks !== undefined ? { blocks } : {}),
           ...(expected !== undefined ? { expected } : {}),
           ...(critical !== undefined ? { critical } : {}),
@@ -684,6 +686,7 @@ export function defaultLogger(
 
   const failureRow = (node: TaskNode, outcome: TaskOutcome): string =>
     formatFailureLine(node.id, outcome.durationMs, colors, cacheWordOf(outcome)) +
+    whereNote(outcome, colors) +
     flakyNote(outcome, colors)
 
   return {

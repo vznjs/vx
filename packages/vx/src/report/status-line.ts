@@ -318,6 +318,8 @@ export interface StatusRegionState {
   blocks?: ReadonlyMap<string, number>
   /** The running task at the head of the longest unfinished chain. */
   critical?: string
+  /** Where a running task runs, when not here (`TaskExecutor.running`); its row shows it. */
+  where?: (taskId: string) => string | undefined
   /** A running task's usual duration from history; its row shows it. */
   expected?: ReadonlyMap<string, number>
   /**
@@ -331,8 +333,6 @@ export interface StatusRegionState {
   slots: readonly (WorkerSlot | null)[]
   /** The blocked task an idle slot's row holds instead of `idle`, by the same index. */
   blocked?: readonly (BlockedTask | null)[]
-  /** Running tasks beyond the displayed slots. */
-  overflow: number
   /** The run was stopped: running rows say `aborting`, idle rows leave. */
   stopping?: boolean
   /**
@@ -483,6 +483,8 @@ export function formatStatusRegion(
     }
     const waiting = s.blocks?.get(slot.id) ?? 0
     const notes: string[] = []
+    const at = s.where?.(slot.id)
+    if (at !== undefined) notes.push(dim(`on ${at}`))
     if (s.critical === slot.id && busy > 1) notes.push(paint(WARN, 'critical path', colors))
     if (waiting > 0) notes.push(dim(`blocks ${waiting}`))
     const usual = s.expected?.get(slot.id)
@@ -498,9 +500,6 @@ export function formatStatusRegion(
         colors,
       ) + (notes.length > 0 ? `  ${notes.join(dim(' \u00b7 '))}` : ''),
     )
-  }
-  if (s.overflow > 0) {
-    lines.push(dim(`\u2026 +${s.overflow} more running`))
   }
   for (const step of s.steps ?? []) {
     lines.push(
