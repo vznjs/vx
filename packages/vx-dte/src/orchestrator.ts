@@ -57,6 +57,10 @@ interface Job {
   faults?: string[]
   /** Its agent's lease on it ends then unless the agent says it still holds it. */
   leaseUntil?: number
+  /** Sent beyond what its agent had free: it waits in that agent's queue. */
+  prefetched?: boolean
+  /** Asked back from its agent's queue for one that is free. */
+  withdrawing?: boolean
 }
 
 interface Agent {
@@ -252,6 +256,9 @@ export class Orchestrator {
         continue
       }
       job.agent = a.id
+      job.prefetched =
+        a.busy.size > 0 &&
+        (a.usedCores + job.need.cores > a.cores || a.usedMemory + job.need.memory > a.memory)
       a.busy.set(job.req.taskId, job)
       job.held = {
         cores: Math.min(job.need.cores, a.cores),
@@ -265,6 +272,28 @@ export class Orchestrator {
     }
     this.queue.push(...left)
     for (const [a, jobs] of batches) this.send(a, jobs)
+    if (left.length === 0) this.steal()
+  }
+
+  /**
+   * An agent with nothing to do takes back a task waiting in a busy one's
+   * queue as its prefetch: that task may be the one the rest of the run
+   * waits on (M, 2026-10-21: check.bun, ahead of 8 shards, sat behind a
+   * long suite while agents that joined later stood idle). One per idle
+   * agent, first sent first; the agent gives it back only if not begun.
+   */
+  private steal(): void {
+    const online = [...this.agents.values()].filter((a) => !a.faulty)
+    let idle = online.filter((a) => a.busy.size === 0).length
+    for (const a of online) {
+      for (const j of a.busy.values()) {
+        if (idle === 0) return
+        if (j.prefetched !== true || j.withdrawing === true || a.started.has(j.req.taskId)) continue
+        j.withdrawing = true
+        idle--
+        this.post(a, { type: 'withdraw', task: j.req.taskId })
+      }
+    }
   }
 
   /**
@@ -433,6 +462,8 @@ export class Orchestrator {
     delete job.agent
     delete job.held
     delete job.leaseUntil
+    delete job.prefetched
+    delete job.withdrawing
     const begun = a.started.delete(job.req.taskId)
     if (job.req.signal?.aborted === true) return undefined
     if (begun) {
@@ -617,6 +648,11 @@ export class Orchestrator {
             if (j?.leaseUntil !== undefined) this.lease(j)
           }
           for (const t of m.running) if (a.busy.has(t)) a.started.add(t)
+        } else if (m.type === 'withdrawn') {
+          const j = a.busy.get(m.task)
+          if (j === undefined || a.started.has(m.task)) continue
+          if (this.retry(a, j, 'withdrawn') !== undefined) this.queue.unshift(j)
+          this.pumpSoon()
         } else if (m.type === 'fault') {
           const j = a.busy.get(m.task)
           if (j === undefined) continue

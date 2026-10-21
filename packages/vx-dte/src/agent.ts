@@ -259,6 +259,12 @@ export async function runAgent(opts: {
               ['machine', `${cores} cores · ${gb(memory)}`],
             ]),
           )
+        } else if (m.type === 'withdraw') {
+          const at = queue.findIndex((q) => q.task === m.task)
+          if (at >= 0) {
+            queue.splice(at, 1)
+            await me.send('orchestrator', { type: 'withdrawn', task: m.task })
+          }
         } else if (m.type === 'cancel') {
           const at = queue.findIndex((q) => q.task === m.task)
           if (at < 0) running.get(m.task)?.abort()

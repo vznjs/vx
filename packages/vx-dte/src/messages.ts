@@ -65,6 +65,8 @@ export type ToAgent =
       sandboxes?: SandboxConfig[]
     }
   | { type: 'cancel'; task: string }
+  /** Give back a task still in its queue (`withdrawn`); one it began it keeps. */
+  | { type: 'withdraw'; task: string }
   /**
    * It was taken into the run, under the name the run's output gives it,
    * and reads the cache as the run does: its refs, and the access the
@@ -84,6 +86,8 @@ export type ToOrchestrator =
   | { type: 'held'; running: string[]; queued: string[] }
   /** It could not run a task it began, not a non-zero exit: a full disk, a failed unpack. */
   | { type: 'fault'; task: string; reason: string }
+  /** It gave back a task from its queue, unbegun: another agent runs it. */
+  | { type: 'withdrawn'; task: string }
   /** It ran the task and saved it under `key`; its output is in that entry. */
   | { type: 'end'; task: string; key: string; result: WiredResult }
 

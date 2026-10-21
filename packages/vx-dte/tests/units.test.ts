@@ -184,8 +184,19 @@ async function harness(
         seen.push(...(await me.poll()).map((m) => (m.body as { type: string }).type))
       return seen
     }
+    /** The next messages that are not batches, by type. */
+    const bodies = async (): Promise<{ type: string; task?: string }[]> => {
+      for (let i = 0; i < 20; i++) {
+        const got = (await me.poll()).map((m) => m.body as { type: string; tasks?: RunOrder[] })
+        orders.push(...got.flatMap((m) => (m.type === 'batch' ? m.tasks! : [])))
+        const rest = got.filter((m) => !['batch', 'welcome', 'cache'].includes(m.type))
+        if (rest.length > 0) return rest
+      }
+      return []
+    }
     return {
       batches,
+      bodies,
       finish,
       begin,
       say,
@@ -262,6 +273,28 @@ it('fills an agent’s cores and a prefetch in one batch', async () => {
     expect(await a.batches()).toEqual([['t1', 't2', 't3']])
     await a.finish('t1')
     expect(await a.batches()).toEqual([['t4']])
+  } finally {
+    await h.stop()
+  }
+})
+
+// M, 2026-10-21: check.bun, ahead of 8 shards, sat in a busy agent's
+// queue as its prefetch while agents that joined later stood idle.
+it('a task waiting in a busy agent’s queue moves to an agent that is free', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const a = await h.agent(1)
+    await Bun.sleep(50)
+    for (const id of ['t1', 't2']) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2']])
+    await a.begin('t1')
+    const b = await h.agent(1)
+    expect(await a.bodies()).toEqual([{ type: 'withdraw', task: 't2' }])
+    await a.say({ type: 'withdrawn', task: 't2' })
+    expect(await b.batches()).toEqual([['t2']])
+    // Begun already, a task stays where it is.
+    await a.finish('t1')
+    expect(h.o.where('t2')).toBeNull()
   } finally {
     await h.stop()
   }

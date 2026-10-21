@@ -255,7 +255,9 @@ the ones it never played when it ends.
   (cores used, peak memory; one core for a task with no history), plus a
   quarter of its cores as a prefetch, so a successor is there when a task
   ends. The agent starts only what fits; a task bigger than any agent runs
-  alone on an idle one.
+  alone on an idle one. A prefetched task an agent has not begun moves to
+  an agent with nothing to do, so a short gate is never stuck behind a
+  long task while another machine idles.
 - A task goes to the agent that holds most of its dependencies' outputs,
   so a chain stays on one machine.
 - A sandboxed task runs on an agent inside the agent's own sandbox, with
