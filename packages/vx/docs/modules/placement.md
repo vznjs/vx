@@ -42,6 +42,13 @@ export function poolOfPlacement(
   placements: Placements,
 ): (id: string) => { name: string; capacity: number } | undefined
 export const UNPLACED_EXECUTOR: TaskExecutor
+
+// core's local executor for a plugin that runs tasks itself; arms the sandbox outside a run
+export interface LocalFloor {
+  execute(req: ExecuteRequest): Promise<ExecuteResult>
+  close(): Promise<void>
+}
+export function localFloor(sandboxes?: readonly SandboxConfig[]): LocalFloor
 ```
 
 ## Rules
