@@ -1,0 +1,36 @@
+== class TokenError (src/oidc.ts)
+export class TokenError extends Error {
+  constructor(
+    message: string,
+    readonly status: 401 | 403,
+  )
+}
+== function createRelay (src/relay.ts)
+export function createRelay(opts: RelayOptions = {}): Relay
+== function createVerifier (src/oidc.ts)
+export function createVerifier(opts: OidcOptions): (token: string) => Promise<VerifiedToken>
+== function runClaimsOf (src/oidc.ts)
+export function runClaimsOf(iss: string): readonly string[]
+== type OidcOptions (src/oidc.ts)
+export interface OidcOptions {
+  issuers: readonly string[]
+  audience: string
+  runClaims?: Readonly<Record<string, readonly string[]>>
+  fetchJson?: (url: string) => Promise<unknown>
+  now?: () => number
+}
+== type Relay (src/relay.ts)
+export interface Relay {
+  fetch(req: Request): Promise<Response>
+  close(): void
+}
+== type RelayOptions (src/relay.ts)
+export interface RelayOptions {
+  verify?: ((token: string) => Promise<VerifiedToken>) | undefined
+  heartbeatMs?: number
+}
+== type VerifiedToken (src/oidc.ts)
+export interface VerifiedToken {
+  iss: string
+  run: readonly string[]
+}
