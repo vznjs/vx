@@ -18,13 +18,13 @@ It is not on npm yet: it is being built in this repo. Today it runs on
 
 ## Try it
 
-In this repo it is a workspace package. Elsewhere, until it is on npm,
-import `/path/to/vx/packages/vx-dte/src/index.ts` from a checkout instead.
+Until it is on npm, import it from a checkout of this repo. Inside this
+repo it is a workspace package, so the import there is `'@vzn/vx-dte'`.
 
 ```ts
 // .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
-import { dte, local } from '@vzn/vx-dte'
+import { dte, local } from '/path/to/vx/packages/vx-dte/src/index.ts'
 
 export default defineWorkspace({
   plugins: [
