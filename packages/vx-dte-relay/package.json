@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "license": "MIT",
   "private": true,
-  "description": "The reference relay for @vzn/vx-dte: carries messages between a vx run's orchestrator and its CI agents, admitting only CI OIDC tokens of the same pipeline.",
+  "description": "The reference relay for @vzn/vx-dte: carries messages between a vx run's orchestrator and its CI agents, admitting only CI OIDC tokens of the same repository.",
   "keywords": [
     "vx",
     "distributed",

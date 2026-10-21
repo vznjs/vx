@@ -37,6 +37,7 @@ export interface DteAdapter {
   close?(): void | Promise<void>
   render?(plan: DtePlan): Readonly<Record<string, string>>
   live?(): boolean
+  readonly keyless?: boolean
   runId?(): string | undefined
 }
 == type DteOptions (src/plugin.ts)

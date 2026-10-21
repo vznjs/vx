@@ -21,9 +21,12 @@ run, and the run's secret, `VX_DTE_SECRET`, signs it (HMAC). Every
 message after that is AES-256-GCM under the key the pair agrees on. The
 orchestrator admits only an agent whose key the secret signed. A message
 the relay changes loses its agent; one it replays is dropped. The secret
-only signs, so a leaked one opens no past run. An adapter's agents get a
-secret made for the run; with no adapter, set the same `VX_DTE_SECRET` on
-the run and each agent. Agent `join` info (cores, memory, tree) is signed,
+only signs, so a leaked one opens no past run. `VX_DTE_SECRET`, or the one `vx dte plan` wrote, wins. On GitHub
+Actions with no secret, each side signs its key by an OIDC token whose
+audience is the key's digest, and checks the other's as a token of this
+repository (`id-token: write`): no secret is stored anywhere. Otherwise an
+adapter's agents get a secret made for the run; with no adapter, set the
+same `VX_DTE_SECRET` on the run and each agent. Agent `join` info (cores, memory, tree) is signed,
 not encrypted.
 
 It is not on npm yet: it is being built in this repo. Today it runs on

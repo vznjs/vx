@@ -7,6 +7,7 @@
 import {
   createCipheriv,
   createDecipheriv,
+  createHash,
   createHmac,
   createPublicKey,
   diffieHellman,
@@ -32,8 +33,81 @@ function keys(): Keys {
   return { pub: der.subarray(SPKI_PREFIX.length).toString('base64'), priv: privateKey }
 }
 
-function mac(secret: string, ...parts: string[]): string {
-  return createHmac('sha256', secret).update(parts.join('\0')).digest('base64')
+/** What signs this side's key and checks the other side's: the run's secret, or each side's CI identity. */
+export interface Proof {
+  sign(parts: readonly string[]): Promise<string>
+  check(proof: string, parts: readonly string[]): Promise<boolean>
+  /** What a side whose key fails the check lacks. */
+  readonly mismatch: string
+}
+
+/** The run's shared secret, by HMAC-SHA256. */
+export function secretProof(secret: string): Proof {
+  const mac = (parts: readonly string[]): string =>
+    createHmac('sha256', secret).update(parts.join('\0')).digest('base64')
+  return {
+    sign: async (parts) => mac(parts),
+    check: async (proof, parts) => same(proof, mac(parts)),
+    mismatch: 'set the same VX_DTE_SECRET',
+  }
+}
+
+const GITHUB = 'https://token.actions.githubusercontent.com'
+
+/**
+ * Keyless on GitHub Actions: a side signs by an OIDC token whose audience
+ * is the digest of what it signs, and checks one as GitHub's and of this
+ * repository (`GITHUB_REPOSITORY_ID`). No secret is stored anywhere.
+ */
+export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proof {
+  const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: bearer } = process.env
+  const repo = process.env['GITHUB_REPOSITORY_ID']
+  if (!url || !bearer || !repo)
+    throw new Error('not a GitHub Actions job with id-token: write (ACTIONS_ID_TOKEN_REQUEST_URL)')
+  const aud = (parts: readonly string[]): string =>
+    `vx-dte:${createHash('sha256').update(parts.join('\0')).digest('base64url')}`
+  // GitHub's keys, read once for every check.
+  const seen = new Map<string, Promise<unknown>>()
+  const read =
+    fetchJson ??
+    (async (u: string): Promise<unknown> => {
+      const res = await fetch(u, { signal: AbortSignal.timeout(10_000) })
+      if (!res.ok) throw new Error(`${u}: ${res.status}`)
+      return res.json()
+    })
+  const once = (u: string): Promise<unknown> => {
+    let p = seen.get(u)
+    if (p === undefined) {
+      p = read(u)
+      p.catch(() => seen.delete(u))
+      seen.set(u, p)
+    }
+    return p
+  }
+  return {
+    async sign(parts) {
+      const res = await fetch(`${url}&audience=${encodeURIComponent(aud(parts))}`, {
+        headers: { authorization: `bearer ${bearer}` },
+        signal: AbortSignal.timeout(10_000),
+      })
+      if (!res.ok) throw new Error(`GitHub's OIDC token: ${res.status}`)
+      return ((await res.json()) as { value: string }).value
+    },
+    async check(token, parts) {
+      const { createVerifier } = await import('@vzn/vx-dte-relay')
+      const verify = createVerifier({
+        issuers: [GITHUB],
+        audience: aud(parts),
+        runClaims: { [GITHUB]: ['repository_id'] },
+        fetchJson: once,
+      })
+      return verify(token).then(
+        (t) => t.run[0] === repo,
+        () => false,
+      )
+    },
+    mismatch: 'run it in a job of this repository with id-token: write',
+  }
 }
 
 function same(a: string, b: string): boolean {
@@ -122,7 +196,7 @@ export class SealError extends Error {}
  * secret signed is answered with this side's key and passed on without
  * `pub` and `mac`; one it did not sign is refused here and never seen.
  */
-export function sealOrchestrator(me: Participant, run: string, secret: string): Participant {
+export function sealOrchestrator(me: Participant, run: string, proof: Proof): Participant {
   const mine = keys()
   const sessions = new Map<string, Session>()
   return {
@@ -145,7 +219,7 @@ export function sealOrchestrator(me: Participant, run: string, secret: string): 
             if (
               typeof pub === 'string' &&
               typeof sig === 'string' &&
-              same(sig, mac(secret, 'join', run, pub, canonical(info)))
+              (await proof.check(sig, ['join', run, pub, canonical(info)]))
             ) {
               try {
                 s = new Session(mine, pub, run, mine.pub, pub, 'o')
@@ -155,7 +229,7 @@ export function sealOrchestrator(me: Participant, run: string, secret: string): 
               await me
                 .send(id, {
                   type: 'refused',
-                  reason: 'its key is not the run’s: set the same VX_DTE_SECRET',
+                  reason: `its key is not the run’s: ${proof.mismatch}`,
                 })
                 .catch(() => undefined)
               continue
@@ -165,7 +239,7 @@ export function sealOrchestrator(me: Participant, run: string, secret: string): 
               .send(id, {
                 type: 'hello',
                 pub: mine.pub,
-                mac: mac(secret, 'hello', run, mine.pub, pub as string),
+                mac: await proof.sign(['hello', run, mine.pub, pub as string]),
               })
               .catch(() => undefined)
             out.push({ from: 'relay', body: { ...b, info } })
@@ -201,14 +275,14 @@ export function sealOrchestrator(me: Participant, run: string, secret: string): 
 export async function sealAgent(
   joinAs: (info: Record<string, unknown>) => Promise<Participant>,
   run: string,
-  secret: string,
+  proof: Proof,
   info: Record<string, unknown>,
 ): Promise<Participant> {
   const mine = keys()
   const me = await joinAs({
     ...info,
     pub: mine.pub,
-    mac: mac(secret, 'join', run, mine.pub, canonical(info)),
+    mac: await proof.sign(['join', run, mine.pub, canonical(info)]),
   })
   let session: Session | undefined
   return {
@@ -231,7 +305,7 @@ export async function sealAgent(
             b.type === 'hello' &&
             typeof b.pub === 'string' &&
             typeof b.mac === 'string' &&
-            same(b.mac, mac(secret, 'hello', run, b.pub, mine.pub))
+            (await proof.check(b.mac, ['hello', run, b.pub, mine.pub]))
           ) {
             session = new Session(mine, b.pub, run, b.pub, mine.pub, 'a')
             continue
@@ -240,7 +314,7 @@ export async function sealAgent(
             out.push(m)
             continue
           }
-          throw new SealError('the orchestrator’s key is not the run’s: set the same VX_DTE_SECRET')
+          throw new SealError(`the orchestrator’s key is not the run’s: ${proof.mismatch}`)
         }
         const body = session.open(m.body)
         if (body === REPLAY) continue

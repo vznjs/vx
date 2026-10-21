@@ -1,5 +1,5 @@
 // CI OIDC tokens: RS256 JWTs a relay checks against each trusted issuer's
-// published keys. The run claims bind every participant to the pipeline
+// published keys. The run claims bind every participant to the repository
 // that started the run (PROTOCOL.md § Tokens).
 
 export interface OidcOptions {
@@ -32,9 +32,13 @@ export class TokenError extends Error {
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
 
-/** The claims that name one pipeline: GitHub's run, else GitLab's. */
+/**
+ * The claims a run binds: its repository, GitHub's or GitLab's. Not the
+ * pipeline: agents run in another one (a GitLab child pipeline, a GitHub
+ * workflow the run dispatches), and the run's own key admits them.
+ */
 export function runClaimsOf(iss: string): readonly string[] {
-  return iss === GITHUB ? ['repository_id', 'run_id'] : ['project_id', 'pipeline_id']
+  return iss === GITHUB ? ['repository_id'] : ['project_id']
 }
 
 /** Clock skew a token's `exp` / `nbf` may be off by. */

@@ -13,6 +13,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Need, Orchestrator } from './orchestrator.js'
+import type { Proof } from './seal.js'
 import type { Size } from './width.js'
 
 /** One kind of agent the adapter can start. */
@@ -74,6 +75,8 @@ export interface DteAdapter {
   render?(plan: DtePlan): Readonly<Record<string, string>>
   /** Whether a plan's agents beyond the first wait for the run to start them. */
   live?(): boolean
+  /** Its agents prove themselves by their CI identity (GitHub OIDC): the run makes no secret for them. */
+  readonly keyless?: boolean
   /** The run id `vx dte plan` names when `VX_DTE_RUN` is unset. */
   runId?(): string | undefined
 }
@@ -198,10 +201,15 @@ export function dte(options: DteOptions) {
             throw new UserError('vx dte agent needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })')
           }
           const secret = givenSecret(ctx.workspaceRoot)
-          if (secret === undefined) {
-            throw new UserError(`vx dte agent needs VX_DTE_SECRET or ${SECRET_FILE}, the run’s`)
+          if (secret === undefined && !onGitHub()) {
+            throw new UserError(
+              `vx dte agent needs VX_DTE_SECRET or ${SECRET_FILE}, the run’s, or a GitHub Actions job with id-token: write`,
+            )
           }
-          const { runAgent } = await import('./agent.js')
+          const [{ runAgent }, seal] = await Promise.all([
+            import('./agent.js'),
+            import('./seal.js'),
+          ])
           const id = process.env['VX_DTE_AGENT']
           return runAgent({
             relay,
@@ -209,7 +217,7 @@ export function dte(options: DteOptions) {
             ...(id === undefined || id === '' ? {} : { id }),
             root: ctx.workspaceRoot,
             token: await token(),
-            secret,
+            proof: secret === undefined ? seal.githubProof() : seal.secretProof(secret),
             artifacts: ctx.artifacts,
           })
         },
@@ -261,18 +269,25 @@ export function dte(options: DteOptions) {
           import('./tree.js'),
           import('./seal.js'),
         ])
-      // The agents an adapter starts get one made for this run; agents
-      // that join on their own must be given it.
+      // VX_DTE_SECRET or the plan's wins. On GitHub, agents that join on
+      // their own or an adapter's keyless ones prove themselves by OIDC;
+      // the agents another adapter starts get a secret made for this run.
       let secret = givenSecret(ctx.workspaceRoot)
+      let proof: Proof | undefined
       if (secret === undefined) {
         if (adapter?.render !== undefined)
           throw new UserError(
             `dte(): no ${SECRET_FILE}: run vx dte plan first, in a job this one needs`,
           )
-        if (adapter === undefined)
-          throw new UserError('dte(): with no adapter, set VX_DTE_SECRET here and on each agent')
-        secret = seal.runSecret()
+        if ((adapter === undefined || adapter.keyless === true) && onGitHub())
+          proof = seal.githubProof()
+        else if (adapter === undefined)
+          throw new UserError(
+            'dte(): with no adapter, set VX_DTE_SECRET here and on each agent, or run on GitHub Actions with id-token: write',
+          )
+        else secret = seal.runSecret()
       }
+      proof ??= seal.secretProof(secret!)
       const { tree } = await snapshot(ctx.workspaceRoot)
       if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
       const localSlots = options.local ?? 0
@@ -281,7 +296,7 @@ export function dte(options: DteOptions) {
         me: seal.sealOrchestrator(
           await join(relay, run, 'orchestrator', null, await token()),
           run,
-          secret,
+          proof,
         ),
         root: ctx.workspaceRoot,
         tree,
@@ -353,7 +368,7 @@ export function dte(options: DteOptions) {
                   VX_DTE_RUN: run,
                   VX_DTE_AGENT: id,
                   VX_DTE_RELAY: relay,
-                  VX_DTE_SECRET: secret,
+                  ...(secret === undefined ? {} : { VX_DTE_SECRET: secret }),
                 },
                 exited: (reason) => o.failed(id, reason),
               }),
@@ -385,6 +400,11 @@ export function dte(options: DteOptions) {
 
 /** Where `vx dte plan` keeps the run's secret, workspace-relative: a CI artifact no one downloads. */
 const SECRET_FILE = '.vx/dte/secret'
+
+/** A GitHub Actions job that may ask for OIDC tokens. */
+function onGitHub(): boolean {
+  return Boolean(process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] && process.env['GITHUB_REPOSITORY_ID'])
+}
 
 /** `VX_DTE_SECRET`, else the one `vx dte plan` wrote. */
 function givenSecret(root: string): string | undefined {

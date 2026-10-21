@@ -19,7 +19,7 @@ import {
 } from '@vzn/vx'
 import type { AgentInfo, RunOrder, ToAgent, WiredResult } from './messages.js'
 import { outputFiles } from './outputs.js'
-import { sealAgent } from './seal.js'
+import { sealAgent, type Proof } from './seal.js'
 import { join, RelayError } from './wire.js'
 
 /** Names whose value is this machine's, never the orchestrator's. */
@@ -43,8 +43,8 @@ export async function runAgent(opts: {
   id?: string
   root: string
   token: string | undefined
-  /** `VX_DTE_SECRET`: what signs its key, as the orchestrator's. */
-  secret: string
+  /** What signs its key and checks the orchestrator's. */
+  proof: Proof
   artifacts: TaskArtifacts
 }): Promise<number> {
   const tree = Bun.spawnSync(['git', 'rev-parse', 'HEAD^{tree}'], { cwd: opts.root })
@@ -62,7 +62,7 @@ export async function runAgent(opts: {
   const me = await sealAgent(
     (signed) => join(opts.relay, opts.run, 'agent', signed, opts.token),
     opts.run,
-    opts.secret,
+    opts.proof,
     { ...info },
   )
   const running = new Map<string, AbortController>()
