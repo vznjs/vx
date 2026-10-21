@@ -19,7 +19,10 @@ export interface TreeUsage {
 
 interface Proc {
   ppid: number
+  /** Its own CPU and, on Linux, what its reaped children used (`cutime`, `cstime`). */
   cpuMs: number
+  /** The executable's name; Linux only. */
+  comm?: string
   /** Resident KiB when the table carries it; Linux reads it per tree member. */
   rssKiB?: number
 }
@@ -32,7 +35,11 @@ interface Proc {
 const TICK_MS = 10
 
 /** Each root's tree usage; a root no longer alive has no entry. */
-export async function sampleTrees(roots: readonly number[]): Promise<Map<number, TreeUsage>> {
+export async function sampleTrees(
+  roots: readonly number[],
+  /** Members not counted (their children still are): the sandbox's own tracer. */
+  skip?: ReadonlySet<string>,
+): Promise<Map<number, TreeUsage>> {
   const out = new Map<number, TreeUsage>()
   if (roots.length === 0) return out
   const table = process.platform === 'linux' ? await linuxTable() : await psTable()
@@ -49,7 +56,8 @@ export async function sampleTrees(roots: readonly number[]): Promise<Map<number,
     const stack = [root]
     while (stack.length > 0) {
       const pid = stack.pop()!
-      tree.push(pid)
+      const comm = table.get(pid)!.comm
+      if (skip === undefined || comm === undefined || !skip.has(comm)) tree.push(pid)
       for (const c of children.get(pid) ?? []) stack.push(c)
     }
     let cpuMs = 0
@@ -86,12 +94,16 @@ async function linuxTable(): Promise<Map<number, Proc> | undefined> {
       }
       // `<pid> (<comm>) <state> <ppid> …` — comm may hold spaces and parens,
       // so the fields start after the LAST ')': state is [0], ppid [1],
-      // utime [11], stime [12].
-      const f = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
+      // utime [11], stime [12], cutime [13], cstime [14]. The reaped
+      // children's share keeps a tree's sum from dropping when a member
+      // exits: what a task's short-lived processes used stays counted.
+      const close = stat.lastIndexOf(')')
+      const f = stat.slice(close + 2).split(' ')
       if (f[0] === 'Z' || f[0] === 'X') return
       table.set(Number(entry), {
         ppid: Number(f[1]),
-        cpuMs: (Number(f[11]) + Number(f[12])) * TICK_MS,
+        cpuMs: (Number(f[11]) + Number(f[12]) + Number(f[13]) + Number(f[14])) * TICK_MS,
+        comm: stat.slice(stat.indexOf('(') + 1, close),
       })
     }),
   )
@@ -152,4 +164,54 @@ export function psTimeMs(s: string): number | undefined {
   let seconds = 0
   for (const n of parts) seconds = seconds * 60 + n
   return Math.round((days * 86_400 + seconds) * 1000)
+}
+
+/** How often a watched tree is looked at; one timer serves every tree. */
+const WATCH_EVERY_MS = 250
+
+const watched = new Map<number, TreeUsage & { looks: number }>()
+let watchTimer: ReturnType<typeof setInterval> | undefined
+let looking = false
+const SKIP = new Set(['strace'])
+
+async function look(): Promise<void> {
+  if (looking) return
+  looking = true
+  try {
+    const usage = await sampleTrees([...watched.keys()], SKIP)
+    for (const [pid, u] of usage) {
+      const w = watched.get(pid)
+      if (w === undefined) continue
+      w.cpuMs = Math.max(w.cpuMs, u.cpuMs)
+      w.rssBytes = Math.max(w.rssBytes, u.rssBytes)
+      w.looks++
+    }
+  } catch {
+    // A failed look is a missing point.
+  } finally {
+    looking = false
+  }
+}
+
+/**
+ * Watch a running tree until `stop`, which answers the most CPU and the
+ * peak resident memory any look saw; none when no look landed (a task
+ * shorter than one interval). The sandbox's answer on Linux, where the
+ * wait never sees what bwrap's pid namespace used.
+ */
+export function watchTree(pid: number): { stop(): TreeUsage | undefined } {
+  const w = { cpuMs: 0, rssBytes: 0, looks: 0 }
+  watched.set(pid, w)
+  watchTimer ??= setInterval(() => void look(), WATCH_EVERY_MS)
+  watchTimer.unref?.()
+  return {
+    stop() {
+      if (watched.get(pid) === w) watched.delete(pid)
+      if (watched.size === 0 && watchTimer !== undefined) {
+        clearInterval(watchTimer)
+        watchTimer = undefined
+      }
+      return w.looks === 0 ? undefined : { cpuMs: w.cpuMs, rssBytes: w.rssBytes }
+    },
+  }
 }
