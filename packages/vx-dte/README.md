@@ -70,7 +70,8 @@ a detached shell removes them and prunes git's records.
 
 `docker()` starts each agent as a container held to its size: `--cpus`
 and `--memory` come from `cpu` and `memory`. The container clones this
-checkout's `HEAD` (mounted read-only) into its own filesystem, runs
+checkout (mounted read-only) into its own filesystem at its tracked
+files as they are, uncommitted changes too, runs
 `prepare`, then the workspace's own `node_modules/.bin/vx dte agent`, so
 the image needs Bun and git, and `prepare` installs vx:
 
@@ -273,8 +274,7 @@ the ones it never played when it ends.
 - A failed or uncached task is saved under a key of the run and the task,
   so no later lookup ever hits it.
 - An agent whose tracked files differ from the orchestrator's (another
-  tree) is refused. `docker()` clones `HEAD`, so its agents need a run
-  with no uncommitted changes.
+  tree) is refused.
 - An agent that stops answering, stops saying it holds a task, or cannot
   run one (a full disk) gets no more work, and its tasks run again on
   another. A task two such agents had begun fails, naming both; one an

@@ -1,5 +1,6 @@
 // `docker()`: each agent a container on this machine, held to its size's
-// cores and memory, in a fresh clone of `HEAD` made inside it. The relay
+// cores and memory, in a fresh clone made inside it of the tracked files
+// as the run sees them. The relay
 // is the run's own on loopback; a container reaches it through the host's
 // network on Linux and through `host.docker.internal` elsewhere.
 
@@ -26,6 +27,7 @@ export function docker(options: DockerOptions): DteAdapter {
   let relay: { url: string; stop(): void } | undefined
   const agents = new Map<string, ReturnType<typeof Bun.spawn>>()
   const linux = process.platform === 'linux'
+  let tree: Promise<{ commit: string }> | undefined
 
   return {
     async relay() {
@@ -33,20 +35,24 @@ export function docker(options: DockerOptions): DteAdapter {
       return relay.url
     },
 
-    spawn(a) {
+    async spawn(a) {
       const git = (...args: string[]): string => {
         const r = Bun.spawnSync(['git', ...args], { cwd: a.workspaceRoot, stderr: 'pipe' })
         if (r.exitCode !== 0) throw new Error(`git ${args[0]}: ${r.stderr.toString().trim()}`)
         return r.stdout.toString().trim()
       }
       const top = git('rev-parse', '--show-toplevel')
-      const sha = git('rev-parse', 'HEAD')
+      // The tracked files as the run sees them, uncommitted changes too: a
+      // clone holds only refs, so the commit is fetched by its id.
+      tree ??= import('./tree.js').then((m) => m.snapshot(a.workspaceRoot))
+      const sha = git('rev-parse', (await tree).commit)
       // git names the real path: through a link (macOS's /tmp) the relative one climbed out.
       const rel = path.relative(top, realpathSync(a.workspaceRoot)) || '.'
       const script = [
         'set -e',
         'git clone -q /src /work',
         'cd /work',
+        `git fetch -q --upload-pack='git -c uploadpack.allowAnySHA1InWant=true upload-pack' /src ${sha}`,
         `git checkout -q --detach ${sha}`,
         `cd ${quote(rel)}`,
         ...(options.prepare === undefined ? [] : [options.prepare]),

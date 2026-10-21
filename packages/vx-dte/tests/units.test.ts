@@ -648,7 +648,7 @@ console.log(JSON.stringify(seen.sort()))
   ])
 })
 
-it('docker() starts each agent as a container of its size, on a fresh clone of HEAD', async () => {
+it('docker() starts each agent as a container of its size, on a fresh clone', async () => {
   const ws = await tmp()
   const git = (...a: string[]) =>
     Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: ws })
@@ -701,6 +701,7 @@ it('docker() starts each agent as a container of its size, on a fresh clone of H
         'set -e',
         'git clone -q /src /work',
         'cd /work',
+        `git fetch -q --upload-pack='git -c uploadpack.allowAnySHA1InWant=true upload-pack' /src ${sha}`,
         `git checkout -q --detach ${sha}`,
         "cd 'sub'",
         'bun install',
