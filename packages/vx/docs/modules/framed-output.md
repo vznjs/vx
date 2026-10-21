@@ -36,10 +36,10 @@ export function formatTaskBlock(
 ): string
 
 // ` ⇢ <time> success local <id>` — quiet cache hit
-export function formatTaskHitLine(node, outcome, colors?): string
+export function formatTaskHitLine(node, outcome, colors?, onPath?): string
 
 // ` ⏺ <time> success miss <id>` — broad-mode executed task
-export function formatTaskExecutedLine(node, outcome, colors?): string
+export function formatTaskExecutedLine(node, outcome, colors?, onPath?): string
 // ` flaky - failed N× before · N attempts`, dim — on a flaky task's row and
 // frame footer; '' when the run did not prove it flaky (`outcome.flaky`)
 export function flakyNote(outcome, colors?): string
