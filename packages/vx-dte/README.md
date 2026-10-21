@@ -108,6 +108,71 @@ as each task starts and ends:
 ✓ b#build  308ms
 ```
 
+## On GitHub
+
+The run is your own job's `vx run`. When it needs agents it dispatches
+`.github/workflows/vx-agent.yml` once per size, with the agents of that
+size as a matrix. No secret: each side proves its key with the job's OIDC
+token, and the relay's token is an OIDC token for the relay's URL.
+
+```ts
+// .vx/workspace.ts
+export default defineWorkspace({
+  plugins: [
+    dte({
+      relay: 'https://relay.example.com',
+      agents: { small: { max: 8, cpu: 4, memory: '16GB' } },
+      adapter: github(),
+    }),
+  ],
+})
+```
+
+```yaml
+# .github/workflows/ci.yml, the run's job
+permissions: { id-token: write, contents: read, actions: write }
+steps:
+  - uses: actions/checkout@v4
+  - run: bun install --frozen-lockfile
+  - run: bunx @vzn/vx run build test --all
+    env:
+      {
+        VX_DTE_RUN: '${{ github.run_id }}-${{ github.run_attempt }}',
+        GITHUB_TOKEN: '${{ github.token }}',
+      }
+```
+
+```yaml
+# .github/workflows/vx-agent.yml
+name: vx-agent
+on:
+  workflow_dispatch:
+    inputs:
+      {
+        run: { required: true },
+        relay: { required: true },
+        sha: { required: true },
+        size: { required: true },
+        agents: { required: true },
+      }
+permissions: { id-token: write, contents: read }
+jobs:
+  agent:
+    runs-on: ${{ fromJSON('{"small":"ubuntu-latest"}')[inputs.size] }}
+    strategy: { matrix: { agent: '${{ fromJSON(inputs.agents) }}' } }
+    env:
+      {
+        VX_DTE_RUN: '${{ inputs.run }}',
+        VX_DTE_RELAY: '${{ inputs.relay }}',
+        VX_DTE_AGENT: '${{ matrix.agent }}',
+      }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ inputs.sha }}' }
+      - run: bun install --frozen-lockfile
+      - run: bunx @vzn/vx dte agent
+```
+
 ## On GitLab
 
 Three jobs of your own pipeline: `vx-plan` writes the agents' child
@@ -308,6 +373,10 @@ utilization of every machine together:
   variables the agent reads.
 - `docker(options: DockerOptions)` starts agents as containers and a relay
   of its own on loopback. `DockerOptions` is `{ image, prepare? }`.
+- `github(options?: GithubOptions)` dispatches agents as matrix jobs of
+  one workflow, one dispatch per size and demand. `GithubOptions` is
+  `{ workflow? }` (default `vx-agent.yml`). Its agents are `keyless`. It
+  needs `GITHUB_TOKEN` with `actions: write`. See [On GitHub](#on-github).
 - `gitlab(options: GitlabOptions)` runs agents as jobs of a child
   pipeline. `GitlabOptions` is `{ include, tags? }`: the file holding the
   `.vx-agent` job template every agent job extends, and runner tags by
