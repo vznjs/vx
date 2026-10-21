@@ -80,6 +80,8 @@ it('runs a task on an agent with its dependency’s outputs, and brings its outp
   const second = vx(['run', 'b#use'], 'e2e-2')
   expect(second.exitCode).toBe(0)
   expect(second.stdout.toString()).toContain('local 2✓')
+  // Nothing to run: no agent starts.
+  expect(second.stdout.toString()).not.toContain('agents')
 }, 60_000)
 
 it('fails a task that fails on its agent, with its output', () => {

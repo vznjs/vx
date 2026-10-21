@@ -337,6 +337,64 @@ export function dte(options: DteOptions) {
         cores += a.cpu
         index++
       }
+      // Agents in declared order for the cores the remaining tasks keep
+      // busy (`busyCores`) beyond this machine's share; idle ones beyond
+      // it leave.
+      const demand = (remaining: ReadonlySet<string>): void => {
+        // An unmeasured task takes the biggest agent there is.
+        const biggest = Math.max(1, o.biggestCores(), ...sizes.map((s) => s.cpu))
+        const width = (share?: number): number =>
+          busyCores(
+            remaining,
+            nodes ?? new Map(),
+            (id) => Math.min(need(id).cores, biggest),
+            (id) => peaks.get(id)?.p50DurationMs,
+            share,
+          ) - localSlots
+        const wantCores = width()
+        const above = [...remaining].flatMap((id) => need(id).above ?? [])
+        const final = adapter === undefined || (plannedAgents !== undefined && later.size === 0)
+        // Idle agents beyond that leave; one a task bigger than the rest
+        // waits for stays. One that cannot come back stays for the peak.
+        // At the end the relay closing ends them all.
+        if (remaining.size > 0)
+          o.retire(final ? width(0) : wantCores, (a) =>
+            above.some((x) => a.cores > x.cores || a.memory > x.memory),
+          )
+        if (final) return
+        const start = (s: (typeof sizes)[number]): void => {
+          started.set(s.name, (started.get(s.name) ?? 0) + 1)
+          cores += s.cpu
+          ++index
+          // Counted against its size's max, so a planned one is left.
+          const id =
+            plannedAgents === undefined ? `${s.name}#${index}` : later.get(s.name)!.shift()!
+          o.spawned(id, { size: s.name, cpu: s.cpu, memory: s.memory })
+          void Promise.resolve(
+            adapter.spawn({
+              run,
+              relay,
+              size: s.name,
+              cpu: s.cpu,
+              memory: s.memory,
+              index,
+              id,
+              workspaceRoot: ctx.workspaceRoot,
+              env: {
+                VX_DTE_RUN: run,
+                VX_DTE_AGENT: id,
+                VX_DTE_RELAY: relay,
+                ...(secret === undefined ? {} : { VX_DTE_SECRET: secret }),
+              },
+              exited: (reason) => o.failed(id, reason),
+            }),
+          ).catch((err: unknown) => o.failed(id, err instanceof Error ? err.message : String(err)))
+        }
+        for (const s of toStart(sizes, started, cores, wantCores, above)) start(s)
+      }
+      // Until a task misses, demand waits: a run all hits starts no agent.
+      let missed = false
+      let pending: ReadonlySet<string> | undefined
       return {
         name: 'dte',
         remote: true,
@@ -348,66 +406,21 @@ export function dte(options: DteOptions) {
           adapter === undefined || sizes.some((s) => s.max === Infinity)
             ? localSlots + JOINED_CAPACITY
             : Math.max(1, localSlots + sizes.reduce((n, s) => n + 2 * s.max * s.cpu, 0)),
-        execute: (req) => o.execute(req),
+        execute: (req) => {
+          // The first task that missed: agents start now, not for a run
+          // its cache answers whole.
+          if (!missed) {
+            missed = true
+            if (pending !== undefined) demand(pending)
+          }
+          return o.execute(req)
+        },
         footer: () => o.footer(),
         machines: () => o.machines(),
         running: (id) => o.where(id),
-        // Agents in declared order for the cores the remaining tasks keep
-        // busy (`busyCores`) beyond this machine's share; idle ones beyond
-        // it leave.
         demand(remaining) {
-          // An unmeasured task takes the biggest agent there is.
-          const biggest = Math.max(1, o.biggestCores(), ...sizes.map((s) => s.cpu))
-          const width = (share?: number): number =>
-            busyCores(
-              remaining,
-              nodes ?? new Map(),
-              (id) => Math.min(need(id).cores, biggest),
-              (id) => peaks.get(id)?.p50DurationMs,
-              share,
-            ) - localSlots
-          const wantCores = width()
-          const above = [...remaining].flatMap((id) => need(id).above ?? [])
-          const final = adapter === undefined || (plannedAgents !== undefined && later.size === 0)
-          // Idle agents beyond that leave; one a task bigger than the rest
-          // waits for stays. One that cannot come back stays for the peak.
-          // At the end the relay closing ends them all.
-          if (remaining.size > 0)
-            o.retire(final ? width(0) : wantCores, (a) =>
-              above.some((x) => a.cores > x.cores || a.memory > x.memory),
-            )
-          if (final) return
-          const start = (s: (typeof sizes)[number]): void => {
-            started.set(s.name, (started.get(s.name) ?? 0) + 1)
-            cores += s.cpu
-            ++index
-            // Counted against its size's max, so a planned one is left.
-            const id =
-              plannedAgents === undefined ? `${s.name}#${index}` : later.get(s.name)!.shift()!
-            o.spawned(id, { size: s.name, cpu: s.cpu, memory: s.memory })
-            void Promise.resolve(
-              adapter.spawn({
-                run,
-                relay,
-                size: s.name,
-                cpu: s.cpu,
-                memory: s.memory,
-                index,
-                id,
-                workspaceRoot: ctx.workspaceRoot,
-                env: {
-                  VX_DTE_RUN: run,
-                  VX_DTE_AGENT: id,
-                  VX_DTE_RELAY: relay,
-                  ...(secret === undefined ? {} : { VX_DTE_SECRET: secret }),
-                },
-                exited: (reason) => o.failed(id, reason),
-              }),
-            ).catch((err: unknown) =>
-              o.failed(id, err instanceof Error ? err.message : String(err)),
-            )
-          }
-          for (const s of toStart(sizes, started, cores, wantCores, above)) start(s)
+          if (missed) demand(remaining)
+          else pending = remaining
         },
       }
     },
