@@ -23,6 +23,9 @@ export interface AgentSpawn {
   readonly run: string
   readonly relay: string
   readonly size: string
+  /** Its size's cores and memory (bytes), for an adapter that sets a machine's limits. */
+  readonly cpu: number
+  readonly memory: number
   /** 1 for the first agent this run starts, counting every size. */
   readonly index: number
   /** Its name in the run's output and its own (`small·2`), which it reports back on joining. */
@@ -32,7 +35,7 @@ export interface AgentSpawn {
   readonly env: Readonly<Record<string, string>>
 }
 
-/** How one CI starts agents: `gitlab()`, `local()`. */
+/** How one CI starts agents: `local()`, `docker()`. */
 export interface DteAdapter {
   /** A relay of its own, for a run whose `dte()` names none. */
   relay?(): Promise<string>
@@ -230,6 +233,8 @@ export function dte(options: DteOptions) {
                   run,
                   relay,
                   size: s.name,
+                  cpu: s.cpu,
+                  memory: s.memory,
                   index,
                   id,
                   workspaceRoot: ctx.workspaceRoot,

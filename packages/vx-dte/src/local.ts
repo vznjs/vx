@@ -24,21 +24,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
 
   return {
     async relay() {
-      const { createRelay } = await import('@vzn/vx-dte-relay')
-      const r = createRelay()
-      const server = Bun.serve({
-        hostname: '127.0.0.1',
-        port: 0,
-        fetch: (req) => r.fetch(req),
-        idleTimeout: 60,
-      })
-      relay = {
-        url: `http://127.0.0.1:${server.port}`,
-        stop() {
-          r.close()
-          void server.stop(true)
-        },
-      }
+      relay = await loopbackRelay()
       return relay.url
     },
 
@@ -86,6 +72,25 @@ export function local(options: LocalOptions = {}): DteAdapter {
       }
       if (base !== undefined) await rm(base, { recursive: true, force: true })
       base = undefined
+    },
+  }
+}
+
+/** A relay of the run's own on loopback, with no auth: only this machine reaches it. */
+export async function loopbackRelay(): Promise<{ url: string; stop(): void }> {
+  const { createRelay } = await import('@vzn/vx-dte-relay')
+  const r = createRelay()
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: (req) => r.fetch(req),
+    idleTimeout: 60,
+  })
+  return {
+    url: `http://127.0.0.1:${server.port}`,
+    stop() {
+      r.close()
+      void server.stop(true)
     },
   }
 }

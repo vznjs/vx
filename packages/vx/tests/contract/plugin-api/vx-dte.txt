@@ -1,3 +1,5 @@
+== function docker (src/docker.ts)
+export function docker(options: DockerOptions): DteAdapter
 == function dte (src/plugin.ts)
 export function dte(options: DteOptions)
 == function local (src/local.ts)
@@ -13,10 +15,17 @@ export interface AgentSpawn {
   readonly run: string
   readonly relay: string
   readonly size: string
+  readonly cpu: number
+  readonly memory: number
   readonly index: number
   readonly id: string
   readonly workspaceRoot: string
   readonly env: Readonly<Record<string, string>>
+}
+== type DockerOptions (src/docker.ts)
+export interface DockerOptions {
+  readonly image: string
+  readonly prepare?: string
 }
 == type DteAdapter (src/plugin.ts)
 export interface DteAdapter {

@@ -14,7 +14,7 @@ Agents and the orchestrator meet at a relay
 take no inbound connection.
 
 It is not on npm yet: it is being built in this repo. Today it runs on
-`local()`; the GitLab adapter comes next.
+`local()` and `docker()`; the GitLab adapter comes next.
 
 ## Try it
 
@@ -42,6 +42,24 @@ VX_DTE_RUN=try vx run build --all
 `VX_DTE_RUN` names the run and turns distribution on; without it, `vx run`
 runs here as always. `local()` starts each agent as a process in its own
 git worktree of `HEAD`, so agents run committed code only.
+
+`docker()` starts each agent as a container held to its size: `--cpus`
+and `--memory` come from `cpu` and `memory`. The container clones this
+checkout's `HEAD` (mounted read-only) into its own filesystem, runs
+`prepare`, then the workspace's own `node_modules/.bin/vx dte agent`, so
+the image needs Bun and git, and `prepare` installs vx:
+
+```ts
+dte({
+  agents: { small: { max: 4, cpu: 2, memory: '4GB' } },
+  adapter: docker({ image: 'my/bun-git', prepare: 'bun install' }),
+})
+```
+
+The relay stays on loopback: on Linux a container joins the host's
+network; elsewhere it reaches the relay through `host.docker.internal`.
+A container ends with its agent; one still up when the run ends is
+removed.
 
 With no adapter, vx starts no agents: the run uses whichever join its
 relay. In three terminals on one checkout's commit:
@@ -139,12 +157,15 @@ declares is named:
   `relay`) and, when the run started it, `VX_DTE_AGENT` (its name). It is
   described only by the cores and memory its machine reports.
 - `DteAdapter` is `{ spawn(agent: AgentSpawn), relay?(), close?() }`.
-  `AgentSpawn` is `{ run, relay, size, index, id, workspaceRoot, env }`,
+  `AgentSpawn` is `{ run, relay, size, cpu, memory, index, id, workspaceRoot, env }`,
+  with `memory` in bytes,
   where `id` is the agent's name (`small·2`) and `env` holds the three
   variables the agent reads.
+- `docker(options: DockerOptions)` starts agents as containers and a relay
+  of its own on loopback. `DockerOptions` is `{ image, prepare? }`.
 - `local(options?: LocalOptions)` starts agents on this machine and a relay
   of its own on loopback. `LocalOptions` is `{ prepare? }`: a shell line
   each worktree runs before its agent starts.
 
-`@vzn/vx-dte-relay` is a dependency for `local()`'s relay, loaded only
+`@vzn/vx-dte-relay` is a dependency for `local()`'s and `docker()`'s relay, loaded only
 when a distributed run starts.
