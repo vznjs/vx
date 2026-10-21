@@ -216,7 +216,7 @@ describe('examples/ci', () => {
   function step(ref: string, args: string[]): { exit: number; status: Record<string, string> } {
     const env: Record<string, string> = {}
     for (const [k, v] of Object.entries(process.env))
-      if (v !== undefined && !/^(GITHUB_|VX_|RUNNER_)/.test(k)) env[k] = v
+      if (v !== undefined && (k === 'VX_CACHE_DIR' || !/^(GITHUB_|VX_|RUNNER_)/.test(k))) env[k] = v
     Object.assign(env, {
       CI: 'true',
       GITHUB_ACTIONS: 'true',
