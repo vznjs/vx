@@ -16,18 +16,19 @@ Agents and the orchestrator meet at a relay
 ([`@vzn/vx-dte-relay`](../vx-dte-relay/PROTOCOL.md)), since CI runners
 take no inbound connection.
 
-The relay reads nothing they say. Each side makes an X25519 key for the
-run, and the run's secret, `VX_DTE_SECRET`, signs it (HMAC). Every
-message after that is AES-256-GCM under the key the pair agrees on. The
-orchestrator admits only an agent whose key the secret signed. A message
-the relay changes loses its agent; one it replays is dropped. The secret
-only signs, so a leaked one opens no past run. `VX_DTE_SECRET`, or the one `vx dte plan` wrote, wins. On GitHub
-Actions with no secret, each side signs its key by an OIDC token whose
-audience is the key's digest, and checks the other's as a token of this
-repository (`id-token: write`): no secret is stored anywhere. Otherwise an
-adapter's agents get a secret made for the run; with no adapter, set the
-same `VX_DTE_SECRET` on the run and each agent. Agent `join` info (cores, memory, tree) is signed,
-not encrypted.
+The relay reads nothing they say. Each agent and the orchestrator run a
+[Noise](https://noiseprotocol.org/noise.html) handshake through it, one
+session per agent, with keys made for that session only. With the run's
+key (`VX_DTE_SECRET`, the one `vx dte plan` wrote, or one an adapter made
+for its agents) it is `Noise_NNpsk0_25519_AESGCM_SHA256`: the key is the
+pre-shared key, so a side without it cannot finish the handshake, and the
+agent's `join` info (cores, memory, tree) is already encrypted. On GitHub
+Actions with no key it is `Noise_NN_25519_AESGCM_SHA256`, and each side
+binds the handshake by an OIDC token of this repository (`id-token:
+write`): no secret is stored anywhere. With no adapter and no GitHub, set
+the same `VX_DTE_SECRET` on the run and each agent. A message the relay
+changes loses its agent; one it replays is dropped. The key never
+encrypts a message, so a leaked one opens no past run.
 
 It is not on npm yet: it is being built in this repo. Today it runs on
 `local()` and `docker()`; the GitLab adapter comes next.

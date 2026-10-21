@@ -1,5 +1,6 @@
-// Encryption over the relay: the run's secret admits a key, the relay sees
-// no body, and a body it changes or replays does not get through.
+// Encryption over the relay: only a side with the run's key completes the
+// Noise handshake, the relay sees no body, and a body it changes or replays
+// does not get through.
 
 import { afterEach, expect, it } from 'bun:test'
 import { createRelay } from '@vzn/vx-dte-relay'
@@ -100,7 +101,7 @@ it('refuses an agent with another secret, and an agent refuses an orchestrator w
     },
   )
   const [joined] = await until(o2)
-  await o2.send((joined!.body as { id: string }).id, { type: 'hello', pub: 'AAAA', mac: 'forged' })
+  await o2.send((joined!.body as { id: string }).id, { type: 'hello', noise: 'AAAA' })
   await expect(a2.poll()).rejects.toThrow(SealError)
 })
 
@@ -118,10 +119,7 @@ it('loses an agent whose body the relay changed, and drops one it replays', asyn
   await a.send('orchestrator', { type: 'start', task: 'v' })
   expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'start', task: 'v' }])
   r.tamperNext((b) =>
-    b.replace(
-      /"seal":"(\d+)\.([^.]+)\.(.)/,
-      (_, n, iv, c) => `"seal":"${n}.${iv}.${c === 'A' ? 'B' : 'A'}`,
-    ),
+    b.replace(/"seal":\["(\d+)\.(.)/, (_, n, c) => `"seal":["${n}.${c === 'A' ? 'B' : 'A'}`),
   )
   await a.send('orchestrator', { type: 'start', task: 'w' })
   expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])

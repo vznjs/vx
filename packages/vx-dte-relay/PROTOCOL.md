@@ -86,5 +86,35 @@ repository:
 So only jobs of the repository that started a run can join it. Not of its
 pipeline: agents run in another one (a GitLab child pipeline, a GitHub
 workflow the run dispatches). Which agents take part is the run's own
-business: `@vzn/vx-dte` admits only an agent whose key the run's secret,
-or on GitHub its OIDC identity, signed.
+business: `@vzn/vx-dte` admits only an agent that completes a Noise
+handshake with the run's key, or on GitHub one bound by its OIDC identity
+(below).
+
+## Bodies, end to end
+
+What `@vzn/vx-dte` puts in `info` and `body` is opaque to the relay. For
+anyone writing an agent or orchestrator of their own: each agent and the
+orchestrator run a [Noise](https://noiseprotocol.org/noise.html) handshake
+through the relay, prologue `vx-dte\0<run>`, the agent the initiator.
+
+- With the run's key (`VX_DTE_SECRET`, or the one `vx dte plan` or an
+  adapter made): `Noise_NNpsk0_25519_AESGCM_SHA256`, the psk the key's
+  SHA-256. A side with another key cannot complete.
+- Keyless on GitHub Actions: `Noise_NN_25519_AESGCM_SHA256`. The agent's
+  `join` carries an OIDC token whose audience is
+  `vx-dte:<base64url SHA-256 of "join\0<run>\0<message 1>">`; the
+  orchestrator's `hello` one for `"hello\0<run>\0<handshake hash>"`. Each
+  side checks the other's as a token of the same `repository_id`.
+
+| Who          | `info` / `body`                                       |
+| ------------ | ----------------------------------------------------- |
+| agent `join` | `info: { "noise": <message 1>, "token"? }`            |
+| orchestrator | `{ "type": "hello", "noise": <message 2>, "token"? }` |
+| orchestrator | `{ "type": "refused", "reason" }`, plain              |
+| either, then | `{ "seal": ["<n>.<ciphertext>", …] }`                 |
+
+Message 1's payload is the agent's info (JSON), encrypted under the psk.
+After the handshake every body is Noise transport messages, base64, each
+at most 65535 bytes and naming its nonce `n` (Noise §11.4, since a relay
+may reorder); a nonce seen before is a replay and is dropped, one that
+does not open loses its sender.

@@ -43,7 +43,7 @@ export async function runAgent(opts: {
   id?: string
   root: string
   token: string | undefined
-  /** What signs its key and checks the orchestrator's. */
+  /** What admits it to the orchestrator's session: the run's key, or its CI identity. */
   proof: Proof
   artifacts: TaskArtifacts
 }): Promise<number> {
