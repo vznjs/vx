@@ -2733,7 +2733,7 @@ footer gave a reason, the row ends with it instead: `timed out`,
 as before). A task whose key met a remote failure ends with it, read or
 write alike: `remote ✗ download: connection refused; upload: 503` (the
 v40 column, `remoteError` in `--format json`). A task an executor
-plugin ran elsewhere ends with where: `on small#1` (v44, `placement`). Rows run failures first, then what executed or was
+plugin ran elsewhere carries where after its id: `app#build@small#1` (v44, `placement`). Rows run failures first, then what executed or was
 skipped, then hits; past sixteen hits the rest fold into one line with
 their count (`… +980 more cache hits`) — a thousand-task warm run is a
 thousand rows otherwise, with the one failure a screen above the
@@ -3091,7 +3091,7 @@ local blue, remote dark blue, `✗` and a miss red, `⇡` cyan; the
 nothing), `N not downloaded` (outputs left in the remote store) and
 every count show only when non-zero. `vx last` names each remote
 failure on its task's row. A task an executor plugin ran elsewhere
-says where on its row and its frame (`on small#2`), and the plugin may
+says where on its row and its frame, after its id (`app#build@small#2`), and the plugin may
 add rows of its own above `info` (`agents`), in which case `info`
 names no worker pool. The `info` row ends with `run <id>`: the
 run's whole id, as `vx last <id>` takes it. The

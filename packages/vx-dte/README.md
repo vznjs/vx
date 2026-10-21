@@ -283,7 +283,7 @@ Each task an agent ran says which one on its row and frame, in that
 agent's own color, by size and the order the run started it:
 
 ```
- ⏺︎   308ms success miss     c#build  on small#1
+ ⏺︎   308ms success miss     c#build@small#1
 ```
 
 An idle agent the rest of the run cannot keep busy leaves (`left`): one

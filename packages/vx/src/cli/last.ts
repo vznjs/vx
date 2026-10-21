@@ -365,10 +365,12 @@ export function formatTaskRows(tasks: readonly RunSummaryRow[]): string[] {
     ? [...hits].sort((a, b) => b.durationMs - a.durationMs).slice(0, HITS_SHOWN)
     : hits
   const ordered = [...failed, ...rest, ...shownHits]
-  const idW = Math.max(...ordered.map((t) => `${t.project}#${t.task}`.length), 4)
+  const at = (t: (typeof ordered)[number]): string =>
+    t.placement !== null ? `@${t.placement}` : ''
+  const idW = Math.max(...ordered.map((t) => `${t.project}#${t.task}${at(t)}`.length), 4)
   const lines = ['']
   for (const t of ordered) {
-    const id = `${t.project}#${t.task}`
+    const id = `${t.project}#${t.task}${at(t)}`
     // The terminal summary's own word for a task that runs every time
     // by design; a reader must not take its row for a miss.
     // A failure's row reads as the frame did — `failed (exit 137)` —
@@ -384,7 +386,6 @@ export function formatTaskRows(tasks: readonly RunSummaryRow[]): string[] {
     lines.push(
       `  ${status.padEnd(17)} ${id.padEnd(idW)}  ${fmtMs(t.durationMs).padStart(8)}` +
         `${t.hash !== '' ? `  ${t.hash}` : ''}${t.cached === false ? '  no-cache' : ''}${fmtUsage(t)}` +
-        (t.placement !== null ? `  on ${t.placement}` : '') +
         reasonParts(t),
     )
   }

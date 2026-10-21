@@ -476,7 +476,7 @@ describe('defaultLogger status line integration', () => {
     await Bun.sleep(1100)
     at = 'small#1'
     log.taskStart?.(mkNode('b#x'))
-    expect(row()).toMatch(/ \d+ms running +a#x {2}on small#1$/)
+    expect(row()).toMatch(/ \d+ms running +a#x@small#1$/)
     expect(tasks()).toMatch(/^ +2 running · 2 total$/)
     log.runEnd?.()
   })
@@ -689,7 +689,7 @@ describe('formatStatusRegion', () => {
   it('a running row says where an executor runs it', () => {
     const where = (id: string) => (id === 'a#x' ? 'small#2' : undefined)
     const lines = formatStatusRegion({ ...base, slots: [slot('a#x'), slot('b#x')], where })
-    expect(lines[1]).toMatch(/a#x  on small#2$/)
+    expect(lines[1]).toMatch(/a#x@small#2$/)
     expect(lines[2]).toMatch(/b#x$/)
   })
 

@@ -6,7 +6,7 @@
 // then redraws, so the display can never interleave with task output.
 
 import { dumbTerminal, paint, ui, type ColorSupport } from '../util/index.js'
-import { formatTaskRow, paintIdParts, TIME_COL } from './framed-output.js'
+import { formatTaskRow, paintIdParts, placeNote, TIME_COL } from './framed-output.js'
 import type { BlockedTask } from './forecast.js'
 
 const NO_COLOR: ColorSupport = { enabled: false }
@@ -491,7 +491,6 @@ export function formatStatusRegion(
     const waiting = s.blocks?.get(slot.id) ?? 0
     const notes: string[] = []
     const at = s.where?.(slot.id)
-    if (at != null) notes.push(`${dim('on')} ${ui.inline(ui.place(at), colors)}`)
     if (s.critical === slot.id && busy > 1) notes.push(paint(WARN, 'critical path', colors))
     if (waiting > 0) notes.push(dim(`blocks ${waiting}`))
     const usual = s.expected?.get(slot.id)
@@ -505,7 +504,9 @@ export function formatStatusRegion(
         '',
         paintPinnedId(slot.id, colors),
         colors,
-      ) + (notes.length > 0 ? `  ${notes.join(dim(' \u00b7 '))}` : ''),
+      ) +
+        (at != null ? placeNote(at, colors) : '') +
+        (notes.length > 0 ? `  ${notes.join(dim(' \u00b7 '))}` : ''),
     )
   }
   for (const step of s.steps ?? []) {
