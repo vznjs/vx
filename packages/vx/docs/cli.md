@@ -3087,8 +3087,9 @@ held is not sent, so it is no remote `↑`. Each count is painted
 in its segment's colour, number and glyph alike: `✓` green, `∅` dim,
 local blue, remote dark blue, `✗` and a miss red, `⇡` cyan; the
 `local` and `remote` words are dim. A layer shows only when the run's
-`--cache-policy` uses it. `N not saved` (ran, succeeded, saved
-nothing), `N not downloaded` (outputs left in the remote store) and
+`--cache-policy` uses it. `N miss` (ran and saved nothing: it failed,
+or ran elsewhere) is red, `N not saved` (ran, succeeded, saved
+nothing) yellow, each its own segment; `N not downloaded` (outputs left in the remote store) and
 every count show only when non-zero. `vx last` names each remote
 failure on its task's row. A task an executor plugin ran elsewhere
 says where on its row and its frame, after its id (`app#build@small#2`), and the plugin may
