@@ -45,6 +45,11 @@ export interface SandboxArmer {
   readonly armed: boolean
 }
 
+/** What the run's sandbox union reads of a task: a `TaskNode`, or an agent's order. */
+export interface SandboxedNode {
+  readonly config: { readonly exec?: { readonly sandbox?: ExecConfig['sandbox'] } }
+}
+
 /**
  * What SRT's run-wide `initialize()` is armed with, folded from every
  * sandboxed task in the graph — or `null` when the run has none.
@@ -55,11 +60,6 @@ export interface SandboxArmer {
  * it carries had no witness of any kind and three separate widenings of
  * them survived a whole-suite mutation sweep (item 537).
  */
-/** What the run's sandbox union reads of a task: a `TaskNode`, or an agent's order. */
-export interface SandboxedNode {
-  readonly config: { readonly exec?: { readonly sandbox?: ExecConfig['sandbox'] } }
-}
-
 export interface SandboxRunUnion {
   /** Domains the run's filtering proxy will accept, in declaration order. */
   domains: string[]

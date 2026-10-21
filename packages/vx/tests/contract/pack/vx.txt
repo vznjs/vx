@@ -109,6 +109,7 @@ src/orchestrator/graph-stage.ts
 src/orchestrator/hit-restore.ts
 src/orchestrator/index.ts
 src/orchestrator/keyed-projects.ts
+src/orchestrator/local-floor.ts
 src/orchestrator/local-shortcircuit.ts
 src/orchestrator/lockfile-claim.ts
 src/orchestrator/miss-save.ts
