@@ -632,9 +632,9 @@ describe('formatStatusRegion', () => {
   })
 
   it('a running row says where an executor runs it', () => {
-    const where = (id: string) => (id === 'a#x' ? 'small·2' : undefined)
+    const where = (id: string) => (id === 'a#x' ? 'small#2' : undefined)
     const lines = formatStatusRegion({ ...base, slots: [slot('a#x'), slot('b#x')], where })
-    expect(lines[1]).toMatch(/a#x  on small·2$/)
+    expect(lines[1]).toMatch(/a#x  on small#2$/)
     expect(lines[2]).toMatch(/b#x$/)
   })
 

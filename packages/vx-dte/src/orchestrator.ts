@@ -360,7 +360,7 @@ export class Orchestrator {
       const asked = spawn?.at
       const taken = new Set([...this.agents.values(), ...this.gone].map((a) => a.label))
       let label = asked === undefined ? undefined : info.id
-      while (label === undefined || taken.has(label)) label = `agent·${++this.joined}`
+      while (label === undefined || taken.has(label)) label = `agent#${++this.joined}`
       this.agents.set(id, {
         id,
         warmUpMs: asked === undefined ? undefined : performance.now() - asked,
@@ -459,7 +459,7 @@ export class Orchestrator {
   }
 
   /**
-   * The `agents` rows, live and at the end: one per agent by `size·index`
+   * The `agents` rows, live and at the end: one per agent by `size#index`
    * with its status, the tasks it has done and the ones it runs now, then
    * this machine's; once over, each joined agent's warm-up and each size
    * whose machines are not what it says.
@@ -531,8 +531,8 @@ export class Orchestrator {
         [
           i === 0 ? 'agents' : '',
           r === ''
-            ? `${l.padEnd(width)}  ${st}`
-            : [`${l.padEnd(width)}  ${st.padEnd(status)}  ${t}  `, r],
+            ? [ui.place(l), `${' '.repeat(width - l.length)}  ${st}`]
+            : [ui.place(l), `${' '.repeat(width - l.length)}  ${st.padEnd(status)}  ${t}  `, r],
         ],
         ...(usage.get(l) ?? []).map((d): [string, ui.Inline] => ['', ui.dim(`${indent}${d}`)]),
       ]),

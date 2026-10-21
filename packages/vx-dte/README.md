@@ -81,7 +81,7 @@ as each task starts and ends:
 
 ```
 ─ vx dte agent ───────────────────────────────────────────────
-  agent     agent·1
+  agent     agent#1
   run       try
   relay     http://127.0.0.1:8080
   machine   10 cores · 17.2 GB
@@ -114,11 +114,11 @@ as each task starts and ends:
 
 ## What the run shows
 
-Each task an agent ran says which one on its row and frame, by size and
-the order the run started it:
+Each task an agent ran says which one on its row and frame, in that
+agent's own color, by size and the order the run started it:
 
 ```
- ⏺︎   308ms success miss     c#build  on small·1
+ ⏺︎   308ms success miss     c#build  on small#1
 ```
 
 The `agents` rows, live while the run goes and again in the footer,
@@ -126,20 +126,20 @@ give each agent its status (`starting`, `online`, `gone`), the tasks it
 has done and the ones it runs now, and the cores and memory its machine
 reports: green when they are what its size declares, red when not. This
 machine is `local`. An agent the run started is named by its size and
-the order it was started in; one that joined on its own is `agent·N`.
+the order it was started in; one that joined on its own is `agent#N`.
 Once the run is over, each agent adds its warm-up (from asking the
 adapter to its join), and a size whose agents reported other cores or
 memory than it declares is named:
 
 ```
-  agents    small·1  online    3 done · 2 running  4c/16G
-            small·2  starting
+  agents    small#1  online    3 done · 2 running  4c/16G
+            small#2  starting
             local    online    1 done  10c/32G
 ```
 
 ```
-  agents    small·1  online  5 done · warm-up 0.1s  4c/16G
-            small·2  gone    1 done · warm-up 0.2s  4c/16G
+  agents    small#1  online  5 done · warm-up 0.1s  4c/16G
+            small#2  gone    1 done · warm-up 0.2s  4c/16G
             local    online  1 done  10c/32G
             ! small: config 2 cores 8 GB, reported 4 cores 16 GB
 ```
@@ -152,7 +152,7 @@ bytes the run sent it and received from it. The `total` line is the cpu
 utilization of every machine together:
 
 ```
-            small·1  online  5 done · warm-up 0.2s  4c/14G
+            small#1  online  5 done · warm-up 0.2s  4c/14G
                      online 12.1s · busy 9.8s · idle 2.3s
                      cpu peak 3.6 · avg 2.4 cores · cpu utilization 61%
                      memory peak 1.2 GB · avg 640.0 MB
@@ -183,7 +183,7 @@ utilization of every machine together:
 - `DteAdapter` is `{ spawn(agent: AgentSpawn), relay?(), close?() }`.
   `AgentSpawn` is `{ run, relay, size, cpu, memory, index, id, workspaceRoot, env }`,
   with `memory` in bytes,
-  where `id` is the agent's name (`small·2`) and `env` holds the three
+  where `id` is the agent's name (`small#2`) and `env` holds the three
   variables the agent reads.
 - `docker(options: DockerOptions)` starts agents as containers and a relay
   of its own on loopback. `DockerOptions` is `{ image, prepare? }`.

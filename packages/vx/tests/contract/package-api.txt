@@ -184,6 +184,8 @@ export const path = (text: string): Inline => ({ style: 'bold', text })
 export const PERSISTENT_TODO =
   'persistent task — set persistent.readyWhen (regex matched against output) so ' +
   'dependents unblock on readiness, and consider exec.timeout to bound the wait'
+== const place (src/util/ui.ts)
+export const place = (text: string): Inline => ({ style: 'place', text })
 == const PLUGIN_HOOKS (src/config.ts)
 export const PLUGIN_HOOKS = [
   'config',
@@ -1620,7 +1622,7 @@ export interface StoreOptions {
   decompress: boolean
 }
 == type Style (src/util/ui.ts)
-type Style = Tone | 'dim' | 'bold' | 'id'
+type Style = Tone | 'dim' | 'bold' | 'id' | 'place'
 == type TaskConfig (src/config.ts)
 export interface TaskConfig {
   description?: string

@@ -5,7 +5,7 @@
 // ordinary write erases the status display first, writes its content,
 // then redraws, so the display can never interleave with task output.
 
-import { dumbTerminal, paint, type ColorSupport } from '../util/index.js'
+import { dumbTerminal, paint, ui, type ColorSupport } from '../util/index.js'
 import { formatTaskRow, paintIdParts, TIME_COL } from './framed-output.js'
 import type { BlockedTask } from './forecast.js'
 
@@ -484,7 +484,7 @@ export function formatStatusRegion(
     const waiting = s.blocks?.get(slot.id) ?? 0
     const notes: string[] = []
     const at = s.where?.(slot.id)
-    if (at !== undefined) notes.push(dim(`on ${at}`))
+    if (at !== undefined) notes.push(`${dim('on')} ${ui.inline(ui.place(at), colors)}`)
     if (s.critical === slot.id && busy > 1) notes.push(paint(WARN, 'critical path', colors))
     if (waiting > 0) notes.push(dim(`blocks ${waiting}`))
     const usual = s.expected?.get(slot.id)

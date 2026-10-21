@@ -22,7 +22,7 @@ const SYMBOL: Record<Tone, string> = { ok: '✓', warn: '!', error: '✗', info:
 const INDENT = '  '
 const LABEL_MIN = 8
 
-type Style = Tone | 'dim' | 'bold' | 'id'
+type Style = Tone | 'dim' | 'bold' | 'id' | 'place'
 
 /** Styled text inside a component: a plain string, a token, or a run of them. */
 export type Inline = string | { readonly style: Style; readonly text: string } | readonly Inline[]
@@ -40,6 +40,8 @@ export const path = (text: string): Inline => ({ style: 'bold', text })
 export const cmd = (text: string): Inline => ({ style: 'bold', text })
 /** A secondary fact. */
 export const dim = (text: string): Inline => ({ style: 'dim', text })
+/** Where a task runs (`small#1`): its name's hue in every row and block; `local` plain. */
+export const place = (text: string): Inline => ({ style: 'place', text })
 /** Text in a tone's color. */
 export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
 
@@ -53,6 +55,8 @@ export function inline(x: Inline, c: ColorSupport): string {
       return paint('', text, c, { dim: true })
     case 'bold':
       return paint('', text, c, { bold: true })
+    case 'place':
+      return text === 'local' ? text : paint(identityColor(text), text, c)
     case 'id': {
       const hash = text.lastIndexOf('#')
       if (hash < 0) return paint(identityColor(text), text, c)

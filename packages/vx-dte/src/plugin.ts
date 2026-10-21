@@ -28,7 +28,7 @@ export interface AgentSpawn {
   readonly memory: number
   /** 1 for the first agent this run starts, counting every size. */
   readonly index: number
-  /** Its name in the run's output and its own (`small·2`), which it reports back on joining. */
+  /** Its name in the run's output and its own (`small#2`), which it reports back on joining. */
   readonly id: string
   readonly workspaceRoot: string
   /** What the agent's `vx dte agent` reads: `VX_DTE_RUN`, `VX_DTE_AGENT` (`id`), `VX_DTE_RELAY`. */
@@ -226,7 +226,7 @@ export function dte(options: DteOptions) {
               started.set(s.name, (started.get(s.name) ?? 0) + 1)
               cores += s.cpu
               memory += s.memory
-              const id = `${s.name}·${++index}`
+              const id = `${s.name}#${++index}`
               o.spawned(id, { size: s.name, cpu: s.cpu, memory: s.memory })
               void Promise.resolve(
                 adapter.spawn({

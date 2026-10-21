@@ -121,12 +121,12 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, local: 0 })] }
     const out = await new Response(run.stdout).text()
     expect([await run.exited, out]).toEqual([
       0,
-      expect.stringMatching(/└─ b#use ── .*success  on agent·1/),
+      expect.stringMatching(/└─ b#use ── .*success  on agent#1/),
     ])
-    expect(out).toMatch(/agents +agent·1  online  1 done  \d+c\/[\d.]+G$/m)
+    expect(out).toMatch(/agents +agent#1  online  1 done  \d+c\/[\d.]+G$/m)
     const own = await new Response(agent.stdout).text()
     expect(await agent.exited).toBe(0)
-    expect(own).toMatch(/agent +agent·1/)
+    expect(own).toMatch(/agent +agent#1/)
     expect(own).toContain('✓ b#use')
   } finally {
     relay.close()
