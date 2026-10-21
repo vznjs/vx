@@ -7,7 +7,7 @@
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
-import { loopbackRelay } from './local.js'
+import { loopbackRelay, reasons } from './local.js'
 import type { DteAdapter } from './plugin.js'
 
 export interface DockerOptions {
@@ -28,6 +28,8 @@ export function docker(options: DockerOptions): DteAdapter {
   const agents = new Map<string, ReturnType<typeof Bun.spawn>>()
   const linux = process.platform === 'linux'
   let tree: Promise<{ commit: string }> | undefined
+  let closed = false
+  const why = reasons()
 
   return {
     async relay() {
@@ -87,13 +89,18 @@ export function docker(options: DockerOptions): DteAdapter {
           '-c',
           script,
         ],
-        { env: { ...process.env, ...env }, stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' },
+        { env: { ...process.env, ...env }, stdin: 'ignore', stdout: 'ignore', stderr: 'pipe' },
       )
       agents.set(name, proc)
-      void proc.exited.then(() => agents.delete(name))
+      void (async () => {
+        const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
+        agents.delete(name)
+        if (code !== 0 && !closed) a.exited(await why(`exited ${code}`, a.id, err))
+      })()
     },
 
     async close() {
+      closed = true
       // The relay closing the run tells each agent to leave; a container
       // still up after the grace is removed.
       relay?.stop()
