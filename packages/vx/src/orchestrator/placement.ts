@@ -22,14 +22,16 @@ import type { prepareRun } from './prepare.js'
  * machinery — a worker has none of it, and a boundary "verified" where it
  * is not enforced passes vacuously), or declares `exec.remote: false`. A
  * dependant of a pinned task is pinned with it. A task whose key folds a
- * runtime probe is pinned alone (`withProbedRuntime`).
+ * runtime probe is pinned alone (`withProbedRuntime`). `sandbox: false`
+ * leaves `exec.sandbox` out: the set for an executor that enforces it where
+ * it runs (`TaskExecutor.sandbox`).
  */
-export function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string> {
+export function pinnedLocalSet(nodes: Map<string, TaskNode>, sandbox = true): Set<string> {
   const pinned = new Set<string>()
   for (const node of nodes.values()) {
     if (
       node.config.exec?.persistent !== undefined ||
-      node.config.exec?.sandbox !== undefined ||
+      (sandbox && node.config.exec?.sandbox !== undefined) ||
       node.config.exec?.remote === false
     ) {
       pinned.add(node.id)
@@ -157,6 +159,10 @@ export function placeTasks(
   executors: readonly TaskExecutor[],
 ): Placements {
   const pinned = pinnedLocalSet(nodes)
+  // Computed only when an executor would read it.
+  const pinnedUnsandboxed = executors.some((e) => e.sandbox === true)
+    ? pinnedLocalSet(nodes, false)
+    : pinned
   const placements: Placements = {
     executors: new Map(),
     remoteOnlyNoop: new Set(),
@@ -181,6 +187,7 @@ export function placeTasks(
         cacheable: node.config.cache !== undefined,
       },
       executorLabel,
+      pinnedUnsandboxed.has(node.id),
     )
     placements.executors.set(node.id, executor)
     if (node.config.exec?.remote === 'only') {

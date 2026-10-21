@@ -174,6 +174,7 @@ export function dte(options: DteOptions) {
       return {
         name: 'dte',
         remote: true,
+        sandbox: true,
         // Room for what agents report beyond their size and the prefetch;
         // the orchestrator holds the rest.
         capacity: Math.max(1, localSlots + sizes.reduce((n, [, s]) => n + 2 * s.max * s.cpu, 0)),

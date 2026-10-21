@@ -11,7 +11,7 @@ running anything.
 ## Public surface
 
 ```ts
-export function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string>
+export function pinnedLocalSet(nodes: Map<string, TaskNode>, sandbox?: boolean): Set<string>
 // the exec.interactive tasks when `tty`, else none; throws UserError when two would read the keys at once
 export function terminalHolders(nodes: Map<string, TaskNode>, tty: boolean): Set<string>
 
@@ -42,6 +42,13 @@ export function poolOfPlacement(
   placements: Placements,
 ): (id: string) => { name: string; capacity: number } | undefined
 export const UNPLACED_EXECUTOR: TaskExecutor
+
+// core's local executor for a plugin that runs tasks itself; arms the sandbox outside a run
+export interface LocalFloor {
+  execute(req: ExecuteRequest): Promise<ExecuteResult>
+  close(): Promise<void>
+}
+export function localFloor(sandboxes?: readonly SandboxConfig[]): LocalFloor
 ```
 
 ## Rules
@@ -50,7 +57,8 @@ export const UNPLACED_EXECUTOR: TaskExecutor
   persistent one (a worker cannot reach a port on the submitter), a
   sandboxed task and its dependants (the sandbox is this machine's
   machinery; a boundary "verified" where it is not enforced passes
-  vacuously), `exec.remote: false`, or a task whose key folds a runtime
+  vacuously; an executor that declares `sandbox` enforces it where it
+  runs and is offered them), `exec.remote: false`, or a task whose key folds a runtime
   probe (`inputs.runtime` / `workspaceRuntime`: this machine's
   answer, which a worker's own runtime may not match; its dependants stay
   free, C-2). Pinned tasks never reach a remote

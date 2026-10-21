@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { createRelay } from '@vzn/vx-dte-relay'
-import { localEnv } from '../src/agent.js'
+import { localEnv, swapRoots } from '../src/agent.js'
 import { fromParts, outputFiles, pack, toParts, unpack } from '../src/bundle.js'
 import { dte, local } from '../src/index.js'
 import type { ExecuteRequest, TaskNode } from '@vzn/vx'
@@ -86,6 +86,15 @@ it('an agent runs the orchestrator’s env with its own root, host names and PAT
   } finally {
     Object.assign(process.env, saved)
   }
+})
+
+it('an agent swaps each root once, the first pair naming it winning', () => {
+  expect(
+    swapRoots({ a: '/ws/p/x', b: ['/ws', '/ws2/q', '/private/ws/r'], c: 'x:/ws/b' }, [
+      ['/ws', '/agent/ws'],
+      ['/ws2', '/ws'],
+    ]),
+  ).toEqual({ a: '/agent/ws/p/x', b: ['/agent/ws', '/ws/q', '/private/ws/r'], c: 'x:/agent/ws/b' })
 })
 
 it('an agent on another commit is refused', async () => {

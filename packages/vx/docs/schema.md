@@ -321,7 +321,8 @@ daemon, a Docker socket, a device, a VPN-only host.
   declares — a worker cannot reach a port served on the submitter. So is
   a task with a `sandbox` block, and its dependants: the sandbox is this
   machine's machinery, and a boundary a worker does not enforce would
-  pass vacuously. So is a task whose key folds `inputs.runtime` or
+  pass vacuously; an executor that enforces it where it runs
+  (`@vzn/vx-dte`) is offered them. So is a task whose key folds `inputs.runtime` or
   `workspaceRuntime`: the key holds this machine's answer, which a worker
   cannot prove it shares. Its dependants are not pinned.
 - **Placement is decided once per task**, before scheduling, so the

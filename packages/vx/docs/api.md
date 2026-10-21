@@ -1016,6 +1016,32 @@ export async function loadResolvedProjects(
 ): Promise<Map<string, ProjectEntry>>
 ```
 
+## `localFloor`
+
+function · `src/orchestrator/local-floor.ts`
+
+`sandboxes`, in a process that is no run, are the `exec.sandbox` configs
+of every sandboxed task the run holds: the runtime's proxy and its
+unix-socket filter are one per process, set from their union before the
+first sandboxed task (`prepareSandbox`).
+
+```ts
+export function localFloor(
+  sandboxes: readonly NonNullable<ExecConfig['sandbox']>[] = [],
+): LocalFloor
+```
+
+## `LocalFloor`
+
+type · `src/orchestrator/local-floor.ts`
+
+```ts
+export interface LocalFloor {
+  execute(req: ExecuteRequest): Promise<ExecuteResult>
+  close(): Promise<void>
+}
+```
+
 ## `LocalHistoryProvider`
 
 class · `src/history/history.ts`
@@ -2328,6 +2354,7 @@ type · `src/exec/executor.ts`
 export interface TaskExecutor {
   readonly name: string
   readonly remote?: boolean
+  readonly sandbox?: boolean
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void

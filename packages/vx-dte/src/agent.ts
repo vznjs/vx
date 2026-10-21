@@ -4,12 +4,19 @@
 // recorded peak, and sends back each task's streams and the files its
 // outputs left.
 
-import { rm } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
+import { lstat, mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { machineMemoryBytes, machineParallelism } from '@vzn/vx'
+import {
+  localFloor,
+  machineMemoryBytes,
+  machineParallelism,
+  type ExecuteRequest,
+  type ExecuteResult,
+  type LocalFloor,
+} from '@vzn/vx'
 import { fromParts, outputFiles, pack, toParts, unpack } from './bundle.js'
 import type { AgentInfo, RunOrder, ToAgent } from './messages.js'
-import { runCommand, type CommandResult } from './run-command.js'
 import { join, RelayError } from './wire.js'
 
 /** Names whose value is this machine's, never the orchestrator's. */
@@ -47,10 +54,17 @@ export async function runAgent(opts: {
   const queue: RunOrder[] = []
   const work = new Set<Promise<void>>()
   let root = opts.root
+  let realRoot = opts.root
+  const myReal = realpathSync(opts.root)
+  let floor: LocalFloor | undefined
   let usedCores = 0
   let usedMemory = 0
 
-  const reply = async (task: string, res: CommandResult, files: string[]): Promise<void> => {
+  const reply = async (
+    task: string,
+    res: Omit<ExecuteResult, 'outputs'>,
+    files: string[],
+  ): Promise<void> => {
     const out = toParts(await pack(opts.root, files, res))
     for (const data of out) await me.send('orchestrator', { type: 'part', task, data })
     await me.send('orchestrator', { type: 'end', task, parts: out.length })
@@ -92,14 +106,43 @@ export async function runAgent(opts: {
       for (const f of await outputFiles(opts.root, m.project, m.outputs)) {
         await rm(path.join(opts.root, f), { force: true })
       }
-      const res = await runCommand({
+      // Here as the orchestrator's: its paths, real ones first, made ours.
+      const mine = <T>(v: T): T =>
+        swapRoots(v, [
+          [realRoot, myReal],
+          [root, opts.root],
+        ])
+      const made = await bind(opts.root, m.binds ?? [])
+      const req: ExecuteRequest = {
+        taskId: m.task,
+        workspaceRoot: opts.root,
         command: m.command,
+        forwardArgs: [],
         cwd: path.join(opts.root, m.cwd),
         env: localEnv(m.env, root, opts.root),
-        timeoutMs: m.timeoutMs,
+        envDefine: {},
+        capture: { stdout: true, stderr: true },
+        onStdout: () => {},
+        onStderr: () => {},
         signal: stop.signal,
-      })
-      await reply(m.task, res, await outputFiles(opts.root, m.project, m.outputs))
+        outputs: m.outputs,
+        ...(m.timeoutMs === undefined ? {} : { timeoutMs: m.timeoutMs }),
+        ...(m.sandbox === undefined ? {} : { sandbox: mine(m.sandbox) }),
+      }
+      floor ??= localFloor()
+      const { outputs: _, ...res } = await floor.execute(req)
+      // A bind the task never wrote is not its output.
+      for (const f of made) if ((await lstat(f)).size === 0) await rm(f, { force: true })
+      // Its violations name the orchestrator's paths.
+      const back = swapRoots(res.violations, [
+        [myReal, realRoot],
+        [opts.root, root],
+      ])
+      await reply(
+        m.task,
+        { ...res, violations: back },
+        await outputFiles(opts.root, m.project, m.outputs),
+      )
     } finally {
       running.delete(m.task)
     }
@@ -139,12 +182,18 @@ export async function runAgent(opts: {
               durationMs: 0,
               stdout: '',
               stderr: '',
+              violations: [],
             }
             await reply(m.task, stopped, [])
           }
         } else if (m.type === 'batch') {
           // Every batch of a run names the same orchestrator root.
           root = m.root
+          realRoot = m.realRoot
+          if (m.sandboxes !== undefined) {
+            await floor?.close()
+            floor = localFloor(m.sandboxes)
+          }
           queue.push(...m.tasks)
           start()
         }
@@ -154,6 +203,7 @@ export async function runAgent(opts: {
     queue.length = 0
     for (const c of running.values()) c.abort()
     await Promise.all(work)
+    await floor?.close()
     await me.leave()
   }
 }
@@ -174,4 +224,45 @@ export function localEnv(
   const bins = (out['PATH'] ?? '').split(':').filter((p) => p.startsWith(root))
   out['PATH'] = [...bins, process.env['PATH'] ?? ''].join(':')
   return out
+}
+
+/**
+ * `value` with each path under a `from` root moved under its `to`, in one
+ * pass: a root that holds another (`/ws`, `/ws2`) is not swapped twice.
+ */
+export function swapRoots<T>(value: T, pairs: readonly (readonly [string, string])[]): T {
+  // The first pair naming a root wins.
+  const to = new Map([...pairs].reverse().map(([f, t]) => [esc(f), esc(t)]))
+  const alt = [...to.keys()]
+    .sort((a, b) => b.length - a.length)
+    .map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|')
+  const text = JSON.stringify(value).replace(
+    new RegExp(`(?<=^|[^\\w.-])(${alt})(?=[/"]|\\\\|$)`, 'g'),
+    (m) => to.get(m)!,
+  )
+  return JSON.parse(text) as T
+}
+
+/** A path as JSON spells it inside a string. */
+const esc = (p: string): string => JSON.stringify(p).slice(1, -1)
+
+/** Makes each bind that is missing here: the empty files it made, to take back. */
+async function bind(
+  root: string,
+  binds: readonly { path: string; dir: boolean }[],
+): Promise<string[]> {
+  const made: string[] = []
+  for (const b of binds) {
+    const abs = path.join(root, b.path)
+    if (await lstat(abs).catch(() => undefined)) continue
+    if (b.dir) {
+      await mkdir(abs, { recursive: true })
+      continue
+    }
+    await mkdir(path.dirname(abs), { recursive: true })
+    await writeFile(abs, '', { flag: 'wx' })
+    made.push(abs)
+  }
+  return made
 }

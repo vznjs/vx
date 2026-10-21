@@ -208,6 +208,12 @@ export interface TaskExecutor {
   /** Runs the command somewhere else. Never offered a `pinnedLocal` task. */
   readonly remote?: boolean
   /**
+   * A `remote` executor that enforces `ExecuteRequest.sandbox` where it
+   * runs the command, as the local one does. It is offered sandboxed tasks
+   * and their dependants; the request's violations come back on the result.
+   */
+  readonly sandbox?: boolean
+  /**
    * How many tasks this executor runs at once. Its tasks then occupy a pool
    * of this size instead of the local worker slots, so a remote pool is not
    * throttled by the local CPU count. A positive integer; anything else
@@ -307,13 +313,18 @@ export function selectExecutor(
   executors: readonly TaskExecutor[],
   task: TaskPlacement,
   label: (executor: TaskExecutor) => string = (e) => `executor '${e.name}'`,
+  /** `task.pinnedLocal` for an executor that enforces the sandbox (`pinnedLocalSet(nodes, false)`). */
+  pinnedUnsandboxed = task.pinnedLocal,
 ): TaskExecutor {
   for (const executor of executors) {
-    if (task.pinnedLocal && executor.remote === true) continue
+    const pinned = executor.sandbox === true ? pinnedUnsandboxed : task.pinnedLocal
+    if (pinned && executor.remote === true) continue
     if (executor.accepts === undefined) return executor
     let taken: unknown
     try {
-      taken = executor.accepts(task)
+      taken = executor.accepts(
+        pinned === task.pinnedLocal ? task : { ...task, pinnedLocal: pinned },
+      )
       // An `async accepts` answers a Promise: truthy, so the executor took
       // every task, and a rejection went unheard (the shape of H-16's admit).
       if (taken instanceof Promise) {
