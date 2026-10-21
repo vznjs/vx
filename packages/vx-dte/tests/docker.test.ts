@@ -128,7 +128,7 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#/work#${dir}/work3#g; s#exec ./node_
   process.env['PATH'] = `${bin}:${saved.PATH}`
   process.env['HOME'] = home
   // As root, so the store is at its own path on every platform.
-  const uid = process.getuid
+  const uid = process.getuid!
   process.getuid = () => 0
   try {
     await docker({ image: 'x' }).spawn({
@@ -171,7 +171,7 @@ it('on Linux, a container runs as this user, so what it writes in the store is t
   await writeFile(path.join(bin, 'docker'), `#!/bin/sh\nprintf '%s\\n' "$@" > ${argv}\n`)
   await chmod(path.join(bin, 'docker'), 0o755)
   const saved = { PATH: process.env['PATH'], HOME: process.env['HOME'] }
-  const ids = { uid: process.getuid, gid: process.getgid }
+  const ids = { uid: process.getuid!, gid: process.getgid! }
   process.env['PATH'] = `${bin}:${saved.PATH}`
   process.env['HOME'] = home
   process.getuid = () => 1234

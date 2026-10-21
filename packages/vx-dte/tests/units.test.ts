@@ -668,7 +668,7 @@ it('docker() starts each agent as a container of its size, on a fresh clone', as
   const saved = process.env['PATH']
   process.env['PATH'] = `${bin}:${saved}`
   // As root: as another user a Linux container is told who it is.
-  const uid = process.getuid
+  const uid = process.getuid!
   process.getuid = () => 0
   try {
     const d = docker({ image: 'img', prepare: 'bun install' })
