@@ -375,9 +375,7 @@ export function dte(options: DteOptions) {
         // lull and started another for the wide part after it. At the end
         // the relay closing ends them all.
         if (remaining.size > 0)
-          o.retire(width(0), (a) =>
-            above.some((x) => a.cores > x.cores || a.memory > x.memory),
-          )
+          o.retire(width(0), (a) => above.some((x) => a.cores > x.cores || a.memory > x.memory))
         if (final) return
         const start = (s: (typeof sizes)[number]): void => {
           started.set(s.name, (started.get(s.name) ?? 0) + 1)
