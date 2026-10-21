@@ -92,10 +92,8 @@ header.
 
 ### Server config
 
-vx ships no cache server, so this is an example for one you run. A
-trust policy might look like this:
-
-The user sets a trust policy per team. A rule names token claims; each
+vx ships no cache server, so this is an example for one you run: a
+trust policy per team. A rule names token claims; each
 value is an exact string, a glob, or a list. A token matches a rule when
 every claim in it matches.
 
