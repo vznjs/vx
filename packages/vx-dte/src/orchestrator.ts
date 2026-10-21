@@ -1,8 +1,10 @@
 // The orchestrator's half of a distributed run: the `vx run` the user
-// started. It keeps a share of the tasks for this machine, hands the rest
-// to the agents online, critical path first (the order core asks in), and
-// writes each agent's result back here before the task ends, so the run
-// saves and reports it as its own.
+// started. It keeps a share of the tasks for this machine and hands the
+// rest to the agents online, critical path first (the order core asks in):
+// in batches that fill each agent's measured cores and memory by the tasks'
+// recorded peaks, plus a small prefetch, preferring the agent that already
+// holds a task's dependencies. Each agent's result is written back here
+// before the task ends, so the run saves and reports it as its own.
 
 import path from 'node:path'
 import {
@@ -13,12 +15,19 @@ import {
   type TaskNode,
 } from '@vzn/vx'
 import { fromParts, outputFiles, pack, toParts, unpack } from './bundle.js'
-import type { AgentInfo, ToAgent, ToOrchestrator } from './messages.js'
+import type { AgentInfo, RunOrder, ToAgent, ToOrchestrator } from './messages.js'
 import { runCommand, type CommandResult } from './run-command.js'
 import { RelayError, type Participant } from './wire.js'
 
+/** What a task is expected to hold while it runs, from its history. */
+export interface Need {
+  readonly cores: number
+  readonly memory: number
+}
+
 interface Job {
   readonly req: ExecuteRequest
+  readonly need: Need
   readonly resolve: (r: ExecuteResult) => void
   readonly reject: (err: unknown) => void
   agent?: string
@@ -27,9 +36,13 @@ interface Job {
 interface Agent {
   readonly id: string
   readonly size: string
-  readonly slots: number
+  readonly cores: number
+  readonly memory: number
   readonly label: string
+  /** Sent to it and not finished: running there or in its queue. */
   readonly busy: Map<string, Job>
+  usedCores: number
+  usedMemory: number
   /** Tasks whose outputs it holds: it ran them, or was sent them. */
   readonly has: Set<string>
   /** Sends to it go out in order: a run's parts before the run. */
@@ -43,13 +56,18 @@ export interface OrchestratorOptions {
   /** Tasks this machine runs at once besides the agents. */
   readonly localSlots: number
   readonly nodes: () => ReadonlyMap<string, TaskNode> | undefined
+  readonly need: (taskId: string) => Need
 }
+
+/** Cores an agent is sent beyond its own, so a finished task's successor is already there. */
+const prefetch = (cores: number): number => Math.max(1, Math.ceil(cores / 4))
 
 export class Orchestrator {
   private readonly agents = new Map<string, Agent>()
   private readonly queue: Job[] = []
   private readonly results = new Map<string, string[]>()
   private localBusy = 0
+  private pumping = false
   private joined = 0
   private readonly stop = new AbortController()
   private readonly loop: Promise<void>
@@ -61,10 +79,10 @@ export class Orchestrator {
   execute(req: ExecuteRequest): Promise<ExecuteResult> {
     if (this.lost !== undefined) return Promise.reject(executorFallback(this.lost))
     return new Promise((resolve, reject) => {
-      const job: Job = { req, resolve, reject }
+      const job: Job = { req, need: this.o.need(req.taskId), resolve, reject }
       req.signal?.addEventListener('abort', () => this.abort(job), { once: true })
       this.queue.push(job)
-      this.pump()
+      this.pumpSoon()
     })
   }
 
@@ -87,23 +105,65 @@ export class Orchestrator {
     }
   }
 
+  /** Tasks core starts in one tick go out as one batch. */
+  private pumpSoon(): void {
+    if (this.pumping) return
+    this.pumping = true
+    setImmediate(() => {
+      this.pumping = false
+      this.pump()
+    })
+  }
+
   private pump(): void {
-    while (this.queue.length > 0) {
+    const batches = new Map<Agent, Job[]>()
+    const left: Job[] = []
+    for (const job of this.queue.splice(0)) {
       if (this.localBusy < this.o.localSlots) {
-        this.runHere(this.queue.shift()!)
+        this.runHere(job)
         continue
       }
-      let best: Agent | undefined
-      for (const a of this.agents.values()) {
-        if (
-          a.busy.size < a.slots &&
-          (best === undefined || a.slots - a.busy.size > best.slots - best.busy.size)
-        )
-          best = a
+      const a = this.place(job)
+      if (a === undefined) {
+        left.push(job)
+        continue
       }
-      if (best === undefined) return
-      this.send(best, this.queue.shift()!)
+      job.agent = a.id
+      a.busy.set(job.req.taskId, job)
+      a.usedCores += job.need.cores
+      a.usedMemory += job.need.memory
+      const batch = batches.get(a)
+      if (batch === undefined) batches.set(a, [job])
+      else batch.push(job)
     }
+    this.queue.push(...left)
+    for (const [a, jobs] of batches) this.send(a, jobs)
+  }
+
+  /**
+   * The agent for `job`: one it fits on, else one with prefetch room left;
+   * among those, the one holding most of its dependencies' outputs, then
+   * the one with most cores free. A task bigger than every agent goes to an
+   * idle one, alone.
+   */
+  private place(job: Job): Agent | undefined {
+    const up = upstream(this.o.nodes(), job.req.taskId)
+    let best: Agent | undefined
+    let bestScore: number[] = []
+    for (const a of this.agents.values()) {
+      const fits =
+        a.busy.size === 0 ||
+        (a.usedCores + job.need.cores <= a.cores && a.usedMemory + job.need.memory <= a.memory)
+      if (!fits && a.usedCores + job.need.cores > a.cores + prefetch(a.cores)) continue
+      let held = 0
+      for (const id of up) if (a.has.has(id)) held++
+      const score = [fits ? 1 : 0, held, a.cores - a.usedCores]
+      if (best === undefined || greater(score, bestScore)) {
+        best = a
+        bestScore = score
+      }
+    }
+    return best
   }
 
   private runHere(job: Job): void {
@@ -121,57 +181,71 @@ export class Orchestrator {
       .then((r) => job.resolve(result(r)), job.reject)
       .finally(() => {
         this.localBusy--
-        this.pump()
+        this.pumpSoon()
       })
   }
 
-  private send(a: Agent, job: Job): void {
-    const { req } = job
-    job.agent = a.id
-    a.busy.set(req.taskId, job)
+  private send(a: Agent, jobs: readonly Job[]): void {
     const nodes = this.o.nodes()
-    const node = nodes?.get(req.taskId)
-    const project = node === undefined ? '' : path.relative(this.o.root, node.projectDir)
-    const ship = [...upstream(nodes, req.taskId)].filter((id) => !a.has.has(id))
-    for (const id of ship) a.has.add(id)
-    const env: Record<string, string> = {}
-    for (const [k, v] of Object.entries(req.env)) if (v !== undefined) env[k] = v
-    a.chain = a.chain
-      .then(async () => {
-        const files: string[] = []
-        for (const id of ship) {
-          const n = nodes!.get(id)!
-          const outs = n.config.cache?.outputs
-          if (outs === undefined) continue
-          files.push(
-            ...(await outputFiles(this.o.root, path.relative(this.o.root, n.projectDir), {
-              files: outs.files,
-              workspaceFiles: outs.workspaceFiles ?? [],
-            })),
-          )
-        }
-        const parts = files.length === 0 ? [] : toParts(await pack(this.o.root, files, null))
-        for (const data of parts)
-          await this.o.me.send(a.id, { type: 'part', task: req.taskId, data })
-        await this.o.me.send(a.id, {
-          type: 'run',
+    const orders = jobs.map((job) => {
+      const { req } = job
+      const ship = [...upstream(nodes, req.taskId)].filter((id) => !a.has.has(id))
+      for (const id of ship) a.has.add(id)
+      // A task sent here leaves its outputs here for its dependants.
+      a.has.add(req.taskId)
+      const node = nodes?.get(req.taskId)
+      const env: Record<string, string> = {}
+      for (const [k, v] of Object.entries(req.env)) if (v !== undefined) env[k] = v
+      return {
+        job,
+        ship,
+        order: {
           task: req.taskId,
-          root: this.o.root,
           command: withForwardArgs(req.command, req.forwardArgs),
           cwd: path.relative(this.o.root, req.cwd),
-          project,
+          project: node === undefined ? '' : path.relative(this.o.root, node.projectDir),
           env,
           ...(req.timeoutMs === undefined ? {} : { timeoutMs: req.timeoutMs }),
           outputs: {
             files: [...req.outputs.files],
             workspaceFiles: [...req.outputs.workspaceFiles],
           },
+          cores: job.need.cores,
+          memory: job.need.memory,
+        } satisfies RunOrder,
+      }
+    })
+    a.chain = a.chain
+      .then(async () => {
+        for (const { order, ship } of orders) {
+          const files: string[] = []
+          for (const id of ship) {
+            const n = nodes!.get(id)!
+            const outs = n.config.cache?.outputs
+            if (outs === undefined) continue
+            files.push(
+              ...(await outputFiles(this.o.root, path.relative(this.o.root, n.projectDir), {
+                files: outs.files,
+                workspaceFiles: outs.workspaceFiles ?? [],
+              })),
+            )
+          }
+          if (files.length === 0) continue
+          for (const data of toParts(await pack(this.o.root, files, null))) {
+            await this.o.me.send(a.id, { type: 'part', task: order.task, data })
+          }
+        }
+        await this.o.me.send(a.id, {
+          type: 'batch',
+          root: this.o.root,
+          tasks: orders.map((o) => o.order),
         } satisfies ToAgent)
       })
       .catch((err: unknown) => {
         // The relay refused the send (the agent is gone): the loss notice
-        // puts the task back.
-        if (!(err instanceof RelayError && err.status === 404)) job.reject(err)
+        // puts the tasks back.
+        if (err instanceof RelayError && err.status === 404) return
+        for (const { job } of orders) job.reject(err)
       })
   }
 
@@ -184,11 +258,12 @@ export class Orchestrator {
     if (job === undefined) return
     const head = (await unpack(this.o.root, fromParts(parts))) as CommandResult
     a.busy.delete(task)
-    a.has.add(task)
+    a.usedCores -= job.need.cores
+    a.usedMemory -= job.need.memory
     if (head.stdout !== '') job.req.onStdout(head.stdout)
     if (head.stderr !== '') job.req.onStderr(head.stderr)
     job.resolve({ ...result(head), where: a.label })
-    this.pump()
+    this.pumpSoon()
   }
 
   private onRelay(body: { type?: string; id?: string; info?: unknown }): void {
@@ -200,7 +275,12 @@ export class Orchestrator {
           .send(id, { type: 'refused', reason } satisfies ToAgent)
           .catch(() => undefined)
       }
-      if (info?.v !== 1 || typeof info.size !== 'string' || !(Number(info.slots) >= 1)) {
+      if (
+        info?.v !== 1 ||
+        typeof info.size !== 'string' ||
+        !(Number(info.cores) >= 1) ||
+        !(Number(info.memory) >= 0)
+      ) {
         return refuse('speaks another vx-dte protocol')
       }
       if (info.commit !== this.o.commit) {
@@ -209,7 +289,10 @@ export class Orchestrator {
       this.agents.set(id, {
         id,
         size: info.size,
-        slots: Math.floor(Number(info.slots)),
+        cores: Number(info.cores),
+        memory: Number(info.memory),
+        usedCores: 0,
+        usedMemory: 0,
         label: `${info.size} agent ${++this.joined}`,
         busy: new Map(),
         has: new Set(),
@@ -226,7 +309,7 @@ export class Orchestrator {
     } else {
       return
     }
-    this.pump()
+    this.pumpSoon()
   }
 
   private async listen(): Promise<void> {
@@ -278,6 +361,11 @@ export class Orchestrator {
 
   /** Why the relay was given up on; then every task runs here. */
   lost: string | undefined
+}
+
+function greater(a: readonly number[], b: readonly number[]): boolean {
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i]! > b[i]!
+  return false
 }
 
 function result(r: CommandResult): ExecuteResult {
