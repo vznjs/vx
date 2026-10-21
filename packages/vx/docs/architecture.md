@@ -634,7 +634,7 @@ transaction (`recordRunBundle`), one row per real task (hits included) to the
 | `peak_rss_bytes`                          | resource-usage max RSS                                                          |
 | `peak_cores` / `avg_rss_bytes`            | sampled: most cores one 1 s interval burned, mean RSS (v43)                     |
 | `placement`                               | where an executor ran it (`small#1`, `TaskExecutor.running`); NULL = here (v44) |
-| `placement_cores` / `placement_memory`    | that machine's cores and memory bytes (v44)                               |
+| `placement_cores` / `placement_memory`    | that machine's cores and memory bytes (v44)                                     |
 | `wallclock_start_ns` / `wallclock_end_ns` | hrtime ns relative to run t=0                                                   |
 | `cache_hit`                               | convenience boolean (derivable from status)                                     |
 | `attempts`                                | attempts a retried task took (> 1); NULL for a once-run task                    |
