@@ -125,13 +125,20 @@ export type CacheBucket =
   | 'restoredLocal'
   | 'restoredRemote'
   | 'saved'
+  | 'notSaved'
 
 /** A finished task's own cache bucket; none for a group, a skip or an abort. */
 export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
   if (isGroupTask(o.node)) return undefined
   switch (o.status) {
     case 'success':
-      return ranNoCache(o) ? 'noCache' : o.saved === true ? 'saved' : 'miss'
+      return ranNoCache(o)
+        ? 'noCache'
+        : o.saved === true
+          ? 'saved'
+          : ranUnsaved(o)
+            ? 'notSaved'
+            : 'miss'
     case 'failed':
       return ranNoCache(o) ? 'noCache' : 'miss'
     case 'cache-hit':
@@ -154,8 +161,12 @@ type Buckets = Record<CacheBucket | 'uploaded' | 'uploading' | 'remoteFailed', n
  */
 function cacheBuckets(stats: SummaryStats, layers: RunContext['cache']): Buckets {
   const saved = layers === undefined ? 0 : (stats.saved ?? 0)
+  // Its own yellow segment, as its legend count is: in the misses' red it
+  // was a cell with no count under it (M, 2026-10-21).
+  const notSaved = layers === undefined ? 0 : (stats.notSaved ?? 0)
   const b: Buckets = {
-    miss: stats.miss - saved,
+    miss: stats.miss - saved - notSaved,
+    notSaved,
     noCache: stats.noCache ?? 0,
     upToDate: stats.upToDate,
     restoredLocal: stats.restoredLocal,
@@ -330,6 +341,7 @@ export function formatSummarySection(
     const cacheBar = segmentBar(
       [
         { n: b.miss, color: ERROR },
+        { n: b.notSaved, color: WARN },
         { n: b.noCache, color: '', dim: true },
         { n: b.upToDate, color: SUCCESS },
         { n: b.restoredLocal, color: LOCAL },
@@ -375,8 +387,8 @@ export function formatSummarySection(
       ]
       if (layers.remote && remote.length > 0)
         cacheParts.push(`${dim('remote')} ${remote.join(' ')}`)
-      if ((stats.notSaved ?? 0) > 0)
-        cacheParts.push(paint(WARN, `${stats.notSaved} not saved`, colors))
+      if (b.miss > 0) cacheParts.push(paint(ERROR, `${b.miss} miss`, colors))
+      if (b.notSaved > 0) cacheParts.push(paint(WARN, `${b.notSaved} not saved`, colors))
       const notDownloaded = layers.notDownloaded()
       if (notDownloaded > 0) cacheParts.push(paint(WARN, `${notDownloaded} not downloaded`, colors))
     } else {
