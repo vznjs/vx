@@ -427,9 +427,9 @@ export class Orchestrator {
     }
   }
 
-  /** The agent a task was sent to, or `here`. */
+  /** The agent a task was sent to, or `local`. */
   where(taskId: string): string | undefined {
-    if (this.runningHere.has(taskId)) return 'here'
+    if (this.runningHere.has(taskId)) return 'local'
     for (const a of this.agents.values()) if (a.busy.has(taskId)) return a.label
     return undefined
   }
@@ -440,29 +440,30 @@ export class Orchestrator {
   }
 
   /**
-   * The `agents` row: while the run goes, how many are starting, online
-   * and gone; each agent by `size·index` with the tasks it ran and its
-   * warm-up; the tasks this machine ran itself.
+   * The `agents` rows, live and at the end: one per agent by `size·index`
+   * with its status, the tasks it has done and the ones it runs now, then
+   * this machine's; once over, each joined agent's warm-up and each size
+   * whose machines are not what it says.
    */
   footer(): [string, string][] {
     if (this.spawnedAt.size === 0 && this.agents.size === 0) return []
+    const gone = new Set(this.gone)
     const all = [...this.agents.values(), ...this.gone]
-    const joined = all.filter((a) => a.warmUpMs !== undefined).length
-    const starting = Math.max(0, this.spawnedAt.size - joined)
-    // Over, the run says how many took part; until then, who is up.
-    const head = [
-      this.ended ? `${all.length} joined` : `${this.agents.size} online`,
-      ...(starting > 0 ? [`${starting} starting`] : []),
-      ...(this.gone.length > 0 ? [`${this.gone.length} gone`] : []),
-    ].join(' · ')
-    const lines: [string, string][] = all
-      .sort((x, y) => x.label.localeCompare(y.label, 'en', { numeric: true }))
-      .map((a) => [
-        a.label,
-        `${a.ran} ran${a.warmUpMs === undefined ? '' : `, warm-up ${seconds(a.warmUpMs)}`}`,
-      ])
-    if (this.ranHere > 0) lines.push(['here', `${this.ranHere} ran`])
-    const width = Math.max(0, ...lines.map(([l]) => l.length))
+    const joined = new Set(all.map((a) => a.label))
+    const count = (done: number, running: number): string =>
+      [`${done} done`, ...(running > 0 ? [`${running} running`] : [])].join(' · ')
+    const lines: [string, string, string][] = all.map((a) => [
+      a.label,
+      gone.has(a) ? 'gone' : 'online',
+      count(a.ran, gone.has(a) ? 0 : a.busy.size) +
+        (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : ''),
+    ])
+    for (const id of this.spawnedAt.keys()) if (!joined.has(id)) lines.push([id, 'starting', ''])
+    lines.sort((x, y) => x[0].localeCompare(y[0], 'en', { numeric: true }))
+    if (this.o.localSlots > 0 || this.ranHere > 0)
+      lines.push(['local', 'online', count(this.ranHere, this.runningHere.size)])
+    const width = Math.max(...lines.map(([l]) => l.length))
+    const status = Math.max(...lines.map(([, st]) => st.length))
     // Once the run is over: each size whose machines are not what it says.
     const off = new Map<string, string>()
     for (const a of this.ended ? all : []) {
@@ -475,8 +476,10 @@ export class Orchestrator {
       )
     }
     return [
-      ['agents', head],
-      ...lines.map(([l, t]): [string, string] => ['', `${l.padEnd(width)}  ${t}`]),
+      ...lines.map(([l, st, t], i): [string, string] => [
+        i === 0 ? 'agents' : '',
+        `${l.padEnd(width)}  ${st.padEnd(status)}  ${t}`.trimEnd(),
+      ]),
       ...[...off.values()].map((t): [string, string] => ['', `! ${t}`]),
     ]
   }

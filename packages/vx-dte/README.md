@@ -121,19 +121,24 @@ the order the run started it:
  ⏺︎   308ms success miss     c#build  on small·1
 ```
 
-The footer's `agents` row counts the agents online, starting and gone
-while the run goes, then lists each one with the tasks it ran and its
-warm-up (from asking the adapter to its join), and the tasks this
-machine ran. An agent the run started is named by its size and the order
-it was started in; one that joined on its own is `agent·N`. Once the run
-is over, a size whose agents reported other cores or memory than it
-declares is named:
+The `agents` rows, live while the run goes and again in the footer,
+give each agent its status (`starting`, `online`, `gone`), the tasks it
+has done and the ones it runs now, then this machine as `local`. An
+agent the run started is named by its size and the order it was started
+in; one that joined on its own is `agent·N`. Once the run is over, each
+agent adds its warm-up (from asking the adapter to its join), and a size
+whose agents reported other cores or memory than it declares is named:
 
 ```
-  agents    2 online
-            small·1  5 ran, warm-up 0.1s
-            small·2  0 ran, warm-up 0.2s
-            here     1 ran
+  agents    small·1  online    3 done · 2 running
+            small·2  starting
+            local    online    1 done
+```
+
+```
+  agents    small·1  online  5 done · warm-up 0.1s
+            small·2  gone    1 done · warm-up 0.2s
+            local    online  1 done
             ! small: config 2 cores 8 GB, reported 4 cores 16 GB
 ```
 
