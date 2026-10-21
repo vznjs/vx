@@ -59,10 +59,15 @@ export function docker(options: DockerOptions): DteAdapter {
       })
         .stdout.toString()
         .trim()
+      // On Linux a container's root writes the store as root; as this user
+      // it has no home but /tmp, where the store is mounted instead.
+      const uid = process.getuid?.() ?? 0
+      const asUser = linux && uid !== 0
+      const work = asUser ? '/tmp/work' : '/work'
       const script = [
         'set -e',
-        'git clone -q /src /work',
-        'cd /work',
+        `git clone -q /src ${work}`,
+        `cd ${work}`,
         origin === '' ? 'git remote remove origin' : `git remote set-url origin ${quote(origin)}`,
         `git fetch -q --upload-pack='git -c uploadpack.allowAnySHA1InWant=true upload-pack' /src ${sha}`,
         `git checkout -q --detach ${sha}`,
@@ -87,9 +92,10 @@ export function docker(options: DockerOptions): DteAdapter {
         mounts.push(abs)
         cacheEnv['VX_CACHE_DIR'] = abs
       }
+      const inHome = asUser ? '/tmp' : home
       const env = {
         ...a.env,
-        HOME: home,
+        HOME: inHome,
         ...cacheEnv,
         ...(linux ? {} : { VX_DTE_RELAY: a.relay.replace('127.0.0.1', 'host.docker.internal') }),
         // The checkout is the host's, owned by another user than the container's.
@@ -112,7 +118,11 @@ export function docker(options: DockerOptions): DteAdapter {
           ...(linux ? ['--network', 'host'] : []),
           '--volume',
           `${top}:/src:ro`,
-          ...mounts.flatMap((m) => ['--volume', `${m}:${m}`]),
+          ...(asUser ? ['--user', `${uid}:${process.getgid?.() ?? uid}`] : []),
+          ...mounts.flatMap((m) => [
+            '--volume',
+            `${m}:${m === store ? path.join(inHome, '.vx') : m}`,
+          ]),
           ...Object.keys(env).flatMap((k) => ['--env', k]),
           options.image,
           'sh',
