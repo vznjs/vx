@@ -61,7 +61,9 @@ VX_DTE_RUN=try vx run build --all
 runs here as always. `local()` starts each agent as a process in its own
 git worktree of the tracked files as they are, uncommitted changes
 included (untracked files are not). When an agent fails, its row names
-the error line and the log that holds its whole stderr.
+the error line and the log that holds its whole stderr. At the run's end,
+or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
+a detached shell removes them and prunes git's records.
 
 `docker()` starts each agent as a container held to its size: `--cpus`
 and `--memory` come from `cpu` and `memory`. The container clones this
