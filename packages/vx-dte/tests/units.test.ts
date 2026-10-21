@@ -181,7 +181,7 @@ async function harness(
       await me.send('orchestrator', { type: 'end', task, parts: parts.length })
     }
     const begin = (task: string) => me.send('orchestrator', { type: 'start', task })
-    return { batches, finish, begin }
+    return { batches, finish, begin, leave: () => me.leave() }
   }
   const req = (taskId: string) =>
     ({
@@ -239,6 +239,40 @@ it('a task waits until an agent begins it; the live rows leave out its machine',
     const live = JSON.stringify(h.o.footer())
     expect(live).toContain('1 running')
     expect(live).not.toMatch(/\dc\//)
+  } finally {
+    await h.stop()
+  }
+})
+
+// A lost agent's begun task runs again on another, two agents at most;
+// one it had not begun goes back and does not count.
+it('a task lost with two agents fails naming both; one not begun goes back free', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const a = await h.agent(1)
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    const t2 = h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t1', 't2']])
+    await a.begin('t1')
+    await Bun.sleep(50)
+    await a.leave()
+    const b = await h.agent(1)
+    expect(await b.batches()).toEqual([['t1', 't2']])
+    await b.begin('t1')
+    await b.begin('t2')
+    await Bun.sleep(50)
+    await b.leave()
+    expect(
+      await t1.then(
+        () => '',
+        (e: Error) => e.message,
+      ),
+    ).toBe('t1: the agents running it were lost: agent#1, agent#2')
+    const c = await h.agent(1)
+    expect(await c.batches()).toEqual([['t2']])
+    await c.finish('t2')
+    expect((await t2).exitCode).toBe(0)
   } finally {
     await h.stop()
   }
