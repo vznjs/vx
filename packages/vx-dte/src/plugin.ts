@@ -1,9 +1,11 @@
 import {
   definePlugin,
+  LocalHistoryProvider,
   refuseUnknownOptions,
   UserError,
   type PluginOptionKinds,
   type TaskNode,
+  type TaskResources,
 } from '@vzn/vx'
 import type { Orchestrator } from './orchestrator.js'
 
@@ -11,7 +13,7 @@ import type { Orchestrator } from './orchestrator.js'
 export interface AgentSize {
   /** How many of it one run may start. */
   readonly max: number
-  /** Its cores: the tasks it runs at once. */
+  /** Its cores: what starting one adds, until it reports what its machine has. */
   readonly cpu: number
 }
 
@@ -73,6 +75,7 @@ export function dte(options: DteOptions) {
     (await options.token?.()) ?? process.env['VX_DTE_TOKEN']
 
   let nodes: ReadonlyMap<string, TaskNode> | undefined
+  let peaks: ReadonlyMap<string, TaskResources> = new Map()
   let orchestrator: Orchestrator | undefined
   let closing: Promise<void> | undefined
 
@@ -80,6 +83,7 @@ export function dte(options: DteOptions) {
     const o = orchestrator
     orchestrator = undefined
     nodes = undefined
+    peaks = new Map()
     await o?.close()
     await options.adapter.close?.()
   }
@@ -106,7 +110,6 @@ export function dte(options: DteOptions) {
             relay,
             run,
             size,
-            slots: agent.cpu,
             root: ctx.workspaceRoot,
             token: await token(),
             log: (line) => console.error(line),
@@ -115,8 +118,24 @@ export function dte(options: DteOptions) {
       },
     },
 
-    schedule(graph) {
+    async schedule(graph, ctx) {
       nodes = graph
+      // A run that is not distributed reads nothing.
+      if (orchestrator === undefined) return undefined
+      try {
+        const ids = [...graph.values()]
+          .filter((n) => n.config.exec?.command !== undefined)
+          .map((n) => n.id)
+        peaks = await new LocalHistoryProvider(
+          ctx.localCache.dbHandle(),
+          undefined,
+          ctx.branch,
+        ).resourcesFor(ids)
+      } catch (err) {
+        ctx.warn(
+          `dte: tasks are packed one core each: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
       return undefined
     },
 
@@ -140,6 +159,13 @@ export function dte(options: DteOptions) {
         commit: commit.stdout.toString().trim(),
         localSlots,
         nodes: () => nodes,
+        need: (id) => {
+          const r = peaks.get(id)
+          return {
+            cores: Math.max(1, Math.ceil(r?.maxCpuParallelism ?? 1)),
+            memory: r?.maxPeakRssBytes ?? 0,
+          }
+        },
       })
       orchestrator = o
       const started = new Map<string, number>()
@@ -148,7 +174,9 @@ export function dte(options: DteOptions) {
       return {
         name: 'dte',
         remote: true,
-        capacity: Math.max(1, localSlots + sizes.reduce((n, [, s]) => n + s.max * s.cpu, 0)),
+        // Room for what agents report beyond their size and the prefetch;
+        // the orchestrator holds the rest.
+        capacity: Math.max(1, localSlots + sizes.reduce((n, [, s]) => n + 2 * s.max * s.cpu, 0)),
         execute: (req) => o.execute(req),
         // Agents for what this machine's share cannot take, largest
         // declared first; none are stopped before the run ends.

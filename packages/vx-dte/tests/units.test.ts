@@ -6,6 +6,7 @@ import { createRelay } from '@vzn/vx-dte-relay'
 import { localEnv } from '../src/agent.js'
 import { fromParts, outputFiles, pack, toParts, unpack } from '../src/bundle.js'
 import { dte, local } from '../src/index.js'
+import type { ExecuteRequest, TaskNode } from '@vzn/vx'
 import { Orchestrator } from '../src/orchestrator.js'
 import { join } from '../src/wire.js'
 
@@ -98,12 +99,13 @@ it('an agent on another commit is refused', async () => {
       commit: 'aaa',
       localSlots: 0,
       nodes: () => undefined,
+      need: () => ({ cores: 1, memory: 0 }),
     })
     const agent = await join(
       url,
       'r',
       'agent',
-      { v: 1, size: 's', slots: 1, commit: 'bbb' },
+      { v: 1, size: 's', cores: 1, memory: 1, commit: 'bbb' },
       undefined,
     )
     let got: unknown[] = []
@@ -118,6 +120,103 @@ it('an agent on another commit is refused', async () => {
   } finally {
     relay.close()
     await server.stop(true)
+  }
+})
+
+/** An orchestrator on a loopback relay, and agents of it that only listen. */
+async function harness(nodes: Map<string, TaskNode>) {
+  const relay = createRelay()
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+  const url = `http://127.0.0.1:${server.port}`
+  const o = new Orchestrator({
+    me: await join(url, 'r', 'orchestrator', null, undefined),
+    root: '/ws',
+    commit: 'c',
+    localSlots: 0,
+    nodes: () => nodes,
+    need: () => ({ cores: 1, memory: 10 }),
+  })
+  const agent = async (cores: number) => {
+    const me = await join(
+      url,
+      'r',
+      'agent',
+      { v: 1, size: 's', cores, memory: 100, commit: 'c' },
+      undefined,
+    )
+    const batches = async (): Promise<string[][]> => {
+      for (let i = 0; i < 20; i++) {
+        const got = (await me.poll()).map(
+          (m) => m.body as { type: string; tasks?: { task: string }[] },
+        )
+        const b = got.filter((m) => m.type === 'batch').map((m) => m.tasks!.map((t) => t.task))
+        if (b.length > 0) return b
+      }
+      return []
+    }
+    const finish = async (task: string): Promise<void> => {
+      const res = { exitCode: 0, durationMs: 1, stdout: '', stderr: '' }
+      const parts = toParts(await pack('/nonexistent', [], res))
+      for (const data of parts) await me.send('orchestrator', { type: 'part', task, data })
+      await me.send('orchestrator', { type: 'end', task, parts: parts.length })
+    }
+    return { batches, finish }
+  }
+  const req = (taskId: string) =>
+    ({
+      taskId,
+      workspaceRoot: '/ws',
+      command: 'true',
+      forwardArgs: [],
+      cwd: '/ws',
+      env: {},
+      envDefine: {},
+      outputs: { files: [], workspaceFiles: [] },
+      onStdout() {},
+      onStderr() {},
+    }) as unknown as ExecuteRequest
+  const stop = async () => {
+    await o.close()
+    relay.close()
+    await server.stop(true)
+  }
+  return { o, agent, req, stop }
+}
+
+const node = (id: string, deps: string[] = []) =>
+  [id, { id, deps, projectDir: '/ws', config: {} } as unknown as TaskNode] as const
+
+it('fills an agent’s cores and a prefetch in one batch', async () => {
+  const h = await harness(new Map([node('t1'), node('t2'), node('t3'), node('t4')]))
+  try {
+    const a = await h.agent(2)
+    await Bun.sleep(50)
+    for (const id of ['t1', 't2', 't3', 't4']) void h.o.execute(h.req(id))
+    // 2 cores and 1 of prefetch: t4 waits for one to finish.
+    expect(await a.batches()).toEqual([['t1', 't2', 't3']])
+    await a.finish('t1')
+    expect(await a.batches()).toEqual([['t4']])
+  } finally {
+    await h.stop()
+  }
+})
+
+it('sends a task to the agent that holds its dependency’s outputs', async () => {
+  const h = await harness(new Map([node('x'), node('y', ['x'])]))
+  try {
+    const small = await h.agent(1)
+    await Bun.sleep(50)
+    const ran = h.o.execute(h.req('x'))
+    expect(await small.batches()).toEqual([['x']])
+    await small.finish('x')
+    await ran
+    const big = await h.agent(8)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('y'))
+    expect(await small.batches()).toEqual([['y']])
+    void big
+  } finally {
+    await h.stop()
   }
 })
 

@@ -5,8 +5,7 @@ Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 Distributed task execution for vx: one `vx run` spread over agents your
 own CI starts, replayed here as one run. The run you start is the
 orchestrator. It keeps a share of the tasks, starts agents for the rest,
-and hands each ready task to an agent with a free slot, critical path
-first. An agent runs it in its own checkout and sends back the task's
+and hands the ready tasks to the agents with room, critical path first. An agent runs it in its own checkout and sends back the task's
 output and the files its declared outputs left. They land here before the
 task ends, so the run saves, uploads and reports the task as its own.
 
@@ -43,6 +42,14 @@ git worktree of `HEAD`, so agents run committed code only.
 
 ## What runs where
 
+- An agent reports the cores and memory its machine has when it joins.
+  Tasks go to it in batches that fill those by each task's recorded peak
+  (cores used, peak memory; one core for a task with no history), plus a
+  quarter of its cores as a prefetch, so a successor is there when a task
+  ends. The agent starts only what fits; a task bigger than any agent runs
+  alone on an idle one.
+- A task goes to the agent that holds most of its dependencies' outputs,
+  so a chain stays on one machine.
 - Tasks that must run here stay here: sandboxed, persistent, interactive,
   `exec.remote: false`, and their dependants (core's placement).
 - An agent receives the declared outputs of every task the one it runs
@@ -58,7 +65,8 @@ git worktree of `HEAD`, so agents run committed code only.
 - `dte(options: DteOptions)` is the plugin. `DteOptions` is
   `{ agents, adapter, relay?, local?, token? }`:
   - `agents` names each `AgentSize`, `{ max, cpu }`: how many of it one
-    run may start, and its cores, which are the tasks it runs at once.
+    run may start, and its cores, which the run counts on when it starts
+    one, until the agent reports what its machine has.
     Agents start in declared order as ready work outgrows this machine's
     share; none stops before the run ends.
   - `adapter` is the `DteAdapter` that starts agents.

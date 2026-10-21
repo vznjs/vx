@@ -1,12 +1,15 @@
-// `vx dte agent`: one CI job's share of a run. It joins the run's relay,
-// runs what the orchestrator sends in its own checkout, and sends back each
-// task's streams and the files its outputs left.
+// `vx dte agent`: one CI job's share of a run. It joins the run's relay
+// with what its machine has, runs what the orchestrator sends in its own
+// checkout, as many at once as its cores and memory hold by each task's
+// recorded peak, and sends back each task's streams and the files its
+// outputs left.
 
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
+import { machineMemoryBytes, machineParallelism } from '@vzn/vx'
 import { fromParts, outputFiles, pack, toParts, unpack } from './bundle.js'
-import type { AgentInfo, ToAgent } from './messages.js'
-import { runCommand } from './run-command.js'
+import type { AgentInfo, RunOrder, ToAgent } from './messages.js'
+import { runCommand, type CommandResult } from './run-command.js'
 import { join, RelayError } from './wire.js'
 
 /** Names whose value is this machine's, never the orchestrator's. */
@@ -27,7 +30,6 @@ export async function runAgent(opts: {
   relay: string
   run: string
   size: string
-  slots: number
   root: string
   token: string | undefined
   log: (line: string) => void
@@ -35,14 +37,51 @@ export async function runAgent(opts: {
   const commit = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: opts.root })
     .stdout.toString()
     .trim()
-  const info: AgentInfo = { v: 1, size: opts.size, slots: opts.slots, commit }
+  const cores = machineParallelism()
+  const memory = machineMemoryBytes()
+  const info: AgentInfo = { v: 1, size: opts.size, cores, memory, commit }
   const me = await join(opts.relay, opts.run, 'agent', info, opts.token)
   opts.log(`vx dte agent ${opts.size} joined run ${opts.run}`)
   const parts = new Map<string, string[]>()
   const running = new Map<string, AbortController>()
+  const queue: RunOrder[] = []
   const work = new Set<Promise<void>>()
+  let root = opts.root
+  let usedCores = 0
+  let usedMemory = 0
 
-  const runTask = async (m: Extract<ToAgent, { type: 'run' }>): Promise<void> => {
+  const reply = async (task: string, res: CommandResult, files: string[]): Promise<void> => {
+    const out = toParts(await pack(opts.root, files, res))
+    for (const data of out) await me.send('orchestrator', { type: 'part', task, data })
+    await me.send('orchestrator', { type: 'end', task, parts: out.length })
+  }
+
+  /** Starts each queued task that fits what is free; with nothing running, the first one. */
+  const start = (): void => {
+    for (let i = 0; i < queue.length;) {
+      const m = queue[i]!
+      const fits =
+        running.size === 0 || (usedCores + m.cores <= cores && usedMemory + m.memory <= memory)
+      if (!fits) {
+        i++
+        continue
+      }
+      queue.splice(i, 1)
+      usedCores += m.cores
+      usedMemory += m.memory
+      const p = runTask(m)
+        .catch((err: unknown) => opts.log(`vx dte agent: ${m.task}: ${String(err)}`))
+        .finally(() => {
+          usedCores -= m.cores
+          usedMemory -= m.memory
+          work.delete(p)
+          start()
+        })
+      work.add(p)
+    }
+  }
+
+  const runTask = async (m: RunOrder): Promise<void> => {
     const stop = new AbortController()
     running.set(m.task, stop)
     try {
@@ -56,14 +95,11 @@ export async function runAgent(opts: {
       const res = await runCommand({
         command: m.command,
         cwd: path.join(opts.root, m.cwd),
-        env: localEnv(m.env, m.root, opts.root),
+        env: localEnv(m.env, root, opts.root),
         timeoutMs: m.timeoutMs,
         signal: stop.signal,
       })
-      const files = await outputFiles(opts.root, m.project, m.outputs)
-      const out = toParts(await pack(opts.root, files, res))
-      for (const data of out) await me.send('orchestrator', { type: 'part', task: m.task, data })
-      await me.send('orchestrator', { type: 'end', task: m.task, parts: out.length })
+      await reply(m.task, res, await outputFiles(opts.root, m.project, m.outputs))
     } finally {
       running.delete(m.task)
     }
@@ -93,17 +129,29 @@ export async function runAgent(opts: {
           list.push(m.data)
           parts.set(m.task, list)
         } else if (m.type === 'cancel') {
-          running.get(m.task)?.abort()
-        } else if (m.type === 'run') {
-          const p = runTask(m).catch((err: unknown) =>
-            opts.log(`vx dte agent: ${m.task}: ${String(err)}`),
-          )
-          work.add(p)
-          void p.finally(() => work.delete(p))
+          const at = queue.findIndex((q) => q.task === m.task)
+          if (at < 0) running.get(m.task)?.abort()
+          else {
+            queue.splice(at, 1)
+            const stopped = {
+              exitCode: 130,
+              signal: 'SIGTERM',
+              durationMs: 0,
+              stdout: '',
+              stderr: '',
+            }
+            await reply(m.task, stopped, [])
+          }
+        } else if (m.type === 'batch') {
+          // Every batch of a run names the same orchestrator root.
+          root = m.root
+          queue.push(...m.tasks)
+          start()
         }
       }
     }
   } finally {
+    queue.length = 0
     for (const c of running.values()) c.abort()
     await Promise.all(work)
     await me.leave()
