@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte: agents described by their machine, adapter optional
+
+VX_DTE_SIZE is removed; agents sizes need memory.
+
 ## history: keep a sampled run's peak cores and mean memory
 
 SCHEMA_VERSION is v43: the local cache index and run history from v42 are dropped on first open.
