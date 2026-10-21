@@ -37,5 +37,21 @@ docker run -p 8080:8080 vx-dte-relay --issuer https://gitlab.com --audience http
 
 Runs live in memory. Restarting the relay ends the runs it was carrying.
 
-`createRelay()` and `createVerifier()` (`src/index.ts`) are the same relay
-as a `fetch` handler, to mount in a server of your own.
+## API
+
+The same relay as a `fetch` handler, to mount in a server of your own
+(`src/index.ts`):
+
+- `createRelay(options?: RelayOptions): Relay`. `RelayOptions` is
+  `{ verify?, heartbeatMs? }`: `verify` checks a request's bearer token
+  (none admits every request), `heartbeatMs` (default 5000) is how often
+  a participant must be heard from. A `Relay` is `{ fetch(req), close() }`.
+- `createVerifier(options: OidcOptions)` returns that `verify`.
+  `OidcOptions` is `{ issuers, audience, runClaims?, fetchJson?, now? }`:
+  the trusted issuers, the `aud` a token must name, run claims per issuer
+  (default `runClaimsOf(iss)`), and a key reader and clock for tests. It
+  resolves a `VerifiedToken`, `{ iss, run }`, or rejects with a
+  `TokenError` carrying the `status` (401 or 403) the relay answers.
+- `runClaimsOf(iss)` names the claims of one pipeline: `repository_id`
+  and `run_id` for GitHub Actions, `project_id` and `pipeline_id`
+  otherwise.
