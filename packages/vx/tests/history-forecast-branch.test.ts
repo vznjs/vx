@@ -237,3 +237,31 @@ it('a repeat import of one commit adds no row, from any worktree', async () => {
     other.close()
   }
 })
+
+// A fresh CI machine has no run of a task: its need is the default
+// branch's, imported with the timings, so `vx-dte` packs it.
+it("a task never run here takes its need from the default branch's import", async () => {
+  const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
+  expect(await provider.resourcesFor(['p#t'])).toEqual(new Map())
+  provider.importTimings(
+    'abc',
+    new Map([
+      ['p#t', 7],
+      ['p#u', 9],
+    ]),
+    new Map([
+      [
+        'p#t',
+        { p50DurationMs: 7, maxCpuParallelism: 2.5, maxPeakRssBytes: 1e9, saturatedCores: 4 },
+      ],
+    ]),
+  )
+  const got = await provider.resourcesFor(['p#t', 'p#u'])
+  expect(got.get('p#t')).toEqual({
+    p50DurationMs: 7,
+    maxCpuParallelism: 2.5,
+    maxPeakRssBytes: 1e9,
+    saturatedCores: 4,
+  })
+  expect(got.get('p#u')).toEqual({ p50DurationMs: 9 })
+})

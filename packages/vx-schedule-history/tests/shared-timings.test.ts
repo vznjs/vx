@@ -351,6 +351,44 @@ describe('shared timings', () => {
     expect(rows.n).toBe(1)
   })
 
+  // A fresh CI machine has no run of a task: it packs by the need the
+  // default branch measured, carried in the blob, and passes it on.
+  it("carries each task's measured need: a fresh machine reads it, and CI on main writes it on", async () => {
+    const a = commit()
+    const b = commit()
+    const shared = spyCache()
+    shared.store.set(
+      key(a),
+      new TextEncoder().encode(
+        JSON.stringify({
+          version: 1,
+          tasks: { 'p#x': 100, 'p#y': 50, 'p#z': 5 },
+          needs: {
+            'p#x': { cpu: 3.5, rss: 2e9, cores: 4 },
+            'p#y': { cpu: -1 },
+            'p#z': { cpu: 1, rss: 'big' },
+            'q#gone': { cpu: 2 },
+          },
+        }),
+      ),
+    )
+    await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#x', 'p#y', 'p#z'] })
+    const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'main')
+    const got = await provider.resourcesFor(['p#x', 'p#y', 'p#z'])
+    expect(got.get('p#x')).toEqual({
+      p50DurationMs: 100,
+      maxCpuParallelism: 3.5,
+      maxPeakRssBytes: 2e9,
+      saturatedCores: 4,
+    })
+    expect(got.get('p#y')).toEqual({ p50DurationMs: 50 })
+    expect(got.get('p#z')).toEqual({ p50DurationMs: 5, maxCpuParallelism: 1 })
+    expect((read(shared.store.get(key(b))) as { needs: unknown }).needs).toEqual({
+      'p#x': { cpu: 3.5, rss: 2e9, cores: 4 },
+      'p#z': { cpu: 1 },
+    })
+  })
+
   it('drops oversized, malformed, out-of-range and non-graph entries', () => {
     const graph = new Set(['p#a', 'p#b', 'p#c', 'p#d', 'p#e', 'p#f'])
     expect(

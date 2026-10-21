@@ -79,7 +79,12 @@ export class LocalHistoryProvider implements HistoryProvider {
   /** The last forecast read found a task with no timing on this branch. */
   lackedBranchHistory: boolean
   hasImported(sha: string): boolean // rows of default-branch commit `sha` exist
-  importTimings(sha: string, timings: ReadonlyMap<string, number>): void // one 'remote' row per task
+  // one 'remote' row per task, with its measured need from `needs` (v45)
+  importTimings(
+    sha: string,
+    timings: ReadonlyMap<string, number>,
+    needs?: ReadonlyMap<string, TaskResources>,
+  ): void
 }
 ```
 
@@ -93,7 +98,9 @@ five on any branch, else none. An import (`importTimings`, by
 `design/shared-timings-2026-10.md`) is rows tagged `remote` with the
 commit, unique per (commit, task), so a repeat import from any worktree
 adds nothing; a store with no import pays one probe of that partial
-index, never a query per task. Each tier is one statement over every
+index, never a query per task. `resourcesFor` gives a task with no run
+in its window the newest imported row's need, so a fresh machine packs
+by what the default branch measured. Each tier is one statement over every
 task still unanswered (`json_each`), an index probe per task inside
 SQLite: 5-8 ms for 2,000 tasks, where a query per task was 31-40. The read learns whether some task lacked
 a timing on its branch (`lackedBranchHistory`), so a caller deciding to

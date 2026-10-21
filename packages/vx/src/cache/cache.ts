@@ -328,7 +328,10 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //        its peak and held on average. The cache KEY is unchanged.
 //   v44: runs.placement — where an executor ran the task. The cache KEY
 //        is unchanged.
-export const SCHEMA_VERSION = 'v44'
+//   v45: a 'remote' task_durations row also carries the task's measured
+//        cores, memory and saturation, for a run with no local history.
+//        The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v45'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON

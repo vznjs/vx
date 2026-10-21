@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v44",
+    "version": "v45",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -196,7 +196,11 @@
       "source      TEXT NOT NULL,",
       "sha         TEXT,",
       "duration_ms INTEGER NOT NULL,",
-      "recorded_at INTEGER NOT NULL",
+      "recorded_at INTEGER NOT NULL,",
+      "cpu_parallelism        REAL,",
+      "peak_rss_bytes         INTEGER,",
+      "saturated_cores        INTEGER,",
+      "saturated_memory_bytes INTEGER",
       ")",
       "",
       "CREATE TABLE task_outcomes (",
