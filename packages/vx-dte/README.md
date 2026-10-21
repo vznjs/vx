@@ -112,8 +112,9 @@ as each task starts and ends:
 - An agent whose tracked files differ from the orchestrator's (another
   tree) is refused. `docker()` clones `HEAD`, so its agents need a run
   with no uncommitted changes.
-- An agent that stops answering is dropped, and its tasks run again on
-  another. A task two lost agents had begun fails, naming both; one an
+- An agent that stops answering, stops saying it holds a task, or cannot
+  run one (a full disk) gets no more work, and its tasks run again on
+  another. A task two such agents had begun fails, naming both; one an
   agent had not begun yet does not count.
 - A relay unreachable for three heartbeats fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller

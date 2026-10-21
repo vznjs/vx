@@ -55,5 +55,9 @@ export type ToAgent =
 export type ToOrchestrator =
   /** It began the task: until then the task waits in its queue. */
   | { type: 'start'; task: string }
+  /** Each heartbeat while it holds any: what it runs and what waits in its queue, which renews its lease on each. */
+  | { type: 'held'; running: string[]; queued: string[] }
+  /** It could not run a task it began, not a non-zero exit: a full disk, a failed unpack. */
+  | { type: 'fault'; task: string; reason: string }
   | { type: 'part'; task: string; data: string }
   | { type: 'end'; task: string; parts: number }

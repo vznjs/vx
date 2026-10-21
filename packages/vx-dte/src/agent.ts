@@ -90,9 +90,13 @@ export async function runAgent(opts: {
       usedCores += m.cores
       usedMemory += m.memory
       const p = runTask(m)
-        .catch((err: unknown) =>
-          ui.print('err', ui.status('error', m.task, `could not run: ${String(err)}`)),
-        )
+        .catch(async (err: unknown) => {
+          const reason = err instanceof Error ? err.message : String(err)
+          ui.print('err', ui.status('error', m.task, `could not run: ${reason}`))
+          await me
+            .send('orchestrator', { type: 'fault', task: m.task, reason })
+            .catch(() => undefined)
+        })
         .finally(() => {
           usedCores -= m.cores
           usedMemory -= m.memory
@@ -166,6 +170,17 @@ export async function runAgent(opts: {
     }
   }
 
+  // What it holds, each heartbeat: the orchestrator's lease on each task.
+  const held = setInterval(() => {
+    if (running.size === 0 && queue.length === 0) return
+    void me
+      .send('orchestrator', {
+        type: 'held',
+        running: [...running.keys()],
+        queued: queue.map((q) => q.task),
+      })
+      .catch(() => undefined)
+  }, me.heartbeatMs)
   try {
     for (;;) {
       let messages
@@ -228,6 +243,7 @@ export async function runAgent(opts: {
       }
     }
   } finally {
+    clearInterval(held)
     queue.length = 0
     for (const c of running.values()) c.abort()
     await Promise.all(work)
