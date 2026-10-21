@@ -12,6 +12,8 @@ import path from 'node:path'
 import {
   executorFallback,
   localFloor,
+  machineMemoryBytes,
+  machineParallelism,
   withForwardArgs,
   type ExecuteRequest,
   type ExecuteResult,
@@ -452,18 +454,34 @@ export class Orchestrator {
     const joined = new Set(all.map((a) => a.label))
     const count = (done: number, running: number): string =>
       [`${done} done`, ...(running > 0 ? [`${running} running`] : [])].join(' · ')
-    const lines: [string, string, string][] = all.map((a) => [
+    // What it reports, then what its size declares: `4c/16G real · 2c/8G set`.
+    const res = (cores: number | undefined, memory: number | undefined, d?: Declared): string =>
+      [
+        ...(cores === undefined || memory === undefined
+          ? []
+          : [`${cores}c/${compact(memory)} real`]),
+        ...(d === undefined ? [] : [`${d.cpu}c/${compact(d.memory)} set`]),
+      ].join(' · ')
+    const lines: [string, string, string, string][] = all.map((a) => [
       a.label,
       gone.has(a) ? 'gone' : 'online',
       count(a.ran, gone.has(a) ? 0 : a.busy.size) +
         (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : ''),
+      res(a.cores, a.memory, a.declared),
     ])
-    for (const id of this.spawnedAt.keys()) if (!joined.has(id)) lines.push([id, 'starting', ''])
+    for (const [id, s] of this.spawnedAt)
+      if (!joined.has(id)) lines.push([id, 'starting', '', res(undefined, undefined, s.declared)])
     lines.sort((x, y) => x[0].localeCompare(y[0], 'en', { numeric: true }))
     if (this.o.localSlots > 0 || this.ranHere > 0)
-      lines.push(['local', 'online', count(this.ranHere, this.runningHere.size)])
+      lines.push([
+        'local',
+        'online',
+        count(this.ranHere, this.runningHere.size),
+        res(machineParallelism(), machineMemoryBytes()),
+      ])
     const width = Math.max(...lines.map(([l]) => l.length))
     const status = Math.max(...lines.map(([, st]) => st.length))
+    const done = Math.max(...lines.map(([, , t]) => t.length))
     // Once the run is over: each size whose machines are not what it says.
     const off = new Map<string, string>()
     for (const a of this.ended ? all : []) {
@@ -476,9 +494,9 @@ export class Orchestrator {
       )
     }
     return [
-      ...lines.map(([l, st, t], i): [string, string] => [
+      ...lines.map(([l, st, t, r], i): [string, string] => [
         i === 0 ? 'agents' : '',
-        `${l.padEnd(width)}  ${st.padEnd(status)}  ${t}`.trimEnd(),
+        `${l.padEnd(width)}  ${st.padEnd(status)}  ${t.padEnd(done)}  ${r}`.trimEnd(),
       ]),
       ...[...off.values()].map((t): [string, string] => ['', `! ${t}`]),
     ]
@@ -525,6 +543,12 @@ function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string):
   }
   walk(id)
   return seen
+}
+
+/** Bytes as whole gigabytes, one decimal under 10: `16G`, `0.5G`. */
+const compact = (n: number): string => {
+  const g = n / 1e9
+  return `${g >= 10 ? Math.round(g) : Number(g.toFixed(1))}G`
 }
 
 const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)}s`

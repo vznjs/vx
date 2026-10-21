@@ -123,22 +123,24 @@ the order the run started it:
 
 The `agents` rows, live while the run goes and again in the footer,
 give each agent its status (`starting`, `online`, `gone`), the tasks it
-has done and the ones it runs now, then this machine as `local`. An
-agent the run started is named by its size and the order it was started
-in; one that joined on its own is `agent·N`. Once the run is over, each
-agent adds its warm-up (from asking the adapter to its join), and a size
-whose agents reported other cores or memory than it declares is named:
+has done and the ones it runs now, and the cores and memory its machine
+reports (`real`) beside what its size declares (`set`); this machine is
+`local`. An agent the run started is named by its size and the order it
+was started in; one that joined on its own is `agent·N`. Once the run is
+over, each agent adds its warm-up (from asking the adapter to its join),
+and a size whose agents reported other cores or memory than it declares
+is named:
 
 ```
-  agents    small·1  online    3 done · 2 running
-            small·2  starting
-            local    online    1 done
+  agents    small·1  online    3 done · 2 running  4c/16G real · 2c/8G set
+            small·2  starting                      2c/8G set
+            local    online    1 done              10c/32G real
 ```
 
 ```
-  agents    small·1  online  5 done · warm-up 0.1s
-            small·2  gone    1 done · warm-up 0.2s
-            local    online  1 done
+  agents    small·1  online  5 done · warm-up 0.1s  4c/16G real · 2c/8G set
+            small·2  gone    1 done · warm-up 0.2s  4c/16G real · 2c/8G set
+            local    online  1 done                 10c/32G real
             ! small: config 2 cores 8 GB, reported 4 cores 16 GB
 ```
 
