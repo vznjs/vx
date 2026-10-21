@@ -340,6 +340,29 @@ describe('formatRunSummary', () => {
       )
     })
 
+    // CI, 2026-10-21: a task not saved here whose bytes went to the remote
+    // left its bucket twice, and the bar's repeat threw on a negative count.
+    it('a task not saved here that uploaded leaves the not-saved count once', () => {
+      const lines = formatRunSummary(
+        [cached('a#build', 'success'), cached('b#build', 'success', { saved: true })],
+        10,
+        { enabled: false },
+        {
+          version: '0.0.0',
+          packageCount: 1,
+          remoteCacheEnabled: true,
+          cache: {
+            local: true,
+            localWrite: true,
+            remote: true,
+            traffic: trafficOf({ 'a#build': {}, 'b#build': {} }),
+            notDownloaded: () => 0,
+          },
+        },
+      )
+      expect(lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()).toBe('remote 2↑')
+    })
+
     it('CONTROL: with no run context the legend is the plain one', () => {
       const lines = formatRunSummary(run, 10)
       expect(lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()).toBe(

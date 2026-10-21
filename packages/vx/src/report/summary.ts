@@ -125,13 +125,20 @@ export type CacheBucket =
   | 'restoredLocal'
   | 'restoredRemote'
   | 'saved'
+  | 'notSaved'
 
 /** A finished task's own cache bucket; none for a group, a skip or an abort. */
 export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
   if (isGroupTask(o.node)) return undefined
   switch (o.status) {
     case 'success':
-      return ranNoCache(o) ? 'noCache' : o.saved === true ? 'saved' : 'miss'
+      return ranNoCache(o)
+        ? 'noCache'
+        : o.saved === true
+          ? 'saved'
+          : ranUnsaved(o)
+            ? 'notSaved'
+            : 'miss'
     case 'failed':
       return ranNoCache(o) ? 'noCache' : 'miss'
     case 'cache-hit':
@@ -143,7 +150,7 @@ export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
   }
 }
 
-type Buckets = Record<CacheBucket | 'notSaved' | 'uploaded' | 'uploading' | 'remoteFailed', number>
+type Buckets = Record<CacheBucket | 'uploaded' | 'uploading' | 'remoteFailed', number>
 
 /**
  * The cache bar's segments, each task in one (M, 2026-10-15). With layers
