@@ -59,6 +59,7 @@ import {
   type CaptureConfig,
   type RunResult,
 } from './runner.js'
+import { watchTree } from './proc-sample.js'
 import {
   BUN_GLOB_WILDCARDS,
   executablePath,
@@ -2074,6 +2075,7 @@ async function runSandboxedOnce(
 
   args.liveChildren?.add(proc)
   args.onSpawn?.(proc.pid)
+  const watch = process.platform === 'linux' ? watchTree(proc.pid) : undefined
   const timeout = armTimeout(proc, args.timeoutMs)
   const armedAt = Date.now()
   const ac = new AbortController()
@@ -2102,6 +2104,7 @@ async function runSandboxedOnce(
   // aborts at once, otherwise drainOrAbort bounds the post-exit drain.
   await proc.exited
   const ranMs = Date.now() - armedAt
+  const looked = watch?.stop()
   await timeout.settle()
   let cut = false
   if (timeout.timedOut()) ac.abort()
@@ -2276,10 +2279,14 @@ async function runSandboxedOnce(
     // processes used is not folded into bwrap's usage: a 500 ms busy loop
     // read 2 ms under it and 510 without the flag, and the peak read was
     // vx's own high-water mark, inherited at exec (a sandboxed `true` from a
-    // 300 MB vx: 353 MB; B-3). Nothing is reported rather than a number
-    // that is someone else's. macOS's `sandbox-exec` execs the command, so
-    // its usage is the task's.
-    ...(process.platform === 'linux' ? {} : resourceUsageToCpuRss(proc.resourceUsage())),
+    // 300 MB vx: 353 MB; B-3). So the tree is looked at while it runs
+    // (`watchTree`); a task over before the first look reports nothing.
+    // macOS's `sandbox-exec` execs the command, so its usage is the task's.
+    ...(process.platform !== 'linux'
+      ? resourceUsageToCpuRss(proc.resourceUsage())
+      : looked === undefined
+        ? {}
+        : { cpuMs: looked.cpuMs, peakRssBytes: looked.rssBytes }),
     ranMs,
     tracerFailed:
       straceLog !== undefined &&

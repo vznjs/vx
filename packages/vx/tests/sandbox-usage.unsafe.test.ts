@@ -2,8 +2,9 @@
 // command in a pid namespace, and what its processes use never reaches
 // vx's wait: a sandboxed busy loop reported the few milliseconds of
 // strace and the shells around it as its CPU, and vx's own high-water
-// mark, inherited at exec, as its peak (B-3). A number that is not the
-// task's is worse than none, so none is reported.
+// mark, inherited at exec, as its peak (B-3). So vx looks at the task's
+// process tree while it runs: CPU (with what reaped children used) and
+// resident memory, the task's own, not the wait's.
 
 import { mkdtemp, rm } from 'node:fs/promises'
 import { realpathSync } from 'node:fs'
@@ -18,6 +19,9 @@ const available = await sandboxAvailable('sandbox usage test')
 // Burns 400 ms of its own CPU, however long the box takes to give it: a
 // wall-clock loop read 246 ms of CPU in a loaded gate.
 const BUSY = `bun -e "while (process.cpuUsage().user < 400000) {}"`
+// Under strace each `cpuUsage()` is a traced syscall, so the sandbox burns
+// a clock instead: `Date.now()` is the vDSO's, never a syscall.
+const SPIN = `bun -e "const t = Date.now(); while (Date.now() - t < 800) {}"`
 
 describe.skipIf(!available || process.platform !== 'linux')('a sandboxed task’s usage', () => {
   let dir = ''
@@ -30,13 +34,13 @@ describe.skipIf(!available || process.platform !== 'linux')('a sandboxed task’
     await rm(dir, { recursive: true, force: true })
   })
 
-  it('is not reported, since what bwrap’s namespace used never reaches the wait', async () => {
+  it('is looked at while it runs, since what bwrap’s namespace used never reaches the wait', async () => {
     // The positive first: the same command, unsandboxed, burns what it says.
     const plain = await runCommand({ command: BUSY, cwd: dir, env: process.env })
     expect(plain.exitCode).toBe(0)
     expect(plain.cpuMs!).toBeGreaterThanOrEqual(300)
     const r = await runSandboxed({
-      command: BUSY,
+      command: SPIN,
       cwd: dir,
       env: process.env,
       baseAllowRead: [dir],
@@ -45,6 +49,14 @@ describe.skipIf(!available || process.platform !== 'linux')('a sandboxed task’
       reportLinked: [],
       config: resolveSandboxConfig({}, dir),
     })
-    expect([r.exitCode, r.cpuMs, r.peakRssBytes]).toEqual([0, undefined, undefined])
+    expect(r.exitCode).toBe(0)
+    // The last look can land 250 ms before the end, and a loaded box gives
+    // the spin less than its wall time; one thread spins, so never more
+    // than twice the time it ran.
+    expect(r.cpuMs!).toBeGreaterThanOrEqual(150)
+    expect(r.cpuMs!).toBeLessThan(r.durationMs * 2)
+    // Bun's own heap, never vx's inherited mark.
+    expect(r.peakRssBytes!).toBeGreaterThan(5 * 2 ** 20)
+    expect(r.peakRssBytes!).toBeLessThan(1024 * 2 ** 20)
   }, 60_000)
 })

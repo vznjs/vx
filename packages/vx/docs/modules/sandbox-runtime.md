@@ -385,10 +385,11 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
      (`util/which.ts`), so neither Bun nor strace walks the task's PATH,
      whose `node_modules/.bin` comes first, for the shell; and
      captures stdout/stderr + resource usage like
-     `runner.ts:runCommand`, except that on Linux it reports no CPU and
-     no peak: what bwrap's pid namespace used never reaches vx's wait (a
-     500 ms busy loop read 2 ms), and the peak read was vx's own mark
-     (B-3).
+     `runner.ts:runCommand`, except that on Linux what bwrap's pid
+     namespace used never reaches vx's wait (a 500 ms busy loop read
+     2 ms, and the peak read was vx's own mark, B-3): the CPU and peak
+     are `watchTree`'s looks at the task's tree while it runs (strace not
+     counted), none for a task over before the first look.
    - After `proc.exited`, reads back any violations from the macOS
      log monitor (macOS only — see the Linux row below for why the
      store's Linux feed is ignored) AND (on Linux) from the strace log
