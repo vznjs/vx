@@ -103,3 +103,55 @@ it('says why an agent’s container ended before it joined', async () => {
     process.env['PATH'] = saved
   }
 }, 20_000)
+
+it('an agent shares this machine’s store: the same home, the same repository identity', async () => {
+  const root = path.join(dir, 'ws3')
+  const bin = path.join(dir, 'bin3')
+  const home = path.join(dir, 'home')
+  Bun.spawnSync(['mkdir', '-p', root, bin, home])
+  git(root, 'init', '-q')
+  git(root, 'remote', 'add', 'origin', 'https://example.test/ws.git')
+  git(root, 'commit', '-q', '--allow-empty', '-m', 'i')
+  const argv = path.join(dir, 'argv3')
+  const out = path.join(dir, 'origin3')
+  await writeFile(
+    path.join(bin, 'docker'),
+    `#!/bin/sh
+printf '%s\\n' "$@" > ${argv}
+for a; do last=$a; done
+src=$(printf '%s\\n' "$@" | sed -n 's#^\\(.*\\):/src:ro$#\\1#p')
+printf '%s' "$last" | sed "s#/src#$src#g; s#/work#${dir}/work3#g; s#exec ./node_modules/.bin/vx dte agent#git remote get-url origin > ${out}#" | sh
+`,
+  )
+  await chmod(path.join(bin, 'docker'), 0o755)
+  const saved = { PATH: process.env['PATH'], HOME: process.env['HOME'] }
+  process.env['PATH'] = `${bin}:${saved.PATH}`
+  process.env['HOME'] = home
+  try {
+    await docker({ image: 'x' }).spawn({
+      id: 'small#1',
+      size: 'small',
+      cpu: 1,
+      memory: 1 << 30,
+      index: 3,
+      run: 'r1',
+      relay: 'http://127.0.0.1:1',
+      workspaceRoot: root,
+      env: {},
+      exited: () => {},
+    } as AgentSpawn)
+    let got = ''
+    for (let i = 0; i < 100 && got === ''; i++) {
+      await Bun.sleep(50)
+      got = await readFile(out, 'utf8').catch(() => '')
+    }
+    const args = (await readFile(argv, 'utf8')).split('\n')
+    expect({
+      origin: got,
+      store: args.includes(`${home}/.vx:${home}/.vx`),
+      home: args.includes('HOME'),
+    }).toEqual({ origin: 'https://example.test/ws.git\n', store: true, home: true })
+  } finally {
+    Object.assign(process.env, saved)
+  }
+}, 20_000)
