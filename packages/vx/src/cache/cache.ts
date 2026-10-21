@@ -1706,6 +1706,10 @@ export class Cache implements CacheLayer {
     return this.guard(() => this.readEntry(hash))
   }
 
+  getSaved(hash: string): Promise<CacheEntry | null> {
+    return this.getIngested(hash)
+  }
+
   private async readEntry(hash: string): Promise<CacheEntry | null> {
     const row = this.selectEntry.get(hash) as EntryRow | null
     if (row === null) return null

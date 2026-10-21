@@ -85,6 +85,15 @@ it('runs a task on an agent with its dependency’s outputs, and brings its outp
   expect(second.stdout.toString()).not.toContain('agents')
 }, 60_000)
 
+// `--force` reads no hit, but an agent's entry is the run's own work: it
+// came back unreadable and every task failed.
+it('brings an agent’s outputs back under --force', async () => {
+  const run = vx(['run', 'b#use', '--force'], 'e2e-force')
+  const out = run.stdout.toString() + run.stderr.toString()
+  expect([run.exitCode, out]).toEqual([0, expect.stringContaining('used')])
+  expect(await readFile(path.join(root, 'b/out/b.txt'), 'utf8')).toBe('made\n')
+}, 60_000)
+
 // The agent running a task is killed: the task runs again on one the run
 // starts in its place, where it once waited for it forever.
 it('runs a task again on a new agent when its agent is killed', async () => {

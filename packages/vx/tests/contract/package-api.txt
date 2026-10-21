@@ -29,6 +29,7 @@ export class Cache implements CacheLayer {
   key(input: CacheKeyInput): Promise<string>
   async get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getIngested(hash: string): Promise<CacheEntry | null>
+  getSaved(hash: string): Promise<CacheEntry | null>
   holdsNothing(): boolean
   async getMany(
     hashes: readonly string[],
@@ -533,6 +534,7 @@ export interface CacheLayer {
   stopUploads?(): void
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
+  getSaved?(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getMany?(
     hashes: readonly string[],
     ctx?: (hash: string) => CacheGetContext,

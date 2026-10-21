@@ -79,6 +79,7 @@ export interface CacheLayer {
   stopUploads?(): void // a stopped run: start no more uploads, and let drainUploads resolve now
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
+  getSaved?(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> // past the read policy: an entry this run's agent saved
   getMany?(
     hashes: readonly string[],
     ctx?: (hash: string) => CacheGetContext, // each hash's get context: an unindexed artifact is adopted

@@ -88,7 +88,7 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
     },
 
     async restore(key, task) {
-      const entry = await cache.get(key)
+      const entry = await (cache.getSaved ? cache.getSaved(key) : cache.get(key))
       if (entry === null) return null
       await cache.restoreOutputs(key, task.projectDir, workspaceRoot, task.outputs)
       let stdout = ''

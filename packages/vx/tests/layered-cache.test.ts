@@ -515,6 +515,26 @@ describe('LayeredCache', () => {
     expect(remote.gets).toBe(0)
   })
 
+  it('getSaved() reads past a probe’s absence and the read policy', async () => {
+    // An agent saves it after the run's probe found it absent.
+    await saveSample(makeLayered(), 'h-agent')
+    const bytes = remote.store.get('h-agent')!
+    remote.store.delete('h-agent')
+    await wipeLocal()
+    const layered = makeLayered()
+    expect((await layered.remoteHasMany(['h-agent']))?.size).toBe(0)
+    remote.store.set('h-agent', bytes)
+    expect(await layered.get('h-agent')).toBeNull()
+    expect(await layered.getSaved('h-agent')).not.toBeNull()
+    // `--force` reads no remote: an agent's entry still comes back.
+    await wipeLocal()
+    const forced = layeredOver(local, remote.layer, {
+      policy: { localRead: false, localWrite: true, remoteRead: false, remoteWrite: true },
+    })
+    expect(await forced.get('h-agent')).toBeNull()
+    expect(await forced.getSaved('h-agent')).not.toBeNull()
+  })
+
   it('markRemoteAbsent() does not clobber an in-flight pull', async () => {
     // Seed a REAL artifact remotely, then hold the pull open mid-flight.
     await saveSample(makeLayered(), 'h-race')

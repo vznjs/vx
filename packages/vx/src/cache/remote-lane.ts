@@ -228,9 +228,15 @@ export class RemoteLane {
     return out
   }
 
-  /** The artifact's body, or null on a miss, a known absence, a failure or a malformed answer. */
-  async get(hash: string): Promise<{ body: Blob | Response; durationMs?: number } | null> {
-    if (this.absent.has(hash)) return null
+  /**
+   * The artifact's body, or null on a miss, a known absence (unless
+   * `fresh`: saved since the probe), a failure or a malformed answer.
+   */
+  async get(
+    hash: string,
+    fresh = false,
+  ): Promise<{ body: Blob | Response; durationMs?: number } | null> {
+    if (!fresh && this.absent.has(hash)) return null
     let result: unknown
     try {
       result = await this.remote.get(hash)
