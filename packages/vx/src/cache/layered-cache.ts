@@ -367,6 +367,16 @@ export class LayeredCache implements CacheLayer {
     return this.asRemote(hash, materialized)
   }
 
+  async getSaved(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null> {
+    const here = await this.local.getIngested(hash)
+    if (here) return here
+    // Every remote, read or not, and past a probe's absence: the probe ran
+    // before the agent saved it.
+    for (const lane of this.lanes)
+      if (await this.pullFrom(lane, hash, ctx, true)) return this.local.getIngested(hash)
+    return null
+  }
+
   /**
    * A pull the task now waits on, given up when the rest of its body would
    * take longer than running the task (its stored duration, doubled for
@@ -452,13 +462,18 @@ export class LayeredCache implements CacheLayer {
     return false
   }
 
-  private async pullFrom(lane: RemoteLane, hash: string, ctx?: CacheGetContext): Promise<boolean> {
+  private async pullFrom(
+    lane: RemoteLane,
+    hash: string,
+    ctx?: CacheGetContext,
+    fresh = false,
+  ): Promise<boolean> {
     const fetchStart = performance.now()
     // A stopped run waits on no read, as on no upload: a lookup or download
     // in flight held a Ctrl-C until its last byte (M, 2026-10-17). The
     // plugin's request is left to the exit, and its body is cancelled.
     const stopped = lane.whenStopped.then((): typeof STOPPED => STOPPED)
-    const pending = lane.get(hash)
+    const pending = lane.get(hash, fresh)
     const remoteBody = await Promise.race([pending, stopped])
     if (remoteBody === STOPPED) {
       // A late answer's body would hold its connection to the exit.

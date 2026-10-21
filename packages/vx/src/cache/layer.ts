@@ -602,6 +602,12 @@ export interface CacheLayer {
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   /**
+   * `get` past the run's read policy: an entry a machine running a task
+   * for this run saved is the run's own work, not a hit (`TaskArtifacts`).
+   * A layer without it is read through `get`.
+   */
+  getSaved?(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
+  /**
    * Optional batched `get` (same answers, fewer round trips). The
    * short-circuit probe uses it when a layer offers one; a layer without it
    * is probed hash by hash. `ctx` is each hash's `get` context.
