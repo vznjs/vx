@@ -49,7 +49,7 @@ function main(argv: string[]): void {
 }
 
 function fail(message: string): never {
-  console.error(message)
+  process.stderr.write(`${message}\n`)
   process.exit(2)
 }
 
