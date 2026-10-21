@@ -55,7 +55,7 @@ describe('a CI OIDC token', () => {
   it('is accepted with its run claims, reading the keys once', async () => {
     const fetched: string[] = []
     const verify = verifier(fetched)
-    expect(await verify(await sign(good))).toEqual({ iss: ISS, run: ['7', '42'] })
+    expect(await verify(await sign(good))).toEqual({ iss: ISS, run: ['7'] })
     await verify(await sign(good))
     expect(fetched).toEqual([`${ISS}/.well-known/openid-configuration`, `${ISS}/jwks`])
   })
@@ -82,9 +82,9 @@ describe('a CI OIDC token', () => {
       401,
       'not yet valid',
     ])
-    expect(await refusal(verify(await sign({ ...good, pipeline_id: undefined })))).toEqual([
+    expect(await refusal(verify(await sign({ ...good, project_id: undefined })))).toEqual([
       403,
-      'no pipeline_id claim',
+      'no project_id claim',
     ])
     const [h, p] = (await sign(good)).split('.')
     const forged = `${h}.${b64({ ...good, pipeline_id: '43' })}.${(await sign(good)).split('.')[2]}`
@@ -92,11 +92,8 @@ describe('a CI OIDC token', () => {
     expect(await refusal(verify(forged))).toEqual([401, 'bad signature'])
   })
 
-  it('names one pipeline by its issuer', () => {
-    expect(runClaimsOf('https://token.actions.githubusercontent.com')).toEqual([
-      'repository_id',
-      'run_id',
-    ])
-    expect(runClaimsOf('https://gitlab.com')).toEqual(['project_id', 'pipeline_id'])
+  it('binds a run to its repository by its issuer', () => {
+    expect(runClaimsOf('https://token.actions.githubusercontent.com')).toEqual(['repository_id'])
+    expect(runClaimsOf('https://gitlab.com')).toEqual(['project_id'])
   })
 })

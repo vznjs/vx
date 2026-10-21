@@ -5,7 +5,7 @@ Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 The reference relay for `@vzn/vx-dte`, which spreads one `vx run` over CI
 agents. CI runners take no inbound connection, so the run's orchestrator
 and its agents all dial out to a relay, which passes their messages on.
-It admits only CI OIDC tokens of the pipeline that started the run.
+It admits only CI OIDC tokens of the repository that started the run.
 
 The relay is one package with no dependencies, not even vx itself. Any
 server that speaks [PROTOCOL.md](./PROTOCOL.md) can take its place.
@@ -66,6 +66,5 @@ The same relay as a `fetch` handler, to mount in a server of your own
   (default `runClaimsOf(iss)`), and a key reader and clock for tests. It
   resolves a `VerifiedToken`, `{ iss, run }`, or rejects with a
   `TokenError` carrying the `status` (401 or 403) the relay answers.
-- `runClaimsOf(iss)` names the claims of one pipeline: `repository_id`
-  and `run_id` for GitHub Actions, `project_id` and `pipeline_id`
-  otherwise.
+- `runClaimsOf(iss)` names the claims that bind a run: `repository_id`
+  for GitHub Actions, `project_id` otherwise.

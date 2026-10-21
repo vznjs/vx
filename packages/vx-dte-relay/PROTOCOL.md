@@ -75,12 +75,16 @@ keys (`<iss>/.well-known/openid-configuration`, then `jwks_uri`; RS256),
 its `exp` and `nbf`, that `iss` is one the relay trusts, and that `aud`
 names the relay's audience. The first token a run sees binds the run to
 its issuer and its run claims; every later token must carry the same
-values, or the request answers `403`. The run claims are the ones that
-name one pipeline:
+values, or the request answers `403`. The run claims name the
+repository:
 
-| Issuer                                                         | Run claims                  |
-| -------------------------------------------------------------- | --------------------------- |
-| GitLab (`https://gitlab.com`, or a self-managed host)          | `project_id`, `pipeline_id` |
-| GitHub Actions (`https://token.actions.githubusercontent.com`) | `repository_id`, `run_id`   |
+| Issuer                                                         | Run claims      |
+| -------------------------------------------------------------- | --------------- |
+| GitLab (`https://gitlab.com`, or a self-managed host)          | `project_id`    |
+| GitHub Actions (`https://token.actions.githubusercontent.com`) | `repository_id` |
 
-So only jobs of the pipeline that started a run can join it.
+So only jobs of the repository that started a run can join it. Not of its
+pipeline: agents run in another one (a GitLab child pipeline, a GitHub
+workflow the run dispatches). Which agents take part is the run's own
+business: `@vzn/vx-dte` admits only an agent whose key the run's secret,
+or on GitHub its OIDC identity, signed.
