@@ -18,6 +18,7 @@ import {
   machineParallelism,
   ui,
   withForwardArgs,
+  type CacheFacts,
   type ExecuteRequest,
   type ExecuteResult,
   type MachineReport,
@@ -104,6 +105,8 @@ export interface OrchestratorOptions {
   readonly need: (taskId: string) => Need
   /** The run's cache, by key: what agents save to and this machine restores from. */
   readonly artifacts: TaskArtifacts
+  /** What agents read the cache under (`ExecutorContext.cacheFacts`). */
+  readonly cacheFacts: () => Promise<CacheFacts>
   /** The run id, which a task's run key is made of. */
   readonly run: string
   /** A task's cache key, once the run computed it (a hit's too); undefined when it has none. */
@@ -111,6 +114,12 @@ export interface OrchestratorOptions {
   /** Agent `id` (its label) left the run, lost or let go: room for another. */
   readonly left?: (id: string) => void
 }
+
+/**
+ * Lent tokens are asked again this long before they end: inside the
+ * window a remote exchanges a new one (turboCache's is five minutes).
+ */
+const RELEND_MS = 4 * 60_000
 
 /** Cores an agent is sent beyond its own, so a finished task's successor is already there. */
 const prefetch = (cores: number): number => Math.max(1, Math.ceil(cores / 4))
@@ -143,6 +152,9 @@ export class Orchestrator {
   private readonly loop: Promise<void>
   private readonly floor = localFloor()
   private readonly realRoot: string
+  /** What agents read the cache under, asked once and again before its lent tokens end. */
+  private facts: Promise<CacheFacts> | undefined
+  private relend: ReturnType<typeof setTimeout> | undefined
 
   constructor(private readonly o: OrchestratorOptions) {
     // A root that is gone fails the run's own reads first.
@@ -167,7 +179,34 @@ export class Orchestrator {
     })
   }
 
+  /** The run's cache facts; once they end, every agent is sent them again before then. */
+  private cache(): Promise<CacheFacts> {
+    if (this.facts !== undefined) return this.facts
+    const asked = this.o.cacheFacts()
+    this.facts = asked
+    void asked.then(
+      (f) => {
+        if (f.expiresAt === undefined || this.ended) return
+        this.relend = setTimeout(
+          () => {
+            this.facts = undefined
+            void this.cache().then((cache) => {
+              for (const a of this.agents.values()) this.post(a, { type: 'cache', cache })
+            })
+          },
+          Math.max(0, f.expiresAt - Date.now() - RELEND_MS),
+        )
+        this.relend.unref()
+      },
+      () => {
+        this.facts = undefined
+      },
+    )
+    return asked
+  }
+
   async close(): Promise<void> {
+    clearTimeout(this.relend)
     this.ended = true
     this.endedAt = performance.now()
     this.stop.abort()
@@ -510,8 +549,10 @@ export class Orchestrator {
         started: new Set(),
         has: new Set(),
         // Its name first, before any batch.
-        chain: this.o.me
-          .send(id, { type: 'welcome', name: label } satisfies ToAgent)
+        chain: this.cache()
+          .then((cache) =>
+            this.o.me.send(id, { type: 'welcome', name: label, cache } satisfies ToAgent),
+          )
           .catch(() => undefined),
         sandboxes: false,
         faulty: false,

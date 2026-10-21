@@ -137,7 +137,7 @@ import {
 } from '../history/index.js'
 import type { RunOptions, RunSummary } from './options.js'
 import { withRunSettings } from './run-settings.js'
-import { taskArtifacts } from './task-artifacts.js'
+import { cacheFacts, taskArtifacts } from './task-artifacts.js'
 import { resolveSetting } from '../settings.js'
 
 // Per run, never shared: a `vx watch` process runs many, and a shared map
@@ -550,6 +550,7 @@ async function runOnBus(
       warn: warnOf(log),
       concurrency,
       artifacts: taskArtifacts(prepared.cache, prepared.workspaceRoot),
+      cacheFacts: () => cacheFacts(prepared.remotes, prepared.cacheRefs),
     }),
   )
   // Placement: decided ONCE per task, before scheduling, so the scheduler

@@ -8,7 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { Cache, type RemoteCacheLayer } from '../src/cache/index.js'
-import { taskArtifacts } from '../src/orchestrator/index.js'
+import { cacheFacts, resolveCache, taskArtifacts } from '../src/orchestrator/index.js'
 import { layeredOver } from './helpers/layered.js'
 
 let dir: string
@@ -102,4 +102,63 @@ it('masks a secret of the task env out of the stored output', async () => {
     projectDir: path.join(here.root, 'app'),
   })
   expect(got?.stdout).not.toContain(secret)
+})
+
+// A run whose tasks run on other machines hands them its facts: its refs,
+// so they read as it does, and what its remotes lend, so one with no access
+// of its own reaches the remote with the run's.
+it('collects what each readable remote lends, by plugin, and the first end', async () => {
+  const lending = (token: string, expiresAt?: number): RemoteCacheLayer => ({
+    ...memoryRemote().layer,
+    lend: async () => ({ token, ...(expiresAt === undefined ? {} : { expiresAt }) }),
+  })
+  const facts = await cacheFacts(
+    [
+      { remote: lending('a', 2000), plugin: 'pa', read: true, write: true },
+      { remote: lending('b', 1000), plugin: 'pb', read: true, write: false },
+      { remote: lending('off'), plugin: 'pc', read: false, write: false },
+      { remote: lending('injected'), read: true, write: true },
+      {
+        remote: { ...memoryRemote().layer, lend: () => Promise.reject(new Error('down')) },
+        plugin: 'pd',
+        read: true,
+        write: true,
+      },
+      { remote: memoryRemote().layer, plugin: 'pe', read: true, write: true },
+    ],
+    ['refs/heads/feat', 'refs/heads/main'],
+  )
+  expect(facts).toEqual({
+    refs: ['refs/heads/feat', 'refs/heads/main'],
+    lent: { pa: 'a', pb: 'b' },
+    expiresAt: 1000,
+  })
+})
+
+it('gives each cache plugin the token lent to it, read when asked', async () => {
+  const local = new Cache(path.join(dir, '.vx', 'cache'), { read: true, write: true }, dir)
+  caches.push(local)
+  const seen: (string | undefined)[] = []
+  const plugin = (name: string) => ({
+    name,
+    cache(ctx: { lent?: () => string | undefined }) {
+      return { ...memoryRemote().layer, has: async () => (seen.push(ctx.lent?.()), null) }
+    },
+  })
+  let lent: Record<string, string> = { a: 'ta' }
+  const layer = await resolveCache([plugin('a'), plugin('b')] as never, {
+    workspaceRoot: dir,
+    cacheDir: path.join(dir, '.vx', 'cache'),
+    warn() {},
+    scope: undefined,
+    refs: [],
+    localCache: local,
+    policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: true },
+    remotes: [],
+    lentBy: () => lent,
+  })
+  await layer.has(KEY)
+  lent = { a: 'ta2', b: 'tb' }
+  await layer.has(KEY)
+  expect(seen).toEqual(['ta', undefined, 'ta2', 'tb'])
 })

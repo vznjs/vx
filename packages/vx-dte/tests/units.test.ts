@@ -7,7 +7,13 @@ import { localEnv, swapRoots } from '../src/agent.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes } from '../src/plugin.js'
-import { type ExecuteRequest, type TaskArtifacts, type TaskNode, ui } from '@vzn/vx'
+import {
+  type CacheFacts,
+  type ExecuteRequest,
+  type TaskArtifacts,
+  type TaskNode,
+  ui,
+} from '@vzn/vx'
 import { Orchestrator, runKey, type Need } from '../src/orchestrator.js'
 import { outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
@@ -85,6 +91,7 @@ it('an agent with other tracked files than the run is refused', async () => {
       nodes: () => undefined,
       need: () => ({ cores: 1, memory: 0 }),
       artifacts: fakeArtifacts().artifacts,
+      cacheFacts: async () => ({ refs: [], lent: {} }),
       run: 'r',
       keyOf: () => undefined,
     })
@@ -132,6 +139,7 @@ async function harness(
   keyOf: (id: string) => string | undefined = () => undefined,
 ) {
   const store = fakeArtifacts()
+  const cache: { facts: CacheFacts } = { facts: { refs: [], lent: {} } }
   const relay = createRelay(heartbeatMs === undefined ? {} : { heartbeatMs })
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
   const url = `http://127.0.0.1:${server.port}`
@@ -143,6 +151,7 @@ async function harness(
     nodes: () => nodes,
     need,
     artifacts: store.artifacts,
+    cacheFacts: async () => cache.facts,
     run: 'r',
     keyOf,
   })
@@ -175,7 +184,16 @@ async function harness(
         seen.push(...(await me.poll()).map((m) => (m.body as { type: string }).type))
       return seen
     }
-    return { batches, finish, begin, say, types, orders, leave: () => me.leave() }
+    return {
+      batches,
+      finish,
+      begin,
+      say,
+      types,
+      orders,
+      poll: () => me.poll(),
+      leave: () => me.leave(),
+    }
   }
   const req = (taskId: string, cacheKey?: string) =>
     ({
@@ -196,8 +214,40 @@ async function harness(
     relay.close()
     await server.stop(true)
   }
-  return { o, agent, req, stop, store }
+  return { o, agent, req, stop, store, cache }
 }
+
+it('an agent reads the cache as the run does, and is lent its remotes’ access again before it ends', async () => {
+  const h = await harness(new Map())
+  try {
+    h.cache.facts = {
+      refs: ['refs/heads/feat', 'refs/heads/main'],
+      lent: { '@vzn/vx-migrate': 't1' },
+      expiresAt: Date.now() + 4 * 60_000 + 300,
+    }
+    const a = await h.agent(2)
+    const got: unknown[] = []
+    for (let i = 0; i < 20 && got.length < 2; i++) {
+      got.push(...(await a.poll()).map((m) => m.body))
+      if (got.length === 1)
+        h.cache.facts = { refs: ['refs/heads/feat'], lent: { '@vzn/vx-migrate': 't2' } }
+    }
+    expect(got).toEqual([
+      {
+        type: 'welcome',
+        name: 'agent#1',
+        cache: {
+          refs: ['refs/heads/feat', 'refs/heads/main'],
+          lent: { '@vzn/vx-migrate': 't1' },
+          expiresAt: expect.any(Number),
+        },
+      },
+      { type: 'cache', cache: { refs: ['refs/heads/feat'], lent: { '@vzn/vx-migrate': 't2' } } },
+    ])
+  } finally {
+    await h.stop()
+  }
+})
 
 const node = (id: string, deps: string[] = []) =>
   [id, { id, deps, projectDir: '/ws', config: {} } as unknown as TaskNode] as const

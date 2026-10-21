@@ -39,6 +39,10 @@ export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB
   fail: { exec: { command: 'echo oops >&2; exit 3' } },
   slow: { exec: { command: 'touch started && sleep 60' } },
   once: { exec: { command: 'if [ -e ../once ]; then echo again; else touch ../once && sleep 60; fi' } },
+  env: { exec: {
+    command: 'echo "shown=\${VX_E2E_SHOWN:-none} hidden=\${VX_E2E_HIDDEN:-none}"',
+    env: { passThrough: ['VX_E2E_SHOWN'] },
+  } },
 } }
 `,
     // Wide, then a two-task lull, then wide again.
@@ -63,11 +67,11 @@ afterEach(async () => {
 })
 
 /** `vx`, a distributed run when `run` names one. */
-function vx(args: string[], run?: string) {
+function vx(args: string[], run?: string, extra: Record<string, string> = {}) {
   const { VX_DTE_RUN: _, ...env } = process.env
   return Bun.spawnSync([process.execPath, CORE_BIN, ...args], {
     cwd: root,
-    env: { ...env, ...(run === undefined ? {} : { VX_DTE_RUN: run }), NO_COLOR: '1' },
+    env: { ...env, ...(run === undefined ? {} : { VX_DTE_RUN: run }), NO_COLOR: '1', ...extra },
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -135,6 +139,16 @@ it('runs a task again on a new agent when its agent is killed', async () => {
   const out = (await new Response(run.stdout).text()) + (await new Response(run.stderr).text())
   expect([await run.exited, out]).toEqual([0, expect.stringContaining('again')])
 }, 90_000)
+
+// The orchestrator sends each task its own resolved env, and an agent adds
+// only its host names and PATH: a name the task does not pass through
+// reaches it from neither machine's env.
+it('gives a task on an agent only the env it passes through', () => {
+  const r = vx(['run', 'b#env'], 'e2e-env', { VX_E2E_SHOWN: 'yes', VX_E2E_HIDDEN: 'leak' })
+  const out = r.stdout.toString() + r.stderr.toString()
+  expect([r.exitCode, out]).toEqual([0, expect.stringContaining('shown=yes hidden=none')])
+  expect(out).toContain('agents')
+}, 60_000)
 
 it('fails a task that fails on its agent, with its output', () => {
   const r = vx(['run', 'b#fail'], 'e2e')

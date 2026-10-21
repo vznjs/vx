@@ -571,6 +571,8 @@ export interface CacheHost extends CacheContext {
   readonly remotes?: ResolvedRemote[]
   /** Uploads at once, per remote (`cache.concurrency.upload`). */
   readonly uploadConcurrency?: number
+  /** What another machine's run lent, by plugin: each plugin's `ctx.lent`. */
+  readonly lentBy?: () => Readonly<Record<string, string>> | undefined
 }
 
 /**
@@ -585,10 +587,12 @@ export async function resolveCache(
   plugins: readonly VxPlugin[],
   host: CacheHost,
 ): Promise<CacheLayer> {
-  const { localCache, policy, remotes, uploadConcurrency, ...ctx } = host
+  const { localCache, policy, remotes, uploadConcurrency, lentBy, ...base } = host
   const resolved: ResolvedRemote[] = []
   for (const plugin of plugins) {
     if (plugin.cache === undefined) continue
+    const ctx: CacheContext =
+      lentBy === undefined ? base : { ...base, lent: () => lentBy()?.[plugin.name] }
     const remote = await safe(plugin, 'cache', () => plugin.cache!(ctx))
     if (remote === undefined) continue
     assertShape(plugin, 'cache', remote, REMOTE_CACHE_METHODS, 'a remote cache layer')

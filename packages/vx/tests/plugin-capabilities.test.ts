@@ -176,6 +176,7 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     scope: undefined,
     refs: [],
     artifacts: { save: async () => {}, restore: async () => null },
+    cacheFacts: async () => ({ refs: [], lent: {} }),
   }
 
   it('resolveCache: every contributing remote is kept in order, each behind the local store', async () => {

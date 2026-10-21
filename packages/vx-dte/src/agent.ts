@@ -13,6 +13,7 @@ import {
   machineMemoryBytes,
   ui,
   machineParallelism,
+  type CacheFacts,
   type ExecuteRequest,
   type LocalFloor,
   type TaskArtifacts,
@@ -45,7 +46,8 @@ export async function runAgent(opts: {
   token: string | undefined
   /** What admits it to the orchestrator's session: the run's key, or its CI identity. */
   proof: Proof
-  artifacts: TaskArtifacts
+  /** The workspace's cache read under the facts it is handed (`CommandContext.artifactsFor`). */
+  artifacts: (facts: () => CacheFacts | undefined) => TaskArtifacts
 }): Promise<number> {
   const tree = Bun.spawnSync(['git', 'rev-parse', 'HEAD^{tree}'], { cwd: opts.root })
     .stdout.toString()
@@ -65,6 +67,9 @@ export async function runAgent(opts: {
     opts.proof,
     { ...info },
   )
+  // Read as the run reads: its refs, and what its remotes lent.
+  let facts: CacheFacts | undefined
+  const artifacts = opts.artifacts(() => facts)
   const running = new Map<string, AbortController>()
   const queue: RunOrder[] = []
   const work = new Set<Promise<void>>()
@@ -82,7 +87,7 @@ export async function runAgent(opts: {
     res: WiredResult & { stdout: string; stderr: string },
   ): Promise<void> => {
     const { stdout, stderr, ...result } = res
-    await opts.artifacts.save(
+    await artifacts.save(
       key,
       {
         id: m.task,
@@ -141,7 +146,7 @@ export async function runAgent(opts: {
     void me.send('orchestrator', { type: 'start', task: m.task }).catch(() => undefined)
     try {
       for (const d of m.deps) {
-        const got = await opts.artifacts.restore(d.key, {
+        const got = await artifacts.restore(d.key, {
           id: d.task,
           projectDir: path.join(opts.root, d.project),
           command: '',
@@ -242,7 +247,9 @@ export async function runAgent(opts: {
           return 1
         }
         if (m.type === 'exit') return 0
-        if (m.type === 'welcome') {
+        if (m.type === 'cache') facts = m.cache
+        else if (m.type === 'welcome') {
+          facts = m.cache
           ui.print(
             'out',
             ui.report('vx dte agent', [
