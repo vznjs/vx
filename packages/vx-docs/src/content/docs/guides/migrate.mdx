@@ -1,60 +1,99 @@
 ---
 title: Migrate
-description: Move a Turborepo or Nx repo to native vx config with one command, `vx init`.
+description: Move a Turborepo or Nx repo to native vx config with `vx init`, or a Vite Task repo with `vx-migrate`.
 ---
 
-Run `npx @vzn/vx init` at the repo root. Beside `turbo.json` or
-`nx.json` it writes the native `vx.config.ts` files you keep; vx's
-benchmarks measure only that native config. Any other repo starts the
-same way, at the [quickstart](../../quickstart/).
+import { Steps, Tabs, TabItem, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
 
-> `examples/turbo` runs the steps below against this repo's packages on
-> every commit.
+Move a Turborepo or Nx repo to vx with one command. Your `package.json`
+scripts stay as they are; vx writes a `vx.config.ts` per package that you
+keep. Any other repo starts at the [quickstart](../../quickstart/).
 
-## One command
+<Steps>
 
-`npx @vzn/vx init` is the whole adoption in a Turbo or Nx repo: beside
-`turbo.json` or `nx.json` it runs `@vzn/vx-migrate` (the latest
-release, which installs the latest `@vzn/vx` and moves every `@vzn/vx-*` plugin
-the repo lists or the workspace file imports with it). It asks whether to migrate natively (a `vx.config.ts` per
-package, the default) or keep `turbo.json` / `nx.json` as the source
-(`turbo()` / `nx()`, see [Check the mapping first](#check-the-mapping-first)); `--native` or `--keep` answer it, and
-without a terminal, or from Vite Task, it is native. It installs vx with the repo's own package
-manager and declares the plugins the repo calls for in `.vx/workspace.ts`:
-the lockfile's `@vzn/vx-lockfile` plugin (`pnpm()`, …), `scheduleHistoryPlugin()`,
-and `github()` when `.github/workflows` exists, installing each beside vx at
-the same version (`--no-install` leaves `package.json` alone). Your
-`package.json` scripts stay as they are.
+1. **Run init at the repo root**
 
-pnpm 12 refuses a version published within its `minimumReleaseAge`,
-and vx releases daily. If an install stops on that, list the `@vzn/*`
-packages it names under `minimumReleaseAgeExclude` in
-`pnpm-workspace.yaml`, or install the previous version; vx-migrate's
-error names the same fix.
+   <Tabs syncKey="pm">
+     <TabItem label="npm">
+       ```sh
+       npx @vzn/vx init
+       ```
+     </TabItem>
+     <TabItem label="Bun">
+       ```sh
+       bunx @vzn/vx init
+       ```
+     </TabItem>
+   </Tabs>
+
+   Beside `turbo.json` or `nx.json` it runs `@vzn/vx-migrate`: one
+   `vx.config.ts` per package, a `.vx/workspace.ts` declaring your lockfile's
+   plugin, and `.vx/projects.lock.json`. It never overwrites a file without
+   `--force`.
+
+2. **Review the TODOs**
+
+   Search for `TODO(vx-migrate)`. Each names a choice the migrator could
+   not make for you.
+
+3. **Run it**
+
+   ```sh
+   vx run build --all
+   ```
+
+   The first run misses every task once: the lockfile plugin and the
+   install change each key (`vx why <task>` names both). The run after
+   that hits.
+
+4. **Delete the old config**
+
+   Once vx does what `turbo run build` or `nx run-many -t build` did,
+   delete `turbo.json` or `nx.json`: the configs declare every task it
+   mapped.
+
+</Steps>
+
+## What init does
+
+`vx init` installs the latest `@vzn/vx` globally and in the repo, with
+the repo's own package manager, and moves every `@vzn/vx-*` plugin the
+repo lists or the workspace file imports with it. It asks whether to
+migrate natively (a `vx.config.ts` per package, the default) or keep
+`turbo.json` / `nx.json` as the source (`turbo()` / `nx()`, see [Check the
+mapping first](#check-the-mapping-first)); `--native` or `--keep` answer
+it, and without a terminal it is native. It declares
+the plugins the repo calls for in `.vx/workspace.ts`: the lockfile's
+`@vzn/vx-lockfile` plugin (`pnpm()`, …), `scheduleHistoryPlugin()`, and
+`github()` when `.github/workflows` exists, installing each beside vx at
+the same version (`--no-install` leaves `package.json` alone).
+
+<Aside type="caution" title="pnpm 12 and daily releases">
+  pnpm 12 refuses a version published within its `minimumReleaseAge`, and
+  vx releases daily. If an install stops on that, list the `@vzn/*`
+  packages it names under `minimumReleaseAgeExclude` in
+  `pnpm-workspace.yaml`, or install the previous version; vx-migrate's
+  error names the same fix.
+</Aside>
+
+`examples/turbo` runs the steps below against this repo's packages on
+every commit.
 
 ## Turborepo
 
-1. Run `npx @vzn/vx init`; it installs vx globally and in the repo. Beside `turbo.json` or `turbo.jsonc` it writes
-   one `vx.config.ts` per package (plus a `vx-preset.ts` when turbo.json
-   has global fields or a task `env` several packages share), a
-   `.vx/workspace.ts` declaring your lockfile's plugin, and
-   `.vx/projects.lock.json`. It never overwrites a file without `--force`.
-2. Review each `TODO(vx-migrate)` comment.
-3. Once `vx run build --all` does what `turbo run build` did, delete
-   `turbo.json`: the configs declare every task it mapped.
+Beside `turbo.json` or `turbo.jsonc`, init writes one `vx.config.ts` per
+package, plus a `vx-preset.ts` when turbo.json has global fields or a task
+`env` several packages share.
 
 ### Check the mapping first
 
 `npx @vzn/vx init --keep` writes only this `.vx/workspace.ts` (and
-`.vx/.gitignore`, which keeps `.vx/cache` and `.vx/tmp` out of git), installs what it
-imports with your lockfile's manager (`@vzn/vx-migrate`, and
-`@vzn/vx-lockfile` for your lockfile's plugin: `npm()`, `pnpm()`, `bun()`
-or `yarn()`), and writes the lock. Its `next:` line builds once through
-`turbo()`: a check that the mapping holds before you write configs, not a
-way to keep running the repo. `bunx @vzn/vx-migrate --dry` then previews
-the configs and `bunx @vzn/vx-migrate` writes them, takes `turbo()` out of
-`.vx/workspace.ts` and uninstalls `@vzn/vx-migrate` unless a
-`turboCache()` still needs it.
+`.vx/.gitignore`, which keeps `.vx/cache` and `.vx/tmp` out of git),
+installs what it imports with your lockfile's manager (`@vzn/vx-migrate`,
+and `@vzn/vx-lockfile` for your lockfile's plugin: `npm()`, `pnpm()`,
+`bun()` or `yarn()`), and writes the lock. Its `next:` line builds once
+through `turbo()`: a check that the mapping holds before you write
+configs, not a way to keep running the repo.
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
@@ -85,13 +124,12 @@ $ npx @vzn/vx init --keep
 ```
 
 The install uses your lockfile's manager (`pnpm add -D -w …` beside
-`pnpm-lock.yaml`, `yarn add -D -W …` beside a Yarn 1 lockfile) and adds what is not installed at the latest release yet, with every
-`@vzn/vx-*` plugin the root lists or `.vx/workspace.ts` imports: every `@vzn` package releases in lockstep.
-`--no-install` skips it, and the `next:` line names it instead.
-`vx init --keep --dry` prints the file instead of writing it; `--mjs` writes
-`.vx/workspace.mjs` without the type import. An existing
-`.vx/workspace.ts` that does not declare `turbo()` is left alone: add it
-to the plugins, or `--force` replaces the file.
+`pnpm-lock.yaml`, `yarn add -D -W …` beside a Yarn 1 lockfile); every
+`@vzn` package releases in lockstep. `--no-install` skips it, and the
+`next:` line names it instead. `vx init --keep --dry` prints the file
+instead of writing it; `--mjs` writes `.vx/workspace.mjs` without the type
+import. An existing `.vx/workspace.ts` that does not declare `turbo()` is
+left alone: add it to the plugins, or `--force` replaces the file.
 
 Where the repo shows a remote cache (an enabled `remoteCache` in
 turbo.json, a `.turbo/config.json` that `turbo link` wrote, or
@@ -102,7 +140,10 @@ declares `turboCache()` too, and init says why:
 turboCache(): .github/workflows/ci.yml sets TURBO_TOKEN, so vx shares that remote cache (token: the variable, else the OS keychain).
 ```
 
-`bunx @vzn/vx-migrate`, like `vx init`, reports what it wrote, then locks the configs:
+`bunx @vzn/vx-migrate --dry` then previews the configs, and
+`bunx @vzn/vx-migrate` writes them, takes `turbo()` out of
+`.vx/workspace.ts` and uninstalls `@vzn/vx-migrate` unless a
+`turboCache()` still needs it:
 
 ```text
 $ bunx @vzn/vx-migrate
@@ -118,11 +159,6 @@ $ bunx @vzn/vx-migrate
 
   next      bunx @vzn/vx run build --all
 ```
-
-The first run after it misses every task once: the lockfile plugin it
-declared, and the install, change each key (`vx why <task>` names both).
-The run after that hits. The example below keeps its own
-`.vx/workspace.ts` and installs nothing, so it hits at once.
 
 `packages/lib/vx.config.ts`, as written:
 
@@ -149,20 +185,21 @@ export default {
 } satisfies ProjectConfig
 ```
 
-Where the repo has a lockfile and `.vx/workspace.ts` declares no
-`@vzn/vx-lockfile` plugin, the report names the one for it (`npm()` above,
-`pnpm()` for `pnpm-lock.yaml`): Turbo keys each package on its own lockfile entries,
-and vx keys every task on the whole file until a plugin claims it. The
-plugin is also where `^build` gets its package edges: vx reads none from
-a `package.json`, and refuses a `^` with no plugin that supplies them.
+<Aside title="Why a lockfile plugin">
+  Turbo keys each package on its own lockfile entries; vx does that through
+  a `@vzn/vx-lockfile` plugin, and the report names the one your lockfile
+  needs. The plugin is also where `^build` gets its package edges: vx
+  reads none from a `package.json`, and refuses a `^` with no plugin that
+  supplies them.
+</Aside>
 
 ### Try it in five minutes
 
 [`examples/turbo`](https://github.com/vznjs/vx/tree/main/examples/turbo)
 is a Turbo repo with that `.vx/workspace.ts` added, and the
-`.vx/projects.lock.json` `vx lock` wrote (a run refuses without one). The first runs go
-through `turbo()`, the bridge; the last runs on the written configs alone,
-the goal. Each line and its comment is what a test runs and sees on each commit
+`.vx/projects.lock.json` `vx lock` wrote. The first runs go through
+`turbo()`, the bridge; the last runs on the written configs alone. Each
+line's comment is what a test runs and sees on each commit
 (`packages/vx/tests/examples.unsafe.test.ts`).
 
 ```sh
@@ -176,6 +213,11 @@ echo "import { npm } from '@vzn/vx-lockfile'; export default { plugins: [npm()] 
 git add -A && git commit -m done
 npx @vzn/vx run test --all      # local 3✓
 ```
+
+### turbo.json, key by key
+
+<details>
+<summary>The full mapping</summary>
 
 | Turborepo (`turbo.json`)                                    | vx (`vx.config.ts`)                                                      |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------ |
@@ -203,6 +245,8 @@ npx @vzn/vx run test --all      # local 3✓
 The command itself comes from your `package.json` script, with its
 `pre<name>` / `post<name>` hooks folded in.
 
+</details>
+
 | Turborepo                         | vx                                                     |
 | --------------------------------- | ------------------------------------------------------ |
 | `turbo run build`                 | `vx run build --all`                                   |
@@ -213,29 +257,25 @@ The command itself comes from your `package.json` script, with its
 
 ## Nx
 
-1. Run `npx @vzn/vx init`; it installs vx globally and in the repo. Beside `nx.json` it writes one
-   `vx.config.ts` per project, a `.vx/workspace.ts` declaring your
-   lockfile's plugin, and `.vx/projects.lock.json`. With `turbo.json`
-   there too, run `bunx @vzn/vx-migrate --from nx` (or `--from turbo`)
-   instead. A CI file that sets `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` adds
-   `nxCache()`; an Nx Cloud workspace is named instead, since vx cannot
-   share its cache.
-2. It reads the resolved graph, never `nx.json` alone: an exported
-   `.nx/workspace-data/project-graph.json`, else the one your installed
-   `nx` exports for it (`nx graph`). Without `nx` installed it stops and
-   prints the export command.
-3. Review each `TODO(vx-migrate)` comment, and rewrite each `nx-exec`
-   line (an executor target) as the command it runs.
-4. Once `vx run build --all` does what `nx run-many -t build` did,
-   delete `nx.json`: the configs declare every task the graph had. Keep
-   Nx installed while a config still runs an `nx-exec` line.
+Beside `nx.json` init writes one `vx.config.ts` per project. It reads the
+resolved graph, never `nx.json` alone: an exported
+`.nx/workspace-data/project-graph.json`, else the one your installed `nx`
+exports for it (`nx graph`). Without `nx` installed it stops and prints
+the export command. With `turbo.json` there too, run
+`bunx @vzn/vx-migrate --from nx` (or `--from turbo`) instead. A CI file
+that sets `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` adds `nxCache()`; an Nx
+Cloud workspace is named instead, since vx cannot share its cache.
+
+Then rewrite each `nx-exec` line (an executor target) as the command it
+runs. Keep Nx installed while a config still runs an `nx-exec` line.
 
 To check the mapping first, `npx @vzn/vx init --keep` writes only this
 `.vx/workspace.ts` (and `.vx/.gitignore`), installs what it imports
 (`@vzn/vx-migrate`, `@vzn/vx-lockfile`) and writes the lock; its `next:`
-line builds once through `nx()`. `bunx @vzn/vx-migrate` then writes the configs, takes `nx()` out
-of `.vx/workspace.ts` and uninstalls `@vzn/vx-migrate` unless a written
-task runs an `nx-exec` or `nx-env` line, or `nxCache()` needs it.
+line builds once through `nx()`. `bunx @vzn/vx-migrate` then writes the
+configs, takes `nx()` out of `.vx/workspace.ts` and uninstalls
+`@vzn/vx-migrate` unless a written task runs an `nx-exec` or `nx-env`
+line, or `nxCache()` needs it.
 
 A Lerna 6+ repo whose root scripts call `lerna run` runs on Nx's task
 runner, `nx.json` or not, so `bunx @vzn/vx-migrate` maps it as an Nx repo
@@ -270,8 +310,6 @@ $ npx @vzn/vx init --keep
   next      npx @vzn/vx run build --all
 ```
 
-`bunx @vzn/vx-migrate`, like `vx init`, reports what it wrote, then locks the configs:
-
 ```text
 $ bunx @vzn/vx-migrate
 
@@ -288,8 +326,8 @@ $ bunx @vzn/vx-migrate
   next      bunx @vzn/vx run build --all
 ```
 
-`packages/lib/vx.config.ts`, as written (the `define` names are the
-ones Nx sets for a task):
+`packages/lib/vx.config.ts`, as written (the `define` names are the ones
+Nx sets for a task):
 
 ```ts
 import type { ProjectConfig } from '@vzn/vx/config'
@@ -320,13 +358,13 @@ export default {
 } satisfies ProjectConfig
 ```
 
-An executor target is written as an `nx-exec` line: the executor runs
-as itself, in its own Node process through Nx's public `runExecutor`,
-with its options on the command line, as `nx()` runs it. The migrator
-translates no executor; `nx:run-commands` targets are their shell
-lines, `nx:run-script` the package script, and `nx:noop` a group task.
-Rewriting each `nx-exec` line as the command the executor wraps (jest,
-`vite build`, `tsc -p …`) is the step that lets you remove Nx:
+An executor target is written as an `nx-exec` line: the executor runs as
+itself, in its own Node process through Nx's public `runExecutor`, with
+its options on the command line, as `nx()` runs it. The migrator
+translates no executor; `nx:run-commands` targets are their shell lines,
+`nx:run-script` the package script, and `nx:noop` a group task. Rewriting
+each `nx-exec` line as the command the executor wraps (jest, `vite build`,
+`tsc -p …`) is the step that lets you remove Nx:
 
 ```ts
 test: { exec: { command: `nx-exec @nx/jest:jest --project a --target test --options '{"jestConfig":"libs/a/jest.config.ts"}'` } }
@@ -346,7 +384,7 @@ test: { exec: { command: `nx-exec @nx/jest:jest --project a --target test --opti
 | `nx build app`                       | `vx run app#build`                                        |
 | `nx run app:build:production`        | `vx run app#build:production`                             |
 | `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
-| `nx graph`                           | `vx run build --all --dry=json` (tasks and their deps)    |
+| `nx graph`                           | `vx run build --all --dry=json` (tasks and their deps), and the [graph explorer](../graph-explorer/) |
 | `nx reset`                           | `vx cache clean` clears it all; `--older-than <age>` trims it; there is no daemon |
 | Nx Cloud cache                       | [`nxCache()`](../ci/#remote-cache) for a self-hosted Nx cache |
 
@@ -370,5 +408,9 @@ The field-by-field mapping is in the `@vzn/vx-migrate` README.
 - **An env var is missing in the command.** vx isolates the environment: list it in `exec.env.passThrough` ([Environment variables](../configure/#environment-variables)).
 - **`vx run build` ran one package.** Without `--all`, vx runs the package you are in.
 
-Every Turborepo and Nx behaviour, spelled in vx and pinned by a test: the
-[parity map](../../parity/).
+## Next
+
+<CardGrid>
+  <LinkCard title="Parity map" description="Every Turborepo and Nx behaviour, spelled in vx and pinned by a test." href="../../parity/" />
+  <LinkCard title="CI and remote" description="Keep your Turborepo or Nx remote cache." href="../ci/#remote-cache" />
+</CardGrid>

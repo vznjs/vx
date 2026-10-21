@@ -7,7 +7,7 @@ import path from 'node:path'
 import { expect, it } from 'bun:test'
 
 const CI = readFileSync(
-  path.resolve(import.meta.dir, '..', 'src/content/docs/guides/ci.md'),
+  path.resolve(import.meta.dir, '..', 'src/content/docs/guides/ci.mdx'),
   'utf8',
 )
 

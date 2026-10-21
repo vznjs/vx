@@ -1,0 +1,200 @@
+---
+title: Sandboxing tasks
+description: Run a task where only the workspace files you declared exist, so an undeclared input cannot hide in the cache.
+---
+
+import { Steps, Tabs, TabItem, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
+
+Prove a task reads only what it declares. A sandboxed task sees only the
+workspace files you grant, and a read or write outside them fails the task
+and names the path.
+
+<Aside type="tip" title="Why bother">
+  A cache is only as right as its inputs. A file a task reads but never
+  declares is outside its key, so an edit to it replays an old result. The
+  sandbox finds that file for you.
+</Aside>
+
+## Sandbox a task
+
+<Steps>
+
+1. **Turn it on**
+
+   Add `sandbox` to the task's `exec`. `sandbox: {}` allows nothing in the
+   workspace, not even the package.
+
+2. **Grant the package**
+
+   `allow: { read: ['.'] }`. Its `node_modules` is readable already.
+   Another package of yours, linked there, is readable when the task
+   depends on one of that package's command tasks; an uncached task reads
+   every linked package.
+
+3. **Grant outputs and hosts**
+
+   Each output directory in `write`, each host in `network`. The sandbox
+   does not read `cache`: declare both.
+
+4. **Run it**
+
+   An undeclared read or write fails it and names the path. The failure
+   ends with a `fix:` line, the grants that would have allowed it
+   (`fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`).
+   `vx last --format json` carries the same grants as `sandboxFix`.
+
+5. **Declare the path**
+
+   A cached task's read that no `inputs.files` glob matches is named once
+   more (`and, if the output depends on them, inputs.files: ['tsconfig.json']`;
+   `sandboxFix.inputs` in JSON): a grant alone lets the task read it, but
+   only an input re-keys the task when it changes. Silence a noisy tool's
+   path with `ignore`.
+
+</Steps>
+
+Outside the workspace root (`~/.cache`, `/etc`) reads are open and fold
+into no key: declare what the output depends on as a key input. The
+credential stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc` and the like)
+are the exception: denied unless `allow.read` names one, and named apart
+in a failure, never in the `fix:` line.
+
+```ts title="packages/app/vx.config.ts"
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    build: {
+      exec: {
+        command: 'vite build',
+        sandbox: {
+          allow: {
+            read: ['.', '~/.cache/ms-playwright'],
+            write: ['dist/**'],
+            network: ['registry.npmjs.org'],
+          },
+          deny: { network: ['telemetry.example.com'] },
+          ignore: { write: ['*.bun-build'] },
+        },
+      },
+      inputs: { files: ['src/**', 'index.html'] }, cache: { outputs: { files: ['dist/**'] } },
+    },
+  },
+})
+```
+
+## See it catch a missing input
+
+A build that reads `tsconfig.json` and writes `dist/`, sandboxed with only
+`src/` granted:
+
+```ts
+build: {
+  exec: {
+    command: 'mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js',
+    sandbox: { allow: { read: ['src/'] } },
+  },
+  inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+},
+```
+
+<Tabs>
+  <TabItem label="1. The write">
+    ```sh frame="terminal"
+    $ vx run build --all
+    ┌─ @demo/app#build > failed (exit 1, 1 sandbox violation)
+    mkdir: cannot create directory 'dist': Read-only file system
+    ├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
+    mkdir(/repo/packages/app/dist) = a write no grant covers
+    fix: exec.sandbox.allow: { write: ['dist/'] }
+    ```
+  </TabItem>
+  <TabItem label="2. The read">
+    With `write: ['dist/']` added, the next run fails on the read it never
+    declared, and says the file belongs in the key too:
+
+    ```sh frame="terminal"
+    $ vx run build --all
+    ┌─ @demo/app#build > failed (exit 1, 1 sandbox violation)
+    cat: tsconfig.json: No such file or directory
+    ├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
+    openat(tsconfig.json) = -1 ENOENT  [/repo/packages/app/tsconfig.json]
+    fix: exec.sandbox.allow: { read: ['tsconfig.json'] }
+    and, if the output depends on them, inputs.files: ['tsconfig.json']
+    ```
+  </TabItem>
+  <TabItem label="3. Fixed">
+    Grant it and add it to `inputs.files`, and the task passes. Without the
+    sandbox, this build would have cached with `tsconfig.json` outside its
+    key, and an edit to that file would have replayed the old `dist/`.
+  </TabItem>
+</Tabs>
+
+## What you can grant
+
+`allow` takes every key below. `deny` takes only `network`. Domain lists
+are one union per run, which every sandboxed task reaches; `deny.network`
+is refused to every sandboxed task. `ignore` takes `read`, `write`,
+`systemInfo` and `network`, as patterns, and refuses the rest.
+
+| Key            | Grants                                                            |
+| -------------- | ----------------------------------------------------------------- |
+| `read`         | paths or globs: package-relative, absolute or `~/`                |
+| `write`        | paths or globs; a directory ends in `/` or is a glob (`dist/**`)  |
+| `network`      | `true`, or a list of domains (`*.sentry.io`)                      |
+| `localBinding` | bind localhost ports (macOS; Linux needs no grant); a list (`[3000]`) makes them reachable from outside |
+| `unixSockets`  | `true`, or socket paths (Linux: any path)                         |
+| `systemInfo`   | sysctl names a tool probes (`vfs.disk-space`)                     |
+| `machLookup`   | macOS services (`com.apple.FSEvents`)                             |
+| `pty`          | a terminal                                                        |
+| `gitConfig`    | write the repository's `.git/config`, for this task only          |
+
+## The boundary is the project
+
+A task never reaches another package or a root file you did not grant,
+bar the linked packages of step 2. That wall is silent. An undeclared
+touch of the task's own files fails the task, and a failed task is never
+cached. A write refused past the wall (a tool filling its cache in your
+home) is named beside a failed task, with the directory to grant; under
+the host's temp directory it names `$TMPDIR` instead, the empty temp
+directory the task has of its own.
+
+## Requirements & platform support
+
+<Tabs>
+  <TabItem label="Linux">
+    `bubblewrap` (`bwrap`), `socat` and `ripgrep` (`rg`); `strace` to fail
+    and name an undeclared read. `vx info` says if your host can.
+  </TabItem>
+  <TabItem label="macOS">
+    The system sandbox. Its report can miss a record under load; the
+    denial never does.
+  </TabItem>
+  <TabItem label="Windows">
+    Under WSL2.
+  </TabItem>
+</Tabs>
+
+What can't be sandboxed: a group task (it has no command), and on macOS a
+task that itself sandboxes (a sandbox cannot nest).
+
+A persistent task (a dev server) runs inside the same walls, but nothing
+traces it: a read outside its grants is refused as missing (`ENOENT`) and
+named nowhere. One that exits failing before it is ready says so beside
+its failure; run its command as a one-shot sandboxed task to see what it
+was refused.
+
+## Common problems
+
+- **`write /proc/self/uid_map: Operation not permitted`.** You are root in a container. Run as a normal user, or set `weakerWhenNested: true` on every sandboxed task.
+- **`File exists` or `Not a directory` from the task's own `mkdir`.** A write grant with no trailing slash is a file (`mkdir -p coverage` reads the first, `mkdir -p coverage/lcov` the second). Write `'coverage/'`.
+- **A file the task creates later is refused on Linux** ("Read-only file system"). A glob with a file part (`*.log`, `gen/**/*.ts`) is matched when the task starts. Grant its directory (`'gen/'`; `'dist/**'` grants the directory too). A temp directory the tool makes and removes in the package (`.*.tmp/**`) needs only the glob: nothing written there is kept.
+- **`bun build --compile --target=…` fails on a fresh machine** ("Network error downloading executable", then "Failed to extract executable"). Bun fetches the target's runtime from npm into its cache. Grant `network: ['registry.npmjs.org']` and `write: ['~/.bun/install/cache/', '.*.tmp/**']`.
+- **`read packages/ui through packages/app/node_modules/@x/ui, and its key folds no task of @x/ui`.** The task imports a sibling its key never sees. Depend on a command task of it (`dependsOn: ['^source']`, or `^build`), or grant and key the files yourself.
+
+## Next
+
+<CardGrid>
+  <LinkCard title="Configure" description="Inputs, outputs and what the key holds." href="../configure/#caching" />
+  <LinkCard title="Security model" description="What the sandbox protects, and what it does not." href="../../security/" />
+</CardGrid>

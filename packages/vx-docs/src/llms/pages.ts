@@ -14,7 +14,11 @@ export async function agentPages(): Promise<Page[]> {
 /** One page as markdown: its title as a heading, its description, its body. */
 export function pageMarkdown(p: Page): string {
   const description = p.data.description ? `\n\n> ${p.data.description}` : ''
-  return `# ${p.data.title}${description}\n\n${(p.body ?? '').trim()}\n`
+  // An MDX page's component imports mean nothing to a reader.
+  const body = (p.body ?? '')
+    .replace(/^import .+ from '@astrojs\/starlight\/components'\n/gm, '')
+    .trim()
+  return `# ${p.data.title}${description}\n\n${body}\n`
 }
 
 /** Where a page's markdown lives, under the site's base. */

@@ -43,9 +43,11 @@ const CLASS_PAGES = {
     'patterns.md',
     'plugin-host.md',
     'plugin.md',
+    // docs/modules/plugins.md; the guide is plugins.mdx.
+    'plugins.md',
     // The remote-caching guide merged into ci.md (the short site), which
     // links plugins.md for the seam rather than naming it.
-    'plugins.md',
+    'plugins.mdx',
     'remote-lane.md',
     'scoped-cache.md',
     'upgrading.md',
@@ -413,7 +415,7 @@ describe('every page listing the env allowlist lists all of it', () => {
     // configure guide (the environment-variables guide until the short
     // site). A fifth copy lands here unpinned no more.
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
-      'configure.md',
+      'configure.mdx',
       'env.md',
       'execution.md',
       'schema.md',
@@ -455,7 +457,7 @@ describe('every page stating the timeout ladder states all four rungs', () => {
     // inventory. A fifth copy lands here unpinned no more.
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
       'cli.md',
-      'configure.md',
+      'configure.mdx',
       'features.md',
       'schema.md',
     ])

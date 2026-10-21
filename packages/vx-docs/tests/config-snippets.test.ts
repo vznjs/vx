@@ -38,7 +38,7 @@ async function pages(dir: string): Promise<string[]> {
     const p = path.join(dir, e.name)
     if (e.isDirectory()) {
       if (!['blog', 'releases', 'plugins'].includes(e.name)) out.push(...(await pages(p)))
-    } else if (/\.mdx?$/.test(e.name) && !p.endsWith('guides/plugins.md')) out.push(p)
+    } else if (/\.mdx?$/.test(e.name) && !p.endsWith('guides/plugins.mdx')) out.push(p)
   }
   return out
 }
@@ -56,7 +56,7 @@ it('every config block on the site type-checks against @vzn/vx', async () => {
   const blocks: { page: string; index: number; text: string }[] = []
   for (const page of await pages(DOCS)) {
     const text = await Bun.file(page).text()
-    for (const [index, m] of [...text.matchAll(/```ts\n([\s\S]*?)```/g)].entries()) {
+    for (const [index, m] of [...text.matchAll(/```ts[^\n]*\n([\s\S]*?)```/g)].entries()) {
       if (isConfigBlock(m[1]!)) blocks.push({ page: path.relative(DOCS, page), index, text: m[1]! })
     }
   }
