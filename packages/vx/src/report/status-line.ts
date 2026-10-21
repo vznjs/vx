@@ -333,8 +333,6 @@ export interface StatusRegionState {
   slots: readonly (WorkerSlot | null)[]
   /** The blocked task an idle slot's row holds instead of `idle`, by the same index. */
   blocked?: readonly (BlockedTask | null)[]
-  /** Running tasks beyond the displayed slots. */
-  overflow: number
   /** The run was stopped: running rows say `aborting`, idle rows leave. */
   stopping?: boolean
   /**
@@ -502,9 +500,6 @@ export function formatStatusRegion(
         colors,
       ) + (notes.length > 0 ? `  ${notes.join(dim(' \u00b7 '))}` : ''),
     )
-  }
-  if (s.overflow > 0) {
-    lines.push(dim(`\u2026 +${s.overflow} more running`))
   }
   for (const step of s.steps ?? []) {
     lines.push(

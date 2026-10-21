@@ -167,8 +167,8 @@ list above; one row per ready persistent task (`▸`, `running`, the id,
 no elapsed); one row per worker slot that has been busy — the ticking
 elapsed time leads, then `running` and the full id, a task keeping its
 slot for its whole life so names never jump, a slot whose task ended
-holding its place dim; a
-`… +N more running` line when tasks outnumber slots; then the live
+holding its place dim, and a row after them for each task running
+beyond the slots; then the live
 summary section, the same meters the final footer prints, filling in
 as the run proceeds so the region becomes the summary when the run
 ends. A failure logs a permanent one-liner the moment it lands
