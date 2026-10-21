@@ -8,7 +8,8 @@ SIGTERM — to every live child's process group and every ready
 persistent task's,
 waits the kill grace (2 s) for those GROUPS to go,
 SIGKILLs every group with a member left, lets `run()` leave through its
-own end-of-run path (which records no history for a stopped run), and dies
+own end-of-run path (a stopped run records what finished, and `vx last`
+does not list it), and dies
 of the signal it received, so its parent sees 130 / 143 / 129; a second
 signal SIGKILLs and does the same at once.
 
