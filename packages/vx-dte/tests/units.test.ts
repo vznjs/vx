@@ -576,6 +576,10 @@ it('docker() starts each agent as a container of its size, on a fresh clone of H
   git('commit', '-q', '--allow-empty', '-m', 'i')
   const sha = git('rev-parse', 'HEAD').stdout.toString().trim()
   await mkdir(path.join(ws, 'sub'))
+  // The root through a link, as macOS's /tmp is: git names the real path,
+  // and the agent's `cd` climbed out of the clone (M's Mac, 2026-10-21).
+  const link = path.join(await tmp(), 'ws')
+  await symlink(ws, link)
   const bin = await tmp()
   const argv = path.join(bin, 'argv')
   await writeFile(path.join(bin, 'docker'), `#!/bin/sh\nprintf '%s\\0' "$@" > ${argv}\n`, {
@@ -593,7 +597,7 @@ it('docker() starts each agent as a container of its size, on a fresh clone of H
       memory: 8e9,
       index: 3,
       id: 'small#3',
-      workspaceRoot: path.join(ws, 'sub'),
+      workspaceRoot: path.join(link, 'sub'),
       env: { VX_DTE_RUN: 'r', VX_DTE_AGENT: 'small#3', VX_DTE_RELAY: 'http://127.0.0.1:9' },
       exited: () => {},
     })
