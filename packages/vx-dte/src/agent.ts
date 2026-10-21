@@ -1,8 +1,9 @@
 // `vx dte agent`: one CI job's share of a run. It joins the run's relay
 // with what its machine has, runs what the orchestrator sends in its own
 // checkout, as many at once as its cores and memory hold by each task's
-// recorded peak, and sends back each task's streams and the files its
-// outputs left.
+// recorded peak. A task's dependencies' files come from the workspace's
+// cache by the keys its order names, and its own files and output go
+// there under its key; the relay carries only orders and status.
 
 import { realpathSync } from 'node:fs'
 import { lstat, mkdir, rm, writeFile } from 'node:fs/promises'
@@ -13,11 +14,11 @@ import {
   ui,
   machineParallelism,
   type ExecuteRequest,
-  type ExecuteResult,
   type LocalFloor,
+  type TaskArtifacts,
 } from '@vzn/vx'
-import { fromParts, outputFiles, pack, toParts, unpack } from './bundle.js'
-import type { AgentInfo, RunOrder, ToAgent } from './messages.js'
+import type { AgentInfo, RunOrder, ToAgent, WiredResult } from './messages.js'
+import { outputFiles } from './outputs.js'
 import { join, RelayError } from './wire.js'
 
 /** Names whose value is this machine's, never the orchestrator's. */
@@ -41,6 +42,7 @@ export async function runAgent(opts: {
   id?: string
   root: string
   token: string | undefined
+  artifacts: TaskArtifacts
 }): Promise<number> {
   const tree = Bun.spawnSync(['git', 'rev-parse', 'HEAD^{tree}'], { cwd: opts.root })
     .stdout.toString()
@@ -55,7 +57,6 @@ export async function runAgent(opts: {
     tree,
   }
   const me = await join(opts.relay, opts.run, 'agent', info, opts.token)
-  const parts = new Map<string, string[]>()
   const running = new Map<string, AbortController>()
   const queue: RunOrder[] = []
   const work = new Set<Promise<void>>()
@@ -66,14 +67,32 @@ export async function runAgent(opts: {
   let usedCores = 0
   let usedMemory = 0
 
+  /** Saves the task's files and output under `key` and says so. */
   const reply = async (
-    task: string,
-    res: Omit<ExecuteResult, 'outputs'>,
-    files: string[],
+    m: RunOrder,
+    key: string,
+    res: WiredResult & { stdout: string; stderr: string },
   ): Promise<void> => {
-    const out = toParts(await pack(opts.root, files, res))
-    for (const data of out) await me.send('orchestrator', { type: 'part', task, data })
-    await me.send('orchestrator', { type: 'end', task, parts: out.length })
+    const { stdout, stderr, ...result } = res
+    await opts.artifacts.save(
+      key,
+      {
+        id: m.task,
+        projectDir: path.join(opts.root, m.project),
+        command: m.command,
+        outputs: m.outputs,
+        nestedProjectDirs: m.nested.map((n) => path.join(opts.root, n)),
+      },
+      {
+        stdout,
+        stderr,
+        durationMs: res.durationMs,
+        ...(res.cpuMs === undefined ? {} : { cpuMs: res.cpuMs }),
+        ...(res.peakRssBytes === undefined ? {} : { peakRssBytes: res.peakRssBytes }),
+        env: m.env,
+      },
+    )
+    await me.send('orchestrator', { type: 'end', task: m.task, key, result })
   }
 
   /** Starts each queued task that fits what is free; with nothing running, the first one. */
@@ -113,9 +132,16 @@ export async function runAgent(opts: {
     // Not awaited: the task does not wait on the relay to say it began.
     void me.send('orchestrator', { type: 'start', task: m.task }).catch(() => undefined)
     try {
-      const upstream = parts.get(m.task) ?? []
-      parts.delete(m.task)
-      if (upstream.length > 0) await unpack(opts.root, fromParts(upstream))
+      for (const d of m.deps) {
+        const got = await opts.artifacts.restore(d.key, {
+          id: d.task,
+          projectDir: path.join(opts.root, d.project),
+          command: '',
+          outputs: d.outputs,
+        })
+        if (got === null)
+          throw new Error(`${d.task}'s entry ${d.key} is in no cache this agent reads`)
+      }
       // An earlier task's files under these outputs would ship as this one's.
       for (const f of await outputFiles(opts.root, m.project, m.outputs)) {
         await rm(path.join(opts.root, f), { force: true })
@@ -160,11 +186,14 @@ export async function runAgent(opts: {
         [myReal, realRoot],
         [opts.root, root],
       ])
-      await reply(
-        m.task,
-        { ...res, violations: back },
-        await outputFiles(opts.root, m.project, m.outputs),
-      )
+      // Only a success the sandbox found nothing wrong with is the task's
+      // entry; anything else is kept where no lookup finds it.
+      const key =
+        res.exitCode === 0 && res.violations.length === 0 && m.key !== undefined ? m.key : m.runKey
+      await reply(m, key, {
+        ...res,
+        violations: back.map((v) => ({ ...v, timestamp: v.timestamp.toISOString() })),
+      })
     } finally {
       running.delete(m.task)
     }
@@ -210,24 +239,19 @@ export async function runAgent(opts: {
               ['machine', `${cores} cores · ${gb(memory)}`],
             ]),
           )
-        } else if (m.type === 'part') {
-          const list = parts.get(m.task) ?? []
-          list.push(m.data)
-          parts.set(m.task, list)
         } else if (m.type === 'cancel') {
           const at = queue.findIndex((q) => q.task === m.task)
           if (at < 0) running.get(m.task)?.abort()
           else {
-            queue.splice(at, 1)
-            const stopped = {
+            const order = queue.splice(at, 1)[0]!
+            await reply(order, order.runKey, {
               exitCode: 130,
               signal: 'SIGTERM',
               durationMs: 0,
               stdout: '',
               stderr: '',
               violations: [],
-            }
-            await reply(m.task, stopped, [])
+            })
           }
         } else if (m.type === 'batch') {
           // Every batch of a run names the same orchestrator root.
