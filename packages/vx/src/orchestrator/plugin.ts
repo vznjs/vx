@@ -508,6 +508,13 @@ export interface ScheduleHookContext extends BaseContext {
    * from a remote). Ignored in a plan and once the run's tasks are done.
    */
   refine(weights: ReadonlyMap<string, number>): void
+  /**
+   * Calls `listener` each time another plugin `refine`s: the late data it
+   * waited for (timings fetched from a remote) has landed in history, so a
+   * plugin that read history in `schedule` may read it again. Never called
+   * in a plan.
+   */
+  onRefine(listener: () => void): void
 }
 
 /** A `cache` hook's context: the workspace and the run's scope, never the local store or the policy, which core owns. */

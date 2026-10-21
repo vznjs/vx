@@ -2342,6 +2342,7 @@ export interface ScheduleHookContext extends BaseContext {
   readonly branch: string | null
   readonly cache: PluginCache
   refine(weights: ReadonlyMap<string, number>): void
+  onRefine(listener: () => void): void
 }
 ```
 
