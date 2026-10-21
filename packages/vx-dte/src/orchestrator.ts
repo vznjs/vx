@@ -131,6 +131,8 @@ export class Orchestrator {
   private readonly local = new Usage()
   /** Agents that joined and left, for the footer. */
   private readonly gone: Agent[] = []
+  /** Of `gone`, those the run let go (`retire`), not lost. */
+  private readonly retired = new Set<Agent>()
   /** Agents asked for that never joined, with why. */
   private readonly unstarted = new Map<string, string>()
   private pumping = false
@@ -601,6 +603,36 @@ export class Orchestrator {
     this.spawnedAt.set(id, { at: performance.now(), declared })
   }
 
+  /** The most cores an agent online has; 0 with none. */
+  biggestCores(): number {
+    let most = 0
+    for (const a of this.agents.values()) most = Math.max(most, a.cores)
+    return most
+  }
+
+  /**
+   * Idle agents the rest of the run does not need leave (`exit`): those
+   * holding no task, beyond the cores `wantCores` asks of agents, biggest
+   * kept first, unless `needed` says a remaining task wants one that big.
+   */
+  retire(wantCores: number, needed: (a: { cores: number; memory: number }) => boolean): void {
+    const online = [...this.agents.values()].filter((a) => !a.faulty)
+    let cores = 0
+    for (const a of online) if (a.busy.size > 0) cores += a.cores
+    const idle = online.filter((a) => a.busy.size === 0).sort((x, y) => y.cores - x.cores)
+    for (const a of idle) {
+      if (cores < wantCores || needed(a)) {
+        cores += a.cores
+        continue
+      }
+      this.agents.delete(a.id)
+      a.usage.to = performance.now()
+      this.gone.push(a)
+      this.retired.add(a)
+      this.post(a, { type: 'exit' })
+    }
+  }
+
   /** Agent `id` will not join: its start failed or it exited first. */
   failed(id: string, reason: string): void {
     if (this.unstarted.has(id) || this.ended) return
@@ -664,7 +696,7 @@ export class Orchestrator {
    * agent's warm-up and each size whose machines are not what it says.
    */
   footer(): [string, ui.Inline][] {
-    if (this.spawnedAt.size === 0 && this.agents.size === 0) return []
+    if (this.spawnedAt.size === 0 && this.agents.size === 0 && this.gone.length === 0) return []
     const gone = new Set(this.gone)
     const all = [...this.agents.values(), ...this.gone]
     const joined = new Set(all.map((a) => a.label))
@@ -684,7 +716,7 @@ export class Orchestrator {
     }
     const lines: [string, string, string, ui.Inline][] = all.map((a) => [
       a.label,
-      gone.has(a) ? 'gone' : 'online',
+      this.retired.has(a) ? 'left' : gone.has(a) ? 'gone' : 'online',
       count(a.usage, gone.has(a) ? 0 : a.started.size) +
         (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : ''),
       res(a.cores, a.memory, a.declared),

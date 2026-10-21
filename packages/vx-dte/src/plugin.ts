@@ -353,10 +353,30 @@ export function dte(options: DteOptions) {
         machines: () => o.machines(),
         running: (id) => o.where(id),
         // Agents in declared order for the cores the remaining tasks keep
-        // busy (`busyCores`) beyond this machine's share; none are stopped
-        // before the run ends.
+        // busy (`busyCores`) beyond this machine's share; idle ones beyond
+        // it leave.
         demand(remaining) {
-          if (adapter === undefined || (plannedAgents !== undefined && later.size === 0)) return
+          // An unmeasured task takes the biggest agent there is.
+          const biggest = Math.max(1, o.biggestCores(), ...sizes.map((s) => s.cpu))
+          const width = (share?: number): number =>
+            busyCores(
+              remaining,
+              nodes ?? new Map(),
+              (id) => Math.min(need(id).cores, biggest),
+              (id) => peaks.get(id)?.p50DurationMs,
+              share,
+            ) - localSlots
+          const wantCores = width()
+          const above = [...remaining].flatMap((id) => need(id).above ?? [])
+          const final = adapter === undefined || (plannedAgents !== undefined && later.size === 0)
+          // Idle agents beyond that leave; one a task bigger than the rest
+          // waits for stays. One that cannot come back stays for the peak.
+          // At the end the relay closing ends them all.
+          if (remaining.size > 0)
+            o.retire(final ? width(0) : wantCores, (a) =>
+              above.some((x) => a.cores > x.cores || a.memory > x.memory),
+            )
+          if (final) return
           const start = (s: (typeof sizes)[number]): void => {
             started.set(s.name, (started.get(s.name) ?? 0) + 1)
             cores += s.cpu
@@ -387,16 +407,6 @@ export function dte(options: DteOptions) {
               o.failed(id, err instanceof Error ? err.message : String(err)),
             )
           }
-          // An unmeasured task takes the biggest agent there is.
-          const biggest = Math.max(...sizes.map((s) => s.cpu))
-          const wantCores =
-            busyCores(
-              remaining,
-              nodes ?? new Map(),
-              (id) => Math.min(need(id).cores, biggest),
-              (id) => peaks.get(id)?.p50DurationMs,
-            ) - localSlots
-          const above = [...remaining].flatMap((id) => need(id).above ?? [])
           for (const s of toStart(sizes, started, cores, wantCores, above)) start(s)
         },
       }

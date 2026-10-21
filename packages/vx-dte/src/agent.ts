@@ -241,6 +241,7 @@ export async function runAgent(opts: {
           ui.print('err', ui.status('error', 'vx dte agent', `refused: ${m.reason}`))
           return 1
         }
+        if (m.type === 'exit') return 0
         if (m.type === 'welcome') {
           ui.print(
             'out',

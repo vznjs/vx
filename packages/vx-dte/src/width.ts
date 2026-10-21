@@ -14,6 +14,8 @@ export function busyCores(
   nodes: ReadonlyMap<string, TaskNode>,
   cores: (id: string) => number,
   durationMs: (id: string) => number | undefined,
+  // Of what is left, the share a level must hold; 0 is the peak.
+  share = 0.5,
 ): number {
   const end = new Map<string, number>()
   const spans: Array<{ start: number; end: number; cores: number }> = []
@@ -54,7 +56,7 @@ export function busyCores(
   let held = 0
   for (const l of [...atLeast.keys()].sort((a, b) => b - a)) {
     held += atLeast.get(l)!
-    if (held * 2 >= span) return l
+    if (held >= share * span) return l
   }
   return 1
 }
