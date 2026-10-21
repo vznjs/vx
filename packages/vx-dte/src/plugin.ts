@@ -33,6 +33,8 @@ export interface AgentSpawn {
   readonly workspaceRoot: string
   /** What the agent's `vx dte agent` reads: `VX_DTE_RUN`, `VX_DTE_AGENT` (`id`), `VX_DTE_RELAY`. */
   readonly env: Readonly<Record<string, string>>
+  /** Says the agent ended before or without joining, and why (its exit, its last stderr line). */
+  readonly exited: (reason: string) => void
 }
 
 /** How one CI starts agents: `local()`, `docker()`. */
@@ -51,7 +53,7 @@ export interface DteOptions {
   readonly adapter?: DteAdapter
   /** The relay's URL; absent, the adapter's own. */
   readonly relay?: string
-  /** Tasks the orchestrator's own machine runs at once beside the agents (default: the run's worker count). */
+  /** Tasks the orchestrator's own machine runs at once beside the agents (default 0: agents run them all). */
   readonly local?: number
   /** The bearer token for the relay (default `VX_DTE_TOKEN`). */
   readonly token?: () => string | undefined | Promise<string | undefined>
@@ -166,16 +168,19 @@ export function dte(options: DteOptions) {
         throw new UserError('dte(): no relay: set relay, or use an adapter that has one')
       const commit = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: ctx.workspaceRoot })
       if (commit.exitCode !== 0) throw new UserError('dte(): a distributed run needs a git commit')
-      const [{ Orchestrator }, { join }] = await Promise.all([
+      const [{ Orchestrator }, { join }, { busyCores }] = await Promise.all([
         import('./orchestrator.js'),
         import('./wire.js'),
+        import('./width.js'),
       ])
-      const localSlots = options.local ?? ctx.concurrency
+      const localSlots = options.local ?? 0
       const need = (id: string): Need => {
         const r = peaks.get(id)
+        // Unmeasured: a whole agent, until its first run measures it.
+        if (r?.maxCpuParallelism === undefined) return { cores: Infinity, memory: Infinity }
         return {
-          cores: Math.max(1, Math.ceil(r?.maxCpuParallelism ?? 1)),
-          memory: r?.maxPeakRssBytes ?? 0,
+          cores: Math.max(1, Math.ceil(r.maxCpuParallelism)),
+          memory: r.maxPeakRssBytes ?? 0,
         }
       }
       const o = new Orchestrator({
@@ -190,7 +195,6 @@ export function dte(options: DteOptions) {
       const started = new Map<string, number>()
       let index = 0
       let cores = 0
-      let memory = 0
       return {
         name: 'dte',
         remote: true,
@@ -205,27 +209,24 @@ export function dte(options: DteOptions) {
         execute: (req) => o.execute(req),
         footer: () => o.footer(),
         running: (id) => o.where(id),
-        // Agents for what this machine's share cannot take, in declared
-        // order, until their cores and memory cover the remaining tasks'
-        // recorded peaks; none are stopped before the run ends.
+        // Agents in declared order for the cores the remaining tasks keep
+        // busy (`busyCores`) beyond this machine's share; none are stopped
+        // before the run ends.
         demand(remaining) {
           if (adapter === undefined) return
-          let wantCores = 0
-          let wantMemory = 0
-          for (const id of remaining) {
-            const n = need(id)
-            wantCores += n.cores
-            wantMemory += n.memory
-          }
-          wantCores -= localSlots
+          // An unmeasured task takes the biggest agent there is.
+          const biggest = Math.max(...sizes.map((s) => s.cpu))
+          const wantCores =
+            busyCores(
+              remaining,
+              nodes ?? new Map(),
+              (id) => Math.min(need(id).cores, biggest),
+              (id) => peaks.get(id)?.p50DurationMs,
+            ) - localSlots
           for (const s of sizes) {
-            while (
-              (cores < wantCores || memory < wantMemory) &&
-              (started.get(s.name) ?? 0) < s.max
-            ) {
+            while (cores < wantCores && (started.get(s.name) ?? 0) < s.max) {
               started.set(s.name, (started.get(s.name) ?? 0) + 1)
               cores += s.cpu
-              memory += s.memory
               const id = `${s.name}#${++index}`
               o.spawned(id, { size: s.name, cpu: s.cpu, memory: s.memory })
               void Promise.resolve(
@@ -239,9 +240,10 @@ export function dte(options: DteOptions) {
                   id,
                   workspaceRoot: ctx.workspaceRoot,
                   env: { VX_DTE_RUN: run, VX_DTE_AGENT: id, VX_DTE_RELAY: relay },
+                  exited: (reason) => o.failed(id, reason),
                 }),
               ).catch((err: unknown) =>
-                ctx.warn(`dte: could not start a ${s.name} agent: ${String(err)}`),
+                o.failed(id, err instanceof Error ? err.message : String(err)),
               )
             }
           }

@@ -109,8 +109,12 @@ as each task starts and ends:
   without declaring them stay on the agent.
 - An agent on another commit than the orchestrator is refused.
 - An agent that stops answering is dropped, and its tasks run again.
-- A relay unreachable for three heartbeats hands every task back to this
-  machine.
+- A relay unreachable for three heartbeats fails every task not done
+  (`the relay is unreachable`); none runs here, which may be far smaller
+  than the agents. What finished is saved, so a rerun resumes from it.
+- An agent that never joins says why on its row (`failed  exited 1:
+  …`); when none is online or starting and this machine has no share,
+  the remaining tasks fail with `no agent could start`.
 
 ## What the run shows
 
@@ -122,7 +126,8 @@ agent's own color, by size and the order the run started it:
 ```
 
 The `agents` rows, live while the run goes and again in the footer,
-give each agent its status (`starting`, `online`, `gone`), the tasks it
+give each agent its status (`starting`, `online`, `gone`, or `failed`
+with why, such as `exited 1: Cannot find package '@vzn/vx-dte'`), the tasks it
 has done and the ones it runs now, and the cores and memory its machine
 reports: green when they are what its size declares, red when not. This
 machine is `local`. An agent the run started is named by its size and
@@ -168,14 +173,16 @@ utilization of every machine together:
     and memory (bytes, or `'8GB'`, `'512MiB'`), which the run counts on
     when it starts one, until the agent reports what its machine has, and
     how many of it one run may start (absent, no cap). Agents start in
-    declared order until their cores and memory cover the remaining
-    tasks' recorded peaks beyond this machine's share; none stops before
-    the run ends.
+    declared order for the cores the remaining tasks keep busy: laid out
+    as early as their dependencies allow, each for its usual duration
+    (1 s without history), the most cores in use at once for at least
+    half the time left, less this machine's share. None stops before the
+    run ends.
   - `adapter` is the `DteAdapter` that starts agents. Absent, the run
     starts none and uses the agents that join `relay`.
   - `relay` is the relay's URL; absent, the adapter's own.
   - `local` is how many tasks this machine runs at once beside the agents
-    (default: the run's worker count). `0` sends all of them to agents.
+    (default 0: agents run every task).
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`).
 - `vx dte agent` is an agent. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else
   `relay`) and, when the run started it, `VX_DTE_AGENT` (its name). It is

@@ -192,3 +192,23 @@ it.each(['SIGHUP', 'SIGINT'] as const)(
   },
   60_000,
 )
+
+it('says why an agent never joined, and fails the run when none can', async () => {
+  await writeFile(
+    path.join(root, '.vx/workspace.mjs'),
+    `import { dte, local } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'echo no bun here >&2; exit 4' }) })] }
+`,
+  )
+  Bun.spawnSync(
+    ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'p'],
+    {
+      cwd: root,
+    },
+  )
+  const r = vx(['run', 'a#gen'], 'e2e-none')
+  const out = r.stdout.toString() + r.stderr.toString()
+  expect(r.exitCode).not.toBe(0)
+  expect(out).toMatch(/small#1  failed  prepare exited 4: no bun here/)
+  expect(out).toContain('no agent could start')
+}, 60_000)

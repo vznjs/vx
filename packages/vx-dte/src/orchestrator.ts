@@ -10,7 +10,6 @@ import { realpathSync } from 'node:fs'
 import { lstat } from 'node:fs/promises'
 import path from 'node:path'
 import {
-  executorFallback,
   localFloor,
   machineMemoryBytes,
   machineParallelism,
@@ -26,7 +25,7 @@ import type { AgentInfo, RunOrder, ToAgent, ToOrchestrator } from './messages.js
 import { Usage, type UsageStats } from './usage.js'
 import { RelayError, type Participant } from './wire.js'
 
-/** What a task is expected to hold while it runs, from its history. */
+/** What a task is expected to hold while it runs, from its history; `Infinity` (unmeasured): a whole agent. */
 export interface Need {
   readonly cores: number
   readonly memory: number
@@ -35,6 +34,8 @@ export interface Need {
 interface Job {
   readonly req: ExecuteRequest
   readonly need: Need
+  /** The cores and memory it holds on its agent: its need, or the whole agent for an unmeasured one. */
+  held?: Need
   readonly resolve: (r: ExecuteResult) => void
   readonly reject: (err: unknown) => void
   agent?: string
@@ -99,6 +100,8 @@ export class Orchestrator {
   private readonly local = new Usage()
   /** Agents that joined and left, for the footer. */
   private readonly gone: Agent[] = []
+  /** Agents asked for that never joined, with why. */
+  private readonly unstarted = new Map<string, string>()
   private pumping = false
   private joined = 0
   private readonly stop = new AbortController()
@@ -119,7 +122,7 @@ export class Orchestrator {
   }
 
   execute(req: ExecuteRequest): Promise<ExecuteResult> {
-    if (this.lost !== undefined) return Promise.reject(executorFallback(this.lost))
+    if (this.lost !== undefined) return Promise.reject(new Error(this.lost))
     return new Promise((resolve, reject) => {
       const job: Job = { req, need: this.o.need(req.taskId), resolve, reject }
       req.signal?.addEventListener('abort', () => this.abort(job), { once: true })
@@ -175,8 +178,12 @@ export class Orchestrator {
       }
       job.agent = a.id
       a.busy.set(job.req.taskId, job)
-      a.usedCores += job.need.cores
-      a.usedMemory += job.need.memory
+      job.held = {
+        cores: Math.min(job.need.cores, a.cores),
+        memory: Math.min(job.need.memory, a.memory),
+      }
+      a.usedCores += job.held.cores
+      a.usedMemory += job.held.memory
       const batch = batches.get(a)
       if (batch === undefined) batches.set(a, [job])
       else batch.push(job)
@@ -253,8 +260,8 @@ export class Orchestrator {
             files: [...req.outputs.files],
             workspaceFiles: [...req.outputs.workspaceFiles],
           },
-          cores: job.need.cores,
-          memory: job.need.memory,
+          cores: job.held?.cores ?? 1,
+          memory: job.held?.memory ?? 0,
           ...(req.sandbox === undefined ? {} : { sandbox: req.sandbox }),
         } as RunOrder,
       }
@@ -324,8 +331,8 @@ export class Orchestrator {
     if (job === undefined) return
     const head = (await unpack(this.o.root, fromParts(parts))) as Wired
     a.busy.delete(task)
-    a.usedCores -= job.need.cores
-    a.usedMemory -= job.need.memory
+    a.usedCores -= job.held?.cores ?? 0
+    a.usedMemory -= job.held?.memory ?? 0
     a.ran++
     a.usage.record(head)
     if (head.stdout !== '') job.req.onStdout(head.stdout)
@@ -411,12 +418,9 @@ export class Orchestrator {
           await Bun.sleep(this.o.me.heartbeatMs)
           continue
         }
-        const reason = `the relay is unreachable (${(err as Error).message})`
-        for (const a of this.agents.values())
-          for (const j of a.busy.values()) j.reject(executorFallback(reason))
-        for (const j of this.queue.splice(0)) j.reject(executorFallback(reason))
-        this.agents.clear()
-        this.lost = reason
+        // Its tasks fail, not run here: this machine may be far smaller
+        // than the agents. A rerun resumes from what finished and saved.
+        this.fail(`the relay is unreachable (${(err as Error).message})`)
         return
       }
       for (const { from, body } of messages) {
@@ -458,6 +462,27 @@ export class Orchestrator {
     this.spawnedAt.set(id, { at: performance.now(), declared })
   }
 
+  /** Agent `id` will not join: its start failed or it exited first. */
+  failed(id: string, reason: string): void {
+    if (this.unstarted.has(id) || this.ended) return
+    this.unstarted.set(id, reason)
+    // Nothing online, none still starting, no share here: no task can run.
+    const starting = [...this.spawnedAt.keys()].some(
+      (s) => !this.unstarted.has(s) && ![...this.agents.values()].some((a) => a.label === s),
+    )
+    if (this.agents.size === 0 && !starting && this.o.localSlots === 0)
+      this.fail(`no agent could start: ${id} ${reason}`)
+  }
+
+  /** Every task sent here and not done fails with `reason`; later ones too. */
+  private fail(reason: string): void {
+    for (const a of this.agents.values())
+      for (const j of a.busy.values()) j.reject(new Error(reason))
+    for (const j of this.queue.splice(0)) j.reject(new Error(reason))
+    this.agents.clear()
+    this.lost = reason
+  }
+
   /**
    * The `agents` rows, live and at the end: one per agent by `size#index`
    * with its status, the tasks it has done and the ones it runs now, then
@@ -489,7 +514,10 @@ export class Orchestrator {
       res(a.cores, a.memory, a.declared),
     ])
     for (const id of this.spawnedAt.keys())
-      if (!joined.has(id)) lines.push([id, 'starting', '', ''])
+      if (!joined.has(id)) {
+        const why = this.unstarted.get(id)
+        lines.push(why === undefined ? [id, 'starting', '', ''] : [id, 'failed', why, ''])
+      }
     lines.sort((x, y) => x[0].localeCompare(y[0], 'en', { numeric: true }))
     if (this.o.localSlots > 0 || this.ranHere > 0)
       lines.push([
@@ -530,9 +558,11 @@ export class Orchestrator {
       ...lines.flatMap(([l, st, t, r], i): [string, ui.Inline][] => [
         [
           i === 0 ? 'agents' : '',
-          r === ''
-            ? [ui.place(l), `${' '.repeat(width - l.length)}  ${st}`]
-            : [ui.place(l), `${' '.repeat(width - l.length)}  ${st.padEnd(status)}  ${t}  `, r],
+          st === 'failed'
+            ? [ui.place(l), `${' '.repeat(width - l.length)}  `, ui.tone('error', st), `  ${t}`]
+            : r === ''
+              ? [ui.place(l), `${' '.repeat(width - l.length)}  ${st}`]
+              : [ui.place(l), `${' '.repeat(width - l.length)}  ${st.padEnd(status)}  ${t}  `, r],
         ],
         ...(usage.get(l) ?? []).map((d): [string, ui.Inline] => ['', ui.dim(`${indent}${d}`)]),
       ]),

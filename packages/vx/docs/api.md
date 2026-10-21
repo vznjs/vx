@@ -2737,7 +2737,7 @@ export const id = (text: string): Inline => ({ style: 'id', text })
 export const path = (text: string): Inline => ({ style: 'bold', text })
 export const cmd = (text: string): Inline => ({ style: 'bold', text })
 export const dim = (text: string): Inline => ({ style: 'dim', text })
-export const place = (text: string): Inline => ({ style: 'place', text })
+export const place = (text: string): Inline => (text === 'local' ? text : id(text))
 export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
 export function inline(x: Inline, c: ColorSupport): string
 export function status(t: Tone, verb: string, headline: Inline): Block

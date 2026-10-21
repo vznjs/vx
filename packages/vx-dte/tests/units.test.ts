@@ -20,6 +20,7 @@ import { bytes } from '../src/plugin.js'
 import type { ExecuteRequest, TaskNode } from '@vzn/vx'
 import { Orchestrator } from '../src/orchestrator.js'
 import { Usage } from '../src/usage.js'
+import { busyCores } from '../src/width.js'
 import { join } from '../src/wire.js'
 
 const dirs: string[] = []
@@ -395,4 +396,31 @@ it('a machine’s usage: peaks of tasks at once, averages over its time online',
     utilization: 0.25,
     cpuMs: 4000,
   })
+})
+
+it('starts the cores the rest of the run keeps busy for half its length, not its peak', () => {
+  const graph = (entries: Array<[string, string[]]>) =>
+    new Map(
+      entries.map(([id, deps]) => [
+        id,
+        { id, deps, config: { exec: { command: 'true' } } } as unknown as TaskNode,
+      ]),
+    )
+  const one = () => 1
+  // Eight at once, all of the time.
+  const wide = graph(Array.from({ length: 8 }, (_, i): [string, string[]] => [`p#t${i}`, []]))
+  expect(busyCores(new Set(wide.keys()), wide, one, () => 1000)).toBe(8)
+  // Four at once for a third of it, between two lone tasks: one is busy.
+  const mid = graph([
+    ['p#a', []],
+    ...Array.from({ length: 4 }, (_, i): [string, string[]] => [`p#b${i}`, ['p#a']]),
+    ['p#c', ['p#b0', 'p#b1', 'p#b2', 'p#b3']],
+  ])
+  expect(busyCores(new Set(mid.keys()), mid, one, () => 1000)).toBe(1)
+  // The same, the wide part long: four.
+  expect(busyCores(new Set(mid.keys()), mid, one, (id) => (id.includes('#b') ? 5000 : 1000))).toBe(
+    4,
+  )
+  // Done tasks are not laid out.
+  expect(busyCores(new Set(['p#c']), mid, one, () => 1000)).toBe(1)
 })
