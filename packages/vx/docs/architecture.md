@@ -25,6 +25,7 @@ the browser, not a consumer of its API, and
 | `packages/vx-migrate`          | `@vzn/vx-migrate` — adoption: `turbo()` / `nx()` project-stage plugins, `nx-exec` (one Nx executor per process), `turboCache()` / `nxCache()` cache plugins, the migrate CLI     |
 | `packages/vx-lockfile`         | `@vzn/vx-lockfile` — `pnpm()` `bun()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim` |
 | `packages/vx-docs`             | Astro Starlight docs site; imports `packages/vx/docs/**` at build time; bundles core's planner for the browser playground (private)                                              |
+| `packages/vx-dte-relay`        | `@vzn/vx-dte-relay` — the reference relay of `@vzn/vx-dte`: per-run mailboxes for CI agents behind CI OIDC tokens (`PROTOCOL.md`); private until it is on npm                    |
 | `packages/vx-bench`            | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                            |
 | `packages/vx-plugin-examples`  | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                      |
 
