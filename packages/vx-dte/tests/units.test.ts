@@ -16,6 +16,7 @@ import { createRelay } from '@vzn/vx-dte-relay'
 import { localEnv, swapRoots } from '../src/agent.js'
 import { fromParts, outputFiles, pack, toParts, unpack } from '../src/bundle.js'
 import { docker, dte, local } from '../src/index.js'
+import { errorLine } from '../src/local.js'
 import { bytes } from '../src/plugin.js'
 import type { ExecuteRequest, TaskNode } from '@vzn/vx'
 import { Orchestrator, type Need } from '../src/orchestrator.js'
@@ -110,7 +111,7 @@ it('an agent swaps each root once, the first pair naming it winning', () => {
   ).toEqual({ a: '/agent/ws/p/x', b: ['/agent/ws', '/ws/q', '/private/ws/r'], c: 'x:/agent/ws/b' })
 })
 
-it('an agent on another commit is refused', async () => {
+it('an agent with other tracked files than the run is refused', async () => {
   const relay = createRelay()
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
   const url = `http://127.0.0.1:${server.port}`
@@ -118,7 +119,7 @@ it('an agent on another commit is refused', async () => {
     const o = new Orchestrator({
       me: await join(url, 'r', 'orchestrator', null, undefined),
       root: '/ws',
-      commit: 'aaa',
+      tree: 'aaa',
       localSlots: 0,
       nodes: () => undefined,
       need: () => ({ cores: 1, memory: 0 }),
@@ -127,7 +128,7 @@ it('an agent on another commit is refused', async () => {
       url,
       'r',
       'agent',
-      { v: 1, cores: 1, memory: 1, commit: 'bbb' },
+      { v: 1, cores: 1, memory: 1, tree: 'bbb' },
       undefined,
     )
     let got: unknown[] = []
@@ -135,7 +136,7 @@ it('an agent on another commit is refused', async () => {
     expect(got).toEqual([
       {
         from: 'orchestrator',
-        body: { type: 'refused', reason: 'checked out bbb, the run is on aaa' },
+        body: { type: 'refused', reason: 'checked out tree bbb, the run is on aaa' },
       },
     ])
     await o.close()
@@ -156,13 +157,13 @@ async function harness(
   const o = new Orchestrator({
     me: await join(url, 'r', 'orchestrator', null, undefined),
     root: '/ws',
-    commit: 'c',
+    tree: 'c',
     localSlots: 0,
     nodes: () => nodes,
     need,
   })
   const agent = async (cores: number) => {
-    const me = await join(url, 'r', 'agent', { v: 1, cores, memory: 100, commit: 'c' }, undefined)
+    const me = await join(url, 'r', 'agent', { v: 1, cores, memory: 100, tree: 'c' }, undefined)
     const batches = async (): Promise<string[][]> => {
       for (let i = 0; i < 20; i++) {
         const got = (await me.poll()).map(
@@ -457,3 +458,12 @@ it('gives an unmeasured task a whole agent, and one that filled its agent a bigg
     await h.stop()
   }
 }, 30_000)
+
+it('an agent’s reason is its error line, not the hint after it', () => {
+  expect([
+    errorLine("\u001b[31m✗\u001b[0m vx  'dte' is not a vx command\n  fix  vx run dev --all\n"),
+    errorLine('resolving\nerror: cannot find module\n  at x\n'),
+    errorLine('just this\n\n'),
+    errorLine(''),
+  ]).toEqual(["✗ vx  'dte' is not a vx command", 'error: cannot find module', 'just this', ''])
+})

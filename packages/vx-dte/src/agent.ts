@@ -42,7 +42,7 @@ export async function runAgent(opts: {
   root: string
   token: string | undefined
 }): Promise<number> {
-  const commit = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: opts.root })
+  const tree = Bun.spawnSync(['git', 'rev-parse', 'HEAD^{tree}'], { cwd: opts.root })
     .stdout.toString()
     .trim()
   const cores = machineParallelism()
@@ -52,7 +52,7 @@ export async function runAgent(opts: {
     ...(opts.id === undefined ? {} : { id: opts.id }),
     cores,
     memory,
-    commit,
+    tree,
   }
   const me = await join(opts.relay, opts.run, 'agent', info, opts.token)
   const parts = new Map<string, string[]>()

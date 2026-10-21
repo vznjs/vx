@@ -42,7 +42,9 @@ VX_DTE_RUN=try vx run build --all
 
 `VX_DTE_RUN` names the run and turns distribution on; without it, `vx run`
 runs here as always. `local()` starts each agent as a process in its own
-git worktree of `HEAD`, so agents run committed code only.
+git worktree of the tracked files as they are, uncommitted changes
+included (untracked files are not). When an agent fails, its row names
+the error line and the log that holds its whole stderr.
 
 `docker()` starts each agent as a container held to its size: `--cpus`
 and `--memory` come from `cpu` and `memory`. The container clones this
@@ -107,7 +109,9 @@ as each task starts and ends:
 - An agent receives the declared outputs of every task the one it runs
   depends on, unless it ran or received them before. Files a task writes
   without declaring them stay on the agent.
-- An agent on another commit than the orchestrator is refused.
+- An agent whose tracked files differ from the orchestrator's (another
+  tree) is refused. `docker()` clones `HEAD`, so its agents need a run
+  with no uncommitted changes.
 - An agent that stops answering is dropped, and its tasks run again.
 - A relay unreachable for three heartbeats fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller

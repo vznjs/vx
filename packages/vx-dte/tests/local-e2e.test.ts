@@ -211,4 +211,24 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB
   expect(r.exitCode).not.toBe(0)
   expect(out).toMatch(/small#1  failed  prepare exited 4: no bun here/)
   expect(out).toContain('no agent could start')
+  const log = out.match(/\(log: ([^)]+)\)/)?.[1]
+  expect(log === undefined ? '' : await readFile(log, 'utf8')).toBe('no bun here\n')
+  if (log !== undefined) await rm(path.dirname(log), { recursive: true, force: true })
+}, 60_000)
+
+it('agents run the tracked files as they are, uncommitted changes too', async () => {
+  // Committed without dte(), as a user trying it first: a worktree of HEAD
+  // alone had no `dte` verb, so every agent exited.
+  const ws = path.join(root, '.vx/workspace.mjs')
+  const withDte = await readFile(ws, 'utf8')
+  await writeFile(ws, 'export default { plugins: [] }\n')
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: root })
+  git('commit', '-qam', 'no dte')
+  await writeFile(ws, withDte)
+  const r = vx(['run', 'a#gen'], 'e2e-dirty')
+  const out = r.stdout.toString() + r.stderr.toString()
+  expect([r.exitCode, out]).toEqual([0, expect.stringContaining('on small#')])
+  // Nothing was committed or reset to get there.
+  expect(git('status', '--porcelain').stdout.toString()).toContain(' M .vx/workspace.mjs\n')
 }, 60_000)

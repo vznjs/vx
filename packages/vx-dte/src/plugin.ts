@@ -166,13 +166,14 @@ export function dte(options: DteOptions) {
       const relay = options.relay ?? (await adapter?.relay?.())
       if (relay === undefined)
         throw new UserError('dte(): no relay: set relay, or use an adapter that has one')
-      const commit = Bun.spawnSync(['git', 'rev-parse', 'HEAD'], { cwd: ctx.workspaceRoot })
-      if (commit.exitCode !== 0) throw new UserError('dte(): a distributed run needs a git commit')
-      const [{ Orchestrator }, { join }, { busyCores }] = await Promise.all([
+      const [{ Orchestrator }, { join }, { busyCores }, { snapshot }] = await Promise.all([
         import('./orchestrator.js'),
         import('./wire.js'),
         import('./width.js'),
+        import('./tree.js'),
       ])
+      const { tree } = await snapshot(ctx.workspaceRoot)
+      if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
       const localSlots = options.local ?? 0
       const need = (id: string): Need => {
         const r = peaks.get(id)
@@ -193,7 +194,7 @@ export function dte(options: DteOptions) {
       const o = new Orchestrator({
         me: await join(relay, run, 'orchestrator', null, await token()),
         root: ctx.workspaceRoot,
-        commit: commit.stdout.toString().trim(),
+        tree,
         localSlots,
         nodes: () => nodes,
         need,

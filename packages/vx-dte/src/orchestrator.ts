@@ -78,7 +78,8 @@ export interface Declared {
 export interface OrchestratorOptions {
   readonly me: Participant
   readonly root: string
-  readonly commit: string
+  /** The tree of the run's tracked files (`tree.ts`). */
+  readonly tree: string
   /** Tasks this machine runs at once besides the agents. */
   readonly localSlots: number
   readonly nodes: () => ReadonlyMap<string, TaskNode> | undefined
@@ -384,8 +385,8 @@ export class Orchestrator {
       ) {
         return refuse('speaks another vx-dte protocol')
       }
-      if (info.commit !== this.o.commit) {
-        return refuse(`checked out ${info.commit}, the run is on ${this.o.commit}`)
+      if (info.tree !== this.o.tree) {
+        return refuse(`checked out tree ${info.tree}, the run is on ${this.o.tree}`)
       }
       // An agent this run started keeps the name it was started under;
       // one that joined on its own is numbered in the order it joined.
