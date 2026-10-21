@@ -169,7 +169,13 @@ async function harness(
     }
     const begin = (task: string) => me.send('orchestrator', { type: 'start', task })
     const say = (body: object) => me.send('orchestrator', body)
-    return { batches, finish, begin, say, orders, leave: () => me.leave() }
+    const types = async (): Promise<string[]> => {
+      const seen: string[] = []
+      for (let i = 0; i < 5 && !seen.includes('exit'); i++)
+        seen.push(...(await me.poll()).map((m) => (m.body as { type: string }).type))
+      return seen
+    }
+    return { batches, finish, begin, say, types, orders, leave: () => me.leave() }
   }
   const req = (taskId: string, cacheKey?: string) =>
     ({
@@ -228,6 +234,27 @@ it('a task waits until an agent begins it; the live rows leave out its machine',
     const live = JSON.stringify(h.o.footer())
     expect(live).toContain('1 running')
     expect(live).not.toMatch(/\dc\//)
+  } finally {
+    await h.stop()
+  }
+})
+
+// An agent the rest of the run cannot keep busy leaves rather than idle
+// until the run ends; one a remaining task needs for its size stays.
+it('an idle agent the run no longer needs leaves; one a big task needs stays', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.agent(4)
+    const b = await h.agent(2)
+    await Bun.sleep(50)
+    h.o.retire(0, (x) => x.cores >= 4)
+    expect(await b.types()).toContain('exit')
+    expect(h.o.biggestCores()).toBe(4)
+    const footer = JSON.stringify(h.o.footer())
+    expect(footer).toContain('left')
+    h.o.retire(0, () => false)
+    expect(await a.types()).toContain('exit')
+    expect(h.o.biggestCores()).toBe(0)
   } finally {
     await h.stop()
   }
@@ -578,6 +605,8 @@ it('starts the cores the rest of the run keeps busy for half its length, not its
     ['p#c', ['p#b0', 'p#b1', 'p#b2', 'p#b3']],
   ])
   expect(busyCores(new Set(mid.keys()), mid, one, () => 1000)).toBe(1)
+  // Its peak, for agents that cannot come back once they leave: four.
+  expect(busyCores(new Set(mid.keys()), mid, one, () => 1000, 0)).toBe(4)
   // The same, the wide part long: four.
   expect(busyCores(new Set(mid.keys()), mid, one, (id) => (id.includes('#b') ? 5000 : 1000))).toBe(
     4,

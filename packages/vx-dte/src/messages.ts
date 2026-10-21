@@ -68,6 +68,8 @@ export type ToAgent =
   /** It was taken into the run, under the name the run's output gives it. */
   | { type: 'welcome'; name: string }
   | { type: 'refused'; reason: string }
+  /** The run needs it no more: it leaves. */
+  | { type: 'exit' }
 
 export type ToOrchestrator =
   /** It began the task: until then the task waits in its queue. */

@@ -285,8 +285,13 @@ agent's own color, by size and the order the run started it:
  ⏺︎   308ms success miss     c#build  on small#1
 ```
 
+An idle agent the rest of the run cannot keep busy leaves (`left`): one
+beyond the cores the remaining tasks keep busy for half of what is left,
+or, when no agent can start again, beyond their peak. One a remaining
+task needs for its size stays.
+
 The `agents` rows, live while the run goes and again in the footer,
-give each agent its status (`starting`, `online`, `gone`, or `failed`
+give each agent its status (`starting`, `online`, `left`, `gone`, or `failed`
 with why, such as `exited 1: Cannot find package '@vzn/vx-dte'`), the tasks it
 has done and the ones it runs now. This machine is `local`. An agent the
 run started is named by its size and the order it was started in; one
