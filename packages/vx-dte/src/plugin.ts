@@ -100,6 +100,9 @@ export function dte(options: DteOptions) {
 
   let nodes: ReadonlyMap<string, TaskNode> | undefined
   let peaks: ReadonlyMap<string, TaskResources> = new Map()
+  // Each finished task's cache key, a hit's too: what an agent restores a
+  // dependency by.
+  const keys = new Map<string, string>()
   let orchestrator: Orchestrator | undefined
   let closing: Promise<void> | undefined
 
@@ -108,6 +111,7 @@ export function dte(options: DteOptions) {
     orchestrator = undefined
     nodes = undefined
     peaks = new Map()
+    keys.clear()
     await o?.close()
     await adapter?.close?.()
   }
@@ -133,9 +137,19 @@ export function dte(options: DteOptions) {
             ...(id === undefined || id === '' ? {} : { id }),
             root: ctx.workspaceRoot,
             token: await token(),
+            artifacts: ctx.artifacts,
           })
         },
       },
+    },
+
+    setup(ctx) {
+      // A run that is not distributed subscribes nothing.
+      const run = process.env['VX_DTE_RUN']
+      if (run === undefined || run === '') return
+      ctx.on('onTaskComplete', (node, outcome) => {
+        if (outcome.hash !== undefined) keys.set(node.id, outcome.hash)
+      })
     },
 
     async schedule(graph, ctx) {
@@ -198,6 +212,9 @@ export function dte(options: DteOptions) {
         localSlots,
         nodes: () => nodes,
         need,
+        artifacts: ctx.artifacts,
+        run,
+        keyOf: (id) => keys.get(id),
       })
       orchestrator = o
       const started = new Map<string, number>()

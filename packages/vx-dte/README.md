@@ -5,9 +5,12 @@ Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 Distributed task execution for vx: one `vx run` spread over agents your
 own CI starts, replayed here as one run. The run you start is the
 orchestrator. It keeps a share of the tasks, starts agents for the rest,
-and hands the ready tasks to the agents with room, critical path first. An agent runs it in its own checkout and sends back the task's
-output and the files its declared outputs left. They land here before the
-task ends, so the run saves, uploads and reports the task as its own.
+and hands the ready tasks to the agents with room, critical path first. An agent runs it in its own checkout and saves the task's
+output and the files its declared outputs left to the workspace's cache,
+under the task's key. They land here before the task ends, so the run
+reports the task as its own. No file travels through the relay: it
+carries only orders and status, so the agents and this machine need one
+cache they all read (a remote the agents write, or one shared store).
 
 Agents and the orchestrator meet at a relay
 ([`@vzn/vx-dte-relay`](../vx-dte-relay/PROTOCOL.md)), since CI runners
@@ -106,9 +109,11 @@ as each task starts and ends:
   checkout's paths.
 - Tasks that must run here stay here: persistent, interactive,
   `exec.remote: false`, and their dependants (core's placement).
-- An agent receives the declared outputs of every task the one it runs
-  depends on, unless it ran or received them before. Files a task writes
-  without declaring them stay on the agent.
+- An agent restores, by key, the declared outputs of every task the one
+  it runs depends on, unless it ran or restored them before. Files a task
+  writes without declaring them stay on the agent.
+- A failed or uncached task is saved under a key of the run and the task,
+  so no later lookup ever hits it.
 - An agent whose tracked files differ from the orchestrator's (another
   tree) is refused. `docker()` clones `HEAD`, so its agents need a run
   with no uncommitted changes.

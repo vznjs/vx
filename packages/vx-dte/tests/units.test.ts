@@ -1,28 +1,19 @@
-import {
-  lstat,
-  mkdir,
-  mkdtemp,
-  readFile,
-  readlink,
-  realpath,
-  rm,
-  symlink,
-  writeFile,
-} from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { createRelay } from '@vzn/vx-dte-relay'
 import { localEnv, swapRoots } from '../src/agent.js'
-import { fromParts, outputFiles, pack, toParts, unpack } from '../src/bundle.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes } from '../src/plugin.js'
-import type { ExecuteRequest, TaskNode } from '@vzn/vx'
-import { Orchestrator, type Need } from '../src/orchestrator.js'
+import type { ExecuteRequest, TaskArtifacts, TaskNode } from '@vzn/vx'
+import { Orchestrator, runKey, type Need } from '../src/orchestrator.js'
+import { outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
 import { busyCores } from '../src/width.js'
 import { join } from '../src/wire.js'
+import type { RunOrder } from '../src/messages.js'
 
 const dirs: string[] = []
 afterEach(async () => {
@@ -34,45 +25,15 @@ const tmp = async (): Promise<string> => {
   return d
 }
 
-it('a bundle carries files, links and modes, in parts under the relay’s 1 MiB', async () => {
+it('an agent clears the files a task’s outputs match, links included, before it runs it', async () => {
   const from = await tmp()
   await mkdir(path.join(from, 'p/out/deep'), { recursive: true })
-  await writeFile(path.join(from, 'p/out/deep/a.sh'), 'echo hi\n', { mode: 0o755 })
-  await writeFile(
-    path.join(from, 'p/out/big.bin'),
-    crypto.getRandomValues(new Uint8Array(65536)).join(','),
-  )
+  await writeFile(path.join(from, 'p/out/deep/a.sh'), 'echo hi\n')
   await symlink('deep/a.sh', path.join(from, 'p/out/link'))
   await writeFile(path.join(from, 'p/out/skip.map'), '')
-  const files = await outputFiles(from, 'p', {
-    files: ['out/**', '!out/*.map'],
-    workspaceFiles: [],
-  })
-  expect(files).toEqual(['p/out/big.bin', 'p/out/deep/a.sh', 'p/out/link'])
-  const parts = toParts(await pack(from, files, { exitCode: 0 }))
-  for (const part of parts) expect(part.length).toBeLessThan(1 << 20)
-  const to = await tmp()
-  expect(await unpack(to, fromParts(parts))).toEqual({ exitCode: 0 })
-  expect(await readFile(path.join(to, 'p/out/deep/a.sh'), 'utf8')).toBe('echo hi\n')
-  expect((await lstat(path.join(to, 'p/out/deep/a.sh'))).mode & 0o777).toBe(0o755)
-  expect(await readlink(path.join(to, 'p/out/link'))).toBe('deep/a.sh')
-})
-
-it('a bundle may not write outside the root', async () => {
-  const from = await tmp()
-  await writeFile(path.join(from, 'x'), 'x')
-  const bundle = await pack(from, ['x'], null)
-  const raw = new Uint8Array(await Bun.zstdDecompress(bundle))
-  // Rename `x` to `..`-something of the same length is not possible; build one.
-  const evil = Buffer.concat([
-    raw.subarray(0, 8),
-    Buffer.from([0, 0, 0, 4]),
-    Buffer.from('../x'),
-    raw.subarray(13),
-  ])
-  await expect(unpack(await tmp(), await Bun.zstdCompress(evil))).rejects.toThrow(
-    'unsafe path ../x',
-  )
+  expect(
+    await outputFiles(from, 'p', { files: ['out/**', '!out/*.map'], workspaceFiles: [] }),
+  ).toEqual(['p/out/deep/a.sh', 'p/out/link'])
 })
 
 it('an agent runs the orchestrator’s env with its own root, host names and PATH', () => {
@@ -123,6 +84,9 @@ it('an agent with other tracked files than the run is refused', async () => {
       localSlots: 0,
       nodes: () => undefined,
       need: () => ({ cores: 1, memory: 0 }),
+      artifacts: fakeArtifacts().artifacts,
+      run: 'r',
+      keyOf: () => undefined,
     })
     const agent = await join(
       url,
@@ -146,12 +110,28 @@ it('an agent with other tracked files than the run is refused', async () => {
   }
 })
 
+/** A cache by key, in memory: what agents saved, and each restore asked. */
+function fakeArtifacts() {
+  const saved = new Map<string, { stdout: string; stderr: string }>()
+  const restored: string[] = []
+  const artifacts: TaskArtifacts = {
+    async save() {},
+    async restore(key) {
+      restored.push(key)
+      return saved.get(key) ?? null
+    },
+  }
+  return { artifacts, saved, restored }
+}
+
 /** An orchestrator on a loopback relay, and agents of it that only listen. */
 async function harness(
   nodes: Map<string, TaskNode>,
   need: (id: string) => Need = () => ({ cores: 1, memory: 10 }),
   heartbeatMs?: number,
+  keyOf: (id: string) => string | undefined = () => undefined,
 ) {
+  const store = fakeArtifacts()
   const relay = createRelay(heartbeatMs === undefined ? {} : { heartbeatMs })
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
   const url = `http://127.0.0.1:${server.port}`
@@ -162,32 +142,39 @@ async function harness(
     localSlots: 0,
     nodes: () => nodes,
     need,
+    artifacts: store.artifacts,
+    run: 'r',
+    keyOf,
   })
   const agent = async (cores: number) => {
     const me = await join(url, 'r', 'agent', { v: 1, cores, memory: 100, tree: 'c' }, undefined)
+    const orders: RunOrder[] = []
     const batches = async (): Promise<string[][]> => {
       for (let i = 0; i < 20; i++) {
-        const got = (await me.poll()).map(
-          (m) => m.body as { type: string; tasks?: { task: string }[] },
-        )
-        const b = got.filter((m) => m.type === 'batch').map((m) => m.tasks!.map((t) => t.task))
-        if (b.length > 0) return b
+        const got = (await me.poll()).map((m) => m.body as { type: string; tasks?: RunOrder[] })
+        const b = got.filter((m) => m.type === 'batch').map((m) => m.tasks!)
+        orders.push(...b.flat())
+        if (b.length > 0) return b.map((t) => t.map((o) => o.task))
       }
       return []
     }
-    const finish = async (task: string): Promise<void> => {
-      const res = { exitCode: 0, durationMs: 1, stdout: '', stderr: '' }
-      const parts = toParts(await pack('/nonexistent', [], res))
-      for (const data of parts) await me.send('orchestrator', { type: 'part', task, data })
-      await me.send('orchestrator', { type: 'end', task, parts: parts.length })
+    const finish = async (task: string, key = `k-${task}`): Promise<void> => {
+      store.saved.set(key, { stdout: `${task} out\n`, stderr: '' })
+      await me.send('orchestrator', {
+        type: 'end',
+        task,
+        key,
+        result: { exitCode: 0, durationMs: 1 },
+      })
     }
     const begin = (task: string) => me.send('orchestrator', { type: 'start', task })
     const say = (body: object) => me.send('orchestrator', body)
-    return { batches, finish, begin, say, leave: () => me.leave() }
+    return { batches, finish, begin, say, orders, leave: () => me.leave() }
   }
-  const req = (taskId: string) =>
+  const req = (taskId: string, cacheKey?: string) =>
     ({
       taskId,
+      ...(cacheKey === undefined ? {} : { cacheKey }),
       workspaceRoot: '/ws',
       command: 'true',
       forwardArgs: [],
@@ -203,7 +190,7 @@ async function harness(
     relay.close()
     await server.stop(true)
   }
-  return { o, agent, req, stop }
+  return { o, agent, req, stop, store }
 }
 
 const node = (id: string, deps: string[] = []) =>
@@ -325,6 +312,64 @@ it('a task an agent stops saying it holds goes back when its lease ends', async 
     } finally {
       clearInterval(alive)
     }
+  } finally {
+    await h.stop()
+  }
+})
+
+// M, 2026-10-21: files go through the cache, the relay carries only
+// orders and status.
+it('an order names its key and each dependency’s; the result comes back by the key its agent saved', async () => {
+  const cached = (id: string, deps: string[] = []) =>
+    [
+      id,
+      {
+        id,
+        deps,
+        projectDir: `/ws/${id}`,
+        config: { cache: { outputs: { files: ['dist/**'] } } },
+      } as unknown as TaskNode,
+    ] as const
+  const h = await harness(
+    new Map([
+      cached('lib'),
+      cached('mid', ['lib']),
+      cached('app', ['mid']),
+      cached('top', ['mid']),
+    ]),
+    undefined,
+    undefined,
+    (id) => (id === 'lib' ? 'k-lib-hit' : undefined),
+  )
+  try {
+    const a = await h.agent(1)
+    await Bun.sleep(50)
+    const mid = h.o.execute(h.req('mid', 'k-mid'))
+    expect(await a.batches()).toEqual([['mid']])
+    expect(a.orders[0]).toMatchObject({
+      task: 'mid',
+      key: 'k-mid',
+      runKey: runKey('r', 'mid'),
+      deps: [{ task: 'lib', key: 'k-lib-hit', project: 'lib', outputs: { files: ['dist/**'] } }],
+    })
+    // A failure is saved under its run key.
+    await a.finish('mid', runKey('r', 'mid'))
+    const got = await mid
+    expect(got.stdout).toBe('mid out\n')
+    expect(h.store.restored).toEqual([runKey('r', 'mid')])
+    void h.o.execute(h.req('app', 'k-app'))
+    expect(await a.batches()).toEqual([['app']])
+    // It holds lib and mid already: nothing to restore.
+    expect(a.orders.find((o) => o.task === 'app')!.deps).toEqual([])
+    const b = await h.agent(1)
+    await Bun.sleep(50)
+    // Another agent, with room where the first has none, is sent both.
+    void h.o.execute(h.req('top', 'k-top'))
+    expect(await b.batches()).toEqual([['top']])
+    expect(b.orders[0]!.deps.map((d) => [d.task, d.key])).toEqual([
+      ['mid', runKey('r', 'mid')],
+      ['lib', 'k-lib-hit'],
+    ])
   } finally {
     await h.stop()
   }

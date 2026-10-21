@@ -93,7 +93,18 @@ export function local(options: LocalOptions = {}): DteAdapter {
         )
         if (add.code !== 0) throw new Error(`git worktree add: ${errorLine(add.err)}`)
         trees.push({ root: a.workspaceRoot, dir })
-        const env = { ...process.env, ...a.env }
+        const env: Record<string, string | undefined> = { ...process.env, ...a.env }
+        // A relative cache dir would name each worktree's own store, where
+        // the run cannot read what the agent saved.
+        const cacheDir = env['VX_CACHE_DIR']
+        if (
+          cacheDir !== undefined &&
+          cacheDir !== '' &&
+          !path.isAbsolute(cacheDir) &&
+          !cacheDir.startsWith('~')
+        ) {
+          env['VX_CACHE_DIR'] = path.resolve(a.workspaceRoot, cacheDir)
+        }
         if (options.prepare !== undefined && !closed) {
           const p = await run(['sh', '-c', options.prepare], dir, env)
           if (p.code !== 0 && !closed)

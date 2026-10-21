@@ -10,6 +10,9 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 
 const DTE = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
+// Relative, as this package's test task sets it: each agent's worktree
+// must still share the run's store.
+process.env['VX_CACHE_DIR'] = '.vx/cache'
 let root = ''
 
 beforeEach(async () => {

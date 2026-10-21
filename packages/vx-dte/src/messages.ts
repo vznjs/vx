@@ -1,8 +1,8 @@
 // What the orchestrator and its agents say to each other through the relay
-// (the relay never reads it). Bundles ride as base64 `part`s, in order,
-// before the message that names their count.
+// (the relay never reads it): orders and status only. Every task's files
+// and output go through the workspace's cache, by the keys these name.
 
-import type { ExecuteSandbox, SandboxConfig } from '@vzn/vx'
+import type { ExecuteResult, ExecuteSandbox, SandboxConfig } from '@vzn/vx'
 
 /** An agent's `join` info. */
 export interface AgentInfo {
@@ -16,9 +16,27 @@ export interface AgentInfo {
   readonly tree: string
 }
 
-/** One task an agent is sent; its dependencies' files came first as `part`s. */
+/** A task whose files the agent restores before it runs one that needs them. */
+export interface DepOrder {
+  task: string
+  /** Where its entry is: its cache key, or the run key it was saved under. */
+  key: string
+  /** Workspace-relative. */
+  project: string
+  outputs: { files: string[]; workspaceFiles: string[] }
+}
+
+/** One task an agent is sent. */
 export interface RunOrder {
   task: string
+  /** Its cache key, which a success with no violation is saved under; absent, uncached. */
+  key?: string
+  /** What anything else is saved under: no hit ever serves it. */
+  runKey: string
+  /** The tasks it depends on, transitively, whose files the agent does not hold yet. */
+  deps: DepOrder[]
+  /** Workspace-relative projects inside `project`, whose files are not its outputs. */
+  nested: string[]
   command: string
   /** Workspace-relative, as `project` is. */
   cwd: string
@@ -36,7 +54,6 @@ export interface RunOrder {
 }
 
 export type ToAgent =
-  | { type: 'part'; task: string; data: string }
   /** Tasks for its free capacity and a little more; `root` is swapped for the agent's in `env`. */
   | {
       type: 'batch'
@@ -59,5 +76,10 @@ export type ToOrchestrator =
   | { type: 'held'; running: string[]; queued: string[] }
   /** It could not run a task it began, not a non-zero exit: a full disk, a failed unpack. */
   | { type: 'fault'; task: string; reason: string }
-  | { type: 'part'; task: string; data: string }
-  | { type: 'end'; task: string; parts: number }
+  /** It ran the task and saved it under `key`; its output is in that entry. */
+  | { type: 'end'; task: string; key: string; result: WiredResult }
+
+/** A result as JSON carries it: its output stays in the cache entry, and a violation's time is a string. */
+export type WiredResult = Omit<ExecuteResult, 'violations' | 'outputs' | 'stdout' | 'stderr'> & {
+  violations?: (Omit<ExecuteResult['violations'][number], 'timestamp'> & { timestamp: string })[]
+}

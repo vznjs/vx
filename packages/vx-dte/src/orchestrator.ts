@@ -3,8 +3,11 @@
 // rest to the agents online, critical path first (the order core asks in):
 // in batches that fill each agent's measured cores and memory by the tasks'
 // recorded peaks, plus a small prefetch, preferring the agent that already
-// holds a task's dependencies. Each agent's result is written back here
-// before the task ends, so the run saves and reports it as its own.
+// holds a task's dependencies. No file travels through the relay: an
+// agent restores a dependency's files from the cache by the key its order
+// names and saves its own under the task's key, and this machine restores
+// them by that key before the task ends, so the run saves and reports it
+// as its own.
 
 import { realpathSync } from 'node:fs'
 import { lstat } from 'node:fs/promises'
@@ -19,10 +22,17 @@ import {
   type ExecuteResult,
   type MachineReport,
   type SandboxConfig,
+  type TaskArtifacts,
   type TaskNode,
 } from '@vzn/vx'
-import { fromParts, outputFiles, pack, toParts, unpack } from './bundle.js'
-import type { AgentInfo, RunOrder, ToAgent, ToOrchestrator } from './messages.js'
+import type {
+  AgentInfo,
+  DepOrder,
+  RunOrder,
+  ToAgent,
+  ToOrchestrator,
+  WiredResult,
+} from './messages.js'
 import { Usage, type UsageStats } from './usage.js'
 import { RelayError, type Participant } from './wire.js'
 
@@ -92,6 +102,12 @@ export interface OrchestratorOptions {
   readonly localSlots: number
   readonly nodes: () => ReadonlyMap<string, TaskNode> | undefined
   readonly need: (taskId: string) => Need
+  /** The run's cache, by key: what agents save to and this machine restores from. */
+  readonly artifacts: TaskArtifacts
+  /** The run id, which a task's run key is made of. */
+  readonly run: string
+  /** A task's cache key, once the run computed it (a hit's too); undefined when it has none. */
+  readonly keyOf: (taskId: string) => string | undefined
 }
 
 /** Cores an agent is sent beyond its own, so a finished task's successor is already there. */
@@ -100,7 +116,10 @@ const prefetch = (cores: number): number => Math.max(1, Math.ceil(cores / 4))
 export class Orchestrator {
   private readonly agents = new Map<string, Agent>()
   private readonly queue: Job[] = []
-  private readonly results = new Map<string, string[]>()
+  /** Where an agent saved each task it ran: its cache key or its run key. */
+  private readonly savedAs = new Map<string, string>()
+  /** Keys the run's requests named for their dependencies. */
+  private readonly upstreamKeys = new Map<string, string>()
   private localBusy = 0
   private ranHere = 0
   private readonly runningHere = new Set<string>()
@@ -135,6 +154,7 @@ export class Orchestrator {
 
   execute(req: ExecuteRequest): Promise<ExecuteResult> {
     if (this.lost !== undefined) return Promise.reject(new Error(this.lost))
+    for (const u of req.inputs?.upstream ?? []) this.upstreamKeys.set(u.taskId, u.hash)
     return new Promise((resolve, reject) => {
       const job: Job = { req, need: this.o.need(req.taskId), resolve, reject }
       req.signal?.addEventListener('abort', () => this.abort(job), { once: true })
@@ -157,7 +177,7 @@ export class Orchestrator {
     if (at >= 0) {
       this.queue.splice(at, 1)
       job.resolve(
-        result({ exitCode: 130, signal: 'SIGTERM', durationMs: 0, stdout: '', stderr: '' }),
+        result({ exitCode: 130, signal: 'SIGTERM', durationMs: 0 }, { stdout: '', stderr: '' }),
       )
     } else if (job.agent !== undefined) {
       const a = this.agents.get(job.agent)
@@ -270,8 +290,21 @@ export class Orchestrator {
     const nodes = this.o.nodes()
     const orders = jobs.map((job) => {
       const { req } = job
-      const ship = [...upstream(nodes, req.taskId)].filter((id) => !a.has.has(id))
-      for (const id of ship) a.has.add(id)
+      const deps: DepOrder[] = []
+      for (const id of upstream(nodes, req.taskId)) {
+        if (a.has.has(id)) continue
+        const n = nodes?.get(id)
+        const outs = n?.config.cache?.outputs
+        const key = this.savedAs.get(id) ?? this.upstreamKeys.get(id) ?? this.o.keyOf(id)
+        if (n === undefined || outs === undefined || key === undefined) continue
+        a.has.add(id)
+        deps.push({
+          task: id,
+          key,
+          project: path.relative(this.o.root, n.projectDir),
+          outputs: { files: [...outs.files], workspaceFiles: [...(outs.workspaceFiles ?? [])] },
+        })
+      }
       // A task sent here leaves its outputs here for its dependants.
       a.has.add(req.taskId)
       const node = nodes?.get(req.taskId)
@@ -279,9 +312,12 @@ export class Orchestrator {
       for (const [k, v] of Object.entries(req.env)) if (v !== undefined) env[k] = v
       return {
         job,
-        ship,
         order: {
           task: req.taskId,
+          ...(req.cacheKey === undefined ? {} : { key: req.cacheKey }),
+          runKey: runKey(this.o.run, req.taskId),
+          deps,
+          nested: node === undefined ? [] : nestedIn(nodes!, node.projectDir, this.o.root),
           command: withForwardArgs(req.command, req.forwardArgs),
           cwd: path.relative(this.o.root, req.cwd),
           project: node === undefined ? '' : path.relative(this.o.root, node.projectDir),
@@ -302,36 +338,19 @@ export class Orchestrator {
     if (sandboxed) a.sandboxes = true
     a.chain = a.chain
       .then(async () => {
-        for (const { order, ship } of orders) {
+        for (const { order } of orders)
           if (order.sandbox !== undefined)
             order.binds = await this.binds(order.sandbox.config.allowWrite)
-          const files: string[] = []
-          for (const id of ship) {
-            const n = nodes!.get(id)!
-            const outs = n.config.cache?.outputs
-            if (outs === undefined) continue
-            files.push(
-              ...(await outputFiles(this.o.root, path.relative(this.o.root, n.projectDir), {
-                files: outs.files,
-                workspaceFiles: outs.workspaceFiles ?? [],
-              })),
-            )
-          }
-          if (files.length === 0) continue
-          for (const data of toParts(await pack(this.o.root, files, null))) {
-            await this.o.me.send(a.id, { type: 'part', task: order.task, data })
-            a.usage.messagesIn++
-            a.usage.bytesIn += wireBytes(data)
-          }
-        }
-        await this.o.me.send(a.id, {
+        const batch = {
           type: 'batch',
           root: this.o.root,
           realRoot: this.realRoot,
           tasks: orders.map((o) => o.order),
           ...(sandboxes === undefined ? {} : { sandboxes }),
-        } satisfies ToAgent)
+        } satisfies ToAgent
+        await this.o.me.send(a.id, batch)
         a.usage.messagesIn++
+        a.usage.bytesIn += JSON.stringify(batch).length
         for (const { job } of orders) this.lease(job)
       })
       .catch((err: unknown) => {
@@ -403,24 +422,46 @@ export class Orchestrator {
     a.chain = a.chain.then(() => this.o.me.send(a.id, m)).catch(() => undefined)
   }
 
-  private async finish(a: Agent, task: string, parts: string[]): Promise<void> {
+  /** Agent `a` ran `task` and saved it under `key`: it is done there, and done here once restored. */
+  private async finish(a: Agent, task: string, key: string, head: WiredResult): Promise<void> {
     const job = a.busy.get(task)
     if (job === undefined) return
-    const head = (await unpack(this.o.root, fromParts(parts))) as Wired
     a.busy.delete(task)
     a.started.delete(task)
     a.usedCores -= job.held?.cores ?? 0
     a.usedMemory -= job.held?.memory ?? 0
     a.ran++
     a.usage.record(head)
-    if (head.stdout !== '') job.req.onStdout(head.stdout)
-    if (head.stderr !== '') job.req.onStderr(head.stderr)
+    this.savedAs.set(task, key)
+    this.pumpSoon()
+    const node = this.o.nodes()?.get(task)
+    const log = await this.o.artifacts
+      .restore(key, {
+        id: task,
+        projectDir: node?.projectDir ?? job.req.cwd,
+        command: job.req.command,
+        outputs: job.req.outputs,
+      })
+      .catch((err: unknown) => {
+        job.reject(err)
+        return undefined
+      })
+    if (log === undefined) return
+    if (log === null) {
+      job.reject(
+        new Error(
+          `${task}: ${a.label} saved it where this machine cannot read it: give the agents and this machine a remote cache they write, or one store`,
+        ),
+      )
+      return
+    }
+    if (log.stdout !== '') job.req.onStdout(log.stdout)
+    if (log.stderr !== '') job.req.onStderr(log.stderr)
     job.resolve({
-      ...result(head),
+      ...result(head, log),
       where: a.label,
       machine: { cores: a.cores, memoryBytes: a.memory },
     })
-    this.pumpSoon()
   }
 
   private onRelay(body: { type?: string; id?: string; info?: unknown }): void {
@@ -534,21 +575,11 @@ export class Orchestrator {
           a.started.add(m.task)
           if (this.retry(a, j, m.reason) !== undefined) this.queue.unshift(j)
           this.pumpSoon()
-        } else if (m.type === 'part') {
-          const list = this.results.get(`${from}\0${m.task}`) ?? []
-          list.push(m.data)
-          this.results.set(`${from}\0${m.task}`, list)
-          a.usage.messagesOut++
-          a.usage.bytesOut += wireBytes(m.data)
         } else if (m.type === 'end') {
           a.usage.messagesOut++
-          const parts = this.results.get(`${from}\0${m.task}`) ?? []
-          this.results.delete(`${from}\0${m.task}`)
-          await this.finish(a, m.task, parts).catch((err: unknown) => {
-            a.busy.get(m.task)?.reject(err)
-            a.busy.delete(m.task)
-            a.started.delete(m.task)
-          })
+          a.usage.bytesOut += JSON.stringify(m).length
+          // Not awaited: one task's restore holds no other message.
+          void this.finish(a, m.task, m.key, m.result)
         }
       }
     }
@@ -736,14 +767,22 @@ function greater(a: readonly number[], b: readonly number[]): boolean {
   return false
 }
 
-/** A result as an agent sends it: JSON, so a violation's time is a string. */
-type Wired = Omit<ExecuteResult, 'violations' | 'outputs'> & {
-  violations?: (Omit<ExecuteResult['violations'][number], 'timestamp'> & { timestamp: string })[]
+function result(r: WiredResult, log: { stdout: string; stderr: string }): ExecuteResult {
+  const violations = (r.violations ?? []).map((v) => ({ ...v, timestamp: new Date(v.timestamp) }))
+  return { ...r, ...log, violations, outputs: { kind: 'disk' } }
 }
 
-function result(r: Wired): ExecuteResult {
-  const violations = (r.violations ?? []).map((v) => ({ ...v, timestamp: new Date(v.timestamp) }))
-  return { ...r, violations, outputs: { kind: 'disk' } }
+/** What a task that is not a cache hit to be is saved under: of this run and task, so no lookup ever finds it. */
+export function runKey(run: string, task: string): string {
+  return Bun.hash.xxHash3(`vx-dte\0${run}\0${task}`).toString(16).padStart(16, '0')
+}
+
+/** The projects inside `dir`, workspace-relative. */
+function nestedIn(nodes: ReadonlyMap<string, TaskNode>, dir: string, root: string): string[] {
+  const out = new Set<string>()
+  for (const n of nodes.values())
+    if (n.projectDir.startsWith(dir + path.sep)) out.add(path.relative(root, n.projectDir))
+  return [...out].sort()
 }
 
 /** Each distinct `exec.sandbox` of the run, for an agent's sandbox runtime. */
@@ -793,7 +832,6 @@ const bytes = (n: number): string =>
       ? `${(n / 1e6).toFixed(1)} MB`
       : `${Math.round(n / 1e3)} KB`
 /** A base64 part's bytes. */
-const wireBytes = (data: string): number => Math.floor((data.length * 3) / 4)
 
 /** A machine is what its size says: the same cores, memory within a tenth. */
 const matches = (cores: number, memory: number, d: Declared): boolean =>
