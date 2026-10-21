@@ -241,20 +241,27 @@ export function dte(options: DteOptions) {
       nodes = graph
       // A run that is not distributed reads nothing.
       if (orchestrator === undefined) return undefined
-      try {
-        const ids = [...graph.values()]
-          .filter((n) => n.config.exec?.command !== undefined)
-          .map((n) => n.id)
-        peaks = await new LocalHistoryProvider(
-          ctx.localCache.dbHandle(),
-          undefined,
-          ctx.branch,
-        ).resourcesFor(ids)
-      } catch (err) {
-        ctx.warn(
-          `dte: tasks are packed one core each: ${err instanceof Error ? err.message : String(err)}`,
-        )
+      const ids = [...graph.values()]
+        .filter((n) => n.config.exec?.command !== undefined)
+        .map((n) => n.id)
+      const read = async (): Promise<void> => {
+        if (orchestrator === undefined) return
+        try {
+          peaks = await new LocalHistoryProvider(
+            ctx.localCache.dbHandle(),
+            undefined,
+            ctx.branch,
+          ).resourcesFor(ids)
+        } catch (err) {
+          ctx.warn(
+            `dte: tasks are packed one core each: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
       }
+      await read()
+      // Needs another plugin fetched (the default branch's timings) land
+      // in history after this: the tasks not yet placed pack by them.
+      ctx.onRefine(() => void read())
       return undefined
     },
 

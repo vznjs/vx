@@ -152,6 +152,7 @@ async function runPlugin(
     branch: opts.branch,
     cache: shared,
     refine: (w) => opts.refined?.push(w),
+    onRefine: () => {},
   })
   opts.during?.()
   await plugin.teardown!()

@@ -427,11 +427,12 @@ export interface ScheduleRun {
 export async function applyScheduleHooks(
   plugins: readonly VxPlugin[],
   nodes: ReadonlyMap<string, TaskNode>,
-  ctx: Omit<ScheduleHookContext, 'cache' | 'refine'>,
+  ctx: Omit<ScheduleHookContext, 'cache' | 'refine' | 'onRefine'>,
   cacheFor: (plugin: string) => PluginCache = () => absentPluginCache,
   run: ScheduleRun = {},
 ): Promise<ReadonlyMap<string, number>> {
   const sets: (ReadonlyMap<string, number> | undefined)[] = []
+  const listeners: { plugin: VxPlugin; i: number; listener: () => void }[] = []
   const merged = (): ReadonlyMap<string, number> => {
     const out = new Map<string, number>()
     for (const set of sets) if (set !== undefined) for (const [id, w] of set) out.set(id, w)
@@ -448,8 +449,21 @@ export async function applyScheduleHooks(
         return
       }
       run.refined(merged())
+      for (const l of listeners) {
+        if (l.i === i) continue
+        try {
+          l.listener()
+        } catch (err) {
+          ctx.warn(
+            `[vx] plugin '${l.plugin.name}' failed in onRefine: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
+      }
     }
-    const own = { ...ctx, cache: cacheFor(plugin.name), refine }
+    const onRefine = (listener: () => void): void => {
+      if (run.refined !== undefined) listeners.push({ plugin, i, listener })
+    }
+    const own = { ...ctx, cache: cacheFor(plugin.name), refine, onRefine }
     const call = (): Promise<ReadonlyMap<string, number> | undefined> =>
       safe(plugin, 'schedule', () => plugin.schedule!(nodes, own))
     const weights = await (run.step === undefined

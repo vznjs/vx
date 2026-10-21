@@ -104,3 +104,42 @@ it(
   },
   TIMEOUT,
 )
+
+it(
+  'another plugin hears each refine, and the one that refined does not',
+  async () => {
+    // `org/late` refines as a starts; `org/reader` may read history again then.
+    await addProject(fixture.root, 'p', {
+      config: `export default { name: 'p', tasks: {
+        a: { exec: { command: 'sleep 0.3' } },
+        b: { exec: { command: 'true' } },
+        all: { dependsOn: ['a', 'b'] },
+      } }\n`,
+    })
+    const heard = path.join(fixture.root, 'heard.txt')
+    await Bun.write(
+      path.join(fixture.root, '.vx/workspace.mjs'),
+      `${PLUGIN_IMPORT}import { appendFileSync } from 'node:fs'
+const hear = (who) => appendFileSync(${JSON.stringify(heard)}, who + '\\n')
+export default { plugins: [${pluginSource(
+        'org/late',
+        `(() => {
+      let refine
+      return {
+        schedule(nodes, ctx) { refine = ctx.refine; ctx.onRefine(() => hear('late')); return new Map([['p#a', 9]]) },
+        setup(ctx) { ctx.on('onTaskStart', (node) => { if (node.id === 'p#a') refine(new Map([['p#b', 5]])) }) },
+      }
+    })()`,
+      )}, ${pluginSource('org/reader', `{ schedule(nodes, ctx) { ctx.onRefine(() => hear('reader')) } }`)}] }\n`,
+    )
+    const result = await run({
+      cwd: fixture.root,
+      tasks: ['all'],
+      concurrency: 1,
+      log: silentLogger(fixture),
+    })
+    expect(result.ok).toBe(true)
+    expect(await Bun.file(heard).text()).toBe('reader\n')
+  },
+  TIMEOUT,
+)
