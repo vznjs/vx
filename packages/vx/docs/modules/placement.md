@@ -11,7 +11,7 @@ running anything.
 ## Public surface
 
 ```ts
-export function pinnedLocalSet(nodes: Map<string, TaskNode>): Set<string>
+export function pinnedLocalSet(nodes: Map<string, TaskNode>, sandbox?: boolean): Set<string>
 // the exec.interactive tasks when `tty`, else none; throws UserError when two would read the keys at once
 export function terminalHolders(nodes: Map<string, TaskNode>, tty: boolean): Set<string>
 
