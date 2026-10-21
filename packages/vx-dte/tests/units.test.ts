@@ -19,6 +19,7 @@ import { docker, dte, local } from '../src/index.js'
 import { bytes } from '../src/plugin.js'
 import type { ExecuteRequest, TaskNode } from '@vzn/vx'
 import { Orchestrator } from '../src/orchestrator.js'
+import { Usage } from '../src/usage.js'
 import { join } from '../src/wire.js'
 
 const dirs: string[] = []
@@ -366,4 +367,32 @@ it('docker() starts each agent as a container of its size, on a fresh clone of H
   } finally {
     process.env['PATH'] = saved
   }
+})
+
+it('a machine’s usage: peaks of tasks at once, averages over its time online', () => {
+  const u = new Usage(0)
+  const at = (end: number, durationMs: number, cpuMs: number, peakRssBytes: number) => {
+    const now = performance.now
+    performance.now = () => end
+    try {
+      u.record({ exitCode: 0, durationMs, cpuMs, peakRssBytes })
+    } finally {
+      performance.now = now
+    }
+  }
+  // Two tasks overlap from 500 to 1000; a third starts as the first ends.
+  at(1000, 1000, 1000, 100)
+  at(1500, 1000, 2000, 200)
+  at(2000, 1000, 1000, 50)
+  u.failed = 1
+  expect(u.stats(4, 4000)).toEqual({
+    onlineMs: 4000,
+    busyMs: 2000,
+    cpuPeak: 3,
+    cpuAvg: 1,
+    memoryPeak: 300,
+    memoryAvg: 87.5,
+    utilization: 0.25,
+    cpuMs: 4000,
+  })
 })

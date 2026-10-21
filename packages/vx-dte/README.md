@@ -144,6 +144,22 @@ memory than it declares is named:
             ! small: config 2 cores 8 GB, reported 4 cores 16 GB
 ```
 
+Under each agent, and `local`, the footer then spells out what it did:
+its time online, busy and idle; its CPU peak and average in cores and
+its cpu utilization (the core-time its tasks used over the core-time it
+had); its memory peak and average; and, for an agent, the messages and
+bytes the run sent it and received from it. The `total` line is the cpu
+utilization of every machine together:
+
+```
+            small·1  online  5 done · warm-up 0.2s  4c/14G
+                     online 12.1s · busy 9.8s · idle 2.3s
+                     cpu peak 3.6 · avg 2.4 cores · cpu utilization 61%
+                     memory peak 1.2 GB · avg 640.0 MB
+                     sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
+            total    cpu utilization 58%
+```
+
 ## API
 
 - `dte(options: DteOptions)` is the plugin. `DteOptions` is
