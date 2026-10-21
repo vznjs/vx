@@ -101,7 +101,8 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       }
     }
   }, heartbeatMs)
-  sweep.unref()
+  // Workers have no unref; there a run ends with its Durable Object.
+  ;(sweep as { unref?: () => void }).unref?.()
 
   const participant = (run: Run, id: unknown): Participant => {
     const p = typeof id === 'string' ? run.byId.get(id) : undefined
