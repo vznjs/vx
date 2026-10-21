@@ -164,9 +164,13 @@ vx:
 
 The run's secret is an artifact no one can download (`access: none`);
 the orchestrator and the agents get it through `needs`. Set
-`VX_DTE_SECRET` to use your own instead. Live spawning, where agents
-beyond the first wave are manual jobs the run plays as it needs them, is
-not built yet.
+`VX_DTE_SECRET` to use your own instead.
+
+Set `VX_DTE_GITLAB_TOKEN` (an access token with `api` scope, as a masked
+CI/CD variable both `vx-plan` and `vx` see) to spawn live: the plan then
+starts only the first agent with the run and writes the others as
+`when: manual` jobs. The run plays one when its work needs it and cancels
+the ones it never played when it ends.
 
 ## What runs where
 

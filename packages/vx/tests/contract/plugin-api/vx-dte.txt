@@ -36,6 +36,7 @@ export interface DteAdapter {
   spawn(agent: AgentSpawn): void | Promise<void>
   close?(): void | Promise<void>
   render?(plan: DtePlan): Readonly<Record<string, string>>
+  live?(): boolean
   runId?(): string | undefined
 }
 == type DteOptions (src/plugin.ts)
@@ -51,7 +52,13 @@ export interface DtePlan {
   readonly run: string
   readonly relay: string
   readonly workspaceRoot: string
-  readonly agents: readonly { id: string; size: string; cpu: number; memory: number }[]
+  readonly agents: readonly {
+    id: string
+    size: string
+    cpu: number
+    memory: number
+    live: boolean
+  }[]
 }
 == type GitlabOptions (src/gitlab.ts)
 export interface GitlabOptions {
