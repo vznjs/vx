@@ -116,6 +116,8 @@ export interface PreparedRun {
   cacheScope: string | undefined
   /** The run's remotes in declared order, as the policy gates each; `openRemotes` turns one off. */
   remotes: ResolvedRemote[]
+  /** The refs the run reads, in order (`CacheContext.refs`). */
+  cacheRefs: readonly string[]
   /**
    * Scheduling priorities from plugins' `schedule` stage (task id → weight,
    * merged over the structural baseline by the scheduler). Empty when no
@@ -494,6 +496,8 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       onError: (err) => warnOf(log)(`[vx] remote cache: ${err.message}`),
     })
   }
+  // An injected remote is no plugin's: nothing reads refs for it.
+  const refs = options.remoteCache ? [] : cacheRefs(workspaceRoot, baseBranch)
   try {
     cache = options.remoteCache
       ? new LayeredCache(localCache, remotes, options.uploadConcurrency)
@@ -502,7 +506,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
           cacheDir,
           warn: warnOf(log),
           scope: cacheScope,
-          refs: cacheRefs(workspaceRoot, baseBranch),
+          refs,
           localCache,
           policy,
           remotes,
@@ -554,6 +558,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       cachePolicy: policy,
       cacheScope,
       remotes,
+      cacheRefs: refs,
       keepRunEntry: undefined,
       priorities: () => Promise.resolve(new Map()),
       branch,
@@ -804,6 +809,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
       cachePolicy: policy,
       cacheScope,
       remotes,
+      cacheRefs: refs,
       priorities,
       branch,
       cacheFor,

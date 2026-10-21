@@ -2,7 +2,7 @@
 // (the relay never reads it): orders and status only. Every task's files
 // and output go through the workspace's cache, by the keys these name.
 
-import type { ExecuteResult, ExecuteSandbox, SandboxConfig } from '@vzn/vx'
+import type { CacheFacts, ExecuteResult, ExecuteSandbox, SandboxConfig } from '@vzn/vx'
 
 /** An agent's `join` info. */
 export interface AgentInfo {
@@ -65,8 +65,14 @@ export type ToAgent =
       sandboxes?: SandboxConfig[]
     }
   | { type: 'cancel'; task: string }
-  /** It was taken into the run, under the name the run's output gives it. */
-  | { type: 'welcome'; name: string }
+  /**
+   * It was taken into the run, under the name the run's output gives it,
+   * and reads the cache as the run does: its refs, and the access the
+   * run's remotes lend, for one with none of its own.
+   */
+  | { type: 'welcome'; name: string; cache: CacheFacts }
+  /** The run's remotes lent again, before the last tokens end. */
+  | { type: 'cache'; cache: CacheFacts }
   | { type: 'refused'; reason: string }
   /** The run needs it no more: it leaves. */
   | { type: 'exit' }

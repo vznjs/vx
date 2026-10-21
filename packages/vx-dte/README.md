@@ -10,7 +10,10 @@ output and the files its declared outputs left to the workspace's cache,
 under the task's key. They land here before the task ends, so the run
 reports the task as its own. No file travels through the relay: it
 carries only orders and status, so the agents and this machine need one
-cache they all read (a remote the agents write, or one shared store).
+cache they all read (a remote the agents write, or one shared store). An agent reads that cache as the run does:
+under the run's refs, with the short-lived access the run's remote lends
+it (an OIDC exchange's token, never a stored secret) when it has none of
+its own.
 
 Agents and the orchestrator meet at a relay
 ([`@vzn/vx-dte-relay`](../vx-dte-relay/PROTOCOL.md)), since CI runners

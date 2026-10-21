@@ -24,7 +24,7 @@ import { maskedLine, nearest, type PluginSecrets, SecretBroker, UserError } from
 import type { ProjectMeta } from '../workspace/index.js'
 import type { EventBus, Logger, RunStartInfo } from '../report/index.js'
 import type { CiContext } from './run-context.js'
-import type { TaskArtifacts } from './task-artifacts.js'
+import type { CacheFacts, TaskArtifacts } from './task-artifacts.js'
 import type { TelemetryContext, TelemetrySink } from './telemetry.js'
 
 /**
@@ -342,6 +342,13 @@ export interface CommandContext extends BaseContext {
    * restores through (`TaskArtifacts`). Opened on first use.
    */
   readonly artifacts: TaskArtifacts
+  /**
+   * `artifacts` read as another machine's run would read them: under its
+   * refs, with the access its remotes lent (`CacheFacts`, asked on each
+   * request, so a token it lends again replaces the last). Opened on first
+   * use; until `facts` answers, under this machine's own.
+   */
+  artifactsFor(facts: () => CacheFacts | undefined): TaskArtifacts
 }
 
 /** `config` runs before the cache dir is known — it may be what the hook changes. */
@@ -530,6 +537,13 @@ export interface CacheContext extends BaseContext {
    * keys or scopes its entries by them; core keys task entries by none.
    */
   readonly refs: readonly string[]
+  /**
+   * The token a run lent this plugin's remote (`RemoteCacheLayer.lend`),
+   * on a machine that runs that run's tasks (`CommandContext.artifactsFor`);
+   * undefined anywhere else. Read it per request: a run lends again before
+   * a token ends. A plugin uses it only when it has no access of its own.
+   */
+  readonly lent?: () => string | undefined
 }
 
 export interface OutputContext extends BaseContext {
@@ -544,6 +558,12 @@ export interface ExecutorContext extends BaseContext {
   readonly concurrency: number
   /** Task entries by key in the run's cache, for a task another machine ran (`TaskArtifacts`). */
   readonly artifacts: TaskArtifacts
+  /**
+   * What a machine that runs this run's tasks reads the cache under
+   * (`CacheFacts`): the run's refs, and each remote's lent access, asked
+   * now. Ask again before `expiresAt`.
+   */
+  cacheFacts(): Promise<CacheFacts>
 }
 
 export interface PluginContext extends PluginSetupContext {

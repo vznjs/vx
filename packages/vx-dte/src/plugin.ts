@@ -222,7 +222,7 @@ export function dte(options: DteOptions) {
             root: ctx.workspaceRoot,
             token: await token(relay),
             proof: secret === undefined ? seal.githubProof() : seal.secretProof(secret),
-            artifacts: ctx.artifacts,
+            artifacts: ctx.artifactsFor,
           })
         },
       },
@@ -315,6 +315,7 @@ export function dte(options: DteOptions) {
         nodes: () => nodes,
         need,
         artifacts: ctx.artifacts,
+        cacheFacts: () => ctx.cacheFacts(),
         run,
         keyOf: (id) => keys.get(id),
         left: (id) => {

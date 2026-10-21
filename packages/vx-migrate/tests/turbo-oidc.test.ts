@@ -281,3 +281,66 @@ describe('another server', () => {
     expect(w.seen).toEqual([])
   })
 })
+
+// A run whose tasks run on agents lends them its exchanged token
+// (`RemoteCacheLayer.lend`); an agent with no access of its own reads it per
+// request (`CacheContext.lent`), so one lent again replaces the last.
+describe('lending: a run’s exchanged token to the machines that run its tasks', () => {
+  it('lends the exchanged token, and exchanges a new one when it ends within five minutes', async () => {
+    let ttl = 3600
+    const w = world((u) =>
+      u.pathname.endsWith('/oauth/token')
+        ? Response.json({ access_token: `t${w.seen.length}`, expires_in: ttl })
+        : undefined,
+    )
+    const c = cache({ oidc: true }, GH_ENV, w.fetchImpl)
+    await c.open(ctx().c)
+    const first = await c.lend()
+    expect(first).toEqual({ token: 't2', expiresAt: expect.any(Number) })
+    expect(await c.lend()).toEqual(first)
+    ttl = 60
+    const c2 = cache({ oidc: true }, GH_ENV, w.fetchImpl)
+    await c2.open(ctx().c)
+    const again = await c2.lend()
+    expect(again!.token).not.toBe(first!.token)
+    expect(await c2.lend()).not.toEqual(again)
+    await c2.revoke()
+    expect(w.seen.filter((s) => s.url.endsWith('/revoke'))).toHaveLength(3)
+  })
+
+  it('never lends a token it was given', async () => {
+    const c = cache({ oidc: true }, { ...GH_ENV, TURBO_TOKEN: 'mine' }, world().fetchImpl)
+    await c.open(ctx().c)
+    expect(await c.lend()).toBeUndefined()
+  })
+
+  it('an agent with no access of its own sends the lent token, the latest each request', async () => {
+    const w = world()
+    const c = cache({}, {}, w.fetchImpl)
+    let lent = 'lent-1'
+    c.lent = () => lent
+    const o = ctx()
+    await c.open(o.c)
+    await c.has('aa')
+    lent = 'lent-2'
+    await c.has('bb')
+    expect(w.seen.map((s) => s.auth)).toEqual(['Bearer lent-1', 'Bearer lent-2'])
+    expect(o.asked).toEqual([])
+  })
+
+  it('an agent with its own token or its own OIDC uses it, not the lent one', async () => {
+    const w = world()
+    const own = cache({}, { TURBO_TOKEN: 'mine' }, w.fetchImpl)
+    own.lent = () => 'lent'
+    await own.open(ctx().c)
+    await own.has('aa')
+    const oidc = cache({ oidc: true }, GH_ENV, w.fetchImpl)
+    oidc.lent = () => 'lent'
+    await oidc.open(ctx().c)
+    await oidc.has('bb')
+    expect(w.seen.filter((s) => s.url.includes('/v8/artifacts/')).map((s) => s.auth)).toEqual([
+      'Bearer mine',
+      'Bearer short-lived',
+    ])
+  })
+})

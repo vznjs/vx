@@ -269,6 +269,24 @@ A `cache` hook's context: the workspace and the run's scope, never the local sto
 export interface CacheContext extends BaseContext {
   readonly scope: string | undefined
   readonly refs: readonly string[]
+  readonly lent?: () => string | undefined
+}
+```
+
+## `CacheFacts`
+
+type · `src/orchestrator/task-artifacts.ts`
+
+What a run's cache is read under, for a machine that runs its tasks
+(`ExecutorContext.cacheFacts`, `CommandContext.artifactsFor`): the
+refs the run worked out, so that machine reads as the run would, and
+the access each remote lent, by plugin.
+
+```ts
+export interface CacheFacts {
+  readonly refs: readonly string[]
+  readonly lent: Readonly<Record<string, string>>
+  readonly expiresAt?: number
 }
 ```
 
@@ -442,6 +460,7 @@ export interface CommandContext extends BaseContext {
   readonly vx: readonly string[]
   readonly cache: PluginCache
   readonly artifacts: TaskArtifacts
+  artifactsFor(facts: () => CacheFacts | undefined): TaskArtifacts
 }
 ```
 
@@ -672,6 +691,7 @@ type · `src/orchestrator/plugin.ts`
 export interface ExecutorContext extends BaseContext {
   readonly concurrency: number
   readonly artifacts: TaskArtifacts
+  cacheFacts(): Promise<CacheFacts>
 }
 ```
 
@@ -1031,6 +1051,19 @@ type · `src/orchestrator/plugin.ts`
 
 ```ts
 export interface KeyHookContext extends BaseContext {}
+```
+
+## `LentAccess`
+
+type · `src/cache/layered-cache.ts`
+
+A run's access to a remote, lent to a machine that runs its tasks (`RemoteCacheLayer.lend`).
+
+```ts
+export interface LentAccess {
+  readonly token: string
+  readonly expiresAt?: number
+}
 ```
 
 ## `loadProjectConfig`
@@ -1695,6 +1728,7 @@ export interface PreparedRun {
   cachePolicy: CachePolicy
   cacheScope: string | undefined
   remotes: ResolvedRemote[]
+  cacheRefs: readonly string[]
   priorities: (run?: ScheduleRun) => Promise<ReadonlyMap<string, number>>
   branch: () => string | null
   cacheFor: (plugin: string) => PluginCache
@@ -1919,6 +1953,7 @@ plugin guide's example shows it).
 export interface RemoteCacheLayer {
   readonly endpoint?: string
   open?(ctx: RemoteOpenContext): Promise<void>
+  lend?(): Promise<LentAccess | undefined>
   has(hash: string): Promise<ArtifactInfo | null>
   hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>

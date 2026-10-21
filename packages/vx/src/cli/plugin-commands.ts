@@ -14,6 +14,7 @@ import type {
   VxPlugin,
   PluginCommand,
   CommandContext,
+  CacheFacts,
   TaskArtifacts,
 } from '../orchestrator/index.js'
 import { configuredBaseBranch, findWorkspaceRoot } from '../workspace/index.js'
@@ -118,6 +119,7 @@ export async function resolvePluginCommand(
         warn,
         cache: lazyCache(() => verbCache(ws, plugin.name)),
         artifacts: lazyArtifacts(() => verbArtifacts(ws)),
+        artifactsFor: (facts) => lazyArtifacts(() => verbArtifacts(ws, facts)),
       },
     }
   }
@@ -178,9 +180,11 @@ async function verbCache(
 /**
  * The verb's `ctx.artifacts`: the workspace's cache as a run opens it, its
  * policy and scope, a laptop writing no remote unless the policy names it.
+ * With `facts` (`ctx.artifactsFor`), under another run's refs and lent access.
  */
 async function verbArtifacts(
   ws: Exclude<Awaited<ReturnType<typeof workspacePlugins>>, UnresolvedPluginCommand | null>,
+  facts?: () => CacheFacts | undefined,
 ): Promise<TaskArtifacts> {
   const [
     { Cache, FULL_CACHE_POLICY },
@@ -222,9 +226,10 @@ async function verbArtifacts(
     cacheDir: ws.cacheDir,
     warn,
     scope,
-    refs: cacheRefs(ws.workspaceRoot, configuredBaseBranch(ws.workspaceConfig)),
+    refs: facts?.()?.refs ?? cacheRefs(ws.workspaceRoot, configuredBaseBranch(ws.workspaceConfig)),
     localCache,
     policy,
+    ...(facts === undefined ? {} : { lentBy: () => facts()?.lent }),
   })
   return taskArtifacts(cache, ws.workspaceRoot)
 }

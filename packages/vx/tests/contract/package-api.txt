@@ -470,6 +470,7 @@ export interface CacheConfig {
 export interface CacheContext extends BaseContext {
   readonly scope: string | undefined
   readonly refs: readonly string[]
+  readonly lent?: () => string | undefined
 }
 == type CacheEntry (src/cache/layer.ts)
 export interface CacheEntry {
@@ -488,6 +489,12 @@ export interface CacheEntry {
   source?: 'local' | 'remote'
   sizeBytes?: number
   fetchMs?: number
+}
+== type CacheFacts (src/orchestrator/task-artifacts.ts)
+export interface CacheFacts {
+  readonly refs: readonly string[]
+  readonly lent: Readonly<Record<string, string>>
+  readonly expiresAt?: number
 }
 == type CacheFlags (src/cache/policy.ts)
 export interface CacheFlags {
@@ -654,6 +661,7 @@ export interface CommandContext extends BaseContext {
   readonly vx: readonly string[]
   readonly cache: PluginCache
   readonly artifacts: TaskArtifacts
+  artifactsFor(facts: () => CacheFacts | undefined): TaskArtifacts
 }
 == type ConfigContext (src/orchestrator/plugin.ts)
 export interface ConfigContext extends WorkspaceHookContext {
@@ -762,6 +770,7 @@ export interface ExecuteSandbox {
 export interface ExecutorContext extends BaseContext {
   readonly concurrency: number
   readonly artifacts: TaskArtifacts
+  cacheFacts(): Promise<CacheFacts>
 }
 == type FailedAttempt (src/orchestrator/telemetry.ts)
 export interface FailedAttempt {
@@ -941,6 +950,11 @@ type KnownExecs<T extends ProjectConfig> = {
       exec?: KnownExec<At<NonNullable<T['tasks']>[K], 'exec'>>
     }
   }
+}
+== type LentAccess (src/cache/layered-cache.ts)
+export interface LentAccess {
+  readonly token: string
+  readonly expiresAt?: number
 }
 == type LocalFloor (src/orchestrator/local-floor.ts)
 export interface LocalFloor {
@@ -1217,6 +1231,7 @@ export interface PreparedRun {
   cachePolicy: CachePolicy
   cacheScope: string | undefined
   remotes: ResolvedRemote[]
+  cacheRefs: readonly string[]
   priorities: (run?: ScheduleRun) => Promise<ReadonlyMap<string, number>>
   branch: () => string | null
   cacheFor: (plugin: string) => PluginCache
@@ -1300,6 +1315,7 @@ export interface RefusalParts {
 export interface RemoteCacheLayer {
   readonly endpoint?: string
   open?(ctx: RemoteOpenContext): Promise<void>
+  lend?(): Promise<LentAccess | undefined>
   has(hash: string): Promise<ArtifactInfo | null>
   hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
