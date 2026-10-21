@@ -224,7 +224,7 @@ describe('the tasks line counts what is blocked', () => {
       formatSummarySection({ ...stats, ...s }, 1500, { enabled: false }).find((l) =>
         l.startsWith('  tasks'),
       )!
-    const empty = (l: string) => [...l].filter((c) => c === '\u25b1').length
+    const empty = (l: string) => l.split('\u25b1').length - 1
     expect(empty(bar({}))).toBeLessThan(empty(bar({ blocked: 0 })))
   })
 
