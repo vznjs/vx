@@ -150,8 +150,9 @@ it('an agent with other tracked files than the run is refused', async () => {
 async function harness(
   nodes: Map<string, TaskNode>,
   need: (id: string) => Need = () => ({ cores: 1, memory: 10 }),
+  heartbeatMs?: number,
 ) {
-  const relay = createRelay()
+  const relay = createRelay(heartbeatMs === undefined ? {} : { heartbeatMs })
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
   const url = `http://127.0.0.1:${server.port}`
   const o = new Orchestrator({
@@ -181,7 +182,8 @@ async function harness(
       await me.send('orchestrator', { type: 'end', task, parts: parts.length })
     }
     const begin = (task: string) => me.send('orchestrator', { type: 'start', task })
-    return { batches, finish, begin, leave: () => me.leave() }
+    const say = (body: object) => me.send('orchestrator', body)
+    return { batches, finish, begin, say, leave: () => me.leave() }
   }
   const req = (taskId: string) =>
     ({
@@ -268,11 +270,61 @@ it('a task lost with two agents fails naming both; one not begun goes back free'
         () => '',
         (e: Error) => e.message,
       ),
-    ).toBe('t1: the agents running it were lost: agent#1, agent#2')
+    ).toBe('t1: failed on 2 agents: agent#1 lost, agent#2 lost')
     const c = await h.agent(1)
     expect(await c.batches()).toEqual([['t2']])
     await c.finish('t2')
     expect((await t2).exitCode).toBe(0)
+  } finally {
+    await h.stop()
+  }
+})
+
+it('an agent that could not run a task it began gets no more; two such fail it', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const a = await h.agent(1)
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.say({ type: 'fault', task: 't1', reason: 'ENOSPC' })
+    const b = await h.agent(1)
+    expect(await b.batches()).toEqual([['t1']])
+    void h.o.execute(h.req('t2'))
+    expect(await b.batches()).toEqual([['t2']])
+    await b.say({ type: 'fault', task: 't1', reason: 'unpack failed' })
+    expect(
+      await t1.then(
+        () => '',
+        (e: Error) => e.message,
+      ),
+    ).toBe('t1: failed on 2 agents: agent#1 ENOSPC, agent#2 unpack failed')
+  } finally {
+    await h.stop()
+  }
+})
+
+it('a task an agent stops saying it holds goes back when its lease ends', async () => {
+  const h = await harness(new Map([node('t1')]), undefined, 100)
+  try {
+    const a = await h.agent(1)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    // Alive and holding t1 past three heartbeats: its lease holds.
+    for (let i = 0; i < 8; i++) {
+      await a.say({ type: 'held', running: ['t1'], queued: [] })
+      await Bun.sleep(50)
+    }
+    expect(h.o.where('t1')).toBe('agent#1')
+    const b = await h.agent(1)
+    // Alive, holding nothing: t1's lease ends and it moves.
+    const alive = setInterval(() => void a.say({ type: 'held', running: [], queued: [] }), 50)
+    try {
+      expect(await b.batches()).toEqual([['t1']])
+    } finally {
+      clearInterval(alive)
+    }
   } finally {
     await h.stop()
   }

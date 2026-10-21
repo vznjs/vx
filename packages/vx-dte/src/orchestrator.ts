@@ -42,8 +42,10 @@ interface Job {
   readonly resolve: (r: ExecuteResult) => void
   readonly reject: (err: unknown) => void
   agent?: string
-  /** Agents lost while running it: two fail it. */
+  /** The agents that failed it after beginning it, with why: two fail it. */
   faults?: string[]
+  /** Its agent's lease on it ends then unless the agent says it still holds it. */
+  leaseUntil?: number
 }
 
 interface Agent {
@@ -70,6 +72,8 @@ interface Agent {
   chain: Promise<void>
   /** It was sent the run's sandbox configs. */
   sandboxes: boolean
+  /** It failed a task it began: it gets no more. */
+  faulty: boolean
 }
 
 /** What an agent was started as: its size's `cpu` and `memory` in bytes. */
@@ -216,7 +220,7 @@ export class Orchestrator {
       a.memory > job.need.above.memory
     // A bigger agent online takes it; one starting is waited for; else
     // the biggest there is.
-    const agents = [...this.agents.values()]
+    const agents = [...this.agents.values()].filter((a) => !a.faulty)
     if (job.need.above !== undefined && !agents.some(bigger)) {
       const above = job.need.above
       const joined = new Set([...agents, ...this.gone].map((x) => x.label))
@@ -328,6 +332,7 @@ export class Orchestrator {
           ...(sandboxes === undefined ? {} : { sandboxes }),
         } satisfies ToAgent)
         a.usage.messagesIn++
+        for (const { job } of orders) this.lease(job)
       })
       .catch((err: unknown) => {
         // The relay refused the send (the agent is gone): the loss notice
@@ -347,6 +352,51 @@ export class Orchestrator {
         out.push({ path: path.relative(this.realRoot, w), dir: st.isDirectory() })
     }
     return out
+  }
+
+  /** Three heartbeats from now: the agent says what it holds each one. */
+  private lease(job: Job): void {
+    job.leaseUntil = performance.now() + 3 * this.o.me.heartbeatMs
+  }
+
+  /**
+   * Agent `a` let `job` down: lost, its lease ended, or it could not run
+   * it. One it had begun counts, and two agents fail it; one still in its
+   * queue goes back free.
+   */
+  private retry(a: Agent, job: Job, why: string): Job | undefined {
+    a.busy.delete(job.req.taskId)
+    a.usedCores -= job.held?.cores ?? 0
+    a.usedMemory -= job.held?.memory ?? 0
+    delete job.agent
+    delete job.held
+    delete job.leaseUntil
+    const begun = a.started.delete(job.req.taskId)
+    if (job.req.signal?.aborted === true) return undefined
+    if (begun) {
+      a.faulty = true
+      job.faults = [...(job.faults ?? []), `${a.label} ${why}`]
+      if (job.faults.length >= 2) {
+        job.reject(new Error(`${job.req.taskId}: failed on 2 agents: ${job.faults.join(', ')}`))
+        return undefined
+      }
+    }
+    return job
+  }
+
+  /** Each task whose agent's lease on it ended goes back. */
+  private expire(): void {
+    const now = performance.now()
+    const back: Job[] = []
+    for (const a of this.agents.values())
+      for (const j of [...a.busy.values()])
+        if (j.leaseUntil !== undefined && j.leaseUntil < now) {
+          const again = this.retry(a, j, 'lease expired')
+          if (again !== undefined) back.push(again)
+        }
+    if (back.length === 0) return
+    this.queue.unshift(...back)
+    this.pumpSoon()
   }
 
   private post(a: Agent, m: ToAgent): void {
@@ -419,6 +469,7 @@ export class Orchestrator {
           .send(id, { type: 'welcome', name: label } satisfies ToAgent)
           .catch(() => undefined),
         sandboxes: false,
+        faulty: false,
       })
     } else if (body.type === 'lost') {
       const a = this.agents.get(body.id!)
@@ -426,23 +477,11 @@ export class Orchestrator {
       this.agents.delete(a.id)
       a.usage.to = performance.now()
       this.gone.push(a)
-      // Its tasks run again: first, as they were first to go. One it
-      // began counts against two agents; one in its queue goes back free.
+      // Its tasks run again: first, as they were first to go.
       const back: Job[] = []
-      for (const j of a.busy.values()) {
-        if (j.req.signal?.aborted === true) continue
-        delete j.agent
-        delete j.held
-        if (a.started.has(j.req.taskId)) {
-          j.faults = [...(j.faults ?? []), a.label]
-          if (j.faults.length >= 2) {
-            j.reject(
-              new Error(`${j.req.taskId}: the agents running it were lost: ${j.faults.join(', ')}`),
-            )
-            continue
-          }
-        }
-        back.push(j)
+      for (const j of [...a.busy.values()]) {
+        const again = this.retry(a, j, 'lost')
+        if (again !== undefined) back.push(again)
       }
       this.queue.unshift(...back)
     } else {
@@ -471,6 +510,7 @@ export class Orchestrator {
         this.fail(`the relay is unreachable (${(err as Error).message})`)
         return
       }
+      this.expire()
       for (const { from, body } of messages) {
         if (from === 'relay') {
           this.onRelay(body as { type?: string })
@@ -481,6 +521,19 @@ export class Orchestrator {
         const m = body as ToOrchestrator
         if (m.type === 'start') {
           if (a.busy.has(m.task)) a.started.add(m.task)
+        } else if (m.type === 'held') {
+          for (const t of [...m.running, ...m.queued]) {
+            const j = a.busy.get(t)
+            if (j?.leaseUntil !== undefined) this.lease(j)
+          }
+          for (const t of m.running) if (a.busy.has(t)) a.started.add(t)
+        } else if (m.type === 'fault') {
+          const j = a.busy.get(m.task)
+          if (j === undefined) continue
+          // It began it whether or not its `start` came first.
+          a.started.add(m.task)
+          if (this.retry(a, j, m.reason) !== undefined) this.queue.unshift(j)
+          this.pumpSoon()
         } else if (m.type === 'part') {
           const list = this.results.get(`${from}\0${m.task}`) ?? []
           list.push(m.data)
