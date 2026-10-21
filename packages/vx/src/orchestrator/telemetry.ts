@@ -16,7 +16,7 @@
 // what or how tasks run. Contrast `cache`/`executor`, which return objects
 // core calls INTO; those are the behavior capabilities, kept separate.
 
-import { sampleTrees } from '../exec/index.js'
+import { sampleTrees, type MachineReport } from '../exec/index.js'
 import {
   type CacheSource,
   deriveCacheSource,
@@ -274,6 +274,12 @@ export interface RunSummaryRecord {
    * Absent when nothing was uploaded or tried. Additive.
    */
   uploads?: { count: number; bytes: number; ms: number; failed: number }
+  /**
+   * The machines an executor plugin ran tasks on, with what each did
+   * (`TaskExecutor.machines`); a task's `where` names one. Absent when no
+   * executor reports any. Additive.
+   */
+  machines?: readonly MachineReport[]
 }
 
 /** One stage of a run, a wall window in epoch ms. */
@@ -305,6 +311,7 @@ export function assembleRunSummary(
     abortedCount: number
     stages?: readonly RunStage[]
     uploads?: { count: number; bytes: number; ms: number; failed: number }
+    machines?: readonly MachineReport[]
   },
 ): RunSummaryRecord {
   let failedCount = 0
@@ -342,6 +349,9 @@ export function assembleRunSummary(
     ...(timing.stages !== undefined && timing.stages.length > 0 ? { stages: timing.stages } : {}),
     ...(timing.uploads !== undefined && timing.uploads.count + timing.uploads.failed > 0
       ? { uploads: { ...timing.uploads } }
+      : {}),
+    ...(timing.machines !== undefined && timing.machines.length > 0
+      ? { machines: timing.machines }
       : {}),
   }
 }

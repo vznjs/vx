@@ -721,6 +721,7 @@ export interface ExecuteResult extends RunResult {
   readonly violations: readonly SandboxViolation[]
   readonly outputs?: { kind: 'disk' } | { kind: 'deferred'; materialize: () => Promise<void> }
   readonly where?: string
+  readonly machine?: { readonly cores: number; readonly memoryBytes: number }
 }
 == type ExecuteSandbox (src/exec/executor.ts)
 export interface ExecuteSandbox {
@@ -966,6 +967,22 @@ export interface Logger {
   stepEnd?(id: string, info: { durationMs: number; ok: boolean }): void
   runStop?(): void
   runDone?(): void
+}
+== type MachineReport (src/exec/executor.ts)
+export interface MachineReport {
+  name: string
+  status: string
+  cores: number
+  memoryBytes: number
+  done: number
+  failed: number
+  onlineMs: number
+  busyMs: number
+  cpuPeak: number
+  cpuAvg: number
+  memoryPeakBytes: number
+  memoryAvgBytes: number
+  utilization: number
 }
 == type MigrationFormat (src/workspace/migration.ts)
 export type MigrationFormat = 'ts' | 'mjs'
@@ -1458,6 +1475,9 @@ export interface RunRecord {
   remoteError?: string
   peakCores?: number
   avgRssBytes?: number
+  placement?: string
+  placementCores?: number
+  placementMemoryBytes?: number
 }
 == type RunReport (src/orchestrator/plugin.ts)
 export interface RunReport {
@@ -1539,6 +1559,7 @@ export interface RunSummaryRecord {
   tasks: readonly TaskTelemetry[]
   stages?: readonly RunStage[]
   uploads?: { count: number; bytes: number; ms: number; failed: number }
+  machines?: readonly MachineReport[]
 }
 == type SandboxConfig (src/config.ts)
 export interface SandboxConfig {
@@ -1640,6 +1661,7 @@ export interface TaskExecutor {
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void
   footer?(): readonly (readonly [label: string, text: ui.Inline])[]
+  machines?(): readonly MachineReport[]
   running?(taskId: string): string | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
@@ -1653,6 +1675,8 @@ export interface TaskHistory {
   failureMode: FailureMode
   maxPeakRssBytes?: number
   maxCpuParallelism?: number
+  saturatedCores?: number
+  saturatedMemoryBytes?: number
 }
 == type TaskInputRow (src/cache/layer.ts)
 export interface TaskInputRow {
@@ -1738,6 +1762,8 @@ export interface TaskOutcome {
   notReady?: 'timeout' | 'exited' | 'spawn'
   inputMoved?: string
   where?: string
+  whereCores?: number
+  whereMemoryBytes?: number
   outputs?: 'deferred'
   saved?: true
   wallclockStartNs?: bigint
@@ -1769,7 +1795,11 @@ export interface TaskPlacement {
 == type TaskResources (src/history/history.ts)
 export type TaskResources = Pick<
   TaskHistory,
-  'p50DurationMs' | 'maxPeakRssBytes' | 'maxCpuParallelism'
+  | 'p50DurationMs'
+  | 'maxPeakRssBytes'
+  | 'maxCpuParallelism'
+  | 'saturatedCores'
+  | 'saturatedMemoryBytes'
 == type TaskStatus (src/graph/task-status.ts)
 export type TaskStatus =
   | 'success'

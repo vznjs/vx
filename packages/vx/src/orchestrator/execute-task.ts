@@ -1482,6 +1482,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(result.peakRssBytes !== undefined ? { peakRssBytes: result.peakRssBytes } : {}),
     ...(load !== undefined ? { peakCores: load.peakCores, avgRssBytes: load.avgRssBytes } : {}),
     ...(result.where !== undefined ? { where: result.where } : {}),
+    ...(result.where !== undefined && result.machine !== undefined
+      ? { whereCores: result.machine.cores, whereMemoryBytes: result.machine.memoryBytes }
+      : {}),
     ...(deferralRequested && result.outputs?.kind === 'deferred'
       ? { outputs: 'deferred' as const }
       : {}),

@@ -168,6 +168,7 @@
         "peakRssBytes",
         "peakCores",
         "avgRssBytes",
+        "placement",
         "wallclockStartNs",
         "wallclockEndNs",
         "blockedBy",
@@ -208,6 +209,10 @@
         "avgRssBytes": {
           "type": ["integer", "null"],
           "description": "mean resident memory over the samples; null when nothing sampled"
+        },
+        "placement": {
+          "type": ["string", "null"],
+          "description": "where an executor ran it (small#1); null when here"
         },
         "wallclockStartNs": {
           "type": ["string", "null"],

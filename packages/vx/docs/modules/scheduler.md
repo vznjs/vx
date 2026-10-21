@@ -56,7 +56,9 @@ export interface TaskOutcome {
   runLog?: string // run keeps bytes in a remote and this task saved no entry: its whole output log, masked
   notReady?: 'timeout' | 'exited' | 'spawn' // failed persistent task: why it never became ready
   inputMoved?: string // failed by inputStability.severity 'error': the input that changed ('' unnamed)
-  where?: string // executor-reported placement, when not this host (telemetry-only)
+  where?: string // executor-reported placement, when not this host
+  whereCores?: number // that machine's cores and memory (ExecuteResult.machine)
+  whereMemoryBytes?: number
   outputs?: 'deferred' // outputs left in the remote store (`--cache-download=none`)
   saved?: true // ran here and its result went to the cache: the footer's `↑`
   wallclockStartNs?: bigint // hrtime span relative to run t=0

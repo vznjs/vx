@@ -177,7 +177,11 @@ utilization of every machine together:
     as early as their dependencies allow, each for its usual duration
     (1 s without history), the most cores in use at once for at least
     half the time left, less this machine's share. None stops before the
-    run ends.
+    run ends. A task the history has not measured runs alone on an agent;
+    one that used all of its agent's cores or memory (90%) last time runs
+    alone on the smallest bigger size, which the run starts for it. Each
+    run's history keeps where every task ran and that machine's size, so
+    sizing improves run by run.
   - `adapter` is the `DteAdapter` that starts agents. Absent, the run
     starts none and uses the agents that join `relay`.
   - `relay` is the relay's URL; absent, the adapter's own.

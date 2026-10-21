@@ -145,3 +145,58 @@ it('answers the p50 and resource maxima loadFor answers for each task', async ()
     }
   }
 })
+
+it('names the biggest machine a task filled, by its cores or its memory', async () => {
+  const base = (task: string, over: Partial<RunRecord>): RunRecord => ({
+    ...run(0, 'sat', task),
+    status: 'success',
+    exitCode: 0,
+    cacheHit: false,
+    durationMs: 1_000,
+    ...over,
+  })
+  cache.recordRunBundle({
+    runs: [
+      // 1.9 of 2 cores for its whole run: filled; on 8 it used 2: did not.
+      base('cpu', {
+        placement: 'small#1',
+        placementCores: 2,
+        placementMemoryBytes: 8e9,
+        cpuMs: 1_900,
+      }),
+      base('cpu', {
+        placement: 'big#1',
+        placementCores: 8,
+        placementMemoryBytes: 32e9,
+        cpuMs: 2_000,
+      }),
+      // Killed at its machine's memory: a failure counts.
+      base('mem', {
+        status: 'failed',
+        exitCode: 137,
+        placement: 'small#2',
+        placementCores: 2,
+        placementMemoryBytes: 8e9,
+        cpuMs: 100,
+        peakRssBytes: 7.9e9,
+      }),
+      base('roomy', {
+        placement: 'small#1',
+        placementCores: 2,
+        placementMemoryBytes: 8e9,
+        cpuMs: 500,
+      }),
+    ],
+    invocation: invocation('sat', 5_000),
+  })
+  const r = await new LocalHistoryProvider(cache.dbHandle()).resourcesFor([
+    'p#cpu',
+    'p#mem',
+    'p#roomy',
+  ])
+  expect(r.get('p#cpu')?.saturatedCores).toBe(2)
+  expect(r.get('p#cpu')?.saturatedMemoryBytes).toBeUndefined()
+  expect(r.get('p#mem')?.saturatedMemoryBytes).toBe(8e9)
+  expect(r.get('p#mem')?.saturatedCores).toBeUndefined()
+  expect(r.get('p#roomy')?.saturatedCores).toBeUndefined()
+})

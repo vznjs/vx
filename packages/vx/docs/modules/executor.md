@@ -11,7 +11,13 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 
 ## Public surface
 
-- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining); footer?(); running?(id); execute(req) }`
+- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining); footer?(); machines?(); running?(id); execute(req) }`
+  — `machines()` returns a `MachineReport` per machine it ran tasks on
+  (`{ name; status; cores; memoryBytes; done; failed; onlineMs; busyMs;
+cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
+  once at the end for the run summary when a telemetry sink is on;
+  `ExecuteResult.machine` (`{ cores; memoryBytes }`) is the size of the
+  machine `where` names, which the run history keeps
   — `footer()` returns `[label, text]` rows the run's footer shows, live
   and at the end (a throw or a bad shape shows none); `ExecuteResult.where`
   is shown on the task's row and frame as `on <where>`; `running(id)`

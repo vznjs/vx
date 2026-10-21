@@ -532,6 +532,7 @@ describe('formatTaskRows', () => {
       notReady: null,
       forwarded: false,
       remoteError: null,
+      placement: null,
       ...over,
     }) as RunSummaryRow
   const hit = (n: number, ms: number) =>
@@ -592,6 +593,11 @@ describe('formatTaskRows', () => {
       'remote ✗ download: connection refused; upload: 503',
     )
     expect(formatTaskRows([row('t')])[1]).not.toContain('remote')
+  })
+
+  it('names where an executor ran a task, and nothing for one run here', () => {
+    expect(formatTaskRows([row('t', { placement: 'small#1' })])[1]).toMatch(/h  on small#1$/)
+    expect(formatTaskRows([row('t')])[1]).not.toContain(' on ')
   })
 
   it('orders failed, then executed and skipped, then hits, and folds the hits past sixteen', () => {

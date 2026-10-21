@@ -19,11 +19,17 @@ export interface TaskHistory {
   failureMode: FailureMode
   maxPeakRssBytes?: number
   maxCpuParallelism?: number
+  saturatedCores?: number // the most cores of a machine it filled (resourcesFor)
+  saturatedMemoryBytes?: number // and the most memory
 }
 export type HistoryTable = ReadonlyMap<string, TaskHistory>
 export type TaskResources = Pick<
   TaskHistory,
-  'p50DurationMs' | 'maxPeakRssBytes' | 'maxCpuParallelism'
+  | 'p50DurationMs'
+  | 'maxPeakRssBytes'
+  | 'maxCpuParallelism'
+  | 'saturatedCores'
+  | 'saturatedMemoryBytes'
 >
 
 export interface HistoryProvider {
@@ -146,6 +152,12 @@ stay exact). Measured 2026-09-09 at 116k rows, 1,000 pairs, window 50:
   the window and by `mixedOutcomeKeyCount` over a task's whole history,
   so the two cannot disagree. The window's key-outcome pass runs only for
   pairs that failed without a retry already proving nondeterminism.
+- `saturatedCores` / `saturatedMemoryBytes` (`resourcesFor` only): the
+  most cores, and the most memory, of a machine an executor ran the task on
+  (`placement_cores`, `placement_memory`) that it filled: 90% of the cores
+  over its run (or at its sampled peak), or 90% of the memory. Failures
+  count: a task killed for memory filled its machine. `@vzn/vx-dte` runs
+  such a task on a bigger size next time.
 - Skipped rows (`status = 'skipped'`) are excluded from the window
   (`EXECUTED_RUNS_SQL`), so a run of skips cannot dilute the numbers.
 - `maxPeakRssBytes` and `maxCpuParallelism` (cpu time over wall time) are

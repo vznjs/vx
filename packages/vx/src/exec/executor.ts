@@ -180,10 +180,16 @@ export interface ExecuteResult extends RunResult {
    * Executor-reported placement label — which machine ran the command
    * (a REAPI worker id, a pool member). Absent = this host. Rides
    * `TaskOutcome.where` into telemetry so a task can be attributed to
-   * its worker, and onto its row and frame (`on <where>`); never
-   * persisted to the analytics store.
+   * its worker, onto its row and frame (`on <where>`), and into the
+   * run history (v44).
    */
   readonly where?: string
+  /**
+   * The cores and memory of the machine `where` names, as it reports
+   * them: the run history keeps them, so a task that used all of one
+   * reads as wanting a bigger one (`TaskResources.saturated*`).
+   */
+  readonly machine?: { readonly cores: number; readonly memoryBytes: number }
 }
 
 /** What an executor sees when a task is PLACED — once per task, before scheduling. */
@@ -244,9 +250,38 @@ export interface TaskExecutor {
    * a throw shows nothing.
    */
   footer?(): readonly (readonly [label: string, text: ui.Inline])[]
+  /**
+   * The machines it ran the run's tasks on (`small#1`, `local`), for the
+   * run summary telemetry sinks read; asked once at the end, only when a
+   * sink is on. A throw reports none.
+   */
+  machines?(): readonly MachineReport[]
   /** Where a task it is running runs (`small#2`), for the live row; asked per frame. */
   running?(taskId: string): string | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
+}
+
+/** One machine an executor ran tasks on, as the run summary reports it. */
+export interface MachineReport {
+  /** As task rows name it (`small#1`). */
+  name: string
+  /** `online`, or `gone` for one that left before the run ended. */
+  status: string
+  cores: number
+  memoryBytes: number
+  done: number
+  failed: number
+  onlineMs: number
+  /** Time with at least one task running. */
+  busyMs: number
+  /** Cores in use at once, at the most and on average over its time online. */
+  cpuPeak: number
+  cpuAvg: number
+  /** Bytes in use at once, at the most and on average. */
+  memoryPeakBytes: number
+  memoryAvgBytes: number
+  /** Core-time its tasks used over the core-time it had, 0 to 1. */
+  utilization: number
 }
 
 /**

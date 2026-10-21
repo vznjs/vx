@@ -176,8 +176,15 @@ export function dte(options: DteOptions) {
       const localSlots = options.local ?? 0
       const need = (id: string): Need => {
         const r = peaks.get(id)
-        // Unmeasured: a whole agent, until its first run measures it.
+        // Unmeasured: a whole agent, until its first run measures it. One
+        // that filled its agent: a whole bigger one.
         if (r?.maxCpuParallelism === undefined) return { cores: Infinity, memory: Infinity }
+        if (r.saturatedCores !== undefined || r.saturatedMemoryBytes !== undefined)
+          return {
+            cores: Infinity,
+            memory: Infinity,
+            above: { cores: r.saturatedCores ?? 0, memory: r.saturatedMemoryBytes ?? 0 },
+          }
         return {
           cores: Math.max(1, Math.ceil(r.maxCpuParallelism)),
           memory: r.maxPeakRssBytes ?? 0,
@@ -208,12 +215,35 @@ export function dte(options: DteOptions) {
             : Math.max(1, localSlots + sizes.reduce((n, s) => n + 2 * s.max * s.cpu, 0)),
         execute: (req) => o.execute(req),
         footer: () => o.footer(),
+        machines: () => o.machines(),
         running: (id) => o.where(id),
         // Agents in declared order for the cores the remaining tasks keep
         // busy (`busyCores`) beyond this machine's share; none are stopped
         // before the run ends.
         demand(remaining) {
           if (adapter === undefined) return
+          const start = (s: (typeof sizes)[number]): void => {
+            started.set(s.name, (started.get(s.name) ?? 0) + 1)
+            cores += s.cpu
+            const id = `${s.name}#${++index}`
+            o.spawned(id, { size: s.name, cpu: s.cpu, memory: s.memory })
+            void Promise.resolve(
+              adapter.spawn({
+                run,
+                relay,
+                size: s.name,
+                cpu: s.cpu,
+                memory: s.memory,
+                index,
+                id,
+                workspaceRoot: ctx.workspaceRoot,
+                env: { VX_DTE_RUN: run, VX_DTE_AGENT: id, VX_DTE_RELAY: relay },
+                exited: (reason) => o.failed(id, reason),
+              }),
+            ).catch((err: unknown) =>
+              o.failed(id, err instanceof Error ? err.message : String(err)),
+            )
+          }
           // An unmeasured task takes the biggest agent there is.
           const biggest = Math.max(...sizes.map((s) => s.cpu))
           const wantCores =
@@ -223,30 +253,17 @@ export function dte(options: DteOptions) {
               (id) => Math.min(need(id).cores, biggest),
               (id) => peaks.get(id)?.p50DurationMs,
             ) - localSlots
-          for (const s of sizes) {
-            while (cores < wantCores && (started.get(s.name) ?? 0) < s.max) {
-              started.set(s.name, (started.get(s.name) ?? 0) + 1)
-              cores += s.cpu
-              const id = `${s.name}#${++index}`
-              o.spawned(id, { size: s.name, cpu: s.cpu, memory: s.memory })
-              void Promise.resolve(
-                adapter.spawn({
-                  run,
-                  relay,
-                  size: s.name,
-                  cpu: s.cpu,
-                  memory: s.memory,
-                  index,
-                  id,
-                  workspaceRoot: ctx.workspaceRoot,
-                  env: { VX_DTE_RUN: run, VX_DTE_AGENT: id, VX_DTE_RELAY: relay },
-                  exited: (reason) => o.failed(id, reason),
-                }),
-              ).catch((err: unknown) =>
-                o.failed(id, err instanceof Error ? err.message : String(err)),
-              )
-            }
+          // A task that filled its agent last time: one of the smallest
+          // size bigger than it, if the run has none yet.
+          const sizesUp = [...sizes].sort((x, y) => x.cpu - y.cpu || x.memory - y.memory)
+          for (const id of remaining) {
+            const above = need(id).above
+            if (above === undefined) continue
+            const up = sizesUp.find((z) => z.cpu > above.cores || z.memory > above.memory)
+            if (up !== undefined && (started.get(up.name) ?? 0) === 0 && up.max > 0) start(up)
           }
+          for (const s of sizes)
+            while (cores < wantCores && (started.get(s.name) ?? 0) < s.max) start(s)
         },
       }
     },

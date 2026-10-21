@@ -59,6 +59,7 @@ export {
   type ExecuteResult,
   type ExecuteSandbox,
   type InputFile,
+  type MachineReport,
   type TaskExecutor,
   type TaskInputs,
   type TaskPlacement,

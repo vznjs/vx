@@ -215,6 +215,11 @@ export interface RunRecord {
   /** The sampled peak cores and mean resident memory of the run (v43). */
   peakCores?: number
   avgRssBytes?: number
+  /** Where an executor ran it (`small#1`); absent = here (v44). */
+  placement?: string
+  /** That machine's cores and memory (v44). */
+  placementCores?: number
+  placementMemoryBytes?: number
 }
 
 /**

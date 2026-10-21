@@ -466,6 +466,7 @@ describe('each schema object is its source type', () => {
         peakRssBytes: true,
         peakCores: true,
         avgRssBytes: true,
+        placement: true,
         wallclockStartNs: true,
         wallclockEndNs: true,
         blockedBy: true,

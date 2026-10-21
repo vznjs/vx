@@ -30,6 +30,9 @@ export const PASS_STATUSES = `(${TASK_STATUSES.filter(isPassStatus)
   .map((s) => `'${s}'`)
   .join(', ')})`
 
+/** The share of a machine a task must use to have filled it. */
+const SATURATED = 0.9
+
 /** Per (project#task) — last RECENT runs collapsed into a summary. */
 export interface TaskHistory {
   /** Total runs in the recent window. */
@@ -58,6 +61,14 @@ export interface TaskHistory {
    * whole task. Undefined when no row carried both numbers.
    */
   maxCpuParallelism?: number
+  /**
+   * The most cores, and the most memory, of a machine an executor ran it
+   * on (`ExecuteResult.machine`) that it used all of: 90% of the cores
+   * over its whole run (or at its sampled peak), or 90% of the memory. A
+   * task that filled a machine wanted a bigger one. Set by `resourcesFor`.
+   */
+  saturatedCores?: number
+  saturatedMemoryBytes?: number
 }
 
 /** Map keyed by `project#task`. */
@@ -66,7 +77,11 @@ export type HistoryTable = ReadonlyMap<string, TaskHistory>
 /** What a scheduler learns from a task's history: its p50 and its resource maxima. */
 export type TaskResources = Pick<
   TaskHistory,
-  'p50DurationMs' | 'maxPeakRssBytes' | 'maxCpuParallelism'
+  | 'p50DurationMs'
+  | 'maxPeakRssBytes'
+  | 'maxCpuParallelism'
+  | 'saturatedCores'
+  | 'saturatedMemoryBytes'
 >
 
 export interface HistoryProvider {
@@ -386,6 +401,31 @@ export class LocalHistoryProvider implements HistoryProvider {
         p50DurationMs: p50s.get(key),
         ...(rss !== -Infinity ? { maxPeakRssBytes: rss } : {}),
         ...(cpu !== -Infinity ? { maxCpuParallelism: cpu } : {}),
+      })
+    }
+    // A failure counts: a task killed for memory filled its machine too.
+    type Saturated = { project: string; task: string; cores: number | null; memory: number | null }
+    const saturated = this.db
+      .query(
+        `SELECT project, task,
+           MAX(CASE WHEN MAX(COALESCE(peak_cores, 0), cpu_ms * 1.0 / duration_ms)
+                         >= ${SATURATED} * placement_cores
+                    THEN placement_cores END) AS cores,
+           MAX(CASE WHEN peak_rss_bytes >= ${SATURATED} * placement_memory
+                    THEN placement_memory END) AS memory
+         FROM runs
+         WHERE id >= ? AND placement_cores IS NOT NULL AND duration_ms > 0
+           AND status IN ('success', 'failed') AND (cache_hit IS NULL OR cache_hit = 0)
+         GROUP BY project, task`,
+      )
+      .all(floor) as Saturated[]
+    for (const row of saturated) {
+      const key = `${row.project}#${row.task}`
+      if (!wanted.has(key) || (row.cores === null && row.memory === null)) continue
+      out.set(key, {
+        ...(out.get(key) ?? { p50DurationMs: p50s.get(key) }),
+        ...(row.cores !== null ? { saturatedCores: row.cores } : {}),
+        ...(row.memory !== null ? { saturatedMemoryBytes: row.memory } : {}),
       })
     }
     // A forecast reads past the window: a task with none in it still has one.

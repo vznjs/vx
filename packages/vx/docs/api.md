@@ -605,6 +605,7 @@ export interface ExecuteResult extends RunResult {
   readonly violations: readonly SandboxViolation[]
   readonly outputs?: { kind: 'disk' } | { kind: 'deferred'; materialize: () => Promise<void> }
   readonly where?: string
+  readonly machine?: { readonly cores: number; readonly memoryBytes: number }
 }
 ```
 
@@ -1193,6 +1194,30 @@ one. The default worker count.
 
 ```ts
 export function machineParallelism(probe: CgroupProbe = {}): number
+```
+
+## `MachineReport`
+
+type · `src/exec/executor.ts`
+
+One machine an executor ran tasks on, as the run summary reports it.
+
+```ts
+export interface MachineReport {
+  name: string
+  status: string
+  cores: number
+  memoryBytes: number
+  done: number
+  failed: number
+  onlineMs: number
+  busyMs: number
+  cpuPeak: number
+  cpuAvg: number
+  memoryPeakBytes: number
+  memoryAvgBytes: number
+  utilization: number
+}
 ```
 
 ## `MigrationFormat`
@@ -2064,6 +2089,9 @@ export interface RunRecord {
   remoteError?: string
   peakCores?: number
   avgRssBytes?: number
+  placement?: string
+  placementCores?: number
+  placementMemoryBytes?: number
 }
 ```
 
@@ -2179,6 +2207,7 @@ export interface RunSummaryRecord {
   tasks: readonly TaskTelemetry[]
   stages?: readonly RunStage[]
   uploads?: { count: number; bytes: number; ms: number; failed: number }
+  machines?: readonly MachineReport[]
 }
 ```
 
@@ -2361,6 +2390,7 @@ export interface TaskExecutor {
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void
   footer?(): readonly (readonly [label: string, text: ui.Inline])[]
+  machines?(): readonly MachineReport[]
   running?(taskId: string): string | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
@@ -2382,6 +2412,8 @@ export interface TaskHistory {
   failureMode: FailureMode
   maxPeakRssBytes?: number
   maxCpuParallelism?: number
+  saturatedCores?: number
+  saturatedMemoryBytes?: number
 }
 ```
 
@@ -2502,6 +2534,8 @@ export interface TaskOutcome {
   notReady?: 'timeout' | 'exited' | 'spawn'
   inputMoved?: string
   where?: string
+  whereCores?: number
+  whereMemoryBytes?: number
   outputs?: 'deferred'
   saved?: true
   wallclockStartNs?: bigint
@@ -2549,7 +2583,11 @@ What a scheduler learns from a task's history: its p50 and its resource maxima.
 ```ts
 export type TaskResources = Pick<
   TaskHistory,
-  'p50DurationMs' | 'maxPeakRssBytes' | 'maxCpuParallelism'
+  | 'p50DurationMs'
+  | 'maxPeakRssBytes'
+  | 'maxCpuParallelism'
+  | 'saturatedCores'
+  | 'saturatedMemoryBytes'
 ```
 
 ## `TaskStatus`
