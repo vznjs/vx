@@ -1,0 +1,36 @@
+== function dte (src/plugin.ts)
+export function dte(options: DteOptions)
+== function local (src/local.ts)
+export function local(options: LocalOptions = {}): DteAdapter
+== type AgentSize (src/plugin.ts)
+export interface AgentSize {
+  readonly max: number
+  readonly cpu: number
+}
+== type AgentSpawn (src/plugin.ts)
+export interface AgentSpawn {
+  readonly run: string
+  readonly relay: string
+  readonly size: string
+  readonly index: number
+  readonly workspaceRoot: string
+  readonly env: Readonly<Record<string, string>>
+}
+== type DteAdapter (src/plugin.ts)
+export interface DteAdapter {
+  relay?(): Promise<string>
+  spawn(agent: AgentSpawn): void | Promise<void>
+  close?(): void | Promise<void>
+}
+== type DteOptions (src/plugin.ts)
+export interface DteOptions {
+  readonly agents: Readonly<Record<string, AgentSize>>
+  readonly adapter: DteAdapter
+  readonly relay?: string
+  readonly local?: number
+  readonly token?: () => string | undefined | Promise<string | undefined>
+}
+== type LocalOptions (src/local.ts)
+export interface LocalOptions {
+  readonly prepare?: string
+}

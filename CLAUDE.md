@@ -94,6 +94,8 @@ packages/vx-docs        Astro Starlight site; packages/vx/docs is imported by sc
                         src/playground/ is core's own planner bundled for the browser behind a shim
                         (build.playground → public/playground/planner.js), held to the CLI by core's
                         tests/playground-parity.unsafe.test.ts
+packages/vx-dte         distributed runs: `dte()` executor + `vx dte agent` over the relay, `local()` adapter
+                        (agents in git worktrees). Private until npm has it
 packages/vx-dte-relay   the reference relay of `@vzn/vx-dte` (PROTOCOL.md): mailboxes per run behind CI
                         OIDC tokens; imports nothing, not even core. Private until npm has it
 packages/vx-bench       synthetic workspace generator + runners (vx / turbo / nx)
