@@ -480,7 +480,6 @@ export class Orchestrator {
       ])
     const width = Math.max(...lines.map(([l]) => l.length))
     const status = Math.max(...lines.map(([, st]) => st.length))
-    const done = Math.max(...lines.map(([, , t]) => t.length))
     // Once the run is over: each size whose machines are not what it says.
     const off = new Map<string, string>()
     for (const a of this.ended ? all : []) {
@@ -497,7 +496,7 @@ export class Orchestrator {
         i === 0 ? 'agents' : '',
         r === ''
           ? `${l.padEnd(width)}  ${st}`
-          : [`${l.padEnd(width)}  ${st.padEnd(status)}  ${t.padEnd(done)}  `, r],
+          : [`${l.padEnd(width)}  ${st.padEnd(status)}  ${t}  `, r],
       ]),
       ...[...off.values()].map((t): [string, ui.Inline] => ['', `! ${t}`]),
     ]

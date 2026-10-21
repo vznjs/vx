@@ -134,13 +134,13 @@ memory than it declares is named:
 ```
   agents    small·1  online    3 done · 2 running  4c/16G
             small·2  starting
-            local    online    1 done              10c/32G
+            local    online    1 done  10c/32G
 ```
 
 ```
   agents    small·1  online  5 done · warm-up 0.1s  4c/16G
             small·2  gone    1 done · warm-up 0.2s  4c/16G
-            local    online  1 done                 10c/32G
+            local    online  1 done  10c/32G
             ! small: config 2 cores 8 GB, reported 4 cores 16 GB
 ```
 
