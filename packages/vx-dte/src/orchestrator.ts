@@ -42,6 +42,8 @@ interface Job {
   readonly resolve: (r: ExecuteResult) => void
   readonly reject: (err: unknown) => void
   agent?: string
+  /** Agents lost while running it: two fail it. */
+  faults?: string[]
 }
 
 interface Agent {
@@ -424,9 +426,24 @@ export class Orchestrator {
       this.agents.delete(a.id)
       a.usage.to = performance.now()
       this.gone.push(a)
-      // Its tasks run again: first, as they were first to go.
-      const back = [...a.busy.values()].filter((j) => j.req.signal?.aborted !== true)
-      for (const j of back) delete j.agent
+      // Its tasks run again: first, as they were first to go. One it
+      // began counts against two agents; one in its queue goes back free.
+      const back: Job[] = []
+      for (const j of a.busy.values()) {
+        if (j.req.signal?.aborted === true) continue
+        delete j.agent
+        delete j.held
+        if (a.started.has(j.req.taskId)) {
+          j.faults = [...(j.faults ?? []), a.label]
+          if (j.faults.length >= 2) {
+            j.reject(
+              new Error(`${j.req.taskId}: the agents running it were lost: ${j.faults.join(', ')}`),
+            )
+            continue
+          }
+        }
+        back.push(j)
+      }
       this.queue.unshift(...back)
     } else {
       return
