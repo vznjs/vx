@@ -130,7 +130,7 @@ the `info` row names no worker pool. A blank line separates the meters
 from the `info` row (worker pool +
 cache mode, `admit held N tasks · Ns` when a policy held any — a
 sum, said as one — and `run <id>`, the run's whole id as
-`vx last <id>` takes it) and the `time` row: the wall time, the live
+`vx last <id>` takes it, live from the run's start) and the `time` row: the wall time, the live
 forecast (`~3s left`), then the dim `max / avg / min` spread over
 executed tasks. The footer never says a fact twice (M, 2026-10-14):
 no `result` row (it only repeated the tasks, cache and time rows), a

@@ -828,7 +828,8 @@ async function runOnBus(
       },
       concurrency,
       workspaceProjectCount,
-      runId: undefined as string | undefined,
+      // Live too: a long run is read while it runs (M, 2026-10-21).
+      runId,
     }
 
     // Asked only when a plugin declares `output`: a plain run pays nothing.
@@ -1311,7 +1312,6 @@ async function runOnBus(
       })
     }
     mark('record history')
-    runContext.runId = runId
     // Drain any still-in-flight background prefetches before closing the
     // cache handle — a prefetch ingesting into a closed SQLite DB would
     // throw. Tasks that resolved as local hits never awaited their

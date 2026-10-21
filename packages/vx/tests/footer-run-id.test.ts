@@ -6,6 +6,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { makeWorkspace } from './helpers/workspace.js'
+import { run } from './helpers/orchestrator.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 
@@ -58,4 +59,31 @@ it('a passing and a failing run each print their whole id on the info row, and v
   const opened = vx('last', okId!)
   expect(opened.code).toBe(0)
   expect(opened.out).toContain(`run ${okId} — ok`)
+}, 60_000)
+
+// M, 2026-10-21: "why run id is not listed with dte? should always be".
+// A long run is read live: the region's info row names the id from the start.
+it('the live region has the run id from the run start', async () => {
+  let live: string | undefined
+  const quiet = () => undefined
+  const summary = await run({
+    cwd: root,
+    projects: ['a'],
+    tasks: ['build'],
+    handleSignals: false,
+    log: {
+      runStart: (info) => {
+        live = info.context?.runId
+      },
+      taskStart: quiet,
+      taskStdout: quiet,
+      taskStderr: quiet,
+      taskComplete: quiet,
+      runEnd: quiet,
+      status: quiet,
+    },
+  })
+  expect(summary.ok).toBe(true)
+  expect(live).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-/)
+  expect(recorded()).toContain(live!)
 }, 60_000)
