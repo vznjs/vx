@@ -72,7 +72,14 @@ export type ToAgent =
    * and reads the cache as the run does: its refs, and the access the
    * run's remotes lend, for one with none of its own.
    */
-  | { type: 'welcome'; name: string; cache: CacheFacts }
+  | {
+      type: 'welcome'
+      name: string
+      cache: CacheFacts
+      /** What it may run at once: its machine, held to the size it was started as. */
+      cores: number
+      memory: number
+    }
   /** The run's remotes lent again, before the last tokens end. */
   | { type: 'cache'; cache: CacheFacts }
   | { type: 'refused'; reason: string }

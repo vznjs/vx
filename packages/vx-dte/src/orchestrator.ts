@@ -65,8 +65,11 @@ interface Job {
 
 interface Agent {
   readonly id: string
+  /** What the run gives it: its machine, held to its declared size. */
   readonly cores: number
   readonly memory: number
+  /** What its machine has, as it reported on joining. */
+  readonly reported: { readonly cores: number; readonly memory: number }
   readonly label: string
   /** From its start to its join, when this run started it. */
   readonly warmUpMs: number | undefined
@@ -534,7 +537,7 @@ export class Orchestrator {
     job.resolve({
       ...result(head, log),
       where: a.label,
-      machine: { cores: a.cores, memoryBytes: a.memory },
+      machine: { cores: a.reported.cores, memoryBytes: a.reported.memory },
     })
   }
 
@@ -565,14 +568,19 @@ export class Orchestrator {
       const taken = new Set([...this.agents.values(), ...this.gone].map((a) => a.label))
       let label = asked === undefined ? undefined : info.id
       while (label === undefined || taken.has(label)) label = `agent#${++this.joined}`
+      // Agents of one host (local()) each report the host: the size it
+      // was started as is its share (Growth, 2026-10-21: 16 wide on 4 cores).
+      const cores = Math.min(Number(info.cores), spawn?.declared.cpu ?? Infinity)
+      const memory = Math.min(Number(info.memory), spawn?.declared.memory ?? Infinity)
       this.agents.set(id, {
         id,
         warmUpMs: asked === undefined ? undefined : performance.now() - asked,
         declared: spawn?.declared,
         ran: 0,
         usage: new Usage(),
-        cores: Number(info.cores),
-        memory: Number(info.memory),
+        cores,
+        memory,
+        reported: { cores: Number(info.cores), memory: Number(info.memory) },
         usedCores: 0,
         usedMemory: 0,
         label,
@@ -582,7 +590,13 @@ export class Orchestrator {
         // Its name first, before any batch.
         chain: this.cache()
           .then((cache) =>
-            this.o.me.send(id, { type: 'welcome', name: label, cache } satisfies ToAgent),
+            this.o.me.send(id, {
+              type: 'welcome',
+              name: label,
+              cache,
+              cores,
+              memory,
+            } satisfies ToAgent),
           )
           .catch(() => undefined),
         sandboxes: false,
@@ -800,7 +814,7 @@ export class Orchestrator {
       }
     }
     const out = [...this.agents.values(), ...this.gone].map((a) =>
-      report(a.label, this.state(a, gone), a.usage, a.cores, a.memory),
+      report(a.label, this.state(a, gone), a.usage, a.reported.cores, a.reported.memory),
     )
     if (this.ranHere > 0)
       out.push(report('local', 'online', this.local, machineParallelism(), machineMemoryBytes()))
@@ -879,7 +893,7 @@ export class Orchestrator {
     }
     if (this.ended) {
       for (const a of all) {
-        resources(a.label, a.cores, a.memory, a.declared)
+        resources(a.label, a.reported.cores, a.reported.memory, a.declared)
         detail(a.label, a.usage, a.cores, true)
       }
       if (lines.at(-1)?.[0] === 'local') {

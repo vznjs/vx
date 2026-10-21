@@ -251,7 +251,9 @@ the ones it never played when it ends.
 ## What runs where
 
 - An agent reports the cores and memory its machine has when it joins.
-  Tasks go to it in batches that fill those by each task's recorded peak
+  One the run started is held to the size it was started as, so
+  `local()` agents sharing a host split it rather than each take all of
+  it. Tasks go to it in batches that fill those by each task's recorded peak
   (cores used, peak memory; one core for a task with no history), plus a
   quarter of its cores as a prefetch, so a successor is there when a task
   ends. The agent starts only what fits; a task bigger than any agent runs
