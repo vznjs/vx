@@ -132,18 +132,20 @@ agent's own color, by size and the order the run started it:
 The `agents` rows, live while the run goes and again in the footer,
 give each agent its status (`starting`, `online`, `gone`, or `failed`
 with why, such as `exited 1: Cannot find package '@vzn/vx-dte'`), the tasks it
-has done and the ones it runs now, and the cores and memory its machine
-reports: green when they are what its size declares, red when not. This
-machine is `local`. An agent the run started is named by its size and
-the order it was started in; one that joined on its own is `agent#N`.
-Once the run is over, each agent adds its warm-up (from asking the
-adapter to its join), and a size whose agents reported other cores or
-memory than it declares is named:
+has done and the ones it runs now. This machine is `local`. An agent the
+run started is named by its size and the order it was started in; one
+that joined on its own is `agent#N`. A task sent to an agent but not yet
+begun there reads `waiting` in the running list, with no clock; its
+clock starts when the agent begins it. Once the run is over, each agent
+adds its warm-up (from asking the adapter to its join) and the cores and
+memory its machine reports, green when they are what its size declares
+and red when not, and a size whose agents reported other cores or memory
+than it declares is named:
 
 ```
-  agents    small#1  online    3 done · 2 running  4c/16G
+  agents    small#1  online    3 done · 2 running
             small#2  starting
-            local    online    1 done  10c/32G
+            local    online    1 done
 ```
 
 ```

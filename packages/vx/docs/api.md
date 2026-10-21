@@ -2391,7 +2391,7 @@ export interface TaskExecutor {
   demand?(remaining: ReadonlySet<string>): void
   footer?(): readonly (readonly [label: string, text: ui.Inline])[]
   machines?(): readonly MachineReport[]
-  running?(taskId: string): string | undefined
+  running?(taskId: string): string | null | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 ```

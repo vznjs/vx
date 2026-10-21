@@ -806,7 +806,10 @@ async function runOnBus(
     const runContext = {
       ...(footers.length > 0 ? { executorRows: () => footers.flatMap(executorFooter) } : {}),
       ...(placers.length > 0
-        ? { whereRunning: (id: string) => placers.map((e) => executorWhere(e, id)).find(Boolean) }
+        ? {
+            whereRunning: (id: string) =>
+              placers.map((e) => executorWhere(e, id)).find((w) => w !== undefined),
+          }
         : {}),
       version: VERSION,
       packageCount: packagesInScope.size,
@@ -1841,7 +1844,6 @@ function executorFooter(e: TaskExecutor): (readonly [string, ui.Inline])[] {
   }
 }
 
-/** Where `e` says a running task is; a throw or a non-string says nothing. */
 function executorMachines(e: TaskExecutor): readonly MachineReport[] {
   try {
     const m = e.machines?.()
@@ -1851,9 +1853,11 @@ function executorMachines(e: TaskExecutor): readonly MachineReport[] {
   }
 }
 
-function executorWhere(e: TaskExecutor, id: string): string | undefined {
+/** Where `e` says a task runs, or `null` while it waits; a throw or anything else says nothing. */
+function executorWhere(e: TaskExecutor, id: string): string | null | undefined {
   try {
     const w = e.running?.(id)
+    if (w === null) return null
     return typeof w === 'string' && w !== '' ? w : undefined
   } catch {
     return undefined

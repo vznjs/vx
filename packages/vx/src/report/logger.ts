@@ -473,6 +473,15 @@ export function defaultLogger(
     if (statusDead) return
     let force = forced
     const now = Date.now()
+    // A task its executor still holds has not begun: its clock starts at
+    // the first frame a machine runs it.
+    const where = runContext?.whereRunning
+    if (where !== undefined)
+      for (const x of [...slots, ...slotQueue]) {
+        if (x === null) continue
+        x.waiting = where(x.id) === null
+        if (x.waiting) x.startedMs = now
+      }
     // A free row shows what it holds from the first frame: the graph
     // knows, without history (M, 2026-10-17).
     if (forecastFn === undefined && graphForecast !== undefined && !tail && !stopping)

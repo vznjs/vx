@@ -256,8 +256,12 @@ export interface TaskExecutor {
    * sink is on. A throw reports none.
    */
   machines?(): readonly MachineReport[]
-  /** Where a task it is running runs (`small#2`), for the live row; asked per frame. */
-  running?(taskId: string): string | undefined
+  /**
+   * Where a task it was handed runs (`small#2`), for the live row; asked
+   * per frame. `null` while it holds the task for a machine to begin it:
+   * the row says `waiting`, and its clock starts when a machine begins it.
+   */
+  running?(taskId: string): string | null | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }
 

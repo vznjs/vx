@@ -90,6 +90,9 @@ Slot rules (the point of the design — the display derives from the
 - `stopping: true` (a stop): running rows read `aborting` in the warn
   tone with their timers and no expected time; empty and blocked rows
   are left out.
+- A task its executor holds for a machine (`TaskExecutor.running` is
+  `null`) reads `waiting`, dim, with no clock; its clock starts at the
+  first frame a machine runs it.
 - A task running beyond the slots gets its own row after them until a
   slot frees. A region taller than the terminal keeps its leading rows
   (the running list first), so the summary below gives way first.
