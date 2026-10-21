@@ -31,7 +31,7 @@ export interface AgentSpawn {
   /** Its name in the run's output and its own (`small#2`), which it reports back on joining. */
   readonly id: string
   readonly workspaceRoot: string
-  /** What the agent's `vx dte agent` reads: `VX_DTE_RUN`, `VX_DTE_AGENT` (`id`), `VX_DTE_RELAY`. */
+  /** What the agent's `vx dte agent` reads: `VX_DTE_RUN`, `VX_DTE_AGENT` (`id`), `VX_DTE_RELAY`, `VX_DTE_SECRET` (the run’s). */
   readonly env: Readonly<Record<string, string>>
   /** Says the agent ended before or without joining, and why (its exit, its last stderr line). */
   readonly exited: (reason: string) => void
@@ -119,7 +119,8 @@ export function dte(options: DteOptions) {
   return definePlugin(import.meta, {
     commands: {
       dte: {
-        description: 'dte agent: run tasks for a distributed run (VX_DTE_RUN, VX_DTE_RELAY)',
+        description:
+          'dte agent: run tasks for a distributed run (VX_DTE_RUN, VX_DTE_RELAY, VX_DTE_SECRET)',
         async run(argv, ctx) {
           if (argv[0] !== 'agent' || argv.length > 1) {
             throw new UserError('Usage: vx dte agent')
@@ -129,6 +130,10 @@ export function dte(options: DteOptions) {
           if (run === undefined || run === '' || relay === undefined) {
             throw new UserError('vx dte agent needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })')
           }
+          const secret = process.env['VX_DTE_SECRET']
+          if (secret === undefined || secret === '') {
+            throw new UserError('vx dte agent needs VX_DTE_SECRET, the run’s')
+          }
           const { runAgent } = await import('./agent.js')
           const id = process.env['VX_DTE_AGENT']
           return runAgent({
@@ -137,6 +142,7 @@ export function dte(options: DteOptions) {
             ...(id === undefined || id === '' ? {} : { id }),
             root: ctx.workspaceRoot,
             token: await token(),
+            secret,
             artifacts: ctx.artifacts,
           })
         },
@@ -180,12 +186,21 @@ export function dte(options: DteOptions) {
       const relay = options.relay ?? (await adapter?.relay?.())
       if (relay === undefined)
         throw new UserError('dte(): no relay: set relay, or use an adapter that has one')
-      const [{ Orchestrator }, { join }, { busyCores }, { snapshot }] = await Promise.all([
+      const [{ Orchestrator }, { join }, { busyCores }, { snapshot }, seal] = await Promise.all([
         import('./orchestrator.js'),
         import('./wire.js'),
         import('./width.js'),
         import('./tree.js'),
+        import('./seal.js'),
       ])
+      // The agents an adapter starts get one made for this run; agents
+      // that join on their own must be given it.
+      let secret = process.env['VX_DTE_SECRET']
+      if (secret === undefined || secret === '') {
+        if (adapter === undefined)
+          throw new UserError('dte(): with no adapter, set VX_DTE_SECRET here and on each agent')
+        secret = seal.runSecret()
+      }
       const { tree } = await snapshot(ctx.workspaceRoot)
       if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
       const localSlots = options.local ?? 0
@@ -206,7 +221,11 @@ export function dte(options: DteOptions) {
         }
       }
       const o = new Orchestrator({
-        me: await join(relay, run, 'orchestrator', null, await token()),
+        me: seal.sealOrchestrator(
+          await join(relay, run, 'orchestrator', null, await token()),
+          run,
+          secret,
+        ),
         root: ctx.workspaceRoot,
         tree,
         localSlots,
@@ -255,7 +274,12 @@ export function dte(options: DteOptions) {
                 index,
                 id,
                 workspaceRoot: ctx.workspaceRoot,
-                env: { VX_DTE_RUN: run, VX_DTE_AGENT: id, VX_DTE_RELAY: relay },
+                env: {
+                  VX_DTE_RUN: run,
+                  VX_DTE_AGENT: id,
+                  VX_DTE_RELAY: relay,
+                  VX_DTE_SECRET: secret,
+                },
                 exited: (reason) => o.failed(id, reason),
               }),
             ).catch((err: unknown) =>

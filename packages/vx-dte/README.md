@@ -16,6 +16,16 @@ Agents and the orchestrator meet at a relay
 ([`@vzn/vx-dte-relay`](../vx-dte-relay/PROTOCOL.md)), since CI runners
 take no inbound connection.
 
+The relay reads nothing they say. Each side makes an X25519 key for the
+run, and the run's secret, `VX_DTE_SECRET`, signs it (HMAC). Every
+message after that is AES-256-GCM under the key the pair agrees on. The
+orchestrator admits only an agent whose key the secret signed. A message
+the relay changes loses its agent; one it replays is dropped. The secret
+only signs, so a leaked one opens no past run. An adapter's agents get a
+secret made for the run; with no adapter, set the same `VX_DTE_SECRET` on
+the run and each agent. Agent `join` info (cores, memory, tree) is signed,
+not encrypted.
+
 It is not on npm yet: it is being built in this repo. Today it runs on
 `local()` and `docker()`; the GitLab adapter comes next.
 
@@ -77,6 +87,7 @@ export default defineWorkspace({ plugins: [dte({ relay: 'http://127.0.0.1:8080' 
 
 ```sh
 bun /path/to/vx/packages/vx-dte-relay/src/bin.ts --no-auth --port 8080   # the relay
+export VX_DTE_SECRET=$(openssl rand -base64 32)                          # in each terminal: the same one
 VX_DTE_RUN=try vx dte agent                                              # an agent, as many as you like
 VX_DTE_RUN=try vx run build --all                                        # the run
 ```
@@ -203,7 +214,8 @@ utilization of every machine together:
     (default 0: agents run every task).
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`).
 - `vx dte agent` is an agent. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else
-  `relay`) and, when the run started it, `VX_DTE_AGENT` (its name). It is
+  `relay`), `VX_DTE_SECRET` (the run's) and, when the run started it,
+  `VX_DTE_AGENT` (its name). It is
   described only by the cores and memory its machine reports.
 - `DteAdapter` is `{ spawn(agent: AgentSpawn), relay?(), close?() }`.
   `AgentSpawn` is `{ run, relay, size, cpu, memory, index, id, workspaceRoot, env }`,
