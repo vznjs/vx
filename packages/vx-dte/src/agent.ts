@@ -106,6 +106,8 @@ export async function runAgent(opts: {
   const runTask = async (m: RunOrder): Promise<void> => {
     const stop = new AbortController()
     running.set(m.task, stop)
+    // Not awaited: the task does not wait on the relay to say it began.
+    void me.send('orchestrator', { type: 'start', task: m.task }).catch(() => undefined)
     try {
       const upstream = parts.get(m.task) ?? []
       parts.delete(m.task)

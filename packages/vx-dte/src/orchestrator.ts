@@ -58,6 +58,8 @@ interface Agent {
   readonly usage: Usage
   /** Sent to it and not finished: running there or in its queue. */
   readonly busy: Map<string, Job>
+  /** Of `busy`, the ones it began. */
+  readonly started: Set<string>
   usedCores: number
   usedMemory: number
   /** Tasks whose outputs it holds: it ran them, or was sent them. */
@@ -354,6 +356,7 @@ export class Orchestrator {
     if (job === undefined) return
     const head = (await unpack(this.o.root, fromParts(parts))) as Wired
     a.busy.delete(task)
+    a.started.delete(task)
     a.usedCores -= job.held?.cores ?? 0
     a.usedMemory -= job.held?.memory ?? 0
     a.ran++
@@ -407,6 +410,7 @@ export class Orchestrator {
         usedMemory: 0,
         label,
         busy: new Map(),
+        started: new Set(),
         has: new Set(),
         // Its name first, before any batch.
         chain: this.o.me
@@ -458,7 +462,9 @@ export class Orchestrator {
         const a = this.agents.get(from)
         if (a === undefined) continue
         const m = body as ToOrchestrator
-        if (m.type === 'part') {
+        if (m.type === 'start') {
+          if (a.busy.has(m.task)) a.started.add(m.task)
+        } else if (m.type === 'part') {
           const list = this.results.get(`${from}\0${m.task}`) ?? []
           list.push(m.data)
           this.results.set(`${from}\0${m.task}`, list)
@@ -471,17 +477,22 @@ export class Orchestrator {
           await this.finish(a, m.task, parts).catch((err: unknown) => {
             a.busy.get(m.task)?.reject(err)
             a.busy.delete(m.task)
+            a.started.delete(m.task)
           })
         }
       }
     }
   }
 
-  /** The agent a task was sent to, or `local`. */
-  where(taskId: string): string | undefined {
+  /**
+   * The agent running a task, or `local`; `null` while it waits, here or
+   * in an agent's queue, for a machine to begin it.
+   */
+  where(taskId: string): string | null | undefined {
     if (this.runningHere.has(taskId)) return 'local'
-    for (const a of this.agents.values()) if (a.busy.has(taskId)) return a.label
-    return undefined
+    for (const a of this.agents.values())
+      if (a.busy.has(taskId)) return a.started.has(taskId) ? a.label : null
+    return this.queue.some((j) => j.req.taskId === taskId) ? null : undefined
   }
 
   /** `demand` asked the adapter for agent `id` (`AgentSpawn.id`). */
@@ -548,8 +559,8 @@ export class Orchestrator {
   /**
    * The `agents` rows, live and at the end: one per agent by `size#index`
    * with its status, the tasks it has done and the ones it runs now, then
-   * this machine's; once over, each joined agent's warm-up and each size
-   * whose machines are not what it says.
+   * this machine's; once over, each one's cores and memory, each joined
+   * agent's warm-up and each size whose machines are not what it says.
    */
   footer(): [string, ui.Inline][] {
     if (this.spawnedAt.size === 0 && this.agents.size === 0) return []
@@ -562,8 +573,10 @@ export class Orchestrator {
         ...(u.failed > 0 ? [`${u.failed} failed`] : []),
         ...(running > 0 ? [`${running} running`] : []),
       ].join(' · ')
-    // What its machine reports: green when its size says the same, red when not.
+    // What its machine reports, once the run is over: green when its size
+    // says the same, red when not.
     const res = (cores: number, memory: number, d?: Declared): ui.Inline => {
+      if (!this.ended) return ''
       const text = `${cores}c/${compact(memory)}`
       if (d === undefined) return text
       return ui.tone(matches(cores, memory, d) ? 'ok' : 'error', text)
@@ -571,7 +584,7 @@ export class Orchestrator {
     const lines: [string, string, string, ui.Inline][] = all.map((a) => [
       a.label,
       gone.has(a) ? 'gone' : 'online',
-      count(a.usage, gone.has(a) ? 0 : a.busy.size) +
+      count(a.usage, gone.has(a) ? 0 : a.started.size) +
         (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : ''),
       res(a.cores, a.memory, a.declared),
     ])
@@ -622,9 +635,13 @@ export class Orchestrator {
           i === 0 ? 'agents' : '',
           st === 'failed'
             ? [ui.place(l), `${' '.repeat(width - l.length)}  `, ui.tone('error', st), `  ${t}`]
-            : r === ''
+            : t === ''
               ? [ui.place(l), `${' '.repeat(width - l.length)}  ${st}`]
-              : [ui.place(l), `${' '.repeat(width - l.length)}  ${st.padEnd(status)}  ${t}  `, r],
+              : [
+                  ui.place(l),
+                  `${' '.repeat(width - l.length)}  ${st.padEnd(status)}  ${t}`,
+                  ...(r === '' ? [] : ['  ', r]),
+                ],
         ],
         ...(usage.get(l) ?? []).map((d): [string, ui.Inline] => ['', ui.dim(`${indent}${d}`)]),
       ]),

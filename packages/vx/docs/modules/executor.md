@@ -21,7 +21,8 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   — `footer()` returns `[label, text]` rows the run's footer shows, live
   and at the end (a throw or a bad shape shows none); `ExecuteResult.where`
   is shown on the task's row and frame as `on <where>`; `running(id)`
-  says where a task it is running runs, for the live row
+  says where a task it was handed runs, for the live row, or `null` while
+  it holds the task for a machine (the row reads `waiting`, no clock)
   — `remote: true` declares that the executor runs the command somewhere
   else (so it is never offered a `pinnedLocal` task); `sandbox: true`
   says a remote one enforces `req.sandbox` where it runs and returns the

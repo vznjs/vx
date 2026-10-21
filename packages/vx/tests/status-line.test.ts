@@ -13,6 +13,7 @@ import {
   type WorkerSlot,
 } from '../src/report/status-line.js'
 import { defaultLogger } from '../src/report/logger.js'
+import type { RunContext } from '../src/report/summary.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 
 const CLEAR = '\x1b[2K\r'
@@ -440,6 +441,37 @@ describe('defaultLogger status line integration', () => {
     log.taskComplete(req, mkOutcome(req, 'success'))
     log.runEnd?.()
     expect(s.text().endsWith('└─ one#test ── (100ms) success\n\n')).toBe(true)
+  })
+
+  // M, 2026-10-21: a task an executor holds for a machine read `running`
+  // with a clock; it waits, and its clock starts when a machine begins it.
+  it('a task its executor holds says waiting, its clock starting when a machine begins it', async () => {
+    const s = tty()
+    const log = defaultLogger(NO_COLORS, { mode: 'broad' }, s, { forceFloorMs: 0 })
+    let at: string | null = null
+    log.runStart?.({
+      total: 2,
+      concurrency: 2,
+      context: {
+        version: '0',
+        packageCount: 1,
+        remoteCacheEnabled: false,
+        whereRunning: (id) => (id === 'a#x' ? at : undefined),
+      } as RunContext,
+    })
+    const a = mkNode('a#x')
+    const row = () =>
+      s
+        .text()
+        .split(/[\n\r]/)
+        .findLast((l) => l.includes('a#x')) ?? ''
+    log.taskStart?.(a)
+    expect(row()).toMatch(/^ +waiting +a#x$/)
+    await Bun.sleep(1100)
+    at = 'small#1'
+    log.taskStart?.(mkNode('b#x'))
+    expect(row()).toMatch(/ \d+ms running +a#x {2}on small#1$/)
+    log.runEnd?.()
   })
 
   // `exec.interactive` on a TTY: the task writes to the terminal itself, so

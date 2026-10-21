@@ -311,6 +311,8 @@ const IDLE = '#6b7280'
 export interface WorkerSlot {
   id: string
   startedMs: number
+  /** Its executor holds it for a machine to begin it (`TaskExecutor.running` is `null`). */
+  waiting?: boolean
 }
 
 export interface StatusRegionState {
@@ -319,7 +321,7 @@ export interface StatusRegionState {
   /** The running task at the head of the longest unfinished chain. */
   critical?: string
   /** Where a running task runs, when not here (`TaskExecutor.running`); its row shows it. */
-  where?: (taskId: string) => string | undefined
+  where?: (taskId: string) => string | null | undefined
   /** A running task's usual duration from history; its row shows it. */
   expected?: ReadonlyMap<string, number>
   /**
@@ -481,10 +483,17 @@ export function formatStatusRegion(
       )
       continue
     }
+    // Handed to an executor that has no machine on it yet: no clock.
+    if (slot.waiting === true) {
+      lines.push(
+        formatTaskRow(' ', null, 'waiting', IDLE, '', '', paintPinnedId(slot.id, colors), colors),
+      )
+      continue
+    }
     const waiting = s.blocks?.get(slot.id) ?? 0
     const notes: string[] = []
     const at = s.where?.(slot.id)
-    if (at !== undefined) notes.push(`${dim('on')} ${ui.inline(ui.place(at), colors)}`)
+    if (at != null) notes.push(`${dim('on')} ${ui.inline(ui.place(at), colors)}`)
     if (s.critical === slot.id && busy > 1) notes.push(paint(WARN, 'critical path', colors))
     if (waiting > 0) notes.push(dim(`blocks ${waiting}`))
     const usual = s.expected?.get(slot.id)

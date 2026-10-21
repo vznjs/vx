@@ -180,7 +180,8 @@ async function harness(
       for (const data of parts) await me.send('orchestrator', { type: 'part', task, data })
       await me.send('orchestrator', { type: 'end', task, parts: parts.length })
     }
-    return { batches, finish }
+    const begin = (task: string) => me.send('orchestrator', { type: 'start', task })
+    return { batches, finish, begin }
   }
   const req = (taskId: string) =>
     ({
@@ -216,6 +217,28 @@ it('fills an agent’s cores and a prefetch in one batch', async () => {
     expect(await a.batches()).toEqual([['t1', 't2', 't3']])
     await a.finish('t1')
     expect(await a.batches()).toEqual([['t4']])
+  } finally {
+    await h.stop()
+  }
+})
+
+// M, 2026-10-21: 16 rows said running while 4 agents ran 4 of them; and
+// an agent's cores and memory belong to the final summary only.
+it('a task waits until an agent begins it; the live rows leave out its machine', async () => {
+  const h = await harness(new Map([node('t1'), node('t2'), node('t3'), node('t4')]))
+  try {
+    const a = await h.agent(2)
+    await Bun.sleep(50)
+    for (const id of ['t1', 't2', 't3', 't4']) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3']])
+    expect(['t1', 't2', 't3', 't4'].map((t) => h.o.where(t))).toEqual([null, null, null, null])
+    expect(h.o.where('other')).toBeUndefined()
+    await a.begin('t1')
+    for (let i = 0; i < 40 && h.o.where('t1') === null; i++) await Bun.sleep(25)
+    expect(['t1', 't2'].map((t) => h.o.where(t))).toEqual(['agent#1', null])
+    const live = JSON.stringify(h.o.footer())
+    expect(live).toContain('1 running')
+    expect(live).not.toMatch(/\dc\//)
   } finally {
     await h.stop()
   }

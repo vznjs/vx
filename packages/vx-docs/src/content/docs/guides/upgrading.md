@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte: a task an agent has not begun reads waiting
+
+TaskExecutor.running may return null (the task waits for a machine), and RunContext.whereRunning may too; a caller that compared with undefined only must handle null.
+
 ## history: keep where each task ran and on what size
 
 index schema v43 -> v44; the local index is rebuilt.

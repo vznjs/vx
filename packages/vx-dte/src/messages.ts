@@ -53,5 +53,7 @@ export type ToAgent =
   | { type: 'refused'; reason: string }
 
 export type ToOrchestrator =
+  /** It began the task: until then the task waits in its queue. */
+  | { type: 'start'; task: string }
   | { type: 'part'; task: string; data: string }
   | { type: 'end'; task: string; parts: number }
