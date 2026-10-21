@@ -8,6 +8,7 @@
         "@types/bun": "1.4.2",
         "@vzn/vx": "workspace:*",
         "@vzn/vx-ci": "workspace:*",
+        "@vzn/vx-dte": "workspace:*",
         "@vzn/vx-lockfile": "workspace:*",
         "@vzn/vx-migrate": "workspace:*",
         "@vzn/vx-reapi": "workspace:*",
