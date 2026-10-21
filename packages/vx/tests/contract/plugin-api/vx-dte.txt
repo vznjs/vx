@@ -2,6 +2,8 @@
 export function docker(options: DockerOptions): DteAdapter
 == function dte (src/plugin.ts)
 export function dte(options: DteOptions)
+== function github (src/github.ts)
+export function github(options: GithubOptions = {}): DteAdapter
 == function gitlab (src/gitlab.ts)
 export function gitlab(options: GitlabOptions): DteAdapter
 == function local (src/local.ts)
@@ -60,6 +62,10 @@ export interface DtePlan {
     memory: number
     live: boolean
   }[]
+}
+== type GithubOptions (src/github.ts)
+export interface GithubOptions {
+  readonly workflow?: string
 }
 == type GitlabOptions (src/gitlab.ts)
 export interface GitlabOptions {

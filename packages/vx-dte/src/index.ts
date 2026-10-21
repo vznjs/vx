@@ -9,3 +9,4 @@ export {
 export { local, type LocalOptions } from './local.js'
 export { docker, type DockerOptions } from './docker.js'
 export { gitlab, type GitlabOptions } from './gitlab.js'
+export { github, type GithubOptions } from './github.js'

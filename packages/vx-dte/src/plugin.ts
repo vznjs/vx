@@ -90,7 +90,7 @@ export interface DteOptions {
   readonly relay?: string
   /** Tasks the orchestrator's own machine runs at once beside the agents (default 0: agents run them all). */
   readonly local?: number
-  /** The bearer token for the relay (default `VX_DTE_TOKEN`). */
+  /** The bearer token for the relay (default `VX_DTE_TOKEN`, else on GitHub Actions an OIDC token for the relay's URL). */
   readonly token?: () => string | undefined | Promise<string | undefined>
 }
 
@@ -130,8 +130,11 @@ export function dte(options: DteOptions) {
   if (options.local !== undefined && !(Number.isInteger(options.local) && options.local >= 0)) {
     throw new UserError('dte(): local is a whole number ≥ 0')
   }
-  const token = async (): Promise<string | undefined> =>
-    (await options.token?.()) ?? process.env['VX_DTE_TOKEN']
+  // On GitHub Actions with none given, one for the relay's URL.
+  const token = async (relay: string): Promise<string | undefined> =>
+    (await options.token?.()) ??
+    (process.env['VX_DTE_TOKEN'] ||
+      (await import('./github.js').then((g) => g.githubRelayToken(relay))))
 
   let nodes: ReadonlyMap<string, TaskNode> | undefined
   let peaks: ReadonlyMap<string, TaskResources> = new Map()
@@ -216,7 +219,7 @@ export function dte(options: DteOptions) {
             run,
             ...(id === undefined || id === '' ? {} : { id }),
             root: ctx.workspaceRoot,
-            token: await token(),
+            token: await token(relay),
             proof: secret === undefined ? seal.githubProof() : seal.secretProof(secret),
             artifacts: ctx.artifacts,
           })
@@ -294,7 +297,7 @@ export function dte(options: DteOptions) {
       const need = (id: string): Need => needOf(peaks.get(id))
       const o = new Orchestrator({
         me: seal.sealOrchestrator(
-          await join(relay, run, 'orchestrator', null, await token()),
+          await join(relay, run, 'orchestrator', null, await token(relay)),
           run,
           proof,
         ),
