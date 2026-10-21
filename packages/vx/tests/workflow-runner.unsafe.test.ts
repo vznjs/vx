@@ -58,6 +58,7 @@ describe('a Linux CI job that runs a vx task', () => {
       'auto-release.yml#release',
       'ci.yml#ci',
       'ci.yml#shards',
+      'ci.yml#shards-dte',
       'ci.yml#vs-turbo',
       'ci.yml#packages',
       'ci.yml#binary-linux-arm64',
@@ -217,7 +218,11 @@ describe('a VX_ var a workflow sets reaches the task that reads it', () => {
   })
 
   it('appears in some task’s passThrough, or `vx run` drops it on the way in', () => {
-    const dropped = [...declaredInWorkflows].filter((n) => !forwarded.has(n)).sort()
+    // vx itself reads these (a distributed run and its agents), never a task.
+    const readByVx = new Set(['VX_DTE_RUN', 'VX_DTE_RELAY', 'VX_DTE_AGENT'])
+    const dropped = [...declaredInWorkflows]
+      .filter((n) => !forwarded.has(n) && !readByVx.has(n))
+      .sort()
     expect(dropped).toEqual([])
   })
 })
