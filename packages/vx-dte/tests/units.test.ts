@@ -462,6 +462,7 @@ console.log(JSON.stringify(seen.sort()))
   ])
   expect(JSON.parse(p.stdout.toString())).toEqual([
     'vx-dte/src/docker.ts',
+    'vx-dte/src/gitlab.ts',
     'vx-dte/src/index.ts',
     'vx-dte/src/local.ts',
     'vx-dte/src/plugin.ts',

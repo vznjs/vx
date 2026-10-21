@@ -105,6 +105,69 @@ as each task starts and ends:
 ✓ b#build  308ms
 ```
 
+## On GitLab
+
+Three jobs of your own pipeline: `vx-plan` writes the agents' child
+pipeline, `vx-agents` triggers it, and `vx` is the orchestrator, your own
+`vx run`. Every agent the plan wrote starts at once, beside the
+orchestrator, and leaves when the run ends.
+
+```ts
+// .vx/workspace.ts
+export default defineWorkspace({
+  plugins: [
+    dte({
+      relay: 'https://relay.example.com',
+      agents: { small: { max: 4, cpu: 2, memory: '8GB' } },
+      adapter: gitlab({ include: '.gitlab/vx.yml' }),
+    }),
+  ],
+})
+```
+
+```yaml
+# .gitlab-ci.yml
+include: [{ local: .gitlab/vx.yml }]
+
+vx-plan:
+  extends: .vx
+  script: [pnpm exec vx dte plan]
+  artifacts:
+    paths: [vx-agents.yml, .vx/dte/]
+    reports: { dotenv: vx-dte.env }
+    access: none
+    expire_in: 1 hour # as long as the pipeline may run
+
+vx-agents:
+  needs: [vx-plan]
+  variables: { PARENT_PIPELINE_ID: $CI_PIPELINE_ID }
+  trigger:
+    include: [{ artifact: vx-agents.yml, job: vx-plan }]
+
+vx:
+  extends: .vx
+  needs: [vx-plan]
+  id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
+  script: [pnpm exec vx run build test --all]
+```
+
+```yaml
+# .gitlab/vx.yml
+.vx:
+  image: oven/bun:1.4
+  before_script: [pnpm install --frozen-lockfile]
+
+.vx-agent:
+  extends: .vx
+  id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
+```
+
+The run's secret is an artifact no one can download (`access: none`);
+the orchestrator and the agents get it through `needs`. Set
+`VX_DTE_SECRET` to use your own instead. Live spawning, where agents
+beyond the first wave are manual jobs the run plays as it needs them, is
+not built yet.
+
 ## What runs where
 
 - An agent reports the cores and memory its machine has when it joins.
@@ -215,15 +278,27 @@ utilization of every machine together:
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`).
 - `vx dte agent` is an agent. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else
   `relay`), `VX_DTE_SECRET` (the run's) and, when the run started it,
-  `VX_DTE_AGENT` (its name). It is
+  `VX_DTE_AGENT` (its name). With no `VX_DTE_SECRET` it reads
+  `.vx/dte/secret`, the one `vx dte plan` wrote. It is
   described only by the cores and memory its machine reports.
-- `DteAdapter` is `{ spawn(agent: AgentSpawn), relay?(), close?() }`.
+- `vx dte plan` writes the CI files that start the run's agents, through
+  the adapter's `render`: every size's `max` agents, which all start at
+  once. It names the run (`VX_DTE_RUN`, else the adapter's `runId()`)
+  and, unless `VX_DTE_SECRET` is set, writes a secret for it to
+  `.vx/dte/secret`.
+- `DteAdapter` is `{ spawn(agent: AgentSpawn), relay?(), close?(), render?(plan: DtePlan), runId?() }`.
+  `DtePlan` is `{ run, relay, workspaceRoot, agents }`, each agent
+  `{ id, size, cpu, memory }`.
   `AgentSpawn` is `{ run, relay, size, cpu, memory, index, id, workspaceRoot, env }`,
   with `memory` in bytes,
   where `id` is the agent's name (`small#2`) and `env` holds the three
   variables the agent reads.
 - `docker(options: DockerOptions)` starts agents as containers and a relay
   of its own on loopback. `DockerOptions` is `{ image, prepare? }`.
+- `gitlab(options: GitlabOptions)` runs agents as jobs of a child
+  pipeline. `GitlabOptions` is `{ include, tags? }`: the file holding the
+  `.vx-agent` job template every agent job extends, and runner tags by
+  size. See [On GitLab](#on-gitlab).
 - `local(options?: LocalOptions)` starts agents on this machine and a relay
   of its own on loopback. `LocalOptions` is `{ prepare? }`: a shell line
   each worktree runs before its agent starts.
