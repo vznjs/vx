@@ -51,6 +51,13 @@ export const SETTINGS: readonly Setting[] = [
     doc: 'The default branch: a run on it has no cache scope and a bare `--affected` no base; elsewhere both use the merge base with `origin/<baseBranch>`.',
   },
   {
+    path: 'affectedBase',
+    kind: { type: 'string' },
+    default: "a plugin's base commit, else the merge base with `baseBranch`",
+    doc: "The commit a bare `--affected` compares with, on the base branch too. `--affected=<base>` beats it; it beats a plugin's base commit. Env only: a committed base would be stale on the next push.",
+    config: false,
+  },
+  {
     path: 'run.concurrency',
     kind: { type: 'concurrency' },
     default: 'the cores this process may use',

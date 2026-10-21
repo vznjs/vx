@@ -136,6 +136,42 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     expect(plan('--affected')).toEqual(['app#build'])
   })
 
+  it("VX_AFFECTED_BASE names a bare --affected's base, on the base branch too; it beats a plugin's base, a value beats it", async () => {
+    git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
+    git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/feat')
+    await writeFile(path.join(root, '.gitignore'), 'out.txt\n.vx/cache/\n.vx/workspace.mjs\n')
+    git(root, 'rm', '-q', '--cached', '.vx/workspace.mjs')
+    await writeFile(path.join(root, 'pkgs/app/src/a.txt'), 'a2\n')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'two')
+    git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      `${PLUGIN_IMPORT}export default { plugins: [${edgesSource()}, ${pluginSource('org/ci', "{ config(_w, ctx) { ctx.setBranch({ base: 'HEAD' }) } }")}] }\n`,
+    )
+    const run = (env: Record<string, string>, ...args: string[]) => {
+      const p = Bun.spawnSync({
+        cmd: ['bun', CLI, 'run', 'build', ...args, '--dry=json'],
+        cwd: root,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1', ...env },
+      })
+      const out = p.stdout.toString()
+      if (p.exitCode !== 0) return `exit ${p.exitCode}: ${out}${p.stderr.toString()}`
+      return JSON.parse(out) as { affectedBase: string; tasks: { id: string }[] }
+    }
+    expect(run({}, '--affected')).toEqual({ affectedBase: 'HEAD', tasks: [] })
+    expect(run({ VX_AFFECTED_BASE: 'HEAD~1' }, '--affected')).toMatchObject({
+      affectedBase: 'HEAD~1',
+      tasks: [{ id: 'app#build' }],
+    })
+    expect(run({ VX_AFFECTED_BASE: 'HEAD~1' }, '--affected=HEAD')).toEqual({
+      affectedBase: 'HEAD',
+      tasks: [],
+    })
+  })
+
   it('CONTROL: a real base that happens to select nothing keeps the plain note', async () => {
     await writeFile(path.join(root, 'README.md'), 'docs only\n')
     git(root, 'add', '-A')
