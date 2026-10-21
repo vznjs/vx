@@ -2,12 +2,15 @@
 // agent the run may start, the orchestrator job's run id, and a secret for
 // the run, which both sides then read.
 
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import type { CommandContext } from '@vzn/vx'
 import { dte, gitlab } from '../src/index.js'
+
+const DTE = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
+const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
 
 let root: string
 const saved = { ...process.env }
@@ -110,23 +113,57 @@ it('writes no secret when VX_DTE_SECRET is set, and names what a plan needs', as
   )
 })
 
-it('with VX_DTE_GITLAB_TOKEN, starts the first agent and plays the others as the run asks', async () => {
-  process.env['VX_DTE_GITLAB_TOKEN'] = 'glpat-test'
-  process.env['VX_DTE_SECRET'] = 'given'
-  expect(
-    await plan({
-      relay: 'https://r',
-      agents: { small: { max: 3, cpu: 2, memory: '8GB' } },
-      adapter: gitlab({ include: '.gitlab/vx.yml' }),
-    }),
-  ).toBe(0)
+it('with VX_DTE_GITLAB_TOKEN, starts what the run keeps busy and plays the others as it asks', async () => {
+  // Three independent unmeasured tasks: a whole agent each, so three of four start.
+  const files: Record<string, string> = {
+    'package.json': JSON.stringify({ name: 'ws', private: true }),
+    '.gitignore': '.vx/cache\nvx-agents.yml\nvx-dte.env\n.vx/dte\n',
+    '.vx/workspace.mjs': `import { dte, gitlab } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ relay: 'https://r', agents: { small: { max: 4, cpu: 2, memory: '8GB' } }, adapter: gitlab({ include: '.gitlab/vx.yml' }) })] }
+`,
+    ...Object.fromEntries(
+      ['a', 'b', 'c'].map((p) => [
+        `${p}/vx.config.mjs`,
+        `export default { name: '${p}', tasks: { t: { exec: { command: 'true' } } } }\n`,
+      ]),
+    ),
+  }
+  for (const [rel, text] of Object.entries(files)) {
+    await mkdir(path.dirname(path.join(root, rel)), { recursive: true })
+    await writeFile(path.join(root, rel), text)
+  }
+  Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
+  const vx = (...args: string[]) => {
+    const { VX_DTE_RUN: _, ...env } = process.env
+    return Bun.spawnSync([process.execPath, CORE_BIN, ...args], {
+      cwd: root,
+      env: { ...env, VX_DTE_GITLAB_TOKEN: 'glpat-test', VX_DTE_SECRET: 'given', NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+  }
+  expect(vx('lock').exitCode).toBe(0)
+  const planned = vx('dte', 'plan', 't', '--all')
+  expect([planned.exitCode, planned.stderr.toString()]).toEqual([0, ''])
   const yml = await readFile(path.join(root, 'vx-agents.yml'), 'utf8')
   expect(yml.split('\n\n').map((job) => job.includes('when: manual'))).toEqual([
     false,
     false,
-    true,
+    false,
+    false,
     true,
   ])
+  expect(JSON.parse(await readFile(path.join(root, '.vx/dte/plan.json'), 'utf8'))).toEqual({
+    run: '900-42',
+    agents: [1, 2, 3, 4].map((i) => ({
+      id: `small#${i}`,
+      size: 'small',
+      cpu: 2,
+      memory: 8e9,
+      live: i > 3,
+    })),
+  })
+  process.env['VX_DTE_GITLAB_TOKEN'] = 'glpat-test'
 
   const calls: string[] = []
   let bridgeAsks = 0

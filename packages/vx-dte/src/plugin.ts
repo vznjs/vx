@@ -3,14 +3,17 @@ import {
   LocalHistoryProvider,
   refuseUnknownOptions,
   UserError,
+  type CommandContext,
   type PluginOptionKinds,
   type TaskNode,
   type TaskResources,
 } from '@vzn/vx'
-import { readFileSync } from 'node:fs'
+import { Database } from 'bun:sqlite'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Need, Orchestrator } from './orchestrator.js'
+import type { Size } from './width.js'
 
 /** One kind of agent the adapter can start. */
 export interface AgentSize {
@@ -145,18 +148,29 @@ export function dte(options: DteOptions) {
     await adapter?.close?.()
   }
 
-  /** `vx dte plan`: the run's id and secret, and the files its adapter starts agents with. */
-  const plan = async (root: string): Promise<number> => {
+  /**
+   * `vx dte plan [run args]`: the run's id and secret, and the files its
+   * adapter starts agents with. Spawning live, the first wave is what the
+   * run's graph keeps busy at its start, from `vx run <args> --dry=json`
+   * and history; the rest wait for the run.
+   */
+  const plan = async (args: readonly string[], ctx: CommandContext): Promise<number> => {
+    const root = ctx.workspaceRoot
     if (adapter?.render === undefined) throw new UserError('vx dte plan: the adapter plans nothing')
     const run = process.env['VX_DTE_RUN'] || adapter.runId?.()
     if (!run) throw new UserError('vx dte plan needs VX_DTE_RUN, or an adapter that names the run')
     if (options.relay === undefined) throw new UserError('vx dte plan needs dte({ relay })')
     const { runSecret } = await import('./seal.js')
-    const agents = planned(sizes, adapter.live?.() === true)
+    const live = adapter.live?.() === true
+    const agents = planned(
+      sizes,
+      live ? await firstWave(args, ctx, sizes, options.local ?? 0) : undefined,
+    )
     const files: Record<string, string> = {
       ...adapter.render({ run, relay: options.relay, workspaceRoot: root, agents }),
     }
     if (!process.env['VX_DTE_SECRET']) files[SECRET_FILE] = `${runSecret()}\n`
+    files[PLAN_FILE] = `${JSON.stringify({ run, agents })}\n`
     for (const [rel, text] of Object.entries(files)) {
       const at = path.join(root, rel)
       await mkdir(path.dirname(at), { recursive: true })
@@ -174,9 +188,9 @@ export function dte(options: DteOptions) {
         description:
           'dte plan: write the CI jobs of a run’s agents; dte agent: run tasks for a distributed run',
         async run(argv, ctx) {
-          if (argv[0] === 'plan' && argv.length === 1) return plan(ctx.workspaceRoot)
+          if (argv[0] === 'plan') return plan(argv.slice(1), ctx)
           if (argv[0] !== 'agent' || argv.length > 1) {
-            throw new UserError('Usage: vx dte plan | vx dte agent')
+            throw new UserError('Usage: vx dte plan [<tasks> <run flags>] | vx dte agent')
           }
           const run = process.env['VX_DTE_RUN']
           const relay = process.env['VX_DTE_RELAY'] ?? options.relay
@@ -239,13 +253,14 @@ export function dte(options: DteOptions) {
       const relay = options.relay ?? (await adapter?.relay?.())
       if (relay === undefined)
         throw new UserError('dte(): no relay: set relay, or use an adapter that has one')
-      const [{ Orchestrator }, { join }, { busyCores }, { snapshot }, seal] = await Promise.all([
-        import('./orchestrator.js'),
-        import('./wire.js'),
-        import('./width.js'),
-        import('./tree.js'),
-        import('./seal.js'),
-      ])
+      const [{ Orchestrator }, { join }, { busyCores, toStart }, { snapshot }, seal] =
+        await Promise.all([
+          import('./orchestrator.js'),
+          import('./wire.js'),
+          import('./width.js'),
+          import('./tree.js'),
+          import('./seal.js'),
+        ])
       // The agents an adapter starts get one made for this run; agents
       // that join on their own must be given it.
       let secret = givenSecret(ctx.workspaceRoot)
@@ -261,22 +276,7 @@ export function dte(options: DteOptions) {
       const { tree } = await snapshot(ctx.workspaceRoot)
       if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
       const localSlots = options.local ?? 0
-      const need = (id: string): Need => {
-        const r = peaks.get(id)
-        // Unmeasured: a whole agent, until its first run measures it. One
-        // that filled its agent: a whole bigger one.
-        if (r?.maxCpuParallelism === undefined) return { cores: Infinity, memory: Infinity }
-        if (r.saturatedCores !== undefined || r.saturatedMemoryBytes !== undefined)
-          return {
-            cores: Infinity,
-            memory: Infinity,
-            above: { cores: r.saturatedCores ?? 0, memory: r.saturatedMemoryBytes ?? 0 },
-          }
-        return {
-          cores: Math.max(1, Math.ceil(r.maxCpuParallelism)),
-          memory: r.maxPeakRssBytes ?? 0,
-        }
-      }
+      const need = (id: string): Need => needOf(peaks.get(id))
       const o = new Orchestrator({
         me: seal.sealOrchestrator(
           await join(relay, run, 'orchestrator', null, await token()),
@@ -296,11 +296,11 @@ export function dte(options: DteOptions) {
       const started = new Map<string, number>()
       let index = 0
       let cores = 0
-      // A planned run's first plannedAgents is on its way already; the rest, if
+      // A planned run's first wave is on its way already; the rest, if
       // any, waits for the run to start it, by size.
       const later = new Map<string, string[]>()
       const plannedAgents =
-        adapter?.render === undefined ? undefined : planned(sizes, adapter.live?.() === true)
+        adapter?.render === undefined ? undefined : readPlan(ctx.workspaceRoot, run)
       for (const a of plannedAgents ?? []) {
         if (a.live) {
           later.set(a.size, [...(later.get(a.size) ?? []), a.id])
@@ -370,17 +370,8 @@ export function dte(options: DteOptions) {
               (id) => Math.min(need(id).cores, biggest),
               (id) => peaks.get(id)?.p50DurationMs,
             ) - localSlots
-          // A task that filled its agent last time: one of the smallest
-          // size bigger than it, if the run has none yet.
-          const sizesUp = [...sizes].sort((x, y) => x.cpu - y.cpu || x.memory - y.memory)
-          for (const id of remaining) {
-            const above = need(id).above
-            if (above === undefined) continue
-            const up = sizesUp.find((z) => z.cpu > above.cores || z.memory > above.memory)
-            if (up !== undefined && (started.get(up.name) ?? 0) === 0 && up.max > 0) start(up)
-          }
-          for (const s of sizes)
-            while (cores < wantCores && (started.get(s.name) ?? 0) < s.max) start(s)
+          const above = [...remaining].flatMap((id) => need(id).above ?? [])
+          for (const s of toStart(sizes, started, cores, wantCores, above)) start(s)
         },
       }
     },
@@ -406,14 +397,119 @@ function givenSecret(root: string): string | undefined {
   }
 }
 
-type Size = { name: string; max: number; cpu: number; memory: number }
+/** What `vx dte plan` wrote for the run's orchestrator, workspace-relative: its agents and which are live. */
+const PLAN_FILE = '.vx/dte/plan.json'
+
+/** The planned agents of `run`, as `vx dte plan` wrote them. */
+function readPlan(root: string, run: string): DtePlan['agents'] {
+  let plan: { run?: unknown; agents?: DtePlan['agents'] }
+  try {
+    plan = JSON.parse(readFileSync(path.join(root, PLAN_FILE), 'utf8'))
+  } catch {
+    throw new UserError(`dte(): no ${PLAN_FILE}: run vx dte plan first, in a job this one needs`)
+  }
+  if (plan.run !== run || !Array.isArray(plan.agents))
+    throw new UserError(`dte(): ${PLAN_FILE} is another run's (${String(plan.run)}), not ${run}`)
+  return plan.agents
+}
+
+/**
+ * The agents by size the run's start keeps busy: the tasks `vx run
+ * <args>` would run (`--dry=json`), laid out by the graph and history as
+ * a run's demand lays them, beyond this machine's `localSlots`.
+ */
+async function firstWave(
+  args: readonly string[],
+  ctx: CommandContext,
+  sizes: readonly Size[],
+  localSlots: number,
+): Promise<Map<string, number>> {
+  const { VX_DTE_RUN: _, ...env } = process.env
+  const dry = Bun.spawnSync([...ctx.vx, 'run', ...args, '--dry=json'], {
+    cwd: ctx.workspaceRoot,
+    env,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  if (dry.exitCode !== 0) {
+    const why = dry.stderr.toString().trim().split('\n').at(-1) ?? ''
+    throw new UserError(`vx dte plan: vx run ${args.join(' ')} --dry=json failed: ${why}`)
+  }
+  const tasks = (JSON.parse(dry.stdout.toString()) as { tasks: DryTask[] }).tasks
+  const hit = new Set(['hit-local', 'hit-remote', 'not-started'])
+  const remaining = new Set(tasks.filter((t) => !hit.has(t.cacheStatus)).map((t) => t.id))
+  const nodes = new Map(
+    tasks.map((t) => [
+      t.id,
+      {
+        id: t.id,
+        deps: t.deps,
+        config: t.cacheStatus === 'group' ? {} : { exec: { command: '' } },
+      } as unknown as TaskNode,
+    ]),
+  )
+  const p50 = new Map(
+    tasks.flatMap((t) => (t.p50Ms === undefined ? [] : [[t.id, t.p50Ms] as const])),
+  )
+  let peaks: ReadonlyMap<string, TaskResources> = new Map()
+  const index = path.join(ctx.cacheDir, 'cache.db')
+  if (existsSync(index)) {
+    const db = new Database(index, { readonly: true })
+    try {
+      peaks = await new LocalHistoryProvider(db).resourcesFor([...remaining])
+    } catch {
+      // No history: every task a whole agent, as a run packs it.
+    } finally {
+      db.close()
+    }
+  }
+  const { busyCores, toStart } = await import('./width.js')
+  const biggest = Math.max(...sizes.map((s) => s.cpu))
+  const want =
+    busyCores(
+      remaining,
+      nodes,
+      (id) => Math.min(needOf(peaks.get(id)).cores, biggest),
+      (id) => peaks.get(id)?.p50DurationMs ?? p50.get(id),
+    ) - localSlots
+  const above = [...remaining].flatMap((id) => needOf(peaks.get(id)).above ?? [])
+  const wave = new Map<string, number>()
+  for (const s of toStart(sizes, new Map(), 0, want, above))
+    wave.set(s.name, (wave.get(s.name) ?? 0) + 1)
+  return wave
+}
+
+/** A task of `vx run --dry=json` (schemas/plan.json), as far as a plan reads it. */
+interface DryTask {
+  readonly id: string
+  readonly cacheStatus: string
+  readonly deps: string[]
+  readonly p50Ms?: number
+}
+
+/** What a task asks of an agent, from its history. */
+function needOf(r: TaskResources | undefined): Need {
+  // Unmeasured: a whole agent, until its first run measures it. One that
+  // filled its agent: a whole bigger one.
+  if (r?.maxCpuParallelism === undefined) return { cores: Infinity, memory: Infinity }
+  if (r.saturatedCores !== undefined || r.saturatedMemoryBytes !== undefined)
+    return {
+      cores: Infinity,
+      memory: Infinity,
+      above: { cores: r.saturatedCores ?? 0, memory: r.saturatedMemoryBytes ?? 0 },
+    }
+  return { cores: Math.max(1, Math.ceil(r.maxCpuParallelism)), memory: r.maxPeakRssBytes ?? 0 }
+}
 
 /**
  * Each size's `max` agents, numbered across sizes as a run numbers those
- * it starts. Started `live`, only the first starts with the run: the run
- * starts the rest as its work needs them.
+ * it starts. With a `wave` (agents by size), only that many of each start
+ * with the run: the run starts the rest, `live`, as its work needs them.
  */
-function planned(sizes: readonly Size[], live: boolean): DtePlan['agents'] {
+function planned(
+  sizes: readonly Size[],
+  wave: ReadonlyMap<string, number> | undefined,
+): DtePlan['agents'] {
   const out: DtePlan['agents'][number][] = []
   for (const s of sizes) {
     if (s.max === Infinity)
@@ -424,7 +520,7 @@ function planned(sizes: readonly Size[], live: boolean): DtePlan['agents'] {
         size: s.name,
         cpu: s.cpu,
         memory: s.memory,
-        live: live && out.length > 0,
+        live: wave !== undefined && i >= (wave.get(s.name) ?? 0),
       })
   }
   return out

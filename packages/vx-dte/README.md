@@ -131,7 +131,7 @@ include: [{ local: .gitlab/vx.yml }]
 
 vx-plan:
   extends: .vx
-  script: [pnpm exec vx dte plan]
+  script: [pnpm exec vx dte plan build test --all] # the run's selection
   artifacts:
     paths: [vx-agents.yml, .vx/dte/]
     reports: { dotenv: vx-dte.env }
@@ -168,8 +168,10 @@ the orchestrator and the agents get it through `needs`. Set
 
 Set `VX_DTE_GITLAB_TOKEN` (an access token with `api` scope, as a masked
 CI/CD variable both `vx-plan` and `vx` see) to spawn live: the plan then
-starts only the first agent with the run and writes the others as
-`when: manual` jobs. The run plays one when its work needs it and cancels
+starts with the run only the agents its start keeps busy, and writes the
+others as `when: manual` jobs. It reads that from the run's own graph
+(`vx run <its args> --dry=json`) and history, so give `vx dte plan` the
+run's selection; a task with no history takes a whole agent. The run plays one when its work needs it and cancels
 the ones it never played when it ends.
 
 ## What runs where
@@ -285,14 +287,18 @@ utilization of every machine together:
   `VX_DTE_AGENT` (its name). With no `VX_DTE_SECRET` it reads
   `.vx/dte/secret`, the one `vx dte plan` wrote. It is
   described only by the cores and memory its machine reports.
-- `vx dte plan` writes the CI files that start the run's agents, through
-  the adapter's `render`: every size's `max` agents, which all start at
-  once. It names the run (`VX_DTE_RUN`, else the adapter's `runId()`)
-  and, unless `VX_DTE_SECRET` is set, writes a secret for it to
-  `.vx/dte/secret`.
-- `DteAdapter` is `{ spawn(agent: AgentSpawn), relay?(), close?(), render?(plan: DtePlan), runId?() }`.
+- `vx dte plan [<tasks> <run flags>]` writes the CI files that start the
+  run's agents, through the adapter's `render`: every size's `max`
+  agents. With an adapter that spawns live (`live()`), only the first
+  wave starts at once: the agents the run's start keeps busy, from
+  `vx run <args> --dry=json` and history, as the run's own demand counts
+  them. It names the run (`VX_DTE_RUN`, else the adapter's `runId()`),
+  writes the agents for the orchestrator to `.vx/dte/plan.json` and,
+  unless `VX_DTE_SECRET` is set, a secret to `.vx/dte/secret`.
+- `DteAdapter` is `{ spawn(agent: AgentSpawn), relay?(), close?(), render?(plan: DtePlan), live?(), runId?() }`.
   `DtePlan` is `{ run, relay, workspaceRoot, agents }`, each agent
-  `{ id, size, cpu, memory }`.
+  `{ id, size, cpu, memory, live }`: a `live` one the run `spawn`s when
+  it needs it.
   `AgentSpawn` is `{ run, relay, size, cpu, memory, index, id, workspaceRoot, env }`,
   with `memory` in bytes,
   where `id` is the agent's name (`small#2`) and `env` holds the three

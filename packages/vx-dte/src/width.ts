@@ -58,3 +58,40 @@ export function busyCores(
   }
   return 1
 }
+
+/** One kind of agent, as `dte()` resolved it: memory in bytes, `max` Infinity when uncapped. */
+export interface Size {
+  readonly name: string
+  readonly max: number
+  readonly cpu: number
+  readonly memory: number
+}
+
+/**
+ * The agents to start next, in order: for each task that filled its agent
+ * last time (`above`), one of the smallest size bigger than it while the
+ * run has none of that size; then sizes in declared order while the cores
+ * started fall short of `wantCores`.
+ */
+export function toStart(
+  sizes: readonly Size[],
+  started: ReadonlyMap<string, number>,
+  cores: number,
+  wantCores: number,
+  above: Iterable<{ cores: number; memory: number }>,
+): Size[] {
+  const count = new Map(started)
+  const out: Size[] = []
+  const add = (s: Size): void => {
+    count.set(s.name, (count.get(s.name) ?? 0) + 1)
+    cores += s.cpu
+    out.push(s)
+  }
+  const up = [...sizes].sort((x, y) => x.cpu - y.cpu || x.memory - y.memory)
+  for (const a of above) {
+    const z = up.find((s) => s.cpu > a.cores || s.memory > a.memory)
+    if (z !== undefined && (count.get(z.name) ?? 0) === 0 && z.max > 0) add(z)
+  }
+  for (const s of sizes) while (cores < wantCores && (count.get(s.name) ?? 0) < s.max) add(s)
+  return out
+}
