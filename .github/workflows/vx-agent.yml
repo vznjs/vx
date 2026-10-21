@@ -1,0 +1,48 @@
+# The agents of a distributed run (@vzn/vx-dte's github()): CI's
+# `shards-dte` job is the run, and dispatches this once per size with that
+# size's agents as the matrix. Each agent proves itself to the relay and
+# the run by its OIDC token; there is no secret.
+name: vx-agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      run: { required: true }
+      relay: { required: true }
+      sha: { required: true }
+      size: { required: true }
+      agents: { required: true }
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  agent:
+    name: ${{ matrix.agent }}
+    runs-on: ${{ fromJSON('{"small":"ubuntu-latest"}')[inputs.size] }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        agent: ${{ fromJSON(inputs.agents) }}
+    env:
+      VX_DTE_RUN: ${{ inputs.run }}
+      VX_DTE_RELAY: ${{ inputs.relay }}
+      VX_DTE_AGENT: ${{ matrix.agent }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha }}
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - uses: ./.github/actions/vx-runner
+
+      - name: vx dte agent
+        run: bun packages/vx/src/bin.ts dte agent
