@@ -67,3 +67,39 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#/work#${dir}/work#g; s#exec ./node_m
     process.env['PATH'] = saved
   }
 }, 20_000)
+
+it('says why an agent’s container ended before it joined', async () => {
+  const root = path.join(dir, 'ws2')
+  const bin = path.join(dir, 'bin2')
+  Bun.spawnSync(['mkdir', '-p', root, bin])
+  git(root, 'init', '-q')
+  git(root, 'commit', '-q', '--allow-empty', '-m', 'i')
+  await writeFile(
+    path.join(bin, 'docker'),
+    `#!/bin/sh\necho 'error: no bun in image' >&2\nexit 3\n`,
+  )
+  await chmod(path.join(bin, 'docker'), 0o755)
+  const saved = process.env['PATH']
+  process.env['PATH'] = `${bin}:${saved}`
+  try {
+    const exited = Promise.withResolvers<string>()
+    await docker({ image: 'x' }).spawn({
+      id: 'small#1',
+      size: 'small',
+      cpu: 1,
+      memory: 1 << 30,
+      index: 2,
+      run: 'r1',
+      relay: 'http://127.0.0.1:1',
+      workspaceRoot: root,
+      env: {},
+      exited: exited.resolve,
+    } as AgentSpawn)
+    const why = await Promise.race([exited.promise, Bun.sleep(5_000).then(() => 'never said')])
+    expect(why).toMatch(/^exited 3: error: no bun in image \(log: .+\)$/)
+    const log = why.match(/\(log: ([^)]+)\)/)![1]!
+    expect(await readFile(log, 'utf8')).toBe('error: no bun in image\n')
+  } finally {
+    process.env['PATH'] = saved
+  }
+}, 20_000)
