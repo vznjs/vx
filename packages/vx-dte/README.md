@@ -73,7 +73,11 @@ and `--memory` come from `cpu` and `memory`. The container clones this
 checkout (mounted read-only) into its own filesystem at its tracked
 files as they are, uncommitted changes too, runs
 `prepare`, then the workspace's own `node_modules/.bin/vx dte agent`, so
-the image needs Bun and git, and `prepare` installs vx:
+the image needs Bun and git, and `prepare` installs vx. This machine's store
+(`~/.vx`) and `VX_CACHE_DIR` are mounted at their own paths, and the
+clone keeps this checkout's `origin`, so the agents save where the run
+reads, as `local()`'s do; no remote is needed. A container that fails
+names its error line and the log of its whole stderr:
 
 ```ts
 dte({

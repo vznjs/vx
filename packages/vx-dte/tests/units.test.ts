@@ -701,6 +701,7 @@ it('docker() starts each agent as a container of its size, on a fresh clone', as
         'set -e',
         'git clone -q /src /work',
         'cd /work',
+        'git remote remove origin',
         `git fetch -q --upload-pack='git -c uploadpack.allowAnySHA1InWant=true upload-pack' /src ${sha}`,
         `git checkout -q --detach ${sha}`,
         "cd 'sub'",

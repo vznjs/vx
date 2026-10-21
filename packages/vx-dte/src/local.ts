@@ -21,8 +21,6 @@ export function local(options: LocalOptions = {}): DteAdapter {
   let relay: { url: string; stop(): void } | undefined
   let base: Promise<string> | undefined
   let tree: Promise<{ commit: string }> | undefined
-  // Outlives close: an agent's whole stderr, for the reason row's path.
-  let logs: Promise<string> | undefined
   let closed = false
   const procs = new Set<Bun.Subprocess>()
   /** A worktree add or a prepare: what close stops at once. */
@@ -65,15 +63,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
     await Promise.race([reading, Bun.sleep(200)])
     return { code, err: Buffer.concat(chunks).toString() }
   }
-  /** `<what>: <its error line> (log: <path>)`, the whole stderr kept at that path. */
-  const why = async (what: string, id: string, err: string): Promise<string> => {
-    const line = errorLine(err)
-    if (line === '') return what
-    logs ??= mkdtemp(path.join(os.tmpdir(), 'vx-dte-logs-'))
-    const file = path.join(await logs, `${id}.log`)
-    await writeFile(file, err)
-    return `${what}: ${line} (log: ${file})`
-  }
+  const why = reasons()
 
   return {
     async relay() {
@@ -156,6 +146,22 @@ export function local(options: LocalOptions = {}): DteAdapter {
         ).unref()
       }
     },
+  }
+}
+
+/**
+ * `<what>: <its error line> (log: <path>)`, an agent's whole stderr kept at
+ * that path, which outlives the run.
+ */
+export function reasons(): (what: string, id: string, err: string) => Promise<string> {
+  let logs: Promise<string> | undefined
+  return async (what, id, err) => {
+    const line = errorLine(err)
+    if (line === '') return what
+    logs ??= mkdtemp(path.join(os.tmpdir(), 'vx-dte-logs-'))
+    const file = path.join(await logs, `${id}.log`)
+    await writeFile(file, err)
+    return `${what}: ${line} (log: ${file})`
   }
 }
 
