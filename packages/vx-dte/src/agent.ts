@@ -18,7 +18,13 @@ import {
   type LocalFloor,
   type TaskArtifacts,
 } from '@vzn/vx'
-import type { AgentInfo, RunOrder, ToAgent, WiredResult } from './messages.js'
+import {
+  HELD_EVERY,
+  type AgentInfo,
+  type RunOrder,
+  type ToAgent,
+  type WiredResult,
+} from './messages.js'
 import { outputFiles } from './outputs.js'
 import { sealAgent, type Proof } from './seal.js'
 import { join, RelayError } from './wire.js'
@@ -219,7 +225,7 @@ export async function runAgent(opts: {
     }
   }
 
-  // What it holds, each heartbeat: the orchestrator's lease on each task.
+  // What it holds, every `HELD_EVERY` heartbeats: the orchestrator's lease on each task.
   const held = setInterval(() => {
     if (running.size === 0 && queue.length === 0) return
     void me
@@ -229,7 +235,7 @@ export async function runAgent(opts: {
         queued: queue.map((q) => q.task),
       })
       .catch(() => undefined)
-  }, me.heartbeatMs)
+  }, HELD_EVERY * me.heartbeatMs)
   try {
     for (;;) {
       let messages

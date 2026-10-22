@@ -71,6 +71,13 @@ for the participant (`426` without the upgrade). Frames are text:
 - the participant sends `{ "n", "to", "body" }`, as `send`, and the relay
   answers `{ "n" }`, or `{ "n", "status", "error" }` with the status
   `send` would answer;
+- to a relay whose `join` also answered `"frames": 2`, the participant may
+  send several at once, `{ "n", "sends": [{ "to", "body" }] }`, answered
+  `{ "n" }` when all were taken, else `{ "n", "results" }` with `null` or
+  `{ "status", "error" }` for each; `{ "n", "remove": "<agent>" }`, as
+  `remove`; and `{ "n", "leave": true }`, as `leave`, whose answer is the
+  socket's close. With such a socket open, `join` and its upgrade are the
+  only requests a participant makes;
 - the participant sends `ping` each `heartbeatMs`; the relay answers
   `pong`.
 
