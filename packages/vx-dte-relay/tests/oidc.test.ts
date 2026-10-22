@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { createVerifier, runClaimsOf, TokenError } from '../src/index.js'
+import { createVerifier, repositoryClaimOf, runClaimsOf, TokenError } from '../src/index.js'
 
 const ISS = 'https://gitlab.example'
 const AUD = 'https://relay.example'
@@ -25,12 +25,20 @@ async function sign(claims: Record<string, unknown>, header: object = {}): Promi
 }
 
 const now = 1_800_000_000
-const good = { iss: ISS, aud: AUD, exp: now + 300, project_id: 7, pipeline_id: '42' }
+const good = {
+  iss: ISS,
+  aud: AUD,
+  exp: now + 300,
+  project_id: 7,
+  project_path: 'group/app',
+  pipeline_id: '42',
+}
 
 function verifier(fetched: string[] = []) {
   return createVerifier({
     issuers: [ISS],
     audience: AUD,
+    repositories: ['Group/App', 'group/other'],
     now: () => now,
     fetchJson: async (url) => {
       fetched.push(url)
@@ -64,6 +72,8 @@ describe('a CI OIDC token', () => {
     const verify = verifier()
     const other = { ...good, iss: 'https://evil.example' }
     expect(await refusal(verify('a.b'))).toEqual([401, 'not a JWT'])
+    const unsigned = (await sign(good)).split('.').slice(0, 2).join('.')
+    expect(await refusal(verify(`${unsigned}.!!`))).toEqual([401, 'not a JWT'])
     expect(await refusal(verify(await sign(good, { alg: 'none' })))).toEqual([
       401,
       'alg is not RS256',
@@ -92,8 +102,43 @@ describe('a CI OIDC token', () => {
     expect(await refusal(verify(forged))).toEqual([401, 'bad signature'])
   })
 
+  it('is refused unless its repository is one the relay names', async () => {
+    const verify = verifier()
+    expect(await verify(await sign({ ...good, project_path: 'group/other' }))).toEqual({
+      iss: ISS,
+      run: ['7'],
+    })
+    expect(await refusal(verify(await sign({ ...good, project_path: 'group/app2' })))).toEqual([
+      403,
+      'repository group/app2 is not one this relay serves',
+    ])
+    expect(await refusal(verify(await sign({ ...good, project_path: 'group' })))).toEqual([
+      403,
+      'repository group is not one this relay serves',
+    ])
+    expect(await refusal(verify(await sign({ ...good, project_path: undefined })))).toEqual([
+      403,
+      'no project_path claim',
+    ])
+  })
+
+  it('is read without Node’s Buffer, which a Worker has not', async () => {
+    const verify = verifier()
+    const token = await sign(good)
+    const buffer = globalThis.Buffer
+    // @ts-expect-error: a Worker without nodejs_compat
+    delete globalThis.Buffer
+    try {
+      expect(await verify(token)).toEqual({ iss: ISS, run: ['7'] })
+    } finally {
+      globalThis.Buffer = buffer
+    }
+  })
+
   it('binds a run to its repository by its issuer', () => {
     expect(runClaimsOf('https://token.actions.githubusercontent.com')).toEqual(['repository_id'])
     expect(runClaimsOf('https://gitlab.com')).toEqual(['project_id'])
+    expect(repositoryClaimOf('https://token.actions.githubusercontent.com')).toBe('repository')
+    expect(repositoryClaimOf('https://gitlab.com')).toBe('project_path')
   })
 })

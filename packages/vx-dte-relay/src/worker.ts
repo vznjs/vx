@@ -1,6 +1,6 @@
 // The relay on Cloudflare Workers: each run is one Durable Object, so one
 // run's mailboxes live in one place and its held polls answer there.
-// `wrangler.jsonc` deploys it; set ISSUERS and AUDIENCE.
+// `cloudflare.config.ts` deploys it; set REPOSITORIES.
 
 import { createVerifier } from './oidc.js'
 import { createRelay, type Relay } from './relay.js'
@@ -19,9 +19,13 @@ export interface Env {
   readonly RELAY: DurableObjectNamespace
   /** The issuers whose tokens the relay trusts, comma or space separated. */
   readonly ISSUERS: string
-  /** The `aud` every token must name. */
-  readonly AUDIENCE: string
+  /** The repositories whose runs it carries, `owner/repo`, comma or space separated. */
+  readonly REPOSITORIES?: string
+  /** The `aud` every token must name; unset, the URL the relay is reached at. */
+  readonly AUDIENCE?: string
 }
+
+const list = (s: string | undefined): string[] => (s ?? '').split(/[\s,]+/).filter((v) => v !== '')
 
 const RUN = /^\/v1\/runs\/([^/]+)\//
 
@@ -38,10 +42,24 @@ export class RelayRun {
   private readonly relay: Relay
 
   constructor(_state: unknown, env: Env) {
-    const issuers = env.ISSUERS.split(/[\s,]+/).filter((s) => s !== '')
-    if (issuers.length === 0 || env.AUDIENCE === '')
-      throw new Error('vx-dte-relay: set ISSUERS and AUDIENCE')
-    this.relay = createRelay({ verify: createVerifier({ issuers, audience: env.AUDIENCE }) })
+    const issuers = list(env.ISSUERS)
+    const repositories = list(env.REPOSITORIES)
+    if (issuers.length === 0 || repositories.length === 0)
+      throw new Error('vx-dte-relay: set ISSUERS and REPOSITORIES')
+    // The worker's URL is not known before its first deploy; a token for
+    // another one is not meant for this relay.
+    const verifiers = new Map<string, ReturnType<typeof createVerifier>>()
+    const verifierOf = (audience: string): ReturnType<typeof createVerifier> => {
+      let v = verifiers.get(audience)
+      if (v === undefined) {
+        v = createVerifier({ issuers, audience, repositories })
+        verifiers.set(audience, v)
+      }
+      return v
+    }
+    this.relay = createRelay({
+      verify: (token, req) => verifierOf(env.AUDIENCE || new URL(req.url).origin)(token),
+    })
   }
 
   fetch(req: Request): Promise<Response> {

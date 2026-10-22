@@ -7,6 +7,13 @@ export interface OidcOptions {
   issuers: readonly string[]
   /** The `aud` a token must name. */
   audience: string
+  /**
+   * The repositories whose runs the relay carries, as `owner/repo` (a GitLab
+   * project's full path): a token of any other is refused. Matched without
+   * case against `repositoryClaimOf(iss)`. Unset, no name is checked: the
+   * relay's own entry points require it.
+   */
+  repositories?: readonly string[]
   /** Run claims by issuer; an issuer not named here uses `runClaimsOf`. */
   runClaims?: Readonly<Record<string, readonly string[]>>
   /** Reads a URL as JSON; tests serve keys without a network. */
@@ -41,6 +48,14 @@ export function runClaimsOf(iss: string): readonly string[] {
   return iss === GITHUB ? ['repository_id'] : ['project_id']
 }
 
+/**
+ * The claim naming a token's repository: `owner/repo` on GitHub, the
+ * project's full path on GitLab.
+ */
+export function repositoryClaimOf(iss: string): string {
+  return iss === GITHUB ? 'repository' : 'project_path'
+}
+
 /** Clock skew a token's `exp` / `nbf` may be off by. */
 const LEEWAY_S = 60
 
@@ -50,6 +65,10 @@ const REFETCH_MS = 60_000
 export function createVerifier(opts: OidcOptions): (token: string) => Promise<VerifiedToken> {
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
+  const repositories =
+    opts.repositories === undefined
+      ? undefined
+      : new Set(opts.repositories.map((r) => r.toLowerCase()))
   const keys = new Map<string, { at: number; byKid: Promise<Map<string, CryptoKey>> }>()
 
   const load = (iss: string): { at: number; byKid: Promise<Map<string, CryptoKey>> } => {
@@ -73,9 +92,11 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
     const [h, p, s] = parts as [string, string, string]
     let header: { alg?: unknown; kid?: unknown }
     let claims: Record<string, unknown>
+    let sig: Uint8Array<ArrayBuffer>
     try {
       header = JSON.parse(text(h))
       claims = JSON.parse(text(p))
+      sig = bytes(s)
     } catch {
       throw new TokenError('not a JWT', 401)
     }
@@ -91,7 +112,7 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
     const ok = await crypto.subtle.verify(
       'RSASSA-PKCS1-v1_5',
       key,
-      bytes(s),
+      sig,
       new TextEncoder().encode(`${h}.${p}`),
     )
     if (!ok) throw new TokenError('bad signature', 401)
@@ -105,6 +126,14 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
     }
     if (typeof claims['nbf'] === 'number' && claims['nbf'] - LEEWAY_S > t) {
       throw new TokenError('not yet valid', 401)
+    }
+    if (repositories !== undefined) {
+      const claim = repositoryClaimOf(iss)
+      const repo = claims[claim]
+      if (typeof repo !== 'string') throw new TokenError(`no ${claim} claim`, 403)
+      if (!repositories.has(repo.toLowerCase())) {
+        throw new TokenError(`repository ${repo} is not one this relay serves`, 403)
+      }
     }
     const run = (opts.runClaims?.[iss] ?? runClaimsOf(iss)).map((c) => {
       const v = claims[c]
@@ -152,10 +181,14 @@ async function defaultFetchJson(url: string): Promise<unknown> {
   return res.json()
 }
 
+// Not Buffer: a Worker has it only under nodejs_compat. atob's decode
+// forgives the padding base64url leaves out.
 function bytes(b64url: string): Uint8Array<ArrayBuffer> {
-  return Uint8Array.from(Buffer.from(b64url, 'base64url'))
+  return Uint8Array.from(atob(b64url.replaceAll('-', '+').replaceAll('_', '/')), (c) =>
+    c.charCodeAt(0),
+  )
 }
 
 function text(b64url: string): string {
-  return Buffer.from(b64url, 'base64url').toString('utf8')
+  return new TextDecoder().decode(bytes(b64url))
 }

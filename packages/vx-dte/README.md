@@ -17,7 +17,9 @@ its own.
 
 Agents and the orchestrator meet at a relay
 ([`@vzn/vx-dte-relay`](../vx-dte-relay/PROTOCOL.md)), since CI runners
-take no inbound connection.
+take no inbound connection. Host your own: its
+[README](../vx-dte-relay/README.md) has a Deploy to Cloudflare button,
+which asks only for the repositories whose runs it carries.
 
 The relay reads nothing they say. Each agent and the orchestrator run a
 [Noise](https://noiseprotocol.org/noise.html) handshake through it, one

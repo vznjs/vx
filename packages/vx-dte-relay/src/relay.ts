@@ -6,9 +6,10 @@ import { TokenError, type VerifiedToken } from './oidc.js'
 export interface RelayOptions {
   /**
    * Checks a request's bearer token; `undefined` admits every request
-   * (`--no-auth`, loopback only: tests and the `local()` adapter).
+   * (`--no-auth`, loopback only: tests and the `local()` adapter). It gets
+   * the request too, for a relay whose audience is the URL it is reached at.
    */
-  verify?: ((token: string) => Promise<VerifiedToken>) | undefined
+  verify?: ((token: string, req: Request) => Promise<VerifiedToken>) | undefined
   /** How often a participant must be heard from; lost after three. */
   heartbeatMs?: number
 }
@@ -244,7 +245,7 @@ async function authorize(
   if (verify === undefined) return undefined
   const m = /^Bearer (\S+)$/.exec(req.headers.get('authorization') ?? '')
   if (m === null) throw new HttpError(401, 'no bearer token')
-  return verify(m[1]!)
+  return verify(m[1]!, req)
 }
 
 async function readBody(req: Request): Promise<Record<string, unknown>> {
