@@ -41,8 +41,8 @@ the same `VX_DTE_SECRET` on the run and each agent. A message the relay
 changes loses its agent; one it replays is dropped. The key never
 encrypts a message, so a leaked one opens no past run.
 
-It is not on npm yet: it is being built in this repo. Today it runs on
-`local()` and `docker()`; the GitLab adapter comes next.
+It is not on npm yet: it is being built in this repo. It runs agents with
+`local()`, `docker()`, `github()` and `gitlab()`.
 
 ## Try it
 

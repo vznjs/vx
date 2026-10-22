@@ -4,7 +4,7 @@
 
 What every lockfile plugin needs around its parser. A plugin that keys
 each project on its own dependency closure (`@vzn/vx-lockfile`'s
-`pnpm()`, `bun()`, `npm()`, `yarn()`) claims the file
+`bun()`, `pnpm()`, `npm()`, `yarn()`) claims the file
 (`VxPlugin.fingerprint`), folds one digest
 per project through `key`, and answers `--affected` by digesting both
 sides of a change. Only the parser differs per package manager; the

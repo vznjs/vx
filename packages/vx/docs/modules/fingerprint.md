@@ -58,7 +58,7 @@ bytes at the base ref and in the working tree and selects the projects
 it names; `undefined` ("cannot tell") selects every project. An
 unclaimed root file is an ordinary path, owned by the root project.
 `vx watch` re-reads the set on a claimed file's change, and the keys
-decide. `@vzn/vx-lockfile` (`pnpm()`, `bun()`, `npm()`, `yarn()`) are
+decide. `@vzn/vx-lockfile` (`bun()`, `pnpm()`, `npm()`, `yarn()`) are
 the claimants, over the shell in [`lockfile-claim.md`](./lockfile-claim.md).
 
 What each claims:

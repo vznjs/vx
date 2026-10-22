@@ -36,7 +36,7 @@ opt _out_ via `cache: false`. We chose the strictest of the three.
 Core keys no package file: no `package.json`, lockfile or install
 setting is a part of its own. A `package.json` keys a task as an input
 it lists (step 10), a lockfile or install setting as a plugin's key
-material (step 9); `@vzn/vx-lockfile`'s `pnpm()`, `bun()`, `npm()` and
+material (step 9); `@vzn/vx-lockfile`'s `bun()`, `pnpm()`, `npm()` and
 `yarn()` add both. Without a lockfile plugin an install moves no key, so
 a JS workspace declares one (`vx init` and `@vzn/vx-migrate` write it).
 
