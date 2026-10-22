@@ -98,6 +98,9 @@ for three `heartbeatMs` is lost, as if it had left; one with an open
 socket, for twelve, so a host that bills its wake-ups sleeps between
 them. Polling with a `wait` below `heartbeatMs`, or a socket's `ping`,
 keeps a participant alive.
+vx-dte's client asks again through a `5xx` or a dropped connection (a
+host restarting the relay) until faults have lasted three `heartbeatMs`,
+or 15 s for `join`, before it knows a heartbeat.
 
 ## Leases (planned, above the relay)
 

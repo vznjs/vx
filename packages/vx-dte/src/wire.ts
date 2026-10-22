@@ -24,17 +24,36 @@ const CLOSE_WAIT_MS = 2_000
 const UNANSWERED = 'the relay answered no frame'
 /** How long `join` waits on the relay, before it says how long a heartbeat is. */
 const JOIN_DEADLINE_MS = 30_000
+/** How long `join` asks again through faults (a 500 while a host restarts the relay). */
+const JOIN_FAULT_MS = 15_000
 /** The least either wait is: a loaded machine's loopback, under a test's short heartbeat. */
 const MIN_WAIT_MS = 1_000
 
-/** Runs `f` again after each rate-limit answer, as long as the relay asks to wait. */
-async function paced<T>(f: () => Promise<T>): Promise<T> {
+/**
+ * Runs `f` again after each rate-limit answer, as long as the relay asks to
+ * wait, and after a fault of the relay's host or the
+ * network (a 5xx, a dropped connection) until faults have lasted that long.
+ */
+async function paced<T>(f: () => Promise<T>, faultMs: number, signal?: AbortSignal): Promise<T> {
+  let since: number | undefined
+  let faults = 0
   for (;;) {
     try {
       return await f()
     } catch (err) {
-      if (!(err instanceof RelayError) || err.retryAfterMs === undefined) throw err
-      await Bun.sleep(err.retryAfterMs)
+      if (err instanceof RelayError && err.retryAfterMs !== undefined) {
+        await Bun.sleep(err.retryAfterMs)
+        continue
+      }
+      // A request the relay held past its deadline already took the whole wait.
+      const fault =
+        err instanceof RelayError ? err.status >= 500 : (err as Error).name !== 'TimeoutError'
+      if (!fault || signal?.aborted === true) throw err
+      since ??= performance.now()
+      const left = since + faultMs - performance.now()
+      if (left <= 0) throw err
+      // Each wait at most half a heartbeat, so a short fault costs little.
+      await Bun.sleep(Math.min(left, faultMs / 6, Math.random() * FIRST_REDIAL_MS * 2 ** faults++))
     }
   }
 }
@@ -71,8 +90,11 @@ export async function join(
     }
     return h
   }
+  // A join asked again that the relay took leaves a second participant,
+  // lost in three heartbeats; an agent whose join failed is lost for good.
+  let faultMs = JOIN_FAULT_MS
   const call = (verb: string, body?: unknown, query = '', signal?: AbortSignal) =>
-    paced(() => once(verb, body, query, signal))
+    paced(() => once(verb, body, query, signal), faultMs, signal)
   // A relay that holds a request past its longest poll is stuck: Bun's
   // own limit let one poll wait five minutes before the run failed (CI,
   // 2026-10-22). Three heartbeats, once `join` says what one is.
@@ -88,7 +110,11 @@ export async function join(
       signal: signal === undefined ? limit : AbortSignal.any([signal, limit]),
     })
     if (res.status === 204) return null
-    const json = (await res.json().catch(() => ({}))) as { error?: string; retryAfterMs?: number }
+    // A host's own error page (a proxy's, an empty one) is no relay answer.
+    const json = ((await res.json().catch(() => null)) ?? {}) as {
+      error?: string
+      retryAfterMs?: number
+    }
     if (!res.ok) {
       const message = `relay ${verb}: ${res.status} ${json.error ?? ''}`
       throw new RelayError(res.status, message, json.retryAfterMs)
@@ -99,6 +125,8 @@ export async function join(
   const id = joined['id'] as string
   const heartbeatMs = joined['heartbeatMs'] as number
   deadlineMs = Math.max(3 * heartbeatMs, MIN_WAIT_MS)
+  // The relay loses a participant silent this long: past it, nothing is left to reach.
+  faultMs = 3 * heartbeatMs
   const offered = joined['socket'] === true
   // A relay older than `frames` 2 takes only single sends down the socket.
   const frames = joined['frames'] === 2
@@ -141,7 +169,7 @@ export async function join(
     const s = socket
     if (s?.open === true) {
       try {
-        await paced(() => down(s))
+        await paced(() => down(s), 0)
         return
       } catch (err) {
         if (err instanceof RelayError) throw err

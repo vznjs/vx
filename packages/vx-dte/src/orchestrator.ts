@@ -640,22 +640,16 @@ export class Orchestrator {
   }
 
   private async listen(): Promise<void> {
-    let failures = 0
     while (!this.stop.signal.aborted) {
       let messages
       try {
+        // The client asks again through faults shorter than three heartbeats.
         messages = await this.o.me.poll(this.stop.signal)
-        failures = 0
       } catch (err) {
         if (this.stop.signal.aborted) return
-        // A relay that stays unreachable for three heartbeats has lost this
-        // run: what it held runs here instead.
-        if (++failures < 3) {
-          await Bun.sleep(this.o.me.heartbeatMs)
-          continue
-        }
-        // Its tasks fail, not run here: this machine may be far smaller
-        // than the agents. A rerun resumes from what finished and saved.
+        // A relay unreachable longer has lost this run. Its tasks fail, not
+        // run here: this machine may be far smaller than the agents. A rerun
+        // resumes from what finished and saved.
         this.fail(`the relay is unreachable (${(err as Error).message})`)
         return
       }

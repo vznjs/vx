@@ -304,6 +304,8 @@ the ones it never played when it ends.
 - A relay unreachable for three heartbeats fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller
   than the agents. What finished is saved, so a rerun resumes from it.
+  A shorter fault (a `5xx` while the host restarts the relay, a dropped
+  connection) is asked through, by the orchestrator and agents alike.
 - An agent that never joins says why on its row (`failed  exited 1:
 …`). The first such failure in a run starts another agent in its
   place, as a checkout or install can fail on the network; a second
