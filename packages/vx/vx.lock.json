@@ -48,6 +48,9 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
+        ],
+        "env": [
+          "RUNNER_OS"
         ]
       },
       "cache": {
@@ -104,6 +107,9 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
+        ],
+        "env": [
+          "RUNNER_OS"
         ]
       },
       "cache": {
@@ -160,6 +166,9 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
+        ],
+        "env": [
+          "RUNNER_OS"
         ]
       },
       "cache": {
@@ -216,6 +225,9 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
+        ],
+        "env": [
+          "RUNNER_OS"
         ]
       },
       "cache": {
@@ -272,6 +284,9 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
+        ],
+        "env": [
+          "RUNNER_OS"
         ]
       },
       "cache": {
@@ -328,6 +343,9 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
+        ],
+        "env": [
+          "RUNNER_OS"
         ]
       },
       "cache": {
@@ -384,6 +402,9 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
+        ],
+        "env": [
+          "RUNNER_OS"
         ]
       },
       "cache": {
@@ -440,6 +461,9 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
+        ],
+        "env": [
+          "RUNNER_OS"
         ]
       },
       "cache": {
@@ -496,6 +520,9 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
+        ],
+        "env": [
+          "RUNNER_OS"
         ]
       },
       "cache": {
@@ -552,6 +579,9 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
+        ],
+        "env": [
+          "RUNNER_OS"
         ]
       },
       "cache": {
@@ -608,6 +638,9 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
+        ],
+        "env": [
+          "RUNNER_OS"
         ]
       },
       "cache": {
@@ -664,6 +697,9 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
+        ],
+        "env": [
+          "RUNNER_OS"
         ]
       },
       "cache": {
@@ -1140,6 +1176,9 @@
         ],
         "runtime": [
           "bun --version"
+        ],
+        "env": [
+          "RUNNER_OS"
         ]
       },
       "cache": {
@@ -1238,6 +1277,9 @@
           "!packages/vx-docs/src/content/docs/modules/**",
           "!packages/vx-docs/src/content/docs/design/**",
           "!packages/vx-docs/src/content/docs/plugins/**"
+        ],
+        "env": [
+          "RUNNER_OS"
         ]
       },
       "cache": {
