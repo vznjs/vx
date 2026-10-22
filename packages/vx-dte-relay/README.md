@@ -46,7 +46,10 @@ bunx wrangler secret put ALLOW
 Durable Object, so its mailboxes live in one place. Participants hold
 websockets, which the object hibernates between messages: the run is kept
 in the object's storage, the runtime answers heartbeats without waking
-it, and an alarm finds the participants that went silent.
+it, and an alarm finds the participants that went silent. Issuers' keys
+are read once per isolate and held ten minutes in the data center's
+cache, so a run's object does not fetch them again; a token naming a key
+they lack is checked against a fresh read.
 `wrangler.jsonc` sets the rest; change a value there, in the repository
 the button made, or in the Worker's settings in the Cloudflare dashboard:
 

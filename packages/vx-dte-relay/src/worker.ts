@@ -39,6 +39,12 @@ export interface DurableObjectState {
   setWebSocketAutoResponse(pair: unknown): void
   getWebSocketAutoResponseTimestamp(ws: Socket): Date | null
 }
+declare const caches: {
+  default: {
+    match(url: string): Promise<Response | undefined>
+    put(url: string, res: Response): Promise<void>
+  }
+}
 declare const WebSocketPair: new () => { 0: Socket; 1: Socket }
 declare const WebSocketRequestResponsePair: new (request: string, response: string) => unknown
 
@@ -51,6 +57,30 @@ export interface Env {
 }
 
 const RUN = /^\/v1\/runs\/([^/]+)\//
+
+/** How long the data center's cache holds an issuer's keys for the next isolate. */
+const KEYS_TTL_S = 600
+
+/**
+ * An issuer's keys, read through the data center's cache: each run is its
+ * own object, often in a fresh isolate, and each read the issuer twice per
+ * join (2026-10-22). A key it does not hold is read past the cache.
+ */
+async function fetchJson(url: string, fresh: boolean): Promise<unknown> {
+  const hit = fresh ? undefined : await caches.default.match(url)
+  if (hit !== undefined) return hit.json()
+  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
+  if (!res.ok) throw new Error(`${url}: ${res.status}`)
+  const body = await res.text()
+  await caches.default.put(
+    url,
+    new Response(body, { headers: { 'cache-control': `max-age=${KEYS_TTL_S}` } }),
+  )
+  return JSON.parse(body)
+}
+
+/** Verifiers by ALLOW and audience, shared by the runs of one isolate. */
+const verifiers = new Map<string, ReturnType<typeof createVerifier>>()
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -89,12 +119,12 @@ export class RelayRun {
     if (allow.length === 0) throw new Error('vx-dte-relay: set ALLOW')
     // The worker's URL is not known before its first deploy; a token for
     // another one is not meant for this relay.
-    const verifiers = new Map<string, ReturnType<typeof createVerifier>>()
     const verifierOf = (audience: string): ReturnType<typeof createVerifier> => {
-      let v = verifiers.get(audience)
+      const key = `${env.ALLOW}\0${audience}`
+      let v = verifiers.get(key)
       if (v === undefined) {
-        v = createVerifier({ allow, audience })
-        verifiers.set(audience, v)
+        v = createVerifier({ allow, audience, fetchJson })
+        verifiers.set(key, v)
       }
       return v
     }

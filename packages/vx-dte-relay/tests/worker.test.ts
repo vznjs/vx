@@ -18,8 +18,11 @@ const D = '00000000-0000-4000-8000-000000000004'
 const E = '00000000-0000-4000-8000-000000000005'
 const R = '00000000-0000-4000-8000-000000000006'
 
-// Only the runtime has it; these tests make no websocket.
-Object.assign(globalThis, { WebSocketRequestResponsePair: class {} })
+// Only the runtime has these: the tests make no websocket, and the cache holds nothing.
+Object.assign(globalThis, {
+  WebSocketRequestResponsePair: class {},
+  caches: { default: { match: async () => undefined, put: async () => {} } },
+})
 
 /** An object's state with no websocket, its storage in memory. */
 function state(): DurableObjectState {
