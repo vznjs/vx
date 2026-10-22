@@ -64,7 +64,9 @@ export interface TaskHistory {
   /**
    * The most cores, and the most memory, of a machine an executor ran it
    * on (`ExecuteResult.machine`) that it used all of: 90% of the cores
-   * over its whole run (or at its sampled peak), or 90% of the memory. A
+   * over its whole run, or 90% of the memory. A burst to every core is
+   * not one: tasks beside it slow for a moment, and booking a machine for
+   * it left CI agents half idle (M, 2026-10-22). A
    * task that filled a machine wanted a bigger one. Set by `resourcesFor`.
    */
   saturatedCores?: number
@@ -426,8 +428,7 @@ export class LocalHistoryProvider implements HistoryProvider {
     const saturated = this.db
       .query(
         `SELECT project, task,
-           MAX(CASE WHEN MAX(COALESCE(peak_cores, 0), cpu_ms * 1.0 / duration_ms)
-                         >= ${SATURATED} * placement_cores
+           MAX(CASE WHEN cpu_ms * 1.0 / duration_ms >= ${SATURATED} * placement_cores
                     THEN placement_cores END) AS cores,
            MAX(CASE WHEN peak_rss_bytes >= ${SATURATED} * placement_memory
                     THEN placement_memory END) AS memory
