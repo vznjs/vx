@@ -623,6 +623,17 @@ describe('managedInstall', () => {
     )
   })
 
+  it('the cache refusal suggests bunx, never npx', () => {
+    let said = ''
+    try {
+      managedInstall(`/home/me/.npm/_npx/1a2b/${BIN}`, '/home/me')
+    } catch (err) {
+      said = (err as Error).message
+    }
+    expect(said).toContain('bunx @vzn/vx@latest')
+    expect(said.replace(/\/_npx\//g, '')).not.toContain('npx')
+  })
+
   it('a binary installed by hand is no package manager’s', () => {
     expect(managedInstall('/usr/local/bin/vx', '/home/me')).toBeNull()
   })

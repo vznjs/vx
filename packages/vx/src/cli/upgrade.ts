@@ -511,7 +511,7 @@ export function managedInstall(execPath: string, cwd: string): ManagedInstall | 
   const root = p.slice(0, `${p}/`.indexOf('/node_modules/'))
   if (p.includes('/_npx/') || /\/bunx-[^/]*\//.test(p)) {
     throw new UserError(
-      `vx upgrade: this vx runs from a package-manager cache (${execPath}) — nothing is installed to upgrade; ask for the version you want instead: npx @vzn/vx@latest, or bunx @vzn/vx@latest`,
+      `vx upgrade: this vx runs from a package-manager cache (${execPath}) — nothing is installed to upgrade; ask for the version you want instead: bunx @vzn/vx@latest`,
     )
   }
   if (p.includes('/.bun/install/global/')) return { manager: 'bun', scope: 'global', cwd: root }
