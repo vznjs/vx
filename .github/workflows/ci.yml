@@ -258,12 +258,11 @@ jobs:
 
   # Core's test shards, two runners of six beside `ci`: one 4-core runner
   # spent ~5 of its 6 minutes on 1,150 s of tasks, CPU bound (2026-10-08).
-  # Two runners of six shards each, unless the repo names a relay: then
-  # `shards-dte` runs all twelve over agents (a fork's PR cannot dispatch
-  # them, so it stays here).
+  # Two runners of six shards each for a fork's PR, which cannot dispatch
+  # agents; everything else runs all twelve over agents in `shards-dte`.
   shards:
     name: core shards (${{ matrix.part }})
-    if: vars.VX_DTE_RELAY == '' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -314,7 +313,7 @@ jobs:
   # the agents, which read the cache this job's token lends them.
   shards-dte:
     name: core shards (dte)
-    if: vars.VX_DTE_RELAY != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -338,7 +337,7 @@ jobs:
 
       - name: vx run core shards
         env:
-          VX_DTE_RELAY: ${{ vars.VX_DTE_RELAY }}
+          VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
           GITHUB_TOKEN: ${{ github.token }}
           VX_REQUIRE_SANDBOX: '1'
           VX_REQUIRE_WATCH_EVENTS: '1'

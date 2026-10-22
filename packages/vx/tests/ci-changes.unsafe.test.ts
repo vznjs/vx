@@ -262,12 +262,12 @@ describe('the gating', () => {
       [
         'shards',
         undefined,
-        "vars.VX_DTE_RELAY == '' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)",
+        "github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository",
       ],
       [
         'shards-dte',
         undefined,
-        "vars.VX_DTE_RELAY != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)",
+        "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
       ],
       ['gate', ['ci', 'shards', 'shards-dte', 'vs-turbo'], 'always()'],
       [
