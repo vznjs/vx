@@ -28,7 +28,13 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   says a remote one enforces `req.sandbox` where it runs and returns the
   violations, so a sandboxed task and its dependants are not pinned for
   it (`@vzn/vx-dte`'s agents run them through `localFloor`, which also stops
-  a request's children when its `signal` aborts and no run holds them); `capacity` is how
+  a request's children when its `signal` aborts and no run holds them);
+  `servers: true` says a remote one starts a task's persistent
+  dependencies where it runs the task (`req.servers`, each a `ServerSpec
+{ taskId; command; cwd; env; readyWhen?; timeoutMs? }`, in dependency
+  order), so their dependants are not pinned for it; `localFloor` starts
+  each once, shares it with every later task, and stops them on `close()`,
+  and a server that never became ready fails the task with why; `capacity` is how
   many tasks it runs at once (a positive integer, else the run is
   refused), which makes its tasks a POOL of that size instead of local
   worker slots.
@@ -153,10 +159,15 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
 ## Rules
 
 - The request is fully resolved; an executor never reads task config.
-- Persistent tasks (`exec.persistent`) never reach an executor — they
-  are local by construction and stay on `runPersistent`.
+- Persistent tasks (`exec.persistent`) never reach an executor as tasks
+  — a worker cannot hand the submitter a port. A `servers` executor gets
+  them as a dependant's `req.servers` instead; a server every dependant
+  of which went to one is never spawned here (owner, 2026-10-22: nothing
+  runs on a distributed run's orchestrator). One with `exec.sandbox` or
+  `exec.remote: false`, or one the run holds for itself (requested), is
+  not carried.
 - A task is `pinnedLocal` when it is persistent, transitively depends on a
-  persistent task (a worker cannot reach a port on the submitter), is
+  persistent task its executor does not carry, is
   sandboxed (the sandbox is this machine's machinery), depends on a
   sandboxed task (both unless the executor declares `sandbox`), declares `exec.remote: false`, or folds a runtime
   probe (`inputs.runtime` / `workspaceRuntime`) into its key: the

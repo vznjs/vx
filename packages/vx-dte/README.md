@@ -281,8 +281,13 @@ the ones it never played when it ends.
 - A sandboxed task runs on an agent inside the agent's own sandbox, with
   the same `exec.sandbox`; a violation there fails it here, named in this
   checkout's paths.
-- Tasks that must run here stay here: persistent, interactive,
-  `exec.remote: false`, and their dependants (core's placement).
+- A persistent task a task depends on starts on the agent that runs the
+  task, once per agent, ready before it, and stops when the agent leaves;
+  the orchestrator never starts it, and an agent no dependant reaches
+  never does (owner, 2026-10-22).
+- Tasks that must run here stay here: a requested persistent task, one
+  with a `sandbox` or `exec.remote: false`, interactive tasks, and their
+  dependants (core's placement).
 - An agent restores, by key, the declared outputs of every task the one
   it runs depends on, unless it ran or restored them before. Files a task
   writes without declaring them stay on the agent.

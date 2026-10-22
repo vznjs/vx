@@ -318,7 +318,11 @@ daemon, a Docker socket, a device, a VPN-only host.
   nothing.
 - **Pinned by inference too.** A `persistent` task, and anything that
   depends on one (transitively), is pinned regardless of what it
-  declares — a worker cannot reach a port served on the submitter. So is
+  declares — a worker cannot reach a port served on the submitter —
+  unless the executor starts the server where it runs the dependant
+  (`@vzn/vx-dte`: each agent starts it once, beside its dependants, and
+  the orchestrator never does; a server with a `sandbox` or
+  `exec.remote: false` stays here). So is
   a task with a `sandbox` block, and its dependants: the sandbox is this
   machine's machinery, and a boundary a worker does not enforce would
   pass vacuously; an executor that enforces it where it runs
