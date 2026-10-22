@@ -330,11 +330,6 @@ async function connect(
     frame(batch)
   }
   const frame = (batch: typeof sends): void => {
-    if (batch.length === 1) {
-      const [one] = batch
-      request({ to: one!.to, body: one!.body }).then(one!.resolve, one!.reject)
-      return
-    }
     const k = ++n
     answer(k, {
       settle(a) {
