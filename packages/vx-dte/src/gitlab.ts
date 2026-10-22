@@ -188,5 +188,3 @@ async function manualJobs(token: string): Promise<Map<string, number>> {
     if (jobs.length < 100) return out
   }
 }
-
-
