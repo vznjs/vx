@@ -339,20 +339,20 @@ Add the plugin for your package manager. Without one, no lockfile or
 has no package edges (vx refuses a `^` and names the plugin to add).
 
 <Tabs syncKey="pm">
-  <TabItem label="pnpm">
-    ```ts title=".vx/workspace.ts"
-    import { defineWorkspace } from '@vzn/vx/config'
-    import { pnpm } from '@vzn/vx-lockfile'
-
-    export default defineWorkspace({ plugins: [pnpm()] })
-    ```
-  </TabItem>
   <TabItem label="Bun">
     ```ts title=".vx/workspace.ts"
     import { defineWorkspace } from '@vzn/vx/config'
     import { bun } from '@vzn/vx-lockfile'
 
     export default defineWorkspace({ plugins: [bun()] })
+    ```
+  </TabItem>
+  <TabItem label="pnpm">
+    ```ts title=".vx/workspace.ts"
+    import { defineWorkspace } from '@vzn/vx/config'
+    import { pnpm } from '@vzn/vx-lockfile'
+
+    export default defineWorkspace({ plugins: [pnpm()] })
     ```
   </TabItem>
   <TabItem label="npm">

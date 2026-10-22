@@ -214,7 +214,7 @@ selected: !app excluded every project the other filters matched`).
 
 An edge is one a plugin supplies — a `discover` entry's `deps` (order
 and selection) or `reach` (selection only); the lockfile plugins
-(`pnpm()`, `bun()`, `npm()`, `yarn()` from `@vzn/vx-lockfile`) supply
+(`bun()`, `pnpm()`, `npm()`, `yarn()` from `@vzn/vx-lockfile`) supply
 what the package manager installed, and core reads no edge from a
 `package.json` — OR a cross-project `dependsOn` entry (`e2e`'s `test: {
 dependsOn: ['app#build'] }` makes `e2e` a dependent of `app`). The task

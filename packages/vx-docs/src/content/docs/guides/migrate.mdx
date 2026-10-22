@@ -81,8 +81,8 @@ package, plus a `vx-preset.ts` when turbo.json has global fields or a task
 `bunx @vzn/vx init --keep` writes only this `.vx/workspace.ts` (and
 `.vx/.gitignore`, which keeps `.vx/cache` and `.vx/tmp` out of git),
 installs what it imports with your lockfile's manager (`@vzn/vx-migrate`,
-and `@vzn/vx-lockfile` for your lockfile's plugin: `npm()`, `pnpm()`,
-`bun()` or `yarn()`), and writes the lock. Its `next:` line builds once
+and `@vzn/vx-lockfile` for your lockfile's plugin: `bun()`, `pnpm()`,
+`npm()` or `yarn()`), and writes the lock. Its `next:` line builds once
 through `turbo()`: a check that the mapping holds before you write
 configs, not a way to keep running the repo.
 
