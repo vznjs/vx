@@ -68,14 +68,12 @@ for the participant (`426` without the upgrade). Frames are text:
 
 - the relay pushes `{ "messages": [{ "from", "body" }] }` as messages
   arrive, starting with any queued before the socket opened;
-- the participant sends `{ "n", "to", "body" }`, as `send`, and the relay
-  answers `{ "n" }`, or `{ "n", "status", "error" }` with the status
-  `send` would answer;
-- the participant may send several at once, `{ "n", "sends": [{ "to", "body" }] }`, answered
-  `{ "n" }` when all were taken, else `{ "n", "results" }` with `null` or
-  `{ "status", "error" }` for each; `{ "n", "remove": "<agent>" }`, as
-  `remove`; and `{ "n", "leave": true }`, as `leave`, whose answer is the
-  socket's close. With such a socket open, `join` and its upgrade are the
+- the participant sends `{ "n", "sends": [{ "to", "body" }] }`, each as
+  `send`, answered `{ "n" }` when all were taken, else `{ "n", "results" }`
+  with `null` or `{ "status", "error" }` for each; `{ "n", "remove":
+"<agent>" }`, as `remove`; and `{ "n", "leave": true }`, as `leave`, whose
+  answer is the socket's close. A frame that fails is answered
+  `{ "n", "status", "error" }`, any other frame `400`. With such a socket open, `join` and its upgrade are the
   only requests a participant makes. A frame is held to `send`'s 1 MiB
   body limit whole; one over it is answered `413` by its `n` when the
   frame starts `{"n":`. vx-dte's client keeps a frame of several sends

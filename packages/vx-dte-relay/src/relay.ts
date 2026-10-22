@@ -582,8 +582,6 @@ export function createRelay(opts: RelayOptions = {}): Relay {
         }
         let body: {
           n?: unknown
-          to?: unknown
-          body?: unknown
           leave?: unknown
           remove?: unknown
           sends?: unknown
@@ -611,7 +609,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
             }
           })
           if (results.some((r) => r !== null)) return JSON.stringify({ n, results })
-        } else send(run, p, body, text.length)
+        } else throw new HttpError(400, 'frame is sends, remove or leave')
         return JSON.stringify({ n })
       } catch (err) {
         if (!(err instanceof HttpError)) throw err
