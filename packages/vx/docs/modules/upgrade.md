@@ -109,7 +109,7 @@ A host the box cannot reach is one line naming the host and the step
   path (`<prefix>/lib/node_modules`, `pnpm/global`, `.bun/install/global`,
   `yarn/global`), a project by the package.json that lists `@vzn/vx`
   (the tree's root, else the nearest above cwd), its manager by lockfile,
-  then `packageManager`. An npx or bunx cache is refused.
+  then `packageManager`. A `bunx` cache is refused.
 - Core and every `@vzn/vx-*` plugin beside it move in one install to one
   release (M, 2026-10-16); a plugin in another field is refused before
   anything runs.

@@ -225,9 +225,9 @@ under cache.outputs.clean: false a leftover output file is now saved and restore
 
 vx lock refuses a cached task whose inputs read another task's outputs through a glob like `**/*` beside `**/dist/**`.
 
-## skills: install the vx skill with npx skills add vznjs/vx
+## skills: install the vx skill with bunx skills add vznjs/vx
 
-`npx skills add vznjs/vx/packages/vx/skills/vx` no longer exists; install the agent skill with `npx skills add vznjs/vx`.
+`bunx skills add vznjs/vx/packages/vx/skills/vx` no longer exists; install the agent skill with `bunx skills add vznjs/vx`.
 
 ## cache: drop the VX_CACHE_OUTPUTS_CLEAN variable
 
@@ -295,7 +295,7 @@ vx.workspace.* and vx-lock.json are no longer read. Move the workspace config to
 
 ## retire @vzn/vx-mcp for the agent skill and vx last --stats
 
-@vzn/vx-mcp and `vx mcp` are gone; install the agent skill (`npx skills add vznjs/vx/packages/vx/skills/vx`) and read the CLI's `--format json` (`vx last --stats` for run history). `@vzn/vx` no longer exports clampInt, collectInfo, maskedCommand, maskedLine or the run-history queries (cacheKeyDiff, latestRunId, resolveRunId, inputWriters, rootCauses, runFailures, taskLog, whyDidThisRerunQuery).
+@vzn/vx-mcp and `vx mcp` are gone; install the agent skill (`bunx skills add vznjs/vx/packages/vx/skills/vx`) and read the CLI's `--format json` (`vx last --stats` for run history). `@vzn/vx` no longer exports clampInt, collectInfo, maskedCommand, maskedLine or the run-history queries (cacheKeyDiff, latestRunId, resolveRunId, inputWriters, rootCauses, runFailures, taskLog, whyDidThisRerunQuery).
 
 ## drop rename shims, flag aliases and lock path fields
 

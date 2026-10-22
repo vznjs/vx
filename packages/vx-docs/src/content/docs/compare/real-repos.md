@@ -66,8 +66,7 @@ each, best of three interleaved runs. Every run is in
 ## Try it on yours
 
 ```sh
-npm install -D @vzn/vx
-npx @vzn/vx init --keep
+bunx @vzn/vx init --keep
 ```
 
 `--keep` writes one file, `.vx/workspace.ts`, which reads your

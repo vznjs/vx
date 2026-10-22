@@ -9,7 +9,7 @@ A task's p50 is the median of its last five timings on the current branch, else 
 ## Usage
 
 ```sh
-npm install -D @vzn/vx @vzn/vx-schedule-history   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
+bun add -d @vzn/vx @vzn/vx-schedule-history
 ```
 
 ```ts

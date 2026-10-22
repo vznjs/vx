@@ -347,8 +347,8 @@ daemon, a Docker socket, a device, a VPN-only host.
 
   ```ts
   install: {
-    exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },
-    inputs: { files: ['package.json', 'pnpm-lock.yaml'] },
+    exec: { command: 'bun install --frozen-lockfile', remote: 'only' },
+    inputs: { files: ['package.json', 'bun.lock'] },
     cache: {
       outputs: { files: ['node_modules/**'] },
     },
@@ -587,9 +587,8 @@ own environment.
 
 vx also sets `npm_execpath` to the workspace's package manager (the root
 `package.json`'s `packageManager`, else its lockfile, found on the root's
-`node_modules/.bin` or `PATH`) unless a layer gives one, as `pnpm run`
-does: npm-run-all calls that manager back and falls back to a global `npm`
-without it. It names a binary on this machine, so it is not in the key.
+`node_modules/.bin` or `PATH`) unless a layer gives one, so a tool that calls the manager back finds
+it. It names a binary on this machine, so it is not in the key.
 
 Anything outside these three layers, the two variables vx sets for
 the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`) and `npm_execpath`, is absent from the child's environment:
@@ -638,7 +637,7 @@ those words (`GH_PAT`, `NPM_AUTH`) is listed in `exec.env.secret`, and is
 then masked in the same places.
 
 Two `node_modules/.bin` directories are prepended to `PATH` so
-installed tools (`oxlint`, `vite`, etc.) work without `npx`: the
+installed tools (`oxlint`, `vite`, etc.) run by name: the
 project's own, then the WORKSPACE ROOT's, where a monorepo's shared
 tooling lives. Never a sibling project's, so sibling bins stay invisible
 (project isolation). A directory whose path holds `:` (PATH's delimiter)
@@ -2215,7 +2214,7 @@ export default defineProject({
       },
       inputs: {
         files: ['e2e/**'],
-        runtime: ['npx playwright --version'],
+        runtime: ['playwright --version'],
         workspaceRuntime: ['node -v'],
       },
       cache: {

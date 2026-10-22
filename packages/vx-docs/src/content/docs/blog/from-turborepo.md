@@ -17,7 +17,7 @@ changes is where the config lives and what it can say.
 
 ## One command
 
-`npx @vzn/vx init` beside `turbo.json` is the whole adoption. It reads
+`bunx @vzn/vx init` beside `turbo.json` is the whole adoption. It reads
 the root pipeline and any per-package `extends`, inlines the matching
 `package.json` script as the task's command, and writes one
 `vx.config.ts` per package, a `.vx/workspace.ts` declaring your
@@ -25,8 +25,8 @@ lockfile's plugin, and `.vx/projects.lock.json`. It installs vx with
 your own package manager and never overwrites a file without `--force`:
 
 ```bash
-npx @vzn/vx init              # native vx.config.ts files, .vx/workspace.ts, the lock
-npx @vzn/vx run build --all   # what turbo run build did, under vx's cache
+bunx @vzn/vx init              # native vx.config.ts files, .vx/workspace.ts, the lock
+vx run build --all   # what turbo run build did, under vx's cache
 ```
 
 A task goes where the script exists, and to a package without it that
@@ -38,7 +38,7 @@ what `turbo run build` did, delete `turbo.json`.
 
 ## Check the mapping first
 
-`npx @vzn/vx init --keep` writes only a `.vx/workspace.ts` that runs
+`bunx @vzn/vx init --keep` writes only a `.vx/workspace.ts` that runs
 `turbo.json` unchanged through `turbo()` from `@vzn/vx-migrate`,
 installs what it imports, and prints a `next:` line that builds once:
 

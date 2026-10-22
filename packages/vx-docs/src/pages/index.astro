@@ -184,7 +184,7 @@ const whyRun = `$ vx why @demo/web#build
   root cause:
     @demo/web#build ← @demo/ui#build ← file packages/ui/src/index.ts`
 
-const startCommands = `npx @vzn/vx init     # installs vx, writes .vx/workspace.ts and an empty vx.config.ts
+const startCommands = `bunx @vzn/vx init    # installs vx, writes .vx/workspace.ts and an empty vx.config.ts
 vx lock              # after you declare a task in vx.config.ts
 vx run build         # runs it and stores what it writes
 vx run build         # again: up-to-date, from the cache`
@@ -228,9 +228,9 @@ vx run build         # again: up-to-date, from the cache`
             }
           </ul>
           <div class="actions">
-            <button class="install-pill" data-copy="npm install -g @vzn/vx" type="button">
+            <button class="install-pill" data-copy="bunx @vzn/vx init" type="button">
               <span class="dollar">$</span>
-              <span class="cmd">npm install -g @vzn/vx</span>
+              <span class="cmd">bunx @vzn/vx init</span>
               <span class="copy">
                 <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                   ><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 012-2h10"></path></svg
@@ -262,7 +262,7 @@ vx run build         # again: up-to-date, from the cache`
           </div>
           <div class="agents-grid">
             <article class="agent-card">
-              <h3><code>npx skills add vznjs/vx</code></h3>
+              <h3><code>bunx skills add vznjs/vx</code></h3>
               <p>One skill teaches any coding agent the CLI: run tasks, read failures and history, ask why.</p>
               <ul class="tool-chips">{SKILL_COMMANDS.map((t) => <li><code>{t}</code></li>)}</ul>
               <a class="section-link" href={href('guides/agents/')}>Built for agents →</a>

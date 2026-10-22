@@ -190,7 +190,7 @@ describe('examples/turbo', () => {
     const block = /### Try it in five minutes[\s\S]*?```sh\n([\s\S]*?)```/.exec(guide)![1]!
     const comments = block
       .split('\n')
-      .filter((l) => /^(npx @vzn\/vx run|bunx @vzn\/vx-migrate)/.test(l))
+      .filter((l) => /^(vx run|bunx @vzn\/vx-migrate)/.test(l))
       .map((l) => l.slice(l.indexOf('# ') + 2))
     // The first comment lists the tasks that missed; the rest name only the legend.
     const [legend, missed] = comments[0]!.split(': ')

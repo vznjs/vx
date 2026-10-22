@@ -708,11 +708,11 @@ export const MORE: readonly Feature[] = [
     hook: 'An installable skill teaches an agent to run, debug and query vx.',
     body: [
       'Agents do better with a short guide than by trial and error. vx ships one: how to run tasks, read a failure, ask `vx why`, read run history with `vx last --stats` and use JSON output.',
-      'Install it with `npx skills add vznjs/vx`, or copy it from `node_modules` to match the vx you installed, and your agent uses vx the way the docs intend.',
+      'Install it with `bunx skills add vznjs/vx`, or copy it from `node_modules` to match the vx you installed, and your agent uses vx the way the docs intend.',
     ],
     example: {
       lang: 'sh',
-      code: 'npx skills add vznjs/vx\n# or the copy matching the installed vx:\nmkdir -p .claude/skills/vx\ncp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/',
+      code: 'bunx skills add vznjs/vx\n# or the copy matching the installed vx:\nmkdir -p .claude/skills/vx\ncp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/',
     },
     image: 'agent-skill.png',
     imageAlt: 'The vx skill copied into an agent’s skills folder.',
@@ -1866,7 +1866,7 @@ export const MORE: readonly Feature[] = [
     ],
     example: {
       lang: 'ts',
-      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    install: {\n      exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },\n      inputs: { files: ['package.json', 'pnpm-lock.yaml'] },\n      cache: { outputs: { files: ['node_modules/**'] } },\n    },\n  },\n})",
+      code: "// packages/api/vx.config.ts\nimport { defineProject } from '@vzn/vx/config'\n\nexport default defineProject({\n  tasks: {\n    install: {\n      exec: { command: 'bun install --frozen-lockfile', remote: 'only' },\n      inputs: { files: ['package.json', 'bun.lock'] },\n      cache: { outputs: { files: ['node_modules/**'] } },\n    },\n  },\n})",
     },
     image: 'remote-install.png',
     imageAlt: 'An install task run as a remote action.',

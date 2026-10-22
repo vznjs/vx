@@ -215,7 +215,7 @@ beats all of them.
 ## Turn it on
 
 ```sh
-npm install -D @vzn/vx-schedule-history
+bun add -d @vzn/vx-schedule-history
 ```
 
 ```ts

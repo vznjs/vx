@@ -6,7 +6,7 @@ authors:
 tags:
   - dx
   - design
-excerpt: "vx ships as one self-contained executable per platform. No Node to pick, no Bun to install, no daemon to start. `npm install -D @vzn/vx` gets you the binary; a release tarball gets you the same binary without npm."
+excerpt: "vx ships as one self-contained executable per platform. No Node to pick, no Bun to install, no daemon to start. `bun add -d @vzn/vx` gets you the binary; a release tarball gets you the same binary without a package manager."
 ---
 
 The runner for a JavaScript monorepo is the first thing that runs in
@@ -16,7 +16,7 @@ you never install Bun.
 
 ```mermaid
 flowchart LR
-  N[npm install -D @vzn/vx] --> B[prebuilt binary for your platform]
+  N[bun add -d @vzn/vx] --> B[prebuilt binary for your platform]
   R[GitHub release] --> B
   B --> X[vx: no postinstall, no runtime to match]
   style X stroke:#c6f84e,stroke-width:2px
@@ -25,7 +25,7 @@ flowchart LR
 ## What you install
 
 ```bash
-npm install -D @vzn/vx    # or pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
+bun add -d @vzn/vx
 ```
 
 The package brings the prebuilt standalone binary for your platform as

@@ -8,7 +8,7 @@ page and names the run's cache scope; `gitlab()` names the run's cache
 scope on GitLab CI ([below](#gitlab-ci)).
 
 ```sh
-npm install -D @vzn/vx @vzn/vx-ci   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
+bun add -d @vzn/vx @vzn/vx-ci
 ```
 
 ```ts

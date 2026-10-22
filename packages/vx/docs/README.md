@@ -104,7 +104,7 @@ each is recorded in [optimizations.md](./optimizations.md).
 ```bash
 bun add -d @vzn/vx
 # …or globally, as the prebuilt standalone binary:
-npm install -g @vzn/vx
+bun add -g @vzn/vx
 ```
 
 A global vx run inside a project that installs `@vzn/vx` hands the call
@@ -156,7 +156,7 @@ import { defineWorkspace } from '@vzn/vx/config'
 export default defineWorkspace({ plugins: [] })
 ```
 
-Run things (from a local install, prefix `npx` or `bunx`):
+Run things:
 
 ```bash
 vx run build                    # current package (+ its dependency graph)
