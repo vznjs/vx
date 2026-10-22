@@ -108,7 +108,8 @@ even one it learned. The run claims name the repository:
 So only jobs of the repository that started a run can join it.
 
 The orchestrator is pinned to the CI job it joined from: GitHub's
-`run_id` and `run_attempt`, GitLab's `job_id`. A request as the
+`check_run_id` (on a host whose tokens lack it, `run_id` and
+`run_attempt`, which the run's other jobs share), GitLab's `job_id`. A request as the
 orchestrator with a token of another job answers `403`, so its `id`
 leaked to an agent or a log acts from nowhere else. Its agents run in
 other jobs and talk only to `"orchestrator"`, which is always that one. Not of its
