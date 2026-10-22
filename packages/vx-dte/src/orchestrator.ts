@@ -993,7 +993,10 @@ function describe(st: UsageStats, u: Usage, relay: boolean): string[] {
   return [
     `online ${seconds(st.onlineMs)} · busy ${seconds(st.busyMs)} · idle ${seconds(Math.max(0, st.onlineMs - st.busyMs))}`,
     `cpu peak ${st.cpuPeak.toFixed(1)} · avg ${st.cpuAvg.toFixed(1)} cores · cpu utilization ${percent(st.utilization)}`,
-    `memory peak ${bytes(st.memoryPeak)} · avg ${bytes(st.memoryAvg)}`,
+    // No task said what it held: `memory peak 0 B` would be a claim.
+    ...(st.memoryPeak > 0
+      ? [`memory peak ${bytes(st.memoryPeak)} · avg ${bytes(st.memoryAvg)}`]
+      : []),
     ...(relay
       ? [
           `sent ${plural(u.messagesIn, 'message')} · ${bytes(u.bytesIn)}, received ${plural(u.messagesOut, 'message')} · ${bytes(u.bytesOut)}`,
