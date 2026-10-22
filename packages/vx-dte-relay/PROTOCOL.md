@@ -66,7 +66,7 @@ An agent's messages carry `"from": "<its id>"`, the orchestrator's
 `400` a malformed request, `401` a missing or invalid token, `403` a token
 of a repository the relay does not serve, `404` an unknown `id` or `to`, `409` a second
 orchestrator, `410` a closed run, `413` a body over 1 MiB, `429` a queue
-over 10 000 messages. An error answers `{ "error": "<reason>" }`.
+over 10 000 messages or 64 MiB. An error answers `{ "error": "<reason>" }`.
 
 ## Tokens
 

@@ -31,6 +31,8 @@ interface Participant {
   info: unknown
   seen: number
   queue: Message[]
+  /** The queue's size, in bytes of the bodies that filled it. */
+  bytes: number
   waiter?: (() => void) | undefined
 }
 
@@ -44,6 +46,8 @@ interface Run {
 const RUN_ID = /^[A-Za-z0-9._-]{1,128}$/
 const MAX_BODY = 1 << 20
 const MAX_QUEUE = 10_000
+/** 10 000 bodies of 1 MiB would be 10 GiB held for one participant that does not poll. */
+const MAX_QUEUE_BYTES = 64 << 20
 const MAX_WAIT_MS = 25_000
 /** A closed run answers `410` this long, then is forgotten. */
 const CLOSED_TTL_MS = 10 * 60_000
@@ -61,9 +65,12 @@ export function createRelay(opts: RelayOptions = {}): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 5_000
   const runs = new Map<string, Run>()
 
-  const deliver = (p: Participant, m: Message): void => {
-    if (p.queue.length >= MAX_QUEUE) throw new HttpError(429, 'queue full')
+  const deliver = (p: Participant, m: Message, bytes = 0): void => {
+    if (p.queue.length >= MAX_QUEUE || p.bytes + bytes > MAX_QUEUE_BYTES) {
+      throw new HttpError(429, 'queue full')
+    }
     p.queue.push(m)
+    p.bytes += bytes
     p.waiter?.()
   }
 
@@ -124,6 +131,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       info: body.info ?? null,
       seen: Date.now(),
       queue: [],
+      bytes: 0,
     }
     run.byId.set(p.id, p)
     if (p.role === 'orchestrator') {
@@ -137,7 +145,11 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     return Response.json({ id: p.id, heartbeatMs })
   }
 
-  const send = (run: Run, body: { id?: unknown; to?: unknown; body?: unknown }): Response => {
+  const send = (
+    run: Run,
+    body: { id?: unknown; to?: unknown; body?: unknown },
+    bytes: number,
+  ): Response => {
     const from = participant(run, body.id)
     const to =
       from.role === 'agent'
@@ -148,7 +160,11 @@ export function createRelay(opts: RelayOptions = {}): Relay {
           ? run.byId.get(body.to)
           : undefined
     if (to === undefined || to === from) throw new HttpError(404, 'unknown to')
-    deliver(to, { from: from.role === 'orchestrator' ? 'orchestrator' : from.id, body: body.body })
+    deliver(
+      to,
+      { from: from.role === 'orchestrator' ? 'orchestrator' : from.id, body: body.body },
+      bytes,
+    )
     return new Response(null, { status: 204 })
   }
 
@@ -173,6 +189,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     }
     const messages = p.queue
     p.queue = []
+    p.bytes = 0
     return Response.json({ messages })
   }
 
@@ -192,7 +209,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     let run = runs.get(key)
     if (run?.closed === true) throw new HttpError(410, 'run closed')
     if (verb === 'poll') return poll(run ?? missing(), url, req.signal)
-    const body = await readBody(req)
+    const [body, bytes] = await readBody(req)
     if (verb === 'join') {
       if (run === undefined) {
         run = { closed: false, byId: new Map() }
@@ -201,7 +218,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       return join(run, body)
     }
     if (run === undefined) missing()
-    if (verb === 'send') return send(run, body)
+    if (verb === 'send') return send(run, body, bytes)
     drop(run, participant(run, body['id']))
     return new Response(null, { status: 204 })
   }
@@ -248,7 +265,7 @@ async function authorize(
   return verify(m[1]!, req)
 }
 
-async function readBody(req: Request): Promise<Record<string, unknown>> {
+async function readBody(req: Request): Promise<[Record<string, unknown>, number]> {
   const length = Number(req.headers.get('content-length') ?? 0)
   if (length > MAX_BODY) throw new HttpError(413, 'body over 1 MiB')
   const text = await req.text()
@@ -256,7 +273,7 @@ async function readBody(req: Request): Promise<Record<string, unknown>> {
   try {
     const v: unknown = JSON.parse(text)
     if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
-      return v as Record<string, unknown>
+      return [v as Record<string, unknown>, text.length]
     }
   } catch {}
   throw new HttpError(400, 'body is not a JSON object')
