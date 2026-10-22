@@ -2,7 +2,7 @@
 // dependency's `name` input for every project the graph reaches, whether or
 // not a task edge exists, so a `test` with `^production` and no `dependsOn`
 // re-keys on a dependency's source. vx folds upstream KEYS along
-// `dependsOn`, so each project gets one `nx-input:<name>` task — a keyed
+// `dependsOn`, so each project gets one `inputs:<name>` task — a keyed
 // group, keyed on the project's own `name` input — with an edge to its
 // dependencies' twin. A task that reads `^name` depends on its direct
 // dependencies' twins and folds the whole closure through them: each
@@ -11,7 +11,7 @@
 //
 // The edges are the NX graph's, not vx's package graph (`^` in vx follows
 // package.json, and an Nx edge from a tsconfig path has no manifest entry),
-// so they are explicit `pkg#nx-input:<name>`. A graph node with no vx
+// so they are explicit `pkg#inputs:<name>`. A graph node with no vx
 // project is transparent: its files join as workspace globs and the walk
 // goes on through it. Nx allows a project cycle and vx's task graph does
 // not: inside a cycle a twin carries its peers' files as workspace globs
@@ -47,8 +47,8 @@ const isFileset = (name: string): boolean =>
 /** A fileset twin is named by its hash: a glob's `*` is no task name. */
 const inputTask = (name: string): string =>
   isFileset(name)
-    ? `nx-input:fileset-${Bun.hash.xxHash3(name).toString(16).padStart(16, '0')}`
-    : `nx-input:${name}`
+    ? `inputs:fileset-${Bun.hash.xxHash3(name).toString(16).padStart(16, '0')}`
+    : `inputs:${name}`
 
 function normRel(p: string): string {
   const s = p.replace(/\/+$/, '')
@@ -63,7 +63,7 @@ export interface NxUpstream {
    * needs, with a transparent node's files added to `into`.
    */
   resolve(node: string, into: NxInputs, todos: string[]): string[]
-  /** Each project's `nx-input:<name>` tasks, for every twin an edge reaches. */
+  /** Each project's `inputs:<name>` tasks, for every twin an edge reaches. */
   inputTasks(): Map<string, GeneratedTask[]>
 }
 

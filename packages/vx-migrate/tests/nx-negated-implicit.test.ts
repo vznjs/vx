@@ -45,8 +45,8 @@ async function dependsOn(bImplicit: string[], bManifest: Record<string, unknown>
     cacheable: new Set(),
     migration: true,
   })
-  // The input twins (`nx-input:default`) are another rule's edges.
-  const own = (d: unknown) => !String(d).includes('#nx-input:')
+  // The input twins (`inputs:default`) are another rule's edges.
+  const own = (d: unknown) => !String(d).includes('#inputs:')
   return Object.fromEntries(
     mapped.projects.map((p) => [
       p.name,

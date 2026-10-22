@@ -284,11 +284,20 @@ export interface NxMapping {
   readonly notes: string[]
 }
 
-/** A node's tags as vx takes them: a blank one would be refused at load. */
+/** A command that still runs Nx or Lerna (`nx-exec`, `nx-env`, `nx exec`, `lerna run`) or reads what they set. */
+const RUNS_NX = /(?:^|[\s;&|('"/])(?:nx(?:-exec|-env)?|lerna)\s|NX_TASK_TARGET_|LERNA_PACKAGE_NAME/
+
+/**
+ * A node's tags as vx takes them: a blank one would be refused at load, and
+ * `npm:public` / `npm:private` are Nx's own, read off package.json.
+ */
 function nxTags(node: NxNode | undefined): string[] {
   const tags = node?.data?.tags
   return Array.isArray(tags)
-    ? tags.filter((t): t is string => typeof t === 'string' && t.trim() !== '')
+    ? tags.filter(
+        (t): t is string =>
+          typeof t === 'string' && t.trim() !== '' && t !== 'npm:public' && t !== 'npm:private',
+      )
     : []
 }
 
@@ -481,7 +490,7 @@ export async function mapNxWorkspace(
     }
     mapped.push({ meta, tasks })
   }
-  // The `nx-input:<name>` twins the `^` inputs above asked for, in every
+  // The `inputs:<name>` twins the `^` inputs above asked for, in every
   // project a graph node owns — one with no targets too.
   const byMeta = new Map(mapped.map((m) => [m.meta, m]))
   for (const [nodeName, list] of upstream.inputTasks()) {
@@ -898,7 +907,7 @@ function buildTask(
   // saw nothing the task reads, and a changed document replayed the old
   // generated client (Growth, 2026-10-16).
   const orphanReader =
-    inputs.dependentOutputs.length > 0 && !deps.some((d) => !d.includes('#nx-input:'))
+    inputs.dependentOutputs.length > 0 && !deps.some((d) => !d.includes('#inputs:'))
   if (orphanReader && cacheWanted && !persistent) {
     todos.push(orphanReaderTodo(inputs.dependentOutputs, target.dependsOn))
   }
@@ -967,18 +976,24 @@ function buildTask(
   // `nx exec -- <cmd>`, a package script's way to run under Nx, reads it:
   // unset, it booted Nx's own task runner, which ran the target and its
   // dependencies again. `LERNA_PACKAGE_NAME` is the project too: Lerna
-  // runs on Nx's runner and documents it to scripts. A run-commands `env`
-  // still wins, as in Nx.
-  env.define = {
-    NX_TASK_TARGET_PROJECT: projectName,
-    NX_TASK_TARGET_TARGET: targetName,
-    LERNA_PACKAGE_NAME: projectName,
-    ...(variant.configuration === undefined
-      ? {}
-      : { NX_TASK_TARGET_CONFIGURATION: variant.configuration }),
+  // runs on Nx's runner and documents it to scripts. Only a command that
+  // still runs Nx or Lerna gets them: a native task names no other runner
+  // (owner, 2026-10-22). A run-commands `env` still wins, as in Nx.
+  const define = {
+    ...(RUNS_NX.test(mapped.command)
+      ? {
+          NX_TASK_TARGET_PROJECT: projectName,
+          NX_TASK_TARGET_TARGET: targetName,
+          LERNA_PACKAGE_NAME: projectName,
+          ...(variant.configuration === undefined
+            ? {}
+            : { NX_TASK_TARGET_CONFIGURATION: variant.configuration }),
+        }
+      : {}),
     ...mapped.env,
   }
-  exec.env = env
+  if (Object.keys(define).length > 0) env.define = define
+  if (Object.keys(env).length > 0) exec.env = env
   if (mapped.timeout !== undefined) exec.timeout = mapped.timeout
   if (readyWhen !== undefined) {
     exec.persistent = { readyWhen }
@@ -1040,7 +1055,7 @@ function reachesProducer(
   if (!Array.isArray(deps)) return false
   return deps.some((d) => {
     if (typeof d !== 'string' || d.includes('*')) return true
-    if (d.includes('#nx-input:')) return false
+    if (d.includes('#inputs:')) return false
     if (d.startsWith('^'))
       return [...reached(project)].some((p) => emittedIds.has(`${p}#${d.slice(1)}`))
     return d.includes('#') || emittedIds.has(`${project}#${d}`)

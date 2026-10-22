@@ -40,9 +40,9 @@ async function exec(scripts: Record<string, string>, script: string) {
     cacheable: new Set(),
   })
   const t = m.projects[0]!.tasks.find((x) => x.name === script)!
-  const e = t.task!['exec'] as { env: { define: Record<string, string> } }
+  const e = t.task!['exec'] as { env?: { define?: Record<string, string> } }
   const define = Object.fromEntries(
-    Object.entries(e.env.define).filter(([k]) => k.startsWith('npm_')),
+    Object.entries(e.env?.define ?? {}).filter(([k]) => k.startsWith('npm_')),
   )
   return { define, todos: t.todos }
 }

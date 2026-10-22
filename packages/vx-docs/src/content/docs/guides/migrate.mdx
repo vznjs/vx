@@ -259,8 +259,7 @@ $ bunx @vzn/vx-migrate
   next      vx run build --all
 ```
 
-`packages/lib/vx.config.ts`, as written (the `define` names are the ones
-Nx sets for a task):
+`packages/lib/vx.config.ts`, as written:
 
 ```ts
 import type { ProjectConfig } from '@vzn/vx/config'
@@ -270,13 +269,6 @@ export default {
     build: {
       exec: {
         command: 'mkdir -p dist && cp src/index.js dist/lib.js',
-        env: {
-          define: {
-            NX_TASK_TARGET_PROJECT: 'lib',
-            NX_TASK_TARGET_TARGET: 'build',
-            LERNA_PACKAGE_NAME: 'lib',
-          },
-        },
       },
       inputs: {
         files: ['src/**/*'],

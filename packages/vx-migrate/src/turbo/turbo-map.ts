@@ -1008,7 +1008,7 @@ export async function mapTurboWorkspace(
   // over its files, so `test` keys on its dependencies' sources. Dropped,
   // vx keyed `test` on its own files alone: a dependency's edit was a hit.
   // Each package has it as a key-only task, a keyed group, as nx()'s
-  // `nx-input:*` twins are.
+  // `inputs:*` twins are.
   const withScript = new Set<string>()
   for (const set of runnable.values()) for (const name of set) withScript.add(name)
   const sameRefs = new Set<string>()
