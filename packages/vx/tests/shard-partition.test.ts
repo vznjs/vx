@@ -5,7 +5,12 @@
 
 import { describe, expect, it } from 'bun:test'
 import { partition, readWeights, testFiles } from '../scripts/test-shard.js'
-import { SHARD_COUNT, UNSAFE_SHARD_COUNT } from '../vx.config.js'
+import {
+  PLATFORM_SHARD_COUNT,
+  PLATFORM_UNSAFE_SHARD_COUNT,
+  SHARD_COUNT,
+  UNSAFE_SHARD_COUNT,
+} from '../vx.config.js'
 
 describe('weighted test shards', () => {
   const files = testFiles()
@@ -83,5 +88,26 @@ describe('weighted unsafe shards', () => {
 
   it('names only unsafe files that exist', () => {
     expect(Object.keys(weights).filter((f) => !files.includes(f))).toEqual([])
+  })
+})
+
+// The macOS run deals only the platform's files (`--platform`), from the
+// same tables, so its shards come out as even as the full suite's.
+describe('platform shards', () => {
+  it('deal each platform file once, in both suites, and nothing else', () => {
+    for (const [suite, n] of [
+      ['safe', PLATFORM_SHARD_COUNT],
+      ['unsafe', PLATFORM_UNSAFE_SHARD_COUNT],
+    ] as const) {
+      const files = testFiles(suite, true)
+      const bins = partition(files, readWeights(suite), n)
+      expect(bins.flat().sort()).toEqual(files)
+      for (const bin of bins) expect(bin.length).toBeGreaterThan(0)
+      expect(files.every((f) => testFiles(suite).includes(f))).toBe(true)
+    }
+    expect(testFiles('safe', true)).toContain('tar-stream.test.ts')
+    expect(testFiles('safe', true)).not.toContain('status-line.test.ts')
+    expect(testFiles('unsafe', true)).toContain('sandbox-runtime.unsafe.test.ts')
+    expect(testFiles('unsafe', true)).not.toContain('skills-install.unsafe.test.ts')
   })
 })

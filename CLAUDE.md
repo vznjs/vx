@@ -141,10 +141,12 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   `scripts/test-shard.ts` drops the name, so the shard command never
   sees the file; `test.bun.unsafe`'s `UNSAFE_SHARD_COUNT` (4) shards
   run them, dealt by `--unsafe` from `tests/unsafe-shard-weights.json`.
-  They, `@vzn/vx-reapi#test` and `@vzn/vx-reapi#test.live` (which dial
-  service containers on the host's loopback, unreachable from a Linux
-  sandbox's network namespace), its `services.cache` / `services.exec`
-  (Docker), `@vzn/vx-migrate#nx.install` (npm), `check.sandbox-canary` and
+  The macOS run takes only the platform's files (`test.platform`, dealt
+  by `--platform`). The unsafe shards of both, `@vzn/vx-reapi#test` and
+  `@vzn/vx-reapi#test.live` (which dial service containers on the host's
+  loopback, unreachable from a Linux sandbox's network namespace), its
+  `services.cache` / `services.exec` (Docker), `@vzn/vx-migrate#nx.install`
+  (npm), `check.sandbox-canary` and
   `check.build-cold` (each drives the sandbox itself, on a Mac agent) are
   the ONLY tasks in the whole repo with no `exec.sandbox`.
 - Every package's suite is its `test` task, so `vx run ci --all` gates
