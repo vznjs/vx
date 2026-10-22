@@ -23,6 +23,7 @@ interface Job {
   needs?: string | string[]
   'runs-on'?: string
   permissions?: Record<string, string>
+  env?: Record<string, string>
   steps?: Step[]
 }
 interface Workflow {
@@ -112,6 +113,12 @@ describe('vx-agent.yml', () => {
   // base..head. A task runs on whichever agent is free.
   it('checks out the full history', () => {
     expect(checkout(agent)?.with?.['fetch-depth']).toBe(0)
+  })
+
+  // An agent saving to ~/.vx while a shard runs failed the shard's home
+  // guard (2026-10-22): the agent keeps its store out of home.
+  it("keeps the agent's store out of home", () => {
+    expect(agent.env?.['VX_CACHE_DIR']).toBe('${{ runner.temp }}/vx-cache')
   })
 
   it('mounts the small disk the Linux run names, on Linux', () => {
