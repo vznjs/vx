@@ -117,6 +117,20 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     expect((await c.call('r', 'poll', { id: 'x' })).status).toBe(405)
   })
 
+  it('holds at most 64 MiB for a participant that does not poll', async () => {
+    const c = client()
+    const o = await c.join('r', 'orchestrator')
+    const a = await c.join('r', 'agent')
+    const body = 'x'.repeat((1 << 20) - 100)
+    const statuses: number[] = []
+    for (let i = 0; i < 66; i++) {
+      statuses.push((await c.call('r', 'send', { id: o, to: a, body })).status)
+    }
+    expect(statuses.indexOf(429)).toBe(64)
+    expect((await c.poll('r', a)).length).toBe(64)
+    expect((await c.call('r', 'send', { id: o, to: a, body })).status).toBe(204)
+  })
+
   it('wants a bearer token when it verifies', async () => {
     const c = client({ verify: async () => ({ iss: 'i', run: ['1'] }) })
     expect((await c.call('r', 'join', { role: 'agent' })).status).toBe(401)
