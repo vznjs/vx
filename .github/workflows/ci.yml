@@ -131,6 +131,18 @@ jobs:
           grep -q 'vx run' "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is not the vx one"; exit 1; }
           exit $code
 
+      # A killed vx never closes its run: cancel the agent runs it
+      # dispatched (github() lists them in RUNNER_TEMP), or queued ones
+      # hold runners the next run waits for. A second cancel answers 409.
+      - if: always()
+        name: Cancel the run's agents
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          f="$RUNNER_TEMP/vx-dte-runs"
+          [ -f "$f" ] || exit 0
+          while read -r r; do gh api -X POST "$r/cancel" > /dev/null 2>&1 || true; done < "$f"
+
       - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -320,6 +332,18 @@ jobs:
           VX_REQUIRE_SANDBOX: '1'
           VX_REQUIRE_WATCH_EVENTS: '1'
         run: bun packages/vx/src/bin.ts run test check.binary build.bun.darwin-x64 build.bun.linux-x64 --filter @vzn/vx
+
+      # A killed vx never closes its run: cancel the agent runs it
+      # dispatched (github() lists them in RUNNER_TEMP), or queued ones
+      # hold runners the next run waits for. A second cancel answers 409.
+      - if: always()
+        name: Cancel the run's agents
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          f="$RUNNER_TEMP/vx-dte-runs"
+          [ -f "$f" ] || exit 0
+          while read -r r; do gh api -X POST "$r/cancel" > /dev/null 2>&1 || true; done < "$f"
 
       - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
