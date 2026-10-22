@@ -213,3 +213,35 @@ it('says why for each agent whose job ended badly before it joined', async () =>
     await server.stop(true)
   }
 }, 10_000)
+
+it("dispatches on the base branch once a merged PR's branch is gone", async () => {
+  // Before: a PR merged mid-run, its branch was deleted, GitHub answered
+  // 422 "No ref found" and every agent of the dispatch failed (2026-10-22).
+  const refs: string[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    async fetch(req) {
+      const { ref } = (await req.json()) as { ref: string }
+      refs.push(ref)
+      if (ref === 'feature')
+        return Response.json({ message: 'No ref found for: feature' }, { status: 422 })
+      return new Response(null, { status: 204 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+    GITHUB_HEAD_REF: 'feature',
+    GITHUB_BASE_REF: 'main',
+  })
+  try {
+    const why: string[] = []
+    void github().spawn(spawn('small#1', 'small', (w) => why.push(w)))
+    await Bun.sleep(100)
+    expect([refs, why]).toEqual([['feature', 'main'], []])
+  } finally {
+    await server.stop(true)
+  }
+})
