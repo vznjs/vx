@@ -21,10 +21,12 @@ const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' 
 // what another saved.
 // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
 // CI's macOS jobs share the remote cache with Linux; a key that named no
-// platform replayed Linux's pass as the macOS result (#3854). The runner's
-// OS, read when the key is taken: a `runtime` probe would pin the task off
-// agents, and a value the config computes is frozen into the lock.
-const PLATFORM = ['RUNNER_OS']
+// platform replayed Linux's pass as the macOS result (#3854). The agents'
+// OS, which ci.yml names: the run's own job is Linux for both runs (owner,
+// 2026-10-22), so its RUNNER_OS says nothing of where a suite ran. An env
+// read when the key is taken: a value the config computes is frozen into
+// the lock.
+const PLATFORM = ['CI_AGENTS_OS']
 const SUITE_ENV = {
   ...GIT_HERMETIC,
   BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0',
@@ -112,6 +114,71 @@ const shardTask = (i: number) => ({
   },
 })
 const shardTasks = Object.fromEntries(SHARDS.map((i) => [`test.bun.shard-${i}`, shardTask(i)]))
+
+// The unsafe suite (`tests/*.unsafe.test.ts`), dealt the same way: as one
+// process it was a DTE run's critical path (178 s of 216 s, 2026-10-22).
+export const UNSAFE_SHARD_COUNT = 4
+const unsafeShardTask = (i: number) => ({
+  description: `bun test — the files a sandbox cannot host, shard ${i} of ${UNSAFE_SHARD_COUNT}`,
+  dependsOn: ['install'],
+  exec: {
+    command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${UNSAFE_SHARD_COUNT} --unsafe)`,
+    env: {
+      passThrough: [
+        'VX_REQUIRE_SANDBOX',
+        'VX_REQUIRE_WATCH_EVENTS',
+        'VX_REQUIRE_NONROOT',
+        'VX_REQUIRE_TAGS',
+        // git-reftable.unsafe.test.ts: a git too old for reftable fails.
+        'VX_REQUIRE_REFTABLE',
+        'VX_PR_TITLE',
+        'VX_PR_BASE',
+        'VX_PR_HEAD',
+        'VX_SMALL_DISK',
+        // npm-pack's install fetches from the registry. Where TLS is
+        // signed by a local CA, npm without it retried
+        // SELF_SIGNED_CERT_IN_CHAIN to the row's 180 s timeout (local
+        // gate, 2026-09-28). A path, unset on CI; not a key input.
+        'NODE_EXTRA_CA_CERTS',
+      ],
+      define: SUITE_ENV,
+    },
+  },
+  inputs: {
+    files: SOURCES,
+    // The repo-wide laws in this suite read every package, the
+    // workflows and the root files (bins, boundaries, exports, the
+    // runner, the site's samples); until item 613 the key saw only
+    // this package, so an edit elsewhere left the suite an up-to-date
+    // hit in the gate. LICENSE (build-npm, npm-pack) and the cache-bump skill
+    // (doc-references) were read unkeyed the same way, so CI's restored
+    // cache replayed the suite over an edit to them.
+    workspaceFiles: [
+      'packages/*/**',
+      'examples/**',
+      '.github/**',
+      'scripts/**',
+      'CLAUDE.md',
+      'README.md',
+      'LICENSE',
+      '.claude/skills/**',
+      'skills/**',
+      'vx.config.ts',
+      '.vx/workspace.ts',
+      ...OTHER_OUTPUTS,
+    ],
+    env: PLATFORM,
+  },
+  cache: {
+    outputs: { files: [] as string[] },
+  },
+})
+const unsafeShardTasks = Object.fromEntries(
+  Array.from({ length: UNSAFE_SHARD_COUNT }, (_, k) => [
+    `test.bun.unsafe.shard-${k + 1}`,
+    unsafeShardTask(k + 1),
+  ]),
+)
 
 // The release steps npm.yml, release.yml and auto-release.yml run
 // (scripts/release.ts, scripts/auto-release.ts). Uncached, since each has a
@@ -303,6 +370,7 @@ const releaseTasks = {
 export default defineProject({
   tasks: {
     ...shardTasks,
+    ...unsafeShardTasks,
     ...releaseTasks,
     ci: {
       dependsOn: ['lint', 'test', 'check.binary'],
@@ -368,6 +436,25 @@ export default defineProject({
       },
     },
 
+    // macOS CI's checks of this machine's own sandbox, as tasks so they run on
+    // a Mac agent: nothing runs on a distributed run's orchestrator. Neither
+    // is sandboxed, as each drives the sandbox itself, and neither is cached.
+    'check.sandbox-canary': {
+      description:
+        'drive 20 leaky sandboxed runs through run() under this machine’s sandbox; one it did not enforce fails',
+      dependsOn: ['install'],
+      exec: { command: 'bun tests/helpers/sandbox-canary.ts 20' },
+    },
+    // A grant bwrap honoured by its mounts failed `@vzn/vx-docs#import` on
+    // every Mac for a week (2026-10-17). No cache read: a hit would skip the
+    // very tasks this runs.
+    'check.build-cold': {
+      description:
+        'every package’s build under this machine’s sandbox, no cache, as a developer runs it',
+      dependsOn: ['install'],
+      exec: { command: "bun src/bin.ts run build --all '--cache-policy=local:,remote:'" },
+    },
+
     'check.binary': {
       description:
         'compile the host binary the way release.yml does; it must launch and report the manifest version',
@@ -421,58 +508,7 @@ export default defineProject({
 
     'test.bun.unsafe': {
       description: 'bun test — the files a sandbox cannot host',
-      dependsOn: ['install'],
-      exec: {
-        command: 'bun test --only-failures ./tests/*.unsafe.test.ts',
-        env: {
-          passThrough: [
-            'VX_REQUIRE_SANDBOX',
-            'VX_REQUIRE_WATCH_EVENTS',
-            'VX_REQUIRE_NONROOT',
-            'VX_REQUIRE_TAGS',
-            // git-reftable.unsafe.test.ts: a git too old for reftable fails.
-            'VX_REQUIRE_REFTABLE',
-            'VX_PR_TITLE',
-            'VX_PR_BASE',
-            'VX_PR_HEAD',
-            'VX_SMALL_DISK',
-            // npm-pack's install fetches from the registry. Where TLS is
-            // signed by a local CA, npm without it retried
-            // SELF_SIGNED_CERT_IN_CHAIN to the row's 180 s timeout (local
-            // gate, 2026-09-28). A path, unset on CI; not a key input.
-            'NODE_EXTRA_CA_CERTS',
-          ],
-          define: SUITE_ENV,
-        },
-      },
-      inputs: {
-        files: SOURCES,
-        // The repo-wide laws in this suite read every package, the
-        // workflows and the root files (bins, boundaries, exports, the
-        // runner, the site's samples); until item 613 the key saw only
-        // this package, so an edit elsewhere left the suite an up-to-date
-        // hit in the gate. LICENSE (build-npm, npm-pack) and the cache-bump skill
-        // (doc-references) were read unkeyed the same way, so CI's restored
-        // cache replayed the suite over an edit to them.
-        workspaceFiles: [
-          'packages/*/**',
-          'examples/**',
-          '.github/**',
-          'scripts/**',
-          'CLAUDE.md',
-          'README.md',
-          'LICENSE',
-          '.claude/skills/**',
-          'skills/**',
-          'vx.config.ts',
-          '.vx/workspace.ts',
-          ...OTHER_OUTPUTS,
-        ],
-        env: PLATFORM,
-      },
-      cache: {
-        outputs: { files: [] },
-      },
+      dependsOn: ['test.bun.unsafe.shard-*'],
     },
 
     'lint.oxlint': {

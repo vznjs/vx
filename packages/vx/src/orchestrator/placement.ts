@@ -32,6 +32,8 @@ export function pinnedLocalSet(
   sandbox = true,
   /** For a `servers` executor: a carriable persistent task pins nothing. */
   servers = false,
+  /** `false` for a `runtime` executor: it checks the probes where it runs the task. */
+  runtime = true,
 ): Set<string> {
   const pinned = new Set<string>()
   for (const node of nodes.values()) {
@@ -43,7 +45,7 @@ export function pinnedLocalSet(
       pinned.add(node.id)
     }
   }
-  if (pinned.size === 0) return withProbedRuntime(nodes, pinned)
+  if (pinned.size === 0) return runtime ? withProbedRuntime(nodes, pinned) : pinned
   // Pinning flows up the dependant edges from what pins itself, one walk on
   // an explicit stack: a chain is as deep as the graph, and a recursion
   // per edge threw `RangeError` on the 50,000 the builder takes (item 737).
@@ -63,7 +65,7 @@ export function pinnedLocalSet(
       stack.push(up)
     }
   }
-  return withProbedRuntime(nodes, pinned)
+  return runtime ? withProbedRuntime(nodes, pinned) : pinned
 }
 
 /**
@@ -105,7 +107,8 @@ function serversBehind(nodes: ReadonlyMap<string, TaskNode>, node: TaskNode): Ta
  * A key that folds `inputs.runtime` / `workspaceRuntime` holds what
  * THIS machine answered (`node -v`); a worker runs its own runtime, which no
  * executor can prove equal, and its output saved under this key is a stale
- * hit here (C-2). Such a task runs here. Its dependants are not pinned with
+ * hit here (C-2). Such a task runs here, or on a `runtime` executor, which
+ * fails it where its probes answer otherwise. Its dependants are not pinned with
  * it: they fold the probe through its input key, and their own output does
  * not depend on this machine's runtime.
  */
@@ -205,11 +208,11 @@ export function placeTasks(
 ): Placements {
   // Each executor's pins, computed only when one reads them.
   const pins = new Map<string, Set<string>>()
-  const pinsOf = (e: Pick<TaskExecutor, 'sandbox' | 'servers'>): Set<string> => {
-    const k = `${e.sandbox === true}${e.servers === true}`
+  const pinsOf = (e: Pick<TaskExecutor, 'sandbox' | 'servers' | 'runtime'>): Set<string> => {
+    const k = `${e.sandbox === true}${e.servers === true}${e.runtime === true}`
     let set = pins.get(k)
     if (set === undefined) {
-      set = pinnedLocalSet(nodes, e.sandbox !== true, e.servers === true)
+      set = pinnedLocalSet(nodes, e.sandbox !== true, e.servers === true, e.runtime !== true)
       pins.set(k, set)
     }
     return set

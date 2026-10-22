@@ -12,7 +12,7 @@ it('installs alone with npm and deploys with wrangler by wrangler.jsonc', async 
     await Bun.file(path.join(import.meta.dir, '..', 'wrangler.jsonc')).text(),
   ) as {
     main: string
-    vars: { ALLOW: string }
+    vars?: object
     durable_objects: unknown
     migrations: unknown
   }
@@ -20,17 +20,18 @@ it('installs alone with npm and deploys with wrangler by wrangler.jsonc', async 
     workspace: Object.entries(deps).filter(([, spec]) => String(spec).startsWith('workspace:')),
     deploy: pkg.scripts.deploy,
     main: await Bun.file(path.join(import.meta.dir, '..', config.main)).exists(),
-    // A plain var the button asks for, not a secret it masks.
-    allow: config.vars.ALLOW,
-    envExample: await Bun.file(path.join(import.meta.dir, '..', '.env.example')).exists(),
+    // A deploy replaces every var with this file's and keeps secrets, so
+    // ALLOW is a secret the button asks for, and no deployer's ALLOW is here.
+    vars: config.vars,
+    secrets: await Bun.file(path.join(import.meta.dir, '..', '.dev.vars.example')).text(),
     objects: config.durable_objects,
     migrations: config.migrations,
   }).toEqual({
     workspace: [],
     deploy: 'wrangler deploy',
     main: true,
-    allow: '',
-    envExample: false,
+    vars: undefined,
+    secrets: 'ALLOW=https://token.actions.githubusercontent.com:owner/repo:ci.yml\n',
     objects: { bindings: [{ name: 'RELAY', class_name: 'RelayRun' }] },
     migrations: [{ tag: 'v1', new_sqlite_classes: ['RelayRun'] }],
   })

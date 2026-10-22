@@ -360,18 +360,18 @@ export function dte(options: DteOptions) {
         // An unmeasured task takes the biggest agent there is.
         const biggest = Math.max(1, o.biggestCores(), ...sizes.map((s) => s.cpu))
         const warmUp = o.warmUpMs()
-        const width = (share?: number, fromMs?: number): number =>
+        const width = (peak?: boolean, fromMs?: number): number =>
           busyCores(
             remaining,
             nodes ?? new Map(),
             (id) => Math.min(need(id).cores, biggest),
             (id) => peaks.get(id)?.p50DurationMs,
-            share,
+            peak,
             fromMs,
           ) - localSlots
         // What an agent asked for now finds once it has warmed up; while
         // none has joined, the warm-up is unknown and the width is now's.
-        const wantCores = width(undefined, warmUp)
+        const wantCores = width(false, warmUp)
         const above = [...remaining].flatMap((id) => need(id).above ?? [])
         const final = adapter === undefined || (plannedAgents !== undefined && later.size === 0)
         // Idle agents beyond the rest's peak leave; one a task bigger than
@@ -379,7 +379,7 @@ export function dte(options: DteOptions) {
         // lull and started another for the wide part after it. At the end
         // the relay closing ends them all.
         if (remaining.size > 0)
-          o.retire(width(0), (a) => above.some((x) => a.cores > x.cores || a.memory > x.memory))
+          o.retire(width(true), (a) => above.some((x) => a.cores > x.cores || a.memory > x.memory))
         if (final) return
         const start = (s: (typeof sizes)[number]): void => {
           started.set(s.name, (started.get(s.name) ?? 0) + 1)
@@ -428,6 +428,8 @@ export function dte(options: DteOptions) {
         sandbox: true,
         // A task's persistent dependencies start on its agent, never here.
         servers: true,
+        // An agent answers a task's runtime probes before it runs it.
+        runtime: true,
         // Room for what agents report beyond their size and the prefetch;
         // the orchestrator holds the rest. Agents that join on their own
         // are as many as join.
@@ -571,7 +573,7 @@ interface DryTask {
 }
 
 /** What a task asks of an agent, from its history. */
-function needOf(r: TaskResources | undefined): Need {
+export function needOf(r: TaskResources | undefined): Need {
   // Unmeasured: a whole agent, until its first run measures it. One that
   // filled its agent: a whole bigger one.
   if (r?.maxCpuParallelism === undefined) return { cores: Infinity, memory: Infinity }
@@ -581,7 +583,10 @@ function needOf(r: TaskResources | undefined): Need {
       memory: Infinity,
       above: { cores: r.saturatedCores ?? 0, memory: r.saturatedMemoryBytes ?? 0 },
     }
-  return { cores: Math.max(1, Math.ceil(r.maxCpuParallelism)), memory: r.maxPeakRssBytes ?? 0 }
+  // The cores it keeps busy on average, unrounded: a suite at 0.7 booked a
+  // whole core and CI's agents ran at 30-50% (M, 2026-10-22: "close to
+  // 100%"). A quarter at least, so a task that only waits is not free.
+  return { cores: Math.max(0.25, r.maxCpuParallelism), memory: r.maxPeakRssBytes ?? 0 }
 }
 
 /**

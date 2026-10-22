@@ -37,6 +37,8 @@ const auth = { authorization: `Bearer ${head}.${Buffer.from(sig).toString('base6
 
 let mf: Miniflare
 let base: URL
+/** The issuer URLs the relay fetched. */
+const fetched: string[] = []
 beforeAll(async () => {
   const built = await Bun.build({
     entrypoints: [path.join(import.meta.dir, '..', 'src', 'worker.ts')],
@@ -50,10 +52,12 @@ beforeAll(async () => {
       compatibilityDate: '2026-10-01',
       durableObjects: { RELAY: { className: 'RelayRun', useSQLite: true } },
       bindings: { ALLOW: `${ISS}:o/r:.gitlab-ci.yml`, AUDIENCE: 'vx-dte-relay' },
-      outboundService: (req: Request) =>
-        new URL(req.url).pathname === '/jwks'
+      outboundService: (req: Request) => {
+        fetched.push(req.url)
+        return new URL(req.url).pathname === '/jwks'
           ? Response.json({ keys: [{ ...jwk, kid: 'k1' }] })
-          : Response.json({ jwks_uri: `${ISS}/jwks` }),
+          : Response.json({ jwks_uri: `${ISS}/jwks` })
+      },
     }),
   )
   base = await mf.ready
@@ -151,4 +155,12 @@ it('refuses a socket without a token of the run', async () => {
     headers: { upgrade: 'websocket' },
   })
   expect(bare.status).toBe(401)
+})
+
+it('reads an issuer’s keys once for all the runs it carries', async () => {
+  // Each run is its own object; keys read per object cost every join two
+  // fetches of the issuer (2026-10-22).
+  await join('agent', '00000000-0000-4000-8000-000000000004')
+  await join('agent', '00000000-0000-4000-8000-000000000005')
+  expect(fetched).toEqual([`${ISS}/.well-known/openid-configuration`, `${ISS}/jwks`])
 })

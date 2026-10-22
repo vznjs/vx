@@ -43,6 +43,17 @@ export function workspaceFilesReachInto(cache: CacheConfig, dir: string): boolea
  *  git-ignored edit there. */
 export function namedOutright(task: TaskConfig): { files: string[]; workspaceFiles: string[] }
 
+/** What a probe answers here: an `inputs.runtime` command run in
+ *  `projectDir`, or with `workspace` a `workspaceRuntime` one run in
+ *  `workspaceRoot`. For an executor that checks a task's probes where it
+ *  runs it (`TaskExecutor.runtime`). */
+export function answerRuntime(
+  command: string,
+  projectDir: string,
+  workspaceRoot: string,
+  workspace?: boolean,
+): Promise<string>
+
 export interface ResolvedInputs {
   files: string[] // absolute paths, sorted
   listings: InputListing[] // what `files` was filtered from, for `addedInput`
@@ -105,6 +116,14 @@ export async function resolveOutputs(args: {
   outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<string[]>
+
+// Whether resolveOutputs takes `rel`, without the walk: a directory
+// snapshot's file list is held to the entry's rows through it.
+export function outputWalkTakes(
+  projectDir: string,
+  outputs: readonly string[],
+  nestedProjectDirs: string[],
+): (rel: string) => boolean
 
 // resolveOutputs, plus the empty directories the globs match: a save keeps them.
 export async function resolveOutputTree(args: {
