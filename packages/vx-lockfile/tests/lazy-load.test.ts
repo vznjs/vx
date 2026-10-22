@@ -48,3 +48,43 @@ it('declaring a plugin loads no parser; a digest loads only its own', async () =
   expect(after).toContain('bun.ts')
   expect(after).not.toContain('pnpm.ts')
 })
+
+const SETTINGS_PROBE = `
+const { readFileSync, mkdtempSync, writeFileSync } = require('node:fs')
+const path = require('node:path')
+const seen = []
+Bun.plugin({
+  name: 'seen',
+  setup(b) {
+    b.onLoad({ filter: /\\/vx-lockfile\\/src\\/[^/]+\\.ts$/ }, (a) => {
+      seen.push(a.path.split('/').pop())
+      return { contents: readFileSync(a.path, 'utf8'), loader: 'ts' }
+    })
+  },
+})
+const m = await import(process.argv[1])
+const root = mkdtempSync(path.join(require('node:os').tmpdir(), 'vx-lazy-'))
+writeFileSync(path.join(root, 'pnpm-workspace.yaml'), 'packages: [a]\\nnodeLinker: hoisted\\n')
+const key = await m.pnpm().key({ projectDir: root }, { workspaceRoot: root, cacheDir: root, warn() {} })
+console.log('SEEN ' + JSON.stringify({ key: Object.keys(key ?? {}), seen: [...seen].sort() }))
+`
+
+// A warm run keys every task on the install settings and parses no
+// lockfile (its digests are memoized): pnpm-workspace.yaml's fold loaded
+// the whole pnpm parser for them, ~1.5 ms a run.
+it("pnpm()'s settings fold loads no lockfile parser", async () => {
+  const proc = Bun.spawn(
+    [process.execPath, '-e', SETTINGS_PROBE, path.join(import.meta.dir, '..', 'src', 'index.ts')],
+    { env: { ...process.env }, stdout: 'pipe', stderr: 'pipe' },
+  )
+  const [out, err, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  expect({ code, err: code === 0 ? '' : err }).toEqual({ code: 0, err: '' })
+  const line = out.split('\n').find((l) => l.startsWith('SEEN ')) ?? 'SEEN {}'
+  const { key, seen } = JSON.parse(line.slice(5)) as { key: string[]; seen: string[] }
+  expect(key).toContain('pnpm-workspace.yaml')
+  expect(seen).not.toContain('pnpm.ts')
+})

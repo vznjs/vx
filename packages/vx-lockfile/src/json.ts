@@ -29,3 +29,12 @@ export function peerOnly(e: Json): ReadonlySet<string> {
 export function record(v: unknown): Json | undefined {
   return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : undefined
 }
+
+/** JSON with sorted keys, so YAML key order cannot move a digest. */
+export function stable(v: unknown): string {
+  return JSON.stringify(v, (_k, val: unknown) =>
+    val !== null && typeof val === 'object' && !Array.isArray(val)
+      ? Object.fromEntries(Object.entries(val as Json).sort(([a], [b]) => (a < b ? -1 : 1)))
+      : val,
+  )
+}

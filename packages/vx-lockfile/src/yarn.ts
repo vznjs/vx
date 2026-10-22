@@ -12,8 +12,7 @@
 // one digest is the root's reach through every entry the file resolves.
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
-import { stable } from './pnpm.js'
-import { depsOf, record } from './json.js'
+import { depsOf, record, stable } from './json.js'
 import { joinPosix } from './posix.js'
 
 export interface Lockfile {
