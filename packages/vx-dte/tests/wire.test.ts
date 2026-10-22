@@ -275,3 +275,67 @@ it('waits out the relay’s rate limit and sends again', async () => {
   const got = [...(await o.poll()), ...(await o.poll())].filter((m) => m.from === a.id)
   expect(got).toEqual([{ from: a.id, body: 'once' }])
 })
+
+// A socket a network stops carrying sends no close: on a CI runner an agent's
+// `held` frames waited on acks that never came, its lease lapsed mid-task, and
+// its polls read nothing while the relay queued its next batch (2026-10-22).
+it('drops a socket the relay stopped answering, and carries on over HTTP', async () => {
+  type Held = { key: string; id: string; socket?: { send(t: string): void; close(): void } }
+  const swallowed = new Set<string>()
+  let server: Bun.Server<Held> | undefined
+  const relay = createRelay({
+    heartbeatMs: 100,
+    upgrade: (key, id, req) => {
+      server!.upgrade(req, { data: { key, id } })
+      return new Response(null, { status: 101 })
+    },
+  })
+  server = Bun.serve<Held>({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: (r) => relay.fetch(r),
+    websocket: {
+      open(ws) {
+        ws.data.socket = {
+          send: (t) => {
+            if (!swallowed.has(ws.data.id)) ws.send(t)
+          },
+          close: () => ws.close(),
+        }
+        relay.attach(ws.data.key, ws.data.id, ws.data.socket)
+      },
+      message(ws, m) {
+        if (swallowed.has(ws.data.id)) return
+        if (m === 'ping') {
+          relay.seen(ws.data.key, ws.data.id, Date.now())
+          ws.send('pong')
+        } else ws.send(relay.frame(ws.data.key, ws.data.id, String(m)))
+      },
+      close(ws) {
+        relay.detach(ws.data.key, ws.data.id, ws.data.socket!)
+      },
+    },
+  })
+  servers.push({
+    url: '',
+    async stop() {
+      relay.close()
+      await server!.stop(true)
+    },
+  })
+  const url = `http://127.0.0.1:${server.port}`
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'agent', null, undefined)
+  await o.poll()
+  swallowed.add(a.id)
+  await a.send('orchestrator', 'held')
+  const got = []
+  for (let i = 0; i < 10 && got.length === 0; i++) got.push(...(await o.poll()))
+  expect(got).toEqual([{ from: a.id, body: 'held' }])
+  await o.send(a.id, 'batch')
+  const read = []
+  for (let i = 0; i < 10 && read.length === 0; i++) read.push(...(await a.poll()))
+  expect(read).toEqual([{ from: 'orchestrator', body: 'batch' }])
+  await a.leave()
+  await o.leave()
+}, 5_000)

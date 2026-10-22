@@ -6,7 +6,7 @@
 // skeleton until item 592; what differs is only how the mapping is made.
 
 import { definePlugin, type ProjectHookContext, type VxPlugin } from '@vzn/vx'
-import { type AdoptionMapping, cachedMapping } from './mapping-cache.js'
+import { type AdoptionMapping, cachedMapping, codeId } from './mapping-cache.js'
 import { warnGaps } from './plugin-gaps.js'
 import { headStamp, spareTrackedOutputs, trackedFiles } from './tracked-outputs.js'
 
@@ -76,18 +76,16 @@ export function adoptionPlugin(
     async project(config, ctx) {
       if (mappedFor !== ctx.projects) {
         mappedFor = ctx.projects
+        // The key's other reads overlap the plugin's own.
+        void codeId()
+        const stamp = headStamp(ctx.workspaceRoot)
         mapping = mapRun(ctx).then(async (r) =>
           r.spareTracked === true
-            ? cachedMapping(
-                ctx.cacheDir,
-                r.name,
-                [...r.reads, await headStamp(ctx.workspaceRoot)],
-                async () => {
-                  let read: Promise<readonly string[] | null> | undefined
-                  const tracked = () => (read ??= trackedFiles(ctx.workspaceRoot))
-                  return spare(ctx, await r.map(tracked), await tracked())
-                },
-              )
+            ? cachedMapping(ctx.cacheDir, r.name, [...r.reads, await stamp], async () => {
+                let read: Promise<readonly string[] | null> | undefined
+                const tracked = () => (read ??= trackedFiles(ctx.workspaceRoot))
+                return spare(ctx, await r.map(tracked), await tracked())
+              })
             : cachedMapping(ctx.cacheDir, r.name, r.reads, () =>
                 r.map(() => trackedFiles(ctx.workspaceRoot)),
               ),

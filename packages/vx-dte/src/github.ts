@@ -19,6 +19,25 @@ export function github(options: GithubOptions = {}): DteAdapter {
   const workflow = options.workflow ?? 'vx-agent.yml'
   // The agents one demand starts, by size: one dispatch each.
   const waves = new Map<string, AgentSpawn[]>()
+  // The workflow runs dispatched, and the dispatches still in flight: a
+  // run that ends first cancels those still queued, or they hold runners
+  // (macOS: five a plan) that the next run's agents wait for.
+  const runs: string[] = []
+  const pending = new Set<Promise<void>>()
+  const call = (path: string, init: RequestInit = {}): Promise<Response> => {
+    const { GITHUB_API_URL: api, GITHUB_TOKEN: token } = process.env
+    return fetch(`${api}${path}`, {
+      ...init,
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: 'application/vnd.github+json',
+        'content-type': 'application/json',
+        // The version whose dispatch answers with the workflow run's id.
+        'x-github-api-version': '2026-03-10',
+      },
+      signal: AbortSignal.timeout(30_000),
+    })
+  }
   const dispatch = async (size: string, agents: AgentSpawn[]): Promise<void> => {
     const env = process.env
     const { GITHUB_API_URL: api, GITHUB_REPOSITORY: repo, GITHUB_TOKEN: token } = env
@@ -29,13 +48,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
     const ref = env['GITHUB_HEAD_REF'] || env['GITHUB_REF_NAME']
     const sha = env['GITHUB_SHA']
     const first = agents[0]!
-    const res = await fetch(`${api}/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
+    const res = await call(`/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
       method: 'POST',
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: 'application/vnd.github+json',
-        'content-type': 'application/json',
-      },
       body: JSON.stringify({
         ref,
         inputs: {
@@ -46,12 +60,15 @@ export function github(options: GithubOptions = {}): DteAdapter {
           agents: JSON.stringify(agents.map((a) => a.id)),
         },
       }),
-      signal: AbortSignal.timeout(30_000),
     })
     if (!res.ok)
       throw new Error(
         `github(): dispatching ${workflow}: ${res.status} ${(await res.text()).slice(0, 200)}`,
       )
+    if (res.status === 200) {
+      const id = ((await res.json()) as { workflow_run_id?: number }).workflow_run_id
+      if (id !== undefined) runs.push(`/repos/${repo}/actions/runs/${id}`)
+    }
   }
   return {
     keyless: true,
@@ -65,11 +82,26 @@ export function github(options: GithubOptions = {}): DteAdapter {
       waves.set(a.size, agents)
       queueMicrotask(() => {
         waves.delete(a.size)
-        dispatch(a.size, agents).catch((err: unknown) => {
-          const why = err instanceof Error ? err.message : String(err)
-          for (const x of agents) x.exited(why)
-        })
+        const p = dispatch(a.size, agents)
+          .catch((err: unknown) => {
+            const why = err instanceof Error ? err.message : String(err)
+            for (const x of agents) x.exited(why)
+          })
+          .finally(() => pending.delete(p))
+        pending.add(p)
       })
+    },
+    // A finished run answers 409; one still queued or running is the
+    // run's no more: its results are in, or the run failed without them.
+    async close() {
+      await Promise.resolve() // a wave spawned this tick dispatches first
+      await Promise.all(pending)
+      await Promise.all(
+        runs.splice(0).map((run) =>
+          // A cancel that fails leaves the run to its timeout, as before.
+          call(`${run}/cancel`, { method: 'POST' }).catch(() => {}),
+        ),
+      )
     },
   }
 }

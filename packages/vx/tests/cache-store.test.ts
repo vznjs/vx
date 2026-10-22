@@ -4,7 +4,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
 import { Cache, type StoreOptions } from '../src/cache/index.js'
 import { parseSettingValue } from '../src/settings.js'
 
@@ -181,6 +181,50 @@ describe('a tree hit', () => {
     await cache.restoreOutputs(HASH, proj)
     expect(await readFile(path.join(proj, 'out/a.bin'), 'utf8')).toBe('short')
     expect(readdirSync(path.dirname(path.dirname(path.dirname(file))))).not.toContain('.vx-sum')
+    cache.close()
+  })
+})
+
+describe('a tree hit under a source directory', () => {
+  // solid's build outputs `store/dist/**` beside the sources in `store/`:
+  // the copy-out asked that each output's top be absent, so every such hit
+  // went through the tar extractor (~25 ms a task).
+  it('copies its files out where the directory around them stands, and keeps the sources', async () => {
+    const proj = path.join(root, 'p')
+    await mkdir(path.join(proj, 'store/out'), { recursive: true })
+    await writeFile(path.join(proj, 'store/src.ts'), 'source')
+    await writeFile(path.join(proj, 'store/out/a.bin'), LARGE)
+    const cache = new Cache(
+      path.join(root, 'c'),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { embeddings: 0, decompress: true },
+    )
+    await cache.save({
+      hash: HASH,
+      entry: { taskId: 'p#build', command: 'build', durationMs: 1, stdout: '' },
+      projectDir: proj,
+      outputFiles: [path.join(proj, 'store/out/a.bin')],
+    })
+    await rm(path.join(proj, 'store/out'), { recursive: true })
+    // The copy-out writes each file from the stored tree; the extractor
+    // streams a tar packed back from it and writes none that way.
+    const write = spyOn(Bun, 'write')
+    try {
+      await cache.restoreOutputs(HASH, proj)
+      const fromTree = write.mock.calls.filter(
+        ([, from]) =>
+          from instanceof Blob && String((from as { name?: string }).name).includes('.tree'),
+      )
+      expect(fromTree).toHaveLength(1)
+    } finally {
+      write.mockRestore()
+    }
+    expect(new Uint8Array(await readFile(path.join(proj, 'store/out/a.bin')))).toEqual(LARGE)
+    expect(await readFile(path.join(proj, 'store/src.ts'), 'utf8')).toBe('source')
     cache.close()
   })
 })
