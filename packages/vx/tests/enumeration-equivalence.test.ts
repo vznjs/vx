@@ -172,7 +172,9 @@ describe('scoped and whole-repo git enumeration agree on every project partition
         expect(trusted).toEqual(cleanExpected)
       }
       expect(scoped.worktreeDirty).toBe(whole.worktreeDirty)
-    })
+      // Each seed builds and commits a git tree: a loaded macOS runner took
+      // 6.4 s for seed 2, past bun's 5 s default.
+    }, 20_000)
   }
 })
 
