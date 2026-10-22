@@ -345,7 +345,7 @@ The `agents` rows, live while the run goes and again in the footer,
 give each agent its status (`starting`, `online`, `left`, `gone`, or `failed`
 with why, such as `exited 1: Cannot find package '@vzn/vx-dte'`), the tasks it
 has done, failed or had aborted by a stop, and the ones it runs now; while the run goes, those that left
-are one line (`3 agents  left  9 done`). This machine is `local`. An agent the
+are one line (`3 agents  left  9 done`). An agent the
 run started is named by its size and the order it was started in; one
 that joined on its own is `agent#N`. A task sent to an agent but not yet
 begun there has no row; the tasks line counts it `scheduled`
@@ -410,8 +410,6 @@ utilization of every machine together:
   - `adapter` is the `DteAdapter` that starts agents. Absent, the run
     starts none and uses the agents that join `relay`.
   - `relay` is the relay's URL; absent, the adapter's own.
-  - `local` is how many tasks this machine runs at once beside the agents
-    (default 0: agents run every task).
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`). It
     is asked again a minute before the token's `exp`, when it has one.
 - `vx dte agent` is an agent. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else

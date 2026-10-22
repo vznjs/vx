@@ -89,8 +89,6 @@ export interface DteOptions {
   readonly adapter?: DteAdapter
   /** The relay's URL; absent, the adapter's own. */
   readonly relay?: string
-  /** Tasks the orchestrator's own machine runs at once beside the agents (default 0: agents run them all). */
-  readonly local?: number
   /** The bearer token for the relay (default `VX_DTE_TOKEN`, else on GitHub Actions an OIDC token for the relay's URL). */
   readonly token?: () => string | undefined | Promise<string | undefined>
 }
@@ -99,7 +97,6 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   agents: 'object',
   adapter: 'object',
   relay: 'string',
-  local: 'number',
   token: 'function',
 }
 
@@ -127,9 +124,6 @@ export function dte(options: DteOptions) {
   }
   if (adapter === undefined && options.relay === undefined) {
     throw new UserError('dte(): with no adapter, set relay: the agents that join it run the tasks')
-  }
-  if (options.local !== undefined && !(Number.isInteger(options.local) && options.local >= 0)) {
-    throw new UserError('dte(): local is a whole number ≥ 0')
   }
   // On GitHub Actions with none given, one for the relay's URL.
   const token = async (relay: string): Promise<string | undefined> =>
@@ -171,7 +165,7 @@ export function dte(options: DteOptions) {
     const live = adapter.live?.() === true
     const agents = planned(
       sizes,
-      live ? await firstWave(args, ctx, sizes, options.local ?? 0) : undefined,
+      live ? await firstWave(args, ctx, sizes) : undefined,
     )
     const files: Record<string, string> = {
       ...adapter.render({ run, relay: options.relay, workspaceRoot: root, agents }),
@@ -300,7 +294,6 @@ export function dte(options: DteOptions) {
       proof ??= seal.secretProof(secret!)
       const { tree } = await snapshot(ctx.workspaceRoot)
       if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
-      const localSlots = options.local ?? 0
       const need = (id: string): Need => needOf(peaks.get(id))
       const o = new Orchestrator({
         me: seal.sealOrchestrator(
@@ -310,7 +303,6 @@ export function dte(options: DteOptions) {
         ),
         root: ctx.workspaceRoot,
         tree,
-        localSlots,
         nodes: () => nodes,
         need,
         artifacts: ctx.artifacts,
@@ -368,7 +360,7 @@ export function dte(options: DteOptions) {
             (id) => peaks.get(id)?.p50DurationMs,
             peak,
             fromMs,
-          ) - localSlots
+          )
         // What an agent asked for now finds once it has warmed up; while
         // none has joined, the warm-up is unknown and the width is now's.
         const wantCores = width(false, warmUp)
@@ -435,8 +427,8 @@ export function dte(options: DteOptions) {
         // are as many as join.
         capacity:
           adapter === undefined || sizes.some((s) => s.max === Infinity)
-            ? localSlots + JOINED_CAPACITY
-            : Math.max(1, localSlots + sizes.reduce((n, s) => n + 2 * s.max * s.cpu, 0)),
+            ? JOINED_CAPACITY
+            : Math.max(1, sizes.reduce((n, s) => n + 2 * s.max * s.cpu, 0)),
         execute: (req) => {
           // The first task that missed: agents start now, not for a run
           // its cache answers whole.
@@ -501,13 +493,12 @@ function readPlan(root: string, run: string): DtePlan['agents'] {
 /**
  * The agents by size the run's start keeps busy: the tasks `vx run
  * <args>` would run (`--dry=json`), laid out by the graph and history as
- * a run's demand lays them, beyond this machine's `localSlots`.
+ * a run's demand lays them.
  */
 async function firstWave(
   args: readonly string[],
   ctx: CommandContext,
   sizes: readonly Size[],
-  localSlots: number,
 ): Promise<Map<string, number>> {
   const { VX_DTE_RUN: _, ...env } = process.env
   const dry = Bun.spawnSync([...ctx.vx, 'run', ...args, '--dry=json'], {
@@ -556,7 +547,7 @@ async function firstWave(
       nodes,
       (id) => Math.min(needOf(peaks.get(id)).cores, biggest),
       (id) => peaks.get(id)?.p50DurationMs ?? p50.get(id),
-    ) - localSlots
+    )
   const above = [...remaining].flatMap((id) => needOf(peaks.get(id)).above ?? [])
   const wave = new Map<string, number>()
   for (const s of toStart(sizes, new Map(), 0, want, above))
