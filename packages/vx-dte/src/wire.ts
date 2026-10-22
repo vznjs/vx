@@ -19,6 +19,8 @@ export class RelayError extends Error {
 /** A dropped socket's first redial waits up to this, doubling per failure (full jitter). */
 const FIRST_REDIAL_MS = 250
 const MAX_REDIAL_MS = 30_000
+/** How long `leave` waits on its socket's close handshake. */
+const CLOSE_WAIT_MS = 2_000
 
 /** Runs `f` again after each rate-limit answer, as long as the relay asks to wait. */
 async function paced<T>(f: () => Promise<T>): Promise<T> {
@@ -87,8 +89,10 @@ export async function join(
   const id = joined['id'] as string
   const heartbeatMs = joined['heartbeatMs'] as number
   const offered = joined['socket'] === true
+  // A relay older than `frames` 2 takes only single sends down the socket.
+  const frames = joined['frames'] === 2
   const dial = async () =>
-    connect(base, id, await headers('GET', `${base}socket?id=${id}`, ''), heartbeatMs)
+    connect(base, id, await headers('GET', `${base}socket?id=${id}`, ''), heartbeatMs, frames)
   let socket = offered ? await dial() : undefined
   let failures = 0
   let redial: ReturnType<typeof setTimeout> | undefined
@@ -102,7 +106,7 @@ export async function join(
         .catch(() => undefined)
         .then((s) => {
           redial = undefined
-          if (left) s?.close()
+          if (left) void s?.close()
           else if (s === undefined) {
             failures++
             again()
@@ -117,22 +121,33 @@ export async function join(
     redial.unref()
   }
   again()
+  /** `down` the socket when it is open, else (or when it closes under it) `http`. */
+  const over = async (
+    down: (s: Socket) => Promise<void>,
+    http: () => Promise<unknown>,
+  ): Promise<void> => {
+    again()
+    const s = socket
+    if (s?.open === true) {
+      try {
+        await paced(() => down(s))
+        return
+      } catch (err) {
+        if (err instanceof RelayError) throw err
+        // Closed under it: HTTP says whether the relay took it (a resent
+        // seal is a replay its receiver drops).
+      }
+    }
+    await http()
+  }
   return {
     id,
     heartbeatMs,
     async send(to, body) {
-      again()
-      const s = socket
-      if (s?.open === true) {
-        try {
-          return await paced(() => s.send(to, body))
-        } catch (err) {
-          if (err instanceof RelayError) throw err
-          // Closed under it: HTTP says whether the relay took it (a resent
-          // seal is a replay its receiver drops).
-        }
-      }
-      await call('send', { id, to, body })
+      await over(
+        (s) => s.send(to, body),
+        () => call('send', { id, to, body }),
+      )
     },
     async poll(signal) {
       again()
@@ -146,13 +161,17 @@ export async function join(
       return (r?.['messages'] ?? []) as RelayMessage[]
     },
     async remove(agent) {
-      await call('remove', { id, agent })
+      const http = () => call('remove', { id, agent })
+      await (frames ? over((s) => s.request({ remove: agent }), http) : http())
     },
     async leave() {
       left = true
       clearTimeout(redial)
-      await call('leave', { id }).catch(() => undefined)
-      socket?.close()
+      const s = socket
+      // The relay drops it and closes the socket, which is its answer.
+      if (frames && s?.open === true) await s.request({ leave: true }).catch(() => undefined)
+      else await call('leave', { id }).catch(() => undefined)
+      await s?.close()
     },
   }
 }
@@ -191,9 +210,12 @@ function expiry(token: string | undefined): number {
 interface Socket {
   readonly open: boolean
   readonly inbox: RelayMessage[]
+  /** One frame, `{ leave: true }` or `{ remove }`; resolves on the relay's answer. */
+  request(frame: Record<string, unknown>): Promise<void>
+  /** A send; those asked for in one turn of the event loop go as one frame. */
   send(to: string, body: unknown): Promise<void>
   poll(signal?: AbortSignal): Promise<RelayMessage[]>
-  close(): void
+  close(): Promise<void>
 }
 
 /**
@@ -207,6 +229,8 @@ async function connect(
   id: string,
   headers: Record<string, string>,
   heartbeatMs: number,
+  /** The relay takes `sends` frames (`frames` 2). */
+  batches: boolean,
 ): Promise<Socket | undefined> {
   const ws = new WebSocket(`${base.replace(/^http/, 'ws')}socket?id=${id}`, { headers })
   const opened = await new Promise<boolean>((resolve) => {
@@ -219,7 +243,48 @@ async function connect(
   const inbox: RelayMessage[] = []
   let wake: (() => void) | undefined
   let n = 0
-  const pending = new Map<number, { resolve(): void; reject(err: Error): void }>()
+  type Answer = {
+    status?: number
+    error?: string
+    retryAfterMs?: number
+    results?: (Answer | null)[]
+  }
+  const pending = new Map<number, { settle(a: Answer): void; reject(err: Error): void }>()
+  const refused = (a: Answer): RelayError =>
+    new RelayError(a.status!, `relay send: ${a.status} ${a.error ?? ''}`, a.retryAfterMs)
+  /** Sends asked for in this turn of the event loop, which go as one frame. */
+  let sends: { to: string; body: unknown; resolve(): void; reject(err: Error): void }[] = []
+  const flush = (): void => {
+    const batch = sends
+    sends = []
+    if (!batches || batch.length === 1) {
+      for (const one of batch) request({ to: one.to, body: one.body }).then(one.resolve, one.reject)
+      return
+    }
+    const k = ++n
+    pending.set(k, {
+      settle(a) {
+        batch.forEach((one, i) => {
+          const r = a.status !== undefined ? a : (a.results?.[i] ?? null)
+          if (r === null || r.status === undefined) one.resolve()
+          else one.reject(refused(r))
+        })
+      },
+      reject: (err) => {
+        for (const one of batch) one.reject(err)
+      },
+    })
+    ws.send(JSON.stringify({ n: k, sends: batch.map(({ to, body }) => ({ to, body })) }))
+  }
+  const request = (frame: Record<string, unknown>): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const k = ++n
+      pending.set(k, {
+        settle: (a) => (a.status === undefined ? resolve() : reject(refused(a))),
+        reject,
+      })
+      ws.send(JSON.stringify({ n: k, ...frame }))
+    })
   // A socket a network stops carrying sends no close: one silent for a
   // heartbeat and a half is dead, before the relay's three-heartbeat sweep
   // drops this participant. Pinged each half heartbeat, so a live one is not.
@@ -239,18 +304,19 @@ async function connect(
     pending.clear()
     wake?.()
   }
-  ws.onclose = closed
+  let shut: () => void = () => {}
+  const done = new Promise<void>((resolve) => {
+    shut = resolve
+  })
+  ws.onclose = () => {
+    closed()
+    shut()
+  }
   ws.onerror = closed
   ws.onmessage = (e) => {
     heard = performance.now()
     if (e.data === 'pong') return
-    const m = JSON.parse(String(e.data)) as {
-      messages?: RelayMessage[]
-      n?: number
-      status?: number
-      error?: string
-      retryAfterMs?: number
-    }
+    const m = JSON.parse(String(e.data)) as Answer & { messages?: RelayMessage[]; n?: number }
     if (m.messages !== undefined) {
       inbox.push(...m.messages)
       wake?.()
@@ -258,22 +324,19 @@ async function connect(
     }
     const p = pending.get(m.n!)
     pending.delete(m.n!)
-    if (m.status === undefined) p?.resolve()
-    else
-      p?.reject(
-        new RelayError(m.status, `relay send: ${m.status} ${m.error ?? ''}`, m.retryAfterMs),
-      )
+    p?.settle(m)
   }
   return {
     get open() {
       return open
     },
     inbox,
+    request,
     send(to, body) {
+      if (!open) return Promise.reject(new Error('socket closed'))
       return new Promise((resolve, reject) => {
-        const k = ++n
-        pending.set(k, { resolve, reject })
-        ws.send(JSON.stringify({ n: k, to, body }))
+        if (sends.length === 0) queueMicrotask(flush)
+        sends.push({ to, body, resolve, reject })
       })
     },
     async poll(signal) {
@@ -292,9 +355,12 @@ async function connect(
       }
       return inbox.splice(0)
     },
-    close() {
+    async close() {
       closed()
-      ws.close()
+      ws.close(1000)
+      // Its close handshake, so a process exiting next does not cut the
+      // socket (the host logs that as a client that disconnected).
+      await Promise.race([done, Bun.sleep(CLOSE_WAIT_MS)])
     },
   }
 }

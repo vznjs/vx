@@ -26,13 +26,14 @@ import {
   type TaskArtifacts,
   type TaskNode,
 } from '@vzn/vx'
-import type {
-  AgentInfo,
-  DepOrder,
-  RunOrder,
-  ToAgent,
-  ToOrchestrator,
-  WiredResult,
+import {
+  HELD_EVERY,
+  type AgentInfo,
+  type DepOrder,
+  type RunOrder,
+  type ToAgent,
+  type ToOrchestrator,
+  type WiredResult,
 } from './messages.js'
 import { Usage, type UsageStats } from './usage.js'
 import { RelayError, type Participant } from './wire.js'
@@ -450,9 +451,9 @@ export class Orchestrator {
     return out
   }
 
-  /** Three heartbeats from now: the agent says what it holds each one. */
+  /** Three of the agent's `held` from now. */
   private lease(job: Job): void {
-    job.leaseUntil = performance.now() + 3 * this.o.me.heartbeatMs
+    job.leaseUntil = performance.now() + 3 * HELD_EVERY * this.o.me.heartbeatMs
   }
 
   /**

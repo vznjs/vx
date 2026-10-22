@@ -211,6 +211,14 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     }
   }
 
+  /** The orchestrator takes an agent it did not admit off the run. */
+  const removeAgent = (run: Run, p: Participant, agent: unknown): void => {
+    const a = typeof agent === 'string' ? run.byId.get(agent) : undefined
+    if (p.role !== 'orchestrator') throw new HttpError(403, 'only the orchestrator removes')
+    if (a === undefined || a.role !== 'agent') throw new HttpError(404, 'unknown agent')
+    drop(run, a, false)
+  }
+
   /** A closed run, cut to its tombstone: who took part, and with what key, goes. */
   const empty = (run: Run): void => {
     for (const p of run.byId.values()) {
@@ -360,7 +368,8 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     return Response.json({
       id: p.id,
       heartbeatMs,
-      ...(opts.upgrade === undefined ? {} : { socket: true }),
+      // `frames`: the socket also takes `sends`, `leave` and `remove`.
+      ...(opts.upgrade === undefined ? {} : { socket: true, frames: 2 }),
     })
   }
 
@@ -488,11 +497,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       return new Response(null, { status: 204 })
     }
     if (verb === 'remove') {
-      // The orchestrator takes an agent it did not admit off the run.
-      const a = typeof body['agent'] === 'string' ? run.byId.get(body['agent']) : undefined
-      if (p.role !== 'orchestrator') throw new HttpError(403, 'only the orchestrator removes')
-      if (a === undefined || a.role !== 'agent') throw new HttpError(404, 'unknown agent')
-      drop(run, a, false)
+      removeAgent(run, p, body['agent'])
       return new Response(null, { status: 204 })
     }
     drop(run, p)
@@ -536,7 +541,14 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       let n: unknown = null
       try {
         if (text.length > MAX_BODY) throw new HttpError(413, 'body over 1 MiB')
-        let body: { n?: unknown; to?: unknown; body?: unknown }
+        let body: {
+          n?: unknown
+          to?: unknown
+          body?: unknown
+          leave?: unknown
+          remove?: unknown
+          sends?: unknown
+        }
         try {
           body = JSON.parse(text) as typeof body
         } catch {
@@ -544,7 +556,23 @@ export function createRelay(opts: RelayOptions = {}): Relay {
         }
         n = body?.n ?? null
         const run = live(key)
-        send(run, participant(run, id, 'socket'), body, text.length)
+        const p = participant(run, id, 'socket')
+        // `leave` and `remove` too, so a participant with a socket makes no request after it.
+        if (body.leave === true) drop(run, p)
+        else if (body.remove !== undefined) removeAgent(run, p, body.remove)
+        else if (Array.isArray(body.sends)) {
+          // Several sends in one frame: one message the host bills, each answered.
+          const results = body.sends.map((one: { to?: unknown; body?: unknown }) => {
+            try {
+              send(run, p, one, JSON.stringify(one).length)
+              return null
+            } catch (err) {
+              if (!(err instanceof HttpError)) throw err
+              return { status: err.status, ...errorBody(err) }
+            }
+          })
+          if (results.some((r) => r !== null)) return JSON.stringify({ n, results })
+        } else send(run, p, body, text.length)
         return JSON.stringify({ n })
       } catch (err) {
         if (!(err instanceof HttpError)) throw err

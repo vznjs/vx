@@ -4,6 +4,14 @@
 
 import type { CacheFacts, ExecuteResult, ExecuteSandbox, SandboxConfig } from '@vzn/vx'
 
+/**
+ * An agent says what it holds every this many heartbeats. Each says is a
+ * relay message its host bills; at one per heartbeat they were most of a
+ * run's traffic (2026-10-22), and the relay's own heartbeat finds a dead
+ * agent sooner.
+ */
+export const HELD_EVERY = 6
+
 /** An agent's `join` info. */
 export interface AgentInfo {
   readonly v: 1

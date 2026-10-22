@@ -23,7 +23,6 @@ import type { RunOrder } from '../src/messages.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
-const R2 = '00000000-0000-4000-8000-000000000002'
 
 const dirs: string[] = []
 afterEach(async () => {
@@ -517,17 +516,19 @@ it('a task an agent stops saying it holds goes back when its lease ends', async 
     await Bun.sleep(50)
     void h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
-    // Alive and holding t1 past three heartbeats: its lease holds.
-    for (let i = 0; i < 8; i++) {
-      await a.say({ type: 'held', running: ['t1'], queued: [] })
-      await Bun.sleep(50)
-    }
+    // One `held` lasts three of its own period, `HELD_EVERY` heartbeats
+    // each: an agent says it that seldom, as each is a relay message billed.
+    await a.say({ type: 'held', running: ['t1'], queued: [] })
+    // Five heartbeats, polled so the relay keeps it.
+    for (let i = 0; i < 5; i++) await a.poll()
     expect(h.o.where('t1')).toBe('agent#1')
     const b = await h.agent(1)
     // Alive, holding nothing: t1's lease ends and it moves.
     const alive = setInterval(() => void a.say({ type: 'held', running: [], queued: [] }), 50)
     try {
-      expect(await b.batches()).toEqual([['t1']])
+      let got: string[][] = []
+      for (let i = 0; i < 3 && got.length === 0; i++) got = await b.batches()
+      expect(got).toEqual([['t1']])
     } finally {
       clearInterval(alive)
     }

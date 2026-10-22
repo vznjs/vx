@@ -26,7 +26,7 @@ function verbs(): string[] {
   return asked
 }
 
-it('talks over the socket the relay offers, polling nothing', async () => {
+it('talks over the socket the relay offers: sends, removes and leaves, polling nothing', async () => {
   const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
   servers.push(s)
   const asked = verbs()
@@ -40,9 +40,15 @@ it('talks over the socket the relay offers, polling nothing', async () => {
   await a.send('orchestrator', 'done')
   expect(await o.poll()).toEqual([{ from: a.id, body: 'done' }])
   await expect(a.send('nobody', 1)).rejects.toThrow('relay send: 404 unknown to')
+  await expect(a.remove(o.id)).rejects.toThrow('relay send: 403 only the orchestrator removes')
+  const b = await join(s.url, R, 'agent', null, undefined)
+  await o.poll()
+  await o.remove(b.id)
   await a.leave()
+  expect(await o.poll()).toEqual([{ from: 'relay', body: { type: 'lost', id: a.id } }])
   await o.leave()
-  expect(asked).toEqual(['join', 'join', 'leave', 'leave'])
+  // Join opens the session; all else, leaving and removing too, goes down the socket.
+  expect(asked).toEqual(['join', 'join', 'join'])
 })
 
 it('polls over HTTP once its socket is gone', async () => {
@@ -62,10 +68,12 @@ it('polls over HTTP once its socket is gone', async () => {
   expect(asked).toEqual(['poll'])
 })
 
-it('dials its socket again after it drops, and is back off HTTP', async () => {
-  // A relay on Bun.serve that can drop a participant's socket, as a network does.
+/** A relay on Bun.serve whose participants' sockets the test sees, and can drop as a network does. */
+function sockets(framesV2 = true) {
   type Held = { key: string; id: string; socket?: { send(t: string): void; close(): void } }
   const open: Bun.ServerWebSocket<Held>[] = []
+  const closes: { id: string; code: number }[] = []
+  const frames: string[] = []
   let server: Bun.Server<Held> | undefined
   const relay = createRelay({
     upgrade: (key, id, req) => {
@@ -76,7 +84,13 @@ it('dials its socket again after it drops, and is back off HTTP', async () => {
   server = Bun.serve<Held>({
     hostname: '127.0.0.1',
     port: 0,
-    fetch: (r) => relay.fetch(r),
+    fetch: async (r) => {
+      const res = await relay.fetch(r)
+      if (framesV2 || !r.url.endsWith('/join')) return res
+      // A relay from before `frames` 2.
+      const { frames: _, ...json } = (await res.json()) as Record<string, unknown>
+      return Response.json(json, { status: res.status })
+    },
     websocket: {
       open(ws) {
         open.push(ws)
@@ -85,9 +99,13 @@ it('dials its socket again after it drops, and is back off HTTP', async () => {
       },
       message(ws, m) {
         if (m === 'ping') ws.send('pong')
-        else ws.send(relay.frame(ws.data.key, ws.data.id, String(m)))
+        else {
+          frames.push(String(m))
+          ws.send(relay.frame(ws.data.key, ws.data.id, String(m)))
+        }
       },
-      close(ws) {
+      close(ws, code) {
+        closes.push({ id: ws.data.id, code })
         relay.detach(ws.data.key, ws.data.id, ws.data.socket!)
       },
     },
@@ -99,7 +117,11 @@ it('dials its socket again after it drops, and is back off HTTP', async () => {
       await server!.stop(true)
     },
   })
-  const url = `http://127.0.0.1:${server.port}`
+  return { url: `http://127.0.0.1:${server.port}`, open, closes, frames }
+}
+
+it('dials its socket again after it drops, and is back off HTTP', async () => {
+  const { url, open } = sockets()
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'agent', null, undefined)
   await o.poll()
@@ -115,6 +137,70 @@ it('dials its socket again after it drops, and is back off HTTP', async () => {
   expect(asked).toEqual([])
   await a.leave()
   await o.leave()
+})
+
+it('leaves only once its socket has closed, so exiting next cuts nothing', async () => {
+  // A socket a process exits under before its close handshake is cut: the
+  // host logs a client that disconnected. An agent of a run that closed
+  // leaves with its socket still open, so its leave closes it.
+  const closed: WebSocket[] = []
+  const Real = globalThis.WebSocket
+  globalThis.WebSocket = class extends Real {
+    constructor(...args: ConstructorParameters<typeof Real>) {
+      super(...args)
+      this.addEventListener('close', () => closed.push(this))
+    }
+  } as typeof WebSocket
+  try {
+    const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
+    servers.push(s)
+    const o = await join(s.url, R2, 'orchestrator', null, undefined)
+    const a = await join(s.url, R2, 'agent', null, undefined)
+    await o.poll()
+    await o.leave()
+    expect(await a.poll()).toEqual([{ from: 'relay', body: { type: 'closed' } }])
+    expect(closed).toHaveLength(1)
+    await a.leave()
+    expect(closed).toHaveLength(2)
+  } finally {
+    globalThis.WebSocket = Real
+  }
+})
+
+it('sends asked for together go as one frame, each answered', async () => {
+  const { url, frames } = sockets()
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'agent', null, undefined)
+  await o.poll()
+  const sent = await Promise.allSettled([o.send(a.id, 1), o.send('nobody', 2), o.send(a.id, 3)])
+  expect(sent.map((r) => (r.status === 'fulfilled' ? 'ok' : (r.reason as Error).message))).toEqual([
+    'ok',
+    'relay send: 404 unknown to',
+    'ok',
+  ])
+  expect(frames).toHaveLength(1)
+  expect(await a.poll()).toEqual([
+    { from: 'orchestrator', body: 1 },
+    { from: 'orchestrator', body: 3 },
+  ])
+  await a.leave()
+  await o.leave()
+})
+
+it('to a relay without frames 2, sends one by one and leaves over HTTP', async () => {
+  const { url, frames } = sockets(false)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'agent', null, undefined)
+  await o.poll()
+  await Promise.all([o.send(a.id, 1), o.send(a.id, 2)])
+  expect(frames.map((f) => Object.keys(JSON.parse(f) as object))).toEqual([
+    ['n', 'to', 'body'],
+    ['n', 'to', 'body'],
+  ])
+  const asked = verbs()
+  await a.leave()
+  await o.leave()
+  expect(asked).toEqual(['leave', 'leave'])
 })
 
 it('polls a relay that offers no socket', async () => {
