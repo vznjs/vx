@@ -1,6 +1,8 @@
 // The relay of PROTOCOL.md: per-run mailboxes between one orchestrator and
 // its agents, held in memory: a relay restart ends the runs it carried,
 // unless a `store` keeps them (a Durable Object's, across hibernation).
+// It knows as little as routing needs: a run is a hash, bodies and an
+// agent's info are its peers' ciphertext, and no body is ever stored.
 
 import { TokenError, type VerifiedToken } from './oidc.js'
 import { importKey, PROOF_HEADER, proofText, verifyProof } from './proof.js'
@@ -14,7 +16,10 @@ export interface RelayOptions {
   verify?: ((token: string, req: Request) => Promise<VerifiedToken>) | undefined
   /** How often a participant must be heard from; lost after three. */
   heartbeatMs?: number
-  /** Keeps runs, participants and queued messages across a restart. */
+  /**
+   * Keeps runs and participants across a restart, never a message: a
+   * participant whose queue was not empty is lost on restore.
+   */
   store?: RelayStore | undefined
   /**
    * Answers a participant's `socket` request, which `join` then offers; the
@@ -61,13 +66,12 @@ interface Message {
 interface Participant {
   id: string
   role: 'orchestrator' | 'agent'
+  /** An agent's, until the orchestrator is told it joined. */
   info: unknown
   seen: number
   queue: Message[]
   /** The queue's size, in bytes of the bodies that filled it. */
   bytes: number
-  /** The store's sequence of the queue's first message. */
-  head: number
   waiter?: (() => void) | undefined
   socket?: RelaySocket | undefined
 }
@@ -99,10 +103,11 @@ const MAX_WAIT_MS = 25_000
 /** A closed run holds its participants this long. */
 const CLOSED_TTL_MS = 10 * 60_000
 /**
- * A closed run answers `410` this long, so its id never takes another
- * orchestrator while one of its agents could still be about.
+ * A closed run answers `410` this long, by its hash and when it closed
+ * only, so its id never takes another orchestrator while one of its
+ * agents could still start: CI hosts drop a job queued a day.
  */
-const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60_000
+const TOMBSTONE_TTL_MS = 24 * 60 * 60_000
 /** How far a proof's time may be from the relay's: a CI runner's clock drifts. */
 const PROOF_SKEW_MS = 2 * 60_000
 
@@ -119,11 +124,10 @@ export function createRelay(opts: RelayOptions = {}): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 5_000
   const runs = new Map<string, Run>()
   const store = opts.store
-  // A run's key holds `\0`s of its own.
-  const runAt = (key: string): string => `r/${encodeURIComponent(key)}`
-  const pAt = (run: Run, id: string): string => `p/${encodeURIComponent(run.key)}/${id}`
-  const mAt = (run: Run, id: string, seq: number): string =>
-    `m/${encodeURIComponent(run.key)}/${id}/${String(seq).padStart(12, '0')}`
+  const runAt = (key: string): string => `r/${key}`
+  const pAt = (run: Run, id: string): string => `p/${run.key}/${id}`
+  /** Marks a participant whose queue holds a message: one a restart would lose. */
+  const qAt = (run: Run, id: string): string => `q/${run.key}/${id}`
   const saveRun = (run: Run): void =>
     store?.put(runAt(run.key), {
       closed: run.closed,
@@ -131,6 +135,8 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       pin: run.pin ?? null,
       cert: run.cert ?? null,
     })
+  const saveParticipant = (run: Run, p: Participant): void =>
+    store?.put(pAt(run, p.id), { role: p.role, info: p.info })
 
   const deliver = (run: Run, p: Participant, m: Message, bytes = 0): void => {
     if (p.socket !== undefined && p.queue.length === 0) {
@@ -144,7 +150,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     if (p.queue.length >= MAX_QUEUE || p.bytes + bytes > MAX_QUEUE_BYTES) {
       throw new HttpError(429, 'queue full')
     }
-    store?.put(mAt(run, p.id, p.head + p.queue.length), m)
+    if (p.queue.length === 0) store?.put(qAt(run, p.id), true)
     p.queue.push(m)
     p.bytes += bytes
     p.waiter?.()
@@ -152,8 +158,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
 
   const drain = (run: Run, p: Participant): Message[] => {
     const messages = p.queue
-    for (let i = 0; i < messages.length; i++) store?.delete(mAt(run, p.id, p.head + i))
-    p.head += messages.length
+    if (messages.length > 0) store?.delete(qAt(run, p.id))
     p.queue = []
     p.bytes = 0
     return messages
@@ -174,6 +179,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     const left = drain(run, p)
     if (!tell) (run.removed ??= new Map()).set(p.id, left)
     store?.delete(pAt(run, p.id))
+    store?.delete(qAt(run, p.id))
     // Its next request, over HTTP, learns it is gone.
     p.socket?.close()
     if (p.role === 'orchestrator') {
@@ -188,13 +194,21 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     }
   }
 
+  /** A closed run, cut to its tombstone: who took part, and with what key, goes. */
   const empty = (run: Run): void => {
     for (const p of run.byId.values()) {
       drain(run, p)
       store?.delete(pAt(run, p.id))
+      store?.delete(qAt(run, p.id))
     }
     run.byId.clear()
     delete run.orchestrator
+    delete run.pin
+    delete run.cert
+    delete run.certKey
+    delete run.nonces
+    delete run.removed
+    if (run.closed) saveRun(run)
   }
 
   const forget = (run: Run): void => {
@@ -231,7 +245,8 @@ export function createRelay(opts: RelayOptions = {}): Relay {
   const timer = opts.timer === false ? undefined : setInterval(sweep, heartbeatMs)
   ;(timer as { unref?: () => void } | undefined)?.unref?.()
 
-  if (store !== undefined) restore(store, runs)
+  // A participant whose queued messages the restart lost: as if it went silent.
+  if (store !== undefined) for (const [run, p] of restore(store, runs)) drop(run, p)
 
   /** The orchestrator's request is signed by the key it joined with, at most once. */
   const prove = async (run: Run, req: Request, url: URL, body: string, cert = run.cert) => {
@@ -289,24 +304,31 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     const p: Participant = {
       id: crypto.randomUUID().replaceAll('-', ''),
       role: body.role,
-      info: body.info ?? null,
+      // No one reads the orchestrator's.
+      info: body.role === 'agent' ? (body.info ?? null) : null,
       seen: Date.now(),
       queue: [],
       bytes: 0,
-      head: 0,
     }
     run.byId.set(p.id, p)
-    store?.put(pAt(run, p.id), { role: p.role, info: p.info })
     if (p.role === 'orchestrator') {
       run.orchestrator = p
       run.cert = body.key as string
       if (token?.job !== undefined) run.pin = token.job
       saveRun(run)
+      saveParticipant(run, p)
       for (const a of run.byId.values()) {
-        if (a.role === 'agent') deliver(run, p, joined(a))
+        if (a.role === 'agent') {
+          deliver(run, p, joined(a))
+          saveParticipant(run, a)
+        }
       }
     } else if (run.orchestrator !== undefined) {
       deliver(run, run.orchestrator, joined(p))
+      saveParticipant(run, p)
+    } else {
+      // Held until an orchestrator joins to read it.
+      saveParticipant(run, p)
     }
     return Response.json({
       id: p.id,
@@ -384,7 +406,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     const token = await authorize(req, opts.verify)
     // A run is its id within its repository, so another tenant that learns
     // an id cannot open it first.
-    const key = runKey(runId, token)
+    const key = await runKey(runId, token)
     let run = runs.get(key)
     if (run?.closed === true) throw new HttpError(410, 'run closed')
     // As the orchestrator: in its CI job, and signed by the key it joined with.
@@ -514,15 +536,20 @@ export function createRelay(opts: RelayOptions = {}): Relay {
   }
 }
 
-const joined = (a: Participant): Message => ({
-  from: 'relay',
-  body: { type: 'joined', id: a.id, info: a.info },
-})
+/** Tells the orchestrator `a` joined, and forgets what it said. */
+const joined = (a: Participant): Message => {
+  const info = a.info
+  a.info = null
+  return { from: 'relay', body: { type: 'joined', id: a.id, info } }
+}
 
-/** Runs as `store` kept them; each participant counts as heard from now. */
-function restore(store: RelayStore, runs: Map<string, Run>): void {
+/**
+ * Runs as `store` kept them; each participant counts as heard from now.
+ * Returns the participants whose queued messages are gone.
+ */
+function restore(store: RelayStore, runs: Map<string, Run>): [Run, Participant][] {
   const now = Date.now()
-  const parts = (k: string): string[] => k.split('/').map(decodeURIComponent)
+  const parts = (k: string): string[] => k.split('/')
   for (const [k, v] of store.list({ prefix: 'r/' })) {
     const { closed, closedAt, pin, cert } = v as {
       closed: boolean
@@ -545,29 +572,33 @@ function restore(store: RelayStore, runs: Map<string, Run>): void {
     const run = runs.get(key)
     if (run === undefined) continue
     const { role, info } = v as Pick<Participant, 'role' | 'info'>
-    const p: Participant = { id, role, info, seen: now, queue: [], bytes: 0, head: -1 }
+    const p: Participant = { id, role, info, seen: now, queue: [], bytes: 0 }
     run.byId.set(id, p)
     if (role === 'orchestrator') run.orchestrator = p
   }
-  // Listed in key order, so oldest first.
-  for (const [k, v] of store.list({ prefix: 'm/' })) {
-    const [, key, id, seq] = parts(k) as [string, string, string, string]
-    const p = runs.get(key)?.byId.get(id)
-    if (p === undefined) continue
-    if (p.head < 0) p.head = Number(seq)
-    p.queue.push(v as Message)
-    p.bytes += JSON.stringify((v as Message).body ?? null).length
+  const lost: [Run, Participant][] = []
+  for (const [k] of store.list({ prefix: 'q/' })) {
+    const [, key, id] = parts(k) as [string, string, string]
+    const run = runs.get(key)
+    const p = run?.byId.get(id)
+    if (p === undefined) store.delete(k)
+    else lost.push([run!, p])
   }
-  for (const run of runs.values()) for (const p of run.byId.values()) if (p.head < 0) p.head = 0
+  return lost
 }
 
 function missing(): never {
   throw new HttpError(404, 'unknown run')
 }
 
-/** The run's name: its id, and the issuer and run claims of its tokens. */
-export function runKey(runId: string, token: VerifiedToken | undefined): string {
-  return token === undefined ? runId : [token.iss, ...token.run, runId].join('\0')
+/**
+ * The run's name: a SHA-256 of its id and the issuer and run claims of its
+ * tokens, so neither storage nor a Durable Object's name says whose it is.
+ */
+export async function runKey(runId: string, token: VerifiedToken | undefined): Promise<string> {
+  const name = token === undefined ? runId : [token.iss, ...token.run, runId].join('\0')
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(name))
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 async function authorize(

@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import path from 'node:path'
 import { createProver, createRelay, type Prover, type Relay } from '../src/index.js'
+import { runKey } from '../src/relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
 const R1 = '00000000-0000-4000-8000-000000000002'
+/** R as its host names it, with no token. */
+const K = await runKey(R, undefined)
 
 const relays: Relay[] = []
 afterEach(() => {
@@ -316,43 +319,71 @@ describe('a host that keeps runs and holds websockets', () => {
     }
   }
 
-  it('keeps runs, participants and queued messages across a restart', async () => {
+  it('keeps runs and participants across a restart, never a message', async () => {
     const store = memory()
-    const before = client({ store, timer: false, verify: async () => ({ iss: 'i', run: ['1'] }) })
+    const verify = async () => ({ iss: 'https://gitlab.example', run: ['project-xyz'] })
+    const before = client({ store, timer: false, verify })
     const o = (await before.call(R, 'join', { role: 'orchestrator' }, '', 't')).json.id
-    const a = (await before.call(R, 'join', { role: 'agent', info: 7 }, '', 't')).json.id
-    await before.call(R, 'send', { id: o, to: a, body: 1 }, '', 't')
-    await before.call(R, 'send', { id: o, to: a, body: 2 }, '', 't')
+    const a = (await before.call(R, 'join', { role: 'agent', info: 'sealed' }, '', 't')).json.id
+    const b = (await before.call(R, 'join', { role: 'agent', info: 'sealed' }, '', 't')).json.id
+    await before.call(R, 'poll', undefined, `?id=${o}&wait=0`, 't')
+    await before.call(R, 'send', { id: o, to: a, body: 'secret' }, '', 't')
+    // Nothing kept says whose run it is, what was sent, or what an agent said once told.
+    const kept = JSON.stringify([...store.kv])
+    expect([
+      kept.includes('secret'),
+      kept.includes('sealed'),
+      kept.includes('gitlab'),
+      kept.includes('project-xyz'),
+      kept.includes(R),
+    ]).toEqual([false, false, false, false, false])
     // The orchestrator's key, kept: it still signs as the run's orchestrator.
-    const after = client(
-      { store, timer: false, verify: async () => ({ iss: 'i', run: ['1'] }) },
-      before.provers,
-    )
+    const after = client({ store, timer: false, verify }, before.provers)
     const polled = async (id: string) =>
-      (await after.call(R, 'poll', undefined, `?id=${id}&wait=0`, 't')).json.messages
-    expect([await polled(a), await polled(o)]).toEqual([
-      [
-        { from: 'orchestrator', body: 1 },
-        { from: 'orchestrator', body: 2 },
-      ],
-      [{ from: 'relay', body: { type: 'joined', id: a, info: 7 } }],
-    ])
-    await after.call(R, 'leave', { id: o }, '', 't')
-    expect([...store.kv.keys()].filter((k) => k.startsWith('m/'))).toEqual([
-      expect.stringContaining(`/${a}/`),
+      (await after.call(R, 'poll', undefined, `?id=${id}&wait=0`, 't')).json
+    // `a`'s queue held a message the restart lost: `a` is lost, `b` goes on.
+    expect([await polled(a), await polled(b), await polled(o)]).toEqual([
+      { error: 'unknown id' },
+      { messages: [] },
+      { messages: [{ from: 'relay', body: { type: 'lost', id: a } }] },
     ])
   })
 
-  it('remembers a closed run after its participants go, so its id never opens again', () => {
+  it('holds an agent’s info only until the orchestrator is told it', async () => {
     const store = memory()
-    const old = Date.now() - 11 * 60_000
-    const key = `r/${encodeURIComponent(R)}`
-    store.put(key, { closed: true, closedAt: old, pin: null })
-    store.put(`p/${encodeURIComponent(R)}/a1`, { role: 'agent', info: null })
     const c = client({ store, timer: false })
-    c.relay.sweep()
-    expect([...store.kv.keys()]).toEqual([key])
-    return c.call(R, 'join', { role: 'orchestrator' }).then((r) => expect(r.status).toBe(410))
+    const a = await c.join(R, 'agent', 'sealed')
+    expect(JSON.stringify([...store.kv]).includes('sealed')).toBe(true)
+    const o = await c.join(R, 'orchestrator')
+    expect(JSON.stringify([...store.kv]).includes('sealed')).toBe(false)
+    expect(await c.poll(R, o)).toEqual([
+      { from: 'relay', body: { type: 'joined', id: a, info: 'sealed' } },
+    ])
+  })
+
+  it('remembers a closed run a day by its hash alone, so its id never opens again', async () => {
+    const store = memory()
+    const c = client({ store, timer: false })
+    const o = await c.join(R, 'orchestrator')
+    await c.join(R, 'agent')
+    await c.call(R, 'leave', { id: o })
+    const clock = Date.now
+    const at = (ms: number) => {
+      const now = clock()
+      Date.now = () => now + ms
+      try {
+        c.relay.sweep()
+      } finally {
+        Date.now = clock
+      }
+    }
+    at(11 * 60_000)
+    expect([...store.kv]).toEqual([
+      [`r/${K}`, { closed: true, closedAt: expect.any(Number), pin: null, cert: null }],
+    ])
+    expect((await c.call(R, 'join', { role: 'agent' })).status).toBe(410)
+    at(25 * 60 * 60_000)
+    expect([...store.kv]).toEqual([])
   })
 
   it('sweeps when its host asks, and says when to ask next', async () => {
@@ -363,7 +394,7 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(next - Date.now()).toBeGreaterThan(40)
     expect(next - Date.now()).toBeLessThanOrEqual(61)
     await Bun.sleep(70)
-    c.relay.seen(R, o, Date.now())
+    c.relay.seen(K, o, Date.now())
     c.relay.sweep()
     expect(await c.poll(R, o)).toEqual([
       { from: 'relay', body: { type: 'joined', id: a, info: null } },
@@ -380,12 +411,12 @@ describe('a host that keeps runs and holds websockets', () => {
     await c.call(R, 'send', { id: o, to: a, body: 'queued' })
     const frames: unknown[] = []
     const socket = { send: (t: string) => void frames.push(JSON.parse(t)), close() {} }
-    expect(c.relay.attach(R, a, socket)).toBe(true)
+    expect(c.relay.attach(K, a, socket)).toBe(true)
     await c.call(R, 'send', { id: o, to: a, body: 'pushed' })
     expect(
-      JSON.parse(c.relay.frame(R, a, JSON.stringify({ n: 1, to: 'orchestrator', body: 3 }))),
+      JSON.parse(c.relay.frame(K, a, JSON.stringify({ n: 1, to: 'orchestrator', body: 3 }))),
     ).toEqual({ n: 1 })
-    expect(JSON.parse(c.relay.frame(R, a, JSON.stringify({ n: 2, to: 'nobody' })))).toEqual({
+    expect(JSON.parse(c.relay.frame(K, a, JSON.stringify({ n: 2, to: 'nobody' })))).toEqual({
       n: 2,
       status: 404,
       error: 'unknown to',
@@ -395,10 +426,10 @@ describe('a host that keeps runs and holds websockets', () => {
       { messages: [{ from: 'orchestrator', body: 'pushed' }] },
     ])
     expect((await c.poll(R, o)).at(-1)).toEqual({ from: a, body: 3 })
-    c.relay.detach(R, a, socket)
+    c.relay.detach(K, a, socket)
     await c.call(R, 'send', { id: o, to: a, body: 'after' })
     expect(await c.poll(R, a)).toEqual([{ from: 'orchestrator', body: 'after' }])
-    expect(c.relay.attach(R, 'gone', socket)).toBe(false)
+    expect(c.relay.attach(K, 'gone', socket)).toBe(false)
   })
 
   it('answers a socket request without the upgrade header 426', async () => {

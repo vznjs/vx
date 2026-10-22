@@ -97,7 +97,8 @@ The same relay as a `fetch` handler, to mount in a server of your own
   a participant must be heard from. A `Relay` is `{ fetch(req), close() }`,
   plus the hooks a host of websockets drives (`src/worker.ts` is their
   user): the options `store`, a `RelayStore` (`{ put, delete, list }`,
-  a Durable Object's `storage.kv`) that keeps runs across a restart,
+  a Durable Object's `storage.kv`) that keeps runs and participants, never
+  a message, across a restart (PROTOCOL.md § What the relay knows),
   `upgrade`, which answers a `socket` request, and `timer: false`, so the
   host calls `sweep()` itself; and the methods `attach` and `detach`,
   which hand the relay a participant's `RelaySocket` (`{ send, close }`),
