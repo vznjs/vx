@@ -67,7 +67,7 @@ turborepo#9666). A group kill reaches what the task forked, so a
 `dev` script's runner and its server go together.
 
 - Started just before the first spawn: a run that spawns nothing, a
-  warm run, never starts it (`keep-alive.test.ts` › "a run that spawns
+  warm run, never starts it (`keep-alive-sigkill.test.ts` › "a run that spawns
   no task starts no guard", which also pins the order). Before, not
   after: started after the first spawn, the guard's own spawn was a
   window in which the task ran unlisted, and under the gate's traced
@@ -75,7 +75,7 @@ turborepo#9666). A group kill reaches what the task forked, so a
   `+` line after the spawn returned, and under load the child ran first:
   a `kill -9` there left its group unlisted (4 of 40 runs at tenfold
   load, and macOS CI). The child holds the pipe until it has listed
-  itself, so no window is left (B-9; `keep-alive.test.ts` and
+  itself, so no window is left (B-9; `keep-alive-sigkill.test.ts` and
   `sandbox-runtime.unsafe.test.ts` stall vx after the spawn with a
   preload, red without it). A `true` spawn cost 1.31 ms against 1.32
   before it (min of 3 × 200, interleaved): a tie. A 300-project `test --all --no-cache` run
@@ -209,7 +209,7 @@ whatever it forked lived on.
 
 ## Tests
 
-`tests/keep-alive.test.ts`, "a SIGKILLed vx takes the groups it holds
+`tests/keep-alive-sigkill.test.ts`, "a SIGKILLed vx takes the groups it holds
 with it": a persistent and a one-shot task's backgrounded grandchild die
 with a `kill -9` of vx, and both fail without the guard. The control, a
 one-shot task's leftover that outlives vx's clean exit, fails without the
@@ -220,7 +220,7 @@ teardown grace, and the one-shot row's child ignores SIGTERM, so a
 guard that sent it fails. In `sandbox-runtime.unsafe.test.ts`, "a traced
 sandboxed one-shot task’s children die with vx" (strace, then bwrap's
 parent, outlived vx before the guard; since B-11 strace runs inside), and the unsandboxed control has the backgrounded
-child die and the `setsid` one live. In `keep-alive.test.ts`, "a kill -9 in
+child die and the `setsid` one live. In `keep-alive-sigkill.test.ts`, "a kill -9 in
 a Ctrl-C’s grace…" and "a kill -9 in the persistent shutdown’s grace…"
 and "a never-ready server a dead shell left goes with a vx that exits
 inside the grace" each fail without the hold. `tests/kill-tree-hold.test.ts` drives the hold
