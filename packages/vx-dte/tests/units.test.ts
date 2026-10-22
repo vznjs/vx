@@ -789,6 +789,16 @@ it('starts the cores the rest of the run keeps busy for half its length, not its
   )
   // Done tasks are not laid out.
   expect(busyCores(new Set(['p#c']), mid, one, () => 1000)).toBe(1)
+  // Eight for 4 s, then one for 4 s: eight now, but an agent that takes 5 s
+  // to join finds one.
+  const early = graph([
+    ...Array.from({ length: 8 }, (_, i): [string, string[]] => [`p#w${i}`, []]),
+    ['p#z', Array.from({ length: 8 }, (_, i) => `p#w${i}`)],
+  ])
+  expect([
+    busyCores(new Set(early.keys()), early, one, () => 4000),
+    busyCores(new Set(early.keys()), early, one, () => 4000, undefined, 5000),
+  ]).toEqual([8, 1])
 })
 
 it('knows how long the rest of the run takes at the least, and how long an agent took to join', async () => {

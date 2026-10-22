@@ -60,8 +60,15 @@ export function busyCores(
   durationMs: (id: string) => number | undefined,
   // Of what is left, the share a level must hold; 0 is the peak.
   share = 0.5,
+  // Only the work from this far on: an agent asked for now joins after its
+  // warm-up, so a wide part that ends sooner is not its to fill.
+  fromMs = 0,
 ): number {
-  const spans = layout(remaining, nodes, cores, durationMs)
+  const spans = layout(remaining, nodes, cores, durationMs).flatMap((s) =>
+    s.end > fromMs
+      ? [{ ...s, start: Math.max(s.start, fromMs) - fromMs, end: s.end - fromMs }]
+      : [],
+  )
   if (spans.length === 0) return 0
   // Time at each level of cores in use, by a sweep over the starts and ends.
   const edges = spans.flatMap((s) => [
