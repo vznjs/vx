@@ -360,15 +360,19 @@ export function dte(options: DteOptions) {
       const shape = (remaining: ReadonlySet<string>): void => {
         // An unmeasured task takes the biggest agent there is.
         const biggest = Math.max(1, o.biggestCores(), ...sizes.map((s) => s.cpu))
-        const width = (share?: number): number =>
+        const warmUp = o.warmUpMs()
+        const width = (share?: number, fromMs?: number): number =>
           busyCores(
             remaining,
             nodes ?? new Map(),
             (id) => Math.min(need(id).cores, biggest),
             (id) => peaks.get(id)?.p50DurationMs,
             share,
+            fromMs,
           ) - localSlots
-        const wantCores = width()
+        // What an agent asked for now finds once it has warmed up; while
+        // none has joined, the warm-up is unknown and the width is now's.
+        const wantCores = width(undefined, warmUp)
         const above = [...remaining].flatMap((id) => need(id).above ?? [])
         const final = adapter === undefined || (plannedAgents !== undefined && later.size === 0)
         // Idle agents beyond the rest's peak leave; one a task bigger than
@@ -408,7 +412,6 @@ export function dte(options: DteOptions) {
         }
         // An agent asked for now joins after the warm-up the first ones
         // took: work that ends sooner is for the agents here or starting.
-        const warmUp = o.warmUpMs()
         if (
           warmUp !== undefined &&
           o.cores() > 0 &&

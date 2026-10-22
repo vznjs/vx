@@ -311,7 +311,9 @@ stays. A lost agent's begun tasks run again on
 another, and the run starts one in its place. Agents start at the first
 task the cache does not answer, so a warm run starts none. Once one has
 joined, its warm-up is what the next takes at the least: work that ends
-sooner starts no agent while others are online or starting.
+sooner starts no agent while others are online or starting, and new
+agents are started for the cores the run keeps busy after that warm-up,
+not before it.
 
 The `agents` rows, live while the run goes and again in the footer,
 give each agent its status (`starting`, `online`, `left`, `gone`, or `failed`
