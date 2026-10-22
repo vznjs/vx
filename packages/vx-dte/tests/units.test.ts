@@ -1293,6 +1293,11 @@ it('starts the cores that fit the rest of the run in its critical path, not its 
     busyCores(new Set(early.keys()), early, one, () => 4000),
     busyCores(new Set(early.keys()), early, one, () => 4000, false, 5000),
   ]).toEqual([5, 1])
+  // 36 shards of 40 to 75 s at 0.8 of a core: all at once, 29 cores, where
+  // their work over the slowest one's path was 23 and a second wave queued.
+  const shards = graph(Array.from({ length: 36 }, (_, i): [string, string[]] => [`p#h${i}`, []]))
+  const ms = (id: string): number => 40_000 + Number(id.slice(3)) * 1_000
+  expect(busyCores(new Set(shards.keys()), shards, () => 0.8, ms)).toBe(29)
 })
 
 it('knows how long the rest of the run takes at the least, and how long an agent took to join', async () => {

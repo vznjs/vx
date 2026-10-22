@@ -74,7 +74,12 @@ export function busyCores(
   if (!peak) {
     const span = Math.max(...spans.map((s) => s.end))
     const work = spans.reduce((n, s) => n + s.cores * (s.end - s.start), 0)
-    return Math.max(1, Math.ceil(work / span))
+    // A task longer than half the path covers its middle wherever it runs
+    // in it, so those all run at once: 36 shards of 40 to 75 s spread as
+    // work over the slowest queued half of them for a second wave (main,
+    // 2026-10-22: 6 of 8 agents, 128 s).
+    const long = spans.reduce((n, s) => (2 * (s.end - s.start) > span ? n + s.cores : n), 0)
+    return Math.max(1, Math.ceil(work / span), Math.ceil(long))
   }
   // The highest level of cores in use, by a sweep over the starts and ends.
   const edges = spans.flatMap((s) => [
