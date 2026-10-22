@@ -360,18 +360,18 @@ export function dte(options: DteOptions) {
         // An unmeasured task takes the biggest agent there is.
         const biggest = Math.max(1, o.biggestCores(), ...sizes.map((s) => s.cpu))
         const warmUp = o.warmUpMs()
-        const width = (share?: number, fromMs?: number): number =>
+        const width = (peak?: boolean, fromMs?: number): number =>
           busyCores(
             remaining,
             nodes ?? new Map(),
             (id) => Math.min(need(id).cores, biggest),
             (id) => peaks.get(id)?.p50DurationMs,
-            share,
+            peak,
             fromMs,
           ) - localSlots
         // What an agent asked for now finds once it has warmed up; while
         // none has joined, the warm-up is unknown and the width is now's.
-        const wantCores = width(undefined, warmUp)
+        const wantCores = width(false, warmUp)
         const above = [...remaining].flatMap((id) => need(id).above ?? [])
         const final = adapter === undefined || (plannedAgents !== undefined && later.size === 0)
         // Idle agents beyond the rest's peak leave; one a task bigger than
@@ -379,7 +379,7 @@ export function dte(options: DteOptions) {
         // lull and started another for the wide part after it. At the end
         // the relay closing ends them all.
         if (remaining.size > 0)
-          o.retire(width(0), (a) => above.some((x) => a.cores > x.cores || a.memory > x.memory))
+          o.retire(width(true), (a) => above.some((x) => a.cores > x.cores || a.memory > x.memory))
         if (final) return
         const start = (s: (typeof sizes)[number]): void => {
           started.set(s.name, (started.get(s.name) ?? 0) + 1)

@@ -1,5 +1,5 @@
 // The relay on Cloudflare Workers (src/worker.ts): what the README's Deploy
-// to Cloudflare button reads, and `npx wrangler deploy` from this directory.
+// to Cloudflare button reads, and `bunx wrangler deploy` from this directory.
 // Each run is one Durable Object, held in its own storage.
 {
   "name": "vx-dte-relay",
@@ -7,12 +7,8 @@
   "compatibility_date": "2026-10-01",
   // The relay's URL until a domain is added.
   "workers_dev": true,
-  "vars": {
-    // Who may take part, space separated: `issuer:owner/repo:workflow`, such as
-    // `https://token.actions.githubusercontent.com:vznjs/vx:ci.yml`
-    // (GitLab: `https://gitlab.com:group/project:.gitlab-ci.yml`). Empty: it refuses to start.
-    "ALLOW": "",
-  },
+  // ALLOW, who may take part, is a secret (`.dev.vars.example`), never a
+  // var: a deploy replaces every var with this file's and leaves secrets.
   "durable_objects": {
     "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }],
   },

@@ -106,6 +106,14 @@ export async function resolveOutputs(args: {
   nestedProjectDirs: string[]
 }): Promise<string[]>
 
+// Whether resolveOutputs takes `rel`, without the walk: a directory
+// snapshot's file list is held to the entry's rows through it.
+export function outputWalkTakes(
+  projectDir: string,
+  outputs: readonly string[],
+  nestedProjectDirs: string[],
+): (rel: string) => boolean
+
 // resolveOutputs, plus the empty directories the globs match: a save keeps them.
 export async function resolveOutputTree(args: {
   projectDir: string

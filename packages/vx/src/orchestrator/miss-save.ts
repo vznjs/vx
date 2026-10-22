@@ -13,6 +13,7 @@ import {
   type CacheLayer,
   type GitFilesCache,
   resolveOutputTree,
+  outputWalkTakes,
   resolveOutputs,
   resolveWorkspaceOutputs,
   WORKSPACE_OUTPUT_PREFIX,
@@ -20,11 +21,12 @@ import {
 import type { TaskNode } from '../graph/index.js'
 import {
   asTrees,
+  outputDirPrefixes,
   relPosix,
   span,
+  splitNegations,
   staticPrefix,
   taskGlob,
-  wholeSubtreePrefixes,
 } from '../util/index.js'
 import { type Logger, warnOf } from '../report/index.js'
 import type { TaskInputComponent } from '../cache/index.js'
@@ -49,8 +51,12 @@ export interface OutputDirSnapshot {
  */
 export function entryHolds(
   node: TaskNode,
+  takes: (rel: string) => boolean,
 ): (files: readonly string[], rows: ReadonlyArray<{ path: string }>) => boolean {
-  return (files, rows) => {
+  return (walked, rows) => {
+    // A root-anchored glob's snapshot walks the whole project: only what
+    // the glob takes is the entry's.
+    const files = walked.filter(takes)
     const expected = new Set(
       rows
         .map((r) => r.path)
@@ -250,13 +256,13 @@ export async function saveMiss(a: SaveMissArgs): Promise<{ landed: Promise<SaveF
     // list gets no snapshot: recording here was that same refusal (item
     // 637 deleted the fallback and nothing reddened), and the next hit
     // walks, as it did.
-    const savedDirPrefixes = wholeSubtreePrefixes(a.outputs)
+    const savedDirPrefixes = outputDirPrefixes(splitNegations(a.outputs).positive)
     if (savedDirPrefixes !== null && a.outputDirSnapshots !== undefined) {
       a.outputDirSnapshots.push({
         hash: a.hash,
         projectDir: node.projectDir,
         prefixes: savedDirPrefixes,
-        holds: entryHolds(node),
+        holds: entryHolds(node, outputWalkTakes(node.projectDir, a.outputs, a.nestedProjectDirs)),
       })
     }
   }

@@ -31,6 +31,7 @@ import {
   outputNever,
   realpathOf,
   relPosix,
+  restorableOutput,
   shellArgv,
   slashBraceExpansions,
   braceAlternatives,
@@ -746,6 +747,21 @@ export async function resolveOutputs(args: {
   nestedProjectDirs: string[]
 }): Promise<string[]> {
   return (await scanOutputs(args)).files
+}
+
+/**
+ * Whether `resolveOutputs` takes the project-relative file `rel`, decided
+ * without the walk: a directory snapshot's file list is held to the
+ * entry's rows through it.
+ */
+export function outputWalkTakes(
+  projectDir: string,
+  outputs: readonly string[],
+  nestedProjectDirs: string[],
+): (rel: string) => boolean {
+  const restorable = restorableOutput(outputs)
+  const nested = inNestedProject(projectDir, nestedProjectDirs)
+  return (rel) => restorable(rel) && !nested(rel)
 }
 
 /**
