@@ -27,6 +27,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# A stack's top pull request holds every layer below it, and merging it
+# merges them all: only it runs CI, so a stack costs one run, not one per
+# layer (owner, 2026-10-22). Off a stack both sides are null and it runs.
 jobs:
   # Everything Linux runs, as one distributed run (@vzn/vx-dte): this job
   # is the run and runs nothing itself (owner, 2026-10-22: "everything
@@ -45,6 +48,7 @@ jobs:
   # the agent that runs it, through each task's exec.env.passThrough.
   linux:
     name: lint · format · test
+    if: github.event.pull_request.stack.position == github.event.pull_request.stack.size
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -150,6 +154,7 @@ jobs:
   # reports green.
   packages:
     name: plugin packages
+    if: github.event.pull_request.stack.position == github.event.pull_request.stack.size
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -280,6 +285,7 @@ jobs:
   # module and the process cap is 10 240.
   macos:
     name: core tests (macOS)
+    if: github.event.pull_request.stack.position == github.event.pull_request.stack.size
     runs-on: macos-latest
     timeout-minutes: 25
     permissions:

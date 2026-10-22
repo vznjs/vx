@@ -40,11 +40,12 @@ const checkout = (j: Job | undefined): Step | undefined =>
 
 describe('ci.yml', () => {
   it('is the two runs, plus the live suites and the arm64 binary on main', () => {
+    const top = 'github.event.pull_request.stack.position == github.event.pull_request.stack.size'
     expect(
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
-      ['linux', 'lint · format · test', 'ubuntu-latest', undefined, undefined],
-      ['packages', 'plugin packages', 'ubuntu-latest', undefined, undefined],
+      ['linux', 'lint · format · test', 'ubuntu-latest', top, undefined],
+      ['packages', 'plugin packages', 'ubuntu-latest', top, undefined],
       [
         'binary-linux-arm64',
         'compiled binary (linux-arm64)',
@@ -52,7 +53,7 @@ describe('ci.yml', () => {
         "github.event_name != 'pull_request'",
         undefined,
       ],
-      ['macos', 'core tests (macOS)', 'macos-latest', undefined, undefined],
+      ['macos', 'core tests (macOS)', 'macos-latest', top, undefined],
     ])
   })
 
