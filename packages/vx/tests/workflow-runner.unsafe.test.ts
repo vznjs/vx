@@ -216,7 +216,7 @@ describe('a VX_ var a workflow sets reaches the task that reads it', () => {
 
   it('appears in some task’s passThrough, or `vx run` drops it on the way in', () => {
     // vx itself reads these (a distributed run and its agents), never a task.
-    const readByVx = new Set(['VX_DTE_RUN', 'VX_DTE_RELAY', 'VX_DTE_AGENT'])
+    const readByVx = new Set(['VX_DTE_RUN', 'VX_DTE_RELAY', 'VX_DTE_AGENT', 'VX_CACHE_DIR'])
     const dropped = [...declaredInWorkflows]
       .filter((n) => !forwarded.has(n) && !readByVx.has(n))
       .sort()
