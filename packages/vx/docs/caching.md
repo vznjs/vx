@@ -449,7 +449,9 @@ it needs none of its deps' output. So on local-only runs, `run()`
 performs an up-front CLASSIFY (`orchestrator/local-shortcircuit.ts`):
 
 1. Derive every stable, cacheable, local-read task's key (reusing the
-   run's `hashCache` memo) and probe local `cache.get` **once**,
+   run's `hashCache` memo, or, when nothing any key folds has moved
+   since a run of the same selection, reading that run's keys back
+   whole: `orchestrator/run-keys.ts`) and probe local `cache.get` **once**,
    building a `preProbed` map covering stable hits AND stable misses.
 2. Confirmed hits become the **restore tier**: the scheduler makes
    them ready immediately (no dep gate, and no failed-dep→skip check —

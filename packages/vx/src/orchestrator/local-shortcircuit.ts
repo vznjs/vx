@@ -45,6 +45,7 @@ import { normalizeGlob, relPosix, span, staticPrefix } from '../util/index.js'
 import type { CacheEntry, CacheLayer, GitFilesCache } from '../cache/index.js'
 import type { TaskNode } from '../graph/index.js'
 import { deriveStableKeys, workspaceInputsReach } from './stable-keys.js'
+import { readRunKeys, runKeysToken, writeRunKeys } from './run-keys.js'
 import type { HashCache, UpfrontGroupKey } from './task-hash.js'
 import { getContext } from './remote-prefetch.js'
 
@@ -117,7 +118,15 @@ export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<Sh
   const groupKeys = new Map<string, UpfrontGroupKey>()
   const endKeys = span('stable keys')
   try {
-    stableKeys = await deriveStableKeys({ ...args, uncachedKeys, groupKeys })
+    const at = runKeysToken(args)
+    const remembered = at === undefined ? undefined : readRunKeys(args, at)
+    if (remembered !== undefined) {
+      stableKeys = remembered.stableKeys
+      for (const [id, key] of remembered.uncachedKeys) uncachedKeys.set(id, key)
+    } else {
+      stableKeys = await deriveStableKeys({ ...args, uncachedKeys, groupKeys })
+      if (at !== undefined) writeRunKeys(args, at, { stableKeys, uncachedKeys })
+    }
   } catch {
     return {
       preProbed: new Map(),
