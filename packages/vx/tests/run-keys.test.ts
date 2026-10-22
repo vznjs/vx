@@ -4,7 +4,8 @@
 // a key folds and expects the task to run.
 
 import { Database } from 'bun:sqlite'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { gitIn, makeWorkspace } from './helpers/workspace.js'
@@ -119,3 +120,46 @@ it('a run with a keyless task remembers no keys', async () => {
   build()
   expect(runRows()).toEqual([])
 }, 60_000)
+
+it('a release binary built from a source tree that is gone remembers keys', async () => {
+  // `--minify` inlines the build machine's `import.meta.dir`: the binary
+  // must not read the derivation's identity from a `src/` it names.
+  const pkg = path.resolve(import.meta.dir, '..')
+  const tmp = await mkdtemp(path.join(tmpdir(), 'vx-run-keys-bin-'))
+  try {
+    const copy = path.join(tmp, 'vx')
+    await cp(path.join(pkg, 'src'), path.join(copy, 'src'), { recursive: true })
+    await cp(path.join(pkg, 'package.json'), path.join(copy, 'package.json'))
+    await symlink(path.join(pkg, 'node_modules'), path.join(copy, 'node_modules'))
+    await symlink(path.join(pkg, '..', '..', 'node_modules'), path.join(tmp, 'node_modules'))
+    const bin = path.join(tmp, 'vx-bin')
+    const built = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        'build',
+        '--compile',
+        '--minify',
+        '--bytecode',
+        'src/bin.ts',
+        '--outfile',
+        bin,
+      ],
+      cwd: copy,
+      stderr: 'pipe',
+    })
+    if (built.exitCode !== 0) throw new Error(built.stderr.toString())
+    await rm(copy, { recursive: true, force: true })
+    // The first run keys afresh; the second derives under a token and stores it.
+    for (const cmd of [['lock'], ['run', 'build', '--all'], ['run', 'build', '--all']]) {
+      const p = Bun.spawnSync({
+        cmd: [bin, ...cmd],
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+      })
+      if (p.exitCode !== 0) throw new Error(p.stdout.toString() + p.stderr.toString())
+    }
+    expect(runRows()).toHaveLength(1)
+  } finally {
+    await rm(tmp, { recursive: true, force: true })
+  }
+}, 120_000)

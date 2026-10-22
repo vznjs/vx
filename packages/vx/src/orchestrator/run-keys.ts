@@ -146,11 +146,14 @@ let identity: string | undefined
  */
 function codeIdentity(): string {
   if (identity !== undefined) return identity
-  const src = path.resolve(import.meta.dir, '..')
-  if (src.includes('$bunfs')) {
+  // `Bun.main`, not `import.meta.dir`: `--minify` inlines the build
+  // machine's source path, so an installed binary walked a `src/` that is
+  // not there, threw, and lost every warm run's short circuit (2026-10-22).
+  if (Bun.main.startsWith('/$bunfs/')) {
     const st = statSync(process.execPath)
     return (identity = `${process.execPath}:${st.size}:${st.mtimeMs}:${st.ino}`)
   }
+  const src = path.resolve(import.meta.dir, '..')
   const stamps: string[] = []
   for (const rel of readdirSync(src, { recursive: true, encoding: 'utf8' }).sort()) {
     if (!rel.endsWith('.ts')) continue

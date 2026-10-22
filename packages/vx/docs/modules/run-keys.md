@@ -39,7 +39,7 @@ export function writeRunKeys(
 
 - `runKeysToken` — the row's name is the hash of the selected task ids;
   the token is everything `deriveStableKeys` reads: the code that
-  derives (a compiled binary's file stamp, or every source module's size
+  derives (a compiled binary's file stamp, told by `Bun.main`, or every source module's size
   and mtime), the workspace root, forward args, claimed root files,
   nested project dirs, the outputs git ignores, then per task its id,
   project, edges, `requested`, resolved config hash, plugin key parts,
