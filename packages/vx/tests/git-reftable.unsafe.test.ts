@@ -131,7 +131,7 @@ describe.skipIf(!reftable)('a reftable repository', () => {
       await writeFile(path.join(root, 'packages', 'a', 'src', 'x.txt'), 'a2')
       git('commit', '-qam', 'edit a')
       const p = Bun.spawnSync(
-        [process.execPath, BIN, 'run', 'build', '--affected=HEAD~1', '--dry-run'],
+        [process.execPath, BIN, 'run', 'build', '--affected=HEAD~1', '--dry'],
         {
           cwd: root,
           stdout: 'pipe',
@@ -231,7 +231,7 @@ describe.skipIf(!reftable)("a repository in Git 3's defaults (reftable, sha256)"
       await writeFile(path.join(root, 'packages', 'a', 'src', 'x.txt'), 'a2')
       git('commit', '-qam', 'edit a')
       const p = Bun.spawnSync(
-        [process.execPath, BIN, 'run', 'build', '--affected=HEAD~1', '--dry-run'],
+        [process.execPath, BIN, 'run', 'build', '--affected=HEAD~1', '--dry'],
         {
           cwd: root,
           stdout: 'pipe',

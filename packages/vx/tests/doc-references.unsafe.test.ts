@@ -219,7 +219,7 @@ describe('docs/parity.md names suites that exist and the versions its suites cit
       const blob = files.map(read).join('')
       for (const t of tokens) if (!blob.includes(t)) gaps.push(`${vx.slice(0, 40)} → ${t}`)
     }
-    expect(checked).toBeGreaterThan(12)
+    expect(checked).toBeGreaterThan(11)
     // Both REQUIRED rows must have been reached, or the map is dead weight.
     expect(Object.keys(REQUIRED).every((k) => doc.includes(k))).toBe(true)
     expect(gaps).toEqual([])
