@@ -1,9 +1,9 @@
-== function github (src/plugin.ts)
-export function github(options: GithubPluginOptions = {}): VxPlugin | undefined
-== function gitlab (src/gitlab.ts)
-export function gitlab(options: GitlabPluginOptions = {}): VxPlugin | undefined
-== function renderJobSummary (src/summary.ts)
-export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): string
+== function github (src/index.ts)
+export function github(options?: GithubPluginOptions): VxPlugin | undefined
+== function gitlab (src/index.ts)
+export function gitlab(options?: GitlabPluginOptions): VxPlugin | undefined
+== function renderJobSummary (src/index.ts)
+export function renderJobSummary(summary: RunSummaryRecord, title?: string): string
 == type FetchFn (src/checks.ts)
 export type FetchFn = (
   url: string,
