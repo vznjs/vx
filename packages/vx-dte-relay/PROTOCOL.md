@@ -131,7 +131,10 @@ even one it learned. The run claims name the repository:
 | GitLab (`https://gitlab.com`, or a self-managed host)          | `project_id`    |
 | GitHub Actions (`https://token.actions.githubusercontent.com`) | `repository_id` |
 
-So only jobs of the repository that started a run can join it.
+So only jobs of the repository that started a run can join it. A relay
+may also name workflows: then only their jobs join (GitHub's
+`job_workflow_ref`, GitLab's `ci_config_ref_uri`, any ref), and any
+other token answers `403`.
 
 The orchestrator is pinned to the CI job it joined from: GitHub's
 `check_run_id` (on a host whose tokens lack it, `run_id` and

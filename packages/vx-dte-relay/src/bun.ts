@@ -5,7 +5,7 @@ import { parseArgs } from 'node:util'
 import { createVerifier } from './oidc.js'
 import { serveRelay } from './serve.js'
 
-const USAGE = `usage: vx-dte-relay --issuer <url>... --repository <owner/repo>... --audience <aud> [--port 8080] [--host 0.0.0.0]
+const USAGE = `usage: vx-dte-relay --issuer <url>... --repository <owner/repo>... [--workflow <path>...] --audience <aud> [--port 8080] [--host 0.0.0.0]
        vx-dte-relay --no-auth [--port 8080]   (loopback only)`
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
@@ -16,6 +16,7 @@ function main(argv: string[]): void {
     options: {
       issuer: { type: 'string', multiple: true },
       repository: { type: 'string', multiple: true },
+      workflow: { type: 'string', multiple: true },
       audience: { type: 'string' },
       port: { type: 'string', default: '8080' },
       host: { type: 'string' },
@@ -49,6 +50,7 @@ function main(argv: string[]): void {
           issuers: values.issuer!,
           audience: values.audience!,
           repositories: values.repository!,
+          ...(values.workflow === undefined ? {} : { workflows: values.workflow }),
         }),
   })
   console.log(`vx-dte-relay on ${server.url}`)

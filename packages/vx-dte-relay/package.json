@@ -50,6 +50,12 @@
     "bindings": {
       "REPOSITORIES": {
         "description": "The repositories whose CI runs this relay carries, `owner/repo`, comma separated, such as `vznjs/vx`. A token of any other is refused."
+      },
+      "ISSUERS": {
+        "description": "The CI OIDC issuers whose tokens it trusts, comma separated. GitHub Actions' by default; add `https://gitlab.com`, or a self-managed GitLab's URL, for GitLab runs."
+      },
+      "WORKFLOWS": {
+        "description": "Optional: the workflows whose jobs may take part, comma separated, such as `owner/repo/.github/workflows/ci.yml` (GitLab: `gitlab.com/group/project//.gitlab-ci.yml`), any ref. Empty: any workflow of REPOSITORIES."
       }
     }
   }

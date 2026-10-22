@@ -44,6 +44,11 @@ the button made, or in the Worker's settings in the Cloudflare dashboard:
 
 - `ISSUERS` (comma separated) is GitHub Actions' issuer. Add
   `https://gitlab.com`, or a self-managed GitLab, to carry GitLab's runs.
+- `WORKFLOWS`, empty, admits any workflow of `REPOSITORIES`. Name
+  workflows, comma separated, to admit only their jobs:
+  `owner/repo/.github/workflows/ci.yml` on GitHub (a reusable workflow
+  by its own path), `gitlab.com/group/project//.gitlab-ci.yml` on
+  GitLab, any ref. List the orchestrator's workflow and the agents'.
 - `AUDIENCE`, unset, is the URL the relay is reached at. Set it only
   when tokens name another one.
 
@@ -68,6 +73,8 @@ docker run -p 8080:8080 vx-dte-relay --issuer https://gitlab.com --repository gr
 - `--repository <owner/repo>` names a repository whose runs the relay
   carries; repeat it for more. A token of any other is refused. GitLab
   names a project by its full path, `group/subgroup/project`.
+- `--workflow <path>`, repeated, admits only jobs of these workflows
+  (`WORKFLOWS` above); unset, any.
 - `--audience <aud>` is the `aud` every token must name: the URL the CI
   job asks its ID token for.
 - `--port` (default 8080) and `--host` (default `0.0.0.0`) set where it
@@ -106,10 +113,11 @@ The same relay as a `fetch` handler, to mount in a server of your own
   each request as the orchestrator.
 - `createVerifier(options: OidcOptions)` returns that `verify`.
   `OidcOptions` is
-  `{ issuers, audience, repositories?, runClaims?, fetchJson?, now? }`:
+  `{ issuers, audience, repositories?, workflows?, runClaims?, fetchJson?, now? }`:
   the trusted issuers, the `aud` a token must name,
   the `owner/repo`s a token's `repositoryClaimOf(iss)` must name (matched
-  without case; unset, none is checked), run claims per issuer (default
+  without case; unset, none is checked), the workflows its
+  `workflowClaimOf(iss)` must name up to its `@` (unset or empty, any), run claims per issuer (default
   `runClaimsOf(iss)`), and a key reader and clock for tests. It
   resolves a `VerifiedToken`, `{ iss, run, job? }` (`job`, the CI job it
   is from, pins a run's orchestrator), or rejects with a
@@ -118,3 +126,6 @@ The same relay as a `fetch` handler, to mount in a server of your own
   for GitHub Actions, `project_id` otherwise.
 - `repositoryClaimOf(iss)` names the claim that names a token's
   repository: `repository` for GitHub Actions, `project_path` otherwise.
+- `workflowClaimOf(iss)` names the claim that names the workflow a
+  token's job is defined in: `job_workflow_ref` for GitHub Actions,
+  `ci_config_ref_uri` otherwise.

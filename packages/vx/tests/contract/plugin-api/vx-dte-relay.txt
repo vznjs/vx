@@ -19,11 +19,14 @@ export function repositoryClaimOf(iss: string): string
 export function runClaimsOf(iss: string): readonly string[]
 == function serveRelay (src/serve.ts)
 export function serveRelay(opts: ServeOptions): RelayServer
+== function workflowClaimOf (src/oidc.ts)
+export function workflowClaimOf(iss: string): string
 == type OidcOptions (src/oidc.ts)
 export interface OidcOptions {
   issuers: readonly string[]
   audience: string
   repositories?: readonly string[]
+  workflows?: readonly string[]
   runClaims?: Readonly<Record<string, readonly string[]>>
   fetchJson?: (url: string) => Promise<unknown>
   now?: () => number

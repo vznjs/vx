@@ -14,6 +14,13 @@ export interface OidcOptions {
    * relay's own entry points require it.
    */
   repositories?: readonly string[]
+  /**
+   * The workflows whose jobs may take part, as `owner/repo/.github/workflows/ci.yml`
+   * (GitLab: `gitlab.com/group/project//.gitlab-ci.yml`), any ref. Matched
+   * without case against `workflowClaimOf(iss)` up to its `@`. Unset, any
+   * workflow of a named repository.
+   */
+  workflows?: readonly string[]
   /** Run claims by issuer; an issuer not named here uses `runClaimsOf`. */
   runClaims?: Readonly<Record<string, readonly string[]>>
   /** Reads a URL as JSON; tests serve keys without a network. */
@@ -67,6 +74,15 @@ export function repositoryClaimOf(iss: string): string {
   return iss === GITHUB ? 'repository' : 'project_path'
 }
 
+/**
+ * The claim naming the workflow a token's job is defined in, `<path>@<ref>`:
+ * GitHub's `job_workflow_ref` (the reusable workflow, when the job is one),
+ * GitLab's `ci_config_ref_uri`.
+ */
+export function workflowClaimOf(iss: string): string {
+  return iss === GITHUB ? 'job_workflow_ref' : 'ci_config_ref_uri'
+}
+
 /** Clock skew a token's `exp` / `nbf` may be off by. */
 const LEEWAY_S = 60
 
@@ -80,6 +96,10 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
     opts.repositories === undefined
       ? undefined
       : new Set(opts.repositories.map((r) => r.toLowerCase()))
+  const workflows =
+    opts.workflows === undefined || opts.workflows.length === 0
+      ? undefined
+      : new Set(opts.workflows.map((w) => w.toLowerCase()))
   const keys = new Map<string, { at: number; byKid: Promise<Map<string, CryptoKey>> }>()
 
   const load = (iss: string): { at: number; byKid: Promise<Map<string, CryptoKey>> } => {
@@ -144,6 +164,15 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
       if (typeof repo !== 'string') throw new TokenError(`no ${claim} claim`, 403)
       if (!repositories.has(repo.toLowerCase())) {
         throw new TokenError(`repository ${repo} is not one this relay serves`, 403)
+      }
+    }
+    if (workflows !== undefined) {
+      const claim = workflowClaimOf(iss)
+      const ref = claims[claim]
+      if (typeof ref !== 'string') throw new TokenError(`no ${claim} claim`, 403)
+      const workflow = ref.replace(/@.*$/, '')
+      if (!workflows.has(workflow.toLowerCase())) {
+        throw new TokenError(`workflow ${workflow} is not one this relay serves`, 403)
       }
     }
     const run = (opts.runClaims?.[iss] ?? runClaimsOf(iss)).map((c) => {

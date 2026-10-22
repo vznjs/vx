@@ -47,6 +47,8 @@ export interface Env {
   readonly ISSUERS: string
   /** The repositories whose runs it carries, `owner/repo`, comma or space separated. */
   readonly REPOSITORIES?: string
+  /** The workflows whose jobs may take part (`OidcOptions.workflows`), comma or space separated; unset, any. */
+  readonly WORKFLOWS?: string
   /** The `aud` every token must name; unset, the URL the relay is reached at. */
   readonly AUDIENCE?: string
 }
@@ -77,6 +79,7 @@ export class RelayRun {
   ) {
     const issuers = list(env.ISSUERS)
     const repositories = list(env.REPOSITORIES)
+    const workflows = list(env.WORKFLOWS)
     if (issuers.length === 0 || repositories.length === 0)
       throw new Error('vx-dte-relay: set ISSUERS and REPOSITORIES')
     // The worker's URL is not known before its first deploy; a token for
@@ -85,7 +88,7 @@ export class RelayRun {
     const verifierOf = (audience: string): ReturnType<typeof createVerifier> => {
       let v = verifiers.get(audience)
       if (v === undefined) {
-        v = createVerifier({ issuers, audience, repositories })
+        v = createVerifier({ issuers, audience, repositories, workflows })
         verifiers.set(audience, v)
       }
       return v
