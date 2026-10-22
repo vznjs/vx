@@ -1,10 +1,10 @@
-== function nx (src/nx/index.ts)
+== function nx (src/index.ts)
 export function nx(options: NxPluginOptions = {}): VxPlugin
-== function nxCache (src/nx-cache/index.ts)
+== function nxCache (src/index.ts)
 export function nxCache(options: NxCacheOptions = {}): VxPlugin
-== function turbo (src/turbo/index.ts)
+== function turbo (src/index.ts)
 export function turbo(options: TurboPluginOptions = {}): VxPlugin
-== function turboCache (src/turbo-cache/index.ts)
+== function turboCache (src/index.ts)
 export function turboCache(options: TurboCacheOptions = {}): VxPlugin
 == type NxCacheOptions (src/nx-cache/index.ts)
 export interface NxCacheOptions {

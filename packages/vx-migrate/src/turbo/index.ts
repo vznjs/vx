@@ -21,14 +21,14 @@ import { collectGaps } from '../plugin-gaps.js'
 import { gitIgnored, trackedKinds } from '../tracked-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { onceReader, type ReadText, tscBuildInfo } from '../tsc-buildinfo.js'
+import type * as TurboMap from './turbo-map.js'
+import type { TurboMappedProject } from './turbo-map.js'
 import {
   envNamesThatMap,
-  mapTurboWorkspace,
   microfrontendsConfigs,
   rootTaskProject,
   turboConfigFile,
-  type TurboMappedProject,
-} from './turbo-map.js'
+} from './turbo-reads.js'
 
 /** The note every persistent task carries; like every gap, reported once per run for all its tasks. */
 const PERSISTENT_NOTE =
@@ -192,11 +192,15 @@ const textOf = (file: string): Promise<string> =>
  * `.yarnrc.yml` and the microfrontends configs.
  */
 async function run(root: string, projects: readonly ProjectMeta[]): Promise<AdoptionRun> {
-  const metas = await withManifests(projects)
-  const dirs = [root, ...metas.map((m) => m.dir)]
-  const configs = await Promise.all(
-    dirs.flatMap((d) => ['turbo.json', 'turbo.jsonc'].map((f) => textOf(path.join(d, f)))),
-  )
+  const dirs = [root, ...projects.map((m) => m.dir)]
+  const [metas, configs, yarnrc, rootManifest] = await Promise.all([
+    withManifests(projects),
+    Promise.all(
+      dirs.flatMap((d) => ['turbo.json', 'turbo.jsonc'].map((f) => textOf(path.join(d, f)))),
+    ),
+    textOf(path.join(root, '.yarnrc.yml')),
+    textOf(path.join(root, 'package.json')),
+  ])
   const envNames = envNamesThatMap(configs, envNamesNow())
   // The tsconfigs a `tsc` script reads are the mapping's inputs too.
   const tsc = onceReader()
@@ -213,9 +217,9 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
       process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
       process.env['TURBO_ENV_MODE'] ?? '',
       ...configs,
-      await textOf(path.join(root, '.yarnrc.yml')),
+      yarnrc,
       // Its dependencies are global inputs, a member or not.
-      await textOf(path.join(root, 'package.json')),
+      rootManifest,
       JSON.stringify(microfrontendsConfigs(root, dirs)),
       // A config file added beside mapped tasks changes what an output may cover.
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson, m.configPath])),
@@ -244,6 +248,8 @@ async function mapAll(
       m.configPath === null ? [] : [[relPosix(root, m.dir), path.basename(m.configPath)] as const],
     ),
   )
+  // Only a mapping the kept one no longer holds loads the mapper.
+  const { mapTurboWorkspace } = require('./turbo-map.js') as typeof TurboMap
   const mapped = await mapTurboWorkspace(root, metas, {
     // Inline: the values themselves, where `bunx @vzn/vx-migrate` splices a preset import.
     splice: (_kind, values) => values,

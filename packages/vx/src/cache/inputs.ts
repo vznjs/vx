@@ -2103,21 +2103,31 @@ async function scanUnion(
   emptyDirs?: Set<string>,
 ): Promise<Set<string>> {
   const matches = new Set<string>()
+  const take = (rel: string): void => {
+    if (nested(rel) || excludeGlobs.some((g) => g.match(rel))) return
+    const abs = path.resolve(cwd, rel)
+    const st = lstatSync(abs, { throwIfNoEntry: false })
+    if (st !== undefined && (st.isFile() || st.isSymbolicLink())) matches.add(abs)
+    else if (emptyDirs !== undefined && st?.isDirectory() === true) {
+      if (readdirSync(abs).length === 0) emptyDirs.add(abs)
+    } else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs)
+  }
+  const opts = { cwd, onlyFiles: false, followSymlinks: false, dot: true }
   // `Bun.Glob`'s scan finds nothing for a brace whose alternatives hold a
   // `/`: `{dist,lib/esm}/**` saved an empty artifact, and a hit restored
   // nothing over a cleaned tree (A-10). Expanded here, as discovery does.
-  for (const pattern of positive.flatMap(slashBraceExpansions)) {
+  const patterns = positive.flatMap(slashBraceExpansions)
+  // A leading `**` walks the whole project whatever else is listed, so the
+  // list is one walk: Turbo's `dist/**`, `**/dist/**`, `**/dist` was three,
+  // ~2 ms of a warm hit on solid.
+  if (patterns.length > 1 && patterns.some((p) => p.startsWith('**'))) {
+    const any = anyTaskGlob(patterns)
+    for (const rel of WHOLE_TREE.scanSync(opts)) if (any(rel)) take(rel)
+    return matches
+  }
+  for (const pattern of patterns) {
     if (absentPrefix(cwd, pattern)) continue
-    const glob = globFor(pattern)
-    for (const rel of glob.scanSync({ cwd, onlyFiles: false, followSymlinks: false, dot: true })) {
-      if (nested(rel) || excludeGlobs.some((g) => g.match(rel))) continue
-      const abs = path.resolve(cwd, rel)
-      const st = lstatSync(abs, { throwIfNoEntry: false })
-      if (st !== undefined && (st.isFile() || st.isSymbolicLink())) matches.add(abs)
-      else if (emptyDirs !== undefined && st?.isDirectory() === true) {
-        if (readdirSync(abs).length === 0) emptyDirs.add(abs)
-      } else if (st === undefined && rel.includes('\ufffd')) refuseUndecodableOutput(abs)
-    }
+    for (const rel of globFor(pattern).scanSync(opts)) take(rel)
   }
   return matches
 }
@@ -2138,6 +2148,8 @@ function absentPrefix(cwd: string, pattern: string): boolean {
     return false
   }
 }
+
+const WHOLE_TREE = new Bun.Glob('**')
 
 // Compiled once per pattern string for the life of the process: a `Bun.Glob`
 // is immutable, and the same handful of declared globs are compiled again
