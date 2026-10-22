@@ -3,7 +3,7 @@ title: Migrate
 description: Move a Turborepo or Nx repo to native vx config with `vx init`, or a Vite Task repo with `vx-migrate`.
 ---
 
-import { Steps, Tabs, TabItem, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
+import { Steps, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
 
 Move a Turborepo or Nx repo to vx with one command. Your `package.json`
 scripts stay as they are; vx writes a `vx.config.ts` per package that you
@@ -13,18 +13,9 @@ keep. Any other repo starts at the [quickstart](../../quickstart/).
 
 1. **Run init at the repo root**
 
-   <Tabs syncKey="pm">
-     <TabItem label="npm">
-       ```sh
-       bunx @vzn/vx init
-       ```
-     </TabItem>
-     <TabItem label="Bun">
-       ```sh
-       bunx @vzn/vx init
-       ```
-     </TabItem>
-   </Tabs>
+   ```sh
+   bunx @vzn/vx init
+   ```
 
    Beside `turbo.json` or `nx.json` it runs `@vzn/vx-migrate`: one
    `vx.config.ts` per package, a `.vx/workspace.ts` declaring your lockfile's
@@ -203,13 +194,13 @@ line's comment is what a test runs and sees on each commit
 (`packages/vx/tests/examples.unsafe.test.ts`).
 
 ```sh
-npm install && git init && git add -A && git commit -m init
+bun install && git init && git add -A && git commit -m init
 vx run test --all      # local 3↑: lib#build, app#build, app#test
 vx run test --all      # local 3✓
 bunx @vzn/vx-migrate       # tasks 3 clean
 git add -A && git commit -m migrate
 vx run test --all      # local 3✓: the written configs derive the same keys
-echo "import { npm } from '@vzn/vx-lockfile'; export default { plugins: [npm()] }" > .vx/workspace.ts   # drop turbo(); npm() keeps the edges
+echo "import { bun } from '@vzn/vx-lockfile'; export default { plugins: [bun()] }" > .vx/workspace.ts   # drop turbo(); bun() keeps the edges
 git add -A && git commit -m done
 vx run test --all      # local 3✓
 ```

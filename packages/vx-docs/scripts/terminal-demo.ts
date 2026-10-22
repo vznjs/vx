@@ -129,14 +129,15 @@ export function normalize(svg: string): string {
 }
 
 const BASIC_LOCK = {
-  lockfileVersion: 3,
-  requires: true,
+  lockfileVersion: 1,
+  workspaces: {
+    '': { name: 'vx-example-basic' },
+    'packages/app': { name: 'app', dependencies: { lib: '*' } },
+    'packages/lib': { name: 'lib' },
+  },
   packages: {
-    '': { name: 'vx-example-basic', workspaces: ['packages/*'] },
-    'node_modules/app': { resolved: 'packages/app', link: true },
-    'node_modules/lib': { resolved: 'packages/lib', link: true },
-    'packages/app': { version: '0.0.0', dependencies: { lib: '*' } },
-    'packages/lib': { version: '0.0.0' },
+    app: ['app@workspace:packages/app'],
+    lib: ['lib@workspace:packages/lib'],
   },
 }
 
@@ -153,8 +154,8 @@ function run(): string {
       path.join(ROOT, 'packages/vx-lockfile'),
       path.join(root, 'node_modules/@vzn/vx-lockfile'),
     )
-    // The workspace links `npm install` records, which npm() reads its edges from.
-    writeFileSync(path.join(root, 'package-lock.json'), JSON.stringify(BASIC_LOCK))
+    // The workspace links `bun install` records, which bun() reads its edges from.
+    writeFileSync(path.join(root, 'bun.lock'), JSON.stringify(BASIC_LOCK))
     for (const args of [
       ['init', '-q'],
       ['add', '-A'],

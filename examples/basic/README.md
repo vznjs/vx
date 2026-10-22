@@ -3,7 +3,7 @@
 Two packages: `app` uses `lib`. Copy it, then:
 
 ```sh
-npm install
+bun install
 git init && git add -A && git commit -m init   # vx reads the tree from git
 vx run ci --all      # lib#build, app#build, app#test: local 3↑
 vx run ci --all      # nothing changed: local 3✓

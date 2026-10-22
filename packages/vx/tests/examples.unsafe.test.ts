@@ -5,6 +5,7 @@
 // sandboxed shard cannot read — hence the unsafe suite.
 import {
   cpSync,
+  existsSync,
   readdirSync,
   mkdirSync,
   mkdtempSync,
@@ -18,7 +19,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 import { lastStatus } from './helpers/last-run.js'
-import { npmWorkspaceLock } from './helpers/npm-checkout.js'
 
 const CORE = path.resolve(import.meta.dir, '..')
 const PACKAGES = path.dirname(CORE)
@@ -32,8 +32,8 @@ afterAll(() => {
 /**
  * A fresh git repo holding `examples/<name>`, with `links` (package dirs)
  * and `vx-lockfile` as its @vzn deps and the workspace's links in the
- * `package-lock.json` the README's `npm install` writes, which `npm()`
- * reads its edges from.
+ * `bun.lock` the README's `bun install` writes, which `bun()` reads its
+ * edges from.
  */
 function fixture(name: string, links: string[]): string {
   const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), `vx-example-${name}-`)))
@@ -43,12 +43,34 @@ function fixture(name: string, links: string[]): string {
   for (const dir of [...links, 'vx-lockfile']) {
     symlinkSync(path.join(PACKAGES, dir), path.join(root, 'node_modules', '@vzn', dir))
   }
-  writeFileSync(
-    path.join(root, 'package-lock.json'),
-    JSON.stringify(npmWorkspaceLock(root), null, 2),
-  )
+  writeFileSync(path.join(root, 'bun.lock'), JSON.stringify(bunWorkspaceLock(root), null, 2))
   commit(root)
   return root
+}
+
+/** The workspace half of the bun.lock Bun writes for `root`'s `packages/*` members. */
+function bunWorkspaceLock(root: string): unknown {
+  const pkg = (rel: string) =>
+    JSON.parse(readFileSync(path.join(root, rel, 'package.json'), 'utf8')) as {
+      name: string
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+  const entry = ({ name, dependencies, devDependencies }: ReturnType<typeof pkg>) => ({
+    name,
+    ...(dependencies === undefined ? {} : { dependencies }),
+    ...(devDependencies === undefined ? {} : { devDependencies }),
+  })
+  const workspaces: Record<string, unknown> = { '': entry(pkg('.')) }
+  const packages: Record<string, unknown> = {}
+  const members = path.join(root, 'packages')
+  for (const dir of readdirSync(members).sort()) {
+    if (!existsSync(path.join(members, dir, 'package.json'))) continue
+    const m = pkg(`packages/${dir}`)
+    workspaces[`packages/${dir}`] = entry(m)
+    packages[m.name] = [`${m.name}@workspace:packages/${dir}`]
+  }
+  return { lockfileVersion: 1, workspaces, packages }
 }
 
 function commit(root: string): void {
@@ -169,11 +191,11 @@ describe('examples/turbo', () => {
     expect(kept.status).toEqual(all('cache-hit'))
     said.push(kept.cache)
 
-    // The file stays: it marks the root, and npm() keeps the edges.
+    // The file stays: it marks the root, and bun() keeps the edges.
     mkdirSync(path.join(root, '.vx'), { recursive: true })
     writeFileSync(
       path.join(root, '.vx/workspace.ts'),
-      "import { npm } from '@vzn/vx-lockfile'\n\nexport default { plugins: [npm()] }\n",
+      "import { bun } from '@vzn/vx-lockfile'\n\nexport default { plugins: [bun()] }\n",
     )
     commit(root)
     const alone = run(root, 'test')
@@ -321,30 +343,16 @@ describe('the terminal demo', () => {
   }, 20_000)
 })
 
-// Each starter's README opens with `npm install`, and the fixtures above
-// link node_modules instead of installing, so nothing ran it: npm refuses
-// pnpm's `workspace:` protocol (EUNSUPPORTEDPROTOCOL), and both starters
-// declared `"lib": "workspace:*"` until 2026-10-03.
+// Each starter's README opens with `bun install`, and the fixtures above
+// link node_modules instead of installing, so nothing ran it: the lockfile
+// plugin each workspace declares must read the lockfile that install writes.
 describe('the starters install with the package manager their README names', () => {
-  it('no npm starter declares a workspace: dependency', () => {
-    const bad: string[] = []
+  it('each starter installs with bun and reads bun.lock', () => {
     for (const name of starters()) {
-      expect(readFileSync(path.join(EXAMPLES, name, 'README.md'), 'utf8')).toContain('npm install')
-      for (const pkg of [
-        'package.json',
-        'packages/app/package.json',
-        'packages/lib/package.json',
-      ]) {
-        const json = JSON.parse(readFileSync(path.join(EXAMPLES, name, pkg), 'utf8')) as Record<
-          string,
-          Record<string, string> | undefined
-        >
-        for (const field of ['dependencies', 'devDependencies'])
-          for (const [dep, spec] of Object.entries(json[field] ?? {}))
-            if (spec.startsWith('workspace:')) bad.push(`${name}/${pkg}: ${dep} ${spec}`)
-      }
+      expect(readFileSync(path.join(EXAMPLES, name, 'README.md'), 'utf8')).toContain('bun install')
+      const workspace = readFileSync(path.join(EXAMPLES, name, '.vx', 'workspace.ts'), 'utf8')
+      expect(workspace).toContain("import { bun } from '@vzn/vx-lockfile'")
     }
-    expect(bad).toEqual([])
   })
 })
 

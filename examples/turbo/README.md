@@ -5,7 +5,7 @@ A Turbo repo (`turbo.json`, package scripts) mid-migration: one file,
 temporary start until the repo has native config:
 
 ```sh
-npm install
+bun install
 git init && git add -A && git commit -m init
 vx run test --all    # lib#build, app#build, app#test: local 3↑
 vx run test --all    # local 3✓

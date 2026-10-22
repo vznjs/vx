@@ -5,7 +5,7 @@ The starter from `examples/basic`, with the CI setup the
 `.github/workflows/ci.yml` and `.vx/workspace.ts`. Copy it, then:
 
 ```sh
-npm install
+bun install
 git init && git add -A && git commit -m init
 vx lock          # write .vx/projects.lock.json, then commit it
 ```

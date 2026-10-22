@@ -120,7 +120,7 @@ describe('every example an agent reads from the docs', () => {
     const f: Fence = {
       page: 'x',
       lang: 'sh',
-      code: '$ npx @vzn/vx run build --all --nope | jq .\n',
+      code: '$ bunx @vzn/vx run build --all --nope | jq .\n',
     }
     expect(commands(f)).toEqual([{ verb: 'run', flags: ['--all', '--nope'] }])
     expect(acceptedFlags('run')).not.toContain('--nope')
