@@ -10,7 +10,6 @@
 // as its own.
 
 import { realpathSync } from 'node:fs'
-import { lstat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   localFloor,
@@ -407,7 +406,16 @@ export class Orchestrator {
           },
           cores: job.held?.cores ?? 1,
           memory: job.held?.memory ?? 0,
-          ...(req.sandbox === undefined ? {} : { sandbox: req.sandbox }),
+          ...(req.sandbox === undefined || node?.config.exec?.sandbox === undefined
+            ? {}
+            : {
+                sandbox: {
+                  config: node.config.exec.sandbox,
+                  ...(req.sandbox.keyed === undefined
+                    ? {}
+                    : { keyed: req.sandbox.keyed.map((d) => path.relative(this.o.root, d)) }),
+                },
+              }),
           ...runtimeOrders(req),
           ...(req.servers === undefined || req.servers.length === 0
             ? {}
@@ -429,9 +437,6 @@ export class Orchestrator {
     if (sandboxed) a.sandboxes = true
     a.chain = a.chain
       .then(async () => {
-        for (const { order } of orders)
-          if (order.sandbox !== undefined)
-            order.binds = await this.binds(order.sandbox.config.allowWrite)
         const batch = {
           type: 'batch',
           root: this.o.root,
@@ -450,18 +455,6 @@ export class Orchestrator {
         if (err instanceof RelayError && err.status === 404) return
         for (const { job } of orders) job.reject(err)
       })
-  }
-
-  /** The write grants in this checkout that exist, which a bind needs on the agent too. */
-  private async binds(writes: readonly string[]): Promise<{ path: string; dir: boolean }[]> {
-    const out: { path: string; dir: boolean }[] = []
-    for (const w of writes) {
-      if (!w.startsWith(this.realRoot + path.sep)) continue
-      const st = await lstat(w).catch(() => undefined)
-      if (st !== undefined)
-        out.push({ path: path.relative(this.realRoot, w), dir: st.isDirectory() })
-    }
-    return out
   }
 
   /** Three of the agent's `held` from now. */

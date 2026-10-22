@@ -283,8 +283,10 @@ the ones it never played when it ends.
 - A task goes to the agent that holds most of its dependencies' outputs,
   so a chain stays on one machine.
 - A sandboxed task runs on an agent inside the agent's own sandbox, with
-  the same `exec.sandbox`; a violation there fails it here, named in this
-  checkout's paths.
+  the same `exec.sandbox`, built there (`sandboxRequestFor`): its paths,
+  walls and credential stores are the agent's, so an orchestrator on
+  Linux can run macOS agents. A violation there fails it here, named in
+  this checkout's paths.
 - A persistent task a task depends on starts on the agent that runs the
   task, once per agent, ready before it, and stops when the agent leaves;
   the orchestrator never starts it, and an agent no dependant reaches

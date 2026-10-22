@@ -2,7 +2,7 @@
 // (the relay never reads it): orders and status only. Every task's files
 // and output go through the workspace's cache, by the keys these name.
 
-import type { CacheFacts, ExecuteResult, ExecuteSandbox, SandboxConfig } from '@vzn/vx'
+import type { CacheFacts, ExecuteResult, SandboxConfig } from '@vzn/vx'
 
 /**
  * An agent says what it holds every this many heartbeats. Each says is a
@@ -55,10 +55,12 @@ export interface RunOrder {
   /** Its recorded peak: the agent starts it when that much is free. */
   cores: number
   memory: number
-  /** The request's sandbox, in the orchestrator's paths; the agent swaps in its own. */
-  sandbox?: ExecuteSandbox
-  /** Workspace-relative paths its write grants bind, which must exist first. */
-  binds?: { path: string; dir: boolean }[]
+  /**
+   * Its `exec.sandbox`, and for a cached task the projects its key answers
+   * for (workspace-relative): the agent builds the request on its own
+   * paths and OS (`sandboxRequestFor`), as its orchestrator may run another.
+   */
+  sandbox?: { config: SandboxConfig; keyed?: string[] }
   /** Its persistent dependencies (`ServerSpec`), `cwd` workspace-relative: the agent starts each once. */
   servers?: ServerOrder[]
   /** The runtime probes its key folds, as the orchestrator answered them: the agent's must answer the same. */

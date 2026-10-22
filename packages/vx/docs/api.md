@@ -699,6 +699,7 @@ export interface ExecuteSandbox {
   readonly reportWithin: string
   readonly reportLinked: readonly string[]
   readonly config: ResolvedSandboxConfig
+  readonly keyed?: readonly string[]
 }
 ```
 
@@ -2388,6 +2389,60 @@ export interface SandboxGrants {
   pty?: boolean
   gitConfig?: boolean
 }
+```
+
+## `SandboxRequest`
+
+type · `src/orchestrator/sandbox-request.ts`
+
+The sandbox half of the request, plus the empty files vx created so a
+literal write grant had something to bind (`placeholders`). They are
+vx's, not the task's, until the task writes them: `sweepPlaceholders`
+takes back the ones it never touched. `withheld` names the linked
+dependencies a cached task was denied, for the hint a denial under one
+earns (`withheldLinkLine`).
+
+```ts
+export interface SandboxRequest {
+  sandbox: NonNullable<ExecuteRequest['sandbox']>
+  placeholders: Placeholder[]
+  withheld: WithheldLink[]
+}
+```
+
+## `sandboxRequestFor`
+
+function · `src/orchestrator/sandbox-request.ts`
+
+The sandbox half of an `ExecuteRequest` for one task, shared by the
+cached path (through the executor) and the persistent path (spawned here).
+
+The user's grants derive NOTHING from `cache` (owner, 2026-09-05). Those
+are two different questions: `inputs` says what INVALIDATES the
+task, `sandbox.allow` says what it may TOUCH. Deriving one from the other
+coupled them in both directions — a declaration added for caching
+silently widened the sandbox, and a path the task needed had to be
+laundered through the cache key to get it. A sandboxed task declares
+its own reads and writes.
+
+`node_modules` is the one grant core still makes: it is where the task's
+own PATH gets its `.bin` entries, and denying it made the sandbox
+unusable for anything that imports a dependency (`bun build --compile`
+died with only `error: An unknown error occurred (Unexpected)`; owner
+call 2026-09-04). Declaring `cache` may NARROW that grant, never widen
+anyone's (2026-09-24): `keyed` is the set of project directories the
+task's key answers for (keyed-projects.ts), and `undefined` for a task
+with no `cache`, which has no key to be stale.
+
+```ts
+export async function sandboxRequestFor(
+  node: Pick<TaskNode, 'projectDir'>,
+  sandbox: NonNullable<ExecConfig['sandbox']>,
+  workspaceRoot: string,
+  keyed: ReadonlySet<string> | undefined,
+  nested: readonly string[] = [],
+  cacheDir?: string,
+): Promise<SandboxRequest>
 ```
 
 ## `ScheduleHookContext`

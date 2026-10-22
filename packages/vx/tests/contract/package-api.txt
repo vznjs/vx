@@ -371,6 +371,15 @@ export function restorableOutput(
 ): (rel: string) => boolean
 == function run (src/orchestrator/run.ts)
 export async function run(options: RunOptions): Promise<RunSummary>
+== function sandboxRequestFor (src/orchestrator/sandbox-request.ts)
+export async function sandboxRequestFor(
+  node: Pick<TaskNode, 'projectDir'>,
+  sandbox: NonNullable<ExecConfig['sandbox']>,
+  workspaceRoot: string,
+  keyed: ReadonlySet<string> | undefined,
+  nested: readonly string[] = [],
+  cacheDir?: string,
+): Promise<SandboxRequest>
 == function splitTaskId (src/util/task-id.ts)
 export function splitTaskId(id: string): [project: string, task: string]
 == function status (src/util/ui.ts)
@@ -773,6 +782,7 @@ export interface ExecuteSandbox {
   readonly reportWithin: string
   readonly reportLinked: readonly string[]
   readonly config: ResolvedSandboxConfig
+  readonly keyed?: readonly string[]
 }
 == type ExecutorContext (src/orchestrator/plugin.ts)
 export interface ExecutorContext extends BaseContext {
@@ -1132,6 +1142,11 @@ export interface OutputView {
 == type PersistentConfig (src/config.ts)
 export interface PersistentConfig {
   readyWhen?: string
+}
+== type Placeholder (src/orchestrator/sandbox-request.ts)
+export interface Placeholder {
+  path: string
+  mtimeMs: number
 }
 == type PlannedTask (src/orchestrator/plan.ts)
 export interface PlannedTask {
@@ -1646,6 +1661,12 @@ export interface SandboxIgnore {
   systemInfo?: readonly string[]
   network?: readonly string[]
 }
+== type SandboxRequest (src/orchestrator/sandbox-request.ts)
+export interface SandboxRequest {
+  sandbox: NonNullable<ExecuteRequest['sandbox']>
+  placeholders: Placeholder[]
+  withheld: WithheldLink[]
+}
 == type SandboxViolation (src/exec/sandbox-runtime.ts)
 export interface SandboxViolation {
   line: string
@@ -2029,6 +2050,13 @@ export interface VxPlugin {
 == type WatchSettings (src/config.ts)
 export interface WatchSettings {
   poll?: boolean
+}
+== type WithheldLink (src/orchestrator/sandbox-request.ts)
+export interface WithheldLink {
+  dir: string
+  name: string
+  target: string
+  link: string
 }
 == type WorkspaceConfig (src/config.ts)
 export interface WorkspaceConfig {

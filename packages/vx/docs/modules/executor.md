@@ -29,6 +29,9 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   violations, so a sandboxed task and its dependants are not pinned for
   it (`@vzn/vx-dte`'s agents run them through `localFloor`, which also stops
   a request's children when its `signal` aborts and no run holds them);
+  a cached task's `req.sandbox.keyed` lists the project directories its
+  key answers for, so such an executor can build the request again on
+  its own machine (`sandboxRequestFor`);
   `servers: true` says a remote one starts a task's persistent
   dependencies where it runs the task (`req.servers`, each a `ServerSpec
 { taskId; command; cwd; env; readyWhen?; timeoutMs? }`, in dependency

@@ -35,6 +35,12 @@ export interface ExecuteSandbox {
    */
   readonly reportLinked: readonly string[]
   readonly config: ResolvedSandboxConfig
+  /**
+   * A cached task's: the project directories its key answers for, which
+   * an executor that builds the request again where it runs, on that
+   * machine's paths and platform, hands `sandboxRequestFor`.
+   */
+  readonly keyed?: readonly string[]
 }
 
 /** One declared input file, as the cache key saw it. */
