@@ -272,7 +272,7 @@ export function dte(options: DteOptions) {
       const relay = options.relay ?? (await adapter?.relay?.())
       if (relay === undefined)
         throw new UserError('dte(): no relay: set relay, or use an adapter that has one')
-      const [{ Orchestrator }, { join }, { busyCores, toStart }, { snapshot }, seal] =
+      const [{ Orchestrator }, { join }, { busyCores, endsInMs, toStart }, { snapshot }, seal] =
         await Promise.all([
           import('./orchestrator.js'),
           import('./wire.js'),
@@ -406,6 +406,15 @@ export function dte(options: DteOptions) {
             }),
           ).catch((err: unknown) => o.failed(id, err instanceof Error ? err.message : String(err)))
         }
+        // An agent asked for now joins after the warm-up the first ones
+        // took: work that ends sooner is for the agents here or starting.
+        const warmUp = o.warmUpMs()
+        if (
+          warmUp !== undefined &&
+          o.cores() > 0 &&
+          endsInMs(remaining, nodes ?? new Map(), (id) => peaks.get(id)?.p50DurationMs) <= warmUp
+        )
+          return
         for (const s of toStart(sizes, started, o.cores(), wantCores, above)) start(s)
       }
       // Until a task misses, demand waits: a run all hits starts no agent.
