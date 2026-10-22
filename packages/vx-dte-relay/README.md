@@ -19,7 +19,8 @@ server that speaks [PROTOCOL.md](./PROTOCOL.md) can take its place.
 
 The button copies this directory into a new repository of yours and
 deploys it. It asks for one value, `ALLOW`: who may take part, space
-separated, each `issuer:owner/repo:workflow`.
+separated, each `issuer:owner/repo:workflow`. `wrangler.jsonc` holds it,
+since a deploy replaces the dashboard's: put yours there.
 `https://token.actions.githubusercontent.com:vznjs/vx:ci.yml` admits the
 jobs of `.github/workflows/ci.yml` in `vznjs/vx`;
 `https://gitlab.com:group/project:.gitlab-ci.yml` a GitLab project's.
@@ -32,9 +33,9 @@ Or deploy from this directory with Cloudflare's
 [`wrangler`](https://developers.cloudflare.com/workers/wrangler/):
 
 ```sh
-npm install
-npx wrangler login
-npx wrangler deploy --var ALLOW:https://token.actions.githubusercontent.com:owner/repo:ci.yml
+bun install
+bunx wrangler login
+bunx wrangler deploy
 ```
 
 `src/worker.ts` is the same relay as the one on Bun. Each run is one

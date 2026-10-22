@@ -20,7 +20,7 @@ it('installs alone with npm and deploys with wrangler by wrangler.jsonc', async 
     workspace: Object.entries(deps).filter(([, spec]) => String(spec).startsWith('workspace:')),
     deploy: pkg.scripts.deploy,
     main: await Bun.file(path.join(import.meta.dir, '..', config.main)).exists(),
-    // A plain var the button asks for, not a secret it masks.
+    // A deploy replaces the dashboard's ALLOW with this one, so it is never empty.
     allow: config.vars.ALLOW,
     envExample: await Bun.file(path.join(import.meta.dir, '..', '.env.example')).exists(),
     objects: config.durable_objects,
@@ -29,7 +29,8 @@ it('installs alone with npm and deploys with wrangler by wrangler.jsonc', async 
     workspace: [],
     deploy: 'wrangler deploy',
     main: true,
-    allow: '',
+    allow:
+      'https://token.actions.githubusercontent.com:vznjs/vx:ci.yml https://token.actions.githubusercontent.com:vznjs/vx:vx-agent.yml',
     envExample: false,
     objects: { bindings: [{ name: 'RELAY', class_name: 'RelayRun' }] },
     migrations: [{ tag: 'v1', new_sqlite_classes: ['RelayRun'] }],
