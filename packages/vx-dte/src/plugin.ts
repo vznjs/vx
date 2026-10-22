@@ -345,7 +345,7 @@ export function dte(options: DteOptions) {
         }
       }
       const shape = (remaining: ReadonlySet<string>): void => {
-        // An unmeasured task takes the biggest agent there is.
+        // A task that filled its agent takes the biggest there is.
         const biggest = Math.max(1, o.biggestCores(), ...sizes.map((s) => s.cpu))
         const warmUp = o.warmUpMs()
         const width = (peak?: boolean, fromMs?: number): number =>
@@ -562,9 +562,11 @@ interface DryTask {
 
 /** What a task asks of an agent, from its history. */
 export function needOf(r: TaskResources | undefined): Need {
-  // Unmeasured: a whole agent, until its first run measures it. One that
-  // filled its agent: a whole bigger one.
-  if (r?.maxCpuParallelism === undefined) return { cores: Infinity, memory: Infinity }
+  // Unmeasured: one core, until its first run measures it. A whole agent
+  // each left CI's agents at 30% whenever a PR added tasks (2026-10-22: 12
+  // new shards, each alone on a 4-core agent); only main saves history.
+  // One that filled its agent: a whole bigger one.
+  if (r?.maxCpuParallelism === undefined) return { cores: 1, memory: 0 }
   if (r.saturatedCores !== undefined || r.saturatedMemoryBytes !== undefined)
     return {
       cores: Infinity,
