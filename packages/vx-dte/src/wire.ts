@@ -19,6 +19,8 @@ export class RelayError extends Error {
 /** A dropped socket's first redial waits up to this, doubling per failure (full jitter). */
 const FIRST_REDIAL_MS = 250
 const MAX_REDIAL_MS = 30_000
+/** A frame of several sends stays under this, half the relay's 1 MiB body limit. */
+const FRAME_BYTES = 512 * 1024
 /** How long `leave` waits on its socket's close handshake. */
 const CLOSE_WAIT_MS = 2_000
 const UNANSWERED = 'the relay answered no frame'
@@ -312,10 +314,31 @@ async function connect(
   /** Sends asked for in this turn of the event loop, which go as one frame. */
   let sends: { to: string; body: unknown; resolve(): void; reject(err: Error): void }[] = []
   const flush = (): void => {
-    const batch = sends
+    const all = sends
     sends = []
-    if (!batches || batch.length === 1) {
-      for (const one of batch) request({ to: one.to, body: one.body }).then(one.resolve, one.reject)
+    if (!batches) {
+      for (const one of all) request({ to: one.to, body: one.body }).then(one.resolve, one.reject)
+      return
+    }
+    // Frames under the relay's body limit, which it applies to a frame whole.
+    let batch: typeof all = []
+    let bytes = 0
+    for (const one of all) {
+      const size = JSON.stringify(one.body)?.length ?? 0
+      if (batch.length > 0 && bytes + size > FRAME_BYTES) {
+        frame(batch)
+        batch = []
+        bytes = 0
+      }
+      batch.push(one)
+      bytes += size
+    }
+    frame(batch)
+  }
+  const frame = (batch: typeof sends): void => {
+    if (batch.length === 1) {
+      const [one] = batch
+      request({ to: one!.to, body: one!.body }).then(one!.resolve, one!.reject)
       return
     }
     const k = ++n

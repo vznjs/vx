@@ -461,3 +461,21 @@ it('gives up on a relay down for three heartbeats', async () => {
   await expect(a.poll()).rejects.toThrow('relay poll: 502')
   expect(performance.now() - at).toBeGreaterThanOrEqual(150)
 })
+
+// Sends asked for in one tick went as one frame, which the relay refused
+// whole once they passed its 1 MiB body limit together (2026-10-22).
+it('sends asked for together that would pass the relay’s body limit go as several frames', async () => {
+  const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
+  servers.push(s)
+  const o = await join(s.url, R, 'orchestrator', null, undefined)
+  const a = await join(s.url, R, 'agent', null, undefined)
+  await o.poll()
+  const big = 'x'.repeat(600_000)
+  await Promise.all([o.send(a.id, big), o.send(a.id, big), o.send(a.id, 'small')])
+  const got = []
+  for (let i = 0; i < 10 && got.length < 3; i++) got.push(...(await a.poll()))
+  expect(got.map((m) => (m.body as string).length)).toEqual([600_000, 600_000, 5])
+  await expect(o.send(a.id, 'x'.repeat(1 << 20))).rejects.toThrow('relay send: 413 body over 1 MiB')
+  await a.leave()
+  await o.leave()
+})

@@ -94,6 +94,11 @@ export async function runAgent(opts: {
   let floor: LocalFloor | undefined
   let usedCores = 0
   let usedMemory = 0
+  /**
+   * Entries whose files are here, restored or run here, by key: tasks
+   * started together wait on one restore, never run before it.
+   */
+  const present = new Map<string, Promise<void>>()
 
   /** Saves the task's files and output under `key` and says so. */
   const reply = async (
@@ -120,6 +125,7 @@ export async function runAgent(opts: {
         env: m.env,
       },
     )
+    if (res.exitCode === 0) present.set(key, Promise.resolve())
     await me.send('orchestrator', { type: 'end', task: m.task, key, result })
   }
 
@@ -162,14 +168,23 @@ export async function runAgent(opts: {
     void me.send('orchestrator', { type: 'start', task: m.task }).catch(() => undefined)
     try {
       for (const d of m.deps) {
-        const got = await artifacts.restore(d.key, {
-          id: d.task,
-          projectDir: path.join(opts.root, d.project),
-          command: '',
-          outputs: d.outputs,
-        })
-        if (got === null)
-          throw new Error(`${d.task}'s entry ${d.key} is in no cache this agent reads`)
+        let got = present.get(d.key)
+        if (got === undefined) {
+          got = artifacts
+            .restore(d.key, {
+              id: d.task,
+              projectDir: path.join(opts.root, d.project),
+              command: '',
+              outputs: d.outputs,
+            })
+            .then((log) => {
+              if (log === null)
+                throw new Error(`${d.task}'s entry ${d.key} is in no cache this agent reads`)
+            })
+          present.set(d.key, got)
+          got.catch(() => present.delete(d.key))
+        }
+        await got
       }
       // An earlier task's files under these outputs would ship as this one's.
       for (const f of await outputFiles(opts.root, m.project, m.outputs)) {
@@ -257,14 +272,7 @@ export async function runAgent(opts: {
   }, HELD_EVERY * me.heartbeatMs)
   try {
     for (;;) {
-      let messages
-      try {
-        messages = await me.poll()
-      } catch (err) {
-        if (err instanceof RelayError && err.status === 410) return 0
-        throw err
-      }
-      for (const { from, body } of messages) {
+      for (const { from, body } of await me.poll()) {
         if (from === 'relay') {
           if ((body as { type?: string }).type === 'closed') return 0
           continue
@@ -321,6 +329,10 @@ export async function runAgent(opts: {
         }
       }
     }
+  } catch (err) {
+    // The run closed under a poll or an answer: nothing is left for this agent.
+    if (err instanceof RelayError && err.status === 410) return 0
+    throw err
   } finally {
     clearInterval(held)
     queue.length = 0
