@@ -135,11 +135,13 @@ export async function headStamp(root: string): Promise<string> {
         const m = /^gitdir: (.*)$/m.exec(await readFile(dotGit, 'utf8').catch(() => ''))
         if (m !== null) gitDir = path.resolve(dir, m[1]!.trim())
       }
-      const head = await readFile(path.join(gitDir, 'HEAD'), 'utf8').catch(() => '')
-      const log = await lstat(path.join(gitDir, 'logs', 'HEAD')).catch(() => null)
-      const index = await lstat(path.join(gitDir, 'index')).catch(() => null)
-      // A worktree's own stack holds its HEAD; the common one, its branches.
-      const common = await readFile(path.join(gitDir, 'commondir'), 'utf8').catch(() => null)
+      const [head, log, index, common] = await Promise.all([
+        readFile(path.join(gitDir, 'HEAD'), 'utf8').catch(() => ''),
+        lstat(path.join(gitDir, 'logs', 'HEAD')).catch(() => null),
+        lstat(path.join(gitDir, 'index')).catch(() => null),
+        // A worktree's own stack holds its HEAD; the common one, its branches.
+        readFile(path.join(gitDir, 'commondir'), 'utf8').catch(() => null),
+      ])
       const tables = await Promise.all(
         [gitDir, ...(common === null ? [] : [path.resolve(gitDir, common.trim())])].map((d) =>
           readFile(path.join(d, 'reftable', 'tables.list'), 'utf8').catch(() => ''),

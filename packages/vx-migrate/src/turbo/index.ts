@@ -192,11 +192,15 @@ const textOf = (file: string): Promise<string> =>
  * `.yarnrc.yml` and the microfrontends configs.
  */
 async function run(root: string, projects: readonly ProjectMeta[]): Promise<AdoptionRun> {
-  const metas = await withManifests(projects)
-  const dirs = [root, ...metas.map((m) => m.dir)]
-  const configs = await Promise.all(
-    dirs.flatMap((d) => ['turbo.json', 'turbo.jsonc'].map((f) => textOf(path.join(d, f)))),
-  )
+  const dirs = [root, ...projects.map((m) => m.dir)]
+  const [metas, configs, yarnrc, rootManifest] = await Promise.all([
+    withManifests(projects),
+    Promise.all(
+      dirs.flatMap((d) => ['turbo.json', 'turbo.jsonc'].map((f) => textOf(path.join(d, f)))),
+    ),
+    textOf(path.join(root, '.yarnrc.yml')),
+    textOf(path.join(root, 'package.json')),
+  ])
   const envNames = envNamesThatMap(configs, envNamesNow())
   // The tsconfigs a `tsc` script reads are the mapping's inputs too.
   const tsc = onceReader()
@@ -213,9 +217,9 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
       process.env['TURBO_CI_VENDOR_ENV_KEY'] ?? '',
       process.env['TURBO_ENV_MODE'] ?? '',
       ...configs,
-      await textOf(path.join(root, '.yarnrc.yml')),
+      yarnrc,
       // Its dependencies are global inputs, a member or not.
-      await textOf(path.join(root, 'package.json')),
+      rootManifest,
       JSON.stringify(microfrontendsConfigs(root, dirs)),
       // A config file added beside mapped tasks changes what an output may cover.
       JSON.stringify(metas.map((m) => [m.name, m.dir, m.packageJson, m.configPath])),
