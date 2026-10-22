@@ -4,8 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-  # The merge queue tests each group's merge before main moves. `changes`
-  # runs on pull_request only, so every gated job runs everything here.
+  # The merge queue tests each group's merge before main moves.
   merge_group:
   # Manual re-run without a push — for distinguishing runner-infra flakes
   # from real regressions when a main run goes red.
@@ -17,7 +16,6 @@ permissions:
   contents: read
   # The remote cache's token: turboCache({ oidc }) exchanges the job's OIDC
   # token with Vercel, no long-lived secret (.vx/workspace.ts).
-  # A fork PR gets no OIDC token: its runs use the local cache, with a warning.
   id-token: write
 
 # A newer push to the same PR supersedes an older run, which is cancelled:
@@ -30,84 +28,36 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Which of the jobs below a pull request's diff can reach. The `ci` job
-  # runs every suite on every diff and is never gated. `plugin packages` is
-  # gated on the paths its live suites can read. The macOS job is gated
-  # narrowly: it guards platform divergence (tar, file system, SQLite),
-  # which lives in core and the plugins, so it skips only a diff confined
-  # to the site, the bench and prose; the `ci` job still runs every law
-  # that reads those files. The gated jobs also run when this job fails
-  # or is skipped (a push or a dispatch runs everything); a job skipped by
-  # `if` reports success to branch protection, where a workflow-level
-  # `paths` filter would leave a required check pending.
+  # Everything Linux runs, as one distributed run (@vzn/vx-dte): this job
+  # is the run and runs nothing itself (owner, 2026-10-22: "everything
+  # should run in DTE"); github() dispatches vx-agent.yml for the agents,
+  # which read the cache this job's token lends them. Core's `ci` task is
+  # a group fanning out to `lint` (→ lint.oxlint + lint.oxfmt), `test` and
+  # `check.binary` (the host binary, compiled the way release.yml does,
+  # must launch and report the manifest version); every package's `ci`
+  # runs its suite. The two cross-compiles run on an agent's cold Bun
+  # cache, in bwrap: each target's runtime downloads from npm inside the
+  # sandbox, as on a fresh laptop (2026-09-29).
   #
-  # The diff is the merge ref's own: first parent (the base tip) to the
-  # merge, the tree every job here tests. `--no-renames` lists both ends of a
-  # move. A path is safe only if neither live suite, nor the vx run that
-  # hosts it, can read it: vx-migrate's sandbox grants its own directory,
-  # vx-reapi's suites read their own files, both import core and the
-  # workspace's plugins by their source, and every run evaluates every
-  # project's vx.config.ts and installs every package.json. Anything not
-  # listed runs the job.
-  changes:
-    name: changes
-    if: github.event_name == 'pull_request'
+  # The job summary comes from `@vzn/vx-ci`, declared in .vx/workspace.ts;
+  # it writes the verdict and the per-task table, so a red run says WHICH
+  # task failed on the PR page. The env below travels with each task to
+  # the agent that runs it, through each task's exec.env.passThrough.
+  linux:
+    name: lint · format · test
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      packages: ${{ steps.diff.outputs.packages }}
-      darwin: ${{ steps.diff.outputs.darwin }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      actions: write
+      # GITHUB_TOKEN dispatches the agents, so vx-ci posts the run's check too.
+      checks: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 2
-      - id: diff
-        shell: bash
-        run: |
-          changed=$(git diff --no-renames --name-only HEAD^1 HEAD)
-          echo "$changed"
-          packages=false
-          darwin=false
-          platform='process\.platform|darwin|macos|seatbelt|sandbox|realpath|tmpdir|/private/|/proc/|SIG[A-Z]{2,}|\.kill\(|spawn|symlink|chmod|inotify|fsevents|rlimit|ulimit|EPERM|EACCES|statSync|lstat|ctime|\.ino\b'
-          # An empty diff reads as one empty line, which `*)` runs.
-          while IFS= read -r f; do
-            case "$f" in
-              packages/vx-reapi/* | packages/vx-migrate/* | packages/*/vx.config.ts | packages/*/package.json) packages=true ;;
-              packages/vx/docs/* | packages/vx/tests/* | packages/vx-docs/* | packages/vx-bench/* | packages/vx-plugin-examples/*) ;;
-              packages/vx-ci/tests/* | packages/vx-lockfile/tests/* | packages/vx-otel/tests/* | packages/vx-schedule-history/tests/*) ;;
-              README.md | CLAUDE.md | SECURITY.md | LICENSE | .claude/* | skills/*) ;;
-              *) packages=true ;;
-            esac
-            # macOS runs for what can behave differently there: the
-            # runtime and dependencies, CI itself, the exec and util
-            # layers (sandbox, spawn, signals, paths), and any other
-            # line that names a platform trait (owner, 2026-10-12: macOS
-            # only for platform-touching PRs; main runs it always).
-            case "$f" in
-              '' | package.json | bun.lock | .vx/workspace.ts | .github/* | scripts/*) darwin=true ;;
-              packages/*/vx.config.ts | packages/*/package.json | packages/*/scripts/*) darwin=true ;;
-              packages/vx/src/exec/* | packages/vx/src/util/* | packages/vx/src/bin.ts | packages/vx/npm-launcher.*) darwin=true ;;
-              *)
-                # Not `grep -q`: its early exit is git's SIGPIPE, a
-                # failed pipeline under pipefail, and so a missed match.
-                if git diff --no-renames -U0 HEAD^1 HEAD -- "$f" |
-                  grep -E "$platform" > /dev/null; then darwin=true; fi
-                ;;
-            esac
-          done <<< "$changed"
-          echo "packages=$packages" >> "$GITHUB_OUTPUT"
-          echo "darwin=$darwin" >> "$GITHUB_OUTPUT"
-
-  ci:
-    name: lint · format · unsafe
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        # Every tag and the history since: the API-break law
-        # (tests/api-break.unsafe.test.ts) reads the last release's record
-        # and the commits after it.
+        # The default branch and its history: schedule-history finds the
+        # merge-base's timings, which carry each task's measured need, so
+        # agents pack tasks by it.
         with:
           fetch-depth: 0
 
@@ -115,122 +65,66 @@ jobs:
         with:
           bun-version: 1.4.2
 
-      - name: Show versions
-        run: bun --version
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
       - uses: ./.github/actions/vx-runner
 
-      # Dogfood: vx orchestrates its own gate via vx.config.ts. Core's
-      # `ci` task is a group fanning out to `lint` (→ lint.oxlint +
-      # lint.oxfmt), `test` and `check.binary` (the host binary, compiled
-      # the way release.yml does, must launch and report the manifest
-      # version — a layout move broke that stamp unseen for a week once).
-      # The four release targets are `build.bun`, built only by
-      # release.yml: core has no `build`, so no dependant's `install →
-      # ^build` compiles them, here or on a laptop. vx prepends each
-      # project's node_modules/.bin to PATH per task, so oxlint / oxfmt
-      # resolve from a raw shell.
-      #
-      # The job summary comes from `@vzn/vx-ci`, declared in
-      # .vx/workspace.ts — it activates on GITHUB_STEP_SUMMARY and writes the
-      # verdict, stats, failures and the per-task table, so a red run says
-      # WHICH task failed on the PR page instead of only in the log.
-      #
-      # It needs no `if: always()`: vx writes before exiting, so a FAILING
-      # run still lands its summary and the step's exit code still gates the
-      # job.
-      #
-      # VX_REQUIRE_SANDBOX turns an unavailable OS sandbox into a test FAILURE
-      # instead of a skip. The runner action installs bwrap + socat + strace, so
-      # unavailable here means the install broke — and `describe.skipIf` would
-      # otherwise delete the tests covering the isolation boundary under a
-      # green check. The diagnose step is not a
-      # substitute: it hard-fails on the raw bwrap exec, one of probeSandbox's
-      # four failure paths. `vx run` isolates the child env, so this is
-      # forwarded via the test task's exec.env.passThrough.
-      # Everything the gate checks is a vx task — the site's generated
-      # collection (`@vzn/vx-docs#import`), the site-vs-results check
-      # (`@vzn/vx-bench#check.site`), every package's suite (each
-      # package's `ci` → `test`) — so the same command is the gate here
-      # and on a laptop. A read across a project boundary is declared on
-      # the task that needs it, never worked around with a workspace step.
-      # A 2 MiB tmpfs for `tests/disk-full.unsafe.test.ts`: the suite skips
-      # without VX_SMALL_DISK, so a laptop is not asked to mount anything and
-      # the machine whose result gates a merge runs it. It is in the unsafe
-      # set because a sandboxed shard sees a mount it did not make as
-      # read-only (EROFS, the first run), and a disk that cannot be written
-      # cannot be filled.
       # vx's own cache, carried between runs: a run restores the newest
       # one main saved and replays every task whose key is unchanged, so a
-      # PR re-runs only what it touched (owner, 2026-10-04: cache all that
-      # can be). Only a push to main saves, so a PR's code never writes an
-      # entry another run reads.
+      # PR re-runs only what it touched (owner, 2026-10-04). Only a push
+      # to main saves, so a PR's code never writes an entry another run reads.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # The workspace's index and the user store its entries live in.
           path: |
             .vx/cache
             ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
           restore-keys: vx-${{ runner.os }}-
 
-      - name: Mount a small disk
-        run: |
-          sudo mkdir -p /tmp/vx-small
-          sudo mount -t tmpfs -o size=2m tmpfs /tmp/vx-small
-          sudo chown "$USER" /tmp/vx-small
       # Every run reads configs from the committed lock and trusts it; this
       # re-evaluates them and fails on drift.
       - name: vx lock --check
         run: bun packages/vx/src/bin.ts lock --check
+
+      - name: A run id no one can guess
+        run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
+
       - name: vx run ci
         env:
+          VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
+          GITHUB_TOKEN: ${{ github.token }}
+          # An unavailable OS sandbox is a test FAILURE, not a skip: a
+          # `describe.skipIf` would delete the tests covering the isolation
+          # boundary under a green check.
           VX_REQUIRE_SANDBOX: '1'
-          # The reftable rows (core's git-reftable.unsafe.test.ts, vx-migrate's
-          # head-stamp-reftable.test.ts) need git 2.45; the runner's git is
-          # newer, and an older one fails them here instead of skipping.
+          # The reftable rows need git 2.45; an older one fails them here
+          # instead of skipping.
           VX_REQUIRE_REFTABLE: '1'
-          # The API-break law needs the last v* tag (full history above);
-          # without one it fails here instead of passing.
+          # The API-break law needs the last v* tag; agents check out the
+          # full history.
           VX_REQUIRE_TAGS: '1'
           # A PR's title and its commits are held to Conventional Commits
           # (tests/conventional-commits.unsafe.test.ts); a push passes none.
           VX_PR_TITLE: ${{ github.event.pull_request.title }}
           VX_PR_BASE: ${{ github.event.pull_request.base.sha }}
           VX_PR_HEAD: ${{ github.event.pull_request.head.sha }}
-          # Same reason as the sandbox flag: the two `armWatcher` rows prove
-          # the NATIVE watcher delivers, and where it does not `vx watch`
-          # silently falls back to polling. Bun 1.3.11 on the cloud container
-          # drops hidden-file fs.watch events, so the probe never lands there
-          # and the rows skip; a runner that starts doing the same must be a
-          # failure, not a quiet skip.
+          # The `armWatcher` rows prove the NATIVE watcher delivers; where it
+          # does not, `vx watch` silently polls. A runner that drops the
+          # events must fail, not skip.
           VX_REQUIRE_WATCH_EVENTS: '1'
-          # Same reason again: six rows across five suites assert what a
-          # PERMISSION BIT does, and root bypasses every permission bit, so
-          # each one carried a bare `skipIf(getuid() === 0)` and a comment
-          # claiming this runner is not root. Nothing checked that claim, and
-          # a root container deletes all six under a green check (item 481
-          # found it that way). This makes root the failure it should be here.
+          # Root bypasses every permission bit, so six rows asserting what
+          # one does would skip on a root container (item 481).
           VX_REQUIRE_NONROOT: '1'
+          # The 2 MiB tmpfs each Linux agent mounts (vx-agent.yml) for
+          # `tests/disk-full.unsafe.test.ts`.
           VX_SMALL_DISK: /tmp/vx-small
         run: |
-          # The summary is written by a PLUGIN now, and a plugin that declines
-          # writes nothing — a silent regression, since job summaries are not
-          # exposed through the REST API and a green check looks identical
-          # either way. So assert it, IN THIS STEP: `$GITHUB_STEP_SUMMARY` is
-          # per-STEP (the runner hands each one its own file and concatenates
-          # them), which a separate verification step learned the hard way by
-          # testing its own empty file and failing every time.
-          #
-          # vx's exit code stays the gate: it is captured, the summary is
-          # checked either way — a FAILING run is when the summary matters
-          # most, since it carries the failure callout — and then re-raised.
-          # Core's twelve test shards run in the `shards` job, beside this one.
+          # The summary is written by a PLUGIN, and a plugin that declines
+          # writes nothing under a green check, so assert it in this step
+          # (`$GITHUB_STEP_SUMMARY` is per step); vx's exit code stays the gate.
           set +e
-          bun packages/vx/src/bin.ts run ci --all --exclude-dependencies=test.bun.shard-1,test.bun.shard-2,test.bun.shard-3,test.bun.shard-4,test.bun.shard-5,test.bun.shard-6,test.bun.shard-7,test.bun.shard-8,test.bun.shard-9,test.bun.shard-10,test.bun.shard-11,test.bun.shard-12
+          bun packages/vx/src/bin.ts run ci check.vs-turbo build.bun.linux-arm64 build.bun.darwin-arm64 --all
           code=$?
           set -e
           test -s "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is empty — did @vzn/vx-ci decline?"; exit 1; }
@@ -240,151 +134,12 @@ jobs:
       - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # The workspace's index and the user store its entries live in.
           path: |
             .vx/cache
             ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
 
-      # A cross-compile on a cold Bun cache, in bwrap: nothing warms
-      # `~/.bun/install/cache`, so each target's runtime downloads from npm
-      # inside the sandbox, as it does on a fresh laptop — what the
-      # `build.bun.*` grants exist for (2026-09-29). Two targets the host
-      # is not; release.yml builds all four the same way.
-      - name: Cross-compile on a cold Bun cache (bwrap)
-        run: |
-          if ls ~/.bun/install/cache/bun-*-v* 2>/dev/null; then echo "::error::the Bun cache is not cold"; exit 1; fi
-          bun packages/vx/src/bin.ts run build.bun.linux-arm64 build.bun.darwin-arm64 --filter @vzn/vx --concurrency 2
-
-  # Core's test shards, two runners of six beside `ci`: one 4-core runner
-  # spent ~5 of its 6 minutes on 1,150 s of tasks, CPU bound (2026-10-08).
-  # Two runners of six shards each for a fork's PR, which cannot dispatch
-  # agents; everything else runs all twelve over agents in `shards-dte`.
-  shards:
-    name: core shards (${{ matrix.part }})
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - part: 1-6
-            tasks: test.bun.shard-1 test.bun.shard-2 test.bun.shard-3 test.bun.shard-4 test.bun.shard-5 test.bun.shard-6
-          - part: 7-12
-            tasks: test.bun.shard-7 test.bun.shard-8 test.bun.shard-9 test.bun.shard-10 test.bun.shard-11 test.bun.shard-12
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.4.2
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - uses: ./.github/actions/vx-runner
-
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            .vx/cache
-            ~/.vx
-          key: vx-${{ runner.os }}-shards-${{ matrix.part }}-${{ github.sha }}
-          restore-keys: vx-${{ runner.os }}-shards-${{ matrix.part }}-
-
-      - name: vx run core shards
-        env:
-          VX_REQUIRE_SANDBOX: '1'
-          VX_REQUIRE_WATCH_EVENTS: '1'
-          VX_REQUIRE_NONROOT: '1'
-        run: bun packages/vx/src/bin.ts run ${{ matrix.tasks }} --filter @vzn/vx
-
-      - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            .vx/cache
-            ~/.vx
-          key: vx-${{ runner.os }}-shards-${{ matrix.part }}-${{ github.sha }}
-
-  # The twelve shards as one distributed run (@vzn/vx-dte): this job is
-  # the run and runs nothing itself; github() dispatches vx-agent.yml for
-  # the agents, which read the cache this job's token lends them.
-  shards-dte:
-    name: core shards (dte)
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      id-token: write
-      actions: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        # The default branch and its history: schedule-history finds the
-        # merge-base's timings, which carry each shard's measured need, so
-        # agents pack shards by it. Shallow, every shard took a whole agent.
-        with:
-          fetch-depth: 0
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.4.2
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - uses: ./.github/actions/vx-runner
-
-      - name: A run id no one can guess
-        run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
-
-      - name: vx run core shards
-        env:
-          VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
-          GITHUB_TOKEN: ${{ github.token }}
-          VX_REQUIRE_SANDBOX: '1'
-          VX_REQUIRE_WATCH_EVENTS: '1'
-          VX_REQUIRE_NONROOT: '1'
-        run: bun packages/vx/src/bin.ts run test.bun.shard-1 test.bun.shard-2 test.bun.shard-3 test.bun.shard-4 test.bun.shard-5 test.bun.shard-6 test.bun.shard-7 test.bun.shard-8 test.bun.shard-9 test.bun.shard-10 test.bun.shard-11 test.bun.shard-12 --filter @vzn/vx
-
-  # The per-PR bench against Turborepo (packages/vx-bench/pr-bench.ts) on
-  # a runner of its own: beside the unsafe suite in `ci` the nothing-changed
-  # ratio read 1.29 against 0.83 idle, since load slows the two tools
-  # unequally (2026-10-12).
-  vs-turbo:
-    name: bench vs Turborepo
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.4.2
-
-      - run: bun install --frozen-lockfile
-
-      - uses: ./.github/actions/vx-runner
-
-      - name: vx vs Turborepo
-        env:
-          VX_REQUIRE_SANDBOX: '1'
-        run: bun packages/vx/src/bin.ts run check.vs-turbo --filter @vzn/vx-bench
-
-  # The required check: green only when `ci`, the shards (on runners or
-  # agents, whichever ran) and the bench against Turborepo are.
-  gate:
-    name: lint · format · test
-    needs: [ci, shards, shards-dte, vs-turbo]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: ci, shards and the bench passed
-        run: test "${{ needs.ci.result }}" = success && test "${{ needs.shards.result }}${{ needs.shards-dte.result }}" = successskipped -o "${{ needs.shards.result }}${{ needs.shards-dte.result }}" = skippedsuccess && test "${{ needs.vs-turbo.result }}" = success
-
-  # The `ci` job above runs every package's suite through `vx run ci --all`;
+  # The linux run above runs every package's suite through `vx run ci --all`;
   # this job exists for the one suite that needs live services — the REAPI
   # wire against a real cache server and a real execution worker.
   #
@@ -395,8 +150,6 @@ jobs:
   # reports green.
   packages:
     name: plugin packages
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.packages == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -509,7 +262,7 @@ jobs:
       - name: compiled binary (check.binary)
         run: bun packages/vx/src/bin.ts run check.binary --filter @vzn/vx
 
-  # The darwin job exists because THREE macOS-only defects reached main
+  # The macOS run exists because THREE macOS-only defects reached main
   # unseen on an ubuntu-only matrix (2026-08-22: bsdtar refusing --format=gnu
   # broke every cache save; the /tmp -> /private/tmp symlinked-base
   # containment refusing every restore; close() leaking a handle on
@@ -519,15 +272,25 @@ jobs:
   #
   # VX_REQUIRE_SANDBOX, as on Linux: the sandbox suites run here whenever
   # seatbelt answers, so an unavailable one must fail, not skip quietly.
-  core-darwin:
-    name: core tests (macOS, unsafe)
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.darwin == 'true') }}
+  #
+  # Its own distributed run (owner, 2026-10-22: "yes 2x dte"): this job
+  # dispatches macOS agents (.vx/workspace.ts picks the pool by the
+  # runner's OS) and keys the suites on it (#3861). Several processes, not
+  # one, is the point on macOS: `bun test` pins descriptors per imported
+  # module and the process cap is 10 240.
+  macos:
+    name: core tests (macOS)
     runs-on: macos-latest
-    timeout-minutes: 20
-
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+      actions: write
+      checks: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -535,131 +298,52 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # vx's cache between runs, as in the linux job.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # The workspace's index and the user store its entries live in.
           path: |
             .vx/cache
             ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
           restore-keys: vx-${{ runner.os }}-
 
-      # The core suite through vx, as on Linux: the twelve shard tasks plus
-      # the unsafe suite, dealt by weight, run side by side under the
-      # scheduler's cap. Several processes, not one, is the point on macOS:
-      # `bun test` pins descriptors per imported module and the process
-      # cap is 10 240, which the whole suite in one process does not clear.
+      - name: A run id no one can guess
+        run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
+
+      # The core suite, the host binary (darwin-arm64: it launches,
+      # re-signed only if macOS refuses it) and the cold cross-compile
+      # under seatbelt, which matches the directory Bun extracts a
+      # downloaded runtime into by the grant's glob.
       - name: vx run test (core, darwin)
         env:
+          VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
+          GITHUB_TOKEN: ${{ github.token }}
           VX_REQUIRE_SANDBOX: '1'
-          # FSEvents delivers the watch probe here; the rows must not vanish
-          # quietly if that changes (see the linux job for the reasoning).
           VX_REQUIRE_WATCH_EVENTS: '1'
-        # The twelve shards run in `darwin-shards`, beside this job.
-        run: bun packages/vx/src/bin.ts run test --filter @vzn/vx --exclude-dependencies=test.bun.shard-1,test.bun.shard-2,test.bun.shard-3,test.bun.shard-4,test.bun.shard-5,test.bun.shard-6,test.bun.shard-7,test.bun.shard-8,test.bun.shard-9,test.bun.shard-10,test.bun.shard-11,test.bun.shard-12
+        run: bun packages/vx/src/bin.ts run test check.binary build.bun.darwin-x64 build.bun.linux-x64 --filter @vzn/vx
 
       - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # The workspace's index and the user store its entries live in.
           path: |
             .vx/cache
             ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
 
-      # DATA COLLECTION, not a gate: the sandbox suites are class-gated on
-      # darwin CI because sandbox-exec misbehaves under load here — including
-      # one observed NON-ENFORCEMENT (an undeclared read succeeding). That
-      # every darwin run drives 20 leaky-task executions through the REAL
-      # run() path and prints a greppable [canary] SUMMARY line. Promoted
-      # from data-only to a GATE 2026-08-25 (220/220 enforced across 11
-      # runs): a NOT_ENFORCED iteration reds the job; reporting loss stays
-      # tolerated (lossy-by-OS, ~5%, asserted on nowhere here).
+      # A gate since 2026-08-25 (220/220 enforced across 11 runs): every
+      # run drives 20 leaky-task executions through the real run() path on
+      # this machine, and a NOT_ENFORCED one reds the job. Not distributed:
+      # the canary asks this machine's seatbelt.
       - name: sandbox enforcement canary
+        env:
+          VX_DTE_RUN: ''
         run: bun packages/vx/tests/helpers/sandbox-canary.ts 20
 
-      # Every package's build under seatbelt, as a Mac developer runs it.
-      # Linux runs them under bwrap only, and a grant bwrap honoured by its
-      # mounts (listing `..` above `../vx-*/package.json`) failed
-      # `@vzn/vx-docs#import` on every Mac for a week (2026-10-17). No
-      # cache read: a hit would skip the very tasks this runs.
+      # Every package's build under seatbelt, as a Mac developer runs it: a
+      # grant bwrap honoured by its mounts failed `@vzn/vx-docs#import` on
+      # every Mac for a week (2026-10-17). No cache read: a hit would skip
+      # the very tasks this runs, and a run with no cache is not one to
+      # spread over agents.
       - name: vx run build --all (seatbelt)
-        run: bun packages/vx/src/bin.ts run build --all '--cache-policy=local:,remote:'
-
-      # The linux job's cold cross-compile, under seatbelt: Bun extracts a
-      # downloaded runtime into the package directory before moving it into
-      # its cache, and seatbelt matches that directory by the grant's glob.
-      - name: Cross-compile on a cold Bun cache (seatbelt)
-        run: |
-          if ls ~/.bun/install/cache/bun-*-v* 2>/dev/null; then echo "::error::the Bun cache is not cold"; exit 1; fi
-          bun packages/vx/src/bin.ts run build.bun.darwin-x64 build.bun.linux-x64 --filter @vzn/vx --concurrency 2
-
-      # The host binary (darwin-arm64), compiled as release.yml compiles it:
-      # it launches (re-signed only if macOS refuses it), reports the
-      # manifest version, runs its config worker, keeps a workspace .env
-      # out, resolves a package's main and exports, and runs a
-      # bare-specifier workspace with a plugin package. The linux job runs
-      # the same task for linux-x64 inside `vx run ci`.
-      - name: compiled binary (check.binary)
-        run: bun packages/vx/src/bin.ts run check.binary --filter @vzn/vx
-
-  # Core's shards on two macOS runners beside `core-darwin`: one 3-core
-  # runner spent 6m40 on ~1,100 s of tasks (2026-10-08).
-  darwin-shards:
-    name: core shards (macOS, ${{ matrix.part }})
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.darwin == 'true') }}
-    runs-on: macos-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - part: 1-6
-            tasks: test.bun.shard-1 test.bun.shard-2 test.bun.shard-3 test.bun.shard-4 test.bun.shard-5 test.bun.shard-6
-          - part: 7-12
-            tasks: test.bun.shard-7 test.bun.shard-8 test.bun.shard-9 test.bun.shard-10 test.bun.shard-11 test.bun.shard-12
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.4.2
-
-      - run: bun install --frozen-lockfile
-
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            .vx/cache
-            ~/.vx
-          key: vx-${{ runner.os }}-shards-${{ matrix.part }}-${{ github.sha }}
-          restore-keys: vx-${{ runner.os }}-shards-${{ matrix.part }}-
-
-      - name: vx run core shards (darwin)
         env:
-          VX_REQUIRE_SANDBOX: '1'
-          VX_REQUIRE_WATCH_EVENTS: '1'
-        run: bun packages/vx/src/bin.ts run ${{ matrix.tasks }} --filter @vzn/vx
-
-      - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            .vx/cache
-            ~/.vx
-          key: vx-${{ runner.os }}-shards-${{ matrix.part }}-${{ github.sha }}
-
-  # The required check: both macOS jobs passed, or `changes` skipped both.
-  darwin-gate:
-    name: core tests (macOS)
-    needs: [core-darwin, darwin-shards]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: core-darwin and darwin-shards passed or were skipped
-        run: |
-          for r in "${{ needs.core-darwin.result }}" "${{ needs.darwin-shards.result }}"; do
-            case "$r" in success|skipped) ;; *) echo "::error::a macOS job ended $r"; exit 1 ;; esac
-          done
+          VX_DTE_RUN: ''
+        run: bun packages/vx/src/bin.ts run build --all '--cache-policy=local:,remote:'
