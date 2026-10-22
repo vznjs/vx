@@ -3,9 +3,7 @@
 The `vx` binary is the user-facing entry point. The implementation is
 intentionally simple: a hand-rolled argv parser (no commander / yargs)
 in `src/cli/index.ts` dispatches to per-subcommand handlers under
-`src/cli/<name>.ts`. The flag surface is aligned with
-[Turborepo's `turbo run`](https://turborepo.com/docs/reference/run)
-so existing Turbo users can swap in with minimal muscle-memory churn.
+`src/cli/<name>.ts`.
 
 ```sh
 # The prebuilt standalone binary; inside a project
