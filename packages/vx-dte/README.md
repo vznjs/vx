@@ -307,10 +307,13 @@ the ones it never played when it ends.
 - An agent that stops answering, stops saying it holds a task, or cannot
   run one (a full disk) gets no more work, and its tasks run again on
   another. A task two such agents had begun fails, naming both; one an
-  agent had not begun yet does not count.
+  agent had not begun yet does not count. With no agent of the run left
+  to take it and none starting, it fails at once.
 - A relay unreachable for three heartbeats fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller
   than the agents. What finished is saved, so a rerun resumes from it.
+  A shorter fault (a `5xx` while the host restarts the relay, a dropped
+  connection) is asked through, by the orchestrator and agents alike.
 - An agent that never joins says why on its row (`failed  exited 1:
 …`). The first such failure in a run starts another agent in its
   place, as a checkout or install can fail on the network; a second
