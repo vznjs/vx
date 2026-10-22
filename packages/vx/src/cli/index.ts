@@ -4,7 +4,6 @@
 import { VERSION } from '../version.js'
 import { checkSettingsEnv } from '../settings.js'
 import { CORE_VERBS, flagHint, printHelp, refusedWord, seeHelp } from './help.js'
-import { FOREIGN_VERBS } from './foreign-flags.js'
 import {
   errorDocument,
   hideEnvFromTasks,
@@ -99,11 +98,6 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         // for the whole reference: it printed 145 lines and no hint.
         const resolved = await (await plugins()).resolvePluginCommand(verb)
         const unknown = resolved === null || 'declaredVerbs' in resolved
-        const pointer = FOREIGN_VERBS[verb]
-        if (unknown && pointer !== undefined) {
-          sayNotice('info', 'vx', pointer)
-          return 1
-        }
         if (unknown && verb.startsWith('-')) {
           sayNotice(
             'error',
@@ -217,12 +211,6 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         resolved !== null && 'loadError' in resolved
           ? `\n  (plugin verbs could not be looked up: .vx/workspace failed to load: ${resolved.loadError})`
           : ''
-      // Another tool's verb: the pointer, but only after the plugins had
-      // their chance — a workspace that declares a plugin verb of that name keeps it.
-      const moved = FOREIGN_VERBS[command]
-      if (moved !== undefined) {
-        return unknown(`${moved}${loadNote}\n`, undefined, 'info')
-      }
       // A task typed where the verb goes (`turbo build`, `nx build app`),
       // `turbo dev` included: a repo's own `dev` task beats the no-service note.
       const declaredVerbs =

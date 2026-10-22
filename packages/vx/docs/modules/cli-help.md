@@ -79,7 +79,6 @@ gap before its description.
 - `Artifacts (for run)` — `--profile`.
 - `Extensions (plugins)` — what plugins are for (remote cache,
   distributed execution, telemetry) and the plugin guide's URL.
-- `Turbo and Nx spellings (for run)` — what `turbo run` / `nx run-many` flags do here; the table is cli.md § Turbo and Nx flags.
 - `Argument forwarding (for run)` — explanation of `--`.
 - `Watch mode` — `vx watch`.
 - `Cache management` — `vx cache clean` examples.

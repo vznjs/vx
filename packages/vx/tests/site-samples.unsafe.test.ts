@@ -15,7 +15,6 @@ import {
 } from '../src/report/framed-output.js'
 import { formatFailureLine } from '../src/report/status-line.js'
 import { localExecutor } from '../src/exec/local-executor.js'
-import { FOREIGN_VERBS } from '../src/cli/foreign-flags.js'
 import { REMOTE_CACHE_METHODS } from '../src/orchestrator/plugin-host.js'
 import { PLUGIN_HOOKS } from '../src/config.js'
 import { ESSENTIAL_ENV } from '../src/util/essential-env.js'
@@ -1503,28 +1502,6 @@ describe('the values post states the principles CLAUDE.md numbers', () => {
     const section = /## The nine principles\n([\s\S]*?)\n## /.exec(page)
     expect(section).not.toBeNull()
     expect([...section![1]!.matchAll(/^\*\*[^*]+\*\*/gm)].length).toBe(numbered)
-  })
-})
-
-describe("the site's Turbo and Nx verb rows say what `vx <verb>` says", () => {
-  // The migrate guide mapped `nx reset` to "nothing" while `vx reset` named
-  // `vx cache clean` (J-90).
-  it('a row naming `nx <verb>` or `turbo <verb>` (no flag that changes it) holds the command and flags of its FOREIGN_VERBS hint', () => {
-    let rows = 0
-    for (const page of handAuthoredSitePages()) {
-      for (const line of readFileSync(page, 'utf8').split('\n')) {
-        const row = /^\|\s*`(?:nx|turbo) ([a-z-]+)(?: -[a-z] [^`-]*)?`\s*\|([^|]*)\|/.exec(line)
-        const hint = row && FOREIGN_VERBS[row[1]!]
-        if (!hint) continue
-        const command = /is `(vx [^`]+)`/.exec(hint)
-        if (!command) continue
-        rows++
-        const cell = row[2]!
-        expect(cell).toContain(command[1]!.split(/ [<[]/)[0]!)
-        for (const flag of command[1]!.matchAll(/--[a-z-]+/g)) expect(cell).toContain(flag[0])
-      }
-    }
-    expect(rows).toBe(4)
   })
 })
 

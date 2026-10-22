@@ -1521,10 +1521,7 @@ describe('parseRunArgs', () => {
       parseRunArgs(['build', '--concurrency', '1%']).settings['run.concurrency'],
     ).toBeGreaterThanOrEqual(1)
     expect(parseRunArgs(['build', '--concurrency', '%']).error).toBeDefined()
-    // `-c` is no concurrency short form: it is Nx's --configuration, refused by name.
-    expect(parseRunArgs(['build', '-c', '4']).error).toBe(
-      '-c (nx): a configuration is its own task: `vx run <target>:<configuration>`',
-    )
+    expect(parseRunArgs(['build', '-c', '4']).error).toMatch(/unknown flag: -c\b/)
     // A near miss names the documented flag; a far one gets no guess.
     expect(parseRunArgs(['build', '--concurency', '4']).error).toBe(
       'unknown flag: --concurency (did you mean --concurrency?)',
@@ -1683,9 +1680,6 @@ describe('parseRunArgs', () => {
 
   it('parses --all (replaces -r / --recursive)', () => {
     expect(parseRunArgs(['build', '--all']).all).toBe(true)
-    // Vite Task's spelling of it (foreign-flags.ts).
-    expect(parseRunArgs(['build', '-r']).all).toBe(true)
-    expect(parseRunArgs(['build', '--recursive']).all).toBe(true)
   })
 
   it('--no-cache disables every cache axis', () => {
@@ -1781,9 +1775,6 @@ describe('parseRunArgs', () => {
 
   it('parses --exclude-dependencies as "all" with no value', () => {
     expect(parseRunArgs(['build', '--exclude-dependencies']).excludeDependencies).toBe('all')
-    // Turbo's and Vite Task's spellings of it (foreign-flags.ts).
-    expect(parseRunArgs(['build', '--ignore-depends-on']).excludeDependencies).toBe('all')
-    expect(parseRunArgs(['build', '--only']).excludeDependencies).toBe('all')
   })
 
   it('the camelCase spelling the flag shipped with names the kebab-case one', () => {
@@ -1812,9 +1803,7 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--verbosity', '1']).verbosity).toBe(1)
     expect(parseRunArgs(['build', '--verbosity', '2']).verbosity).toBe(2)
     expect(parseRunArgs(['build', '-v']).error).toMatch(/unknown flag: -v/)
-    expect(parseRunArgs(['build', '--verbose']).error).toMatch(
-      /--verbose \(nx\): use `--verbosity <n>`/,
-    )
+    expect(parseRunArgs(['build', '--verbose']).error).toMatch(/unknown flag: --verbose/)
   })
 
   it('--verbosity rejects non-integer and negative values', () => {
@@ -1826,8 +1815,6 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '--dry']).dry).toBe('text')
     expect(parseRunArgs(['build', '--dry=text']).dry).toBe('text')
     expect(parseRunArgs(['build', '--dry=json']).dry).toBe('json')
-    // Turbo's spelling (foreign-flags.ts); `vx cache clean --dry-run` is its own flag.
-    expect(parseRunArgs(['build', '--dry-run']).dry).toBe('text')
   })
 
   it('rejects invalid --dry=<format>', () => {
@@ -1899,11 +1886,6 @@ describe('parseRunArgs', () => {
     expect(parseRunArgs(['build', '-f']).error).toMatch(/unknown flag: -f/)
   })
 
-  it("-p is Nx's --projects, a filter; --project is no flag", () => {
-    expect(parseRunArgs(['build', '-p', 'foo']).filters).toEqual(['foo'])
-    expect(parseRunArgs(['build', '--project', 'foo']).error).toMatch(/unknown flag: --project/)
-  })
-
   it('rejects missing flag value', () => {
     expect(parseRunArgs(['build', '--filter']).error).toBe(
       '--filter requires a value (a project name, glob or path, e.g. --filter app)',
@@ -1924,10 +1906,22 @@ describe('parseRunArgs', () => {
     ])
   })
 
-  // 2026-05 dropped `-F` as "Turbo has no -F"; Turbo's reference names it
-  // `--filter`'s alias, so it is a foreign alias since E-95.
-  it("-F is Turbo's alias for --filter", () => {
-    expect(parseRunArgs(['build', '-F', 'foo'])).toEqual(parseRunArgs(['build', '--filter', 'foo']))
+  // vx owns its flags (owner, 2026-10-22): another runner's spelling is an
+  // unknown flag like any other, never rewritten or answered with vx's.
+  it("another runner's flag is an unknown flag", () => {
+    for (const flag of [
+      '-F',
+      '-t',
+      '-p',
+      '-r',
+      '--dry-run',
+      '--skip-nx-cache',
+      '--only',
+      '--graph',
+    ])
+      expect(parseRunArgs(['build', flag, 'x']).error).toMatch(
+        new RegExp(`unknown flag: ${flag}\\b`),
+      )
   })
 
   it('rejects bad concurrency', () => {
