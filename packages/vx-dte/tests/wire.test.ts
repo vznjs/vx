@@ -77,3 +77,26 @@ it('polls a relay that offers no socket', async () => {
   ])
   expect(asked).toEqual(['join', 'join', 'poll'])
 })
+
+it('asks for a new token a minute before the one it holds expires', async () => {
+  const b64 = (v: unknown): string => Buffer.from(JSON.stringify(v)).toString('base64url')
+  const jwt = (inS: number): string => `${b64({})}.${b64({ exp: Date.now() / 1000 + inS })}.x`
+  const relay = createRelay({ heartbeatMs: 20, verify: async () => ({ iss: 'i', run: ['1'] }) })
+  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: (r) => relay.fetch(r) })
+  servers.push({
+    url: '',
+    async stop() {
+      relay.close()
+      await server.stop(true)
+    },
+  })
+  const url = `http://127.0.0.1:${server.port}`
+  const asked = async (inS: number): Promise<number> => {
+    let n = 0
+    const me = await join(url, 'r', 'agent', null, async () => (n++, jwt(inS)))
+    await me.poll()
+    await me.poll()
+    return n
+  }
+  expect([await asked(300), await asked(30)]).toEqual([1, 3])
+})
