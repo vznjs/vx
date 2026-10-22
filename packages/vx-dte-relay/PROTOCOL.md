@@ -71,8 +71,10 @@ for the participant (`426` without the upgrade). Frames are text:
 - the participant sends `{ "n", "to", "body" }`, as `send`, and the relay
   answers `{ "n" }`, or `{ "n", "status", "error" }` with the status
   `send` would answer;
-- the participant sends `ping` each `heartbeatMs`; the relay answers
-  `pong`.
+- the participant sends `ping` at least each `heartbeatMs`; the relay
+  answers `pong`. vx-dte's client pings each half heartbeat and treats a
+  socket it heard nothing on for a heartbeat and a half as closed: a
+  network that stops carrying a socket sends no close.
 
 A socket's close does not lose its participant: it polls again, or opens
 another. vx-dte's client does both: it polls over HTTP and dials a new
