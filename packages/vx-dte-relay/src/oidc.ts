@@ -200,7 +200,9 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
       if (typeof ref !== 'string') throw new TokenError(`no ${claim} claim`, 403)
       const workflow = ref.replace(/@.*$/, '')
       const repo = String(claims[repositoryClaimOf(iss)])
-      if (!ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository ?? repo, a.workflow!)))) {
+      if (
+        !ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository ?? repo, a.workflow!)))
+      ) {
         throw new TokenError(`workflow ${workflow} is not one this relay serves`, 403)
       }
     }

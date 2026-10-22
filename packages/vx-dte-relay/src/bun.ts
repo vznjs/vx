@@ -42,9 +42,7 @@ function main(argv: string[]): void {
   const server = serveRelay({
     hostname: host,
     port,
-    verify: noAuth
-      ? undefined
-      : createVerifier({ allow, audience: values.audience! }),
+    verify: noAuth ? undefined : createVerifier({ allow, audience: values.audience! }),
   })
   console.log(`vx-dte-relay on ${server.url}`)
   const stop = (): void => {

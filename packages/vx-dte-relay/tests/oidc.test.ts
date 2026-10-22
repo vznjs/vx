@@ -157,9 +157,15 @@ describe('a CI OIDC token', () => {
 
   it('reads ALLOW’s entries from the right, since an issuer holds colons', () => {
     expect(
-      parseAllow(' https://gitlab.example:8443:group/sub/app:ci/main.yml,\nhttps://x.dev:o/r:a.yml '),
+      parseAllow(
+        ' https://gitlab.example:8443:group/sub/app:ci/main.yml,\nhttps://x.dev:o/r:a.yml ',
+      ),
     ).toEqual([
-      { issuer: 'https://gitlab.example:8443', repository: 'group/sub/app', workflow: 'ci/main.yml' },
+      {
+        issuer: 'https://gitlab.example:8443',
+        repository: 'group/sub/app',
+        workflow: 'ci/main.yml',
+      },
       { issuer: 'https://x.dev', repository: 'o/r', workflow: 'a.yml' },
     ])
     expect(() => parseAllow('vznjs/vx:ci.yml')).toThrow(
