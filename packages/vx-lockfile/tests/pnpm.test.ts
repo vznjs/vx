@@ -11,7 +11,7 @@ import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 import { affectedIds, commitAll, moved } from './helpers/affected.js'
 import { pnpm } from '../src/index.js'
-import { importerDigests, parseLockfile } from '../src/pnpm.js'
+import { importerDigests, parseLockfile, recordedImporters } from '../src/pnpm.js'
 import { lowHalfGlobals } from './helpers/low-half.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
@@ -791,6 +791,14 @@ ${main}`
 
   it('a one-document lockfile behind a `---` marker keys as it does without one', () => {
     expect(digests(`---\n${v9()}`)).toEqual(digests(v9()))
+  })
+
+  it('the staleness check reads the importers block alone, as the whole parse reads it', () => {
+    for (const text of [v9(), v6(), withEnv(v9(), '11.0.0'), `---\n${v9()}`, singleV5('2.0.0')]) {
+      expect(recordedImporters(text)).toEqual(parseLockfile(text).importers)
+    }
+    // Parsed whole, a warm run paid for every snapshot to read the importers.
+    expect(recordedImporters(`${v9()}\nbroken: [\n`)).toEqual(parseLockfile(v9()).importers)
   })
 
   it('a lockfile below v5 is refused; v5 is read', () => {

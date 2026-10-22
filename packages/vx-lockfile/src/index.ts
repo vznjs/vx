@@ -112,7 +112,7 @@ const MANAGERS = {
     digest: (t, files) => pnpmLock().importerDigests(pnpmParse(t), files),
     importers: (t) => pnpmLock().importerLinks(pnpmParse(t)),
     extraFiles: (t) => pnpmLock().fileDeps(pnpmParse(t)),
-    recorded: (t) => pnpmParse(t).importers,
+    recorded: (t) => pnpmLock().recordedImporters(t),
     settings: ['pnpm-workspace.yaml', '.npmrc'],
     settingsText: (file, text) =>
       file === 'pnpm-workspace.yaml' ? pnpmLock().workspaceSettings(text) : undefined,
