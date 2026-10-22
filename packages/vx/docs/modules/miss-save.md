@@ -122,7 +122,7 @@ the upstream's output rows, which the save writes.
    each other on the workspace partition: a consumer that read it
    before the producer wrote keys from an empty set with both gone, and
    a later run whose real set is empty hits that artifact
-   (`stale-hit.test.ts`, "written mid-run", item 637).
+   (`stale-hit-memo.test.ts`, "written mid-run", item 637).
 4. `cache.save` — entry, output rows and `entry_inputs` rows in one
    transaction; no exit code, because the contract accepts none and the
    caller's `exitCode === 0` gate is the invariant.
