@@ -389,6 +389,25 @@ it('a task waiting in a busy agent’s queue moves to an agent that is free', as
   }
 })
 
+// An agent that faulted got no more work yet was never let go: it held
+// its CI runner idle until the run ended (2026-10-22).
+it('an idle agent that faulted is let go', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.agent(1)
+    const b = await h.agent(1)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.say({ type: 'fault', task: 't1', reason: 'ENOSPC' })
+    expect(await b.batches()).toEqual([['t1']])
+    h.o.retire(Infinity, () => true)
+    expect(await a.bodies()).toEqual([{ type: 'exit' }])
+  } finally {
+    await h.stop()
+  }
+})
+
 // Growth, 2026-10-21: four local() agents of 1 core on a 4-core host each
 // reported the host and took 4 tasks plus a prefetch, 16 wide on 4 cores.
 it('an agent of a declared size is sent work for that size, not its machine', async () => {

@@ -163,10 +163,7 @@ export function dte(options: DteOptions) {
     if (options.relay === undefined) throw new UserError('vx dte plan needs dte({ relay })')
     const { runSecret } = await import('./seal.js')
     const live = adapter.live?.() === true
-    const agents = planned(
-      sizes,
-      live ? await firstWave(args, ctx, sizes) : undefined,
-    )
+    const agents = planned(sizes, live ? await firstWave(args, ctx, sizes) : undefined)
     const files: Record<string, string> = {
       ...adapter.render({ run, relay: options.relay, workspaceRoot: root, agents }),
     }
@@ -428,7 +425,10 @@ export function dte(options: DteOptions) {
         capacity:
           adapter === undefined || sizes.some((s) => s.max === Infinity)
             ? JOINED_CAPACITY
-            : Math.max(1, sizes.reduce((n, s) => n + 2 * s.max * s.cpu, 0)),
+            : Math.max(
+                1,
+                sizes.reduce((n, s) => n + 2 * s.max * s.cpu, 0),
+              ),
         execute: (req) => {
           // The first task that missed: agents start now, not for a run
           // its cache answers whole.
@@ -541,13 +541,12 @@ async function firstWave(
   }
   const { busyCores, toStart } = await import('./width.js')
   const biggest = Math.max(...sizes.map((s) => s.cpu))
-  const want =
-    busyCores(
-      remaining,
-      nodes,
-      (id) => Math.min(needOf(peaks.get(id)).cores, biggest),
-      (id) => peaks.get(id)?.p50DurationMs ?? p50.get(id),
-    )
+  const want = busyCores(
+    remaining,
+    nodes,
+    (id) => Math.min(needOf(peaks.get(id)).cores, biggest),
+    (id) => peaks.get(id)?.p50DurationMs ?? p50.get(id),
+  )
   const above = [...remaining].flatMap((id) => needOf(peaks.get(id)).above ?? [])
   const wave = new Map<string, number>()
   for (const s of toStart(sizes, new Map(), 0, want, above))
