@@ -18,7 +18,10 @@ declares. No new wire, no mutable entry.
 
 - **Key:** `xxh3('vx-timings\0' + commitSha)`. Content-addressed by the
   commit that produced it; a blob is never rewritten, so the cache stays
-  immutable.
+  immutable. Each run also writes it under that commit and its graph's
+  task ids (2026-10-22): every CI job of a commit writes its own graph's
+  tasks and the first job's plain blob wins, so a reader asks its own
+  graph's blob first, then the plain one.
 - **Write (on CI, core's `ci` fact; the policy decides which layers keep
   it):** after the run, fetch
   the parent commit's blob (`HEAD~1`, walking back up to 5), merge this

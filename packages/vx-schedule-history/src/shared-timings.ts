@@ -26,6 +26,17 @@ const MAX_BYTES = 2 ** 50
 const keyOf = (sha: string): string => `timings\0${sha}`
 
 /**
+ * `sha`'s blob for one graph: each CI job of a commit writes the tasks of
+ * its own graph, and the first job's plain blob wins, so a job whose tasks
+ * another job's blob lacks (the dte job's shards) read none (2026-10-22).
+ */
+const graphKeyOf = (sha: string, ids: readonly string[]): string =>
+  `timings\0${sha}\0${Bun.hash.xxHash3([...ids].sort().join('\0')).toString(16)}`
+
+/** The keys `sha`'s blob may be under, the run's own graph's first. */
+const keysOf = (sha: string, ids: readonly string[]): string[] => [graphKeyOf(sha, ids), keyOf(sha)]
+
+/**
  * A blob's timings, the entries a run's graph has: `{ version: 1, tasks:
  * { id: ms } }`, each ms a finite number in [0, 24 h]; anything else is
  * dropped. Null for a blob that is not that shape, or over the caps.
@@ -116,13 +127,22 @@ async function mergeBase(root: string, defaultBranch: string): Promise<string | 
  * are the base branch's (`scoped` false): one batch probe, one fetch;
  * sequential fetches with no batch probe.
  */
-async function newestBlob(cache: PluginCache, shas: readonly string[]): Promise<Uint8Array | null> {
-  const present = await cache.hasMany(shas.map(keyOf), false)
+async function newestBlob(
+  cache: PluginCache,
+  shas: readonly string[],
+  ids: readonly string[],
+): Promise<Uint8Array | null> {
+  const present = await cache.hasMany(
+    shas.flatMap((sha) => keysOf(sha, ids)),
+    false,
+  )
   for (const sha of shas) {
-    if (present !== null && !present.has(keyOf(sha))) continue
-    const got = await cache.get(keyOf(sha), false)
-    if (got !== null) return got
-    if (present !== null) return null
+    for (const key of keysOf(sha, ids)) {
+      if (present !== null && !present.has(key)) continue
+      const got = await cache.get(key, false)
+      if (got !== null) return got
+      if (present !== null) return null
+    }
   }
   return null
 }
@@ -175,7 +195,7 @@ async function importBase(args: ImportArgs, late: () => boolean): Promise<boolea
   if ((await readTried(args.triedFile)) === base) return false
   const shas = await lineage(args.root, base)
   if (shas === null) return false
-  const blob = await newestBlob(args.cache, shas)
+  const blob = await newestBlob(args.cache, shas, args.ids)
   if (late()) return false
   await Bun.write(args.triedFile, base).catch(() => {})
   return keep(args, base, blob)
@@ -192,7 +212,8 @@ async function importParent(args: ImportArgs, late: () => boolean): Promise<bool
   if (parent === undefined || args.provider.hasImported(parent)) return false
   const tried = `${args.triedFile}-branch`
   if ((await readTried(tried)) === parent) return false
-  const blob = await args.cache.get(keyOf(parent))
+  let blob: Uint8Array | null = null
+  for (const key of keysOf(parent, args.ids)) if ((blob = await args.cache.get(key)) !== null) break
   if (late()) return false
   await Bun.write(tried, parent).catch(() => {})
   return keep(args, parent, blob)
@@ -243,5 +264,6 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
   }
   const blob =
     Object.keys(needs).length === 0 ? { version: 1, tasks } : { version: 1, tasks, needs }
-  await args.cache.put(keyOf(head[0]), new TextEncoder().encode(JSON.stringify(blob)))
+  const bytes = new TextEncoder().encode(JSON.stringify(blob))
+  for (const key of keysOf(head[0], args.ids)) await args.cache.put(key, bytes)
 }
