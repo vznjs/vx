@@ -188,6 +188,31 @@ describe('formatRunSummary', () => {
     expect(lines).toContain('  info      2 workers · local + remote cache · scope ref-feat/x')
   })
 
+  it('names on the info row only the layers the run used', () => {
+    const info = (layers: { local: boolean; remote: boolean }): string | undefined =>
+      formatRunSummary(
+        [outcome('a#x', 'success')],
+        10,
+        { enabled: false },
+        {
+          version: '0.0.0',
+          packageCount: 1,
+          remoteCacheEnabled: true,
+          cache: {
+            ...layers,
+            localWrite: layers.local,
+            traffic: { inFlight: 0, keys: new Map() },
+            notDownloaded: () => 0,
+          },
+        },
+      ).find((l) => l.startsWith('  info'))
+    expect(info({ local: true, remote: true })).toBe('  info      local + remote cache')
+    expect(info({ local: true, remote: false })).toBe('  info      local cache')
+    expect(info({ local: false, remote: true })).toBe('  info      remote cache')
+    // --no-cache with a remote declared said `local + remote cache`.
+    expect(info({ local: false, remote: false })).toBe('  info      no cache')
+  })
+
   describe('the cache legend reads per layer: ✓ fresh, ↓ restored, ↑ saved, ✗ failed, ⇡ uploading (M, 2026-10-15)', () => {
     const cached = (
       id: string,
