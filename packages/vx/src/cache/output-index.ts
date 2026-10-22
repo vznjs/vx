@@ -18,11 +18,11 @@ const FILE_PREFIX_MTIME = -2
 import type { Database } from 'bun:sqlite'
 import { inHashes, lazyStatement } from './schema.js'
 import { modeMatches } from './umask.js'
-import { lstatSync, readlinkSync, statSync } from 'node:fs'
-import { lstat, readdir } from 'node:fs/promises'
+import { lstatSync, readdirSync, readlinkSync, statSync } from 'node:fs'
 import path from 'node:path'
 import {
   OUTPUT_DIRS_CAP,
+  OUTPUT_DIRS_OVER_CAP,
   OUTPUT_DIRS_RACY_MS,
   type OutputDirRow,
   isIndexFull,
@@ -262,8 +262,8 @@ export class OutputIndex {
    * process may have written into them: `holds` is asked with the files
    * the walk saw, and a tree it refuses records nothing (item 1087).
    * Symlinked directories are not descended (the output walk refuses them
-   * too). Over `OUTPUT_DIRS_CAP` directories, or on any error, the rows
-   * are cleared and the next hit keeps the walk.
+   * too). Over `OUTPUT_DIRS_CAP` directories the one row left says so; on
+   * any error the rows are cleared. Either way the next hit keeps the walk.
    */
   async recordOutputDirs(
     hash: string,
@@ -273,11 +273,16 @@ export class OutputIndex {
   ): Promise<void> {
     const rows: Array<[string, number]> = []
     const files: string[] = []
-    const walk = async (rel: string, isPrefix = false): Promise<boolean> => {
+    let overCap = false
+    // Synchronous, like the stats of `isOutputsCurrent`: an async lstat and
+    // readdir per directory are two thread-pool round trips, and a
+    // root-anchored glob's snapshot of solid's 47 directories took 4 ms of
+    // the run's end that way (2026-10-22).
+    const walk = (rel: string, isPrefix = false): boolean => {
       const abs = path.join(projectDir, rel)
       let st
       try {
-        st = await lstat(abs)
+        st = lstatSync(abs)
       } catch {
         // A declared prefix the task never produced (`build/**` beside
         // `dist/**`, medusa's `.medusa/**`) is recorded ABSENT: the check
@@ -299,28 +304,37 @@ export class OutputIndex {
         return true
       }
       rows.push([rel, st.mtimeMs])
-      if (rows.length > OUTPUT_DIRS_CAP) return false
+      if (rows.length > OUTPUT_DIRS_CAP) {
+        overCap = true
+        return false
+      }
       let entries
       try {
-        entries = await readdir(abs, { withFileTypes: true })
+        entries = readdirSync(abs, { withFileTypes: true })
       } catch {
         return false
       }
       for (const e of entries) {
+        // The project itself is the prefix `''` of a root-anchored glob.
+        const child = rel === '' ? e.name : `${rel}/${e.name}`
         if (e.isDirectory() && !e.isSymbolicLink()) {
-          if (!(await walk(`${rel}/${e.name}`))) return false
+          if (!walk(child)) return false
         } else {
-          files.push(`${rel}/${e.name}`)
+          files.push(child)
         }
       }
       return true
     }
     let ok = true
     for (const prefix of prefixes) {
-      if (!(await walk(prefix, true))) {
+      if (!walk(prefix, true)) {
         ok = false
         break
       }
+    }
+    if (overCap) {
+      this.pendingDirs.set(hash, [[prefixes[0]!, OUTPUT_DIRS_OVER_CAP]])
+      return
     }
     // All or nothing: a racy directory dropped alone would leave its
     // parent trusted while an addition inside it bumps only the dropped one.

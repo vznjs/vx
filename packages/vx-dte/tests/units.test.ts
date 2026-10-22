@@ -116,8 +116,10 @@ it('an agent with other tracked files than the run is refused', async () => {
 
 // CI starts agents beside the orchestrator; on a warm run it can finish
 // before a slow runner's agent joins, and that agent's job is not a failure.
-it('an agent that joins a run already closed exits 0', async () => {
-  const relay = createRelay()
+// The relay keeps nothing of a run that ended: an agent late for it joins
+// an empty run, which closes when no orchestrator joins (120 heartbeats).
+it('an agent late for a run that ended exits 0', async () => {
+  const relay = createRelay({ heartbeatMs: 20 })
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
   const url = `http://127.0.0.1:${server.port}`
   try {
@@ -131,6 +133,33 @@ it('an agent that joins a run already closed exits 0', async () => {
       artifacts: () => fakeArtifacts().artifacts,
     })
     expect(code).toBe(0)
+  } finally {
+    relay.close()
+    await server.stop(true)
+  }
+})
+
+// A relay restart, or silence past three heartbeats, loses the agent: its
+// next poll answers 404. The run gave its tasks to others; the agent's CI
+// job is no failure (mac#1 on #3895).
+it('an agent the relay lost exits 0', async () => {
+  let relay = createRelay()
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+  const url = `http://127.0.0.1:${server.port}`
+  try {
+    const o = await join(url, R, 'orchestrator', null, undefined)
+    const code = runAgent({
+      relay: url,
+      run: R,
+      root: process.cwd(),
+      token: async () => undefined,
+      proof: { psk: async () => new Uint8Array(32), mismatch: 'no key' },
+      artifacts: () => fakeArtifacts().artifacts,
+    })
+    for (let i = 0; i < 50 && (await o.poll()).length === 0; i++);
+    relay.close()
+    relay = createRelay()
+    expect(await code).toBe(0)
   } finally {
     relay.close()
     await server.stop(true)

@@ -69,6 +69,9 @@ export function executeArgsOf(
     if (facts.downloadModeOf.get(id) === 'deferred') a.download = 'deferred'
     if (placements.remoteOnlyNoop.has(id)) a.remoteOnlyNoop = true
     if (placements.remoteOnly.has(id)) a.remoteOnly = true
+    if (placements.carried.has(id)) a.carried = true
+    const servers = placements.servers.get(id)
+    if (servers !== undefined) a.servers = servers
     if (probe !== undefined) a.preProbed = probe
     if (upfrontKey !== undefined) a.upfrontKey = upfrontKey
     if (upfrontGroupKey !== undefined) a.upfrontGroupKey = upfrontGroupKey

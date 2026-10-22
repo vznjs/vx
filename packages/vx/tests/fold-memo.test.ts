@@ -4,9 +4,11 @@
 // and expects the task to run.
 
 import { Database } from 'bun:sqlite'
+import { statSync, utimesSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it, spyOn } from 'bun:test'
+import { FILE_HASH_RACY_MS } from '../src/cache/index.js'
 import { GitFilesCache } from '../src/cache/git-inputs.js'
 import type { Logger } from '../src/report/index.js'
 import { run } from './helpers/orchestrator.js'
@@ -134,4 +136,30 @@ it('a key read back from the memo reads no index OID', async () => {
     reads.mockRestore()
   }
   expect(await runs()).toBe(1)
+}, 60_000)
+
+it('an untracked input keeps the memo, by its stat; rewriting it runs the task', async () => {
+  // Without a stat identity a just-added file turned the memo off for its
+  // whole project: +3-5 ms of solid's warm run with uncommitted configs.
+  await writeFile(path.join(pkg, 'src', 'y.txt'), 'new\n')
+  build()
+  await Bun.sleep(FILE_HASH_RACY_MS + 10)
+  build()
+  expect(await runs()).toBe(1)
+  const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
+  db.run("UPDATE fold_memo SET key = '0123456789abcdef'")
+  db.close()
+  build()
+  // The memo answered, with a key no entry holds: the task ran.
+  expect(await runs()).toBe(2)
+  // Same size, mtime forged back: the ctime still moves the identity.
+  const y = path.join(pkg, 'src', 'y.txt')
+  const { mtime } = statSync(y)
+  await Bun.sleep(FILE_HASH_RACY_MS + 10)
+  await writeFile(y, 'NEW\n')
+  utimesSync(y, mtime, mtime)
+  await Bun.sleep(FILE_HASH_RACY_MS + 10)
+  build()
+  expect(await runs()).toBe(3)
+  expect(await readFile(path.join(pkg, 'out.txt'), 'utf8')).toBe('one\n')
 }, 60_000)

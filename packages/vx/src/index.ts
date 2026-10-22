@@ -211,6 +211,7 @@ export type {
   ExecuteSandbox,
   MachineReport,
   ResolvedSandboxConfig,
+  ServerSpec,
   TaskExecutor,
   TaskPlacement,
 } from './exec/index.js'

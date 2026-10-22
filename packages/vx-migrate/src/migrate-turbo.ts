@@ -12,12 +12,8 @@ import {
   quoteTsLiteral as quote,
 } from '@vzn/vx'
 import type { PackageMeta } from './packages.js'
-import {
-  mapTurboWorkspace,
-  rootTaskProject,
-  type TurboGlobal,
-  type TurboMappedProject,
-} from './turbo/turbo-map.js'
+import { mapTurboWorkspace, type TurboGlobal, type TurboMappedProject } from './turbo/turbo-map.js'
+import { rootTaskProject } from './turbo/turbo-reads.js'
 import { relPosix } from './paths.js'
 import { gitIgnored, spareTrackedOutputs, trackedFiles, trackedKinds } from './tracked-outputs.js'
 import { DOTENV_GLOBS_HEAD, DOTENV_PROBE, DOTENV_PROBE_TOP } from './dotenv-probe.js'
