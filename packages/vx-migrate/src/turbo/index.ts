@@ -21,14 +21,14 @@ import { collectGaps } from '../plugin-gaps.js'
 import { gitIgnored, trackedKinds } from '../tracked-outputs.js'
 import { packageScripts, relPosix } from '../paths.js'
 import { onceReader, type ReadText, tscBuildInfo } from '../tsc-buildinfo.js'
+import type * as TurboMap from './turbo-map.js'
+import type { TurboMappedProject } from './turbo-map.js'
 import {
   envNamesThatMap,
-  mapTurboWorkspace,
   microfrontendsConfigs,
   rootTaskProject,
   turboConfigFile,
-  type TurboMappedProject,
-} from './turbo-map.js'
+} from './turbo-reads.js'
 
 /** The note every persistent task carries; like every gap, reported once per run for all its tasks. */
 const PERSISTENT_NOTE =
@@ -244,6 +244,8 @@ async function mapAll(
       m.configPath === null ? [] : [[relPosix(root, m.dir), path.basename(m.configPath)] as const],
     ),
   )
+  // Only a mapping the kept one no longer holds loads the mapper.
+  const { mapTurboWorkspace } = require('./turbo-map.js') as typeof TurboMap
   const mapped = await mapTurboWorkspace(root, metas, {
     // Inline: the values themselves, where `bunx @vzn/vx-migrate` splices a preset import.
     splice: (_kind, values) => values,
