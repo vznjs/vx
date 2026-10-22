@@ -150,6 +150,13 @@ jobs:
           [ -f "$f" ] || exit 0
           while read -r r; do gh api -X POST "$r/cancel" > /dev/null 2>&1 || true; done < "$f"
 
+      # Bounded, or each run carries every artifact before it: 1.4 GB after
+      # a day of DTE runs, 13 s to restore and 14 s to save (2026-10-22).
+      # Least recently used goes first; a hit it drops is the remote's.
+      - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        name: Bound the carried cache
+        run: bun packages/vx/src/bin.ts cache clean --max-size 300MB
+
       - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -288,6 +295,13 @@ jobs:
           f="$RUNNER_TEMP/vx-dte-runs"
           [ -f "$f" ] || exit 0
           while read -r r; do gh api -X POST "$r/cancel" > /dev/null 2>&1 || true; done < "$f"
+
+      # Bounded, or each run carries every artifact before it: 1.4 GB after
+      # a day of DTE runs, 13 s to restore and 14 s to save (2026-10-22).
+      # Least recently used goes first; a hit it drops is the remote's.
+      - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        name: Bound the carried cache
+        run: bun packages/vx/src/bin.ts cache clean --max-size 300MB
 
       - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
