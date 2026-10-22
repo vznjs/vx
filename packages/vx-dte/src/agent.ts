@@ -303,6 +303,12 @@ export async function runAgent(opts: {
         messages = await me.poll()
       } catch (err) {
         if (err instanceof RelayError && err.status === 410) return 0
+        // The relay lost it (silent too long, or restarted): the run gave its
+        // tasks to others, so this job has nothing left and is no failure.
+        if (err instanceof RelayError && err.status === 404) {
+          ui.print('err', ui.status('warn', 'vx dte agent', 'the relay no longer knows this agent'))
+          return 0
+        }
         throw err
       }
       for (const { from, body } of messages) {
