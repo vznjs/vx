@@ -7,14 +7,12 @@
   "compatibility_date": "2026-10-01",
   // The relay's URL until a domain is added.
   "workers_dev": true,
-  // A deploy keeps the dashboard's ALLOW: the empty one below wiped it,
-  // and every run's object refused to start (2026-10-22).
-  "keep_vars": true,
+  // Who may take part, space separated, `issuer:owner/repo:workflow`: this
+  // repository's CI. A deploy sets it from here, since wrangler replaces a
+  // dashboard var on every deploy; an empty one made every run's object
+  // refuse to start (2026-10-22). A fork names its own.
   "vars": {
-    // Who may take part, space separated: `issuer:owner/repo:workflow`, such as
-    // `https://token.actions.githubusercontent.com:vznjs/vx:ci.yml`
-    // (GitLab: `https://gitlab.com:group/project:.gitlab-ci.yml`). Empty: it refuses to start.
-    "ALLOW": "",
+    "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml https://token.actions.githubusercontent.com:vznjs/vx:vx-agent.yml",
   },
   "durable_objects": {
     "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }],
