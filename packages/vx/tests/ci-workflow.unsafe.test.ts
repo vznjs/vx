@@ -129,6 +129,20 @@ describe('vx-agent.yml', () => {
     expect(step?.env?.['VX_CACHE_DIR']).toBe('${{ runner.temp }}/vx-cache')
   })
 
+  // apt's ~9 s ran after `bun install`, on every agent's warm-up (2026-10-22).
+  it('installs the sandbox runtime while Bun installs, and proves it before the agent', () => {
+    const steps = agent.steps!
+    const at = (p: (s: Step) => boolean) => steps.findIndex(p)
+    const runner = (phase: string) =>
+      at((s) => s.uses === './.github/actions/vx-runner' && s.with?.['phase'] === phase)
+    const install = at((s) => s.run?.includes('bun install') === true)
+    const agentStep = at((s) => s.run?.includes('dte agent') === true)
+    expect(runner('start')).toBeGreaterThan(-1)
+    expect(runner('start')).toBeLessThan(install)
+    expect(runner('finish')).toBeGreaterThan(install)
+    expect(runner('finish')).toBeLessThan(agentStep)
+  })
+
   it('mounts the small disk the Linux run names, on Linux', () => {
     const mount = agent.steps!.find((s) => s.run?.includes('tmpfs'))
     expect(mount?.if).toBe("runner.os == 'Linux'")
