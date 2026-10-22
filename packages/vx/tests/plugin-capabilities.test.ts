@@ -662,7 +662,8 @@ describe('executor capability — end-to-end via run()', () => {
       })
       expect(seen.sort()).toEqual([
         "pkg-a#a: [vx] pkg-a#a: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
-        'pkg-a#b: [vx] pkg-a#b: as pkg-a#a above\n',
+        // Each failed task's own block says why in full (M, 2026-10-22).
+        "pkg-a#b: [vx] pkg-a#b: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
       ])
     } finally {
       cleanup()

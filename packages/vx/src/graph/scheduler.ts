@@ -622,7 +622,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     serial ? active + activeRestore < 1 : activeRestore < restoreConcurrency
   let resolved = false
   // A refusal's text → the first task that said it. A corrupt cache index
-  // reaches every lookup as one UserError; a repeat names the first.
+  // reaches every lookup as one UserError; on bare stderr a repeat names the first.
   const refusedBy = new Map<string, string>()
 
   // Admission policy over the count limit (a plugin's `admit`). Inactive
@@ -1054,8 +1054,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               const text = isUserError(err)
                 ? message
                 : `${message} — ${isOutOfFds(err) ? OUT_OF_FDS_HINT : fsRefusalHint(err)}`
-              const first = refusedBy.get(text)
-              if (first === undefined) refusedBy.set(text, id)
+              // In a task's own output block, in full: that block is read
+              // alone, and "as <task> above" named one printed elsewhere or
+              // not at all (M, 2026-10-22). On bare stderr the first is above.
+              const first = options.onError === undefined ? refusedBy.get(text) : undefined
+              if (!refusedBy.has(text)) refusedBy.set(text, id)
               line = `[vx] ${id}: ${first === undefined ? text : `as ${first} above`}\n`
             } else {
               const named = err instanceof Error && err.name !== 'Error' ? `${err.name}: ` : ''

@@ -300,7 +300,8 @@ the ones it never played when it ends.
 - An agent that stops answering, stops saying it holds a task, or cannot
   run one (a full disk) gets no more work, and its tasks run again on
   another. A task two such agents had begun fails, naming both; one an
-  agent had not begun yet does not count.
+  agent had not begun yet does not count. With no agent of the run left
+  to take it and none starting, it fails at once.
 - A relay unreachable for three heartbeats fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller
   than the agents. What finished is saved, so a rerun resumes from it.
