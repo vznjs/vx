@@ -1056,12 +1056,7 @@ it('books the cores a task keeps busy on average, unrounded, a quarter at least'
   expect(
     [0.7, 2.4, 0.01].map((c) => needOf({ p50DurationMs: 1, maxCpuParallelism: c }).cores),
   ).toEqual([0.7, 2.4, 0.25])
-})
-
-// 12 new shards each booked a whole 4-core agent on a PR run (2026-10-22).
-it('books one core for a task with no history', () => {
-  expect(needOf(undefined)).toEqual({ cores: 1, memory: 0 })
-  expect(needOf({ p50DurationMs: 1 })).toEqual({ cores: 1, memory: 0 })
+  expect(needOf(undefined).cores).toBe(Infinity)
 })
 
 it('reads memory as bytes or with a unit', () => {
@@ -1330,7 +1325,7 @@ it('knows how long the rest of the run takes at the least, and how long an agent
   }
 })
 
-it('gives a whole-agent task its agent alone, and one that filled its agent a bigger one', async () => {
+it('gives an unmeasured task a whole agent, and one that filled its agent a bigger one', async () => {
   const whole = { cores: Infinity, memory: Infinity }
   const h = await harness(new Map([node('u1'), node('u2'), node('heavy')]), (id) =>
     id === 'heavy' ? { ...whole, above: { cores: 2, memory: 100 } } : whole,
@@ -1338,7 +1333,7 @@ it('gives a whole-agent task its agent alone, and one that filled its agent a bi
   try {
     const small = await h.agent(2)
     await Bun.sleep(50)
-    // A whole agent's need: alone on its agent.
+    // No history: alone on its agent.
     const u1 = h.o.execute(h.req('u1'))
     void h.o.execute(h.req('u2'))
     expect(await small.batches()).toEqual([['u1']])

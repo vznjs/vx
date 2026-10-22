@@ -267,7 +267,7 @@ CI/CD variable both `vx-plan` and `vx` see) to spawn live: the plan then
 starts with the run only the agents its start keeps busy, and writes the
 others as `when: manual` jobs. It reads that from the run's own graph
 (`vx run <its args> --dry=json`) and history, so give `vx dte plan` the
-run's selection; a task with no history books one core. The run plays one when its work needs it and cancels
+run's selection; a task with no history takes a whole agent. The run plays one when its work needs it and cancels
 the ones it never played when it ends. A played job that fails before
 its agent joins fails the run's wait for it, so the run starts another or
 stops, instead of waiting for the job's timeout.
@@ -278,7 +278,7 @@ stops, instead of waiting for the job's timeout.
   One the run started is held to the size it was started as, so
   `local()` agents sharing a host split it rather than each take all of
   it. Tasks go to it in batches that fill those by each task's recorded peak
-  (cores used, peak memory; one core for a task with no history), plus a
+  (cores used, peak memory; a whole agent for a task with no history), plus a
   quarter of its cores as a prefetch, so a successor is there when a task
   ends. The agent starts only what fits; a task bigger than any agent runs
   alone on an idle one. A prefetched task an agent has not begun moves to
