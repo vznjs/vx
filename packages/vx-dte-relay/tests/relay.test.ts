@@ -226,6 +226,29 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     expect(await status(stale)).toBe(403)
   })
 
+  it('limits each participant’s requests to a burst, then a steady rate', async () => {
+    const c = client()
+    await c.join(R, 'orchestrator')
+    const a = await c.join(R, 'agent')
+    const b = await c.join(R, 'agent')
+    const send = (id: string) => c.call(R, 'send', { id, to: 'orchestrator', body: 1 })
+    // The burst, and what refilled while it was spent.
+    let taken = 0
+    let limited = await send(a)
+    while (limited.status === 204 && taken < 2000) {
+      taken++
+      limited = await send(a)
+    }
+    expect(taken).toBeGreaterThanOrEqual(1000)
+    expect(taken).toBeLessThan(2000)
+    expect(limited.status).toBe(429)
+    expect(limited.json).toEqual({ error: 'rate limited', retryAfterMs: expect.any(Number) })
+    // Another participant spends its own.
+    expect((await send(b)).status).toBe(204)
+    await Bun.sleep(limited.json.retryAfterMs)
+    expect((await send(a)).status).toBe(204)
+  })
+
   it('lets the orchestrator remove an agent it did not admit, before or after it came', async () => {
     const c = client()
     const early = await c.join(R, 'agent')

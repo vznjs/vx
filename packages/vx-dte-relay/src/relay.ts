@@ -69,6 +69,9 @@ interface Participant {
   /** An agent's, until the orchestrator is told it joined. */
   info: unknown
   seen: number
+  /** Requests it may still make now, and when that was counted (a token bucket). */
+  tokens: number
+  filled: number
   queue: Message[]
   /** The queue's size, in bytes of the bodies that filled it. */
   bytes: number
@@ -111,14 +114,28 @@ const TOMBSTONE_TTL_MS = 24 * 60 * 60_000
 /** How far a proof's time may be from the relay's: a CI runner's clock drifts. */
 const PROOF_SKEW_MS = 2 * 60_000
 
+/**
+ * Each participant's requests and frames, as a token bucket: a burst, then
+ * a steady rate, so one that loops cannot spend its host's request quota.
+ */
+const RATE_BURST = 1000
+const RATE_PER_SECOND = 100
+
 class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** For a `429` of the rate: when the next request is taken. */
+    readonly retryAfterMs?: number,
   ) {
     super(message)
   }
 }
+
+const errorBody = (err: HttpError | TokenError): object =>
+  err instanceof HttpError && err.retryAfterMs !== undefined
+    ? { error: err.message, retryAfterMs: err.retryAfterMs }
+    : { error: err.message }
 
 export function createRelay(opts: RelayOptions = {}): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 5_000
@@ -286,6 +303,14 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     ) {
       throw new HttpError(403, 'not the run’s orchestrator job')
     }
+    const now = Date.now()
+    p.tokens = Math.min(RATE_BURST, p.tokens + ((now - p.filled) * RATE_PER_SECOND) / 1000)
+    p.filled = now
+    if (p.tokens < 1) {
+      const wait = Math.ceil(((1 - p.tokens) * 1000) / RATE_PER_SECOND)
+      throw new HttpError(429, 'rate limited', wait)
+    }
+    p.tokens -= 1
     p.seen = Date.now()
     return p
   }
@@ -307,6 +332,8 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       // No one reads the orchestrator's.
       info: body.role === 'agent' ? (body.info ?? null) : null,
       seen: Date.now(),
+      tokens: RATE_BURST,
+      filled: Date.now(),
       queue: [],
       bytes: 0,
     }
@@ -478,7 +505,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
         return await handle(req)
       } catch (err) {
         if (err instanceof HttpError || err instanceof TokenError) {
-          return Response.json({ error: err.message }, { status: err.status })
+          return Response.json(errorBody(err), { status: err.status })
         }
         throw err
       }
@@ -521,7 +548,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
         return JSON.stringify({ n })
       } catch (err) {
         if (!(err instanceof HttpError)) throw err
-        return JSON.stringify({ n, status: err.status, error: err.message })
+        return JSON.stringify({ n, status: err.status, ...errorBody(err) })
       }
     },
     seen(key, id, at) {
@@ -572,7 +599,16 @@ function restore(store: RelayStore, runs: Map<string, Run>): [Run, Participant][
     const run = runs.get(key)
     if (run === undefined) continue
     const { role, info } = v as Pick<Participant, 'role' | 'info'>
-    const p: Participant = { id, role, info, seen: now, queue: [], bytes: 0 }
+    const p: Participant = {
+      id,
+      role,
+      info,
+      seen: now,
+      tokens: RATE_BURST,
+      filled: now,
+      queue: [],
+      bytes: 0,
+    }
     run.byId.set(id, p)
     if (role === 'orchestrator') run.orchestrator = p
   }

@@ -9,8 +9,22 @@ export class RelayError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** A `429` of the relay's rate limit: when to ask again. */
+    readonly retryAfterMs?: number,
   ) {
     super(message)
+  }
+}
+
+/** Runs `f` again after each rate-limit answer, as long as the relay asks to wait. */
+async function paced<T>(f: () => Promise<T>): Promise<T> {
+  for (;;) {
+    try {
+      return await f()
+    } catch (err) {
+      if (!(err instanceof RelayError) || err.retryAfterMs === undefined) throw err
+      await Bun.sleep(err.retryAfterMs)
+    }
   }
 }
 
@@ -46,7 +60,9 @@ export async function join(
     }
     return h
   }
-  const call = async (verb: string, body?: unknown, query = '', signal?: AbortSignal) => {
+  const call = (verb: string, body?: unknown, query = '', signal?: AbortSignal) =>
+    paced(() => once(verb, body, query, signal))
+  const once = async (verb: string, body?: unknown, query = '', signal?: AbortSignal) => {
     const method = body === undefined ? 'GET' : 'POST'
     const text = body === undefined ? '' : JSON.stringify(body)
     const res = await fetch(base + verb + query, {
@@ -56,9 +72,11 @@ export async function join(
       ...(signal === undefined ? {} : { signal }),
     })
     if (res.status === 204) return null
-    const json = (await res.json().catch(() => ({}))) as { error?: string }
-    if (!res.ok)
-      throw new RelayError(res.status, `relay ${verb}: ${res.status} ${json.error ?? ''}`)
+    const json = (await res.json().catch(() => ({}))) as { error?: string; retryAfterMs?: number }
+    if (!res.ok) {
+      const message = `relay ${verb}: ${res.status} ${json.error ?? ''}`
+      throw new RelayError(res.status, message, json.retryAfterMs)
+    }
     return json as Record<string, unknown>
   }
   const joined = (await call('join', { role, info, ...(prover && { key: prover.key }) }))!
@@ -74,7 +92,7 @@ export async function join(
     async send(to, body) {
       if (socket?.open === true) {
         try {
-          return await socket.send(to, body)
+          return await paced(() => socket.send(to, body))
         } catch (err) {
           if (err instanceof RelayError) throw err
           // Closed under it: HTTP says whether the relay took it (a resent
@@ -183,6 +201,7 @@ async function connect(
       n?: number
       status?: number
       error?: string
+      retryAfterMs?: number
     }
     if (m.messages !== undefined) {
       inbox.push(...m.messages)
@@ -192,7 +211,10 @@ async function connect(
     const p = pending.get(m.n!)
     pending.delete(m.n!)
     if (m.status === undefined) p?.resolve()
-    else p?.reject(new RelayError(m.status, `relay send: ${m.status} ${m.error ?? ''}`))
+    else
+      p?.reject(
+        new RelayError(m.status, `relay send: ${m.status} ${m.error ?? ''}`, m.retryAfterMs),
+      )
   }
   return {
     get open() {

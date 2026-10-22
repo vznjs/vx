@@ -112,7 +112,10 @@ An agent's messages carry `"from": "<its id>"`, the orchestrator's
 of a repository the relay does not serve, `403` a request as the orchestrator from another CI job (§ Tokens) or not signed by its key (§ The orchestrator's key), `404` an unknown `id` or `to`, `409` a second
 orchestrator, `410` a closed run, `413` a body over 1 MiB, `426` a
 `socket` request that is not an upgrade, `429` a queue
-over 10 000 messages or 64 MiB. An error answers `{ "error": "<reason>" }`.
+over 10 000 messages or 64 MiB, or a participant past its rate: a burst
+of 1000 requests and socket frames, then 100 a second, after Tailscale's
+DERP. A rate's `429` says `"retryAfterMs"`, when the next one is taken;
+`@vzn/vx-dte` waits that long and asks again. An error answers `{ "error": "<reason>" }`.
 
 ## Tokens
 
