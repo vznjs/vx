@@ -1,8 +1,9 @@
 // How many cores the rest of a run keeps busy: its remaining tasks laid
 // out as early as their dependencies allow, each for its usual duration,
-// on as many cores as they ask. The run starts agents for the most cores
-// in use at once for at least half of what is left, not for its peak: a
-// core the run fills for a moment is an agent mostly idle.
+// on as many cores as they ask. The run starts agents for its work spread
+// over its critical path, so it ends near that path: not its peak, which
+// a moment fills and leaves agents idle, and not a level held for half its
+// length, which one long task stretches until the wide part queues.
 
 import type { TaskNode } from '@vzn/vx'
 
@@ -58,8 +59,8 @@ export function busyCores(
   nodes: ReadonlyMap<string, TaskNode>,
   cores: (id: string) => number,
   durationMs: (id: string) => number | undefined,
-  // Of what is left, the share a level must hold; 0 is the peak.
-  share = 0.5,
+  // The most cores in use at once, for agents that cannot come back once they leave.
+  peak = false,
   // Only the work from this far on: an agent asked for now joins after its
   // warm-up, so a wide part that ends sooner is not its to fill.
   fromMs = 0,
@@ -70,28 +71,21 @@ export function busyCores(
       : [],
   )
   if (spans.length === 0) return 0
-  // Time at each level of cores in use, by a sweep over the starts and ends.
+  if (!peak) {
+    const span = Math.max(...spans.map((s) => s.end))
+    const work = spans.reduce((n, s) => n + s.cores * (s.end - s.start), 0)
+    return Math.max(1, Math.ceil(work / span))
+  }
+  // The highest level of cores in use, by a sweep over the starts and ends.
   const edges = spans.flatMap((s) => [
     [s.start, s.cores],
     [s.end, -s.cores],
   ])
   edges.sort((a, b) => a[0]! - b[0]! || a[1]! - b[1]!)
-  const atLeast = new Map<number, number>()
   let level = 0
-  let last = 0
-  for (const [t, d] of edges) {
-    if (t! > last && level > 0) atLeast.set(level, (atLeast.get(level) ?? 0) + (t! - last))
-    level += d!
-    last = t!
-  }
-  const span = Math.max(...spans.map((s) => s.end))
-  // Time with at least L in use, from the top level down.
-  let held = 0
-  for (const l of [...atLeast.keys()].sort((a, b) => b - a)) {
-    held += atLeast.get(l)!
-    if (held >= share * span) return l
-  }
-  return 1
+  let most = 0
+  for (const [, d] of edges) most = Math.max(most, (level += d!))
+  return most
 }
 
 /** One kind of agent, as `dte()` resolved it: memory in bytes, `max` Infinity when uncapped. */

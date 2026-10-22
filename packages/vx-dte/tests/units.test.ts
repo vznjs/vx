@@ -799,7 +799,7 @@ it('counts a task the stop killed as aborted, a timeout as failed', () => {
   expect([u.done, u.failed, u.aborted]).toEqual([1, 2, 1])
 })
 
-it('starts the cores the rest of the run keeps busy for half its length, not its peak', () => {
+it('starts the cores that fit the rest of the run in its critical path, not its peak', () => {
   const graph = (entries: Array<[string, string[]]>) =>
     new Map(
       entries.map(([id, deps]) => [
@@ -811,22 +811,30 @@ it('starts the cores the rest of the run keeps busy for half its length, not its
   // Eight at once, all of the time.
   const wide = graph(Array.from({ length: 8 }, (_, i): [string, string[]] => [`p#t${i}`, []]))
   expect(busyCores(new Set(wide.keys()), wide, one, () => 1000)).toBe(8)
-  // Four at once for a third of it, between two lone tasks: one is busy.
+  // Four at once for a third of it, between two lone tasks: six task-seconds in three.
   const mid = graph([
     ['p#a', []],
     ...Array.from({ length: 4 }, (_, i): [string, string[]] => [`p#b${i}`, ['p#a']]),
     ['p#c', ['p#b0', 'p#b1', 'p#b2', 'p#b3']],
   ])
-  expect(busyCores(new Set(mid.keys()), mid, one, () => 1000)).toBe(1)
+  expect(busyCores(new Set(mid.keys()), mid, one, () => 1000)).toBe(2)
   // Its peak, for agents that cannot come back once they leave: four.
-  expect(busyCores(new Set(mid.keys()), mid, one, () => 1000, 0)).toBe(4)
+  expect(busyCores(new Set(mid.keys()), mid, one, () => 1000, true)).toBe(4)
   // The same, the wide part long: four.
   expect(busyCores(new Set(mid.keys()), mid, one, (id) => (id.includes('#b') ? 5000 : 1000))).toBe(
     4,
   )
   // Done tasks are not laid out.
   expect(busyCores(new Set(['p#c']), mid, one, () => 1000)).toBe(1)
-  // Eight for 4 s, then one for 4 s: eight now, but an agent that takes 5 s
+  // Eight short ones beside one four times as long, CI's shards beside its
+  // unsafe suite: three, where the level held for half the run was one and
+  // the eight queued behind it.
+  const tail = graph([
+    ...Array.from({ length: 8 }, (_, i): [string, string[]] => [`p#s${i}`, []]),
+    ['p#u', []],
+  ])
+  expect(busyCores(new Set(tail.keys()), tail, one, (id) => (id === 'p#u' ? 4000 : 1000))).toBe(3)
+  // Eight for 4 s, then one for 4 s: five now, but an agent that takes 5 s
   // to join finds one.
   const early = graph([
     ...Array.from({ length: 8 }, (_, i): [string, string[]] => [`p#w${i}`, []]),
@@ -834,8 +842,8 @@ it('starts the cores the rest of the run keeps busy for half its length, not its
   ])
   expect([
     busyCores(new Set(early.keys()), early, one, () => 4000),
-    busyCores(new Set(early.keys()), early, one, () => 4000, undefined, 5000),
-  ]).toEqual([8, 1])
+    busyCores(new Set(early.keys()), early, one, () => 4000, false, 5000),
+  ]).toEqual([5, 1])
 })
 
 it('knows how long the rest of the run takes at the least, and how long an agent took to join', async () => {
