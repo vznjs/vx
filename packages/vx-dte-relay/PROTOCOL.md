@@ -75,7 +75,9 @@ for the participant (`426` without the upgrade). Frames are text:
   `pong`.
 
 A socket's close does not lose its participant: it polls again, or opens
-another. The relay closes the socket of a participant that left or was
+another. vx-dte's client does both: it polls over HTTP and dials a new
+socket after a backoff with full jitter (up to 250 ms, doubling per failed
+dial to 30 s). The relay closes the socket of a participant that left or was
 lost, so its next request learns why.
 
 Every request naming an `id` counts as a heartbeat. A participant silent

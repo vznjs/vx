@@ -1,5 +1,5 @@
 // The relay client: over the websocket a relay offers, and over HTTP polls
-// when it offers none or the socket goes.
+// when it offers none or the socket goes, until it dials the socket again.
 
 import { afterEach, expect, it } from 'bun:test'
 import { createRelay, serveRelay, type RelayServer } from '@vzn/vx-dte-relay'
@@ -60,6 +60,61 @@ it('polls over HTTP once its socket is gone', async () => {
   const asked = verbs()
   await expect(a.poll()).rejects.toThrow('relay poll: 404 unknown id')
   expect(asked).toEqual(['poll'])
+})
+
+it('dials its socket again after it drops, and is back off HTTP', async () => {
+  // A relay on Bun.serve that can drop a participant's socket, as a network does.
+  type Held = { key: string; id: string; socket?: { send(t: string): void; close(): void } }
+  const open: Bun.ServerWebSocket<Held>[] = []
+  let server: Bun.Server<Held> | undefined
+  const relay = createRelay({
+    upgrade: (key, id, req) => {
+      server!.upgrade(req, { data: { key, id } })
+      return new Response(null, { status: 101 })
+    },
+  })
+  server = Bun.serve<Held>({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: (r) => relay.fetch(r),
+    websocket: {
+      open(ws) {
+        open.push(ws)
+        ws.data.socket = { send: (t) => void ws.send(t), close: () => ws.close() }
+        relay.attach(ws.data.key, ws.data.id, ws.data.socket)
+      },
+      message(ws, m) {
+        if (m === 'ping') ws.send('pong')
+        else ws.send(relay.frame(ws.data.key, ws.data.id, String(m)))
+      },
+      close(ws) {
+        relay.detach(ws.data.key, ws.data.id, ws.data.socket!)
+      },
+    },
+  })
+  servers.push({
+    url: '',
+    async stop() {
+      relay.close()
+      await server!.stop(true)
+    },
+  })
+  const url = `http://127.0.0.1:${server.port}`
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'agent', null, undefined)
+  await o.poll()
+  const agentSockets = () => open.filter((w) => w.data.id === a.id)
+  agentSockets()[0]!.close()
+  await o.send(a.id, 'while down')
+  expect(await a.poll()).toEqual([{ from: 'orchestrator', body: 'while down' }])
+  for (let i = 0; i < 100 && agentSockets().length < 2; i++) await Bun.sleep(20)
+  expect(agentSockets()).toHaveLength(2)
+  const asked = verbs()
+  await o.send(a.id, 'back')
+  expect(await a.poll()).toEqual([{ from: 'orchestrator', body: 'back' }])
+  expect(asked).toEqual([])
+  await a.leave()
+  await o.leave()
 })
 
 it('polls a relay that offers no socket', async () => {
