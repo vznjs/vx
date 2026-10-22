@@ -438,8 +438,8 @@ the packages a build needs. The answer is the design doc's §7.4 recipe,
 
 ```ts
 install: {
-  exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },
-  inputs: { files: ['package.json', 'pnpm-lock.yaml'] },
+  exec: { command: 'bun install --frozen-lockfile', remote: 'only' },
+  inputs: { files: ['package.json', 'bun.lock'] },
   cache: {
     outputs: { files: ['node_modules/**'] },
   },

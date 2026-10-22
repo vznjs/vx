@@ -7,7 +7,7 @@ The starter from `examples/basic`, with the CI setup the
 ```sh
 npm install
 git init && git add -A && git commit -m init
-npx @vzn/vx lock          # write .vx/projects.lock.json, then commit it
+vx lock          # write .vx/projects.lock.json, then commit it
 ```
 
 Run `vx lock` again and commit the lock whenever a config, a plugin, a

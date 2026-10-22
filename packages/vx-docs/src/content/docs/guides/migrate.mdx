@@ -16,7 +16,7 @@ keep. Any other repo starts at the [quickstart](../../quickstart/).
    <Tabs syncKey="pm">
      <TabItem label="npm">
        ```sh
-       npx @vzn/vx init
+       bunx @vzn/vx init
        ```
      </TabItem>
      <TabItem label="Bun">
@@ -87,7 +87,7 @@ package, plus a `vx-preset.ts` when turbo.json has global fields or a task
 
 ### Check the mapping first
 
-`npx @vzn/vx init --keep` writes only this `.vx/workspace.ts` (and
+`bunx @vzn/vx init --keep` writes only this `.vx/workspace.ts` (and
 `.vx/.gitignore`, which keeps `.vx/cache` and `.vx/tmp` out of git),
 installs what it imports with your lockfile's manager (`@vzn/vx-migrate`,
 and `@vzn/vx-lockfile` for your lockfile's plugin: `npm()`, `pnpm()`,
@@ -111,7 +111,7 @@ export default {
 ```
 
 ```text
-$ npx @vzn/vx init --keep
+$ bunx @vzn/vx init --keep
 
 ─ vx-migrate 0.0.637 ─────────────────────────────────────────
   from      turbo.json, run by turbo() from @vzn/vx-migrate
@@ -120,7 +120,7 @@ $ npx @vzn/vx init --keep
   lock      0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)
   note      a temporary start: vx init --native writes native config
 
-  next      npx @vzn/vx run build --all
+  next      vx run build --all
 ```
 
 The install uses your lockfile's manager (`pnpm add -D -w …` beside
@@ -157,7 +157,7 @@ $ bunx @vzn/vx-migrate
             packages/lib/vx.config.ts
   lock      2 project configs → .vx/projects.lock.json
 
-  next      bunx @vzn/vx run build --all
+  next      vx run build --all
 ```
 
 `packages/lib/vx.config.ts`, as written:
@@ -204,14 +204,14 @@ line's comment is what a test runs and sees on each commit
 
 ```sh
 npm install && git init && git add -A && git commit -m init
-npx @vzn/vx run test --all      # local 3↑: lib#build, app#build, app#test
-npx @vzn/vx run test --all      # local 3✓
+vx run test --all      # local 3↑: lib#build, app#build, app#test
+vx run test --all      # local 3✓
 bunx @vzn/vx-migrate       # tasks 3 clean
 git add -A && git commit -m migrate
-npx @vzn/vx run test --all      # local 3✓: the written configs derive the same keys
+vx run test --all      # local 3✓: the written configs derive the same keys
 echo "import { npm } from '@vzn/vx-lockfile'; export default { plugins: [npm()] }" > .vx/workspace.ts   # drop turbo(); npm() keeps the edges
 git add -A && git commit -m done
-npx @vzn/vx run test --all      # local 3✓
+vx run test --all      # local 3✓
 ```
 
 ### turbo.json, key by key
@@ -269,7 +269,7 @@ Cloud workspace is named instead, since vx cannot share its cache.
 Then rewrite each `nx-exec` line (an executor target) as the command it
 runs. Keep Nx installed while a config still runs an `nx-exec` line.
 
-To check the mapping first, `npx @vzn/vx init --keep` writes only this
+To check the mapping first, `bunx @vzn/vx init --keep` writes only this
 `.vx/workspace.ts` (and `.vx/.gitignore`), installs what it imports
 (`@vzn/vx-migrate`, `@vzn/vx-lockfile`) and writes the lock; its `next:`
 line builds once through `nx()`. `bunx @vzn/vx-migrate` then writes the
@@ -297,7 +297,7 @@ export default {
 ```
 
 ```text
-$ npx @vzn/vx init --keep
+$ bunx @vzn/vx init --keep
 
 ─ vx-migrate 0.0.637 ─────────────────────────────────────────
   from      nx.json, run by nx() from @vzn/vx-migrate
@@ -307,7 +307,7 @@ $ npx @vzn/vx init --keep
   lock      0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)
   note      a temporary start: vx init --native writes native config
 
-  next      npx @vzn/vx run build --all
+  next      vx run build --all
 ```
 
 ```text
@@ -323,7 +323,7 @@ $ bunx @vzn/vx-migrate
   lock      2 project configs → .vx/projects.lock.json
   note      migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; `nx:run-commands` targets are their shell lines, and every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate installed until those targets are rewritten as commands); targets with `.env` files run through `nx-env`
 
-  next      bunx @vzn/vx run build --all
+  next      vx run build --all
 ```
 
 `packages/lib/vx.config.ts`, as written (the `define` names are the ones
@@ -393,7 +393,7 @@ keep Nx for those.
 
 ## Vite Task
 
-`npx @vzn/vx-migrate` in a repo whose root `package.json` lists
+`bunx @vzn/vx-migrate` in a repo whose root `package.json` lists
 `vite-plus` writes a `vx.config.ts` per package from each `vite.config`
 `run.tasks` and its `package.json` scripts (`--from vite-task` when
 turbo.json or Nx is there too). Vite Task traces the files a task reads

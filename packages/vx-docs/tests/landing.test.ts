@@ -239,7 +239,7 @@ describe('the landing page', () => {
   })
 
   it('offers the install command, the quickstart and GitHub, nothing else', () => {
-    expect(hero).toContain('data-copy="npm install -g @vzn/vx"')
+    expect(hero).toContain('data-copy="bunx @vzn/vx init"')
     expect(hrefs(hero)).toEqual([`${BASE}quickstart/`, 'https://github.com/vznjs/vx'])
     const buttons = [...hero.matchAll(/<a\b[^>]*class="btn [^"]*"[^>]*>([\s\S]*?)<\/a>/g)]
     expect(buttons.map((m) => text(m[1]!))).toEqual(['Quickstart →', 'GitHub'])
@@ -385,7 +385,7 @@ describe('the landing page', () => {
       .exec(start)![1]!
       .split('\n')
       .map((l) => l.replace(/\s+#.*$/, '').trim())
-    expect(lines).toEqual(['npx @vzn/vx init', 'vx lock', 'vx run build', 'vx run build'])
+    expect(lines).toEqual(['bunx @vzn/vx init', 'vx lock', 'vx run build', 'vx run build'])
     // `vx init` outside Turbo and Nx writes an empty root project (#3778),
     // so the block that promises a hit names the task the reader declares.
     expect(/vx lock +# ([^\n]*)/.exec(start)![1]).toContain('declare a task')

@@ -23,37 +23,19 @@ Task orchestration with a cache you can trust, on a core you can extend.
 Each task is one shell command with declared inputs and outputs; vx runs
 them in dependency order and replays results from a content-addressed cache.
 
-## Install
-
-```sh
-npm install -D @vzn/vx     # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
-```
-
-A prebuilt binary for Linux (glibc, not Alpine's musl) and macOS, x64 and arm64; no Bun needed. The
-[release](https://github.com/vznjs/vx/releases) binary needs no Node either.
-Windows: run vx inside WSL2.
-
 ## Quick start
 
 In a git repo:
 
 ```sh
-npx @vzn/vx init       # installs vx globally and in the repo; beside turbo.json or nx.json: migrates them; else a root vx.config.ts
-vx run build --all     # builds in dependency order and stores the results
-vx run build --all     # nothing changed: every task up-to-date
+bunx @vzn/vx init   # installs vx and writes an empty root vx.config.ts
 ```
 
-Bun workspaces: `bun add -d @vzn/vx` and `bunx @vzn/vx` (npm refuses to run in
-a repo whose `devEngines` names Bun).
+A prebuilt binary for Linux (glibc, not Alpine's musl) and macOS, x64 and
+arm64. Windows: run vx inside WSL2.
 
-Without Turbo or Nx, tasks run uncached until you declare what they read (below).
-
-`init` prints what it wrote and anything left to decide (a `TODO`). A miss you did not expect?
-`npx @vzn/vx why <task>` names the input that moved.
-
-### Without Turbo or Nx
-
-`init` writes one task per package script, uncached. Cache one by saying what it reads and writes:
+A task runs its tool directly, never through a package script. Cache one by
+saying what it reads and writes:
 
 ```ts
 // packages/app/vx.config.ts
@@ -74,10 +56,10 @@ export default defineProject({
 ```
 
 ```sh
-npx @vzn/vx run build --all    # builds, in dependency order; stores the results
-npx @vzn/vx run build --all    # nothing changed: up-to-date, in milliseconds
+vx run build --all    # builds, in dependency order; stores the results
+vx run build --all    # nothing changed: up-to-date, in milliseconds
 rm -rf packages/*/dist
-npx @vzn/vx run build --all    # restored from the cache, not rebuilt
+vx run build --all    # restored from the cache, not rebuilt
 ```
 
 <img src="https://vznjs.github.io/vx/demo.svg" width="760" alt="vx run ci --all on examples/basic: cold, three tasks run; again, three up-to-date.">
@@ -86,7 +68,7 @@ npx @vzn/vx run build --all    # restored from the cache, not rebuilt
 
 `init` also writes `.vx/projects.lock.json`, every project's config as it evaluated.
 Commit it. Every run reads its configs from the lock, so run
-`npx @vzn/vx lock` and commit the lock again after you:
+`vx lock` and commit the lock again after you:
 
 - edit any `vx.config.ts` or `.vx/workspace.ts`,
 - update dependencies or plugins,
@@ -134,7 +116,7 @@ Write your own: [plugin guide](https://vznjs.github.io/vx/guides/plugins/) ·
 
 ## Coming from Turbo or Nx
 
-Beside `turbo.json` or `nx.json`, `npx @vzn/vx init` runs `@vzn/vx-migrate`:
+Beside `turbo.json` or `nx.json`, `bunx @vzn/vx init` runs `@vzn/vx-migrate`:
 it writes a `vx.config.ts` per package from `turbo.json` or the Nx graph,
 and you keep those and delete the old config. `vx init --keep` writes only
 a `.vx/workspace.ts` that maps the old config instead, and its lock: a temporary start,

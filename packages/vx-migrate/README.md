@@ -13,7 +13,7 @@ Everything for adopting [`@vzn/vx`](https://vznjs.github.io/vx/) from Turborepo,
 npm install -D @vzn/vx @vzn/vx-migrate   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
 ```
 
-In a Turbo or Nx repo, `npx @vzn/vx init --keep` runs this package, which
+In a Turbo or Nx repo, `bunx @vzn/vx init --keep` runs this package, which
 writes the `.vx/workspace.ts` that declares `turbo()` or `nx()`, installs
 what it imports and writes the lock. Where the repo shows a remote cache it
 declares `turboCache()` or `nxCache()` too; by hand it reads:
@@ -226,7 +226,7 @@ bunx @vzn/vx-migrate --keep    # keep turbo.json / nx.json as the source: turbo(
 bunx @vzn/vx-migrate --help    # the usage, exit 0
 ```
 
-It is the one command a repo needs (`pnpx @vzn/vx-migrate` in a pnpm repo works the same):
+It is the one command a repo needs (`pbunx @vzn/vx-migrate` in a pnpm repo works the same):
 
 - In a Turbo or Nx repo, in a terminal, it asks which adoption you want: **native** (the default, a `vx.config.ts` per package) or **keep** (a workspace file declaring `turbo()` or `nx()`). `--native` / `--keep` answer it; with no terminal (CI, a pipe) it is native. Elsewhere both are refused. A repo already set up (a workspace file declaring neither, and project configs) is said to be, exit 0, unless `--force`.
 - Native or keep, a remote cache the repo shows is declared: `turboCache()` for turbo.json's enabled `remoteCache`, a `turbo link`ed `.turbo/config.json` or a CI file (`.github/workflows/*`, `.gitlab-ci.yml`, `.circleci/config.yml`) setting `TURBO_TOKEN`; `nxCache()` for one setting `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`. The report names the file that showed it. Nx Cloud (`nxCloudId`, `nxCloudAccessToken`, the `nx-cloud` runner) is named instead: vx does not speak its wire.

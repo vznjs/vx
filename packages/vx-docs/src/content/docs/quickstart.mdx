@@ -3,7 +3,7 @@ title: Quickstart
 description: Cache your first task in two minutes, in a repo you already have.
 ---
 
-import { Steps, Tabs, TabItem, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components'
+import { Steps, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components'
 import Playground from '../../components/demos/Playground.astro'
 
 Cache your first task in two minutes, in a repo you already have.
@@ -18,27 +18,17 @@ Cache your first task in two minutes, in a repo you already have.
 
    Run this at the root of your git repository:
 
-   <Tabs syncKey="pm">
-     <TabItem label="npm">
-       ```sh
-       npx @vzn/vx init
-       ```
-     </TabItem>
-     <TabItem label="Bun">
-       ```sh
-       bunx @vzn/vx init
-       ```
-     </TabItem>
-   </Tabs>
+   ```sh
+   bunx @vzn/vx init
+   ```
 
-   `init` installs `vx` on your machine and in the repo, and writes an
-   empty `vx.config.ts` at the root. A Turborepo or Nx repo gets its tasks
-   from `turbo.json` or the Nx graph instead.
+   `init` installs `vx` and writes an empty `vx.config.ts` at the root.
 
 2. **Add a task**
 
-   Give `vx.config.ts` a `build` task: its command, the files it reads,
-   and the files it writes.
+   Give `vx.config.ts` a `build` task: the tool it runs, the files it
+   reads, and the files it writes. vx runs the tool itself, with no
+   package script in between.
 
    ```ts title="vx.config.ts" ins={5-9}
    import { defineProject } from '@vzn/vx'
@@ -46,8 +36,8 @@ Cache your first task in two minutes, in a repo you already have.
    export default defineProject({
      tasks: {
        build: {
-         exec: { command: 'npm run build' },
-         inputs: { files: ['src/**'] },
+         exec: { command: 'tsc' },
+         inputs: { files: ['src/**', 'tsconfig.json'] },
          cache: { outputs: { files: ['dist/**'] } },
        },
      },

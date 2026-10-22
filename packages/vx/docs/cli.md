@@ -1942,7 +1942,7 @@ one (bun add -g @vzn/vx), or run \`vx upgrade\` to move the project's`.
 ✓ vx upgrade  global installed 0.0.2
 ```
 
-vx never installs Node or a package manager: one not on `PATH` is refused with the command to run. A vx run from an npx or
+vx never installs Node or a package manager: one not on `PATH` is refused with the command to run. A vx run from a
 bunx cache has nothing installed to upgrade, and says to ask for
 `@vzn/vx@latest` instead.
 

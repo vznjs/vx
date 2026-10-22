@@ -347,8 +347,8 @@ daemon, a Docker socket, a device, a VPN-only host.
 
   ```ts
   install: {
-    exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },
-    inputs: { files: ['package.json', 'pnpm-lock.yaml'] },
+    exec: { command: 'bun install --frozen-lockfile', remote: 'only' },
+    inputs: { files: ['package.json', 'bun.lock'] },
     cache: {
       outputs: { files: ['node_modules/**'] },
     },
@@ -638,7 +638,7 @@ those words (`GH_PAT`, `NPM_AUTH`) is listed in `exec.env.secret`, and is
 then masked in the same places.
 
 Two `node_modules/.bin` directories are prepended to `PATH` so
-installed tools (`oxlint`, `vite`, etc.) work without `npx`: the
+installed tools (`oxlint`, `vite`, etc.) run by name: the
 project's own, then the WORKSPACE ROOT's, where a monorepo's shared
 tooling lives. Never a sibling project's, so sibling bins stay invisible
 (project isolation). A directory whose path holds `:` (PATH's delimiter)
@@ -2215,7 +2215,7 @@ export default defineProject({
       },
       inputs: {
         files: ['e2e/**'],
-        runtime: ['npx playwright --version'],
+        runtime: ['playwright --version'],
         workspaceRuntime: ['node -v'],
       },
       cache: {
