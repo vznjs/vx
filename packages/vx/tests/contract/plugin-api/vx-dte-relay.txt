@@ -67,4 +67,5 @@ export interface ServeOptions extends Pick<RelayOptions, 'verify' | 'heartbeatMs
 export interface VerifiedToken {
   iss: string
   run: readonly string[]
+  job?: string
 }

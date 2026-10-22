@@ -105,7 +105,8 @@ The same relay as a `fetch` handler, to mount in a server of your own
   the `owner/repo`s a token's `repositoryClaimOf(iss)` must name (matched
   without case; unset, none is checked), run claims per issuer (default
   `runClaimsOf(iss)`), and a key reader and clock for tests. It
-  resolves a `VerifiedToken`, `{ iss, run }`, or rejects with a
+  resolves a `VerifiedToken`, `{ iss, run, job? }` (`job`, the CI job it
+  is from, pins a run's orchestrator), or rejects with a
   `TokenError` carrying the `status` (401 or 403) the relay answers.
 - `runClaimsOf(iss)` names the claims that bind a run: `repository_id`
   for GitHub Actions, `project_id` otherwise.

@@ -123,6 +123,21 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     expect(error).toBe('unknown run')
   })
 
+  it('pins a run to its orchestrator’s CI job: its id acts from no other', async () => {
+    const c = client({ verify: async (t) => ({ iss: 'i', run: ['1'], job: t }) })
+    const o = (await c.call(R, 'join', { role: 'orchestrator' }, '', 'job-1')).json.id
+    const a = (await c.call(R, 'join', { role: 'agent' }, '', 'job-2')).json.id
+    const polled = async (id: string, token: string) =>
+      (await c.call(R, 'poll', undefined, `?id=${id}&wait=0`, token)).status
+    expect([
+      await polled(o, 'job-2'),
+      (await c.call(R, 'send', { id: o, to: a, body: 1 }, '', 'job-2')).status,
+      (await c.call(R, 'join', { role: 'orchestrator' }, '', 'job-2')).status,
+      await polled(o, 'job-1'),
+      await polled(a, 'job-1'),
+    ]).toEqual([403, 403, 409, 200, 200])
+  })
+
   it('answers malformed requests with their status', async () => {
     const c = client()
     expect((await c.call('bad run', 'join', { role: 'agent' })).status).toBe(400)
@@ -213,6 +228,18 @@ describe('a host that keeps runs and holds websockets', () => {
     expect([...store.kv.keys()].filter((k) => k.startsWith('m/'))).toEqual([
       expect.stringContaining(`/${a}/`),
     ])
+  })
+
+  it('remembers a closed run after its participants go, so its id never opens again', () => {
+    const store = memory()
+    const old = Date.now() - 11 * 60_000
+    const key = `r/${encodeURIComponent(R)}`
+    store.put(key, { closed: true, closedAt: old, pin: null })
+    store.put(`p/${encodeURIComponent(R)}/a1`, { role: 'agent', info: null })
+    const c = client({ store, timer: false })
+    c.relay.sweep()
+    expect([...store.kv.keys()]).toEqual([key])
+    return c.call(R, 'join', { role: 'orchestrator' }).then((r) => expect(r.status).toBe(410))
   })
 
   it('sweeps when its host asks, and says when to ask next', async () => {

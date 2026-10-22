@@ -77,6 +77,8 @@ interface Run {
   orchestrator?: Participant
   byId: Map<string, Participant>
   closedAt?: number
+  /** The CI job its orchestrator joined from (`VerifiedToken.job`); only that job acts as it. */
+  pin?: string
 }
 
 /** A random (v4) UUID: no one can guess a run id to open it first or join it. */
@@ -86,8 +88,13 @@ const MAX_QUEUE = 10_000
 /** 10 000 bodies of 1 MiB would be 10 GiB held for one participant that does not poll. */
 const MAX_QUEUE_BYTES = 64 << 20
 const MAX_WAIT_MS = 25_000
-/** A closed run answers `410` this long, then is forgotten. */
+/** A closed run holds its participants this long. */
 const CLOSED_TTL_MS = 10 * 60_000
+/**
+ * A closed run answers `410` this long, so its id never takes another
+ * orchestrator while one of its agents could still be about.
+ */
+const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60_000
 
 class HttpError extends Error {
   constructor(
@@ -108,7 +115,11 @@ export function createRelay(opts: RelayOptions = {}): Relay {
   const mAt = (run: Run, id: string, seq: number): string =>
     `m/${encodeURIComponent(run.key)}/${id}/${String(seq).padStart(12, '0')}`
   const saveRun = (run: Run): void =>
-    store?.put(runAt(run.key), { closed: run.closed, closedAt: run.closedAt ?? null })
+    store?.put(runAt(run.key), {
+      closed: run.closed,
+      closedAt: run.closedAt ?? null,
+      pin: run.pin ?? null,
+    })
 
   const deliver = (run: Run, p: Participant, m: Message, bytes = 0): void => {
     if (p.socket !== undefined && p.queue.length === 0) {
@@ -164,12 +175,18 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     }
   }
 
-  const forget = (run: Run): void => {
-    runs.delete(run.key)
+  const empty = (run: Run): void => {
     for (const p of run.byId.values()) {
       drain(run, p)
       store?.delete(pAt(run, p.id))
     }
+    run.byId.clear()
+    delete run.orchestrator
+  }
+
+  const forget = (run: Run): void => {
+    runs.delete(run.key)
+    empty(run)
     store?.delete(runAt(run.key))
   }
 
@@ -181,8 +198,11 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     }
     for (const run of [...runs.values()]) {
       if (run.closed) {
-        if (now - run.closedAt! > CLOSED_TTL_MS) forget(run)
-        else at(run.closedAt! + CLOSED_TTL_MS + 1)
+        if (now - run.closedAt! > TOMBSTONE_TTL_MS) forget(run)
+        else if (now - run.closedAt! > CLOSED_TTL_MS) {
+          empty(run)
+          at(run.closedAt! + TOMBSTONE_TTL_MS + 1)
+        } else at(run.closedAt! + CLOSED_TTL_MS + 1)
         continue
       }
       for (const p of [...run.byId.values()]) {
@@ -200,14 +220,22 @@ export function createRelay(opts: RelayOptions = {}): Relay {
 
   if (store !== undefined) restore(store, runs)
 
-  const participant = (run: Run, id: unknown): Participant => {
+  const participant = (run: Run, id: unknown, token?: VerifiedToken): Participant => {
     const p = typeof id === 'string' ? run.byId.get(id) : undefined
     if (p === undefined) throw new HttpError(404, 'unknown id')
+    // An id is a bearer secret: one that leaks still acts as the orchestrator only from its job.
+    if (p.role === 'orchestrator' && run.pin !== undefined && token?.job !== run.pin) {
+      throw new HttpError(403, 'not the run’s orchestrator job')
+    }
     p.seen = Date.now()
     return p
   }
 
-  const join = (run: Run, body: { role?: unknown; info?: unknown }): Response => {
+  const join = (
+    run: Run,
+    body: { role?: unknown; info?: unknown },
+    token: VerifiedToken | undefined,
+  ): Response => {
     if (body.role !== 'orchestrator' && body.role !== 'agent') {
       throw new HttpError(400, 'role is orchestrator or agent')
     }
@@ -227,6 +255,10 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     store?.put(pAt(run, p.id), { role: p.role, info: p.info })
     if (p.role === 'orchestrator') {
       run.orchestrator = p
+      if (token?.job !== undefined) {
+        run.pin = token.job
+        saveRun(run)
+      }
       for (const a of run.byId.values()) {
         if (a.role === 'agent') deliver(run, p, joined(a))
       }
@@ -263,8 +295,13 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     )
   }
 
-  const poll = async (run: Run, url: URL, signal: AbortSignal): Promise<Response> => {
-    const p = participant(run, url.searchParams.get('id'))
+  const poll = async (
+    run: Run,
+    url: URL,
+    signal: AbortSignal,
+    token: VerifiedToken | undefined,
+  ): Promise<Response> => {
+    const p = participant(run, url.searchParams.get('id'), token)
     const wait = Math.min(Math.max(Number(url.searchParams.get('wait')) || 0, 0), MAX_WAIT_MS)
     if (p.queue.length === 0 && wait > 0) {
       // One held poll per participant: a newer one answers the older.
@@ -303,18 +340,22 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       throw new HttpError(405, 'wrong method')
     }
     const token = await authorize(req, opts.verify)
-    // A run is its id within its repository: run ids are guessable (GitHub's
-    // run_id), so another tenant opening one first must not take it.
+    // A run is its id within its repository, so another tenant that learns
+    // an id cannot open it first.
     const key = runKey(runId, token)
     let run = runs.get(key)
     if (run?.closed === true) throw new HttpError(410, 'run closed')
-    if (verb === 'poll') return poll(run ?? missing(), url, req.signal)
+    if (verb === 'poll') return poll(run ?? missing(), url, req.signal, token)
     if (verb === 'socket') {
       if (opts.upgrade === undefined) throw new HttpError(404, 'no such route')
       if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
         throw new HttpError(426, 'not a websocket')
       }
-      return opts.upgrade(key, participant(run ?? missing(), url.searchParams.get('id')).id, req)
+      return opts.upgrade(
+        key,
+        participant(run ?? missing(), url.searchParams.get('id'), token).id,
+        req,
+      )
     }
     const [body, bytes] = await readBody(req)
     if (verb === 'join') {
@@ -323,14 +364,14 @@ export function createRelay(opts: RelayOptions = {}): Relay {
         runs.set(key, run)
         saveRun(run)
       }
-      return join(run, body)
+      return join(run, body, token)
     }
     if (run === undefined) missing()
     if (verb === 'send') {
-      send(run, participant(run, body['id']), body, bytes)
+      send(run, participant(run, body['id'], token), body, bytes)
       return new Response(null, { status: 204 })
     }
-    drop(run, participant(run, body['id']))
+    drop(run, participant(run, body['id'], token))
     return new Response(null, { status: 204 })
   }
 
@@ -408,9 +449,19 @@ function restore(store: RelayStore, runs: Map<string, Run>): void {
   const now = Date.now()
   const parts = (k: string): string[] => k.split('/').map(decodeURIComponent)
   for (const [k, v] of store.list({ prefix: 'r/' })) {
-    const { closed, closedAt } = v as { closed: boolean; closedAt: number | null }
+    const { closed, closedAt, pin } = v as {
+      closed: boolean
+      closedAt: number | null
+      pin?: string | null
+    }
     const [, key] = parts(k) as [string, string]
-    runs.set(key, { key, closed, byId: new Map(), ...(closedAt === null ? {} : { closedAt }) })
+    runs.set(key, {
+      key,
+      closed,
+      byId: new Map(),
+      ...(closedAt === null ? {} : { closedAt }),
+      ...(pin == null ? {} : { pin }),
+    })
   }
   for (const [k, v] of store.list({ prefix: 'p/' })) {
     const [, key, id] = parts(k) as [string, string, string]
