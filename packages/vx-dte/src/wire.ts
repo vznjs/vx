@@ -135,17 +135,34 @@ export async function join(
   let socket = offered ? await dial() : undefined
   let failures = 0
   let redial: ReturnType<typeof setTimeout> | undefined
+  /** A redial in flight, which `leave` waits out: its socket closes before the process exits. */
+  let dialing: Promise<void> | undefined
   let left = false
+  /** The relay closed the run or forgot this participant: no socket is dialed again. */
+  let ended = false
+  const end = (): void => {
+    ended = true
+    clearTimeout(redial)
+    redial = undefined
+  }
+  const heard = (messages: RelayMessage[]): RelayMessage[] => {
+    if (
+      messages.some((m) => m.from === 'relay' && (m.body as { type?: unknown })?.type === 'closed')
+    )
+      end()
+    return messages
+  }
   /** A socket that failed or dropped is dialed again after a jittered backoff; HTTP carries meanwhile. */
   const again = (): void => {
-    if (!offered || left || redial !== undefined || socket?.open === true) return
+    if (!offered || left || ended || redial !== undefined || socket?.open === true) return
     const ms = Math.random() * Math.min(MAX_REDIAL_MS, FIRST_REDIAL_MS * 2 ** failures)
     redial = setTimeout(() => {
-      void dial()
+      dialing = dial()
         .catch(() => undefined)
-        .then((s) => {
+        .then(async (s) => {
           redial = undefined
-          if (left) void s?.close()
+          dialing = undefined
+          if (left) await s?.close()
           else if (s === undefined) {
             failures++
             again()
@@ -190,14 +207,19 @@ export async function join(
     },
     async poll(signal) {
       again()
-      if (socket?.inbox.length) return socket.inbox.splice(0)
+      if (socket?.inbox.length) return heard(socket.inbox.splice(0))
       if (socket?.open === true) {
         const messages = await socket.poll(signal)
         // Closed while it waited: HTTP says why.
-        if (messages.length > 0 || socket.open || signal?.aborted === true) return messages
+        if (messages.length > 0 || socket.open || signal?.aborted === true) return heard(messages)
       }
-      const r = await call('poll', undefined, `?id=${id}&wait=${heartbeatMs}`, signal)
-      return (r?.['messages'] ?? []) as RelayMessage[]
+      const r = await call('poll', undefined, `?id=${id}&wait=${heartbeatMs}`, signal).catch(
+        (err: unknown) => {
+          if (err instanceof RelayError && (err.status === 404 || err.status === 410)) end()
+          throw err
+        },
+      )
+      return heard((r?.['messages'] ?? []) as RelayMessage[])
     },
     async remove(agent) {
       await over(
@@ -216,7 +238,7 @@ export async function join(
           if (err.message === UNANSWERED) await http()
         })
       else await http()
-      await s?.close()
+      await Promise.all([s?.close(), dialing])
     },
   }
 }
