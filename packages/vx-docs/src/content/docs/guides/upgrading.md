@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte-relay: take only sends, remove and leave frames
+
+a socket frame of `{ n, to, body }` is answered `400`; send it as `{ n, sends: [{ to, body }] }`.
+
 ## vx-dte-relay: drop the frames version from join
 
 a relay's join no longer answers `frames`; a socket always takes `sends`, `remove` and `leave` frames.

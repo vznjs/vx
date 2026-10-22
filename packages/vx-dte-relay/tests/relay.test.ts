@@ -185,7 +185,9 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     expect((await upgrade('job-2')).status).toBe(403)
     expect((await upgrade('job-1')).status).toBe(101)
     expect(c.relay.attach(key, o, { send() {}, close() {} })).toBe(true)
-    expect(JSON.parse(c.relay.frame(key, o, JSON.stringify({ n: 1, to: a, body: 'go' })))).toEqual({
+    expect(
+      JSON.parse(c.relay.frame(key, o, JSON.stringify({ n: 1, sends: [{ to: a, body: 'go' }] }))),
+    ).toEqual({
       n: 1,
     })
     expect((await c.call(R, 'poll', undefined, `?id=${a}&wait=0`, 'job-2')).json.messages).toEqual([
@@ -496,17 +498,26 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(c.relay.attach(K, a, socket)).toBe(true)
     await c.call(R, 'send', { id: o, to: a, body: 'pushed' })
     expect(
-      JSON.parse(c.relay.frame(K, a, JSON.stringify({ n: 1, to: 'orchestrator', body: 3 }))),
+      JSON.parse(
+        c.relay.frame(K, a, JSON.stringify({ n: 1, sends: [{ to: 'orchestrator', body: 3 }] })),
+      ),
     ).toEqual({ n: 1 })
-    expect(JSON.parse(c.relay.frame(K, a, JSON.stringify({ n: 2, to: 'nobody' })))).toEqual({
-      n: 2,
-      status: 404,
-      error: 'unknown to',
+    expect(
+      JSON.parse(c.relay.frame(K, a, JSON.stringify({ n: 2, sends: [{ to: 'nobody' }] }))),
+    ).toEqual({ n: 2, results: [{ status: 404, error: 'unknown to' }] })
+    // A lone send is no frame: only `sends`, `remove` and `leave` are.
+    expect(JSON.parse(c.relay.frame(K, a, JSON.stringify({ n: 3, to: 'orchestrator' })))).toEqual({
+      n: 3,
+      status: 400,
+      error: 'frame is sends, remove or leave',
     })
     // Refused for its size, still answered by its number, or its sender waits on it forever.
-    const huge = JSON.stringify({ n: 3, to: 'orchestrator', body: 'x'.repeat(1 << 20) })
+    const huge = JSON.stringify({
+      n: 4,
+      sends: [{ to: 'orchestrator', body: 'x'.repeat(1 << 20) }],
+    })
     expect(JSON.parse(c.relay.frame(K, a, huge))).toEqual({
-      n: 3,
+      n: 4,
       status: 413,
       error: 'body over 1 MiB',
     })
