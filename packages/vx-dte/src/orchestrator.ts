@@ -149,6 +149,10 @@ function parts<T extends { order: unknown }>(orders: readonly T[], max: number):
   return out
 }
 
+/** A task's end when its run stopped it before it began anywhere. */
+const stopped = (): ExecuteResult =>
+  result({ exitCode: 130, signal: 'SIGTERM', durationMs: 0 }, { stdout: '', stderr: '' })
+
 /** Cores an agent is sent beyond its own, so a finished task's successor is already there. */
 const prefetch = (cores: number): number => Math.max(1, Math.ceil(cores / 4))
 
@@ -197,6 +201,8 @@ export class Orchestrator {
     for (const u of req.inputs?.upstream ?? []) this.upstreamKeys.set(u.taskId, u.hash)
     return new Promise((resolve, reject) => {
       const job: Job = { req, need: this.o.need(req.taskId), resolve, reject }
+      // A signal aborted already fires no `abort`.
+      if (req.signal?.aborted === true) return resolve(stopped())
       req.signal?.addEventListener('abort', () => this.abort(job), { once: true })
       this.queue.push(job)
       this.pumpSoon()
@@ -242,9 +248,7 @@ export class Orchestrator {
     const at = this.queue.indexOf(job)
     if (at >= 0) {
       this.queue.splice(at, 1)
-      job.resolve(
-        result({ exitCode: 130, signal: 'SIGTERM', durationMs: 0 }, { stdout: '', stderr: '' }),
-      )
+      job.resolve(stopped())
     } else if (job.agent !== undefined) {
       const a = this.agents.get(job.agent)
       if (a !== undefined) this.post(a, { type: 'cancel', task: job.req.taskId })
@@ -476,9 +480,7 @@ export class Orchestrator {
     const begun = a.started.delete(job.req.taskId)
     // Stopped, it runs nowhere again; the cancel sent its agent has no one to answer it.
     if (job.req.signal?.aborted === true) {
-      job.resolve(
-        result({ exitCode: 130, signal: 'SIGTERM', durationMs: 0 }, { stdout: '', stderr: '' }),
-      )
+      job.resolve(stopped())
       return undefined
     }
     if (begun) {
