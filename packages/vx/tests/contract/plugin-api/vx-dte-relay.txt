@@ -13,6 +13,8 @@ export async function createProver(): Promise<Prover>
 export function createRelay(opts: RelayOptions = {}): Relay
 == function createVerifier (src/oidc.ts)
 export function createVerifier(opts: OidcOptions): (token: string) => Promise<VerifiedToken>
+== function parseAllow (src/oidc.ts)
+export function parseAllow(list: string): Allowed[]
 == function repositoryClaimOf (src/oidc.ts)
 export function repositoryClaimOf(iss: string): string
 == function runClaimsOf (src/oidc.ts)
@@ -21,12 +23,16 @@ export function runClaimsOf(iss: string): readonly string[]
 export function serveRelay(opts: ServeOptions): RelayServer
 == function workflowClaimOf (src/oidc.ts)
 export function workflowClaimOf(iss: string): string
+== type Allowed (src/oidc.ts)
+export interface Allowed {
+  issuer: string
+  repository?: string
+  workflow?: string
+}
 == type OidcOptions (src/oidc.ts)
 export interface OidcOptions {
-  issuers: readonly string[]
+  allow: readonly Allowed[]
   audience: string
-  repositories?: readonly string[]
-  workflows?: readonly string[]
   runClaims?: Readonly<Record<string, readonly string[]>>
   fetchJson?: (url: string) => Promise<unknown>
   now?: () => number
