@@ -218,7 +218,38 @@ describe('shared timings', () => {
       'p#x': 7,
       'p#y': 50,
     })
-    expect(shared.calls).toEqual(['hasMany', 'get', 'get!'])
+    // The parent's blob for this graph first, then its plain one.
+    expect(shared.calls).toEqual(['hasMany', 'get', 'get!', 'get!'])
+  })
+
+  // Every CI job of a commit writes its own graph's tasks, and the first
+  // job's plain blob wins: the dte job's shards read a blob without them,
+  // and each took a whole agent (2026-10-22).
+  it("each job's graph keeps its own blob, which a run of that graph reads first", async () => {
+    const a = commit()
+    const shared = spyCache()
+    timed('main', 'p#bench', 5)
+    timed('main', 'p#shard', 100)
+    await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#bench'] })
+    await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#shard'] })
+    expect(read(shared.store.get(key(a)))).toEqual({ version: 1, tasks: { 'p#bench': 5 } })
+    git('checkout', '-q', '-b', 'feature')
+    commit()
+    const provider = new LocalHistoryProvider(
+      new Cache(path.join(root, 'fresh'), { read: true, write: true }).dbHandle(),
+      undefined,
+      'feature',
+    )
+    await importTimings({
+      root,
+      defaultBranch: 'main',
+      cache: shared,
+      provider,
+      ids: ['p#shard'],
+      triedFile: triedFile(),
+      branch: false,
+    })
+    expect(Object.fromEntries(await provider.p50sFor(['p#shard']))).toEqual({ 'p#shard': 100 })
   })
 
   it("a branch with no history orders from local history at once, then re-ranks by its merge-base's blob", async () => {
