@@ -747,6 +747,16 @@ it('a machine’s usage: peaks of tasks at once, averages over its time online',
   })
 })
 
+// A Ctrl-C read `0 done · 2 failed` for one failed and one stopped task.
+it('counts a task the stop killed as aborted, a timeout as failed', () => {
+  const u = new Usage(0)
+  u.record({ exitCode: 0, durationMs: 1 })
+  u.record({ exitCode: 2, durationMs: 1 })
+  u.record({ exitCode: 130, signal: 'SIGTERM', durationMs: 1 })
+  u.record({ exitCode: 143, signal: 'SIGTERM', timedOut: true, durationMs: 1 })
+  expect([u.done, u.failed, u.aborted]).toEqual([1, 2, 1])
+})
+
 it('starts the cores the rest of the run keeps busy for half its length, not its peak', () => {
   const graph = (entries: Array<[string, string[]]>) =>
     new Map(
