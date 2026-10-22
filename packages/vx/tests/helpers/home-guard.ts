@@ -1,13 +1,10 @@
 // A test never writes the real home's shared store (`~/.vx/<repo>`): one
 // that does leaves a store per fixture repo on the developer's disk (457 MB
-// on one host, 2026-10-21). Fails the process that added one. This
-// repository's own store is not a fixture's: a vx on the same machine,
-// such as the DTE agent running this suite, writes it whenever it saves.
+// on one host, 2026-10-21). Fails the process that added one.
 import { readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { afterAll } from 'bun:test'
-import { repoIdOf } from '../../src/workspace/repo-id.js'
 
 const store = path.join(homedir(), '.vx')
 const list = (): Set<string> => {
@@ -19,9 +16,8 @@ const list = (): Set<string> => {
 }
 const before = list()
 
-afterAll(async () => {
-  const own = await repoIdOf(path.resolve(import.meta.dir, '../../../..'))
-  const added = [...list()].filter((d) => !before.has(d) && d !== own)
+afterAll(() => {
+  const added = [...list()].filter((d) => !before.has(d))
   if (added.length > 0)
     throw new Error(
       `a test wrote the real home's shared store: ${added.map((d) => path.join(store, d)).join(', ')}; ` +
