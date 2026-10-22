@@ -20,6 +20,11 @@ const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' 
 // default shares entries through the user's store, and one fixture would hit
 // what another saved.
 // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
+// CI's macOS jobs share the remote cache with Linux; a key that named no
+// platform replayed Linux's pass as the macOS result (#3854). The runner's
+// OS, read when the key is taken: a `runtime` probe would pin the task off
+// agents, and a value the config computes is frozen into the lock.
+const PLATFORM = ['RUNNER_OS']
 const SUITE_ENV = {
   ...GIT_HERMETIC,
   BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0',
@@ -100,6 +105,7 @@ const shardTask = (i: number) => ({
   inputs: {
     files: SOURCES,
     workspaceFiles: ['README.md', 'skills/**'],
+    env: PLATFORM,
   },
   cache: {
     outputs: { files: [] as string[] },
@@ -391,6 +397,7 @@ export default defineProject({
         ],
         workspaceFiles: ['packages/vx-schedule-history/**'],
         runtime: BUN_VERSION,
+        env: PLATFORM,
       },
       cache: {
         outputs: { files: [] },
@@ -461,6 +468,7 @@ export default defineProject({
           '.vx/workspace.ts',
           ...OTHER_OUTPUTS,
         ],
+        env: PLATFORM,
       },
       cache: {
         outputs: { files: [] },
