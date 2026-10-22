@@ -605,9 +605,10 @@ describe('cacheKeyDiff', () => {
   it("names the uncached case when ONE side's fingerprints are gone", () => {
     // Two separate claims the existing pruned row cannot make: it prunes
     // BOTH sides (so `||` and `&&` agree), and its task is cached (so the
-    // uncached sentence never renders). An uncached task has no declared
-    // inputs at all, which is a different thing to tell the reader than
-    // "the entry was pruned".
+    // uncached sentence never renders). An uncached task saves no entry, so
+    // it keeps no fingerprints, which is a different thing to tell the
+    // reader than "the entry was pruned". Its key is its `inputs` (#3671),
+    // not every file in its project.
     withCache((cache) => {
       cache.recordRun(
         mkRun({ hash: 'hK1', project: 'pkg', task: 'test', runId: 'r-1', startedAt: 1000 }),
@@ -621,7 +622,7 @@ describe('cacheKeyDiff', () => {
       const diff = cacheKeyDiff(cache.dbHandle(), 'r-2', 'pkg#test')
       expect(diff.entries).toEqual([])
       expect(diff.note).toBe(
-        'no `cache` block declares its inputs, so its key folds every file in its project — a file it wrote, or any untracked file, moves it — and no fingerprints are kept to say which',
+        'with no `cache` block it saves no entry, so no input fingerprints are kept to say which of its `inputs` moved its key; with no `inputs`, every run gives it a new key',
       )
     })
   })
