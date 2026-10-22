@@ -106,19 +106,19 @@ const MAX_QUEUE = 10_000
 const MAX_QUEUE_BYTES = 64 << 20
 const MAX_WAIT_MS = 25_000
 /**
- * A closed run answers `410` this long to an agent polling over HTTP; one
- * on a socket is told at once, and the run goes when none is left. The
- * run's storage goes with it: an object kept a day per run held 100+ on
- * one host (owner, 2026-10-22).
+ * A closed run answers `410` this many heartbeats (a minute) to an agent
+ * polling over HTTP; one on a socket is told at once, and the run goes
+ * when none is left. Its storage goes with it: an object kept a day per
+ * run held 100+ on one host (owner, 2026-10-22).
  */
-const CLOSED_TTL_MS = 60_000
+const CLOSED_BEATS = 12
 /**
- * A run no orchestrator joined closes after this. Agents start after
- * their orchestrator joins, so one alone is late for a run that ended,
- * which nothing remembers; a CI that starts agents beside it has this
- * long to join.
+ * A run no orchestrator joined closes after this many heartbeats (ten
+ * minutes). Agents start after their orchestrator joins, so one alone is
+ * late for a run that ended, which nothing remembers; a CI that starts
+ * agents beside it has this long to join.
  */
-const ORPHAN_TTL_MS = 10 * 60_000
+const ORPHAN_BEATS = 120
 /**
  * A participant on a socket is lost after this many heartbeats of silence,
  * not three: its pings cost a host nothing, but each sweep wakes it, and a
@@ -156,6 +156,8 @@ const errorBody = (err: HttpError | TokenError): object =>
 
 export function createRelay(opts: RelayOptions = {}): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 5_000
+  const closedTtl = CLOSED_BEATS * heartbeatMs
+  const orphanTtl = ORPHAN_BEATS * heartbeatMs
   const runs = new Map<string, Run>()
   const store = opts.store
   const runAt = (key: string): string => `r/${key}`
@@ -275,12 +277,12 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       next = Math.min(next ?? t, t)
     }
     for (const run of [...runs.values()]) {
-      if (!run.closed && run.orchestrator === undefined && now - run.openedAt > ORPHAN_TTL_MS) {
+      if (!run.closed && run.orchestrator === undefined && now - run.openedAt > orphanTtl) {
         close(run)
       }
       if (run.closed) {
-        if (run.byId.size === 0 || now - run.closedAt! > CLOSED_TTL_MS) forget(run)
-        else at(run.closedAt! + CLOSED_TTL_MS + 1)
+        if (run.byId.size === 0 || now - run.closedAt! > closedTtl) forget(run)
+        else at(run.closedAt! + closedTtl + 1)
         continue
       }
       for (const p of [...run.byId.values()]) {
@@ -288,14 +290,14 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       }
       if (run.closed) {
         if (run.byId.size === 0) forget(run)
-        else if (runs.has(run.key)) at(run.closedAt! + CLOSED_TTL_MS + 1)
+        else if (runs.has(run.key)) at(run.closedAt! + closedTtl + 1)
       } else if (run.byId.size === 0) forget(run)
       else {
         for (const p of run.byId.values()) {
           saveParticipant(run, p)
           at(p.seen + lostAfter(p) + 1)
         }
-        if (run.orchestrator === undefined) at(run.openedAt + ORPHAN_TTL_MS + 1)
+        if (run.orchestrator === undefined) at(run.openedAt + orphanTtl + 1)
       }
     }
     return next
