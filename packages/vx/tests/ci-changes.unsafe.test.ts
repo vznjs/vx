@@ -250,6 +250,15 @@ describe('the changes job', () => {
 // for ever; one skipped by a job-level `if` reports success. A failed or
 // skipped `changes` (a push, a dispatch) must run the job, never skip it.
 describe('the gating', () => {
+  // Shallow, the dte job found no merge-base and so no measured needs, and
+  // every shard booked a whole agent at ~25% CPU (2026-10-22).
+  it('checks the dte job out with the history its timings import walks', () => {
+    const checkout = doc.jobs['shards-dte']?.steps?.find((s) =>
+      String((s as { uses?: string }).uses).startsWith('actions/checkout@'),
+    ) as { with?: Record<string, unknown> } | undefined
+    expect(checkout?.with?.['fetch-depth']).toBe(0)
+  })
+
   it('filters no trigger by path', () => {
     expect(JSON.stringify(doc.on ?? doc.true)).not.toMatch(/paths/)
   })
