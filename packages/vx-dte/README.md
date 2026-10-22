@@ -307,7 +307,9 @@ beyond the peak of the cores the remaining tasks keep busy, so a lull
 between two wide parts keeps it. One a remaining task needs for its size
 stays. A lost agent's begun tasks run again on
 another, and the run starts one in its place. Agents start at the first
-task the cache does not answer, so a warm run starts none.
+task the cache does not answer, so a warm run starts none. Once one has
+joined, its warm-up is what the next takes at the least: work that ends
+sooner starts no agent while others are online or starting.
 
 The `agents` rows, live while the run goes and again in the footer,
 give each agent its status (`starting`, `online`, `left`, `gone`, or `failed`

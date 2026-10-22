@@ -715,6 +715,17 @@ export class Orchestrator {
     return n
   }
 
+  /**
+   * The shortest time an agent this run asked for took to join, once one
+   * has: what an agent asked for now takes, at the least.
+   */
+  warmUpMs(): number | undefined {
+    let least: number | undefined
+    for (const a of [...this.agents.values(), ...this.gone])
+      if (a.warmUpMs !== undefined && !(least! <= a.warmUpMs)) least = a.warmUpMs
+    return least
+  }
+
   /** The most cores an agent online has; 0 with none. */
   biggestCores(): number {
     let most = 0

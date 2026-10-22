@@ -17,7 +17,7 @@ import {
 import { Orchestrator, runKey, type Need } from '../src/orchestrator.js'
 import { outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
-import { busyCores } from '../src/width.js'
+import { busyCores, endsInMs } from '../src/width.js'
 import { join } from '../src/wire.js'
 import type { RunOrder } from '../src/messages.js'
 
@@ -774,6 +774,36 @@ it('starts the cores the rest of the run keeps busy for half its length, not its
   )
   // Done tasks are not laid out.
   expect(busyCores(new Set(['p#c']), mid, one, () => 1000)).toBe(1)
+})
+
+it('knows how long the rest of the run takes at the least, and how long an agent took to join', async () => {
+  const graph = new Map(
+    [
+      ['p#a', []],
+      ['p#b', ['p#a']],
+      ['p#c', []],
+    ].map(([id, deps]) => [
+      id as string,
+      { id, deps, config: { exec: { command: 'true' } } } as unknown as TaskNode,
+    ]),
+  )
+  const ms = (id: string) => ({ 'p#a': 2000, 'p#b': 3000, 'p#c': 4000 })[id]
+  expect(endsInMs(new Set(graph.keys()), graph, ms)).toBe(5000)
+  expect(endsInMs(new Set(['p#b', 'p#c']), graph, ms)).toBe(4000)
+  expect(endsInMs(new Set(), graph, ms)).toBe(0)
+  const h = await harness(new Map([node('t1')]))
+  try {
+    expect(h.o.warmUpMs()).toBeUndefined()
+    // One that joined on its own was never asked for: it says nothing.
+    await h.agent(2)
+    h.o.spawned('small#1', { size: 'small', cpu: 2, memory: 100 })
+    await Bun.sleep(120)
+    await h.agent(2, 'small#1')
+    await Bun.sleep(50)
+    expect(h.o.warmUpMs()).toBeGreaterThanOrEqual(100)
+  } finally {
+    await h.stop()
+  }
 })
 
 it('gives an unmeasured task a whole agent, and one that filled its agent a bigger one', async () => {

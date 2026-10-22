@@ -9,16 +9,17 @@ import type { TaskNode } from '@vzn/vx'
 /** A task's duration when history has none. */
 const UNKNOWN_MS = 1_000
 
-export function busyCores(
+type Span = { start: number; end: number; cores: number }
+
+/** The remaining tasks laid out as early as their dependencies allow, on unbounded cores. */
+function layout(
   remaining: ReadonlySet<string>,
   nodes: ReadonlyMap<string, TaskNode>,
   cores: (id: string) => number,
   durationMs: (id: string) => number | undefined,
-  // Of what is left, the share a level must hold; 0 is the peak.
-  share = 0.5,
-): number {
+): Span[] {
   const end = new Map<string, number>()
-  const spans: Array<{ start: number; end: number; cores: number }> = []
+  const spans: Span[] = []
   const visit = (id: string): number => {
     const known = end.get(id)
     if (known !== undefined) return known
@@ -36,6 +37,31 @@ export function busyCores(
     return t
   }
   for (const id of remaining) visit(id)
+  return spans
+}
+
+/**
+ * How long the remaining tasks take at the least: their critical path,
+ * each for its usual duration. An agent asked for now that warms up
+ * longer than this joins a run with nothing left for it.
+ */
+export function endsInMs(
+  remaining: ReadonlySet<string>,
+  nodes: ReadonlyMap<string, TaskNode>,
+  durationMs: (id: string) => number | undefined,
+): number {
+  return Math.max(0, ...layout(remaining, nodes, () => 1, durationMs).map((s) => s.end))
+}
+
+export function busyCores(
+  remaining: ReadonlySet<string>,
+  nodes: ReadonlyMap<string, TaskNode>,
+  cores: (id: string) => number,
+  durationMs: (id: string) => number | undefined,
+  // Of what is left, the share a level must hold; 0 is the peak.
+  share = 0.5,
+): number {
+  const spans = layout(remaining, nodes, cores, durationMs)
   if (spans.length === 0) return 0
   // Time at each level of cores in use, by a sweep over the starts and ends.
   const edges = spans.flatMap((s) => [
