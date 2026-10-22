@@ -83,7 +83,7 @@ export async function join(
   const id = joined['id'] as string
   const heartbeatMs = joined['heartbeatMs'] as number
   const socket =
-    joined['socket'] === true
+    false && joined['socket'] === true
       ? await connect(base, id, await headers('GET', `${base}socket?id=${id}`, ''), heartbeatMs)
       : undefined
   return {
