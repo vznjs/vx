@@ -30,9 +30,6 @@ jobs:
       VX_DTE_RUN: ${{ inputs.run }}
       VX_DTE_RELAY: ${{ inputs.relay }}
       VX_DTE_AGENT: ${{ matrix.agent }}
-      # The agent's own store, out of the home the tests' guard watches:
-      # it saves there while a suite runs (tests/helpers/home-guard.ts).
-      VX_CACHE_DIR: ${{ runner.temp }}/vx-cache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # The full history: the API-break law reads the last release's tag
@@ -63,3 +60,7 @@ jobs:
 
       - name: vx dte agent
         run: bun packages/vx/src/bin.ts dte agent
+        env:
+          # The agent's own store, out of the home the tests' guard watches:
+          # it saves there while a suite runs (tests/helpers/home-guard.ts).
+          VX_CACHE_DIR: ${{ runner.temp }}/vx-cache
