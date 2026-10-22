@@ -12,6 +12,7 @@ import { sandboxAvailable } from './helpers/sandbox-gate.js'
 
 const available = await sandboxAvailable('dte sandbox test')
 const DTE = path.resolve(import.meta.dir, '../../vx-dte/src/index.ts')
+const RELAY = path.resolve(import.meta.dir, '../../vx-dte-relay/src/index.ts')
 const BIN = path.resolve(import.meta.dir, '../src/bin.ts')
 
 describe.skipIf(!available)('a sandboxed task on an agent', () => {
@@ -26,6 +27,11 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 2, memory: '1GB
 `,
       'secret/s.txt': 'secret\n',
       'secret/vx.config.mjs': `export default { name: 'secret', tasks: {} }\n`,
+      // Reads the home's ssh key, which every sandbox denies.
+      'k/vx.config.mjs': `export default { name: 'k', tasks: {
+  key: { exec: { command: 'cat "$HOME/.ssh/id"', sandbox: {} } },
+} }
+`,
       'a/vx.config.mjs': `export default { name: 'a', tasks: {
   gen: {
     exec: { command: 'mkdir -p out && pwd > out/where.txt', sandbox: { allow: { read: ['.'], write: ['out/'] } } },
@@ -54,6 +60,7 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 2, memory: '1GB
     await rm(root, { recursive: true, force: true })
   })
 
+  const git = (...a: string[]) => Bun.spawnSync(['git', ...a], { cwd: root })
   const vx = (args: string[], run?: string) => {
     const { VX_DTE_RUN: _, ...env } = process.env
     return Bun.spawnSync([process.execPath, BIN, ...args], {
@@ -78,5 +85,58 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 2, memory: '1GB
     expect(r.exitCode).not.toBe(0)
     expect(out).not.toContain('secret\n')
     expect(out).toContain(path.join('secret', 's.txt'))
+  }, 60_000)
+
+  // The agent builds a task's sandbox on its own machine: its home's
+  // credential stores are walled, not the orchestrator's (which may be
+  // another OS, owner 2026-10-22).
+  it('walls the agent’s own credential stores, not the orchestrator’s', async () => {
+    // Typed here: the checker of this project may not read the relay's source.
+    const { createRelay } = (await import(RELAY)) as {
+      createRelay(): { fetch(r: Request): Response | Promise<Response>; close(): void }
+    }
+    const relay = createRelay()
+    const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+    const homes = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-homes-'))
+    const config = path.join(root, '.vx/workspace.mjs')
+    const before = await readFile(config, 'utf8')
+    const commit = () =>
+      git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'r')
+    try {
+      await mkdir(path.join(homes, 'agent/.ssh'), { recursive: true })
+      await mkdir(path.join(homes, 'orc'), { recursive: true })
+      await writeFile(path.join(homes, 'agent/.ssh/id'), 'AGENT-KEY\n')
+      await writeFile(
+        config,
+        `import { dte } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ relay: ${JSON.stringify(`http://127.0.0.1:${server.port}`)}, local: 0 })] }
+`,
+      )
+      commit()
+      const { VX_DTE_RUN: _, ...env } = process.env
+      const shared = {
+        VX_DTE_RUN: crypto.randomUUID(),
+        VX_DTE_SECRET: 'hand-secret',
+        NO_COLOR: '1',
+      }
+      const spawn = (args: string[], home: string) =>
+        Bun.spawn([process.execPath, BIN, ...args], {
+          cwd: root,
+          env: { ...env, ...shared, HOME: path.join(homes, home) },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+      const agent = spawn(['dte', 'agent'], 'agent')
+      const run = spawn(['run', 'k#key'], 'orc')
+      const out = (await new Response(run.stdout).text()) + (await new Response(run.stderr).text())
+      expect([await run.exited, out.includes('AGENT-KEY')]).toEqual([1, false])
+      await agent.exited
+    } finally {
+      relay.close()
+      await server.stop(true)
+      await rm(homes, { recursive: true, force: true })
+      await writeFile(config, before)
+      commit()
+    }
   }, 60_000)
 })
