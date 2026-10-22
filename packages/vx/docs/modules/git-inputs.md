@@ -64,8 +64,16 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   clear(): void // every partition AND its OIDs and pending marks (a write that reached the workspace)
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined // trusted index OIDs by path
   setOids(projectDir: string, oids: Map<string, string>): void
-  filesDigest(projectDir: string, snapshot: readonly string[]): { digest: string; loose: readonly string[] } | undefined // trusted paths + OIDs, none a link; `loose` the rest
-  noteFilesDigest(projectDir: string, snapshot: readonly string[], digest: string, loose: readonly string[]): void
+  filesDigest(
+    projectDir: string,
+    snapshot: readonly string[],
+  ): { digest: string; loose: readonly string[] } | undefined // trusted paths + OIDs, none a link; `loose` the rest
+  noteFilesDigest(
+    projectDir: string,
+    snapshot: readonly string[],
+    digest: string,
+    loose: readonly string[],
+  ): void
   snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined
   get undecodableNames(): ReadonlySet<string> // listed paths whose names are not UTF-8 (lossy spelling)
   markUndecodable(absPaths: readonly string[]): void
