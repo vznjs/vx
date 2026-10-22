@@ -121,7 +121,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   It refuses a Bun below `engines.bun` first (`check.bun`, item 575).
 - `bun test` alone cannot see a type error: it is transpile-only. Never
   pipe a check through `tail`/`grep` — it masks the exit.
-- The core suite runs as `SHARD_COUNT` (12, `vx.config.ts`) parallel
+- The core suite runs as `SHARD_COUNT` (24, `vx.config.ts`) parallel
   shard tasks, generated from one template; `scripts/test-shard.ts <i>
 <n>` deals the files by recorded weight (`tests/shard-weights.json`,
   refreshed with `--weigh <junit-dir>`), so the wall time is the
@@ -143,16 +143,18 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   run them, dealt by `--unsafe` from `tests/unsafe-shard-weights.json`.
   They, `@vzn/vx-reapi#test` and `@vzn/vx-reapi#test.live` (which dial
   service containers on the host's loopback, unreachable from a Linux
-  sandbox's network namespace), `check.sandbox-canary` and
+  sandbox's network namespace), its `services.cache` / `services.exec`
+  (Docker), `@vzn/vx-migrate#nx.install` (npm), `check.sandbox-canary` and
   `check.build-cold` (each drives the sandbox itself, on a Mac agent) are
   the ONLY tasks in the whole repo with no `exec.sandbox`.
 - Every package's suite is its `test` task, so `vx run ci --all` gates
   them all; CI runs nothing but vx tasks (a workspace step is a design
   smell — declare the cross-project read on the task instead). The one
   suite that needs live services, `@vzn/vx-reapi#test`, runs skip-mode
-  in the gate; CI's service job runs only the live files, as
-  `@vzn/vx-reapi#test.live` and `@vzn/vx-migrate#test.live` (uncached:
-  the services and `nx@22` are unpinned).
+  in the gate; the live files run as `@vzn/vx-reapi#test.live` and
+  `@vzn/vx-migrate#test.live` in the same Linux run, each bringing its
+  services as foreground persistent tasks (uncached: the services and
+  `nx@22` are unpinned).
 - Sandbox tests skip without `bwrap`/`socat`/`strace`; `VX_REQUIRE_SANDBOX=1`
   (CI) makes an unavailable sandbox a failure.
 - Format: `bun packages/vx/src/bin.ts run lint.oxfmt.fix`.

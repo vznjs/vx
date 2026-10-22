@@ -169,20 +169,18 @@
       }
     },
     "test.live": {
-      "description": "bun test, the live Nx files (VX_NX_MODULES names an install)",
+      "description": "bun test, the live Nx files, against the install in .nx-live",
       "exec": {
         "command": "bun test --only-failures ./tests/*-live.test.ts",
         "env": {
-          "passThrough": [
-            "VX_NX_MODULES",
-            "VX_REQUIRE_NX"
-          ],
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
             "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_CONFIG_NOSYSTEM": "1",
             "FORCE_COLOR": "0",
-            "VX_CACHE_DIR": ".vx/cache"
+            "VX_CACHE_DIR": ".vx/cache",
+            "VX_NX_MODULES": ".nx-live",
+            "VX_REQUIRE_NX": "1"
           }
         },
         "sandbox": {
@@ -204,8 +202,19 @@
         }
       },
       "dependsOn": [
-        "install"
+        "install",
+        "nx.install"
       ]
+    },
+    "nx.install": {
+      "description": "npm install nx@22 into .nx-live",
+      "exec": {
+        "command": "npm install --no-audit --no-fund --prefix .nx-live nx@22 @nx/js@22 typescript@5 && echo installed",
+        "persistent": {
+          "readyWhen": "^installed$"
+        },
+        "timeout": "5m"
+      }
     }
   }
 }
