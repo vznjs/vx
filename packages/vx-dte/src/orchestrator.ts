@@ -1008,7 +1008,9 @@ const bytes = (n: number): string =>
     ? `${(n / 1e9).toFixed(1)} GB`
     : n >= 1e6
       ? `${(n / 1e6).toFixed(1)} MB`
-      : `${Math.round(n / 1e3)} KB`
+      : n >= 1e3
+        ? `${Math.round(n / 1e3)} KB`
+        : `${n} B`
 /** A base64 part's bytes. */
 
 /** A machine is what its size says: the same cores, memory within a tenth. */
