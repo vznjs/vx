@@ -335,8 +335,7 @@ export function dte(options: DteOptions) {
         index++
       }
       // Agents in declared order for the cores the remaining tasks keep
-      // busy (`busyCores`) beyond this machine's share; idle ones beyond
-      // it leave.
+      // busy (`busyCores`); idle ones beyond it leave.
       const demand = (remaining: ReadonlySet<string>): void => {
         demanding = true
         try {
@@ -419,9 +418,8 @@ export function dte(options: DteOptions) {
         servers: true,
         // An agent answers a task's runtime probes before it runs it.
         runtime: true,
-        // Room for what agents report beyond their size and the prefetch;
-        // the orchestrator holds the rest. Agents that join on their own
-        // are as many as join.
+        // Room for the agents' cores and their prefetch; the orchestrator
+        // queues the rest. Agents that join on their own are as many as join.
         capacity:
           adapter === undefined || sizes.some((s) => s.max === Infinity)
             ? JOINED_CAPACITY
