@@ -7,9 +7,10 @@
 // per file evens them to within a second. A file the table does not know
 // gets the table's median, so a new file costs nothing to add.
 //
-//   bun scripts/test-shard.ts <i> <n>        the files for shard i of n
-//   bun scripts/test-shard.ts --weigh <dir>  refresh tests/shard-weights.json
-//                                            from the JUnit reports in <dir>
+//   bun scripts/test-shard.ts <i> <n>           the files for shard i of n
+//   bun scripts/test-shard.ts <i> <n> --unsafe  the same over *.unsafe.test.ts
+//   bun scripts/test-shard.ts --weigh <dir>     refresh both weight tables
+//                                               from the JUnit reports in <dir>
 //                                            (`bun test --reporter=junit
 //                                            --reporter-outfile=<dir>/s<i>.xml`)
 
@@ -18,16 +19,23 @@ import path from 'node:path'
 
 const here = import.meta.dir
 const TESTS = path.join(here, '..', 'tests')
-const TABLE = path.join(TESTS, 'shard-weights.json')
+// The unsafe suite is dealt too: as one task it was a run's critical path
+// (178 s of a 216 s DTE run, 2026-10-22) on one agent at 34% CPU.
+export type Suite = 'safe' | 'unsafe'
+const TABLES: Record<Suite, string> = {
+  safe: path.join(TESTS, 'shard-weights.json'),
+  unsafe: path.join(TESTS, 'unsafe-shard-weights.json'),
+}
+const isUnsafe = (f: string): boolean => f.endsWith('.unsafe.test.ts')
 
-export function testFiles(): string[] {
+export function testFiles(suite: Suite = 'safe'): string[] {
   return readdirSync(TESTS)
-    .filter((f) => f.endsWith('.test.ts') && !f.endsWith('.unsafe.test.ts'))
+    .filter((f) => f.endsWith('.test.ts') && isUnsafe(f) === (suite === 'unsafe'))
     .sort()
 }
 
-export function readWeights(): Record<string, number> {
-  return JSON.parse(readFileSync(TABLE, 'utf8')) as Record<string, number>
+export function readWeights(suite: Suite = 'safe'): Record<string, number> {
+  return JSON.parse(readFileSync(TABLES[suite], 'utf8')) as Record<string, number>
 }
 
 /** Deterministic LPT: heaviest first, ties by name, each into the lightest bin. */
@@ -80,18 +88,26 @@ if (import.meta.main) {
   const [a, b] = process.argv.slice(2)
   if (a === '--weigh') {
     if (b === undefined) throw new Error('usage: test-shard.ts --weigh <junit-dir>')
-    const table = weighJunit(b)
-    writeFileSync(TABLE, `${JSON.stringify(table, null, 2)}\n`)
-    console.error(
-      `${Object.keys(table).length} files weighed into ${path.relative(process.cwd(), TABLE)}`,
-    )
+    const all = weighJunit(b)
+    for (const suite of ['safe', 'unsafe'] as const) {
+      const table = Object.fromEntries(
+        Object.entries(all).filter(([f]) => isUnsafe(f) === (suite === 'unsafe')),
+      )
+      // A run of one suite leaves the other's table as it was.
+      if (Object.keys(table).length === 0) continue
+      writeFileSync(TABLES[suite], `${JSON.stringify(table, null, 2)}\n`)
+      console.error(
+        `${Object.keys(table).length} files weighed into ${path.relative(process.cwd(), TABLES[suite])}`,
+      )
+    }
   } else {
     const i = Number(a)
     const n = Number(b)
     if (!Number.isInteger(i) || !Number.isInteger(n) || i < 1 || i > n) {
-      throw new Error('usage: test-shard.ts <i> <n>  (1 ≤ i ≤ n)')
+      throw new Error('usage: test-shard.ts <i> <n> [--unsafe]  (1 ≤ i ≤ n)')
     }
-    const shard = partition(testFiles(), readWeights(), n)[i - 1]!
+    const suite: Suite = process.argv[4] === '--unsafe' ? 'unsafe' : 'safe'
+    const shard = partition(testFiles(suite), readWeights(suite), n)[i - 1]!
     console.log(shard.map((f) => `tests/${f}`).join(' '))
   }
 }

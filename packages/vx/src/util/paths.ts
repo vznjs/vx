@@ -118,6 +118,36 @@ export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null 
 }
 
 /**
+ * The directories whose snapshot covers every path the positive `globs`
+ * can match, or `null` when one reaches outside the project. A
+ * whole-subtree glob or a literal is its own tree
+ * ({@link wholeSubtreePrefixes}); any other glob is the tree under its
+ * static prefix, and a root-anchored one (`**\/dist/**`, Turbo's shape) is
+ * the whole project, `''`. Sound for the same reason: a file added or
+ * removed anywhere under a recorded directory bumps a recorded mtime. The
+ * snapshot's file list is then held to the entry's rows through the globs
+ * themselves, so a source file beside the outputs is no stray.
+ */
+export function outputDirPrefixes(globs: readonly string[]): string[] | null {
+  if (globs.length === 0) return null
+  const dirs: string[] = []
+  for (const g of globs) {
+    const whole = wholeSubtreePrefixes([g])?.[0]
+    if (whole !== undefined) {
+      dirs.push(whole)
+      continue
+    }
+    const prefix = staticPrefix(g)
+    if (prefix === '.') return ['']
+    if (prefix.startsWith('/') || prefix.startsWith('!') || prefix.split('/').includes('..'))
+      return null
+    dirs.push(prefix)
+  }
+  const sorted = [...new Set(dirs)].sort()
+  return sorted.filter((d, i) => !sorted.slice(0, i).some((a) => d.startsWith(`${a}/`)))
+}
+
+/**
  * The spellings a reader, Turbo and `.gitignore` all accept but a matcher
  * fed the raw string turns into NOTHING — and a task keyed on nothing
  * replays old outputs as a green hit (2026-09-10, probed one by one):

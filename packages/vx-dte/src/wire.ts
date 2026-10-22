@@ -28,6 +28,8 @@ const UNANSWERED = 'the relay answered no frame'
 const JOIN_DEADLINE_MS = 30_000
 /** How long `join` asks again through faults (a 500 while a host restarts the relay). */
 const JOIN_FAULT_MS = 15_000
+/** Join asks this many times in all while the relay answers 5xx or the network drops. */
+const JOIN_ATTEMPTS = 4
 /** The least either wait is: a loaded machine's loopback, under a test's short heartbeat. */
 const MIN_WAIT_MS = 1_000
 
@@ -123,7 +125,20 @@ export async function join(
     }
     return json as Record<string, unknown>
   }
-  const joined = (await call('join', { role, info, ...(prover && { key: prover.key }) }))!
+  // A relay's host answers a passing 500 (Cloudflare, 2026-10-22), and one
+  // failed a whole CI run before any task started. A 4xx is the relay's
+  // answer and stands.
+  const joined = await (async () => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return (await call('join', { role, info, ...(prover && { key: prover.key }) }))!
+      } catch (err) {
+        const passing = err instanceof RelayError ? err.status >= 500 : err instanceof TypeError
+        if (!passing || attempt >= JOIN_ATTEMPTS) throw err
+        await Bun.sleep(Math.random() * FIRST_REDIAL_MS * 2 ** attempt)
+      }
+    }
+  })()
   const id = joined['id'] as string
   const heartbeatMs = joined['heartbeatMs'] as number
   deadlineMs = Math.max(3 * heartbeatMs, MIN_WAIT_MS)

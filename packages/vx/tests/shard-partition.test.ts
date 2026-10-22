@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { partition, readWeights, testFiles } from '../scripts/test-shard.js'
-import { SHARD_COUNT } from '../vx.config.js'
+import { SHARD_COUNT, UNSAFE_SHARD_COUNT } from '../vx.config.js'
 
 describe('weighted test shards', () => {
   const files = testFiles()
@@ -66,5 +66,22 @@ describe('weighted test shards', () => {
     const bins = partition(['a.test.ts', 'b.test.ts', 'c.test.ts'], { 'b.test.ts': 100 }, 2)
     // With b=100 and a,c at the median (100), LPT lands two on one side and one on the other.
     expect(bins.map((b) => b.length).sort((x, y) => x - y)).toEqual([1, 2])
+  })
+})
+
+// The unsafe suite is dealt by its own table, over its own files only.
+describe('weighted unsafe shards', () => {
+  const files = testFiles('unsafe')
+  const weights = readWeights('unsafe')
+
+  it('deals every unsafe test file exactly once, and no other file', () => {
+    const bins = partition(files, weights, UNSAFE_SHARD_COUNT)
+    expect(bins.flat().sort()).toEqual([...files].sort())
+    expect(files.every((f) => f.endsWith('.unsafe.test.ts'))).toBe(true)
+    for (const bin of bins) expect(bin.length).toBeGreaterThan(0)
+  })
+
+  it('names only unsafe files that exist', () => {
+    expect(Object.keys(weights).filter((f) => !files.includes(f))).toEqual([])
   })
 })

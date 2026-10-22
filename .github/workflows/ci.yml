@@ -278,8 +278,12 @@ jobs:
   # runner's OS) and keys the suites on it (#3861). Several processes, not
   # one, is the point on macOS: `bun test` pins descriptors per imported
   # module and the process cap is 10 240.
+  #
+  # On main only (owner, 2026-10-22: "run macos tests only on main"): a
+  # skipped job still satisfies the required check on a pull request.
   macos:
     name: core tests (macOS)
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     timeout-minutes: 25
     permissions:

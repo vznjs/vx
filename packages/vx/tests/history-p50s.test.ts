@@ -180,6 +180,14 @@ it('names the biggest machine a task filled, by its cores or its memory', async 
         cpuMs: 100,
         peakRssBytes: 7.9e9,
       }),
+      // Every core at its sampled peak, a quarter on average: not filled.
+      base('burst', {
+        placement: 'small#1',
+        placementCores: 2,
+        placementMemoryBytes: 8e9,
+        cpuMs: 500,
+        peakCores: 2,
+      }),
       base('roomy', {
         placement: 'small#1',
         placementCores: 2,
@@ -193,10 +201,12 @@ it('names the biggest machine a task filled, by its cores or its memory', async 
     'p#cpu',
     'p#mem',
     'p#roomy',
+    'p#burst',
   ])
   expect(r.get('p#cpu')?.saturatedCores).toBe(2)
   expect(r.get('p#cpu')?.saturatedMemoryBytes).toBeUndefined()
   expect(r.get('p#mem')?.saturatedMemoryBytes).toBe(8e9)
   expect(r.get('p#mem')?.saturatedCores).toBeUndefined()
   expect(r.get('p#roomy')?.saturatedCores).toBeUndefined()
+  expect(r.get('p#burst')?.saturatedCores).toBeUndefined()
 })
