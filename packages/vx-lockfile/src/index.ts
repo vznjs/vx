@@ -317,6 +317,11 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     },
     async discover(ctx) {
       const manifest = manifestReader(ctx.workspaceRoot)
+      // The staleness check's walk overlaps the lockfile read.
+      const dirs = workspaceGlobs(ctx.workspaceRoot, manager.name, manifest).then((globs) =>
+        workspaceDirs(ctx.workspaceRoot, globs),
+      )
+      dirs.catch(() => {})
       const read = await readImporters(ctx, manifest)
       if (read === undefined) return []
       const { importers, file } = read
@@ -333,10 +338,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
           ctx.workspaceRoot,
           importers,
           manager.recorded(text),
-          await workspaceDirs(
-            ctx.workspaceRoot,
-            await workspaceGlobs(ctx.workspaceRoot, manager.name, manifest),
-          ),
+          await dirs,
           manifest,
         )
         if (missing.length > 0) {
@@ -520,7 +522,11 @@ async function staleness(
   const dirOf = (importer: string): string => (importer === '.' ? root : path.join(root, importer))
   const missing = dirs.filter((d) => !importers.has(d)).map((d) => `the workspace ${d}`)
   const names = new Set<string>()
-  for (const d of new Set([...importers.keys(), ...dirs])) {
+  const all = new Set([...importers.keys(), ...dirs])
+  // Read at once, then visited in order: the first unparsable one still
+  // names the refusal.
+  await Promise.allSettled([...all].map((d) => manifest(dirOf(d))))
+  for (const d of all) {
     const n = (await manifest(dirOf(d)))?.['name']
     if (typeof n === 'string') names.add(n)
   }
