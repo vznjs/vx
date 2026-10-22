@@ -770,6 +770,27 @@ it('an agent restores a dependency once, before any task that needs it runs', as
   }
 })
 
+// A stopped run whose agent was lost before it answered the cancel waited
+// on that task forever (2026-10-22).
+it('a task stopped while its agent is lost ends as stopped', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.agent(1)
+    await Bun.sleep(50)
+    const stop = new AbortController()
+    const t1 = h.o.execute({ ...h.req('t1'), signal: stop.signal })
+    expect(await a.batches()).toEqual([['t1']])
+    await a.begin('t1')
+    await Bun.sleep(20)
+    stop.abort()
+    expect(await a.bodies()).toEqual([{ type: 'cancel', task: 't1' }])
+    await a.leave()
+    expect(await t1).toMatchObject({ exitCode: 130 })
+  } finally {
+    await h.stop()
+  }
+}, 3_000)
+
 it('reads memory as bytes or with a unit', () => {
   expect([
     bytes('8GB'),

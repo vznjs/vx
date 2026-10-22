@@ -485,7 +485,13 @@ export class Orchestrator {
     delete job.prefetched
     delete job.withdrawing
     const begun = a.started.delete(job.req.taskId)
-    if (job.req.signal?.aborted === true) return undefined
+    // Stopped, it runs nowhere again; the cancel sent its agent has no one to answer it.
+    if (job.req.signal?.aborted === true) {
+      job.resolve(
+        result({ exitCode: 130, signal: 'SIGTERM', durationMs: 0 }, { stdout: '', stderr: '' }),
+      )
+      return undefined
+    }
     if (begun) {
       a.faulty = true
       job.faults = [...(job.faults ?? []), `${a.label} ${why}`]
