@@ -104,3 +104,33 @@ it('asks for a new token a minute before the one it holds expires', async () => 
   }
   expect([await asked(300), await asked(30)]).toEqual([1, 3])
 })
+
+it('waits out the relay’s rate limit and sends again', async () => {
+  const relay = createRelay({ heartbeatMs: 20 })
+  let limited = 0
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch(req) {
+      if (req.url.endsWith('/send') && limited++ === 0) {
+        return Response.json({ error: 'rate limited', retryAfterMs: 30 }, { status: 429 })
+      }
+      return relay.fetch(req)
+    },
+  })
+  servers.push({
+    url: '',
+    async stop() {
+      relay.close()
+      await server.stop(true)
+    },
+  })
+  const url = `http://127.0.0.1:${server.port}`
+  const o = await join(url, R, 'orchestrator', null, undefined)
+  const a = await join(url, R, 'agent', null, undefined)
+  const at = Date.now()
+  await a.send('orchestrator', 'once')
+  expect(Date.now() - at).toBeGreaterThanOrEqual(25)
+  const got = [...(await o.poll()), ...(await o.poll())].filter((m) => m.from === a.id)
+  expect(got).toEqual([{ from: a.id, body: 'once' }])
+})
