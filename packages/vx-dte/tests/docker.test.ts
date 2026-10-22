@@ -10,7 +10,14 @@ import type { AgentSpawn } from '../src/index.js'
 import { docker } from '../src/index.js'
 
 const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-docker-'))
-afterAll(() => rm(dir, { recursive: true, force: true }))
+// docker() mounts ~/.vx: a home of its own, as a sandboxed suite may not
+// write the real one (a DTE agent keeps none, 2026-10-22).
+const realHome = process.env['HOME']
+process.env['HOME'] = path.join(dir, 'home')
+afterAll(async () => {
+  process.env['HOME'] = realHome
+  await rm(dir, { recursive: true, force: true })
+})
 
 const git = (cwd: string, ...args: string[]): void => {
   const r = Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...args], {
