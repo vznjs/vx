@@ -18,8 +18,11 @@ const D = '00000000-0000-4000-8000-000000000004'
 const E = '00000000-0000-4000-8000-000000000005'
 const R = '00000000-0000-4000-8000-000000000006'
 
-// Only the runtime has it; these tests make no websocket.
-Object.assign(globalThis, { WebSocketRequestResponsePair: class {} })
+// Only the runtime has these: the tests make no websocket, and the cache holds nothing.
+Object.assign(globalThis, {
+  WebSocketRequestResponsePair: class {},
+  caches: { default: { match: async () => undefined, put: async () => {} } },
+})
 
 /** An object's state with no websocket, its storage in memory. */
 function state(): DurableObjectState {
@@ -35,6 +38,9 @@ function state(): DurableObjectState {
       getAlarm: async () => alarm,
       setAlarm: async (at) => {
         alarm = at
+      },
+      deleteAlarm: async () => {
+        alarm = null
       },
       deleteAll: async () => {
         kv.clear()
@@ -101,6 +107,26 @@ it('gives the same run id of two repositories two objects', async () => {
   await join(env, R, unsigned(1))
   const run = (project: string) => runKey(R, { iss: 'https://gitlab.com', run: [project] })
   expect(ns.made).toEqual([await run('1'), await run('2')])
+})
+
+it('names why the host refused a run', async () => {
+  const refused: Env = {
+    RELAY: {
+      idFromName: (name) => name,
+      get: () => ({
+        fetch: () =>
+          Promise.reject(new Error('Exceeded allowed duration in Durable Objects free tier.')),
+      }),
+    },
+  }
+  const res = await join(refused, A)
+  expect([res.status, await res.json()]).toEqual([
+    503,
+    {
+      error:
+        "the relay's host refused the run: Exceeded allowed duration in Durable Objects free tier.",
+    },
+  ])
 })
 
 it('will not start without ALLOW, or with an entry it cannot read', () => {

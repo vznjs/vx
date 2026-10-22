@@ -72,6 +72,7 @@ export {
   anyTaskGlob,
   isInstalledPath,
   taskGlob,
+  outputDirPrefixes,
   wholeSubtreePrefixes,
   slashBraceExpansions,
   braceAlternatives,
