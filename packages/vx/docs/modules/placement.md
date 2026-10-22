@@ -23,6 +23,8 @@ export interface Placements {
   executors: Map<string, TaskExecutor> // every placed task → the executor that took it
   remoteOnlyNoop: Set<string> // `remote: 'only'` tasks no remote executor took
   remoteOnly: Set<string> // `remote: 'only'` tasks a remote executor took
+  servers: Map<string, TaskNode[]> // task on a `servers` executor → the persistent tasks it starts there
+  carried: Set<string> // persistent tasks every dependant carries: never started here
 }
 export function placeTasks(
   nodes: Map<string, TaskNode>,
