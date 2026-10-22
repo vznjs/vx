@@ -551,7 +551,12 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     frame(key, id, text) {
       let n: unknown = null
       try {
-        if (text.length > MAX_BODY) throw new HttpError(413, 'body over 1 MiB')
+        if (text.length > MAX_BODY) {
+          // Answered by its number, read without parsing the rest.
+          const k = /^\{"n":(\d+)[,}]/.exec(text)?.[1]
+          if (k !== undefined) n = Number(k)
+          throw new HttpError(413, 'body over 1 MiB')
+        }
         let body: {
           n?: unknown
           to?: unknown
