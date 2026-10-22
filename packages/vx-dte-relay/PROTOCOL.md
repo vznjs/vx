@@ -64,7 +64,7 @@ An agent's messages carry `"from": "<its id>"`, the orchestrator's
 ## Errors
 
 `400` a malformed request, `401` a missing or invalid token, `403` a token
-of another run, `404` an unknown `id` or `to`, `409` a second
+of a repository the relay does not serve, `404` an unknown `id` or `to`, `409` a second
 orchestrator, `410` a closed run, `413` a body over 1 MiB, `429` a queue
 over 10 000 messages. An error answers `{ "error": "<reason>" }`.
 
@@ -75,10 +75,10 @@ keys (`<iss>/.well-known/openid-configuration`, then `jwks_uri`; RS256),
 its `exp` and `nbf`, that `iss` is one the relay trusts, that `aud`
 names the relay's audience, and that the token's repository is one the
 relay serves (`repository` on GitHub Actions, `project_path` on GitLab,
-matched without case; else `403`). The first token a run sees binds the run to
-its issuer and its run claims; every later token must carry the same
-values, or the request answers `403`. The run claims name the
-repository:
+matched without case; else `403`). A run is its id within its token's
+issuer and run claims: the same id in a token of another repository is
+another run, so a tenant cannot open a run id (a GitHub `run_id` is
+guessable) before its owner does. The run claims name the repository:
 
 | Issuer                                                         | Run claims      |
 | -------------------------------------------------------------- | --------------- |

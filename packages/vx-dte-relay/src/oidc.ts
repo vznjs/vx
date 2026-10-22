@@ -146,6 +146,22 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
   }
 }
 
+/**
+ * The issuer and run claims a token says it has, unchecked: what routes a
+ * request to its run's Durable Object, where the token is verified. A
+ * forged one reaches an object that refuses it.
+ */
+export function claimedRun(token: string): VerifiedToken | undefined {
+  try {
+    const claims = JSON.parse(text(token.split('.')[1] ?? '')) as Record<string, unknown>
+    const iss = claims['iss']
+    if (typeof iss !== 'string') return undefined
+    return { iss, run: runClaimsOf(iss).map((c) => String(claims[c])) }
+  } catch {
+    return undefined
+  }
+}
+
 async function loadKeys(
   iss: string,
   fetchJson: (url: string) => Promise<unknown>,

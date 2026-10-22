@@ -35,7 +35,6 @@ interface Participant {
 }
 
 interface Run {
-  bound?: VerifiedToken
   closed: boolean
   orchestrator?: Participant
   byId: Map<string, Participant>
@@ -187,17 +186,17 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       throw new HttpError(405, 'wrong method')
     }
     const token = await authorize(req, opts.verify)
-    let run = runs.get(runId)
-    if (token !== undefined && run?.bound !== undefined && !sameRun(run.bound, token)) {
-      throw new HttpError(403, 'token of another run')
-    }
+    // A run is its id within its repository: run ids are guessable (GitHub's
+    // run_id), so another tenant opening one first must not take it.
+    const key = runKey(runId, token)
+    let run = runs.get(key)
     if (run?.closed === true) throw new HttpError(410, 'run closed')
     if (verb === 'poll') return poll(run ?? missing(), url, req.signal)
     const body = await readBody(req)
     if (verb === 'join') {
       if (run === undefined) {
-        run = { closed: false, byId: new Map(), ...(token !== undefined ? { bound: token } : {}) }
-        runs.set(runId, run)
+        run = { closed: false, byId: new Map() }
+        runs.set(key, run)
       }
       return join(run, body)
     }
@@ -234,8 +233,9 @@ function missing(): never {
   throw new HttpError(404, 'unknown run')
 }
 
-function sameRun(a: VerifiedToken, b: VerifiedToken): boolean {
-  return a.iss === b.iss && a.run.length === b.run.length && a.run.every((v, i) => v === b.run[i])
+/** The run's name: its id, and the issuer and run claims of its tokens. */
+export function runKey(runId: string, token: VerifiedToken | undefined): string {
+  return token === undefined ? runId : [token.iss, ...token.run, runId].join('\0')
 }
 
 async function authorize(
