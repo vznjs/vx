@@ -423,6 +423,35 @@ describe('evaluateConfigFresh: what a config prints (D-64)', () => {
 })
 
 describe('a first load in process: what a config prints', () => {
+  it("builds no stderr console for a config that prints nothing", async () => {
+    // Reading the console's `Console`, `_stdout` or `_stderr` (even their
+    // descriptors) loads node:console or builds a stream: ~5 ms of every
+    // warm run, whose workspace config loads under the redirect.
+    const ws = path.join(root, 'quiet')
+    await mkdir(ws)
+    await Bun.write(path.join(ws, '.vx/workspace.mjs'), 'export default {}\n')
+    const driver = path.join(root, 'quiet.ts')
+    await writeFile(
+      driver,
+      `const seen = []\n` +
+        `const lazy = (k) => k === 'Console' || k === '_stdout' || k === '_stderr'\n` +
+        `globalThis.console = new Proxy(globalThis.console, {\n` +
+        `  get: (t, k) => (lazy(k) && seen.push(k), Reflect.get(t, k)),\n` +
+        `  getOwnPropertyDescriptor: (t, k) => (lazy(k) && seen.push(k), Reflect.getOwnPropertyDescriptor(t, k)),\n` +
+        `})\n` +
+        `const { loadWorkspaceConfig } = await import(${JSON.stringify(path.resolve(import.meta.dir, '../src/workspace/project-loader.ts'))})\n` +
+        `await loadWorkspaceConfig(${JSON.stringify(ws)})\n` +
+        `await Bun.write(Bun.stdout, JSON.stringify(seen))\n`,
+    )
+    const p = Bun.spawn({ cmd: [process.execPath, driver], stdout: 'pipe', stderr: 'pipe' })
+    const [code, out, err] = await Promise.all([
+      p.exited,
+      new Response(p.stdout).text(),
+      new Response(p.stderr).text(),
+    ])
+    expect({ code, out, err }).toEqual({ code: 0, out: '[]', err: '' })
+  }, 20_000)
+
   it("goes to stderr, never the verb's stdout, and every route is put back", async () => {
     // `vx show --format json` evaluates in process, and a config's
     // `console.log` came out ahead of the JSON on stdout.

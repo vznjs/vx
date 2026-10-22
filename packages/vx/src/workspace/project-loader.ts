@@ -509,12 +509,49 @@ export async function loadProjectConfigs(configPaths: readonly string[]): Promis
 let redirectHolders = 0
 let undoRedirect = (): void => {}
 /**
- * Bun's own `Console`, taken at load: the console a round finds may be a
- * constructed one (a plugin's verb may install its own), which has no `Console`.
- * The global's, not `node:console`'s: the playground bundles this module
- * for the browser, where that specifier is a stub.
+ * Bun's own console, taken at load: the console a round finds may be a
+ * constructed one (a plugin's verb may install its own), which has no
+ * `Console`. The global's, not `node:console`'s: the playground bundles
+ * this module for the browser, where that specifier is a stub.
  */
-const BunConsole = (globalThis.console as { Console?: typeof console.Console }).Console
+const bunConsole = globalThis.console as typeof console & { Console?: typeof console.Console }
+let stderrConsole: typeof console | undefined
+const BUILT_ON_READ: ReadonlySet<PropertyKey> = new Set(['Console', '_stdout', '_stderr'])
+
+/**
+ * A console that writes to stderr, built on the first call: reading
+ * `Console` loads `node:console`, ~4 ms of a warm run, and the workspace
+ * config each run loads in a redirect seldom prints.
+ */
+function redirectedConsole(): typeof console {
+  const real = (): Record<PropertyKey, (...a: unknown[]) => unknown> =>
+    (stderrConsole ??= Object.assign(new bunConsole.Console!(process.stderr, process.stderr), {
+      // Bun's console adds `write`, which a constructed Console lacks.
+      write: (...data: string[]) => {
+        const text = data.join('')
+        process.stderr.write(text)
+        return text.length
+      },
+    })) as unknown as Record<PropertyKey, (...a: unknown[]) => unknown>
+  const facade = {}
+  for (const key of [...Reflect.ownKeys(bunConsole), 'write']) {
+    // Read through the real one when read: even their descriptors build a
+    // module or a stream (~17 ms together, Bun 1.4.2).
+    if (BUILT_ON_READ.has(key)) {
+      Object.defineProperty(facade, key, { get: () => real()[key], configurable: true })
+      continue
+    }
+    const own = Object.getOwnPropertyDescriptor(bunConsole, key)
+    Object.defineProperty(
+      facade,
+      key,
+      own === undefined || typeof own.value === 'function'
+        ? { value: (...args: unknown[]) => real()[key]!(...args), writable: true, configurable: true }
+        : own,
+    )
+  }
+  return facade as typeof console
+}
 
 function stdoutToStderr(): () => void {
   if (redirectHolders++ === 0) undoRedirect = installRedirect()
@@ -540,14 +577,7 @@ function installRedirect(): () => void {
   ;(Bun.stdout as { writer: typeof Bun.stdout.writer }).writer = ((
     ...args: Parameters<typeof Bun.stderr.writer>
   ) => Bun.stderr.writer(...args)) as typeof Bun.stdout.writer
-  // Bun's console adds `write`, which a constructed Console lacks.
-  globalThis.console = Object.assign(new BunConsole!(process.stderr, process.stderr), {
-    write: (...data: string[]) => {
-      const text = data.join('')
-      process.stderr.write(text)
-      return text.length
-    },
-  })
+  globalThis.console = redirectedConsole()
   return () => {
     if (ownWrite === undefined) delete (out as { write?: unknown }).write
     else Object.defineProperty(out, 'write', ownWrite)
