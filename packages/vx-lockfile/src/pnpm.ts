@@ -122,6 +122,34 @@ export function parseLockfile(text: string): Lockfile {
   return { version, importers, snapshots, resolutions, patches, directories, global }
 }
 
+/**
+ * The importers' dependencies alone, as `parseLockfile` reads them. The
+ * staleness check asks for them on every run, after the digest memo spared
+ * the parse: solid's 6,900-line lockfile took 8 ms to parse whole and
+ * 0.4 ms for its `importers` block. Sliced from the last document to the
+ * next top-level key; any other shape is parsed whole.
+ */
+export function recordedImporters(text: string): ReadonlyMap<string, ReadonlyMap<string, string>> {
+  const doc = Math.max(text.lastIndexOf('\n---'), 0)
+  const at = text.indexOf('\nimporters:\n', doc)
+  const block = at < 0 ? undefined : text.slice(at + 1)
+  const end = block === undefined ? null : /\n\S/.exec(block.slice('importers:\n'.length))
+  const rawImporters =
+    block === undefined
+      ? undefined
+      : record(
+          record(
+            Bun.YAML.parse(
+              end === null ? block : block.slice(0, 'importers:\n'.length + end.index + 1),
+            ),
+          )?.['importers'],
+        )
+  if (rawImporters === undefined) return parseLockfile(text).importers
+  const importers = new Map<string, ReadonlyMap<string, string>>()
+  for (const [dir, entry] of Object.entries(rawImporters)) importers.set(dir, depsOf(entry))
+  return importers
+}
+
 /** `dependencies` + `devDependencies` + `optionalDependencies` of an entry, as name → version. */
 function depsOf(entry: unknown): ReadonlyMap<string, string> {
   const out = new Map<string, string>()
