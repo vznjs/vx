@@ -116,7 +116,7 @@ it('writes no secret when VX_DTE_SECRET is set, and names what a plan needs', as
 })
 
 it('with VX_DTE_GITLAB_TOKEN, starts what the run keeps busy and plays the others as it asks', async () => {
-  // Three independent unmeasured tasks: a core each on 2-core agents, so two of four start.
+  // Three independent unmeasured tasks: a whole agent each, so three of four start.
   const files: Record<string, string> = {
     'package.json': JSON.stringify({ name: 'ws', private: true }),
     '.gitignore': '.vx/cache\nvx-agents.yml\nvx-dte.env\n.vx/dte\n',
@@ -152,7 +152,7 @@ export default { plugins: [dte({ relay: 'https://r', agents: { small: { max: 4, 
     false,
     false,
     false,
-    true,
+    false,
     true,
   ])
   expect(JSON.parse(await readFile(path.join(root, '.vx/dte/plan.json'), 'utf8'))).toEqual({
@@ -162,7 +162,7 @@ export default { plugins: [dte({ relay: 'https://r', agents: { small: { max: 4, 
       size: 'small',
       cpu: 2,
       memory: 8e9,
-      live: i > 2,
+      live: i > 3,
     })),
   })
   process.env['VX_DTE_GITLAB_TOKEN'] = 'glpat-test'
@@ -184,8 +184,8 @@ export default { plugins: [dte({ relay: 'https://r', agents: { small: { max: 4, 
         ])
       if (url.pathname.endsWith('/pipelines/901/jobs'))
         return Response.json([
+          { id: 2, name: 'vx-agent small#2' },
           { id: 3, name: 'vx-agent small#3' },
-          { id: 4, name: 'vx-agent small#4' },
         ])
       return Response.json({})
     },
@@ -194,14 +194,14 @@ export default { plugins: [dte({ relay: 'https://r', agents: { small: { max: 4, 
   process.env['CI_PROJECT_ID'] = '7'
   try {
     const adapter = gitlab({ include: '.gitlab/vx.yml' })
-    await adapter.spawn({ id: 'small#3' } as Parameters<typeof adapter.spawn>[0])
+    await adapter.spawn({ id: 'small#2' } as Parameters<typeof adapter.spawn>[0])
     await adapter.close!()
     expect(calls).toEqual([
       'GET /api/v4/projects/7/pipelines/900/bridges',
       'GET /api/v4/projects/7/pipelines/900/bridges',
       'GET /api/v4/projects/7/pipelines/901/jobs',
-      'POST /api/v4/projects/7/jobs/3/play',
-      'POST /api/v4/projects/7/jobs/4/cancel',
+      'POST /api/v4/projects/7/jobs/2/play',
+      'POST /api/v4/projects/7/jobs/3/cancel',
     ])
   } finally {
     await server.stop(true)
