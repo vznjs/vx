@@ -1,6 +1,5 @@
 import { isatty } from 'node:tty'
 import { findWorkspaceRoot } from '../workspace/index.js'
-import { translateForeign } from './foreign-flags.js'
 import { flagHint, refuse, seeHelp } from './help.js'
 import {
   planRun,
@@ -116,7 +115,7 @@ const SETTING_OPTIONS = [
 
 /** `verb` is the one being parsed for: `vx watch` reads `vx run`'s flags, and
  * its flag hints named `vx run` (M-58). The caller appends the help pointer. */
-export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' = 'run'): RunArgs {
+export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'run'): RunArgs {
   const out: RunArgs = {
     tasks: [],
     filters: [],
@@ -132,10 +131,6 @@ export function parseRunArgs(rawArgs: readonly string[], verb: 'run' | 'watch' =
     affected: undefined,
   }
 
-  // A Turbo or Nx spelling becomes vx's, or a refusal naming vx's.
-  const translated = translateForeign(rawArgs)
-  if ('error' in translated) return { ...out, error: translated.error }
-  const args = translated
   const sepIdx = args.indexOf('--')
   const before = sepIdx === -1 ? args : args.slice(0, sepIdx)
   out.forwardArgs = sepIdx === -1 ? [] : args.slice(sepIdx + 1)

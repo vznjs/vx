@@ -698,20 +698,6 @@ export default defineProject({
     deepDive: { label: 'Moving to vx from Turborepo', href: 'blog/from-turborepo/' },
   },
   {
-    slug: 'turbo-nx-flags',
-    title: 'Flags you already know',
-    category: 'adoption',
-    hook: 'Type what Turborepo, Nx or Vite Task taught you.',
-    body: [
-      'vx takes their flags as they are (`--filter=web...`), rewrites the aliases (`--skip-nx-cache` becomes `--force`), or refuses with the vx way to say it (`web:build` is `web#build`).',
-      'No flag is dropped in silence.',
-    ],
-    example: { lang: 'sh', code: 'vx run build --filter=web...\nvx run test --skip-nx-cache' },
-    image: 'turbo-nx-flags.png',
-    imageAlt: 'Turborepo and Nx flags accepted, rewritten or answered by vx.',
-    docs: { label: 'Turbo and Nx flags', href: 'cli/#turbo-and-nx-flags' },
-  },
-  {
     slug: 'playground',
     title: 'The playground',
     category: 'adoption',

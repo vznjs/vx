@@ -29,7 +29,6 @@
   "no-auto-install.unsafe.test.ts": 127,
   "no-old-names.unsafe.test.ts": 289,
   "npm-pack.unsafe.test.ts": 11795,
-  "nx-reset-hint.unsafe.test.ts": 636,
   "output-memory.unsafe.test.ts": 5114,
   "package-boundaries.unsafe.test.ts": 104,
   "package-entry-shims.unsafe.test.ts": 4,

@@ -9,7 +9,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { acceptedFlags, CORE_VERBS } from '../../vx/src/cli/help.js'
-import { translateForeign } from '../../vx/src/cli/foreign-flags.js'
 import { CATEGORIES, FEATURES } from '../src/features/features.js'
 
 const SITE = path.resolve(import.meta.dir, '..')
@@ -92,7 +91,7 @@ describe('the feature data', () => {
   })
 
   // Every `vx <verb> …` a page shows is a verb vx has, with flags it takes:
-  // core's help text decides, after the Turbo and Nx aliases are rewritten.
+  // core's help text decides.
   it('shows only verbs and flags core accepts', () => {
     const bad: string[] = []
     let seen = 0
@@ -114,15 +113,7 @@ describe('the feature data', () => {
           bad.push(`${f.slug}: vx ${verb}`)
           continue
         }
-        let args = m[2]!.trim().split(/\s+/).filter(Boolean)
-        if (verb === 'run' || verb === 'watch') {
-          const t = translateForeign(args)
-          if (!Array.isArray(t)) {
-            bad.push(`${f.slug}: ${t.error}`)
-            continue
-          }
-          args = t
-        }
+        const args = m[2]!.trim().split(/\s+/).filter(Boolean)
         const flags = acceptedFlags(verb)
         for (const a of args.filter((a) => a.startsWith('-')))
           if (!flags.includes(a.split('=')[0]!)) bad.push(`${f.slug}: vx ${verb} ${a}`)
