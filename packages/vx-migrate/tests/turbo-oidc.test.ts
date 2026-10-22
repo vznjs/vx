@@ -328,7 +328,9 @@ describe('lending: a run’s exchanged token to the machines that run its tasks'
     expect(o.asked).toEqual([])
   })
 
-  it('an agent with its own token or its own OIDC uses it, not the lent one', async () => {
+  it('an agent with its own token uses it; one with only OIDC sends the lent one', async () => {
+    // The server files a write by its token: an agent's own OIDC (its own
+    // workflow and ref) filed every task where the run could not read it.
     const w = world()
     const own = cache({}, { TURBO_TOKEN: 'mine' }, w.fetchImpl)
     own.lent = () => 'lent'
@@ -338,9 +340,11 @@ describe('lending: a run’s exchanged token to the machines that run its tasks'
     oidc.lent = () => 'lent'
     await oidc.open(ctx().c)
     await oidc.has('bb')
+    expect(w.seen.map((s) => s.url.includes('/oauth/token'))).not.toContain(true)
     expect(w.seen.filter((s) => s.url.includes('/v8/artifacts/')).map((s) => s.auth)).toEqual([
       'Bearer mine',
-      'Bearer short-lived',
+      'Bearer lent',
     ])
+    expect(await oidc.lend()).toBeUndefined()
   })
 })

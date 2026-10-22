@@ -119,6 +119,56 @@ describe('plugin commands', () => {
     expect(box.__vxWire.size).toBe(1)
   })
 
+  // A remote that takes its token in `open` (turboCache's OIDC exchange)
+  // answered nothing to a verb, so `vx dte agent` uploaded nowhere and its
+  // run could not restore what it ran (2026-10-22).
+  for (const ci of [true, false]) {
+    it(`a verb's cache and artifacts open the workspace's remote first (CI ${ci})`, async () => {
+      const box = globalThis as unknown as { __vxWire: Map<string, Uint8Array>; __vxCmd?: unknown }
+      const seed = xxh3hex('vx-plugin\0org/saver\0seed')
+      box.__vxWire = new Map([[seed, new TextEncoder().encode('kept')]])
+      await Bun.write(
+        path.join(root, '.vx/workspace.mjs'),
+        localWorkspaceSource([
+          pluginSource(
+            'org/wire',
+            `{ cache: () => {
+              let token
+              return {
+                open: async () => { token = 't' },
+                has: async (h) => token !== undefined && globalThis.__vxWire.has(h),
+                get: async (h) => token !== undefined && globalThis.__vxWire.has(h) ? { body: new Blob([globalThis.__vxWire.get(h)]), durationMs: undefined } : null,
+                put: async (h, b) => { if (token !== undefined) globalThis.__vxWire.set(h, new Uint8Array(await b.arrayBuffer())) },
+              }
+            } }`,
+          ),
+          pluginSource(
+            'org/saver',
+            `{ commands: { save: { description: 'saves', async run(argv, ctx) {
+               await ctx.artifacts.save('00000000000000aa', {
+                 id: 'app#build', projectDir: ctx.workspaceRoot, command: 'true',
+                 outputs: { files: [], workspaceFiles: [] },
+               }, { stdout: 'ran', stderr: '', durationMs: 1 })
+               globalThis.__vxCmd = new TextDecoder().decode(await ctx.cache.get('seed'))
+               return 0
+             } } } }`,
+          ),
+        ]),
+      )
+      const was = process.env['CI']
+      process.env['CI'] = String(ci)
+      try {
+        expect(await cli(['save'])).toBe(0)
+      } finally {
+        if (was === undefined) delete process.env['CI']
+        else process.env['CI'] = was
+      }
+      expect(box.__vxCmd).toBe('kept')
+      // Off CI a verb writes no remote, as a run does.
+      expect(box.__vxWire.size).toBe(ci ? 2 : 1)
+    })
+  }
+
   // `vx <verb> --help` answers from core's reference for a CORE verb only: a
   // plugin verb owns its arguments, `--help` included (docs/cli.md). The
   // gate that says so could go with the suite green (E-10's sweep of the
