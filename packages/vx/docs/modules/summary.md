@@ -131,7 +131,8 @@ An executor's own rows (`TaskExecutor.footer`, such as `@vzn/vx-dte`'s
 `agents`) come next, live and at the end, under a blank line; with them
 the `info` row names no worker pool. A blank line separates the meters
 from the `info` row (worker pool +
-cache mode, `admit held N tasks · Ns` when a policy held any — a
+cache mode: the layers the run's policy uses, `local + remote cache`,
+`local cache`, `remote cache` or `no cache`; `admit held N tasks · Ns` when a policy held any — a
 sum, said as one — and `run <id>`, the run's whole id as
 `vx last <id>` takes it, live from the run's start) and the `time` row: the wall time, the live
 forecast (`~3s left`), then the dim `max / avg / min` spread over

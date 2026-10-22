@@ -454,7 +454,20 @@ export function formatSummarySection(
     // An executor that says where tasks ran says it better than the pool.
     if (context.concurrency !== undefined && own.length === 0)
       info.push(`${context.concurrency} worker${context.concurrency === 1 ? '' : 's'}`)
-    info.push(context.remoteCacheEnabled ? 'local + remote cache' : 'local cache')
+    const layers = context.cache
+    info.push(
+      layers === undefined
+        ? context.remoteCacheEnabled
+          ? 'local + remote cache'
+          : 'local cache'
+        : layers.local && layers.remote
+          ? 'local + remote cache'
+          : layers.local
+            ? 'local cache'
+            : layers.remote
+              ? 'remote cache'
+              : 'no cache',
+    )
     if (context.cacheScope !== undefined) info.push(`scope ${context.cacheScope}`)
     // The plugin's hand on the run: a task a policy held with a worker
     // free would otherwise have started; without the line nothing says
