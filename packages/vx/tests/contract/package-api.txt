@@ -129,8 +129,16 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   markOutputsChanged(projectDir: string, relPaths: readonly string[]): void
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void
-  filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined
-  noteFilesDigest(projectDir: string, snapshot: readonly string[], digest: string): void
+  filesDigest(
+    projectDir: string,
+    snapshot: readonly string[],
+  ): { digest: string; loose: readonly string[] } | undefined
+  noteFilesDigest(
+    projectDir: string,
+    snapshot: readonly string[],
+    digest: string,
+    loose: readonly string[],
+  ): void
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined
   setOids(projectDir: string, oids: Map<string, string>): void
   setLazyOids(projectDir: string, build: () => Map<string, string>): void
