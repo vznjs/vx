@@ -114,6 +114,15 @@ describe('vx-agent.yml', () => {
     expect(checkout(agent)?.with?.['fetch-depth']).toBe(0)
   })
 
+  // An agent saving to ~/.vx while a shard runs failed the shard's home
+  // guard (2026-10-22): the agent keeps its store out of home.
+  it("keeps the agent's store out of home", () => {
+    // `runner` is a step's context, not a job's: a job env naming it is a
+    // workflow GitHub refuses to dispatch.
+    const step = agent.steps?.find((s) => s.run?.includes('dte agent') === true)
+    expect(step?.env?.['VX_CACHE_DIR']).toBe('${{ runner.temp }}/vx-cache')
+  })
+
   it('mounts the small disk the Linux run names, on Linux', () => {
     const mount = agent.steps!.find((s) => s.run?.includes('tmpfs'))
     expect(mount?.if).toBe("runner.os == 'Linux'")
