@@ -472,7 +472,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   private exchanged: string[] = []
   /** When the current exchanged token ends (epoch ms), when the server said. */
   private expiresAt: number | undefined
-  /** Set by `open` when this machine has no access of its own: the run's lent token, read per request. */
+  /** Set by `open` when this machine has a lent token and no token of its own: read per request. */
   private borrowed: (() => string | undefined) | undefined
   /** The token a run running its tasks here lent (`CacheContext.lent`). */
   lent: (() => string | undefined) | undefined
@@ -507,6 +507,13 @@ export class TurboRemoteCache implements RemoteCacheLayer {
         'oidc: GitHub gave this job no OIDC token: it needs `permissions: id-token: write` (a fork or Dependabot pull request never gets one)',
       )
     if (this.token !== undefined) return
+    // A lent token beats this machine's own OIDC: the server files a write
+    // by the token, so an agent's own (another workflow, another ref)
+    // filed the task where its run could not read it.
+    if (lent !== undefined) {
+      this.borrowed = lent
+      return
+    }
     if (this.config.oidc !== undefined) {
       try {
         await this.exchange()
@@ -515,10 +522,6 @@ export class TurboRemoteCache implements RemoteCacheLayer {
           `oidc: ${err instanceof Error ? err.message : String(err)}; local cache only this run`,
         )
       }
-      return
-    }
-    if (lent !== undefined) {
-      this.borrowed = lent
       return
     }
     this.token = await keychainToken(ctx, this.keychainRemote)
