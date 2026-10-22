@@ -34,7 +34,7 @@ export interface OidcOptions {
   allow: readonly Allowed[]
   audience: string
   runClaims?: Readonly<Record<string, readonly string[]>>
-  fetchJson?: (url: string) => Promise<unknown>
+  fetchJson?: (url: string, fresh: boolean) => Promise<unknown>
   now?: () => number
 }
 == type Prover (src/proof.ts)

@@ -47,7 +47,6 @@ export interface DteOptions {
   readonly agents?: Readonly<Record<string, AgentSize>>
   readonly adapter?: DteAdapter
   readonly relay?: string
-  readonly local?: number
   readonly token?: () => string | undefined | Promise<string | undefined>
 }
 == type DtePlan (src/plugin.ts)
