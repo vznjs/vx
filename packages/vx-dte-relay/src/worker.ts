@@ -57,7 +57,15 @@ export default {
     if (run === undefined) return Response.json({ error: 'no such route' }, { status: 404 })
     const token = /^Bearer (\S+)$/.exec(req.headers.get('authorization') ?? '')?.[1]
     const claimed = token === undefined ? undefined : claimedRun(token)
-    return env.RELAY.get(env.RELAY.idFromName(await runKey(run, claimed))).fetch(req)
+    const stub = env.RELAY.get(env.RELAY.idFromName(await runKey(run, claimed)))
+    try {
+      return await stub.fetch(req)
+    } catch (err) {
+      // The host refused the object (a plan's daily limit, an outage): a
+      // bare 500 told a failed run nothing (2026-10-22).
+      const why = err instanceof Error ? err.message : String(err)
+      return Response.json({ error: `the relay's host refused the run: ${why}` }, { status: 503 })
+    }
   },
 }
 
