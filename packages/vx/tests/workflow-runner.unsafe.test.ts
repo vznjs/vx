@@ -66,7 +66,6 @@ describe('a Linux CI job that runs a vx task', () => {
   it('is every one of these — the pin is not vacuous', () => {
     expect(covered).toEqual([
       'auto-release.yml#release',
-      'ci.yml#binary-linux-arm64',
       'docs.yml#build',
       'npm.yml#publish',
       'release-notes.yml#sync',
@@ -75,7 +74,7 @@ describe('a Linux CI job that runs a vx task', () => {
   })
 
   it('leaves out only the distributed runs', () => {
-    expect(runs).toEqual(['ci.yml#linux', 'ci.yml#macos'])
+    expect(runs).toEqual(['ci.yml#linux', 'ci.yml#binary-linux-arm64', 'ci.yml#macos'])
   })
 
   it('installs the sandbox runtime through the shared action', () => {
