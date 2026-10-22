@@ -23,6 +23,10 @@ import { probeSandbox } from '../../src/exec/index.js'
 import { localWorkspaceSource } from './local-workspace.js'
 
 const ITERATIONS = Number(process.argv[2] ?? 20)
+// Each fixture keeps its cache in itself, as the suite's do
+// (cache-dir-env.ts): the default is the home's shared store, a store per
+// fixture that macOS CI's home guard caught in other shards on its agent.
+process.env['VX_CACHE_DIR'] ??= '.vx/cache'
 
 const probe = await probeSandbox()
 console.log(`[canary] probeSandbox: ${JSON.stringify(probe)}`)
