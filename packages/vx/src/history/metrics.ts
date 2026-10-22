@@ -816,8 +816,8 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
       note:
         this_.cached === 0
           ? // The verdict already says the task is uncached; this line says
-            // what moved a key that declares nothing.
-            'no `cache` block declares its inputs, so its key folds every file in its project — a file it wrote, or any untracked file, moves it — and no fingerprints are kept to say which'
+            // why no input can be named.
+            'with no `cache` block it saves no entry, so no input fingerprints are kept to say which of its `inputs` moved its key; with no `inputs`, every run gives it a new key'
           : unsaved !== null
             ? `cache key changed but input fingerprints are unavailable — ${unsaved} and saved no entry; only the key change is known`
             : 'cache key changed but input fingerprints are unavailable — the entry was pruned (or the row predates the `cached` column); only the key change is known',
