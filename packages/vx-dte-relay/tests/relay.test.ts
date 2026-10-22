@@ -138,6 +138,34 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     ]).toEqual([403, 403, 409, 200, 200])
   })
 
+  it('takes a pinned orchestrator’s sends down the socket its job opened', async () => {
+    let key = ''
+    const c = client({
+      verify: async (t) => ({ iss: 'i', run: ['1'], job: t }),
+      upgrade: (k) => {
+        key = k
+        return new Response(null, { status: 101 })
+      },
+    })
+    const o = (await c.call(R, 'join', { role: 'orchestrator' }, '', 'job-1')).json.id
+    const a = (await c.call(R, 'join', { role: 'agent' }, '', 'job-2')).json.id
+    const upgrade = (token: string) =>
+      c.relay.fetch(
+        new Request(`http://relay/v1/runs/${R}/socket?id=${o}`, {
+          headers: { authorization: `Bearer ${token}`, upgrade: 'websocket' },
+        }),
+      )
+    expect((await upgrade('job-2')).status).toBe(403)
+    expect((await upgrade('job-1')).status).toBe(101)
+    expect(c.relay.attach(key, o, { send() {}, close() {} })).toBe(true)
+    expect(JSON.parse(c.relay.frame(key, o, JSON.stringify({ n: 1, to: a, body: 'go' })))).toEqual({
+      n: 1,
+    })
+    expect((await c.call(R, 'poll', undefined, `?id=${a}&wait=0`, 'job-2')).json.messages).toEqual([
+      { from: 'orchestrator', body: 'go' },
+    ])
+  })
+
   it('answers malformed requests with their status', async () => {
     const c = client()
     expect((await c.call('bad run', 'join', { role: 'agent' })).status).toBe(400)

@@ -220,11 +220,21 @@ export function createRelay(opts: RelayOptions = {}): Relay {
 
   if (store !== undefined) restore(store, runs)
 
-  const participant = (run: Run, id: unknown, token?: VerifiedToken): Participant => {
+  /** `token` 'socket': the frame came down a socket its upgrade already checked. */
+  const participant = (
+    run: Run,
+    id: unknown,
+    token: VerifiedToken | undefined | 'socket',
+  ): Participant => {
     const p = typeof id === 'string' ? run.byId.get(id) : undefined
     if (p === undefined) throw new HttpError(404, 'unknown id')
     // An id is a bearer secret: one that leaks still acts as the orchestrator only from its job.
-    if (p.role === 'orchestrator' && run.pin !== undefined && token?.job !== run.pin) {
+    if (
+      p.role === 'orchestrator' &&
+      run.pin !== undefined &&
+      token !== 'socket' &&
+      token?.job !== run.pin
+    ) {
       throw new HttpError(403, 'not the run’s orchestrator job')
     }
     p.seen = Date.now()
@@ -420,7 +430,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
         }
         n = body?.n ?? null
         const run = live(key)
-        send(run, participant(run, id), body, text.length)
+        send(run, participant(run, id, 'socket'), body, text.length)
         return JSON.stringify({ n })
       } catch (err) {
         if (!(err instanceof HttpError)) throw err
