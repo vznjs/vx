@@ -135,7 +135,9 @@ as each task starts and ends:
 
 The run is your own job's `vx run`. When it needs agents it dispatches
 `.github/workflows/vx-agent.yml` once per size, with the agents of that
-size as a matrix. No secret: each side proves its key with the job's OIDC
+size as a matrix. When the run ends it cancels each agent run it
+dispatched, so one still queued does not hold a runner the next run
+waits for. No secret: each side proves its key with the job's OIDC
 token, and the relay's token is an OIDC token for the relay's URL. Such a
 token lasts 5 minutes, so each side asks for a new one a minute before
 its token expires.
@@ -281,8 +283,13 @@ the ones it never played when it ends.
 - A sandboxed task runs on an agent inside the agent's own sandbox, with
   the same `exec.sandbox`; a violation there fails it here, named in this
   checkout's paths.
-- Tasks that must run here stay here: persistent, interactive,
-  `exec.remote: false`, and their dependants (core's placement).
+- A persistent task a task depends on starts on the agent that runs the
+  task, once per agent, ready before it, and stops when the agent leaves;
+  the orchestrator never starts it, and an agent no dependant reaches
+  never does (owner, 2026-10-22).
+- Tasks that must run here stay here: a requested persistent task, one
+  with a `sandbox` or `exec.remote: false`, interactive tasks, and their
+  dependants (core's placement).
 - An agent restores, by key, the declared outputs of every task the one
   it runs depends on, unless it ran or restored them before. Files a task
   writes without declaring them stay on the agent.
@@ -383,8 +390,8 @@ utilization of every machine together:
     how many of it one run may start (absent, no cap). Agents start in
     declared order for the cores the remaining tasks keep busy: laid out
     as early as their dependencies allow, each for its usual duration
-    (1 s without history), the most cores in use at once for at least
-    half the time left, less this machine's share. None stops before the
+    (1 s without history), their work spread over their critical path
+    (core-seconds over its length, rounded up), less this machine's share. None stops before the
     run ends. A task the history has not measured runs alone on an agent;
     one that used all of its agent's cores or memory (90%) last time runs
     alone on the smallest bigger size, which the run starts for it. Each

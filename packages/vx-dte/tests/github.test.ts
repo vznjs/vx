@@ -96,3 +96,38 @@ it('says why for each agent of a dispatch GitHub refused', async () => {
     await server.stop(true)
   }
 })
+
+it('cancels the workflow runs it dispatched when the run closes', async () => {
+  const calls: string[] = []
+  let id = 0
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const path = new URL(req.url).pathname
+      calls.push(`${req.method} ${path} ${req.headers.get('x-github-api-version')}`)
+      if (path.endsWith('/dispatches'))
+        return Response.json({ workflow_run_id: ++id, run_url: '', html_url: '' })
+      return new Response(null, { status: 202 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const adapter = github()
+    void adapter.spawn(spawn('small#1', 'small'))
+    void adapter.spawn(spawn('mac#2', 'mac'))
+    await adapter.close?.()
+    expect(calls.toSorted()).toEqual([
+      'POST /repos/o/r/actions/runs/1/cancel 2026-03-10',
+      'POST /repos/o/r/actions/runs/2/cancel 2026-03-10',
+      'POST /repos/o/r/actions/workflows/vx-agent.yml/dispatches 2026-03-10',
+      'POST /repos/o/r/actions/workflows/vx-agent.yml/dispatches 2026-03-10',
+    ])
+  } finally {
+    await server.stop(true)
+  }
+})

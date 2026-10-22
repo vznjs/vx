@@ -11,7 +11,7 @@ import { lstat, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { isLiteralPattern, outputsOverlap } from '@vzn/vx'
 import { relPosix } from './paths.js'
-import { isKeyedGroup, unkey } from './shared-outputs.js'
+import type * as SharedOutputs from './shared-outputs.js'
 
 /** The files git tracks under `root`, root-relative; null outside a repo or without git. */
 export async function trackedFiles(root: string): Promise<string[] | null> {
@@ -135,11 +135,13 @@ export async function headStamp(root: string): Promise<string> {
         const m = /^gitdir: (.*)$/m.exec(await readFile(dotGit, 'utf8').catch(() => ''))
         if (m !== null) gitDir = path.resolve(dir, m[1]!.trim())
       }
-      const head = await readFile(path.join(gitDir, 'HEAD'), 'utf8').catch(() => '')
-      const log = await lstat(path.join(gitDir, 'logs', 'HEAD')).catch(() => null)
-      const index = await lstat(path.join(gitDir, 'index')).catch(() => null)
-      // A worktree's own stack holds its HEAD; the common one, its branches.
-      const common = await readFile(path.join(gitDir, 'commondir'), 'utf8').catch(() => null)
+      const [head, log, index, common] = await Promise.all([
+        readFile(path.join(gitDir, 'HEAD'), 'utf8').catch(() => ''),
+        lstat(path.join(gitDir, 'logs', 'HEAD')).catch(() => null),
+        lstat(path.join(gitDir, 'index')).catch(() => null),
+        // A worktree's own stack holds its HEAD; the common one, its branches.
+        readFile(path.join(gitDir, 'commondir'), 'utf8').catch(() => null),
+      ])
       const tables = await Promise.all(
         [gitDir, ...(common === null ? [] : [path.resolve(gitDir, common.trim())])].map((d) =>
           readFile(path.join(d, 'reftable', 'tables.list'), 'utf8').catch(() => ''),
@@ -236,6 +238,8 @@ export function spareTrackedOutputs(
   }[],
   tracked: readonly string[],
 ): [string, string][] {
+  // Loaded here, on a remap only: a kept mapping's run never reads it.
+  const { isKeyedGroup, unkey } = require('./shared-outputs.js') as typeof SharedOutputs
   const todos: [string, string][] = []
   const trackedSet = new Set(tracked)
   /** Drop the `!` entries readers carry for a committed file no output names any more. */

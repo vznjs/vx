@@ -22,6 +22,7 @@ export function normalizeBunGlob(glob: string): string
 export function staticPrefix(glob: string): string
 export function grantPrefix(glob: string): string
 export function wholeSubtreePrefixes(globs: readonly string[]): string[] | null
+export function outputDirPrefixes(globs: readonly string[]): string[] | null
 export function asTrees(patterns: readonly string[]): string[]
 // An output list's positive globs and what its `!` entries take back, and
 // the matcher that honours both: a `!` glob compiled as-is is Bun.Glob's own
@@ -97,6 +98,11 @@ that expands the grant sees a wildcard.
   directory the empty-grant warning names.
 - `wholeSubtreePrefixes(globs)` — the `<dir>/**` directories a task's
   outputs cover whole, or `null`; normalizes first.
+- `outputDirPrefixes(globs)` — the directories whose snapshot covers every
+  path the globs can match: a whole subtree or literal as itself, any other
+  glob as the tree under its static prefix, a root-anchored one
+  (`**/dist/**`) as the whole project `''`; `null` when one leaves the
+  project. Behind the warm hit's directory proof.
 - `asTrees(patterns)` — a literal entry is the file OR its whole tree, so
   every literal compiles to itself plus `<path>/**`. It lives here, not
   beside the resolver, because it is not only the resolver's rule: it
@@ -136,7 +142,7 @@ no-op today, and costs nothing to keep.
 `tests/util-paths.test.ts` (each helper, incl. the spellings
 `staticPrefix` folds), `tests/dot-slash-globs.test.ts`
 (the spellings `normalizeGlob` folds, end to end), `tests/output-dirs.test.ts`
-(`wholeSubtreePrefixes` behind the directory proof) and
+(`outputDirPrefixes` behind the directory proof) and
 `tests/watch-rules.test.ts` (`staticPrefix` behind the output
 container), `tests/task-glob-brackets.test.ts` (a class, and an escaped
 route directory through inputs, outputs, `workspaceFiles`, `--affected`

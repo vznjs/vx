@@ -352,6 +352,28 @@ describe('discover', () => {
       expect(await discover(c.make(), ok)).toEqual(EXPECTED)
     })
 
+    it(`${c.name}(): the names the lockfile records are read once per content`, async () => {
+      // Parsing them was ~2 ms of every warm run on solid; only the
+      // lockfile text decides them, so they are kept under its hash.
+      await writeFile(path.join(root, c.file), c.text)
+      await workspaces()
+      const metas = await projects({
+        root: rootPkg,
+        a: { name: 'a', dependencies: { b: '*' }, peerDependencies: { c: '*' } },
+        c: { name: 'c', devDependencies: { d: '*' } },
+      })
+      expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+      // The kept names are what the next run reads: emptied, they refuse.
+      const memo = path.join(root, '.vx/cache/lockfile-claims', `${c.file}.recorded.json`)
+      const kept = (await Bun.file(memo).json()) as { names: Record<string, string[]> }
+      for (const i of Object.keys(kept.names)) kept.names[i] = []
+      await writeFile(memo, JSON.stringify(kept))
+      await expect(discover(c.make(), metas)).rejects.toThrow(`${c.file} is out of date`)
+      // An edit to the lockfile reads it afresh.
+      await writeFile(path.join(root, c.file), `${c.text}\n`)
+      expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+    })
+
     it(`${c.name}(): a package.json that does not parse refuses, naming it`, async () => {
       // Read as no manifest, a conflicted one lost its dependencies: b ran
       // beside a and hit with a's old output while lock and --check passed

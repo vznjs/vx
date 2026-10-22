@@ -197,6 +197,18 @@ export async function runAgent(opts: {
         outputs: m.outputs,
         ...(m.timeoutMs === undefined ? {} : { timeoutMs: m.timeoutMs }),
         ...(m.sandbox === undefined ? {} : { sandbox: mine(m.sandbox) }),
+        ...(m.servers === undefined
+          ? {}
+          : {
+              servers: m.servers.map((s) => ({
+                taskId: s.task,
+                command: s.command,
+                cwd: path.join(opts.root, s.cwd),
+                env: localEnv(s.env, root, opts.root),
+                ...(s.readyWhen === undefined ? {} : { readyWhen: s.readyWhen }),
+                ...(s.timeoutMs === undefined ? {} : { timeoutMs: s.timeoutMs }),
+              })),
+            }),
       }
       floor ??= localFloor()
       ui.print('out', ui.status('info', m.task, ui.dim('running')))
@@ -250,6 +262,12 @@ export async function runAgent(opts: {
         messages = await me.poll()
       } catch (err) {
         if (err instanceof RelayError && err.status === 410) return 0
+        // The relay lost it (silent too long, or restarted): the run gave its
+        // tasks to others, so this job has nothing left and is no failure.
+        if (err instanceof RelayError && err.status === 404) {
+          ui.print('err', ui.status('warn', 'vx dte agent', 'the relay no longer knows this agent'))
+          return 0
+        }
         throw err
       }
       for (const { from, body } of messages) {
@@ -301,8 +319,8 @@ export async function runAgent(opts: {
           root = m.root
           realRoot = m.realRoot
           if (m.sandboxes !== undefined) {
-            await floor?.close()
-            floor = localFloor(m.sandboxes)
+            if (floor === undefined) floor = localFloor(m.sandboxes)
+            else await floor.rearm(m.sandboxes)
           }
           queue.push(...m.tasks)
           start()

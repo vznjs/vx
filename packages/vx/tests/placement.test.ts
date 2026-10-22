@@ -16,6 +16,7 @@ import {
 } from '../src/orchestrator/placement.js'
 import type { Placements } from '../src/orchestrator/placement.js'
 import type { TaskExecutor, TaskPlacement } from '../src/exec/executor.js'
+import { localExecutor } from '../src/exec/local-executor.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 
 function node(id: string, exec: Record<string, unknown>, deps: string[] = []): TaskNode {
@@ -198,6 +199,74 @@ describe('placeTasks (item 650)', () => {
   })
 })
 
+// Nothing runs on a distributed run's orchestrator (owner, 2026-10-22): a
+// `servers` executor takes a server's dependants and starts the server
+// where each runs, so the server is never spawned here.
+describe('placeTasks — a servers executor carries persistent dependencies', () => {
+  const remote = (name: string, fields: Partial<TaskExecutor> = {}): TaskExecutor => ({
+    name,
+    remote: true,
+    execute: () => {
+      throw new Error('never runs')
+    },
+    ...fields,
+  })
+  const floor = localExecutor()
+  const where = (p: Placements, id: string): string | undefined => p.executors.get(id)?.name
+
+  it('places a server’s dependants on it, through a group, and carries the server', () => {
+    const dte = remote('dte', { servers: true })
+    const p = placeTasks(
+      graph(
+        node('s#db', { persistent: {} }),
+        node('s#api', { persistent: { readyWhen: 'up' } }, ['s#db']),
+        { ...node('s#up', {}, ['s#api']), config: {} } as TaskNode,
+        node('a#test', {}, ['s#up']),
+        node('b#test', {}, ['s#api']),
+      ),
+      [dte, floor],
+    )
+    expect([where(p, 'a#test'), where(p, 'b#test')]).toEqual(['dte', 'dte'])
+    expect(p.servers.get('a#test')?.map((n) => n.id)).toEqual(['s#db', 's#api'])
+    expect([...p.carried].sort()).toEqual(['s#api', 's#db'])
+  })
+
+  it('pins them here for an executor that carries none (control)', () => {
+    const p = placeTasks(graph(node('s#db', { persistent: {} }), node('a#test', {}, ['s#db'])), [
+      remote('pool'),
+      floor,
+    ])
+    expect([where(p, 'a#test'), p.servers.size, p.carried.size]).toEqual(['local', 0, 0])
+  })
+
+  it('runs the server here too when one dependant stays here', () => {
+    const p = placeTasks(
+      graph(
+        node('s#db', { persistent: {} }),
+        node('a#test', {}, ['s#db']),
+        node('b#test', { remote: false }, ['s#db']),
+      ),
+      [remote('dte', { servers: true }), floor],
+    )
+    expect([where(p, 'a#test'), where(p, 'b#test'), p.carried.size]).toEqual(['dte', 'local', 0])
+    expect(p.servers.get('a#test')?.map((n) => n.id)).toEqual(['s#db'])
+  })
+
+  it('carries no sandboxed or requested server: those stay here with their dependants', () => {
+    const requested = { ...node('s#dev', { persistent: {} }), requested: true } as TaskNode
+    const p = placeTasks(
+      graph(
+        node('s#db', { persistent: {}, sandbox: { allow: { read: [] } } }),
+        node('a#test', {}, ['s#db']),
+        requested,
+        node('b#test', {}, ['s#dev']),
+      ),
+      [remote('dte', { servers: true, sandbox: true }), floor],
+    )
+    expect([where(p, 'a#test'), where(p, 'b#test'), p.carried.size]).toEqual(['local', 'local', 0])
+  })
+})
+
 describe('placeTasks — what an executor is offered, and where a task lands', () => {
   const taker = (
     name: string,
@@ -341,6 +410,8 @@ describe('hasPooledExecutor / poolOfPlacement', () => {
       ]),
       remoteOnlyNoop: new Set(),
       remoteOnly: new Set(),
+      servers: new Map(),
+      carried: new Set(),
     })
     expect([poolOf('a#x'), poolOf('a#y'), poolOf('a#z'), poolOf('a#unplaced')]).toEqual([
       { name: 'pool-x', capacity: 4 },
@@ -364,6 +435,8 @@ describe('hasPooledExecutor / poolOfPlacement', () => {
       ]),
       remoteOnlyNoop: new Set(),
       remoteOnly: new Set(),
+      servers: new Map(),
+      carried: new Set(),
     })
     expect([poolOf('a#x'), poolOf('a#w'), poolOf('a#y'), poolOf('a#z')]).toEqual([
       { name: 'pool', capacity: 4 },
@@ -397,6 +470,8 @@ describe('locallyPlaced — "not remote", not "declared local"', () => {
     executors: new Map(entries),
     remoteOnlyNoop: new Set(),
     remoteOnly: new Set(),
+    servers: new Map(),
+    carried: new Set(),
   })
 
   it('counts the floor executor, which declares no `remote` at all', () => {

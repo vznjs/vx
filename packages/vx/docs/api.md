@@ -651,6 +651,7 @@ export interface ExecuteRequest {
   readonly onSpawn?: (pid: number) => void
   readonly sandbox?: ExecuteSandbox
   readonly terminal?: true
+  readonly servers?: readonly ServerSpec[]
 }
 ```
 
@@ -1114,6 +1115,7 @@ type · `src/orchestrator/local-floor.ts`
 ```ts
 export interface LocalFloor {
   execute(req: ExecuteRequest): Promise<ExecuteResult>
+  rearm(sandboxes: readonly NonNullable<ExecConfig['sandbox']>[]): Promise<void>
   close(): Promise<void>
 }
 ```
@@ -2420,6 +2422,23 @@ the status line already up (`no-terminal`), the answer was empty
 export type SecretUnavailableReason = 'not-found' | 'no-terminal' | 'declined' | 'store-unavailable'
 ```
 
+## `ServerSpec`
+
+type · `src/exec/executor.ts`
+
+A persistent dependency a `servers` executor starts where it runs the task, as `runPersistent` does.
+
+```ts
+export interface ServerSpec {
+  readonly taskId: string
+  readonly command: string
+  readonly cwd: string
+  readonly env: NodeJS.ProcessEnv
+  readonly readyWhen?: string
+  readonly timeoutMs?: number
+}
+```
+
 ## `splitTaskId`
 
 function · `src/util/task-id.ts`
@@ -2478,6 +2497,7 @@ export interface TaskExecutor {
   readonly name: string
   readonly remote?: boolean
   readonly sandbox?: boolean
+  readonly servers?: boolean
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void

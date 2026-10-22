@@ -155,10 +155,12 @@ export interface RemoteTraffic {
 }
 
 // The output-directory short-circuit's bounds: a hit with more than
-// OUTPUT_DIRS_CAP directories under its outputs records none and keeps the
-// walk, and a snapshot holding one whose mtime is within
+// OUTPUT_DIRS_CAP directories under its outputs records one
+// OUTPUT_DIRS_OVER_CAP row (never current; the hit keeps the walk and does
+// not snapshot again), and a snapshot holding one whose mtime is within
 // OUTPUT_DIRS_RACY_MS of it is dropped (the next hit walks).
 export const OUTPUT_DIRS_CAP = 8192
+export const OUTPUT_DIRS_OVER_CAP = -3
 export const OUTPUT_DIRS_RACY_MS = 50
 
 // git's racy-clean window, in ms: a file changed this close to when its

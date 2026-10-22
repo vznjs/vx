@@ -386,8 +386,7 @@ export class Orchestrator {
       // A task sent here leaves its outputs here for its dependants.
       a.has.add(req.taskId)
       const node = nodes?.get(req.taskId)
-      const env: Record<string, string> = {}
-      for (const [k, v] of Object.entries(req.env)) if (v !== undefined) env[k] = v
+      const env = defined(req.env)
       return {
         job,
         order: {
@@ -408,6 +407,18 @@ export class Orchestrator {
           cores: job.held?.cores ?? 1,
           memory: job.held?.memory ?? 0,
           ...(req.sandbox === undefined ? {} : { sandbox: req.sandbox }),
+          ...(req.servers === undefined || req.servers.length === 0
+            ? {}
+            : {
+                servers: req.servers.map((s) => ({
+                  task: s.taskId,
+                  command: s.command,
+                  cwd: path.relative(this.o.root, s.cwd),
+                  env: defined(s.env),
+                  ...(s.readyWhen === undefined ? {} : { readyWhen: s.readyWhen }),
+                  ...(s.timeoutMs === undefined ? {} : { timeoutMs: s.timeoutMs }),
+                })),
+              }),
         } as RunOrder,
       }
     })
@@ -1038,3 +1049,10 @@ const compact = (n: number): string => {
 }
 
 const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)}s`
+
+/** `env` without its unset names, as it travels. */
+function defined(env: NodeJS.ProcessEnv): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(env)) if (v !== undefined) out[k] = v
+  return out
+}

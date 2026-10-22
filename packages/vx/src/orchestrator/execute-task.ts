@@ -95,6 +95,7 @@ import {
   forgetUndeclaredWrites,
   isAborted,
   taskBinDirs,
+  serverSpec,
   taskEnv,
   taskTimeoutMs,
 } from './task-process.js'
@@ -271,6 +272,10 @@ export interface ExecuteArgs {
   noDependants?: true
   /** The task holds vx's terminal (`terminalHolders`): its stdio is vx's own. */
   terminal?: true
+  /** A persistent task every dependant of which starts it where it runs: never spawned here. */
+  carried?: true
+  /** The persistent tasks its `servers` executor starts where it runs it. */
+  servers?: readonly TaskNode[]
   /** When each command of the run ran and where it may write (command-windows.ts). */
   commandWindows?: CommandWindows
 }
@@ -1233,6 +1238,9 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(cfgCacheable && !(policy.localRead || policy.remoteRead) ? { refresh: true } : {}),
       outputs: { files: outputs, workspaceFiles: wsOutputs },
       ...(args.terminal === true ? { terminal: true as const } : {}),
+      ...(args.servers === undefined
+        ? {}
+        : { servers: args.servers.map((s) => serverSpec(s, args.workspaceRoot)) }),
     }
     // The signal last: it arms a plugin's `exec.timeout`, and the sandbox's arming
     // below is vx's work, not the task's. Armed first, a 60 ms timeout

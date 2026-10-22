@@ -3,9 +3,10 @@
 // request here; an executor decides WHERE/HOW the process runs. Core's own
 // `local-executor.ts` is the in-process spawn, and it sits at the TAIL of
 // every executor list — what a plugin executor declines runs here.
-// Persistent tasks (`exec.persistent`) never reach an executor: they are local by
-// construction (a worker cannot hand the submitter a listening port) and
-// stay on `runPersistent`. An `exec.interactive` task reaches the local one
+// Persistent tasks (`exec.persistent`) never reach an executor as tasks: a
+// worker cannot hand the submitter a listening port. A `servers` executor
+// is handed a task's persistent dependencies instead (`ExecuteRequest.servers`)
+// and starts them where it runs the task; the rest stay on `runPersistent`. An `exec.interactive` task reaches the local one
 // only: no plugin can hand it this terminal.
 //
 // Lives in `exec/` (not `orchestrator/`) so the contract depends only on
@@ -75,6 +76,18 @@ export interface TaskInputs {
   }>
   /** Digest of the resolved task config. */
   readonly configDigest: string
+}
+
+/** A persistent dependency a `servers` executor starts where it runs the task, as `runPersistent` does. */
+export interface ServerSpec {
+  readonly taskId: string
+  readonly command: string
+  readonly cwd: string
+  readonly env: NodeJS.ProcessEnv
+  /** `exec.persistent.readyWhen`: ready at the first output line it matches; absent, at spawn. */
+  readonly readyWhen?: string
+  /** Bounds the readiness wait. */
+  readonly timeoutMs?: number
 }
 
 export interface ExecuteRequest {
@@ -162,6 +175,12 @@ export interface ExecuteRequest {
    * core's local executor is ever handed such a task (placement.ts).
    */
   readonly terminal?: true
+  /**
+   * The persistent tasks it depends on, through groups, for a `servers`
+   * executor: each started where the command runs, ready before it, and
+   * shared by the tasks that run there. Absent for any other executor.
+   */
+  readonly servers?: readonly ServerSpec[]
 }
 
 export interface ExecuteResult extends RunResult {
@@ -200,7 +219,7 @@ export interface TaskPlacement {
   readonly command: string
   /**
    * Must run on this machine: the task is persistent, depends (transitively)
-   * on a persistent or sandboxed task, is sandboxed itself, declares
+   * on a persistent task this executor does not carry or a sandboxed one, is sandboxed itself, declares
    * `exec.remote: false`, or folds a runtime probe into its key (this
    * machine's `node -v`). A `remote` executor is never offered such a task.
    */
@@ -220,6 +239,15 @@ export interface TaskExecutor {
    * and their dependants; the request's violations come back on the result.
    */
   readonly sandbox?: boolean
+  /**
+   * A `remote` executor that starts a task's persistent dependencies where
+   * it runs the task (`ExecuteRequest.servers`). It is offered the
+   * dependants of a persistent task with no `exec.sandbox` and no
+   * `exec.remote: false`; that task then runs here only for a dependant
+   * placed here (owner, 2026-10-22: nothing runs on a distributed run's
+   * orchestrator).
+   */
+  readonly servers?: boolean
   /**
    * How many tasks this executor runs at once. Its tasks then occupy a pool
    * of this size instead of the local worker slots, so a remote pool is not
@@ -362,11 +390,11 @@ export function selectExecutor(
   executors: readonly TaskExecutor[],
   task: TaskPlacement,
   label: (executor: TaskExecutor) => string = (e) => `executor '${e.name}'`,
-  /** `task.pinnedLocal` for an executor that enforces the sandbox (`pinnedLocalSet(nodes, false)`). */
-  pinnedUnsandboxed = task.pinnedLocal,
+  /** `task.pinnedLocal` as `executor` sees it: one that enforces the sandbox or carries servers lifts some pins. */
+  pinnedFor: (executor: TaskExecutor) => boolean = () => task.pinnedLocal,
 ): TaskExecutor {
   for (const executor of executors) {
-    const pinned = executor.sandbox === true ? pinnedUnsandboxed : task.pinnedLocal
+    const pinned = pinnedFor(executor)
     if (pinned && executor.remote === true) continue
     if (executor.accepts === undefined) return executor
     let taken: unknown

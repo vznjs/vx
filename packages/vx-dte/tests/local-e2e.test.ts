@@ -29,7 +29,11 @@ export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB
   cache: { outputs: { files: ['out/**'] } },
 } } }
 `,
-    'b/vx.config.mjs': `export default { name: 'b', tasks: {
+    // The marker lives outside every worktree, so the agent that runs the
+    // task again sees the first one started it: in its own worktree it
+    // slept the 60 s out (80 s of this file's 111 s).
+    'b/vx.config.mjs': `const once = ${JSON.stringify(path.join(root, 'once'))}
+export default { name: 'b', tasks: {
   use: {
     dependsOn: ['a#gen'],
     exec: { command: 'mkdir -p out && cat ../a/out/a.txt > out/b.txt && pwd > out/where.txt && echo used' },
@@ -38,11 +42,19 @@ export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB
   },
   fail: { exec: { command: 'echo oops >&2; exit 3' } },
   slow: { exec: { command: 'touch started && sleep 60' } },
-  once: { exec: { command: 'if [ -e ../once ]; then echo again; else touch ../once && sleep 60; fi' } },
+  once: { exec: { command: 'if [ -e ' + once + ' ]; then echo again; else touch ' + once + ' && sleep 60; fi' } },
   env: { exec: {
     command: 'echo "shown=\${VX_E2E_SHOWN:-none} hidden=\${VX_E2E_HIDDEN:-none}"',
     env: { passThrough: ['VX_E2E_SHOWN'] },
   } },
+} }
+`,
+    // A server its tests need where they run: each start says where.
+    's/vx.config.mjs': `const log = ${JSON.stringify(path.join(root, 'servers.log'))}
+const t = (n) => ({ dependsOn: ['srv'], exec: { command: 'test -e up && echo saw' + n } })
+export default { name: 's', tasks: {
+  srv: { exec: { command: 'echo "$PWD" >> ' + log + ' && touch up && echo up && exec sleep 60', persistent: { readyWhen: 'up' } } },
+  t1: t(1), t2: t(2), t3: t(3),
 } }
 `,
     // Wide, then a two-task lull, then wide again.
@@ -128,14 +140,7 @@ it('runs a task again on a new agent when its agent is killed', async () => {
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  // `../once` from the agent's worktree of b: its worktree root.
-  const marker = async (): Promise<boolean> => {
-    const base = await readdir(os.tmpdir()).catch(() => [] as string[])
-    for (const d of base.filter((n) => n.startsWith('vx-dte-') && !n.startsWith('vx-dte-e2e')))
-      for (const i of await readdir(path.join(os.tmpdir(), d)).catch(() => [] as string[]))
-        if (await Bun.file(path.join(os.tmpdir(), d, i, 'once')).exists()) return true
-    return false
-  }
+  const marker = (): Promise<boolean> => Bun.file(path.join(root, 'once')).exists()
   for (let i = 0; i < 200 && !(await marker()); i++) await Bun.sleep(100)
   const agents = Bun.spawnSync(['pgrep', '-P', String(run.pid), '-f', 'dte agent'])
   const pids = agents.stdout.toString().trim().split('\n').filter(Boolean)
@@ -153,6 +158,17 @@ it('gives a task on an agent only the env it passes through', () => {
   const out = r.stdout.toString() + r.stderr.toString()
   expect([r.exitCode, out]).toEqual([0, expect.stringContaining('shown=yes hidden=none')])
   expect(out).toContain('agents')
+}, 60_000)
+
+// Nothing runs on the orchestrator (owner, 2026-10-22): each agent that
+// runs a server's dependant starts the server itself, once, beside it.
+it('starts a task’s server on the agent that runs it, once per agent, never here', async () => {
+  const r = vx(['run', 's#t1', 's#t2', 's#t3'], 'e2e-srv')
+  const out = r.stdout.toString() + r.stderr.toString()
+  expect([r.exitCode, out]).toEqual([0, expect.stringContaining('saw3')])
+  const starts = (await readFile(path.join(root, 'servers.log'), 'utf8')).trim().split('\n')
+  expect(starts).not.toContain(path.join(root, 's'))
+  expect(new Set(starts).size).toBe(starts.length)
 }, 60_000)
 
 it('fails a task that fails on its agent, with its output', () => {

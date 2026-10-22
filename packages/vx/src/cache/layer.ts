@@ -395,6 +395,13 @@ export interface OutputDirRow {
 export const OUTPUT_DIRS_CAP = 8192
 
 /**
+ * `mtime_ms` of the one row a snapshot over `OUTPUT_DIRS_CAP` leaves: never
+ * current, so the hit walks, and it tells the hit not to snapshot again.
+ * Cleared rows sent every hit through the walk AND a capped snapshot.
+ */
+export const OUTPUT_DIRS_OVER_CAP = -3
+
+/**
  * A directory whose mtime lies within this many ms of the snapshot is RACY
  * and the whole snapshot is dropped. File timestamps are coarse on Linux
  * (a kernel tick, up to 10 ms), so a write landing in the same tick as the
@@ -667,8 +674,8 @@ export interface CacheLayer {
   /**
    * The directory-mtime short-circuit behind a warm hit (optional — a layer
    * without it keeps the output walk). `recordOutputDirs` snapshots every
-   * directory under each of `prefixes` (project-relative, whole-subtree
-   * globs only — see `wholeSubtreePrefixes`) after a save or restore;
+   * directory under each of `prefixes` (project-relative, `''` the project
+   * itself — see `outputDirPrefixes`) after a save or restore;
    * `loadOutputDirsBatch` reads them back; `outputDirsCurrent` is true iff
    * every recorded directory still carries its recorded mtime, which proves
    * no file was added or removed anywhere the glob could see. Machine-local

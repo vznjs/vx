@@ -38,6 +38,11 @@ jobs:
           ref: ${{ inputs.sha }}
           fetch-depth: 0
 
+      # The sandbox's apt install runs while Bun and the dependencies install.
+      - if: runner.os == 'Linux'
+        uses: ./.github/actions/vx-runner
+        with: { phase: start }
+
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2
@@ -47,6 +52,7 @@ jobs:
 
       - if: runner.os == 'Linux'
         uses: ./.github/actions/vx-runner
+        with: { phase: finish }
 
       # A 2 MiB tmpfs for `tests/disk-full.unsafe.test.ts` (VX_SMALL_DISK,
       # which the Linux run passes): a disk that cannot be written cannot

@@ -130,7 +130,11 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   markWorkspaceOutputsChanged(workspaceRoot: string, relPaths: readonly string[]): void
   invalidateWorkspacePartition(): void
   filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined
-  noteFilesDigest(projectDir: string, snapshot: readonly string[], digest: string): void
+  noteFilesDigest(
+    projectDir: string,
+    snapshot: readonly string[],
+    digest: () => string | undefined,
+  ): void
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined
   setOids(projectDir: string, oids: Map<string, string>): void
   setLazyOids(projectDir: string, build: () => Map<string, string>): void
@@ -750,6 +754,7 @@ export interface ExecuteRequest {
   readonly onSpawn?: (pid: number) => void
   readonly sandbox?: ExecuteSandbox
   readonly terminal?: true
+  readonly servers?: readonly ServerSpec[]
 }
 == type ExecuteResult (src/exec/executor.ts)
 export interface ExecuteResult extends RunResult {
@@ -959,6 +964,7 @@ export interface LentAccess {
 == type LocalFloor (src/orchestrator/local-floor.ts)
 export interface LocalFloor {
   execute(req: ExecuteRequest): Promise<ExecuteResult>
+  rearm(sandboxes: readonly NonNullable<ExecConfig['sandbox']>[]): Promise<void>
   close(): Promise<void>
 }
 == type LockfileClaimHooks (src/orchestrator/lockfile-claim.ts)
@@ -1683,6 +1689,15 @@ export interface SecretUnavailable extends Error {
 }
 == type SecretUnavailableReason (src/util/secrets.ts)
 export type SecretUnavailableReason = 'not-found' | 'no-terminal' | 'declined' | 'store-unavailable'
+== type ServerSpec (src/exec/executor.ts)
+export interface ServerSpec {
+  readonly taskId: string
+  readonly command: string
+  readonly cwd: string
+  readonly env: NodeJS.ProcessEnv
+  readonly readyWhen?: string
+  readonly timeoutMs?: number
+}
 == type StoreOptions (src/cache/cache.ts)
 export interface StoreOptions {
   embeddings: number
@@ -1708,6 +1723,7 @@ export interface TaskExecutor {
   readonly name: string
   readonly remote?: boolean
   readonly sandbox?: boolean
+  readonly servers?: boolean
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void
