@@ -87,11 +87,17 @@ The same relay as a `fetch` handler, to mount in a server of your own
   `{ verify?, heartbeatMs? }`: `verify` checks a request's bearer token
   (none admits every request) and gets the request too, `heartbeatMs` (default 5000) is how often
   a participant must be heard from. A `Relay` is `{ fetch(req), close() }`,
-  plus the hooks a host of websockets drives (`store`, `upgrade`,
-  `timer: false`, `attach`, `frame`, `seen`, `sweep`; `src/worker.ts`
-  is their user).
-- `serveRelay({ hostname, port, verify?, heartbeatMs? })` serves the relay
-  on `Bun.serve`, websockets included, and returns `{ url, stop() }`.
+  plus the hooks a host of websockets drives (`src/worker.ts` is their
+  user): the options `store`, a `RelayStore` (`{ put, delete, list }`,
+  a Durable Object's `storage.kv`) that keeps runs across a restart,
+  `upgrade`, which answers a `socket` request, and `timer: false`, so the
+  host calls `sweep()` itself; and the methods `attach` and `detach`,
+  which hand the relay a participant's `RelaySocket` (`{ send, close }`),
+  `frame`, `seen` and `sweep`.
+- `serveRelay(options: ServeOptions): RelayServer` serves the relay on
+  `Bun.serve`, websockets included. `ServeOptions` is
+  `{ hostname, port, verify?, heartbeatMs? }`, and a `RelayServer` is
+  `{ url, stop() }`.
 - `createVerifier(options: OidcOptions)` returns that `verify`.
   `OidcOptions` is
   `{ issuers, audience, repositories?, runClaims?, fetchJson?, now? }`:
