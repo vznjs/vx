@@ -220,7 +220,7 @@ export function dte(options: DteOptions) {
             run,
             ...(id === undefined || id === '' ? {} : { id }),
             root: ctx.workspaceRoot,
-            token: await token(relay),
+            token: () => token(relay),
             proof: secret === undefined ? seal.githubProof() : seal.secretProof(secret),
             artifacts: ctx.artifactsFor,
           })
@@ -305,7 +305,7 @@ export function dte(options: DteOptions) {
       const need = (id: string): Need => needOf(peaks.get(id))
       const o = new Orchestrator({
         me: seal.sealOrchestrator(
-          await join(relay, run, 'orchestrator', null, await token(relay)),
+          await join(relay, run, 'orchestrator', null, () => token(relay)),
           run,
           proof,
         ),

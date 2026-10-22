@@ -28,15 +28,15 @@ export async function join(
   run: string,
   role: 'orchestrator' | 'agent',
   info: unknown,
-  token: string | undefined,
+  /** A function is asked again for a token about to expire: GitHub's last 5 minutes. */
+  token: string | undefined | (() => Promise<string | undefined>),
 ): Promise<Participant> {
   const base = `${relay.replace(/\/+$/, '')}/v1/runs/${encodeURIComponent(run)}/`
-  const headers: Record<string, string> = { 'content-type': 'application/json' }
-  if (token !== undefined) headers['authorization'] = `Bearer ${token}`
+  const auth = bearer(token)
   const call = async (verb: string, body?: unknown, query = '', signal?: AbortSignal) => {
     const res = await fetch(base + verb + query, {
       method: body === undefined ? 'GET' : 'POST',
-      headers,
+      headers: await auth(),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       ...(signal === undefined ? {} : { signal }),
     })
@@ -50,7 +50,7 @@ export async function join(
   const id = joined['id'] as string
   const heartbeatMs = joined['heartbeatMs'] as number
   const socket =
-    joined['socket'] === true ? await connect(base, id, headers, heartbeatMs) : undefined
+    joined['socket'] === true ? await connect(base, id, await auth(), heartbeatMs) : undefined
   return {
     id,
     heartbeatMs,
@@ -80,6 +80,37 @@ export async function join(
       await call('leave', { id }).catch(() => undefined)
       socket?.close()
     },
+  }
+}
+
+/** A token more than a minute from its `exp` is used again. */
+function bearer(
+  token: string | undefined | (() => Promise<string | undefined>),
+): () => Promise<Record<string, string>> {
+  let held: { value: string | undefined; until: number } | undefined
+  return async () => {
+    if (typeof token !== 'function') held ??= { value: token, until: Infinity }
+    else if (held === undefined || Date.now() >= held.until) {
+      const value = await token()
+      held = { value, until: expiry(value) - 60_000 }
+    }
+    const headers: Record<string, string> = { 'content-type': 'application/json' }
+    if (held.value !== undefined) headers['authorization'] = `Bearer ${held.value}`
+    return headers
+  }
+}
+
+/** A JWT's `exp` in ms; a token that is not one never expires here. */
+function expiry(token: string | undefined): number {
+  try {
+    const exp = (
+      JSON.parse(atob(token!.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/'))) as {
+        exp?: unknown
+      }
+    ).exp
+    return typeof exp === 'number' ? exp * 1000 : Infinity
+  } catch {
+    return Infinity
   }
 }
 

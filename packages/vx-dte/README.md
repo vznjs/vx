@@ -128,7 +128,9 @@ as each task starts and ends:
 The run is your own job's `vx run`. When it needs agents it dispatches
 `.github/workflows/vx-agent.yml` once per size, with the agents of that
 size as a matrix. No secret: each side proves its key with the job's OIDC
-token, and the relay's token is an OIDC token for the relay's URL.
+token, and the relay's token is an OIDC token for the relay's URL. Such a
+token lasts 5 minutes, so each side asks for a new one a minute before
+its token expires.
 
 ```ts
 // .vx/workspace.ts
@@ -388,7 +390,8 @@ utilization of every machine together:
   - `relay` is the relay's URL; absent, the adapter's own.
   - `local` is how many tasks this machine runs at once beside the agents
     (default 0: agents run every task).
-  - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`).
+  - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`). It
+    is asked again a minute before the token's `exp`, when it has one.
 - `vx dte agent` is an agent. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else
   `relay`), `VX_DTE_SECRET` (the run's) and, when the run started it,
   `VX_DTE_AGENT` (its name). With no `VX_DTE_SECRET` it reads

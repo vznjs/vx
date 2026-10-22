@@ -43,7 +43,7 @@ export async function runAgent(opts: {
   /** `AgentSpawn.id`, when the run started it. */
   id?: string
   root: string
-  token: string | undefined
+  token: () => Promise<string | undefined>
   /** What admits it to the orchestrator's session: the run's key, or its CI identity. */
   proof: Proof
   /** The workspace's cache read under the facts it is handed (`CommandContext.artifactsFor`). */
