@@ -135,7 +135,9 @@ as each task starts and ends:
 
 The run is your own job's `vx run`. When it needs agents it dispatches
 `.github/workflows/vx-agent.yml` once per size, with the agents of that
-size as a matrix. When the run ends it cancels each agent run it
+size as a matrix, each job named for its agent (`name: ${{ matrix.agent }}`):
+a job that ends badly before its agent joins marks that agent `failed`
+with the step it failed at, and the run starts another in its place. When the run ends it cancels each agent run it
 dispatched, so one still queued does not hold a runner the next run
 waits for. A vx that is killed never gets to: it also lists each run in
 `$RUNNER_TEMP/vx-dte-runs`, one API path per line, for an `if: always()`

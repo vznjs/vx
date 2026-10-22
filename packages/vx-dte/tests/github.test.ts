@@ -168,3 +168,48 @@ it('lists each run it dispatched in RUNNER_TEMP for the job to cancel', async ()
     await rm(temp, { recursive: true, force: true })
   }
 })
+
+// A job that failed at its install told the run nothing: its agent stayed
+// `starting` and the run waited for the job's timeout (2026-10-22).
+it('says why for each agent whose job ended badly before it joined', async () => {
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const path = new URL(req.url).pathname
+      if (path.endsWith('/dispatches')) return Response.json({ workflow_run_id: 7 })
+      if (path === '/repos/o/r/actions/runs/7/jobs')
+        return Response.json({
+          jobs: [
+            {
+              name: 'small#1',
+              status: 'completed',
+              conclusion: 'failure',
+              steps: [
+                { name: 'Set up job', conclusion: 'success' },
+                { name: 'Install dependencies', conclusion: 'failure' },
+              ],
+            },
+            { name: 'small#2', status: 'in_progress', conclusion: null },
+          ],
+        })
+      return new Response(null, { status: 202 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const why: string[] = []
+    const adapter = github()
+    void adapter.spawn(spawn('small#1', 'small', (w) => why.push(`small#1: ${w}`)))
+    void adapter.spawn(spawn('small#2', 'small', (w) => why.push(`small#2: ${w}`)))
+    for (let i = 0; i < 50 && why.length === 0; i++) await Bun.sleep(100)
+    expect(why).toEqual(['small#1: job failure at Install dependencies'])
+    await adapter.close?.()
+  } finally {
+    await server.stop(true)
+  }
+}, 10_000)
