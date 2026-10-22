@@ -8,6 +8,7 @@
 // package's sources and the core helpers the mappers call: a new
 // `@vzn/vx-migrate` or `@vzn/vx` maps afresh.
 
+import { statSync } from 'node:fs'
 import { mkdir, rename } from 'node:fs/promises'
 import path from 'node:path'
 import { foldScriptHooks, isLiteralPattern, outputsOverlap, VERSION } from '@vzn/vx'
@@ -30,7 +31,7 @@ export interface AdoptionMapping {
 
 let code: Promise<string> | undefined
 
-/** This package's sources and the core helpers the mappers call, hashed once per process. */
+/** This package's sources (by size and mtime) and the core helpers the mappers call, once per process. */
 function codeId(): Promise<string> {
   code ??= (async () => {
     const parts: string[] = [
@@ -40,7 +41,13 @@ function codeId(): Promise<string> {
     const files: string[] = []
     for await (const f of new Bun.Glob('**/*.{ts,cjs}').scan(import.meta.dir)) files.push(f)
     files.sort()
-    for (const f of files) parts.push(f, await Bun.file(path.join(import.meta.dir, f)).text())
+    // Size and mtime, not bytes: reading the 650 kB of sources cost ~10 ms
+    // on every run, more than the mapping hit it guards saves on a small
+    // repo (solid, 2026-10-22). An edit moves both.
+    for (const f of files) {
+      const s = statSync(path.join(import.meta.dir, f))
+      parts.push(f, `${s.size}:${s.mtimeMs}`)
+    }
     return hex(parts.join('\0'))
   })()
   return code
