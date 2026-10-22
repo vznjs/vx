@@ -847,6 +847,7 @@ export class Orchestrator {
       [
         `${u.done} done`,
         ...(u.failed > 0 ? [`${u.failed} failed`] : []),
+        ...(u.aborted > 0 ? [`${u.aborted} aborted`] : []),
         ...(running > 0 ? [`${running} running`] : []),
       ].join(' · ')
     // Once over, under its row: what its size declares and what its machine

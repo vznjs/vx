@@ -25,6 +25,8 @@ export interface UsageStats {
 export class Usage {
   done = 0
   failed = 0
+  /** Killed by the run's stop, as core counts a task `aborted`. */
+  aborted = 0
   /** Messages and bytes the run sent it, and those it sent the run. */
   messagesIn = 0
   bytesIn = 0
@@ -39,11 +41,15 @@ export class Usage {
   /** A task it finished, as it ends: its CPU time spread over its duration. */
   record(r: {
     readonly exitCode: number
+    readonly signal?: string | undefined
+    readonly timedOut?: boolean | undefined
     readonly durationMs: number
     readonly cpuMs?: number | undefined
     readonly peakRssBytes?: number | undefined
   }): void {
     if (r.exitCode === 0) this.done++
+    else if ((r.signal === 'SIGINT' || r.signal === 'SIGTERM') && r.timedOut !== true)
+      this.aborted++
     else this.failed++
     const end = performance.now()
     const ms = Math.max(1, r.durationMs)
