@@ -51,11 +51,12 @@ export function runClaimsOf(iss: string): readonly string[] {
 }
 
 /**
- * The claims naming the CI job a token is from: GitHub's workflow run and
- * attempt, GitLab's job. Agents run in another workflow run or job.
+ * The claims naming the CI job a token is from, the first set a token
+ * carries: GitHub's job (`check_run_id`; a host without it, the workflow
+ * run and attempt, which its other jobs share), GitLab's job.
  */
-function jobClaimsOf(iss: string): readonly string[] {
-  return iss === GITHUB ? ['run_id', 'run_attempt'] : ['job_id']
+function jobClaimsOf(iss: string): readonly (readonly string[])[] {
+  return iss === GITHUB ? [['check_run_id'], ['run_id', 'run_attempt']] : [['job_id']]
 }
 
 /**
@@ -152,10 +153,10 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
       }
       return String(v)
     })
-    const job = jobClaimsOf(iss).map((c) => claims[c])
-    return job.every((v) => typeof v === 'string' || typeof v === 'number')
-      ? { iss, run, job: job.join('\0') }
-      : { iss, run }
+    const job = jobClaimsOf(iss)
+      .map((set) => set.map((c) => claims[c]))
+      .find((vs) => vs.every((v) => typeof v === 'string' || typeof v === 'number'))
+    return job === undefined ? { iss, run } : { iss, run, job: job.join('\0') }
   }
 }
 

@@ -73,6 +73,35 @@ describe('a CI OIDC token', () => {
     expect(fetched).toEqual([`${ISS}/.well-known/openid-configuration`, `${ISS}/jwks`])
   })
 
+  it('names a GitHub token’s own job, not the workflow run its other jobs share', async () => {
+    const GH = 'https://token.actions.githubusercontent.com'
+    const verify = createVerifier({
+      issuers: [GH],
+      audience: AUD,
+      now: () => now,
+      fetchJson: async (url) =>
+        url === `${GH}/.well-known/openid-configuration`
+          ? { jwks_uri: `${GH}/jwks` }
+          : { keys: [{ ...jwk, kid: 'k1' }] },
+    })
+    const gh = {
+      iss: GH,
+      aud: AUD,
+      exp: now + 300,
+      repository_id: '5',
+      run_id: '8',
+      run_attempt: '1',
+    }
+    const jobs = await Promise.all(
+      [{ check_run_id: 31 }, { check_run_id: 32 }, {}].map(async (c) => {
+        const t = await verify(await sign({ ...gh, ...c }))
+        return t.job
+      }),
+    )
+    // A host whose tokens name no job: the workflow run and attempt.
+    expect(jobs).toEqual(['31', '32', '8\0' + '1'])
+  })
+
   it('is refused for what is wrong with it', async () => {
     const verify = verifier()
     const other = { ...good, iss: 'https://evil.example' }
