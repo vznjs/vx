@@ -322,8 +322,8 @@ never branches on layering.
 - **`runPersistent`** — for dev servers + watchers. Spawns the command
   but does NOT await exit. Returns `{ ready, child, readyMs() }`.
   `ready` resolves when a regex match appears in stdout/stderr (or
-  immediately when no `readyWhen` is set). If the child exits before
-  ready, `ready` rejects. `exec.timeout` bounds the readiness wait.
+  immediately when no `readyWhen` is set). If the child exits 0 before
+  ready, `ready` resolves; any other exit before ready rejects it. `exec.timeout` bounds the readiness wait.
   Its stdin is a pipe vx never writes, open while vx lives, so a server
   that exits on stdin EOF (esbuild `--watch`) stays up.
   The spawn retains no output: chunks reach the caller through the

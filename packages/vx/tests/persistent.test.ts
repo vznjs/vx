@@ -214,6 +214,40 @@ describe('exec.persistent (e2e)', () => {
   )
 
   it(
+    'a persistent task that exits 0 before its marker is ready, and its dependant runs',
+    async () => {
+      const dir = await addProject(fixture.root, 'app', {
+        config: `
+          export default {
+            tasks: {
+              setup: {
+                exec: {
+                  command: 'echo seeded > seed.txt',
+                  persistent: { readyWhen: 'Listening on' },
+                },
+              },
+              test: { dependsOn: ['setup'], exec: { command: 'cat seed.txt' } },
+            },
+          }
+        `,
+      })
+      const r = await run({
+        cwd: fixture.root,
+        tasks: ['test'],
+        projects: ['app'],
+        log: silentLogger(fixture),
+      })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes.map((o) => [o.node.id, o.status]).sort()).toEqual([
+        ['app#setup', 'success'],
+        ['app#test', 'success'],
+      ])
+      expect(readFileSync(path.join(dir, 'seed.txt'), 'utf8')).toBe('seeded\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'persistent task that exits before becoming ready is reported as failed',
     async () => {
       await addProject(fixture.root, 'app', {
