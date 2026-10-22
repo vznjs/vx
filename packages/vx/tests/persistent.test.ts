@@ -238,10 +238,9 @@ describe('exec.persistent (e2e)', () => {
         log: silentLogger(fixture),
       })
       expect(r.ok).toBe(true)
-      expect(r.outcomes.map((o) => [o.node.id, o.status]).sort()).toEqual([
-        ['app#setup', 'success'],
-        ['app#test', 'success'],
-      ])
+      expect(
+        r.outcomes.map((o) => `${o.node.id} ${o.status}`).sort((a, b) => a.localeCompare(b)),
+      ).toEqual(['app#setup success', 'app#test success'])
       expect(readFileSync(path.join(dir, 'seed.txt'), 'utf8')).toBe('seeded\n')
     },
     TIMEOUT,
