@@ -113,6 +113,15 @@ async function handshake(proof: Proof, initiator: boolean, run: string): Promise
 const REPLAY = Symbol('replay')
 
 /**
+ * The size a body is padded to, so the relay learns its size class, not
+ * its size: a power of two from 256 bytes, then whole transport messages.
+ */
+function padded(n: number): number {
+  if (n >= MAX_PLAINTEXT) return Math.ceil(n / MAX_PLAINTEXT) * MAX_PLAINTEXT
+  return Math.min(2 ** Math.ceil(Math.log2(Math.max(n, 256))), MAX_PLAINTEXT)
+}
+
+/**
  * One agent and the orchestrator after their handshake. Each body is
  * Noise transport messages of at most 64 KiB, each naming its nonce, as
  * Noise allows for a transport that may reorder (§11.4); a nonce seen
@@ -128,7 +137,10 @@ class Session {
   ) {}
 
   async seal(body: unknown): Promise<{ seal: string[] }> {
-    const bytes = text.encode(JSON.stringify(body))
+    const json = text.encode(JSON.stringify(body))
+    // Trailing spaces: JSON.parse reads past them.
+    const bytes = new Uint8Array(padded(json.length)).fill(0x20)
+    bytes.set(json)
     const out: string[] = []
     for (let at = 0; at === 0 || at < bytes.length; at += MAX_PLAINTEXT) {
       const n = this.sent++

@@ -95,6 +95,23 @@ it('admits an agent its secret signed, and the relay carries no body it can read
   expect(r.bodies.join('\n')).not.toContain('build-secret-name')
 })
 
+it('pads each body to its size class, so the relay learns no size within one', async () => {
+  const { r, o, a } = await pair()
+  await until(o)
+  await o.send(a.id, { type: 'welcome' })
+  await until(a)
+  const sent = r.bodies.length
+  for (const task of ['a', 'a'.repeat(150), 'a'.repeat(300), 'a'.repeat(100_000)]) {
+    await a.send('orchestrator', { type: 'start', task })
+    expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'start', task }])
+  }
+  const sizes = r.bodies.slice(sent).map((b) => b.length)
+  expect(sizes[0]).toBe(sizes[1]!)
+  expect(sizes[2]).toBeGreaterThan(sizes[1]!)
+  // Past one transport message, whole ones: 100 000 bytes fill two.
+  expect((JSON.parse(r.bodies.at(-1)!) as { body: { seal: string[] } }).body.seal).toHaveLength(2)
+})
+
 it('refuses an agent with another secret, and an agent refuses an orchestrator with another', async () => {
   const { o, a } = await pair('s', 'other')
   expect(await o.poll()).toEqual([])
