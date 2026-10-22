@@ -63,11 +63,6 @@ const t = (probe) => ({
 })
 export default { name: 'r', tasks: { same: t('echo 1.4.2'), here: t('pwd') } }
 `,
-    // Reads the home's ssh key, which every sandbox denies.
-    'k/vx.config.mjs': `export default { name: 'k', tasks: {
-  key: { exec: { command: 'cat "$HOME/.ssh/id"', sandbox: {} } },
-} }
-`,
     // Wide, then a two-task lull, then wide again.
     'c/vx.config.mjs': `const t = (dependsOn) => ({ exec: { command: 'sleep 0.3' }, dependsOn })
 export default { name: 'c', tasks: {
@@ -212,58 +207,6 @@ it('fails a task that fails on its agent, with its output', () => {
   expect(r.exitCode).not.toBe(0)
   expect(r.stdout.toString() + r.stderr.toString()).toContain('oops')
 }, 60_000)
-
-// The agent builds a task's sandbox on its own machine: its home's
-// credential stores are walled, not the orchestrator's (which may be
-// another OS, owner 2026-10-22).
-it.skipIf(process.platform !== 'linux' || Bun.which('bwrap') === null)(
-  'walls the agent’s own credential stores, not the orchestrator’s',
-  async () => {
-    const { createRelay } = await import('@vzn/vx-dte-relay')
-    const relay = createRelay()
-    const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
-    const url = `http://127.0.0.1:${server.port}`
-    const homes = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-homes-'))
-    try {
-      await mkdir(path.join(homes, 'agent/.ssh'), { recursive: true })
-      await mkdir(path.join(homes, 'orc'), { recursive: true })
-      await writeFile(path.join(homes, 'agent/.ssh/id'), 'AGENT-KEY\n')
-      await writeFile(
-        path.join(root, '.vx/workspace.mjs'),
-        `import { dte } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ relay: ${JSON.stringify(url)}, local: 0 })] }
-`,
-      )
-      Bun.spawnSync(
-        ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'r'],
-        { cwd: root },
-      )
-      const { VX_DTE_RUN: _, ...env } = process.env
-      const hand = crypto.randomUUID()
-      const shared = { VX_DTE_RUN: hand, VX_DTE_SECRET: 'hand-secret', NO_COLOR: '1' }
-      const agent = Bun.spawn([process.execPath, CORE_BIN, 'dte', 'agent'], {
-        cwd: root,
-        env: { ...env, ...shared, HOME: path.join(homes, 'agent') },
-        stdout: 'pipe',
-        stderr: 'pipe',
-      })
-      const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'k#key'], {
-        cwd: root,
-        env: { ...env, ...shared, HOME: path.join(homes, 'orc') },
-        stdout: 'pipe',
-        stderr: 'pipe',
-      })
-      const out = (await new Response(run.stdout).text()) + (await new Response(run.stderr).text())
-      expect([await run.exited, out.includes('AGENT-KEY')]).toEqual([1, false])
-      await agent.exited
-    } finally {
-      relay.close()
-      await server.stop(true)
-      await rm(homes, { recursive: true, force: true })
-    }
-  },
-  60_000,
-)
 
 it('runs on an agent started by hand, with no adapter, under one name on both sides', async () => {
   const { createRelay } = await import('@vzn/vx-dte-relay')

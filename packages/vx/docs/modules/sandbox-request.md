@@ -43,7 +43,7 @@ export interface WithheldLink {
   link: string // workspace-relative POSIX, for the hint
 }
 export async function sandboxRequestFor(
-  node: TaskNode,
+  node: Pick<TaskNode, 'projectDir'>,
   sandbox: NonNullable<ExecConfig['sandbox']>,
   workspaceRoot: string,
   keyed: ReadonlySet<string> | undefined, // keyed-projects.ts's set; undefined for a task with no `cache`
@@ -65,7 +65,7 @@ export type WriteReach = 'none' | 'project' | 'workspace'
 export function undeclaredWriteReach(node: TaskNode, workspaceRoot: string): WriteReach
 export function commandWriteReach(node: TaskNode, workspaceRoot: string): WriteReach
 export function mayWriteFingerprint(
-  node: TaskNode,
+  node: Pick<TaskNode, 'projectDir'>,
   workspaceRoot: string,
   claimed: readonly string[], // the root files the plugins claim
 ): boolean
