@@ -4,6 +4,7 @@ export {
   createVerifier,
   repositoryClaimOf,
   runClaimsOf,
+  workflowClaimOf,
   TokenError,
   type OidcOptions,
   type VerifiedToken,

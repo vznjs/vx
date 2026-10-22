@@ -10,6 +10,9 @@
   "vars": {
     // Add `https://gitlab.com` (or a self-managed GitLab), comma separated, to carry GitLab's runs.
     "ISSUERS": "https://token.actions.githubusercontent.com",
+    // Empty: any workflow of REPOSITORIES. Else the ones whose jobs may take part, comma separated,
+    // such as `owner/repo/.github/workflows/ci.yml` (any ref).
+    "WORKFLOWS": "",
   },
   "durable_objects": {
     "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }],

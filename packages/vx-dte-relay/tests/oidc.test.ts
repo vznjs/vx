@@ -102,6 +102,45 @@ describe('a CI OIDC token', () => {
     expect(jobs).toEqual(['31', '32', '8\0' + '1'])
   })
 
+  it('is refused unless its job is of a workflow the relay names, when it names any', async () => {
+    const GH = 'https://token.actions.githubusercontent.com'
+    const verify = createVerifier({
+      issuers: [GH, ISS],
+      audience: AUD,
+      workflows: ['Org/App/.github/workflows/ci.yml', 'gitlab.example/group/app//.gitlab-ci.yml'],
+      now: () => now,
+      fetchJson: async (url) =>
+        url.endsWith('/.well-known/openid-configuration')
+          ? { jwks_uri: url.replace('/.well-known/openid-configuration', '/jwks') }
+          : { keys: [{ ...jwk, kid: 'k1' }] },
+    })
+    const gh = { iss: GH, aud: AUD, exp: now + 300, repository_id: '5' }
+    const asked = async (claims: Record<string, unknown>) =>
+      verify(await sign(claims)).then(
+        () => 'ok',
+        (e: TokenError) => e.message,
+      )
+    expect([
+      await asked({ ...gh, job_workflow_ref: 'org/app/.github/workflows/ci.yml@refs/heads/main' }),
+      await asked({
+        ...gh,
+        job_workflow_ref: 'org/app/.github/workflows/ci.yml@refs/pull/7/merge',
+      }),
+      await asked({ ...gh, job_workflow_ref: 'org/app/.github/workflows/evil.yml@refs/heads/x' }),
+      await asked(gh),
+      await asked({
+        ...good,
+        ci_config_ref_uri: 'gitlab.example/group/app//.gitlab-ci.yml@refs/heads/main',
+      }),
+    ]).toEqual([
+      'ok',
+      'ok',
+      'workflow org/app/.github/workflows/evil.yml is not one this relay serves',
+      'no job_workflow_ref claim',
+      'ok',
+    ])
+  })
+
   it('is refused for what is wrong with it', async () => {
     const verify = verifier()
     const other = { ...good, iss: 'https://evil.example' }
