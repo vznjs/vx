@@ -74,7 +74,8 @@ The relay itself sends with `"from": "relay"`:
 - to the orchestrator, `{ "type": "lost", "id" }` when an agent leaves or
   is lost;
 - to every agent, `{ "type": "closed" }` when the orchestrator leaves or is
-  lost. The run is then closed: every later request answers `410`.
+  lost. The run is then closed: every later request answers `410`, for
+  7 days, so its id never takes another orchestrator.
 
 An agent's messages carry `"from": "<its id>"`, the orchestrator's
 `"from": "orchestrator"`.
@@ -82,7 +83,7 @@ An agent's messages carry `"from": "<its id>"`, the orchestrator's
 ## Errors
 
 `400` a malformed request, `401` a missing or invalid token, `403` a token
-of a repository the relay does not serve, `404` an unknown `id` or `to`, `409` a second
+of a repository the relay does not serve, `403` a request as the orchestrator from another CI job (§ Tokens), `404` an unknown `id` or `to`, `409` a second
 orchestrator, `410` a closed run, `413` a body over 1 MiB, `426` a
 `socket` request that is not an upgrade, `429` a queue
 over 10 000 messages or 64 MiB. An error answers `{ "error": "<reason>" }`.
@@ -104,7 +105,13 @@ even one it learned. The run claims name the repository:
 | GitLab (`https://gitlab.com`, or a self-managed host)          | `project_id`    |
 | GitHub Actions (`https://token.actions.githubusercontent.com`) | `repository_id` |
 
-So only jobs of the repository that started a run can join it. Not of its
+So only jobs of the repository that started a run can join it.
+
+The orchestrator is pinned to the CI job it joined from: GitHub's
+`run_id` and `run_attempt`, GitLab's `job_id`. A request as the
+orchestrator with a token of another job answers `403`, so its `id`
+leaked to an agent or a log acts from nowhere else. Its agents run in
+other jobs and talk only to `"orchestrator"`, which is always that one. Not of its
 pipeline: agents run in another one (a GitLab child pipeline, a GitHub
 workflow the run dispatches). Which agents take part is the run's own
 business: `@vzn/vx-dte` admits only an agent that completes a Noise

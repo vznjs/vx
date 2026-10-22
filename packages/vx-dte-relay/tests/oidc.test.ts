@@ -64,7 +64,12 @@ describe('a CI OIDC token', () => {
     const fetched: string[] = []
     const verify = verifier(fetched)
     expect(await verify(await sign(good))).toEqual({ iss: ISS, run: ['7'] })
-    await verify(await sign(good))
+    // The job a run's orchestrator is pinned to, when the token names one.
+    expect(await verify(await sign({ ...good, job_id: 99 }))).toEqual({
+      iss: ISS,
+      run: ['7'],
+      job: '99',
+    })
     expect(fetched).toEqual([`${ISS}/.well-known/openid-configuration`, `${ISS}/jwks`])
   })
 
