@@ -130,10 +130,8 @@ export async function join(
   // The relay loses a participant silent this long: past it, nothing is left to reach.
   faultMs = 3 * heartbeatMs
   const offered = joined['socket'] === true
-  // A relay older than `frames` 2 takes only single sends down the socket.
-  const frames = joined['frames'] === 2
   const dial = async () =>
-    connect(base, id, await headers('GET', `${base}socket?id=${id}`, ''), heartbeatMs, frames)
+    connect(base, id, await headers('GET', `${base}socket?id=${id}`, ''), heartbeatMs)
   let socket = offered ? await dial() : undefined
   let failures = 0
   let redial: ReturnType<typeof setTimeout> | undefined
@@ -202,8 +200,10 @@ export async function join(
       return (r?.['messages'] ?? []) as RelayMessage[]
     },
     async remove(agent) {
-      const http = () => call('remove', { id, agent })
-      await (frames ? over((s) => s.request({ remove: agent }), http) : http())
+      await over(
+        (s) => s.request({ remove: agent }),
+        () => call('remove', { id, agent }),
+      )
     },
     async leave() {
       left = true
@@ -211,7 +211,7 @@ export async function join(
       const s = socket
       // The relay drops it and closes the socket, which is its answer.
       const http = () => call('leave', { id }).catch(() => undefined)
-      if (frames && s?.open === true)
+      if (s?.open === true)
         await s.request({ leave: true }).catch(async (err: Error) => {
           if (err.message === UNANSWERED) await http()
         })
@@ -274,8 +274,6 @@ async function connect(
   id: string,
   headers: Record<string, string>,
   heartbeatMs: number,
-  /** The relay takes `sends` frames (`frames` 2). */
-  batches: boolean,
 ): Promise<Socket | undefined> {
   const ws = new WebSocket(`${base.replace(/^http/, 'ws')}socket?id=${id}`, { headers })
   const opened = await new Promise<boolean>((resolve) => {
@@ -316,10 +314,6 @@ async function connect(
   const flush = (): void => {
     const all = sends
     sends = []
-    if (!batches) {
-      for (const one of all) request({ to: one.to, body: one.body }).then(one.resolve, one.reject)
-      return
-    }
     // Frames under the relay's body limit, which it applies to a frame whole.
     let batch: typeof all = []
     let bytes = 0
