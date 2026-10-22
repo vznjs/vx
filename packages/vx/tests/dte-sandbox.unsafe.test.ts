@@ -91,9 +91,10 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 2, memory: '1GB
   // credential stores are walled, not the orchestrator's (which may be
   // another OS, owner 2026-10-22).
   it('walls the agent’s own credential stores, not the orchestrator’s', async () => {
-    const { createRelay } = (await import(
-      RELAY
-    )) as typeof import('../../vx-dte-relay/src/index.ts')
+    // Typed here: the checker of this project may not read the relay's source.
+    const { createRelay } = (await import(RELAY)) as {
+      createRelay(): { fetch(r: Request): Response | Promise<Response>; close(): void }
+    }
     const relay = createRelay()
     const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
     const homes = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-homes-'))
