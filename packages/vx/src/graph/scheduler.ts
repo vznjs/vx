@@ -122,11 +122,11 @@ export interface TaskOutcome {
    */
   unkeyed?: true
   /**
-   * This task's key folds a task with no `inputs` (or it is one): no run
-   * can derive that key again, so it neither read nor saved an entry, and a
-   * dependant that folds `hash` does neither.
+   * The task with no `inputs` this task's key folds (this task, or one
+   * upstream): no run can derive that key again, so it neither read nor
+   * saved an entry, and a dependant that folds `hash` does neither.
    */
-  keyless?: true
+  keylessBy?: string
   /**
    * The run's cache policy read and wrote nothing (`--no-cache`,
    * `--cache-policy=local:`): no cache answered for this task, so a run of it is

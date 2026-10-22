@@ -499,8 +499,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     filterUpstreamHashes(present, cfg.inputs?.tasks, node.projectName, node.id).map(([id]) => id),
   )
   const foldedTasks = expandGroupUpstream(present.filter((u) => folded.has(u.node.id)))
-  const keyless =
-    isKeyless(cfg) || foldedTasks.some((u) => u.keyless === true || isKeyless(u.node.config))
+  const keylessBy = isKeyless(cfg)
+    ? node.id
+    : foldedTasks
+        .map((u) => u.keylessBy ?? (isKeyless(u.node.config) ? u.node.id : undefined))
+        .find((id) => id !== undefined)
+  const keyless = keylessBy !== undefined
   const reads = policy.localRead || policy.remoteRead
   const willRead = !remoteOnly && cfgCacheable && !keyless && reads
   const willWrite = !remoteOnly && cfgCacheable && (policy.localWrite || policy.remoteWrite)
@@ -1466,7 +1470,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       : {}),
     ...(inputChanges !== undefined ? { inputChanges } : {}),
     ...(unkeyed ? { unkeyed: true as const } : {}),
-    ...(keyless ? { keyless: true as const } : {}),
+    ...(keylessBy !== undefined ? { keylessBy } : {}),
     ...(saved ? { saved: true as const } : {}),
     ...(effectiveExitCode !== 0 && output !== undefined
       ? { failedOutput: failedOutputLog(output, willSave || args.keepRun !== undefined) }

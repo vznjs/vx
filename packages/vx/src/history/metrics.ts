@@ -493,11 +493,19 @@ export function latestRunId(db: Database, taskId: string): string | null {
   return row?.runId ?? null
 }
 
+/** Why a key that folds a task with no `inputs` never hits, and the fix. */
+function keylessNote(taskId: string, keylessBy: string): string {
+  return keylessBy === taskId
+    ? 'never cached: this task declares no `inputs`, so each run derives a new key; declare its `inputs`'
+    : `never cached: its key folds ${keylessBy}, which declares no \`inputs\`, so each run derives a new key; declare inputs on ${keylessBy}`
+}
+
 export function whyDidThisRerun(db: Database, runId: string, taskId: string): WhyDidThisRerun {
   const [project, task] = splitTaskId(taskId)
   const this_ = db
     .query(
-      `SELECT id, hash, status, cache_hit AS cacheHit, restored, cached, started_at AS startedAt
+      `SELECT id, hash, status, cache_hit AS cacheHit, restored, cached, started_at AS startedAt,
+              keyless_by AS keylessBy
        FROM runs WHERE run_id = ? AND project = ? AND task = ?`,
     )
     .get(runId, project, task) as
@@ -509,6 +517,7 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
         restored: number | null
         cached: number | null
         startedAt: number
+        keylessBy: string | null
       }
     | undefined
   if (!this_) {
@@ -570,17 +579,19 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
         ? // Not a cache decision at all: the task runs every time by design,
           // and its key is derived only so dependents can fold it.
           'this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only'
-        : prev && prev.hash !== this_.hash
-          ? 'cache key changed between the previous run and this one (inputs differ)'
-          : prev
-            ? // An unchanged key has two very different endings, and calling
-              // both a "re-run" answered the question wrong: a cache HIT did not
-              // re-run at all, so blaming `--no-cache` named a cause that cannot
-              // have applied. Only a run that EXECUTED on an unchanged key is
-              // the case this verb exists to explain. A row with no recorded
-              // cacheHit (older rows) is neither — say that, do not guess.
-              unchangedKeyNote(db, runId, this_, prev)
-            : 'no prior run for this (project, task)',
+        : this_.keylessBy !== null
+          ? keylessNote(taskId, this_.keylessBy)
+          : prev && prev.hash !== this_.hash
+            ? 'cache key changed between the previous run and this one (inputs differ)'
+            : prev
+              ? // An unchanged key has two very different endings, and calling
+                // both a "re-run" answered the question wrong: a cache HIT did not
+                // re-run at all, so blaming `--no-cache` named a cause that cannot
+                // have applied. Only a run that EXECUTED on an unchanged key is
+                // the case this verb exists to explain. A row with no recorded
+                // cacheHit (older rows) is neither — say that, do not guess.
+                unchangedKeyNote(db, runId, this_, prev)
+              : 'no prior run for this (project, task)',
   }
 }
 
@@ -695,10 +706,17 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   const [project, task] = splitTaskId(taskId)
   const this_ = db
     .query(
-      'SELECT id, hash, cached, status, started_at AS startedAt FROM runs WHERE run_id = ? AND project = ? AND task = ?',
+      'SELECT id, hash, cached, status, started_at AS startedAt, keyless_by AS keylessBy FROM runs WHERE run_id = ? AND project = ? AND task = ?',
     )
     .get(runId, project, task) as
-    | { id: number; hash: string; cached: number | null; status: string; startedAt: number }
+    | {
+        id: number
+        hash: string
+        cached: number | null
+        status: string
+        startedAt: number
+        keylessBy: string | null
+      }
     | undefined
   if (!this_) {
     return {
@@ -724,6 +742,18 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
       entries: [],
       unchangedCount: 0,
       note: 'this task recorded no cache key (skipped, or a persistent task) — nothing to diff',
+    }
+  }
+
+  if (this_.keylessBy !== null) {
+    return {
+      runId,
+      taskId,
+      found: true,
+      previousRunId: null,
+      entries: [],
+      unchangedCount: 0,
+      note: `${this_.keylessBy} declares no \`inputs\`, so no fingerprints are kept to diff`,
     }
   }
 

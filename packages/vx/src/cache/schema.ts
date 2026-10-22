@@ -110,7 +110,9 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       -- machine's cores and memory; NULL = here.
       placement           TEXT,
       placement_cores     INTEGER,
-      placement_memory    INTEGER
+      placement_memory    INTEGER,
+      -- v46: the task with no inputs its key folded (TaskOutcome.keylessBy).
+      keyless_by          TEXT
     );
     -- Two whole-table indexes only, and both APPEND: every row of a run carries the
     -- same run_id and a started_at newer than everything before it, so

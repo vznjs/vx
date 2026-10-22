@@ -131,3 +131,47 @@ describe('vx why names what moved the key', () => {
     TIMEOUT,
   )
 })
+
+// A key that folds a task with no `inputs` is new every run, so the task
+// never hits; the verdict read "inputs differ" over a detail blaming a
+// prune, and named neither the cause nor the task to fix.
+describe('vx why names the task with no inputs that keeps a key from hitting', () => {
+  let root = ''
+  beforeAll(async () => {
+    root = await makeWorkspace({ prefix: 'vx-why-keyless-', git: false })
+    const app = path.join(root, 'packages', 'app')
+    await mkdir(app, { recursive: true })
+    await writeFile(path.join(app, 'package.json'), JSON.stringify({ name: 'app' }))
+    await writeFile(
+      path.join(app, 'vx.config.mjs'),
+      `export default { tasks: {
+        gate: { exec: { command: 'true' } },
+        build: {
+          dependsOn: ['gate'],
+          exec: { command: 'echo hi > out.txt' },
+          inputs: { files: ['vx.config.mjs'] }, cache: { outputs: { files: ['out.txt'] } },
+        },
+      } }`,
+    )
+    const git = gitIn(root)
+    git('init', '-q')
+    git('add', '-A')
+  }, TIMEOUT)
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it(
+    'names the upstream task and the fix',
+    async () => {
+      await vx(root, ['run', 'app#build'])
+      await vx(root, ['run', 'app#build'])
+      const why = await vx(root, ['why', 'app#build'])
+      expect(why.code).toBe(0)
+      expect(verdict(why.out)).toBe(
+        'verdict    never cached: its key folds app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate',
+      )
+    },
+    TIMEOUT,
+  )
+})

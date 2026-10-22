@@ -217,6 +217,8 @@ export interface RunRecord {
   avgRssBytes?: number
   /** Where an executor ran it (`small#1`); absent = here (v44). */
   placement?: string
+  /** The task with no `inputs` its key folded, so it never read or saved (v46). */
+  keylessBy?: string
   /** That machine's cores and memory (v44). */
   placementCores?: number
   placementMemoryBytes?: number

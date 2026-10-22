@@ -14,11 +14,11 @@ const INSERT_RUNS = `
         run_id, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns,
         cache_hit, attempts, cached,
         blocked_by, timed_out, sandbox_violations, not_ready, restored, remote_error,
-        peak_cores, avg_rss_bytes, placement, placement_cores, placement_memory
+        peak_cores, avg_rss_bytes, placement, placement_cores, placement_memory, keyless_by
       )
       VALUES `
-/** One `runs` row's placeholders: the 28 columns `bindRun` fills. */
-const RUN_TUPLE = `(${Array(28).fill('?').join(', ')})`
+/** One `runs` row's placeholders: the 29 columns `bindRun` fills. */
+const RUN_TUPLE = `(${Array(29).fill('?').join(', ')})`
 
 /** An INSERT of `n` `runs` rows. */
 function insertRunsSql(n: number): string {
@@ -26,11 +26,11 @@ function insertRunsSql(n: number): string {
 }
 
 /**
- * Rows per INSERT: 35 × 28 variables stays under 999, the oldest default
+ * Rows per INSERT: 34 × 29 variables stays under 999, the oldest default
  * ceiling. A statement per row was 8.7 ms of 1,000 rows, 40 at a time 6.4
  * (2026-10-03).
  */
-const RUNS_PER_INSERT = 35
+const RUNS_PER_INSERT = 34
 
 /** Rows per `task_durations` INSERT: 6 variables each, under 999. */
 const DURATIONS_PER_INSERT = 160
@@ -237,7 +237,7 @@ export class RunHistory {
   }
 }
 
-/** Bind a RunRecord to one `RUN_TUPLE`'s 28 positional parameters. */
+/** Bind a RunRecord to one `RUN_TUPLE`'s 29 positional parameters. */
 function bindRun(run: RunRecord, digestValue: (v: string) => string): SQLQueryBindings[] {
   return [
     // The ONE place the no-key sentinel is applied, so the column's
@@ -273,6 +273,7 @@ function bindRun(run: RunRecord, digestValue: (v: string) => string): SQLQueryBi
     run.placement ?? null,
     run.placementCores ?? null,
     run.placementMemoryBytes ?? null,
+    run.keylessBy ?? null,
   ]
 }
 

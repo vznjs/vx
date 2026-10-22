@@ -345,6 +345,7 @@ export interface RunRecord {
   placement?: string // v44: where an executor ran it (`small#1`)
   placementCores?: number // v44: that machine's cores
   placementMemoryBytes?: number // v44: and memory
+  keylessBy?: string // v46: the task with no inputs its key folded
 }
 
 export interface CacheStats {
@@ -373,7 +374,7 @@ export class FoldMemo {
   set(taskId: string, probe: string, key: string): void
   flush(cutoff: number, now?: number): void // at close: this run's folds; rows unwritten since `cutoff` go
 }
-export const SCHEMA_VERSION = 'v45'
+export const SCHEMA_VERSION = 'v46'
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
@@ -716,7 +717,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v48'`; `SCHEMA_VERSION` is
-`'v45'`. Bump `CACHE_VERSION` when:
+`'v46'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

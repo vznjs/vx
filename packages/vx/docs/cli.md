@@ -2476,7 +2476,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-  cache versions    keys vx-cache-v48 · index schema v45
+  cache versions    keys vx-cache-v48 · index schema v46
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
@@ -2648,7 +2648,13 @@ app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
 A changed key's verdict names what moved, kind and name, three at most
 and then a count (`cache key changed: env MODE`), so a key that moved
 only by an environment variable says so in one line; when neither
-entry kept its components it reads `(inputs differ)`.
+entry kept its components it reads `(inputs differ)`. A key that folds a
+task with no `inputs` is new every run, so the task never hits; the
+verdict names that task:
+
+```
+  verdict    never cached: its key folds app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate
+```
 
 Under the rows, `what to do` gives one line per changed kind: what
 moves it and how to stop a move the task does not need. An upstream
