@@ -136,6 +136,7 @@ export function initInstalls(
   pkgRoot: string | null,
   globalAt: string | undefined,
   execPath = process.execPath,
+  plugins: readonly string[] = [],
 ): { argv: string[]; cwd: string | null }[] {
   const out: { argv: string[]; cwd: string | null }[] = []
   if (globalAt !== version) {
@@ -149,6 +150,7 @@ export function initInstalls(
       scope: 'project',
       cwd: pkgRoot,
       field: 'devDependencies',
+      plugins: [...plugins],
     }
     out.push({ argv: upgradeArgv(install, version), cwd: pkgRoot })
   }
@@ -171,7 +173,11 @@ function globalVersion(): string | undefined {
  * Run `initInstalls`, in order. A source checkout (0.0.0, which npm never
  * had) installs nothing: the release would replace the code under test.
  */
-async function install(pkgRoot: string | null, dry: boolean): Promise<string[]> {
+async function install(
+  pkgRoot: string | null,
+  dry: boolean,
+  plugins: readonly string[] = [],
+): Promise<string[]> {
   if (VERSION === '0.0.0') return []
   const version = await targetVersion(undefined, 'vx init')
   const steps = initInstalls(
@@ -179,6 +185,8 @@ async function install(pkgRoot: string | null, dry: boolean): Promise<string[]> 
     process.env['npm_config_user_agent'],
     pkgRoot,
     globalVersion(),
+    process.execPath,
+    plugins,
   )
   if (dry) return steps.map((s) => s.argv.join(' '))
   for (const s of steps) {
@@ -234,8 +242,26 @@ async function scaffoldPlugin(seam: string, root: string, args: InitArgs): Promi
   return 0
 }
 
-const WORKSPACE =
-  "import { defineWorkspace } from '@vzn/vx'\n\nexport default defineWorkspace({ plugins: [] })\n"
+/**
+ * The `@vzn/vx-lockfile` plugin the lockfile at `pkgRoot` calls for: without
+ * it a JS workspace has no project edges, and the first `^build` a user
+ * writes is refused at `vx lock`.
+ */
+function lockfilePlugin(pkgRoot: string | null): 'pnpm' | 'bun' | 'yarn' | 'npm' | null {
+  if (pkgRoot === null) return null
+  const has = (f: string): boolean => existsSync(path.join(pkgRoot, f))
+  if (has('pnpm-lock.yaml')) return 'pnpm'
+  if (has('bun.lock') || has('bun.lockb')) return 'bun'
+  if (has('yarn.lock')) return 'yarn'
+  if (has('package-lock.json') || has('npm-shrinkwrap.json')) return 'npm'
+  return null
+}
+
+function workspaceSource(plugin: string | null): string {
+  if (plugin === null)
+    return "import { defineWorkspace } from '@vzn/vx'\n\nexport default defineWorkspace({ plugins: [] })\n"
+  return `import { defineWorkspace } from '@vzn/vx'\nimport { ${plugin} } from '@vzn/vx-lockfile'\n\nexport default defineWorkspace({ plugins: [${plugin}()] })\n`
+}
 const PROJECT =
   "import { defineProject } from '@vzn/vx'\n\nexport default defineProject({ tasks: {} })\n"
 
@@ -256,14 +282,23 @@ async function starter(
       `vx init: --${args.mode} answers a Turbo or Nx repo's question, and there is no turbo.json or nx.json here`,
     )
   }
-  const installs = args.json === true || args.dry ? await install(pkgRoot, true) : []
+  // A source checkout installs nothing, so it declares the plugin only where one is.
+  const found = lockfilePlugin(pkgRoot)
+  const plugin =
+    found !== null &&
+    (VERSION !== '0.0.0' ||
+      existsSync(path.join(pkgRoot!, 'node_modules', '@vzn', 'vx-lockfile', 'package.json')))
+      ? found
+      : null
+  const plugins = plugin === null ? [] : ['@vzn/vx-lockfile']
+  const installs = args.json === true || args.dry ? await install(pkgRoot, true, plugins) : []
   const ext = args.mjs ? 'mjs' : 'ts'
   const config = `vx.config.${ext}`
   const files: { path: string; contents: string }[] = []
   const kept: string[] = []
   const replaced: string[] = []
   for (const [names, name, contents] of [
-    [WORKSPACE_CONFIG_FILENAMES, `.vx/workspace.${ext}`, WORKSPACE],
+    [WORKSPACE_CONFIG_FILENAMES, `.vx/workspace.${ext}`, workspaceSource(plugin)],
     [PROJECT_CONFIG_FILENAMES, config, PROJECT],
   ] as const) {
     const existing = names.find((n) => existsSync(path.join(root, n)))
@@ -298,7 +333,7 @@ async function starter(
     ui.print('out', ui.report(`vx init ${VERSION}`, [...rows, null, ['next', next]]))
     return 0
   }
-  const ran = await install(pkgRoot, false)
+  const ran = await install(pkgRoot, false, plugins)
   if (ran.length > 0) rows.push(['installed', ...ran])
   for (const f of files) await Bun.write(path.join(root, f.path), f.contents)
   for (const f of replaced) await unlink(path.join(root, f))
