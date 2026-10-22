@@ -791,6 +791,28 @@ it('a task stopped while its agent is lost ends as stopped', async () => {
   }
 }, 3_000)
 
+// A run's only agent faulted on a task: no agent was left to run it, none
+// was starting, and the run waited forever (2026-10-22).
+it('a task its only agent could not run fails when no agent is left', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
+    const a = await h.agent(1, 'small#1')
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.say({ type: 'fault', task: 't1', reason: 'ENOSPC' })
+    expect(
+      await t1.then(
+        () => '',
+        (e: Error) => e.message,
+      ),
+    ).toBe('small#1 could not run t1 (ENOSPC) and no agent is left')
+  } finally {
+    await h.stop()
+  }
+}, 3_000)
+
 it('reads memory as bytes or with a unit', () => {
   expect([
     bytes('8GB'),
