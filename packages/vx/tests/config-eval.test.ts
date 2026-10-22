@@ -423,7 +423,7 @@ describe('evaluateConfigFresh: what a config prints (D-64)', () => {
 })
 
 describe('a first load in process: what a config prints', () => {
-  it("builds no stderr console for a config that prints nothing", async () => {
+  it('builds no stderr console for a config that prints nothing', async () => {
     // Reading the console's `Console`, `_stdout` or `_stderr` (even their
     // descriptors) loads node:console or builds a stream: ~5 ms of every
     // warm run, whose workspace config loads under the redirect.

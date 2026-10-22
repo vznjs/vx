@@ -546,7 +546,11 @@ function redirectedConsole(): typeof console {
       facade,
       key,
       own === undefined || typeof own.value === 'function'
-        ? { value: (...args: unknown[]) => real()[key]!(...args), writable: true, configurable: true }
+        ? {
+            value: (...args: unknown[]) => real()[key]!(...args),
+            writable: true,
+            configurable: true,
+          }
         : own,
     )
   }
