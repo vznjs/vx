@@ -658,6 +658,17 @@ describe('runPersistent — what its exit bookkeeping keeps', () => {
     }
   })
 
+  it('a child that exits 0 before the marker is ready: a setup step that did its work', async () => {
+    const spawn = runPersistent({
+      command: 'echo migrated; exit 0',
+      cwd,
+      env: { PATH: process.env.PATH ?? '' },
+      readyWhen: 'Listening',
+    })
+    await spawn.ready
+    expect(await spawn.child.exited).toBe(0)
+  })
+
   it('a child that exits before ready leaves the live set', async () => {
     const liveChildren = new Set<ReturnType<typeof Bun.spawn>>()
     const spawn = runPersistent({

@@ -292,7 +292,7 @@ test: { exec: { command: 'bun test', retries: 1 } }
 
 The run-level default is `run.retries` (`vx run --retries <n>`, `VX_RUN_RETRIES`) — it applies to tasks
 that don't declare their own `retries`, never to a persistent one (a
-server that exits before it is ready fails at once); explicit config
+server that fails before it is ready fails at once); explicit config
 always wins, including an explicit `retries: 0`. The CLI flag never
 affects cache keys.
 
@@ -431,8 +431,10 @@ Semantics:
   bounds the server's writes) is not probed ahead of it, so there the
   server still starts. `vx run --dry` says so: such a server is
   `not started` (`not-started` in `--dry=json`), not `would exec`.
-- **Exit before ready ⇒ failed.** If the persistent task crashes or
-  exits before `readyWhen` matches, the task is reported as `failed`.
+- **Exit before ready.** A persistent task that exits 0 before
+  `readyWhen` matches is ready: a setup step (migrate, seed) that did its
+  work, and its dependants run. One that crashes or exits non-zero first
+  is reported as `failed`.
 - **Crash after ready ⇒ failed run.** A persistent task that exits
   non-zero (or is killed) on its own after it became ready fails the
   run, and vx names it: `vx: <id> exited with code <n>` (a signal death
