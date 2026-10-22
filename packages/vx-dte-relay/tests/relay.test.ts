@@ -106,6 +106,21 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     expect((await c.call('r', 'join', { role: 'agent' })).status).toBe(410)
   })
 
+  it('forgets a run whose agents all went before an orchestrator joined', async () => {
+    const c = client({ heartbeatMs: 20 })
+    await c.join('r', 'agent')
+    // Polled as nobody, so the agent itself stays silent.
+    const asked = async () => (await c.call('r', 'poll', undefined, '?id=x&wait=0')).json.error
+    expect(await asked()).toBe('unknown id')
+    const deadline = Date.now() + 2_000
+    let error = ''
+    while (error !== 'unknown run' && Date.now() < deadline) {
+      await Bun.sleep(20)
+      error = await asked()
+    }
+    expect(error).toBe('unknown run')
+  })
+
   it('answers malformed requests with their status', async () => {
     const c = client()
     expect((await c.call('bad run', 'join', { role: 'agent' })).status).toBe(400)
