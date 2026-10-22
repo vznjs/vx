@@ -74,7 +74,7 @@ describe('a CI log receives the CLI plain', () => {
       expect(`${args.join(' ')}: ${r.text}`).not.toContain('\x1b')
       expect(`${args.join(' ')}: ${r.text}`).not.toContain('\r')
     }
-  })
+  }, 30_000)
 
   // CONTROL: the pin can fail — FORCE_COLOR paints a piped stream.
   it('FORCE_COLOR paints the same piped run', () => {

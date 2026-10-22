@@ -501,6 +501,13 @@ describe('a host that keeps runs and holds websockets', () => {
       status: 404,
       error: 'unknown to',
     })
+    // Refused for its size, still answered by its number, or its sender waits on it forever.
+    const huge = JSON.stringify({ n: 3, to: 'orchestrator', body: 'x'.repeat(1 << 20) })
+    expect(JSON.parse(c.relay.frame(K, a, huge))).toEqual({
+      n: 3,
+      status: 413,
+      error: 'body over 1 MiB',
+    })
     expect(frames).toEqual([
       { messages: [{ from: 'orchestrator', body: 'queued' }] },
       { messages: [{ from: 'orchestrator', body: 'pushed' }] },

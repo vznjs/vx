@@ -50,7 +50,8 @@ describe.skipIf(!available)('a server that exits before it is ready', () => {
     expect(await said('exit 1', '')).toEqual(['failed', []])
   })
 
+  // Exit 0 before ready is ready: nothing failed, so nothing is hinted.
   it('CONTROL: in the sandbox, exiting 0, is not', async () => {
-    expect(await said('exit 0', `sandbox: { allow: { read: ['.'] } },`)).toEqual(['failed', []])
+    expect(await said('exit 0', `sandbox: { allow: { read: ['.'] } },`)).toEqual(['success', []])
   })
 })
