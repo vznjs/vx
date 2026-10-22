@@ -92,26 +92,32 @@ export function github(options: GithubOptions = {}): DteAdapter {
       throw new Error(
         'github(): dispatching agents needs GITHUB_TOKEN (actions: write) in a GitHub Actions job',
       )
-    const ref = env['GITHUB_HEAD_REF'] || env['GITHUB_REF_NAME']
     const sha = env['GITHUB_SHA']
     const first = agents[0]!
-    const res = await call(`/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
-      method: 'POST',
-      body: JSON.stringify({
-        ref,
-        inputs: {
-          run: first.run,
-          relay: first.relay,
-          sha,
-          size,
-          agents: JSON.stringify(agents.map((a) => a.id)),
-        },
-      }),
-    })
-    if (!res.ok)
-      throw new Error(
-        `github(): dispatching ${workflow}: ${res.status} ${(await res.text()).slice(0, 200)}`,
-      )
+    // The branch's workflow file, or, once a merged PR's branch is deleted
+    // mid-run (GitHub answers 422 "No ref found"), its base's: the agents
+    // check out `sha` either way.
+    const refs = [env['GITHUB_HEAD_REF'] || env['GITHUB_REF_NAME'], env['GITHUB_BASE_REF']]
+    let res: Response
+    for (let i = 0; ; i++) {
+      res = await call(`/repos/${repo}/actions/workflows/${workflow}/dispatches`, {
+        method: 'POST',
+        body: JSON.stringify({
+          ref: refs[i],
+          inputs: {
+            run: first.run,
+            relay: first.relay,
+            sha,
+            size,
+            agents: JSON.stringify(agents.map((a) => a.id)),
+          },
+        }),
+      })
+      if (res.ok) break
+      const text = (await res.text()).slice(0, 200)
+      if (res.status !== 422 || !text.includes('No ref found') || !refs[i + 1])
+        throw new Error(`github(): dispatching ${workflow}: ${res.status} ${text}`)
+    }
     if (res.status === 200) {
       const id = ((await res.json()) as { workflow_run_id?: number }).workflow_run_id
       if (id !== undefined) {
