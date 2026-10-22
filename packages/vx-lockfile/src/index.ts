@@ -42,6 +42,7 @@ const pnpmLock = (): typeof import('./pnpm.js') => load('./pnpm.js')
 const bunLock = (): typeof import('./bun.js') => load('./bun.js')
 const npmLock = (): typeof import('./npm.js') => load('./npm.js')
 const yarnLock = (): typeof import('./yarn.js') => load('./yarn.js')
+const pnpmSettings = (): typeof import('./pnpm-settings.js') => load('./pnpm-settings.js')
 
 export interface LockfileOptions {
   /**
@@ -116,7 +117,7 @@ const MANAGERS = {
     recorded: (t) => pnpmLock().recordedImporters(t),
     settings: ['pnpm-workspace.yaml', '.npmrc'],
     settingsText: (file, text) =>
-      file === 'pnpm-workspace.yaml' ? pnpmLock().workspaceSettings(text) : undefined,
+      file === 'pnpm-workspace.yaml' ? pnpmSettings().workspaceSettings(text) : undefined,
     peersInManifest: true,
   },
   bun: {
