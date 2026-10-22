@@ -83,12 +83,15 @@ const OTHER_OUTPUTS = [
   'vx-docs/src/content/docs/design/**',
   'vx-docs/src/content/docs/plugins/**',
 ].map((g) => `!packages/${g}`)
-const SHARDS = Array.from({ length: SHARD_COUNT }, (_, i) => i + 1)
-const shardTask = (i: number) => ({
-  description: `bun test, shard ${i} of ${SHARD_COUNT} (dealt by scripts/test-shard.ts)`,
+// The macOS run's share: only the files whose outcome is the platform's
+// (`PLATFORM_TESTS` in scripts/test-shard.ts), a fifth of the suite's weight.
+export const PLATFORM_SHARD_COUNT = 6
+export const PLATFORM_UNSAFE_SHARD_COUNT = 3
+const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
+  description: `bun test${flags}, shard ${i} of ${n} (dealt by scripts/test-shard.ts)`,
   dependsOn: ['install'],
   exec: {
-    command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${SHARD_COUNT})`,
+    command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${n}${flags})`,
     env: {
       passThrough: ['VX_REQUIRE_SANDBOX', 'VX_REQUIRE_WATCH_EVENTS', 'VX_REQUIRE_NONROOT'],
       define: SUITE_ENV,
@@ -114,16 +117,25 @@ const shardTask = (i: number) => ({
     outputs: { files: [] as string[] },
   },
 })
-const shardTasks = Object.fromEntries(SHARDS.map((i) => [`test.bun.shard-${i}`, shardTask(i)]))
+const shards = <T>(
+  name: string,
+  n: number,
+  task: (i: number, n: number) => T,
+): Record<string, T> =>
+  Object.fromEntries(Array.from({ length: n }, (_, k) => [`${name}.shard-${k + 1}`, task(k + 1, n)]))
+const shardTasks = {
+  ...shards('test.bun', SHARD_COUNT, (i, n) => shardTask(i, n)),
+  ...shards('test.platform', PLATFORM_SHARD_COUNT, (i, n) => shardTask(i, n, ' --platform')),
+}
 
 // The unsafe suite (`tests/*.unsafe.test.ts`), dealt the same way: as one
 // process it was a DTE run's critical path (178 s of 216 s, 2026-10-22).
 export const UNSAFE_SHARD_COUNT = 4
-const unsafeShardTask = (i: number) => ({
-  description: `bun test — the files a sandbox cannot host, shard ${i} of ${UNSAFE_SHARD_COUNT}`,
+const unsafeShardTask = (i: number, n: number, flags = '') => ({
+  description: `bun test${flags} — the files a sandbox cannot host, shard ${i} of ${n}`,
   dependsOn: ['install'],
   exec: {
-    command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${UNSAFE_SHARD_COUNT} --unsafe)`,
+    command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${n} --unsafe${flags})`,
     env: {
       passThrough: [
         'VX_REQUIRE_SANDBOX',
@@ -174,12 +186,12 @@ const unsafeShardTask = (i: number) => ({
     outputs: { files: [] as string[] },
   },
 })
-const unsafeShardTasks = Object.fromEntries(
-  Array.from({ length: UNSAFE_SHARD_COUNT }, (_, k) => [
-    `test.bun.unsafe.shard-${k + 1}`,
-    unsafeShardTask(k + 1),
-  ]),
-)
+const unsafeShardTasks = {
+  ...shards('test.bun.unsafe', UNSAFE_SHARD_COUNT, (i, n) => unsafeShardTask(i, n)),
+  ...shards('test.platform.unsafe', PLATFORM_UNSAFE_SHARD_COUNT, (i, n) =>
+    unsafeShardTask(i, n, ' --platform'),
+  ),
+}
 
 // The release steps npm.yml, release.yml and auto-release.yml run
 // (scripts/release.ts, scripts/auto-release.ts). Uncached, since each has a
@@ -510,6 +522,11 @@ export default defineProject({
     'test.bun.unsafe': {
       description: 'bun test — the files a sandbox cannot host',
       dependsOn: ['test.bun.unsafe.shard-*'],
+    },
+
+    'test.platform': {
+      description: 'bun test — only the files whose outcome is the platform’s (the macOS run)',
+      dependsOn: ['test.platform.shard-*', 'test.platform.unsafe.shard-*'],
     },
 
     'lint.oxlint': {

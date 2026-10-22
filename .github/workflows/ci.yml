@@ -287,8 +287,9 @@ jobs:
   # broke every cache save; the /tmp -> /private/tmp symlinked-base
   # containment refusing every restore; close() leaking a handle on
   # SQLITE_IOERR_VNODE). The platform-divergence classes it guards are tar
-  # formats, filesystem/symlink semantics and SQLite behaviour — all covered
-  # by the core suite with no extra services.
+  # formats, filesystem/symlink semantics and SQLite behaviour, plus the
+  # sandbox, signals and watching: `test.platform` runs only those files
+  # (owner, 2026-10-22: "shouldn't we have only some?").
   #
   # VX_REQUIRE_SANDBOX, as on Linux: the sandbox suites run here whenever
   # seatbelt answers, so an unavailable one must fail, not skip quietly.
@@ -343,13 +344,13 @@ jobs:
       # runtime into by the grant's glob, the sandbox canary (a gate since
       # 2026-08-25: a NOT_ENFORCED run reds it) and every package's build
       # under seatbelt with no cache. All on Mac agents.
-      - name: vx run test (core, darwin)
+      - name: vx run test.platform (core, darwin)
         env:
           VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
           GITHUB_TOKEN: ${{ github.token }}
           VX_REQUIRE_SANDBOX: '1'
           VX_REQUIRE_WATCH_EVENTS: '1'
-        run: bun packages/vx/src/bin.ts run test check.binary check.sandbox-canary check.build-cold build.bun.darwin-x64 build.bun.linux-x64 --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run test.platform check.binary check.sandbox-canary check.build-cold build.bun.darwin-x64 build.bun.linux-x64 --filter @vzn/vx
 
       # A killed vx never closes its run: cancel the agent runs it
       # dispatched (github() lists them in RUNNER_TEMP), or queued ones
