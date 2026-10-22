@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte-relay: allow issuer:repo:workflow entries in one ALLOW
+
+the Worker's ISSUERS, REPOSITORIES and WORKFLOWS and vx-dte-relay's --issuer, --repository and --workflow are replaced by ALLOW and --allow, entries issuer:owner/repo:workflow; createVerifier takes allow instead of issuers, repositories and workflows.
+
 ## vx-dte-relay: let the orchestrator claim its run with a key
 
 an orchestrator joins with key, its P-256 public key, and signs each request as it in a vx-proof header; POST remove takes an agent off the run.

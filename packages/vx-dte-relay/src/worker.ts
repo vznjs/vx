@@ -2,9 +2,9 @@
 // run's mailboxes live in one place and its held polls answer there.
 // Participants hold websockets the object hibernates between messages: its
 // state is in its storage, and an alarm, not a timer, finds the silent.
-// `wrangler.jsonc` deploys it; set REPOSITORIES.
+// `wrangler.jsonc` deploys it; set ALLOW.
 
-import { claimedRun, createVerifier } from './oidc.js'
+import { claimedRun, createVerifier, parseAllow } from './oidc.js'
 import { createRelay, runKey, type Relay, type RelayStore } from './relay.js'
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
@@ -43,17 +43,12 @@ declare const WebSocketRequestResponsePair: new (request: string, response: stri
 
 export interface Env {
   readonly RELAY: DurableObjectNamespace
-  /** The issuers whose tokens the relay trusts, comma or space separated. */
-  readonly ISSUERS: string
-  /** The repositories whose runs it carries, `owner/repo`, comma or space separated. */
-  readonly REPOSITORIES?: string
-  /** The workflows whose jobs may take part (`OidcOptions.workflows`), comma or space separated; unset, any. */
-  readonly WORKFLOWS?: string
+  /** Who may take part (`parseAllow`): `issuer:owner/repo:workflow`, space separated. */
+  readonly ALLOW?: string
   /** The `aud` every token must name; unset, the URL the relay is reached at. */
   readonly AUDIENCE?: string
 }
 
-const list = (s: string | undefined): string[] => (s ?? '').split(/[\s,]+/).filter((v) => v !== '')
 
 const RUN = /^\/v1\/runs\/([^/]+)\//
 
@@ -77,18 +72,20 @@ export class RelayRun {
     private readonly state: DurableObjectState,
     env: Env,
   ) {
-    const issuers = list(env.ISSUERS)
-    const repositories = list(env.REPOSITORIES)
-    const workflows = list(env.WORKFLOWS)
-    if (issuers.length === 0 || repositories.length === 0)
-      throw new Error('vx-dte-relay: set ISSUERS and REPOSITORIES')
+    let allow: ReturnType<typeof parseAllow>
+    try {
+      allow = parseAllow(env.ALLOW ?? '')
+    } catch (err) {
+      throw new Error(`vx-dte-relay: ALLOW: ${(err as Error).message}`)
+    }
+    if (allow.length === 0) throw new Error('vx-dte-relay: set ALLOW')
     // The worker's URL is not known before its first deploy; a token for
     // another one is not meant for this relay.
     const verifiers = new Map<string, ReturnType<typeof createVerifier>>()
     const verifierOf = (audience: string): ReturnType<typeof createVerifier> => {
       let v = verifiers.get(audience)
       if (v === undefined) {
-        v = createVerifier({ issuers, audience, repositories, workflows })
+        v = createVerifier({ allow, audience })
         verifiers.set(audience, v)
       }
       return v

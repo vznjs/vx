@@ -18,9 +18,13 @@ server that speaks [PROTOCOL.md](./PROTOCOL.md) can take its place.
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay)
 
 The button copies this directory into a new repository of yours and
-deploys it. It asks for one value, `REPOSITORIES`: the repositories whose
-CI runs the relay carries, as `owner/repo`, comma separated. Every other
-repository's token is refused. The relay's URL is the worker's URL, such
+deploys it. It asks for one value, `ALLOW`: who may take part, space
+separated, each `issuer:owner/repo:workflow`.
+`https://token.actions.githubusercontent.com:vznjs/vx:ci.yml` admits the
+jobs of `.github/workflows/ci.yml` in `vznjs/vx`;
+`https://gitlab.com:group/project:.gitlab-ci.yml` a GitLab project's.
+Repeat an entry for each repository and workflow, the orchestrator's and
+the agents'. Every other token is refused. The relay's URL is the worker's URL, such
 as `https://vx-dte-relay.<you>.workers.dev`. Name it as `relay` in
 `dte()`.
 
@@ -30,7 +34,7 @@ Or deploy from this directory with Cloudflare's
 ```sh
 npm install
 npx wrangler login
-npx wrangler deploy --var REPOSITORIES:owner/repo
+npx wrangler deploy --var ALLOW:https://token.actions.githubusercontent.com:owner/repo:ci.yml
 ```
 
 `src/worker.ts` is the same relay as the one on Bun. Each run is one
@@ -41,13 +45,6 @@ it, and an alarm finds the participants that went silent.
 `wrangler.jsonc` sets the rest; change a value there, in the repository
 the button made, or in the Worker's settings in the Cloudflare dashboard:
 
-- `ISSUERS` (comma separated) is GitHub Actions' issuer. Add
-  `https://gitlab.com`, or a self-managed GitLab, to carry GitLab's runs.
-- `WORKFLOWS`, empty, admits any workflow of `REPOSITORIES`. Name
-  workflows, comma separated, to admit only their jobs:
-  `owner/repo/.github/workflows/ci.yml` on GitHub (a reusable workflow
-  by its own path), `gitlab.com/group/project//.gitlab-ci.yml` on
-  GitLab, any ref. List the orchestrator's workflow and the agents'.
 - `AUDIENCE`, unset, is the URL the relay is reached at. Set it only
   when tokens name another one.
 
@@ -56,24 +53,19 @@ the button made, or in the Worker's settings in the Cloudflare dashboard:
 It is not on npm yet. From a checkout of this repo:
 
 ```sh
-bun packages/vx-dte-relay/src/bun.ts --issuer https://gitlab.com --repository group/app --audience https://relay.example.com --port 8080
+bun packages/vx-dte-relay/src/bun.ts --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com --port 8080
 ```
 
 Or as a container, built from this directory:
 
 ```sh
 docker build -t vx-dte-relay packages/vx-dte-relay
-docker run -p 8080:8080 vx-dte-relay --issuer https://gitlab.com --repository group/app --audience https://relay.example.com
+docker run -p 8080:8080 vx-dte-relay --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com
 ```
 
-- `--issuer <url>` names an issuer whose tokens the relay trusts. Repeat
-  it for more than one, such as a self-managed GitLab beside
-  `https://token.actions.githubusercontent.com`.
-- `--repository <owner/repo>` names a repository whose runs the relay
-  carries; repeat it for more. A token of any other is refused. GitLab
-  names a project by its full path, `group/subgroup/project`.
-- `--workflow <path>`, repeated, admits only jobs of these workflows
-  (`WORKFLOWS` above); unset, any.
+- `--allow <issuer:owner/repo:workflow>`, repeated, is an `ALLOW` entry
+  (above). GitLab names a project by its full path,
+  `group/subgroup/project`.
 - `--audience <aud>` is the `aud` every token must name: the URL the CI
   job asks its ID token for.
 - `--port` (default 8080) and `--host` (default `0.0.0.0`) set where it
@@ -113,15 +105,17 @@ The same relay as a `fetch` handler, to mount in a server of your own
   each request as the orchestrator.
 - `createVerifier(options: OidcOptions)` returns that `verify`.
   `OidcOptions` is
-  `{ issuers, audience, repositories?, workflows?, runClaims?, fetchJson?, now? }`:
-  the trusted issuers, the `aud` a token must name,
-  the `owner/repo`s a token's `repositoryClaimOf(iss)` must name (matched
-  without case; unset, none is checked), the workflows its
-  `workflowClaimOf(iss)` must name up to its `@` (unset or empty, any), run claims per issuer (default
+  `{ allow, audience, runClaims?, fetchJson?, now? }`: who may take part,
+  `Allowed`s `{ issuer, repository?, workflow? }` (an unset part admits
+  any; a token's `repositoryClaimOf(iss)` and `workflowClaimOf(iss)` up to
+  its `@` are matched without case), the `aud` a token must name, run claims per issuer (default
   `runClaimsOf(iss)`), and a key reader and clock for tests. It
   resolves a `VerifiedToken`, `{ iss, run, job? }` (`job`, the CI job it
   is from, pins a run's orchestrator), or rejects with a
   `TokenError` carrying the `status` (401 or 403) the relay answers.
+- `parseAllow(list)` reads `ALLOW`'s entries into `Allowed`s, each
+  `issuer:owner/repo:workflow` read from the right (an issuer holds `:`s),
+  or throws naming the entry it cannot read.
 - `runClaimsOf(iss)` names the claims that bind a run: `repository_id`
   for GitHub Actions, `project_id` otherwise.
 - `repositoryClaimOf(iss)` names the claim that names a token's

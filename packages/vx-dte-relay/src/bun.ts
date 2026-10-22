@@ -2,10 +2,10 @@
 // `bunx @vzn/vx-dte-relay`: the relay on Bun, runs in memory (PROTOCOL.md).
 
 import { parseArgs } from 'node:util'
-import { createVerifier } from './oidc.js'
+import { createVerifier, parseAllow } from './oidc.js'
 import { serveRelay } from './serve.js'
 
-const USAGE = `usage: vx-dte-relay --issuer <url>... --repository <owner/repo>... [--workflow <path>...] --audience <aud> [--port 8080] [--host 0.0.0.0]
+const USAGE = `usage: vx-dte-relay --allow <issuer:owner/repo:workflow>... --audience <aud> [--port 8080] [--host 0.0.0.0]
        vx-dte-relay --no-auth [--port 8080]   (loopback only)`
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
@@ -14,9 +14,7 @@ function main(argv: string[]): void {
   const { values } = parseArgs({
     args: argv,
     options: {
-      issuer: { type: 'string', multiple: true },
-      repository: { type: 'string', multiple: true },
-      workflow: { type: 'string', multiple: true },
+      allow: { type: 'string', multiple: true },
       audience: { type: 'string' },
       port: { type: 'string', default: '8080' },
       host: { type: 'string' },
@@ -31,13 +29,13 @@ function main(argv: string[]): void {
   const noAuth = values['no-auth']
   const host = values.host ?? (noAuth ? '127.0.0.1' : '0.0.0.0')
   if (noAuth && !LOOPBACK.has(host)) fail('--no-auth listens on loopback only')
-  if (
-    !noAuth &&
-    (values.issuer === undefined ||
-      values.repository === undefined ||
-      values.audience === undefined)
-  )
-    fail(USAGE)
+  if (!noAuth && (values.allow === undefined || values.audience === undefined)) fail(USAGE)
+  let allow: ReturnType<typeof parseAllow> = []
+  try {
+    allow = parseAllow((values.allow ?? []).join(' '))
+  } catch (err) {
+    fail(`--allow: ${(err as Error).message}`)
+  }
   const port = Number(values.port)
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
@@ -46,12 +44,7 @@ function main(argv: string[]): void {
     port,
     verify: noAuth
       ? undefined
-      : createVerifier({
-          issuers: values.issuer!,
-          audience: values.audience!,
-          repositories: values.repository!,
-          ...(values.workflow === undefined ? {} : { workflows: values.workflow }),
-        }),
+      : createVerifier({ allow, audience: values.audience! }),
   })
   console.log(`vx-dte-relay on ${server.url}`)
   const stop = (): void => {

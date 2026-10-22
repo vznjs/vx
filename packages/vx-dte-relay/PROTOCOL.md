@@ -119,9 +119,11 @@ over 10 000 messages or 64 MiB. An error answers `{ "error": "<reason>" }`.
 The relay checks each token's signature against its issuer's published
 keys (`<iss>/.well-known/openid-configuration`, then `jwks_uri`; RS256),
 its `exp` and `nbf`, that `iss` is one the relay trusts, that `aud`
-names the relay's audience, and that the token's repository is one the
-relay serves (`repository` on GitHub Actions, `project_path` on GitLab,
-matched without case; else `403`). A run is its id within its token's
+names the relay's audience, and that the token's repository and workflow
+are an entry the relay allows for its issuer (`repository` on GitHub
+Actions, `project_path` on GitLab; `job_workflow_ref` on GitHub, a file of
+`.github/workflows/`, `ci_config_ref_uri` on GitLab, any ref; matched
+without case; else `403`). A run is its id within its token's
 issuer and run claims: the same id in a token of another repository is
 another run, so a tenant cannot open a run id before its owner does,
 even one it learned. The run claims name the repository:
@@ -131,10 +133,8 @@ even one it learned. The run claims name the repository:
 | GitLab (`https://gitlab.com`, or a self-managed host)          | `project_id`    |
 | GitHub Actions (`https://token.actions.githubusercontent.com`) | `repository_id` |
 
-So only jobs of the repository that started a run can join it. A relay
-may also name workflows: then only their jobs join (GitHub's
-`job_workflow_ref`, GitLab's `ci_config_ref_uri`, any ref), and any
-other token answers `403`.
+So only jobs of the repository that started a run can join it, and only
+of a workflow the relay allows for that repository.
 
 The orchestrator is pinned to the CI job it joined from: GitHub's
 `check_run_id` (on a host whose tokens lack it, `run_id` and

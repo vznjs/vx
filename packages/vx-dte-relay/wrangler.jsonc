@@ -8,13 +8,10 @@
   // The relay's URL until a domain is added.
   "workers_dev": true,
   "vars": {
-    // Add `https://gitlab.com` (or a self-managed GitLab), comma separated, to carry GitLab's runs.
-    "ISSUERS": "https://token.actions.githubusercontent.com",
-    // The repositories whose CI runs it carries, `owner/repo`, comma separated. Empty: it refuses to start.
-    "REPOSITORIES": "",
-    // Empty: any workflow of REPOSITORIES. Else the ones whose jobs may take part, comma separated,
-    // such as `owner/repo/.github/workflows/ci.yml` (any ref).
-    "WORKFLOWS": "",
+    // Who may take part, space separated: `issuer:owner/repo:workflow`, such as
+    // `https://token.actions.githubusercontent.com:vznjs/vx:ci.yml`
+    // (GitLab: `https://gitlab.com:group/project:.gitlab-ci.yml`). Empty: it refuses to start.
+    "ALLOW": "",
   },
   "durable_objects": {
     "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }],
