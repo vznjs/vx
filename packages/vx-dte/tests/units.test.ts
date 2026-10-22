@@ -732,6 +732,9 @@ it('docker() starts each agent as a container of its size, on a fresh clone', as
   })
   const saved = process.env['PATH']
   process.env['PATH'] = `${bin}:${saved}`
+  // docker() mounts ~/.vx: a home of its own, not the real one.
+  const home = process.env['HOME']
+  process.env['HOME'] = await tmp()
   // As root: as another user a Linux container is told who it is.
   const uid = process.getuid!
   process.getuid = () => 0
@@ -780,6 +783,7 @@ it('docker() starts each agent as a container of its size, on a fresh clone', as
     await d.close?.()
   } finally {
     process.env['PATH'] = saved
+    process.env['HOME'] = home
     process.getuid = uid
   }
 })
