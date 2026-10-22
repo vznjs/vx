@@ -121,7 +121,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   It refuses a Bun below `engines.bun` first (`check.bun`, item 575).
 - `bun test` alone cannot see a type error: it is transpile-only. Never
   pipe a check through `tail`/`grep` — it masks the exit.
-- The core suite runs as `SHARD_COUNT` (12, `vx.config.ts`) parallel
+- The core suite runs as `SHARD_COUNT` (24, `vx.config.ts`) parallel
   shard tasks, generated from one template; `scripts/test-shard.ts <i>
 <n>` deals the files by recorded weight (`tests/shard-weights.json`,
   refreshed with `--weigh <junit-dir>`), so the wall time is the
