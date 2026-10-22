@@ -384,29 +384,62 @@ describe('a host that keeps runs and holds websockets', () => {
     ])
   })
 
-  it('remembers a closed run a day by its hash alone, so its id never opens again', async () => {
+  /** Sweeps `c` as if `ms` had passed. */
+  const later = (c: ReturnType<typeof client>, ms: number) => {
+    const clock = Date.now
+    const now = clock()
+    Date.now = () => now + ms
+    try {
+      return c.relay.sweep()
+    } finally {
+      Date.now = clock
+    }
+  }
+
+  // An object kept a day per run held 100+ on one host (owner, 2026-10-22).
+  it('keeps nothing of a run its orchestrator signed off, once its agents heard', async () => {
     const store = memory()
     const c = client({ store, timer: false })
     const o = await c.join(R, 'orchestrator')
     await c.join(R, 'agent')
     await c.call(R, 'leave', { id: o })
-    const clock = Date.now
-    const at = (ms: number) => {
-      const now = clock()
-      Date.now = () => now + ms
-      try {
-        c.relay.sweep()
-      } finally {
-        Date.now = clock
-      }
-    }
-    at(11 * 60_000)
-    expect([...store.kv]).toEqual([
-      [`r/${K}`, { closed: true, closedAt: expect.any(Number), pin: null, cert: null }],
-    ])
+    // The agent polls over HTTP: it reads `410` a minute, then nothing is kept.
     expect((await c.call(R, 'join', { role: 'agent' })).status).toBe(410)
-    at(25 * 60 * 60_000)
+    expect(later(c, 61_000)).toBeUndefined()
     expect([...store.kv]).toEqual([])
+    const alone = client({ store, timer: false })
+    const o1 = await alone.join(R1, 'orchestrator')
+    await alone.call(R1, 'leave', { id: o1 })
+    expect([...store.kv]).toEqual([])
+    expect(alone.relay.sweep()).toBeUndefined()
+  })
+
+  // Agents start after their orchestrator joins: one alone is late for a run that ended.
+  it('closes a run no orchestrator joined in ten minutes', async () => {
+    const store = memory()
+    const c = client({ store, timer: false })
+    const a = await c.join(R, 'agent')
+    // Heard from all along.
+    c.relay.seen(K, a, Date.now() + 10 * 60_000)
+    expect(later(c, 9 * 60_000)! - Date.now()).toBeLessThanOrEqual(10 * 60_000 + 1)
+    later(c, 10 * 60_000 + 2)
+    expect((await c.call(R, 'poll', undefined, `?id=${a}&wait=0`)).status).toBe(410)
+  })
+
+  // Restored as heard just now, a gone participant kept its object waking
+  // every 15 s, forever (2026-10-22).
+  it('drops a participant silent across a restart', async () => {
+    const store = memory()
+    const before = client({ store, timer: false })
+    const o = await before.join(R, 'orchestrator')
+    await before.join(R, 'agent')
+    await before.poll(R, o)
+    before.relay.sweep()
+    const after = client({ store, timer: false }, before.provers)
+    // HTTP participants are lost after three heartbeats of 5 s.
+    expect(later(after, 16_000)).toBeUndefined()
+    expect([...store.kv]).toEqual([])
+    expect((await after.call(R, 'poll', undefined, `?id=${o}&wait=0`)).status).toBe(404)
   })
 
   it('sweeps when its host asks, and says when to ask next', async () => {
@@ -423,6 +456,30 @@ describe('a host that keeps runs and holds websockets', () => {
       { from: 'relay', body: { type: 'joined', id: a, info: null } },
       { from: 'relay', body: { type: 'lost', id: a } },
     ])
+  })
+
+  // Each sweep wakes a Durable Object; at three heartbeats it woke every
+  // 12 s and stayed billed the whole run (2026-10-22).
+  it('gives a participant on a socket twelve heartbeats, one polling three', async () => {
+    const c = client({ heartbeatMs: 20, timer: false })
+    const o = await c.join(R, 'orchestrator')
+    const a = await c.join(R, 'agent')
+    const b = await c.join(R, 'agent')
+    expect(c.relay.attach(K, a, { send() {}, close() {} })).toBe(true)
+    await Bun.sleep(70)
+    c.relay.seen(K, o, Date.now())
+    const next = c.relay.sweep()!
+    expect(await c.poll(R, o)).toEqual([
+      { from: 'relay', body: { type: 'joined', id: a, info: null } },
+      { from: 'relay', body: { type: 'joined', id: b, info: null } },
+      { from: 'relay', body: { type: 'lost', id: b } },
+    ])
+    // The socket's silence is what the next sweep waits for: o polls.
+    expect(next - Date.now()).toBeGreaterThan(40)
+    await Bun.sleep(200)
+    c.relay.seen(K, o, Date.now())
+    c.relay.sweep()
+    expect(await c.poll(R, o)).toEqual([{ from: 'relay', body: { type: 'lost', id: a } }])
   })
 
   it('pushes messages down a socket and takes sends from it', async () => {
@@ -443,6 +500,13 @@ describe('a host that keeps runs and holds websockets', () => {
       n: 2,
       status: 404,
       error: 'unknown to',
+    })
+    // Refused for its size, still answered by its number, or its sender waits on it forever.
+    const huge = JSON.stringify({ n: 3, to: 'orchestrator', body: 'x'.repeat(1 << 20) })
+    expect(JSON.parse(c.relay.frame(K, a, huge))).toEqual({
+      n: 3,
+      status: 413,
+      error: 'body over 1 MiB',
     })
     expect(frames).toEqual([
       { messages: [{ from: 'orchestrator', body: 'queued' }] },

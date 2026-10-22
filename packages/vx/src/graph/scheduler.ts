@@ -354,6 +354,14 @@ export interface ScheduleOptions {
    */
   restoreTier?: ReadonlySet<string>
   /**
+   * Servers held back until the caller knows whether their dependants are
+   * hits a remote holds. Each resolves to the dependants it has added to
+   * `restoreTier` since the run began (the caller's set, read live); a
+   * server whose every dependant is then in the tier is idle, as above,
+   * and any other is dispatched as usual.
+   */
+  heldServers?: ReadonlyMap<string, Promise<readonly string[]>>
+  /**
    * Pool assignment for tasks placed on an executor with its own capacity
    * (a remote pool). Such a task occupies one of the pool's `capacity` slots
    * instead of a local worker slot and reserves no local resources, so a
@@ -582,6 +590,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // without an outcome: it is not part of the run, as a pruned task is not.
   const idle = idleServers(nodes, dependents, restoreTier)
   const dormant = new Set<string>()
+  // Held servers not yet answered, and those of them that became ready.
+  const unanswered = new Set(options.heldServers?.keys() ?? [])
+  for (const id of idle) unanswered.delete(id)
+  const heldReady = new Set<string>()
   let settledIdle = 0
   const execReady = new ReadyHeap(priority)
   const restoreReady = new ReadyHeap(priority)
@@ -604,6 +616,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     else continue
     readyAt.set(node.id, startedAt)
   }
+  const promoted = new Set<string>()
 
   let active = 0
   // Restore-tier work is disk I/O — a confirmed hit's tar extract is ~8
@@ -622,7 +635,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     serial ? active + activeRestore < 1 : activeRestore < restoreConcurrency
   let resolved = false
   // A refusal's text → the first task that said it. A corrupt cache index
-  // reaches every lookup as one UserError; a repeat names the first.
+  // reaches every lookup as one UserError; on bare stderr a repeat names the first.
   const refusedBy = new Map<string, string>()
 
   // Admission policy over the count limit (a plugin's `admit`). Inactive
@@ -872,6 +885,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           while (execReady.size > 0) {
             const seq = execReady.peekSeq()
             const id = execReady.pop() as string
+            if (unanswered.has(id) && !willSkip(id)) {
+              heldReady.add(id)
+              continue
+            }
             if (willSkip(id) || idle.has(id)) return id
             if (exclusive?.has(id) === true) {
               if (!busy() && (!admitActive || admits(id))) return id
@@ -1054,8 +1071,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               const text = isUserError(err)
                 ? message
                 : `${message} — ${isOutOfFds(err) ? OUT_OF_FDS_HINT : fsRefusalHint(err)}`
-              const first = refusedBy.get(text)
-              if (first === undefined) refusedBy.set(text, id)
+              // In a task's own output block, in full: that block is read
+              // alone, and "as <task> above" named one printed elsewhere or
+              // not at all (M, 2026-10-22). On bare stderr the first is above.
+              const first = options.onError === undefined ? refusedBy.get(text) : undefined
+              if (!refusedBy.has(text)) refusedBy.set(text, id)
               line = `[vx] ${id}: ${first === undefined ? text : `as ${first} above`}\n`
             } else {
               const named = err instanceof Error && err.name !== 'Error' ? `${err.name}: ` : ''
@@ -1096,6 +1116,28 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         resolved = true
         resolve(outcomes)
       }
+    }
+
+    // A held server's answer: the dependants it found go on the restore
+    // lane, and the server is idle when they were all of them.
+    const answer = (id: string, found: readonly string[]): void => {
+      if (resolved || !unanswered.delete(id)) return
+      for (const d of found) {
+        if (promoted.has(d) || outcomes.has(d) || !inRestoreTier(d)) continue
+        promoted.add(d)
+        restoreReady.push(d)
+        readyAt.set(d, Date.now())
+      }
+      if (dependents.get(id)?.every((d) => inRestoreTier(d)) === true) idle.add(id)
+      if (heldReady.delete(id)) execReady.push(id)
+      tick()
+    }
+    for (const [id, found] of options.heldServers ?? []) {
+      if (unanswered.has(id))
+        void found.then(
+          (ids) => answer(id, ids),
+          () => answer(id, []),
+        )
     }
 
     tick()

@@ -39,11 +39,12 @@ const checkout = (j: Job | undefined): Step | undefined =>
   j?.steps?.find((s) => String(s.uses).startsWith('actions/checkout@'))
 
 describe('ci.yml', () => {
-  it('is the two runs, plus the arm64 binary on main', () => {
+  it('is the Linux run, plus macOS and the arm64 binary on main', () => {
+    const top = 'github.event.pull_request.stack.position == github.event.pull_request.stack.size'
     expect(
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
-      ['linux', 'lint · format · test', 'ubuntu-latest', undefined, undefined],
+      ['linux', 'lint · format · test', 'ubuntu-latest', top, undefined],
       [
         'binary-linux-arm64',
         'compiled binary (linux-arm64)',
@@ -51,7 +52,14 @@ describe('ci.yml', () => {
         "github.event_name != 'pull_request'",
         undefined,
       ],
-      ['macos', 'core tests (macOS)', 'macos-latest', undefined, undefined],
+      // Both runs only plan and dispatch: Linux, so every macOS runner is an agent's.
+      [
+        'macos',
+        'core tests (macOS)',
+        'ubuntu-latest',
+        "github.event_name != 'pull_request'",
+        undefined,
+      ],
     ])
   })
 
@@ -81,11 +89,31 @@ describe('ci.yml', () => {
     for (const [id, j] of withToken) expect([id, j.permissions?.['checks']]).toEqual([id, 'write'])
   })
 
-  // A machine-local step in a job whose env names the run would join it
-  // as a second orchestrator.
-  it("runs a machine-local step outside the job's run", () => {
-    const local = doc.jobs['macos']!.steps!.filter((s) => /canary|--cache-policy/.test(s.run ?? ''))
-    expect(local.map((s) => s.env?.['VX_DTE_RUN'])).toEqual(['', ''])
+  // Nothing runs on a distributed run's orchestrator (owner, 2026-10-22):
+  // the macOS checks of this machine's sandbox are tasks a Mac agent runs.
+  it('runs the macOS sandbox checks as tasks of the run', () => {
+    const steps = doc.jobs['macos']!.steps!
+    expect(steps.filter((s) => /sandbox-canary\.ts|--cache-policy/.test(s.run ?? ''))).toEqual([])
+    const run = steps.find((s) => s.env?.['VX_DTE_RELAY'] !== undefined)!.run!
+    expect(run).toContain(' check.sandbox-canary ')
+    expect(run).toContain(' check.build-cold ')
+  })
+
+  // A killed vx never closes its run, so its queued agents held macOS runners.
+  it('cancels the agent runs a run dispatched, on any outcome', () => {
+    for (const id of ['linux', 'macos']) {
+      const cancel = doc.jobs[id]!.steps!.find((s) => s.run?.includes('vx-dte-runs'))
+      expect([id, cancel?.if]).toEqual([id, 'always()'])
+    }
+  })
+
+  // Every sandboxed task runs on an agent, which enforces it there.
+  it('installs no sandbox runtime on a run', () => {
+    for (const id of ['linux', 'macos'])
+      expect([id, doc.jobs[id]!.steps!.some((s) => s.uses?.includes('vx-runner'))]).toEqual([
+        id,
+        false,
+      ])
   })
 
   it('filters no trigger by path', () => {
@@ -120,6 +148,20 @@ describe('vx-agent.yml', () => {
     // workflow GitHub refuses to dispatch.
     const step = agent.steps?.find((s) => s.run?.includes('dte agent') === true)
     expect(step?.env?.['VX_CACHE_DIR']).toBe('${{ runner.temp }}/vx-cache')
+  })
+
+  // apt's ~9 s ran after `bun install`, on every agent's warm-up (2026-10-22).
+  it('installs the sandbox runtime while Bun installs, and proves it before the agent', () => {
+    const steps = agent.steps!
+    const at = (p: (s: Step) => boolean) => steps.findIndex(p)
+    const runner = (phase: string) =>
+      at((s) => s.uses === './.github/actions/vx-runner' && s.with?.['phase'] === phase)
+    const install = at((s) => s.run?.includes('bun install') === true)
+    const agentStep = at((s) => s.run?.includes('dte agent') === true)
+    expect(runner('start')).toBeGreaterThan(-1)
+    expect(runner('start')).toBeLessThan(install)
+    expect(runner('finish')).toBeGreaterThan(install)
+    expect(runner('finish')).toBeLessThan(agentStep)
   })
 
   it('mounts the small disk the Linux run names, on Linux', () => {

@@ -137,7 +137,9 @@ The run is your own job's `vx run`. When it needs agents it dispatches
 `.github/workflows/vx-agent.yml` once per size, with the agents of that
 size as a matrix. When the run ends it cancels each agent run it
 dispatched, so one still queued does not hold a runner the next run
-waits for. No secret: each side proves its key with the job's OIDC
+waits for. A vx that is killed never gets to: it also lists each run in
+`$RUNNER_TEMP/vx-dte-runs`, one API path per line, for an `if: always()`
+step to cancel (this repo's `ci.yml` does). No secret: each side proves its key with the job's OIDC
 token, and the relay's token is an OIDC token for the relay's URL. Such a
 token lasts 5 minutes, so each side asks for a new one a minute before
 its token expires.
@@ -281,15 +283,20 @@ the ones it never played when it ends.
 - A task goes to the agent that holds most of its dependencies' outputs,
   so a chain stays on one machine.
 - A sandboxed task runs on an agent inside the agent's own sandbox, with
-  the same `exec.sandbox`; a violation there fails it here, named in this
-  checkout's paths.
+  the same `exec.sandbox`, built there (`sandboxRequestFor`): its paths,
+  walls and credential stores are the agent's, so an orchestrator on
+  Linux can run macOS agents. A violation there fails it here, named in
+  this checkout's paths.
 - A persistent task a task depends on starts on the agent that runs the
   task, once per agent, ready before it, and stops when the agent leaves;
   the orchestrator never starts it, and an agent no dependant reaches
   never does (owner, 2026-10-22).
+- A task whose key folds a runtime probe (`inputs.runtime`, such as
+  `bun --version`) runs on an agent, which answers the probe first and
+  fails the task when it answers otherwise than this machine did.
 - Tasks that must run here stay here: a requested persistent task, one
-  with a `sandbox` or `exec.remote: false`, interactive tasks, and their
-  dependants (core's placement).
+  with `exec.remote: false`, interactive tasks, and their dependants
+  (core's placement).
 - An agent restores, by key, the declared outputs of every task the one
   it runs depends on, unless it ran or restored them before. Files a task
   writes without declaring them stay on the agent.
@@ -300,10 +307,13 @@ the ones it never played when it ends.
 - An agent that stops answering, stops saying it holds a task, or cannot
   run one (a full disk) gets no more work, and its tasks run again on
   another. A task two such agents had begun fails, naming both; one an
-  agent had not begun yet does not count.
+  agent had not begun yet does not count. With no agent of the run left
+  to take it and none starting, it fails at once.
 - A relay unreachable for three heartbeats fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller
   than the agents. What finished is saved, so a rerun resumes from it.
+  A shorter fault (a `5xx` while the host restarts the relay, a dropped
+  connection) is asked through, by the orchestrator and agents alike.
 - An agent that never joins says why on its row (`failed  exited 1:
 …`). The first such failure in a run starts another agent in its
   place, as a checkout or install can fail on the network; a second
@@ -390,8 +400,8 @@ utilization of every machine together:
     how many of it one run may start (absent, no cap). Agents start in
     declared order for the cores the remaining tasks keep busy: laid out
     as early as their dependencies allow, each for its usual duration
-    (1 s without history), the most cores in use at once for at least
-    half the time left, less this machine's share. None stops before the
+    (1 s without history), their work spread over their critical path
+    (core-seconds over its length, rounded up), less this machine's share. None stops before the
     run ends. A task the history has not measured runs alone on an agent;
     one that used all of its agent's cores or memory (90%) last time runs
     alone on the smallest bigger size, which the run starts for it. Each

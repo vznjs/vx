@@ -84,6 +84,8 @@ interface Run {
   closed: boolean
   orchestrator?: Participant
   byId: Map<string, Participant>
+  /** When its first participant joined: a run no orchestrator joins soon is over. */
+  openedAt: number
   closedAt?: number
   /** The CI job its orchestrator joined from (`VerifiedToken.job`); only that job acts as it. */
   pin?: string
@@ -103,14 +105,29 @@ const MAX_QUEUE = 10_000
 /** 10 000 bodies of 1 MiB would be 10 GiB held for one participant that does not poll. */
 const MAX_QUEUE_BYTES = 64 << 20
 const MAX_WAIT_MS = 25_000
-/** A closed run holds its participants this long. */
-const CLOSED_TTL_MS = 10 * 60_000
 /**
- * A closed run answers `410` this long, by its hash and when it closed
- * only, so its id never takes another orchestrator while one of its
- * agents could still start: CI hosts drop a job queued a day.
+ * A closed run answers `410` this many heartbeats (a minute) to an agent
+ * polling over HTTP; one on a socket is told at once, and the run goes
+ * when none is left. Its storage goes with it: an object kept a day per
+ * run held 100+ on one host (owner, 2026-10-22).
  */
-const TOMBSTONE_TTL_MS = 24 * 60 * 60_000
+const CLOSED_BEATS = 12
+/**
+ * A run no orchestrator joined closes after this many heartbeats (ten
+ * minutes). Agents start after their orchestrator joins, so one alone is
+ * late for a run that ended, which nothing remembers; a CI that starts
+ * agents beside it has this long to join.
+ */
+const ORPHAN_BEATS = 120
+/**
+ * A participant on a socket is lost after this many heartbeats of silence,
+ * not three: its pings cost a host nothing, but each sweep wakes it, and a
+ * Durable Object woken every 12 s stayed awake, billed, the whole run
+ * (2026-10-22). A socket that closes is still noticed at once; this bounds
+ * only one a network stopped carrying, which the orchestrator's lease
+ * catches first anyway.
+ */
+const SOCKET_LOST_BEATS = 12
 /** How far a proof's time may be from the relay's: a CI runner's clock drifts. */
 const PROOF_SKEW_MS = 2 * 60_000
 
@@ -139,6 +156,8 @@ const errorBody = (err: HttpError | TokenError): object =>
 
 export function createRelay(opts: RelayOptions = {}): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 5_000
+  const closedTtl = CLOSED_BEATS * heartbeatMs
+  const orphanTtl = ORPHAN_BEATS * heartbeatMs
   const runs = new Map<string, Run>()
   const store = opts.store
   const runAt = (key: string): string => `r/${key}`
@@ -148,12 +167,15 @@ export function createRelay(opts: RelayOptions = {}): Relay {
   const saveRun = (run: Run): void =>
     store?.put(runAt(run.key), {
       closed: run.closed,
+      openedAt: run.openedAt,
       closedAt: run.closedAt ?? null,
       pin: run.pin ?? null,
       cert: run.cert ?? null,
     })
+  // `seen` too: restored as heard just now, a gone participant kept its
+  // object waking every sweep, forever (2026-10-22).
   const saveParticipant = (run: Run, p: Participant): void =>
-    store?.put(pAt(run, p.id), { role: p.role, info: p.info })
+    store?.put(pAt(run, p.id), { role: p.role, info: p.info, seen: p.seen })
 
   const deliver = (run: Run, p: Participant, m: Message, bytes = 0): void => {
     if (p.socket !== undefined && p.queue.length === 0) {
@@ -185,9 +207,13 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     run.closed = true
     run.closedAt = Date.now()
     saveRun(run)
-    for (const p of run.byId.values()) {
-      if (p.role === 'agent') deliver(run, p, { from: 'relay', body: { type: 'closed' } })
+    for (const p of [...run.byId.values()]) {
+      if (p.role !== 'agent') continue
+      deliver(run, p, { from: 'relay', body: { type: 'closed' } })
+      // Down its socket: it has heard, and needs the run no more.
+      if (p.queue.length === 0) drop(run, p, false)
     }
+    if (run.byId.size === 0) forget(run)
   }
 
   /** `tell`: the orchestrator hears its agent was lost (not when it removed it). */
@@ -219,7 +245,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     drop(run, a, false)
   }
 
-  /** A closed run, cut to its tombstone: who took part, and with what key, goes. */
+  /** A closed run's participants, and what it knew of its orchestrator. */
   const empty = (run: Run): void => {
     for (const p of run.byId.values()) {
       drain(run, p)
@@ -242,6 +268,8 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     store?.delete(runAt(run.key))
   }
 
+  const lostAfter = (p: Participant): number =>
+    (p.socket === undefined ? 3 : SOCKET_LOST_BEATS) * heartbeatMs
   const sweep = (): number | undefined => {
     const now = Date.now()
     let next: number | undefined
@@ -249,21 +277,28 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       next = Math.min(next ?? t, t)
     }
     for (const run of [...runs.values()]) {
+      if (!run.closed && run.orchestrator === undefined && now - run.openedAt > orphanTtl) {
+        close(run)
+      }
       if (run.closed) {
-        if (now - run.closedAt! > TOMBSTONE_TTL_MS) forget(run)
-        else if (now - run.closedAt! > CLOSED_TTL_MS) {
-          empty(run)
-          at(run.closedAt! + TOMBSTONE_TTL_MS + 1)
-        } else at(run.closedAt! + CLOSED_TTL_MS + 1)
+        if (run.byId.size === 0 || now - run.closedAt! > closedTtl) forget(run)
+        else at(run.closedAt! + closedTtl + 1)
         continue
       }
       for (const p of [...run.byId.values()]) {
-        if (now - p.seen > 3 * heartbeatMs) drop(run, p)
+        if (now - p.seen > lostAfter(p)) drop(run, p)
       }
-      // Agents whose orchestrator never joined: nothing would close it.
-      if (run.closed) at(run.closedAt! + CLOSED_TTL_MS + 1)
-      else if (run.byId.size === 0) forget(run)
-      else for (const p of run.byId.values()) at(p.seen + 3 * heartbeatMs + 1)
+      if (run.closed) {
+        if (run.byId.size === 0) forget(run)
+        else if (runs.has(run.key)) at(run.closedAt! + closedTtl + 1)
+      } else if (run.byId.size === 0) forget(run)
+      else {
+        for (const p of run.byId.values()) {
+          saveParticipant(run, p)
+          at(p.seen + lostAfter(p) + 1)
+        }
+        if (run.orchestrator === undefined) at(run.openedAt + orphanTtl + 1)
+      }
     }
     return next
   }
@@ -480,7 +515,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
         }
       }
       if (run === undefined) {
-        run = { key, closed: false, byId: new Map() }
+        run = { key, closed: false, byId: new Map(), openedAt: Date.now() }
         runs.set(key, run)
         saveRun(run)
       }
@@ -540,7 +575,12 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     frame(key, id, text) {
       let n: unknown = null
       try {
-        if (text.length > MAX_BODY) throw new HttpError(413, 'body over 1 MiB')
+        if (text.length > MAX_BODY) {
+          // Answered by its number, read without parsing the rest.
+          const k = /^\{"n":(\d+)[,}]/.exec(text)?.[1]
+          if (k !== undefined) n = Number(k)
+          throw new HttpError(413, 'body over 1 MiB')
+        }
         let body: {
           n?: unknown
           to?: unknown
@@ -606,8 +646,9 @@ function restore(store: RelayStore, runs: Map<string, Run>): [Run, Participant][
   const now = Date.now()
   const parts = (k: string): string[] => k.split('/')
   for (const [k, v] of store.list({ prefix: 'r/' })) {
-    const { closed, closedAt, pin, cert } = v as {
+    const { closed, openedAt, closedAt, pin, cert } = v as {
       closed: boolean
+      openedAt?: number
       closedAt: number | null
       pin?: string | null
       cert?: string | null
@@ -617,6 +658,7 @@ function restore(store: RelayStore, runs: Map<string, Run>): [Run, Participant][
       key,
       closed,
       byId: new Map(),
+      openedAt: openedAt ?? now,
       ...(closedAt === null ? {} : { closedAt }),
       ...(pin == null ? {} : { pin }),
       ...(cert == null ? {} : { cert }),
@@ -626,12 +668,12 @@ function restore(store: RelayStore, runs: Map<string, Run>): [Run, Participant][
     const [, key, id] = parts(k) as [string, string, string]
     const run = runs.get(key)
     if (run === undefined) continue
-    const { role, info } = v as Pick<Participant, 'role' | 'info'>
+    const { role, info, seen } = v as Pick<Participant, 'role' | 'info'> & { seen?: number }
     const p: Participant = {
       id,
       role,
       info,
-      seen: now,
+      seen: seen ?? now,
       tokens: RATE_BURST,
       filled: now,
       queue: [],

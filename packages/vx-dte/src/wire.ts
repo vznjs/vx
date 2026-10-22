@@ -19,17 +19,45 @@ export class RelayError extends Error {
 /** A dropped socket's first redial waits up to this, doubling per failure (full jitter). */
 const FIRST_REDIAL_MS = 250
 const MAX_REDIAL_MS = 30_000
+/** A frame of several sends stays under this, half the relay's 1 MiB body limit. */
+const FRAME_BYTES = 512 * 1024
 /** How long `leave` waits on its socket's close handshake. */
 const CLOSE_WAIT_MS = 2_000
+const UNANSWERED = 'the relay answered no frame'
+/** How long `join` waits on the relay, before it says how long a heartbeat is. */
+const JOIN_DEADLINE_MS = 30_000
+/** How long `join` asks again through faults (a 500 while a host restarts the relay). */
+const JOIN_FAULT_MS = 15_000
+/** Join asks this many times in all while the relay answers 5xx or the network drops. */
+const JOIN_ATTEMPTS = 4
+/** The least either wait is: a loaded machine's loopback, under a test's short heartbeat. */
+const MIN_WAIT_MS = 1_000
 
-/** Runs `f` again after each rate-limit answer, as long as the relay asks to wait. */
-async function paced<T>(f: () => Promise<T>): Promise<T> {
+/**
+ * Runs `f` again after each rate-limit answer, as long as the relay asks to
+ * wait, and after a fault of the relay's host or the
+ * network (a 5xx, a dropped connection) until faults have lasted that long.
+ */
+async function paced<T>(f: () => Promise<T>, faultMs: number, signal?: AbortSignal): Promise<T> {
+  let since: number | undefined
+  let faults = 0
   for (;;) {
     try {
       return await f()
     } catch (err) {
-      if (!(err instanceof RelayError) || err.retryAfterMs === undefined) throw err
-      await Bun.sleep(err.retryAfterMs)
+      if (err instanceof RelayError && err.retryAfterMs !== undefined) {
+        await Bun.sleep(err.retryAfterMs)
+        continue
+      }
+      // A request the relay held past its deadline already took the whole wait.
+      const fault =
+        err instanceof RelayError ? err.status >= 500 : (err as Error).name !== 'TimeoutError'
+      if (!fault || signal?.aborted === true) throw err
+      since ??= performance.now()
+      const left = since + faultMs - performance.now()
+      if (left <= 0) throw err
+      // Each wait at most half a heartbeat, so a short fault costs little.
+      await Bun.sleep(Math.min(left, faultMs / 6, Math.random() * FIRST_REDIAL_MS * 2 ** faults++))
     }
   }
 }
@@ -66,28 +94,56 @@ export async function join(
     }
     return h
   }
+  // A join asked again that the relay took leaves a second participant,
+  // lost in three heartbeats; an agent whose join failed is lost for good.
+  let faultMs = JOIN_FAULT_MS
   const call = (verb: string, body?: unknown, query = '', signal?: AbortSignal) =>
-    paced(() => once(verb, body, query, signal))
+    paced(() => once(verb, body, query, signal), faultMs, signal)
+  // A relay that holds a request past its longest poll is stuck: Bun's
+  // own limit let one poll wait five minutes before the run failed (CI,
+  // 2026-10-22). Three heartbeats, once `join` says what one is.
+  let deadlineMs = JOIN_DEADLINE_MS
   const once = async (verb: string, body?: unknown, query = '', signal?: AbortSignal) => {
     const method = body === undefined ? 'GET' : 'POST'
     const text = body === undefined ? '' : JSON.stringify(body)
+    const limit = AbortSignal.timeout(deadlineMs)
     const res = await fetch(base + verb + query, {
       method,
       headers: await headers(method, base + verb + query, text),
       ...(body === undefined ? {} : { body: text }),
-      ...(signal === undefined ? {} : { signal }),
+      signal: signal === undefined ? limit : AbortSignal.any([signal, limit]),
     })
     if (res.status === 204) return null
-    const json = (await res.json().catch(() => ({}))) as { error?: string; retryAfterMs?: number }
+    // A host's own error page (a proxy's, an empty one) is no relay answer.
+    const json = ((await res.json().catch(() => null)) ?? {}) as {
+      error?: string
+      retryAfterMs?: number
+    }
     if (!res.ok) {
       const message = `relay ${verb}: ${res.status} ${json.error ?? ''}`
       throw new RelayError(res.status, message, json.retryAfterMs)
     }
     return json as Record<string, unknown>
   }
-  const joined = (await call('join', { role, info, ...(prover && { key: prover.key }) }))!
+  // A relay's host answers a passing 500 (Cloudflare, 2026-10-22), and one
+  // failed a whole CI run before any task started. A 4xx is the relay's
+  // answer and stands.
+  const joined = await (async () => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return (await call('join', { role, info, ...(prover && { key: prover.key }) }))!
+      } catch (err) {
+        const passing = err instanceof RelayError ? err.status >= 500 : err instanceof TypeError
+        if (!passing || attempt >= JOIN_ATTEMPTS) throw err
+        await Bun.sleep(Math.random() * FIRST_REDIAL_MS * 2 ** attempt)
+      }
+    }
+  })()
   const id = joined['id'] as string
   const heartbeatMs = joined['heartbeatMs'] as number
+  deadlineMs = Math.max(3 * heartbeatMs, MIN_WAIT_MS)
+  // The relay loses a participant silent this long: past it, nothing is left to reach.
+  faultMs = 3 * heartbeatMs
   const offered = joined['socket'] === true
   // A relay older than `frames` 2 takes only single sends down the socket.
   const frames = joined['frames'] === 2
@@ -130,7 +186,7 @@ export async function join(
     const s = socket
     if (s?.open === true) {
       try {
-        await paced(() => down(s))
+        await paced(() => down(s), 0)
         return
       } catch (err) {
         if (err instanceof RelayError) throw err
@@ -169,8 +225,12 @@ export async function join(
       clearTimeout(redial)
       const s = socket
       // The relay drops it and closes the socket, which is its answer.
-      if (frames && s?.open === true) await s.request({ leave: true }).catch(() => undefined)
-      else await call('leave', { id }).catch(() => undefined)
+      const http = () => call('leave', { id }).catch(() => undefined)
+      if (frames && s?.open === true)
+        await s.request({ leave: true }).catch(async (err: Error) => {
+          if (err.message === UNANSWERED) await http()
+        })
+      else await http()
       await s?.close()
     },
   }
@@ -250,19 +310,54 @@ async function connect(
     results?: (Answer | null)[]
   }
   const pending = new Map<number, { settle(a: Answer): void; reject(err: Error): void }>()
+  // A host can answer pings without the object behind it (Cloudflare's
+  // auto-response), so a socket whose relay fails every frame still looks
+  // alive: one that leaves a frame unanswered for two heartbeats is dead.
+  const answer = (k: number, p: { settle(a: Answer): void; reject(err: Error): void }): void => {
+    pending.set(k, p)
+    setTimeout(
+      () => {
+        if (!pending.has(k)) return
+        closed(UNANSWERED)
+        ws.close()
+      },
+      Math.max(2 * heartbeatMs, MIN_WAIT_MS),
+    ).unref()
+  }
   const refused = (a: Answer): RelayError =>
     new RelayError(a.status!, `relay send: ${a.status} ${a.error ?? ''}`, a.retryAfterMs)
   /** Sends asked for in this turn of the event loop, which go as one frame. */
   let sends: { to: string; body: unknown; resolve(): void; reject(err: Error): void }[] = []
   const flush = (): void => {
-    const batch = sends
+    const all = sends
     sends = []
-    if (!batches || batch.length === 1) {
-      for (const one of batch) request({ to: one.to, body: one.body }).then(one.resolve, one.reject)
+    if (!batches) {
+      for (const one of all) request({ to: one.to, body: one.body }).then(one.resolve, one.reject)
+      return
+    }
+    // Frames under the relay's body limit, which it applies to a frame whole.
+    let batch: typeof all = []
+    let bytes = 0
+    for (const one of all) {
+      const size = JSON.stringify(one.body)?.length ?? 0
+      if (batch.length > 0 && bytes + size > FRAME_BYTES) {
+        frame(batch)
+        batch = []
+        bytes = 0
+      }
+      batch.push(one)
+      bytes += size
+    }
+    frame(batch)
+  }
+  const frame = (batch: typeof sends): void => {
+    if (batch.length === 1) {
+      const [one] = batch
+      request({ to: one!.to, body: one!.body }).then(one!.resolve, one!.reject)
       return
     }
     const k = ++n
-    pending.set(k, {
+    answer(k, {
       settle(a) {
         batch.forEach((one, i) => {
           const r = a.status !== undefined ? a : (a.results?.[i] ?? null)
@@ -279,7 +374,7 @@ async function connect(
   const request = (frame: Record<string, unknown>): Promise<void> =>
     new Promise((resolve, reject) => {
       const k = ++n
-      pending.set(k, {
+      answer(k, {
         settle: (a) => (a.status === undefined ? resolve() : reject(refused(a))),
         reject,
       })
@@ -296,11 +391,11 @@ async function connect(
     } else ws.send('ping')
   }, heartbeatMs / 2)
   ping.unref()
-  const closed = (): void => {
+  const closed = (why = 'socket closed'): void => {
     if (!open) return
     open = false
     clearInterval(ping)
-    for (const p of pending.values()) p.reject(new Error('socket closed'))
+    for (const p of pending.values()) p.reject(new Error(why))
     pending.clear()
     wake?.()
   }
@@ -312,7 +407,7 @@ async function connect(
     closed()
     shut()
   }
-  ws.onerror = closed
+  ws.onerror = () => closed()
   ws.onmessage = (e) => {
     heard = performance.now()
     if (e.data === 'pong') return

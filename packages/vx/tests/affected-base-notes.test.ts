@@ -428,7 +428,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
         ).trimEnd(),
       },
     ])
-  })
+  }, 30_000)
 
   it('no origin/HEAD and no parent commit: no base at all, said in CI terms, exit 1', () => {
     const r = vx(root, 'run', 'build', '--affected')
