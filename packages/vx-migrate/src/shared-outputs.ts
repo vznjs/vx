@@ -192,18 +192,24 @@ function cachedOutputs(t: GeneratedTask, index: number): Cached | null {
 }
 
 /**
- * Can the keeper's `ga` give `gb`'s tree back? Only when `ga` is a
- * directory at any depth (`**\/dist`, `**\/dist/**`) and `gb`'s literal
- * head names no such directory: the two meet only at a `dist` nested in
- * `gb`'s tree, which is the sibling's. solid's build outputs `**\/dist`
- * beside types' `types/**`; Turbo caches both, and uncaching types made
- * vx the slower of the two.
+ * Can the keeper's `ga` give `gb`'s tree back? Only when one of the two is
+ * a directory at any depth (`**\/dist`, `**\/dist/**`) and the other's
+ * literal head names no such directory: they meet only where one tree
+ * nests in the other, which neither task writes. solid's build outputs
+ * `dist/**` and `**\/dist` beside types' `types/**` and `**\/types`; Turbo
+ * caches both, and uncaching types made vx the slower of the two.
  */
-function separable(ga: string, gb: string): boolean {
-  const name = /^\*\*\/([^*?[\]{}()!/\\]+)(?:\/\*\*)?$/.exec(ga)?.[1]
+const DIR_ANYWHERE = /^\*\*\/([^*?[\]{}()!/\\]+)(?:\/\*\*)?$/
+
+const separable = (ga: string, gb: string): boolean => apart(ga, gb) || apart(gb, ga)
+
+function apart(dir: string, other: string): boolean {
+  const name = DIR_ANYWHERE.exec(dir)?.[1]
   if (name === undefined) return false
+  const otherName = DIR_ANYWHERE.exec(other)?.[1]
+  if (otherName !== undefined) return otherName !== name
   const head: string[] = []
-  for (const seg of gb.replace(/^(\.\/)+/, '').split('/')) {
+  for (const seg of other.replace(/^(\.\/)+/, '').split('/')) {
     if (!isLiteralPattern(seg) || seg === '') break
     head.push(seg)
   }
