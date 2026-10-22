@@ -1,6 +1,9 @@
 // CI OIDC tokens: RS256 JWTs a relay checks against each trusted issuer's
 // published keys. The run claims bind every participant to the repository
-// that started the run (PROTOCOL.md § Tokens).
+// that started the run (PROTOCOL.md § Tokens). The JWT itself is jose's
+// to check: signature, algorithm, audience and times.
+
+import { createLocalJWKSet, decodeJwt, errors, jwtVerify, type JWTPayload } from 'jose'
 
 /**
  * Who may take part: jobs of `workflow` in `repository`, by tokens of
@@ -128,67 +131,52 @@ const REFETCH_MS = 60_000
 export function createVerifier(opts: OidcOptions): (token: string) => Promise<VerifiedToken> {
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
-  const keys = new Map<string, { at: number; byKid: Promise<Map<string, CryptoKey>> }>()
+  type KeySet = ReturnType<typeof createLocalJWKSet>
+  const keys = new Map<string, { at: number; set: Promise<KeySet> }>()
 
-  const load = (
-    iss: string,
-    fresh: boolean,
-  ): { at: number; byKid: Promise<Map<string, CryptoKey>> } => {
-    const entry = { at: Date.now(), byKid: loadKeys(iss, (url) => fetchJson(url, fresh)) }
+  const load = (iss: string, fresh: boolean): { at: number; set: Promise<KeySet> } => {
+    const entry = { at: Date.now(), set: loadKeys(iss, (url) => fetchJson(url, fresh)) }
     keys.set(iss, entry)
     // A failed load is not kept: the next token tries again.
-    entry.byKid.catch(() => keys.get(iss) === entry && keys.delete(iss))
+    entry.set.catch(() => keys.get(iss) === entry && keys.delete(iss))
     return entry
   }
-  // A key rotated in since the last read is fetched once a REFETCH_MS.
-  const keyOf = async (iss: string, kid: string): Promise<CryptoKey | undefined> => {
-    const entry = keys.get(iss) ?? load(iss, false)
-    const byKid = await entry.byKid
-    if (byKid.has(kid) || Date.now() - entry.at < REFETCH_MS) return byKid.get(kid)
-    return (await load(iss, true).byKid).get(kid)
+  const verifyWith = async (token: string, iss: string, fresh: boolean): Promise<JWTPayload> => {
+    const entry = (fresh ? undefined : keys.get(iss)) ?? load(iss, fresh)
+    const set = await entry.set.catch(() => {
+      throw new TokenError(`could not read ${iss}'s keys`, 401)
+    })
+    const { payload } = await jwtVerify(token, set, {
+      algorithms: ['RS256'],
+      audience: opts.audience,
+      clockTolerance: LEEWAY_S,
+      currentDate: new Date(now() * 1000),
+      requiredClaims: ['exp'],
+    })
+    return payload
   }
 
   return async (token) => {
-    const parts = token.split('.')
-    if (parts.length !== 3) throw new TokenError('not a JWT', 401)
-    const [h, p, s] = parts as [string, string, string]
-    let header: { alg?: unknown; kid?: unknown }
-    let claims: Record<string, unknown>
-    let sig: Uint8Array<ArrayBuffer>
+    let iss: unknown
     try {
-      header = JSON.parse(text(h))
-      claims = JSON.parse(text(p))
-      sig = bytes(s)
+      iss = decodeJwt(token).iss
     } catch {
       throw new TokenError('not a JWT', 401)
     }
-    if (header.alg !== 'RS256') throw new TokenError('alg is not RS256', 401)
-    const iss = claims['iss']
     const ofIssuer = opts.allow.filter((a) => a.issuer === iss)
     if (typeof iss !== 'string' || ofIssuer.length === 0) {
       throw new TokenError('untrusted issuer', 401)
     }
-    const key = await keyOf(iss, typeof header.kid === 'string' ? header.kid : '').catch(() => {
-      throw new TokenError(`could not read ${iss}'s keys`, 401)
-    })
-    if (key === undefined) throw new TokenError('unknown signing key', 401)
-    const ok = await crypto.subtle.verify(
-      'RSASSA-PKCS1-v1_5',
-      key,
-      sig,
-      new TextEncoder().encode(`${h}.${p}`),
-    )
-    if (!ok) throw new TokenError('bad signature', 401)
-    const aud = claims['aud']
-    if (!(aud === opts.audience || (Array.isArray(aud) && aud.includes(opts.audience)))) {
-      throw new TokenError('wrong audience', 401)
-    }
-    const t = now()
-    if (typeof claims['exp'] !== 'number' || claims['exp'] + LEEWAY_S < t) {
-      throw new TokenError('expired', 401)
-    }
-    if (typeof claims['nbf'] === 'number' && claims['nbf'] - LEEWAY_S > t) {
-      throw new TokenError('not yet valid', 401)
+    let claims: JWTPayload
+    try {
+      // A key rotated in since the last read is fetched once a REFETCH_MS.
+      claims = await verifyWith(token, iss, false).catch((err: unknown) => {
+        const at = keys.get(iss)?.at ?? 0
+        if (!(err instanceof errors.JWKSNoMatchingKey) || Date.now() - at < REFETCH_MS) throw err
+        return verifyWith(token, iss, true)
+      })
+    } catch (err) {
+      throw refusal(err)
     }
     let ofRepo = ofIssuer
     if (ofIssuer.some((a) => a.repository !== undefined)) {
@@ -226,6 +214,22 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
   }
 }
 
+/** What jose's refusal of a token says, as the relay answers it. */
+function refusal(err: unknown): TokenError {
+  if (err instanceof TokenError) return err
+  if (err instanceof errors.JOSEAlgNotAllowed) return new TokenError('alg is not RS256', 401)
+  if (err instanceof errors.JWKSNoMatchingKey) return new TokenError('unknown signing key', 401)
+  if (err instanceof errors.JWSSignatureVerificationFailed)
+    return new TokenError('bad signature', 401)
+  if (err instanceof errors.JWTExpired) return new TokenError('expired', 401)
+  if (err instanceof errors.JWTClaimValidationFailed) {
+    if (err.claim === 'aud') return new TokenError('wrong audience', 401)
+    if (err.claim === 'nbf') return new TokenError('not yet valid', 401)
+    if (err.claim === 'exp') return new TokenError('expired', 401)
+  }
+  return new TokenError('not a JWT', 401)
+}
+
 /**
  * The issuer and run claims a token says it has, unchecked: what routes a
  * request to its run's Durable Object, where the token is verified. A
@@ -233,8 +237,8 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
  */
 export function claimedRun(token: string): VerifiedToken | undefined {
   try {
-    const claims = JSON.parse(text(token.split('.')[1] ?? '')) as Record<string, unknown>
-    const iss = claims['iss']
+    const claims = decodeJwt(token)
+    const iss = claims.iss
     if (typeof iss !== 'string') return undefined
     return { iss, run: runClaimsOf(iss).map((c) => String(claims[c])) }
   } catch {
@@ -245,7 +249,7 @@ export function claimedRun(token: string): VerifiedToken | undefined {
 async function loadKeys(
   iss: string,
   fetchJson: (url: string) => Promise<unknown>,
-): Promise<Map<string, CryptoKey>> {
+): Promise<ReturnType<typeof createLocalJWKSet>> {
   const config = (await fetchJson(
     `${iss.replace(/\/$/, '')}/.well-known/openid-configuration`,
   )) as {
@@ -253,38 +257,11 @@ async function loadKeys(
   }
   if (typeof config.jwks_uri !== 'string') throw new Error('no jwks_uri')
   const jwks = (await fetchJson(config.jwks_uri)) as { keys?: unknown }
-  const out = new Map<string, CryptoKey>()
-  type Jwk = { kty?: unknown; kid?: unknown; n?: unknown; e?: unknown }
-  for (const jwk of Array.isArray(jwks.keys) ? (jwks.keys as Jwk[]) : []) {
-    if (jwk.kty !== 'RSA' || typeof jwk.n !== 'string' || typeof jwk.e !== 'string') continue
-    out.set(
-      typeof jwk.kid === 'string' ? jwk.kid : '',
-      await crypto.subtle.importKey(
-        'jwk',
-        { kty: 'RSA', n: jwk.n, e: jwk.e },
-        { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-        false,
-        ['verify'],
-      ),
-    )
-  }
-  return out
+  return createLocalJWKSet({ keys: Array.isArray(jwks.keys) ? jwks.keys : [] })
 }
 
 async function defaultFetchJson(url: string): Promise<unknown> {
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
   if (!res.ok) throw new Error(`${url}: ${res.status}`)
   return res.json()
-}
-
-// Not Buffer: a Worker has it only under nodejs_compat. atob's decode
-// forgives the padding base64url leaves out.
-function bytes(b64url: string): Uint8Array<ArrayBuffer> {
-  return Uint8Array.from(atob(b64url.replaceAll('-', '+').replaceAll('_', '/')), (c) =>
-    c.charCodeAt(0),
-  )
-}
-
-function text(b64url: string): string {
-  return new TextDecoder().decode(bytes(b64url))
 }
