@@ -23,10 +23,13 @@ declares. No new wire, no mutable entry.
   tasks and the first job's plain blob wins, so a reader asks its own
   graph's blob first, then the plain one.
 - **Write (on CI, core's `ci` fact; the policy decides which layers keep
-  it):** after the run, fetch
-  the parent commit's blob (`HEAD~1`, walking back up to 5), merge this
-  run's p50s over it, drop task ids the graph no longer has, put it under
-  `HEAD`. A branch or PR run writes under its own sha, which no reader on
+  it):** after the run, fetch the newest blob along `HEAD`'s lineage (a
+  job before it on `HEAD`, else the parent's, walking back up to 5) and
+  merge this run's p50s over it, keeping every task it holds: a job cannot
+  tell a task the repo dropped from one only another job runs
+  (2026-10-22). So whichever of a commit's blobs a reader gets holds every
+  task, and a job whose task set changed still finds its own. Put it under
+  `HEAD`; a merge over 1 MiB keeps only the run's own tasks. A branch or PR run writes under its own sha, which no reader on
   another branch asks for: only commits that land on the default branch
   are ever read back.
 - **Read (only when needed):** only when some task in the run has no
@@ -100,7 +103,9 @@ cores?, memory? } } }`; `ms` a finite number in `[0, 86_400_000]`; at
 ## Tests (each red first)
 
 - CI run on commit B with blob A at its parent writes blob B = A merged
-  with B's p50s, minus removed tasks.
+  with B's p50s, every task of A kept.
+- Two jobs whose task sets overlap each read their own tasks back; a job
+  whose task set changed still reads every task.
 - A local run on a branch with no history orders by the merge-base's blob
   in the same run; a remote that never answers costs at most the deadline,
   and the run orders without it.

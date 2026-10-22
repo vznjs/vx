@@ -160,7 +160,9 @@ async function runPlugin(
 }
 
 describe('shared timings', () => {
-  it('CI on main writes its commit blob: the parent blob merged with this run, minus removed tasks', async () => {
+  // A job cannot tell a task the repo dropped from one only another job
+  // runs, so every task is carried (owner, 2026-10-22).
+  it('CI on main writes its commit blob: the parent blob, every task of it, merged with this run', async () => {
     const a = commit()
     const b = commit()
     const shared = spyCache()
@@ -173,7 +175,7 @@ describe('shared timings', () => {
     })
     expect(read(shared.store.get(key(b)))).toEqual({
       version: 1,
-      tasks: { 'p#x': 100, 'p#y': 300 },
+      tasks: { 'p#gone': 5, 'p#x': 100, 'p#y': 300 },
     })
   })
 
@@ -250,6 +252,66 @@ describe('shared timings', () => {
       branch: false,
     })
     expect(Object.fromEntries(await provider.p50sFor(['p#shard']))).toEqual({ 'p#shard': 100 })
+  })
+
+  /** One CI job on main: its own machine, which timed `times`. */
+  async function job(shared: PluginCache, times: Record<string, number>): Promise<void> {
+    const main = cache
+    cache = new Cache(mkdtempSync(path.join(root, 'job-')), { read: true, write: true })
+    try {
+      for (const [id, ms] of Object.entries(times)) timed('main', id, ms)
+      await runPlugin(shared, { ci: true, branch: 'main', ids: Object.keys(times) })
+    } finally {
+      cache.close()
+      cache = main
+    }
+  }
+
+  /** What a branch off HEAD whose graph is `ids` imports, on a fresh machine. */
+  async function imported(shared: PluginCache, ids: string[]): Promise<Record<string, number>> {
+    const fresh = new Cache(mkdtempSync(path.join(root, 'branch-')), { read: true, write: true })
+    try {
+      const provider = new LocalHistoryProvider(fresh.dbHandle(), undefined, 'feature')
+      await importTimings({
+        root,
+        defaultBranch: 'main',
+        cache: shared,
+        provider,
+        ids,
+        triedFile: path.join(root, `tried-${ids.join('-')}`),
+        branch: false,
+      })
+      return Object.fromEntries(await provider.p50sFor(ids))
+    } finally {
+      fresh.close()
+    }
+  }
+
+  // Keyed by its whole graph, a job's own blob was lost to any change of
+  // its task set, and a task two jobs share kept whichever wrote first
+  // (2026-10-22).
+  it('two jobs whose task sets overlap each read their own tasks back', async () => {
+    commit()
+    const shared = spyCache()
+    await job(shared, { 'p#x': 110, 'p#y': 60 })
+    await job(shared, { 'p#y': 70, 'p#z': 80 })
+    git('checkout', '-q', '-b', 'feature')
+    commit()
+    expect(await imported(shared, ['p#x', 'p#y'])).toEqual({ 'p#x': 110, 'p#y': 60 })
+    expect(await imported(shared, ['p#y', 'p#z'])).toEqual({ 'p#y': 70, 'p#z': 80 })
+  })
+
+  it('a job whose task set changed still reads every task', async () => {
+    commit()
+    const shared = spyCache()
+    await job(shared, { 'p#x': 100, 'p#y': 50, 'p#z': 30 })
+    commit()
+    await job(shared, { 'p#x': 110, 'p#y': 60 })
+    await job(shared, { 'p#z': 40 })
+    git('checkout', '-q', '-b', 'feature')
+    commit()
+    // No job ran {x, z}: the commit's plain blob, which carries z.
+    expect(await imported(shared, ['p#x', 'p#z'])).toEqual({ 'p#x': 110, 'p#z': 30 })
   })
 
   it("a branch with no history orders from local history at once, then re-ranks by its merge-base's blob", async () => {
