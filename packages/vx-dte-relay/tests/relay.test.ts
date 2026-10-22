@@ -425,6 +425,30 @@ describe('a host that keeps runs and holds websockets', () => {
     ])
   })
 
+  // Each sweep wakes a Durable Object; at three heartbeats it woke every
+  // 12 s and stayed billed the whole run (2026-10-22).
+  it('gives a participant on a socket twelve heartbeats, one polling three', async () => {
+    const c = client({ heartbeatMs: 20, timer: false })
+    const o = await c.join(R, 'orchestrator')
+    const a = await c.join(R, 'agent')
+    const b = await c.join(R, 'agent')
+    expect(c.relay.attach(K, a, { send() {}, close() {} })).toBe(true)
+    await Bun.sleep(70)
+    c.relay.seen(K, o, Date.now())
+    const next = c.relay.sweep()!
+    expect(await c.poll(R, o)).toEqual([
+      { from: 'relay', body: { type: 'joined', id: a, info: null } },
+      { from: 'relay', body: { type: 'joined', id: b, info: null } },
+      { from: 'relay', body: { type: 'lost', id: b } },
+    ])
+    // The socket's silence is what the next sweep waits for: o polls.
+    expect(next - Date.now()).toBeGreaterThan(40)
+    await Bun.sleep(200)
+    c.relay.seen(K, o, Date.now())
+    c.relay.sweep()
+    expect(await c.poll(R, o)).toEqual([{ from: 'relay', body: { type: 'lost', id: a } }])
+  })
+
   it('pushes messages down a socket and takes sends from it', async () => {
     const c = client({ upgrade: () => new Response(null, { status: 101 }) })
     const joined = await c.call(R, 'join', { role: 'orchestrator' })
