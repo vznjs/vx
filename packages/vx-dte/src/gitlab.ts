@@ -5,8 +5,6 @@
 // `VX_DTE_GITLAB_TOKEN` is set: then only the first does, and the run
 // plays the others, manual jobs, as its work needs them.
 
-import { existsSync } from 'node:fs'
-import path from 'node:path'
 import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
 import type { AgentSpawn, DteAdapter } from './plugin.js'
 
@@ -94,7 +92,6 @@ export function gitlab(options: GitlabOptions): DteAdapter {
     },
 
     render(plan) {
-      const vx = binary(plan.workspaceRoot)
       const lines = [
         `# Written by vx dte plan for run ${plan.run}; do not commit.`,
         'include:',
@@ -116,7 +113,7 @@ export function gitlab(options: GitlabOptions): DteAdapter {
           `    VX_DTE_AGENT: ${json(a.id)}`,
           `    VX_DTE_RELAY: ${json(plan.relay)}`,
           '  script:',
-          `    - ${json(`${vx} dte agent`)}`,
+          `    - ${json('bunx @vzn/vx dte agent')}`,
         )
       }
       return {
@@ -192,10 +189,4 @@ async function manualJobs(token: string): Promise<Map<string, number>> {
   }
 }
 
-/** The repo's own way to call vx, by its lockfile: never a package.json script. */
-function binary(root: string): string {
-  const has = (f: string): boolean => existsSync(path.join(root, f))
-  if (has('pnpm-lock.yaml')) return 'pnpm exec vx'
-  if (has('yarn.lock')) return 'yarn exec vx'
-  return 'bunx @vzn/vx'
-}
+

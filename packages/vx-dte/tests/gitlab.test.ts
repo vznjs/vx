@@ -65,7 +65,7 @@ include:
     VX_DTE_AGENT: "big#1"
     VX_DTE_RELAY: "https://relay.example.com"
   script:
-    - "pnpm exec vx dte agent"
+    - "bunx @vzn/vx dte agent"
 
 "vx-agent small#2":
   extends: .vx-agent
@@ -77,7 +77,7 @@ include:
     VX_DTE_AGENT: "small#2"
     VX_DTE_RELAY: "https://relay.example.com"
   script:
-    - "pnpm exec vx dte agent"
+    - "bunx @vzn/vx dte agent"
 
 "vx-agent small#3":
   extends: .vx-agent
@@ -89,7 +89,7 @@ include:
     VX_DTE_AGENT: "small#3"
     VX_DTE_RELAY: "https://relay.example.com"
   script:
-    - "pnpm exec vx dte agent"
+    - "bunx @vzn/vx dte agent"
 `)
   const secret = path.join(root, '.vx/dte/secret')
   expect((await readFile(secret, 'utf8')).trim()).toMatch(/^[\w-]{43}$/)
