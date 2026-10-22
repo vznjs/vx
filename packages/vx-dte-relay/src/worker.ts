@@ -2,7 +2,7 @@
 // run's mailboxes live in one place and its held polls answer there.
 // Participants hold websockets the object hibernates between messages: its
 // state is in its storage, and an alarm, not a timer, finds the silent.
-// `cloudflare.config.ts` deploys it; set REPOSITORIES.
+// `wrangler.jsonc` deploys it; set REPOSITORIES.
 
 import { claimedRun, createVerifier } from './oidc.js'
 import { createRelay, runKey, type Relay, type RelayStore } from './relay.js'

@@ -1,0 +1,18 @@
+// The relay on Cloudflare Workers (src/worker.ts): what the README's Deploy
+// to Cloudflare button reads, and `npx wrangler deploy` from this directory.
+// Each run is one Durable Object, held in its own storage.
+{
+  "name": "vx-dte-relay",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  // The relay's URL until a domain is added.
+  "workers_dev": true,
+  "vars": {
+    // Add `https://gitlab.com` (or a self-managed GitLab), comma separated, to carry GitLab's runs.
+    "ISSUERS": "https://token.actions.githubusercontent.com",
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RelayRun"] }],
+}

@@ -17,7 +17,7 @@
     "vx-dte-relay": "./src/bun.ts"
   },
   "scripts": {
-    "deploy": "cf deploy"
+    "deploy": "wrangler deploy"
   },
   "exports": {
     ".": {
@@ -29,24 +29,22 @@
     "index.ts",
     "src",
     "PROTOCOL.md",
-    "cloudflare.config.ts",
+    "wrangler.jsonc",
     "README.md"
   ],
   "engines": {
     "bun": ">=1.4"
   },
   "//": [
-    "cf: Cloudflare's CLI, deploys src/worker.ts by cloudflare.config.ts (the Deploy to Cloudflare button runs it too). vite, @cloudflare/vite-plugin: the bundler cf builds the Worker with (vite.config.ts). Pinned: cf and the plugin are betas.",
+    "wrangler: deploys src/worker.ts by wrangler.jsonc, which the Deploy to Cloudflare button reads (it parses no other config).",
     "@vzn/vx: vx.config.ts's core, the workspace's own here; `*`, not workspace:, which npm refuses when the button installs this directory alone.",
-    "miniflare: tests/worker-sockets.test.ts runs src/worker.ts in workerd, the runtime Workers deploy to; the version the vite plugin already installs."
+    "miniflare: tests/worker-sockets.test.ts runs src/worker.ts in workerd, the runtime Workers deploy to."
   ],
   "devDependencies": {
-    "@cloudflare/vite-plugin": "2.0.0-beta.v.3",
     "@types/bun": "^1.4.0",
     "@vzn/vx": "*",
-    "cf": "1.0.0-beta.20",
     "miniflare": "5.20261019.1-beta",
-    "vite": "8.3.5"
+    "wrangler": "4.149.0"
   },
   "cloudflare": {
     "bindings": {
