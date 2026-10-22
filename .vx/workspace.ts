@@ -15,17 +15,18 @@ export default defineWorkspace({
     // short-lived one; elsewhere the token comes from the OS keychain.
     turboCache({ teamSlug: 'exelord', oidc: true }),
     scheduleHistoryPlugin(),
-    // CI's two runs over agents (ci.yml `linux` and `macos`, vx-agent.yml);
+    // CI's three runs over agents (ci.yml `linux`, `binary-linux-arm64`, `macos`; vx-agent.yml);
     // a run with no VX_DTE_RUN, as on a laptop, is not distributed.
     dte({
       ...(relay ? { relay } : {}),
       // A run's agents are the OS ci.yml names (2026-10-22): ubuntu-latest
-      // on a public repo; macos-latest, whose account cap is 5. The run's own
-      // job is Linux for both.
-      agents:
-        process.env['CI_AGENTS_OS'] === 'macOS'
-          ? { mac: { max: 4, cpu: 3, memory: '7GB' } }
-          : { small: { max: 8, cpu: 4, memory: '16GB' } },
+      // on a public repo; macos-latest, whose account cap is 5;
+      // ubuntu-24.04-arm for the arm64 binary. The run's own job is Linux
+      // x64 for all three.
+      agents: {
+        macOS: { mac: { max: 4, cpu: 3, memory: '7GB' } },
+        'Linux-ARM64': { arm: { max: 1, cpu: 4, memory: '16GB' } },
+      }[process.env['CI_AGENTS_OS'] ?? ''] ?? { small: { max: 8, cpu: 4, memory: '16GB' } },
       adapter: githubAgents(),
     }),
   ],

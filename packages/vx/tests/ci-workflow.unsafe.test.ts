@@ -35,6 +35,7 @@ const read = (file: string): Workflow =>
   Bun.YAML.parse(readFileSync(path.join(dir, file), 'utf8')) as Workflow
 const doc = read('ci.yml')
 const agent = read('vx-agent.yml').jobs['agent']!
+const RUNS = ['linux', 'binary-linux-arm64', 'macos'] as const
 const checkout = (j: Job | undefined): Step | undefined =>
   j?.steps?.find((s) => String(s.uses).startsWith('actions/checkout@'))
 
@@ -45,14 +46,15 @@ describe('ci.yml', () => {
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
       ['linux', 'lint · format · test', 'ubuntu-latest', top, undefined],
+      // Each run only plans and dispatches: Linux x64, so every macOS and
+      // arm runner is an agent's.
       [
         'binary-linux-arm64',
         'compiled binary (linux-arm64)',
-        'ubuntu-24.04-arm',
+        'ubuntu-latest',
         "github.event_name != 'pull_request'",
         undefined,
       ],
-      // Both runs only plan and dispatch: Linux, so every macOS runner is an agent's.
       [
         'macos',
         'core tests (macOS)',
@@ -64,7 +66,7 @@ describe('ci.yml', () => {
   })
 
   it('makes each run distributed, over its relay', () => {
-    for (const id of ['linux', 'macos']) {
+    for (const id of RUNS) {
       const steps = doc.jobs[id]!.steps!
       expect([id, steps.some((s) => s.run?.includes('VX_DTE_RUN=$(uuidgen)'))]).toEqual([id, true])
       const run = steps.find((s) => s.env?.['VX_DTE_RELAY'] !== undefined)
@@ -75,7 +77,7 @@ describe('ci.yml', () => {
   // Shallow, a run found no merge-base and so no measured needs, and every
   // shard booked a whole agent at ~25% CPU (2026-10-22).
   it('checks each run out with the history its timings import walks', () => {
-    for (const id of ['linux', 'macos'])
+    for (const id of RUNS)
       expect([id, checkout(doc.jobs[id])?.with?.['fetch-depth']]).toEqual([id, 0])
   })
 
@@ -85,7 +87,7 @@ describe('ci.yml', () => {
     const withToken = Object.entries(doc.jobs).filter(([, j]) =>
       JSON.stringify(j.steps ?? []).includes('GITHUB_TOKEN'),
     )
-    expect(withToken.map(([id]) => id)).toEqual(['linux', 'macos'])
+    expect(withToken.map(([id]) => id)).toEqual([...RUNS])
     for (const [id, j] of withToken) expect([id, j.permissions?.['checks']]).toEqual([id, 'write'])
   })
 
@@ -101,7 +103,7 @@ describe('ci.yml', () => {
 
   // A killed vx never closes its run, so its queued agents held macOS runners.
   it('cancels the agent runs a run dispatched, on any outcome', () => {
-    for (const id of ['linux', 'macos']) {
+    for (const id of RUNS) {
       const cancel = doc.jobs[id]!.steps!.find((s) => s.run?.includes('vx-dte-runs'))
       expect([id, cancel?.if]).toEqual([id, 'always()'])
     }
@@ -109,7 +111,7 @@ describe('ci.yml', () => {
 
   // Every sandboxed task runs on an agent, which enforces it there.
   it('installs no sandbox runtime on a run', () => {
-    for (const id of ['linux', 'macos'])
+    for (const id of RUNS)
       expect([id, doc.jobs[id]!.steps!.some((s) => s.uses?.includes('vx-runner'))]).toEqual([
         id,
         false,
@@ -131,7 +133,7 @@ describe('ci.yml', () => {
 describe('vx-agent.yml', () => {
   it('runs each size on its runner', () => {
     expect(agent['runs-on']).toBe(
-      `\${{ fromJSON('{"small":"ubuntu-latest","mac":"macos-latest"}')[inputs.size] }}`,
+      `\${{ fromJSON('{"small":"ubuntu-latest","arm":"ubuntu-24.04-arm","mac":"macos-latest"}')[inputs.size] }}`,
     )
   })
 

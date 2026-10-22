@@ -1,6 +1,7 @@
 # The agents of a distributed run (@vzn/vx-dte's github()): each of CI's
-# two jobs is a run, and dispatches this once per size with that size's
-# agents as the matrix: `small` for the Linux run, `mac` for the macOS one. Each agent proves itself to the relay and
+# three jobs is a run, and dispatches this once per size with that size's
+# agents as the matrix: `small` for the Linux run, `arm` for the arm64
+# binary's, `mac` for the macOS one. Each agent proves itself to the relay and
 # the run by its OIDC token; there is no secret.
 name: vx-agent
 
@@ -20,7 +21,7 @@ permissions:
 jobs:
   agent:
     name: ${{ matrix.agent }}
-    runs-on: ${{ fromJSON('{"small":"ubuntu-latest","mac":"macos-latest"}')[inputs.size] }}
+    runs-on: ${{ fromJSON('{"small":"ubuntu-latest","arm":"ubuntu-24.04-arm","mac":"macos-latest"}')[inputs.size] }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
