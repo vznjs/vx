@@ -41,3 +41,18 @@ export async function outputFiles(
   await scan('', outputs.workspaceFiles, 'workspace')
   return [...found].sort()
 }
+
+/** Whether declared outputs name `file` (workspace-relative), as `outputFiles` would find it. */
+export function names(
+  project: string,
+  outputs: { readonly files: readonly string[]; readonly workspaceFiles: readonly string[] },
+): (file: string) => boolean {
+  const inProject =
+    outputs.files.length === 0 ? () => false : restorableOutput(outputs.files, 'project')
+  const inRoot =
+    outputs.workspaceFiles.length === 0
+      ? () => false
+      : restorableOutput(outputs.workspaceFiles, 'workspace')
+  const prefix = project === '' ? '' : `${project}/`
+  return (file) => inRoot(file) || (file.startsWith(prefix) && inProject(file.slice(prefix.length)))
+}

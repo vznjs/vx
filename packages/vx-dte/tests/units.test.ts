@@ -796,6 +796,98 @@ it('an agent restores a dependency once, before any task that needs it runs', as
   }
 })
 
+// A task whose outputs overlap a restored dependency's cleared its files,
+// and a later task that needed them ran without them: the agent still
+// counted them restored (2026-10-22).
+it('an agent restores a dependency again after a task cleared its files', async () => {
+  const root = await tmp()
+  const relay = createRelay()
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+  const url = `http://127.0.0.1:${server.port}`
+  try {
+    const o = sealOrchestrator(
+      await join(url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    let restores = 0
+    const code = runAgent({
+      relay: url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => ({
+        async save() {},
+        async restore() {
+          restores++
+          await mkdir(path.join(root, 'p/dist'), { recursive: true })
+          await writeFile(path.join(root, 'p/dist/a.txt'), 'd')
+          return { stdout: '', stderr: '' }
+        },
+      }),
+    })
+    const dist: RunOrder['outputs'] = { files: ['dist/**'], workspaceFiles: [] }
+    const order = (
+      task: string,
+      deps: boolean,
+      outputs: RunOrder['outputs'] = { files: [], workspaceFiles: [] },
+    ) =>
+      ({
+        task,
+        runKey: runKey(R, task),
+        deps: deps ? [{ task: 'd', key: 'k-d', project: 'p', outputs: dist }] : [],
+        nested: [],
+        command: deps ? 'test -f p/dist/a.txt' : 'true',
+        cwd: '',
+        project: 'p',
+        env: {},
+        outputs,
+        cores: 1,
+        memory: 0,
+      }) as RunOrder
+    const ends: { task: string; exitCode: number }[] = []
+    for (let i = 0; i < 100 && ends.length < 3; i++) {
+      for (const { from, body } of await o.poll()) {
+        const m = body as {
+          type: string
+          id?: string
+          task?: string
+          result?: { exitCode: number }
+        }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 1,
+            memory: 1e9,
+          })
+          await o.send(m.id!, {
+            type: 'batch',
+            root,
+            realRoot: root,
+            tasks: [order('t1', true), order('t2', false, dist), order('t3', true)],
+          })
+        } else if (m.type === 'end') {
+          ends.push({ task: m.task!, exitCode: m.result!.exitCode })
+          if (ends.length === 3) await o.send(from, { type: 'exit' })
+        }
+      }
+    }
+    expect(await code).toBe(0)
+    expect(ends).toEqual([
+      { task: 't1', exitCode: 0 },
+      { task: 't2', exitCode: 0 },
+      { task: 't3', exitCode: 0 },
+    ])
+    expect(restores).toBe(2)
+  } finally {
+    relay.close()
+    await server.stop(true)
+  }
+})
+
 // A stopped run whose agent was lost before it answered the cancel waited
 // on that task forever (2026-10-22).
 it('a task stopped while its agent is lost ends as stopped', async () => {
