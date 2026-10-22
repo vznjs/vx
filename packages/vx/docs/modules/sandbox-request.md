@@ -65,7 +65,7 @@ export type WriteReach = 'none' | 'project' | 'workspace'
 export function undeclaredWriteReach(node: TaskNode, workspaceRoot: string): WriteReach
 export function commandWriteReach(node: TaskNode, workspaceRoot: string): WriteReach
 export function mayWriteFingerprint(
-  node: Pick<TaskNode, 'projectDir'>,
+  node: TaskNode,
   workspaceRoot: string,
   claimed: readonly string[], // the root files the plugins claim
 ): boolean
