@@ -272,14 +272,7 @@ export async function runAgent(opts: {
   }, HELD_EVERY * me.heartbeatMs)
   try {
     for (;;) {
-      let messages
-      try {
-        messages = await me.poll()
-      } catch (err) {
-        if (err instanceof RelayError && err.status === 410) return 0
-        throw err
-      }
-      for (const { from, body } of messages) {
+      for (const { from, body } of await me.poll()) {
         if (from === 'relay') {
           if ((body as { type?: string }).type === 'closed') return 0
           continue
@@ -336,6 +329,10 @@ export async function runAgent(opts: {
         }
       }
     }
+  } catch (err) {
+    // The run closed under a poll or an answer: nothing is left for this agent.
+    if (err instanceof RelayError && err.status === 410) return 0
+    throw err
   } finally {
     clearInterval(held)
     queue.length = 0
