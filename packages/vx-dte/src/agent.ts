@@ -9,6 +9,7 @@ import { realpathSync } from 'node:fs'
 import { lstat, mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
+  answerRuntime,
   localFloor,
   machineMemoryBytes,
   ui,
@@ -155,12 +156,43 @@ export async function runAgent(opts: {
     }
   }
 
+  // Each probe once per agent, as a run answers it once.
+  const probes = new Map<string, Promise<string>>()
+  /** The first probe this machine answers otherwise than the orchestrator did. */
+  const runtimeDiffers = async (m: RunOrder): Promise<string | undefined> => {
+    for (const r of m.runtime ?? []) {
+      const dir = r.workspace === true ? '' : m.project
+      const k = `${dir}\0${r.command}`
+      let p = probes.get(k)
+      if (p === undefined) {
+        p = answerRuntime(r.command, path.join(opts.root, dir), opts.root, r.workspace === true)
+        probes.set(k, p)
+      }
+      const mine = await p
+      if (mine !== r.output)
+        return `\`${r.command}\` answers ${JSON.stringify(mine)} on this agent, ${JSON.stringify(r.output)} on the run's machine, whose answer its key holds`
+    }
+    return undefined
+  }
+
   const runTask = async (m: RunOrder): Promise<void> => {
     const stop = new AbortController()
     running.set(m.task, stop)
     // Not awaited: the task does not wait on the relay to say it began.
     void me.send('orchestrator', { type: 'start', task: m.task }).catch(() => undefined)
     try {
+      const differs = await runtimeDiffers(m)
+      if (differs !== undefined) {
+        ui.print('err', ui.status('error', m.task, differs))
+        await reply(m, m.runKey, {
+          exitCode: 1,
+          durationMs: 0,
+          stdout: '',
+          stderr: `${differs}\n`,
+          violations: [],
+        })
+        return
+      }
       for (const d of m.deps) {
         const got = await artifacts.restore(d.key, {
           id: d.task,

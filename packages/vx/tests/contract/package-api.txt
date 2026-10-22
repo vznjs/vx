@@ -224,6 +224,13 @@ export const TELEMETRY_SCHEMA_VERSION = 4
 export const tone = (t: Tone, text: string): Inline => ({ style: t, text })
 == const VERSION (src/version.ts)
 export const VERSION: string = pkg.version
+== function answerRuntime (src/cache/inputs.ts)
+export function answerRuntime(
+  command: string,
+  projectDir: string,
+  workspaceRoot: string,
+  workspace = false,
+): Promise<string>
 == function applyMigration (src/workspace/migration.ts)
 export async function applyMigration(args: ApplyMigrationArgs): Promise<number>
 == function branchCacheScope (src/workspace/config-schema.ts)
@@ -1720,6 +1727,7 @@ export interface TaskExecutor {
   readonly remote?: boolean
   readonly sandbox?: boolean
   readonly servers?: boolean
+  readonly runtime?: boolean
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void

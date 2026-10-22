@@ -31,6 +31,7 @@ import {
   type AgentInfo,
   type DepOrder,
   type RunOrder,
+  type RuntimeOrder,
   type ToAgent,
   type ToOrchestrator,
   type WiredResult,
@@ -407,6 +408,7 @@ export class Orchestrator {
           cores: job.held?.cores ?? 1,
           memory: job.held?.memory ?? 0,
           ...(req.sandbox === undefined ? {} : { sandbox: req.sandbox }),
+          ...runtimeOrders(req),
           ...(req.servers === undefined || req.servers.length === 0
             ? {}
             : {
@@ -1051,6 +1053,21 @@ const compact = (n: number): string => {
 const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)}s`
 
 /** `env` without its unset names, as it travels. */
+/** The probes a task's key folds: an agent that answers otherwise fails it (C-2). */
+function runtimeOrders(req: ExecuteRequest): { runtime?: RuntimeOrder[] } {
+  const inputs = req.inputs
+  if (inputs === undefined) return {}
+  const runtime: RuntimeOrder[] = [
+    ...inputs.runtime.map((r) => ({ command: r.command, output: r.output })),
+    ...inputs.workspaceRuntime.map((r) => ({
+      command: r.command,
+      output: r.output,
+      workspace: true as const,
+    })),
+  ]
+  return runtime.length === 0 ? {} : { runtime }
+}
+
 function defined(env: NodeJS.ProcessEnv): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [k, v] of Object.entries(env)) if (v !== undefined) out[k] = v

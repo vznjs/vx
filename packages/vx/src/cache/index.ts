@@ -66,6 +66,7 @@ export {
   stampOutputs,
   stampWorkspaceOutputs,
   stopRuntimeProbes,
+  answerRuntime,
   type OutputStamp,
 } from './inputs.js'
 export {

@@ -129,6 +129,8 @@ describe('package boundaries', () => {
       'TaskLogBuffer',
       'UserError',
       'VERSION',
+      // Widened 2026-10-22: `@vzn/vx-dte` checks a task's runtime probes on its agent.
+      'answerRuntime',
       'applyMigration',
       'branchCacheScope',
       'currentBranch',

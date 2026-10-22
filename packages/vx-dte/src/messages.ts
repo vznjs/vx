@@ -61,6 +61,15 @@ export interface RunOrder {
   binds?: { path: string; dir: boolean }[]
   /** Its persistent dependencies (`ServerSpec`), `cwd` workspace-relative: the agent starts each once. */
   servers?: ServerOrder[]
+  /** The runtime probes its key folds, as the orchestrator answered them: the agent's must answer the same. */
+  runtime?: RuntimeOrder[]
+}
+
+export interface RuntimeOrder {
+  command: string
+  output: string
+  /** A `workspaceRuntime` probe, run at the root; else in `project`. */
+  workspace?: true
 }
 
 export interface ServerOrder {

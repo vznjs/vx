@@ -53,6 +53,16 @@ export default { name: 's', tasks: {
   t1: t(1), t2: t(2), t3: t(3),
 } }
 `,
+    // Keys that fold a runtime probe: one every machine answers alike, one
+    // the agent's worktree answers otherwise.
+    'r/vx.config.mjs': `const log = ${JSON.stringify(path.join(root, 'probed.log'))}
+const t = (probe) => ({
+  exec: { command: 'echo "$PWD" >> ' + log },
+  inputs: { files: ['vx.config.mjs'], runtime: [probe] },
+  cache: { outputs: { files: [] } },
+})
+export default { name: 'r', tasks: { same: t('echo 1.4.2'), here: t('pwd') } }
+`,
     // Wide, then a two-task lull, then wide again.
     'c/vx.config.mjs': `const t = (dependsOn) => ({ exec: { command: 'sleep 0.3' }, dependsOn })
 export default { name: 'c', tasks: {
@@ -172,6 +182,24 @@ it('starts a task’s server on the agent that runs it, once per agent, never he
   const starts = (await readFile(path.join(root, 'servers.log'), 'utf8')).trim().split('\n')
   expect(starts).not.toContain(path.join(root, 's'))
   expect(new Set(starts).size).toBe(starts.length)
+}, 60_000)
+
+// Nothing runs on the orchestrator (owner, 2026-10-22), a task that keys
+// on `bun --version` included: its agent answers the probe, and one that
+// answers otherwise than this machine fails it, as its key holds this
+// machine's answer (C-2).
+it('runs a task whose key folds a runtime probe on an agent that answers it alike', async () => {
+  const r = vx(['run', 'r#same'], 'e2e-probe')
+  expect(r.exitCode).toBe(0)
+  const ran = (await readFile(path.join(root, 'probed.log'), 'utf8')).trim().split('\n')
+  expect(ran).toHaveLength(1)
+  expect(ran[0]).not.toBe(path.join(root, 'r'))
+}, 60_000)
+
+it('fails a task on an agent whose runtime probe answers otherwise', () => {
+  const r = vx(['run', 'r#here'], 'e2e-probe')
+  const out = r.stdout.toString() + r.stderr.toString()
+  expect([r.exitCode, out]).toEqual([1, expect.stringContaining('`pwd` answers')])
 }, 60_000)
 
 it('fails a task that fails on its agent, with its output', () => {

@@ -287,9 +287,12 @@ the ones it never played when it ends.
   task, once per agent, ready before it, and stops when the agent leaves;
   the orchestrator never starts it, and an agent no dependant reaches
   never does (owner, 2026-10-22).
+- A task whose key folds a runtime probe (`inputs.runtime`, such as
+  `bun --version`) runs on an agent, which answers the probe first and
+  fails the task when it answers otherwise than this machine did.
 - Tasks that must run here stay here: a requested persistent task, one
-  with a `sandbox` or `exec.remote: false`, interactive tasks, and their
-  dependants (core's placement).
+  with `exec.remote: false`, interactive tasks, and their dependants
+  (core's placement).
 - An agent restores, by key, the declared outputs of every task the one
   it runs depends on, unless it ran or restored them before. Files a task
   writes without declaring them stay on the agent.

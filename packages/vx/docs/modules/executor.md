@@ -34,7 +34,11 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
 { taskId; command; cwd; env; readyWhen?; timeoutMs? }`, in dependency
   order), so their dependants are not pinned for it; `localFloor` starts
   each once, shares it with every later task, and stops them on `close()`,
-  and a server that never became ready fails the task with why; `capacity` is how
+  and a server that never became ready fails the task with why; `runtime: true`
+  says a remote one answers a task's `inputs.runtime` / `workspaceRuntime`
+  probes where it runs the task (`answerRuntime`) and fails it when one
+  answers otherwise than `req.inputs` says this machine did, so a task
+  whose key folds a probe is not pinned for it; `capacity` is how
   many tasks it runs at once (a positive integer, else the run is
   refused), which makes its tasks a POOL of that size instead of local
   worker slots.
@@ -170,9 +174,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   persistent task its executor does not carry, is
   sandboxed (the sandbox is this machine's machinery), depends on a
   sandboxed task (both unless the executor declares `sandbox`), declares `exec.remote: false`, or folds a runtime
-  probe (`inputs.runtime` / `workspaceRuntime`) into its key: the
-  probe is this machine's answer, and a worker's output under it is a
-  stale hit (C-2). `placement.ts`
+  probe (`inputs.runtime` / `workspaceRuntime`) into its key unless the
+  executor declares `runtime`: the probe is this machine's answer, and a
+  worker's output under it is a stale hit (C-2). `placement.ts`
   computes the set once per run (`tests/placement.test.ts`).
 - The executor list is resolved ONCE per run (`plugin-host.resolveExecutors`)
   and each task is PLACED once, before scheduling — every attempt of a task,

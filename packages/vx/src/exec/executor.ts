@@ -221,7 +221,8 @@ export interface TaskPlacement {
    * Must run on this machine: the task is persistent, depends (transitively)
    * on a persistent task this executor does not carry or a sandboxed one, is sandboxed itself, declares
    * `exec.remote: false`, or folds a runtime probe into its key (this
-   * machine's `node -v`). A `remote` executor is never offered such a task.
+   * machine's `node -v`) and this executor is not `runtime`. A `remote`
+   * executor is never offered such a task.
    */
   readonly pinnedLocal: boolean
   /** Declares `cache` — the only tasks whose input set is described, and so the only ones that can ship. */
@@ -248,6 +249,14 @@ export interface TaskExecutor {
    * orchestrator).
    */
   readonly servers?: boolean
+  /**
+   * A `remote` executor that answers a task's `inputs.runtime` and
+   * `workspaceRuntime` probes where it runs the task (`answerRuntime`) and
+   * fails it when one answers other than `TaskInputs` says this machine
+   * did. It is offered tasks whose key folds a probe, which otherwise run
+   * here: their key holds this machine's answer (C-2).
+   */
+  readonly runtime?: boolean
   /**
    * How many tasks this executor runs at once. Its tasks then occupy a pool
    * of this size instead of the local worker slots, so a remote pool is not

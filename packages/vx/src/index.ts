@@ -205,6 +205,8 @@ export { withForwardArgs } from './exec/index.js'
 // Core's local executor, sandbox included, for a plugin that runs tasks
 // itself: `@vzn/vx-dte`'s orchestrator and its agents.
 export { localFloor, type LocalFloor } from './orchestrator/index.js'
+// A runtime probe answered where a `runtime` executor runs the task.
+export { answerRuntime } from './cache/index.js'
 export type {
   ExecuteRequest,
   ExecuteResult,

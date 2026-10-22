@@ -39,6 +39,24 @@ export interface AffectedChanges {
 }
 ```
 
+## `answerRuntime`
+
+function · `src/cache/inputs.ts`
+
+One runtime probe answered on this machine as a key folds it: an
+`inputs.runtime` command run in `projectDir`, or with `workspace` a
+`workspaceRuntime` one run in `workspaceRoot`. For an executor that
+checks a task's probes where it runs it (`TaskExecutor.runtime`).
+
+```ts
+export function answerRuntime(
+  command: string,
+  projectDir: string,
+  workspaceRoot: string,
+  workspace = false,
+): Promise<string>
+```
+
 ## `applyMigration`
 
 function · `src/workspace/migration.ts`
@@ -2498,6 +2516,7 @@ export interface TaskExecutor {
   readonly remote?: boolean
   readonly sandbox?: boolean
   readonly servers?: boolean
+  readonly runtime?: boolean
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void
