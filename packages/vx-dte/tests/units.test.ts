@@ -928,6 +928,21 @@ it('a task stopped while its agent is lost ends as stopped', async () => {
   }
 }, 3_000)
 
+// A task handed over already stopped was queued and run in full: its
+// signal's abort had fired before anyone listened (2026-10-22).
+it('a task handed over already stopped ends as stopped', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const stop = new AbortController()
+    stop.abort()
+    expect(await h.o.execute({ ...h.req('t1'), signal: stop.signal })).toMatchObject({
+      exitCode: 130,
+    })
+  } finally {
+    await h.stop()
+  }
+}, 3_000)
+
 // A run's only agent faulted on a task: no agent was left to run it, none
 // was starting, and the run waited forever (2026-10-22).
 it('a task its only agent could not run fails when no agent is left', async () => {
