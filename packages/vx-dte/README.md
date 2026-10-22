@@ -227,7 +227,7 @@ include: [{ local: .gitlab/vx.yml }]
 
 vx-plan:
   extends: .vx
-  script: [pnpm exec vx dte plan build test --all] # the run's selection
+  script: [bunx @vzn/vx dte plan build test --all] # the run's selection
   artifacts:
     paths: [vx-agents.yml, .vx/dte/]
     reports: { dotenv: vx-dte.env }
@@ -244,7 +244,7 @@ vx:
   extends: .vx
   needs: [vx-plan]
   id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
-  script: [pnpm exec vx run build test --all]
+  script: [bunx @vzn/vx run build test --all]
 ```
 
 ```yaml
