@@ -66,12 +66,17 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** `vx`, a distributed run when `run` names one. */
+/** `vx`, a distributed run when `run` names one; its id is a fresh UUID. */
 function vx(args: string[], run?: string, extra: Record<string, string> = {}) {
   const { VX_DTE_RUN: _, ...env } = process.env
   return Bun.spawnSync([process.execPath, CORE_BIN, ...args], {
     cwd: root,
-    env: { ...env, ...(run === undefined ? {} : { VX_DTE_RUN: run }), NO_COLOR: '1', ...extra },
+    env: {
+      ...env,
+      ...(run === undefined ? {} : { VX_DTE_RUN: crypto.randomUUID() }),
+      NO_COLOR: '1',
+      ...extra,
+    },
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -119,7 +124,7 @@ it('runs a task again on a new agent when its agent is killed', async () => {
   const { VX_DTE_RUN: _, ...env } = process.env
   const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#once'], {
     cwd: root,
-    env: { ...env, VX_DTE_RUN: 'e2e-kill', NO_COLOR: '1' },
+    env: { ...env, VX_DTE_RUN: crypto.randomUUID(), NO_COLOR: '1' },
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -176,16 +181,17 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, local: 0 })] }
     )
     expect(vx(['run', 'a#gen']).exitCode).toBe(0)
     const { VX_DTE_RUN: _, ...env } = process.env
+    const hand = crypto.randomUUID()
     const agent = Bun.spawn([process.execPath, CORE_BIN, 'dte', 'agent'], {
       cwd: root,
-      env: { ...env, VX_DTE_RUN: 'hand', VX_DTE_SECRET: 'hand-secret', NO_COLOR: '1' },
+      env: { ...env, VX_DTE_RUN: hand, VX_DTE_SECRET: 'hand-secret', NO_COLOR: '1' },
       stdout: 'pipe',
       stderr: 'pipe',
     })
     // Async: the relay is served by this process.
     const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#use'], {
       cwd: root,
-      env: { ...env, VX_DTE_RUN: 'hand', VX_DTE_SECRET: 'hand-secret', NO_COLOR: '1' },
+      env: { ...env, VX_DTE_RUN: hand, VX_DTE_SECRET: 'hand-secret', NO_COLOR: '1' },
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -238,7 +244,7 @@ it.each(['SIGHUP', 'SIGINT'] as const)(
       const { VX_DTE_RUN: _, ...env } = process.env
       const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#slow'], {
         cwd: root,
-        env: { ...env, VX_DTE_RUN: 'sig', NO_COLOR: '1', TMPDIR: tmp },
+        env: { ...env, VX_DTE_RUN: crypto.randomUUID(), NO_COLOR: '1', TMPDIR: tmp },
         stdout: 'pipe',
         stderr: 'pipe',
       })
@@ -304,7 +310,7 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB
     const { VX_DTE_RUN: _, ...env } = process.env
     const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#slow'], {
       cwd: root,
-      env: { ...env, VX_DTE_RUN: 'stop', NO_COLOR: '1', TMPDIR: tmp },
+      env: { ...env, VX_DTE_RUN: crypto.randomUUID(), NO_COLOR: '1', TMPDIR: tmp },
       stdout: 'ignore',
       stderr: 'ignore',
     })

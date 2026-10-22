@@ -59,11 +59,12 @@ export default defineWorkspace({
 ```
 
 ```sh
-VX_DTE_RUN=try vx run build --all
+VX_DTE_RUN=$(uuidgen) vx run build --all
 ```
 
 `VX_DTE_RUN` names the run and turns distribution on; without it, `vx run`
-runs here as always. `local()` starts each agent as a process in its own
+runs here as always. It is a random UUID, so no one can guess a run to
+open it first or join it; vx and the relay refuse any other. `local()` starts each agent as a process in its own
 git worktree of the tracked files as they are, uncommitted changes
 included (untracked files are not). When an agent fails, its row names
 the error line and the log that holds its whole stderr. At the run's end,
@@ -106,8 +107,9 @@ export default defineWorkspace({ plugins: [dte({ relay: 'http://127.0.0.1:8080' 
 ```sh
 bun /path/to/vx/packages/vx-dte-relay/src/bun.ts --no-auth --port 8080   # the relay
 export VX_DTE_SECRET=$(openssl rand -base64 32)                          # in each terminal: the same one
-VX_DTE_RUN=try vx dte agent                                              # an agent, as many as you like
-VX_DTE_RUN=try vx run build --all                                        # the run
+export VX_DTE_RUN=$(uuidgen)                                             # in each terminal: the same one
+vx dte agent                                                             # an agent, as many as you like
+vx run build --all                                                       # the run
 ```
 
 An agent prints its name, the run, the relay and its machine, then a row
@@ -116,7 +118,7 @@ as each task starts and ends:
 ```
 ─ vx dte agent ───────────────────────────────────────────────
   agent     agent#1
-  run       try
+  run       5f0c7a52-…
   relay     http://127.0.0.1:8080
   machine   10 cores · 17.2 GB
 › b#build  running
@@ -151,12 +153,9 @@ permissions: { id-token: write, contents: read, actions: write }
 steps:
   - uses: actions/checkout@v4
   - run: bun install --frozen-lockfile
+  - run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
   - run: bunx @vzn/vx run build test --all
-    env:
-      {
-        VX_DTE_RUN: '${{ github.run_id }}-${{ github.run_attempt }}',
-        GITHUB_TOKEN: '${{ github.token }}',
-      }
+    env: { GITHUB_TOKEN: '${{ github.token }}' }
 ```
 
 ```yaml

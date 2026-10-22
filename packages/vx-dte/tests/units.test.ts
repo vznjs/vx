@@ -21,6 +21,10 @@ import { busyCores, endsInMs } from '../src/width.js'
 import { join } from '../src/wire.js'
 import type { RunOrder } from '../src/messages.js'
 
+/** Run ids: random UUIDs, as the relay takes. */
+const R = '00000000-0000-4000-8000-000000000001'
+const R2 = '00000000-0000-4000-8000-000000000002'
+
 const dirs: string[] = []
 afterEach(async () => {
   for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true })
@@ -84,7 +88,7 @@ it('an agent with other tracked files than the run is refused', async () => {
   const url = `http://127.0.0.1:${server.port}`
   try {
     const o = new Orchestrator({
-      me: await join(url, 'r', 'orchestrator', null, undefined),
+      me: await join(url, R, 'orchestrator', null, undefined),
       root: '/ws',
       tree: 'aaa',
       localSlots: 0,
@@ -92,16 +96,10 @@ it('an agent with other tracked files than the run is refused', async () => {
       need: () => ({ cores: 1, memory: 0 }),
       artifacts: fakeArtifacts().artifacts,
       cacheFacts: async () => ({ refs: [], lent: {} }),
-      run: 'r',
+      run: R,
       keyOf: () => undefined,
     })
-    const agent = await join(
-      url,
-      'r',
-      'agent',
-      { v: 1, cores: 1, memory: 1, tree: 'bbb' },
-      undefined,
-    )
+    const agent = await join(url, R, 'agent', { v: 1, cores: 1, memory: 1, tree: 'bbb' }, undefined)
     let got: unknown[] = []
     for (let i = 0; i < 20 && got.length === 0; i++) got = await agent.poll()
     expect(got).toEqual([
@@ -124,7 +122,7 @@ it('gives a failed agent start one more agent, then fails the run', async () => 
   try {
     const freed: string[] = []
     const o = new Orchestrator({
-      me: await join(url, 'r', 'orchestrator', null, undefined),
+      me: await join(url, R, 'orchestrator', null, undefined),
       root: '/ws',
       tree: 'aaa',
       localSlots: 0,
@@ -132,7 +130,7 @@ it('gives a failed agent start one more agent, then fails the run', async () => 
       need: () => ({ cores: 1, memory: 0 }),
       artifacts: fakeArtifacts().artifacts,
       cacheFacts: async () => ({ refs: [], lent: {} }),
-      run: 'r',
+      run: R,
       keyOf: () => undefined,
       left: (id) => {
         freed.push(id)
@@ -182,7 +180,7 @@ async function harness(
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
   const url = `http://127.0.0.1:${server.port}`
   const o = new Orchestrator({
-    me: await join(url, 'r', 'orchestrator', null, undefined),
+    me: await join(url, R, 'orchestrator', null, undefined),
     root: '/ws',
     tree: 'c',
     localSlots: 0,
@@ -190,11 +188,11 @@ async function harness(
     need,
     artifacts: store.artifacts,
     cacheFacts: async () => cache.facts,
-    run: 'r',
+    run: R,
     keyOf,
   })
   const agent = async (cores: number, id?: string) => {
-    const me = await join(url, 'r', 'agent', { v: 1, cores, memory: 100, tree: 'c', id }, undefined)
+    const me = await join(url, R, 'agent', { v: 1, cores, memory: 100, tree: 'c', id }, undefined)
     const orders: RunOrder[] = []
     const batches = async (): Promise<string[][]> => {
       for (let i = 0; i < 20; i++) {
@@ -570,14 +568,14 @@ it('an order names its key and each dependency’s; the result comes back by the
     expect(a.orders[0]).toMatchObject({
       task: 'mid',
       key: 'k-mid',
-      runKey: runKey('r', 'mid'),
+      runKey: runKey(R, 'mid'),
       deps: [{ task: 'lib', key: 'k-lib-hit', project: 'lib', outputs: { files: ['dist/**'] } }],
     })
     // A failure is saved under its run key.
-    await a.finish('mid', runKey('r', 'mid'))
+    await a.finish('mid', runKey(R, 'mid'))
     const got = await mid
     expect(got.stdout).toBe('mid out\n')
-    expect(h.store.restored).toEqual([runKey('r', 'mid')])
+    expect(h.store.restored).toEqual([runKey(R, 'mid')])
     void h.o.execute(h.req('app', 'k-app'))
     expect(await a.batches()).toEqual([['app']])
     // It holds lib and mid already: nothing to restore.
@@ -588,7 +586,7 @@ it('an order names its key and each dependency’s; the result comes back by the
     void h.o.execute(h.req('top', 'k-top'))
     expect(await b.batches()).toEqual([['top']])
     expect(b.orders[0]!.deps.map((d) => [d.task, d.key])).toEqual([
-      ['mid', runKey('r', 'mid')],
+      ['mid', runKey(R, 'mid')],
       ['lib', 'k-lib-hit'],
     ])
   } finally {
@@ -716,7 +714,7 @@ it('docker() starts each agent as a container of its size, on a fresh clone', as
   try {
     const d = docker({ image: 'img', prepare: 'bun install' })
     await d.spawn({
-      run: 'r',
+      run: R,
       relay: 'http://127.0.0.1:9',
       size: 'small',
       cpu: 2,
@@ -724,7 +722,7 @@ it('docker() starts each agent as a container of its size, on a fresh clone', as
       index: 3,
       id: 'small#3',
       workspaceRoot: path.join(link, 'sub'),
-      env: { VX_DTE_RUN: 'r', VX_DTE_AGENT: 'small#3', VX_DTE_RELAY: 'http://127.0.0.1:9' },
+      env: { VX_DTE_RUN: R, VX_DTE_AGENT: 'small#3', VX_DTE_RELAY: 'http://127.0.0.1:9' },
       exited: () => {},
     })
     for (let i = 0; i < 100 && !(await Bun.file(argv).exists()); i++) await Bun.sleep(20)

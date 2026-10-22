@@ -19,7 +19,6 @@ beforeEach(async () => {
   delete process.env['VX_DTE_RUN']
   delete process.env['VX_DTE_SECRET']
   process.env['CI_PIPELINE_ID'] = '900'
-  process.env['CI_JOB_ID'] = '42'
 })
 afterEach(async () => {
   process.env = { ...saved }
@@ -45,8 +44,12 @@ it('writes a job per planned agent, the run id and a secret no one else reads', 
       adapter: gitlab({ include: '.gitlab/vx.yml', tags: { big: ['saas-linux-xlarge-amd64'] } }),
     }),
   ).toBe(0)
+  // A random id, not the pipeline's: that one is guessable.
+  const env = await readFile(path.join(root, 'vx-dte.env'), 'utf8')
+  const run = /^VX_DTE_RUN=(.+)\n$/.exec(env)![1]!
+  expect(run).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
   expect(await readFile(path.join(root, 'vx-agents.yml'), 'utf8'))
-    .toBe(`# Written by vx dte plan for run 900-42; do not commit.
+    .toBe(`# Written by vx dte plan for run ${run}; do not commit.
 include:
   - local: ".gitlab/vx.yml"
 
@@ -58,7 +61,7 @@ include:
   tags:
     - "saas-linux-xlarge-amd64"
   variables:
-    VX_DTE_RUN: "900-42"
+    VX_DTE_RUN: "${run}"
     VX_DTE_AGENT: "big#1"
     VX_DTE_RELAY: "https://relay.example.com"
   script:
@@ -70,7 +73,7 @@ include:
     - pipeline: $PARENT_PIPELINE_ID
       job: vx-plan
   variables:
-    VX_DTE_RUN: "900-42"
+    VX_DTE_RUN: "${run}"
     VX_DTE_AGENT: "small#2"
     VX_DTE_RELAY: "https://relay.example.com"
   script:
@@ -82,13 +85,12 @@ include:
     - pipeline: $PARENT_PIPELINE_ID
       job: vx-plan
   variables:
-    VX_DTE_RUN: "900-42"
+    VX_DTE_RUN: "${run}"
     VX_DTE_AGENT: "small#3"
     VX_DTE_RELAY: "https://relay.example.com"
   script:
     - "pnpm exec vx dte agent"
 `)
-  expect(await readFile(path.join(root, 'vx-dte.env'), 'utf8')).toBe('VX_DTE_RUN=900-42\n')
   const secret = path.join(root, '.vx/dte/secret')
   expect((await readFile(secret, 'utf8')).trim()).toMatch(/^[\w-]{43}$/)
   expect((await stat(secret)).mode & 0o777).toBe(0o600)
@@ -104,9 +106,9 @@ it('writes no secret when VX_DTE_SECRET is set, and names what a plan needs', as
     plan({ relay: 'https://r', agents: { small: { cpu: 4, memory: '16GB' } }, adapter }),
   ).rejects.toThrow('dte(): agents.small needs max: a plan writes that many')
   await expect(plan({ agents, adapter })).rejects.toThrow('vx dte plan needs dte({ relay })')
-  delete process.env['CI_JOB_ID']
+  process.env['VX_DTE_RUN'] = '900-42'
   await expect(plan({ relay: 'https://r', agents, adapter })).rejects.toThrow(
-    'vx dte plan needs VX_DTE_RUN, or an adapter that names the run',
+    'VX_DTE_RUN is a random UUID, such as one `uuidgen` prints, so no one can guess the run: not "900-42"',
   )
   expect(() => gitlab({} as never)).toThrow(
     "gitlab() needs include: the file holding .vx-agent, such as '.gitlab/vx.yml'",
@@ -154,7 +156,7 @@ export default { plugins: [dte({ relay: 'https://r', agents: { small: { max: 4, 
     true,
   ])
   expect(JSON.parse(await readFile(path.join(root, '.vx/dte/plan.json'), 'utf8'))).toEqual({
-    run: '900-42',
+    run: expect.stringMatching(/^[0-9a-f-]{36}$/),
     agents: [1, 2, 3, 4].map((i) => ({
       id: `small#${i}`,
       size: 'small',

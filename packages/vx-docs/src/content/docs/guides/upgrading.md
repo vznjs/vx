@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte: make run ids random UUIDs no one can guess
+
+VX_DTE_RUN and a relay run id are a random v4 UUID; set VX_DTE_RUN=$(uuidgen) where it was the CI run id.
+
 ## history: name the task with no inputs that stops a hit
 
 TaskOutcome.keyless is replaced by keylessBy, the id of the task with no inputs the key folds. index schema v45 -> v46; the local index is rebuilt.

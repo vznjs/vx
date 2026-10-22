@@ -65,7 +65,7 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 2, memory: '1GB
   }
 
   it('writes in its grants on the agent, and the files come back', async () => {
-    const r = vx(['run', 'a#gen'], 'sb-1')
+    const r = vx(['run', 'a#gen'], crypto.randomUUID())
     expect([r.exitCode, r.stdout.toString() + r.stderr.toString()]).toEqual([0, expect.any(String)])
     const where = (await readFile(path.join(root, 'a/out/where.txt'), 'utf8')).trim()
     expect(where).not.toBe(path.join(root, 'a'))
@@ -73,7 +73,7 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 2, memory: '1GB
   }, 60_000)
 
   it('fails a read outside its grants, naming this checkout', () => {
-    const r = vx(['run', 'a#peek'], 'sb-2')
+    const r = vx(['run', 'a#peek'], crypto.randomUUID())
     const out = r.stdout.toString() + r.stderr.toString()
     expect(r.exitCode).not.toBe(0)
     expect(out).not.toContain('secret\n')

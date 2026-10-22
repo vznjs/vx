@@ -9,6 +9,14 @@ import worker, {
   type Env,
 } from '../src/worker.js'
 
+/** Run ids: random UUIDs, as the relay takes. */
+const A = '00000000-0000-4000-8000-000000000001'
+const B = '00000000-0000-4000-8000-000000000002'
+const C = '00000000-0000-4000-8000-000000000003'
+const D = '00000000-0000-4000-8000-000000000004'
+const E = '00000000-0000-4000-8000-000000000005'
+const R = '00000000-0000-4000-8000-000000000006'
+
 // Only the runtime has it; these tests make no websocket.
 Object.assign(globalThis, { WebSocketRequestResponsePair: class {} })
 
@@ -73,10 +81,10 @@ it('routes each run to its own object, which checks tokens', async () => {
   let env: Env
   const ns = namespace(() => env)
   env = { RELAY: ns, ISSUERS: 'https://gitlab.com', REPOSITORIES: 'o/r' }
-  expect((await join(env, 'a')).status).toBe(401)
-  expect((await join(env, 'a')).status).toBe(401)
-  expect((await join(env, 'b')).status).toBe(401)
-  expect(ns.made).toEqual(['a', 'b'])
+  expect((await join(env, A)).status).toBe(401)
+  expect((await join(env, A)).status).toBe(401)
+  expect((await join(env, B)).status).toBe(401)
+  expect(ns.made).toEqual([A, B])
   const res = await worker.fetch(new Request('https://relay.example.com/health'), env)
   expect([res.status, await res.json()]).toEqual([404, { error: 'no such route' }])
 })
@@ -87,10 +95,10 @@ it('gives the same run id of two repositories two objects', async () => {
   env = { RELAY: ns, ISSUERS: 'https://gitlab.com', REPOSITORIES: 'o/r' }
   const unsigned = (project: number) =>
     `${b64({ alg: 'RS256' })}.${b64({ iss: 'https://gitlab.com', project_id: project })}.x`
-  await join(env, 'r', unsigned(1))
-  await join(env, 'r', unsigned(2))
-  await join(env, 'r', unsigned(1))
-  expect(ns.made).toEqual(['https://gitlab.com\x001\x00r', 'https://gitlab.com\x002\x00r'])
+  await join(env, R, unsigned(1))
+  await join(env, R, unsigned(2))
+  await join(env, R, unsigned(1))
+  expect(ns.made).toEqual([`https://gitlab.com\x001\x00${R}`, `https://gitlab.com\x002\x00${R}`])
 })
 
 it('will not start without ISSUERS and REPOSITORIES', () => {
@@ -143,11 +151,11 @@ it('takes its own URL as the audience when AUDIENCE is not set', async () => {
       project_id: 1,
       project_path: 'o/r',
     })
-  const mine = await join(env, 'c', await token('https://relay.example.com'))
-  const other = await join(env, 'd', await token('https://other.example.com'))
+  const mine = await join(env, C, await token('https://relay.example.com'))
+  const other = await join(env, D, await token('https://other.example.com'))
   const elsewhere = await join(
     env,
-    'e',
+    E,
     await token('https://other.example.com'),
     'https://other.example.com',
   )
