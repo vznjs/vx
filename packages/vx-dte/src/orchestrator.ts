@@ -744,6 +744,8 @@ export class Orchestrator {
    * kept first, unless `needed` says a remaining task wants one that big.
    */
   retire(wantCores: number, needed: (a: { cores: number; memory: number }) => boolean): void {
+    // One that faulted gets no more work: idle, it only holds its machine.
+    for (const a of this.agents.values()) if (a.faulty && a.busy.size === 0) this.letGo(a)
     const online = [...this.agents.values()].filter((a) => !a.faulty)
     let cores = 0
     for (const a of online) if (a.busy.size > 0) cores += a.cores
@@ -758,13 +760,17 @@ export class Orchestrator {
         cores += a.cores
         continue
       }
-      this.agents.delete(a.id)
-      a.usage.to = performance.now()
-      this.gone.push(a)
-      this.retired.add(a)
-      this.post(a, { type: 'exit' })
-      this.o.left?.(a.label)
+      this.letGo(a)
     }
+  }
+
+  private letGo(a: Agent): void {
+    this.agents.delete(a.id)
+    a.usage.to = performance.now()
+    this.gone.push(a)
+    this.retired.add(a)
+    this.post(a, { type: 'exit' })
+    this.o.left?.(a.label)
   }
 
   /** Agent `id` will not join: its start failed or it exited first. */
