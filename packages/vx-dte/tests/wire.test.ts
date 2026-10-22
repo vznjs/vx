@@ -276,12 +276,14 @@ it('waits out the relay’s rate limit and sends again', async () => {
   expect(got).toEqual([{ from: a.id, body: 'once' }])
 })
 
-// A socket a network stops carrying sends no close: on a CI runner an agent's
-// `held` frames waited on acks that never came, its lease lapsed mid-task, and
-// its polls read nothing while the relay queued its next batch (2026-10-22).
-it('drops a socket the relay stopped answering, and carries on over HTTP', async () => {
-  type Held = { key: string; id: string; socket?: { send(t: string): void; close(): void } }
-  const swallowed = new Set<string>()
+type Held = { key: string; id: string; socket?: { send(t: string): void; close(): void } }
+
+/**
+ * A relay whose sockets drop what `drops` says, as a host whose object
+ * failed answers nothing: `all`, its pings too, or `frames`, while the
+ * host itself still answers pings (Cloudflare's auto-response).
+ */
+function dropping(drops: Map<string, 'all' | 'frames'>): string {
   let server: Bun.Server<Held> | undefined
   const relay = createRelay({
     heartbeatMs: 100,
@@ -298,18 +300,19 @@ it('drops a socket the relay stopped answering, and carries on over HTTP', async
       open(ws) {
         ws.data.socket = {
           send: (t) => {
-            if (!swallowed.has(ws.data.id)) ws.send(t)
+            if (!drops.has(ws.data.id)) ws.send(t)
           },
           close: () => ws.close(),
         }
         relay.attach(ws.data.key, ws.data.id, ws.data.socket)
       },
       message(ws, m) {
-        if (swallowed.has(ws.data.id)) return
+        const drop = drops.get(ws.data.id)
         if (m === 'ping') {
+          if (drop === 'all') return
           relay.seen(ws.data.key, ws.data.id, Date.now())
           ws.send('pong')
-        } else ws.send(relay.frame(ws.data.key, ws.data.id, String(m)))
+        } else if (drop === undefined) ws.send(relay.frame(ws.data.key, ws.data.id, String(m)))
       },
       close(ws) {
         relay.detach(ws.data.key, ws.data.id, ws.data.socket!)
@@ -323,11 +326,19 @@ it('drops a socket the relay stopped answering, and carries on over HTTP', async
       await server!.stop(true)
     },
   })
-  const url = `http://127.0.0.1:${server.port}`
+  return `http://127.0.0.1:${server.port}`
+}
+
+// A socket a network stops carrying sends no close: on a CI runner an agent's
+// `held` frames waited on acks that never came, its lease lapsed mid-task, and
+// its polls read nothing while the relay queued its next batch (2026-10-22).
+it('drops a socket the relay stopped answering, and carries on over HTTP', async () => {
+  const drops = new Map<string, 'all' | 'frames'>()
+  const url = dropping(drops)
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'agent', null, undefined)
   await o.poll()
-  swallowed.add(a.id)
+  drops.set(a.id, 'all')
   await a.send('orchestrator', 'held')
   const got = []
   for (let i = 0; i < 10 && got.length === 0; i++) got.push(...(await o.poll()))
@@ -338,4 +349,54 @@ it('drops a socket the relay stopped answering, and carries on over HTTP', async
   expect(read).toEqual([{ from: 'orchestrator', body: 'batch' }])
   await a.leave()
   await o.leave()
+}, 5_000)
+
+// A Cloudflare relay over its daily limit still answers pings, which the
+// host does without the object, but no frame: a send waited for its
+// answer forever, and the run with it (CI on #3888, 2026-10-22).
+it('sends over HTTP when the socket answers pings but not frames', async () => {
+  const drops = new Map<string, 'all' | 'frames'>()
+  const url = dropping(drops)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'agent', null, undefined)
+  await o.poll()
+  drops.set(o.id, 'frames')
+  await o.send(a.id, 'batch')
+  const read = []
+  for (let i = 0; i < 10 && read.length === 0; i++) read.push(...(await a.poll()))
+  expect(read).toEqual([{ from: 'orchestrator', body: 'batch' }])
+  await o.leave()
+  await a.leave()
+}, 5_000)
+
+it('leaves over HTTP when the socket answers pings but not frames', async () => {
+  const drops = new Map<string, 'all' | 'frames'>()
+  const url = dropping(drops)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'agent', null, undefined)
+  await o.poll()
+  drops.set(o.id, 'frames')
+  // The run closes, and its agents learn it.
+  await o.leave()
+  expect(await a.poll()).toEqual([{ from: 'relay', body: { type: 'closed' } }])
+  await a.leave()
+}, 5_000)
+
+// A relay that held a poll left the run waiting on Bun's own five-minute
+// limit before it failed (CI, 2026-10-22): a request past three heartbeats
+// is a failure the run counts.
+it('gives up on a request the relay holds past three heartbeats', async () => {
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: (r) =>
+      r.url.includes('/join')
+        ? Response.json({ id: 'p1', heartbeatMs: 100 })
+        : new Promise<Response>(() => {}),
+  })
+  servers.push({ url: '', stop: () => server.stop(true) })
+  const o = await join(`http://127.0.0.1:${server.port}`, R, 'orchestrator', null, undefined)
+  const at = performance.now()
+  await expect(o.poll()).rejects.toThrow()
+  expect(performance.now() - at).toBeLessThan(2_000)
 }, 5_000)

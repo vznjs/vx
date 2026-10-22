@@ -21,6 +21,11 @@ const FIRST_REDIAL_MS = 250
 const MAX_REDIAL_MS = 30_000
 /** How long `leave` waits on its socket's close handshake. */
 const CLOSE_WAIT_MS = 2_000
+const UNANSWERED = 'the relay answered no frame'
+/** How long `join` waits on the relay, before it says how long a heartbeat is. */
+const JOIN_DEADLINE_MS = 30_000
+/** The least either wait is: a loaded machine's loopback, under a test's short heartbeat. */
+const MIN_WAIT_MS = 1_000
 
 /** Runs `f` again after each rate-limit answer, as long as the relay asks to wait. */
 async function paced<T>(f: () => Promise<T>): Promise<T> {
@@ -68,14 +73,19 @@ export async function join(
   }
   const call = (verb: string, body?: unknown, query = '', signal?: AbortSignal) =>
     paced(() => once(verb, body, query, signal))
+  // A relay that holds a request past its longest poll is stuck: Bun's
+  // own limit let one poll wait five minutes before the run failed (CI,
+  // 2026-10-22). Three heartbeats, once `join` says what one is.
+  let deadlineMs = JOIN_DEADLINE_MS
   const once = async (verb: string, body?: unknown, query = '', signal?: AbortSignal) => {
     const method = body === undefined ? 'GET' : 'POST'
     const text = body === undefined ? '' : JSON.stringify(body)
+    const limit = AbortSignal.timeout(deadlineMs)
     const res = await fetch(base + verb + query, {
       method,
       headers: await headers(method, base + verb + query, text),
       ...(body === undefined ? {} : { body: text }),
-      ...(signal === undefined ? {} : { signal }),
+      signal: signal === undefined ? limit : AbortSignal.any([signal, limit]),
     })
     if (res.status === 204) return null
     const json = (await res.json().catch(() => ({}))) as { error?: string; retryAfterMs?: number }
@@ -88,6 +98,7 @@ export async function join(
   const joined = (await call('join', { role, info, ...(prover && { key: prover.key }) }))!
   const id = joined['id'] as string
   const heartbeatMs = joined['heartbeatMs'] as number
+  deadlineMs = Math.max(3 * heartbeatMs, MIN_WAIT_MS)
   const offered = joined['socket'] === true
   // A relay older than `frames` 2 takes only single sends down the socket.
   const frames = joined['frames'] === 2
@@ -169,8 +180,12 @@ export async function join(
       clearTimeout(redial)
       const s = socket
       // The relay drops it and closes the socket, which is its answer.
-      if (frames && s?.open === true) await s.request({ leave: true }).catch(() => undefined)
-      else await call('leave', { id }).catch(() => undefined)
+      const http = () => call('leave', { id }).catch(() => undefined)
+      if (frames && s?.open === true)
+        await s.request({ leave: true }).catch(async (err: Error) => {
+          if (err.message === UNANSWERED) await http()
+        })
+      else await http()
       await s?.close()
     },
   }
@@ -250,6 +265,20 @@ async function connect(
     results?: (Answer | null)[]
   }
   const pending = new Map<number, { settle(a: Answer): void; reject(err: Error): void }>()
+  // A host can answer pings without the object behind it (Cloudflare's
+  // auto-response), so a socket whose relay fails every frame still looks
+  // alive: one that leaves a frame unanswered for two heartbeats is dead.
+  const answer = (k: number, p: { settle(a: Answer): void; reject(err: Error): void }): void => {
+    pending.set(k, p)
+    setTimeout(
+      () => {
+        if (!pending.has(k)) return
+        closed(UNANSWERED)
+        ws.close()
+      },
+      Math.max(2 * heartbeatMs, MIN_WAIT_MS),
+    ).unref()
+  }
   const refused = (a: Answer): RelayError =>
     new RelayError(a.status!, `relay send: ${a.status} ${a.error ?? ''}`, a.retryAfterMs)
   /** Sends asked for in this turn of the event loop, which go as one frame. */
@@ -262,7 +291,7 @@ async function connect(
       return
     }
     const k = ++n
-    pending.set(k, {
+    answer(k, {
       settle(a) {
         batch.forEach((one, i) => {
           const r = a.status !== undefined ? a : (a.results?.[i] ?? null)
@@ -279,7 +308,7 @@ async function connect(
   const request = (frame: Record<string, unknown>): Promise<void> =>
     new Promise((resolve, reject) => {
       const k = ++n
-      pending.set(k, {
+      answer(k, {
         settle: (a) => (a.status === undefined ? resolve() : reject(refused(a))),
         reject,
       })
@@ -296,11 +325,11 @@ async function connect(
     } else ws.send('ping')
   }, heartbeatMs / 2)
   ping.unref()
-  const closed = (): void => {
+  const closed = (why = 'socket closed'): void => {
     if (!open) return
     open = false
     clearInterval(ping)
-    for (const p of pending.values()) p.reject(new Error('socket closed'))
+    for (const p of pending.values()) p.reject(new Error(why))
     pending.clear()
     wake?.()
   }
@@ -312,7 +341,7 @@ async function connect(
     closed()
     shut()
   }
-  ws.onerror = closed
+  ws.onerror = () => closed()
   ws.onmessage = (e) => {
     heard = performance.now()
     if (e.data === 'pong') return

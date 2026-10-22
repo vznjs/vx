@@ -111,6 +111,15 @@ const CLOSED_TTL_MS = 10 * 60_000
  * agents could still start: CI hosts drop a job queued a day.
  */
 const TOMBSTONE_TTL_MS = 24 * 60 * 60_000
+/**
+ * A participant on a socket is lost after this many heartbeats of silence,
+ * not three: its pings cost a host nothing, but each sweep wakes it, and a
+ * Durable Object woken every 12 s stayed awake, billed, the whole run
+ * (2026-10-22). A socket that closes is still noticed at once; this bounds
+ * only one a network stopped carrying, which the orchestrator's lease
+ * catches first anyway.
+ */
+const SOCKET_LOST_BEATS = 12
 /** How far a proof's time may be from the relay's: a CI runner's clock drifts. */
 const PROOF_SKEW_MS = 2 * 60_000
 
@@ -242,6 +251,8 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     store?.delete(runAt(run.key))
   }
 
+  const lostAfter = (p: Participant): number =>
+    (p.socket === undefined ? 3 : SOCKET_LOST_BEATS) * heartbeatMs
   const sweep = (): number | undefined => {
     const now = Date.now()
     let next: number | undefined
@@ -258,12 +269,12 @@ export function createRelay(opts: RelayOptions = {}): Relay {
         continue
       }
       for (const p of [...run.byId.values()]) {
-        if (now - p.seen > 3 * heartbeatMs) drop(run, p)
+        if (now - p.seen > lostAfter(p)) drop(run, p)
       }
       // Agents whose orchestrator never joined: nothing would close it.
       if (run.closed) at(run.closedAt! + CLOSED_TTL_MS + 1)
       else if (run.byId.size === 0) forget(run)
-      else for (const p of run.byId.values()) at(p.seen + 3 * heartbeatMs + 1)
+      else for (const p of run.byId.values()) at(p.seen + lostAfter(p) + 1)
     }
     return next
   }
