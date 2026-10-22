@@ -27,7 +27,7 @@ import {
   type ToAgent,
   type WiredResult,
 } from './messages.js'
-import { outputFiles } from './outputs.js'
+import { names, outputFiles } from './outputs.js'
 import { sealAgent, type Proof } from './seal.js'
 import { join, RelayError } from './wire.js'
 
@@ -101,6 +101,8 @@ export async function runAgent(opts: {
    * started together wait on one restore, never run before it.
    */
   const present = new Map<string, Promise<void>>()
+  /** Of `present`, which files each holds: a task that clears one makes it absent. */
+  const holds = new Map<string, (file: string) => boolean>()
 
   /** Saves the task's files and output under `key` and says so. */
   const reply = async (
@@ -127,7 +129,10 @@ export async function runAgent(opts: {
         env: m.env,
       },
     )
-    if (res.exitCode === 0) present.set(key, Promise.resolve())
+    if (res.exitCode === 0) {
+      present.set(key, Promise.resolve())
+      holds.set(key, names(m.project, m.outputs))
+    }
     await me.send('orchestrator', { type: 'end', task: m.task, key, result })
   }
 
@@ -215,14 +220,19 @@ export async function runAgent(opts: {
                 throw new Error(`${d.task}'s entry ${d.key} is in no cache this agent reads`)
             })
           present.set(d.key, got)
+          holds.set(d.key, names(d.project, d.outputs))
           got.catch(() => present.delete(d.key))
         }
         await got
       }
       // An earlier task's files under these outputs would ship as this one's.
-      for (const f of await outputFiles(opts.root, m.project, m.outputs)) {
-        await rm(path.join(opts.root, f), { force: true })
-      }
+      const cleared = await outputFiles(opts.root, m.project, m.outputs)
+      for (const [key, held] of holds)
+        if (cleared.some(held)) {
+          present.delete(key)
+          holds.delete(key)
+        }
+      for (const f of cleared) await rm(path.join(opts.root, f), { force: true })
       // Built here: the walls, real paths and grants are this machine's.
       const sb =
         m.sandbox === undefined
