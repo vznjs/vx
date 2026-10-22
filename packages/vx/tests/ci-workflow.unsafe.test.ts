@@ -39,12 +39,13 @@ const checkout = (j: Job | undefined): Step | undefined =>
   j?.steps?.find((s) => String(s.uses).startsWith('actions/checkout@'))
 
 describe('ci.yml', () => {
-  it('is the two runs, plus the live suites and the arm64 binary on main', () => {
+  it('is the Linux run, plus macOS, the live suites and the arm64 binary on main', () => {
+    const top = 'github.event.pull_request.stack.position == github.event.pull_request.stack.size'
     expect(
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
-      ['linux', 'lint · format · test', 'ubuntu-latest', undefined, undefined],
-      ['packages', 'plugin packages', 'ubuntu-latest', undefined, undefined],
+      ['linux', 'lint · format · test', 'ubuntu-latest', top, undefined],
+      ['packages', 'plugin packages', 'ubuntu-latest', top, undefined],
       [
         'binary-linux-arm64',
         'compiled binary (linux-arm64)',
@@ -53,7 +54,13 @@ describe('ci.yml', () => {
         undefined,
       ],
       // Both runs only plan and dispatch: Linux, so every macOS runner is an agent's.
-      ['macos', 'core tests (macOS)', 'ubuntu-latest', undefined, undefined],
+      [
+        'macos',
+        'core tests (macOS)',
+        'ubuntu-latest',
+        "github.event_name != 'pull_request'",
+        undefined,
+      ],
     ])
   })
 
@@ -142,6 +149,20 @@ describe('vx-agent.yml', () => {
     // workflow GitHub refuses to dispatch.
     const step = agent.steps?.find((s) => s.run?.includes('dte agent') === true)
     expect(step?.env?.['VX_CACHE_DIR']).toBe('${{ runner.temp }}/vx-cache')
+  })
+
+  // apt's ~9 s ran after `bun install`, on every agent's warm-up (2026-10-22).
+  it('installs the sandbox runtime while Bun installs, and proves it before the agent', () => {
+    const steps = agent.steps!
+    const at = (p: (s: Step) => boolean) => steps.findIndex(p)
+    const runner = (phase: string) =>
+      at((s) => s.uses === './.github/actions/vx-runner' && s.with?.['phase'] === phase)
+    const install = at((s) => s.run?.includes('bun install') === true)
+    const agentStep = at((s) => s.run?.includes('dte agent') === true)
+    expect(runner('start')).toBeGreaterThan(-1)
+    expect(runner('start')).toBeLessThan(install)
+    expect(runner('finish')).toBeGreaterThan(install)
+    expect(runner('finish')).toBeLessThan(agentStep)
   })
 
   it('mounts the small disk the Linux run names, on Linux', () => {

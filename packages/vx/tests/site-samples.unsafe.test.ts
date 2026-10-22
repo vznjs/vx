@@ -26,6 +26,7 @@ import { IGNORED_SEGMENTS } from '../src/cli/watch-fs.js'
 import { WATCH_REFUSED_FLAGS } from '../src/cli/help.js'
 import { createTelemetrySource } from '../src/orchestrator/telemetry.js'
 import type { RunSummaryRecord, TelemetrySink } from '../src/orchestrator/telemetry.js'
+import { UNSAFE_SHARD_COUNT } from '../vx.config.js'
 
 const GUIDES = path.resolve(
   import.meta.dir,
@@ -1033,32 +1034,31 @@ describe('the otel guide tabulates every option the plugin takes', () => {
 })
 
 describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
-  it('are the five this repo’s configs declare', () => {
-    const stripStrings = (s: string) => s.replace(/'[^'\n]*'|"[^"\n]*"|`[^`]*`/g, "''")
+  // The configs themselves, imported: core's unsafe suite is generated
+  // (one task per shard), which no reading of the source can count.
+  it('are the ones this repo’s configs declare', async () => {
     const found: string[] = []
     const dir = path.resolve(import.meta.dir, '..', '..')
-    for (const pkg of readdirSync(dir)) {
+    for (const pkg of readdirSync(dir).sort()) {
       const cfg = path.join(dir, pkg, 'vx.config.ts')
       if (!existsSync(cfg)) continue
-      const src = stripStrings(readFileSync(cfg, 'utf8'))
-      for (const m of src.matchAll(/^ {4}(?:''|[\w.$-]+): \{/gm)) {
-        let depth = 1
-        let i = m.index! + m[0].length
-        while (depth > 0 && i < src.length) {
-          if (src[i] === '{') depth++
-          else if (src[i] === '}') depth--
-          i++
-        }
-        const body = src.slice(m.index! + m[0].length, i)
-        if (/\bexec: \{/.test(body) && !body.includes('sandbox')) found.push(pkg)
+      const { default: config } = (await import(cfg)) as {
+        default: { tasks?: Record<string, { exec?: { sandbox?: unknown } }> }
+      }
+      for (const [name, task] of Object.entries(config.tasks ?? {})) {
+        if (task.exec !== undefined && task.exec.sandbox === undefined) found.push(`${pkg}#${name}`)
       }
     }
-    // vx#test.bun.unsafe, vx#check.sandbox-canary and vx#check.build-cold
-    // (each drives the sandbox itself), vx-reapi#test and vx-reapi#test.live. If the
-    // parser finds none it is broken, not the docs. (The sandboxing guide no
-    // longer repeats the count: a reader wants what cannot be sandboxed, not
-    // this repo's tally.)
-    expect(found.sort()).toEqual(['vx', 'vx', 'vx', 'vx-reapi', 'vx-reapi'])
+    // vx#check.build-cold and vx#check.sandbox-canary (each drives the
+    // sandbox itself), vx#test.bun.unsafe's shards, vx-reapi#test and
+    // vx-reapi#test.live. If none are found the reader is broken, not the docs.
+    expect(found.sort()).toEqual([
+      'vx#check.build-cold',
+      'vx#check.sandbox-canary',
+      ...Array.from({ length: UNSAFE_SHARD_COUNT }, (_, k) => `vx#test.bun.unsafe.shard-${k + 1}`),
+      'vx-reapi#test',
+      'vx-reapi#test.live',
+    ])
   })
 })
 

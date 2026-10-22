@@ -94,8 +94,10 @@ dial to 30 s). The relay closes the socket of a participant that left or was
 lost, so its next request learns why.
 
 Every request naming an `id` counts as a heartbeat. A participant silent
-for three `heartbeatMs` is lost, as if it had left. Polling with a `wait`
-below `heartbeatMs`, or a socket's `ping`, keeps a participant alive.
+for three `heartbeatMs` is lost, as if it had left; one with an open
+socket, for twelve, so a host that bills its wake-ups sleeps between
+them. Polling with a `wait` below `heartbeatMs`, or a socket's `ping`,
+keeps a participant alive.
 
 ## Leases (planned, above the relay)
 
@@ -115,8 +117,11 @@ The relay itself sends with `"from": "relay"`:
 - to the orchestrator, `{ "type": "lost", "id" }` when an agent leaves or
   is lost;
 - to every agent, `{ "type": "closed" }` when the orchestrator leaves or is
-  lost. The run is then closed: every later request answers `410`, for
-  a day, so its id never takes another orchestrator.
+  lost. The run is then closed: an agent on a socket is told and let go
+  at once, one over HTTP reads `410` for a minute, and then the relay
+  keeps nothing of the run. A run no orchestrator joined in ten minutes
+  closes the same way: agents start after their orchestrator joins, so
+  one alone is late for a run that ended.
 
 An agent's messages carry `"from": "<its id>"`, the orchestrator's
 `"from": "orchestrator"`.
@@ -130,7 +135,9 @@ orchestrator, `410` a closed run, `413` a body over 1 MiB, `426` a
 over 10 000 messages or 64 MiB, or a participant past its rate: a burst
 of 1000 requests and socket frames, then 100 a second, after Tailscale's
 DERP. A rate's `429` says `"retryAfterMs"`, when the next one is taken;
-`@vzn/vx-dte` waits that long and asks again. An error answers `{ "error": "<reason>" }`.
+`@vzn/vx-dte` waits that long and asks again. On Workers, `503` is a
+run's Durable Object the host refused (a plan's daily limit), its
+reason in the error. An error answers `{ "error": "<reason>" }`.
 
 ## Tokens
 
@@ -177,8 +184,9 @@ Only what routing needs, and no longer:
 - A message waits in memory, never in storage, until it is delivered. A
   relay restart loses a participant whose queue was not empty, as if it
   went silent.
-- A closed run keeps its hash and when it closed, for a day; who took
-  part and the orchestrator's key and job go after 10 minutes.
+- A closed run is gone within a minute; while open, each participant's
+  role and when it was last heard from are kept, so a restart still
+  loses the silent.
 - It logs nothing. It still sees each message's size, time and recipient.
 
 ## Bodies, end to end

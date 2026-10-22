@@ -29,7 +29,11 @@ export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB
   cache: { outputs: { files: ['out/**'] } },
 } } }
 `,
-    'b/vx.config.mjs': `export default { name: 'b', tasks: {
+    // The marker lives outside every worktree, so the agent that runs the
+    // task again sees the first one started it: in its own worktree it
+    // slept the 60 s out (80 s of this file's 111 s).
+    'b/vx.config.mjs': `const once = ${JSON.stringify(path.join(root, 'once'))}
+export default { name: 'b', tasks: {
   use: {
     dependsOn: ['a#gen'],
     exec: { command: 'mkdir -p out && cat ../a/out/a.txt > out/b.txt && pwd > out/where.txt && echo used' },
@@ -38,7 +42,7 @@ export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB
   },
   fail: { exec: { command: 'echo oops >&2; exit 3' } },
   slow: { exec: { command: 'touch started && sleep 60' } },
-  once: { exec: { command: 'if [ -e ../once ]; then echo again; else touch ../once && sleep 60; fi' } },
+  once: { exec: { command: 'if [ -e ' + once + ' ]; then echo again; else touch ' + once + ' && sleep 60; fi' } },
   env: { exec: {
     command: 'echo "shown=\${VX_E2E_SHOWN:-none} hidden=\${VX_E2E_HIDDEN:-none}"',
     env: { passThrough: ['VX_E2E_SHOWN'] },
@@ -146,14 +150,7 @@ it('runs a task again on a new agent when its agent is killed', async () => {
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  // `../once` from the agent's worktree of b: its worktree root.
-  const marker = async (): Promise<boolean> => {
-    const base = await readdir(os.tmpdir()).catch(() => [] as string[])
-    for (const d of base.filter((n) => n.startsWith('vx-dte-') && !n.startsWith('vx-dte-e2e')))
-      for (const i of await readdir(path.join(os.tmpdir(), d)).catch(() => [] as string[]))
-        if (await Bun.file(path.join(os.tmpdir(), d, i, 'once')).exists()) return true
-    return false
-  }
+  const marker = (): Promise<boolean> => Bun.file(path.join(root, 'once')).exists()
   for (let i = 0; i < 200 && !(await marker()); i++) await Bun.sleep(100)
   const agents = Bun.spawnSync(['pgrep', '-P', String(run.pid), '-f', 'dte agent'])
   const pids = agents.stdout.toString().trim().split('\n').filter(Boolean)

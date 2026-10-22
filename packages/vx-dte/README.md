@@ -397,8 +397,8 @@ utilization of every machine together:
     how many of it one run may start (absent, no cap). Agents start in
     declared order for the cores the remaining tasks keep busy: laid out
     as early as their dependencies allow, each for its usual duration
-    (1 s without history), the most cores in use at once for at least
-    half the time left, less this machine's share. None stops before the
+    (1 s without history), their work spread over their critical path
+    (core-seconds over its length, rounded up), less this machine's share. None stops before the
     run ends. A task the history has not measured runs alone on an agent;
     one that used all of its agent's cores or memory (90%) last time runs
     alone on the smallest bigger size, which the run starts for it. Each
