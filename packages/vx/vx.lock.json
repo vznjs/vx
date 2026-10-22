@@ -2789,7 +2789,7 @@
         "install"
       ],
       "exec": {
-        "command": "bun src/bin.ts run build --all '--cache-policy=local:,remote:'"
+        "command": "bun scripts/build-cold.ts"
       }
     },
     "check.binary": {
