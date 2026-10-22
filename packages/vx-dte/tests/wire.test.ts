@@ -141,8 +141,8 @@ it('dials its socket again after it drops, and is back off HTTP', async () => {
 
 it('leaves only once its socket has closed, so exiting next cuts nothing', async () => {
   // A socket a process exits under before its close handshake is cut: the
-  // host logs a client that disconnected. An agent of a run that closed
-  // leaves with its socket still open, so its leave closes it.
+  // host logs a client that disconnected. The relay closes an agent's
+  // socket once it told it the run closed; its leave then cuts nothing.
   const closed: WebSocket[] = []
   const Real = globalThis.WebSocket
   globalThis.WebSocket = class extends Real {
@@ -159,7 +159,6 @@ it('leaves only once its socket has closed, so exiting next cuts nothing', async
     await o.poll()
     await o.leave()
     expect(await a.poll()).toEqual([{ from: 'relay', body: { type: 'closed' } }])
-    expect(closed).toHaveLength(1)
     await a.leave()
     expect(closed).toHaveLength(2)
   } finally {

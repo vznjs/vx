@@ -116,8 +116,10 @@ it('an agent with other tracked files than the run is refused', async () => {
 
 // CI starts agents beside the orchestrator; on a warm run it can finish
 // before a slow runner's agent joins, and that agent's job is not a failure.
-it('an agent that joins a run already closed exits 0', async () => {
-  const relay = createRelay()
+// The relay keeps nothing of a run that ended: an agent late for it joins
+// an empty run, which closes when no orchestrator joins (120 heartbeats).
+it('an agent late for a run that ended exits 0', async () => {
+  const relay = createRelay({ heartbeatMs: 20 })
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
   const url = `http://127.0.0.1:${server.port}`
   try {
