@@ -16,6 +16,10 @@ export class RelayError extends Error {
   }
 }
 
+/** A dropped socket's first redial waits up to this, doubling per failure (full jitter). */
+const FIRST_REDIAL_MS = 250
+const MAX_REDIAL_MS = 30_000
+
 /** Runs `f` again after each rate-limit answer, as long as the relay asks to wait. */
 async function paced<T>(f: () => Promise<T>): Promise<T> {
   for (;;) {
@@ -82,17 +86,46 @@ export async function join(
   const joined = (await call('join', { role, info, ...(prover && { key: prover.key }) }))!
   const id = joined['id'] as string
   const heartbeatMs = joined['heartbeatMs'] as number
-  const socket =
-    joined['socket'] === true
-      ? await connect(base, id, await headers('GET', `${base}socket?id=${id}`, ''), heartbeatMs)
-      : undefined
+  const offered = joined['socket'] === true
+  const dial = async () =>
+    connect(base, id, await headers('GET', `${base}socket?id=${id}`, ''), heartbeatMs)
+  let socket = offered ? await dial() : undefined
+  let failures = 0
+  let redial: ReturnType<typeof setTimeout> | undefined
+  let left = false
+  /** A socket that failed or dropped is dialed again after a jittered backoff; HTTP carries meanwhile. */
+  const again = (): void => {
+    if (!offered || left || redial !== undefined || socket?.open === true) return
+    const ms = Math.random() * Math.min(MAX_REDIAL_MS, FIRST_REDIAL_MS * 2 ** failures)
+    redial = setTimeout(() => {
+      void dial()
+        .catch(() => undefined)
+        .then((s) => {
+          redial = undefined
+          if (left) s?.close()
+          else if (s === undefined) {
+            failures++
+            again()
+          } else {
+            failures = 0
+            // What the dropped one received and nobody polled yet.
+            if (socket !== undefined) s.inbox.unshift(...socket.inbox.splice(0))
+            socket = s
+          }
+        })
+    }, ms)
+    redial.unref()
+  }
+  again()
   return {
     id,
     heartbeatMs,
     async send(to, body) {
-      if (socket?.open === true) {
+      again()
+      const s = socket
+      if (s?.open === true) {
         try {
-          return await paced(() => socket.send(to, body))
+          return await paced(() => s.send(to, body))
         } catch (err) {
           if (err instanceof RelayError) throw err
           // Closed under it: HTTP says whether the relay took it (a resent
@@ -102,6 +135,7 @@ export async function join(
       await call('send', { id, to, body })
     },
     async poll(signal) {
+      again()
       if (socket?.inbox.length) return socket.inbox.splice(0)
       if (socket?.open === true) {
         const messages = await socket.poll(signal)
@@ -115,6 +149,8 @@ export async function join(
       await call('remove', { id, agent })
     },
     async leave() {
+      left = true
+      clearTimeout(redial)
       await call('leave', { id }).catch(() => undefined)
       socket?.close()
     },
@@ -162,8 +198,9 @@ interface Socket {
 
 /**
  * The participant's websocket (PROTOCOL.md `socket`), when the relay offers
- * one: messages arrive the moment they are sent, with no poll between. Any
- * failure leaves the participant on HTTP polling, which reports the truth.
+ * one: messages arrive the moment they are sent, with no poll between. A
+ * failure leaves the participant on HTTP polling, which reports the truth,
+ * until `join`'s redial gets a socket back.
  */
 async function connect(
   base: string,
