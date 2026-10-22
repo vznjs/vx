@@ -25,13 +25,13 @@ as `https://vx-dte-relay.<you>.workers.dev`. Name it as `relay` in
 `dte()`.
 
 Or deploy from this directory with Cloudflare's
-[`cf`](https://developers.cloudflare.com/cf/) CLI (Node 22.23 or later):
+[`wrangler`](https://developers.cloudflare.com/workers/wrangler/):
 
 ```sh
 npm install
-echo 'REPOSITORIES=owner/repo' > .env
-npx cf auth login
-npx cf deploy --secrets-file .env
+npx wrangler login
+npx wrangler deploy
+echo owner/repo | npx wrangler secret put REPOSITORIES
 ```
 
 `src/worker.ts` is the same relay as the one on Bun. Each run is one
@@ -39,7 +39,8 @@ Durable Object, so its mailboxes live in one place. Participants hold
 websockets, which the object hibernates between messages: the run is kept
 in the object's storage, the runtime answers heartbeats without waking
 it, and an alarm finds the participants that went silent.
-`cloudflare.config.ts` sets the rest:
+`wrangler.jsonc` sets the rest; change a value there, in the repository
+the button made, or in the Worker's settings in the Cloudflare dashboard:
 
 - `ISSUERS` (comma separated) is GitHub Actions' issuer. Add
   `https://gitlab.com`, or a self-managed GitLab, to carry GitLab's runs.
