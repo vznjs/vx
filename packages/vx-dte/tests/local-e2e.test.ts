@@ -321,13 +321,17 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB
     await run.exited
     const stopMs = performance.now() - t0
     // The worktrees go after vx exits, and still go.
-    const gone = async (): Promise<boolean> =>
-      (await readdir(tmp)).every((d) => !d.startsWith('vx-dte-')) &&
-      Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
+    // What is left names itself, so a failure says which part stayed.
+    const left = async (): Promise<string[]> => [
+      ...(await readdir(tmp)).filter((d) => d.startsWith('vx-dte-')),
+      ...Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
         .stdout.toString()
-        .match(/^worktree /gm)?.length === 1
-    for (let i = 0; i < 400 && !(await gone()); i++) await Bun.sleep(50)
-    expect({ gone: await gone(), fast: stopMs < 1000 }).toEqual({ gone: true, fast: true })
+        .split('\n')
+        .filter((l) => l.startsWith('worktree '))
+        .slice(1),
+    ]
+    for (let i = 0; i < 400 && (await left()).length > 0; i++) await Bun.sleep(50)
+    expect({ left: await left(), fast: stopMs < 1000 }).toEqual({ left: [], fast: true })
   } finally {
     await rm(tmp, { recursive: true, force: true })
   }

@@ -811,5 +811,15 @@ it('an agent’s reason is its error line, not the hint after it', () => {
     errorLine('resolving\nerror: cannot find module\n  at x\n'),
     errorLine('just this\n\n'),
     errorLine(''),
-  ]).toEqual(["✗ vx  'dte' is not a vx command", 'error: cannot find module', 'just this', ''])
+    // git's own, from a container's clone (2026-10-21).
+    errorLine(
+      "warning: templates not found\nfatal: detected dubious ownership in repository at '/src/.git'\nTo add an exception...\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.\n",
+    ),
+  ]).toEqual([
+    "✗ vx  'dte' is not a vx command",
+    'error: cannot find module',
+    'just this',
+    '',
+    "fatal: detected dubious ownership in repository at '/src/.git'",
+  ])
 })

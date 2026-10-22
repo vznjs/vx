@@ -167,7 +167,7 @@ export function reasons(): (what: string, id: string, err: string) => Promise<st
 
 /**
  * The line of a process's stderr that says what went wrong: vx's own `✗`
- * line, else the first naming an error, else the last. The last alone was
+ * line, else the first naming an error or git's `fatal:`, else the last. The last alone was
  * often a hint (`fix  vx run …`) that hid the error above it.
  */
 export function errorLine(text: string): string {
@@ -177,7 +177,7 @@ export function errorLine(text: string): string {
     .filter(Boolean)
   return (
     lines.find((l) => l.startsWith('✗')) ??
-    lines.find((l) => /\berror\b/i.test(l)) ??
+    lines.find((l) => /\berror\b|^fatal:/i.test(l)) ??
     lines.at(-1) ??
     ''
   )
