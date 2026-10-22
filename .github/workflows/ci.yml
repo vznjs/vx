@@ -68,7 +68,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - uses: ./.github/actions/vx-runner
+      # No vx-runner (about 55 s of apt): every sandboxed task runs on an
+      # agent, which enforces it there, so this job arms no sandbox.
 
       # vx's own cache, carried between runs: a run restores the newest
       # one main saved and replays every task whose key is unchanged, so a

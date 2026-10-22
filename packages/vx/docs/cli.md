@@ -1155,6 +1155,9 @@ platform cannot host it (Linux needs `bwrap`, `socat` and `rg` on PATH;
 macOS, `sandbox-exec`), that task fails with one line, `sandbox not
 available: <reason>`, and never runs unsandboxed. Tasks without a
 sandbox run as usual, and the failure's dependents follow `--continue`.
+A task an executor that enforces the sandbox where it runs takes
+(`@vzn/vx-dte`'s agents) arms nothing here, so a distributed run's
+orchestrator needs no sandbox runtime.
 
 ## `vx watch`
 
