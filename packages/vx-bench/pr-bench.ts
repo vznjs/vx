@@ -96,7 +96,8 @@ try {
   }
   const vx = path.join(ws, '.vx-bin')
   const bin = path.join(import.meta.dir, 'node_modules', '@vzn', 'vx', 'src', 'bin.ts')
-  must(['bun', 'build', '--compile', '--minify', '--bytecode', bin, '--outfile', vx], ws)
+  const srt = path.join(path.dirname(bin), 'exec', 'srt.ts')
+  must(['bun', 'build', '--compile', '--minify', '--bytecode', bin, srt, '--outfile', vx], ws)
   // Every run reads configs only from the lock.
   must([vx, 'lock'], ws)
 

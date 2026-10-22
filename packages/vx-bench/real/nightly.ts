@@ -143,6 +143,7 @@ must(
     '--minify',
     '--bytecode',
     'packages/vx/src/bin.ts',
+    'packages/vx/src/exec/srt.ts',
     '--outfile',
     vxBin,
   ],

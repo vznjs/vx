@@ -58,6 +58,8 @@ run(
     '--bytecode',
     `--target=bun-${host}`,
     'src/bin.ts',
+    // The sandbox runtime's own entry (src/exec/srt.ts says why).
+    'src/exec/srt.ts',
     '--outfile',
     out,
   ],

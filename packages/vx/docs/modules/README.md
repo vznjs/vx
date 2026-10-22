@@ -174,19 +174,20 @@ here, itself or in a brace group.
 
 ## Exec (process primitives)
 
-| File                                         | Topic                                                                                                                 |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| [`runner.md`](./runner.md)                   | `src/exec/runner.ts` — `runCommand`, `runPersistent`, `shellQuote`.                                                   |
-| [`kill-tree.md`](./kill-tree.md)             | `src/exec/kill-tree.ts` — `killTree`: a task's process group dies with it (timeout, signal, shutdown).                |
-| [`proc-sample.md`](./proc-sample.md)         | `src/exec/proc-sample.ts` — `sampleTrees`: a running task's process tree CPU and memory, for `task.sample`.           |
-| [`env.md`](./env.md)                         | `src/exec/env.ts` — child env composition; `src/util/essential-env.ts` — the essential allowlist.                     |
-| [`sandbox-runtime.md`](./sandbox-runtime.md) | `src/exec/sandbox-runtime.ts` — `runSandboxed` + violation tracking via `@anthropic-ai/sandbox-runtime`.              |
-|                                              | `src/exec/sandbox-violations.ts` — strace pass, seatbelt record description, report filters (see sandbox-runtime.md). |
-|                                              | `src/exec/sandbox-binds.ts` — bwrap-honourable write grants, read-grant punching, the SRT custom config.              |
-|                                              | `src/exec/sandbox-paths.ts` — `toRealPath`, `absolutize`, `atOrUnder`, `isUnderAny`, `sandboxReads`, `unique`.        |
-|                                              | `src/exec/sandbox-deny-scan.ts` — SRT's mandatory write denies, scanned within each task's write grants.              |
-| [`executor.md`](./executor.md)               | `src/exec/executor.ts` — `TaskExecutor` contract + `selectExecutor`.                                                  |
-|                                              | `src/exec/local-executor.ts` — the floor: run it here (see executor.md, plugins.md).                                  |
+| File                                         | Topic                                                                                                                  |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| [`runner.md`](./runner.md)                   | `src/exec/runner.ts` — `runCommand`, `runPersistent`, `shellQuote`.                                                    |
+| [`kill-tree.md`](./kill-tree.md)             | `src/exec/kill-tree.ts` — `killTree`: a task's process group dies with it (timeout, signal, shutdown).                 |
+| [`proc-sample.md`](./proc-sample.md)         | `src/exec/proc-sample.ts` — `sampleTrees`: a running task's process tree CPU and memory, for `task.sample`.            |
+| [`env.md`](./env.md)                         | `src/exec/env.ts` — child env composition; `src/util/essential-env.ts` — the essential allowlist.                      |
+| [`sandbox-runtime.md`](./sandbox-runtime.md) | `src/exec/sandbox-runtime.ts` — `runSandboxed` + violation tracking via `@anthropic-ai/sandbox-runtime`.               |
+|                                              | `src/exec/sandbox-violations.ts` — strace pass, seatbelt record description, report filters (see sandbox-runtime.md).  |
+|                                              | `src/exec/srt.ts` — the sandbox runtime as its own entry of the compiled binary, loaded only when a task is sandboxed. |
+|                                              | `src/exec/sandbox-binds.ts` — bwrap-honourable write grants, read-grant punching, the SRT custom config.               |
+|                                              | `src/exec/sandbox-paths.ts` — `toRealPath`, `absolutize`, `atOrUnder`, `isUnderAny`, `sandboxReads`, `unique`.         |
+|                                              | `src/exec/sandbox-deny-scan.ts` — SRT's mandatory write denies, scanned within each task's write grants.               |
+| [`executor.md`](./executor.md)               | `src/exec/executor.ts` — `TaskExecutor` contract + `selectExecutor`.                                                   |
+|                                              | `src/exec/local-executor.ts` — the floor: run it here (see executor.md, plugins.md).                                   |
 
 ## Plugins
 

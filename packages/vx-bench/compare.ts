@@ -324,6 +324,7 @@ async function buildRunners(dir: string): Promise<Runner[]> {
       '--bytecode',
       `--target=${target}`,
       path.join(vxRoot, 'packages', 'vx', 'src', 'bin.ts'),
+      path.join(vxRoot, 'packages', 'vx', 'src', 'exec', 'srt.ts'),
       '--outfile',
       vxBin,
     ],

@@ -113,13 +113,27 @@ import {
 } from './kill-tree.js'
 
 type SrtModule = typeof import('@anthropic-ai/sandbox-runtime')
+/** Where `bun build --compile src/bin.ts src/exec/srt.ts` puts the second entry. */
+const SRT_ENTRY = '/$bunfs/root/exec/srt.js'
 let srtPromise: Promise<SrtModule> | undefined
+/** The entry from source: a path, not a specifier the bundler would follow. */
+const srtSource = (): string => path.join(import.meta.dir, 'srt.ts')
 /** Set once loaded, for `releaseBridges`, which a sync exit handler calls. */
 let srtLoaded: SrtModule | undefined
 
 async function loadSrt(): Promise<SrtModule> {
   if (!srtPromise) {
-    srtPromise = import('@anthropic-ai/sandbox-runtime').then((m) => (srtLoaded = m))
+    // Opaque to the bundler, so the compiled binary loads `srt.ts`'s own
+    // entry only when a task is sandboxed.
+    const entry = Bun.main.startsWith('/$bunfs/') ? SRT_ENTRY : srtSource()
+    srtPromise = (import(entry) as Promise<SrtModule>).then(
+      (m) => (srtLoaded = m),
+      (err: unknown) => {
+        throw new Error(
+          `the sandbox runtime is not in this vx binary: compile it with \`bun build --compile src/bin.ts src/exec/srt.ts\` (${err instanceof Error ? err.message : String(err)})`,
+        )
+      },
+    )
   }
   return srtPromise
 }
@@ -509,7 +523,8 @@ function bundledJavaAgent(): { javaAgentJarPath?: string } {
   if (javaAgent) return javaAgent
   javaAgent = {}
   try {
-    const dist = path.dirname(require.resolve('@anthropic-ai/sandbox-runtime'))
+    // Not `require.resolve`: the bundler follows that into the main entry.
+    const dist = path.dirname(Bun.resolveSync('@anthropic-ai/sandbox-runtime', import.meta.dir))
     const jar = path.join(dist, '..', 'vendor', 'java-proxy-agent', 'srt-proxy-agent.jar')
     if (existsSync(jar)) javaAgent = { javaAgentJarPath: jar }
   } catch {

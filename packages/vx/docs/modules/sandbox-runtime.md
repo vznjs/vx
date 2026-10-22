@@ -37,6 +37,11 @@ Three companions hold the rest, split 2026-09-09 as pure code motion:
 - `sandbox-deny-scan.ts` — `scopedMandatoryDenies`: SRT's mandatory
   write denies (`.bashrc`, `.mcp.json`, `.vscode/`, `.git/hooks`, …),
   found within each task's write grants instead of the whole root.
+- `srt.ts` — re-exports SRT as its own entry of the compiled binary
+  (`bun build --compile src/bin.ts src/exec/srt.ts`), imported only when
+  a task is sandboxed: bundled into `bin.ts`, its bytecode loaded on
+  every boot (~2 ms of a warm no-op). `tests/compile-entries.unsafe.test.ts`
+  holds every compile site to it.
 
 ### The mandatory-deny scan, scoped (B-40)
 

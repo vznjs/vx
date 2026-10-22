@@ -34,12 +34,12 @@ export function pinnedBun(): string {
   return m[1]!
 }
 
-/** The npm packages `src/bin.ts` bundles, as their real directories, sorted by name. */
+/** The npm packages the binary bundles (both entries), as their real directories, sorted by name. */
 async function bundledPackages(): Promise<
   { name: string; version: string; license: string; text: string }[]
 > {
   const r = await Bun.build({
-    entrypoints: [join(CORE, 'src', 'bin.ts')],
+    entrypoints: [join(CORE, 'src', 'bin.ts'), join(CORE, 'src', 'exec', 'srt.ts')],
     target: 'bun',
     metafile: true,
   })
