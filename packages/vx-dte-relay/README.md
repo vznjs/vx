@@ -98,6 +98,11 @@ The same relay as a `fetch` handler, to mount in a server of your own
   `Bun.serve`, websockets included. `ServeOptions` is
   `{ hostname, port, verify?, heartbeatMs? }`, and a `RelayServer` is
   `{ url, stop() }`.
+- `createProver(): Promise<Prover>` makes the orchestrator's key for one
+  run (PROTOCOL.md § The orchestrator's key). A `Prover` is
+  `{ key, proof(method, path, body) }`: `key` is what its `join` names,
+  and `proof` is the value of the `PROOF_HEADER` (`vx-proof`) header of
+  each request as the orchestrator.
 - `createVerifier(options: OidcOptions)` returns that `verify`.
   `OidcOptions` is
   `{ issuers, audience, repositories?, runClaims?, fetchJson?, now? }`:

@@ -20,6 +20,8 @@ export interface Participant {
   send(to: string, body: unknown): Promise<void>
   /** Held up to one heartbeat, which also keeps this participant alive. */
   poll(signal?: AbortSignal): Promise<RelayMessage[]>
+  /** The orchestrator takes an agent it did not admit off the run. */
+  remove(agent: string): Promise<void>
   leave(): Promise<void>
 }
 
@@ -33,11 +35,24 @@ export async function join(
 ): Promise<Participant> {
   const base = `${relay.replace(/\/+$/, '')}/v1/runs/${encodeURIComponent(run)}/`
   const auth = bearer(token)
+  // The orchestrator signs each request by a key the relay keeps from its join.
+  const prover =
+    role === 'orchestrator' ? await (await import('@vzn/vx-dte-relay')).createProver() : undefined
+  const headers = async (method: string, url: string, body: string) => {
+    const h = await auth()
+    if (prover !== undefined) {
+      const { pathname, search } = new URL(url)
+      h['vx-proof'] = await prover.proof(method, pathname + search, body)
+    }
+    return h
+  }
   const call = async (verb: string, body?: unknown, query = '', signal?: AbortSignal) => {
+    const method = body === undefined ? 'GET' : 'POST'
+    const text = body === undefined ? '' : JSON.stringify(body)
     const res = await fetch(base + verb + query, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: await auth(),
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      method,
+      headers: await headers(method, base + verb + query, text),
+      ...(body === undefined ? {} : { body: text }),
       ...(signal === undefined ? {} : { signal }),
     })
     if (res.status === 204) return null
@@ -46,11 +61,13 @@ export async function join(
       throw new RelayError(res.status, `relay ${verb}: ${res.status} ${json.error ?? ''}`)
     return json as Record<string, unknown>
   }
-  const joined = (await call('join', { role, info }))!
+  const joined = (await call('join', { role, info, ...(prover && { key: prover.key }) }))!
   const id = joined['id'] as string
   const heartbeatMs = joined['heartbeatMs'] as number
   const socket =
-    joined['socket'] === true ? await connect(base, id, await auth(), heartbeatMs) : undefined
+    joined['socket'] === true
+      ? await connect(base, id, await headers('GET', `${base}socket?id=${id}`, ''), heartbeatMs)
+      : undefined
   return {
     id,
     heartbeatMs,
@@ -75,6 +92,9 @@ export async function join(
       }
       const r = await call('poll', undefined, `?id=${id}&wait=${heartbeatMs}`, signal)
       return (r?.['messages'] ?? []) as RelayMessage[]
+    },
+    async remove(agent) {
+      await call('remove', { id, agent })
     },
     async leave() {
       await call('leave', { id }).catch(() => undefined)

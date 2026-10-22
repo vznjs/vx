@@ -101,6 +101,8 @@ it('refuses an agent with another secret, and an agent refuses an orchestrator w
   expect((await until(a)).map((m) => m.body)).toEqual([
     { type: 'refused', reason: 'its key is not the run’s: set the same VX_DTE_SECRET' },
   ])
+  // And off the run: the relay no longer knows it.
+  await expect(a.poll()).rejects.toThrow('relay poll: 404 unknown id')
 
   const r = relay()
   const o2 = await join(r.url, R2, 'orchestrator', null, undefined)

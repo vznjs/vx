@@ -3,6 +3,7 @@
 // unless a `store` keeps them (a Durable Object's, across hibernation).
 
 import { TokenError, type VerifiedToken } from './oidc.js'
+import { importKey, PROOF_HEADER, proofText, verifyProof } from './proof.js'
 
 export interface RelayOptions {
   /**
@@ -79,6 +80,13 @@ interface Run {
   closedAt?: number
   /** The CI job its orchestrator joined from (`VerifiedToken.job`); only that job acts as it. */
   pin?: string
+  /** The public key its orchestrator joined with; only its holder acts as it. */
+  cert?: string
+  certKey?: Promise<CryptoKey>
+  /** Proof nonces seen, and when: each is taken once. */
+  nonces?: Map<string, number>
+  /** Agents the orchestrator removed, and what it last told each: its next poll reads why. */
+  removed?: Map<string, Message[]>
 }
 
 /** A random (v4) UUID: no one can guess a run id to open it first or join it. */
@@ -95,6 +103,8 @@ const CLOSED_TTL_MS = 10 * 60_000
  * orchestrator while one of its agents could still be about.
  */
 const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60_000
+/** How far a proof's time may be from the relay's: a CI runner's clock drifts. */
+const PROOF_SKEW_MS = 2 * 60_000
 
 class HttpError extends Error {
   constructor(
@@ -119,6 +129,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       closed: run.closed,
       closedAt: run.closedAt ?? null,
       pin: run.pin ?? null,
+      cert: run.cert ?? null,
     })
 
   const deliver = (run: Run, p: Participant, m: Message, bytes = 0): void => {
@@ -157,9 +168,11 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     }
   }
 
-  const drop = (run: Run, p: Participant): void => {
+  /** `tell`: the orchestrator hears its agent was lost (not when it removed it). */
+  const drop = (run: Run, p: Participant, tell = true): void => {
     if (!run.byId.delete(p.id)) return
-    drain(run, p)
+    const left = drain(run, p)
+    if (!tell) (run.removed ??= new Map()).set(p.id, left)
     store?.delete(pAt(run, p.id))
     // Its next request, over HTTP, learns it is gone.
     p.socket?.close()
@@ -170,7 +183,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       return
     }
     p.waiter?.()
-    if (run.orchestrator !== undefined && !run.closed) {
+    if (tell && run.orchestrator !== undefined && !run.closed) {
       deliver(run, run.orchestrator, { from: 'relay', body: { type: 'lost', id: p.id } })
     }
   }
@@ -220,6 +233,27 @@ export function createRelay(opts: RelayOptions = {}): Relay {
 
   if (store !== undefined) restore(store, runs)
 
+  /** The orchestrator's request is signed by the key it joined with, at most once. */
+  const prove = async (run: Run, req: Request, url: URL, body: string, cert = run.cert) => {
+    const m = /^(\d+)\.([\w-]{16,64})\.([\w-]+)$/.exec(req.headers.get(PROOF_HEADER) ?? '')
+    if (m === null || cert === undefined) {
+      throw new HttpError(403, 'not signed by the run’s orchestrator key')
+    }
+    const [, ts, nonce, sig] = m as unknown as [string, string, string, string]
+    const now = Date.now()
+    run.nonces ??= new Map()
+    for (const [n, at] of run.nonces) if (now - at > 2 * PROOF_SKEW_MS) run.nonces.delete(n)
+    if (Math.abs(now - Number(ts)) > PROOF_SKEW_MS || run.nonces.has(nonce)) {
+      throw new HttpError(403, 'not signed by the run’s orchestrator key')
+    }
+    const key = cert === run.cert ? (run.certKey ??= importKey(cert)) : importKey(cert)
+    const signed = proofText(req.method, url.pathname + url.search, Number(ts), nonce, body)
+    if (!(await verifyProof(await key, sig, signed))) {
+      throw new HttpError(403, 'not signed by the run’s orchestrator key')
+    }
+    run.nonces.set(nonce, now)
+  }
+
   /** `token` 'socket': the frame came down a socket its upgrade already checked. */
   const participant = (
     run: Run,
@@ -243,7 +277,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
 
   const join = (
     run: Run,
-    body: { role?: unknown; info?: unknown },
+    body: { role?: unknown; info?: unknown; key?: unknown },
     token: VerifiedToken | undefined,
   ): Response => {
     if (body.role !== 'orchestrator' && body.role !== 'agent') {
@@ -265,10 +299,9 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     store?.put(pAt(run, p.id), { role: p.role, info: p.info })
     if (p.role === 'orchestrator') {
       run.orchestrator = p
-      if (token?.job !== undefined) {
-        run.pin = token.job
-        saveRun(run)
-      }
+      run.cert = body.key as string
+      if (token?.job !== undefined) run.pin = token.job
+      saveRun(run)
       for (const a of run.byId.values()) {
         if (a.role === 'agent') deliver(run, p, joined(a))
       }
@@ -307,11 +340,10 @@ export function createRelay(opts: RelayOptions = {}): Relay {
 
   const poll = async (
     run: Run,
+    p: Participant,
     url: URL,
     signal: AbortSignal,
-    token: VerifiedToken | undefined,
   ): Promise<Response> => {
-    const p = participant(run, url.searchParams.get('id'), token)
     const wait = Math.min(Math.max(Number(url.searchParams.get('wait')) || 0, 0), MAX_WAIT_MS)
     if (p.queue.length === 0 && wait > 0) {
       // One held poll per participant: a newer one answers the older.
@@ -341,7 +373,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
 
   const handle = async (req: Request): Promise<Response> => {
     const url = new URL(req.url)
-    const m = /^\/v1\/runs\/([^/]+)\/(join|send|poll|leave|socket)$/.exec(url.pathname)
+    const m = /^\/v1\/runs\/([^/]+)\/(join|send|poll|leave|remove|socket)$/.exec(url.pathname)
     if (m === null) throw new HttpError(404, 'no such route')
     const [, runId, verb] = m as unknown as [string, string, string]
     if (!RUN_ID.test(runId)) throw new HttpError(400, 'run id is not a random UUID')
@@ -355,33 +387,66 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     const key = runKey(runId, token)
     let run = runs.get(key)
     if (run?.closed === true) throw new HttpError(410, 'run closed')
-    if (verb === 'poll') return poll(run ?? missing(), url, req.signal, token)
-    if (verb === 'socket') {
+    // As the orchestrator: in its CI job, and signed by the key it joined with.
+    const as = async (run: Run, id: unknown, body: string): Promise<Participant> => {
+      const p = participant(run, id, token)
+      if (p.role === 'orchestrator') await prove(run, req, url, body)
+      return p
+    }
+    if (get) {
+      if (run === undefined) missing()
+      const id = url.searchParams.get('id') ?? ''
+      const told = run.removed?.get(id)
+      if (verb === 'poll' && told !== undefined) {
+        run.removed!.delete(id)
+        return Response.json({ messages: told })
+      }
+      if (verb === 'poll') return poll(run, await as(run, id, ''), url, req.signal)
       if (opts.upgrade === undefined) throw new HttpError(404, 'no such route')
       if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
         throw new HttpError(426, 'not a websocket')
       }
-      return opts.upgrade(
-        key,
-        participant(run ?? missing(), url.searchParams.get('id'), token).id,
-        req,
-      )
+      return opts.upgrade(key, (await as(run, url.searchParams.get('id'), '')).id, req)
     }
-    const [body, bytes] = await readBody(req)
+    const [body, text] = await readBody(req)
     if (verb === 'join') {
+      if (body['role'] === 'orchestrator') {
+        if (
+          typeof body['key'] !== 'string' ||
+          !(await importKey(body['key']).then(
+            () => true,
+            () => false,
+          ))
+        ) {
+          throw new HttpError(400, 'an orchestrator joins with key: its P-256 public key')
+        }
+      }
       if (run === undefined) {
         run = { key, closed: false, byId: new Map() }
         runs.set(key, run)
         saveRun(run)
       }
+      if (body['role'] === 'orchestrator') {
+        if (run.orchestrator !== undefined) throw new HttpError(409, 'the run has an orchestrator')
+        await prove(run, req, url, text, body['key'] as string)
+      }
       return join(run, body, token)
     }
     if (run === undefined) missing()
+    const p = await as(run, body['id'], text)
     if (verb === 'send') {
-      send(run, participant(run, body['id'], token), body, bytes)
+      send(run, p, body, text.length)
       return new Response(null, { status: 204 })
     }
-    drop(run, participant(run, body['id'], token))
+    if (verb === 'remove') {
+      // The orchestrator takes an agent it did not admit off the run.
+      const a = typeof body['agent'] === 'string' ? run.byId.get(body['agent']) : undefined
+      if (p.role !== 'orchestrator') throw new HttpError(403, 'only the orchestrator removes')
+      if (a === undefined || a.role !== 'agent') throw new HttpError(404, 'unknown agent')
+      drop(run, a, false)
+      return new Response(null, { status: 204 })
+    }
+    drop(run, p)
     return new Response(null, { status: 204 })
   }
 
@@ -459,10 +524,11 @@ function restore(store: RelayStore, runs: Map<string, Run>): void {
   const now = Date.now()
   const parts = (k: string): string[] => k.split('/').map(decodeURIComponent)
   for (const [k, v] of store.list({ prefix: 'r/' })) {
-    const { closed, closedAt, pin } = v as {
+    const { closed, closedAt, pin, cert } = v as {
       closed: boolean
       closedAt: number | null
       pin?: string | null
+      cert?: string | null
     }
     const [, key] = parts(k) as [string, string]
     runs.set(key, {
@@ -471,6 +537,7 @@ function restore(store: RelayStore, runs: Map<string, Run>): void {
       byId: new Map(),
       ...(closedAt === null ? {} : { closedAt }),
       ...(pin == null ? {} : { pin }),
+      ...(cert == null ? {} : { cert }),
     })
   }
   for (const [k, v] of store.list({ prefix: 'p/' })) {
@@ -513,7 +580,7 @@ async function authorize(
   return verify(m[1]!, req)
 }
 
-async function readBody(req: Request): Promise<[Record<string, unknown>, number]> {
+async function readBody(req: Request): Promise<[Record<string, unknown>, string]> {
   const length = Number(req.headers.get('content-length') ?? 0)
   if (length > MAX_BODY) throw new HttpError(413, 'body over 1 MiB')
   const text = await req.text()
@@ -521,7 +588,7 @@ async function readBody(req: Request): Promise<[Record<string, unknown>, number]
   try {
     const v: unknown = JSON.parse(text)
     if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
-      return [v as Record<string, unknown>, text.length]
+      return [v as Record<string, unknown>, text]
     }
   } catch {}
   throw new HttpError(400, 'body is not a JSON object')

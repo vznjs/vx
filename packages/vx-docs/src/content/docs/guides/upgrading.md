@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte-relay: let the orchestrator claim its run with a key
+
+an orchestrator joins with key, its P-256 public key, and signs each request as it in a vx-proof header; POST remove takes an agent off the run.
+
 ## vx-dte: make run ids random UUIDs no one can guess
 
 VX_DTE_RUN and a relay run id are a random v4 UUID; set VX_DTE_RUN=$(uuidgen) where it was the CI run id.
