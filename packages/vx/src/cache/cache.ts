@@ -1969,7 +1969,14 @@ export class Cache implements CacheLayer {
     )
   }
 
-  /** The copy-out: false, having written nothing, where it is not the case it serves. */
+  /**
+   * The copy-out: false, having written nothing, where it is not the case it
+   * serves. It writes only where nothing stands: each file's place is absent,
+   * and every directory on the way either is a real directory or is absent
+   * and made here. solid's build outputs `store/dist/**` beside the sources
+   * in `store/`; asking that each output's TOP be absent sent every such
+   * restore through the tar extractor, ~25 ms a task (2026-10-22).
+   */
   private async copyTree(
     tree: string,
     rows: readonly OutputFileRow[],
@@ -1977,22 +1984,49 @@ export class Cache implements CacheLayer {
     projectDir: string,
     accept: ((name: string) => boolean) | undefined,
   ): Promise<boolean> {
-    const tops = new Set<string>()
     for (const r of rows) {
       if (r.path.startsWith(WORKSPACE_OUTPUT_PREFIX) || r.mode === LINK_MODE) return false
       if (accept !== undefined && !r.path.endsWith('/') && !accept(`outputs/${r.path}`))
         return false
-      tops.add(r.path.split('/')[0]!)
     }
-    const held = await Promise.all(
-      [...tops].map((t) =>
-        lstat(path.join(projectDir, t)).then(
-          () => true,
-          () => false,
-        ),
-      ),
+    // What stands at each path, asked once: a real directory, nothing, or
+    // anything else (a file, a link), which the extractor's rules decide.
+    const standing = new Map<string, Promise<'dir' | 'absent' | 'other'>>()
+    const at = (rel: string): Promise<'dir' | 'absent' | 'other'> => {
+      let known = standing.get(rel)
+      if (known === undefined) {
+        known = lstat(path.join(projectDir, rel)).then(
+          (st) => (st.isDirectory() ? 'dir' : 'other'),
+          (err: NodeJS.ErrnoException) => (err.code === 'ENOENT' ? 'absent' : 'other'),
+        )
+        standing.set(rel, known)
+      }
+      return known
+    }
+    // The topmost absent directories this copy makes, and the files it
+    // writes into a directory that stood: what a failure removes, and only that.
+    const made = new Set<string>()
+    const placed: string[] = []
+    const fits = await Promise.all(
+      rows.map(async (r) => {
+        const segs = r.path.replace(/\/$/, '').split('/')
+        for (let i = 1; i <= segs.length; i++) {
+          const rel = segs.slice(0, i).join('/')
+          const isLeaf = i === segs.length
+          const state = await at(rel)
+          if (state === 'absent') {
+            if (!isLeaf || r.path.endsWith('/')) made.add(rel)
+            else placed.push(rel)
+            return true
+          }
+          if (state === 'other' || (isLeaf && !r.path.endsWith('/'))) return false
+        }
+        return true
+      }),
     )
-    if (held.includes(true)) return false
+    if (fits.includes(false)) return false
+    // A directory made under another one made here is the outer one's.
+    const roots = [...made].filter((d) => ![...made].some((o) => d.startsWith(`${o}/`)))
     readUmask()
     const plain = restoredMode(0o666)
     try {
@@ -2012,9 +2046,10 @@ export class Cache implements CacheLayer {
         }),
       )
     } catch (err) {
-      await Promise.all(
-        [...tops].map((t) => rm(path.join(projectDir, t), { recursive: true, force: true })),
-      )
+      await Promise.all([
+        ...roots.map((d) => rm(path.join(projectDir, d), { recursive: true, force: true })),
+        ...placed.map((f) => rm(path.join(projectDir, f), { force: true })),
+      ])
       throw err
     }
     return true

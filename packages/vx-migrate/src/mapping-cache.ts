@@ -32,7 +32,7 @@ export interface AdoptionMapping {
 let code: Promise<string> | undefined
 
 /** This package's sources (by size and mtime) and the core helpers the mappers call, once per process. */
-function codeId(): Promise<string> {
+export function codeId(): Promise<string> {
   code ??= (async () => {
     const parts: string[] = [
       VERSION,
@@ -78,11 +78,12 @@ export async function cachedMapping(
   parts: readonly string[],
   map: () => Promise<AdoptionMapping>,
 ): Promise<AdoptionMapping> {
-  const key = hex([await codeId(), ...parts].join('\0'))
   const file = path.join(cacheDir, `vx-migrate-${name}-mapping.json`)
-  const held = (await Bun.file(file)
+  const reading = Bun.file(file)
     .json()
-    .catch(() => null)) as Held | null
+    .catch(() => null) as Promise<Held | null>
+  const key = hex([await codeId(), ...parts].join('\0'))
+  const held = await reading
   if (held?.key === key) {
     return {
       byName: new Map(held.byName),

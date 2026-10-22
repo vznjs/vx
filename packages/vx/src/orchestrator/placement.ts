@@ -1,7 +1,7 @@
 // Where each task runs: the placement of a graph over the resolved
 // executors, and the plan-mode view of it. Split from run.ts on 2026-09-10
 // (pure motion). A task is pinned to this machine when it is persistent,
-// depends on a persistent task, is sandboxed, says `exec.remote: false`, or
+// depends on a persistent task no `servers` executor carries, is sandboxed, says `exec.remote: false`, or
 // folds a runtime probe into its key; an `exec.interactive` task goes to the
 // local floor directly, as only it can hand over this terminal;
 // everything else asks the executors in declaration order, and the local
@@ -27,11 +27,16 @@ import { cacheFacts, taskArtifacts } from './task-artifacts.js'
  * leaves `exec.sandbox` out: the set for an executor that enforces it where
  * it runs (`TaskExecutor.sandbox`).
  */
-export function pinnedLocalSet(nodes: Map<string, TaskNode>, sandbox = true): Set<string> {
+export function pinnedLocalSet(
+  nodes: Map<string, TaskNode>,
+  sandbox = true,
+  /** For a `servers` executor: a carriable persistent task pins nothing. */
+  servers = false,
+): Set<string> {
   const pinned = new Set<string>()
   for (const node of nodes.values()) {
     if (
-      node.config.exec?.persistent !== undefined ||
+      (node.config.exec?.persistent !== undefined && !(servers && carriable(node))) ||
       (sandbox && node.config.exec?.sandbox !== undefined) ||
       node.config.exec?.remote === false
     ) {
@@ -59,6 +64,41 @@ export function pinnedLocalSet(nodes: Map<string, TaskNode>, sandbox = true): Se
     }
   }
   return withProbedRuntime(nodes, pinned)
+}
+
+/**
+ * A persistent task a `servers` executor can start where it runs a
+ * dependant: one the run holds for its dependants only, with no sandbox
+ * (this machine's machinery) and no `exec.remote: false`.
+ */
+function carriable(node: TaskNode): boolean {
+  const exec = node.config.exec
+  return (
+    exec?.persistent !== undefined &&
+    !node.requested &&
+    node.surfaced !== true &&
+    exec.sandbox === undefined &&
+    exec.remote !== false &&
+    exec.interactive !== true
+  )
+}
+
+/** The persistent tasks `node` depends on through groups and servers, each after its own. */
+function serversBehind(nodes: ReadonlyMap<string, TaskNode>, node: TaskNode): TaskNode[] {
+  const out: TaskNode[] = []
+  const seen = new Set<string>()
+  const visit = (id: string): void => {
+    if (seen.has(id)) return
+    seen.add(id)
+    const dep = nodes.get(id)
+    if (dep === undefined) return
+    const server = dep.config.exec?.persistent !== undefined
+    if (!server && !isGroupTask(dep)) return
+    for (const d of dep.deps) visit(d)
+    if (server) out.push(dep)
+  }
+  for (const d of node.deps) visit(d)
+  return out
 }
 
 /**
@@ -134,6 +174,10 @@ export interface Placements {
   remoteOnlyNoop: Set<string>
   /** `'only'` tasks a remote executor DID take — executed remotely, outputs stay remote. */
   remoteOnly: Set<string>
+  /** Each task placed on a `servers` executor → the persistent tasks it starts there. */
+  servers: Map<string, TaskNode[]>
+  /** Persistent tasks every dependant of which carries them: never started here. */
+  carried: Set<string>
 }
 
 /**
@@ -159,16 +203,27 @@ export function placeTasks(
   nodes: Map<string, TaskNode>,
   executors: readonly TaskExecutor[],
 ): Placements {
-  const pinned = pinnedLocalSet(nodes)
-  // Computed only when an executor would read it.
-  const pinnedUnsandboxed = executors.some((e) => e.sandbox === true)
-    ? pinnedLocalSet(nodes, false)
-    : pinned
+  // Each executor's pins, computed only when one reads them.
+  const pins = new Map<string, Set<string>>()
+  const pinsOf = (e: Pick<TaskExecutor, 'sandbox' | 'servers'>): Set<string> => {
+    const k = `${e.sandbox === true}${e.servers === true}`
+    let set = pins.get(k)
+    if (set === undefined) {
+      set = pinnedLocalSet(nodes, e.sandbox !== true, e.servers === true)
+      pins.set(k, set)
+    }
+    return set
+  }
+  const pinned = pinsOf({})
   const placements: Placements = {
     executors: new Map(),
     remoteOnlyNoop: new Set(),
     remoteOnly: new Set(),
+    servers: new Map(),
+    carried: new Set(),
   }
+  /** Persistent tasks a dependant placed off a `servers` executor needs here. */
+  const heldHere = new Set<string>()
   // `resolveExecutors` puts it last in every list.
   const floor = executors.find(isLocalExecutor)!
   for (const node of nodes.values()) {
@@ -188,9 +243,14 @@ export function placeTasks(
         cacheable: node.config.cache !== undefined,
       },
       executorLabel,
-      pinnedUnsandboxed.has(node.id),
+      (e) => pinsOf(e).has(node.id),
     )
     placements.executors.set(node.id, executor)
+    const servers = serversBehind(nodes, node)
+    if (servers.length > 0) {
+      if (executor.servers === true) placements.servers.set(node.id, servers)
+      else for (const s of servers) heldHere.add(s.id)
+    }
     if (node.config.exec?.remote === 'only') {
       // A pinned 'only' task (it transitively depends on a persistent one)
       // lands here too: pinning wins, so it noops rather than shipping.
@@ -198,6 +258,8 @@ export function placeTasks(
       else placements.remoteOnlyNoop.add(node.id)
     }
   }
+  for (const servers of placements.servers.values())
+    for (const s of servers) if (!heldHere.has(s.id)) placements.carried.add(s.id)
   return placements
 }
 

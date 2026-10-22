@@ -17,6 +17,7 @@
 // each importer's `package.json` to its tasks' inputs.
 //
 // Imports core only through the public `@vzn/vx` specifier.
+import { mkdir, rename } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import {
@@ -317,6 +318,11 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     },
     async discover(ctx) {
       const manifest = manifestReader(ctx.workspaceRoot)
+      // The staleness check's walk overlaps the lockfile read.
+      const dirs = workspaceGlobs(ctx.workspaceRoot, manager.name, manifest).then((globs) =>
+        workspaceDirs(ctx.workspaceRoot, globs),
+      )
+      dirs.catch(() => {})
       const read = await readImporters(ctx, manifest)
       if (read === undefined) return []
       const { importers, file } = read
@@ -332,11 +338,8 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
         const missing = await staleness(
           ctx.workspaceRoot,
           importers,
-          manager.recorded(text),
-          await workspaceDirs(
-            ctx.workspaceRoot,
-            await workspaceGlobs(ctx.workspaceRoot, manager.name, manifest),
-          ),
+          await recordedOnce(ctx.cacheDir, file, text, manager.recorded),
+          await dirs,
           manifest,
         )
         if (missing.length > 0) {
@@ -374,6 +377,43 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
     },
   })
 }
+
+/**
+ * The dependency names each importer records, kept per lockfile content:
+ * parsing them (pnpm's importers block, ~2 ms on solid, and the parser's
+ * load) was on every run, and only the lockfile text decides them.
+ */
+async function recordedOnce(
+  cacheDir: string,
+  file: string,
+  text: string,
+  recorded: (text: string) => ReadonlyMap<string, ReadonlyMap<string, unknown>>,
+): Promise<ReadonlyMap<string, ReadonlySet<string>>> {
+  const hash = `${RECORDED_VERSION}:${Bun.hash.xxHash3(text).toString(16)}`
+  const memo = path.join(cacheDir, 'lockfile-claims', `${file}.recorded.json`)
+  try {
+    const kept = (await Bun.file(memo).json()) as { hash: string; names: Record<string, string[]> }
+    if (kept.hash === hash) {
+      return new Map(Object.entries(kept.names).map(([i, names]) => [i, new Set(names)]))
+    }
+  } catch {
+    // None kept, or unreadable: parsed below.
+  }
+  const out = new Map([...recorded(text)].map(([i, deps]) => [i, new Set(deps.keys())]))
+  const names = Object.fromEntries([...out].map(([i, set]) => [i, [...set]]))
+  // Write-then-rename, so a concurrent run reads a whole memo or none. The
+  // memo is a speed-up: a failed write costs the next run a parse.
+  const tmp = `${memo}.tmp-${process.pid}-${Date.now()}`
+  try {
+    await mkdir(path.dirname(memo), { recursive: true })
+    await Bun.write(tmp, JSON.stringify({ hash, names }))
+    await rename(tmp, memo)
+  } catch {}
+  return out
+}
+
+/** Bumped when what `recorded` returns for the same text changes. */
+const RECORDED_VERSION = 1
 
 /** Up to five names, then a count of the rest. */
 function listed(names: readonly string[]): string {
@@ -513,14 +553,18 @@ async function workspaceDirs(root: string, globs: readonly unknown[]): Promise<s
 async function staleness(
   root: string,
   importers: ReadonlyMap<string, LockfileImporter>,
-  recorded: ReadonlyMap<string, ReadonlyMap<string, unknown>>,
+  recorded: ReadonlyMap<string, ReadonlySet<string>>,
   dirs: readonly string[],
   manifest: (dir: string) => Promise<Record<string, unknown> | null>,
 ): Promise<string[]> {
   const dirOf = (importer: string): string => (importer === '.' ? root : path.join(root, importer))
   const missing = dirs.filter((d) => !importers.has(d)).map((d) => `the workspace ${d}`)
   const names = new Set<string>()
-  for (const d of new Set([...importers.keys(), ...dirs])) {
+  const all = new Set([...importers.keys(), ...dirs])
+  // Read at once, then visited in order: the first unparsable one still
+  // names the refusal.
+  await Promise.allSettled([...all].map((d) => manifest(dirOf(d))))
+  for (const d of all) {
     const n = (await manifest(dirOf(d)))?.['name']
     if (typeof n === 'string') names.add(n)
   }

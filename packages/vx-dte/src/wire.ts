@@ -285,9 +285,19 @@ async function connect(
       })
       ws.send(JSON.stringify({ n: k, ...frame }))
     })
-  const ping = setInterval(() => ws.send('ping'), heartbeatMs)
+  // A socket a network stops carrying sends no close: one silent for a
+  // heartbeat and a half is dead, before the relay's three-heartbeat sweep
+  // drops this participant. Pinged each half heartbeat, so a live one is not.
+  let heard = performance.now()
+  const ping = setInterval(() => {
+    if (performance.now() - heard > 1.5 * heartbeatMs) {
+      closed()
+      ws.close()
+    } else ws.send('ping')
+  }, heartbeatMs / 2)
   ping.unref()
   const closed = (): void => {
+    if (!open) return
     open = false
     clearInterval(ping)
     for (const p of pending.values()) p.reject(new Error('socket closed'))
@@ -304,6 +314,7 @@ async function connect(
   }
   ws.onerror = closed
   ws.onmessage = (e) => {
+    heard = performance.now()
     if (e.data === 'pong') return
     const m = JSON.parse(String(e.data)) as Answer & { messages?: RelayMessage[]; n?: number }
     if (m.messages !== undefined) {
@@ -345,8 +356,7 @@ async function connect(
       return inbox.splice(0)
     },
     async close() {
-      open = false
-      clearInterval(ping)
+      closed()
       ws.close(1000)
       // Its close handshake, so a process exiting next does not cut the
       // socket (the host logs that as a client that disconnected).

@@ -73,6 +73,20 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
           ...(args.hashCache !== undefined ? { hashCache: args.hashCache } : {}),
         })))
 
+  // Every dependant starts it where it runs (`ServerSpec`): nothing to spawn
+  // here, and nothing that ran (owner, 2026-10-22: nothing runs on a
+  // distributed run's orchestrator).
+  if (args.carried === true)
+    return {
+      node,
+      status: 'success',
+      exitCode: 0,
+      durationMs: 0,
+      ...(hash === undefined ? {} : { hash }),
+      wallclockStartNs,
+      wallclockEndNs: wallclockStartNs,
+    }
+
   // The args after `--` reach a server as they reach any task. A readyWhen
   // server once got none — "so the matcher sees the unmodified output",
   // though the args change the command, not what the matcher reads — and

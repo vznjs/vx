@@ -197,6 +197,18 @@ export async function runAgent(opts: {
         outputs: m.outputs,
         ...(m.timeoutMs === undefined ? {} : { timeoutMs: m.timeoutMs }),
         ...(m.sandbox === undefined ? {} : { sandbox: mine(m.sandbox) }),
+        ...(m.servers === undefined
+          ? {}
+          : {
+              servers: m.servers.map((s) => ({
+                taskId: s.task,
+                command: s.command,
+                cwd: path.join(opts.root, s.cwd),
+                env: localEnv(s.env, root, opts.root),
+                ...(s.readyWhen === undefined ? {} : { readyWhen: s.readyWhen }),
+                ...(s.timeoutMs === undefined ? {} : { timeoutMs: s.timeoutMs }),
+              })),
+            }),
       }
       floor ??= localFloor()
       ui.print('out', ui.status('info', m.task, ui.dim('running')))
@@ -301,8 +313,8 @@ export async function runAgent(opts: {
           root = m.root
           realRoot = m.realRoot
           if (m.sandboxes !== undefined) {
-            await floor?.close()
-            floor = localFloor(m.sandboxes)
+            if (floor === undefined) floor = localFloor(m.sandboxes)
+            else await floor.rearm(m.sandboxes)
           }
           queue.push(...m.tasks)
           start()

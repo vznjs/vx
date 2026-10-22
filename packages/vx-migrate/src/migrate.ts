@@ -60,7 +60,7 @@ import {
 } from './adopt.js'
 import { migrateTurbo } from './migrate-turbo.js'
 import { migrateViteTask } from './migrate-vite-task.js'
-import { turboConfigFile } from './turbo/turbo-map.js'
+import { turboConfigFile } from './turbo/turbo-reads.js'
 import { lockfilePlugin } from './workspace-notes.js'
 import {
   extendWorkspaceFile,

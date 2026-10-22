@@ -11,6 +11,7 @@ import {
   PM_EXEC_ENV,
   VX_RUN_TASK_ENV,
   VX_RUN_WORKSPACE_ENV,
+  type ServerSpec,
 } from '../exec/index.js'
 import type { TaskNode } from '../graph/index.js'
 import { parseDuration } from '../util/index.js'
@@ -87,6 +88,21 @@ export function taskEnv(
 /** A task's own `exec.timeout` in ms; the schema has checked its form. */
 export function taskTimeoutMs(step: ExecConfig): number | undefined {
   return step.timeout === undefined ? undefined : parseDuration(step.timeout)!
+}
+
+/** Persistent task `node` as a `servers` executor starts it: no forwarded args, which a dependency never gets. */
+export function serverSpec(node: TaskNode, workspaceRoot: string): ServerSpec {
+  const step = node.config.exec!
+  const timeoutMs = taskTimeoutMs(step)
+  const readyWhen = step.persistent?.readyWhen
+  return {
+    taskId: node.id,
+    command: step.command,
+    cwd: node.projectDir,
+    env: taskEnv(node, step, workspaceRoot),
+    ...(readyWhen === undefined ? {} : { readyWhen }),
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+  }
 }
 
 export function isAborted(signal: AbortSignal | undefined): boolean {

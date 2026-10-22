@@ -11,7 +11,11 @@ running anything.
 ## Public surface
 
 ```ts
-export function pinnedLocalSet(nodes: Map<string, TaskNode>, sandbox?: boolean): Set<string>
+export function pinnedLocalSet(
+  nodes: Map<string, TaskNode>,
+  sandbox?: boolean,
+  servers?: boolean,
+): Set<string>
 // the exec.interactive tasks when `tty`, else none; throws UserError when two would read the keys at once
 export function terminalHolders(nodes: Map<string, TaskNode>, tty: boolean): Set<string>
 
@@ -19,6 +23,8 @@ export interface Placements {
   executors: Map<string, TaskExecutor> // every placed task → the executor that took it
   remoteOnlyNoop: Set<string> // `remote: 'only'` tasks no remote executor took
   remoteOnly: Set<string> // `remote: 'only'` tasks a remote executor took
+  servers: Map<string, TaskNode[]> // task on a `servers` executor → the persistent tasks it starts there
+  carried: Set<string> // persistent tasks every dependant carries: never started here
 }
 export function placeTasks(
   nodes: Map<string, TaskNode>,
@@ -54,7 +60,12 @@ export function localFloor(sandboxes?: readonly SandboxConfig[]): LocalFloor
 ## Rules
 
 - **Pinned to this machine**: a task that transitively depends on a
-  persistent one (a worker cannot reach a port on the submitter), a
+  persistent one (a worker cannot reach a port on the submitter), unless
+  its executor declares `servers` and the server is carriable (no
+  `sandbox`, no `exec.remote: false`, not requested): then
+  `Placements.servers` names the servers each such task starts where it
+  runs, and `Placements.carried` the ones no task placed here needs, which
+  are never spawned here; a
   sandboxed task and its dependants (the sandbox is this machine's
   machinery; a boundary "verified" where it is not enforced passes
   vacuously; an executor that declares `sandbox` enforces it where it
