@@ -38,7 +38,8 @@
   "//": [
     "wrangler: deploys src/worker.ts by wrangler.jsonc, which the Deploy to Cloudflare button reads (it parses no other config).",
     "@vzn/vx: vx.config.ts's core, the workspace's own here; `*`, not workspace:, which npm refuses when the button installs this directory alone.",
-    "miniflare: tests/worker-sockets.test.ts runs src/worker.ts in workerd, the runtime Workers deploy to."
+    "miniflare: tests/worker-sockets.test.ts runs src/worker.ts in workerd, the runtime Workers deploy to.",
+    "jose: checks the CI OIDC tokens (signature, algorithm, audience, times) with a widely used, dependency-free JWT library instead of hand-rolled WebCrypto; it runs in Bun and workerd alike."
   ],
   "devDependencies": {
     "@types/bun": "^1.4.0",
@@ -52,5 +53,8 @@
         "description": "Who may take part, space separated, each `issuer:owner/repo:workflow`: `https://token.actions.githubusercontent.com:vznjs/vx:ci.yml` admits jobs of `.github/workflows/ci.yml` in vznjs/vx (GitLab: `https://gitlab.com:group/project:.gitlab-ci.yml`). List the orchestrator's workflow and the agents'."
       }
     }
+  },
+  "dependencies": {
+    "jose": "6.2.13"
   }
 }

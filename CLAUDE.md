@@ -97,7 +97,7 @@ packages/vx-docs        Astro Starlight site; packages/vx/docs is imported by sc
 packages/vx-dte         distributed runs: `dte()` executor + `vx dte agent` over the relay, `local()` adapter
                         (agents in git worktrees). Private until npm has it
 packages/vx-dte-relay   the reference relay of `@vzn/vx-dte` (PROTOCOL.md): mailboxes per run behind CI
-                        OIDC tokens; imports nothing, not even core. Private until npm has it
+                        OIDC tokens; imports only jose, not even core. Private until npm has it
 packages/vx-bench       synthetic workspace generator + runners (vx / turbo / nx)
 skills/vx/SKILL.md      the agent skill, where `npx skills add vznjs/vx` finds it (.claude/skills are
                         `metadata.internal`, so that command offers nothing else; tests/skills-install.unsafe.test.ts)

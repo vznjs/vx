@@ -8,7 +8,8 @@ and its agents all dial out to a relay, which passes their messages on.
 It admits only CI OIDC tokens of the repositories it names, and binds
 each run to the repository that started it.
 
-The relay is one package with no runtime dependencies, not even vx itself. Any
+The relay is one package whose one runtime dependency is `jose`, which checks
+the CI tokens; not even vx itself. Any
 server that speaks [PROTOCOL.md](./PROTOCOL.md) can take its place.
 
 ## Run it
