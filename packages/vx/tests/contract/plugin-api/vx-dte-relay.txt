@@ -13,6 +13,8 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
 export function repositoryClaimOf(iss: string): string
 == function runClaimsOf (src/oidc.ts)
 export function runClaimsOf(iss: string): readonly string[]
+== function serveRelay (src/serve.ts)
+export function serveRelay(opts: ServeOptions): RelayServer
 == type OidcOptions (src/oidc.ts)
 export interface OidcOptions {
   issuers: readonly string[]
@@ -25,12 +27,41 @@ export interface OidcOptions {
 == type Relay (src/relay.ts)
 export interface Relay {
   fetch(req: Request): Promise<Response>
+  attach(key: string, id: string, socket: RelaySocket): boolean
+  detach(key: string, id: string, socket: RelaySocket): void
+  frame(key: string, id: string, text: string): string
+  seen(key: string, id: string, at: number): void
+  sweep(): number | undefined
   close(): void
 }
 == type RelayOptions (src/relay.ts)
 export interface RelayOptions {
   verify?: ((token: string, req: Request) => Promise<VerifiedToken>) | undefined
   heartbeatMs?: number
+  store?: RelayStore | undefined
+  upgrade?: ((key: string, id: string, req: Request) => Response) | undefined
+  timer?: boolean
+}
+== type RelayServer (src/serve.ts)
+export interface RelayServer {
+  readonly url: string
+  stop(): Promise<void>
+}
+== type RelaySocket (src/relay.ts)
+export interface RelaySocket {
+  send(text: string): void
+  close(): void
+}
+== type RelayStore (src/relay.ts)
+export interface RelayStore {
+  put(key: string, value: unknown): void
+  delete(key: string): unknown
+  list(opts: { prefix: string }): Iterable<[string, unknown]>
+}
+== type ServeOptions (src/serve.ts)
+export interface ServeOptions extends Pick<RelayOptions, 'verify' | 'heartbeatMs'> {
+  hostname: string
+  port: number
 }
 == type VerifiedToken (src/oidc.ts)
 export interface VerifiedToken {
