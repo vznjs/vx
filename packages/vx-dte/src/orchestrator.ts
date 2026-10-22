@@ -153,6 +153,8 @@ export class Orchestrator {
   private readonly retired = new Set<Agent>()
   /** Agents asked for that never joined, with why. */
   private readonly unstarted = new Map<string, string>()
+  /** A failed start was given another agent (`failed`). */
+  private restarted = false
   private pumping = false
   private joined = 0
   private readonly stop = new AbortController()
@@ -766,6 +768,13 @@ export class Orchestrator {
   failed(id: string, reason: string): void {
     if (this.unstarted.has(id) || this.ended) return
     this.unstarted.set(id, reason)
+    // A checkout or install can fail on the network; one more agent gets a
+    // go. A second failed start is the setup's, and none more are started.
+    const joined = [...this.agents.values(), ...this.gone].some((a) => a.label === id)
+    if (!joined && !this.restarted) {
+      this.restarted = true
+      this.o.left?.(id)
+    }
     this.stranded(`no agent could start: ${id} ${reason}`)
   }
 

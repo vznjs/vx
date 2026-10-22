@@ -291,8 +291,10 @@ the ones it never played when it ends.
   (`the relay is unreachable`); none runs here, which may be far smaller
   than the agents. What finished is saved, so a rerun resumes from it.
 - An agent that never joins says why on its row (`failed  exited 1:
-…`); when none is online or starting and this machine has no share,
-  the remaining tasks fail with `no agent could start`.
+…`). The first such failure in a run starts another agent in its
+  place, as a checkout or install can fail on the network; a second
+  starts none. When none is online or starting and this machine has no
+  share, the remaining tasks fail with `no agent could start`.
 
 ## What the run shows
 

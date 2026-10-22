@@ -117,6 +117,44 @@ it('an agent with other tracked files than the run is refused', async () => {
   }
 })
 
+it('gives a failed agent start one more agent, then fails the run', async () => {
+  const relay = createRelay()
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+  const url = `http://127.0.0.1:${server.port}`
+  try {
+    const freed: string[] = []
+    const o = new Orchestrator({
+      me: await join(url, 'r', 'orchestrator', null, undefined),
+      root: '/ws',
+      tree: 'aaa',
+      localSlots: 0,
+      nodes: () => undefined,
+      need: () => ({ cores: 1, memory: 0 }),
+      artifacts: fakeArtifacts().artifacts,
+      cacheFacts: async () => ({ refs: [], lent: {} }),
+      run: 'r',
+      keyOf: () => undefined,
+      left: (id) => {
+        freed.push(id)
+        // As dte() does: the freed place starts the next agent.
+        o.spawned(`small#${freed.length + 1}`, { size: 'small', cpu: 1, memory: 1 })
+      },
+    })
+    o.spawned('small#1', { size: 'small', cpu: 1, memory: 1 })
+    o.failed('small#1', 'install exited 1: ECONNRESET')
+    o.failed('small#2', 'install exited 1: ECONNRESET')
+    const run = o.execute({ taskId: 'p#t' } as Parameters<typeof o.execute>[0])
+    expect([freed, await run.catch((e: Error) => e.message)]).toEqual([
+      ['small#1'],
+      'no agent could start: small#2 install exited 1: ECONNRESET',
+    ])
+    await o.close()
+  } finally {
+    relay.close()
+    await server.stop(true)
+  }
+})
+
 /** A cache by key, in memory: what agents saved, and each restore asked. */
 function fakeArtifacts() {
   const saved = new Map<string, { stdout: string; stderr: string }>()
