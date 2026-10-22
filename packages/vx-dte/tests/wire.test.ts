@@ -224,7 +224,8 @@ it('asks for a new token a minute before the one it holds expires', async () => 
 })
 
 it('waits out the relay’s rate limit and sends again', async () => {
-  const relay = createRelay({ heartbeatMs: 20 })
+  // A heartbeat a loaded host outlasts: the sweep then closed the run under the send.
+  const relay = createRelay({ heartbeatMs: 200 })
   let limited = 0
   const server = Bun.serve({
     hostname: '127.0.0.1',
@@ -382,7 +383,8 @@ it('gives up on a request the relay holds past three heartbeats', async () => {
 // network drops a connection now and then: one such answer to an agent's
 // poll ended the agent and lost what it ran (2026-10-22).
 it('asks again through a relay fault shorter than three heartbeats', async () => {
-  const relay = createRelay({ heartbeatMs: 50 })
+  // Three 50 ms heartbeats were less than a loaded host's retries took.
+  const relay = createRelay({ heartbeatMs: 200 })
   let faults = 0
   let joins = 0
   const server = Bun.serve({
