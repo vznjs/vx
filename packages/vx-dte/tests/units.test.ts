@@ -813,6 +813,91 @@ it('a task its only agent could not run fails when no agent is left', async () =
   }
 }, 3_000)
 
+// A batch for a wide agent passed the relay's 1 MiB body limit and every
+// task in it failed with `413 body over 1 MiB` (2026-10-22).
+it('a batch past the relay’s body limit goes in parts', async () => {
+  const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
+  try {
+    const a = await h.agent(3)
+    await Bun.sleep(50)
+    const env = { BIG: 'x'.repeat(400_000) }
+    for (const id of ['t1', 't2', 't3']) void h.o.execute({ ...h.req(id), env })
+    const got: string[] = []
+    for (let i = 0; i < 5 && got.length < 3; i++) got.push(...(await a.batches()).flat())
+    expect(got.toSorted()).toEqual(['t1', 't2', 't3'])
+  } finally {
+    await h.stop()
+  }
+})
+
+// An agent answering a cancel the run sent as it closed failed its CI job
+// on the relay's `410 run closed` (2026-10-22).
+it('an agent whose answer meets a closed run exits 0', async () => {
+  const root = await tmp()
+  const relay = createRelay()
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+  const url = `http://127.0.0.1:${server.port}`
+  try {
+    const raw = await join(url, R, 'orchestrator', null, undefined)
+    const o = sealOrchestrator(raw, R, secretProof('s'))
+    const code = runAgent({
+      relay: url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => ({
+        async save() {
+          await Bun.sleep(100)
+        },
+        async restore() {
+          return null
+        },
+      }),
+    })
+    const order = (task: string, command: string): RunOrder => ({
+      task,
+      runKey: runKey(R, task),
+      deps: [],
+      nested: [],
+      command,
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    })
+    let sent = false
+    for (let i = 0; i < 50 && !sent; i++) {
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string }
+        if (from !== 'relay' || m.type !== 'joined') continue
+        await o.send(m.id!, {
+          type: 'welcome',
+          name: 'a',
+          cache: { refs: [], lent: {} },
+          cores: 1,
+          memory: 1e9,
+        })
+        await o.send(m.id!, {
+          type: 'batch',
+          root,
+          realRoot: root,
+          tasks: [order('t1', 'sleep 2'), order('t2', 'true')],
+        })
+        await o.send(m.id!, { type: 'cancel', task: 't2' })
+        sent = true
+      }
+    }
+    await raw.leave()
+    expect(await code).toBe(0)
+  } finally {
+    relay.close()
+    await server.stop(true)
+  }
+})
+
 it('reads memory as bytes or with a unit', () => {
   expect([
     bytes('8GB'),
