@@ -103,6 +103,8 @@ export interface ScheduleOptions {
   strategy?: 'most-work' | 'critical-path' | 'direct-dependents' | 'ready-order'
   /** Confirmed stable-key local hits — ready immediately, backfill-only. */
   restoreTier?: ReadonlySet<string>
+  /** Servers held until the caller adds their remote-hit dependants to `restoreTier` (the ids it added). */
+  heldServers?: ReadonlyMap<string, Promise<readonly string[]>>
   /** Pool for tasks placed on an executor with its own capacity; undefined = the local pool. */
   poolOf?: (id: string) => { name: string; capacity: number } | undefined
   /** Admission over the worker count for local exec-tier tasks; `false` parks the task. */
@@ -167,6 +169,10 @@ dependant starts it, and that dependant runs once it is ready. Once
 every dependant has an outcome it settles with none of its own and
 releases them, so it is never spawned and the returned map lacks it.
 Its own deps still run first and a failed one skips it as before.
+A `heldServers` server does not dispatch until its promise answers: the
+dependants it names join the restore lane, and it is idle when every
+dependant is then in the tier, else it dispatches as usual
+(`orchestrator/held-servers.ts` asks the remote).
 
 The ranking lives in `src/graph/priorities.ts`, a file with no runtime
 import at all. The Learn page's scheduler simulator bundles it for the

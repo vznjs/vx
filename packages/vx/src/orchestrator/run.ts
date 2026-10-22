@@ -115,6 +115,7 @@ import {
   type ShortCircuit,
 } from './local-shortcircuit.js'
 import { deriveStableKeys, probesAfterWrites } from './stable-keys.js'
+import { askRemote, serversToHold } from './held-servers.js'
 
 import { writeRunFailures } from './run-failures.js'
 import { assembleRunRecords, recordLateRemoteErrors } from './run-records.js'
@@ -147,6 +148,7 @@ const emptyShortCircuit = (): ShortCircuit => ({
   restoreTier: new Set(),
   uncachedKeys: new Map(),
   groupKeys: new Map(),
+  remoteAsk: new Map(),
 })
 
 /**
@@ -916,10 +918,19 @@ async function runOnBus(
       shouldShortCircuit(nodes, policy) && (remote || cache === prepared.localCache)
         ? prepared.localCache.holdsNothing()
         : false
+    // Behind a remote, a server's dependants need their keys up front even
+    // on an empty store: the remote may hold them all, and then the server
+    // never starts (`held-servers.ts`).
+    const askForServers =
+      remote &&
+      policy.remoteRead &&
+      [...nodes.values()].some(
+        (n) => n.config.exec?.persistent !== undefined && !n.requested && n.surfaced !== true,
+      )
     // A remote may still hold what an empty local store does not: the
     // prefetch asks it, and no confirmed miss warms the sandbox early.
     if (coldLocal && !remote) prewarm()
-    else if (!coldLocal && shouldShortCircuit(nodes, policy)) {
+    else if ((!coldLocal || askForServers) && shouldShortCircuit(nodes, policy)) {
       shortCircuit = await step('vx:keys', () =>
         startLocalShortCircuit({
           nodes,
@@ -1172,6 +1183,16 @@ async function runOnBus(
       // runs ahead of their deps as low-priority worker-slot backfill.
       // Empty when the short-circuit didn't fire → byte-identical.
       restoreTier: shortCircuit.restoreTier,
+      ...(askForServers
+        ? {
+            heldServers: askRemote(
+              serversToHold(nodes, shortCircuit.restoreTier, shortCircuit.remoteAsk),
+              nodes,
+              shortCircuit,
+              cache,
+            ),
+          }
+        : {}),
     })
     stop.graphDone()
     reprioritize = undefined
