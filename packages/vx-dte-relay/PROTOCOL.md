@@ -101,7 +101,7 @@ The relay itself sends with `"from": "relay"`:
   is lost;
 - to every agent, `{ "type": "closed" }` when the orchestrator leaves or is
   lost. The run is then closed: every later request answers `410`, for
-  7 days, so its id never takes another orchestrator.
+  a day, so its id never takes another orchestrator.
 
 An agent's messages carry `"from": "<its id>"`, the orchestrator's
 `"from": "orchestrator"`.
@@ -147,6 +147,21 @@ workflow the run dispatches). Which agents take part is the run's own
 business: `@vzn/vx-dte` admits only an agent that completes a Noise
 handshake with the run's key, or on GitHub one bound by its OIDC identity
 (below).
+
+## What the relay knows
+
+Only what routing needs, and no longer:
+
+- A run is a SHA-256 of its id and its tokens' issuer and run claims: no
+  store or object name says whose run it is. A token is checked, never kept.
+- An agent's `info` is held until the orchestrator is told it joined; the
+  orchestrator's is dropped.
+- A message waits in memory, never in storage, until it is delivered. A
+  relay restart loses a participant whose queue was not empty, as if it
+  went silent.
+- A closed run keeps its hash and when it closed, for a day; who took
+  part and the orchestrator's key and job go after 10 minutes.
+- It logs nothing. It still sees each message's size, time and recipient.
 
 ## Bodies, end to end
 

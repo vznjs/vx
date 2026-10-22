@@ -8,6 +8,7 @@ import worker, {
   type DurableObjectState,
   type Env,
 } from '../src/worker.js'
+import { runKey } from '../src/relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const A = '00000000-0000-4000-8000-000000000001'
@@ -84,7 +85,7 @@ it('routes each run to its own object, which checks tokens', async () => {
   expect((await join(env, A)).status).toBe(401)
   expect((await join(env, A)).status).toBe(401)
   expect((await join(env, B)).status).toBe(401)
-  expect(ns.made).toEqual([A, B])
+  expect(ns.made).toEqual([await runKey(A, undefined), await runKey(B, undefined)])
   const res = await worker.fetch(new Request('https://relay.example.com/health'), env)
   expect([res.status, await res.json()]).toEqual([404, { error: 'no such route' }])
 })
@@ -98,7 +99,8 @@ it('gives the same run id of two repositories two objects', async () => {
   await join(env, R, unsigned(1))
   await join(env, R, unsigned(2))
   await join(env, R, unsigned(1))
-  expect(ns.made).toEqual([`https://gitlab.com\x001\x00${R}`, `https://gitlab.com\x002\x00${R}`])
+  const run = (project: string) => runKey(R, { iss: 'https://gitlab.com', run: [project] })
+  expect(ns.made).toEqual([await run('1'), await run('2')])
 })
 
 it('will not start without ISSUERS and REPOSITORIES', () => {

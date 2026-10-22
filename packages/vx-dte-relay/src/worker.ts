@@ -58,12 +58,12 @@ const list = (s: string | undefined): string[] => (s ?? '').split(/[\s,]+/).filt
 const RUN = /^\/v1\/runs\/([^/]+)\//
 
 export default {
-  fetch(req: Request, env: Env): Promise<Response> | Response {
+  async fetch(req: Request, env: Env): Promise<Response> {
     const run = RUN.exec(new URL(req.url).pathname)?.[1]
     if (run === undefined) return Response.json({ error: 'no such route' }, { status: 404 })
     const token = /^Bearer (\S+)$/.exec(req.headers.get('authorization') ?? '')?.[1]
     const claimed = token === undefined ? undefined : claimedRun(token)
-    return env.RELAY.get(env.RELAY.idFromName(runKey(run, claimed))).fetch(req)
+    return env.RELAY.get(env.RELAY.idFromName(await runKey(run, claimed))).fetch(req)
   },
 }
 
