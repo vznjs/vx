@@ -96,10 +96,9 @@ export function gitlab(options: GitlabOptions): DteAdapter {
       }
     },
 
-    // The plan job's pipeline and job: unique across retries.
+    // Random: a pipeline id is guessable. The plan writes it for the others.
     runId() {
-      const { CI_PIPELINE_ID: p, CI_JOB_ID: j } = process.env
-      return p && j ? `${p}-${j}` : undefined
+      return crypto.randomUUID()
     },
   }
 }

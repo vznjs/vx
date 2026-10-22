@@ -7,6 +7,11 @@ import { createRelay } from '@vzn/vx-dte-relay'
 import { githubProof, SealError, sealAgent, sealOrchestrator, secretProof } from '../src/seal.js'
 import { join, type Participant, type RelayMessage } from '../src/wire.js'
 
+/** Run ids: random UUIDs, as the relay takes. */
+const R = '00000000-0000-4000-8000-000000000001'
+const R2 = '00000000-0000-4000-8000-000000000002'
+const R3 = '00000000-0000-4000-8000-000000000003'
+
 const stops: (() => Promise<void>)[] = []
 afterEach(async () => {
   for (const s of stops.splice(0)) await s()
@@ -53,13 +58,13 @@ async function until(p: Participant, n = 1): Promise<RelayMessage[]> {
 async function pair(secret = 's', agentSecret = secret) {
   const r = relay()
   const o = sealOrchestrator(
-    await join(r.url, 'r', 'orchestrator', null, undefined),
-    'r',
+    await join(r.url, R, 'orchestrator', null, undefined),
+    R,
     secretProof(secret),
   )
   const a = await sealAgent(
-    (info) => join(r.url, 'r', 'agent', info, undefined),
-    'r',
+    (info) => join(r.url, R, 'agent', info, undefined),
+    R,
     secretProof(agentSecret),
     {
       v: 1,
@@ -98,10 +103,10 @@ it('refuses an agent with another secret, and an agent refuses an orchestrator w
   ])
 
   const r = relay()
-  const o2 = await join(r.url, 'r2', 'orchestrator', null, undefined)
+  const o2 = await join(r.url, R2, 'orchestrator', null, undefined)
   const a2 = await sealAgent(
-    (info) => join(r.url, 'r2', 'agent', info, undefined),
-    'r2',
+    (info) => join(r.url, R2, 'agent', info, undefined),
+    R2,
     secretProof('s'),
     {
       v: 1,
@@ -179,13 +184,13 @@ it('on GitHub, admits by OIDC tokens of this repository whose audience is the ke
   try {
     const r = relay()
     const o = sealOrchestrator(
-      await join(r.url, 'g', 'orchestrator', null, undefined),
-      'g',
+      await join(r.url, R3, 'orchestrator', null, undefined),
+      R3,
       githubProof(keys),
     )
     const a = await sealAgent(
-      (info) => join(r.url, 'g', 'agent', info, undefined),
-      'g',
+      (info) => join(r.url, R3, 'agent', info, undefined),
+      R3,
       githubProof(keys),
       { v: 1 },
     )
@@ -201,8 +206,8 @@ it('on GitHub, admits by OIDC tokens of this repository whose audience is the ke
     // A token of another repository is refused.
     repo = '12'
     const b = await sealAgent(
-      (info) => join(r.url, 'g', 'agent', info, undefined),
-      'g',
+      (info) => join(r.url, R3, 'agent', info, undefined),
+      R3,
       githubProof(keys),
       { v: 1 },
     )

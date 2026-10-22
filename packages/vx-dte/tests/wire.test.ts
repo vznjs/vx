@@ -5,6 +5,10 @@ import { afterEach, expect, it } from 'bun:test'
 import { createRelay, serveRelay, type RelayServer } from '@vzn/vx-dte-relay'
 import { join } from '../src/wire.js'
 
+/** Run ids: random UUIDs, as the relay takes. */
+const R = '00000000-0000-4000-8000-000000000001'
+const R2 = '00000000-0000-4000-8000-000000000002'
+
 const servers: RelayServer[] = []
 const realFetch = globalThis.fetch
 afterEach(async () => {
@@ -26,8 +30,8 @@ it('talks over the socket the relay offers, polling nothing', async () => {
   const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
   servers.push(s)
   const asked = verbs()
-  const o = await join(s.url, 'r', 'orchestrator', null, undefined)
-  const a = await join(s.url, 'r', 'agent', { size: 'small' }, undefined)
+  const o = await join(s.url, R, 'orchestrator', null, undefined)
+  const a = await join(s.url, R, 'agent', { size: 'small' }, undefined)
   expect(await o.poll()).toEqual([
     { from: 'relay', body: { type: 'joined', id: a.id, info: { size: 'small' } } },
   ])
@@ -44,11 +48,11 @@ it('talks over the socket the relay offers, polling nothing', async () => {
 it('polls over HTTP once its socket is gone', async () => {
   const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
   servers.push(s)
-  const o = await join(s.url, 'r', 'orchestrator', null, undefined)
-  const a = await join(s.url, 'r', 'agent', null, undefined)
+  const o = await join(s.url, R, 'orchestrator', null, undefined)
+  const a = await join(s.url, R, 'agent', null, undefined)
   await o.poll()
   // Left by HTTP alone, so the relay closes the agent's socket and its next poll asks HTTP.
-  await realFetch(`${s.url}/v1/runs/r/leave`, {
+  await realFetch(`${s.url}/v1/runs/${R}/leave`, {
     method: 'POST',
     body: JSON.stringify({ id: a.id }),
   })
@@ -70,8 +74,8 @@ it('polls a relay that offers no socket', async () => {
   })
   const url = `http://127.0.0.1:${server.port}`
   const asked = verbs()
-  const o = await join(url, 'r', 'orchestrator', null, undefined)
-  const a = await join(url, 'r', 'agent', null, undefined)
+  const o = await join(url, R, 'orchestrator', null, undefined)
+  const a = await join(url, R, 'agent', null, undefined)
   expect(await o.poll()).toEqual([
     { from: 'relay', body: { type: 'joined', id: a.id, info: null } },
   ])
@@ -93,7 +97,7 @@ it('asks for a new token a minute before the one it holds expires', async () => 
   const url = `http://127.0.0.1:${server.port}`
   const asked = async (inS: number): Promise<number> => {
     let n = 0
-    const me = await join(url, 'r', 'agent', null, async () => (n++, jwt(inS)))
+    const me = await join(url, R, 'agent', null, async () => (n++, jwt(inS)))
     await me.poll()
     await me.poll()
     return n

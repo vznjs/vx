@@ -164,7 +164,7 @@ export function dte(options: DteOptions) {
   const plan = async (args: readonly string[], ctx: CommandContext): Promise<number> => {
     const root = ctx.workspaceRoot
     if (adapter?.render === undefined) throw new UserError('vx dte plan: the adapter plans nothing')
-    const run = process.env['VX_DTE_RUN'] || adapter.runId?.()
+    const run = runOf() ?? adapter.runId?.()
     if (!run) throw new UserError('vx dte plan needs VX_DTE_RUN, or an adapter that names the run')
     if (options.relay === undefined) throw new UserError('vx dte plan needs dte({ relay })')
     const { runSecret } = await import('./seal.js')
@@ -199,9 +199,9 @@ export function dte(options: DteOptions) {
           if (argv[0] !== 'agent' || argv.length > 1) {
             throw new UserError('Usage: vx dte plan [<tasks> <run flags>] | vx dte agent')
           }
-          const run = process.env['VX_DTE_RUN']
+          const run = runOf()
           const relay = process.env['VX_DTE_RELAY'] ?? options.relay
-          if (run === undefined || run === '' || relay === undefined) {
+          if (run === undefined || relay === undefined) {
             throw new UserError('vx dte agent needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })')
           }
           const secret = givenSecret(ctx.workspaceRoot)
@@ -230,8 +230,7 @@ export function dte(options: DteOptions) {
 
     setup(ctx) {
       // A run that is not distributed subscribes nothing.
-      const run = process.env['VX_DTE_RUN']
-      if (run === undefined || run === '') return
+      if (runOf() === undefined) return
       ctx.on('onTaskComplete', (node, outcome) => {
         if (outcome.hash !== undefined) keys.set(node.id, outcome.hash)
       })
@@ -267,8 +266,8 @@ export function dte(options: DteOptions) {
 
     async executor(ctx) {
       await closing
-      const run = process.env['VX_DTE_RUN']
-      if (run === undefined || run === '') return undefined
+      const run = runOf()
+      if (run === undefined) return undefined
       const relay = options.relay ?? (await adapter?.relay?.())
       if (relay === undefined)
         throw new UserError('dte(): no relay: set relay, or use an adapter that has one')
@@ -630,4 +629,19 @@ export function bytes(v: unknown): number | undefined {
   const m = /^\s*(\d+(?:\.\d+)?)\s*([a-z]+)\s*$/i.exec(v)
   const unit = m === null ? undefined : UNITS[m[2]!.toUpperCase()]
   return unit === undefined ? undefined : Number(m![1]) * unit
+}
+
+/** A random (v4) UUID, as the relay takes: a run id no one can guess. */
+const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+/** `VX_DTE_RUN`, which turns distribution on; unset, none. */
+function runOf(): string | undefined {
+  const run = process.env['VX_DTE_RUN']
+  if (run === undefined || run === '') return undefined
+  if (!RUN_ID.test(run)) {
+    throw new UserError(
+      `VX_DTE_RUN is a random UUID, such as one \`uuidgen\` prints, so no one can guess the run: not ${JSON.stringify(run)}`,
+    )
+  }
+  return run
 }

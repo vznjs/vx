@@ -11,8 +11,8 @@ to each other is `@vzn/vx-dte`'s business, versioned on its own.
 ## Requests
 
 Every request is HTTP with a JSON body or none, under
-`<relay>/v1/runs/<run>/`, where `<run>` is the run id the plan printed
-(`[A-Za-z0-9._-]{1,128}`). Every request carries
+`<relay>/v1/runs/<run>/`, where `<run>` is the run id, a random (v4)
+UUID, so no one can guess it; any other answers `400`. Every request carries
 `Authorization: Bearer <CI OIDC token>`.
 
 | Request                      | Body                                                  | Answer                                     |
@@ -96,8 +96,8 @@ names the relay's audience, and that the token's repository is one the
 relay serves (`repository` on GitHub Actions, `project_path` on GitLab,
 matched without case; else `403`). A run is its id within its token's
 issuer and run claims: the same id in a token of another repository is
-another run, so a tenant cannot open a run id (a GitHub `run_id` is
-guessable) before its owner does. The run claims name the repository:
+another run, so a tenant cannot open a run id before its owner does,
+even one it learned. The run claims name the repository:
 
 | Issuer                                                         | Run claims      |
 | -------------------------------------------------------------- | --------------- |

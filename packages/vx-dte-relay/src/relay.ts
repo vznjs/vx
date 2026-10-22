@@ -79,7 +79,8 @@ interface Run {
   closedAt?: number
 }
 
-const RUN_ID = /^[A-Za-z0-9._-]{1,128}$/
+/** A random (v4) UUID: no one can guess a run id to open it first or join it. */
+const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_BODY = 1 << 20
 const MAX_QUEUE = 10_000
 /** 10 000 bodies of 1 MiB would be 10 GiB held for one participant that does not poll. */
@@ -296,7 +297,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     const m = /^\/v1\/runs\/([^/]+)\/(join|send|poll|leave|socket)$/.exec(url.pathname)
     if (m === null) throw new HttpError(404, 'no such route')
     const [, runId, verb] = m as unknown as [string, string, string]
-    if (!RUN_ID.test(runId)) throw new HttpError(400, 'bad run id')
+    if (!RUN_ID.test(runId)) throw new HttpError(400, 'run id is not a random UUID')
     const get = verb === 'poll' || verb === 'socket'
     if (get !== (req.method === 'GET') || !['GET', 'POST'].includes(req.method)) {
       throw new HttpError(405, 'wrong method')

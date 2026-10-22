@@ -333,9 +333,11 @@ jobs:
 
       - uses: ./.github/actions/vx-runner
 
+      - name: A run id no one can guess
+        run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
+
       - name: vx run core shards
         env:
-          VX_DTE_RUN: ${{ github.run_id }}-${{ github.run_attempt }}
           VX_DTE_RELAY: ${{ vars.VX_DTE_RELAY }}
           GITHUB_TOKEN: ${{ github.token }}
           VX_REQUIRE_SANDBOX: '1'

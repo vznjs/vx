@@ -5,6 +5,11 @@ import { afterAll, beforeAll, expect, it } from 'bun:test'
 import path from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
 
+/** Run ids: random UUIDs, as the relay takes. */
+const R = '00000000-0000-4000-8000-000000000001'
+const R2 = '00000000-0000-4000-8000-000000000002'
+const R3 = '00000000-0000-4000-8000-000000000003'
+
 const ISS = 'https://issuer.example'
 const pair = (await crypto.subtle.generateKey(
   {
@@ -53,7 +58,7 @@ beforeAll(async () => {
 }, 30_000)
 afterAll(() => mf?.dispose())
 
-const join = async (role: string, run = 'r'): Promise<{ id: string; socket?: boolean }> =>
+const join = async (role: string, run = R): Promise<{ id: string; socket?: boolean }> =>
   (await (
     await fetch(new URL(`/v1/runs/${run}/join`, base), {
       method: 'POST',
@@ -65,7 +70,7 @@ const join = async (role: string, run = 'r'): Promise<{ id: string; socket?: boo
 /** A participant's socket, and the frames it got. */
 async function open(id: string): Promise<{ ws: WebSocket; next(): Promise<unknown> }> {
   const ws = new WebSocket(
-    new URL(`/v1/runs/r/socket?id=${id}`, base).href.replace(/^http/, 'ws'),
+    new URL(`/v1/runs/${R}/socket?id=${id}`, base).href.replace(/^http/, 'ws'),
     {
       headers: auth,
     },
@@ -107,7 +112,7 @@ it('offers sockets, pushes each message down one and takes sends from it', async
     { n: 1, status: 404, error: 'unknown to' },
     'pong',
   ])
-  const left = await fetch(new URL('/v1/runs/r/leave', base), {
+  const left = await fetch(new URL(`/v1/runs/${R}/leave`, base), {
     method: 'POST',
     headers: auth,
     body: JSON.stringify({ id: o.id }),
@@ -119,13 +124,13 @@ it('offers sockets, pushes each message down one and takes sends from it', async
 })
 
 it('refuses a socket without a token of the run', async () => {
-  const a = await join('agent', 'r3')
+  const a = await join('agent', R3)
   expect(a.socket).toBe(true)
-  const res = await fetch(new URL(`/v1/runs/r2/socket?id=${a.id}`, base), {
+  const res = await fetch(new URL(`/v1/runs/${R2}/socket?id=${a.id}`, base), {
     headers: { ...auth, upgrade: 'websocket' },
   })
   expect([res.status, await res.json()]).toEqual([404, { error: 'unknown run' }])
-  const bare = await fetch(new URL(`/v1/runs/r3/socket?id=${a.id}`, base), {
+  const bare = await fetch(new URL(`/v1/runs/${R3}/socket?id=${a.id}`, base), {
     headers: { upgrade: 'websocket' },
   })
   expect(bare.status).toBe(401)
