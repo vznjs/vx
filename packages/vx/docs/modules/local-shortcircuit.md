@@ -32,6 +32,7 @@ export interface ShortCircuit {
   restoreTier: Set<string> // the confirmed local hits
   uncachedKeys: Map<string, string> // uncached task id → its reused key
   groupKeys: Map<string, UpfrontGroupKey> // unkeyed group id → its up-front key + upstream
+  remoteAsk: Map<string, string> // behind a remote, each stable local miss → its key
 }
 export async function startLocalShortCircuit(args: ShortCircuitArgs): Promise<ShortCircuit>
 // The tasks a workspace-output glob keeps out of the restore tier (`planRun` asks it too).
@@ -41,7 +42,7 @@ export function restoreTierExclusions(
 ): Set<string>
 ```
 
-- `startLocalShortCircuit(args)` → `{ preProbed, restoreTier, uncachedKeys, groupKeys }`.
+- `startLocalShortCircuit(args)` → `{ preProbed, restoreTier, uncachedKeys, groupKeys, remoteAsk }`.
 - `uncachedKeys` — the up-front keys of uncached tasks that no upstream
   can change (stable-keys.md), minus every task `restoreTierExclusions`
   names (a root-anchored output may land in its project with no edge).
@@ -54,6 +55,10 @@ export function restoreTierExclusions(
   when the live upstream has the same ids and keys in the same order, and
   derives it otherwise: 1,090 `installDeps` groups were rolled up twice per
   warm run, ~30 upstream ids sorted, joined and hashed each time (X-149).
+- `remoteAsk` — behind a remote cache, each stable task the local store
+  missed, with its key: the remote may hold it. `held-servers.ts` holds a
+  server whose every dependant is a local hit or in `remoteAsk` until the
+  remote answers, and never starts it when all of them hit.
 - `ProbedEntry { hash, hit }` — consumed by execute-task (probe reuse:
   the up-front probes ARE execute's probes, hoisted — no double work).
 
