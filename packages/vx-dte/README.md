@@ -348,7 +348,7 @@ not:
 Under each agent, and `local`, the footer then spells out what it did:
 its time online, busy and idle; its CPU peak and average in cores and
 its cpu utilization (the core-time its tasks used over the core-time it
-had); its memory peak and average; and, for an agent, the messages and
+had); its memory peak and average, when its tasks reported any; and, for an agent, the messages and
 bytes the run sent it and received from it. The `total` line is the cpu
 utilization of every machine together:
 

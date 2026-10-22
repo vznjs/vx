@@ -387,6 +387,8 @@ it('the final summary says how each agent ended, its size and machine under it',
   expect(rows[at('big#1')]).toMatch(/^big#1 +left/)
   expect(rows.some((r) => r.trimStart().startsWith('!'))).toBe(false)
   expect(rows.filter((r) => /^\S+ +online/.test(r))).toEqual([])
+  // Tasks that reported no memory read `memory peak 0 B`.
+  expect(rows.filter((r) => r.includes('memory peak'))).toEqual([])
   // A few hundred bytes read `0 KB`.
   expect(rows.filter((r) => r.includes(' 0 KB'))).toEqual([])
   expect(rows.some((r) => /^ +sent \d+ messages? · \d+ B, received/.test(r))).toBe(true)
