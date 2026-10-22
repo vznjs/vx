@@ -23,7 +23,6 @@ import type { RunOrder } from '../src/messages.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
-const R2 = '00000000-0000-4000-8000-000000000002'
 
 const dirs: string[] = []
 afterEach(async () => {

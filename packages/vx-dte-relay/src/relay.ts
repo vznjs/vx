@@ -368,7 +368,8 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     return Response.json({
       id: p.id,
       heartbeatMs,
-      ...(opts.upgrade === undefined ? {} : { socket: true }),
+      // `frames`: the socket also takes `sends`, `leave` and `remove`.
+      ...(opts.upgrade === undefined ? {} : { socket: true, frames: 2 }),
     })
   }
 

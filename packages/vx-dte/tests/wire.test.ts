@@ -69,7 +69,7 @@ it('polls over HTTP once its socket is gone', async () => {
 })
 
 /** A relay on Bun.serve whose participants' sockets the test sees, and can drop as a network does. */
-function sockets() {
+function sockets(framesV2 = true) {
   type Held = { key: string; id: string; socket?: { send(t: string): void; close(): void } }
   const open: Bun.ServerWebSocket<Held>[] = []
   const closes: { id: string; code: number }[] = []
@@ -84,7 +84,13 @@ function sockets() {
   server = Bun.serve<Held>({
     hostname: '127.0.0.1',
     port: 0,
-    fetch: (r) => relay.fetch(r),
+    fetch: async (r) => {
+      const res = await relay.fetch(r)
+      if (framesV2 || !r.url.endsWith('/join')) return res
+      // A relay from before `frames` 2.
+      const { frames: _, ...json } = (await res.json()) as Record<string, unknown>
+      return Response.json(json, { status: res.status })
+    },
     websocket: {
       open(ws) {
         open.push(ws)
@@ -179,6 +185,22 @@ it('sends asked for together go as one frame, each answered', async () => {
   ])
   await a.leave()
   await o.leave()
+})
+
+it('to a relay without frames 2, sends one by one and leaves over HTTP', async () => {
+  const { url, frames } = sockets(false)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'agent', null, undefined)
+  await o.poll()
+  await Promise.all([o.send(a.id, 1), o.send(a.id, 2)])
+  expect(frames.map((f) => Object.keys(JSON.parse(f) as object))).toEqual([
+    ['n', 'to', 'body'],
+    ['n', 'to', 'body'],
+  ])
+  const asked = verbs()
+  await a.leave()
+  await o.leave()
+  expect(asked).toEqual(['leave', 'leave'])
 })
 
 it('polls a relay that offers no socket', async () => {
