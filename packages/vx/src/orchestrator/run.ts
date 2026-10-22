@@ -750,10 +750,19 @@ async function runOnBus(
       n.config.exec?.persistent !== undefined ||
       n.config.cache === undefined ||
       !(policy.localRead || policy.remoteRead)
+    // Only what runs here arms this machine's sandbox: a `sandbox` executor
+    // enforces it where it runs the task, so a distributed run's
+    // orchestrator needs none (owner, 2026-10-22).
     const sandboxed =
       sandboxArmer === null
         ? []
-        : [...nodes.values()].filter((n) => n.config.exec?.sandbox !== undefined)
+        : [...nodes.values()].filter(
+            (n) =>
+              n.config.exec?.sandbox !== undefined &&
+              (n.config.exec.persistent === undefined
+                ? localPlaced.has(n.id)
+                : !placements.carried.has(n.id)),
+          )
     let prewarming: Promise<void> | undefined
     const prewarm = (): void => {
       prewarming ??= sandboxArmer?.arm().catch(() => {})
@@ -929,7 +938,7 @@ async function runOnBus(
       )
     // A remote may still hold what an empty local store does not: the
     // prefetch asks it, and no confirmed miss warms the sandbox early.
-    if (coldLocal && !remote) prewarm()
+    if (coldLocal && !remote && sandboxed.length > 0) prewarm()
     else if ((!coldLocal || askForServers) && shouldShortCircuit(nodes, policy)) {
       shortCircuit = await step('vx:keys', () =>
         startLocalShortCircuit({

@@ -185,7 +185,7 @@ export function prepareSandbox(nodes: Iterable<SandboxedNode>): SandboxArmer | n
  * with no `cache`, which has no key to be stale.
  */
 export async function sandboxRequestFor(
-  node: TaskNode,
+  node: Pick<TaskNode, 'projectDir'>,
   sandbox: NonNullable<ExecConfig['sandbox']>,
   workspaceRoot: string,
   keyed: ReadonlySet<string> | undefined,
@@ -290,6 +290,7 @@ export async function sandboxRequestFor(
     // withholding exists to stop, not the wall.
     reportLinked: links.withheld.map((w) => w.dir),
     config,
+    ...(keyed === undefined ? {} : { keyed: [...keyed] }),
   }
   return { sandbox: request, placeholders, withheld: links.withheld }
 }

@@ -27,6 +27,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# A stack's top pull request holds every layer below it, and merging it
+# merges them all: only it runs CI, so a stack costs one run, not one per
+# layer (owner, 2026-10-22). Off a stack both sides are null and it runs.
 jobs:
   # Everything Linux runs, as one distributed run (@vzn/vx-dte): this job
   # is the run and runs nothing itself (owner, 2026-10-22: "everything
@@ -45,8 +48,11 @@ jobs:
   # the agent that runs it, through each task's exec.env.passThrough.
   linux:
     name: lint · format · test
+    if: github.event.pull_request.stack.position == github.event.pull_request.stack.size
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      CI_AGENTS_OS: Linux
     permissions:
       contents: read
       id-token: write
@@ -68,7 +74,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - uses: ./.github/actions/vx-runner
+      # No vx-runner (about 55 s of apt): every sandboxed task runs on an
+      # agent, which enforces it there, so this job arms no sandbox.
 
       # vx's own cache, carried between runs: a run restores the newest
       # one main saved and replays every task whose key is unchanged, so a
@@ -131,6 +138,18 @@ jobs:
           grep -q 'vx run' "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is not the vx one"; exit 1; }
           exit $code
 
+      # A killed vx never closes its run: cancel the agent runs it
+      # dispatched (github() lists them in RUNNER_TEMP), or queued ones
+      # hold runners the next run waits for. A second cancel answers 409.
+      - if: always()
+        name: Cancel the run's agents
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          f="$RUNNER_TEMP/vx-dte-runs"
+          [ -f "$f" ] || exit 0
+          while read -r r; do gh api -X POST "$r/cancel" > /dev/null 2>&1 || true; done < "$f"
+
       - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -150,6 +169,7 @@ jobs:
   # reports green.
   packages:
     name: plugin packages
+    if: github.event.pull_request.stack.position == github.event.pull_request.stack.size
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -274,14 +294,22 @@ jobs:
   # seatbelt answers, so an unavailable one must fail, not skip quietly.
   #
   # Its own distributed run (owner, 2026-10-22: "yes 2x dte"): this job
-  # dispatches macOS agents (.vx/workspace.ts picks the pool by the
-  # runner's OS) and keys the suites on it (#3861). Several processes, not
+  # dispatches macOS agents (.vx/workspace.ts picks the pool by
+  # CI_AGENTS_OS) and keys the suites on it (#3861). Several processes, not
   # one, is the point on macOS: `bun test` pins descriptors per imported
   # module and the process cap is 10 240.
+  #
+  # On main only (owner, 2026-10-22: "run macos tests only on main"): a
+  # skipped job still satisfies the required check on a pull request.
   macos:
     name: core tests (macOS)
-    runs-on: macos-latest
+    if: github.event_name != 'pull_request'
+    # The run only plans and dispatches: Linux boots sooner and keeps all
+    # five of the account's macOS runners for agents (owner, 2026-10-22).
+    runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      CI_AGENTS_OS: macOS
     permissions:
       contents: read
       id-token: write
@@ -303,23 +331,37 @@ jobs:
           path: |
             .vx/cache
             ~/.vx
-          key: vx-${{ runner.os }}-${{ github.sha }}
-          restore-keys: vx-${{ runner.os }}-
+          key: vx-macOS-${{ github.sha }}
+          restore-keys: vx-macOS-
 
       - name: A run id no one can guess
         run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
 
       # The core suite, the host binary (darwin-arm64: it launches,
-      # re-signed only if macOS refuses it) and the cold cross-compile
-      # under seatbelt, which matches the directory Bun extracts a
-      # downloaded runtime into by the grant's glob.
+      # re-signed only if macOS refuses it), the cold cross-compile under
+      # seatbelt, which matches the directory Bun extracts a downloaded
+      # runtime into by the grant's glob, the sandbox canary (a gate since
+      # 2026-08-25: a NOT_ENFORCED run reds it) and every package's build
+      # under seatbelt with no cache. All on Mac agents.
       - name: vx run test (core, darwin)
         env:
           VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
           GITHUB_TOKEN: ${{ github.token }}
           VX_REQUIRE_SANDBOX: '1'
           VX_REQUIRE_WATCH_EVENTS: '1'
-        run: bun packages/vx/src/bin.ts run test check.binary build.bun.darwin-x64 build.bun.linux-x64 --filter @vzn/vx
+        run: bun packages/vx/src/bin.ts run test check.binary check.sandbox-canary check.build-cold build.bun.darwin-x64 build.bun.linux-x64 --filter @vzn/vx
+
+      # A killed vx never closes its run: cancel the agent runs it
+      # dispatched (github() lists them in RUNNER_TEMP), or queued ones
+      # hold runners the next run waits for. A second cancel answers 409.
+      - if: always()
+        name: Cancel the run's agents
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          f="$RUNNER_TEMP/vx-dte-runs"
+          [ -f "$f" ] || exit 0
+          while read -r r; do gh api -X POST "$r/cancel" > /dev/null 2>&1 || true; done < "$f"
 
       - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -327,23 +369,4 @@ jobs:
           path: |
             .vx/cache
             ~/.vx
-          key: vx-${{ runner.os }}-${{ github.sha }}
-
-      # A gate since 2026-08-25 (220/220 enforced across 11 runs): every
-      # run drives 20 leaky-task executions through the real run() path on
-      # this machine, and a NOT_ENFORCED one reds the job. Not distributed:
-      # the canary asks this machine's seatbelt.
-      - name: sandbox enforcement canary
-        env:
-          VX_DTE_RUN: ''
-        run: bun packages/vx/tests/helpers/sandbox-canary.ts 20
-
-      # Every package's build under seatbelt, as a Mac developer runs it: a
-      # grant bwrap honoured by its mounts failed `@vzn/vx-docs#import` on
-      # every Mac for a week (2026-10-17). No cache read: a hit would skip
-      # the very tasks this runs, and a run with no cache is not one to
-      # spread over agents.
-      - name: vx run build --all (seatbelt)
-        env:
-          VX_DTE_RUN: ''
-        run: bun packages/vx/src/bin.ts run build --all '--cache-policy=local:,remote:'
+          key: vx-macOS-${{ github.sha }}
