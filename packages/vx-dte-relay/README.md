@@ -30,8 +30,7 @@ Or deploy from this directory with Cloudflare's
 ```sh
 npm install
 npx wrangler login
-npx wrangler deploy
-echo owner/repo | npx wrangler secret put REPOSITORIES
+npx wrangler deploy --var REPOSITORIES:owner/repo
 ```
 
 `src/worker.ts` is the same relay as the one on Bun. Each run is one
