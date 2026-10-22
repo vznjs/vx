@@ -10,17 +10,20 @@ it('installs alone with npm and deploys with wrangler by wrangler.jsonc', async 
   const deps = { ...pkg.devDependencies, ...(pkg as { dependencies?: object }).dependencies }
   const config = Bun.JSONC.parse(
     await Bun.file(path.join(import.meta.dir, '..', 'wrangler.jsonc')).text(),
-  ) as { main: string; durable_objects: unknown; migrations: unknown }
+  ) as { main: string; vars: { ISSUERS: string }; durable_objects: unknown; migrations: unknown }
   expect({
     workspace: Object.entries(deps).filter(([, spec]) => String(spec).startsWith('workspace:')),
     deploy: pkg.scripts.deploy,
     main: await Bun.file(path.join(import.meta.dir, '..', config.main)).exists(),
+    // A relay with none refuses to start.
+    issuers: config.vars.ISSUERS,
     objects: config.durable_objects,
     migrations: config.migrations,
   }).toEqual({
     workspace: [],
     deploy: 'wrangler deploy',
     main: true,
+    issuers: 'https://token.actions.githubusercontent.com',
     objects: { bindings: [{ name: 'RELAY', class_name: 'RelayRun' }] },
     migrations: [{ tag: 'v1', new_sqlite_classes: ['RelayRun'] }],
   })
