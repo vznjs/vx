@@ -39,7 +39,7 @@ const checkout = (j: Job | undefined): Step | undefined =>
   j?.steps?.find((s) => String(s.uses).startsWith('actions/checkout@'))
 
 describe('ci.yml', () => {
-  it('is the two runs, plus the live suites and the arm64 binary on main', () => {
+  it('is the Linux run, plus macOS, the live suites and the arm64 binary on main', () => {
     expect(
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
@@ -52,7 +52,13 @@ describe('ci.yml', () => {
         "github.event_name != 'pull_request'",
         undefined,
       ],
-      ['macos', 'core tests (macOS)', 'macos-latest', undefined, undefined],
+      [
+        'macos',
+        'core tests (macOS)',
+        'macos-latest',
+        "github.event_name != 'pull_request'",
+        undefined,
+      ],
     ])
   })
 
