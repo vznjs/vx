@@ -106,6 +106,7 @@ src/orchestrator/execute-args.ts
 src/orchestrator/execute-task.ts
 src/orchestrator/fingerprint-watch.ts
 src/orchestrator/graph-stage.ts
+src/orchestrator/held-servers.ts
 src/orchestrator/hit-restore.ts
 src/orchestrator/index.ts
 src/orchestrator/keyed-projects.ts
