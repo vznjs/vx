@@ -81,7 +81,11 @@ for the participant (`426` without the upgrade). Frames are text:
 - the participant sends `ping` at least each `heartbeatMs`; the relay
   answers `pong`. vx-dte's client pings each half heartbeat and treats a
   socket it heard nothing on for a heartbeat and a half as closed: a
-  network that stops carrying a socket sends no close.
+  network that stops carrying a socket sends no close. A host may answer
+  pings without the relay (Cloudflare's auto-response), so the client also
+  treats a socket that leaves a frame unanswered for two heartbeats as
+  closed, and sends or leaves over HTTP. An HTTP request it gives three
+  heartbeats.
 
 A socket's close does not lose its participant: it polls again, or opens
 another. vx-dte's client does both: it polls over HTTP and dials a new
