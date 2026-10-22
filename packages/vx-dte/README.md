@@ -135,7 +135,9 @@ as each task starts and ends:
 
 The run is your own job's `vx run`. When it needs agents it dispatches
 `.github/workflows/vx-agent.yml` once per size, with the agents of that
-size as a matrix. No secret: each side proves its key with the job's OIDC
+size as a matrix. When the run ends it cancels each agent run it
+dispatched, so one still queued does not hold a runner the next run
+waits for. No secret: each side proves its key with the job's OIDC
 token, and the relay's token is an OIDC token for the relay's URL. Such a
 token lasts 5 minutes, so each side asks for a new one a minute before
 its token expires.
