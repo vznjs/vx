@@ -137,6 +137,33 @@ it('an agent that joins a run already closed exits 0', async () => {
   }
 })
 
+// A relay restart, or silence past three heartbeats, loses the agent: its
+// next poll answers 404. The run gave its tasks to others; the agent's CI
+// job is no failure (mac#1 on #3895).
+it('an agent the relay lost exits 0', async () => {
+  let relay = createRelay()
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+  const url = `http://127.0.0.1:${server.port}`
+  try {
+    const o = await join(url, R, 'orchestrator', null, undefined)
+    const code = runAgent({
+      relay: url,
+      run: R,
+      root: process.cwd(),
+      token: async () => undefined,
+      proof: { psk: async () => new Uint8Array(32), mismatch: 'no key' },
+      artifacts: () => fakeArtifacts().artifacts,
+    })
+    for (let i = 0; i < 50 && (await o.poll()).length === 0; i++);
+    relay.close()
+    relay = createRelay()
+    expect(await code).toBe(0)
+  } finally {
+    relay.close()
+    await server.stop(true)
+  }
+})
+
 it('gives a failed agent start one more agent, then fails the run', async () => {
   const relay = createRelay()
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
