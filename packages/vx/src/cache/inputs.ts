@@ -199,9 +199,10 @@ export type ProjectFilesCache = Map<
 
 /**
  * What a task's input files fold to is a function of this token when it is
- * one of the git records alone: the project's partition holds only files
- * the enumeration trusted an index OID for (`GitFilesCache.filesDigest`),
- * and the declaration reaches no gitignored path and no workspace file.
+ * one of the git records alone: every file the declaration picks from the
+ * project's partition has an index OID the enumeration trusted
+ * (`GitFilesCache.filesDigest`), and the declaration reaches no gitignored
+ * path and no workspace file.
  * The token is the digest, the workspace root (the fold folds paths
  * relative to it) and everything `resolveFiles` keys its memo on.
  * Undefined when only resolving the files can say.
@@ -216,10 +217,12 @@ export function filesToken(args: ResolveInputsArgs): string | undefined {
   const digest = cache.filesDigest(args.projectDir, snapshot)
   if (
     digest === undefined ||
+    // What `resolveFiles` would keep: an input, or a committed own output.
+    digest.loose.some((rel) => inPlan(plan, rel) || ownOnly(plan, rel)) ||
     ignoredReach(plan, snapshot, { dir: args.projectDir, cache }).length > 0
   )
     return undefined
-  return `${args.workspaceRoot}\0${filesMemoKey(args.projectDir, plan, args.ownOutputs, args.ownWorkspaceOutputs ?? [], args.nestedProjectDirs)}\0${digest}`
+  return `${args.workspaceRoot}\0${filesMemoKey(args.projectDir, plan, args.ownOutputs, args.ownWorkspaceOutputs ?? [], args.nestedProjectDirs)}\0${digest.digest}`
 }
 
 /** Everything below the git snapshot that decides `resolveFiles`' result. */

@@ -203,9 +203,11 @@ fold for a task's files without resolving them: the project's
 `filesDigest` (git-inputs.md), the workspace root and the declaration
 `resolveFiles` keys its own memo on. It is undefined for a task with
 `workspaceFiles`, a declaration that names a gitignored path outright,
-and a partition holding anything the enumeration did not vouch for (a
-dirty, untracked, linked or undecodable file, or a path a run already
-marked changed). `computeTaskHash` keys the fold memo on it
+a declaration that would keep a `loose` path (a dirty or untracked
+input, or a committed own output), and a partition holding a linked or
+undecodable file or a path a run already marked changed. A loose path
+no declaration keeps (`vx lock`'s untracked `vx.lock.json`, a dirty
+README) leaves the memo on. `computeTaskHash` keys the fold memo on it
 (task-hash.md).
 
 ## File resolution rules

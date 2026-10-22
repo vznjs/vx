@@ -135,3 +135,51 @@ it('a key read back from the memo reads no index OID', async () => {
   }
   expect(await runs()).toBe(1)
 }, 60_000)
+
+it('an untracked or dirty file no declaration reads keeps the memo', async () => {
+  const silent: Logger = { status() {}, taskStdout() {}, taskStderr() {}, taskComplete() {} }
+  await writeFile(path.join(pkg, 'README.md'), 'one\n')
+  git('add', '-A')
+  git('commit', '-qm', 'readme')
+  expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)
+  // `vx lock`'s review file, left untracked, and an edit outside `src/**`.
+  await writeFile(path.join(pkg, 'notes.txt'), 'untracked\n')
+  await writeFile(path.join(pkg, 'README.md'), 'two\n')
+  expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)
+  const reads = spyOn(GitFilesCache.prototype, 'oidsFor')
+  try {
+    expect((await run({ cwd: root, tasks: ['build'], log: silent })).ok).toBe(true)
+    expect(reads).not.toHaveBeenCalled()
+  } finally {
+    reads.mockRestore()
+  }
+  expect(await runs()).toBe(1)
+}, 60_000)
+
+it('a dirty input or committed output, edited twice, runs the task twice', async () => {
+  // A committed file the outputs name is an input too (resolveFiles keeps it).
+  await writeFile(
+    path.join(pkg, 'vx.config.mjs'),
+    `export default { tasks: { build: { inputs: { files: ['src/**'] }, exec: { command: 'cat src/x.txt src/gen.txt > out.txt && echo ran >> ../../runs.log' }, cache: { outputs: { files: ['out.txt', 'src/gen.txt'] } } } } }\n`,
+  )
+  await writeFile(path.join(pkg, 'src', 'gen.txt'), 'g1\n')
+  git('add', '-A')
+  git('commit', '-qm', 'gen')
+  build()
+  build()
+  expect(await runs()).toBe(1)
+  // Twice: the first dirty edit leaves a memo row under the records
+  // without the file, and the second would read it back.
+  await writeFile(path.join(pkg, 'src', 'gen.txt'), 'g2\n')
+  build()
+  await writeFile(path.join(pkg, 'src', 'gen.txt'), 'g3\n')
+  build()
+  expect(await runs()).toBe(3)
+  expect(await readFile(path.join(pkg, 'out.txt'), 'utf8')).toBe('one\ng3\n')
+  await writeFile(path.join(pkg, 'src', 'x.txt'), 'two\n')
+  build()
+  await writeFile(path.join(pkg, 'src', 'x.txt'), 'three\n')
+  build()
+  expect(await runs()).toBe(5)
+  expect(await readFile(path.join(pkg, 'out.txt'), 'utf8')).toBe('three\ng3\n')
+}, 60_000)
