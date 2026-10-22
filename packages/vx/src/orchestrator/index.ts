@@ -2,7 +2,13 @@
 // through here (enforced by tests/module-boundaries.test.ts).
 
 export { run, planRun, nxProjectTarget, projectNamed } from './run.js'
-export { namesRemote, prepareRun, workspaceCachePolicy, type PreparedRun } from './prepare.js'
+export {
+  namesRemote,
+  openRemotes,
+  prepareRun,
+  workspaceCachePolicy,
+  type PreparedRun,
+} from './prepare.js'
 export { affectedTaskProjects } from './affected-tasks.js'
 export { applyGraphStage } from './graph-stage.js'
 export type { AffectedReason } from './affected-tasks.js'
