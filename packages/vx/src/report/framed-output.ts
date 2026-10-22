@@ -125,7 +125,9 @@ export function formatTaskBlock(
 
   lines.push(...violationSection(outcome, colors))
 
-  lines.push(`${corner('└─')} ${idPainted} ${corner('──')}${formatBlockFooter(outcome, colors)}`)
+  lines.push(
+    `${corner('└─')} ${idPainted}${whereNote(outcome, colors)} ${corner('──')}${formatBlockFooter(outcome, colors)}`,
+  )
   return lines.join('\n') + '\n'
 }
 
@@ -363,13 +365,23 @@ export function formatTaskRow(
   return ` ${glyph} ${timeCell(ms, colors)} ${st} ${ca} ${paintedId}`
 }
 
+/**
+ * The dim header over a task list, on the row grid (M, 2026-10-21).
+ * `agent` when an executor places tasks: the name after the id's dot.
+ */
+export function formatListHeader(agent: boolean, colors: ColorSupport = NO_COLOR): string {
+  const head = `   ${'time'.padStart(TIME_COL)} ${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} task${agent ? ' \u00b7 agent' : ''}`
+  return paint('', head, colors, { dim: true })
+}
+
 /** Compact one-liner for a cache hit with nothing to replay. */
 export function formatTaskHitLine(
   node: TaskNode,
   o: TaskOutcome,
   colors: ColorSupport = NO_COLOR,
+  onPath = false,
 ): string {
-  return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors)
+  return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors, onPath)
 }
 
 /** Compact one-liner for an executed task in broad mode. */
@@ -377,8 +389,9 @@ export function formatTaskExecutedLine(
   node: TaskNode,
   o: TaskOutcome,
   colors: ColorSupport = NO_COLOR,
+  onPath = false,
 ): string {
-  return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors)
+  return formatOutcomeRow(o, paintTaskId(node, colors), o.durationMs, colors, onPath)
 }
 
 /** Shared: render any outcome on the grid. */
@@ -387,6 +400,7 @@ function formatOutcomeRow(
   paintedId: string,
   ms: number | null,
   colors: ColorSupport,
+  onPath: boolean,
 ): string {
   const st = statusOf(o)
   const ca = cacheOf(o)
@@ -401,16 +415,28 @@ function formatOutcomeRow(
       paintedId,
       colors,
     ) +
+    (onPath ? pathNote(colors) : '') +
     whereNote(o, colors) +
     flakyNote(o, colors)
   )
 }
 
-/** Where an executor ran the task, when not here: `  on small#2`, in the name's hue. */
+/** `critical path`: the row's task held the run's end while others ran beside it. */
+export function pathNote(colors: ColorSupport = NO_COLOR): string {
+  return `  ${paint(WARN, 'critical path', colors)}`
+}
+
+/** Where an executor ran the task, when not here, right after its id: `@small#2` (M, 2026-10-21). */
 export function whereNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
-  return o.where === undefined
-    ? ''
-    : `  ${paint('', 'on', colors, { dim: true })} ${ui.inline(ui.place(o.where), colors)}`
+  return o.where === undefined ? '' : placeNote(o.where, colors)
+}
+
+/**
+ * ` · <where>` after the id: the dot dim, the place in its own hue. Last
+ * on the row, as an agent's name has no width to pad to (M, 2026-10-21).
+ */
+export function placeNote(where: string, colors: ColorSupport = NO_COLOR): string {
+  return `${paint('', ' \u00b7', colors, { dim: true })} ${ui.inline(ui.place(where), colors)}`
 }
 
 /**
@@ -578,7 +604,7 @@ export function formatFrameClose(
     persistent && outcome.status === 'success'
       ? ` ${paint('', `(${formatElapsed(outcome.durationMs)})`, colors, { dim: true })} ${paint(ACCENT, 'running', colors)}`
       : formatBlockFooter(outcome, colors)
-  const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })} ${corner('──')}${tail}`
+  const close = `${corner('└─')} ${mark}${paintTaskId(node, colors, { bold: true })}${whereNote(outcome, colors)} ${corner('──')}${tail}`
   const violations = violationSection(outcome, colors)
   return violations.length === 0 ? close : `${violations.join('\n')}\n${close}`
 }
@@ -687,7 +713,7 @@ function formatBlockFooter(o: TaskOutcome, colors: ColorSupport): string {
   // formatStatusTag.
   const dur = paint('', `(${formatElapsed(o.durationMs)})`, colors, { dim: true })
   const tag = formatStatusTag(o, colors)
-  return ` ${dur} ${tag}${whereNote(o, colors)}${flakyNote(o, colors)}`
+  return ` ${dur} ${tag}${flakyNote(o, colors)}`
 }
 
 function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {

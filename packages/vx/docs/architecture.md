@@ -417,7 +417,8 @@ restoreTier, … })` runs the DAG two-tier. Each ready node invokes
    9. `cache.recordRunBundle({ runs, invocation })` — every real
       task's row plus one invocation header row, in one transaction.
       Group and `aborted` tasks are skipped; a run a signal stopped
-      records nothing.
+      records only the tasks that finished (`recordRuns`, no
+      invocation row), so `vx last` does not list it.
    10. Telemetry summary emit + flush (only when a sink is active),
        background prefetch/upload drain, plugin `teardown`,
        `cache.close()`, sandbox teardown; the plugins' bus

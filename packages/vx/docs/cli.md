@@ -766,18 +766,22 @@ other persistent task`), and a non-zero exit makes the run exit 1
    `min(concurrency, 10)`), no glyph and no spinner: the live ticking
    elapsed time leads (`     568ms running  <id>`). A task stays in
    its row for its whole life, so nothing jumps; a task running beyond
-   the slots gets a row after them until one frees. From the first frame, an idle worker row holds a task an
+   the slots gets a row after them until one frees. A dim header names
+   the columns over the rows (`time status cache task`, `· agent` when an
+   executor places tasks), and once over the list's first row on a
+   terminal. From the first frame, an idle worker row holds a task an
    unfinished dependency blocks, one per row, in the order the
    scheduler starts them (most dependents first):
    `blocked  solid-js#build  by solid-js#types` (dim `blocked`, the id,
    then the running task that holds it back). The task starts in the
    row that held it. A row with no blocked task left to hold leaves the
    region and the rows below close up; blocked tasks only dwindle, so
-   it never comes back. A running row says what waits on it:
-   `critical path` (yellow) on the running task
-   the longest unfinished chain waits on, by the same p50s as the
-   forecast below and only while two or more run, and a dim
-   `blocks N`, its unfinished dependents direct and transitive. Where
+   it never comes back. When an executor places tasks (`@vzn/vx-dte`),
+   the rows are only what runs: no idle or blocked row, blocked tasks
+   are the tasks line's dim `N blocked` alone. `critical path` (yellow)
+   follows the running task the longest unfinished chain waits on, by
+   the same p50s as the forecast below and only while two or more run;
+   its row in the list says it too once it ends. Where
    local history knows the task, its row also shows its usual duration
    (its executed p50) in the cache column, fixed while the elapsed time
    counts up toward it (`3.33s running ~5.2s  solid-js#types`).
@@ -2733,7 +2737,7 @@ footer gave a reason, the row ends with it instead: `timed out`,
 as before). A task whose key met a remote failure ends with it, read or
 write alike: `remote ✗ download: connection refused; upload: 503` (the
 v40 column, `remoteError` in `--format json`). A task an executor
-plugin ran elsewhere ends with where: `on small#1` (v44, `placement`). Rows run failures first, then what executed or was
+plugin ran elsewhere carries where after its id: `app#build@small#1` (v44, `placement`). Rows run failures first, then what executed or was
 skipped, then hits; past sixteen hits the rest fold into one line with
 their count (`… +980 more cache hits`) — a thousand-task warm run is a
 thousand rows otherwise, with the one failure a screen above the
@@ -3087,11 +3091,12 @@ held is not sent, so it is no remote `↑`. Each count is painted
 in its segment's colour, number and glyph alike: `✓` green, `∅` dim,
 local blue, remote dark blue, `✗` and a miss red, `⇡` cyan; the
 `local` and `remote` words are dim. A layer shows only when the run's
-`--cache-policy` uses it. `N not saved` (ran, succeeded, saved
-nothing), `N not downloaded` (outputs left in the remote store) and
+`--cache-policy` uses it. `N miss` (ran and saved nothing: it failed,
+or ran elsewhere) is red, `N not saved` (ran, succeeded, saved
+nothing) yellow, each its own segment; `N not downloaded` (outputs left in the remote store) and
 every count show only when non-zero. `vx last` names each remote
 failure on its task's row. A task an executor plugin ran elsewhere
-says where on its row and its frame (`on small#2`), and the plugin may
+says where last on its row and after the id on its frame (`app#build · small#2`), and the plugin may
 add rows of its own above `info` (`agents`), in which case `info`
 names no worker pool. The `info` row ends with `run <id>`: the
 run's whole id, as `vx last <id>` takes it. The
@@ -3155,6 +3160,9 @@ run`). Neither reached the cache:
 
 The tasks legend counts them in the total as they land, each state its
 own segment of the bar: `2 success · 1 aborted · 2 not run · 5 total`.
+While the run goes it also counts the tasks running now and those an
+executor holds for a machine, then those an unfinished dependency holds
+back, each a dim segment: `30 success · 4 running · 12 scheduled · 16 blocked · 62 total`.
 The summary then replaces the live view. The total is
 always last on its line. A framed task (focused or `full`) that
 printed while it stopped shows its frame instead of a row.

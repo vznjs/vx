@@ -318,6 +318,8 @@ describe('vx watch loop (e2e): the watched set', () => {
     )
     relock()
     await until(() => arms(w) >= 2, 'the swap to the root watcher')
+    // The swap can land before the config edit's own cycle on a slow box.
+    await until(async () => (await executions(f.log)) >= 2, "the config edit's cycle")
     await Bun.sleep(SETTLE_MS)
     expect(await executions(f.log)).toBe(2)
 
@@ -357,6 +359,7 @@ describe('vx watch loop (e2e): the watched set', () => {
     )
     relock()
     await until(() => arms(w) >= 2, 'the swap to the root watcher')
+    await until(async () => (await executions(f.log)) >= 2, "the config edit's cycle")
     await Bun.sleep(SETTLE_MS)
     expect(await executions(f.log)).toBe(2)
 

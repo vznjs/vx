@@ -11,6 +11,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { Database } from 'bun:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { describePid, isAlive, waitForDead } from './helpers/alive.js'
 import { addProject, makeWorkspace as makeWorkspaceRoot } from './helpers/workspace.js'
@@ -718,17 +719,18 @@ describe('signal handling during vx run (e2e)', () => {
     TIMEOUT,
   )
 
-  // A Ctrl-C'd run records no history: since item 849 the stopped run
-  // finishes its own path, and it landed in `vx last` as FAILED with 0
-  // tasks, hiding the run the user wanted to look at (item 854).
+  // A Ctrl-C'd run is not one `vx last` lists: since item 849 the stopped
+  // run finishes its own path, and it landed there as FAILED with 0 tasks,
+  // hiding the run the user wanted to look at (item 854).
   it(
-    'a Ctrl-C leaves the history as it was',
+    'a Ctrl-C leaves `vx last` as it was, and keeps what finished',
     async () => {
       const dir = await addProject(
         fixture.root,
         'app',
         `export default { tasks: {
         quick: { exec: { command: 'true' } },
+        done: { exec: { command: 'echo done > done.txt' } },
         slow: { exec: { command: 'echo $$ > pid.txt; exec sleep 30' } },
       } }`,
       )
@@ -750,11 +752,21 @@ describe('signal handling during vx run (e2e)', () => {
       }
       expect(await vx('run', 'quick', '--all').exited).toBe(0)
       expect(await list()).toEqual(['ok'])
-      const proc = vx('run', 'slow', '--all')
+      const proc = vx('run', 'slow', 'done', '--all')
       await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      await waitForContent(path.join(dir, 'done.txt'), 'done\n', 10_000)
+      await Bun.sleep(300)
       proc.kill('SIGINT')
       expect(await proc.exited).toBe(130)
       expect(await list()).toEqual(['ok'])
+      // What finished before the stop is still measured, so the next run
+      // knows it (M, 2026-10-21); the task the stop ended is not.
+      const db = new Database(path.join(fixture.root, '.vx', 'cache', 'cache.db'), {
+        readonly: true,
+      })
+      const tasks = db.query('SELECT task FROM runs ORDER BY id').all() as { task: string }[]
+      db.close()
+      expect(tasks.map((t) => t.task)).toEqual(['quick', 'done'])
     },
     TIMEOUT,
   )

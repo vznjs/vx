@@ -73,13 +73,20 @@ it('admits an agent its secret signed, and the relay carries no body it can read
   const { r, o, a } = await pair()
   const [joined] = await until(o)
   expect(joined!.body).toEqual({ type: 'joined', id: a.id, info: { v: 1, cores: 2 } })
-  await o.send(a.id, { type: 'welcome', name: 'agent#1' })
-  expect((await until(a)).map((m) => m.body)).toEqual([{ type: 'welcome', name: 'agent#1' }])
+  // The cache access the run lends its agents is end-to-end encrypted too.
+  const welcome = {
+    type: 'welcome',
+    name: 'agent#1',
+    cache: { refs: [], lent: { '@vzn/vx-migrate': 'lent-cache-token' } },
+  }
+  await o.send(a.id, welcome)
+  expect((await until(a)).map((m) => m.body)).toEqual([welcome])
   await a.send('orchestrator', { type: 'start', task: 'app#build-secret-name' })
   expect((await until(o)).map((m) => m.body)).toEqual([
     { type: 'start', task: 'app#build-secret-name' },
   ])
   expect(r.bodies.join('\n')).not.toContain('agent#1')
+  expect(r.bodies.join('\n')).not.toContain('lent-cache-token')
   expect(r.bodies.join('\n')).not.toContain('build-secret-name')
 })
 

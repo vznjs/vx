@@ -137,7 +137,7 @@ import {
 } from '../history/index.js'
 import type { RunOptions, RunSummary } from './options.js'
 import { withRunSettings } from './run-settings.js'
-import { taskArtifacts } from './task-artifacts.js'
+import { cacheFacts, taskArtifacts } from './task-artifacts.js'
 import { resolveSetting } from '../settings.js'
 
 // Per run, never shared: a `vx watch` process runs many, and a shared map
@@ -550,6 +550,7 @@ async function runOnBus(
       warn: warnOf(log),
       concurrency,
       artifacts: taskArtifacts(prepared.cache, prepared.workspaceRoot),
+      cacheFacts: () => cacheFacts(prepared.remotes, prepared.cacheRefs),
     }),
   )
   // Placement: decided ONCE per task, before scheduling, so the scheduler
@@ -1310,6 +1311,13 @@ async function runOnBus(
         recordHistory(() => cache.recordRunBundle(records))
         recordFailures(list)
       })
+    } else if (stop.stoppedBy !== undefined) {
+      // Stopped: not a run `vx last` lists (item 854), but what finished is
+      // measured, or the next run knows none of it (M, 2026-10-21).
+      const ended = list.filter((o) => o.status !== 'aborted' && o.status !== 'skipped')
+      stepSync('vx:history', () =>
+        recordHistory(() => prepared.localCache.recordRuns(recordsOf(ended, false).runs)),
+      )
     }
     mark('record history')
     // Drain any still-in-flight background prefetches before closing the

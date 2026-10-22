@@ -258,8 +258,12 @@ jobs:
 
   # Core's test shards, two runners of six beside `ci`: one 4-core runner
   # spent ~5 of its 6 minutes on 1,150 s of tasks, CPU bound (2026-10-08).
+  # Two runners of six shards each, unless the repo names a relay: then
+  # `shards-dte` runs all twelve over agents (a fork's PR cannot dispatch
+  # them, so it stays here).
   shards:
     name: core shards (${{ matrix.part }})
+    if: vars.VX_DTE_RELAY == '' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -305,6 +309,40 @@ jobs:
             ~/.vx
           key: vx-${{ runner.os }}-shards-${{ matrix.part }}-${{ github.sha }}
 
+  # The twelve shards as one distributed run (@vzn/vx-dte): this job is
+  # the run and runs nothing itself; github() dispatches vx-agent.yml for
+  # the agents, which read the cache this job's token lends them.
+  shards-dte:
+    name: core shards (dte)
+    if: vars.VX_DTE_RELAY != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - uses: ./.github/actions/vx-runner
+
+      - name: vx run core shards
+        env:
+          VX_DTE_RUN: ${{ github.run_id }}-${{ github.run_attempt }}
+          VX_DTE_RELAY: ${{ vars.VX_DTE_RELAY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          VX_REQUIRE_SANDBOX: '1'
+          VX_REQUIRE_WATCH_EVENTS: '1'
+          VX_REQUIRE_NONROOT: '1'
+        run: bun packages/vx/src/bin.ts run test.bun.shard-1 test.bun.shard-2 test.bun.shard-3 test.bun.shard-4 test.bun.shard-5 test.bun.shard-6 test.bun.shard-7 test.bun.shard-8 test.bun.shard-9 test.bun.shard-10 test.bun.shard-11 test.bun.shard-12 --filter @vzn/vx
+
   # The per-PR bench against Turborepo (packages/vx-bench/pr-bench.ts) on
   # a runner of its own: beside the unsafe suite in `ci` the nothing-changed
   # ratio read 1.29 against 0.83 idle, since load slows the two tools
@@ -329,16 +367,16 @@ jobs:
           VX_REQUIRE_SANDBOX: '1'
         run: bun packages/vx/src/bin.ts run check.vs-turbo --filter @vzn/vx-bench
 
-  # The required check: green only when `ci`, both shard runners and the
-  # bench against Turborepo are.
+  # The required check: green only when `ci`, the shards (on runners or
+  # agents, whichever ran) and the bench against Turborepo are.
   gate:
     name: lint · format · test
-    needs: [ci, shards, vs-turbo]
+    needs: [ci, shards, shards-dte, vs-turbo]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: ci, shards and the bench passed
-        run: test "${{ needs.ci.result }}" = success && test "${{ needs.shards.result }}" = success && test "${{ needs.vs-turbo.result }}" = success
+        run: test "${{ needs.ci.result }}" = success && test "${{ needs.shards.result }}${{ needs.shards-dte.result }}" = successskipped -o "${{ needs.shards.result }}${{ needs.shards-dte.result }}" = skippedsuccess && test "${{ needs.vs-turbo.result }}" = success
 
   # The `ci` job above runs every package's suite through `vx run ci --all`;
   # this job exists for the one suite that needs live services — the REAPI

@@ -18,6 +18,7 @@ import {
   machineParallelism,
   ui,
   withForwardArgs,
+  type CacheFacts,
   type ExecuteRequest,
   type ExecuteResult,
   type MachineReport,
@@ -56,12 +57,19 @@ interface Job {
   faults?: string[]
   /** Its agent's lease on it ends then unless the agent says it still holds it. */
   leaseUntil?: number
+  /** Sent beyond what its agent had free: it waits in that agent's queue. */
+  prefetched?: boolean
+  /** Asked back from its agent's queue for one that is free. */
+  withdrawing?: boolean
 }
 
 interface Agent {
   readonly id: string
+  /** What the run gives it: its machine, held to its declared size. */
   readonly cores: number
   readonly memory: number
+  /** What its machine has, as it reported on joining. */
+  readonly reported: { readonly cores: number; readonly memory: number }
   readonly label: string
   /** From its start to its join, when this run started it. */
   readonly warmUpMs: number | undefined
@@ -104,6 +112,8 @@ export interface OrchestratorOptions {
   readonly need: (taskId: string) => Need
   /** The run's cache, by key: what agents save to and this machine restores from. */
   readonly artifacts: TaskArtifacts
+  /** What agents read the cache under (`ExecutorContext.cacheFacts`). */
+  readonly cacheFacts: () => Promise<CacheFacts>
   /** The run id, which a task's run key is made of. */
   readonly run: string
   /** A task's cache key, once the run computed it (a hit's too); undefined when it has none. */
@@ -111,6 +121,12 @@ export interface OrchestratorOptions {
   /** Agent `id` (its label) left the run, lost or let go: room for another. */
   readonly left?: (id: string) => void
 }
+
+/**
+ * Lent tokens are asked again this long before they end: inside the
+ * window a remote exchanges a new one (turboCache's is five minutes).
+ */
+const RELEND_MS = 4 * 60_000
 
 /** Cores an agent is sent beyond its own, so a finished task's successor is already there. */
 const prefetch = (cores: number): number => Math.max(1, Math.ceil(cores / 4))
@@ -143,6 +159,9 @@ export class Orchestrator {
   private readonly loop: Promise<void>
   private readonly floor = localFloor()
   private readonly realRoot: string
+  /** What agents read the cache under, asked once and again before its lent tokens end. */
+  private facts: Promise<CacheFacts> | undefined
+  private relend: ReturnType<typeof setTimeout> | undefined
 
   constructor(private readonly o: OrchestratorOptions) {
     // A root that is gone fails the run's own reads first.
@@ -167,7 +186,34 @@ export class Orchestrator {
     })
   }
 
+  /** The run's cache facts; once they end, every agent is sent them again before then. */
+  private cache(): Promise<CacheFacts> {
+    if (this.facts !== undefined) return this.facts
+    const asked = this.o.cacheFacts()
+    this.facts = asked
+    void asked.then(
+      (f) => {
+        if (f.expiresAt === undefined || this.ended) return
+        this.relend = setTimeout(
+          () => {
+            this.facts = undefined
+            void this.cache().then((cache) => {
+              for (const a of this.agents.values()) this.post(a, { type: 'cache', cache })
+            })
+          },
+          Math.max(0, f.expiresAt - Date.now() - RELEND_MS),
+        )
+        this.relend.unref()
+      },
+      () => {
+        this.facts = undefined
+      },
+    )
+    return asked
+  }
+
   async close(): Promise<void> {
+    clearTimeout(this.relend)
     this.ended = true
     this.endedAt = performance.now()
     this.stop.abort()
@@ -213,6 +259,9 @@ export class Orchestrator {
         continue
       }
       job.agent = a.id
+      job.prefetched =
+        a.busy.size > 0 &&
+        (a.usedCores + job.need.cores > a.cores || a.usedMemory + job.need.memory > a.memory)
       a.busy.set(job.req.taskId, job)
       job.held = {
         cores: Math.min(job.need.cores, a.cores),
@@ -226,6 +275,28 @@ export class Orchestrator {
     }
     this.queue.push(...left)
     for (const [a, jobs] of batches) this.send(a, jobs)
+    if (left.length === 0) this.steal()
+  }
+
+  /**
+   * An agent with nothing to do takes back a task waiting in a busy one's
+   * queue as its prefetch: that task may be the one the rest of the run
+   * waits on (M, 2026-10-21: check.bun, ahead of 8 shards, sat behind a
+   * long suite while agents that joined later stood idle). One per idle
+   * agent, first sent first; the agent gives it back only if not begun.
+   */
+  private steal(): void {
+    const online = [...this.agents.values()].filter((a) => !a.faulty)
+    let idle = online.filter((a) => a.busy.size === 0).length
+    for (const a of online) {
+      for (const j of a.busy.values()) {
+        if (idle === 0) return
+        if (j.prefetched !== true || j.withdrawing === true || a.started.has(j.req.taskId)) continue
+        j.withdrawing = true
+        idle--
+        this.post(a, { type: 'withdraw', task: j.req.taskId })
+      }
+    }
   }
 
   /**
@@ -394,6 +465,8 @@ export class Orchestrator {
     delete job.agent
     delete job.held
     delete job.leaseUntil
+    delete job.prefetched
+    delete job.withdrawing
     const begun = a.started.delete(job.req.taskId)
     if (job.req.signal?.aborted === true) return undefined
     if (begun) {
@@ -464,7 +537,7 @@ export class Orchestrator {
     job.resolve({
       ...result(head, log),
       where: a.label,
-      machine: { cores: a.cores, memoryBytes: a.memory },
+      machine: { cores: a.reported.cores, memoryBytes: a.reported.memory },
     })
   }
 
@@ -495,14 +568,19 @@ export class Orchestrator {
       const taken = new Set([...this.agents.values(), ...this.gone].map((a) => a.label))
       let label = asked === undefined ? undefined : info.id
       while (label === undefined || taken.has(label)) label = `agent#${++this.joined}`
+      // Agents of one host (local()) each report the host: the size it
+      // was started as is its share (Growth, 2026-10-21: 16 wide on 4 cores).
+      const cores = Math.min(Number(info.cores), spawn?.declared.cpu ?? Infinity)
+      const memory = Math.min(Number(info.memory), spawn?.declared.memory ?? Infinity)
       this.agents.set(id, {
         id,
         warmUpMs: asked === undefined ? undefined : performance.now() - asked,
         declared: spawn?.declared,
         ran: 0,
         usage: new Usage(),
-        cores: Number(info.cores),
-        memory: Number(info.memory),
+        cores,
+        memory,
+        reported: { cores: Number(info.cores), memory: Number(info.memory) },
         usedCores: 0,
         usedMemory: 0,
         label,
@@ -510,8 +588,16 @@ export class Orchestrator {
         started: new Set(),
         has: new Set(),
         // Its name first, before any batch.
-        chain: this.o.me
-          .send(id, { type: 'welcome', name: label } satisfies ToAgent)
+        chain: this.cache()
+          .then((cache) =>
+            this.o.me.send(id, {
+              type: 'welcome',
+              name: label,
+              cache,
+              cores,
+              memory,
+            } satisfies ToAgent),
+          )
           .catch(() => undefined),
         sandboxes: false,
         faulty: false,
@@ -576,6 +662,11 @@ export class Orchestrator {
             if (j?.leaseUntil !== undefined) this.lease(j)
           }
           for (const t of m.running) if (a.busy.has(t)) a.started.add(t)
+        } else if (m.type === 'withdrawn') {
+          const j = a.busy.get(m.task)
+          if (j === undefined || a.started.has(m.task)) continue
+          if (this.retry(a, j, 'withdrawn') !== undefined) this.queue.unshift(j)
+          this.pumpSoon()
         } else if (m.type === 'fault') {
           const j = a.busy.get(m.task)
           if (j === undefined) continue
@@ -641,8 +732,13 @@ export class Orchestrator {
     let cores = 0
     for (const a of online) if (a.busy.size > 0) cores += a.cores
     const idle = online.filter((a) => a.busy.size === 0).sort((x, y) => y.cores - x.cores)
+    // An idle one a waiting prefetched task can move to stays for it.
+    let movable = 0
+    for (const a of online)
+      for (const j of a.busy.values())
+        if (j.prefetched === true && !a.started.has(j.req.taskId)) movable++
     for (const a of idle) {
-      if (cores < wantCores || needed(a)) {
+      if (cores < wantCores || needed(a) || movable-- > 0) {
         cores += a.cores
         continue
       }
@@ -680,6 +776,16 @@ export class Orchestrator {
     this.lost = reason
   }
 
+  /**
+   * `left` when the run let it go as not needed, `lost` when it crashed or
+   * went silent, `stopped` when the run's end stopped it, else `online`.
+   */
+  private state(a: Agent, gone: ReadonlySet<Agent>): string {
+    if (this.retired.has(a)) return 'left'
+    if (gone.has(a)) return 'lost'
+    return this.ended ? 'stopped' : 'online'
+  }
+
   /** Each machine that joined, and this one when it ran tasks, with what it did: the run summary's `machines`. */
   machines(): MachineReport[] {
     const gone = new Set(this.gone)
@@ -708,7 +814,7 @@ export class Orchestrator {
       }
     }
     const out = [...this.agents.values(), ...this.gone].map((a) =>
-      report(a.label, gone.has(a) ? 'gone' : 'online', a.usage, a.cores, a.memory),
+      report(a.label, this.state(a, gone), a.usage, a.reported.cores, a.reported.memory),
     )
     if (this.ranHere > 0)
       out.push(report('local', 'online', this.local, machineParallelism(), machineMemoryBytes()))
@@ -718,8 +824,8 @@ export class Orchestrator {
   /**
    * The `agents` rows, live and at the end: one per agent by `size#index`
    * with its status, the tasks it has done and the ones it runs now, then
-   * this machine's; once over, each one's cores and memory, each joined
-   * agent's warm-up and each size whose machines are not what it says.
+   * this machine's; once over, each joined agent's warm-up and, under
+   * each, the cores and memory its size declares and its machine reports.
    */
   footer(): [string, ui.Inline][] {
     if (this.spawnedAt.size === 0 && this.agents.size === 0 && this.gone.length === 0) return []
@@ -732,30 +838,36 @@ export class Orchestrator {
         ...(u.failed > 0 ? [`${u.failed} failed`] : []),
         ...(running > 0 ? [`${running} running`] : []),
       ].join(' · ')
-    // What its machine reports, once the run is over: green when its size
-    // says the same, red when not.
-    const res = (cores: number, memory: number, d?: Declared): ui.Inline => {
-      if (!this.ended) return ''
-      const text = `${cores}c/${compact(memory)}`
-      if (d === undefined) return text
-      return ui.tone(matches(cores, memory, d) ? 'ok' : 'error', text)
+    // Once over, under its row: what its size declares and what its machine
+    // reports, green when they agree, red when not.
+    const res = new Map<string, ui.Inline>()
+    const resources = (label: string, cores: number, memory: number, d?: Declared): void => {
+      const actual = `${cores}c/${compact(memory)}`
+      res.set(
+        label,
+        d === undefined
+          ? ui.dim(`${indent}actual ${actual}`)
+          : [
+              ui.dim(`${indent}declared ${d.cpu}c/${compact(d.memory)} · actual `),
+              ui.tone(matches(cores, memory, d) ? 'ok' : 'error', actual),
+            ],
+      )
     }
     // Live, those that left are one line: a run that replaced many pushed
     // the rows that run past the screen.
     const left = this.ended ? [] : all.filter((a) => this.retired.has(a))
-    const lines: [string, string, string, ui.Inline][] = all
+    const lines: [string, string, string][] = all
       .filter((a) => !left.includes(a))
       .map((a) => [
         a.label,
-        this.retired.has(a) ? 'left' : gone.has(a) ? 'gone' : 'online',
+        this.state(a, gone),
         count(a.usage, gone.has(a) ? 0 : a.started.size) +
           (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : ''),
-        res(a.cores, a.memory, a.declared),
       ])
     for (const id of this.spawnedAt.keys())
       if (!joined.has(id)) {
         const why = this.unstarted.get(id)
-        lines.push(why === undefined ? [id, 'starting', '', ''] : [id, 'failed', why, ''])
+        lines.push(why === undefined ? [id, 'starting', ''] : [id, 'failed', why])
       }
     lines.sort((x, y) => x[0].localeCompare(y[0], 'en', { numeric: true }))
     if (left.length > 0)
@@ -763,28 +875,12 @@ export class Orchestrator {
         `${left.length} agent${left.length === 1 ? '' : 's'}`,
         'left',
         `${left.reduce((n, a) => n + a.usage.done, 0)} done`,
-        '',
       ])
     if (this.o.localSlots > 0 || this.ranHere > 0)
-      lines.push([
-        'local',
-        'online',
-        count(this.local, this.runningHere.size),
-        res(machineParallelism(), machineMemoryBytes()),
-      ])
+      lines.push(['local', 'online', count(this.local, this.runningHere.size)])
     const width = Math.max(...lines.map(([l]) => l.length))
+    const indent = ' '.repeat(width + 2)
     const status = Math.max(...lines.map(([, st]) => st.length))
-    // Once the run is over: each size whose machines are not what it says.
-    const off = new Map<string, string>()
-    for (const a of this.ended ? all : []) {
-      const d = a.declared
-      if (d === undefined || off.has(d.size)) continue
-      if (matches(a.cores, a.memory, d)) continue
-      off.set(
-        d.size,
-        `${d.size}: config ${d.cpu} cores ${gb(d.memory)}, reported ${a.cores} cores ${gb(a.memory)}`,
-      )
-    }
     // Once over, what each did, under its line.
     const usage = new Map<string, readonly string[]>()
     let cpuMs = 0
@@ -796,24 +892,26 @@ export class Orchestrator {
       usage.set(label, describe(st, u, relay))
     }
     if (this.ended) {
-      for (const a of all) detail(a.label, a.usage, a.cores, true)
-      if (lines.at(-1)?.[0] === 'local') detail('local', this.local, machineParallelism(), false)
+      for (const a of all) {
+        resources(a.label, a.reported.cores, a.reported.memory, a.declared)
+        detail(a.label, a.usage, a.cores, true)
+      }
+      if (lines.at(-1)?.[0] === 'local') {
+        resources('local', machineParallelism(), machineMemoryBytes())
+        detail('local', this.local, machineParallelism(), false)
+      }
     }
-    const indent = ' '.repeat(width + 2)
     return [
-      ...lines.flatMap(([l, st, t, r], i): [string, ui.Inline][] => [
+      ...lines.flatMap(([l, st, t], i): [string, ui.Inline][] => [
         [
           i === 0 ? 'agents' : '',
           st === 'failed'
             ? [ui.place(l), `${' '.repeat(width - l.length)}  `, ui.tone('error', st), `  ${t}`]
             : t === ''
               ? [ui.place(l), `${' '.repeat(width - l.length)}  ${st}`]
-              : [
-                  ui.place(l),
-                  `${' '.repeat(width - l.length)}  ${st.padEnd(status)}  ${t}`,
-                  ...(r === '' ? [] : ['  ', r]),
-                ],
+              : [ui.place(l), `${' '.repeat(width - l.length)}  ${st.padEnd(status)}  ${t}`],
         ],
+        ...(res.has(l) ? [['', res.get(l)!] as [string, ui.Inline]] : []),
         ...(usage.get(l) ?? []).map((d): [string, ui.Inline] => ['', ui.dim(`${indent}${d}`)]),
       ]),
       ...(coreMs > 0
@@ -824,7 +922,6 @@ export class Orchestrator {
             ],
           ]
         : []),
-      ...[...off.values()].map((t): [string, ui.Inline] => ['', `! ${t}`]),
     ]
   }
 
@@ -914,5 +1011,3 @@ const compact = (n: number): string => {
 }
 
 const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)}s`
-
-const gb = (n: number): string => `${Math.round(n / 1e9)} GB`

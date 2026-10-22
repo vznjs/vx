@@ -7,7 +7,13 @@ import { localEnv, swapRoots } from '../src/agent.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes } from '../src/plugin.js'
-import { type ExecuteRequest, type TaskArtifacts, type TaskNode, ui } from '@vzn/vx'
+import {
+  type CacheFacts,
+  type ExecuteRequest,
+  type TaskArtifacts,
+  type TaskNode,
+  ui,
+} from '@vzn/vx'
 import { Orchestrator, runKey, type Need } from '../src/orchestrator.js'
 import { outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
@@ -85,6 +91,7 @@ it('an agent with other tracked files than the run is refused', async () => {
       nodes: () => undefined,
       need: () => ({ cores: 1, memory: 0 }),
       artifacts: fakeArtifacts().artifacts,
+      cacheFacts: async () => ({ refs: [], lent: {} }),
       run: 'r',
       keyOf: () => undefined,
     })
@@ -132,6 +139,7 @@ async function harness(
   keyOf: (id: string) => string | undefined = () => undefined,
 ) {
   const store = fakeArtifacts()
+  const cache: { facts: CacheFacts } = { facts: { refs: [], lent: {} } }
   const relay = createRelay(heartbeatMs === undefined ? {} : { heartbeatMs })
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
   const url = `http://127.0.0.1:${server.port}`
@@ -143,11 +151,12 @@ async function harness(
     nodes: () => nodes,
     need,
     artifacts: store.artifacts,
+    cacheFacts: async () => cache.facts,
     run: 'r',
     keyOf,
   })
-  const agent = async (cores: number) => {
-    const me = await join(url, 'r', 'agent', { v: 1, cores, memory: 100, tree: 'c' }, undefined)
+  const agent = async (cores: number, id?: string) => {
+    const me = await join(url, 'r', 'agent', { v: 1, cores, memory: 100, tree: 'c', id }, undefined)
     const orders: RunOrder[] = []
     const batches = async (): Promise<string[][]> => {
       for (let i = 0; i < 20; i++) {
@@ -175,7 +184,27 @@ async function harness(
         seen.push(...(await me.poll()).map((m) => (m.body as { type: string }).type))
       return seen
     }
-    return { batches, finish, begin, say, types, orders, leave: () => me.leave() }
+    /** The next messages that are not batches, by type. */
+    const bodies = async (): Promise<{ type: string; task?: string }[]> => {
+      for (let i = 0; i < 20; i++) {
+        const got = (await me.poll()).map((m) => m.body as { type: string; tasks?: RunOrder[] })
+        orders.push(...got.flatMap((m) => (m.type === 'batch' ? m.tasks! : [])))
+        const rest = got.filter((m) => !['batch', 'welcome', 'cache'].includes(m.type))
+        if (rest.length > 0) return rest
+      }
+      return []
+    }
+    return {
+      batches,
+      bodies,
+      finish,
+      begin,
+      say,
+      types,
+      orders,
+      poll: () => me.poll(),
+      leave: () => me.leave(),
+    }
   }
   const req = (taskId: string, cacheKey?: string) =>
     ({
@@ -196,8 +225,42 @@ async function harness(
     relay.close()
     await server.stop(true)
   }
-  return { o, agent, req, stop, store }
+  return { o, agent, req, stop, store, cache }
 }
+
+it('an agent reads the cache as the run does, and is lent its remotes’ access again before it ends', async () => {
+  const h = await harness(new Map())
+  try {
+    h.cache.facts = {
+      refs: ['refs/heads/feat', 'refs/heads/main'],
+      lent: { '@vzn/vx-migrate': 't1' },
+      expiresAt: Date.now() + 4 * 60_000 + 300,
+    }
+    const a = await h.agent(2)
+    const got: unknown[] = []
+    for (let i = 0; i < 20 && got.length < 2; i++) {
+      got.push(...(await a.poll()).map((m) => m.body))
+      if (got.length === 1)
+        h.cache.facts = { refs: ['refs/heads/feat'], lent: { '@vzn/vx-migrate': 't2' } }
+    }
+    expect(got).toEqual([
+      {
+        type: 'welcome',
+        name: 'agent#1',
+        cache: {
+          refs: ['refs/heads/feat', 'refs/heads/main'],
+          lent: { '@vzn/vx-migrate': 't1' },
+          expiresAt: expect.any(Number),
+        },
+        cores: 2,
+        memory: 100,
+      },
+      { type: 'cache', cache: { refs: ['refs/heads/feat'], lent: { '@vzn/vx-migrate': 't2' } } },
+    ])
+  } finally {
+    await h.stop()
+  }
+})
 
 const node = (id: string, deps: string[] = []) =>
   [id, { id, deps, projectDir: '/ws', config: {} } as unknown as TaskNode] as const
@@ -212,6 +275,46 @@ it('fills an agent’s cores and a prefetch in one batch', async () => {
     expect(await a.batches()).toEqual([['t1', 't2', 't3']])
     await a.finish('t1')
     expect(await a.batches()).toEqual([['t4']])
+  } finally {
+    await h.stop()
+  }
+})
+
+// M, 2026-10-21: check.bun, ahead of 8 shards, sat in a busy agent's
+// queue as its prefetch while agents that joined later stood idle.
+it('a task waiting in a busy agent’s queue moves to an agent that is free', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const a = await h.agent(1)
+    await Bun.sleep(50)
+    for (const id of ['t1', 't2']) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2']])
+    await a.begin('t1')
+    const b = await h.agent(1)
+    expect(await a.bodies()).toEqual([{ type: 'withdraw', task: 't2' }])
+    // Idle while t2 comes back, b is not let go: t2 is on its way to it.
+    h.o.retire(0, () => false)
+    await a.say({ type: 'withdrawn', task: 't2' })
+    expect(await b.batches()).toEqual([['t2']])
+    // Begun already, a task stays where it is.
+    await a.finish('t1')
+    expect(h.o.where('t2')).toBeNull()
+  } finally {
+    await h.stop()
+  }
+})
+
+// Growth, 2026-10-21: four local() agents of 1 core on a 4-core host each
+// reported the host and took 4 tasks plus a prefetch, 16 wide on 4 cores.
+it('an agent of a declared size is sent work for that size, not its machine', async () => {
+  const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
+    const a = await h.agent(4, 'small#1')
+    await Bun.sleep(50)
+    for (const id of ['t1', 't2', 't3']) void h.o.execute(h.req(id))
+    // 1 core and 1 of prefetch.
+    expect(await a.batches()).toEqual([['t1', 't2']])
   } finally {
     await h.stop()
   }
@@ -258,6 +361,33 @@ it('an idle agent the run no longer needs leaves; one a big task needs stays', a
   } finally {
     await h.stop()
   }
+})
+
+// M, 2026-10-21: an agent the run's end stopped still read `online`, and
+// a size's machines were a `!` line apart from its agents.
+it('the final summary says how each agent ended, its size and machine under it', async () => {
+  const h = await harness(new Map([node('t1')]))
+  const small = { size: 'small', cpu: 2, memory: 4e9 }
+  h.o.spawned('small#1', small)
+  h.o.spawned('big#1', { size: 'big', cpu: 4, memory: 4e9 })
+  const a = await h.agent(2, 'small#1')
+  const b = await h.agent(4, 'big#1')
+  const c = await h.agent(1)
+  await Bun.sleep(50)
+  await c.leave()
+  for (let i = 0; i < 40 && !JSON.stringify(h.o.footer()).includes('lost'); i++) await Bun.sleep(25)
+  h.o.retire(0, (x) => x.cores === 2)
+  expect(await b.types()).toContain('exit')
+  await h.stop()
+  const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+  const at = (label: string) => rows.findIndex((r) => r.startsWith(label + ' '))
+  expect(rows[at('agent#1')]).toMatch(/^agent#1 +lost/)
+  expect(rows[at('small#1')]).toMatch(/^small#1 +stopped/)
+  expect(rows[at('small#1') + 1]).toMatch(/^ +declared 2c\/4G · actual 2c\/0G$/)
+  expect(rows[at('big#1')]).toMatch(/^big#1 +left/)
+  expect(rows.some((r) => r.trimStart().startsWith('!'))).toBe(false)
+  expect(rows.filter((r) => /^\S+ +online/.test(r))).toEqual([])
+  void a
 })
 
 // Live, the agents that left are one line, so the rows that run fit.
@@ -518,7 +648,7 @@ console.log(JSON.stringify(seen.sort()))
   ])
 })
 
-it('docker() starts each agent as a container of its size, on a fresh clone of HEAD', async () => {
+it('docker() starts each agent as a container of its size, on a fresh clone', async () => {
   const ws = await tmp()
   const git = (...a: string[]) =>
     Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: ws })
@@ -526,6 +656,10 @@ it('docker() starts each agent as a container of its size, on a fresh clone of H
   git('commit', '-q', '--allow-empty', '-m', 'i')
   const sha = git('rev-parse', 'HEAD').stdout.toString().trim()
   await mkdir(path.join(ws, 'sub'))
+  // The root through a link, as macOS's /tmp is: git names the real path,
+  // and the agent's `cd` climbed out of the clone (M's Mac, 2026-10-21).
+  const link = path.join(await tmp(), 'ws')
+  await symlink(ws, link)
   const bin = await tmp()
   const argv = path.join(bin, 'argv')
   await writeFile(path.join(bin, 'docker'), `#!/bin/sh\nprintf '%s\\0' "$@" > ${argv}\n`, {
@@ -533,6 +667,9 @@ it('docker() starts each agent as a container of its size, on a fresh clone of H
   })
   const saved = process.env['PATH']
   process.env['PATH'] = `${bin}:${saved}`
+  // As root: as another user a Linux container is told who it is.
+  const uid = process.getuid!
+  process.getuid = () => 0
   try {
     const d = docker({ image: 'img', prepare: 'bun install' })
     await d.spawn({
@@ -543,7 +680,7 @@ it('docker() starts each agent as a container of its size, on a fresh clone of H
       memory: 8e9,
       index: 3,
       id: 'small#3',
-      workspaceRoot: path.join(ws, 'sub'),
+      workspaceRoot: path.join(link, 'sub'),
       env: { VX_DTE_RUN: 'r', VX_DTE_AGENT: 'small#3', VX_DTE_RELAY: 'http://127.0.0.1:9' },
       exited: () => {},
     })
@@ -567,6 +704,8 @@ it('docker() starts each agent as a container of its size, on a fresh clone of H
         'set -e',
         'git clone -q /src /work',
         'cd /work',
+        'git remote remove origin',
+        `git fetch -q --upload-pack='git -c uploadpack.allowAnySHA1InWant=true upload-pack' /src ${sha}`,
         `git checkout -q --detach ${sha}`,
         "cd 'sub'",
         'bun install',
@@ -576,6 +715,7 @@ it('docker() starts each agent as a container of its size, on a fresh clone of H
     await d.close?.()
   } finally {
     process.env['PATH'] = saved
+    process.getuid = uid
   }
 })
 
@@ -671,5 +811,15 @@ it('an agent’s reason is its error line, not the hint after it', () => {
     errorLine('resolving\nerror: cannot find module\n  at x\n'),
     errorLine('just this\n\n'),
     errorLine(''),
-  ]).toEqual(["✗ vx  'dte' is not a vx command", 'error: cannot find module', 'just this', ''])
+    // git's own, from a container's clone (2026-10-21).
+    errorLine(
+      "warning: templates not found\nfatal: detected dubious ownership in repository at '/src/.git'\nTo add an exception...\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.\n",
+    ),
+  ]).toEqual([
+    "✗ vx  'dte' is not a vx command",
+    'error: cannot find module',
+    'just this',
+    '',
+    "fatal: detected dubious ownership in repository at '/src/.git'",
+  ])
 })

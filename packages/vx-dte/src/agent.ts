@@ -13,6 +13,7 @@ import {
   machineMemoryBytes,
   ui,
   machineParallelism,
+  type CacheFacts,
   type ExecuteRequest,
   type LocalFloor,
   type TaskArtifacts,
@@ -45,13 +46,16 @@ export async function runAgent(opts: {
   token: string | undefined
   /** What admits it to the orchestrator's session: the run's key, or its CI identity. */
   proof: Proof
-  artifacts: TaskArtifacts
+  /** The workspace's cache read under the facts it is handed (`CommandContext.artifactsFor`). */
+  artifacts: (facts: () => CacheFacts | undefined) => TaskArtifacts
 }): Promise<number> {
   const tree = Bun.spawnSync(['git', 'rev-parse', 'HEAD^{tree}'], { cwd: opts.root })
     .stdout.toString()
     .trim()
   const cores = machineParallelism()
   const memory = machineMemoryBytes()
+  // What the run holds it to, once welcomed: a local() agent shares its host.
+  let share = { cores, memory }
   const info: AgentInfo = {
     v: 1,
     ...(opts.id === undefined ? {} : { id: opts.id }),
@@ -65,6 +69,9 @@ export async function runAgent(opts: {
     opts.proof,
     { ...info },
   )
+  // Read as the run reads: its refs, and what its remotes lent.
+  let facts: CacheFacts | undefined
+  const artifacts = opts.artifacts(() => facts)
   const running = new Map<string, AbortController>()
   const queue: RunOrder[] = []
   const work = new Set<Promise<void>>()
@@ -82,7 +89,7 @@ export async function runAgent(opts: {
     res: WiredResult & { stdout: string; stderr: string },
   ): Promise<void> => {
     const { stdout, stderr, ...result } = res
-    await opts.artifacts.save(
+    await artifacts.save(
       key,
       {
         id: m.task,
@@ -108,7 +115,8 @@ export async function runAgent(opts: {
     for (let i = 0; i < queue.length;) {
       const m = queue[i]!
       const fits =
-        running.size === 0 || (usedCores + m.cores <= cores && usedMemory + m.memory <= memory)
+        running.size === 0 ||
+        (usedCores + m.cores <= share.cores && usedMemory + m.memory <= share.memory)
       if (!fits) {
         i++
         continue
@@ -141,7 +149,7 @@ export async function runAgent(opts: {
     void me.send('orchestrator', { type: 'start', task: m.task }).catch(() => undefined)
     try {
       for (const d of m.deps) {
-        const got = await opts.artifacts.restore(d.key, {
+        const got = await artifacts.restore(d.key, {
           id: d.task,
           projectDir: path.join(opts.root, d.project),
           command: '',
@@ -242,7 +250,10 @@ export async function runAgent(opts: {
           return 1
         }
         if (m.type === 'exit') return 0
-        if (m.type === 'welcome') {
+        if (m.type === 'cache') facts = m.cache
+        else if (m.type === 'welcome') {
+          facts = m.cache
+          share = { cores: m.cores, memory: m.memory }
           ui.print(
             'out',
             ui.report('vx dte agent', [
@@ -252,6 +263,12 @@ export async function runAgent(opts: {
               ['machine', `${cores} cores · ${gb(memory)}`],
             ]),
           )
+        } else if (m.type === 'withdraw') {
+          const at = queue.findIndex((q) => q.task === m.task)
+          if (at >= 0) {
+            queue.splice(at, 1)
+            await me.send('orchestrator', { type: 'withdrawn', task: m.task })
+          }
         } else if (m.type === 'cancel') {
           const at = queue.findIndex((q) => q.task === m.task)
           if (at < 0) running.get(m.task)?.abort()

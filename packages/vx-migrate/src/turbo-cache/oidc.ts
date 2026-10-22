@@ -111,12 +111,18 @@ async function field(res: Response, name: string, what: string): Promise<string>
   return value
 }
 
+/** An exchanged token, and when it ends (epoch ms) when the server says. */
+export interface Exchanged {
+  readonly token: string
+  readonly expiresAt?: number
+}
+
 /** The job's OIDC token, exchanged for the cache's access token. Errors never quote a token. */
 export async function exchangeOidc(
   cfg: OidcConfig,
   fetchImpl: typeof fetch = fetch,
   wait: (ms: number) => Promise<void> = Bun.sleep,
-): Promise<string> {
+): Promise<Exchanged> {
   const idUrl = new URL(cfg.idTokenUrl)
   if (cfg.audience !== undefined) idUrl.searchParams.set('audience', cfg.audience)
   const idToken = await field(
@@ -129,22 +135,31 @@ export async function exchangeOidc(
     'value',
     `GitHub's OIDC endpoint (${where(cfg.idTokenUrl)})`,
   )
-  return field(
-    await send(
-      fetchImpl,
-      cfg.tokenUrl,
-      form({
-        grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
-        subject_token: idToken,
-        subject_token_type: 'urn:ietf:params:oauth:token-type:id_token',
-        requested_token_type: 'urn:ietf:params:oauth:token-type:access_token',
-        ...cfg.params,
-      }),
-      wait,
-    ),
-    'access_token',
-    `the token exchange (${where(cfg.tokenUrl)})`,
+  const res = await send(
+    fetchImpl,
+    cfg.tokenUrl,
+    form({
+      grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+      subject_token: idToken,
+      subject_token_type: 'urn:ietf:params:oauth:token-type:id_token',
+      requested_token_type: 'urn:ietf:params:oauth:token-type:access_token',
+      ...cfg.params,
+    }),
+    wait,
   )
+  const what = `the token exchange (${where(cfg.tokenUrl)})`
+  if (!res.ok) {
+    await res.body?.cancel()
+    throw new Error(`${what} answered HTTP ${res.status}`)
+  }
+  const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
+  const token = body?.['access_token']
+  if (typeof token !== 'string' || token === '') throw new Error(`${what} sent no access_token`)
+  const ttl = body?.['expires_in']
+  return {
+    token,
+    ...(typeof ttl === 'number' && ttl > 0 ? { expiresAt: Date.now() + ttl * 1000 } : {}),
+  }
 }
 
 /** Revoke the exchanged token; a throw is the caller's warning. */

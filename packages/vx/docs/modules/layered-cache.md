@@ -58,6 +58,8 @@ export interface RemoteCacheLayer {
   readonly endpoint?: string
   /** Optional: get ready (a credential). Once per run, before the first task, only when the policy reads or writes it. */
   open?(ctx: RemoteOpenContext): Promise<void>
+  /** Optional: this run's access (an OIDC exchange's token, never a stored secret), lent to a machine that runs its tasks; asked after `open`. */
+  lend?(): Promise<LentAccess | undefined>
   /** Existence probe (drives the plan path's `--dry` remote prediction); `null` = absent. */
   has(hash: string): Promise<ArtifactInfo | null>
   /** Optional batch probe: the stored subset in one round-trip; `null` = use per-hash. */

@@ -28,6 +28,7 @@ const LOCAL = '#38bdf8' // sky-400
 const REMOTE = '#2563eb' // blue-600
 const ABORTED = '#f97316' // orange-500: red's neighbour, not a failure
 const NOT_RUN = '#a855f7' // purple-500: stopped before it began, apart from every other state
+const RUNNING = '#06b6d4' // cyan-500: ui's info
 const ACCENT = '#06b6d4' // cyan-500: the live region's running word
 
 /**
@@ -86,6 +87,11 @@ export interface SummaryStats {
   aborted?: number
   /** Reached by the stop before they ran. Not in `total`. */
   notRun?: number
+  /** Live: running now, and handed to an executor whose machine has not begun them. */
+  running?: number
+  scheduled?: number
+  /** Live: not started because a dependency has not finished. */
+  blocked?: number
   total: number
   upToDate: number
   restoredLocal: number
@@ -121,13 +127,20 @@ export type CacheBucket =
   | 'restoredLocal'
   | 'restoredRemote'
   | 'saved'
+  | 'notSaved'
 
 /** A finished task's own cache bucket; none for a group, a skip or an abort. */
 export function cacheBucketOf(o: TaskOutcome): CacheBucket | undefined {
   if (isGroupTask(o.node)) return undefined
   switch (o.status) {
     case 'success':
-      return ranNoCache(o) ? 'noCache' : o.saved === true ? 'saved' : 'miss'
+      return ranNoCache(o)
+        ? 'noCache'
+        : o.saved === true
+          ? 'saved'
+          : ranUnsaved(o)
+            ? 'notSaved'
+            : 'miss'
     case 'failed':
       return ranNoCache(o) ? 'noCache' : 'miss'
     case 'cache-hit':
@@ -150,8 +163,12 @@ type Buckets = Record<CacheBucket | 'uploaded' | 'uploading' | 'remoteFailed', n
  */
 function cacheBuckets(stats: SummaryStats, layers: RunContext['cache']): Buckets {
   const saved = layers === undefined ? 0 : (stats.saved ?? 0)
+  // Its own yellow segment, as its legend count is: in the misses' red it
+  // was a cell with no count under it (M, 2026-10-21).
+  const notSaved = layers === undefined ? 0 : (stats.notSaved ?? 0)
   const b: Buckets = {
-    miss: stats.miss - saved,
+    miss: stats.miss - saved - notSaved,
+    notSaved,
     noCache: stats.noCache ?? 0,
     upToDate: stats.upToDate,
     restoredLocal: stats.restoredLocal,
@@ -231,7 +248,15 @@ export function formatSummarySection(
   const left = stats.left ?? 0
   const aborted = stats.aborted ?? 0
   const notRun = stats.notRun ?? 0
-  const remainder = { n: left, color: '', glyph: '\u25b1', dim: true }
+  const running = stats.running ?? 0
+  const scheduled = stats.scheduled ?? 0
+  const blocked = stats.blocked ?? 0
+  const remainder = {
+    n: Math.max(0, left - running - scheduled - blocked),
+    color: '',
+    glyph: '\u25b1',
+    dim: true,
+  }
 
   const dim = (txt: string) => paint('', txt, colors, { dim: true })
   const row = (label: string, value: string): string => `  ${dim(label.padEnd(8))}  ${value}`
@@ -248,6 +273,9 @@ export function formatSummarySection(
   if (stats.skipped > 0) taskParts.push(paint(WARN, `${stats.skipped} skipped`, colors))
   if (aborted > 0) taskParts.push(paint(ABORTED, `${aborted} aborted`, colors))
   if (notRun > 0) taskParts.push(paint(NOT_RUN, `${notRun} not run`, colors))
+  if (running > 0) taskParts.push(paint(RUNNING, `${running} running`, colors))
+  if (scheduled > 0) taskParts.push(dim(`${scheduled} scheduled`))
+  if (blocked > 0) taskParts.push(dim(`${blocked} blocked`))
   if (runTotal > 0) taskParts.push(dim(`${runTotal} total`))
   const taskBar = segmentBar(
     [
@@ -256,6 +284,9 @@ export function formatSummarySection(
       { n: stats.skipped, color: WARN },
       { n: aborted, color: ABORTED },
       { n: notRun, color: NOT_RUN },
+      { n: running, color: RUNNING },
+      { n: scheduled, color: '', dim: true },
+      { n: blocked, color: '', dim: true },
       remainder,
     ],
     colors,
@@ -315,6 +346,7 @@ export function formatSummarySection(
     const cacheBar = segmentBar(
       [
         { n: b.miss, color: ERROR },
+        { n: b.notSaved, color: WARN },
         { n: b.noCache, color: '', dim: true },
         { n: b.upToDate, color: SUCCESS },
         { n: b.restoredLocal, color: LOCAL },
@@ -360,8 +392,8 @@ export function formatSummarySection(
       ]
       if (layers.remote && remote.length > 0)
         cacheParts.push(`${dim('remote')} ${remote.join(' ')}`)
-      if ((stats.notSaved ?? 0) > 0)
-        cacheParts.push(paint(WARN, `${stats.notSaved} not saved`, colors))
+      if (b.miss > 0) cacheParts.push(paint(ERROR, `${b.miss} miss`, colors))
+      if (b.notSaved > 0) cacheParts.push(paint(WARN, `${b.notSaved} not saved`, colors))
       const notDownloaded = layers.notDownloaded()
       if (notDownloaded > 0) cacheParts.push(paint(WARN, `${notDownloaded} not downloaded`, colors))
     } else {

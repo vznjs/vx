@@ -10,7 +10,10 @@ output and the files its declared outputs left to the workspace's cache,
 under the task's key. They land here before the task ends, so the run
 reports the task as its own. No file travels through the relay: it
 carries only orders and status, so the agents and this machine need one
-cache they all read (a remote the agents write, or one shared store).
+cache they all read (a remote the agents write, or one shared store). An agent reads that cache as the run does:
+under the run's refs, with the short-lived access the run's remote lends
+it (an OIDC exchange's token, never a stored secret) when it has none of
+its own.
 
 Agents and the orchestrator meet at a relay
 ([`@vzn/vx-dte-relay`](../vx-dte-relay/PROTOCOL.md)), since CI runners
@@ -61,13 +64,22 @@ VX_DTE_RUN=try vx run build --all
 runs here as always. `local()` starts each agent as a process in its own
 git worktree of the tracked files as they are, uncommitted changes
 included (untracked files are not). When an agent fails, its row names
-the error line and the log that holds its whole stderr.
+the error line and the log that holds its whole stderr. At the run's end,
+or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
+a detached shell removes them and prunes git's records.
 
 `docker()` starts each agent as a container held to its size: `--cpus`
 and `--memory` come from `cpu` and `memory`. The container clones this
-checkout's `HEAD` (mounted read-only) into its own filesystem, runs
+checkout (mounted read-only) into its own filesystem at its tracked
+files as they are, uncommitted changes too, runs
 `prepare`, then the workspace's own `node_modules/.bin/vx dte agent`, so
-the image needs Bun and git, and `prepare` installs vx:
+the image needs Bun and git, and `prepare` installs vx. This machine's store
+(`~/.vx`) and `VX_CACHE_DIR` are mounted at their own paths, and the
+clone keeps this checkout's `origin`, so the agents save where the run
+reads, as `local()`'s do; no remote is needed. On Linux a container runs
+as this user (its home is `/tmp`, where the store is mounted), so what it
+writes is this user's and git trusts the mounted checkout. A container that fails
+names its error line and the log of its whole stderr:
 
 ```ts
 dte({
@@ -246,11 +258,15 @@ the ones it never played when it ends.
 ## What runs where
 
 - An agent reports the cores and memory its machine has when it joins.
-  Tasks go to it in batches that fill those by each task's recorded peak
+  One the run started is held to the size it was started as, so
+  `local()` agents sharing a host split it rather than each take all of
+  it. Tasks go to it in batches that fill those by each task's recorded peak
   (cores used, peak memory; one core for a task with no history), plus a
   quarter of its cores as a prefetch, so a successor is there when a task
   ends. The agent starts only what fits; a task bigger than any agent runs
-  alone on an idle one.
+  alone on an idle one. A prefetched task an agent has not begun moves to
+  an agent with nothing to do, so a short gate is never stuck behind a
+  long task while another machine idles.
 - A task goes to the agent that holds most of its dependencies' outputs,
   so a chain stays on one machine.
 - A sandboxed task runs on an agent inside the agent's own sandbox, with
@@ -264,8 +280,7 @@ the ones it never played when it ends.
 - A failed or uncached task is saved under a key of the run and the task,
   so no later lookup ever hits it.
 - An agent whose tracked files differ from the orchestrator's (another
-  tree) is refused. `docker()` clones `HEAD`, so its agents need a run
-  with no uncommitted changes.
+  tree) is refused.
 - An agent that stops answering, stops saying it holds a task, or cannot
   run one (a full disk) gets no more work, and its tasks run again on
   another. A task two such agents had begun fails, naming both; one an
@@ -279,11 +294,12 @@ the ones it never played when it ends.
 
 ## What the run shows
 
-Each task an agent ran says which one on its row and frame, in that
-agent's own color, by size and the order the run started it:
+Each task an agent ran says which one last on its row and after the id
+on its frame, in that agent's own color, by size and the order the run
+started it:
 
 ```
- ⏺︎   308ms success miss     c#build  on small#1
+ ⏺︎   308ms success miss     c#build · small#1
 ```
 
 An idle agent the rest of the run cannot keep busy leaves (`left`): one
@@ -300,12 +316,15 @@ has done and the ones it runs now; while the run goes, those that left
 are one line (`3 agents  left  9 done`). This machine is `local`. An agent the
 run started is named by its size and the order it was started in; one
 that joined on its own is `agent#N`. A task sent to an agent but not yet
-begun there reads `waiting` in the running list, with no clock; its
-clock starts when the agent begins it. Once the run is over, each agent
-adds its warm-up (from asking the adapter to its join) and the cores and
-memory its machine reports, green when they are what its size declares
-and red when not, and a size whose agents reported other cores or memory
-than it declares is named:
+begun there has no row; the tasks line counts it `scheduled`
+(`30 success · 4 running · 12 scheduled · 62 total`). Its row and clock
+start when the agent begins it. An agent is `online` while the run
+goes; it ends `left` when the run let it go as not needed, `lost` when
+it crashed or went silent, and `stopped` when the run's end stopped it.
+Once the run is over, each agent adds its warm-up (from asking the
+adapter to its join), and under it the cores and memory its size
+declares and its machine reports, green when they agree and red when
+not:
 
 ```
   agents    small#1  online    3 done · 2 running
@@ -314,10 +333,12 @@ than it declares is named:
 ```
 
 ```
-  agents    small#1  online  5 done · warm-up 0.1s  4c/16G
-            small#2  gone    1 done · warm-up 0.2s  4c/16G
-            local    online  1 done  10c/32G
-            ! small: config 2 cores 8 GB, reported 4 cores 16 GB
+  agents    small#1  stopped  5 done · warm-up 0.1s
+                     declared 2c/8G · actual 4c/16G
+            small#2  lost     1 done · warm-up 0.2s
+                     declared 2c/8G · actual 4c/16G
+            local    online   1 done
+                     actual 10c/32G
 ```
 
 Under each agent, and `local`, the footer then spells out what it did:
@@ -328,7 +349,8 @@ bytes the run sent it and received from it. The `total` line is the cpu
 utilization of every machine together:
 
 ```
-            small#1  online  5 done · warm-up 0.2s  4c/14G
+            small#1  stopped  5 done · warm-up 0.2s
+                     declared 4c/14G · actual 4c/14G
                      online 12.1s · busy 9.8s · idle 2.3s
                      cpu peak 3.6 · avg 2.4 cores · cpu utilization 61%
                      memory peak 1.2 GB · avg 640.0 MB

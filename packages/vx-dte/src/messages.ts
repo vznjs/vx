@@ -2,7 +2,7 @@
 // (the relay never reads it): orders and status only. Every task's files
 // and output go through the workspace's cache, by the keys these name.
 
-import type { ExecuteResult, ExecuteSandbox, SandboxConfig } from '@vzn/vx'
+import type { CacheFacts, ExecuteResult, ExecuteSandbox, SandboxConfig } from '@vzn/vx'
 
 /** An agent's `join` info. */
 export interface AgentInfo {
@@ -65,8 +65,23 @@ export type ToAgent =
       sandboxes?: SandboxConfig[]
     }
   | { type: 'cancel'; task: string }
-  /** It was taken into the run, under the name the run's output gives it. */
-  | { type: 'welcome'; name: string }
+  /** Give back a task still in its queue (`withdrawn`); one it began it keeps. */
+  | { type: 'withdraw'; task: string }
+  /**
+   * It was taken into the run, under the name the run's output gives it,
+   * and reads the cache as the run does: its refs, and the access the
+   * run's remotes lend, for one with none of its own.
+   */
+  | {
+      type: 'welcome'
+      name: string
+      cache: CacheFacts
+      /** What it may run at once: its machine, held to the size it was started as. */
+      cores: number
+      memory: number
+    }
+  /** The run's remotes lent again, before the last tokens end. */
+  | { type: 'cache'; cache: CacheFacts }
   | { type: 'refused'; reason: string }
   /** The run needs it no more: it leaves. */
   | { type: 'exit' }
@@ -78,6 +93,8 @@ export type ToOrchestrator =
   | { type: 'held'; running: string[]; queued: string[] }
   /** It could not run a task it began, not a non-zero exit: a full disk, a failed unpack. */
   | { type: 'fault'; task: string; reason: string }
+  /** It gave back a task from its queue, unbegun: another agent runs it. */
+  | { type: 'withdrawn'; task: string }
   /** It ran the task and saved it under `key`; its output is in that entry. */
   | { type: 'end'; task: string; key: string; result: WiredResult }
 

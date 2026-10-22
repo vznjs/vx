@@ -3,7 +3,7 @@
 // loopback. For tests, demos
 // and trying a distributed run before a CI starts the agents.
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
@@ -21,8 +21,6 @@ export function local(options: LocalOptions = {}): DteAdapter {
   let relay: { url: string; stop(): void } | undefined
   let base: Promise<string> | undefined
   let tree: Promise<{ commit: string }> | undefined
-  // Outlives close: an agent's whole stderr, for the reason row's path.
-  let logs: Promise<string> | undefined
   let closed = false
   const procs = new Set<Bun.Subprocess>()
   /** A worktree add or a prepare: what close stops at once. */
@@ -65,15 +63,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
     await Promise.race([reading, Bun.sleep(200)])
     return { code, err: Buffer.concat(chunks).toString() }
   }
-  /** `<what>: <its error line> (log: <path>)`, the whole stderr kept at that path. */
-  const why = async (what: string, id: string, err: string): Promise<string> => {
-    const line = errorLine(err)
-    if (line === '') return what
-    logs ??= mkdtemp(path.join(os.tmpdir(), 'vx-dte-logs-'))
-    const file = path.join(await logs, `${id}.log`)
-    await writeFile(file, err)
-    return `${what}: ${line} (log: ${file})`
-  }
+  const why = reasons()
 
   return {
     async relay() {
@@ -136,18 +126,48 @@ export function local(options: LocalOptions = {}): DteAdapter {
       await Promise.allSettled([...pending])
       await Promise.all([...procs].map((p) => p.exited))
       clearTimeout(grace)
-      for (const t of trees.splice(0)) {
-        Bun.spawnSync(['git', 'worktree', 'remove', '--force', t.dir], { cwd: t.root })
+      // A detached shell removes the worktrees after vx exits: removing ones
+      // an install filled took seconds after a Ctrl-C (M, 2026-10-21), and a
+      // 300k-file tree 2.7 s. `prune` then drops git's record of each.
+      const roots = [...new Set(trees.splice(0).map((t) => t.root))]
+      if (base !== undefined) {
+        const dir = await base
+        base = undefined
+        Bun.spawn(
+          [
+            'sh',
+            '-c',
+            'rm -rf "$1"; shift; for r; do git -C "$r" worktree prune; done',
+            'sh',
+            dir,
+            ...roots,
+          ],
+          { stdio: ['ignore', 'ignore', 'ignore'], detached: true },
+        ).unref()
       }
-      if (base !== undefined) await rm(await base, { recursive: true, force: true })
-      base = undefined
     },
   }
 }
 
 /**
+ * `<what>: <its error line> (log: <path>)`, an agent's whole stderr kept at
+ * that path, which outlives the run.
+ */
+export function reasons(): (what: string, id: string, err: string) => Promise<string> {
+  let logs: Promise<string> | undefined
+  return async (what, id, err) => {
+    const line = errorLine(err)
+    if (line === '') return what
+    logs ??= mkdtemp(path.join(os.tmpdir(), 'vx-dte-logs-'))
+    const file = path.join(await logs, `${id}.log`)
+    await writeFile(file, err)
+    return `${what}: ${line} (log: ${file})`
+  }
+}
+
+/**
  * The line of a process's stderr that says what went wrong: vx's own `✗`
- * line, else the first naming an error, else the last. The last alone was
+ * line, else the first naming an error or git's `fatal:`, else the last. The last alone was
  * often a hint (`fix  vx run …`) that hid the error above it.
  */
 export function errorLine(text: string): string {
@@ -157,7 +177,7 @@ export function errorLine(text: string): string {
     .filter(Boolean)
   return (
     lines.find((l) => l.startsWith('✗')) ??
-    lines.find((l) => /\berror\b/i.test(l)) ??
+    lines.find((l) => /\berror\b|^fatal:/i.test(l)) ??
     lines.at(-1) ??
     ''
   )

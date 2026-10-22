@@ -39,6 +39,10 @@ export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB
   fail: { exec: { command: 'echo oops >&2; exit 3' } },
   slow: { exec: { command: 'touch started && sleep 60' } },
   once: { exec: { command: 'if [ -e ../once ]; then echo again; else touch ../once && sleep 60; fi' } },
+  env: { exec: {
+    command: 'echo "shown=\${VX_E2E_SHOWN:-none} hidden=\${VX_E2E_HIDDEN:-none}"',
+    env: { passThrough: ['VX_E2E_SHOWN'] },
+  } },
 } }
 `,
     // Wide, then a two-task lull, then wide again.
@@ -63,11 +67,11 @@ afterEach(async () => {
 })
 
 /** `vx`, a distributed run when `run` names one. */
-function vx(args: string[], run?: string) {
+function vx(args: string[], run?: string, extra: Record<string, string> = {}) {
   const { VX_DTE_RUN: _, ...env } = process.env
   return Bun.spawnSync([process.execPath, CORE_BIN, ...args], {
     cwd: root,
-    env: { ...env, ...(run === undefined ? {} : { VX_DTE_RUN: run }), NO_COLOR: '1' },
+    env: { ...env, ...(run === undefined ? {} : { VX_DTE_RUN: run }), NO_COLOR: '1', ...extra },
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -136,6 +140,16 @@ it('runs a task again on a new agent when its agent is killed', async () => {
   expect([await run.exited, out]).toEqual([0, expect.stringContaining('again')])
 }, 90_000)
 
+// The orchestrator sends each task its own resolved env, and an agent adds
+// only its host names and PATH: a name the task does not pass through
+// reaches it from neither machine's env.
+it('gives a task on an agent only the env it passes through', () => {
+  const r = vx(['run', 'b#env'], 'e2e-env', { VX_E2E_SHOWN: 'yes', VX_E2E_HIDDEN: 'leak' })
+  const out = r.stdout.toString() + r.stderr.toString()
+  expect([r.exitCode, out]).toEqual([0, expect.stringContaining('shown=yes hidden=none')])
+  expect(out).toContain('agents')
+}, 60_000)
+
 it('fails a task that fails on its agent, with its output', () => {
   const r = vx(['run', 'b#fail'], 'e2e')
   expect(r.exitCode).not.toBe(0)
@@ -178,9 +192,9 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, local: 0 })] }
     const out = await new Response(run.stdout).text()
     expect([await run.exited, out]).toEqual([
       0,
-      expect.stringMatching(/└─ b#use ── .*success  on agent#1/),
+      expect.stringMatching(/└─ b#use · agent#1 ── .*success/),
     ])
-    expect(out).toMatch(/agents +agent#1  online  1 done  \d+c\/[\d.]+G$/m)
+    expect(out).toMatch(/agents +agent#1  stopped  1 done\n +actual \d+c\/[\d.]+G$/m)
     const own = await new Response(agent.stdout).text()
     expect(await agent.exited).toBe(0)
     expect(own).toMatch(/agent +agent#1/)
@@ -191,16 +205,19 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, local: 0 })] }
   }
 }, 60_000)
 
-/** The pids under `pid`, by `ps`. */
+/**
+ * The pids under `pid`, by `pgrep -P`: macOS's `ps` is setuid, which the
+ * sandbox will not spawn (EPERM on M's Mac, 2026-10-21).
+ */
 function descendants(pid: number): number[] {
-  const rows = Bun.spawnSync(['ps', '-axo', 'pid=,ppid=']).stdout.toString().trim().split('\n')
-  const kids = new Map<number, number[]>()
-  for (const r of rows) {
-    const [c, p] = r.trim().split(/\s+/).map(Number)
-    kids.set(p!, [...(kids.get(p!) ?? []), c!])
-  }
+  const kids = (p: number): number[] =>
+    Bun.spawnSync(['pgrep', '-P', String(p)])
+      .stdout.toString()
+      .split('\n')
+      .filter(Boolean)
+      .map(Number)
   const out: number[] = []
-  for (let i = -1; i < out.length; i++) out.push(...(kids.get(i < 0 ? pid : out[i]!) ?? []))
+  for (let i = -1; i < out.length; i++) out.push(...kids(i < 0 ? pid : out[i]!))
   return out
 }
 
@@ -240,15 +257,85 @@ it.each(['SIGHUP', 'SIGINT'] as const)(
       expect(await run.exited).not.toBe(0)
       for (let i = 0; i < 100 && tree.some(alive); i++) await Bun.sleep(50)
       expect(tree.filter(alive)).toEqual([])
-      expect((await readdir(tmp)).filter((d) => d.startsWith('vx-dte-'))).toEqual([])
-      const trees = Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
-      expect(trees.stdout.toString().match(/^worktree /gm)).toHaveLength(1)
+      // Removed after vx exits (`local()`'s close leaves it to a detached shell).
+      const left = async (): Promise<string[]> =>
+        (await readdir(tmp)).filter((d) => d.startsWith('vx-dte-'))
+      for (let i = 0; i < 200 && (await left()).length > 0; i++) await Bun.sleep(50)
+      expect(await left()).toEqual([])
+      const trees = () => Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
+      for (
+        let i = 0;
+        i < 100 &&
+        trees()
+          .stdout.toString()
+          .match(/^worktree /gm)!.length > 1;
+        i++
+      )
+        await Bun.sleep(50)
+      expect(
+        trees()
+          .stdout.toString()
+          .match(/^worktree /gm),
+      ).toHaveLength(1)
     } finally {
       await rm(tmp, { recursive: true, force: true })
     }
   },
   60_000,
 )
+
+// M, 2026-10-21: "After I kill it, long delay". Removing a worktree an
+// install filled took seconds, all of them before vx exited.
+it('a stopped run exits before its installed worktrees are removed', async () => {
+  await writeFile(
+    path.join(root, '.vx/workspace.mjs'),
+    `import { dte, local } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'mkdir nm && cd nm && seq 1 300000 | xargs touch' }), local: 0 })] }
+`,
+  )
+  Bun.spawnSync(
+    ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'p'],
+    {
+      cwd: root,
+    },
+  )
+  const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-stop-'))
+  try {
+    const { VX_DTE_RUN: _, ...env } = process.env
+    const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#slow'], {
+      cwd: root,
+      env: { ...env, VX_DTE_RUN: 'stop', NO_COLOR: '1', TMPDIR: tmp },
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    const started = async (): Promise<boolean> => {
+      for (const d of await readdir(tmp)) {
+        if (await Bun.file(path.join(tmp, d, '1', 'b', 'started')).exists()) return true
+      }
+      return false
+    }
+    for (let i = 0; i < 1200 && !(await started()); i++) await Bun.sleep(50)
+    expect(await started()).toBe(true)
+    const t0 = performance.now()
+    run.kill('SIGINT')
+    await run.exited
+    const stopMs = performance.now() - t0
+    // The worktrees go after vx exits, and still go.
+    // What is left names itself, so a failure says which part stayed.
+    const left = async (): Promise<string[]> => [
+      ...(await readdir(tmp)).filter((d) => d.startsWith('vx-dte-')),
+      ...Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
+        .stdout.toString()
+        .split('\n')
+        .filter((l) => l.startsWith('worktree '))
+        .slice(1),
+    ]
+    for (let i = 0; i < 400 && (await left()).length > 0; i++) await Bun.sleep(50)
+    expect({ left: await left(), fast: stopMs < 1000 }).toEqual({ left: [], fast: true })
+  } finally {
+    await rm(tmp, { recursive: true, force: true })
+  }
+}, 90_000)
 
 it('says why an agent never joined, and fails the run when none can', async () => {
   await writeFile(
@@ -285,7 +372,7 @@ it('agents run the tracked files as they are, uncommitted changes too', async ()
   await writeFile(ws, withDte)
   const r = vx(['run', 'a#gen'], 'e2e-dirty')
   const out = r.stdout.toString() + r.stderr.toString()
-  expect([r.exitCode, out]).toEqual([0, expect.stringContaining('on small#')])
+  expect([r.exitCode, out]).toEqual([0, expect.stringContaining(' · small#')])
   // Nothing was committed or reset to get there.
   expect(git('status', '--porcelain').stdout.toString()).toContain(' M .vx/workspace.mjs\n')
 }, 60_000)

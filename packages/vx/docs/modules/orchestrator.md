@@ -54,6 +54,13 @@ export interface TaskArtifacts {
   save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
   restore(key: string, task: ArtifactTask): Promise<{ stdout: string; stderr: string } | null>
 }
+// What a machine that runs the run's tasks reads its cache under
+// (`ExecutorContext.cacheFacts`, `CommandContext.artifactsFor`).
+export interface CacheFacts {
+  refs: readonly string[]
+  lent: Readonly<Record<string, string>> // plugin name → its remote's `lend` token
+  expiresAt?: number
+}
 
 // RunOptions highlights (full list in options.md):
 //   cwd, tasks, projects?, concurrency?, cache?: CachePolicy,

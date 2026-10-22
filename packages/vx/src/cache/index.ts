@@ -84,6 +84,7 @@ export {
 export {
   type ArtifactInfo,
   LayeredCache,
+  type LentAccess,
   type RemoteCacheLayer,
   type RemoteOpenContext,
 } from './layered-cache.js'

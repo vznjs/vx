@@ -104,6 +104,13 @@ export interface ArtifactInfo {
   readonly durationMs?: number
 }
 
+/** A run's access to a remote, lent to a machine that runs its tasks (`RemoteCacheLayer.lend`). */
+export interface LentAccess {
+  readonly token: string
+  /** Epoch ms; asked again before it. */
+  readonly expiresAt?: number
+}
+
 /**
  * What a remote cache layer must provide — THE plugin seam for remote
  * caching. Core ships no wire client; a plugin's `cache` hook returns one
@@ -140,6 +147,14 @@ export interface RemoteCacheLayer {
    * plugin's keychain and may ask on the terminal.
    */
   open?(ctx: RemoteOpenContext): Promise<void>
+  /**
+   * Optional: this run's access, for a machine that runs its tasks
+   * elsewhere (`ExecutorContext.cacheFacts`); that machine's plugin reads
+   * it as `CacheContext.lent`. Only access made for this run (an OIDC
+   * exchange's), never a stored secret: the server's token decides what
+   * it may write. Asked after `open`.
+   */
+  lend?(): Promise<LentAccess | undefined>
   /**
    * Existence probe: what the remote knows of the stored artifact, or null
    * when it holds none. `--dry` and `--force` ask it per key when the

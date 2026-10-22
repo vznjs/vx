@@ -14,7 +14,7 @@ import { resolveDownloadModes } from './download-policy.js'
 import { type Logger, warnOf } from '../report/index.js'
 import { executorLabel, resolveExecutors } from './plugin-host.js'
 import type { prepareRun } from './prepare.js'
-import { taskArtifacts } from './task-artifacts.js'
+import { cacheFacts, taskArtifacts } from './task-artifacts.js'
 
 /**
  * A task is pinned to this machine when it is persistent, transitively
@@ -229,6 +229,7 @@ export async function planExecutorOf(
       warn: warnOf(log),
       concurrency: machineParallelism(),
       artifacts: taskArtifacts(prepared.cache, prepared.workspaceRoot),
+      cacheFacts: () => cacheFacts(prepared.remotes, prepared.cacheRefs),
     })
   } catch (err) {
     warnOf(log)(

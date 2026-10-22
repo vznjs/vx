@@ -18,6 +18,7 @@ import path from 'node:path'
 import {
   type ArtifactInfo,
   definePlugin,
+  type LentAccess,
   type RemoteCacheLayer,
   type RemoteOpenContext,
   type VxPlugin,
@@ -428,6 +429,9 @@ async function boundedText(res: Response, max: number): Promise<string | null> {
  */
 const MAX_SIGNED_BODY = 2 * 1024 ** 3 + ((2 * 1024 ** 3) >> 8) + 64 * 1024
 
+/** A lent token ending sooner than this is exchanged again first, so an agent's request never carries a spent one. */
+const LEND_MARGIN_MS = 5 * 60_000
+
 /**
  * The seam implementation: `has` is HEAD, `hasMany` is the batch query,
  * `get`/`put` carry `x-artifact-duration` (and the tag when signing). An
@@ -464,8 +468,14 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   private token: string | undefined
   /** Set by `open` when the token came from the keychain: a refusal deletes it. */
   private forget: (() => Promise<void>) | undefined
-  /** The token an OIDC exchange gave, revoked when the run ends. */
-  private exchanged: string | undefined
+  /** The tokens OIDC exchanges gave, the last one current, each revoked when the run ends. */
+  private exchanged: string[] = []
+  /** When the current exchanged token ends (epoch ms), when the server said. */
+  private expiresAt: number | undefined
+  /** Set by `open` when this machine has no access of its own: the run's lent token, read per request. */
+  private borrowed: (() => string | undefined) | undefined
+  /** The token a run running its tasks here lent (`CacheContext.lent`). */
+  lent: (() => string | undefined) | undefined
   private readonly keychainRemote: KeychainRemote
   /** The remote's rate limit, which every request of this client waits out. */
   private readonly cooldown = new Cooldown()
@@ -491,24 +501,54 @@ export class TurboRemoteCache implements RemoteCacheLayer {
   }
 
   async open(ctx: RemoteOpenContext): Promise<void> {
-    if (this.config.oidcMissing)
+    const lent = this.lent?.() === undefined ? undefined : this.lent
+    if (this.config.oidcMissing && lent === undefined)
       ctx.warn(
         'oidc: GitHub gave this job no OIDC token: it needs `permissions: id-token: write` (a fork or Dependabot pull request never gets one)',
       )
     if (this.token !== undefined) return
     if (this.config.oidc !== undefined) {
       try {
-        this.token = await exchangeOidc(this.config.oidc, this.fetchImpl, this.wait)
+        await this.exchange()
       } catch (err) {
         throw new Error(
           `oidc: ${err instanceof Error ? err.message : String(err)}; local cache only this run`,
         )
       }
-      this.exchanged = this.token
+      return
+    }
+    if (lent !== undefined) {
+      this.borrowed = lent
       return
     }
     this.token = await keychainToken(ctx, this.keychainRemote)
     this.forget = () => ctx.forgetSecret({ key: this.keychainRemote.key })
+  }
+
+  private async exchange(): Promise<void> {
+    const got = await exchangeOidc(this.config.oidc!, this.fetchImpl, this.wait)
+    this.token = got.token
+    this.expiresAt = got.expiresAt
+    this.exchanged.push(got.token)
+  }
+
+  /**
+   * The token an OIDC exchange gave this run, for a machine that runs its
+   * tasks (`RemoteCacheLayer.lend`); exchanged again when it ends within
+   * five minutes. A token of any other kind is never lent.
+   */
+  async lend(): Promise<LentAccess | undefined> {
+    if (this.exchanged.length === 0) return undefined
+    if (this.expiresAt !== undefined && this.expiresAt - Date.now() < LEND_MARGIN_MS)
+      await this.exchange()
+    return {
+      token: this.token!,
+      ...(this.expiresAt === undefined ? {} : { expiresAt: this.expiresAt }),
+    }
+  }
+
+  private bearer(): string | undefined {
+    return this.borrowed?.() ?? this.token
   }
 
   private url(pathname: string): string {
@@ -523,7 +563,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
 
   private headers(extra: Record<string, string> = {}, auth = true): Record<string, string> {
     return {
-      ...(auth ? { Authorization: `Bearer ${this.token}` } : {}),
+      ...(auth ? { Authorization: `Bearer ${this.bearer()}` } : {}),
       'x-artifact-client-interactive': process.stdout.isTTY ? '1' : '0',
       ...extra,
     }
@@ -550,7 +590,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     const res = await this.fetchImpl(url, {
       method: 'OPTIONS',
       headers: {
-        Authorization: `Bearer ${this.token}`,
+        Authorization: `Bearer ${this.bearer()}`,
         'Access-Control-Request-Method': method === 'HEAD' ? 'GET' : method,
         'Access-Control-Request-Headers': ['Authorization', ...Object.keys(headers)].join(', '),
       },
@@ -579,7 +619,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     pathname: string,
     init: { body?: Blob | string; headers?: Record<string, string>; timeoutMs?: number } = {},
   ): Promise<Response | undefined> {
-    if (this.token === undefined) return undefined
+    if (this.bearer() === undefined) return undefined
     const timeoutMs = init.timeoutMs ?? this.config.timeoutMs
     // 0 is Turbo's "no deadline".
     const signal = () => (timeoutMs === 0 ? undefined : deadline(timeoutMs))
@@ -629,12 +669,11 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     return res
   }
 
-  /** Revoke the token `open` exchanged, once; a throw is the caller's warning. */
+  /** Revoke each token this run exchanged, once; a throw is the caller's warning. */
   async revoke(): Promise<void> {
-    const token = this.exchanged
-    if (token === undefined) return
-    this.exchanged = undefined
-    await revokeOidc(this.config.oidc!, token, this.fetchImpl, this.wait)
+    const tokens = this.exchanged.splice(0)
+    for (const token of tokens)
+      await revokeOidc(this.config.oidc!, token, this.fetchImpl, this.wait)
   }
 
   async has(hash: string): Promise<ArtifactInfo | null> {
@@ -859,6 +898,7 @@ export function turboCache(options: TurboCacheOptions = {}): VxPlugin {
       // sandboxed task may read (L-45).
       const layer = new TurboRemoteCache(config, fetch, ctx.cacheDir)
       layer.reads = readScopes(ctx.refs)
+      layer.lent = ctx.lent
       if (config.oidc !== undefined) opened = { layer, warn: ctx.warn }
       return scope === 'key' ? keyedByRef(layer, ctx.refs) : layer
     },

@@ -38,9 +38,11 @@ export { forwardedSignal } from './signals.js'
 export { acquireRunLock } from './run-lock.js'
 export type { RunPlan, PlannedTask, PlanPrediction, CacheStatus } from './plan.js'
 export {
+  cacheFacts,
   taskArtifacts,
   type ArtifactRun,
   type ArtifactTask,
+  type CacheFacts,
   type TaskArtifacts,
 } from './task-artifacts.js'
 export {

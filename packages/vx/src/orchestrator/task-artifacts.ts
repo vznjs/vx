@@ -4,7 +4,12 @@
 // and the one that needs them restores them, through the workspace's own
 // cache (design packages/vx/docs/design/dte-2026-10.md, "Files").
 
-import { type CacheLayer, resolveOutputTree, resolveWorkspaceOutputs } from '../cache/index.js'
+import {
+  type CacheLayer,
+  type ResolvedRemote,
+  resolveOutputTree,
+  resolveWorkspaceOutputs,
+} from '../cache/index.js'
 import { secretMask } from '../util/index.js'
 import { decodeOutputLog, encodeOutputLog } from './output-log.js'
 
@@ -100,4 +105,38 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
       return { stdout, stderr }
     },
   }
+}
+
+/**
+ * What a run's cache is read under, for a machine that runs its tasks
+ * (`ExecutorContext.cacheFacts`, `CommandContext.artifactsFor`): the
+ * refs the run worked out, so that machine reads as the run would, and
+ * the access each remote lent, by plugin.
+ */
+export interface CacheFacts {
+  /** `CacheContext.refs`. */
+  readonly refs: readonly string[]
+  /** Plugin name → the token its remote's `lend` gave. */
+  readonly lent: Readonly<Record<string, string>>
+  /** Epoch ms: the first lent token's end, before which to ask again. */
+  readonly expiresAt?: number
+}
+
+/** The run's `CacheFacts`: each readable remote's `lend`, asked now; one that throws lends nothing. */
+export async function cacheFacts(
+  remotes: readonly ResolvedRemote[],
+  refs: readonly string[],
+): Promise<CacheFacts> {
+  const lent: Record<string, string> = {}
+  let expiresAt: number | undefined
+  await Promise.all(
+    remotes.map(async (r) => {
+      if (r.plugin === undefined || r.remote.lend === undefined || !r.read) return
+      const got = await r.remote.lend().catch(() => undefined)
+      if (got === undefined) return
+      lent[r.plugin] = got.token
+      if (got.expiresAt !== undefined) expiresAt = Math.min(expiresAt ?? Infinity, got.expiresAt)
+    }),
+  )
+  return { refs, lent, ...(expiresAt === undefined ? {} : { expiresAt }) }
 }

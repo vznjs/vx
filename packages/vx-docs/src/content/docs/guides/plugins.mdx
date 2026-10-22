@@ -443,7 +443,10 @@ per run (and once for `--dry` and `--force`); without it core GETs each
 key directly and asks `has` per key only for `--dry` and `--force`. An
 entry is immutable: core never asks `has` before a `put`, so a `put` of
 a key the remote holds must keep the stored bytes (check inside when
-your server would overwrite). Keys are plain: no call names a branch,
+your server would overwrite). An optional `lend` hands this run's own
+access (an OIDC exchange's token, never a stored secret) to a machine
+that runs its tasks elsewhere, such as a `@vzn/vx-dte` agent, whose
+plugin reads it as `ctx.lent`. Keys are plain: no call names a branch,
 and where a write lands is your server's call, from the token it
 checks. The hook's `ctx.refs` lists the run's refs, own branch first
 (`['refs/heads/feat-x', 'refs/heads/main']`), for a wire that steers

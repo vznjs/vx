@@ -299,8 +299,9 @@ describe('formatRunSummary', () => {
       const SKY = rgb('#38bdf8')
       const BLUE = rgb('#2563eb')
       const CYAN = rgb('#06b6d4')
-      // c miss · h no cache · e g fresh · f local ↓ · d remote ↓ · b ⇡ · a ✗
-      expect(runs.map(([c]) => c)).toEqual([RED, '\x1b[2m', GREEN, SKY, BLUE, CYAN, RED])
+      const YELLOW = rgb('#eab308')
+      // c not saved · h no cache · e g fresh · f local ↓ · d remote ↓ · b ⇡ · a ✗
+      expect(runs.map(([c]) => c)).toEqual([YELLOW, '\x1b[2m', GREEN, SKY, BLUE, CYAN, RED])
       expect(runs.map(([, n]) => n)).toEqual([7, 6, 13, 6, 6, 6, 6])
       const legendLine = lines[at + 1]!
       expect(legendLine).toContain(`${GREEN}2✓`)
@@ -309,9 +310,57 @@ describe('formatRunSummary', () => {
       expect(legendLine).toContain(`${BLUE}1↓`)
       expect(legendLine).toContain(`${RED}1✗`)
       expect(legendLine).toContain(`${CYAN}1⇡`)
+      expect(legendLine).toContain(`${YELLOW}1 not saved`)
       // The layer words are dim, never a layer colour (M, 2026-10-15).
       expect(legendLine).toContain('\x1b[2mlocal\x1b[0m')
       expect(legendLine).toContain('\x1b[2mremote\x1b[0m')
+    })
+
+    // M, 2026-10-21: a red cell with no count under it.
+    it('a miss that was not saved for failing is a red count of its own', () => {
+      const lines = formatRunSummary(
+        [cached('a#build', 'success', { saved: true }), cached('b#build', 'failed')],
+        10,
+        { enabled: false },
+        {
+          version: '0.0.0',
+          packageCount: 1,
+          remoteCacheEnabled: false,
+          cache: {
+            local: true,
+            localWrite: true,
+            remote: false,
+            traffic: trafficOf({}),
+            notDownloaded: () => 0,
+          },
+        },
+      )
+      expect(lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()).toBe(
+        'local 1↑ · 1 miss',
+      )
+    })
+
+    // CI, 2026-10-21: a task not saved here whose bytes went to the remote
+    // left its bucket twice, and the bar's repeat threw on a negative count.
+    it('a task not saved here that uploaded leaves the not-saved count once', () => {
+      const lines = formatRunSummary(
+        [cached('a#build', 'success'), cached('b#build', 'success', { saved: true })],
+        10,
+        { enabled: false },
+        {
+          version: '0.0.0',
+          packageCount: 1,
+          remoteCacheEnabled: true,
+          cache: {
+            local: true,
+            localWrite: true,
+            remote: true,
+            traffic: trafficOf({ 'a#build': {}, 'b#build': {} }),
+            notDownloaded: () => 0,
+          },
+        },
+      )
+      expect(lines[lines.findIndex((l) => l.startsWith('  cache')) + 1]!.trim()).toBe('remote 2↑')
     })
 
     it('CONTROL: with no run context the legend is the plain one', () => {
