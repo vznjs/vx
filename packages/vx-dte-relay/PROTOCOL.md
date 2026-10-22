@@ -117,8 +117,11 @@ The relay itself sends with `"from": "relay"`:
 - to the orchestrator, `{ "type": "lost", "id" }` when an agent leaves or
   is lost;
 - to every agent, `{ "type": "closed" }` when the orchestrator leaves or is
-  lost. The run is then closed: every later request answers `410`, for
-  a day, so its id never takes another orchestrator.
+  lost. The run is then closed: an agent on a socket is told and let go
+  at once, one over HTTP reads `410` for a minute, and then the relay
+  keeps nothing of the run. A run no orchestrator joined in ten minutes
+  closes the same way: agents start after their orchestrator joins, so
+  one alone is late for a run that ended.
 
 An agent's messages carry `"from": "<its id>"`, the orchestrator's
 `"from": "orchestrator"`.
@@ -181,8 +184,9 @@ Only what routing needs, and no longer:
 - A message waits in memory, never in storage, until it is delivered. A
   relay restart loses a participant whose queue was not empty, as if it
   went silent.
-- A closed run keeps its hash and when it closed, for a day; who took
-  part and the orchestrator's key and job go after 10 minutes.
+- A closed run is gone within a minute; while open, each participant's
+  role and when it was last heard from are kept, so a restart still
+  loses the silent.
 - It logs nothing. It still sees each message's size, time and recipient.
 
 ## Bodies, end to end

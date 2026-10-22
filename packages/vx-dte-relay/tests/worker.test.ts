@@ -36,6 +36,9 @@ function state(): DurableObjectState {
       setAlarm: async (at) => {
         alarm = at
       },
+      deleteAlarm: async () => {
+        alarm = null
+      },
       deleteAll: async () => {
         kv.clear()
         alarm = null

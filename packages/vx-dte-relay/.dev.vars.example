@@ -1,0 +1,1 @@
+ALLOW=https://token.actions.githubusercontent.com:owner/repo:ci.yml

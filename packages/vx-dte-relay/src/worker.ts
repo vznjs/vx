@@ -2,7 +2,7 @@
 // run's mailboxes live in one place and its held polls answer there.
 // Participants hold websockets the object hibernates between messages: its
 // state is in its storage, and an alarm, not a timer, finds the silent.
-// `wrangler.jsonc` deploys it; set ALLOW.
+// `wrangler.jsonc` deploys it; ALLOW is a secret the deployer sets.
 
 import { claimedRun, createVerifier, parseAllow } from './oidc.js'
 import { createRelay, runKey, type Relay, type RelayStore } from './relay.js'
@@ -31,6 +31,7 @@ export interface DurableObjectState {
     readonly kv: RelayStore
     getAlarm(): Promise<number | null>
     setAlarm(at: number): Promise<void>
+    deleteAlarm(): Promise<void>
     deleteAll(): Promise<void>
   }
   acceptWebSocket(ws: Socket): void
@@ -122,7 +123,10 @@ export class RelayRun {
       return await this.relay.fetch(req)
     } finally {
       this.alarmAt ??= await this.state.storage.getAlarm()
-      if (this.alarmAt === null) {
+      // A run its orchestrator signed off goes now, not at the next alarm.
+      this.heard()
+      if (this.relay.sweep() === undefined) await this.end()
+      else if (this.alarmAt === null) {
         this.alarmAt = Date.now()
         await this.state.storage.setAlarm(this.alarmAt)
       }
@@ -149,14 +153,26 @@ export class RelayRun {
   }
 
   async alarm(): Promise<void> {
+    this.heard()
+    const next = this.relay.sweep()
+    if (next === undefined) return this.end()
+    this.alarmAt = next
+    await this.state.storage.setAlarm(next)
+  }
+
+  /** Each socket's last ping, which the runtime answered without waking it. */
+  private heard(): void {
     for (const ws of this.state.getWebSockets()) {
       const at = this.state.getWebSocketAutoResponseTimestamp(ws)
       const { key, id } = ws.deserializeAttachment()
       if (at !== null) this.relay.seen(key, id, at.getTime())
     }
-    const next = this.relay.sweep()
-    this.alarmAt = next ?? null
-    if (next === undefined) await this.state.storage.deleteAll()
-    else await this.state.storage.setAlarm(next)
+  }
+
+  /** No run is left: the object keeps nothing, so its host can drop it. */
+  private async end(): Promise<void> {
+    if (this.alarmAt !== null) await this.state.storage.deleteAlarm()
+    this.alarmAt = null
+    await this.state.storage.deleteAll()
   }
 }
