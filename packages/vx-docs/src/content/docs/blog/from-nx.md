@@ -19,14 +19,14 @@ below is a simplification.
 
 ## One command
 
-`npx @vzn/vx init` beside `nx.json` is the whole adoption. It writes
+`bunx @vzn/vx init` beside `nx.json` is the whole adoption. It writes
 one `vx.config.ts` per project, a `.vx/workspace.ts` declaring your
 lockfile's plugin, and `.vx/projects.lock.json`, and installs vx with
 your own package manager:
 
 ```bash
-npx @vzn/vx init              # native vx.config.ts files, .vx/workspace.ts, the lock
-npx @vzn/vx run build --all   # what nx run-many -t build did, under vx's cache
+bunx @vzn/vx init              # native vx.config.ts files, .vx/workspace.ts, the lock
+vx run build --all   # what nx run-many -t build did, under vx's cache
 ```
 
 Executor targets keep running as executors at first. Each becomes an `nx-exec`
@@ -43,7 +43,7 @@ than guessing at plugin-inferred targets from `nx.json`, so those
 targets come along. The files it writes freeze that snapshot as static
 config: review them and fill the TODOs.
 
-To check the mapping before any config exists, `npx @vzn/vx init --keep`
+To check the mapping before any config exists, `bunx @vzn/vx init --keep`
 writes only a `.vx/workspace.ts` that runs the graph through `nx()` from
 `@vzn/vx-migrate`, installs what it imports, and its `next:` line builds
 once:

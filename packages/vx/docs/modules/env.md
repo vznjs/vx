@@ -49,7 +49,7 @@ Layers, lowest to highest priority:
    entry is prepended to the existing `PATH` (joined by `path.delimiter`).
    The orchestrator passes `<projectDir>/node_modules/.bin`, then
    `<workspaceRoot>/node_modules/.bin` (one entry when the root is the
-   project), so local tools resolve without `npx`, and a monorepo's shared
+   project), so local tools resolve by name, and a monorepo's shared
    tooling, installed at the root, too. Never a sibling project's bin, so
    project isolation holds; the root is not a sibling. An entry whose path
    holds `path.delimiter` (`:`) is left out: PATH cannot name it, and split

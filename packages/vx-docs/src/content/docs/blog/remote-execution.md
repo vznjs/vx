@@ -80,8 +80,8 @@ explicit install task pinned to the pool with `exec.remote: 'only'`:
 
 ```ts
 install: {
-  exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },
-  inputs: { files: ['package.json', 'pnpm-lock.yaml'] },
+  exec: { command: 'bun install --frozen-lockfile', remote: 'only' },
+  inputs: { files: ['package.json', 'bun.lock'] },
   cache: {
     outputs: { files: ['node_modules/**'] },
   },

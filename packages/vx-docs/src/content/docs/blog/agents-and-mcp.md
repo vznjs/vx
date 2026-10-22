@@ -17,7 +17,7 @@ that. vx hands it over as JSON, and the vx skill tells the agent which
 command answers which question.
 
 ```sh frame="terminal"
-$ npx skills add vznjs/vx
+$ bunx skills add vznjs/vx
 ```
 
 The skill is one `SKILL.md`. To match the vx a workspace has installed,

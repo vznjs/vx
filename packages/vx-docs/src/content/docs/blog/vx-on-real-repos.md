@@ -150,8 +150,8 @@ Nx's first clone rep missed its cache (56.82 s), as with TanStack query.
 ## Run it on yours
 
 ```bash
-npx @vzn/vx init
-npx @vzn/vx run build --all
+bunx @vzn/vx init
+vx run build --all
 ```
 
 Then time your runner's command and `vx run` on the same machine, each

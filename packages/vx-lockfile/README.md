@@ -9,7 +9,7 @@ Core keys no package file: without a plugin no lockfile, install setting or `pac
 ## Usage
 
 ```sh
-npm install -D @vzn/vx @vzn/vx-lockfile   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
+bun add -d @vzn/vx @vzn/vx-lockfile
 ```
 
 ```ts

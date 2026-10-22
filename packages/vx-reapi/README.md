@@ -8,7 +8,7 @@ BuildBuddy, Buildbarn, bazel-remote: mature server implementations, none of
 which we had to write, because a REAPI server is deliberately dumb.
 
 ```sh
-npm install -D @vzn/vx @vzn/vx-reapi   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
+bun add -d @vzn/vx @vzn/vx-reapi
 ```
 
 ```ts
@@ -438,8 +438,8 @@ the packages a build needs. The answer is the design doc's §7.4 recipe,
 
 ```ts
 install: {
-  exec: { command: 'pnpm install --frozen-lockfile', remote: 'only' },
-  inputs: { files: ['package.json', 'pnpm-lock.yaml'] },
+  exec: { command: 'bun install --frozen-lockfile', remote: 'only' },
+  inputs: { files: ['package.json', 'bun.lock'] },
   cache: {
     outputs: { files: ['node_modules/**'] },
   },

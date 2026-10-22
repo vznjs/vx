@@ -52,7 +52,7 @@ several runs. Run 2026-10-09 on linux x64, 4 cores: vx from source at
 This is how every cold run works from vx 0.0.634. Try it in your repo:
 
 ```sh
-npx @vzn/vx init
+bunx @vzn/vx init
 vx run build --all
 ```
 

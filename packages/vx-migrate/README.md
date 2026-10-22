@@ -10,10 +10,10 @@ Everything for adopting [`@vzn/vx`](https://vznjs.github.io/vx/) from Turborepo,
 - **`turboCache()`** and **`nxCache()`** — keep the remote cache you have: any server speaking Turbo's `/v8/artifacts` API (Vercel's hosted cache included) or Nx's self-hosted `/v1/cache` spec.
 
 ```sh
-npm install -D @vzn/vx @vzn/vx-migrate   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
+bun add -d @vzn/vx @vzn/vx-migrate
 ```
 
-In a Turbo or Nx repo, `npx @vzn/vx init --keep` runs this package, which
+In a Turbo or Nx repo, `bunx @vzn/vx init --keep` runs this package, which
 writes the `.vx/workspace.ts` that declares `turbo()` or `nx()`, installs
 what it imports and writes the lock. Where the repo shows a remote cache it
 declares `turboCache()` or `nxCache()` too; by hand it reads:
@@ -226,7 +226,7 @@ bunx @vzn/vx-migrate --keep    # keep turbo.json / nx.json as the source: turbo(
 bunx @vzn/vx-migrate --help    # the usage, exit 0
 ```
 
-It is the one command a repo needs (`pnpx @vzn/vx-migrate` in a pnpm repo works the same):
+It is the one command a repo needs (`pbunx @vzn/vx-migrate` in a pnpm repo works the same):
 
 - In a Turbo or Nx repo, in a terminal, it asks which adoption you want: **native** (the default, a `vx.config.ts` per package) or **keep** (a workspace file declaring `turbo()` or `nx()`). `--native` / `--keep` answer it; with no terminal (CI, a pipe) it is native. Elsewhere both are refused. A repo already set up (a workspace file declaring neither, and project configs) is said to be, exit 0, unless `--force`.
 - Native or keep, a remote cache the repo shows is declared: `turboCache()` for turbo.json's enabled `remoteCache`, a `turbo link`ed `.turbo/config.json` or a CI file (`.github/workflows/*`, `.gitlab-ci.yml`, `.circleci/config.yml`) setting `TURBO_TOKEN`; `nxCache()` for one setting `NX_SELF_HOSTED_REMOTE_CACHE_SERVER`. The report names the file that showed it. Nx Cloud (`nxCloudId`, `nxCloudAccessToken`, the `nx-cloud` runner) is named instead: vx does not speak its wire.
@@ -550,7 +550,7 @@ export default defineWorkspace({
 
 Off CI a run reads the remote and does not write it unless its policy names the remote. Give the write token only to the default branch's CI and a read-only one to laptops and pull request jobs: the server's token is the boundary (`docs/security.md` § Cache poisoning). The same holds for `nxCache()`.
 
-Every option falls back to the tool's own environment variable, so a self-hosted setup carries over unchanged. A token with no `apiUrl` means Vercel's hosted Remote Cache (`https://vercel.com/api`), exactly as it does for `turbo` — so `npx turbo login && npx turbo link`, then `turboCache()` with `TURBO_TOKEN` / `TURBO_TEAM` set, is the whole hosted setup. Below the environment, in Turbo's order: a Vercel build's `VERCEL_ARTIFACTS_TOKEN` and `VERCEL_ARTIFACTS_OWNER` (the team id, where `TURBO_TOKEN` with a team is not set), then the repo's `.turbo/config.json` (what `turbo link` writes: `apiUrl`, `teamId`, `teamSlug`, `token`), then the root `turbo.json`'s `remoteCache` (`apiUrl`, `teamId`, `teamSlug`), whose `enabled: false` declines unless the options name a cache. A team with no `apiUrl` also means Vercel's. With a URL or a team but no token, the token comes from the OS keychain ([Tokens](#tokens-and-the-os-keychain)); with none of the three the plugin **declines** and the run stays local.
+Every option falls back to the tool's own environment variable, so a self-hosted setup carries over unchanged. A token with no `apiUrl` means Vercel's hosted Remote Cache (`https://vercel.com/api`), exactly as it does for `turbo` — so `bunx turbo login && bunx turbo link`, then `turboCache()` with `TURBO_TOKEN` / `TURBO_TEAM` set, is the whole hosted setup. Below the environment, in Turbo's order: a Vercel build's `VERCEL_ARTIFACTS_TOKEN` and `VERCEL_ARTIFACTS_OWNER` (the team id, where `TURBO_TOKEN` with a team is not set), then the repo's `.turbo/config.json` (what `turbo link` writes: `apiUrl`, `teamId`, `teamSlug`, `token`), then the root `turbo.json`'s `remoteCache` (`apiUrl`, `teamId`, `teamSlug`), whose `enabled: false` declines unless the options name a cache. A team with no `apiUrl` also means Vercel's. With a URL or a team but no token, the token comes from the OS keychain ([Tokens](#tokens-and-the-os-keychain)); with none of the three the plugin **declines** and the run stays local.
 
 | Option            | Environment variable                                                                                                                     | Meaning                                                                                                                                                                                                                                                                       |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

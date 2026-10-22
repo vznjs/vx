@@ -47,7 +47,7 @@ the projects reaching it move. A diff inside the projects loads no claim.
 ## Claiming a file (`VxPlugin.fingerprint`)
 
 A plugin that reads a root file declares `fingerprint: { files:
-['pnpm-lock.yaml'], affected(change, ctx), extraFiles?(file, bytes) }`
+['bun.lock'], affected(change, ctx), extraFiles?(file, bytes) }`
 (`extraFiles`: the files a claimed file names that the plugin's key
 reads too, such as `bun.lock`'s patches and a `file:` dependency's
 directory). The schema refuses a

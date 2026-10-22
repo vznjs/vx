@@ -1649,7 +1649,7 @@ describe('an install at the workspace root names the flag pnpm and Yarn 1 requir
       }
     }
     expect(bad).toEqual([])
-    expect(seen).toBeGreaterThan(15)
+    expect(seen).toBeGreaterThan(2)
   })
 })
 

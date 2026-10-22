@@ -656,12 +656,12 @@ export default defineProject({
     category: 'adoption',
     hook: 'Init, run.',
     body: [
-      '`npx @vzn/vx init` installs vx globally and in your repo, then writes a root project to declare tasks in; in a Turborepo or Nx repo it writes a `vx.config.ts` per package through `@vzn/vx-migrate`. Add a cache block to a task, and its second run is up-to-date in milliseconds.',
+      '`bunx @vzn/vx init` installs vx globally and in your repo, then writes a root project to declare tasks in; in a Turborepo or Nx repo it writes a `vx.config.ts` per package through `@vzn/vx-migrate`. Add a cache block to a task, and its second run is up-to-date in milliseconds.',
       'No account, no service to sign up for: the cache is a directory on your machine.',
     ],
     example: {
       lang: 'sh',
-      code: 'npx @vzn/vx init\nvx run build --all\nvx run build --all   # again: the cached tasks are up-to-date',
+      code: 'bunx @vzn/vx init\nvx run build --all\nvx run build --all   # again: the cached tasks are up-to-date',
     },
     image: 'quickstart.png',
     imageAlt: 'vx init, and two runs of vx run build --all.',
@@ -673,10 +673,10 @@ export default defineProject({
     category: 'adoption',
     hook: 'Built on Bun, and you never install Bun.',
     body: [
-      '`npx @vzn/vx init` installs a prebuilt binary for Linux and macOS, x64 and arm64. There is no postinstall step and no runtime to match.',
+      '`bunx @vzn/vx init` installs a prebuilt binary for Linux and macOS, x64 and arm64. There is no postinstall step and no runtime to match.',
       'CI can download the release binary directly, and it needs no Node either. Your tasks still run on your own toolchain.',
     ],
-    example: { lang: 'sh', code: 'npx @vzn/vx init\nvx version' },
+    example: { lang: 'sh', code: 'bunx @vzn/vx init\nvx version' },
     image: 'one-binary.png',
     imageAlt: 'One vx binary per platform, with nothing installed underneath.',
     docs: { label: 'Install', href: 'quickstart/' },

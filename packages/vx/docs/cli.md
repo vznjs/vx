@@ -8,9 +8,9 @@ in `src/cli/index.ts` dispatches to per-subcommand handlers under
 so existing Turbo users can swap in with minimal muscle-memory churn.
 
 ```sh
-# Standalone binary via npm (no Bun required on target); inside a project
+# The prebuilt standalone binary; inside a project
 # that installs @vzn/vx, it runs that one (§ Which vx runs):
-npm install -g @vzn/vx
+bun add -g @vzn/vx
 
 # From source (Bun ≥ 1.4):
 bun src/bin.ts --version
@@ -1942,8 +1942,8 @@ one (npm install -g @vzn/vx), or run \`vx upgrade\` to move the project's`.
 ✓ vx upgrade  global installed 0.0.2
 ```
 
-vx never installs Node or a package manager: one not on `PATH` is refused with the command to run. A vx run from an npx or
-bunx cache has nothing installed to upgrade, and says to ask for
+vx never installs Node or a package manager: one not on `PATH` is refused with the command to run. A vx run from a
+`bunx` cache has nothing installed to upgrade, and says to ask for
 `@vzn/vx@latest` instead.
 
 Exit codes: `0` installed, or already at that version; `1` anything
