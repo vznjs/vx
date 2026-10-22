@@ -100,21 +100,32 @@ async function refusal(
 }
 
 describe('a refusal under --format json', () => {
+  // Eight vx processes in sequence overran the default 5 s on a loaded
+  // 3-core macOS runner; side by side they take the time of one.
   it('names the refusal by its code', async () => {
-    expect({
-      unknownTask: await refusal(['run', 'nope', '--all', '--dry=json']),
-      usage: await refusal(['run', 'build', '--bogus', '--dry=json']),
-      noWorkspace: await refusal(['run', 'build', '--dry=json'], bare),
-      affectedRange: await refusal(['run', 'build', '--affected=a..b', '--dry=json']),
-      cachePolicy: await refusal(['run', 'build', '--all', '--dry=json'], badPolicy),
-      cacheFlag: await refusal(['run', 'build', '--all', '--cache-policy=disk:r', '--dry=json']),
-      cacheEnv: await refusal(['run', 'build', '--all', '--dry=json'], root, {
-        VX_CACHE_POLICY: 'disk:r',
-      }),
-      stabilityEnv: await refusal(['run', 'build', '--all', '--dry=json'], root, {
+    const codes = await Promise.all([
+      refusal(['run', 'nope', '--all', '--dry=json']),
+      refusal(['run', 'build', '--bogus', '--dry=json']),
+      refusal(['run', 'build', '--dry=json'], bare),
+      refusal(['run', 'build', '--affected=a..b', '--dry=json']),
+      refusal(['run', 'build', '--all', '--dry=json'], badPolicy),
+      refusal(['run', 'build', '--all', '--cache-policy=disk:r', '--dry=json']),
+      refusal(['run', 'build', '--all', '--dry=json'], root, { VX_CACHE_POLICY: 'disk:r' }),
+      refusal(['run', 'build', '--all', '--dry=json'], root, {
         VX_CACHE_INPUT_STABILITY_STRATEGY: 'bogus',
       }),
-    }).toEqual({
+    ])
+    const names = [
+      'unknownTask',
+      'usage',
+      'noWorkspace',
+      'affectedRange',
+      'cachePolicy',
+      'cacheFlag',
+      'cacheEnv',
+      'stabilityEnv',
+    ]
+    expect(Object.fromEntries(names.map((n, i) => [n, codes[i]]))).toEqual({
       unknownTask: 'VX_E_UNKNOWN_TASK',
       usage: 'VX_E_USAGE',
       noWorkspace: 'VX_E_NO_WORKSPACE',

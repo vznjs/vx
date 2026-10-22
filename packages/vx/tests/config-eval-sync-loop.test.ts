@@ -17,11 +17,13 @@ afterEach(async () => {
   if (dir !== undefined) await rm(dir, { recursive: true, force: true })
 })
 
+// 300 ms was less than a Worker took to boot on a loaded macOS runner, so
+// the CONTROL timed out; the loop is ended at any budget.
 const settle = async (body: string) => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'vx-sync-loop-'))
   const file = path.join(dir, 'vx.config.mjs')
   await writeFile(file, body)
-  process.env[BUDGET] = '300ms'
+  process.env[BUDGET] = '2s'
   return evaluateConfigFresh(file).then(
     () => 'settled',
     (err: Error) => err.message,
@@ -30,7 +32,7 @@ const settle = async (body: string) => {
 
 it("a repeat load's Worker ends a synchronous loop at the budget", async () => {
   expect(await settle('while (true) {}\nexport default {}\n')).toBe(
-    'config worker did not answer within 300ms',
+    'config worker did not answer within 2000ms',
   )
 })
 
