@@ -5,6 +5,10 @@ export class TokenError extends Error {
     readonly status: 401 | 403,
   )
 }
+== const PROOF_HEADER (src/proof.ts)
+export const PROOF_HEADER = 'vx-proof'
+== function createProver (src/proof.ts)
+export async function createProver(): Promise<Prover>
 == function createRelay (src/relay.ts)
 export function createRelay(opts: RelayOptions = {}): Relay
 == function createVerifier (src/oidc.ts)
@@ -23,6 +27,11 @@ export interface OidcOptions {
   runClaims?: Readonly<Record<string, readonly string[]>>
   fetchJson?: (url: string) => Promise<unknown>
   now?: () => number
+}
+== type Prover (src/proof.ts)
+export interface Prover {
+  readonly key: string
+  proof(method: string, path: string, body: string): Promise<string>
 }
 == type Relay (src/relay.ts)
 export interface Relay {

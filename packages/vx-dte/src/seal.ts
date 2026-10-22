@@ -229,6 +229,7 @@ export function sealOrchestrator(me: Participant, run: string, proof: Proof): Pa
                   reason: `its key is not the run’s: ${proof.mismatch}`,
                 })
                 .catch(() => undefined)
+              await me.remove(id).catch(() => undefined)
               continue
             }
             sessions.set(id, got.session)
@@ -255,6 +256,7 @@ export function sealOrchestrator(me: Participant, run: string, proof: Proof): Pa
       }
       return out
     },
+    remove: (agent) => me.remove(agent),
     leave: () => me.leave(),
   }
 }
@@ -325,6 +327,7 @@ export async function sealAgent(
       }
       return out
     },
+    remove: (agent) => me.remove(agent),
     leave: () => me.leave(),
   }
 }

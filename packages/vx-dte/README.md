@@ -21,6 +21,12 @@ take no inbound connection. Host your own: its
 [README](../vx-dte-relay/README.md) has a Deploy to Cloudflare button,
 which asks only for the repositories whose runs it carries.
 
+A run id is a channel. Agents join it before or after the orchestrator
+does, and the orchestrator claims it with a key made for that run; the
+relay keeps the public half and passes nothing to or from a side that
+cannot sign by it. The orchestrator checks each agent the moment it
+appears and removes any without the run's key from the channel.
+
 The relay reads nothing they say. Each agent and the orchestrator run a
 [Noise](https://noiseprotocol.org/noise.html) handshake through it, one
 session per agent, with keys made for that session only. With the run's

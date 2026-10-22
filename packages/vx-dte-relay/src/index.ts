@@ -8,3 +8,4 @@ export {
   type OidcOptions,
   type VerifiedToken,
 } from './oidc.js'
+export { createProver, PROOF_HEADER, type Prover } from './proof.js'

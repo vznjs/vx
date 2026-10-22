@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import path from 'node:path'
-import { createRelay, type Relay } from '../src/index.js'
+import { createProver, createRelay, type Prover, type Relay } from '../src/index.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
@@ -11,30 +11,56 @@ afterEach(() => {
   for (const r of relays.splice(0)) r.close()
 })
 
-function client(opts: Parameters<typeof createRelay>[0] = {}) {
+function client(opts: Parameters<typeof createRelay>[0] = {}, provers = new Map<string, Prover>()) {
   const relay = createRelay(opts)
   relays.push(relay)
+  // Each orchestrator's key, by its id: a request as one is signed by it.
+  const request = async (
+    run: string,
+    verb: string,
+    body?: Record<string, unknown>,
+    query = '',
+    token?: string,
+    headers: Record<string, string> = {},
+  ): Promise<[Request, Prover | undefined]> => {
+    const id = (body?.['id'] as string | undefined) ?? new URLSearchParams(query).get('id')
+    let prover = provers.get(id ?? '')
+    if (verb === 'join' && body?.['role'] === 'orchestrator' && !('key' in body)) {
+      prover = await createProver()
+      body = { ...body, key: prover.key }
+    }
+    const method = body === undefined ? 'GET' : 'POST'
+    const text = body === undefined ? '' : JSON.stringify(body)
+    const path = `/v1/runs/${run}/${verb}${query}`
+    const req = new Request(`http://relay${path}`, {
+      method,
+      headers: {
+        ...headers,
+        ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
+        ...(prover === undefined ? {} : { 'vx-proof': await prover.proof(method, path, text) }),
+      },
+      ...(body === undefined ? {} : { body: text }),
+    })
+    return [req, prover]
+  }
   const call = async (
     run: string,
     verb: string,
-    body?: unknown,
+    body?: Record<string, unknown>,
     query = '',
     token?: string,
   ): Promise<{ status: number; json: any }> => {
-    const res = await relay.fetch(
-      new Request(`http://relay/v1/runs/${run}/${verb}${query}`, {
-        method: body === undefined ? 'GET' : 'POST',
-        headers: token === undefined ? {} : { authorization: `Bearer ${token}` },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      }),
-    )
-    return { status: res.status, json: res.status === 204 ? null : await res.json() }
+    const [req, prover] = await request(run, verb, body, query, token)
+    const res = await relay.fetch(req)
+    const json: any = res.status === 204 ? null : await res.json()
+    if (verb === 'join' && res.ok && prover !== undefined) provers.set(json.id, prover)
+    return { status: res.status, json }
   }
   const join = async (run: string, role: string, info?: unknown): Promise<string> =>
     (await call(run, 'join', { role, info })).json.id
   const poll = async (run: string, id: string, wait = 0) =>
     (await call(run, 'poll', undefined, `?id=${id}&wait=${wait}`)).json.messages
-  return { relay, call, join, poll }
+  return { relay, provers, request, call, join, poll }
 }
 
 describe('the relay carries one run between its orchestrator and agents', () => {
@@ -149,11 +175,9 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     })
     const o = (await c.call(R, 'join', { role: 'orchestrator' }, '', 'job-1')).json.id
     const a = (await c.call(R, 'join', { role: 'agent' }, '', 'job-2')).json.id
-    const upgrade = (token: string) =>
+    const upgrade = async (token: string) =>
       c.relay.fetch(
-        new Request(`http://relay/v1/runs/${R}/socket?id=${o}`, {
-          headers: { authorization: `Bearer ${token}`, upgrade: 'websocket' },
-        }),
+        (await c.request(R, 'socket', undefined, `?id=${o}`, token, { upgrade: 'websocket' }))[0],
       )
     expect((await upgrade('job-2')).status).toBe(403)
     expect((await upgrade('job-1')).status).toBe(101)
@@ -163,6 +187,63 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     })
     expect((await c.call(R, 'poll', undefined, `?id=${a}&wait=0`, 'job-2')).json.messages).toEqual([
       { from: 'orchestrator', body: 'go' },
+    ])
+  })
+
+  it('keeps the key its orchestrator claimed the run with: no other acts as it', async () => {
+    const c = client()
+    expect((await c.call(R, 'join', { role: 'orchestrator', key: undefined })).json).toEqual({
+      error: 'an orchestrator joins with key: its P-256 public key',
+    })
+    expect((await c.call(R, 'join', { role: 'orchestrator', key: 'AAAA' })).status).toBe(400)
+    const o = await c.join(R, 'orchestrator')
+    const a = await c.join(R, 'agent')
+    const owner = c.provers.get(o)!
+    const other = await createProver()
+    const status = async (req: Request) => (await c.relay.fetch(req)).status
+    const poll = (proof?: string) =>
+      new Request(`http://relay/v1/runs/${R}/poll?id=${o}&wait=0`, {
+        headers: proof === undefined ? {} : { 'vx-proof': proof },
+      })
+    const path = `/v1/runs/${R}/poll?id=${o}&wait=0`
+    const replayed = await owner.proof('GET', path, '')
+    // A key not the run's signs nothing as its orchestrator, nor claims the run again.
+    expect([
+      await status(poll()),
+      await status(poll(await other.proof('GET', path, ''))),
+      await status(poll(await owner.proof('GET', `/v1/runs/${R}/poll?id=${a}&wait=0`, ''))),
+      await status(poll(replayed)),
+      await status(poll(replayed)),
+      (await c.call(R, 'send', { id: o, to: a, body: 1 })).status,
+      (await c.call(R, 'join', { role: 'orchestrator' })).status,
+    ]).toEqual([403, 403, 403, 200, 403, 204, 409])
+    const stale = poll(
+      (await owner.proof('GET', path, '')).replace(/^\d+/, String(Date.now() - 3 * 60_000)),
+    )
+    expect(await status(stale)).toBe(403)
+  })
+
+  it('lets the orchestrator remove an agent it did not admit, before or after it came', async () => {
+    const c = client()
+    const early = await c.join(R, 'agent')
+    const o = await c.join(R, 'orchestrator')
+    const late = await c.join(R, 'agent')
+    expect((await c.call(R, 'remove', { id: early, agent: late })).json).toEqual({
+      error: 'only the orchestrator removes',
+    })
+    expect((await c.call(R, 'remove', { id: o, agent: o })).status).toBe(404)
+    await c.call(R, 'send', { id: o, to: early, body: { type: 'refused' } })
+    for (const agent of [early, late]) {
+      expect((await c.call(R, 'remove', { id: o, agent })).status).toBe(204)
+      expect((await c.call(R, 'send', { id: agent, to: 'orchestrator', body: 1 })).status).toBe(404)
+    }
+    // What it was told before it went, once; then the relay knows it no more.
+    expect(await c.poll(R, early)).toEqual([{ from: 'orchestrator', body: { type: 'refused' } }])
+    expect((await c.call(R, 'poll', undefined, `?id=${early}&wait=0`)).status).toBe(404)
+    // Removed, not lost: the orchestrator hears only that each came.
+    expect(await c.poll(R, o)).toEqual([
+      { from: 'relay', body: { type: 'joined', id: early, info: null } },
+      { from: 'relay', body: { type: 'joined', id: late, info: null } },
     ])
   })
 
@@ -242,7 +323,11 @@ describe('a host that keeps runs and holds websockets', () => {
     const a = (await before.call(R, 'join', { role: 'agent', info: 7 }, '', 't')).json.id
     await before.call(R, 'send', { id: o, to: a, body: 1 }, '', 't')
     await before.call(R, 'send', { id: o, to: a, body: 2 }, '', 't')
-    const after = client({ store, timer: false, verify: async () => ({ iss: 'i', run: ['1'] }) })
+    // The orchestrator's key, kept: it still signs as the run's orchestrator.
+    const after = client(
+      { store, timer: false, verify: async () => ({ iss: 'i', run: ['1'] }) },
+      before.provers,
+    )
     const polled = async (id: string) =>
       (await after.call(R, 'poll', undefined, `?id=${id}&wait=0`, 't')).json.messages
     expect([await polled(a), await polled(o)]).toEqual([
@@ -337,7 +422,7 @@ it('the Bun entry serves the protocol, without auth on loopback only', async () 
     const url = /http:\/\/\S+/.exec(line)![0]
     const res = await fetch(`${url}/v1/runs/${R}/join`, {
       method: 'POST',
-      body: JSON.stringify({ role: 'orchestrator' }),
+      body: JSON.stringify({ role: 'agent' }),
     })
     expect([res.status, typeof ((await res.json()) as { id: unknown }).id]).toEqual([200, 'string'])
   } finally {

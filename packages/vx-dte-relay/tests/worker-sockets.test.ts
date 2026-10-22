@@ -4,6 +4,7 @@
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import path from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
+import { createProver, PROOF_HEADER } from '../src/index.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
@@ -58,23 +59,37 @@ beforeAll(async () => {
 }, 30_000)
 afterAll(() => mf?.dispose())
 
-const join = async (role: string, run = R): Promise<{ id: string; socket?: boolean }> =>
-  (await (
-    await fetch(new URL(`/v1/runs/${run}/join`, base), {
-      method: 'POST',
-      headers: auth,
-      body: JSON.stringify({ role }),
-    })
-  ).json()) as { id: string; socket?: boolean }
+/** The orchestrator's key: it signs each request as the orchestrator. */
+const prover = await createProver()
+const signed = async (
+  method: string,
+  path: string,
+  body = '',
+): Promise<Record<string, string>> => ({
+  ...auth,
+  [PROOF_HEADER]: await prover.proof(method, path, body),
+})
+
+const join = async (role: string, run = R): Promise<{ id: string; socket?: boolean }> => {
+  const path = `/v1/runs/${run}/join`
+  const body = JSON.stringify(role === 'orchestrator' ? { role, key: prover.key } : { role })
+  const res = await fetch(new URL(path, base), {
+    method: 'POST',
+    headers: role === 'orchestrator' ? await signed('POST', path, body) : auth,
+    body,
+  })
+  return (await res.json()) as { id: string; socket?: boolean }
+}
 
 /** A participant's socket, and the frames it got. */
-async function open(id: string): Promise<{ ws: WebSocket; next(): Promise<unknown> }> {
-  const ws = new WebSocket(
-    new URL(`/v1/runs/${R}/socket?id=${id}`, base).href.replace(/^http/, 'ws'),
-    {
-      headers: auth,
-    },
-  )
+async function open(
+  id: string,
+  orchestrator = false,
+): Promise<{ ws: WebSocket; next(): Promise<unknown> }> {
+  const path = `/v1/runs/${R}/socket?id=${id}`
+  const ws = new WebSocket(new URL(path, base).href.replace(/^http/, 'ws'), {
+    headers: orchestrator ? await signed('GET', path) : auth,
+  })
   const frames: unknown[] = []
   let wake: (() => void) | undefined
   ws.onmessage = (e) => {
@@ -96,7 +111,7 @@ it('offers sockets, pushes each message down one and takes sends from it', async
   const o = await join('orchestrator')
   const a = await join('agent')
   expect([o.socket, a.socket]).toEqual([true, true])
-  const os = await open(o.id)
+  const os = await open(o.id, true)
   const as = await open(a.id)
   expect(await os.next()).toEqual({
     messages: [{ from: 'relay', body: { type: 'joined', id: a.id, info: null } }],
@@ -112,10 +127,11 @@ it('offers sockets, pushes each message down one and takes sends from it', async
     { n: 1, status: 404, error: 'unknown to' },
     'pong',
   ])
+  const leave = JSON.stringify({ id: o.id })
   const left = await fetch(new URL(`/v1/runs/${R}/leave`, base), {
     method: 'POST',
-    headers: auth,
-    body: JSON.stringify({ id: o.id }),
+    headers: await signed('POST', `/v1/runs/${R}/leave`, leave),
+    body: leave,
   })
   expect([left.status, await as.next()]).toEqual([
     204,

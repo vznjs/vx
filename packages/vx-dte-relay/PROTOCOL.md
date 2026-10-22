@@ -15,13 +15,14 @@ Every request is HTTP with a JSON body or none, under
 UUID, so no one can guess it; any other answers `400`. Every request carries
 `Authorization: Bearer <CI OIDC token>`.
 
-| Request                      | Body                                                  | Answer                                     |
-| ---------------------------- | ----------------------------------------------------- | ------------------------------------------ |
-| `POST join`                  | `{ "role": "orchestrator" \| "agent", "info"?: any }` | `200 { "id", "heartbeatMs", "socket"? }`   |
-| `POST send`                  | `{ "id", "to", "body": any }`                         | `204`                                      |
-| `GET poll?id=<id>&wait=<ms>` | none                                                  | `200 { "messages": [{ "from", "body" }] }` |
-| `POST leave`                 | `{ "id" }`                                            | `204`                                      |
-| `GET socket?id=<id>`         | none, a websocket upgrade                             | `101`                                      |
+| Request                      | Body                                                          | Answer                                     |
+| ---------------------------- | ------------------------------------------------------------- | ------------------------------------------ |
+| `POST join`                  | `{ "role": "orchestrator" \| "agent", "info"?: any, "key"? }` | `200 { "id", "heartbeatMs", "socket"? }`   |
+| `POST send`                  | `{ "id", "to", "body": any }`                                 | `204`                                      |
+| `GET poll?id=<id>&wait=<ms>` | none                                                          | `200 { "messages": [{ "from", "body" }] }` |
+| `POST leave`                 | `{ "id" }`                                                    | `204`                                      |
+| `POST remove`                | `{ "id", "agent" }`                                           | `204`                                      |
+| `GET socket?id=<id>`         | none, a websocket upgrade                                     | `101`                                      |
 
 - `join` makes a participant and returns its `id`, a secret the relay
   picked: whoever holds it, with a token of this run, acts as it. A run
@@ -34,6 +35,31 @@ UUID, so no one can guess it; any other answers `400`. Every request carries
   the queue. With none queued it holds the request until one arrives or
   `wait` ms pass (at most 25 000), then answers with what it has.
 - `leave` removes the participant. The orchestrator leaving closes the run.
+- `remove`, by the orchestrator only (`403` otherwise), takes `agent` off
+  the run: one it did not admit (§ Bodies). The agent's next poll gets
+  what was queued for it, its `refused` with the reason; after that its
+  `id` answers `404`. The orchestrator is not told it was lost.
+
+## The orchestrator's key
+
+A run id is a channel: agents join it before or after the orchestrator
+does, and the orchestrator claims it. Its `join` names `key`, a P-256
+public key (raw, base64url), and the relay keeps it for the run; a join
+without one answers `400`. Every request as the orchestrator after that,
+its join included, carries `vx-proof: <ms>.<nonce>.<signature>`: an
+ECDSA SHA-256 signature by that key of
+
+```
+vx-dte-proof\0<method>\0<path and query>\0<ms>\0<nonce>\0<body>
+```
+
+`<ms>` the time it was made, within two minutes of the relay's clock,
+and `<nonce>` 16 to 64 base64url characters the relay takes once. Any
+other answers `403`. So only the side holding the private key, which
+never leaves it, acts as the orchestrator, and the relay passes no
+message to or from any other: a second orchestrator `join` answers
+`409`, and a closed run never takes one. A `socket` frame carries no
+proof: its upgrade did.
 
 ## Sockets
 
@@ -83,7 +109,7 @@ An agent's messages carry `"from": "<its id>"`, the orchestrator's
 ## Errors
 
 `400` a malformed request, `401` a missing or invalid token, `403` a token
-of a repository the relay does not serve, `403` a request as the orchestrator from another CI job (§ Tokens), `404` an unknown `id` or `to`, `409` a second
+of a repository the relay does not serve, `403` a request as the orchestrator from another CI job (§ Tokens) or not signed by its key (§ The orchestrator's key), `404` an unknown `id` or `to`, `409` a second
 orchestrator, `410` a closed run, `413` a body over 1 MiB, `426` a
 `socket` request that is not an upgrade, `429` a queue
 over 10 000 messages or 64 MiB. An error answers `{ "error": "<reason>" }`.
@@ -135,13 +161,15 @@ through the relay, prologue `vx-dte\0<run>`, the agent the initiator.
   orchestrator's `hello` one for `"hello\0<run>\0<handshake hash>"`. Each
   side checks the other's as a token of the same `repository_id`.
 
-| Who          | `info` / `body`                                       |
-| ------------ | ----------------------------------------------------- |
-| agent `join` | `info: { "noise": <message 1>, "token"? }`            |
-| orchestrator | `{ "type": "hello", "noise": <message 2>, "token"? }` |
-| orchestrator | `{ "type": "refused", "reason" }`, plain              |
-| either, then | `{ "seal": ["<n>.<ciphertext>", …] }`                 |
+| Who          | `info` / `body`                                         |
+| ------------ | ------------------------------------------------------- |
+| agent `join` | `info: { "noise": <message 1>, "token"? }`              |
+| orchestrator | `{ "type": "hello", "noise": <message 2>, "token"? }`   |
+| orchestrator | `{ "type": "refused", "reason" }`, plain, then `remove` |
+| either, then | `{ "seal": ["<n>.<ciphertext>", …] }`                   |
 
+The orchestrator checks each agent the moment the relay says it joined,
+before or after its own join, and `remove`s one whose handshake fails.
 Message 1's payload is the agent's info (JSON), encrypted under the psk.
 After the handshake every body is Noise transport messages, base64, each
 at most 65535 bytes and naming its nonce `n` (Noise §11.4, since a relay
