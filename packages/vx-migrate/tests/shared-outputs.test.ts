@@ -105,18 +105,20 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
   it("takes a sibling's tree back from a dir-at-any-depth keeper, keeping both cached", () => {
     // solid: build outputs `**/dist`, which meets types' `types/**` and
     // coverage's `coverage/**` only at a `dist` nested in their trees; Turbo
-    // caches all three. The keeper gives those trees back with `!`.
+    // caches all three. Each kept task gives the other's tree back with `!`.
+    // turbo() adds `**/types` beside `**/types/**`, which meets build's
+    // `dist/**` only at a `types` nested in it.
     const tasks = resolveSharedOutputs([
       task('build', ['dist/**', '**/dist/**', '**/dist'], ['^build']),
-      task('types', ['types/**', '**/types/**']),
+      task('types', ['types/**', '**/types/**', '**/types'], ['^types']),
       task('coverage', ['coverage/**']),
     ])
     const outputs = (t: GeneratedTask) =>
       (t.task!['cache'] as { outputs: { files: string[] } } | undefined)?.outputs.files
     expect(tasks.map((t) => [t.name, outputs(t), t.todos.length])).toEqual([
-      ['build', ['dist/**', '**/dist/**', '**/dist', '!types/**', '!coverage/**'], 0],
-      ['types', ['types/**', '**/types/**'], 0],
-      ['coverage', ['coverage/**'], 0],
+      ['build', ['dist/**', '**/dist/**', '**/dist', '!types/**', '!**/types', '!coverage/**'], 0],
+      ['types', ['types/**', '**/types/**', '**/types', '!coverage/**'], 0],
+      ['coverage', ['coverage/**', '!**/types'], 0],
     ])
     // CONTROL: a sibling tree with that name in its path is the keeper's
     // product, and a keeper rooted at a literal directory is no dir at any
