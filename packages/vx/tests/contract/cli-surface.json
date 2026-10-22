@@ -227,7 +227,6 @@
     ],
     "run --continue": [
       "always",
-      "dependencies-successful",
       "deps-ok",
       "never"
     ],
@@ -240,10 +239,6 @@
     ],
     "run --filter": [
       "*"
-    ],
-    "run --force": [
-      "false",
-      "true"
     ],
     "run --output-logs": [
       "errors-only",
@@ -328,7 +323,6 @@
     ],
     "watch --continue": [
       "always",
-      "dependencies-successful",
       "deps-ok",
       "never"
     ],
@@ -337,10 +331,6 @@
     ],
     "watch --filter": [
       "*"
-    ],
-    "watch --force": [
-      "false",
-      "true"
     ],
     "watch --output-logs": [
       "errors-only",

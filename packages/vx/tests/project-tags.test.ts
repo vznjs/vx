@@ -71,9 +71,8 @@ describe('--filter tag:<pattern>', () => {
       expect(
         await planned(root, ['build', '--filter', '...^tag:type:lib', '--exclude-dependencies']),
       ).toEqual(['app#build', 'ui#build'])
-      // Nx's spelling reaches the same selector.
       expect(
-        await planned(root, ['build', '--projects', 'tag:type:app', '--exclude-dependencies']),
+        await planned(root, ['build', '--filter', 'tag:type:app', '--exclude-dependencies']),
       ).toEqual(['app#build'])
     },
     PARITY_TIMEOUT,

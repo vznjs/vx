@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cli: drop Turbo, Nx and Vite Task flags and verbs
+
+Turbo, Nx and Vite Task flag aliases on vx run and vx watch → removed; vx run-many, affected, graph, query, ls, reset, daemon, login, logout, link and unlink hints → removed
+
 ## vx-dte-relay: take only sends, remove and leave frames
 
 a socket frame of `{ n, to, body }` is answered `400`; send it as `{ n, sends: [{ to, body }] }`.
