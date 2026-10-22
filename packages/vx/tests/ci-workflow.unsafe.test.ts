@@ -23,7 +23,6 @@ interface Job {
   needs?: string | string[]
   'runs-on'?: string
   permissions?: Record<string, string>
-  env?: Record<string, string>
   steps?: Step[]
 }
 interface Workflow {
@@ -118,7 +117,10 @@ describe('vx-agent.yml', () => {
   // An agent saving to ~/.vx while a shard runs failed the shard's home
   // guard (2026-10-22): the agent keeps its store out of home.
   it("keeps the agent's store out of home", () => {
-    expect(agent.env?.['VX_CACHE_DIR']).toBe('${{ runner.temp }}/vx-cache')
+    // `runner` is a step's context, not a job's: a job env naming it is a
+    // workflow GitHub refuses to dispatch.
+    const step = agent.steps?.find((s) => s.run?.includes('dte agent') === true)
+    expect(step?.env?.['VX_CACHE_DIR']).toBe('${{ runner.temp }}/vx-cache')
   })
 
   it('mounts the small disk the Linux run names, on Linux', () => {
