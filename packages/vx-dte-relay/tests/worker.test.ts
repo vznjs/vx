@@ -106,6 +106,26 @@ it('gives the same run id of two repositories two objects', async () => {
   expect(ns.made).toEqual([await run('1'), await run('2')])
 })
 
+it('names why the host refused a run', async () => {
+  const refused: Env = {
+    RELAY: {
+      idFromName: (name) => name,
+      get: () => ({
+        fetch: () =>
+          Promise.reject(new Error('Exceeded allowed duration in Durable Objects free tier.')),
+      }),
+    },
+  }
+  const res = await join(refused, A)
+  expect([res.status, await res.json()]).toEqual([
+    503,
+    {
+      error:
+        "the relay's host refused the run: Exceeded allowed duration in Durable Objects free tier.",
+    },
+  ])
+})
+
 it('will not start without ALLOW, or with an entry it cannot read', () => {
   const none: Env = { RELAY: namespace(() => none), ALLOW: ' ' }
   expect(() => new RelayRun(state(), none)).toThrow('vx-dte-relay: set ALLOW')
