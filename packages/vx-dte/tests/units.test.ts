@@ -6,7 +6,7 @@ import { createRelay } from '@vzn/vx-dte-relay'
 import { localEnv, runAgent, swapRoots } from '../src/agent.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
-import { bytes } from '../src/plugin.js'
+import { bytes, needOf } from '../src/plugin.js'
 import {
   type CacheFacts,
   type ExecuteRequest,
@@ -664,6 +664,15 @@ it('sends a task to the agent that holds its dependency’s outputs', async () =
   } finally {
     await h.stop()
   }
+})
+
+// M, 2026-10-22: agents at 30-50% CPU; "close to 100%". A task books the
+// cores it keeps busy on average, so a 4-core agent takes five at 0.7.
+it('books the cores a task keeps busy on average, unrounded, a quarter at least', () => {
+  expect(
+    [0.7, 2.4, 0.01].map((c) => needOf({ p50DurationMs: 1, maxCpuParallelism: c }).cores),
+  ).toEqual([0.7, 2.4, 0.25])
+  expect(needOf(undefined).cores).toBe(Infinity)
 })
 
 it('reads memory as bytes or with a unit', () => {
