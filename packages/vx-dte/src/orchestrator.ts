@@ -35,7 +35,7 @@ import {
 import { Usage, type UsageStats } from './usage.js'
 import { RelayError, type Participant } from './wire.js'
 
-/** What a task is expected to hold while it runs, from its history; `Infinity` (unmeasured): a whole agent. */
+/** What a task is expected to hold while it runs, from its history; `Infinity`: a whole agent. */
 export interface Need {
   readonly cores: number
   readonly memory: number
@@ -46,7 +46,7 @@ export interface Need {
 interface Job {
   readonly req: ExecuteRequest
   readonly need: Need
-  /** The cores and memory it holds on its agent: its need, or the whole agent for an unmeasured one. */
+  /** The cores and memory it holds on its agent: its need, or the whole agent for an `Infinity` one. */
   held?: Need
   readonly resolve: (r: ExecuteResult) => void
   readonly reject: (err: unknown) => void

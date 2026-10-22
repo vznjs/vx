@@ -267,7 +267,7 @@ CI/CD variable both `vx-plan` and `vx` see) to spawn live: the plan then
 starts with the run only the agents its start keeps busy, and writes the
 others as `when: manual` jobs. It reads that from the run's own graph
 (`vx run <its args> --dry=json`) and history, so give `vx dte plan` the
-run's selection; a task with no history takes a whole agent. The run plays one when its work needs it and cancels
+run's selection; a task with no history books one core. The run plays one when its work needs it and cancels
 the ones it never played when it ends.
 
 ## What runs where
