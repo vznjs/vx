@@ -94,8 +94,10 @@ dial to 30 s). The relay closes the socket of a participant that left or was
 lost, so its next request learns why.
 
 Every request naming an `id` counts as a heartbeat. A participant silent
-for three `heartbeatMs` is lost, as if it had left. Polling with a `wait`
-below `heartbeatMs`, or a socket's `ping`, keeps a participant alive.
+for three `heartbeatMs` is lost, as if it had left; one with an open
+socket, for twelve, so a host that bills its wake-ups sleeps between
+them. Polling with a `wait` below `heartbeatMs`, or a socket's `ping`,
+keeps a participant alive.
 
 ## Leases (planned, above the relay)
 
