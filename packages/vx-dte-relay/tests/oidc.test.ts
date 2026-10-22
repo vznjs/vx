@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test'
-import { createVerifier, repositoryClaimOf, runClaimsOf, TokenError } from '../src/index.js'
+import {
+  createVerifier,
+  parseAllow,
+  repositoryClaimOf,
+  runClaimsOf,
+  TokenError,
+} from '../src/index.js'
 
 const ISS = 'https://gitlab.example'
 const AUD = 'https://relay.example'
@@ -36,9 +42,11 @@ const good = {
 
 function verifier(fetched: string[] = []) {
   return createVerifier({
-    issuers: [ISS],
+    allow: [
+      { issuer: ISS, repository: 'Group/App' },
+      { issuer: ISS, repository: 'group/other' },
+    ],
     audience: AUD,
-    repositories: ['Group/App', 'group/other'],
     now: () => now,
     fetchJson: async (url) => {
       fetched.push(url)
@@ -76,7 +84,7 @@ describe('a CI OIDC token', () => {
   it('names a GitHub token’s own job, not the workflow run its other jobs share', async () => {
     const GH = 'https://token.actions.githubusercontent.com'
     const verify = createVerifier({
-      issuers: [GH],
+      allow: [{ issuer: GH }],
       audience: AUD,
       now: () => now,
       fetchJson: async (url) =>
@@ -102,19 +110,20 @@ describe('a CI OIDC token', () => {
     expect(jobs).toEqual(['31', '32', '8\0' + '1'])
   })
 
-  it('is refused unless its job is of a workflow the relay names, when it names any', async () => {
+  it('is refused unless its job is of a workflow the relay names for its repository', async () => {
     const GH = 'https://token.actions.githubusercontent.com'
     const verify = createVerifier({
-      issuers: [GH, ISS],
+      allow: parseAllow(
+        `${GH}:Org/App:ci.yml ${GH}:org/other:deploy.yml ${ISS}:group/app:.gitlab-ci.yml`,
+      ),
       audience: AUD,
-      workflows: ['Org/App/.github/workflows/ci.yml', 'gitlab.example/group/app//.gitlab-ci.yml'],
       now: () => now,
       fetchJson: async (url) =>
         url.endsWith('/.well-known/openid-configuration')
           ? { jwks_uri: url.replace('/.well-known/openid-configuration', '/jwks') }
           : { keys: [{ ...jwk, kid: 'k1' }] },
     })
-    const gh = { iss: GH, aud: AUD, exp: now + 300, repository_id: '5' }
+    const gh = { iss: GH, aud: AUD, exp: now + 300, repository_id: '5', repository: 'org/app' }
     const asked = async (claims: Record<string, unknown>) =>
       verify(await sign(claims)).then(
         () => 'ok',
@@ -127,7 +136,10 @@ describe('a CI OIDC token', () => {
         job_workflow_ref: 'org/app/.github/workflows/ci.yml@refs/pull/7/merge',
       }),
       await asked({ ...gh, job_workflow_ref: 'org/app/.github/workflows/evil.yml@refs/heads/x' }),
+      // Another repository's workflow is not this one's.
+      await asked({ ...gh, job_workflow_ref: 'org/app/.github/workflows/deploy.yml@refs/heads/x' }),
       await asked(gh),
+      await asked({ ...gh, repository: 'org/third' }),
       await asked({
         ...good,
         ci_config_ref_uri: 'gitlab.example/group/app//.gitlab-ci.yml@refs/heads/main',
@@ -136,9 +148,30 @@ describe('a CI OIDC token', () => {
       'ok',
       'ok',
       'workflow org/app/.github/workflows/evil.yml is not one this relay serves',
+      'workflow org/app/.github/workflows/deploy.yml is not one this relay serves',
       'no job_workflow_ref claim',
+      'repository org/third is not one this relay serves',
       'ok',
     ])
+  })
+
+  it('reads ALLOW’s entries from the right, since an issuer holds colons', () => {
+    expect(
+      parseAllow(
+        ' https://gitlab.example:8443:group/sub/app:ci/main.yml,\nhttps://x.dev:o/r:a.yml ',
+      ),
+    ).toEqual([
+      {
+        issuer: 'https://gitlab.example:8443',
+        repository: 'group/sub/app',
+        workflow: 'ci/main.yml',
+      },
+      { issuer: 'https://x.dev', repository: 'o/r', workflow: 'a.yml' },
+    ])
+    expect(() => parseAllow('vznjs/vx:ci.yml')).toThrow(
+      'vznjs/vx:ci.yml is not issuer:owner/repo:workflow',
+    )
+    expect(() => parseAllow('https://x.dev:vx:ci.yml')).toThrow('is not issuer:owner/repo:workflow')
   })
 
   it('is refused for what is wrong with it', async () => {

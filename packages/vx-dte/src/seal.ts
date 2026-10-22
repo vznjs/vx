@@ -79,7 +79,7 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
     async check(token, parts) {
       const { createVerifier } = await import('@vzn/vx-dte-relay')
       const verify = createVerifier({
-        issuers: [GITHUB],
+        allow: [{ issuer: GITHUB }],
         audience: aud(parts),
         runClaims: { [GITHUB]: ['repository_id'] },
         fetchJson: once,

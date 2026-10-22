@@ -2,25 +2,29 @@
 // published keys. The run claims bind every participant to the repository
 // that started the run (PROTOCOL.md § Tokens).
 
+/**
+ * Who may take part: jobs of `workflow` in `repository`, by tokens of
+ * `issuer`. Unset parts admit any (`@vzn/vx-dte` checks a repository by its
+ * run claim); the relay's own entry points take all three (`parseAllow`).
+ */
+export interface Allowed {
+  /** The full issuer URL, e.g. `https://token.actions.githubusercontent.com`. */
+  issuer: string
+  /** `owner/repo` (a GitLab project's full path), matched without case against `repositoryClaimOf(iss)`. */
+  repository?: string
+  /**
+   * The workflow file its jobs are defined in, any ref, matched without case
+   * against `workflowClaimOf(iss)`: on GitHub a file of `.github/workflows/`
+   * (`ci.yml`), on GitLab the CI config's path (`.gitlab-ci.yml`).
+   */
+  workflow?: string
+}
+
 export interface OidcOptions {
-  /** Issuers whose tokens the relay trusts, e.g. `https://gitlab.com`. */
-  issuers: readonly string[]
+  /** Whose tokens the relay takes; any other is refused. */
+  allow: readonly Allowed[]
   /** The `aud` a token must name. */
   audience: string
-  /**
-   * The repositories whose runs the relay carries, as `owner/repo` (a GitLab
-   * project's full path): a token of any other is refused. Matched without
-   * case against `repositoryClaimOf(iss)`. Unset, no name is checked: the
-   * relay's own entry points require it.
-   */
-  repositories?: readonly string[]
-  /**
-   * The workflows whose jobs may take part, as `owner/repo/.github/workflows/ci.yml`
-   * (GitLab: `gitlab.com/group/project//.gitlab-ci.yml`), any ref. Matched
-   * without case against `workflowClaimOf(iss)` up to its `@`. Unset, any
-   * workflow of a named repository.
-   */
-  workflows?: readonly string[]
   /** Run claims by issuer; an issuer not named here uses `runClaimsOf`. */
   runClaims?: Readonly<Record<string, readonly string[]>>
   /** Reads a URL as JSON; tests serve keys without a network. */
@@ -83,6 +87,35 @@ export function workflowClaimOf(iss: string): string {
   return iss === GITHUB ? 'job_workflow_ref' : 'ci_config_ref_uri'
 }
 
+/**
+ * `ALLOW`'s entries, space or comma separated, each
+ * `issuer:owner/repo:workflow`: read from the right, since the issuer
+ * holds `:`s of its own.
+ */
+export function parseAllow(list: string): Allowed[] {
+  return list
+    .split(/[\s,]+/)
+    .filter((e) => e !== '')
+    .map((e) => {
+      const w = e.lastIndexOf(':')
+      const r = e.lastIndexOf(':', w - 1)
+      const [issuer, repository, workflow] = [e.slice(0, r), e.slice(r + 1, w), e.slice(w + 1)]
+      if (r < 0 || !issuer.startsWith('https://') || !repository.includes('/') || workflow === '') {
+        throw new Error(`${e} is not issuer:owner/repo:workflow`)
+      }
+      return { issuer, repository, workflow }
+    })
+}
+
+/** What `workflowClaimOf(iss)` says, up to its `@`, for a job of `workflow` in `repository`. */
+function workflowPath(iss: string, repository: string, workflow: string): string {
+  return iss === GITHUB
+    ? `${repository}/.github/workflows/${workflow}`
+    : `${iss.replace(/^https:\/\//, '').replace(/\/$/, '')}/${repository}//${workflow}`
+}
+
+const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase()
+
 /** Clock skew a token's `exp` / `nbf` may be off by. */
 const LEEWAY_S = 60
 
@@ -92,14 +125,6 @@ const REFETCH_MS = 60_000
 export function createVerifier(opts: OidcOptions): (token: string) => Promise<VerifiedToken> {
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
-  const repositories =
-    opts.repositories === undefined
-      ? undefined
-      : new Set(opts.repositories.map((r) => r.toLowerCase()))
-  const workflows =
-    opts.workflows === undefined || opts.workflows.length === 0
-      ? undefined
-      : new Set(opts.workflows.map((w) => w.toLowerCase()))
   const keys = new Map<string, { at: number; byKid: Promise<Map<string, CryptoKey>> }>()
 
   const load = (iss: string): { at: number; byKid: Promise<Map<string, CryptoKey>> } => {
@@ -133,7 +158,8 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
     }
     if (header.alg !== 'RS256') throw new TokenError('alg is not RS256', 401)
     const iss = claims['iss']
-    if (typeof iss !== 'string' || !opts.issuers.includes(iss)) {
+    const ofIssuer = opts.allow.filter((a) => a.issuer === iss)
+    if (typeof iss !== 'string' || ofIssuer.length === 0) {
       throw new TokenError('untrusted issuer', 401)
     }
     const key = await keyOf(iss, typeof header.kid === 'string' ? header.kid : '').catch(() => {
@@ -158,20 +184,25 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
     if (typeof claims['nbf'] === 'number' && claims['nbf'] - LEEWAY_S > t) {
       throw new TokenError('not yet valid', 401)
     }
-    if (repositories !== undefined) {
+    let ofRepo = ofIssuer
+    if (ofIssuer.some((a) => a.repository !== undefined)) {
       const claim = repositoryClaimOf(iss)
       const repo = claims[claim]
       if (typeof repo !== 'string') throw new TokenError(`no ${claim} claim`, 403)
-      if (!repositories.has(repo.toLowerCase())) {
+      ofRepo = ofIssuer.filter((a) => a.repository === undefined || same(a.repository, repo))
+      if (ofRepo.length === 0) {
         throw new TokenError(`repository ${repo} is not one this relay serves`, 403)
       }
     }
-    if (workflows !== undefined) {
+    if (ofRepo.every((a) => a.workflow !== undefined)) {
       const claim = workflowClaimOf(iss)
       const ref = claims[claim]
       if (typeof ref !== 'string') throw new TokenError(`no ${claim} claim`, 403)
       const workflow = ref.replace(/@.*$/, '')
-      if (!workflows.has(workflow.toLowerCase())) {
+      const repo = String(claims[repositoryClaimOf(iss)])
+      if (
+        !ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository ?? repo, a.workflow!)))
+      ) {
         throw new TokenError(`workflow ${workflow} is not one this relay serves`, 403)
       }
     }

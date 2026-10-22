@@ -1,5 +1,5 @@
 // The Workers entry: every request of a run reaches that run's one
-// Durable Object, and an object without ISSUERS and REPOSITORIES refuses to start.
+// Durable Object, and an object without ALLOW refuses to start.
 
 import { afterEach, expect, it } from 'bun:test'
 import worker, {
@@ -81,7 +81,7 @@ const join = (env: Env, run: string, token?: string, origin = 'https://relay.exa
 it('routes each run to its own object, which checks tokens', async () => {
   let env: Env
   const ns = namespace(() => env)
-  env = { RELAY: ns, ISSUERS: 'https://gitlab.com', REPOSITORIES: 'o/r' }
+  env = { RELAY: ns, ALLOW: 'https://gitlab.com:o/r:.gitlab-ci.yml' }
   expect((await join(env, A)).status).toBe(401)
   expect((await join(env, A)).status).toBe(401)
   expect((await join(env, B)).status).toBe(401)
@@ -93,7 +93,7 @@ it('routes each run to its own object, which checks tokens', async () => {
 it('gives the same run id of two repositories two objects', async () => {
   let env: Env
   const ns = namespace(() => env)
-  env = { RELAY: ns, ISSUERS: 'https://gitlab.com', REPOSITORIES: 'o/r' }
+  env = { RELAY: ns, ALLOW: 'https://gitlab.com:o/r:.gitlab-ci.yml' }
   const unsigned = (project: number) =>
     `${b64({ alg: 'RS256' })}.${b64({ iss: 'https://gitlab.com', project_id: project })}.x`
   await join(env, R, unsigned(1))
@@ -103,11 +103,13 @@ it('gives the same run id of two repositories two objects', async () => {
   expect(ns.made).toEqual([await run('1'), await run('2')])
 })
 
-it('will not start without ISSUERS and REPOSITORIES', () => {
-  const none: Env = { RELAY: namespace(() => none), ISSUERS: ' ', REPOSITORIES: 'o/r' }
-  expect(() => new RelayRun(state(), none)).toThrow('vx-dte-relay: set ISSUERS and REPOSITORIES')
-  const open: Env = { RELAY: namespace(() => open), ISSUERS: 'https://gitlab.com' }
-  expect(() => new RelayRun(state(), open)).toThrow('vx-dte-relay: set ISSUERS and REPOSITORIES')
+it('will not start without ALLOW, or with an entry it cannot read', () => {
+  const none: Env = { RELAY: namespace(() => none), ALLOW: ' ' }
+  expect(() => new RelayRun(state(), none)).toThrow('vx-dte-relay: set ALLOW')
+  const bad: Env = { RELAY: namespace(() => bad), ALLOW: 'o/r' }
+  expect(() => new RelayRun(state(), bad)).toThrow(
+    'vx-dte-relay: ALLOW: o/r is not issuer:owner/repo:workflow',
+  )
 })
 
 const ISS = 'https://issuer.example'
@@ -144,7 +146,7 @@ it('takes its own URL as the audience when AUDIENCE is not set', async () => {
     return new Response(null, { status: 404 })
   }) as typeof fetch
   let env: Env
-  env = { RELAY: namespace(() => env), ISSUERS: ISS, REPOSITORIES: 'o/r' }
+  env = { RELAY: namespace(() => env), ALLOW: `${ISS}:o/r:.gitlab-ci.yml` }
   const token = (aud: string) =>
     sign({
       iss: ISS,
@@ -152,6 +154,7 @@ it('takes its own URL as the audience when AUDIENCE is not set', async () => {
       exp: Date.now() / 1000 + 300,
       project_id: 1,
       project_path: 'o/r',
+      ci_config_ref_uri: 'issuer.example/o/r//.gitlab-ci.yml@refs/heads/main',
     })
   const mine = await join(env, C, await token('https://relay.example.com'))
   const other = await join(env, D, await token('https://other.example.com'))

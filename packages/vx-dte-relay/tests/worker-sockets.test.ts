@@ -30,6 +30,7 @@ const head = `${b64({ alg: 'RS256', kid: 'k1' })}.${b64({
   exp: Date.now() / 1000 + 600,
   project_id: 1,
   project_path: 'o/r',
+  ci_config_ref_uri: 'issuer.example/o/r//.gitlab-ci.yml@refs/heads/main',
 })}`
 const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', pair.privateKey, Buffer.from(head))
 const auth = { authorization: `Bearer ${head}.${Buffer.from(sig).toString('base64url')}` }
@@ -48,7 +49,7 @@ beforeAll(async () => {
       script: await built.outputs[0]!.text(),
       compatibilityDate: '2026-10-01',
       durableObjects: { RELAY: { className: 'RelayRun', useSQLite: true } },
-      bindings: { ISSUERS: ISS, REPOSITORIES: 'o/r', AUDIENCE: 'vx-dte-relay' },
+      bindings: { ALLOW: `${ISS}:o/r:.gitlab-ci.yml`, AUDIENCE: 'vx-dte-relay' },
       outboundService: (req: Request) =>
         new URL(req.url).pathname === '/jwks'
           ? Response.json({ keys: [{ ...jwk, kid: 'k1' }] })

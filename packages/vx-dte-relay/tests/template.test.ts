@@ -12,7 +12,7 @@ it('installs alone with npm and deploys with wrangler by wrangler.jsonc', async 
     await Bun.file(path.join(import.meta.dir, '..', 'wrangler.jsonc')).text(),
   ) as {
     main: string
-    vars: { ISSUERS: string; REPOSITORIES: string }
+    vars: { ALLOW: string }
     durable_objects: unknown
     migrations: unknown
   }
@@ -20,10 +20,8 @@ it('installs alone with npm and deploys with wrangler by wrangler.jsonc', async 
     workspace: Object.entries(deps).filter(([, spec]) => String(spec).startsWith('workspace:')),
     deploy: pkg.scripts.deploy,
     main: await Bun.file(path.join(import.meta.dir, '..', config.main)).exists(),
-    // A relay with none refuses to start.
-    issuers: config.vars.ISSUERS,
     // A plain var the button asks for, not a secret it masks.
-    repositories: config.vars.REPOSITORIES,
+    allow: config.vars.ALLOW,
     envExample: await Bun.file(path.join(import.meta.dir, '..', '.env.example')).exists(),
     objects: config.durable_objects,
     migrations: config.migrations,
@@ -31,8 +29,7 @@ it('installs alone with npm and deploys with wrangler by wrangler.jsonc', async 
     workspace: [],
     deploy: 'wrangler deploy',
     main: true,
-    issuers: 'https://token.actions.githubusercontent.com',
-    repositories: '',
+    allow: '',
     envExample: false,
     objects: { bindings: [{ name: 'RELAY', class_name: 'RelayRun' }] },
     migrations: [{ tag: 'v1', new_sqlite_classes: ['RelayRun'] }],
