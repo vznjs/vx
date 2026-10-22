@@ -100,14 +100,15 @@ describe('the file between machines', () => {
       )
       await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
       Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
-      // Chain b is slow, a trivial; insertion order starts a.
+      // Chain b is slow, a trivial; insertion order starts a. b#build's
+      // 0.4 s outlasts a loaded host's spawn of `true` (115 ms seen).
       await pkg(
         'a',
         "export default { tasks: { build: { exec: { command: 'true' } }, test: { dependsOn: ['build'], exec: { command: 'true' } } } }\n",
       )
       await pkg(
         'b',
-        "export default { tasks: { build: { exec: { command: 'sleep 0.15' } }, test: { dependsOn: ['build'], exec: { command: 'sleep 0.15' } } } }\n",
+        "export default { tasks: { build: { exec: { command: 'sleep 0.4' } }, test: { dependsOn: ['build'], exec: { command: 'sleep 0.15' } } } }\n",
       )
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
