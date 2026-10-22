@@ -20,6 +20,11 @@
       ],
       "exec": {
         "command": "bun perf-guard.ts",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        },
         "sandbox": {
           "allow": {
             "read": [
@@ -51,6 +56,11 @@
       ],
       "exec": {
         "command": "bun pr-bench.ts",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        },
         "sandbox": {
           "allow": {
             "read": [
@@ -80,6 +90,11 @@
       ],
       "exec": {
         "command": "bun pr-bench.ts --update",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        },
         "sandbox": {
           "allow": {
             "read": [
@@ -99,6 +114,11 @@
       ],
       "exec": {
         "command": "bun perf-guard.ts --update",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        },
         "sandbox": {
           "allow": {
             "read": [
@@ -121,6 +141,11 @@
       ],
       "exec": {
         "command": "bun update-site.ts --check",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        },
         "sandbox": {
           "allow": {
             "read": [

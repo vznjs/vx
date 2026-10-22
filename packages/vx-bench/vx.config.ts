@@ -9,6 +9,9 @@ const PLAYGROUND = [
   'packages/vx-docs/tests/helpers/rng.ts',
 ]
 
+// Bun's transpiler cache writes under HOME, outside the sandbox's grants.
+const NO_TRANSPILER_CACHE = { define: { BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0' } }
+
 export default defineProject({
   tasks: {
     install: {
@@ -27,6 +30,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command: 'bun perf-guard.ts',
+        env: NO_TRANSPILER_CACHE,
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
       inputs: { files: ['perf-guard.ts', 'perf-baseline.json', 'package.json'] },
@@ -44,6 +48,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command: 'bun pr-bench.ts',
+        env: NO_TRANSPILER_CACHE,
         sandbox: { allow: { read: ['**/*'] } },
       },
       inputs: {
@@ -59,6 +64,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command: 'bun pr-bench.ts --update',
+        env: NO_TRANSPILER_CACHE,
         sandbox: { allow: { read: ['**/*'], write: ['pr-bench-baseline.json'] } },
       },
     },
@@ -69,6 +75,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command: 'bun perf-guard.ts --update',
+        env: NO_TRANSPILER_CACHE,
         sandbox: {
           allow: { read: ['**/*'], write: ['perf-baseline.json'], systemInfo: ['vfs.disk-space'] },
         },
@@ -86,6 +93,7 @@ export default defineProject({
       dependsOn: ['install'],
       exec: {
         command: 'bun update-site.ts --check',
+        env: NO_TRANSPILER_CACHE,
         sandbox: {
           allow: {
             read: [
@@ -168,8 +176,7 @@ export default defineProject({
       description: 'bun test',
       exec: {
         command: 'bun test --only-failures',
-        // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
-        env: { define: { BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0', VX_CACHE_DIR: '.vx/cache' } },
+        env: { define: { ...NO_TRANSPILER_CACHE.define, VX_CACHE_DIR: '.vx/cache' } },
         sandbox: {
           allow: {
             read: ['**/*'],
