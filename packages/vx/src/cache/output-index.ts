@@ -23,6 +23,7 @@ import { lstat, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import {
   OUTPUT_DIRS_CAP,
+  OUTPUT_DIRS_OVER_CAP,
   OUTPUT_DIRS_RACY_MS,
   type OutputDirRow,
   isIndexFull,
@@ -262,8 +263,8 @@ export class OutputIndex {
    * process may have written into them: `holds` is asked with the files
    * the walk saw, and a tree it refuses records nothing (item 1087).
    * Symlinked directories are not descended (the output walk refuses them
-   * too). Over `OUTPUT_DIRS_CAP` directories, or on any error, the rows
-   * are cleared and the next hit keeps the walk.
+   * too). Over `OUTPUT_DIRS_CAP` directories the one row left says so; on
+   * any error the rows are cleared. Either way the next hit keeps the walk.
    */
   async recordOutputDirs(
     hash: string,
@@ -273,6 +274,7 @@ export class OutputIndex {
   ): Promise<void> {
     const rows: Array<[string, number]> = []
     const files: string[] = []
+    let overCap = false
     const walk = async (rel: string, isPrefix = false): Promise<boolean> => {
       const abs = path.join(projectDir, rel)
       let st
@@ -299,7 +301,10 @@ export class OutputIndex {
         return true
       }
       rows.push([rel, st.mtimeMs])
-      if (rows.length > OUTPUT_DIRS_CAP) return false
+      if (rows.length > OUTPUT_DIRS_CAP) {
+        overCap = true
+        return false
+      }
       let entries
       try {
         entries = await readdir(abs, { withFileTypes: true })
@@ -307,10 +312,12 @@ export class OutputIndex {
         return false
       }
       for (const e of entries) {
+        // The project itself is the prefix `''` of a root-anchored glob.
+        const child = rel === '' ? e.name : `${rel}/${e.name}`
         if (e.isDirectory() && !e.isSymbolicLink()) {
-          if (!(await walk(`${rel}/${e.name}`))) return false
+          if (!(await walk(child))) return false
         } else {
-          files.push(`${rel}/${e.name}`)
+          files.push(child)
         }
       }
       return true
@@ -321,6 +328,10 @@ export class OutputIndex {
         ok = false
         break
       }
+    }
+    if (overCap) {
+      this.pendingDirs.set(hash, [[prefixes[0]!, OUTPUT_DIRS_OVER_CAP]])
+      return
     }
     // All or nothing: a racy directory dropped alone would leave its
     // parent trusted while an addition inside it bumps only the dropped one.
