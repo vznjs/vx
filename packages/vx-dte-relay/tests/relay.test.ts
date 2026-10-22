@@ -485,6 +485,8 @@ describe('a host that keeps runs and holds websockets', () => {
   it('pushes messages down a socket and takes sends from it', async () => {
     const c = client({ upgrade: () => new Response(null, { status: 101 }) })
     const joined = await c.call(R, 'join', { role: 'orchestrator' })
+    // A socket takes every frame kind; no version to negotiate.
+    expect(Object.keys(joined.json).sort()).toEqual(['heartbeatMs', 'id', 'socket'])
     expect(joined.json.socket).toBe(true)
     const o = joined.json.id
     const a = await c.join(R, 'agent')
