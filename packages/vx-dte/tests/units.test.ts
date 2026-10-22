@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import { createRelay } from '@vzn/vx-dte-relay'
-import { localEnv, swapRoots } from '../src/agent.js'
+import { localEnv, runAgent, swapRoots } from '../src/agent.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes } from '../src/plugin.js'
@@ -108,6 +108,29 @@ it('an agent with other tracked files than the run is refused', async () => {
       },
     ])
     await o.close()
+  } finally {
+    relay.close()
+    await server.stop(true)
+  }
+})
+
+// CI starts agents beside the orchestrator; on a warm run it can finish
+// before a slow runner's agent joins, and that agent's job is not a failure.
+it('an agent that joins a run already closed exits 0', async () => {
+  const relay = createRelay()
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+  const url = `http://127.0.0.1:${server.port}`
+  try {
+    await (await join(url, R, 'orchestrator', null, undefined)).leave()
+    const code = await runAgent({
+      relay: url,
+      run: R,
+      root: process.cwd(),
+      token: async () => undefined,
+      proof: { psk: async () => new Uint8Array(32), mismatch: 'no key' },
+      artifacts: () => fakeArtifacts().artifacts,
+    })
+    expect(code).toBe(0)
   } finally {
     relay.close()
     await server.stop(true)
