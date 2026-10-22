@@ -19,6 +19,7 @@ import { outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
 import { busyCores, endsInMs } from '../src/width.js'
 import { join } from '../src/wire.js'
+import { sealOrchestrator, secretProof } from '../src/seal.js'
 import type { RunOrder } from '../src/messages.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
@@ -602,8 +603,11 @@ it('an order names its key and each dependency’s; the result comes back by the
     expect(h.store.restored).toEqual([runKey(R, 'mid')])
     void h.o.execute(h.req('app', 'k-app'))
     expect(await a.batches()).toEqual([['app']])
-    // It holds lib and mid already: nothing to restore.
-    expect(a.orders.find((o) => o.task === 'app')!.deps).toEqual([])
+    // Named though it holds them: the agent restores each key once.
+    expect(a.orders.find((o) => o.task === 'app')!.deps.map((d) => [d.task, d.key])).toEqual([
+      ['mid', runKey(R, 'mid')],
+      ['lib', 'k-lib-hit'],
+    ])
     const b = await h.agent(1)
     await Bun.sleep(50)
     // Another agent, with room where the first has none, is sent both.
@@ -634,6 +638,135 @@ it('sends a task to the agent that holds its dependency’s outputs', async () =
     void big
   } finally {
     await h.stop()
+  }
+})
+
+// An agent that gave a task back had never run it, yet the orchestrator
+// counted its outputs there: a dependant sent to that agent was ordered
+// with no dependency to restore, and ran without its files (2026-10-22).
+it('an order names every dependency, held by its agent or not', async () => {
+  const cached = (id: string, deps: string[] = []) =>
+    [
+      id,
+      {
+        id,
+        deps,
+        projectDir: `/ws/${id}`,
+        config: { cache: { outputs: { files: ['dist/**'] } } },
+      } as unknown as TaskNode,
+    ] as const
+  const h = await harness(new Map([cached('t1'), cached('x'), cached('w'), cached('y', ['x'])]))
+  try {
+    const a = await h.agent(1)
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    void h.o.execute(h.req('x', 'k-x'))
+    expect(await a.batches()).toEqual([['t1', 'x']])
+    await a.begin('t1')
+    const b = await h.agent(1)
+    expect(await a.bodies()).toEqual([{ type: 'withdraw', task: 'x' }])
+    await a.say({ type: 'withdrawn', task: 'x' })
+    expect(await b.batches()).toEqual([['x']])
+    await b.finish('x', 'k-x')
+    void h.o.execute(h.req('w'))
+    expect(await b.batches()).toEqual([['w']])
+    await b.begin('w')
+    await a.finish('t1')
+    await t1
+    void h.o.execute(h.req('y'))
+    expect(await a.batches()).toEqual([['y']])
+    expect(a.orders.find((o) => o.task === 'y')!.deps.map((d) => [d.task, d.key])).toEqual([
+      ['x', 'k-x'],
+    ])
+  } finally {
+    await h.stop()
+  }
+})
+
+// Two tasks begun together needing one dependency: the one whose order
+// did not carry it ran before the other had restored it (2026-10-22).
+it('an agent restores a dependency once, before any task that needs it runs', async () => {
+  const root = await tmp()
+  const relay = createRelay()
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+  const url = `http://127.0.0.1:${server.port}`
+  try {
+    const o = sealOrchestrator(
+      await join(url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    let restores = 0
+    const artifacts: TaskArtifacts = {
+      async save() {},
+      async restore() {
+        restores++
+        await Bun.sleep(100)
+        await writeFile(path.join(root, 'dep.txt'), 'd')
+        return { stdout: '', stderr: '' }
+      },
+    }
+    const code = runAgent({
+      relay: url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => artifacts,
+    })
+    const order = (task: string): RunOrder => ({
+      task,
+      runKey: runKey(R, task),
+      deps: [
+        { task: 'd', key: 'k-d', project: '', outputs: { files: ['dep.txt'], workspaceFiles: [] } },
+      ],
+      nested: [],
+      command: 'test -f dep.txt',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    })
+    const ends: { task: string; exitCode: number }[] = []
+    for (let i = 0; i < 100 && ends.length < 2; i++) {
+      for (const { from, body } of await o.poll()) {
+        const m = body as {
+          type: string
+          id?: string
+          task?: string
+          result?: { exitCode: number }
+        }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 2,
+            memory: 1e9,
+          })
+          await o.send(m.id!, {
+            type: 'batch',
+            root,
+            realRoot: root,
+            tasks: [order('t1'), order('t2')],
+          })
+        } else if (m.type === 'end') {
+          ends.push({ task: m.task!, exitCode: m.result!.exitCode })
+          if (ends.length === 2) await o.send(from, { type: 'exit' })
+        }
+      }
+    }
+    expect(await code).toBe(0)
+    expect(ends.toSorted((x, y) => x.task.localeCompare(y.task))).toEqual([
+      { task: 't1', exitCode: 0 },
+      { task: 't2', exitCode: 0 },
+    ])
+    expect(restores).toBe(1)
+  } finally {
+    relay.close()
+    await server.stop(true)
   }
 })
 

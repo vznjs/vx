@@ -369,8 +369,9 @@ export class Orchestrator {
     const orders = jobs.map((job) => {
       const { req } = job
       const deps: DepOrder[] = []
+      // Every one, held there or not: the agent restores each key once, and
+      // one it was sent but gave back it never ran or restored.
       for (const id of upstream(nodes, req.taskId)) {
-        if (a.has.has(id)) continue
         const n = nodes?.get(id)
         const outs = n?.config.cache?.outputs
         const key = this.savedAs.get(id) ?? this.upstreamKeys.get(id) ?? this.o.keyOf(id)
@@ -474,6 +475,8 @@ export class Orchestrator {
    */
   private retry(a: Agent, job: Job, why: string): Job | undefined {
     a.busy.delete(job.req.taskId)
+    // Its outputs are not there to place a dependant by.
+    a.has.delete(job.req.taskId)
     a.usedCores -= job.held?.cores ?? 0
     a.usedMemory -= job.held?.memory ?? 0
     delete job.agent
