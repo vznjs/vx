@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## history: name the task with no inputs that stops a hit
+
+TaskOutcome.keyless is replaced by keylessBy, the id of the task with no inputs the key folds. index schema v45 -> v46; the local index is rebuilt.
+
 ## vx-dte-relay: admit named repos, deploy to Cloudflare by cf
 
 vx-dte-relay needs --repository owner/repo and the Worker needs REPOSITORIES; wrangler.jsonc is replaced by cloudflare.config.ts (deploy with cf).

@@ -1588,7 +1588,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v45', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v46', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes and plugin_blobs live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1651,7 +1651,8 @@ CREATE TABLE runs (
   avg_rss_bytes       INTEGER,          -- v43: mean resident memory over the samples
   placement           TEXT,             -- v44: where an executor ran it; NULL = here
   placement_cores     INTEGER,          -- v44: that machine's cores
-  placement_memory    INTEGER           -- v44: that machine's memory, bytes
+  placement_memory    INTEGER,          -- v44: that machine's memory, bytes
+  keyless_by          TEXT              -- v46: the task with no inputs its key folded
 );
 
 -- Two indexes, both append-only under a run's inserts: every row of a run

@@ -331,7 +331,9 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //   v45: a 'remote' task_durations row also carries the task's measured
 //        cores, memory and saturation, for a run with no local history.
 //        The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v45'
+//   v46: runs.keyless_by — the task with no inputs a key folded, so
+//        `vx why` names it. The cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v46'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON

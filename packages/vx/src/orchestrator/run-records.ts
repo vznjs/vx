@@ -131,6 +131,7 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
       ...(o.sandboxViolations !== undefined ? { sandboxViolations: o.sandboxViolations } : {}),
       ...(o.notReady !== undefined ? { notReady: o.notReady } : {}),
       ...(remoteError !== undefined ? { remoteError } : {}),
+      ...(o.keylessBy !== undefined ? { keylessBy: o.keylessBy } : {}),
     })
     if (o.status === 'failed') failedCount++
     if (o.status === 'cache-hit') hitLocalCount++

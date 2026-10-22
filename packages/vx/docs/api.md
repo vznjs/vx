@@ -2169,6 +2169,7 @@ export interface RunRecord {
   peakCores?: number
   avgRssBytes?: number
   placement?: string
+  keylessBy?: string
   placementCores?: number
   placementMemoryBytes?: number
 }
@@ -2616,7 +2617,7 @@ export interface TaskOutcome {
   avgRssBytes?: number
   groupUpstream?: readonly TaskOutcome[]
   unkeyed?: true
-  keyless?: true
+  keylessBy?: string
   cacheOff?: true
   blockedBy?: string
   timedOut?: true
