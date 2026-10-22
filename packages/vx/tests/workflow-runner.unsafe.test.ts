@@ -66,7 +66,6 @@ describe('a Linux CI job that runs a vx task', () => {
   it('is every one of these — the pin is not vacuous', () => {
     expect(covered).toEqual([
       'auto-release.yml#release',
-      'ci.yml#packages',
       'ci.yml#binary-linux-arm64',
       'docs.yml#build',
       'npm.yml#publish',
@@ -166,11 +165,17 @@ describe('a suite that skips without an env var', () => {
       gates.set(m[1]!, path.relative(repo, file))
     }
   }
+  // Set by a workflow, or by the `define` of the task that runs the suite
+  // (a live suite brings its own services: `test.live`).
   const declared = new Set<string>()
-  for (const file of files) {
-    for (const m of readFileSync(path.join(workflowDir, file), 'utf8').matchAll(
-      /^\s+(VX_\w+):/gm,
-    )) {
+  const sources = [
+    ...files.map((file) => path.join(workflowDir, file)),
+    ...readdirSync(path.join(repo, 'packages'))
+      .map((pkg) => path.join(repo, 'packages', pkg, 'vx.config.ts'))
+      .filter((f) => existsSync(f)),
+  ]
+  for (const file of sources) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/^\s+(VX_\w+):/gm)) {
       declared.add(m[1]!)
     }
   }
@@ -185,7 +190,7 @@ describe('a suite that skips without an env var', () => {
     ])
   })
 
-  it('has that var set by a CI workflow, or it never runs anywhere', () => {
+  it('has that var set by a CI workflow or a task, or it never runs anywhere', () => {
     const unset = [...gates].filter(([name]) => !declared.has(name)).map(([n, f]) => `${n} (${f})`)
     expect(unset).toEqual([])
   })

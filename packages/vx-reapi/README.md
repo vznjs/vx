@@ -344,20 +344,15 @@ without its inputs and caches the result.
 
 ## Tests
 
-`bun test` runs the unit suite anywhere. The round-trip suite needs a real
-server:
+`bun test` runs the unit suite anywhere. The round-trip suites need real
+servers, which `vx run test.live --filter @vzn/vx-reapi` brings with Docker:
+`services.cache` (bazel-remote on `:19092`) and `services.exec` (NativeLink on
+`:51051`) run in the foreground until the run ends. CI runs it in the Linux
+distributed run, where they start on the agent that runs `test.live`.
 
-```sh
-docker run -d -p 19092:9092 buchgr/bazel-remote-cache:latest \
-  --dir /data --max_size 1 --grpc_address 0.0.0.0:9092 --http_address 0.0.0.0:8080
-
-VX_REAPI_TEST_ENDPOINT=grpc://127.0.0.1:19092 bun test
-```
-
-Without an endpoint those tests skip; CI sets `VX_REQUIRE_REAPI=1`, which turns
-an absent endpoint into a failure so the suite cannot silently vanish. The
-remote-execution suites need an execution server in `VX_REAPI_EXEC_ENDPOINT`;
-CI sets it with `VX_REQUIRE_REAPI_EXEC=1`.
+Without an endpoint those tests skip; `test.live` sets `VX_REQUIRE_REAPI=1` and
+`VX_REQUIRE_REAPI_EXEC=1`, which turn an absent endpoint into a failure so the
+suites cannot silently vanish.
 
 ## Protocol coverage
 
