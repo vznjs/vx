@@ -204,9 +204,8 @@ function configObjectFormat(config: string): 'sha1' | 'sha256' | undefined {
 interface PartitionDigest {
   snapshot: readonly string[]
   oids: OidSlot | undefined
-  digest: string
-  /** Partition-relative paths the digest leaves out: untracked or dirty, so no OID vouches for them. */
-  loose: readonly string[]
+  /** Built on first read: a partition with untrusted files stats them then. */
+  digest: () => string | undefined
 }
 
 /**
@@ -507,31 +506,30 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   }
 
   /**
-   * A digest of `snapshot`'s paths and index OIDs, when none is a symlink
-   * and every name decodes. A path the enumeration trusted no OID for
-   * (untracked, dirty) is left out and named in `loose`: then the files a
-   * task resolves there, and what it folds for them, are a function of
-   * this digest and its declaration (`filesToken`) when the declaration
-   * reads no loose path. Undefined once anything moved the partition: a
-   * re-enumeration, a changed path.
+   * A digest of `snapshot`'s paths and index OIDs, when the enumeration
+   * trusted an OID for every one, none is a symlink and every name decodes:
+   * then the files a task resolves there, and what it folds for them, are
+   * a function of this digest and its declaration (`filesToken`). Undefined
+   * once anything moved the partition: a re-enumeration, a changed path.
    */
-  filesDigest(
-    projectDir: string,
-    snapshot: readonly string[],
-  ): { digest: string; loose: readonly string[] } | undefined {
+  filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined {
     const d = this.digests.get(projectDir)
     if (d === undefined || d.snapshot !== snapshot || this.get(projectDir) !== snapshot) return
     if (this.oids.get(projectDir) !== d.oids || this.changed.has(projectDir)) return
-    return d
+    return d.digest()
   }
 
   noteFilesDigest(
     projectDir: string,
     snapshot: readonly string[],
-    digest: string,
-    loose: readonly string[],
+    digest: () => string | undefined,
   ): void {
-    this.digests.set(projectDir, { snapshot, oids: this.oids.get(projectDir), digest, loose })
+    let memo: { value: string | undefined } | undefined
+    this.digests.set(projectDir, {
+      snapshot,
+      oids: this.oids.get(projectDir),
+      digest: () => (memo ??= { value: digest() }).value,
+    })
   }
 
   /** Trusted index OIDs for a project (abs path → oid), if any survive. */
@@ -1920,6 +1918,30 @@ export function lazyGitEnumeration(workspaceRoot: string): LazyGitEnumeration {
   }
 }
 
+/**
+ * Each loose file's stat identity, `hashFile`'s memo key: mode, size,
+ * mtime, ctime and inode. Undefined for a symlink (what it points to
+ * folds too, and its stat does not move with that), a file gone, or one
+ * changed within the racy window, where the memo trusts no stat either.
+ */
+function statRecords(
+  rels: readonly string[],
+  abs: (rel: string) => string,
+  prefixLength: number,
+): string | undefined {
+  if (rels.length === 0) return ''
+  const now = Date.now()
+  let out = ''
+  for (const rel of rels) {
+    const st = lstatSync(abs(rel), { throwIfNoEntry: false })
+    if (st === undefined || !st.isFile()) return undefined
+    if (now - Math.floor(st.ctimeMs) < racyWindowMs(st.ctimeMs, FILE_HASH_RACY_MS)) return
+    const mode = (st.mode & 0o100) !== 0 ? '100755' : '100644'
+    out += `${rel.slice(prefixLength)}\0stat:${mode}:${st.size}:${Math.floor(st.mtimeMs)}:${Math.floor(st.ctimeMs)}:${Number(st.ino)}\n`
+  }
+  return out
+}
+
 /** The partition half of `populateGitFilesCache`: store per-project slices of one enumeration. */
 export async function applyGitEnumeration(
   enumeration: GitEnumeration,
@@ -2017,10 +2039,11 @@ export async function applyGitEnumeration(
       return oids
     }
     // One hash of the records joined: one per record was ~25 ms of 125,000.
-    // A path with no trusted OID stays out of it, named: `vx lock`'s
-    // untracked vx.lock.json in every project, or one dirty README, turned
-    // the memo off for every task there, inputs or not.
     let records: string | undefined = ''
+    // A file git vouches for no OID (untracked, or changed since the
+    // index) is named by its stat instead, the identity `hashFile`'s memo
+    // trusts: a just-added config or an edited file turned the fold memo
+    // off for its whole project (+3-5 ms of solid's warm run, 2026-10-22).
     const loose: string[] = []
     for (let i = start; i < end; i++) {
       const rel = sorted[i]!
@@ -2028,8 +2051,8 @@ export async function applyGitEnumeration(
       matches.push(own)
       if (records === undefined) continue
       const oid = trusted.get(rel)
-      if (oid === undefined) loose.push(own)
-      else if (oid.startsWith('120000:') || undecodable?.has(rel) === true) records = undefined
+      if (undecodable?.has(rel) === true || oid?.startsWith('120000:') === true) records = undefined
+      else if (oid === undefined) loose.push(rel)
       else records += `${own}\0${oid}\n`
     }
     // An empty slice is a directory git did not see, not an empty project:
@@ -2049,7 +2072,13 @@ export async function applyGitEnumeration(
     // setLazyOids AFTER set — set() drops the project's OID slot.
     cache.set(projectDir, matches)
     cache.setLazyOids(projectDir, projOids)
-    if (records !== undefined) cache.noteFilesDigest(projectDir, matches, xxh3hex(records), loose)
+    if (records !== undefined) {
+      const known = records
+      cache.noteFilesDigest(projectDir, matches, () => {
+        const statted = statRecords(loose, projAbs, prefix.length)
+        return statted === undefined ? undefined : xxh3hex(`${known}\0${statted}`)
+      })
+    }
   }
   if (workspaceWide) {
     cache.set(workspaceRoot, all)

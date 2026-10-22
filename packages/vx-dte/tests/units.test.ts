@@ -6,7 +6,7 @@ import { createRelay } from '@vzn/vx-dte-relay'
 import { localEnv, runAgent, swapRoots } from '../src/agent.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
-import { bytes } from '../src/plugin.js'
+import { bytes, needOf } from '../src/plugin.js'
 import {
   type CacheFacts,
   type ExecuteRequest,
@@ -19,6 +19,7 @@ import { outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
 import { busyCores, endsInMs } from '../src/width.js'
 import { join } from '../src/wire.js'
+import { sealOrchestrator, secretProof } from '../src/seal.js'
 import type { RunOrder } from '../src/messages.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
@@ -116,8 +117,10 @@ it('an agent with other tracked files than the run is refused', async () => {
 
 // CI starts agents beside the orchestrator; on a warm run it can finish
 // before a slow runner's agent joins, and that agent's job is not a failure.
-it('an agent that joins a run already closed exits 0', async () => {
-  const relay = createRelay()
+// The relay keeps nothing of a run that ended: an agent late for it joins
+// an empty run, which closes when no orchestrator joins (120 heartbeats).
+it('an agent late for a run that ended exits 0', async () => {
+  const relay = createRelay({ heartbeatMs: 20 })
   const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
   const url = `http://127.0.0.1:${server.port}`
   try {
@@ -131,6 +134,33 @@ it('an agent that joins a run already closed exits 0', async () => {
       artifacts: () => fakeArtifacts().artifacts,
     })
     expect(code).toBe(0)
+  } finally {
+    relay.close()
+    await server.stop(true)
+  }
+})
+
+// A relay restart, or silence past three heartbeats, loses the agent: its
+// next poll answers 404. The run gave its tasks to others; the agent's CI
+// job is no failure (mac#1 on #3895).
+it('an agent the relay lost exits 0', async () => {
+  let relay = createRelay()
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+  const url = `http://127.0.0.1:${server.port}`
+  try {
+    const o = await join(url, R, 'orchestrator', null, undefined)
+    const code = runAgent({
+      relay: url,
+      run: R,
+      root: process.cwd(),
+      token: async () => undefined,
+      proof: { psk: async () => new Uint8Array(32), mismatch: 'no key' },
+      artifacts: () => fakeArtifacts().artifacts,
+    })
+    for (let i = 0; i < 50 && (await o.poll()).length === 0; i++);
+    relay.close()
+    relay = createRelay()
+    expect(await code).toBe(0)
   } finally {
     relay.close()
     await server.stop(true)
@@ -602,8 +632,11 @@ it('an order names its key and each dependency’s; the result comes back by the
     expect(h.store.restored).toEqual([runKey(R, 'mid')])
     void h.o.execute(h.req('app', 'k-app'))
     expect(await a.batches()).toEqual([['app']])
-    // It holds lib and mid already: nothing to restore.
-    expect(a.orders.find((o) => o.task === 'app')!.deps).toEqual([])
+    // Named though it holds them: the agent restores each key once.
+    expect(a.orders.find((o) => o.task === 'app')!.deps.map((d) => [d.task, d.key])).toEqual([
+      ['mid', runKey(R, 'mid')],
+      ['lib', 'k-lib-hit'],
+    ])
     const b = await h.agent(1)
     await Bun.sleep(50)
     // Another agent, with room where the first has none, is sent both.
@@ -635,6 +668,272 @@ it('sends a task to the agent that holds its dependency’s outputs', async () =
   } finally {
     await h.stop()
   }
+})
+
+// An agent that gave a task back had never run it, yet the orchestrator
+// counted its outputs there: a dependant sent to that agent was ordered
+// with no dependency to restore, and ran without its files (2026-10-22).
+it('an order names every dependency, held by its agent or not', async () => {
+  const cached = (id: string, deps: string[] = []) =>
+    [
+      id,
+      {
+        id,
+        deps,
+        projectDir: `/ws/${id}`,
+        config: { cache: { outputs: { files: ['dist/**'] } } },
+      } as unknown as TaskNode,
+    ] as const
+  const h = await harness(new Map([cached('t1'), cached('x'), cached('w'), cached('y', ['x'])]))
+  try {
+    const a = await h.agent(1)
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    void h.o.execute(h.req('x', 'k-x'))
+    expect(await a.batches()).toEqual([['t1', 'x']])
+    await a.begin('t1')
+    const b = await h.agent(1)
+    expect(await a.bodies()).toEqual([{ type: 'withdraw', task: 'x' }])
+    await a.say({ type: 'withdrawn', task: 'x' })
+    expect(await b.batches()).toEqual([['x']])
+    await b.finish('x', 'k-x')
+    void h.o.execute(h.req('w'))
+    expect(await b.batches()).toEqual([['w']])
+    await b.begin('w')
+    await a.finish('t1')
+    await t1
+    void h.o.execute(h.req('y'))
+    expect(await a.batches()).toEqual([['y']])
+    expect(a.orders.find((o) => o.task === 'y')!.deps.map((d) => [d.task, d.key])).toEqual([
+      ['x', 'k-x'],
+    ])
+  } finally {
+    await h.stop()
+  }
+})
+
+// Two tasks begun together needing one dependency: the one whose order
+// did not carry it ran before the other had restored it (2026-10-22).
+it('an agent restores a dependency once, before any task that needs it runs', async () => {
+  const root = await tmp()
+  const relay = createRelay()
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+  const url = `http://127.0.0.1:${server.port}`
+  try {
+    const o = sealOrchestrator(
+      await join(url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    let restores = 0
+    const artifacts: TaskArtifacts = {
+      async save() {},
+      async restore() {
+        restores++
+        await Bun.sleep(100)
+        await writeFile(path.join(root, 'dep.txt'), 'd')
+        return { stdout: '', stderr: '' }
+      },
+    }
+    const code = runAgent({
+      relay: url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => artifacts,
+    })
+    const order = (task: string): RunOrder => ({
+      task,
+      runKey: runKey(R, task),
+      deps: [
+        { task: 'd', key: 'k-d', project: '', outputs: { files: ['dep.txt'], workspaceFiles: [] } },
+      ],
+      nested: [],
+      command: 'test -f dep.txt',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    })
+    const ends: { task: string; exitCode: number }[] = []
+    for (let i = 0; i < 100 && ends.length < 2; i++) {
+      for (const { from, body } of await o.poll()) {
+        const m = body as {
+          type: string
+          id?: string
+          task?: string
+          result?: { exitCode: number }
+        }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 2,
+            memory: 1e9,
+          })
+          await o.send(m.id!, {
+            type: 'batch',
+            root,
+            realRoot: root,
+            tasks: [order('t1'), order('t2')],
+          })
+        } else if (m.type === 'end') {
+          ends.push({ task: m.task!, exitCode: m.result!.exitCode })
+          if (ends.length === 2) await o.send(from, { type: 'exit' })
+        }
+      }
+    }
+    expect(await code).toBe(0)
+    expect(ends.toSorted((x, y) => x.task.localeCompare(y.task))).toEqual([
+      { task: 't1', exitCode: 0 },
+      { task: 't2', exitCode: 0 },
+    ])
+    expect(restores).toBe(1)
+  } finally {
+    relay.close()
+    await server.stop(true)
+  }
+})
+
+// A stopped run whose agent was lost before it answered the cancel waited
+// on that task forever (2026-10-22).
+it('a task stopped while its agent is lost ends as stopped', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.agent(1)
+    await Bun.sleep(50)
+    const stop = new AbortController()
+    const t1 = h.o.execute({ ...h.req('t1'), signal: stop.signal })
+    expect(await a.batches()).toEqual([['t1']])
+    await a.begin('t1')
+    await Bun.sleep(20)
+    stop.abort()
+    expect(await a.bodies()).toEqual([{ type: 'cancel', task: 't1' }])
+    await a.leave()
+    expect(await t1).toMatchObject({ exitCode: 130 })
+  } finally {
+    await h.stop()
+  }
+}, 3_000)
+
+// A run's only agent faulted on a task: no agent was left to run it, none
+// was starting, and the run waited forever (2026-10-22).
+it('a task its only agent could not run fails when no agent is left', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
+    const a = await h.agent(1, 'small#1')
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.say({ type: 'fault', task: 't1', reason: 'ENOSPC' })
+    expect(
+      await t1.then(
+        () => '',
+        (e: Error) => e.message,
+      ),
+    ).toBe('small#1 could not run t1 (ENOSPC) and no agent is left')
+  } finally {
+    await h.stop()
+  }
+}, 3_000)
+
+// A batch for a wide agent passed the relay's 1 MiB body limit and every
+// task in it failed with `413 body over 1 MiB` (2026-10-22).
+it('a batch past the relay’s body limit goes in parts', async () => {
+  const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
+  try {
+    const a = await h.agent(3)
+    await Bun.sleep(50)
+    const env = { BIG: 'x'.repeat(400_000) }
+    for (const id of ['t1', 't2', 't3']) void h.o.execute({ ...h.req(id), env })
+    const got: string[] = []
+    for (let i = 0; i < 5 && got.length < 3; i++) got.push(...(await a.batches()).flat())
+    expect(got.toSorted()).toEqual(['t1', 't2', 't3'])
+  } finally {
+    await h.stop()
+  }
+})
+
+// An agent answering a cancel the run sent as it closed failed its CI job
+// on the relay's `410 run closed` (2026-10-22).
+it('an agent whose answer meets a closed run exits 0', async () => {
+  const root = await tmp()
+  const relay = createRelay()
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+  const url = `http://127.0.0.1:${server.port}`
+  try {
+    const raw = await join(url, R, 'orchestrator', null, undefined)
+    const o = sealOrchestrator(raw, R, secretProof('s'))
+    const code = runAgent({
+      relay: url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => ({
+        async save() {
+          await Bun.sleep(100)
+        },
+        async restore() {
+          return null
+        },
+      }),
+    })
+    const order = (task: string, command: string): RunOrder => ({
+      task,
+      runKey: runKey(R, task),
+      deps: [],
+      nested: [],
+      command,
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    })
+    let sent = false
+    for (let i = 0; i < 50 && !sent; i++) {
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string }
+        if (from !== 'relay' || m.type !== 'joined') continue
+        await o.send(m.id!, {
+          type: 'welcome',
+          name: 'a',
+          cache: { refs: [], lent: {} },
+          cores: 1,
+          memory: 1e9,
+        })
+        await o.send(m.id!, {
+          type: 'batch',
+          root,
+          realRoot: root,
+          tasks: [order('t1', 'sleep 2'), order('t2', 'true')],
+        })
+        await o.send(m.id!, { type: 'cancel', task: 't2' })
+        sent = true
+      }
+    }
+    await raw.leave()
+    expect(await code).toBe(0)
+  } finally {
+    relay.close()
+    await server.stop(true)
+  }
+})
+
+// M, 2026-10-22: agents at 30-50% CPU; "close to 100%". A task books the
+// cores it keeps busy on average, so a 4-core agent takes five at 0.7.
+it('books the cores a task keeps busy on average, unrounded, a quarter at least', () => {
+  expect(
+    [0.7, 2.4, 0.01].map((c) => needOf({ p50DurationMs: 1, maxCpuParallelism: c }).cores),
+  ).toEqual([0.7, 2.4, 0.25])
+  expect(needOf(undefined).cores).toBe(Infinity)
 })
 
 it('reads memory as bytes or with a unit', () => {
@@ -826,7 +1125,7 @@ it('counts a task the stop killed as aborted, a timeout as failed', () => {
   expect([u.done, u.failed, u.aborted]).toEqual([1, 2, 1])
 })
 
-it('starts the cores the rest of the run keeps busy for half its length, not its peak', () => {
+it('starts the cores that fit the rest of the run in its critical path, not its peak', () => {
   const graph = (entries: Array<[string, string[]]>) =>
     new Map(
       entries.map(([id, deps]) => [
@@ -838,22 +1137,30 @@ it('starts the cores the rest of the run keeps busy for half its length, not its
   // Eight at once, all of the time.
   const wide = graph(Array.from({ length: 8 }, (_, i): [string, string[]] => [`p#t${i}`, []]))
   expect(busyCores(new Set(wide.keys()), wide, one, () => 1000)).toBe(8)
-  // Four at once for a third of it, between two lone tasks: one is busy.
+  // Four at once for a third of it, between two lone tasks: six task-seconds in three.
   const mid = graph([
     ['p#a', []],
     ...Array.from({ length: 4 }, (_, i): [string, string[]] => [`p#b${i}`, ['p#a']]),
     ['p#c', ['p#b0', 'p#b1', 'p#b2', 'p#b3']],
   ])
-  expect(busyCores(new Set(mid.keys()), mid, one, () => 1000)).toBe(1)
+  expect(busyCores(new Set(mid.keys()), mid, one, () => 1000)).toBe(2)
   // Its peak, for agents that cannot come back once they leave: four.
-  expect(busyCores(new Set(mid.keys()), mid, one, () => 1000, 0)).toBe(4)
+  expect(busyCores(new Set(mid.keys()), mid, one, () => 1000, true)).toBe(4)
   // The same, the wide part long: four.
   expect(busyCores(new Set(mid.keys()), mid, one, (id) => (id.includes('#b') ? 5000 : 1000))).toBe(
     4,
   )
   // Done tasks are not laid out.
   expect(busyCores(new Set(['p#c']), mid, one, () => 1000)).toBe(1)
-  // Eight for 4 s, then one for 4 s: eight now, but an agent that takes 5 s
+  // Eight short ones beside one four times as long, CI's shards beside its
+  // unsafe suite: three, where the level held for half the run was one and
+  // the eight queued behind it.
+  const tail = graph([
+    ...Array.from({ length: 8 }, (_, i): [string, string[]] => [`p#s${i}`, []]),
+    ['p#u', []],
+  ])
+  expect(busyCores(new Set(tail.keys()), tail, one, (id) => (id === 'p#u' ? 4000 : 1000))).toBe(3)
+  // Eight for 4 s, then one for 4 s: five now, but an agent that takes 5 s
   // to join finds one.
   const early = graph([
     ...Array.from({ length: 8 }, (_, i): [string, string[]] => [`p#w${i}`, []]),
@@ -861,8 +1168,8 @@ it('starts the cores the rest of the run keeps busy for half its length, not its
   ])
   expect([
     busyCores(new Set(early.keys()), early, one, () => 4000),
-    busyCores(new Set(early.keys()), early, one, () => 4000, undefined, 5000),
-  ]).toEqual([8, 1])
+    busyCores(new Set(early.keys()), early, one, () => 4000, false, 5000),
+  ]).toEqual([5, 1])
 })
 
 it('knows how long the rest of the run takes at the least, and how long an agent took to join', async () => {

@@ -26,10 +26,15 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { Cache, OUTPUT_DIRS_CAP, OUTPUT_DIRS_RACY_MS } from '../src/cache/index.js'
+import {
+  Cache,
+  OUTPUT_DIRS_CAP,
+  OUTPUT_DIRS_OVER_CAP,
+  OUTPUT_DIRS_RACY_MS,
+} from '../src/cache/index.js'
 import { run } from './helpers/orchestrator.js'
 import { defaultLogger } from '../src/report/logger.js'
-import { wholeSubtreePrefixes } from '../src/util/index.js'
+import { outputDirPrefixes, wholeSubtreePrefixes } from '../src/util/index.js'
 import { localWorkspaceSource } from './helpers/local-workspace.js'
 
 describe('wholeSubtreePrefixes (eligibility)', () => {
@@ -75,6 +80,25 @@ describe('wholeSubtreePrefixes (eligibility)', () => {
     for (const bad of [['!dist'], ['..'], ['../dist'], ['/abs'], ['.'], ['dist', 'src/*.js']]) {
       expect(wholeSubtreePrefixes(bad)).toBeNull()
     }
+  })
+})
+
+describe('outputDirPrefixes', () => {
+  it('covers any glob by the tree under its static prefix, a root-anchored one by the project', () => {
+    expect(outputDirPrefixes(['dist/**', 'coverage/lcov.info'])).toEqual([
+      'coverage/lcov.info',
+      'dist',
+    ])
+    expect(outputDirPrefixes(['dist/**/*.js', 'dist/sub/**', 'app/[id]/**'])).toEqual([
+      'app',
+      'dist',
+    ])
+    expect(outputDirPrefixes(['dist/**', '**/dist/**', '**/dist'])).toEqual([''])
+    expect(outputDirPrefixes(['{dist,lib/esm}/**'])).toEqual([''])
+    for (const bad of [['../dist/**'], ['/abs/**'], ['../**/*.js']]) {
+      expect(outputDirPrefixes(bad)).toBeNull()
+    }
+    expect(outputDirPrefixes([])).toBeNull()
   })
 })
 
@@ -278,7 +302,10 @@ describe('Cache.recordOutputDirs / outputDirsCurrent', () => {
     for (let i = 0; i < OUTPUT_DIRS_CAP + 1; i++) mkdirSync(path.join(proj, 'dist', `d${i}`))
     age() // the cap is the reason these rows are dropped, not the window
     await cache.recordOutputDirs('h1', proj, ['dist'])
-    expect(rows()).toEqual([])
+    // One row says the tree is over the cap: never current, and the hit
+    // does not snapshot it again.
+    expect(rows()).toEqual([{ path: 'dist', mtimeMs: OUTPUT_DIRS_OVER_CAP }])
+    expect(await cache.outputDirsCurrent(proj, rows())).toBe(false)
     expect(await cache.outputDirsCurrent(proj, [])).toBe(false) // no rows ⇒ never a skip
     // Removed here, under this row's bound: left to the afterEach (bun's
     // 5 s default), the rm of 8,193 directories timed it out on a loaded
@@ -708,20 +735,25 @@ describe('warm hits through run() with the short-circuit', () => {
     expect(readFileSync(tool, 'utf8')).toBe('export const v = 1\n')
   })
 
-  it('a root-anchored glob records nothing and keeps the walk (control)', async () => {
+  it("a root-anchored glob (Turbo's `**/dist/**`) snapshots the whole project", async () => {
+    // Its walk ran on every warm hit: ~2-3 ms each for solid's build and
+    // types (2026-10-22). The source files beside the outputs are no
+    // strays: the snapshot's file list is held to the rows through the glob.
     await writeFile(
       path.join(root, 'packages/a/vx.config.mjs'),
-      "export default { tasks: { build: { exec: { command: 'mkdir -p dist && cp src/index.js dist/out.js' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**/*.js'] } } } } }\n",
+      "export default { tasks: { build: { exec: { command: 'mkdir -p dist && cp src/index.js dist/out.js' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['**/dist/**', '!src/**'] } } } } }\n",
     )
     expect((await runBuild()).ok).toBe(true)
+    await Bun.sleep(OUTPUT_DIRS_RACY_MS + 10)
     expect((await runBuild()).ok).toBe(true)
-    const c = db()
-    const n = (c.dbHandle().query('SELECT COUNT(*) AS n FROM output_dirs').get() as { n: number }).n
-    c.close()
-    expect(n).toBe(0)
+    expect(recordedForBuild()).toEqual(['', 'dist', 'src'])
+    // A new `dist` anywhere bumps a recorded directory: the hit walks and
+    // takes the stray, as strict ownership requires.
     await Bun.sleep(5)
-    writeFileSync(path.join(dist(), 'stray.js'), 'stale')
+    mkdirSync(path.join(root, 'packages/a/lib/dist'), { recursive: true })
+    writeFileSync(path.join(root, 'packages/a/lib/dist/stray.js'), 'stale')
     expect((await runBuild()).ok).toBe(true)
-    expect(existsSync(path.join(dist(), 'stray.js'))).toBe(false)
+    expect(existsSync(path.join(root, 'packages/a/lib/dist/stray.js'))).toBe(false)
+    expect(readFileSync(path.join(dist(), 'out.js'), 'utf8')).toBe('export const v = 1\n')
   })
 })

@@ -31,7 +31,7 @@ the browser, not a consumer of its API, and
 | `packages/vx-plugin-examples`  | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                      |
 
 Core never imports a sibling package. The integrations reach core
-through two seams: the public API (45 runtime symbols, a deliberate
+through two seams: the public API (47 runtime symbols, a deliberate
 snapshot) and the plugin capabilities (below).
 
 ## Module map
@@ -322,8 +322,8 @@ never branches on layering.
 - **`runPersistent`** — for dev servers + watchers. Spawns the command
   but does NOT await exit. Returns `{ ready, child, readyMs() }`.
   `ready` resolves when a regex match appears in stdout/stderr (or
-  immediately when no `readyWhen` is set). If the child exits before
-  ready, `ready` rejects. `exec.timeout` bounds the readiness wait.
+  immediately when no `readyWhen` is set). If the child exits 0 before
+  ready, `ready` resolves; any other exit before ready rejects it. `exec.timeout` bounds the readiness wait.
   Its stdin is a pipe vx never writes, open while vx lives, so a server
   that exits on stdin EOF (esbuild `--watch`) stays up.
   The spawn retains no output: chunks reach the caller through the

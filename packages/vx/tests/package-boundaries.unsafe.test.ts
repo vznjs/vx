@@ -129,6 +129,8 @@ describe('package boundaries', () => {
       'TaskLogBuffer',
       'UserError',
       'VERSION',
+      // Widened 2026-10-22: `@vzn/vx-dte` checks a task's runtime probes on its agent.
+      'answerRuntime',
       'applyMigration',
       'branchCacheScope',
       'currentBranch',
@@ -174,6 +176,8 @@ describe('package boundaries', () => {
       // through core's restore gate, so both refuse the same names.
       'restorableOutput',
       'run',
+      // Widened 2026-10-22: a DTE agent builds a task's sandbox on its own OS.
+      'sandboxRequestFor',
       'splitTaskId',
       // Widened 2026-10-14: the scripts mapper left core and leaves out a
       // script whose name no task may carry, by the schema's own rule.

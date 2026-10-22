@@ -139,11 +139,13 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   the shard around them three times on CI, item 925). The
   shards exclude them in the dealer itself — `testFiles()` in
   `scripts/test-shard.ts` drops the name, so the shard command never
-  sees the file; `test.bun.unsafe` runs them. It,
-  `@vzn/vx-reapi#test` and `@vzn/vx-reapi#test.live` (which dial service
-  containers on the host's loopback, unreachable from a Linux sandbox's
-  network namespace) are the ONLY three tasks in the whole repo with no
-  `exec.sandbox`.
+  sees the file; `test.bun.unsafe`'s `UNSAFE_SHARD_COUNT` (4) shards
+  run them, dealt by `--unsafe` from `tests/unsafe-shard-weights.json`.
+  They, `@vzn/vx-reapi#test` and `@vzn/vx-reapi#test.live` (which dial
+  service containers on the host's loopback, unreachable from a Linux
+  sandbox's network namespace), `check.sandbox-canary` and
+  `check.build-cold` (each drives the sandbox itself, on a Mac agent) are
+  the ONLY tasks in the whole repo with no `exec.sandbox`.
 - Every package's suite is its `test` task, so `vx run ci --all` gates
   them all; CI runs nothing but vx tasks (a workspace step is a design
   smell — declare the cross-project read on the task instead). The one

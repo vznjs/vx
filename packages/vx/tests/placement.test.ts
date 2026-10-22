@@ -384,6 +384,42 @@ describe('a remote executor that enforces the sandbox', () => {
   })
 })
 
+// Owner, 2026-10-22: nothing runs on a distributed run's orchestrator. A
+// task that folds `bun --version` stayed on it; an executor that checks
+// the probe where it runs the task takes it.
+describe('a remote executor that checks runtime probes', () => {
+  const remote = (runtime: boolean): TaskExecutor => ({
+    name: runtime ? 'probing' : 'plain',
+    remote: true,
+    runtime,
+    execute: () => {
+      throw new Error('never runs')
+    },
+  })
+  const local: TaskExecutor = { name: 'local', execute: () => Promise.reject(new Error('no')) }
+  const probed = node('a#build', {})
+  const g = () =>
+    graph(
+      {
+        ...probed,
+        config: { ...probed.config, inputs: { files: ['src/**'], runtime: ['bun --version'] } },
+      } as TaskNode,
+      node('a#here', { remote: false }),
+    )
+
+  it('is offered a task whose key folds a probe, never what pins otherwise', () => {
+    const p = placeTasks(g(), [remote(true), local])
+    expect([...p.executors].map(([id, e]) => [id, e.name])).toEqual([
+      ['a#build', 'probing'],
+      ['a#here', 'local'],
+    ])
+  })
+
+  it('without it, the probed task stays here', () => {
+    expect(placeTasks(g(), [remote(false), local]).executors.get('a#build')!.name).toBe('local')
+  })
+})
+
 describe('hasPooledExecutor / poolOfPlacement', () => {
   const exec = (name: string, capacity?: number): TaskExecutor =>
     ({

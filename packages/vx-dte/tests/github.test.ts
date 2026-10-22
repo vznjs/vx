@@ -2,6 +2,10 @@
 // size, naming the run, the relay, the commit and the agents; a refused
 // dispatch says so for each agent.
 
+import { existsSync, readFileSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import type { AgentSpawn } from '../src/index.js'
 import { github } from '../src/index.js'
@@ -129,5 +133,38 @@ it('cancels the workflow runs it dispatched when the run closes', async () => {
     ])
   } finally {
     await server.stop(true)
+  }
+})
+
+// A killed orchestrator never closes: the job's `if: always()` step cancels
+// what this file lists, or the queued agents hold macOS runners.
+it('lists each run it dispatched in RUNNER_TEMP for the job to cancel', async () => {
+  let id = 0
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch: () => Response.json({ workflow_run_id: ++id, run_url: '', html_url: '' }),
+  })
+  const temp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-gh-'))
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+    RUNNER_TEMP: temp,
+  })
+  try {
+    const adapter = github()
+    void adapter.spawn(spawn('small#1', 'small'))
+    void adapter.spawn(spawn('mac#2', 'mac'))
+    const file = path.join(temp, 'vx-dte-runs')
+    let lines: string[] = []
+    for (let i = 0; i < 100 && lines.length < 2; i++) {
+      await Bun.sleep(10)
+      lines = existsSync(file) ? readFileSync(file, 'utf8').trim().split('\n') : []
+    }
+    expect(lines.toSorted()).toEqual(['/repos/o/r/actions/runs/1', '/repos/o/r/actions/runs/2'])
+  } finally {
+    await server.stop(true)
+    await rm(temp, { recursive: true, force: true })
   }
 })

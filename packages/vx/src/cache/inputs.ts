@@ -31,6 +31,7 @@ import {
   outputNever,
   realpathOf,
   relPosix,
+  restorableOutput,
   shellArgv,
   slashBraceExpansions,
   braceAlternatives,
@@ -199,10 +200,9 @@ export type ProjectFilesCache = Map<
 
 /**
  * What a task's input files fold to is a function of this token when it is
- * one of the git records alone: every file the declaration picks from the
- * project's partition has an index OID the enumeration trusted
- * (`GitFilesCache.filesDigest`), and the declaration reaches no gitignored
- * path and no workspace file.
+ * one of the git records alone: the project's partition holds only files
+ * the enumeration trusted an index OID for (`GitFilesCache.filesDigest`),
+ * and the declaration reaches no gitignored path and no workspace file.
  * The token is the digest, the workspace root (the fold folds paths
  * relative to it) and everything `resolveFiles` keys its memo on.
  * Undefined when only resolving the files can say.
@@ -217,12 +217,10 @@ export function filesToken(args: ResolveInputsArgs): string | undefined {
   const digest = cache.filesDigest(args.projectDir, snapshot)
   if (
     digest === undefined ||
-    // What `resolveFiles` would keep: an input, or a committed own output.
-    digest.loose.some((rel) => inPlan(plan, rel) || ownOnly(plan, rel)) ||
     ignoredReach(plan, snapshot, { dir: args.projectDir, cache }).length > 0
   )
     return undefined
-  return `${args.workspaceRoot}\0${filesMemoKey(args.projectDir, plan, args.ownOutputs, args.ownWorkspaceOutputs ?? [], args.nestedProjectDirs)}\0${digest.digest}`
+  return `${args.workspaceRoot}\0${filesMemoKey(args.projectDir, plan, args.ownOutputs, args.ownWorkspaceOutputs ?? [], args.nestedProjectDirs)}\0${digest}`
 }
 
 /** Everything below the git snapshot that decides `resolveFiles`' result. */
@@ -533,6 +531,28 @@ function projectBinDirs(projectDir: string, workspaceRoot: string): string[] {
   return own === root ? [own] : [own, root]
 }
 
+/**
+ * One runtime probe answered on this machine as a key folds it: an
+ * `inputs.runtime` command run in `projectDir`, or with `workspace` a
+ * `workspaceRuntime` one run in `workspaceRoot`. For an executor that
+ * checks a task's probes where it runs it (`TaskExecutor.runtime`).
+ */
+export function answerRuntime(
+  command: string,
+  projectDir: string,
+  workspaceRoot: string,
+  workspace = false,
+): Promise<string> {
+  return workspace
+    ? runRuntimeCommand(
+        command,
+        workspaceRoot,
+        [path.join(workspaceRoot, 'node_modules', '.bin')],
+        undefined,
+      )
+    : runRuntimeCommand(command, projectDir, projectBinDirs(projectDir, workspaceRoot), undefined)
+}
+
 function resolveEnvValues(
   names: readonly string[],
   source: NodeJS.ProcessEnv,
@@ -749,6 +769,21 @@ export async function resolveOutputs(args: {
   nestedProjectDirs: string[]
 }): Promise<string[]> {
   return (await scanOutputs(args)).files
+}
+
+/**
+ * Whether `resolveOutputs` takes the project-relative file `rel`, decided
+ * without the walk: a directory snapshot's file list is held to the
+ * entry's rows through it.
+ */
+export function outputWalkTakes(
+  projectDir: string,
+  outputs: readonly string[],
+  nestedProjectDirs: string[],
+): (rel: string) => boolean {
+  const restorable = restorableOutput(outputs)
+  const nested = inNestedProject(projectDir, nestedProjectDirs)
+  return (rel) => restorable(rel) && !nested(rel)
 }
 
 /**

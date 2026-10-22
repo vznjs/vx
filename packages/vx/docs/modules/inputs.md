@@ -43,6 +43,17 @@ export function workspaceFilesReachInto(cache: CacheConfig, dir: string): boolea
  *  git-ignored edit there. */
 export function namedOutright(task: TaskConfig): { files: string[]; workspaceFiles: string[] }
 
+/** What a probe answers here: an `inputs.runtime` command run in
+ *  `projectDir`, or with `workspace` a `workspaceRuntime` one run in
+ *  `workspaceRoot`. For an executor that checks a task's probes where it
+ *  runs it (`TaskExecutor.runtime`). */
+export function answerRuntime(
+  command: string,
+  projectDir: string,
+  workspaceRoot: string,
+  workspace?: boolean,
+): Promise<string>
+
 export interface ResolvedInputs {
   files: string[] // absolute paths, sorted
   listings: InputListing[] // what `files` was filtered from, for `addedInput`
@@ -105,6 +116,14 @@ export async function resolveOutputs(args: {
   outputs: readonly string[]
   nestedProjectDirs: string[]
 }): Promise<string[]>
+
+// Whether resolveOutputs takes `rel`, without the walk: a directory
+// snapshot's file list is held to the entry's rows through it.
+export function outputWalkTakes(
+  projectDir: string,
+  outputs: readonly string[],
+  nestedProjectDirs: string[],
+): (rel: string) => boolean
 
 // resolveOutputs, plus the empty directories the globs match: a save keeps them.
 export async function resolveOutputTree(args: {
@@ -203,11 +222,9 @@ fold for a task's files without resolving them: the project's
 `filesDigest` (git-inputs.md), the workspace root and the declaration
 `resolveFiles` keys its own memo on. It is undefined for a task with
 `workspaceFiles`, a declaration that names a gitignored path outright,
-a declaration that would keep a `loose` path (a dirty or untracked
-input, or a committed own output), and a partition holding a linked or
-undecodable file or a path a run already marked changed. A loose path
-no declaration keeps (`vx lock`'s untracked `vx.lock.json`, a dirty
-README) leaves the memo on. `computeTaskHash` keys the fold memo on it
+and a partition holding anything the enumeration did not vouch for (a
+dirty, untracked, linked or undecodable file, or a path a run already
+marked changed). `computeTaskHash` keys the fold memo on it
 (task-hash.md).
 
 ## File resolution rules

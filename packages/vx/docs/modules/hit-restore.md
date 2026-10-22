@@ -3,7 +3,7 @@
 ## Purpose
 
 A confirmed cache entry, materialised: decide whether the tree is
-already current (the whole-subtree directory proof, then the per-file
+already current (the output-directory proof, then the per-file
 fingerprint proof) and skip the restore when it is; otherwise restore the
 artifact in place and then remove the outputs it does not hold (pruning
 only inside the declared trees, so a sibling's fresh directory stays;

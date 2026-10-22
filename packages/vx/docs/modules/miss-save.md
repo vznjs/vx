@@ -25,6 +25,7 @@ export interface OutputDirSnapshot {
 }
 export function entryHolds(
   node: TaskNode,
+  takes: (rel: string) => boolean,
 ): (files: readonly string[], rows: ReadonlyArray<{ path: string }>) => boolean
 export async function recordOutputDirSnapshots(
   cache: CacheLayer,

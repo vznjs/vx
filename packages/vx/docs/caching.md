@@ -549,12 +549,14 @@ the tree last matched the entry (`output_files`, and since 2026-09-03
    wipes and rewrites the declared outputs, and a stray left in place
    would be a stale file the hit silently kept. Until Wave 6 this was a
    glob walk on every hit (0.36 ms each; 365 ms of CPU on a warm
-   1000-project run). Now, for globs of the shape `<dir>/**` or a bare
-   literal `<dir>` (a whole subtree — `wholeSubtreePrefixes`; a literal
-   that names a file is recorded as a file, `mtime_ms` -2, and holds while
-   a regular file stands there, its bytes being the per-file check's),
-   the cache records every directory
-   under `<dir>` with its mtime after each save and restore; on the next
+   1000-project run). Now every glob names the directory its matches
+   live under (`outputDirPrefixes`): `<dir>/**` and a bare literal `<dir>`
+   are that tree (a literal that names a file is recorded as a file,
+   `mtime_ms` -2, and holds while a regular file stands there, its bytes
+   being the per-file check's), any other glob the tree under its static
+   prefix (`dist/*.js` is `dist`), and a root-anchored one (Turbo's
+   `**/dist/**`) the whole project. The cache records every directory
+   under each with its mtime after each save and restore; on the next
    hit, unchanged mtimes on all of them prove the set unchanged, since a
    file added or removed anywhere the glob could see bumps its parent
    directory, and a new directory bumps the recorded directory that
@@ -565,10 +567,14 @@ the tree last matched the entry (`output_files`, and since 2026-09-03
    save's or restore's snapshot is taken at run end, once the directories
    are past the racy window, and by then a later task or another process
    may have written into them: the walk collects the files it passes and
-   records nothing unless they are the entry's rows (item 1087). Any other glob shape (`**/*.js`, `dist/*`), a missing
-   row set (a remote ingest records none), a moved directory, or more
-   than 8,192 directories (`OUTPUT_DIRS_CAP`) keeps the walk — and a walk that proves the tree
-   current records the directories so the following hit can skip it.
+   records nothing unless the files the globs take there are the entry's
+   rows (item 1087), so a source file beside the outputs is no stray. A
+   glob that leaves the project, a missing row set (a remote ingest
+   records none), a moved directory, or more than 8,192 directories
+   (`OUTPUT_DIRS_CAP`, recorded as one never-current row, `mtime_ms` -3,
+   so the hit does not snapshot it again) keeps the walk — and a walk that
+   proves the tree current records the directories so the following hit
+   can skip it.
 2. **The files.** Every recorded file's `(size, mode, mtime-ms)` must
    match. This never left: the directory rule only replaces the
    enumeration, not the fingerprint.

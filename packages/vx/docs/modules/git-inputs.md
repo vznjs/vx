@@ -64,15 +64,11 @@ export class GitFilesCache extends Map<string, readonly string[]> {
   clear(): void // every partition AND its OIDs and pending marks (a write that reached the workspace)
   oidsFor(projectDir: string): ReadonlyMap<string, string> | undefined // trusted index OIDs by path
   setOids(projectDir: string, oids: Map<string, string>): void
-  filesDigest(
-    projectDir: string,
-    snapshot: readonly string[],
-  ): { digest: string; loose: readonly string[] } | undefined // trusted paths + OIDs, none a link; `loose` the rest
+  filesDigest(projectDir: string, snapshot: readonly string[]): string | undefined // the partition's paths + OIDs (a file with none by its stat), none a link
   noteFilesDigest(
     projectDir: string,
     snapshot: readonly string[],
-    digest: string,
-    loose: readonly string[],
+    digest: () => string | undefined,
   ): void
   snapshotFor(projectDir: string, inputGlobs: readonly Bun.Glob[]): readonly string[] | undefined
   get undecodableNames(): ReadonlySet<string> // listed paths whose names are not UTF-8 (lossy spelling)
@@ -179,9 +175,8 @@ export function attributeFilesOutsideTree(
 ```
 
 `applyGitEnumeration` also digests each project's partition, its paths
-and index OIDs joined and hashed once, when none is a symlink or an
-undecodable name. A path the enumeration trusted no OID for (untracked,
-dirty) stays out of the digest and is listed as `loose`.
+and index OIDs joined and hashed once, when the enumeration trusted an
+OID for every path and none is a symlink or an undecodable name.
 `filesDigest` answers it only while the partition is that snapshot with
 those OIDs and no path marked changed: a re-enumeration, a save or a
 restore in the project ends it for the run.

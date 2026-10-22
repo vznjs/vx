@@ -29,7 +29,11 @@ export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB
   cache: { outputs: { files: ['out/**'] } },
 } } }
 `,
-    'b/vx.config.mjs': `export default { name: 'b', tasks: {
+    // The marker lives outside every worktree, so the agent that runs the
+    // task again sees the first one started it: in its own worktree it
+    // slept the 60 s out (80 s of this file's 111 s).
+    'b/vx.config.mjs': `const once = ${JSON.stringify(path.join(root, 'once'))}
+export default { name: 'b', tasks: {
   use: {
     dependsOn: ['a#gen'],
     exec: { command: 'mkdir -p out && cat ../a/out/a.txt > out/b.txt && pwd > out/where.txt && echo used' },
@@ -38,7 +42,7 @@ export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB
   },
   fail: { exec: { command: 'echo oops >&2; exit 3' } },
   slow: { exec: { command: 'touch started && sleep 60' } },
-  once: { exec: { command: 'if [ -e ../once ]; then echo again; else touch ../once && sleep 60; fi' } },
+  once: { exec: { command: 'if [ -e ' + once + ' ]; then echo again; else touch ' + once + ' && sleep 60; fi' } },
   env: { exec: {
     command: 'echo "shown=\${VX_E2E_SHOWN:-none} hidden=\${VX_E2E_HIDDEN:-none}"',
     env: { passThrough: ['VX_E2E_SHOWN'] },
@@ -52,6 +56,16 @@ export default { name: 's', tasks: {
   srv: { exec: { command: 'echo "$PWD" >> ' + log + ' && touch up && echo up && exec sleep 60', persistent: { readyWhen: 'up' } } },
   t1: t(1), t2: t(2), t3: t(3),
 } }
+`,
+    // Keys that fold a runtime probe: one every machine answers alike, one
+    // the agent's worktree answers otherwise.
+    'r/vx.config.mjs': `const log = ${JSON.stringify(path.join(root, 'probed.log'))}
+const t = (probe) => ({
+  exec: { command: 'echo "$PWD" >> ' + log },
+  inputs: { files: ['vx.config.mjs'], runtime: [probe] },
+  cache: { outputs: { files: [] } },
+})
+export default { name: 'r', tasks: { same: t('echo 1.4.2'), here: t('pwd') } }
 `,
     // Wide, then a two-task lull, then wide again.
     'c/vx.config.mjs': `const t = (dependsOn) => ({ exec: { command: 'sleep 0.3' }, dependsOn })
@@ -136,14 +150,7 @@ it('runs a task again on a new agent when its agent is killed', async () => {
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  // `../once` from the agent's worktree of b: its worktree root.
-  const marker = async (): Promise<boolean> => {
-    const base = await readdir(os.tmpdir()).catch(() => [] as string[])
-    for (const d of base.filter((n) => n.startsWith('vx-dte-') && !n.startsWith('vx-dte-e2e')))
-      for (const i of await readdir(path.join(os.tmpdir(), d)).catch(() => [] as string[]))
-        if (await Bun.file(path.join(os.tmpdir(), d, i, 'once')).exists()) return true
-    return false
-  }
+  const marker = (): Promise<boolean> => Bun.file(path.join(root, 'once')).exists()
   for (let i = 0; i < 200 && !(await marker()); i++) await Bun.sleep(100)
   const agents = Bun.spawnSync(['pgrep', '-P', String(run.pid), '-f', 'dte agent'])
   const pids = agents.stdout.toString().trim().split('\n').filter(Boolean)
@@ -172,6 +179,24 @@ it('starts a task’s server on the agent that runs it, once per agent, never he
   const starts = (await readFile(path.join(root, 'servers.log'), 'utf8')).trim().split('\n')
   expect(starts).not.toContain(path.join(root, 's'))
   expect(new Set(starts).size).toBe(starts.length)
+}, 60_000)
+
+// Nothing runs on the orchestrator (owner, 2026-10-22), a task that keys
+// on `bun --version` included: its agent answers the probe, and one that
+// answers otherwise than this machine fails it, as its key holds this
+// machine's answer (C-2).
+it('runs a task whose key folds a runtime probe on an agent that answers it alike', async () => {
+  const r = vx(['run', 'r#same'], 'e2e-probe')
+  expect(r.exitCode).toBe(0)
+  const ran = (await readFile(path.join(root, 'probed.log'), 'utf8')).trim().split('\n')
+  expect(ran).toHaveLength(1)
+  expect(ran[0]).not.toBe(path.join(root, 'r'))
+}, 60_000)
+
+it('fails a task on an agent whose runtime probe answers otherwise', () => {
+  const r = vx(['run', 'r#here'], 'e2e-probe')
+  const out = r.stdout.toString() + r.stderr.toString()
+  expect([r.exitCode, out]).toEqual([1, expect.stringContaining('`pwd` answers')])
 }, 60_000)
 
 it('fails a task that fails on its agent, with its output', () => {

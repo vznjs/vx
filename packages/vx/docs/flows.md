@@ -232,7 +232,8 @@ stateDiagram-v2
     Spawned --> Ready: no readyWhen (immediate)
     Spawned --> Watching: readyWhen regex set
     Watching --> Ready: stdout/stderr line matches
-    Watching --> Failed: child exits before match
+    Watching --> Ready: child exits 0 before match
+    Watching --> Failed: child exits non-zero before match
     Watching --> Failed: readiness timeout → SIGTERM,<br/>SIGKILL after the grace
     Ready --> Running: outcome 'success',<br/>downstream unblocks,<br/>child owned by persistentRegistry
     Running --> Kept: graph done, requested or surfaced<br/>or a kept one's dependency,<br/>CLI foreground → alive past the summary

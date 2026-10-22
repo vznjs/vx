@@ -10,7 +10,6 @@
 // as its own.
 
 import { realpathSync } from 'node:fs'
-import { lstat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   localFloor,
@@ -31,6 +30,7 @@ import {
   type AgentInfo,
   type DepOrder,
   type RunOrder,
+  type RuntimeOrder,
   type ToAgent,
   type ToOrchestrator,
   type WiredResult,
@@ -128,6 +128,31 @@ export interface OrchestratorOptions {
  * window a remote exchanges a new one (turboCache's is five minutes).
  */
 const RELEND_MS = 4 * 60_000
+
+/**
+ * A batch's orders past this go in another: the relay takes a body of
+ * 1 MiB at most, and sealing it grows it by a third.
+ */
+const BATCH_BYTES = 512 * 1024
+
+/** `orders` in runs of at most `max` bytes of JSON; one bigger goes alone. */
+function parts<T extends { order: unknown }>(orders: readonly T[], max: number): T[][] {
+  const out: T[][] = []
+  let part: T[] = []
+  let bytes = 0
+  for (const o of orders) {
+    const size = JSON.stringify(o.order).length
+    if (part.length > 0 && bytes + size > max) {
+      out.push(part)
+      part = []
+      bytes = 0
+    }
+    part.push(o)
+    bytes += size
+  }
+  if (part.length > 0) out.push(part)
+  return out
+}
 
 /** Cores an agent is sent beyond its own, so a finished task's successor is already there. */
 const prefetch = (cores: number): number => Math.max(1, Math.ceil(cores / 4))
@@ -369,8 +394,9 @@ export class Orchestrator {
     const orders = jobs.map((job) => {
       const { req } = job
       const deps: DepOrder[] = []
+      // Every one, held there or not: the agent restores each key once, and
+      // one it was sent but gave back it never ran or restored.
       for (const id of upstream(nodes, req.taskId)) {
-        if (a.has.has(id)) continue
         const n = nodes?.get(id)
         const outs = n?.config.cache?.outputs
         const key = this.savedAs.get(id) ?? this.upstreamKeys.get(id) ?? this.o.keyOf(id)
@@ -406,7 +432,17 @@ export class Orchestrator {
           },
           cores: job.held?.cores ?? 1,
           memory: job.held?.memory ?? 0,
-          ...(req.sandbox === undefined ? {} : { sandbox: req.sandbox }),
+          ...(req.sandbox === undefined || node?.config.exec?.sandbox === undefined
+            ? {}
+            : {
+                sandbox: {
+                  config: node.config.exec.sandbox,
+                  ...(req.sandbox.keyed === undefined
+                    ? {}
+                    : { keyed: req.sandbox.keyed.map((d) => path.relative(this.o.root, d)) }),
+                },
+              }),
+          ...runtimeOrders(req),
           ...(req.servers === undefined || req.servers.length === 0
             ? {}
             : {
@@ -427,20 +463,19 @@ export class Orchestrator {
     if (sandboxed) a.sandboxes = true
     a.chain = a.chain
       .then(async () => {
-        for (const { order } of orders)
-          if (order.sandbox !== undefined)
-            order.binds = await this.binds(order.sandbox.config.allowWrite)
-        const batch = {
-          type: 'batch',
-          root: this.o.root,
-          realRoot: this.realRoot,
-          tasks: orders.map((o) => o.order),
-          ...(sandboxes === undefined ? {} : { sandboxes }),
-        } satisfies ToAgent
-        await this.o.me.send(a.id, batch)
-        a.usage.messagesIn++
-        a.usage.bytesIn += JSON.stringify(batch).length
-        for (const { job } of orders) this.lease(job)
+        for (const [i, part] of parts(orders, BATCH_BYTES).entries()) {
+          const batch = {
+            type: 'batch',
+            root: this.o.root,
+            realRoot: this.realRoot,
+            tasks: part.map((o) => o.order),
+            ...(sandboxes === undefined || i > 0 ? {} : { sandboxes }),
+          } satisfies ToAgent
+          await this.o.me.send(a.id, batch)
+          a.usage.messagesIn++
+          a.usage.bytesIn += JSON.stringify(batch).length
+          for (const { job } of part) this.lease(job)
+        }
       })
       .catch((err: unknown) => {
         // The relay refused the send (the agent is gone): the loss notice
@@ -448,18 +483,6 @@ export class Orchestrator {
         if (err instanceof RelayError && err.status === 404) return
         for (const { job } of orders) job.reject(err)
       })
-  }
-
-  /** The write grants in this checkout that exist, which a bind needs on the agent too. */
-  private async binds(writes: readonly string[]): Promise<{ path: string; dir: boolean }[]> {
-    const out: { path: string; dir: boolean }[] = []
-    for (const w of writes) {
-      if (!w.startsWith(this.realRoot + path.sep)) continue
-      const st = await lstat(w).catch(() => undefined)
-      if (st !== undefined)
-        out.push({ path: path.relative(this.realRoot, w), dir: st.isDirectory() })
-    }
-    return out
   }
 
   /** Three of the agent's `held` from now. */
@@ -474,6 +497,8 @@ export class Orchestrator {
    */
   private retry(a: Agent, job: Job, why: string): Job | undefined {
     a.busy.delete(job.req.taskId)
+    // Its outputs are not there to place a dependant by.
+    a.has.delete(job.req.taskId)
     a.usedCores -= job.held?.cores ?? 0
     a.usedMemory -= job.held?.memory ?? 0
     delete job.agent
@@ -482,7 +507,13 @@ export class Orchestrator {
     delete job.prefetched
     delete job.withdrawing
     const begun = a.started.delete(job.req.taskId)
-    if (job.req.signal?.aborted === true) return undefined
+    // Stopped, it runs nowhere again; the cancel sent its agent has no one to answer it.
+    if (job.req.signal?.aborted === true) {
+      job.resolve(
+        result({ exitCode: 130, signal: 'SIGTERM', durationMs: 0 }, { stdout: '', stderr: '' }),
+      )
+      return undefined
+    }
     if (begun) {
       a.faulty = true
       job.faults = [...(job.faults ?? []), `${a.label} ${why}`]
@@ -506,6 +537,7 @@ export class Orchestrator {
         }
     if (back.length === 0) return
     this.queue.unshift(...back)
+    if (this.spawnedAt.size > 0) this.stranded(`a task's lease ended and no agent is left`)
     this.pumpSoon()
   }
 
@@ -640,22 +672,16 @@ export class Orchestrator {
   }
 
   private async listen(): Promise<void> {
-    let failures = 0
     while (!this.stop.signal.aborted) {
       let messages
       try {
+        // The client asks again through faults shorter than three heartbeats.
         messages = await this.o.me.poll(this.stop.signal)
-        failures = 0
       } catch (err) {
         if (this.stop.signal.aborted) return
-        // A relay that stays unreachable for three heartbeats has lost this
-        // run: what it held runs here instead.
-        if (++failures < 3) {
-          await Bun.sleep(this.o.me.heartbeatMs)
-          continue
-        }
-        // Its tasks fail, not run here: this machine may be far smaller
-        // than the agents. A rerun resumes from what finished and saved.
+        // A relay unreachable longer has lost this run. Its tasks fail, not
+        // run here: this machine may be far smaller than the agents. A rerun
+        // resumes from what finished and saved.
         this.fail(`the relay is unreachable (${(err as Error).message})`)
         return
       }
@@ -687,6 +713,8 @@ export class Orchestrator {
           // It began it whether or not its `start` came first.
           a.started.add(m.task)
           if (this.retry(a, j, m.reason) !== undefined) this.queue.unshift(j)
+          if (a.faulty && this.spawnedAt.size > 0)
+            this.stranded(`${a.label} could not run ${m.task} (${m.reason}) and no agent is left`)
           this.pumpSoon()
         } else if (m.type === 'end') {
           a.usage.messagesOut++
@@ -790,13 +818,14 @@ export class Orchestrator {
     this.stranded(`no agent could start: ${id} ${reason}`)
   }
 
-  /** Nothing online, none still starting, no share here: no task can run. */
+  /** Nothing online that takes work, none still starting, no share here: no task can run. */
   private stranded(reason: string): void {
     const joined = new Set([...this.agents.values(), ...this.gone].map((a) => a.label))
     const starting = [...this.spawnedAt.keys()].some(
       (s) => !this.unstarted.has(s) && !joined.has(s),
     )
-    if (this.agents.size === 0 && !starting && this.o.localSlots === 0) this.fail(reason)
+    const working = [...this.agents.values()].some((a) => !a.faulty)
+    if (!working && !starting && this.o.localSlots === 0) this.fail(reason)
   }
 
   /** Every task sent here and not done fails with `reason`; later ones too. */
@@ -1049,6 +1078,21 @@ const compact = (n: number): string => {
 }
 
 const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)}s`
+
+/** The probes a task's key folds: an agent that answers otherwise fails it (C-2). */
+function runtimeOrders(req: ExecuteRequest): { runtime?: RuntimeOrder[] } {
+  const inputs = req.inputs
+  if (inputs === undefined) return {}
+  const runtime: RuntimeOrder[] = [
+    ...inputs.runtime.map((r) => ({ command: r.command, output: r.output })),
+    ...inputs.workspaceRuntime.map((r) => ({
+      command: r.command,
+      output: r.output,
+      workspace: true as const,
+    })),
+  ]
+  return runtime.length === 0 ? {} : { runtime }
+}
 
 /** `env` without its unset names, as it travels. */
 function defined(env: NodeJS.ProcessEnv): Record<string, string> {

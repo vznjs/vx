@@ -14,6 +14,8 @@ import {
   type CacheEntry,
   cleanOutputPaths,
   committedFiles,
+  OUTPUT_DIRS_OVER_CAP,
+  outputWalkTakes,
   resolveOutputs,
   resolveWorkspaceOutputs,
   sweepRestoreTemps,
@@ -27,7 +29,7 @@ import {
   span,
   splitNegations,
   taskGlob,
-  wholeSubtreePrefixes,
+  outputDirPrefixes,
 } from '../util/index.js'
 import type { ExecuteArgs } from './execute-task.js'
 import { entryHolds } from './miss-save.js'
@@ -202,7 +204,12 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         // The walk ran and proved the tree current (rows absent, or a
         // directory had moved — a benign touch): snapshot the directories
         // so the next hit skips the walk.
-        if (skipRestore && !setKnown && dirPrefixes !== null) {
+        if (
+          skipRestore &&
+          !setKnown &&
+          dirPrefixes !== null &&
+          hit.outputDirRows?.some((r) => r.mtimeMs === OUTPUT_DIRS_OVER_CAP) !== true
+        ) {
           await args.cache.recordOutputDirs?.(hash, node.projectDir, dirPrefixes)
         }
       }
@@ -323,7 +330,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
         hash,
         projectDir: node.projectDir,
         prefixes: dirPrefixes,
-        holds: entryHolds(node),
+        holds: entryHolds(node, outputWalkTakes(node.projectDir, outputs, args.nestedProjectDirs)),
       })
     }
     // Restored outputs changed the project's tree — but on this
@@ -396,7 +403,7 @@ function dirPrefixesOf(outputs: readonly string[]): readonly string[] | null {
   const key = JSON.stringify(outputs)
   let prefixes = prefixMemo.get(key)
   if (prefixes === undefined) {
-    prefixes = wholeSubtreePrefixes(splitNegations(outputs).positive)
+    prefixes = outputDirPrefixes(splitNegations(outputs).positive)
     prefixMemo.set(key, prefixes)
   }
   return prefixes
