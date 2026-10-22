@@ -79,7 +79,7 @@ in `~/.vx/<id>/cache`. A target that is `.vx` or holds it (the
 workspace config, the lock, `.vx/.gitignore`) is refused. A cache
 directory other than `.vx/cache` is the user's: only `vxCacheEntries`
 (the index and its WAL, `VX_ARTIFACT_NAME` files, `runs/`, `failures/`,
-`lockfile-claims/`, an unchanged `*` `.gitignore`) go, then the
+`lockfile-claims/`, `compiled/`, an unchanged `*` `.gitignore`) go, then the
 directory if empty (item 968). The size is
 summed before the delete (links not followed); the delete takes the run
 lock, as a prune does. `--dry-run` deletes nothing and takes no lock.

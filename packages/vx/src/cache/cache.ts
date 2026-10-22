@@ -165,6 +165,8 @@ const VX_CACHE_NAMES = new Set([
   'runs',
   'failures',
   'lockfile-claims',
+  // The workspace config's bytecode bundle (workspace/config-bytecode.ts).
+  'compiled',
 ])
 
 /**

@@ -242,6 +242,39 @@ and why — the project's `package.json` and directory, which Bun's
 resolver visits for the importer whatever vx hands it — is pinned with
 strace in `tests/read-once.unsafe.test.ts`.
 
+## The workspace config's bytecode bundle
+
+`config-bytecode.ts`. Bun parses and compiles `.vx/workspace.ts` and
+every plugin package it imports on each run, while core runs from the
+binary's bytecode: ~4 ms of a ~60 ms warm no-op on a solid-sized
+workspace (2026-10-22). So after a first load from source, the graph is
+bundled with `Bun.build` (CommonJS, `bytecode: true`, `@vzn/vx`
+external) into `.vx/cache/compiled/workspace-<hash>.{js,js.jsc,json}`,
+the name keyed by the config's bytes, its path and `Bun.revision`. The
+next first load requires the bundle instead, while its manifest still
+holds: every input file hashes as it did and every bare import resolves
+to the same real path. Anything else loads the source and builds again.
+Any plugin gets this; none is named.
+
+The bundle is built from the bytes the manifest records, transpiled
+with `import.meta`, `__dirname` and `__filename` replaced by the
+source file's own location. A graph the bundle could run differently
+gets a `skip` manifest and loads from source while its inputs stay the
+same: an `import.meta` field other than `dir dirname path filename file
+url main`, a computed `require`/`import()` or `require.resolve`, a
+`.cjs`/`.cts` file or a CommonJS config, top-level await (no bytecode
+is produced), an input no loader hook saw (JSON), a file outside the
+running core's own source, imported by path (run from source, a bundled
+copy would be a second core state). The require needs
+the core alias (`cli/core-alias.ts`, synchronous for that reason);
+without it `@vzn/vx` resolves only for `import` and the source loads.
+
+Only a run's first workspace load uses it (not a `vx watch` re-load),
+and only once `.vx/cache` exists, so a reading verb on a fresh
+workspace writes nothing (item 900). A cache clear removes `compiled/`.
+`.vx/cache` is trusted as the rest of the cache is. Pinned by
+`tests/config-bytecode.test.ts`.
+
 ## Why a Worker on a repeat load
 
 The content-hash bust only changes the **entry's** specifier. Bun caches

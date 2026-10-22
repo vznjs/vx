@@ -134,12 +134,18 @@ describe.skipIf(strace === null)('one run touches each project file once, Bun in
   it(
     'a run never opens the config and reads the lock once, cold or warm',
     async () => {
-      for (const name of ['cold', 'warm']) {
+      // The cold run loads the workspace config from source (vx's read,
+      // Bun's import); the next builds its bytecode bundle, which Bun.build
+      // reads again, once per config change; from then on only vx reads it
+      // (workspace/config-bytecode.ts).
+      for (const name of ['cold', 'build', 'warm']) {
         const run = await tracedRun(name)
         expect(run('packages/a/vx.config.mjs')).toEqual(['newfstatat'])
         expect(run('packages/a/package.json')).toEqual([])
         expect(run('packages/a')).toEqual([])
-        expect(run('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
+        if (name === 'cold')
+          expect(run('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat', 'openat'])
+        if (name === 'warm') expect(run('.vx/workspace.mjs')).toEqual(['newfstatat', 'openat'])
         expect(run('pnpm-workspace.yaml')).toEqual([])
         expect(run('package.json')).toEqual(['openat'])
         expect(run('.vx/projects.lock.json')).toEqual(['newfstatat', 'openat'])
