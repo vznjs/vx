@@ -9,6 +9,14 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte-relay: drop the frames version from join
+
+a relay's join no longer answers `frames`; a socket always takes `sends`, `remove` and `leave` frames.
+
+## vx-dte: drop local, the orchestrator runs no task
+
+No migration note.
+
 ## vx-dte-relay: allow issuer:repo:workflow entries in one ALLOW
 
 the Worker's ISSUERS, REPOSITORIES and WORKFLOWS and vx-dte-relay's --issuer, --repository and --workflow are replaced by ALLOW and --allow, entries issuer:owner/repo:workflow; createVerifier takes allow instead of issuers, repositories and workflows.
