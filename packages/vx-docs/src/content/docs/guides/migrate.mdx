@@ -120,7 +120,7 @@ $ bunx @vzn/vx init --keep
   lock      0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)
   note      a temporary start: vx init --native writes native config
 
-  next      npx @vzn/vx run build --all
+  next      vx run build --all
 ```
 
 The install uses your lockfile's manager (`pnpm add -D -w …` beside
@@ -157,7 +157,7 @@ $ bunx @vzn/vx-migrate
             packages/lib/vx.config.ts
   lock      2 project configs → .vx/projects.lock.json
 
-  next      bunx @vzn/vx run build --all
+  next      vx run build --all
 ```
 
 `packages/lib/vx.config.ts`, as written:
@@ -307,7 +307,7 @@ $ bunx @vzn/vx init --keep
   lock      0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)
   note      a temporary start: vx init --native writes native config
 
-  next      npx @vzn/vx run build --all
+  next      vx run build --all
 ```
 
 ```text
@@ -323,7 +323,7 @@ $ bunx @vzn/vx-migrate
   lock      2 project configs → .vx/projects.lock.json
   note      migrating from the resolved project-graph snapshot — plugin-inferred targets are frozen as static config; `nx:run-commands` targets are their shell lines, and every other executor runs as itself through `nx-exec` (keep Nx and @vzn/vx-migrate installed until those targets are rewritten as commands); targets with `.env` files run through `nx-env`
 
-  next      bunx @vzn/vx run build --all
+  next      vx run build --all
 ```
 
 `packages/lib/vx.config.ts`, as written (the `define` names are the ones

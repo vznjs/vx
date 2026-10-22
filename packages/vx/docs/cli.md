@@ -1928,7 +1928,7 @@ the project moves.
 runs: it never hands the call to a project's vx, and it never touches a
 `package.json` or a plugin. Run as the project's own vx, it refuses:
 `vx upgrade -g: no global vx ran — <path> is the project's own. Install
-one (npm install -g @vzn/vx), or run \`vx upgrade\` to move the project's`.
+one (bun add -g @vzn/vx), or run \`vx upgrade\` to move the project's`.
 
 ```
 › vx upgrade  project 0.0.1 → 0.0.2

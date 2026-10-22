@@ -309,7 +309,7 @@ describe('a release from the npm registry', () => {
   it('a key id it does not pin is refused with the installer hint', async () => {
     const r = await upgradeAgainst(manifest({ keyid: 'SHA256:rotated' }), TEST_KEY)
     expect(r.outcome).toBe(
-      `vx upgrade: ${PKG}@9.9.9 is signed with an npm key this vx does not know (SHA256:rotated) — if npm rotated its signing key, this vx's installer needs updating: install the new release with npm install -g @vzn/vx@latest, or from https://github.com/vznjs/vx/releases. Nothing replaced`,
+      `vx upgrade: ${PKG}@9.9.9 is signed with an npm key this vx does not know (SHA256:rotated) — if npm rotated its signing key, this vx's installer needs updating: install the new release with bun add -g @vzn/vx@latest, or from https://github.com/vznjs/vx/releases. Nothing replaced`,
     )
     expect([r.asked, r.dest, r.left]).toEqual([[MANIFEST_URL], 'old', ['vx']])
   })
@@ -792,7 +792,7 @@ describe('upgradeOnlyGlobal: `vx upgrade -g` moves only the global vx', () => {
     await mkdir(path.dirname(bin), { recursive: true })
     await writeFile(bin, '')
     await expect(upgradeOnlyGlobal(bin, '9.9.9', '0.0.1')).rejects.toThrow(
-      `vx upgrade -g: no global vx ran — ${bin} is the project's own. Install one (npm install -g @vzn/vx), or run \`vx upgrade\` to move the project's`,
+      `vx upgrade -g: no global vx ran — ${bin} is the project's own. Install one (bun add -g @vzn/vx), or run \`vx upgrade\` to move the project's`,
     )
   })
 
@@ -893,7 +893,7 @@ describe('vx upgrade (CLI)', () => {
     expect(code).toBe(1)
     expect(err).toBe(
       noticed(
-        'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull (npm installs update with: npm install -g @vzn/vx@latest)\n',
+        'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull\n',
       ),
     )
   })

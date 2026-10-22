@@ -383,18 +383,18 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     }
   }
   const firstTask = nextTask(plan.projects.flatMap((p) => p.tasks))
-  const installed = existsSync(path.join(root, 'node_modules', '@vzn', 'vx', 'package.json'))
   // The line is the next thing to type, so it names what that run would
   // refuse without: a git work tree (vx keys inputs on git's view) and,
   // with no scripts mapped, a task to run.
-  const vx = vxInvocation(process.env['npm_config_user_agent'], installed)
-  const run = `${vx} run ${firstTask} --all`
+  // `vx init` installs vx globally first: the line names vx alone, never
+  // a package manager's runner (owner, 2026-10-22: vx owns the command).
+  const run = `vx run ${firstTask} --all`
   // A run reads configs only from the lock; with no lock step here
   // (`--no-install`), that run stopped with "no lock: run `vx lock`".
   const steps = [
     ...(inGitWorkTree(root) ? [] : ['git init']),
     ...(empty ? [`declare a task as the example shows`] : []),
-    ...(!dry && args.lock === undefined ? [`${vx} lock`] : []),
+    ...(!dry && args.lock === undefined ? ['vx lock'] : []),
   ]
   const next = steps.length === 0 ? run : `${steps.join(', ')}, then ${run}`
   const emptyReason = empty ? args.emptyReason : undefined
@@ -593,34 +593,6 @@ function nextTask(tasks: readonly GeneratedTask[]): string {
       (t.task['exec'] as { persistent?: unknown } | undefined)?.persistent === undefined,
   )
   return names.includes('build') ? 'build' : (fit?.name ?? names[0] ?? 'build')
-}
-
-/**
- * How the user runs vx, for the report's `next:` line. After `npx @vzn/vx init`
- * or `bunx @vzn/vx init` a bare `vx` is on no PATH (the first-five-minutes
- * walk, 2026-09-28), so the line names the runner that started this
- * process — npx, pnpm, yarn and Bun each set `npm_config_user_agent` — and
- * the spec it resolves. npx and bunx always name the package, which runs
- * the installed bin when there is one: their bare `vx` fetches an unrelated
- * package named `vx` wherever vx is not installed. No
- * runner (a global install, the compiled binary): `vx`.
- */
-export function vxInvocation(userAgent: string | undefined, installed: boolean): string {
-  const runner = /^(npm|pnpm|yarn|bun)\//.exec(userAgent ?? '')?.[1]
-  switch (runner) {
-    case 'npm':
-      return 'npx @vzn/vx'
-    case 'bun':
-      return 'bunx @vzn/vx'
-    case 'pnpm':
-      return installed ? 'pnpm vx' : 'pnpm dlx @vzn/vx'
-    case 'yarn':
-      // `dlx` is Yarn 2+; Yarn 1 answers `Command "dlx" not found`.
-      if (installed) return 'yarn vx'
-      return userAgent!.startsWith('yarn/1.') ? 'npx @vzn/vx' : 'yarn dlx @vzn/vx'
-    default:
-      return 'vx'
-  }
 }
 
 /** Files named one per line; past this, the root's and a count (TanStack form: 97). */

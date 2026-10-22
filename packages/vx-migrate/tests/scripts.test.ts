@@ -1703,14 +1703,14 @@ describe('vx init — the generated build is not a cached no-op', () => {
       const all = '@vzn/vx @vzn/vx-migrate'
       expect(rows).toEqual([
         `npm install -D ${all} && vx lock && vx run compile --all`,
-        `npm install -D ${all} && npx @vzn/vx lock && npx @vzn/vx run compile --all`,
+        `npm install -D ${all} && vx lock && vx run compile --all`,
         // The first lockfile in pnpm, yarn, bun, npm order names the manager.
-        `bun add -d ${all} && bunx @vzn/vx lock && bunx @vzn/vx run compile --all`,
-        `yarn add -D -W ${all} && yarn vx lock && yarn vx run compile --all`,
-        `yarn add -D ${all} && yarn vx lock && yarn vx run compile --all`,
-        `pnpm add -D -w ${all} && pnpm vx lock && pnpm vx run compile --all`,
-        'pnpm add -D -w @vzn/vx && pnpm vx lock && pnpm vx run compile --all',
-        'pnpm add -D -w @vzn/vx@0.0.633 && pnpm vx lock && pnpm vx run compile --all',
+        `bun add -d ${all} && vx lock && vx run compile --all`,
+        `yarn add -D -W ${all} && vx lock && vx run compile --all`,
+        `yarn add -D ${all} && vx lock && vx run compile --all`,
+        `pnpm add -D -w ${all} && vx lock && vx run compile --all`,
+        'pnpm add -D -w @vzn/vx && vx lock && vx run compile --all',
+        'pnpm add -D -w @vzn/vx@0.0.633 && vx lock && vx run compile --all',
       ])
     } finally {
       if (ua === undefined) delete process.env['npm_config_user_agent']
@@ -2037,15 +2037,17 @@ describe('vx init on a workspace with no scripts', () => {
   })
 })
 
-describe('vx init names the runner that started it', () => {
-  it('in the next: line, with the package spec that runner resolves', async () => {
+describe('vx init names vx, never the runner that started it', () => {
+  // Under npm the line said `npx @vzn/vx run …`, under pnpm `pnpm vx`;
+  // vx owns the command (owner, 2026-10-22).
+  it('in the next: line, whatever runner started it', async () => {
     const root = await makeRoot('vx-init-runner-')
     await addPackage(root, 'app', { build: 'tsc' })
     Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
-    const next = async (): Promise<string | undefined> => {
+    const next = async (ua: string): Promise<string | undefined> => {
       const proc = Bun.spawn([process.execPath, '--no-install', BIN, '--dry'], {
         cwd: root,
-        env: { ...process.env, npm_config_user_agent: 'npm/10.9.7 node/v22.22.2 linux x64' },
+        env: { ...process.env, npm_config_user_agent: ua },
         stdout: 'pipe',
       })
       const out = await new Response(proc.stdout).text()
@@ -2053,10 +2055,10 @@ describe('vx init names the runner that started it', () => {
       return out.trimEnd().split('\n').at(-1)
     }
     try {
-      // makeRoot links @vzn/vx in; a dry init loads nothing that needs it.
-      expect(await next()).toBe('  next      npx @vzn/vx run build --all')
-      await rm(path.join(root, 'node_modules'), { recursive: true })
-      expect(await next()).toBe('  next      npx @vzn/vx run build --all')
+      const lines = []
+      for (const ua of ['npm/10.9.7 node/v22', 'pnpm/10.33.0 npm/? node/v22', 'yarn/1.22.22'])
+        lines.push(await next(ua))
+      expect(lines).toEqual(Array(3).fill('  next      vx run build --all'))
     } finally {
       await rm(root, { recursive: true, force: true })
     }

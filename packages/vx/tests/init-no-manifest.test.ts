@@ -204,8 +204,9 @@ describe('initInstalls', () => {
 
   it('skips a global vx already at the version; no package.json, no local install', () => {
     expect(initInstalls('1.2.3', undefined, null, '1.2.3')).toEqual([])
+    // No runner started init (the compiled binary): Bun, which vx needs anyway, not npm.
     expect(initInstalls('1.2.3', undefined, null, '1.2.2')).toEqual([
-      { argv: ['npm', 'install', '-g', '@vzn/vx@1.2.3'], cwd: null },
+      { argv: ['bun', 'add', '-g', '@vzn/vx@1.2.3'], cwd: null },
     ])
   })
 })

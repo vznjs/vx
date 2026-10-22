@@ -227,7 +227,6 @@
   "info-lock.test.ts": 1558,
   "init-next-task.test.ts": 59,
   "init-no-manifest.test.ts": 1781,
-  "init-yarn1-runner.test.ts": 1,
   "init.test.ts": 2186,
   "input-overlap.test.ts": 1434,
   "inputs-glob-fuzz.test.ts": 3009,
