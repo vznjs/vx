@@ -185,19 +185,12 @@ export function errorLine(text: string): string {
 
 /** A relay of the run's own on loopback, with no auth: only this machine reaches it. */
 export async function loopbackRelay(): Promise<{ url: string; stop(): void }> {
-  const { createRelay } = await import('@vzn/vx-dte-relay')
-  const r = createRelay()
-  const server = Bun.serve({
-    hostname: '127.0.0.1',
-    port: 0,
-    fetch: (req) => r.fetch(req),
-    idleTimeout: 60,
-  })
+  const { serveRelay } = await import('@vzn/vx-dte-relay')
+  const server = serveRelay({ hostname: '127.0.0.1', port: 0 })
   return {
-    url: `http://127.0.0.1:${server.port}`,
+    url: server.url,
     stop() {
-      r.close()
-      void server.stop(true)
+      void server.stop()
     },
   }
 }

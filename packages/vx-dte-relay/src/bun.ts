@@ -2,8 +2,8 @@
 // `bunx @vzn/vx-dte-relay`: the relay on Bun, runs in memory (PROTOCOL.md).
 
 import { parseArgs } from 'node:util'
-import { createRelay } from './relay.js'
 import { createVerifier } from './oidc.js'
+import { serveRelay } from './serve.js'
 
 const USAGE = `usage: vx-dte-relay --issuer <url>... --repository <owner/repo>... --audience <aud> [--port 8080] [--host 0.0.0.0]
        vx-dte-relay --no-auth [--port 8080]   (loopback only)`
@@ -40,7 +40,9 @@ function main(argv: string[]): void {
   const port = Number(values.port)
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
-  const relay = createRelay({
+  const server = serveRelay({
+    hostname: host,
+    port,
     verify: noAuth
       ? undefined
       : createVerifier({
@@ -49,11 +51,9 @@ function main(argv: string[]): void {
           repositories: values.repository!,
         }),
   })
-  const server = Bun.serve({ hostname: host, port, idleTimeout: 60, fetch: relay.fetch })
-  console.log(`vx-dte-relay on http://${host}:${server.port}`)
+  console.log(`vx-dte-relay on ${server.url}`)
   const stop = (): void => {
-    relay.close()
-    void server.stop(true).then(() => process.exit(0))
+    void server.stop().then(() => process.exit(0))
   }
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
