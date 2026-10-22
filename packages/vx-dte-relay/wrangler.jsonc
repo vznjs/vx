@@ -1,5 +1,5 @@
 // The relay on Cloudflare Workers (src/worker.ts): what the README's Deploy
-// to Cloudflare button reads, and `npx wrangler deploy` from this directory.
+// to Cloudflare button reads, and `bunx wrangler deploy` from this directory.
 // Each run is one Durable Object, held in its own storage.
 {
   "name": "vx-dte-relay",
@@ -7,6 +7,9 @@
   "compatibility_date": "2026-10-01",
   // The relay's URL until a domain is added.
   "workers_dev": true,
+  // A deploy keeps the dashboard's ALLOW: the empty one below wiped it,
+  // and every run's object refused to start (2026-10-22).
+  "keep_vars": true,
   "vars": {
     // Who may take part, space separated: `issuer:owner/repo:workflow`, such as
     // `https://token.actions.githubusercontent.com:vznjs/vx:ci.yml`
