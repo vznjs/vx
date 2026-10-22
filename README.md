@@ -28,7 +28,7 @@ them in dependency order and replays results from a content-addressed cache.
 In a git repo:
 
 ```sh
-bunx @vzn/vx init   # installs vx and writes an empty root vx.config.ts
+bunx @vzn/vx init   # installs vx, writes an empty root vx.config.ts and the lockfile plugin
 ```
 
 A prebuilt binary for Linux (glibc, not Alpine's musl) and macOS, x64 and
