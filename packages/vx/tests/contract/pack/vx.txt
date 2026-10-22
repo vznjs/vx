@@ -195,6 +195,7 @@ src/util/verbs.ts
 src/util/which.ts
 src/version.ts
 src/workspace/affected.ts
+src/workspace/config-bytecode.ts
 src/workspace/config-eval.ts
 src/workspace/config-imports.ts
 src/workspace/config-schema.ts

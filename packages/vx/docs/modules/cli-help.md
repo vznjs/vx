@@ -45,7 +45,8 @@ export const FLAG_VALUES: Readonly<Record<string, readonly string[]>>
 // `core-alias.ts`: registers the `@vzn/vx` virtual module so a
 // `vx.config.ts` can import the façade inside the compiled binary,
 // where no node_modules copy exists. `bin.ts` calls it before dispatch.
-export function registerCoreAlias(load: () => Promise<Record<string, unknown>>): void
+// Synchronous: the workspace config's CommonJS bundle requires it.
+export function registerCoreAlias(load: () => Record<string, unknown>): void
 ```
 
 `helpText` is the whole reference, hard-coded. `verbHelpText` is the

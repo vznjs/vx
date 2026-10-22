@@ -29,7 +29,7 @@ beforeAll(async () => {
   await writeFile(
     path.join(root, 'entry.ts'),
     `import { registerCoreAlias } from ${JSON.stringify(CORE_ALIAS)}\n` +
-      `if (process.argv[2] === 'alias') registerCoreAlias(() => import(${JSON.stringify(CORE_INDEX)}))\n` +
+      `if (process.argv[2] === 'alias') registerCoreAlias(() => require(${JSON.stringify(CORE_INDEX)}))\n` +
       `await import('./use.mjs')\n`,
   )
   // A second entry that REGISTERS the alias and then decides whether to
@@ -38,9 +38,9 @@ beforeAll(async () => {
   await writeFile(
     path.join(root, 'lazy.ts'),
     `import { registerCoreAlias } from ${JSON.stringify(CORE_ALIAS)}\n` +
-      `registerCoreAlias(async () => {\n` +
+      `registerCoreAlias(() => {\n` +
       `  console.log('LOADED')\n` +
-      `  return await import(${JSON.stringify(CORE_INDEX)})\n` +
+      `  return require(${JSON.stringify(CORE_INDEX)})\n` +
       `})\n` +
       `console.log('REGISTERED')\n` +
       `if (process.argv[2] === 'import') await import('./use.mjs')\n` +

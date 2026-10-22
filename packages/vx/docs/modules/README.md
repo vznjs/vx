@@ -149,6 +149,7 @@ here, itself or in a brace group.
 | [`lockfile.md`](./lockfile.md)             | `src/workspace/lockfile.ts` — `.vx/projects.lock.json` freeze / trust / audit.                                                                  |
 | [`migration.md`](./migration.md)           | `src/workspace/migration.ts` — the plan → files seam `@vzn/vx-migrate` and any adoption tool write through.                                     |
 |                                            | `src/workspace/config-eval.ts` — fresh re-evaluation in a Worker (see project-loader.md).                                                       |
+|                                            | `src/workspace/config-bytecode.ts` — the workspace config's cached bytecode bundle (see project-loader.md).                                     |
 
 ## Graph + scheduler
 

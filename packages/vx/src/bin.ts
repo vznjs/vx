@@ -39,7 +39,7 @@ async function main(): Promise<void> {
     // package, a workspace or project config — resolves to THIS core, not to
     // a second copy from node_modules (core-alias.ts says why and what it
     // costs). Registered before any verb runs; the façade loads on first use.
-    registerCoreAlias(() => import('./index.js') as Promise<Record<string, unknown>>)
+    registerCoreAlias(() => require('./index.js') as Record<string, unknown>)
     const code = await run(argv)
     // Not `process.exit` here: Bun drops what a pipe has not yet taken
     // when it follows a large write (300 KB written, 64 KiB delivered;

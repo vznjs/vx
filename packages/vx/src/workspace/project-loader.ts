@@ -14,6 +14,7 @@ import {
 } from './config-eval.js'
 import { configImports, hasEsmExport, unprovidedBareImports } from './config-imports.js'
 import { readOnce, unreadable } from './load-reads.js'
+import { buildCompiled, loadCompiled } from './config-bytecode.js'
 
 // The validator lives in config-schema.ts; re-exported so a reader that
 // reaches the loader for it (the tests do) keeps working.
@@ -142,6 +143,8 @@ async function loadDefaultExport(
   configPath: string,
   kind: string,
   bytes: Uint8Array,
+  /** The workspace root, where a first load may run the config's bytecode bundle (config-bytecode.ts). */
+  compiledRoot?: string,
 ): Promise<unknown> {
   refuseUnprovidedImports(bytes, configPath, kind)
   // No random bust for `vx lock`: a project config reaches this import
@@ -166,9 +169,15 @@ async function loadDefaultExport(
     holdSource(hash, source)
   }
   let ns: { default?: unknown }
+  let compiled: { default?: unknown } | null | undefined
   const unguard = guardExit()
   let deadline: ReturnType<typeof setTimeout> | undefined
   try {
+    // A bundle that throws is evaluated from source below, so the error
+    // the user sees is the source's.
+    compiled =
+      literal || compiledRoot === undefined ? null : tryCompiled(compiledRoot, configPath, bytes)
+    if (compiled) return defaultOf(compiled, kind, configPath)
     // The worker's budget, here too: a top-level await that never settled
     // while a timer kept the loop alive hung `vx run` for good, silently
     // (D-66).
@@ -198,9 +207,30 @@ async function loadDefaultExport(
     unguard()
     if (source !== null) releaseSource(hash)
   }
+  const mod = defaultOf(ns, kind, configPath)
+  if (compiledRoot !== undefined && compiled === undefined) {
+    await buildCompiled(compiledRoot, configPath, bytes)
+  }
+  return mod
+}
+
+function defaultOf(ns: { default?: unknown }, kind: string, configPath: string): unknown {
   const mod = ns?.default
   assertDefaultObject(mod, kind, configPath)
   return mod
+}
+
+/** The bundle's namespace; `undefined` to build one after this load, `null` when none can serve. */
+function tryCompiled(
+  root: string,
+  configPath: string,
+  bytes: Uint8Array,
+): { default?: unknown } | null | undefined {
+  try {
+    return loadCompiled(root, configPath, bytes)
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -993,7 +1023,12 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
     const umask = currentUmask()
     let mod: WorkspaceConfig
     try {
-      mod = (await loadDefaultExport(configPath, 'Workspace', bytes)) as WorkspaceConfig
+      mod = (await loadDefaultExport(
+        configPath,
+        'Workspace',
+        bytes,
+        since === undefined ? path.resolve(root) : undefined,
+      )) as WorkspaceConfig
     } finally {
       const changed = [
         ...restoreBuiltins(builtins),

@@ -14,12 +14,15 @@
  * so a verb that never loads a plugin never loads the façade. The
  * source form (`bun src/bin.ts`) resolves the specifier to the same file
  * anyway; the alias makes that a guarantee rather than a layout fact.
+ * The loader is synchronous: the workspace config's bytecode bundle
+ * (workspace/config-bytecode.ts) is CommonJS, and `require` refuses a
+ * module whose loader is async.
  */
-export function registerCoreAlias(load: () => Promise<Record<string, unknown>>): void {
+export function registerCoreAlias(load: () => Record<string, unknown>): void {
   Bun.plugin({
     name: 'vx-core-alias',
     setup(build) {
-      build.module('@vzn/vx', async () => ({ exports: await load(), loader: 'object' }))
+      build.module('@vzn/vx', () => ({ exports: load(), loader: 'object' }))
     },
   })
 }
