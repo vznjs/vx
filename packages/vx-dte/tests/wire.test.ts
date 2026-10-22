@@ -381,3 +381,22 @@ it('leaves over HTTP when the socket answers pings but not frames', async () => 
   expect(await a.poll()).toEqual([{ from: 'relay', body: { type: 'closed' } }])
   await a.leave()
 }, 5_000)
+
+// A relay that held a poll left the run waiting on Bun's own five-minute
+// limit before it failed (CI, 2026-10-22): a request past three heartbeats
+// is a failure the run counts.
+it('gives up on a request the relay holds past three heartbeats', async () => {
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: (r) =>
+      r.url.includes('/join')
+        ? Response.json({ id: 'p1', heartbeatMs: 100 })
+        : new Promise<Response>(() => {}),
+  })
+  servers.push({ url: '', stop: () => server.stop(true) })
+  const o = await join(`http://127.0.0.1:${server.port}`, R, 'orchestrator', null, undefined)
+  const at = performance.now()
+  await expect(o.poll()).rejects.toThrow()
+  expect(performance.now() - at).toBeLessThan(2_000)
+}, 5_000)
