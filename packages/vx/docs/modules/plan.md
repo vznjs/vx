@@ -79,7 +79,7 @@ Piggybacks on `runGraph` with `concurrency: 1` and a planning
 3. Group tasks short-circuit to `'group'`. A persistent task is keyed
    as on the live path and reads `'no-cache'`; the plan and the run must
    key it alike, or `--dry` calls its dependants misses under a key the
-   run never looks up (item 766, `tests/stale-hit.test.ts` › "`--dry`
+   run never looks up (item 766, `tests/stale-hit-git.test.ts` › "`--dry`
    calls a dependant of a persistent task by the key the run uses").
 4. Tasks with no `cache` block OR a policy that reads and writes
    nothing (`--no-cache`, `--cache-policy=local:`) → `'no-cache'`:
