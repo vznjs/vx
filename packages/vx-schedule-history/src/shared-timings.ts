@@ -56,7 +56,8 @@ export function parseTimings(
  */
 function parseBlob(
   bytes: Uint8Array,
-  graph: ReadonlySet<string>,
+  /** Null: every task's. */
+  graph: ReadonlySet<string> | null,
 ): { timings: Map<string, number>; needs: Map<string, TaskResources> } | null {
   if (bytes.byteLength > MAX_BLOB_BYTES) return null
   let parsed: unknown
@@ -77,7 +78,13 @@ function parseBlob(
   if (entries.length > MAX_TASKS) return null
   const out = new Map<string, number>()
   for (const [id, ms] of entries) {
-    if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 && ms <= MAX_MS && graph.has(id))
+    if (
+      typeof ms === 'number' &&
+      Number.isFinite(ms) &&
+      ms >= 0 &&
+      ms <= MAX_MS &&
+      (graph === null || graph.has(id))
+    )
       out.set(id, ms)
   }
   const needs = new Map<string, TaskResources>()
@@ -240,8 +247,10 @@ export interface ExportArgs {
 }
 
 /**
- * Write HEAD's blob: each graph task's forecast after the run, which is
- * this run's timing over the parent's imported one. Never replaces a blob.
+ * Write HEAD's blob: every task of the newest blob along HEAD's lineage,
+ * with each graph task's forecast after the run over it, so whichever of a
+ * commit's blobs a run reads holds every task, and a job whose task set
+ * changed still finds its tasks (owner, 2026-10-22). Never replaces a blob.
  */
 export async function exportTimings(args: ExportArgs): Promise<void> {
   const head = await git(args.root, ['rev-parse', 'HEAD'])
@@ -249,11 +258,38 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
   const p50s = await args.provider.p50sFor(args.ids)
   if (p50s.size === 0) return
   const measured = await args.provider.resourcesFor(args.ids)
+  const shas = await lineage(args.root, head[0])
+  const prior = shas === null ? null : await newestBlob(args.cache, shas, args.ids)
+  const carried = prior === null ? null : parseBlob(prior, null)
+  const timings = new Map(carried?.timings)
+  const resources = new Map(carried?.needs)
+  for (const [id, ms] of p50s) {
+    timings.set(id, ms)
+    const r = measured.get(id)
+    if (r?.maxCpuParallelism !== undefined) resources.set(id, r)
+  }
+  let bytes = encode(timings, resources)
+  // Tasks a repo dropped stay in the carried blob; past the cap, the run's own.
+  if (bytes.byteLength > MAX_BLOB_BYTES) {
+    const own = (id: string): boolean => p50s.has(id)
+    bytes = encode(
+      new Map([...timings].filter(([id]) => own(id))),
+      new Map([...resources].filter(([id]) => own(id))),
+    )
+  }
+  for (const key of keysOf(head[0], args.ids)) await args.cache.put(key, bytes)
+}
+
+/** `{ version: 1, tasks, needs? }`, each map by task id. */
+function encode(
+  timings: ReadonlyMap<string, number>,
+  resources: ReadonlyMap<string, TaskResources>,
+): Uint8Array {
   const tasks: Record<string, number> = {}
   const needs: Record<string, Record<string, number>> = {}
-  for (const [id, ms] of [...p50s].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+  for (const [id, ms] of [...timings].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     tasks[id] = Math.round(ms)
-    const r = measured.get(id)
+    const r = resources.get(id)
     if (r?.maxCpuParallelism === undefined) continue
     needs[id] = {
       cpu: Math.round(r.maxCpuParallelism * 100) / 100,
@@ -264,6 +300,5 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
   }
   const blob =
     Object.keys(needs).length === 0 ? { version: 1, tasks } : { version: 1, tasks, needs }
-  const bytes = new TextEncoder().encode(JSON.stringify(blob))
-  for (const key of keysOf(head[0], args.ids)) await args.cache.put(key, bytes)
+  return new TextEncoder().encode(JSON.stringify(blob))
 }
