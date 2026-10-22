@@ -1,7 +1,7 @@
-// Marks the workspace root. npm() gives the package edges `^build`
-// follows, from the package-lock.json `npm install` writes. vx runs and
+// Marks the workspace root. bun() gives the package edges `^build`
+// follows, from the bun.lock `bun install` writes. vx runs and
 // caches on this machine.
 import { defineWorkspace } from '@vzn/vx/config'
-import { npm } from '@vzn/vx-lockfile'
+import { bun } from '@vzn/vx-lockfile'
 
-export default defineWorkspace({ plugins: [npm()] })
+export default defineWorkspace({ plugins: [bun()] })

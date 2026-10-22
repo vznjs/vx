@@ -38,8 +38,8 @@ what `turbo run build` did, delete `turbo.json`.
 
 ## Check the mapping first
 
-`bunx @vzn/vx init --keep` writes only a `.vx/workspace.ts` that runs
-`turbo.json` unchanged through `turbo()` from `@vzn/vx-migrate`,
+`bunx @vzn/vx init --keep` writes only a `.vx/workspace.ts` that maps
+`turbo.json` through `turbo()` from `@vzn/vx-migrate`,
 installs what it imports, and prints a `next:` line that builds once:
 
 ```ts
