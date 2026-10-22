@@ -74,6 +74,45 @@ it("an aborted run aborts a plugin executor's request, so its child ends and run
   expect(await waitForDead(pid, 1_000)).toBe(true)
 }, 20_000)
 
+// A task a stop killed on another machine read `aborted` with no machine,
+// though it ran there (a vx-dte Ctrl-C).
+it('a task a stop aborts keeps where its executor ran it', async () => {
+  await Bun.write(
+    path.join(root, '.vx/workspace.mjs'),
+    localWorkspaceSource([
+      pluginSource(
+        'org/elsewhere',
+        `{ executor() { return { name: 'elsewhere', async execute(req) {
+            globalThis.__vxElsewhereStarted = true
+            await new Promise((resolve) => req.signal?.addEventListener('abort', resolve, { once: true }))
+            return { exitCode: 143, signal: 'SIGTERM', durationMs: 0, stdout: '', stderr: '', violations: [], where: 'worker-1' }
+          } } } }`,
+      ),
+    ]),
+  )
+  await addProject(
+    root,
+    'app',
+    `export default { tasks: { slow: { exec: { command: 'sleep 30' } } } }`,
+  )
+  const ac = new AbortController()
+  const running = run({
+    cwd: root,
+    tasks: ['slow'],
+    projects: ['app'],
+    log: silent,
+    handleSignals: false,
+    signal: ac.signal,
+  })
+  const g = globalThis as { __vxElsewhereStarted?: boolean }
+  while (g.__vxElsewhereStarted !== true) await Bun.sleep(10)
+  ac.abort()
+  const r = await running
+  expect(r.outcomes.map((o) => [o.node.id, o.status, o.where])).toEqual([
+    ['app#slow', 'aborted', 'worker-1'],
+  ])
+}, 20_000)
+
 it("exec.timeout aborts a plugin executor's request, and the task fails as timed out", async () => {
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
