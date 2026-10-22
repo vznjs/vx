@@ -1,7 +1,5 @@
 // A distributed run end to end on `local()`: the agents are processes in
-// their own git worktrees, joined through the adapter's loopback relay. The
-// orchestrator keeps no share (`local: 0`), so every task that may leave
-// this machine runs on an agent.
+// their own git worktrees, joined through the adapter's loopback relay.
 
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -21,7 +19,7 @@ beforeEach(async () => {
     'package.json': JSON.stringify({ name: 'ws', private: true }),
     '.gitignore': 'out\n.vx/cache\n',
     '.vx/workspace.mjs': `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB' } }, adapter: local(), local: 0 })] }
+export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB' } }, adapter: local() })] }
 `,
     'a/vx.config.mjs': `export default { name: 'a', tasks: { gen: {
   exec: { command: 'mkdir -p out && echo made > out/a.txt' },
@@ -56,6 +54,16 @@ export default { name: 's', tasks: {
   srv: { exec: { command: 'echo "$PWD" >> ' + log + ' && touch up && echo up && exec sleep 60', persistent: { readyWhen: 'up' } } },
   t1: t(1), t2: t(2), t3: t(3),
 } }
+`,
+    // Keys that fold a runtime probe: one every machine answers alike, one
+    // the agent's worktree answers otherwise.
+    'r/vx.config.mjs': `const log = ${JSON.stringify(path.join(root, 'probed.log'))}
+const t = (probe) => ({
+  exec: { command: 'echo "$PWD" >> ' + log },
+  inputs: { files: ['vx.config.mjs'], runtime: [probe] },
+  cache: { outputs: { files: [] } },
+})
+export default { name: 'r', tasks: { same: t('echo 1.4.2'), here: t('pwd') } }
 `,
     // Wide, then a two-task lull, then wide again.
     'c/vx.config.mjs': `const t = (dependsOn) => ({ exec: { command: 'sleep 0.3' }, dependsOn })
@@ -171,6 +179,24 @@ it('starts a task’s server on the agent that runs it, once per agent, never he
   expect(new Set(starts).size).toBe(starts.length)
 }, 60_000)
 
+// Nothing runs on the orchestrator (owner, 2026-10-22), a task that keys
+// on `bun --version` included: its agent answers the probe, and one that
+// answers otherwise than this machine fails it, as its key holds this
+// machine's answer (C-2).
+it('runs a task whose key folds a runtime probe on an agent that answers it alike', async () => {
+  const r = vx(['run', 'r#same'], 'e2e-probe')
+  expect(r.exitCode).toBe(0)
+  const ran = (await readFile(path.join(root, 'probed.log'), 'utf8')).trim().split('\n')
+  expect(ran).toHaveLength(1)
+  expect(ran[0]).not.toBe(path.join(root, 'r'))
+}, 60_000)
+
+it('fails a task on an agent whose runtime probe answers otherwise', () => {
+  const r = vx(['run', 'r#here'], 'e2e-probe')
+  const out = r.stdout.toString() + r.stderr.toString()
+  expect([r.exitCode, out]).toEqual([1, expect.stringContaining('`pwd` answers')])
+}, 60_000)
+
 it('fails a task that fails on its agent, with its output', () => {
   const r = vx(['run', 'b#fail'], 'e2e')
   expect(r.exitCode).not.toBe(0)
@@ -186,7 +212,7 @@ it('runs on an agent started by hand, with no adapter, under one name on both si
     await writeFile(
       path.join(root, '.vx/workspace.mjs'),
       `import { dte } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ relay: ${JSON.stringify(url)}, local: 0 })] }
+export default { plugins: [dte({ relay: ${JSON.stringify(url)} })] }
 `,
     )
     Bun.spawnSync(
@@ -312,7 +338,7 @@ it('a stopped run exits before its installed worktrees are removed', async () =>
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),
     `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'mkdir nm && cd nm && seq 1 300000 | xargs touch' }), local: 0 })] }
+export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'mkdir nm && cd nm && seq 1 300000 | xargs touch' }) })] }
 `,
   )
   Bun.spawnSync(

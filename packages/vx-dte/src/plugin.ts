@@ -89,8 +89,6 @@ export interface DteOptions {
   readonly adapter?: DteAdapter
   /** The relay's URL; absent, the adapter's own. */
   readonly relay?: string
-  /** Tasks the orchestrator's own machine runs at once beside the agents (default 0: agents run them all). */
-  readonly local?: number
   /** The bearer token for the relay (default `VX_DTE_TOKEN`, else on GitHub Actions an OIDC token for the relay's URL). */
   readonly token?: () => string | undefined | Promise<string | undefined>
 }
@@ -99,7 +97,6 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   agents: 'object',
   adapter: 'object',
   relay: 'string',
-  local: 'number',
   token: 'function',
 }
 
@@ -127,9 +124,6 @@ export function dte(options: DteOptions) {
   }
   if (adapter === undefined && options.relay === undefined) {
     throw new UserError('dte(): with no adapter, set relay: the agents that join it run the tasks')
-  }
-  if (options.local !== undefined && !(Number.isInteger(options.local) && options.local >= 0)) {
-    throw new UserError('dte(): local is a whole number ≥ 0')
   }
   // On GitHub Actions with none given, one for the relay's URL.
   const token = async (relay: string): Promise<string | undefined> =>
@@ -169,10 +163,7 @@ export function dte(options: DteOptions) {
     if (options.relay === undefined) throw new UserError('vx dte plan needs dte({ relay })')
     const { runSecret } = await import('./seal.js')
     const live = adapter.live?.() === true
-    const agents = planned(
-      sizes,
-      live ? await firstWave(args, ctx, sizes, options.local ?? 0) : undefined,
-    )
+    const agents = planned(sizes, live ? await firstWave(args, ctx, sizes) : undefined)
     const files: Record<string, string> = {
       ...adapter.render({ run, relay: options.relay, workspaceRoot: root, agents }),
     }
@@ -300,7 +291,6 @@ export function dte(options: DteOptions) {
       proof ??= seal.secretProof(secret!)
       const { tree } = await snapshot(ctx.workspaceRoot)
       if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
-      const localSlots = options.local ?? 0
       const need = (id: string): Need => needOf(peaks.get(id))
       const o = new Orchestrator({
         me: seal.sealOrchestrator(
@@ -310,7 +300,6 @@ export function dte(options: DteOptions) {
         ),
         root: ctx.workspaceRoot,
         tree,
-        localSlots,
         nodes: () => nodes,
         need,
         artifacts: ctx.artifacts,
@@ -346,8 +335,7 @@ export function dte(options: DteOptions) {
         index++
       }
       // Agents in declared order for the cores the remaining tasks keep
-      // busy (`busyCores`) beyond this machine's share; idle ones beyond
-      // it leave.
+      // busy (`busyCores`); idle ones beyond it leave.
       const demand = (remaining: ReadonlySet<string>): void => {
         demanding = true
         try {
@@ -357,7 +345,7 @@ export function dte(options: DteOptions) {
         }
       }
       const shape = (remaining: ReadonlySet<string>): void => {
-        // An unmeasured task takes the biggest agent there is.
+        // A task that filled its agent takes the biggest there is.
         const biggest = Math.max(1, o.biggestCores(), ...sizes.map((s) => s.cpu))
         const warmUp = o.warmUpMs()
         const width = (peak?: boolean, fromMs?: number): number =>
@@ -368,7 +356,7 @@ export function dte(options: DteOptions) {
             (id) => peaks.get(id)?.p50DurationMs,
             peak,
             fromMs,
-          ) - localSlots
+          )
         // What an agent asked for now finds once it has warmed up; while
         // none has joined, the warm-up is unknown and the width is now's.
         const wantCores = width(false, warmUp)
@@ -428,13 +416,17 @@ export function dte(options: DteOptions) {
         sandbox: true,
         // A task's persistent dependencies start on its agent, never here.
         servers: true,
-        // Room for what agents report beyond their size and the prefetch;
-        // the orchestrator holds the rest. Agents that join on their own
-        // are as many as join.
+        // An agent answers a task's runtime probes before it runs it.
+        runtime: true,
+        // Room for the agents' cores and their prefetch; the orchestrator
+        // queues the rest. Agents that join on their own are as many as join.
         capacity:
           adapter === undefined || sizes.some((s) => s.max === Infinity)
-            ? localSlots + JOINED_CAPACITY
-            : Math.max(1, localSlots + sizes.reduce((n, s) => n + 2 * s.max * s.cpu, 0)),
+            ? JOINED_CAPACITY
+            : Math.max(
+                1,
+                sizes.reduce((n, s) => n + 2 * s.max * s.cpu, 0),
+              ),
         execute: (req) => {
           // The first task that missed: agents start now, not for a run
           // its cache answers whole.
@@ -499,13 +491,12 @@ function readPlan(root: string, run: string): DtePlan['agents'] {
 /**
  * The agents by size the run's start keeps busy: the tasks `vx run
  * <args>` would run (`--dry=json`), laid out by the graph and history as
- * a run's demand lays them, beyond this machine's `localSlots`.
+ * a run's demand lays them.
  */
 async function firstWave(
   args: readonly string[],
   ctx: CommandContext,
   sizes: readonly Size[],
-  localSlots: number,
 ): Promise<Map<string, number>> {
   const { VX_DTE_RUN: _, ...env } = process.env
   const dry = Bun.spawnSync([...ctx.vx, 'run', ...args, '--dry=json'], {
@@ -548,13 +539,12 @@ async function firstWave(
   }
   const { busyCores, toStart } = await import('./width.js')
   const biggest = Math.max(...sizes.map((s) => s.cpu))
-  const want =
-    busyCores(
-      remaining,
-      nodes,
-      (id) => Math.min(needOf(peaks.get(id)).cores, biggest),
-      (id) => peaks.get(id)?.p50DurationMs ?? p50.get(id),
-    ) - localSlots
+  const want = busyCores(
+    remaining,
+    nodes,
+    (id) => Math.min(needOf(peaks.get(id)).cores, biggest),
+    (id) => peaks.get(id)?.p50DurationMs ?? p50.get(id),
+  )
   const above = [...remaining].flatMap((id) => needOf(peaks.get(id)).above ?? [])
   const wave = new Map<string, number>()
   for (const s of toStart(sizes, new Map(), 0, want, above))
@@ -571,17 +561,22 @@ interface DryTask {
 }
 
 /** What a task asks of an agent, from its history. */
-function needOf(r: TaskResources | undefined): Need {
-  // Unmeasured: a whole agent, until its first run measures it. One that
-  // filled its agent: a whole bigger one.
-  if (r?.maxCpuParallelism === undefined) return { cores: Infinity, memory: Infinity }
+export function needOf(r: TaskResources | undefined): Need {
+  // Unmeasured: one core, until its first run measures it. A whole agent
+  // each left CI's agents at 30% whenever a PR added tasks (2026-10-22: 12
+  // new shards, each alone on a 4-core agent); only main saves history.
+  // One that filled its agent: a whole bigger one.
+  if (r?.maxCpuParallelism === undefined) return { cores: 1, memory: 0 }
   if (r.saturatedCores !== undefined || r.saturatedMemoryBytes !== undefined)
     return {
       cores: Infinity,
       memory: Infinity,
       above: { cores: r.saturatedCores ?? 0, memory: r.saturatedMemoryBytes ?? 0 },
     }
-  return { cores: Math.max(1, Math.ceil(r.maxCpuParallelism)), memory: r.maxPeakRssBytes ?? 0 }
+  // The cores it keeps busy on average, unrounded: a suite at 0.7 booked a
+  // whole core and CI's agents ran at 30-50% (M, 2026-10-22: "close to
+  // 100%"). A quarter at least, so a task that only waits is not free.
+  return { cores: Math.max(0.25, r.maxCpuParallelism), memory: r.maxPeakRssBytes ?? 0 }
 }
 
 /**

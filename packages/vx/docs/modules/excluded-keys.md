@@ -74,7 +74,7 @@ one with no `cache` saves nothing anyway and makes no line.
 
 ## Tests
 
-`tests/stale-hit.test.ts` › "--exclude-dependencies keys on the
+`tests/stale-hit-git.test.ts` › "--exclude-dependencies keys on the
 dependency it skips": the dependant's key is the same with and without
 the flag, and it hits; a change to the dependency is a miss; a lazily
 keyed dependant (one waiting on a same-project producer) folds it too;

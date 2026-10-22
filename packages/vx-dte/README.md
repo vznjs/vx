@@ -135,9 +135,13 @@ as each task starts and ends:
 
 The run is your own job's `vx run`. When it needs agents it dispatches
 `.github/workflows/vx-agent.yml` once per size, with the agents of that
-size as a matrix. When the run ends it cancels each agent run it
+size as a matrix, each job named for its agent (`name: ${{ matrix.agent }}`):
+a job that ends badly before its agent joins marks that agent `failed`
+with the step it failed at, and the run starts another in its place. When the run ends it cancels each agent run it
 dispatched, so one still queued does not hold a runner the next run
-waits for. No secret: each side proves its key with the job's OIDC
+waits for. A vx that is killed never gets to: it also lists each run in
+`$RUNNER_TEMP/vx-dte-runs`, one API path per line, for an `if: always()`
+step to cancel (this repo's `ci.yml` does). No secret: each side proves its key with the job's OIDC
 token, and the relay's token is an OIDC token for the relay's URL. Such a
 token lasts 5 minutes, so each side asks for a new one a minute before
 its token expires.
@@ -263,7 +267,7 @@ CI/CD variable both `vx-plan` and `vx` see) to spawn live: the plan then
 starts with the run only the agents its start keeps busy, and writes the
 others as `when: manual` jobs. It reads that from the run's own graph
 (`vx run <its args> --dry=json`) and history, so give `vx dte plan` the
-run's selection; a task with no history takes a whole agent. The run plays one when its work needs it and cancels
+run's selection; a task with no history books one core. The run plays one when its work needs it and cancels
 the ones it never played when it ends.
 
 ## What runs where
@@ -281,15 +285,20 @@ the ones it never played when it ends.
 - A task goes to the agent that holds most of its dependencies' outputs,
   so a chain stays on one machine.
 - A sandboxed task runs on an agent inside the agent's own sandbox, with
-  the same `exec.sandbox`; a violation there fails it here, named in this
-  checkout's paths.
+  the same `exec.sandbox`, built there (`sandboxRequestFor`): its paths,
+  walls and credential stores are the agent's, so an orchestrator on
+  Linux can run macOS agents. A violation there fails it here, named in
+  this checkout's paths.
 - A persistent task a task depends on starts on the agent that runs the
   task, once per agent, ready before it, and stops when the agent leaves;
   the orchestrator never starts it, and an agent no dependant reaches
   never does (owner, 2026-10-22).
+- A task whose key folds a runtime probe (`inputs.runtime`, such as
+  `bun --version`) runs on an agent, which answers the probe first and
+  fails the task when it answers otherwise than this machine did.
 - Tasks that must run here stay here: a requested persistent task, one
-  with a `sandbox` or `exec.remote: false`, interactive tasks, and their
-  dependants (core's placement).
+  with `exec.remote: false`, interactive tasks, and their dependants
+  (core's placement).
 - An agent restores, by key, the declared outputs of every task the one
   it runs depends on, unless it ran or restored them before. Files a task
   writes without declaring them stay on the agent.
@@ -300,10 +309,13 @@ the ones it never played when it ends.
 - An agent that stops answering, stops saying it holds a task, or cannot
   run one (a full disk) gets no more work, and its tasks run again on
   another. A task two such agents had begun fails, naming both; one an
-  agent had not begun yet does not count.
+  agent had not begun yet does not count. With no agent of the run left
+  to take it and none starting, it fails at once.
 - A relay unreachable for three heartbeats fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller
   than the agents. What finished is saved, so a rerun resumes from it.
+  A shorter fault (a `5xx` while the host restarts the relay, a dropped
+  connection) is asked through, by the orchestrator and agents alike.
 - An agent that never joins says why on its row (`failed  exited 1:
 …`). The first such failure in a run starts another agent in its
   place, as a checkout or install can fail on the network; a second
@@ -335,7 +347,7 @@ The `agents` rows, live while the run goes and again in the footer,
 give each agent its status (`starting`, `online`, `left`, `gone`, or `failed`
 with why, such as `exited 1: Cannot find package '@vzn/vx-dte'`), the tasks it
 has done, failed or had aborted by a stop, and the ones it runs now; while the run goes, those that left
-are one line (`3 agents  left  9 done`). This machine is `local`. An agent the
+are one line (`3 agents  left  9 done`). An agent the
 run started is named by its size and the order it was started in; one
 that joined on its own is `agent#N`. A task sent to an agent but not yet
 begun there has no row; the tasks line counts it `scheduled`
@@ -391,7 +403,7 @@ utilization of every machine together:
     declared order for the cores the remaining tasks keep busy: laid out
     as early as their dependencies allow, each for its usual duration
     (1 s without history), their work spread over their critical path
-    (core-seconds over its length, rounded up), less this machine's share. None stops before the
+    (core-seconds over its length, rounded up). None stops before the
     run ends. A task the history has not measured runs alone on an agent;
     one that used all of its agent's cores or memory (90%) last time runs
     alone on the smallest bigger size, which the run starts for it. Each
@@ -400,8 +412,6 @@ utilization of every machine together:
   - `adapter` is the `DteAdapter` that starts agents. Absent, the run
     starts none and uses the agents that join `relay`.
   - `relay` is the relay's URL; absent, the adapter's own.
-  - `local` is how many tasks this machine runs at once beside the agents
-    (default 0: agents run every task).
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`). It
     is asked again a minute before the token's `exp`, when it has one.
 - `vx dte agent` is an agent. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else

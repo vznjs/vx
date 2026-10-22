@@ -69,7 +69,7 @@ it('polls over HTTP once its socket is gone', async () => {
 })
 
 /** A relay on Bun.serve whose participants' sockets the test sees, and can drop as a network does. */
-function sockets(framesV2 = true) {
+function sockets() {
   type Held = { key: string; id: string; socket?: { send(t: string): void; close(): void } }
   const open: Bun.ServerWebSocket<Held>[] = []
   const closes: { id: string; code: number }[] = []
@@ -84,13 +84,7 @@ function sockets(framesV2 = true) {
   server = Bun.serve<Held>({
     hostname: '127.0.0.1',
     port: 0,
-    fetch: async (r) => {
-      const res = await relay.fetch(r)
-      if (framesV2 || !r.url.endsWith('/join')) return res
-      // A relay from before `frames` 2.
-      const { frames: _, ...json } = (await res.json()) as Record<string, unknown>
-      return Response.json(json, { status: res.status })
-    },
+    fetch: (r) => relay.fetch(r),
     websocket: {
       open(ws) {
         open.push(ws)
@@ -184,22 +178,6 @@ it('sends asked for together go as one frame, each answered', async () => {
   ])
   await a.leave()
   await o.leave()
-})
-
-it('to a relay without frames 2, sends one by one and leaves over HTTP', async () => {
-  const { url, frames } = sockets(false)
-  const o = await join(url, R2, 'orchestrator', null, undefined)
-  const a = await join(url, R2, 'agent', null, undefined)
-  await o.poll()
-  await Promise.all([o.send(a.id, 1), o.send(a.id, 2)])
-  expect(frames.map((f) => Object.keys(JSON.parse(f) as object))).toEqual([
-    ['n', 'to', 'body'],
-    ['n', 'to', 'body'],
-  ])
-  const asked = verbs()
-  await a.leave()
-  await o.leave()
-  expect(asked).toEqual(['leave', 'leave'])
 })
 
 it('polls a relay that offers no socket', async () => {
@@ -399,6 +377,85 @@ it('gives up on a request the relay holds past three heartbeats', async () => {
   await expect(o.poll()).rejects.toThrow()
   expect(performance.now() - at).toBeLessThan(2_000)
 }, 5_000)
+
+// Cloudflare answers 5xx while a Durable Object restarts, and a runner's
+// network drops a connection now and then: one such answer to an agent's
+// poll ended the agent and lost what it ran (2026-10-22).
+it('asks again through a relay fault shorter than three heartbeats', async () => {
+  const relay = createRelay({ heartbeatMs: 50 })
+  let faults = 0
+  let joins = 0
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch(req) {
+      const verb = /\/(\w+)(\?|$)/.exec(req.url)![1]
+      // The first join too: an agent on CI died of `relay join: 500` (2026-10-22).
+      if ((verb !== 'join' || joins++ === 0) && faults++ < 3)
+        return new Response('upstream', { status: 503 })
+      return relay.fetch(req)
+    },
+  })
+  servers.push({
+    url: '',
+    async stop() {
+      relay.close()
+      await server.stop(true)
+    },
+  })
+  const url = `http://127.0.0.1:${server.port}`
+  const o = await join(url, R, 'orchestrator', null, undefined)
+  const a = await join(url, R, 'agent', null, undefined)
+  await a.send('orchestrator', 'once')
+  expect(faults).toBe(4)
+  const got = [...(await o.poll()), ...(await o.poll())].filter((m) => m.from === a.id)
+  expect(got).toEqual([{ from: a.id, body: 'once' }])
+  globalThis.fetch = (async () => {
+    globalThis.fetch = realFetch
+    throw new Error('ECONNRESET')
+  }) as unknown as typeof fetch
+  expect(await a.poll()).toEqual([])
+})
+
+it('gives up on a relay down for three heartbeats', async () => {
+  const relay = createRelay({ heartbeatMs: 50 })
+  let down = false
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: (req) => (down ? new Response('', { status: 502 }) : relay.fetch(req)),
+  })
+  servers.push({
+    url: '',
+    async stop() {
+      relay.close()
+      await server.stop(true)
+    },
+  })
+  const a = await join(`http://127.0.0.1:${server.port}`, R, 'agent', null, undefined)
+  down = true
+  const at = performance.now()
+  await expect(a.poll()).rejects.toThrow('relay poll: 502')
+  expect(performance.now() - at).toBeGreaterThanOrEqual(150)
+})
+
+// Sends asked for in one tick went as one frame, which the relay refused
+// whole once they passed its 1 MiB body limit together (2026-10-22).
+it('sends asked for together that would pass the relay’s body limit go as several frames', async () => {
+  const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
+  servers.push(s)
+  const o = await join(s.url, R, 'orchestrator', null, undefined)
+  const a = await join(s.url, R, 'agent', null, undefined)
+  await o.poll()
+  const big = 'x'.repeat(600_000)
+  await Promise.all([o.send(a.id, big), o.send(a.id, big), o.send(a.id, 'small')])
+  const got = []
+  for (let i = 0; i < 10 && got.length < 3; i++) got.push(...(await a.poll()))
+  expect(got.map((m) => (m.body as string).length)).toEqual([600_000, 600_000, 5])
+  await expect(o.send(a.id, 'x'.repeat(1 << 20))).rejects.toThrow('relay send: 413 body over 1 MiB')
+  await a.leave()
+  await o.leave()
+})
 
 // One 500 from the relay's host on join failed a whole CI run before any
 // task started (PR #3911, 2026-10-22): join asks again.

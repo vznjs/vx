@@ -403,8 +403,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     return Response.json({
       id: p.id,
       heartbeatMs,
-      // `frames`: the socket also takes `sends`, `leave` and `remove`.
-      ...(opts.upgrade === undefined ? {} : { socket: true, frames: 2 }),
+      ...(opts.upgrade === undefined ? {} : { socket: true }),
     })
   }
 
@@ -575,11 +574,14 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     frame(key, id, text) {
       let n: unknown = null
       try {
-        if (text.length > MAX_BODY) throw new HttpError(413, 'body over 1 MiB')
+        if (text.length > MAX_BODY) {
+          // Answered by its number, read without parsing the rest.
+          const k = /^\{"n":(\d+)[,}]/.exec(text)?.[1]
+          if (k !== undefined) n = Number(k)
+          throw new HttpError(413, 'body over 1 MiB')
+        }
         let body: {
           n?: unknown
-          to?: unknown
-          body?: unknown
           leave?: unknown
           remove?: unknown
           sends?: unknown
@@ -607,7 +609,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
             }
           })
           if (results.some((r) => r !== null)) return JSON.stringify({ n, results })
-        } else send(run, p, body, text.length)
+        } else throw new HttpError(400, 'frame is sends, remove or leave')
         return JSON.stringify({ n })
       } catch (err) {
         if (!(err instanceof HttpError)) throw err

@@ -4,10 +4,11 @@ import { defineProject } from '@vzn/vx'
 // dealt by recorded weight (scripts/test-shard.ts). Many processes is not
 // only speed: `bun test` pins ~2 descriptors per imported module and macOS
 // caps a process at 10 240, so the whole suite in one process does not
-// clear the cap. Twelve, not the four cores of the smallest box it runs
-// on: an oversubscribed box finishes in the same wall time as eight, a
-// twelve-core one in two thirds of it.
-export const SHARD_COUNT = 12
+// clear the cap. Twenty-four, not the four cores of the smallest box it
+// runs on: a distributed run spreads the shards over agents, and the
+// slowest shard is its critical path. On 4 cores, 24 shards finished in
+// the same wall time as 12 (393 s), each 58 to 72 s against 131 s.
+export const SHARD_COUNT = 24
 // The suite's git fixtures assume git's defaults. A machine's global config
 // can change what `git status` vouches for (`core.trustctime=false`,
 // `core.checkStat=minimal`, which vx then declines to trust, A-6) or sign
@@ -21,10 +22,12 @@ const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' 
 // what another saved.
 // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
 // CI's macOS jobs share the remote cache with Linux; a key that named no
-// platform replayed Linux's pass as the macOS result (#3854). The runner's
-// OS, read when the key is taken: a `runtime` probe would pin the task off
-// agents, and a value the config computes is frozen into the lock.
-const PLATFORM = ['RUNNER_OS']
+// platform replayed Linux's pass as the macOS result (#3854). The agents'
+// OS, which ci.yml names: the run's own job is Linux for both runs (owner,
+// 2026-10-22), so its RUNNER_OS says nothing of where a suite ran. An env
+// read when the key is taken: a value the config computes is frozen into
+// the lock.
+const PLATFORM = ['CI_AGENTS_OS']
 const SUITE_ENV = {
   ...GIT_HERMETIC,
   BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0',
@@ -80,12 +83,15 @@ const OTHER_OUTPUTS = [
   'vx-docs/src/content/docs/design/**',
   'vx-docs/src/content/docs/plugins/**',
 ].map((g) => `!packages/${g}`)
-const SHARDS = Array.from({ length: SHARD_COUNT }, (_, i) => i + 1)
-const shardTask = (i: number) => ({
-  description: `bun test, shard ${i} of ${SHARD_COUNT} (dealt by scripts/test-shard.ts)`,
+// The macOS run's share: only the files whose outcome is the platform's
+// (`PLATFORM_TESTS` in scripts/test-shard.ts), a fifth of the suite's weight.
+export const PLATFORM_SHARD_COUNT = 6
+export const PLATFORM_UNSAFE_SHARD_COUNT = 3
+const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
+  description: `bun test${flags}, shard ${i} of ${n} (dealt by scripts/test-shard.ts)`,
   dependsOn: ['install'],
   exec: {
-    command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${SHARD_COUNT})`,
+    command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${n}${flags})`,
     env: {
       passThrough: ['VX_REQUIRE_SANDBOX', 'VX_REQUIRE_WATCH_EVENTS', 'VX_REQUIRE_NONROOT'],
       define: SUITE_ENV,
@@ -111,16 +117,23 @@ const shardTask = (i: number) => ({
     outputs: { files: [] as string[] },
   },
 })
-const shardTasks = Object.fromEntries(SHARDS.map((i) => [`test.bun.shard-${i}`, shardTask(i)]))
+const shards = <T>(name: string, n: number, task: (i: number, n: number) => T): Record<string, T> =>
+  Object.fromEntries(
+    Array.from({ length: n }, (_, k) => [`${name}.shard-${k + 1}`, task(k + 1, n)]),
+  )
+const shardTasks = {
+  ...shards('test.bun', SHARD_COUNT, (i, n) => shardTask(i, n)),
+  ...shards('test.platform', PLATFORM_SHARD_COUNT, (i, n) => shardTask(i, n, ' --platform')),
+}
 
 // The unsafe suite (`tests/*.unsafe.test.ts`), dealt the same way: as one
 // process it was a DTE run's critical path (178 s of 216 s, 2026-10-22).
 export const UNSAFE_SHARD_COUNT = 4
-const unsafeShardTask = (i: number) => ({
-  description: `bun test — the files a sandbox cannot host, shard ${i} of ${UNSAFE_SHARD_COUNT}`,
+const unsafeShardTask = (i: number, n: number, flags = '') => ({
+  description: `bun test${flags} — the files a sandbox cannot host, shard ${i} of ${n}`,
   dependsOn: ['install'],
   exec: {
-    command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${UNSAFE_SHARD_COUNT} --unsafe)`,
+    command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${n} --unsafe${flags})`,
     env: {
       passThrough: [
         'VX_REQUIRE_SANDBOX',
@@ -171,12 +184,12 @@ const unsafeShardTask = (i: number) => ({
     outputs: { files: [] as string[] },
   },
 })
-const unsafeShardTasks = Object.fromEntries(
-  Array.from({ length: UNSAFE_SHARD_COUNT }, (_, k) => [
-    `test.bun.unsafe.shard-${k + 1}`,
-    unsafeShardTask(k + 1),
-  ]),
-)
+const unsafeShardTasks = {
+  ...shards('test.bun.unsafe', UNSAFE_SHARD_COUNT, (i, n) => unsafeShardTask(i, n)),
+  ...shards('test.platform.unsafe', PLATFORM_UNSAFE_SHARD_COUNT, (i, n) =>
+    unsafeShardTask(i, n, ' --platform'),
+  ),
+}
 
 // The release steps npm.yml, release.yml and auto-release.yml run
 // (scripts/release.ts, scripts/auto-release.ts). Uncached, since each has a
@@ -434,6 +447,25 @@ export default defineProject({
       },
     },
 
+    // macOS CI's checks of this machine's own sandbox, as tasks so they run on
+    // a Mac agent: nothing runs on a distributed run's orchestrator. Neither
+    // is sandboxed, as each drives the sandbox itself, and neither is cached.
+    'check.sandbox-canary': {
+      description:
+        'drive 20 leaky sandboxed runs through run() under this machine’s sandbox; one it did not enforce fails',
+      dependsOn: ['install'],
+      exec: { command: 'bun tests/helpers/sandbox-canary.ts 20' },
+    },
+    // A grant bwrap honoured by its mounts failed `@vzn/vx-docs#import` on
+    // every Mac for a week (2026-10-17). No cache read: a hit would skip the
+    // very tasks this runs.
+    'check.build-cold': {
+      description:
+        'every package’s build under this machine’s sandbox, no cache, as a developer runs it',
+      dependsOn: ['install'],
+      exec: { command: "bun src/bin.ts run build --all '--cache-policy=local:,remote:'" },
+    },
+
     'check.binary': {
       description:
         'compile the host binary the way release.yml does; it must launch and report the manifest version',
@@ -488,6 +520,11 @@ export default defineProject({
     'test.bun.unsafe': {
       description: 'bun test — the files a sandbox cannot host',
       dependsOn: ['test.bun.unsafe.shard-*'],
+    },
+
+    'test.platform': {
+      description: 'bun test — only the files whose outcome is the platform’s (the macOS run)',
+      dependsOn: ['test.platform.shard-*', 'test.platform.unsafe.shard-*'],
     },
 
     'lint.oxlint': {

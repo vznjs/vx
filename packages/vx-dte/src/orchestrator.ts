@@ -10,12 +10,8 @@
 // as its own.
 
 import { realpathSync } from 'node:fs'
-import { lstat } from 'node:fs/promises'
 import path from 'node:path'
 import {
-  localFloor,
-  machineMemoryBytes,
-  machineParallelism,
   ui,
   withForwardArgs,
   type CacheFacts,
@@ -31,6 +27,7 @@ import {
   type AgentInfo,
   type DepOrder,
   type RunOrder,
+  type RuntimeOrder,
   type ToAgent,
   type ToOrchestrator,
   type WiredResult,
@@ -38,7 +35,7 @@ import {
 import { Usage, type UsageStats } from './usage.js'
 import { RelayError, type Participant } from './wire.js'
 
-/** What a task is expected to hold while it runs, from its history; `Infinity` (unmeasured): a whole agent. */
+/** What a task is expected to hold while it runs, from its history; `Infinity`: a whole agent. */
 export interface Need {
   readonly cores: number
   readonly memory: number
@@ -49,7 +46,7 @@ export interface Need {
 interface Job {
   readonly req: ExecuteRequest
   readonly need: Need
-  /** The cores and memory it holds on its agent: its need, or the whole agent for an unmeasured one. */
+  /** The cores and memory it holds on its agent: its need, or the whole agent for an `Infinity` one. */
   held?: Need
   readonly resolve: (r: ExecuteResult) => void
   readonly reject: (err: unknown) => void
@@ -107,8 +104,6 @@ export interface OrchestratorOptions {
   readonly root: string
   /** The tree of the run's tracked files (`tree.ts`). */
   readonly tree: string
-  /** Tasks this machine runs at once besides the agents. */
-  readonly localSlots: number
   readonly nodes: () => ReadonlyMap<string, TaskNode> | undefined
   readonly need: (taskId: string) => Need
   /** The run's cache, by key: what agents save to and this machine restores from. */
@@ -129,6 +124,35 @@ export interface OrchestratorOptions {
  */
 const RELEND_MS = 4 * 60_000
 
+/**
+ * A batch's orders past this go in another: the relay takes a body of
+ * 1 MiB at most, and sealing it grows it by a third.
+ */
+const BATCH_BYTES = 512 * 1024
+
+/** `orders` in runs of at most `max` bytes of JSON; one bigger goes alone. */
+function parts<T extends { order: unknown }>(orders: readonly T[], max: number): T[][] {
+  const out: T[][] = []
+  let part: T[] = []
+  let bytes = 0
+  for (const o of orders) {
+    const size = JSON.stringify(o.order).length
+    if (part.length > 0 && bytes + size > max) {
+      out.push(part)
+      part = []
+      bytes = 0
+    }
+    part.push(o)
+    bytes += size
+  }
+  if (part.length > 0) out.push(part)
+  return out
+}
+
+/** A task's end when its run stopped it before it began anywhere. */
+const stopped = (): ExecuteResult =>
+  result({ exitCode: 130, signal: 'SIGTERM', durationMs: 0 }, { stdout: '', stderr: '' })
+
 /** Cores an agent is sent beyond its own, so a finished task's successor is already there. */
 const prefetch = (cores: number): number => Math.max(1, Math.ceil(cores / 4))
 
@@ -139,15 +163,10 @@ export class Orchestrator {
   private readonly savedAs = new Map<string, string>()
   /** Keys the run's requests named for their dependencies. */
   private readonly upstreamKeys = new Map<string, string>()
-  private localBusy = 0
-  private ranHere = 0
-  private readonly runningHere = new Set<string>()
   /** When each agent this run started was asked for, by `AgentSpawn.index`. */
   private readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
   private ended = false
   private endedAt = 0
-  /** This machine's share. */
-  private readonly local = new Usage()
   /** Agents that joined and left, for the footer. */
   private readonly gone: Agent[] = []
   /** Of `gone`, those the run let go (`retire`), not lost. */
@@ -160,7 +179,6 @@ export class Orchestrator {
   private joined = 0
   private readonly stop = new AbortController()
   private readonly loop: Promise<void>
-  private readonly floor = localFloor()
   private readonly realRoot: string
   /** What agents read the cache under, asked once and again before its lent tokens end. */
   private facts: Promise<CacheFacts> | undefined
@@ -183,6 +201,8 @@ export class Orchestrator {
     for (const u of req.inputs?.upstream ?? []) this.upstreamKeys.set(u.taskId, u.hash)
     return new Promise((resolve, reject) => {
       const job: Job = { req, need: this.o.need(req.taskId), resolve, reject }
+      // A signal aborted already fires no `abort`.
+      if (req.signal?.aborted === true) return resolve(stopped())
       req.signal?.addEventListener('abort', () => this.abort(job), { once: true })
       this.queue.push(job)
       this.pumpSoon()
@@ -222,16 +242,13 @@ export class Orchestrator {
     this.stop.abort()
     await this.loop
     await this.o.me.leave()
-    await this.floor.close()
   }
 
   private abort(job: Job): void {
     const at = this.queue.indexOf(job)
     if (at >= 0) {
       this.queue.splice(at, 1)
-      job.resolve(
-        result({ exitCode: 130, signal: 'SIGTERM', durationMs: 0 }, { stdout: '', stderr: '' }),
-      )
+      job.resolve(stopped())
     } else if (job.agent !== undefined) {
       const a = this.agents.get(job.agent)
       if (a !== undefined) this.post(a, { type: 'cancel', task: job.req.taskId })
@@ -252,10 +269,6 @@ export class Orchestrator {
     const batches = new Map<Agent, Job[]>()
     const left: Job[] = []
     for (const job of this.queue.splice(0)) {
-      if (this.localBusy < this.o.localSlots) {
-        this.runHere(job)
-        continue
-      }
       const a = this.place(job)
       if (a === undefined) {
         left.push(job)
@@ -347,30 +360,14 @@ export class Orchestrator {
     return best
   }
 
-  private runHere(job: Job): void {
-    this.localBusy++
-    this.runningHere.add(job.req.taskId)
-    this.floor
-      .execute(job.req)
-      .then((r) => {
-        this.ranHere++
-        this.local.record(r)
-        job.resolve(r)
-      }, job.reject)
-      .finally(() => {
-        this.runningHere.delete(job.req.taskId)
-        this.localBusy--
-        this.pumpSoon()
-      })
-  }
-
   private send(a: Agent, jobs: readonly Job[]): void {
     const nodes = this.o.nodes()
     const orders = jobs.map((job) => {
       const { req } = job
       const deps: DepOrder[] = []
+      // Every one, held there or not: the agent restores each key once, and
+      // one it was sent but gave back it never ran or restored.
       for (const id of upstream(nodes, req.taskId)) {
-        if (a.has.has(id)) continue
         const n = nodes?.get(id)
         const outs = n?.config.cache?.outputs
         const key = this.savedAs.get(id) ?? this.upstreamKeys.get(id) ?? this.o.keyOf(id)
@@ -406,7 +403,17 @@ export class Orchestrator {
           },
           cores: job.held?.cores ?? 1,
           memory: job.held?.memory ?? 0,
-          ...(req.sandbox === undefined ? {} : { sandbox: req.sandbox }),
+          ...(req.sandbox === undefined || node?.config.exec?.sandbox === undefined
+            ? {}
+            : {
+                sandbox: {
+                  config: node.config.exec.sandbox,
+                  ...(req.sandbox.keyed === undefined
+                    ? {}
+                    : { keyed: req.sandbox.keyed.map((d) => path.relative(this.o.root, d)) }),
+                },
+              }),
+          ...runtimeOrders(req),
           ...(req.servers === undefined || req.servers.length === 0
             ? {}
             : {
@@ -427,20 +434,19 @@ export class Orchestrator {
     if (sandboxed) a.sandboxes = true
     a.chain = a.chain
       .then(async () => {
-        for (const { order } of orders)
-          if (order.sandbox !== undefined)
-            order.binds = await this.binds(order.sandbox.config.allowWrite)
-        const batch = {
-          type: 'batch',
-          root: this.o.root,
-          realRoot: this.realRoot,
-          tasks: orders.map((o) => o.order),
-          ...(sandboxes === undefined ? {} : { sandboxes }),
-        } satisfies ToAgent
-        await this.o.me.send(a.id, batch)
-        a.usage.messagesIn++
-        a.usage.bytesIn += JSON.stringify(batch).length
-        for (const { job } of orders) this.lease(job)
+        for (const [i, part] of parts(orders, BATCH_BYTES).entries()) {
+          const batch = {
+            type: 'batch',
+            root: this.o.root,
+            realRoot: this.realRoot,
+            tasks: part.map((o) => o.order),
+            ...(sandboxes === undefined || i > 0 ? {} : { sandboxes }),
+          } satisfies ToAgent
+          await this.o.me.send(a.id, batch)
+          a.usage.messagesIn++
+          a.usage.bytesIn += JSON.stringify(batch).length
+          for (const { job } of part) this.lease(job)
+        }
       })
       .catch((err: unknown) => {
         // The relay refused the send (the agent is gone): the loss notice
@@ -448,18 +454,6 @@ export class Orchestrator {
         if (err instanceof RelayError && err.status === 404) return
         for (const { job } of orders) job.reject(err)
       })
-  }
-
-  /** The write grants in this checkout that exist, which a bind needs on the agent too. */
-  private async binds(writes: readonly string[]): Promise<{ path: string; dir: boolean }[]> {
-    const out: { path: string; dir: boolean }[] = []
-    for (const w of writes) {
-      if (!w.startsWith(this.realRoot + path.sep)) continue
-      const st = await lstat(w).catch(() => undefined)
-      if (st !== undefined)
-        out.push({ path: path.relative(this.realRoot, w), dir: st.isDirectory() })
-    }
-    return out
   }
 
   /** Three of the agent's `held` from now. */
@@ -474,6 +468,8 @@ export class Orchestrator {
    */
   private retry(a: Agent, job: Job, why: string): Job | undefined {
     a.busy.delete(job.req.taskId)
+    // Its outputs are not there to place a dependant by.
+    a.has.delete(job.req.taskId)
     a.usedCores -= job.held?.cores ?? 0
     a.usedMemory -= job.held?.memory ?? 0
     delete job.agent
@@ -482,7 +478,11 @@ export class Orchestrator {
     delete job.prefetched
     delete job.withdrawing
     const begun = a.started.delete(job.req.taskId)
-    if (job.req.signal?.aborted === true) return undefined
+    // Stopped, it runs nowhere again; the cancel sent its agent has no one to answer it.
+    if (job.req.signal?.aborted === true) {
+      job.resolve(stopped())
+      return undefined
+    }
     if (begun) {
       a.faulty = true
       job.faults = [...(job.faults ?? []), `${a.label} ${why}`]
@@ -506,6 +506,7 @@ export class Orchestrator {
         }
     if (back.length === 0) return
     this.queue.unshift(...back)
+    if (this.spawnedAt.size > 0) this.stranded(`a task's lease ended and no agent is left`)
     this.pumpSoon()
   }
 
@@ -640,22 +641,16 @@ export class Orchestrator {
   }
 
   private async listen(): Promise<void> {
-    let failures = 0
     while (!this.stop.signal.aborted) {
       let messages
       try {
+        // The client asks again through faults shorter than three heartbeats.
         messages = await this.o.me.poll(this.stop.signal)
-        failures = 0
       } catch (err) {
         if (this.stop.signal.aborted) return
-        // A relay that stays unreachable for three heartbeats has lost this
-        // run: what it held runs here instead.
-        if (++failures < 3) {
-          await Bun.sleep(this.o.me.heartbeatMs)
-          continue
-        }
-        // Its tasks fail, not run here: this machine may be far smaller
-        // than the agents. A rerun resumes from what finished and saved.
+        // A relay unreachable longer has lost this run. Its tasks fail, not
+        // run here: this machine may be far smaller than the agents. A rerun
+        // resumes from what finished and saved.
         this.fail(`the relay is unreachable (${(err as Error).message})`)
         return
       }
@@ -687,6 +682,8 @@ export class Orchestrator {
           // It began it whether or not its `start` came first.
           a.started.add(m.task)
           if (this.retry(a, j, m.reason) !== undefined) this.queue.unshift(j)
+          if (a.faulty && this.spawnedAt.size > 0)
+            this.stranded(`${a.label} could not run ${m.task} (${m.reason}) and no agent is left`)
           this.pumpSoon()
         } else if (m.type === 'end') {
           a.usage.messagesOut++
@@ -698,12 +695,8 @@ export class Orchestrator {
     }
   }
 
-  /**
-   * The agent running a task, or `local`; `null` while it waits, here or
-   * in an agent's queue, for a machine to begin it.
-   */
+  /** The agent running a task; `null` while it waits, here or in an agent's queue, for one to begin it. */
   where(taskId: string): string | null | undefined {
-    if (this.runningHere.has(taskId)) return 'local'
     for (const a of this.agents.values())
       if (a.busy.has(taskId)) return a.started.has(taskId) ? a.label : null
     return this.queue.some((j) => j.req.taskId === taskId) ? null : undefined
@@ -753,6 +746,8 @@ export class Orchestrator {
    * kept first, unless `needed` says a remaining task wants one that big.
    */
   retire(wantCores: number, needed: (a: { cores: number; memory: number }) => boolean): void {
+    // One that faulted gets no more work: idle, it only holds its machine.
+    for (const a of this.agents.values()) if (a.faulty && a.busy.size === 0) this.letGo(a)
     const online = [...this.agents.values()].filter((a) => !a.faulty)
     let cores = 0
     for (const a of online) if (a.busy.size > 0) cores += a.cores
@@ -767,13 +762,17 @@ export class Orchestrator {
         cores += a.cores
         continue
       }
-      this.agents.delete(a.id)
-      a.usage.to = performance.now()
-      this.gone.push(a)
-      this.retired.add(a)
-      this.post(a, { type: 'exit' })
-      this.o.left?.(a.label)
+      this.letGo(a)
     }
+  }
+
+  private letGo(a: Agent): void {
+    this.agents.delete(a.id)
+    a.usage.to = performance.now()
+    this.gone.push(a)
+    this.retired.add(a)
+    this.post(a, { type: 'exit' })
+    this.o.left?.(a.label)
   }
 
   /** Agent `id` will not join: its start failed or it exited first. */
@@ -790,13 +789,14 @@ export class Orchestrator {
     this.stranded(`no agent could start: ${id} ${reason}`)
   }
 
-  /** Nothing online, none still starting, no share here: no task can run. */
+  /** Nothing online that takes work, none still starting: no task can run. */
   private stranded(reason: string): void {
     const joined = new Set([...this.agents.values(), ...this.gone].map((a) => a.label))
     const starting = [...this.spawnedAt.keys()].some(
       (s) => !this.unstarted.has(s) && !joined.has(s),
     )
-    if (this.agents.size === 0 && !starting && this.o.localSlots === 0) this.fail(reason)
+    const working = [...this.agents.values()].some((a) => !a.faulty)
+    if (!working && !starting) this.fail(reason)
   }
 
   /** Every task sent here and not done fails with `reason`; later ones too. */
@@ -845,12 +845,9 @@ export class Orchestrator {
         utilization: st.utilization,
       }
     }
-    const out = [...this.agents.values(), ...this.gone].map((a) =>
+    return [...this.agents.values(), ...this.gone].map((a) =>
       report(a.label, this.state(a, gone), a.usage, a.reported.cores, a.reported.memory),
     )
-    if (this.ranHere > 0)
-      out.push(report('local', 'online', this.local, machineParallelism(), machineMemoryBytes()))
-    return out
   }
 
   /**
@@ -909,8 +906,6 @@ export class Orchestrator {
         'left',
         `${left.reduce((n, a) => n + a.usage.done, 0)} done`,
       ])
-    if (this.o.localSlots > 0 || this.ranHere > 0)
-      lines.push(['local', 'online', count(this.local, this.runningHere.size)])
     const width = Math.max(...lines.map(([l]) => l.length))
     const indent = ' '.repeat(width + 2)
     const status = Math.max(...lines.map(([, st]) => st.length))
@@ -918,22 +913,14 @@ export class Orchestrator {
     const usage = new Map<string, readonly string[]>()
     let cpuMs = 0
     let coreMs = 0
-    const detail = (label: string, u: Usage, cores: number, relay: boolean): void => {
-      const st = u.stats(cores, this.endedAt)
-      cpuMs += st.cpuMs
-      coreMs += cores * st.onlineMs
-      usage.set(label, describe(st, u, relay))
-    }
-    if (this.ended) {
+    if (this.ended)
       for (const a of all) {
         resources(a.label, a.reported.cores, a.reported.memory, a.declared)
-        detail(a.label, a.usage, a.cores, true)
+        const st = a.usage.stats(a.cores, this.endedAt)
+        cpuMs += st.cpuMs
+        coreMs += a.cores * st.onlineMs
+        usage.set(a.label, describe(st, a.usage))
       }
-      if (lines.at(-1)?.[0] === 'local') {
-        resources('local', machineParallelism(), machineMemoryBytes())
-        detail('local', this.local, machineParallelism(), false)
-      }
-    }
     return [
       ...lines.flatMap(([l, st, t], i): [string, ui.Inline][] => [
         [
@@ -1009,8 +996,8 @@ function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string):
   return seen
 }
 
-/** A machine's run, spelled out: time, CPU, memory and, for an agent, the relay. */
-function describe(st: UsageStats, u: Usage, relay: boolean): string[] {
+/** An agent's run, spelled out: time, CPU, memory and the relay. */
+function describe(st: UsageStats, u: Usage): string[] {
   return [
     `online ${seconds(st.onlineMs)} · busy ${seconds(st.busyMs)} · idle ${seconds(Math.max(0, st.onlineMs - st.busyMs))}`,
     `cpu peak ${st.cpuPeak.toFixed(1)} · avg ${st.cpuAvg.toFixed(1)} cores · cpu utilization ${percent(st.utilization)}`,
@@ -1018,11 +1005,7 @@ function describe(st: UsageStats, u: Usage, relay: boolean): string[] {
     ...(st.memoryPeak > 0
       ? [`memory peak ${bytes(st.memoryPeak)} · avg ${bytes(st.memoryAvg)}`]
       : []),
-    ...(relay
-      ? [
-          `sent ${plural(u.messagesIn, 'message')} · ${bytes(u.bytesIn)}, received ${plural(u.messagesOut, 'message')} · ${bytes(u.bytesOut)}`,
-        ]
-      : []),
+    `sent ${plural(u.messagesIn, 'message')} · ${bytes(u.bytesIn)}, received ${plural(u.messagesOut, 'message')} · ${bytes(u.bytesOut)}`,
   ]
 }
 
@@ -1036,7 +1019,6 @@ const bytes = (n: number): string =>
       : n >= 1e3
         ? `${Math.round(n / 1e3)} KB`
         : `${n} B`
-/** A base64 part's bytes. */
 
 /** A machine is what its size says: the same cores, memory within a tenth. */
 const matches = (cores: number, memory: number, d: Declared): boolean =>
@@ -1049,6 +1031,21 @@ const compact = (n: number): string => {
 }
 
 const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)}s`
+
+/** The probes a task's key folds: an agent that answers otherwise fails it (C-2). */
+function runtimeOrders(req: ExecuteRequest): { runtime?: RuntimeOrder[] } {
+  const inputs = req.inputs
+  if (inputs === undefined) return {}
+  const runtime: RuntimeOrder[] = [
+    ...inputs.runtime.map((r) => ({ command: r.command, output: r.output })),
+    ...inputs.workspaceRuntime.map((r) => ({
+      command: r.command,
+      output: r.output,
+      workspace: true as const,
+    })),
+  ]
+  return runtime.length === 0 ? {} : { runtime }
+}
 
 /** `env` without its unset names, as it travels. */
 function defined(env: NodeJS.ProcessEnv): Record<string, string> {

@@ -74,30 +74,54 @@ export default defineProject({
       },
     },
 
-    // Only the files that dial a real server (`*-e2e.test.ts`), for CI's
-    // job with the service containers; `test` runs every file, these in
-    // skip mode. No cache: the servers are images (`bazel-remote:latest`)
-    // the key cannot see. No sandbox, for `test`'s reason.
+    // Only the files that dial a real server (`*-e2e.test.ts`); `test` runs
+    // every file, these in skip mode. It brings its servers: on a
+    // distributed run they start on the agent that runs it. No cache: the
+    // servers are images (`bazel-remote:latest`) the key cannot see. No
+    // sandbox, for `test`'s reason. Both require flags: a skip is a silent
+    // pass, and these suites are the only proof the two wires work.
     'test.live': {
-      description: 'bun test, the live REAPI files (VX_REAPI_*_ENDPOINT name the servers)',
-      dependsOn: ['install'],
+      description: 'bun test, the live REAPI files, against services.cache and services.exec',
+      dependsOn: ['install', 'services.cache', 'services.exec'],
       exec: {
         command:
           'for f in tests/*-e2e.test.ts; do echo "== $f"; bun test --only-failures "$f" --timeout 90000 || exit 1; done',
         env: {
-          passThrough: [
-            'VX_REAPI_TEST_ENDPOINT',
-            'VX_REQUIRE_REAPI',
-            'VX_REAPI_EXEC_ENDPOINT',
-            'VX_REQUIRE_REAPI_EXEC',
-          ],
           define: {
             GIT_CONFIG_GLOBAL: '/dev/null',
             GIT_CONFIG_NOSYSTEM: '1',
             VX_CACHE_DIR: '.vx/cache',
+            VX_REAPI_TEST_ENDPOINT: 'grpc://127.0.0.1:19092',
+            VX_REQUIRE_REAPI: '1',
+            VX_REAPI_EXEC_ENDPOINT: 'grpc://127.0.0.1:51051',
+            VX_REQUIRE_REAPI_EXEC: '1',
           },
         },
       },
+    },
+
+    // test.live's servers, in the foreground: the run stops them when it
+    // is done. No sandbox: they reach the Docker daemon.
+    'services.cache': {
+      description: 'bazel-remote (REAPI cache) on :19092',
+      exec: {
+        command:
+          'docker run --rm -p 19092:9092 -e BAZEL_REMOTE_DIR=/data -e BAZEL_REMOTE_MAX_SIZE=1 ' +
+          '-e BAZEL_REMOTE_GRPC_ADDRESS=0.0.0.0:9092 -e BAZEL_REMOTE_HTTP_ADDRESS=0.0.0.0:8080 ' +
+          'mirror.gcr.io/buchgr/bazel-remote-cache:latest',
+        persistent: { readyWhen: 'Starting gRPC server' },
+        timeout: '5m',
+      },
+    },
+
+    'services.exec': {
+      description: 'NativeLink (REAPI execution) on :51051',
+      exec: {
+        command: 'sh tests/helpers/nativelink.sh',
+        persistent: { readyWhen: 'Worker registered' },
+        timeout: '5m',
+      },
+      inputs: { files: ['tests/helpers/nativelink.sh', 'tests/helpers/nativelink-exec.json5'] },
     },
 
     lint: {

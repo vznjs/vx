@@ -121,15 +121,15 @@ it('offers sockets, pushes each message down one and takes sends from it', async
   expect(await os.next()).toEqual({
     messages: [{ from: 'relay', body: { type: 'joined', id: a.id, info: null } }],
   })
-  os.ws.send(JSON.stringify({ n: 1, to: a.id, body: 'build' }))
+  os.ws.send(JSON.stringify({ n: 1, sends: [{ to: a.id, body: 'build' }] }))
   expect([await os.next(), await as.next()]).toEqual([
     { n: 1 },
     { messages: [{ from: 'orchestrator', body: 'build' }] },
   ])
-  as.ws.send(JSON.stringify({ n: 1, to: 'nobody' }))
+  as.ws.send(JSON.stringify({ n: 1, sends: [{ to: 'nobody' }] }))
   as.ws.send('ping')
   expect([await as.next(), await as.next()]).toEqual([
-    { n: 1, status: 404, error: 'unknown to' },
+    { n: 1, results: [{ status: 404, error: 'unknown to' }] },
     'pong',
   ])
   const leave = JSON.stringify({ id: o.id })

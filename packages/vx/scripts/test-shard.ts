@@ -9,6 +9,8 @@
 //
 //   bun scripts/test-shard.ts <i> <n>           the files for shard i of n
 //   bun scripts/test-shard.ts <i> <n> --unsafe  the same over *.unsafe.test.ts
+//   bun scripts/test-shard.ts <i> <n> --platform  only PLATFORM_TESTS (with
+//                                               or without --unsafe)
 //   bun scripts/test-shard.ts --weigh <dir>     refresh both weight tables
 //                                               from the JUnit reports in <dir>
 //                                            (`bun test --reporter=junit
@@ -28,9 +30,23 @@ const TABLES: Record<Suite, string> = {
 }
 const isUnsafe = (f: string): boolean => f.endsWith('.unsafe.test.ts')
 
-export function testFiles(suite: Suite = 'safe'): string[] {
+/**
+ * The files whose outcome is the platform's: tar and archives, restore and
+ * links, the sandbox, signals and process trees, file watching, SQLite,
+ * umask, clocks and procfs. The macOS run takes only these: the rest is
+ * the same code on the same Bun (owner, 2026-10-22).
+ */
+const PLATFORM_TESTS =
+  /^(archive|artifact|restore|builtins-restore|tar|scan-tar|zstd|sandbox|seatbelt|kill-tree|task-tree-kill|signal|stop-signal|watch|sqlite|config-umask|fs-clock|cache-(close|disk-full|open-busy|out-of-fds|store|unreadable)|disk-full|committed-case|tmpdir|util-procfs|proc-sample|runner|linked-inputs|output-(links|empty-dir)|file-url-paths)[-.]/
+
+export function testFiles(suite: Suite = 'safe', platform = false): string[] {
   return readdirSync(TESTS)
-    .filter((f) => f.endsWith('.test.ts') && isUnsafe(f) === (suite === 'unsafe'))
+    .filter(
+      (f) =>
+        f.endsWith('.test.ts') &&
+        isUnsafe(f) === (suite === 'unsafe') &&
+        (!platform || PLATFORM_TESTS.test(f)),
+    )
     .sort()
 }
 
@@ -104,10 +120,12 @@ if (import.meta.main) {
     const i = Number(a)
     const n = Number(b)
     if (!Number.isInteger(i) || !Number.isInteger(n) || i < 1 || i > n) {
-      throw new Error('usage: test-shard.ts <i> <n> [--unsafe]  (1 ≤ i ≤ n)')
+      throw new Error('usage: test-shard.ts <i> <n> [--unsafe] [--platform]  (1 ≤ i ≤ n)')
     }
-    const suite: Suite = process.argv[4] === '--unsafe' ? 'unsafe' : 'safe'
-    const shard = partition(testFiles(suite), readWeights(suite), n)[i - 1]!
+    const flags = process.argv.slice(4)
+    const suite: Suite = flags.includes('--unsafe') ? 'unsafe' : 'safe'
+    const files = testFiles(suite, flags.includes('--platform'))
+    const shard = partition(files, readWeights(suite), n)[i - 1]!
     console.log(shard.map((f) => `tests/${f}`).join(' '))
   }
 }

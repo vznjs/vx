@@ -68,16 +68,16 @@ for the participant (`426` without the upgrade). Frames are text:
 
 - the relay pushes `{ "messages": [{ "from", "body" }] }` as messages
   arrive, starting with any queued before the socket opened;
-- the participant sends `{ "n", "to", "body" }`, as `send`, and the relay
-  answers `{ "n" }`, or `{ "n", "status", "error" }` with the status
-  `send` would answer;
-- to a relay whose `join` also answered `"frames": 2`, the participant may
-  send several at once, `{ "n", "sends": [{ "to", "body" }] }`, answered
-  `{ "n" }` when all were taken, else `{ "n", "results" }` with `null` or
-  `{ "status", "error" }` for each; `{ "n", "remove": "<agent>" }`, as
-  `remove`; and `{ "n", "leave": true }`, as `leave`, whose answer is the
-  socket's close. With such a socket open, `join` and its upgrade are the
-  only requests a participant makes;
+- the participant sends `{ "n", "sends": [{ "to", "body" }] }`, each as
+  `send`, answered `{ "n" }` when all were taken, else `{ "n", "results" }`
+  with `null` or `{ "status", "error" }` for each; `{ "n", "remove":
+"<agent>" }`, as `remove`; and `{ "n", "leave": true }`, as `leave`, whose
+  answer is the socket's close. A frame that fails is answered
+  `{ "n", "status", "error" }`, any other frame `400`. With such a socket open, `join` and its upgrade are the
+  only requests a participant makes. A frame is held to `send`'s 1 MiB
+  body limit whole; one over it is answered `413` by its `n` when the
+  frame starts `{"n":`. vx-dte's client keeps a frame of several sends
+  under 512 KiB;
 - the participant sends `ping` at least each `heartbeatMs`; the relay
   answers `pong`. vx-dte's client pings each half heartbeat and treats a
   socket it heard nothing on for a heartbeat and a half as closed: a
@@ -98,6 +98,9 @@ for three `heartbeatMs` is lost, as if it had left; one with an open
 socket, for twelve, so a host that bills its wake-ups sleeps between
 them. Polling with a `wait` below `heartbeatMs`, or a socket's `ping`,
 keeps a participant alive.
+vx-dte's client asks again through a `5xx` or a dropped connection (a
+host restarting the relay) until faults have lasted three `heartbeatMs`,
+or 15 s for `join`, before it knows a heartbeat.
 
 ## Leases (planned, above the relay)
 

@@ -162,8 +162,8 @@ stay exact). Measured 2026-09-09 at 116k rows, 1,000 pairs, window 50:
 - `saturatedCores` / `saturatedMemoryBytes` (`resourcesFor` only): the
   most cores, and the most memory, of a machine an executor ran the task on
   (`placement_cores`, `placement_memory`) that it filled: 90% of the cores
-  over its run (or at its sampled peak), or 90% of the memory. Failures
-  count: a task killed for memory filled its machine. `@vzn/vx-dte` runs
+  over its run on average (a burst to every core is not), or 90% of the
+  memory. Failures count: a task killed for memory filled its machine. `@vzn/vx-dte` runs
   such a task on a bigger size next time.
 - Skipped rows (`status = 'skipped'`) are excluded from the window
   (`EXECUTED_RUNS_SQL`), so a run of skips cannot dilute the numbers.

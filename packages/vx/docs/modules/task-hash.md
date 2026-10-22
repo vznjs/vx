@@ -67,6 +67,15 @@ export async function movedInput(
   byBytes?: (file: string, ctimeMs: number) => boolean, // `'mutable'`: true judges that write by bytes
 ): Promise<string | undefined>
 export function computeGroupKey(args: ComputeHashArgs): Promise<string>
+// The fold memo's files token for one task, or undefined (run-keys.md).
+export function taskFilesToken(
+  args: Pick<
+    ComputeHashArgs,
+    'node' | 'workspaceRoot' | 'nestedProjectDirs' | 'gitFilesCache' | 'hashCache'
+  >,
+): string | undefined
+// The resolved config's hash as the key folds it.
+export function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string
 export interface UpfrontGroupKey {
   key: string
   upstream: TaskOutcome[]

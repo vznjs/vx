@@ -51,7 +51,8 @@ function suitesUnder(dir: string, prefix = ''): string[] {
 function launchedBy(command: string): (suite: string) => boolean {
   if (/\bscripts\/test-shard\.ts\b/.test(command)) {
     const suite = /\s--unsafe\b/.test(command) ? 'unsafe' : 'safe'
-    const dealt = new Set(testFiles(suite).map((f) => `tests/${f}`))
+    const platform = /\s--platform\b/.test(command)
+    const dealt = new Set(testFiles(suite, platform).map((f) => `tests/${f}`))
     return (suite) => dealt.has(suite)
   }
   const globs = [

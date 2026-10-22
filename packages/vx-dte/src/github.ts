@@ -4,6 +4,8 @@
 // workflow runs as a matrix on the runners it names for the size. Agents
 // prove themselves by their OIDC identity: the run makes no secret.
 
+import { appendFile } from 'node:fs/promises'
+import path from 'node:path'
 import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
 import type { AgentSpawn, DteAdapter } from './plugin.js'
 
@@ -13,6 +15,13 @@ export interface GithubOptions {
 }
 
 const KEYS: PluginOptionKinds<GithubOptions> = { workflow: 'string' }
+
+/** In `RUNNER_TEMP`: one dispatched workflow run's API path per line. */
+const RUNS_FILE = 'vx-dte-runs'
+
+/** A dispatched run's jobs are first read this soon, then twice as late each time, up to `WATCH_MAX_MS`. */
+const WATCH_FIRST_MS = 2_000
+const WATCH_MAX_MS = 60_000
 
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
@@ -24,6 +33,44 @@ export function github(options: GithubOptions = {}): DteAdapter {
   // (macOS: five a plan) that the next run's agents wait for.
   const runs: string[] = []
   const pending = new Set<Promise<void>>()
+  // A job that fails before its agent joins (checkout, install) told the
+  // run nothing: its agent stayed `starting`, held its size's `max`, and a
+  // run with no other agent waited for the job's timeout (2026-10-22).
+  // Each job is named for its agent; one that ends badly says so.
+  const watched = new Map<string, Map<string, AgentSpawn>>()
+  let watch: ReturnType<typeof setTimeout> | undefined
+  let closed = false
+  const look = (ms: number): void => {
+    watch = setTimeout(() => {
+      void Promise.all(
+        [...watched].map(async ([run, agents]) => {
+          const res = await call(`${run}/jobs?per_page=100`).catch(() => undefined)
+          if (res?.ok !== true) return
+          const { jobs = [] } = ((await res.json().catch(() => null)) ?? {}) as {
+            jobs?: {
+              name: string
+              status: string
+              conclusion: string | null
+              steps?: { name: string; conclusion: string | null }[]
+            }[]
+          }
+          for (const j of jobs) {
+            const a = agents.get(j.name)
+            if (a === undefined || j.status !== 'completed') continue
+            agents.delete(j.name)
+            if (j.conclusion === 'success' || closed) continue
+            const step = j.steps?.find((x) => x.conclusion === 'failure')?.name
+            a.exited(`job ${j.conclusion}${step === undefined ? '' : ` at ${step}`}`)
+          }
+          if (agents.size === 0) watched.delete(run)
+        }),
+      ).then(() => {
+        if (!closed && watched.size > 0) look(Math.min(2 * ms, WATCH_MAX_MS))
+        else watch = undefined
+      })
+    }, ms)
+    watch.unref()
+  }
   const call = (path: string, init: RequestInit = {}): Promise<Response> => {
     const { GITHUB_API_URL: api, GITHUB_TOKEN: token } = process.env
     return fetch(`${api}${path}`, {
@@ -67,7 +114,16 @@ export function github(options: GithubOptions = {}): DteAdapter {
       )
     if (res.status === 200) {
       const id = ((await res.json()) as { workflow_run_id?: number }).workflow_run_id
-      if (id !== undefined) runs.push(`/repos/${repo}/actions/runs/${id}`)
+      if (id !== undefined) {
+        const run = `/repos/${repo}/actions/runs/${id}`
+        runs.push(run)
+        watched.set(run, new Map(agents.map((a) => [a.id, a])))
+        if (watch === undefined && !closed) look(WATCH_FIRST_MS)
+        // For the job's last step, which cancels them when this process
+        // dies before close() (a kill, an OOM, the job's timeout).
+        if (env['RUNNER_TEMP'])
+          await appendFile(path.join(env['RUNNER_TEMP'], RUNS_FILE), `${run}\n`)
+      }
     }
   }
   return {
@@ -94,6 +150,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
     // A finished run answers 409; one still queued or running is the
     // run's no more: its results are in, or the run failed without them.
     async close() {
+      closed = true
+      clearTimeout(watch)
       await Promise.resolve() // a wave spawned this tick dispatches first
       await Promise.all(pending)
       await Promise.all(

@@ -267,3 +267,8 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   title the PR `type(scope)!:` before CI starts. CI reads the title from
   the event that started the run, so a title fixed later needs a new push;
   a re-run reads the old one (#3724).
+- In a `--minify` compiled binary `import.meta.dir` and `import.meta.path`
+  are the build machine's source paths, not `/$bunfs/…`: detect the
+  binary with `Bun.main`. The run key memo walked a `src/` an installed
+  binary does not have, threw, and every warm run lost its short
+  circuit; a test only sees it with the source tree gone (#3915 follow-up).

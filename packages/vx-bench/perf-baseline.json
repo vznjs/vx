@@ -5,63 +5,63 @@
         "hash xxh3": 1926,
         "spawn git": 6,
         "spawn sh": 51,
-        "sqlite statement": 726
+        "sqlite statement": 713
       },
       "up-to-date run @25": {
-        "hash xxh3": 986,
+        "hash xxh3": 989,
         "spawn git": 3,
-        "sqlite statement": 53
+        "sqlite statement": 45
       },
       "restore run @25": {
-        "hash xxh3": 611,
+        "hash xxh3": 81,
         "spawn git": 3,
-        "sqlite statement": 78
+        "sqlite statement": 70
       },
       "plan @25": {
         "hash xxh3": 610,
         "spawn git": 3,
-        "sqlite statement": 119
+        "sqlite statement": 64
       },
       "one-edit run @25": {
         "hash blob update": 2,
-        "hash xxh3": 1155,
+        "hash xxh3": 1177,
         "spawn git": 3,
         "spawn sh": 18,
-        "sqlite statement": 216
+        "sqlite statement": 210
       },
       "cold run @100": {
         "hash xxh3": 7851,
         "spawn git": 6,
         "spawn sh": 200,
-        "sqlite statement": 2756
+        "sqlite statement": 2744
       },
       "up-to-date run @100": {
-        "hash xxh3": 3986,
+        "hash xxh3": 3988,
         "spawn git": 3,
-        "sqlite statement": 131
+        "sqlite statement": 124
       },
       "restore run @100": {
-        "hash xxh3": 2486,
+        "hash xxh3": 306,
         "spawn git": 3,
-        "sqlite statement": 231
+        "sqlite statement": 224
       },
       "plan @100": {
         "hash xxh3": 2485,
         "spawn git": 3,
-        "sqlite statement": 419
+        "sqlite statement": 214
       },
       "one-edit run @100": {
         "hash blob update": 2,
-        "hash xxh3": 4630,
+        "hash xxh3": 4652,
         "spawn git": 3,
         "spawn sh": 68,
-        "sqlite statement": 719
+        "sqlite statement": 714
       }
     },
     "time": {
-      "plan @100": 4.918,
-      "restore run @100": 8.821,
-      "up-to-date run @100": 5.72
+      "plan @100": 4.928,
+      "restore run @100": 13.145,
+      "up-to-date run @100": 6.057
     }
   }
 }
