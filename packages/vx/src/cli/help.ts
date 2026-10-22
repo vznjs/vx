@@ -350,6 +350,10 @@ export function flagHint(verb: string, arg: string): string {
   // `--json` is gh's and Nx's spelling; a verb with `--format` reads it
   // there, and no edit budget reaches `--format json` from `--json`.
   if (name === '--json' && flags.includes('--format')) return ' (did you mean --format json?)'
+  // `vx run` prints no JSON of its own, and edit distance reached `--force`
+  // from `--format`: a run with its cache reads turned off.
+  if ((name === '--format' || name === '--json') && flags.includes('--dry'))
+    return ' (the run as JSON is `vx last --format json` after it; the plan is --dry=json)'
   // A flag cut short at a word (`--dry` for prune's `--dry-run`, which
   // `vx run` spells `--dry`) is too many edits away for either budget.
   const cut = flags.filter((f) => f.startsWith(`${name}-`))

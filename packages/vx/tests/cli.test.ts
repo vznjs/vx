@@ -1908,6 +1908,15 @@ describe('parseRunArgs', () => {
 
   // vx owns its flags (owner, 2026-10-22): another runner's spelling is an
   // unknown flag like any other, never rewritten or answered with vx's.
+  // `vx run build --format json` was told "did you mean --force?": a run
+  // with cache reads off, never the JSON the agent asked for.
+  it('--format and --json on a run name where its JSON is, never --force', () => {
+    for (const flag of ['--format', '--json'])
+      expect(parseRunArgs(['build', flag, 'json']).error).toBe(
+        `unknown flag: ${flag} (the run as JSON is \`vx last --format json\` after it; the plan is --dry=json)`,
+      )
+  })
+
   it("another runner's flag is an unknown flag", () => {
     for (const flag of [
       '-F',
