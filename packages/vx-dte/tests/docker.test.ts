@@ -36,7 +36,7 @@ it('an agent runs the tracked files as they are, uncommitted changes too', async
     `#!/bin/sh
 for a; do last=$a; done
 src=$(printf '%s\\n' "$@" | sed -n 's#^\\(.*\\):/src:ro$#\\1#p')
-printf '%s' "$last" | sed "s#/src#$src#g; s#/work#${dir}/work#g; s#exec ./node_modules/.bin/vx dte agent#cat f > ${out}#" | sh
+printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work#g; s#exec ./node_modules/.bin/vx dte agent#cat f > ${out}#" | sh
 `,
   )
   await chmod(path.join(bin, 'docker'), 0o755)
@@ -120,7 +120,7 @@ it('an agent shares this machine’s store: the same home, the same repository i
 printf '%s\\n' "$@" > ${argv}
 for a; do last=$a; done
 src=$(printf '%s\\n' "$@" | sed -n 's#^\\(.*\\):/src:ro$#\\1#p')
-printf '%s' "$last" | sed "s#/src#$src#g; s#/work#${dir}/work3#g; s#exec ./node_modules/.bin/vx dte agent#git remote get-url origin > ${out}#" | sh
+printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work3#g; s#exec ./node_modules/.bin/vx dte agent#git remote get-url origin > ${out}#" | sh
 `,
   )
   await chmod(path.join(bin, 'docker'), 0o755)
