@@ -207,3 +207,42 @@ export default { plugins: [dte({ relay: 'https://r', agents: { small: { max: 4, 
     await server.stop(true)
   }
 }, 20_000)
+
+it('says a played agent job that ended before its agent joined, and why', async () => {
+  // Before: the job failed in its install, the run heard nothing and
+  // waited for the orchestrator job's timeout.
+  process.env['VX_DTE_GITLAB_TOKEN'] = 'glpat-test'
+  let reads = 0
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const url = new URL(req.url)
+      if (url.pathname.endsWith('/pipelines/900/bridges'))
+        return Response.json([{ name: 'vx-agents', downstream_pipeline: { id: 901 } }])
+      if (url.pathname.endsWith('/pipelines/901/jobs'))
+        return Response.json([{ id: 3, name: 'vx-agent small#3' }])
+      if (url.pathname.endsWith('/jobs/3'))
+        return Response.json(
+          reads++ === 0
+            ? { status: 'running' }
+            : { status: 'failed', failure_reason: 'script_failure' },
+        )
+      return Response.json({})
+    },
+  })
+  process.env['CI_API_V4_URL'] = `http://127.0.0.1:${server.port}/api/v4`
+  process.env['CI_PROJECT_ID'] = '7'
+  try {
+    const adapter = gitlab({ include: '.gitlab/vx.yml' })
+    const why = Promise.withResolvers<string>()
+    await adapter.spawn({ id: 'small#3', exited: why.resolve } as Parameters<
+      typeof adapter.spawn
+    >[0])
+    expect(await why.promise).toBe('job failed (script_failure)')
+    expect(reads).toBe(2)
+    await adapter.close!()
+  } finally {
+    await server.stop(true)
+  }
+}, 20_000)
