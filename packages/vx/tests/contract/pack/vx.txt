@@ -130,6 +130,7 @@ src/orchestrator/run-artifacts.ts
 src/orchestrator/run-context.ts
 src/orchestrator/run-failures.ts
 src/orchestrator/run-id.ts
+src/orchestrator/run-keys.ts
 src/orchestrator/run-lock.ts
 src/orchestrator/run-records.ts
 src/orchestrator/run-report.ts

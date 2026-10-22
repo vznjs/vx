@@ -39,13 +39,12 @@ const checkout = (j: Job | undefined): Step | undefined =>
   j?.steps?.find((s) => String(s.uses).startsWith('actions/checkout@'))
 
 describe('ci.yml', () => {
-  it('is the Linux run, plus macOS, the live suites and the arm64 binary on main', () => {
+  it('is the Linux run, plus macOS and the arm64 binary on main', () => {
     const top = 'github.event.pull_request.stack.position == github.event.pull_request.stack.size'
     expect(
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
       ['linux', 'lint · format · test', 'ubuntu-latest', top, undefined],
-      ['packages', 'plugin packages', 'ubuntu-latest', top, undefined],
       [
         'binary-linux-arm64',
         'compiled binary (linux-arm64)',

@@ -114,17 +114,37 @@ export default defineProject({
       },
     },
 
-    // Only the `*-live.test.ts` files, for CI's job that installs real Nx;
-    // `test` runs every file, these in skip mode. No cache: the install is
-    // an unpinned `nx@22` the key cannot see.
+    // Only the `*-live.test.ts` files, against the Nx `nx.install` puts in
+    // `.nx-live`; `test` runs every file, these in skip mode. No cache: the
+    // install is an unpinned `nx@22` the key cannot see.
     'test.live': {
-      description: 'bun test, the live Nx files (VX_NX_MODULES names an install)',
+      description: 'bun test, the live Nx files, against the install in .nx-live',
       exec: {
         command: 'bun test --only-failures ./tests/*-live.test.ts',
-        env: { passThrough: ['VX_NX_MODULES', 'VX_REQUIRE_NX'], define: SUITE_ENV },
+        env: {
+          define: {
+            ...SUITE_ENV,
+            VX_NX_MODULES: '.nx-live',
+            VX_REQUIRE_NX: '1',
+          },
+        },
         sandbox: SUITE_SANDBOX,
       },
-      dependsOn: ['install'],
+      dependsOn: ['install', 'nx.install'],
+    },
+
+    // Real Nx inside the package (gitignored), where test.live's read grant
+    // covers it. Persistent, so a distributed run installs it on the agent
+    // that runs test.live; it is ready when it exits. No sandbox: it
+    // downloads from the npm registry.
+    'nx.install': {
+      description: 'npm install nx@22 into .nx-live',
+      exec: {
+        command:
+          'npm install --no-audit --no-fund --prefix .nx-live nx@22 @nx/js@22 typescript@5 && echo installed',
+        persistent: { readyWhen: '^installed$' },
+        timeout: '5m',
+      },
     },
   },
 })

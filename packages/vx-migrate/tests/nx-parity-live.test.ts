@@ -7,7 +7,9 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { dotenvCandidates } from '../src/nx/nx-dotenv.js'
 
-const MODULES = process.env['VX_NX_MODULES']
+const RELATIVE = process.env['VX_NX_MODULES']
+// Relative to the package: `test.live` names `.nx-live`.
+const MODULES = RELATIVE && path.resolve(RELATIVE)
 if (process.env['VX_REQUIRE_NX'] === '1' && !MODULES) {
   throw new Error('VX_REQUIRE_NX=1 but VX_NX_MODULES is unset — the Nx parity suite cannot run')
 }

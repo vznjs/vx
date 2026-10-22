@@ -297,6 +297,16 @@ export async function movedInput(
   return undefined
 }
 
+/** A task's `filesToken`, as its key's fold memo probe takes it. */
+export function taskFilesToken(
+  args: Pick<
+    ComputeHashArgs,
+    'node' | 'workspaceRoot' | 'nestedProjectDirs' | 'gitFilesCache' | 'hashCache'
+  >,
+): string | undefined {
+  return filesToken(inputsArgs({ ...args, upstream: [], cache: undefined as never }))
+}
+
 /** What `resolveInputs` is asked for a task's key. */
 function inputsArgs(args: ComputeHashArgs): ResolveInputsArgs {
   const cfg = args.node.config
@@ -411,7 +421,7 @@ async function resolveKeyInput(
  * each task's config object is created once per run, so a hit there
  * skips the JSON.stringify + xxh3 entirely.
  */
-function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
+export function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
   if (hashCache) {
     const cached = hashCache.taskConfig.get(cfg)
     if (cached !== undefined) return cached

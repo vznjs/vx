@@ -117,12 +117,10 @@ const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
     outputs: { files: [] as string[] },
   },
 })
-const shards = <T>(
-  name: string,
-  n: number,
-  task: (i: number, n: number) => T,
-): Record<string, T> =>
-  Object.fromEntries(Array.from({ length: n }, (_, k) => [`${name}.shard-${k + 1}`, task(k + 1, n)]))
+const shards = <T>(name: string, n: number, task: (i: number, n: number) => T): Record<string, T> =>
+  Object.fromEntries(
+    Array.from({ length: n }, (_, k) => [`${name}.shard-${k + 1}`, task(k + 1, n)]),
+  )
 const shardTasks = {
   ...shards('test.bun', SHARD_COUNT, (i, n) => shardTask(i, n)),
   ...shards('test.platform', PLATFORM_SHARD_COUNT, (i, n) => shardTask(i, n, ' --platform')),

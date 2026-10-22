@@ -1416,6 +1416,360 @@
         }
       }
     },
+    "test.platform.shard-1": {
+      "description": "bun test --platform, shard 1 of 6 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 1 6 --platform)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.platform.shard-2": {
+      "description": "bun test --platform, shard 2 of 6 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 2 6 --platform)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.platform.shard-3": {
+      "description": "bun test --platform, shard 3 of 6 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 3 6 --platform)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.platform.shard-4": {
+      "description": "bun test --platform, shard 4 of 6 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 4 6 --platform)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.platform.shard-5": {
+      "description": "bun test --platform, shard 5 of 6 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 5 6 --platform)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.platform.shard-6": {
+      "description": "bun test --platform, shard 6 of 6 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 6 6 --platform)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
     "test.bun.unsafe.shard-1": {
       "description": "bun test — the files a sandbox cannot host, shard 1 of 4",
       "dependsOn": [
@@ -1672,6 +2026,255 @@
       ],
       "exec": {
         "command": "bun test --only-failures $(bun scripts/test-shard.ts 4 4 --unsafe)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_TAGS",
+            "VX_REQUIRE_REFTABLE",
+            "VX_PR_TITLE",
+            "VX_PR_BASE",
+            "VX_PR_HEAD",
+            "VX_SMALL_DISK",
+            "NODE_EXTRA_CA_CERTS"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/*/**",
+          "examples/**",
+          ".github/**",
+          "scripts/**",
+          "CLAUDE.md",
+          "README.md",
+          "LICENSE",
+          ".claude/skills/**",
+          "skills/**",
+          "vx.config.ts",
+          ".vx/workspace.ts",
+          "!packages/vx/dist/**",
+          "!packages/vx-docs/dist/**",
+          "!packages/vx-docs/public/playground/planner.js",
+          "!packages/vx-docs/src/content/docs/all-features.md",
+          "!packages/vx-docs/src/content/docs/api.md",
+          "!packages/vx-docs/src/content/docs/architecture.md",
+          "!packages/vx-docs/src/content/docs/benchmarks.md",
+          "!packages/vx-docs/src/content/docs/caching.md",
+          "!packages/vx-docs/src/content/docs/cli.md",
+          "!packages/vx-docs/src/content/docs/compare/turbo-nx-support.md",
+          "!packages/vx-docs/src/content/docs/comparison.md",
+          "!packages/vx-docs/src/content/docs/execution.md",
+          "!packages/vx-docs/src/content/docs/flows.md",
+          "!packages/vx-docs/src/content/docs/optimizations.md",
+          "!packages/vx-docs/src/content/docs/overview.md",
+          "!packages/vx-docs/src/content/docs/parity.md",
+          "!packages/vx-docs/src/content/docs/patterns.md",
+          "!packages/vx-docs/src/content/docs/schema.md",
+          "!packages/vx-docs/src/content/docs/security.md",
+          "!packages/vx-docs/src/content/docs/upstream-ledger.md",
+          "!packages/vx-docs/src/content/docs/modules/**",
+          "!packages/vx-docs/src/content/docs/design/**",
+          "!packages/vx-docs/src/content/docs/plugins/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.platform.unsafe.shard-1": {
+      "description": "bun test --platform — the files a sandbox cannot host, shard 1 of 3",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 1 3 --unsafe --platform)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_TAGS",
+            "VX_REQUIRE_REFTABLE",
+            "VX_PR_TITLE",
+            "VX_PR_BASE",
+            "VX_PR_HEAD",
+            "VX_SMALL_DISK",
+            "NODE_EXTRA_CA_CERTS"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/*/**",
+          "examples/**",
+          ".github/**",
+          "scripts/**",
+          "CLAUDE.md",
+          "README.md",
+          "LICENSE",
+          ".claude/skills/**",
+          "skills/**",
+          "vx.config.ts",
+          ".vx/workspace.ts",
+          "!packages/vx/dist/**",
+          "!packages/vx-docs/dist/**",
+          "!packages/vx-docs/public/playground/planner.js",
+          "!packages/vx-docs/src/content/docs/all-features.md",
+          "!packages/vx-docs/src/content/docs/api.md",
+          "!packages/vx-docs/src/content/docs/architecture.md",
+          "!packages/vx-docs/src/content/docs/benchmarks.md",
+          "!packages/vx-docs/src/content/docs/caching.md",
+          "!packages/vx-docs/src/content/docs/cli.md",
+          "!packages/vx-docs/src/content/docs/compare/turbo-nx-support.md",
+          "!packages/vx-docs/src/content/docs/comparison.md",
+          "!packages/vx-docs/src/content/docs/execution.md",
+          "!packages/vx-docs/src/content/docs/flows.md",
+          "!packages/vx-docs/src/content/docs/optimizations.md",
+          "!packages/vx-docs/src/content/docs/overview.md",
+          "!packages/vx-docs/src/content/docs/parity.md",
+          "!packages/vx-docs/src/content/docs/patterns.md",
+          "!packages/vx-docs/src/content/docs/schema.md",
+          "!packages/vx-docs/src/content/docs/security.md",
+          "!packages/vx-docs/src/content/docs/upstream-ledger.md",
+          "!packages/vx-docs/src/content/docs/modules/**",
+          "!packages/vx-docs/src/content/docs/design/**",
+          "!packages/vx-docs/src/content/docs/plugins/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.platform.unsafe.shard-2": {
+      "description": "bun test --platform — the files a sandbox cannot host, shard 2 of 3",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 2 3 --unsafe --platform)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_TAGS",
+            "VX_REQUIRE_REFTABLE",
+            "VX_PR_TITLE",
+            "VX_PR_BASE",
+            "VX_PR_HEAD",
+            "VX_SMALL_DISK",
+            "NODE_EXTRA_CA_CERTS"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/*/**",
+          "examples/**",
+          ".github/**",
+          "scripts/**",
+          "CLAUDE.md",
+          "README.md",
+          "LICENSE",
+          ".claude/skills/**",
+          "skills/**",
+          "vx.config.ts",
+          ".vx/workspace.ts",
+          "!packages/vx/dist/**",
+          "!packages/vx-docs/dist/**",
+          "!packages/vx-docs/public/playground/planner.js",
+          "!packages/vx-docs/src/content/docs/all-features.md",
+          "!packages/vx-docs/src/content/docs/api.md",
+          "!packages/vx-docs/src/content/docs/architecture.md",
+          "!packages/vx-docs/src/content/docs/benchmarks.md",
+          "!packages/vx-docs/src/content/docs/caching.md",
+          "!packages/vx-docs/src/content/docs/cli.md",
+          "!packages/vx-docs/src/content/docs/compare/turbo-nx-support.md",
+          "!packages/vx-docs/src/content/docs/comparison.md",
+          "!packages/vx-docs/src/content/docs/execution.md",
+          "!packages/vx-docs/src/content/docs/flows.md",
+          "!packages/vx-docs/src/content/docs/optimizations.md",
+          "!packages/vx-docs/src/content/docs/overview.md",
+          "!packages/vx-docs/src/content/docs/parity.md",
+          "!packages/vx-docs/src/content/docs/patterns.md",
+          "!packages/vx-docs/src/content/docs/schema.md",
+          "!packages/vx-docs/src/content/docs/security.md",
+          "!packages/vx-docs/src/content/docs/upstream-ledger.md",
+          "!packages/vx-docs/src/content/docs/modules/**",
+          "!packages/vx-docs/src/content/docs/design/**",
+          "!packages/vx-docs/src/content/docs/plugins/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.platform.unsafe.shard-3": {
+      "description": "bun test --platform — the files a sandbox cannot host, shard 3 of 3",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 3 3 --unsafe --platform)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2267,6 +2870,13 @@
       "description": "bun test — the files a sandbox cannot host",
       "dependsOn": [
         "test.bun.unsafe.shard-*"
+      ]
+    },
+    "test.platform": {
+      "description": "bun test — only the files whose outcome is the platform’s (the macOS run)",
+      "dependsOn": [
+        "test.platform.shard-*",
+        "test.platform.unsafe.shard-*"
       ]
     },
     "lint.oxlint": {

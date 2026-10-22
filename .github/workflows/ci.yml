@@ -131,7 +131,7 @@ jobs:
           # writes nothing under a green check, so assert it in this step
           # (`$GITHUB_STEP_SUMMARY` is per step); vx's exit code stays the gate.
           set +e
-          bun packages/vx/src/bin.ts run ci check.vs-turbo build.bun.linux-arm64 build.bun.darwin-arm64 --all
+          bun packages/vx/src/bin.ts run ci test.live check.vs-turbo build.bun.linux-arm64 build.bun.darwin-arm64 --all
           code=$?
           set -e
           test -s "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is empty — did @vzn/vx-ci decline?"; exit 1; }
@@ -157,107 +157,6 @@ jobs:
             .vx/cache
             ~/.vx
           key: vx-${{ runner.os }}-${{ github.sha }}
-
-  # The linux run above runs every package's suite through `vx run ci --all`;
-  # this job exists for the one suite that needs live services — the REAPI
-  # wire against a real cache server and a real execution worker.
-  #
-  # bazel-remote is a real REAPI server (a single static binary, hence a cheap
-  # service container). VX_REQUIRE_REAPI turns an absent endpoint into a
-  # FAILURE rather than a skip, for the same reason VX_REQUIRE_SANDBOX exists:
-  # the round-trip suite is the only thing proving the wire works, and a skip
-  # reports green.
-  packages:
-    name: plugin packages
-    if: github.event.pull_request.stack.position == github.event.pull_request.stack.size
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    services:
-      bazel-remote:
-        image: buchgr/bazel-remote-cache:latest
-        ports:
-          - 19092:9092
-        env:
-          BAZEL_REMOTE_DIR: /data
-          BAZEL_REMOTE_MAX_SIZE: 1
-          BAZEL_REMOTE_GRPC_ADDRESS: 0.0.0.0:9092
-          BAZEL_REMOTE_HTTP_ADDRESS: 0.0.0.0:8080
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.4.2
-
-      - run: bun install --frozen-lockfile
-
-      # `@vzn/vx-reapi#test` reaches core's compile tasks through
-      # `install → ^build`, and those run sandboxed; the runner action is
-      # what lets them.
-      - uses: ./.github/actions/vx-runner
-
-      # NativeLink gives the EXECUTION half a real scheduler + worker. Its
-      # official image is distroless — no /bin/sh — so a worker inside it
-      # cannot run any REAPI Command that starts with a shell (every vx task
-      # does). Rehost the same static musl binary on busybox, which has one.
-      # The busybox base is the Docker Official image, taken from whichever
-      # of three mirrors answers: Docker Hub's auth endpoint 500'd this step
-      # on 2026-08-24, and AWS's mirror answered every attempt with
-      # `429 Too Many Requests: Data limit exceeded` on 2026-09-25, so one
-      # registry is one outage away from a red job that changed nothing
-      # here. Two rounds over the three, 20 s apart.
-      - name: Start NativeLink (execution)
-        run: |
-          docker create --name nl-x ghcr.io/tracemachina/nativelink:v0.6.0 /x
-          docker cp -L nl-x:/bin/nativelink packages/vx-reapi/tests/helpers/nativelink-bin
-          docker rm nl-x
-          cd packages/vx-reapi/tests/helpers
-          built=
-          for round in 1 2; do
-            for base in public.ecr.aws/docker/library/busybox:musl \
-                        mirror.gcr.io/library/busybox:musl \
-                        docker.io/library/busybox:musl; do
-              printf 'FROM %s\nCOPY nativelink-bin /usr/local/bin/nativelink\nENTRYPOINT ["/usr/local/bin/nativelink"]\n' "$base" > Dockerfile.nl
-              if docker build -q -f Dockerfile.nl -t vx-nativelink-sh .; then built=1; break 2; fi
-              echo "docker build from $base failed (round $round)"
-            done
-            [ "$round" = 2 ] || sleep 20
-          done
-          [ -n "$built" ] || exit 1
-          docker run -d --name vx-nl -p 51051:50051 \
-            -v "$PWD/nativelink-exec.json5:/config.json5" vx-nativelink-sh /config.json5
-          sleep 5
-          docker ps --filter name=vx-nl --format '{{.Status}}' | grep -q Up
-
-      # `@vzn/vx-reapi#test.live` runs only the files that dial a server
-      # (the `ci` job runs every file, these in skip mode), uncached, with
-      # the endpoints passed through. BOTH require flags are set: a skip is
-      # a silent pass, and these suites are the only proof the cache wire
-      # and the execution wire work.
-      - name: vx run test.live (@vzn/vx-reapi)
-        env:
-          VX_REAPI_TEST_ENDPOINT: grpc://127.0.0.1:19092
-          VX_REQUIRE_REAPI: '1'
-          VX_REAPI_EXEC_ENDPOINT: grpc://127.0.0.1:51051
-          VX_REQUIRE_REAPI_EXEC: '1'
-        run: bun packages/vx/src/bin.ts run test.live --filter @vzn/vx-reapi
-
-      # `@vzn/vx-migrate`'s `nx-exec` is a Node bin over Nx's own
-      # `runExecutor`, and the fake-Nx suite cannot prove Nx's side of that
-      # contract. A real install lives INSIDE the package (gitignored
-      # `.nx-live/`), so the sandboxed `test.live` task (only the
-      # `*-live.test.ts` files; `ci` runs every file) reads it under its own
-      # grant; the env names it and, like the REAPI flags, makes an absent
-      # install a failure. Uncached: `nx@22` is unpinned.
-      - name: Install Nx for the nx-exec live suite
-        run: npm install --no-audit --no-fund --prefix packages/vx-migrate/.nx-live nx@22 @nx/js@22 typescript@5
-      - name: vx run test.live (@vzn/vx-migrate, nx-exec)
-        env:
-          VX_NX_MODULES: ${{ github.workspace }}/packages/vx-migrate/.nx-live
-          VX_REQUIRE_NX: '1'
-        run: bun packages/vx/src/bin.ts run test.live --filter @vzn/vx-migrate
 
   # The linux-arm64 release binary is cross-compiled and never run
   # elsewhere: this proves it launches, on main only, so a pull request
