@@ -35,9 +35,11 @@ npx cf deploy --secrets-file .env
 ```
 
 `src/worker.ts` is the same relay as the one on Bun. Each run is one
-Durable Object, so its mailboxes and held polls live in one place, and a
-run lives as long as its object does: it ends when its participants stop
-polling. `cloudflare.config.ts` sets the rest:
+Durable Object, so its mailboxes live in one place. Participants hold
+websockets, which the object hibernates between messages: the run is kept
+in the object's storage, the runtime answers heartbeats without waking
+it, and an alarm finds the participants that went silent.
+`cloudflare.config.ts` sets the rest:
 
 - `ISSUERS` (comma separated) is GitHub Actions' issuer. Add
   `https://gitlab.com`, or a self-managed GitLab, to carry GitLab's runs.
@@ -73,6 +75,8 @@ docker run -p 8080:8080 vx-dte-relay --issuer https://gitlab.com --repository gr
   locally: it listens on loopback only.
 
 Runs live in memory. Restarting the relay ends the runs it was carrying.
+Participants hold websockets here too, so a message reaches its receiver
+the moment it is sent.
 
 ## API
 
@@ -82,7 +86,12 @@ The same relay as a `fetch` handler, to mount in a server of your own
 - `createRelay(options?: RelayOptions): Relay`. `RelayOptions` is
   `{ verify?, heartbeatMs? }`: `verify` checks a request's bearer token
   (none admits every request) and gets the request too, `heartbeatMs` (default 5000) is how often
-  a participant must be heard from. A `Relay` is `{ fetch(req), close() }`.
+  a participant must be heard from. A `Relay` is `{ fetch(req), close() }`,
+  plus the hooks a host of websockets drives (`store`, `upgrade`,
+  `timer: false`, `attach`, `frame`, `seen`, `sweep`; `src/worker.ts`
+  is their user).
+- `serveRelay({ hostname, port, verify?, heartbeatMs? })` serves the relay
+  on `Bun.serve`, websockets included, and returns `{ url, stop() }`.
 - `createVerifier(options: OidcOptions)` returns that `verify`.
   `OidcOptions` is
   `{ issuers, audience, repositories?, runClaims?, fetchJson?, now? }`:

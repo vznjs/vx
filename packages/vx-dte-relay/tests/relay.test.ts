@@ -175,6 +175,94 @@ describe('the relay carries one run between its orchestrator and agents', () => 
   })
 })
 
+describe('a host that keeps runs and holds websockets', () => {
+  const memory = () => {
+    const kv = new Map<string, unknown>()
+    return {
+      kv,
+      put: (k: string, v: unknown) => void kv.set(k, v),
+      delete: (k: string) => kv.delete(k),
+      list: ({ prefix }: { prefix: string }) =>
+        [...kv].filter(([k]) => k.startsWith(prefix)).sort(([a], [b]) => (a < b ? -1 : 1)),
+    }
+  }
+
+  it('keeps runs, participants and queued messages across a restart', async () => {
+    const store = memory()
+    const before = client({ store, timer: false, verify: async () => ({ iss: 'i', run: ['1'] }) })
+    const o = (await before.call('r', 'join', { role: 'orchestrator' }, '', 't')).json.id
+    const a = (await before.call('r', 'join', { role: 'agent', info: 7 }, '', 't')).json.id
+    await before.call('r', 'send', { id: o, to: a, body: 1 }, '', 't')
+    await before.call('r', 'send', { id: o, to: a, body: 2 }, '', 't')
+    const after = client({ store, timer: false, verify: async () => ({ iss: 'i', run: ['1'] }) })
+    const polled = async (id: string) =>
+      (await after.call('r', 'poll', undefined, `?id=${id}&wait=0`, 't')).json.messages
+    expect([await polled(a), await polled(o)]).toEqual([
+      [
+        { from: 'orchestrator', body: 1 },
+        { from: 'orchestrator', body: 2 },
+      ],
+      [{ from: 'relay', body: { type: 'joined', id: a, info: 7 } }],
+    ])
+    await after.call('r', 'leave', { id: o }, '', 't')
+    expect([...store.kv.keys()].filter((k) => k.startsWith('m/'))).toEqual([
+      expect.stringContaining(`/${a}/`),
+    ])
+  })
+
+  it('sweeps when its host asks, and says when to ask next', async () => {
+    const c = client({ heartbeatMs: 20, timer: false })
+    const o = await c.join('r', 'orchestrator')
+    const a = await c.join('r', 'agent')
+    const next = c.relay.sweep()!
+    expect(next - Date.now()).toBeGreaterThan(40)
+    expect(next - Date.now()).toBeLessThanOrEqual(61)
+    await Bun.sleep(70)
+    c.relay.seen('r', o, Date.now())
+    c.relay.sweep()
+    expect(await c.poll('r', o)).toEqual([
+      { from: 'relay', body: { type: 'joined', id: a, info: null } },
+      { from: 'relay', body: { type: 'lost', id: a } },
+    ])
+  })
+
+  it('pushes messages down a socket and takes sends from it', async () => {
+    const c = client({ upgrade: () => new Response(null, { status: 101 }) })
+    const joined = await c.call('r', 'join', { role: 'orchestrator' })
+    expect(joined.json.socket).toBe(true)
+    const o = joined.json.id
+    const a = await c.join('r', 'agent')
+    await c.call('r', 'send', { id: o, to: a, body: 'queued' })
+    const frames: unknown[] = []
+    const socket = { send: (t: string) => void frames.push(JSON.parse(t)), close() {} }
+    expect(c.relay.attach('r', a, socket)).toBe(true)
+    await c.call('r', 'send', { id: o, to: a, body: 'pushed' })
+    expect(
+      JSON.parse(c.relay.frame('r', a, JSON.stringify({ n: 1, to: 'orchestrator', body: 3 }))),
+    ).toEqual({ n: 1 })
+    expect(JSON.parse(c.relay.frame('r', a, JSON.stringify({ n: 2, to: 'nobody' })))).toEqual({
+      n: 2,
+      status: 404,
+      error: 'unknown to',
+    })
+    expect(frames).toEqual([
+      { messages: [{ from: 'orchestrator', body: 'queued' }] },
+      { messages: [{ from: 'orchestrator', body: 'pushed' }] },
+    ])
+    expect((await c.poll('r', o)).at(-1)).toEqual({ from: a, body: 3 })
+    c.relay.detach('r', a, socket)
+    await c.call('r', 'send', { id: o, to: a, body: 'after' })
+    expect(await c.poll('r', a)).toEqual([{ from: 'orchestrator', body: 'after' }])
+    expect(c.relay.attach('r', 'gone', socket)).toBe(false)
+  })
+
+  it('answers a socket request without the upgrade header 426', async () => {
+    const c = client({ upgrade: () => new Response(null, { status: 101 }) })
+    const a = await c.join('r', 'agent')
+    expect((await c.call('r', 'socket', undefined, `?id=${a}`)).status).toBe(426)
+  })
+})
+
 it('the Bun entry serves the protocol, without auth on loopback only', async () => {
   const bin = path.join(import.meta.dir, '..', 'src', 'bun.ts')
   const refused = Bun.spawnSync(['bun', bin, '--no-auth', '--host', '0.0.0.0'], { stderr: 'pipe' })

@@ -1,4 +1,5 @@
 export { createRelay, type Relay, type RelayOptions } from './relay.js'
+export { serveRelay, type RelayServer, type ServeOptions } from './serve.js'
 export {
   createVerifier,
   repositoryClaimOf,

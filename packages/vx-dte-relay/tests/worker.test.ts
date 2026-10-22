@@ -2,7 +2,42 @@
 // Durable Object, and an object without ISSUERS and REPOSITORIES refuses to start.
 
 import { afterEach, expect, it } from 'bun:test'
-import worker, { RelayRun, type DurableObjectNamespace, type Env } from '../src/worker.js'
+import worker, {
+  RelayRun,
+  type DurableObjectNamespace,
+  type DurableObjectState,
+  type Env,
+} from '../src/worker.js'
+
+// Only the runtime has it; these tests make no websocket.
+Object.assign(globalThis, { WebSocketRequestResponsePair: class {} })
+
+/** An object's state with no websocket, its storage in memory. */
+function state(): DurableObjectState {
+  const kv = new Map<string, unknown>()
+  let alarm: number | null = null
+  return {
+    storage: {
+      kv: {
+        put: (k, v) => kv.set(k, v),
+        delete: (k) => kv.delete(k),
+        list: ({ prefix }) => [...kv].filter(([k]) => k.startsWith(prefix)),
+      },
+      getAlarm: async () => alarm,
+      setAlarm: async (at) => {
+        alarm = at
+      },
+      deleteAll: async () => {
+        kv.clear()
+        alarm = null
+      },
+    },
+    acceptWebSocket: () => {},
+    getWebSockets: () => [],
+    setWebSocketAutoResponse: () => {},
+    getWebSocketAutoResponseTimestamp: () => null,
+  }
+}
 
 /** Durable Objects by name, as the runtime keeps them. */
 function namespace(env: () => Env): DurableObjectNamespace & { made: string[] } {
@@ -15,7 +50,7 @@ function namespace(env: () => Env): DurableObjectNamespace & { made: string[] } 
       const name = id as string
       let o = objects.get(name)
       if (o === undefined) {
-        o = new RelayRun({}, env())
+        o = new RelayRun(state(), env())
         objects.set(name, o)
         made.push(name)
       }
@@ -60,9 +95,9 @@ it('gives the same run id of two repositories two objects', async () => {
 
 it('will not start without ISSUERS and REPOSITORIES', () => {
   const none: Env = { RELAY: namespace(() => none), ISSUERS: ' ', REPOSITORIES: 'o/r' }
-  expect(() => new RelayRun({}, none)).toThrow('vx-dte-relay: set ISSUERS and REPOSITORIES')
+  expect(() => new RelayRun(state(), none)).toThrow('vx-dte-relay: set ISSUERS and REPOSITORIES')
   const open: Env = { RELAY: namespace(() => open), ISSUERS: 'https://gitlab.com' }
-  expect(() => new RelayRun({}, open)).toThrow('vx-dte-relay: set ISSUERS and REPOSITORIES')
+  expect(() => new RelayRun(state(), open)).toThrow('vx-dte-relay: set ISSUERS and REPOSITORIES')
 })
 
 const ISS = 'https://issuer.example'

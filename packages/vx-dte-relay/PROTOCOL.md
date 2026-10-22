@@ -2,7 +2,7 @@
 
 A relay carries messages between one run's orchestrator and its agents.
 CI runners take no inbound connection, so every participant dials out to
-the relay and polls it. Any server that speaks this protocol can stand in
+the relay: over a websocket where the relay offers one, else by polling. Any server that speaks this protocol can stand in
 for `@vzn/vx-dte-relay`; `@vzn/vx-dte` knows only the relay's URL.
 
 The relay never reads a message body. What the orchestrator and agents say
@@ -17,10 +17,11 @@ Every request is HTTP with a JSON body or none, under
 
 | Request                      | Body                                                  | Answer                                     |
 | ---------------------------- | ----------------------------------------------------- | ------------------------------------------ |
-| `POST join`                  | `{ "role": "orchestrator" \| "agent", "info"?: any }` | `200 { "id", "heartbeatMs" }`              |
+| `POST join`                  | `{ "role": "orchestrator" \| "agent", "info"?: any }` | `200 { "id", "heartbeatMs", "socket"? }`   |
 | `POST send`                  | `{ "id", "to", "body": any }`                         | `204`                                      |
 | `GET poll?id=<id>&wait=<ms>` | none                                                  | `200 { "messages": [{ "from", "body" }] }` |
 | `POST leave`                 | `{ "id" }`                                            | `204`                                      |
+| `GET socket?id=<id>`         | none, a websocket upgrade                             | `101`                                      |
 
 - `join` makes a participant and returns its `id`, a secret the relay
   picked: whoever holds it, with a token of this run, acts as it. A run
@@ -34,9 +35,26 @@ Every request is HTTP with a JSON body or none, under
   `wait` ms pass (at most 25 000), then answers with what it has.
 - `leave` removes the participant. The orchestrator leaving closes the run.
 
+## Sockets
+
+A relay whose `join` answers `"socket": true` takes `socket`, a websocket
+for the participant (`426` without the upgrade). Frames are text:
+
+- the relay pushes `{ "messages": [{ "from", "body" }] }` as messages
+  arrive, starting with any queued before the socket opened;
+- the participant sends `{ "n", "to", "body" }`, as `send`, and the relay
+  answers `{ "n" }`, or `{ "n", "status", "error" }` with the status
+  `send` would answer;
+- the participant sends `ping` each `heartbeatMs`; the relay answers
+  `pong`.
+
+A socket's close does not lose its participant: it polls again, or opens
+another. The relay closes the socket of a participant that left or was
+lost, so its next request learns why.
+
 Every request naming an `id` counts as a heartbeat. A participant silent
 for three `heartbeatMs` is lost, as if it had left. Polling with a `wait`
-below `heartbeatMs` keeps a participant alive.
+below `heartbeatMs`, or a socket's `ping`, keeps a participant alive.
 
 ## Leases (planned, above the relay)
 
@@ -65,7 +83,8 @@ An agent's messages carry `"from": "<its id>"`, the orchestrator's
 
 `400` a malformed request, `401` a missing or invalid token, `403` a token
 of a repository the relay does not serve, `404` an unknown `id` or `to`, `409` a second
-orchestrator, `410` a closed run, `413` a body over 1 MiB, `429` a queue
+orchestrator, `410` a closed run, `413` a body over 1 MiB, `426` a
+`socket` request that is not an upgrade, `429` a queue
 over 10 000 messages or 64 MiB. An error answers `{ "error": "<reason>" }`.
 
 ## Tokens
