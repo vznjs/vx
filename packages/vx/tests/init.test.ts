@@ -10,7 +10,6 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { migrateCommand, parseInitArgs } from '../src/cli/init.js'
 import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
-import { vxInvocation } from '../src/workspace/migration.js'
 import { noticed } from './helpers/notice.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
@@ -198,27 +197,6 @@ describe('vx run with no vx config', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  })
-})
-
-describe('the next: line names the runner that started vx', () => {
-  it('maps each runner, installed or not, and none to a bare vx', () => {
-    const rows = [
-      'npm/10.9.7 node/v22',
-      'pnpm/10.33.0 npm/? node/v22',
-      'yarn/4.5.0 npm/? node/v22',
-      'bun/1.4.2 npm/? node/v26',
-      'deno/2.0',
-      undefined,
-    ].map((ua) => [ua?.split('/')[0], vxInvocation(ua, false), vxInvocation(ua, true)])
-    expect(rows).toEqual([
-      ['npm', 'npx @vzn/vx', 'npx @vzn/vx'],
-      ['pnpm', 'pnpm dlx @vzn/vx', 'pnpm vx'],
-      ['yarn', 'yarn dlx @vzn/vx', 'yarn vx'],
-      ['bun', 'bunx @vzn/vx', 'bunx @vzn/vx'],
-      ['deno', 'vx', 'vx'],
-      [undefined, 'vx', 'vx'],
-    ])
   })
 })
 

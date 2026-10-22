@@ -228,7 +228,7 @@ export function verifiedRelease(
   const ours = signatures.filter((s) => s.keyid === key.id)
   if (ours.length === 0) {
     throw new UserError(
-      `vx upgrade: ${pkg}@${version} is signed with an npm key this vx does not know (${[...new Set(signatures.map((s) => s.keyid))].join(', ')}) — if npm rotated its signing key, this vx's installer needs updating: install the new release with npm install -g @vzn/vx@latest, or from https://github.com/vznjs/vx/releases. Nothing replaced`,
+      `vx upgrade: ${pkg}@${version} is signed with an npm key this vx does not know (${[...new Set(signatures.map((s) => s.keyid))].join(', ')}) — if npm rotated its signing key, this vx's installer needs updating: install the new release with bun add -g @vzn/vx@latest, or from https://github.com/vznjs/vx/releases. Nothing replaced`,
     )
   }
   const publicKey = createPublicKey({
@@ -733,7 +733,7 @@ export async function upgradeOnlyGlobal(
   const install = managedInstall(self, path.dirname(self))
   if (install?.scope === 'project') {
     throw new UserError(
-      `vx upgrade -g: no global vx ran — ${self} is the project's own. Install one (npm install -g ${PACKAGE}), or run \`vx upgrade\` to move the project's`,
+      `vx upgrade -g: no global vx ran — ${self} is the project's own. Install one (bun add -g ${PACKAGE}), or run \`vx upgrade\` to move the project's`,
     )
   }
   if (install === null) await upgradeBinary(self, version, current, 'global ')
@@ -771,8 +771,7 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
   }
   if (!isCompiledBinary()) {
     throw new UserError(
-      'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull ' +
-        '(npm installs update with: npm install -g @vzn/vx@latest)',
+      'vx upgrade: only the compiled binary upgrades itself; this vx runs from source — use git pull',
     )
   }
   const dest = process.execPath

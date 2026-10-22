@@ -26,7 +26,6 @@ import { DOT_VX_GITATTRIBUTES, DOT_VX_GITIGNORE, ui, UserError, sayNotice } from
 import {
   findWorkspaceRoot,
   PROJECT_CONFIG_FILENAMES,
-  vxInvocation,
   WORKSPACE_CONFIG_FILENAMES,
 } from '../workspace/index.js'
 
@@ -140,7 +139,7 @@ export function initInstalls(
 ): { argv: string[]; cwd: string | null }[] {
   const out: { argv: string[]; cwd: string | null }[] = []
   if (globalAt !== version) {
-    const runner = /^(npm|pnpm|yarn|bun)\//.exec(userAgent ?? '')?.[1] ?? 'npm'
+    const runner = /^(npm|pnpm|yarn|bun)\//.exec(userAgent ?? '')?.[1] ?? 'bun'
     const manager = runner as ManagedInstall['manager']
     out.push({ argv: upgradeArgv({ manager, scope: 'global', cwd: '' }, version), cwd: null })
   }
@@ -281,8 +280,7 @@ async function starter(
   ] as const) {
     if (!existsSync(path.join(root, name))) files.push({ path: name, contents })
   }
-  const vx = VERSION === '0.0.0' ? vxInvocation(process.env['npm_config_user_agent'], false) : 'vx'
-  const next = `${noGit ? 'git init, ' : ''}declare a task in ${kept.find((f) => f.startsWith('vx.config.')) ?? config}, then ${vx} lock && ${vx} run <task>`
+  const next = `${noGit ? 'git init, ' : ''}declare a task in ${kept.find((f) => f.startsWith('vx.config.')) ?? config}, then vx lock && vx run <task>`
   if (args.json === true) {
     process.stdout.write(
       `${JSON.stringify({ dry: true, source: 'no turbo.json or nx.json', files, kept, replaced, todos: [], notes: [], next, installs })}\n`,

@@ -53,7 +53,6 @@ import {
   missingPackages,
   MODE_QUESTION,
   ownVersion,
-  type PackageManager,
   packageManagerOf,
   parseModeAnswer,
   uninstall,
@@ -642,14 +641,6 @@ function lockRow(lock: { code: number; said: string }): ui.FieldRow {
 /** `.vx/.gitignore`'s text, as core writes it: the machine-local cache and restore staging stay out of git. */
 const DOT_VX_GITIGNORE = '/cache\n/tmp\n'
 
-// npx and bunx name the package: their bare `vx` is a stranger's npm package.
-const EXEC: Record<PackageManager, string> = {
-  pnpm: 'pnpm vx',
-  yarn: 'yarn vx',
-  bun: 'bunx @vzn/vx',
-  npm: 'npx @vzn/vx',
-}
-
 /**
  * Install what the workspace file imports, if missing, then run the repo's
  * build. Pinned to this release: every @vzn package releases in lockstep,
@@ -666,12 +657,12 @@ export function adoptionNext(
   const missing = needs.filter(
     (p) => !existsSync(path.join(root, 'node_modules', p, 'package.json')),
   )
-  // A global vx (no runner started this one) runs the workspace's plugins as they are.
-  const vx = process.env['npm_config_user_agent'] === undefined ? 'vx' : EXEC[pm]
-  const run = `${vx} run ${firstTask(path.join(root, source), runner)} --all`
+  // `vx init` installs vx globally first: vx alone, never a package
+  // manager's runner (owner, 2026-10-22: vx owns the command).
+  const run = `vx run ${firstTask(path.join(root, source), runner)} --all`
   if (missing.length === 0) return run
   const pinned = version === null ? missing : missing.map((p) => `${p}@${version}`)
-  return `${installArgv(root, pm, pinned).join(' ')} && ${vx} lock && ${run}`
+  return `${installArgv(root, pm, pinned).join(' ')} && vx lock && ${run}`
 }
 
 /**

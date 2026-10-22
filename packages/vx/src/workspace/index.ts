@@ -77,5 +77,4 @@ export {
   type GeneratedTask,
   type MigrationPlan,
   type RawExpr,
-  vxInvocation,
 } from './migration.js'
