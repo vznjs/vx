@@ -50,7 +50,7 @@
           "skills/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -109,7 +109,7 @@
           "skills/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -168,7 +168,7 @@
           "skills/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -227,7 +227,7 @@
           "skills/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -286,7 +286,7 @@
           "skills/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -345,7 +345,7 @@
           "skills/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -404,7 +404,7 @@
           "skills/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -463,7 +463,7 @@
           "skills/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -522,7 +522,7 @@
           "skills/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -581,7 +581,7 @@
           "skills/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -640,7 +640,7 @@
           "skills/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -699,7 +699,7 @@
           "skills/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -782,7 +782,7 @@
           "!packages/vx-docs/src/content/docs/plugins/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -865,7 +865,7 @@
           "!packages/vx-docs/src/content/docs/plugins/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -948,7 +948,7 @@
           "!packages/vx-docs/src/content/docs/plugins/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -1031,7 +1031,7 @@
           "!packages/vx-docs/src/content/docs/plugins/**"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {
@@ -1463,6 +1463,24 @@
         }
       }
     },
+    "check.sandbox-canary": {
+      "description": "drive 20 leaky sandboxed runs through run() under this machine’s sandbox; one it did not enforce fails",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun tests/helpers/sandbox-canary.ts 20"
+      }
+    },
+    "check.build-cold": {
+      "description": "every package’s build under this machine’s sandbox, no cache, as a developer runs it",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun src/bin.ts run build --all '--cache-policy=local:,remote:'"
+      }
+    },
     "check.binary": {
       "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
       "dependsOn": [
@@ -1510,7 +1528,7 @@
           "bun --version"
         ],
         "env": [
-          "RUNNER_OS"
+          "CI_AGENTS_OS"
         ]
       },
       "cache": {

@@ -6,13 +6,15 @@
 // there under its key; the relay carries only orders and status.
 
 import { realpathSync } from 'node:fs'
-import { lstat, mkdir, rm, writeFile } from 'node:fs/promises'
+import { lstat, rm } from 'node:fs/promises'
 import path from 'node:path'
 import {
+  answerRuntime,
   localFloor,
   machineMemoryBytes,
   ui,
   machineParallelism,
+  sandboxRequestFor,
   type CacheFacts,
   type ExecuteRequest,
   type LocalFloor,
@@ -161,12 +163,43 @@ export async function runAgent(opts: {
     }
   }
 
+  // Each probe once per agent, as a run answers it once.
+  const probes = new Map<string, Promise<string>>()
+  /** The first probe this machine answers otherwise than the orchestrator did. */
+  const runtimeDiffers = async (m: RunOrder): Promise<string | undefined> => {
+    for (const r of m.runtime ?? []) {
+      const dir = r.workspace === true ? '' : m.project
+      const k = `${dir}\0${r.command}`
+      let p = probes.get(k)
+      if (p === undefined) {
+        p = answerRuntime(r.command, path.join(opts.root, dir), opts.root, r.workspace === true)
+        probes.set(k, p)
+      }
+      const mine = await p
+      if (mine !== r.output)
+        return `\`${r.command}\` answers ${JSON.stringify(mine)} on this agent, ${JSON.stringify(r.output)} on the run's machine, whose answer its key holds`
+    }
+    return undefined
+  }
+
   const runTask = async (m: RunOrder): Promise<void> => {
     const stop = new AbortController()
     running.set(m.task, stop)
     // Not awaited: the task does not wait on the relay to say it began.
     void me.send('orchestrator', { type: 'start', task: m.task }).catch(() => undefined)
     try {
+      const differs = await runtimeDiffers(m)
+      if (differs !== undefined) {
+        ui.print('err', ui.status('error', m.task, differs))
+        await reply(m, m.runKey, {
+          exitCode: 1,
+          durationMs: 0,
+          stdout: '',
+          stderr: `${differs}\n`,
+          violations: [],
+        })
+        return
+      }
       for (const d of m.deps) {
         let got = present.get(d.key)
         if (got === undefined) {
@@ -190,13 +223,19 @@ export async function runAgent(opts: {
       for (const f of await outputFiles(opts.root, m.project, m.outputs)) {
         await rm(path.join(opts.root, f), { force: true })
       }
-      // Here as the orchestrator's: its paths, real ones first, made ours.
-      const mine = <T>(v: T): T =>
-        swapRoots(v, [
-          [realRoot, myReal],
-          [root, opts.root],
-        ])
-      const made = await bind(opts.root, m.binds ?? [])
+      // Built here: the walls, real paths and grants are this machine's.
+      const sb =
+        m.sandbox === undefined
+          ? undefined
+          : await sandboxRequestFor(
+              { projectDir: path.join(opts.root, m.project) },
+              m.sandbox.config,
+              opts.root,
+              m.sandbox.keyed === undefined
+                ? undefined
+                : new Set(m.sandbox.keyed.map((k) => path.join(opts.root, k))),
+              m.nested.map((n) => path.join(opts.root, n)),
+            )
       const req: ExecuteRequest = {
         taskId: m.task,
         workspaceRoot: opts.root,
@@ -211,7 +250,7 @@ export async function runAgent(opts: {
         signal: stop.signal,
         outputs: m.outputs,
         ...(m.timeoutMs === undefined ? {} : { timeoutMs: m.timeoutMs }),
-        ...(m.sandbox === undefined ? {} : { sandbox: mine(m.sandbox) }),
+        ...(sb === undefined ? {} : { sandbox: sb.sandbox }),
         ...(m.servers === undefined
           ? {}
           : {
@@ -236,7 +275,9 @@ export async function runAgent(opts: {
           : ui.status('error', m.task, [`exit ${res.exitCode} `, took]),
       )
       // A bind the task never wrote is not its output.
-      for (const f of made) if ((await lstat(f)).size === 0) await rm(f, { force: true })
+      for (const p of sb?.placeholders ?? [])
+        if ((await lstat(p.path).catch(() => undefined))?.size === 0)
+          await rm(p.path, { force: true })
       // Its violations name the orchestrator's paths. As JSON first: the swap
       // round-trips them through JSON, which leaves a Date a string.
       const back = swapRoots(
@@ -396,23 +437,4 @@ export function swapRoots<T>(value: T, pairs: readonly (readonly [string, string
 const esc = (p: string): string => JSON.stringify(p).slice(1, -1)
 
 /** Makes each bind that is missing here: the empty files it made, to take back. */
-async function bind(
-  root: string,
-  binds: readonly { path: string; dir: boolean }[],
-): Promise<string[]> {
-  const made: string[] = []
-  for (const b of binds) {
-    const abs = path.join(root, b.path)
-    if (await lstat(abs).catch(() => undefined)) continue
-    if (b.dir) {
-      await mkdir(abs, { recursive: true })
-      continue
-    }
-    await mkdir(path.dirname(abs), { recursive: true })
-    await writeFile(abs, '', { flag: 'wx' })
-    made.push(abs)
-  }
-  return made
-}
-
 const gb = (n: number): string => `${(n / 1e9).toFixed(1)} GB`

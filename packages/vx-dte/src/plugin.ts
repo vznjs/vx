@@ -428,6 +428,8 @@ export function dte(options: DteOptions) {
         sandbox: true,
         // A task's persistent dependencies start on its agent, never here.
         servers: true,
+        // An agent answers a task's runtime probes before it runs it.
+        runtime: true,
         // Room for what agents report beyond their size and the prefetch;
         // the orchestrator holds the rest. Agents that join on their own
         // are as many as join.

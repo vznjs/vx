@@ -19,11 +19,11 @@ export default defineWorkspace({
     // a run with no VX_DTE_RUN, as on a laptop, is not distributed.
     dte({
       ...(relay ? { relay } : {}),
-      // A run's agents are its runner's OS (2026-10-22): ubuntu-latest on a
-      // public repo; macos-latest, whose account cap of 5 the run's own job
-      // takes one of.
+      // A run's agents are the OS ci.yml names (2026-10-22): ubuntu-latest
+      // on a public repo; macos-latest, whose account cap is 5. The run's own
+      // job is Linux for both.
       agents:
-        process.env['RUNNER_OS'] === 'macOS'
+        process.env['CI_AGENTS_OS'] === 'macOS'
           ? { mac: { max: 4, cpu: 3, memory: '7GB' } }
           : { small: { max: 8, cpu: 4, memory: '16GB' } },
       adapter: githubAgents(),

@@ -4,6 +4,8 @@
 // workflow runs as a matrix on the runners it names for the size. Agents
 // prove themselves by their OIDC identity: the run makes no secret.
 
+import { appendFile } from 'node:fs/promises'
+import path from 'node:path'
 import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
 import type { AgentSpawn, DteAdapter } from './plugin.js'
 
@@ -13,6 +15,9 @@ export interface GithubOptions {
 }
 
 const KEYS: PluginOptionKinds<GithubOptions> = { workflow: 'string' }
+
+/** In `RUNNER_TEMP`: one dispatched workflow run's API path per line. */
+const RUNS_FILE = 'vx-dte-runs'
 
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
@@ -67,7 +72,14 @@ export function github(options: GithubOptions = {}): DteAdapter {
       )
     if (res.status === 200) {
       const id = ((await res.json()) as { workflow_run_id?: number }).workflow_run_id
-      if (id !== undefined) runs.push(`/repos/${repo}/actions/runs/${id}`)
+      if (id !== undefined) {
+        const run = `/repos/${repo}/actions/runs/${id}`
+        runs.push(run)
+        // For the job's last step, which cancels them when this process
+        // dies before close() (a kill, an OOM, the job's timeout).
+        if (env['RUNNER_TEMP'])
+          await appendFile(path.join(env['RUNNER_TEMP'], RUNS_FILE), `${run}\n`)
+      }
     }
   }
   return {

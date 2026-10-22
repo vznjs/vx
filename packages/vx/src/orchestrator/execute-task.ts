@@ -1246,7 +1246,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     // below is vx's work, not the task's. Armed first, a 60 ms timeout
     // expired before the spawn and failed `echo` as timed out, unrun.
     if (!userSandbox) return { ...base, signal: requestSignal(local) }
-    await args.armSandbox?.()
+    // A remote executor enforces it where it runs the task.
+    if (args.executor.remote !== true) await args.armSandbox?.()
     const sb = await sandboxRequestFor(
       node,
       step.sandbox!,

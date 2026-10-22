@@ -21,10 +21,12 @@ const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' 
 // what another saved.
 // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
 // CI's macOS jobs share the remote cache with Linux; a key that named no
-// platform replayed Linux's pass as the macOS result (#3854). The runner's
-// OS, read when the key is taken: a `runtime` probe would pin the task off
-// agents, and a value the config computes is frozen into the lock.
-const PLATFORM = ['RUNNER_OS']
+// platform replayed Linux's pass as the macOS result (#3854). The agents'
+// OS, which ci.yml names: the run's own job is Linux for both runs (owner,
+// 2026-10-22), so its RUNNER_OS says nothing of where a suite ran. An env
+// read when the key is taken: a value the config computes is frozen into
+// the lock.
+const PLATFORM = ['CI_AGENTS_OS']
 const SUITE_ENV = {
   ...GIT_HERMETIC,
   BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0',
@@ -432,6 +434,25 @@ export default defineProject({
       cache: {
         outputs: { files: [] },
       },
+    },
+
+    // macOS CI's checks of this machine's own sandbox, as tasks so they run on
+    // a Mac agent: nothing runs on a distributed run's orchestrator. Neither
+    // is sandboxed, as each drives the sandbox itself, and neither is cached.
+    'check.sandbox-canary': {
+      description:
+        'drive 20 leaky sandboxed runs through run() under this machine’s sandbox; one it did not enforce fails',
+      dependsOn: ['install'],
+      exec: { command: 'bun tests/helpers/sandbox-canary.ts 20' },
+    },
+    // A grant bwrap honoured by its mounts failed `@vzn/vx-docs#import` on
+    // every Mac for a week (2026-10-17). No cache read: a hit would skip the
+    // very tasks this runs.
+    'check.build-cold': {
+      description:
+        'every package’s build under this machine’s sandbox, no cache, as a developer runs it',
+      dependsOn: ['install'],
+      exec: { command: "bun src/bin.ts run build --all '--cache-policy=local:,remote:'" },
     },
 
     'check.binary': {

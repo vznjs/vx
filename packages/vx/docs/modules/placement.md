@@ -15,6 +15,7 @@ export function pinnedLocalSet(
   nodes: Map<string, TaskNode>,
   sandbox?: boolean,
   servers?: boolean,
+  runtime?: boolean, // false for a `runtime` executor
 ): Set<string>
 // the exec.interactive tasks when `tty`, else none; throws UserError when two would read the keys at once
 export function terminalHolders(nodes: Map<string, TaskNode>, tty: boolean): Set<string>
@@ -71,8 +72,8 @@ export function localFloor(sandboxes?: readonly SandboxConfig[]): LocalFloor
   vacuously; an executor that declares `sandbox` enforces it where it
   runs and is offered them), `exec.remote: false`, or a task whose key folds a runtime
   probe (`inputs.runtime` / `workspaceRuntime`: this machine's
-  answer, which a worker's own runtime may not match; its dependants stay
-  free, C-2). Pinned tasks never reach a remote
+  answer, which a worker's own runtime may not match, unless the executor
+  declares `runtime` and checks it there; its dependants stay free, C-2). Pinned tasks never reach a remote
   executor;
   `selectExecutor` is told so and a remote executor declines. A
   persistent task itself, like a group, is not placed at all — it runs
