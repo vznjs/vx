@@ -399,3 +399,35 @@ it('gives up on a request the relay holds past three heartbeats', async () => {
   await expect(o.poll()).rejects.toThrow()
   expect(performance.now() - at).toBeLessThan(2_000)
 }, 5_000)
+
+// One 500 from the relay's host on join failed a whole CI run before any
+// task started (PR #3911, 2026-10-22): join asks again.
+it('joins again after the relay answers 5xx or the network drops', async () => {
+  const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
+  servers.push(s)
+  let failures = 0
+  globalThis.fetch = ((input: string, init?: RequestInit) => {
+    if (input.endsWith('/join') && failures < 2) {
+      failures++
+      return failures === 1
+        ? Promise.resolve(new Response('{}', { status: 500 }))
+        : Promise.reject(new TypeError('fetch failed'))
+    }
+    return realFetch(input, init)
+  }) as typeof fetch
+  const o = await join(s.url, R, 'orchestrator', null, undefined)
+  expect([failures, typeof o.id]).toEqual([2, 'string'])
+  await o.leave()
+})
+
+it('does not join again after a 4xx', async () => {
+  const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
+  servers.push(s)
+  let asked = 0
+  globalThis.fetch = (() => {
+    asked++
+    return Promise.resolve(new Response('{"error":"no"}', { status: 403 }))
+  }) as unknown as typeof fetch
+  await expect(join(s.url, R, 'agent', null, undefined)).rejects.toThrow('relay join: 403 no')
+  expect(asked).toBe(1)
+})
