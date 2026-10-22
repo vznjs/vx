@@ -142,8 +142,9 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   sees the file; `test.bun.unsafe` runs them. It,
   `@vzn/vx-reapi#test` and `@vzn/vx-reapi#test.live` (which dial service
   containers on the host's loopback, unreachable from a Linux sandbox's
-  network namespace) are the ONLY three tasks in the whole repo with no
-  `exec.sandbox`.
+  network namespace), `check.sandbox-canary` and `check.build-cold` (each
+  drives the sandbox itself, on a Mac agent) are the ONLY five tasks in
+  the whole repo with no `exec.sandbox`.
 - Every package's suite is its `test` task, so `vx run ci --all` gates
   them all; CI runs nothing but vx tasks (a workspace step is a design
   smell — declare the cross-project read on the task instead). The one

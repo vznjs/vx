@@ -21,6 +21,7 @@ const RUNNER_ACTION = './.github/actions/vx-runner'
 interface Step {
   uses?: string
   run?: string
+  env?: Record<string, string>
 }
 interface Job {
   'runs-on'?: string
@@ -41,13 +42,22 @@ function jobsOf(file: string): [string, Job][] {
 // A vx task, launched from source (`src/bin.ts run`).
 const runsVxTask = (s: Step) => typeof s.run === 'string' && /\bbin\.ts run\b/.test(s.run)
 
+// A distributed run's job only plans and dispatches: every task, sandboxed
+// or not, runs on an agent, which installs the runtime (ci-workflow law).
+const distributed = (s: Step) => s.env?.['VX_DTE_RELAY'] !== undefined
+
 const covered: string[] = []
 const missing: string[] = []
+const runs: string[] = []
 for (const file of files) {
   for (const [name, job] of jobsOf(file)) {
     const steps = job.steps ?? []
     if (!steps.some(runsVxTask)) continue
     if (!String(job['runs-on'] ?? '').startsWith('ubuntu')) continue
+    if (steps.some(distributed)) {
+      runs.push(`${file}#${name}`)
+      continue
+    }
     covered.push(`${file}#${name}`)
     if (!steps.some((s) => s.uses === RUNNER_ACTION)) missing.push(`${file}#${name}`)
   }
@@ -56,7 +66,6 @@ describe('a Linux CI job that runs a vx task', () => {
   it('is every one of these — the pin is not vacuous', () => {
     expect(covered).toEqual([
       'auto-release.yml#release',
-      'ci.yml#linux',
       'ci.yml#packages',
       'ci.yml#binary-linux-arm64',
       'docs.yml#build',
@@ -64,6 +73,10 @@ describe('a Linux CI job that runs a vx task', () => {
       'release-notes.yml#sync',
       'release.yml#assets',
     ])
+  })
+
+  it('leaves out only the distributed runs', () => {
+    expect(runs).toEqual(['ci.yml#linux', 'ci.yml#macos'])
   })
 
   it('installs the sandbox runtime through the shared action', () => {

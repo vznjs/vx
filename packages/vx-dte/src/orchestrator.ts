@@ -1045,7 +1045,6 @@ const compact = (n: number): string => {
 
 const seconds = (ms: number): string => `${(ms / 1000).toFixed(1)}s`
 
-/** `env` without its unset names, as it travels. */
 /** The probes a task's key folds: an agent that answers otherwise fails it (C-2). */
 function runtimeOrders(req: ExecuteRequest): { runtime?: RuntimeOrder[] } {
   const inputs = req.inputs
@@ -1061,6 +1060,7 @@ function runtimeOrders(req: ExecuteRequest): { runtime?: RuntimeOrder[] } {
   return runtime.length === 0 ? {} : { runtime }
 }
 
+/** `env` without its unset names, as it travels. */
 function defined(env: NodeJS.ProcessEnv): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [k, v] of Object.entries(env)) if (v !== undefined) out[k] = v
