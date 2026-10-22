@@ -1167,6 +1167,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         hash,
         wallclockStartNs,
         wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+        ...(result.where !== undefined ? { where: result.where } : {}),
       }
     }
 
