@@ -6,7 +6,7 @@ Build the project dependency graph from the edges plugins supply: a
 `discover` entry's `deps` and `reach` (`ProjectMeta.deps` / `.reach`,
 set by `linkDiscoveredEdges`), plus the cross-project `pkg#task` edges
 of the task configs. Core reads no edge from a manifest; the lockfile
-plugins (`@vzn/vx-lockfile`'s `pnpm()`, `bun()`, `npm()`, `yarn()`)
+plugins (`@vzn/vx-lockfile`'s `bun()`, `pnpm()`, `npm()`, `yarn()`)
 supply what the package manager installed. Used by `buildTaskGraph` to
 resolve `'^name'` edges (`directDeps`), by `workspace/filter.ts` for the
 `pkg...` / `...pkg` traversals and `--affected`'s dependents

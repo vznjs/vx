@@ -681,7 +681,7 @@ Semantics:
   and stay free strings).
 - **`'^name'`** — nearest-holder frontier. Walk the project graph
   from this project's direct deps: the edges a plugin's `discover`
-  returns as `deps` (the lockfile plugins `pnpm()` / `bun()` / `npm()` /
+  returns as `deps` (the lockfile plugins `bun()` / `pnpm()` / `npm()` /
   `yarn()` return what the package manager installed; core reads no
   edge from a `package.json`) and the cross-project `pkg#task` edges.
   With no plugin returning `deps` the workspace has no edge source and
