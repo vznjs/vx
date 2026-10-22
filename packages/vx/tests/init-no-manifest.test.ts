@@ -4,7 +4,7 @@
 // `initInstalls` is the plan a release runs.
 
 import { existsSync, realpathSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
@@ -187,6 +187,51 @@ describe('vx init in a repo with a package.json and no Turbo or Nx', () => {
   })
 })
 
+describe('vx init in a JS workspace', () => {
+  // It declared no plugin, so the first `^build` a user wrote was refused at
+  // `vx lock` ("^build needs project edges") until they found
+  // @vzn/vx-lockfile themselves.
+  it('declares the lockfile plugin its lockfile calls for, and ^build locks', async () => {
+    const root = await tmp('vx-init-js-')
+    await writeFile(
+      path.join(root, 'package.json'),
+      JSON.stringify({ name: 'r', private: true, workspaces: ['packages/*'] }),
+    )
+    for (const [name, deps] of [
+      ['lib', {}],
+      ['app', { lib: 'workspace:*' }],
+    ] as const) {
+      await mkdir(path.join(root, 'packages', name), { recursive: true })
+      await writeFile(
+        path.join(root, 'packages', name, 'package.json'),
+        JSON.stringify({ name, version: '1.0.0', dependencies: deps }),
+      )
+    }
+    const installed = Bun.spawnSync({ cmd: [process.execPath, 'install'], cwd: root })
+    expect(installed.exitCode).toBe(0)
+    // A source checkout installs nothing: the package as a release installs it.
+    await mkdir(path.join(root, 'node_modules', '@vzn'), { recursive: true })
+    await symlink(
+      path.resolve(import.meta.dir, '..', '..', 'vx-lockfile'),
+      path.join(root, 'node_modules', '@vzn', 'vx-lockfile'),
+    )
+    const r = await vx(root, ['init'])
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect(await readFile(path.join(root, '.vx', 'workspace.ts'), 'utf8')).toBe(
+      "import { defineWorkspace } from '@vzn/vx'\nimport { bun } from '@vzn/vx-lockfile'\n\nexport default defineWorkspace({ plugins: [bun()] })\n",
+    )
+    for (const name of ['lib', 'app'])
+      await writeFile(
+        path.join(root, 'packages', name, 'vx.config.ts'),
+        "import { defineProject } from '@vzn/vx'\n\nexport default defineProject({ tasks: { build: { exec: { command: 'true' }, dependsOn: ['^build'], inputs: { files: ['package.json'] } } } })\n",
+      )
+    const lock = await vx(root, ['lock'])
+    expect([lock.code, lock.err]).toEqual([0, ''])
+    const dry = await vx(root, ['run', 'build', '--filter', 'app', '--dry=json'])
+    expect(dry.out).toContain('lib#build')
+  })
+})
+
 describe('initInstalls', () => {
   it('installs globally with the runner that started init, and as the root devDependency', async () => {
     const root = await tmp('vx-init-installs-')
@@ -198,6 +243,17 @@ describe('initInstalls', () => {
       {
         argv: ['pnpm', 'add', '@vzn/vx@1.2.3', '--save-dev', '--workspace-root'],
         cwd: root,
+      },
+    ])
+  })
+
+  it('installs a plugin beside vx at the same version', () => {
+    expect(
+      initInstalls('1.2.3', 'bun/1.4', '/r', '1.2.3', '/bin/bun', ['@vzn/vx-lockfile']),
+    ).toEqual([
+      {
+        argv: ['npm', 'install', '@vzn/vx@1.2.3', '@vzn/vx-lockfile@1.2.3', '--save-dev'],
+        cwd: '/r',
       },
     ])
   })

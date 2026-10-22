@@ -1989,6 +1989,11 @@ import { defineProject } from '@vzn/vx'
 export default defineProject({ tasks: {} })
 ```
 
+Beside a lockfile at that `package.json` (`pnpm-lock.yaml`, `bun.lock`,
+`yarn.lock`, `package-lock.json`), the workspace declares its
+`@vzn/vx-lockfile` plugin (`plugins: [bun()]`), installed beside
+`@vzn/vx`, so a package's `^build` has project edges.
+
 plus `.vx/.gitignore` and `.vx/.gitattributes`. It then runs `vx lock`'s
 step, and `next:` says to declare a task and run `vx lock && vx run
 <task>`, preceded by `git init` outside a git work tree. The `@vzn/vx`

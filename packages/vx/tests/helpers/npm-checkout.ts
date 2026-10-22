@@ -51,7 +51,7 @@ export function installFromCheckout(root: string, names: readonly string[]): voi
 }
 
 /** The workspace half of the lockfile npm 10 writes for `root`'s `packages/*` members. */
-export function npmWorkspaceLock(root: string): unknown {
+function npmWorkspaceLock(root: string): unknown {
   const pkg = (rel: string) =>
     JSON.parse(readFileSync(path.join(root, rel, 'package.json'), 'utf8')) as {
       name: string
