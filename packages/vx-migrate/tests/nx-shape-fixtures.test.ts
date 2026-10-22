@@ -153,7 +153,7 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
         'typecheck',
         'watch-deps',
       ],
-      '@fx/ui': ['build', 'nx-input:default', 'nx-input:production', 'test', 'typecheck'],
+      '@fx/ui': ['build', 'inputs:default', 'inputs:production', 'test', 'typecheck'],
     })
   }, 30_000)
 
@@ -162,8 +162,8 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     expect(r.code).toBe(0)
     expect(r.tasks).toEqual({
       api: ['build', 'build:development', 'deploy', 'lint', 'serve', 'test', 'test:ci'],
-      util: ['build', 'nx-input:default', 'nx-input:production', 'test'],
-      data: ['build', 'nx-input:default', 'nx-input:production'],
+      util: ['build', 'inputs:default', 'inputs:production', 'test'],
+      data: ['build', 'inputs:default', 'inputs:production'],
     })
     expect(r.out).toContain('outside the workspace — vx caches only inside it; dropped')
     // Each Nx project's tags are written as its vx `tags`.
@@ -175,9 +175,9 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     expect(r.code).toBe(0)
     expect(r.tasks).toEqual({
       'fx3-root': ['codegen', 'format'],
-      shop: ['build', 'db-migrate', 'nx-input:default', 'nx-input:production', 'serve'],
+      shop: ['build', 'db-migrate', 'inputs:default', 'inputs:production', 'serve'],
       'shop-e2e': ['e2e', 'e2e-ci', 'e2e-ci--src/a.cy.ts', 'e2e-ci--src/b.cy.ts'],
-      db: ['build', 'nx-input:default', 'nx-input:production'],
+      db: ['build', 'inputs:default', 'inputs:production'],
     })
   }, 30_000)
 
@@ -186,8 +186,8 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     expect(r.code).toBe(0)
     expect(r.tasks).toEqual({
       a: ['build', 'build:development', 'build:production', 'bundle-report', 'dts', 'typecheck'],
-      b: ['build', 'dts', 'nx-input:fileset-ff180853eab36048', 'nx-input:production'],
-      c: ['build', 'nx-input:production'],
+      b: ['build', 'dts', 'inputs:fileset-ff180853eab36048', 'inputs:production'],
+      c: ['build', 'inputs:production'],
     })
   }, 30_000)
 
@@ -195,7 +195,7 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     const r = await migrate('run-commands-variants')
     expect(r.code).toBe(0)
     expect(r.tasks).toEqual({
-      core: ['build', 'build-cjs', 'build-esm', 'nx-input:default'],
+      core: ['build', 'build-cjs', 'build-esm', 'inputs:default'],
       cli: ['build', 'dev', 'release'],
     })
   }, 30_000)
@@ -206,7 +206,7 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     expect(r.tasks).toEqual({
       web: ['build', 'build:development', 'lint', 'test'],
       api: ['build', 'deploy', 'deploy:staging'],
-      shared: ['build', 'nx-input:default', 'nx-input:production'],
+      shared: ['build', 'inputs:default', 'inputs:production'],
     })
     const outputs = (t: Record<string, unknown>) => t['cache'] as { outputs: unknown }
     expect(outputs(r.configs['web']!['build']!).outputs).toEqual({
@@ -220,10 +220,10 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     // An implicit dependency is a dependency: `^build` reaches it.
     expect(r.configs['api']!['build']!['dependsOn']).toEqual([
       '^build',
-      'shared#nx-input:default',
+      'shared#inputs:default',
       'shared#build',
     ])
-    expect(r.configs['web']!['test']!['dependsOn']).toEqual(['build', 'shared#nx-input:default'])
+    expect(r.configs['web']!['test']!['dependsOn']).toEqual(['build', 'shared#inputs:default'])
     // nx:run-script is the script's own line.
     expect((r.configs['web']!['test']!['exec'] as { command: string }).command).toBe('bun test')
     expect((r.configs['api']!['build']!['exec'] as { command: string }).command).toBe('tsc')
@@ -234,7 +234,7 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     expect(r.code).toBe(0)
     expect(r.tasks).toEqual({
       app: ['build', 'e2e', 'typecheck'],
-      util: ['build', 'nx-input:default', 'nx-input:production'],
+      util: ['build', 'inputs:default', 'inputs:production'],
       docs: ['lint'],
     })
     const build = r.configs['app']!['build']!
@@ -243,10 +243,10 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
       workspaceFiles: ['.github/workflows/ci.yml', 'tsconfig.base.json'],
       workspaceRuntime: ['(node -v) || echo "exit $?"'],
     })
-    expect(build['dependsOn']).toEqual(['^build', 'util#nx-input:production', 'util#build'])
+    expect(build['dependsOn']).toEqual(['^build', 'util#inputs:production', 'util#build'])
     expect(r.configs['app']!['typecheck']!['dependsOn']).toEqual([
       '^build',
-      'util#nx-input:default',
+      'util#inputs:default',
       'util#build',
     ])
     expect(r.configs['app']!['e2e']!['dependsOn']).toEqual(['app#build', 'util#build'])
@@ -276,8 +276,8 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     expect(r.tasks).toEqual({
       acme: ['format'],
       shop: ['build', 'test'],
-      feature: ['build', 'lint', 'nx-input:default'],
-      '@acme/util': ['build', 'nx-input:default'],
+      feature: ['build', 'inputs:default', 'lint'],
+      '@acme/util': ['build', 'inputs:default'],
     })
     expect(r.out).toContain(
       '2 Nx projects are in no workspace glob (a package.json is written where there was none) — vx finds a project by a package.json the workspace lists: add "apps/shop", "libs/feature" to package.json `workspaces`',
@@ -291,7 +291,7 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
     expect(r.code).toBe(0)
     expect(r.tasks).toEqual({
       a: ['e2e', 'e2e:build', 'vite', 'vite:build'],
-      b: ['nx-input:default', 'vite:build'],
+      b: ['inputs:default', 'vite:build'],
     })
     expect((r.configs['a']!['vite:build']!['exec'] as { command: string }).command).toBe(
       'vite build',
@@ -306,7 +306,7 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
       '@ts/util': [
         'build',
         'build-deps',
-        'nx-input:fileset-51a93ecf583099a0',
+        'inputs:fileset-51a93ecf583099a0',
         'typecheck',
         'watch-deps',
       ],
@@ -347,7 +347,7 @@ describe('vx-migrate on the Nx shapes real repos have: every written config load
         'test-ci--src/lib/login.spec.ts',
         'test-ci--src/lib/token.spec.ts',
       ],
-      '@ja/ui': ['nx-input:production', 'test'],
+      '@ja/ui': ['inputs:production', 'test'],
     })
     const auth = r.configs['@ja/auth']!
     expect([auth['test']!['inputs'], auth['test']!['cache']]).toEqual([

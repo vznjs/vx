@@ -831,14 +831,14 @@ describe('vx migrate (nx)', () => {
       ])
       expect(build.cache?.outputs.workspaceFiles).toEqual(['reports/build.json'])
       // dependsOn object forms.
-      // ^production is pkg-b's `nx-input:production` twin (item 910).
+      // ^production is pkg-b's `inputs:production` twin (item 910).
       expect(build.dependsOn).toEqual([
         '^build',
         'codegen',
         '^prebuild',
         'pkg-b#tool',
         'fmt',
-        'pkg-b#nx-input:production',
+        'pkg-b#inputs:production',
         // pkg-a → pkg-b is an Nx edge with no manifest entry: explicit.
         'pkg-b#build',
         'pkg-b#prebuild',

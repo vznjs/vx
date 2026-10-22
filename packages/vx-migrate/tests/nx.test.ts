@@ -231,7 +231,7 @@ describe('nx(): a dependency fileset that matches nothing', () => {
       expect(status(first.r, 'app#test')).toBe('success')
       expect(first.lines).toEqual([])
       expect(first.r.outcomes.map((o) => o.node.id).filter((id) => id.startsWith('lib#'))).toEqual([
-        expect.stringMatching(/^lib#nx-input:fileset-[0-9a-f]{16}$/),
+        expect.stringMatching(/^lib#inputs:fileset-[0-9a-f]{16}$/),
       ])
       expect(status((await go()).r, 'app#test')).toBe('cache-hit')
       await writeFile(path.join(root, 'packages', 'lib', 'tsconfig.spec.json'), '{}\n')

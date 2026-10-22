@@ -480,7 +480,7 @@ describe('nx.json is read through its `extends` chain', () => {
 // own `namedInputs` over nx.json's. The mapper dropped `^` inputs as
 // "folded through dependsOn" and read nx.json alone, so a `test` with
 // `^production` and no `dependsOn` hit after a dependency's source changed.
-// Each project now has an `nx-input:<name>` twin keyed on its own input,
+// Each project now has an `inputs:<name>` twin keyed on its own input,
 // chained along the Nx graph's edges; a reader depends on its direct
 // dependencies' twins.
 describe('nx-map: `^` inputs fold over the project graph through twins', () => {
@@ -561,7 +561,7 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
     ],
   ])('a dependency fileset %j keys on each dependency’s files', async (input, fileset, files) => {
     const t = await graph([input])
-    const id = `nx-input:fileset-${Bun.hash.xxHash3(fileset).toString(16).padStart(16, '0')}`
+    const id = `inputs:fileset-${Bun.hash.xxHash3(fileset).toString(16).padStart(16, '0')}`
     expect(shape(t.get('app#test'))).toEqual({
       dependsOn: [`lib#${id}`],
       inputs: { files: [] },
@@ -580,35 +580,35 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
     expect([...t.keys()]).toEqual([
       'app#test',
       'lib#build',
-      'lib#nx-input:production',
-      'base#nx-input:production',
+      'lib#inputs:production',
+      'base#inputs:production',
     ])
     expect(shape(t.get('app#test'))).toEqual({
-      dependsOn: ['lib#nx-input:production'],
+      dependsOn: ['lib#inputs:production'],
       inputs: { files: ['**/*'] },
       todos: [],
     })
     // The twin of a project with no targets exists too, and each twin
     // is its own project's input, not the dependant's.
-    expect(shape(t.get('lib#nx-input:production'))).toEqual(
-      twin(['base#nx-input:production'], { files: ['src/**'] }),
+    expect(shape(t.get('lib#inputs:production'))).toEqual(
+      twin(['base#inputs:production'], { files: ['src/**'] }),
     )
-    expect(shape(t.get('base#nx-input:production'))).toEqual(
+    expect(shape(t.get('base#inputs:production'))).toEqual(
       twin(undefined, { files: ['**/*', '!**/*.spec.ts'] }),
     )
-    expect(t.get('base#nx-input:production')?.task?.['exec']).toBeUndefined()
-    expect(t.get('base#nx-input:production')?.task?.['cache']).toBeUndefined()
+    expect(t.get('base#inputs:production')?.task?.['exec']).toBeUndefined()
+    expect(t.get('base#inputs:production')?.task?.['cache']).toBeUndefined()
   })
 
   it('no `inputs` is Nx’s `default` and `^default`', async () => {
     const t = await graph()
     expect(shape(t.get('app#test'))).toEqual({
-      dependsOn: ['lib#nx-input:default'],
+      dependsOn: ['lib#inputs:default'],
       inputs: { files: ['**/*'] },
       todos: [],
     })
-    expect(shape(t.get('lib#nx-input:default'))).toEqual(
-      twin(['base#nx-input:default'], { files: ['**/*'] }),
+    expect(shape(t.get('lib#inputs:default'))).toEqual(
+      twin(['base#inputs:default'], { files: ['**/*'] }),
     )
   })
 
@@ -621,18 +621,18 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
       inputs: { files: ['**/*'], workspaceFiles: ['shared/app-config.json'] },
       todos: [],
     })
-    expect([...t.keys()].filter((k) => k.includes('nx-input'))).toEqual([])
+    expect([...t.keys()].filter((k) => k.includes('#inputs:'))).toEqual([])
   })
 
   it('`{input, projects}` names projects, not the closure; a missing one is a todo', async () => {
     const t = await graph([{ input: 'production', projects: ['base', 'ghost'] }])
     expect(shape(t.get('app#test'))).toEqual({
-      dependsOn: ['base#nx-input:production'],
+      dependsOn: ['base#inputs:production'],
       inputs: { files: [] },
       todos: ['input project "ghost" is not a graph node — map manually'],
     })
     // The edge's twin exists: a reader's `projects` is what reaches it.
-    expect(shape(t.get('base#nx-input:production'))).toEqual(
+    expect(shape(t.get('base#inputs:production'))).toEqual(
       twin(undefined, { files: ['**/*', '!**/*.spec.ts'] }),
     )
   })
@@ -640,7 +640,7 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
   it('a project without the named input: its twin says so', async () => {
     const t = await graph(['^typecheck'])
     expect(t.get('app#test')?.todos).toEqual([])
-    expect(t.get('lib#nx-input:typecheck')?.todos).toEqual([
+    expect(t.get('lib#inputs:typecheck')?.todos).toEqual([
       'named input "typecheck" not found for "lib" — keyed on its whole project (`**/*`) until its globs are declared',
     ])
   })
@@ -648,7 +648,7 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
   it('a node with no vx project is walked through: its files join, its deps’ twins are edges', async () => {
     const t = await graph(['^production'], undefined, undefined, ['app', 'base'])
     expect(shape(t.get('app#test'))).toEqual({
-      dependsOn: ['base#nx-input:production'],
+      dependsOn: ['base#inputs:production'],
       inputs: { files: [], workspaceFiles: ['packages/lib/src/**'] },
       todos: [],
     })
@@ -656,9 +656,9 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
 
   it('a twin two readers reach is mapped once', async () => {
     const t = await graph(['^production'], undefined, { app: ['lib', 'base'], lib: ['base'] })
-    expect([...t.keys()].filter((id) => id.includes('nx-input'))).toEqual([
-      'lib#nx-input:production',
-      'base#nx-input:production',
+    expect([...t.keys()].filter((id) => id.includes('#inputs:'))).toEqual([
+      'lib#inputs:production',
+      'base#inputs:production',
     ])
   })
 
@@ -668,18 +668,18 @@ describe('nx-map: `^` inputs fold over the project graph through twins', () => {
       lib: ['app', 'base'],
     })
     expect(shape(t.get('app#test'))).toEqual({
-      dependsOn: ['lib#nx-input:production'],
+      dependsOn: ['lib#inputs:production'],
       inputs: { files: [] },
       todos: [],
     })
-    expect(shape(t.get('lib#nx-input:production'))).toEqual(
-      twin(['base#nx-input:production'], {
+    expect(shape(t.get('lib#inputs:production'))).toEqual(
+      twin(['base#inputs:production'], {
         files: ['src/**'],
         workspaceFiles: ['packages/app/**/*', '!packages/app/**/*.spec.ts'],
       }),
     )
     // Nothing outside the cycle reaches `app`, so it has no twin.
-    expect(t.has('app#nx-input:production')).toBe(false)
+    expect(t.has('app#inputs:production')).toBe(false)
   })
 })
 

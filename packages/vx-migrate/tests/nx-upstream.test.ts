@@ -86,7 +86,7 @@ describe('nx-upstream: what the sweep found unheld', () => {
 
   it('a dependency’s env and runtime inputs key its twin', async () => {
     const t = await graph({ inputs: ['^production'], libNamed })
-    expect(inputsOf(t.get('lib#nx-input:production'))).toEqual({
+    expect(inputsOf(t.get('lib#inputs:production'))).toEqual({
       files: ['package.json', 'project.json', 'src/**'],
       env: ['LIB_MODE'],
       workspaceRuntime: ['(node -v) || echo "exit $?"'],
@@ -101,7 +101,7 @@ describe('nx-upstream: what the sweep found unheld', () => {
       env: ['LIB_MODE'],
       workspaceRuntime: ['(node -v) || echo "exit $?"'],
     })
-    expect(depsOf(t.get('app#test'))).toEqual(['base#nx-input:production'])
+    expect(depsOf(t.get('app#test'))).toEqual(['base#inputs:production'])
   })
 
   // `lib`'s production reads its own dependencies' `shared`: the twin
@@ -109,9 +109,9 @@ describe('nx-upstream: what the sweep found unheld', () => {
   it('a nested `^other` in a dependency’s named input folds on from it', async () => {
     const nested = { production: ['{projectRoot}/src/**', '^shared'], shared: ['{projectRoot}/x'] }
     const t = await graph({ inputs: ['^production'], libNamed: nested })
-    expect(depsOf(t.get('lib#nx-input:production'))).toEqual([
-      'base#nx-input:production',
-      'base#nx-input:shared',
+    expect(depsOf(t.get('lib#inputs:production'))).toEqual([
+      'base#inputs:production',
+      'base#inputs:shared',
     ])
     const through = await graph({
       inputs: ['^production'],
@@ -119,8 +119,8 @@ describe('nx-upstream: what the sweep found unheld', () => {
       discovered: ['app', 'base'],
     })
     expect(depsOf(through.get('app#test'))).toEqual([
-      'base#nx-input:production',
-      'base#nx-input:shared',
+      'base#inputs:production',
+      'base#inputs:shared',
     ])
   })
 
@@ -129,8 +129,8 @@ describe('nx-upstream: what the sweep found unheld', () => {
       inputs: ['^production'],
       edges: { app: ['app', 'lib'], lib: ['lib', 'base'] },
     })
-    expect(depsOf(t.get('app#test'))).toEqual(['lib#nx-input:production'])
-    expect(depsOf(t.get('lib#nx-input:production'))).toEqual(['base#nx-input:production'])
+    expect(depsOf(t.get('app#test'))).toEqual(['lib#inputs:production'])
+    expect(depsOf(t.get('lib#inputs:production'))).toEqual(['base#inputs:production'])
   })
 
   it('`{input, projects}` naming a node with no vx project folds its files in', async () => {
@@ -163,14 +163,14 @@ describe('nx-upstream: what the sweep found unheld', () => {
         env: ['LIB_MODE'],
         workspaceRuntime: ['(node -v) || echo "exit $?"'],
       })
-      expect(depsOf(t.get('app#test'))).toEqual(['base#nx-input:production'])
+      expect(depsOf(t.get('app#test'))).toEqual(['base#inputs:production'])
     }
   })
 
   it('`^{workspaceRoot}/…` is a dependency fileset too', async () => {
     const fileset = '{workspaceRoot}/tools/gen.ts'
     const t = await graph({ inputs: [`^${fileset}`] })
-    const id = `nx-input:fileset-${Bun.hash.xxHash3(fileset).toString(16).padStart(16, '0')}`
+    const id = `inputs:fileset-${Bun.hash.xxHash3(fileset).toString(16).padStart(16, '0')}`
     expect(depsOf(t.get('app#test'))).toEqual([`lib#${id}`])
     expect(t.get('app#test')?.todos).toEqual([])
   })
@@ -190,7 +190,7 @@ describe('an input inside the project’s own outputs', () => {
 
   it('is dropped from a dependency’s twin, as Nx hashes nothing there', async () => {
     const t = await graph({ inputs: ['^public'], libNamed, libTargets })
-    const twin = t.get('lib#nx-input:public')
+    const twin = t.get('lib#inputs:public')
     expect(inputsOf(twin)).toEqual({ files: ['package.json', 'project.json', 'src/**'] })
     expect(twin?.todos).toEqual([])
   })

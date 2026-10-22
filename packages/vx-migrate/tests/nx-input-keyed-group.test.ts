@@ -1,6 +1,6 @@
 // typescript-eslint's ast-spec: `test` outputs `{projectRoot}/**/*.shot`,
 // the snapshots are committed, and a dependant reads `^default`. The twin
-// `nx-input:default` reads `**/*`, got `!**/*.shot` from the sibling pass,
+// `inputs:default` reads `**/*`, got `!**/*.shot` from the sibling pass,
 // and the tracked pass uncached it as a reader hiding a committed file: a
 // twin with no `cache` and no `dependsOn` was written as `{}`, and core
 // refused every verb (VX_E_USAGE). A keyed group runs nothing, so core lets
@@ -80,7 +80,7 @@ describe('an nx-input twin over a sibling output', () => {
 
   it('stays a keyed group with the committed snapshot and the literal in its key', () => {
     const spec = plan.projects.find((p) => p.name === 'spec')!
-    const twin = spec.tasks.find((t) => t.name === 'nx-input:default')!
+    const twin = spec.tasks.find((t) => t.name === 'inputs:default')!
     expect(twin.task).toEqual({
       inputs: { files: ['package.json', 'project.json', '**/*'] },
     })
