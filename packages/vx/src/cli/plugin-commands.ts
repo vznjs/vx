@@ -18,7 +18,7 @@ import type {
   TaskArtifacts,
 } from '../orchestrator/index.js'
 import { configuredBaseBranch, findWorkspaceRoot } from '../workspace/index.js'
-import { machineParallelism, maskedLine } from '../util/index.js'
+import { machineParallelism, maskedLine, SecretBroker } from '../util/index.js'
 import { resolveSetting } from '../settings.js'
 
 export interface ResolvedPluginCommand {
@@ -147,7 +147,7 @@ async function verbCache(
   ws: Exclude<Awaited<ReturnType<typeof workspacePlugins>>, UnresolvedPluginCommand | null>,
   plugin: string,
 ): Promise<PluginCache> {
-  const [{ Cache, pluginCache }, { cacheRefs, resolveCache, resolveCacheScope }] =
+  const [{ Cache, pluginCache }, { cacheRefs, openRemotes, resolveCache, resolveCacheScope }] =
     await Promise.all([import('../cache/index.js'), import('../orchestrator/index.js')])
   const scope = resolveCacheScope(
     ws.workspaceRoot,
@@ -174,6 +174,7 @@ async function verbCache(
     policy: VERB_POLICY,
     remotes,
   })
+  await openVerbRemotes(remotes, openRemotes)
   return pluginCache(plugin, { db: localCache.dbHandle(), policy: VERB_POLICY, remotes, scope })
 }
 
@@ -191,6 +192,7 @@ async function verbArtifacts(
     {
       cacheRefs,
       namesRemote,
+      openRemotes,
       resolveCache,
       resolveCacheScope,
       taskArtifacts,
@@ -221,6 +223,7 @@ async function verbArtifacts(
     'open',
     await ws.storeRoot,
   )
+  const remotes: ResolvedRemote[] = []
   const cache = await resolveCache(ws.plugins, {
     workspaceRoot: ws.workspaceRoot,
     cacheDir: ws.cacheDir,
@@ -229,9 +232,24 @@ async function verbArtifacts(
     refs: facts?.()?.refs ?? cacheRefs(ws.workspaceRoot, configuredBaseBranch(ws.workspaceConfig)),
     localCache,
     policy,
+    remotes,
     ...(facts === undefined ? {} : { lentBy: () => facts()?.lent }),
   })
+  await openVerbRemotes(remotes, openRemotes)
   return taskArtifacts(cache, ws.workspaceRoot)
+}
+
+/**
+ * Each remote's `open`, as a run's: a remote that takes its token there
+ * (turboCache's OIDC exchange, a lent token) had none, so an agent's
+ * uploads went nowhere and its run could not restore them.
+ */
+async function openVerbRemotes(
+  remotes: readonly ResolvedRemote[],
+  open: (typeof import('../orchestrator/index.js'))['openRemotes'],
+): Promise<void> {
+  const ci = (await import('./run.js')).onCI(process.env['CI'])
+  await open(remotes, ci, new SecretBroker(ci, warn))
 }
 
 function lazyArtifacts(open: () => Promise<TaskArtifacts>): TaskArtifacts {
