@@ -34,6 +34,7 @@ export interface PaintOptions {
  *   NO_COLOR non-empty          → off (overrides FORCE_COLOR)
  *   FORCE_COLOR=0 or =false     → off, even on a TTY
  *   FORCE_COLOR any other value → on (the empty string too)
+ *   a CI whose log renders ANSI (`ciPaints`) → on
  *   else: on iff stdout is a TTY that is not `TERM=dumb`.
  * `0` and `false` are the convention's "off" (supports-color, chalk,
  * Node); reading every non-empty value as on painted a piped CI log that
@@ -45,13 +46,27 @@ export function detectColors(stream: NodeJS.WriteStream = process.stdout): Color
     ? false
     : force !== undefined
       ? force !== '0' && force !== 'false'
-      : stream.isTTY === true && !dumbTerminal()
+      : ciPaints() || (stream.isTTY === true && !dumbTerminal())
   return {
     enabled,
     get columns() {
       return stream.isTTY === true ? stream.columns : undefined
     },
   }
+}
+
+/**
+ * A CI whose log viewer renders ANSI colour though the job's output is a
+ * pipe (supports-color reads the same variables): its log was plain.
+ */
+function ciPaints(): boolean {
+  const env = process.env
+  return (
+    env['GITHUB_ACTIONS'] === 'true' ||
+    env['GITLAB_CI'] === 'true' ||
+    env['BUILDKITE'] === 'true' ||
+    env['CIRCLECI'] === 'true'
+  )
 }
 
 /**

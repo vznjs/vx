@@ -53,12 +53,13 @@ export function plainOutput(sink: Logger): Logger
 
 Standard env precedence:
 
-| Env                              | Result                                                  |
-| -------------------------------- | ------------------------------------------------------- |
-| `NO_COLOR=<non-empty>`           | off — overrides `FORCE_COLOR`                           |
-| `FORCE_COLOR=0` / `false`        | off, even on a TTY                                      |
-| `FORCE_COLOR=<any other>` or `=` | on                                                      |
-| neither                          | on iff `stream.isTTY === true` and `TERM` is not `dumb` |
+| Env                                                               | Result                                                   |
+| ----------------------------------------------------------------- | -------------------------------------------------------- |
+| `NO_COLOR=<non-empty>`                                            | off — overrides `FORCE_COLOR`                            |
+| `FORCE_COLOR=0` / `false`                                         | off, even on a TTY                                       |
+| `FORCE_COLOR=<any other>` or `=`                                  | on                                                       |
+| `GITHUB_ACTIONS`, `GITLAB_CI`, `BUILDKITE` or `CIRCLECI` = `true` | on: their log renders colour though the output is a pipe |
+| neither                                                           | on iff `stream.isTTY === true` and `TERM` is not `dumb`  |
 
 `0` and `false` are the convention's "off" (supports-color, chalk,
 Node); reading any non-empty `FORCE_COLOR` as on painted a piped CI log
