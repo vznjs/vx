@@ -2,8 +2,8 @@
 // run's mailboxes live in one place and its held polls answer there.
 // `cloudflare.config.ts` deploys it; set REPOSITORIES.
 
-import { createVerifier } from './oidc.js'
-import { createRelay, type Relay } from './relay.js'
+import { claimedRun, createVerifier } from './oidc.js'
+import { createRelay, runKey, type Relay } from './relay.js'
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
 interface DurableObjectId {}
@@ -33,7 +33,9 @@ export default {
   fetch(req: Request, env: Env): Promise<Response> | Response {
     const run = RUN.exec(new URL(req.url).pathname)?.[1]
     if (run === undefined) return Response.json({ error: 'no such route' }, { status: 404 })
-    return env.RELAY.get(env.RELAY.idFromName(run)).fetch(req)
+    const token = /^Bearer (\S+)$/.exec(req.headers.get('authorization') ?? '')?.[1]
+    const claimed = token === undefined ? undefined : claimedRun(token)
+    return env.RELAY.get(env.RELAY.idFromName(runKey(run, claimed))).fetch(req)
   },
 }
 

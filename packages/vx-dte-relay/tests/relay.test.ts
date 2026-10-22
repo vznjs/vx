@@ -123,13 +123,26 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     expect((await c.call('r', 'join', { role: 'agent' }, '', 't')).status).toBe(200)
   })
 
-  it('admits only tokens of the run that its first token named', async () => {
-    const c = client({ verify: async (t) => ({ iss: 'https://gitlab.com', run: ['7', t] }) })
-    expect((await c.call('r', 'join', { role: 'orchestrator' }, '', '100')).status).toBe(200)
-    expect((await c.call('r', 'join', { role: 'agent' }, '', '100')).status).toBe(200)
-    expect((await c.call('r', 'join', { role: 'agent' }, '', '101')).json).toEqual({
-      error: 'token of another run',
-    })
+  it('names a run by its id and its repository: another repository cannot take its id', async () => {
+    // The token names its repository; a GitHub run id is guessable, so
+    // another tenant of the relay could open it first.
+    const c = client({ verify: async (t) => ({ iss: 'https://gitlab.com', run: [t] }) })
+    const theirs = (await c.call('r', 'join', { role: 'orchestrator' }, '', 'other')).json.id
+    const mine = await c.call('r', 'join', { role: 'orchestrator' }, '', 'mine')
+    const agent = (await c.call('r', 'join', { role: 'agent' }, '', 'mine')).json.id
+    const polled = async (id: string, token: string) =>
+      (await c.call('r', 'poll', undefined, `?id=${id}&wait=0`, token)).json
+    expect([
+      mine.status,
+      await polled(mine.json.id, 'mine'),
+      await polled(theirs, 'other'),
+      await polled(agent, 'other'),
+    ]).toEqual([
+      200,
+      { messages: [{ from: 'relay', body: { type: 'joined', id: agent, info: null } }] },
+      { messages: [] },
+      { error: 'unknown id' },
+    ])
   })
 })
 

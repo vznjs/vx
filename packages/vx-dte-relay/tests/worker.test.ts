@@ -46,6 +46,18 @@ it('routes each run to its own object, which checks tokens', async () => {
   expect([res.status, await res.json()]).toEqual([404, { error: 'no such route' }])
 })
 
+it('gives the same run id of two repositories two objects', async () => {
+  let env: Env
+  const ns = namespace(() => env)
+  env = { RELAY: ns, ISSUERS: 'https://gitlab.com', REPOSITORIES: 'o/r' }
+  const unsigned = (project: number) =>
+    `${b64({ alg: 'RS256' })}.${b64({ iss: 'https://gitlab.com', project_id: project })}.x`
+  await join(env, 'r', unsigned(1))
+  await join(env, 'r', unsigned(2))
+  await join(env, 'r', unsigned(1))
+  expect(ns.made).toEqual(['https://gitlab.com\x001\x00r', 'https://gitlab.com\x002\x00r'])
+})
+
 it('will not start without ISSUERS and REPOSITORIES', () => {
   const none: Env = { RELAY: namespace(() => none), ISSUERS: ' ', REPOSITORIES: 'o/r' }
   expect(() => new RelayRun({}, none)).toThrow('vx-dte-relay: set ISSUERS and REPOSITORIES')
