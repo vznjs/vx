@@ -250,6 +250,20 @@ describe('the changes job', () => {
 // for ever; one skipped by a job-level `if` reports success. A failed or
 // skipped `changes` (a push, a dispatch) must run the job, never skip it.
 describe('the gating', () => {
+  // A job whose env carries GITHUB_TOKEN turns vx-ci's check run on; without
+  // checks: write its POST answered 403 and warned (2026-10-22).
+  it('lets each job that hands vx a GITHUB_TOKEN post its check run', () => {
+    const withToken = Object.entries(doc.jobs).filter(([, j]) =>
+      JSON.stringify(j.steps ?? []).includes('GITHUB_TOKEN'),
+    )
+    expect(withToken.map(([name]) => name)).toContain('shards-dte')
+    for (const [name, j] of withToken)
+      expect([
+        name,
+        (j as { permissions?: Record<string, string> }).permissions?.['checks'],
+      ]).toEqual([name, 'write'])
+  })
+
   it('filters no trigger by path', () => {
     expect(JSON.stringify(doc.on ?? doc.true)).not.toMatch(/paths/)
   })

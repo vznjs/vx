@@ -320,6 +320,8 @@ jobs:
       contents: read
       id-token: write
       actions: write
+      # GITHUB_TOKEN dispatches the agents, so vx-ci posts the run's check too.
+      checks: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
