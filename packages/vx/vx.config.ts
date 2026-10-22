@@ -458,12 +458,12 @@ export default defineProject({
     },
     // A grant bwrap honoured by its mounts failed `@vzn/vx-docs#import` on
     // every Mac for a week (2026-10-17). No cache read: a hit would skip the
-    // very tasks this runs.
+    // very tasks this runs. In a worktree: core refuses a nested run here.
     'check.build-cold': {
       description:
         'every package’s build under this machine’s sandbox, no cache, as a developer runs it',
       dependsOn: ['install'],
-      exec: { command: "bun src/bin.ts run build --all '--cache-policy=local:,remote:'" },
+      exec: { command: 'bun scripts/build-cold.ts' },
     },
 
     'check.binary': {
