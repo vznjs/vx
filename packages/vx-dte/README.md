@@ -268,7 +268,9 @@ starts with the run only the agents its start keeps busy, and writes the
 others as `when: manual` jobs. It reads that from the run's own graph
 (`vx run <its args> --dry=json`) and history, so give `vx dte plan` the
 run's selection; a task with no history books one core. The run plays one when its work needs it and cancels
-the ones it never played when it ends.
+the ones it never played when it ends. A played job that fails before
+its agent joins fails the run's wait for it, so the run starts another or
+stops, instead of waiting for the job's timeout.
 
 ## What runs where
 

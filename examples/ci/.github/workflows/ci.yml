@@ -15,7 +15,7 @@ jobs:
         with:
           fetch-depth: 0 # --affected needs the history
       - uses: oven-sh/setup-bun@v2
-      - run: npm install -g @vzn/vx # hands off to the repo's own vx
+      - run: bun add -g @vzn/vx # hands off to the repo's own vx
       - run: bun install --frozen-lockfile
       # A lock that no longer matches the configs fails here, before any task.
       - run: vx lock --check

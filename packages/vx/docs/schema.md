@@ -587,9 +587,8 @@ own environment.
 
 vx also sets `npm_execpath` to the workspace's package manager (the root
 `package.json`'s `packageManager`, else its lockfile, found on the root's
-`node_modules/.bin` or `PATH`) unless a layer gives one, as `pnpm run`
-does: npm-run-all calls that manager back and falls back to a global `npm`
-without it. It names a binary on this machine, so it is not in the key.
+`node_modules/.bin` or `PATH`) unless a layer gives one, so a tool that calls the manager back finds
+it. It names a binary on this machine, so it is not in the key.
 
 Anything outside these three layers, the two variables vx sets for
 the run (`VX_RUN_WORKSPACE`, `VX_RUN_TASK`) and `npm_execpath`, is absent from the child's environment:

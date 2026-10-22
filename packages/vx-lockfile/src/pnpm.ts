@@ -12,7 +12,7 @@
 // Bun.YAML is the parser: no dependency, and the file is plain YAML.
 
 import { reachDigests, type LockfileImporter } from '@vzn/vx'
-import { record } from './json.js'
+import { record, stable } from './json.js'
 import { joinPosix } from './posix.js'
 
 export interface Lockfile {
@@ -179,37 +179,6 @@ function scalar(v: unknown): string {
     : typeof v === 'number' || typeof v === 'boolean'
       ? String(v)
       : ''
-}
-
-/**
- * pnpm-workspace.yaml as every task folds it: without `patchedDependencies`
- * and `overrides`, whose effect the lockfile records per project (pnpm 10+
- * keeps them here). Undefined for a file that does not parse to a mapping,
- * folded whole.
- */
-export function workspaceSettings(text: string): string | undefined {
-  let doc: unknown
-  try {
-    doc = Bun.YAML.parse(text)
-  } catch {
-    return undefined
-  }
-  const map = record(doc)
-  if (map === undefined) return undefined
-  const rest: Yaml = {}
-  for (const [k, v] of Object.entries(map)) {
-    if (k !== 'patchedDependencies' && k !== 'overrides') rest[k] = v
-  }
-  return `pnpm-workspace\0${stable(rest)}`
-}
-
-/** JSON with sorted keys, so YAML key order cannot move a digest. */
-export function stable(v: unknown): string {
-  return JSON.stringify(v, (_k, val: unknown) =>
-    val !== null && typeof val === 'object' && !Array.isArray(val)
-      ? Object.fromEntries(Object.entries(val as Yaml).sort(([a], [b]) => (a < b ? -1 : 1)))
-      : val,
-  )
 }
 
 /**

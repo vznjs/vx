@@ -64,7 +64,7 @@ variables you `passThrough` from the parent (not in the key).
 the task, so a variable that changes the output and must reach the
 task goes in both. `PATH` is prepended
 with the project's `node_modules/.bin`, then the workspace root's, so
-`tsc` resolves without `npx`. A variable that changes the output and
+`tsc` resolves by name. A variable that changes the output and
 is missing from `inputs.env` is the most common
 under-declaration, and it shows up as a stale hit: the key did not
 change, so vx replays the old output.

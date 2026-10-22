@@ -66,7 +66,6 @@ each, best of three interleaved runs. Every run is in
 ## Try it on yours
 
 ```sh
-npm install -D @vzn/vx
 bunx @vzn/vx init --keep
 ```
 

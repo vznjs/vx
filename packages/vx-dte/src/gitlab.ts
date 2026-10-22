@@ -8,7 +8,7 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
-import type { DteAdapter } from './plugin.js'
+import type { AgentSpawn, DteAdapter } from './plugin.js'
 
 export interface GitlabOptions {
   /** The workspace-relative file that holds `.vx-agent`, the job template every agent job extends. */
@@ -32,6 +32,32 @@ export function gitlab(options: GitlabOptions): DteAdapter {
   const token = (): string | undefined => process.env['VX_DTE_GITLAB_TOKEN'] || undefined
   let jobs: Promise<Map<string, number>> | undefined
   const played = new Set<string>()
+  // A played job that fails before its agent joins (checkout, install)
+  // tells the run nothing, and a run with no other agent waited for the
+  // job's timeout. Each played job is read until it ends; one that ends
+  // badly says so.
+  const watched = new Map<number, AgentSpawn>()
+  let watch: ReturnType<typeof setTimeout> | undefined
+  let closed = false
+  const look = (t: string, ms: number): void => {
+    watch = setTimeout(() => {
+      void Promise.all(
+        [...watched].map(async ([id, a]) => {
+          const j = (await api(t, 'GET', `jobs/${id}`).catch(() => undefined)) as
+            | { status?: string; failure_reason?: string }
+            | undefined
+          if (j?.status === undefined || !ENDED.has(j.status)) return
+          watched.delete(id)
+          if (j.status === 'success' || closed) return
+          a.exited(`job ${j.status}${j.failure_reason ? ` (${j.failure_reason})` : ''}`)
+        }),
+      ).then(() => {
+        if (!closed && watched.size > 0) look(t, Math.min(2 * ms, WATCH_MAX_MS))
+        else watch = undefined
+      })
+    }, ms)
+    watch.unref()
+  }
   return {
     live: () => token() !== undefined,
 
@@ -49,10 +75,14 @@ export function gitlab(options: GitlabOptions): DteAdapter {
       if (id === undefined) throw new Error(`no manual job ${name} in the vx-agents pipeline`)
       played.add(name)
       await api(t, 'POST', `jobs/${id}/play`)
+      watched.set(id, a)
+      if (watch === undefined && !closed) look(t, WATCH_FIRST_MS)
     },
 
     // The jobs never played, so the child pipeline ends with the run.
     async close() {
+      closed = true
+      clearTimeout(watch)
       const t = token()
       if (t === undefined || jobs === undefined) return
       const all = await jobs.catch(() => new Map<string, number>())
@@ -104,6 +134,12 @@ export function gitlab(options: GitlabOptions): DteAdapter {
 }
 
 const json = (s: string): string => JSON.stringify(s)
+
+/** A played job is first read this soon, then twice as late each time, up to `WATCH_MAX_MS`. */
+const WATCH_FIRST_MS = 2_000
+const WATCH_MAX_MS = 60_000
+/** A job status no job leaves. */
+const ENDED = new Set(['success', 'failed', 'canceled', 'skipped'])
 
 /** How long the run waits for the vx-agents child pipeline to exist: a minute. */
 const BRIDGE_TRIES = 30
@@ -161,6 +197,5 @@ function binary(root: string): string {
   const has = (f: string): boolean => existsSync(path.join(root, f))
   if (has('pnpm-lock.yaml')) return 'pnpm exec vx'
   if (has('yarn.lock')) return 'yarn exec vx'
-  if (has('bun.lock') || has('bun.lockb')) return 'bunx @vzn/vx'
-  return 'npx @vzn/vx'
+  return 'bunx @vzn/vx'
 }

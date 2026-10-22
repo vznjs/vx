@@ -8,7 +8,7 @@ BuildBuddy, Buildbarn, bazel-remote: mature server implementations, none of
 which we had to write, because a REAPI server is deliberately dumb.
 
 ```sh
-npm install -D @vzn/vx @vzn/vx-reapi   # or: pnpm add -D -w · yarn add -D (-W on Yarn 1) · bun add -d
+bun add -d @vzn/vx @vzn/vx-reapi
 ```
 
 ```ts
