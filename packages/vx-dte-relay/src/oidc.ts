@@ -27,8 +27,11 @@ export interface OidcOptions {
   audience: string
   /** Run claims by issuer; an issuer not named here uses `runClaimsOf`. */
   runClaims?: Readonly<Record<string, readonly string[]>>
-  /** Reads a URL as JSON; tests serve keys without a network. */
-  fetchJson?: (url: string) => Promise<unknown>
+  /**
+   * Reads a URL as JSON; tests serve keys without a network. `fresh`: a
+   * token named a key the last read did not have, so a cached copy will not do.
+   */
+  fetchJson?: (url: string, fresh: boolean) => Promise<unknown>
   /** Seconds since the epoch; tests move the clock. */
   now?: () => number
 }
@@ -127,8 +130,11 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
   const now = opts.now ?? (() => Date.now() / 1000)
   const keys = new Map<string, { at: number; byKid: Promise<Map<string, CryptoKey>> }>()
 
-  const load = (iss: string): { at: number; byKid: Promise<Map<string, CryptoKey>> } => {
-    const entry = { at: Date.now(), byKid: loadKeys(iss, fetchJson) }
+  const load = (
+    iss: string,
+    fresh: boolean,
+  ): { at: number; byKid: Promise<Map<string, CryptoKey>> } => {
+    const entry = { at: Date.now(), byKid: loadKeys(iss, (url) => fetchJson(url, fresh)) }
     keys.set(iss, entry)
     // A failed load is not kept: the next token tries again.
     entry.byKid.catch(() => keys.get(iss) === entry && keys.delete(iss))
@@ -136,10 +142,10 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
   }
   // A key rotated in since the last read is fetched once a REFETCH_MS.
   const keyOf = async (iss: string, kid: string): Promise<CryptoKey | undefined> => {
-    const entry = keys.get(iss) ?? load(iss)
+    const entry = keys.get(iss) ?? load(iss, false)
     const byKid = await entry.byKid
     if (byKid.has(kid) || Date.now() - entry.at < REFETCH_MS) return byKid.get(kid)
-    return (await load(iss).byKid).get(kid)
+    return (await load(iss, true).byKid).get(kid)
   }
 
   return async (token) => {

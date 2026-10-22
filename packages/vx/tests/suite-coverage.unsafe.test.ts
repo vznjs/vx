@@ -50,7 +50,8 @@ function suitesUnder(dir: string, prefix = ''): string[] {
  */
 function launchedBy(command: string): (suite: string) => boolean {
   if (/\bscripts\/test-shard\.ts\b/.test(command)) {
-    const dealt = new Set(testFiles().map((f) => `tests/${f}`))
+    const suite = /\s--unsafe\b/.test(command) ? 'unsafe' : 'safe'
+    const dealt = new Set(testFiles(suite).map((f) => `tests/${f}`))
     return (suite) => dealt.has(suite)
   }
   const globs = [
@@ -118,7 +119,7 @@ describe('every test file is launched by a task', () => {
       }
     }
     expect(launchers).toContain('vx#test.bun.shard-1')
-    expect(launchers).toContain('vx#test.bun.unsafe')
+    expect(launchers).toContain('vx#test.bun.unsafe.shard-1')
     expect(launchers).toContain('vx-reapi#test')
     expect(verbose).toEqual([])
   })
