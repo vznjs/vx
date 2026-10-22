@@ -60,6 +60,7 @@ export {
   type ExecuteSandbox,
   type InputFile,
   type MachineReport,
+  type ServerSpec,
   type TaskExecutor,
   type TaskInputs,
   type TaskPlacement,

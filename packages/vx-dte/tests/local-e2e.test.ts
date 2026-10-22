@@ -45,6 +45,14 @@ export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB
   } },
 } }
 `,
+    // A server its tests need where they run: each start says where.
+    's/vx.config.mjs': `const log = ${JSON.stringify(path.join(root, 'servers.log'))}
+const t = (n) => ({ dependsOn: ['srv'], exec: { command: 'test -e up && echo saw' + n } })
+export default { name: 's', tasks: {
+  srv: { exec: { command: 'echo "$PWD" >> ' + log + ' && touch up && echo up && exec sleep 60', persistent: { readyWhen: 'up' } } },
+  t1: t(1), t2: t(2), t3: t(3),
+} }
+`,
     // Wide, then a two-task lull, then wide again.
     'c/vx.config.mjs': `const t = (dependsOn) => ({ exec: { command: 'sleep 0.3' }, dependsOn })
 export default { name: 'c', tasks: {
@@ -153,6 +161,17 @@ it('gives a task on an agent only the env it passes through', () => {
   const out = r.stdout.toString() + r.stderr.toString()
   expect([r.exitCode, out]).toEqual([0, expect.stringContaining('shown=yes hidden=none')])
   expect(out).toContain('agents')
+}, 60_000)
+
+// Nothing runs on the orchestrator (owner, 2026-10-22): each agent that
+// runs a server's dependant starts the server itself, once, beside it.
+it('starts a task’s server on the agent that runs it, once per agent, never here', async () => {
+  const r = vx(['run', 's#t1', 's#t2', 's#t3'], 'e2e-srv')
+  const out = r.stdout.toString() + r.stderr.toString()
+  expect([r.exitCode, out]).toEqual([0, expect.stringContaining('saw3')])
+  const starts = (await readFile(path.join(root, 'servers.log'), 'utf8')).trim().split('\n')
+  expect(starts).not.toContain(path.join(root, 's'))
+  expect(new Set(starts).size).toBe(starts.length)
 }, 60_000)
 
 it('fails a task that fails on its agent, with its output', () => {

@@ -59,6 +59,17 @@ export interface RunOrder {
   sandbox?: ExecuteSandbox
   /** Workspace-relative paths its write grants bind, which must exist first. */
   binds?: { path: string; dir: boolean }[]
+  /** Its persistent dependencies (`ServerSpec`), `cwd` workspace-relative: the agent starts each once. */
+  servers?: ServerOrder[]
+}
+
+export interface ServerOrder {
+  task: string
+  command: string
+  cwd: string
+  env: Record<string, string>
+  readyWhen?: string
+  timeoutMs?: number
 }
 
 export type ToAgent =
