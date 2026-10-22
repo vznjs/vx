@@ -11,7 +11,7 @@ import { lstat, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { isLiteralPattern, outputsOverlap } from '@vzn/vx'
 import { relPosix } from './paths.js'
-import { isKeyedGroup, unkey } from './shared-outputs.js'
+import type * as SharedOutputs from './shared-outputs.js'
 
 /** The files git tracks under `root`, root-relative; null outside a repo or without git. */
 export async function trackedFiles(root: string): Promise<string[] | null> {
@@ -238,6 +238,8 @@ export function spareTrackedOutputs(
   }[],
   tracked: readonly string[],
 ): [string, string][] {
+  // Loaded here, on a remap only: a kept mapping's run never reads it.
+  const { isKeyedGroup, unkey } = require('./shared-outputs.js') as typeof SharedOutputs
   const todos: [string, string][] = []
   const trackedSet = new Set(tracked)
   /** Drop the `!` entries readers carry for a committed file no output names any more. */
