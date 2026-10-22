@@ -15,12 +15,17 @@ export default defineWorkspace({
     // short-lived one; elsewhere the token comes from the OS keychain.
     turboCache({ teamSlug: 'exelord', oidc: true }),
     scheduleHistoryPlugin(),
-    // CI's shards over agents (ci.yml `shards-dte`, vx-agent.yml); a run
-    // with no VX_DTE_RUN, as on a laptop, is not distributed.
+    // CI's two runs over agents (ci.yml `linux` and `macos`, vx-agent.yml);
+    // a run with no VX_DTE_RUN, as on a laptop, is not distributed.
     dte({
       ...(relay ? { relay } : {}),
-      // ubuntu-latest on a public repo.
-      agents: { small: { max: 6, cpu: 4, memory: '16GB' } },
+      // A run's agents are its runner's OS (2026-10-22): ubuntu-latest on a
+      // public repo; macos-latest, whose account cap of 5 the run's own job
+      // takes one of.
+      agents:
+        process.env['RUNNER_OS'] === 'macOS'
+          ? { mac: { max: 4, cpu: 3, memory: '7GB' } }
+          : { small: { max: 8, cpu: 4, memory: '16GB' } },
       adapter: githubAgents(),
     }),
   ],
