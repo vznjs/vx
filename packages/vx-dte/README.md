@@ -401,7 +401,8 @@ utilization of every machine together:
   `relay`), `VX_DTE_SECRET` (the run's) and, when the run started it,
   `VX_DTE_AGENT` (its name). With no `VX_DTE_SECRET` it reads
   `.vx/dte/secret`, the one `vx dte plan` wrote. It is
-  described only by the cores and memory its machine reports.
+  described only by the cores and memory its machine reports. It exits 0
+  when the run ended before it joined.
 - `vx dte plan [<tasks> <run flags>]` writes the CI files that start the
   run's agents, through the adapter's `render`: every size's `max`
   agents. With an adapter that spawns live (`live()`), only the first

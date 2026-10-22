@@ -69,12 +69,19 @@ export async function runAgent(opts: {
     memory,
     tree,
   }
-  const me = await sealAgent(
-    (signed) => join(opts.relay, opts.run, 'agent', signed, opts.token),
-    opts.run,
-    opts.proof,
-    { ...info },
-  )
+  let me
+  try {
+    me = await sealAgent(
+      (signed) => join(opts.relay, opts.run, 'agent', signed, opts.token),
+      opts.run,
+      opts.proof,
+      { ...info },
+    )
+  } catch (err) {
+    // The run ended before this agent came up: nothing is left for it.
+    if (err instanceof RelayError && err.status === 410) return 0
+    throw err
+  }
   // Read as the run reads: its refs, and what its remotes lent.
   let facts: CacheFacts | undefined
   const artifacts = opts.artifacts(() => facts)
