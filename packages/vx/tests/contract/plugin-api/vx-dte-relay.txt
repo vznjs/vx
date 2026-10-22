@@ -9,12 +9,15 @@ export class TokenError extends Error {
 export function createRelay(opts: RelayOptions = {}): Relay
 == function createVerifier (src/oidc.ts)
 export function createVerifier(opts: OidcOptions): (token: string) => Promise<VerifiedToken>
+== function repositoryClaimOf (src/oidc.ts)
+export function repositoryClaimOf(iss: string): string
 == function runClaimsOf (src/oidc.ts)
 export function runClaimsOf(iss: string): readonly string[]
 == type OidcOptions (src/oidc.ts)
 export interface OidcOptions {
   issuers: readonly string[]
   audience: string
+  repositories?: readonly string[]
   runClaims?: Readonly<Record<string, readonly string[]>>
   fetchJson?: (url: string) => Promise<unknown>
   now?: () => number
@@ -26,7 +29,7 @@ export interface Relay {
 }
 == type RelayOptions (src/relay.ts)
 export interface RelayOptions {
-  verify?: ((token: string) => Promise<VerifiedToken>) | undefined
+  verify?: ((token: string, req: Request) => Promise<VerifiedToken>) | undefined
   heartbeatMs?: number
 }
 == type VerifiedToken (src/oidc.ts)

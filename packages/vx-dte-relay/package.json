@@ -16,6 +16,9 @@
   "bin": {
     "vx-dte-relay": "./src/bun.ts"
   },
+  "scripts": {
+    "deploy": "cf deploy"
+  },
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -26,14 +29,28 @@
     "index.ts",
     "src",
     "PROTOCOL.md",
-    "wrangler.jsonc",
+    "cloudflare.config.ts",
     "README.md"
   ],
   "engines": {
     "bun": ">=1.4"
   },
+  "//": [
+    "cf: Cloudflare's CLI, deploys src/worker.ts by cloudflare.config.ts (the Deploy to Cloudflare button runs it too). vite, @cloudflare/vite-plugin: the bundler cf builds the Worker with (vite.config.ts). Pinned: cf and the plugin are betas.",
+    "@vzn/vx: vx.config.ts's core, the workspace's own here; `*`, not workspace:, which npm refuses when the button installs this directory alone."
+  ],
   "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-beta.v.3",
     "@types/bun": "^1.4.0",
-    "@vzn/vx": "workspace:*"
+    "@vzn/vx": "*",
+    "cf": "1.0.0-beta.20",
+    "vite": "8.3.5"
+  },
+  "cloudflare": {
+    "bindings": {
+      "REPOSITORIES": {
+        "description": "The repositories whose CI runs this relay carries, `owner/repo`, comma separated, such as `vznjs/vx`. A token of any other is refused."
+      }
+    }
   }
 }

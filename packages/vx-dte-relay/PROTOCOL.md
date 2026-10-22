@@ -72,8 +72,10 @@ over 10 000 messages. An error answers `{ "error": "<reason>" }`.
 
 The relay checks each token's signature against its issuer's published
 keys (`<iss>/.well-known/openid-configuration`, then `jwks_uri`; RS256),
-its `exp` and `nbf`, that `iss` is one the relay trusts, and that `aud`
-names the relay's audience. The first token a run sees binds the run to
+its `exp` and `nbf`, that `iss` is one the relay trusts, that `aud`
+names the relay's audience, and that the token's repository is one the
+relay serves (`repository` on GitHub Actions, `project_path` on GitLab,
+matched without case; else `403`). The first token a run sees binds the run to
 its issuer and its run claims; every later token must carry the same
 values, or the request answers `403`. The run claims name the
 repository:

@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte-relay: admit named repos, deploy to Cloudflare by cf
+
+vx-dte-relay needs --repository owner/repo and the Worker needs REPOSITORIES; wrangler.jsonc is replaced by cloudflare.config.ts (deploy with cf).
+
 ## vx-dte: sign relay keys by GitHub OIDC, with no secret
 
 @vzn/vx-dte-relay binds a run by repository_id or project_id only; runClaimsOf no longer names run_id or pipeline_id.
