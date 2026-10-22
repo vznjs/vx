@@ -106,6 +106,8 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       for (const p of [...run.byId.values()]) {
         if (now - p.seen > 3 * heartbeatMs) drop(run, p)
       }
+      // Agents whose orchestrator never joined: nothing would close it.
+      if (!run.closed && run.byId.size === 0) runs.delete(id)
     }
   }, heartbeatMs)
   // Workers have no unref; there a run ends with its Durable Object.
