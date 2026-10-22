@@ -280,9 +280,13 @@ describe.skipIf(strace === null)('what vx asks the kernel once', () => {
     'a hit restored into a tree without its outputs: one walk, no realpath of the missing directory',
     async () => {
       const root = await makeWorkspace({ dir, git: false })
+      // `dist` dated in the future keeps the primed run from snapshotting it
+      // (a snapshot waits out the racy window): a run slow enough under load
+      // to pass that window left a snapshot, and the hit then probed `dist`
+      // once more to check it, one in about ten runs.
       const proj = await addProject(root, 'p', {
         config: `export default { tasks: { build: {
-          exec: { command: 'mkdir -p dist && cp src/a.txt dist/out.txt' },
+          exec: { command: 'mkdir -p dist && cp src/a.txt dist/out.txt && touch -t 209901010000 dist' },
           inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
         } } }\n`,
         files: { 'src/a.txt': 'a' },
