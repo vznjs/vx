@@ -12,9 +12,6 @@
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import {
-  localFloor,
-  machineMemoryBytes,
-  machineParallelism,
   ui,
   withForwardArgs,
   type CacheFacts,
@@ -107,8 +104,6 @@ export interface OrchestratorOptions {
   readonly root: string
   /** The tree of the run's tracked files (`tree.ts`). */
   readonly tree: string
-  /** Tasks this machine runs at once besides the agents. */
-  readonly localSlots: number
   readonly nodes: () => ReadonlyMap<string, TaskNode> | undefined
   readonly need: (taskId: string) => Need
   /** The run's cache, by key: what agents save to and this machine restores from. */
@@ -164,15 +159,10 @@ export class Orchestrator {
   private readonly savedAs = new Map<string, string>()
   /** Keys the run's requests named for their dependencies. */
   private readonly upstreamKeys = new Map<string, string>()
-  private localBusy = 0
-  private ranHere = 0
-  private readonly runningHere = new Set<string>()
   /** When each agent this run started was asked for, by `AgentSpawn.index`. */
   private readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
   private ended = false
   private endedAt = 0
-  /** This machine's share. */
-  private readonly local = new Usage()
   /** Agents that joined and left, for the footer. */
   private readonly gone: Agent[] = []
   /** Of `gone`, those the run let go (`retire`), not lost. */
@@ -185,7 +175,6 @@ export class Orchestrator {
   private joined = 0
   private readonly stop = new AbortController()
   private readonly loop: Promise<void>
-  private readonly floor = localFloor()
   private readonly realRoot: string
   /** What agents read the cache under, asked once and again before its lent tokens end. */
   private facts: Promise<CacheFacts> | undefined
@@ -247,7 +236,6 @@ export class Orchestrator {
     this.stop.abort()
     await this.loop
     await this.o.me.leave()
-    await this.floor.close()
   }
 
   private abort(job: Job): void {
@@ -277,10 +265,6 @@ export class Orchestrator {
     const batches = new Map<Agent, Job[]>()
     const left: Job[] = []
     for (const job of this.queue.splice(0)) {
-      if (this.localBusy < this.o.localSlots) {
-        this.runHere(job)
-        continue
-      }
       const a = this.place(job)
       if (a === undefined) {
         left.push(job)
@@ -370,23 +354,6 @@ export class Orchestrator {
       }
     }
     return best
-  }
-
-  private runHere(job: Job): void {
-    this.localBusy++
-    this.runningHere.add(job.req.taskId)
-    this.floor
-      .execute(job.req)
-      .then((r) => {
-        this.ranHere++
-        this.local.record(r)
-        job.resolve(r)
-      }, job.reject)
-      .finally(() => {
-        this.runningHere.delete(job.req.taskId)
-        this.localBusy--
-        this.pumpSoon()
-      })
   }
 
   private send(a: Agent, jobs: readonly Job[]): void {
@@ -726,12 +693,8 @@ export class Orchestrator {
     }
   }
 
-  /**
-   * The agent running a task, or `local`; `null` while it waits, here or
-   * in an agent's queue, for a machine to begin it.
-   */
+  /** The agent running a task; `null` while it waits, here or in an agent's queue, for one to begin it. */
   where(taskId: string): string | null | undefined {
-    if (this.runningHere.has(taskId)) return 'local'
     for (const a of this.agents.values())
       if (a.busy.has(taskId)) return a.started.has(taskId) ? a.label : null
     return this.queue.some((j) => j.req.taskId === taskId) ? null : undefined
@@ -818,14 +781,14 @@ export class Orchestrator {
     this.stranded(`no agent could start: ${id} ${reason}`)
   }
 
-  /** Nothing online that takes work, none still starting, no share here: no task can run. */
+  /** Nothing online that takes work, none still starting: no task can run. */
   private stranded(reason: string): void {
     const joined = new Set([...this.agents.values(), ...this.gone].map((a) => a.label))
     const starting = [...this.spawnedAt.keys()].some(
       (s) => !this.unstarted.has(s) && !joined.has(s),
     )
     const working = [...this.agents.values()].some((a) => !a.faulty)
-    if (!working && !starting && this.o.localSlots === 0) this.fail(reason)
+    if (!working && !starting) this.fail(reason)
   }
 
   /** Every task sent here and not done fails with `reason`; later ones too. */
@@ -874,12 +837,9 @@ export class Orchestrator {
         utilization: st.utilization,
       }
     }
-    const out = [...this.agents.values(), ...this.gone].map((a) =>
+    return [...this.agents.values(), ...this.gone].map((a) =>
       report(a.label, this.state(a, gone), a.usage, a.reported.cores, a.reported.memory),
     )
-    if (this.ranHere > 0)
-      out.push(report('local', 'online', this.local, machineParallelism(), machineMemoryBytes()))
-    return out
   }
 
   /**
@@ -938,8 +898,6 @@ export class Orchestrator {
         'left',
         `${left.reduce((n, a) => n + a.usage.done, 0)} done`,
       ])
-    if (this.o.localSlots > 0 || this.ranHere > 0)
-      lines.push(['local', 'online', count(this.local, this.runningHere.size)])
     const width = Math.max(...lines.map(([l]) => l.length))
     const indent = ' '.repeat(width + 2)
     const status = Math.max(...lines.map(([, st]) => st.length))
@@ -947,22 +905,14 @@ export class Orchestrator {
     const usage = new Map<string, readonly string[]>()
     let cpuMs = 0
     let coreMs = 0
-    const detail = (label: string, u: Usage, cores: number, relay: boolean): void => {
-      const st = u.stats(cores, this.endedAt)
-      cpuMs += st.cpuMs
-      coreMs += cores * st.onlineMs
-      usage.set(label, describe(st, u, relay))
-    }
-    if (this.ended) {
+    if (this.ended)
       for (const a of all) {
         resources(a.label, a.reported.cores, a.reported.memory, a.declared)
-        detail(a.label, a.usage, a.cores, true)
+        const st = a.usage.stats(a.cores, this.endedAt)
+        cpuMs += st.cpuMs
+        coreMs += a.cores * st.onlineMs
+        usage.set(a.label, describe(st, a.usage))
       }
-      if (lines.at(-1)?.[0] === 'local') {
-        resources('local', machineParallelism(), machineMemoryBytes())
-        detail('local', this.local, machineParallelism(), false)
-      }
-    }
     return [
       ...lines.flatMap(([l, st, t], i): [string, ui.Inline][] => [
         [
@@ -1038,8 +988,8 @@ function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string):
   return seen
 }
 
-/** A machine's run, spelled out: time, CPU, memory and, for an agent, the relay. */
-function describe(st: UsageStats, u: Usage, relay: boolean): string[] {
+/** An agent's run, spelled out: time, CPU, memory and the relay. */
+function describe(st: UsageStats, u: Usage): string[] {
   return [
     `online ${seconds(st.onlineMs)} · busy ${seconds(st.busyMs)} · idle ${seconds(Math.max(0, st.onlineMs - st.busyMs))}`,
     `cpu peak ${st.cpuPeak.toFixed(1)} · avg ${st.cpuAvg.toFixed(1)} cores · cpu utilization ${percent(st.utilization)}`,
@@ -1047,11 +997,7 @@ function describe(st: UsageStats, u: Usage, relay: boolean): string[] {
     ...(st.memoryPeak > 0
       ? [`memory peak ${bytes(st.memoryPeak)} · avg ${bytes(st.memoryAvg)}`]
       : []),
-    ...(relay
-      ? [
-          `sent ${plural(u.messagesIn, 'message')} · ${bytes(u.bytesIn)}, received ${plural(u.messagesOut, 'message')} · ${bytes(u.bytesOut)}`,
-        ]
-      : []),
+    `sent ${plural(u.messagesIn, 'message')} · ${bytes(u.bytesIn)}, received ${plural(u.messagesOut, 'message')} · ${bytes(u.bytesOut)}`,
   ]
 }
 
@@ -1065,7 +1011,6 @@ const bytes = (n: number): string =>
       : n >= 1e3
         ? `${Math.round(n / 1e3)} KB`
         : `${n} B`
-/** A base64 part's bytes. */
 
 /** A machine is what its size says: the same cores, memory within a tenth. */
 const matches = (cores: number, memory: number, d: Declared): boolean =>

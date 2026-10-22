@@ -1,7 +1,5 @@
 // A distributed run end to end on `local()`: the agents are processes in
-// their own git worktrees, joined through the adapter's loopback relay. The
-// orchestrator keeps no share (`local: 0`), so every task that may leave
-// this machine runs on an agent.
+// their own git worktrees, joined through the adapter's loopback relay.
 
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -21,7 +19,7 @@ beforeEach(async () => {
     'package.json': JSON.stringify({ name: 'ws', private: true }),
     '.gitignore': 'out\n.vx/cache\n',
     '.vx/workspace.mjs': `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB' } }, adapter: local(), local: 0 })] }
+export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB' } }, adapter: local() })] }
 `,
     'a/vx.config.mjs': `export default { name: 'a', tasks: { gen: {
   exec: { command: 'mkdir -p out && echo made > out/a.txt' },
@@ -214,7 +212,7 @@ it('runs on an agent started by hand, with no adapter, under one name on both si
     await writeFile(
       path.join(root, '.vx/workspace.mjs'),
       `import { dte } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ relay: ${JSON.stringify(url)}, local: 0 })] }
+export default { plugins: [dte({ relay: ${JSON.stringify(url)} })] }
 `,
     )
     Bun.spawnSync(
@@ -340,7 +338,7 @@ it('a stopped run exits before its installed worktrees are removed', async () =>
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),
     `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'mkdir nm && cd nm && seq 1 300000 | xargs touch' }), local: 0 })] }
+export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'mkdir nm && cd nm && seq 1 300000 | xargs touch' }) })] }
 `,
   )
   Bun.spawnSync(
