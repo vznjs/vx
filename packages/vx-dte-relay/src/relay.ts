@@ -341,9 +341,9 @@ export function createRelay(opts: RelayOptions): Relay {
     }
     const [, ts, nonce, sig] = m as unknown as [string, string, string, string]
     const now = Date.now()
-    run.nonces ??= new Map()
-    for (const [n, at] of run.nonces) if (now - at > 2 * PROOF_SKEW_MS) run.nonces.delete(n)
-    if (Math.abs(now - Number(ts)) > PROOF_SKEW_MS || run.nonces.has(nonce)) {
+    const nonces = (run.nonces ??= new Map())
+    for (const [n, at] of nonces) if (now - at > 2 * PROOF_SKEW_MS) nonces.delete(n)
+    if (Math.abs(now - Number(ts)) > PROOF_SKEW_MS || nonces.has(nonce)) {
       throw new HttpError(403, 'not signed by the run’s orchestrator key')
     }
     const key = cert === run.cert ? (run.certKey ??= importKey(cert)) : importKey(cert)
@@ -351,7 +351,7 @@ export function createRelay(opts: RelayOptions): Relay {
     if (!(await verifyProof(await key, sig, signed))) {
       throw new HttpError(403, 'not signed by the run’s orchestrator key')
     }
-    run.nonces.set(nonce, now)
+    nonces.set(nonce, now)
   }
 
   /** `token` 'socket': the frame came down a socket its upgrade already checked. */
@@ -510,6 +510,8 @@ export function createRelay(opts: RelayOptions): Relay {
     if (body['role'] === 'orchestrator') {
       if (run.orchestrator !== undefined) throw new HttpError(409, 'the run has an orchestrator')
       await prove(run, req, url, text, body['key'] as string)
+      // It may have closed while the key was checked; a socket's attach refuses a closed run itself.
+      if (run.closed || runs.get(key) !== run) throw new HttpError(410, 'run closed')
     }
     return join(run, body, token)
   }
