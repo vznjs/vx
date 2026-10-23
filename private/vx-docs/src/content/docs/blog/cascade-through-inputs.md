@@ -9,60 +9,70 @@ tags:
 excerpt: "When a library changes, its dependents must re-key. There are two ways to carry that change downstream, and vx tried both. It settled on the one that lets every key in the graph be known before anything runs."
 ---
 
-A monorepo cache has to propagate change. Edit `packages/ui/src/button.tsx`
-and `apps/web#build` must miss, even though nothing under `apps/web`
-changed. The mechanism for that is the tenth part of the
-[key derivation](../keys-from-git/): every upstream task's key is
-folded into its dependents' keys. The question is *which* upstream
-hash gets folded.
+`packages/c#build` depends on `packages/a#build`. Add a comment to
+`a`:
+
+```sh frame="terminal"
+$ echo "// only a comment" >> packages/a/src/index.ts
+$ vx run build --all
+ ⏺︎     9ms success miss     packages/a#build
+ ⏺︎     8ms success miss     packages/c#build
+
+$ cmp packages/a/dist/index.js /tmp/a-before.js && echo identical
+identical
+
+$ vx why packages/c#build
+  verdict    cache key changed: upstream packages/a#build
+  what changed (1 component, 5 unchanged):
+    changed upstream  packages/a#build  8d4c5d7e6e657a9c → 234db6b6c1ccd2b1
+```
+
+`a`'s bundle came out byte-identical, and `c` still re-ran. That is on
+purpose: `c`'s key folds `a`'s **input** key, not its output (part ten
+of the [key derivation](../keys-from-git/)). Demo
+workspace, vx at `69617eb`, 2026-10-23.
 
 ## Two designs
 
-**Output-based cascade** (also called early cutoff): fold the hash of
-the upstream task's *outputs*. If `ui#build` re-ran but produced
-byte-identical `dist/`, the downstream key is unchanged and `web#build`
-hits. Attractive: a whitespace-only edit in a library does not rebuild
-the app.
-
-**Input-based cascade**: fold the upstream task's *input key*. If
-anything `ui#build` depends on changed, `web#build` re-keys, whether or
-not the output moved.
+| Fold the upstream's…        | A comment-only edit upstream | Key known before anything runs? |
+| --------------------------- | ---------------------------- | ------------------------------- |
+| output hash (early cutoff)  | downstream hits              | no: needs the upstream to run   |
+| input key (vx)              | downstream re-runs once      | yes                             |
 
 vx shipped early cutoff in one cache version and reverted it in the
-next. The reason is not that it was wrong. It is that it makes the key
-unknowable at the moment the key is most useful.
+next. It isn't wrong. It makes the key unknowable when the key is most
+useful.
 
 ## Keys before execution
 
-With input-based cascade, every key in the graph is a pure function of
-the working tree, the configs and the environment. All of them can be
-derived up front, before a single task starts, and that is the property
-almost everything else in vx is built on:
+With input keys, every key in the graph is a pure function of the tree,
+the configs and the environment, so all of them exist before a task
+starts:
 
-- **`vx run --dry`** prints the real key and the real hit/miss status
-  for every task without executing anything. Under early cutoff, a
-  downstream key does not exist until its upstream has run.
-- **Remote prefetch** issues the lookups for the whole graph at once
-  and lets network latency overlap with real work instead of sitting on
-  the critical path. It needs the keys first, and it asks the remote
-  only for the keys the local cache lacks, so a run the local cache
-  answers makes no remote call.
-- **The restore tier** of the scheduler classifies every stable task as
-  a hit or a miss up front, makes the hits ready immediately at low
-  priority, and lets misses own the worker pool while restores backfill
-  idle capacity. It needs the keys first.
-- **Remote execution** ships a task to a worker as one self-contained
-  action whose inputs are exactly what the key declares. The action
-  digest is the key's cousin; it must be computable without running the
-  upstream locally.
-- **`vx why`** can explain a change as a diff of named components,
-  because a component is an input, and inputs have names.
+```sh frame="terminal"
+$ echo "// again" >> packages/a/src/index.ts
+$ vx run build --all --dry
+  ▶  packages/a#build  cache miss — would exec   8844b0fc  ~9ms
+  ✓  packages/b#build  cache hit (local)         e8c0e9d5
+  ▶  packages/c#build  cache miss — would exec   1c43f07c  ~10ms
+  ✓  packages/d#build  cache hit (local)         9f1cef08
+```
 
-Early cutoff trades all of that for the whitespace-edit case. In
-practice that case is rare, cheap (the downstream task runs once, and
-its own output is then cached under the new key) and, when it matters,
-better handled by declaring narrower inputs so the whitespace edit is
-not an input at all.
+`c`'s new key is there before `a` has run. Much of vx stands on that:
+
+- **`vx run --dry`** prints real keys and real hit/miss, as above.
+- **Remote prefetch** asks for the whole graph at once, and only for
+  keys the local cache lacks.
+- **The restore tier** sorts every stable task into hit or miss up
+  front, so misses own the workers while restores fill idle slots.
+- **Remote execution** ships a task as one action whose digest must be
+  computable without running its upstream locally.
+- **`vx why`** names what changed, because each component is a named
+  input.
+
+The price is the case above: one extra run downstream, whose output is
+then cached under the new key. When it matters, narrower inputs keep
+the edit out of the key entirely.
 
 ## What "pure input" means precisely
 
@@ -90,4 +100,5 @@ dependency and hashes the bytes it wrote. The rule
 that finds it is shared between the local restore tier and remote
 prefetch, so the two cannot disagree about which keys are stable.
 
-Full derivation and every version's reason: [Caching](../../caching/).
+Full derivation: [Caching](../../caching/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

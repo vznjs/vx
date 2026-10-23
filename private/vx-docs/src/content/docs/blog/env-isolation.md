@@ -9,31 +9,19 @@ tags:
 excerpt: 'Your shell holds dozens of variables, and some of them are credentials. A vx task gets a short fixed list plus the names you write down, and any value that looks like a secret prints as ***.'
 ---
 
-Run `env` in your terminal and count. Tokens, cloud keys, a `PS1`, a
-proxy, something an installer left behind years ago. If a build could
-read all of that, two machines would build different bytes and never say
-why, and every token would be one `echo` away from a CI log.
-
-So a vx task starts almost empty.
-
-```mermaid
-flowchart LR
-  H[your shell: every variable] --> F{vx}
-  F -->|PATH, HOME, LANG, CI ...| T[task]
-  F -->|passThrough names| T
-  D[define values] -->|also in the cache key| T
-  F -.->|everything else| X[dropped]
-  style T stroke:#c6f84e,stroke-width:2px
+```sh frame="terminal"
+$ env | wc -l
+189
+$ vx run packages/d#envcount        # command: env | wc -l
+9
 ```
 
-## Three layers
-
-A short fixed list always gets through: `PATH`, `HOME`, `SHELL`, `USER`,
-`TMPDIR`, locale, terminal and color variables, `CI`, `NODE_OPTIONS` and
-a few more. Everything else is something you name:
+Your shell holds tokens, cloud keys, proxies and leftovers. A task gets
+a short fixed list plus the names you write down. Linux x64, vx at
+`69617eb`, 2026-10-23.
 
 ```ts
-// packages/api/vx.config.ts
+// packages/d/vx.config.ts
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -53,41 +41,43 @@ export default defineProject({
 })
 ```
 
-- `passThrough` takes a value from your environment. It does not enter
-  the cache key, so a laptop and a CI runner can still share a hit.
-- `define` sets a literal value. It lives in the config, so it is part of
-  the key.
-- `secret` marks a name to mask, for names vx would not guess.
-
-Now run it with four variables set:
-
 ```sh frame="terminal"
-$ FOO=leaked DEPLOY_TOKEN=s3cr3t-value-123 GH_PAT=ghp_abcdef123456 vx run @demo/api#env
-┌─ @demo/api#env > $ echo "FOO=$FOO" && echo "NODE_ENV=$NODE_ENV" && echo "DEPLOY_TOKEN=$DEPLOY_TOKEN" && echo "GH_PAT=$GH_PAT"
+$ FOO=leaked DEPLOY_TOKEN=s3cr3t-value-123 GH_PAT=ghp_abcdef123456 vx run packages/d#env
+┌─ packages/d#env > $ echo "FOO=$FOO" && echo "NODE_ENV=$NODE_ENV" && echo "DEPLOY_TOKEN=$DEPLOY_TOKEN" && echo "GH_PAT=$GH_PAT"
 FOO=
 NODE_ENV=production
 DEPLOY_TOKEN=***
 GH_PAT=***
-└─ @demo/api#env ── (3ms) success
+└─ packages/d#env ── (4ms) success
 ```
 
 `FOO` never reached the task. `NODE_ENV` came from the config. Both
 tokens arrived, and both printed as `***`.
 
+## Three layers
+
+| Layer          | Example                         | In the cache key? |
+| -------------- | ------------------------------- | ----------------- |
+| always passed  | `PATH`, `HOME`, `TMPDIR`, locale, `CI`, `NODE_OPTIONS` | no |
+| `passThrough`  | a token from your environment   | no                |
+| `define`       | a literal value in the config   | yes               |
+
+`passThrough` stays out of the key, so a laptop and a CI runner still
+share a hit. `secret` marks a name to mask that vx wouldn't guess.
+
 ## Masked everywhere vx prints
 
-A value whose name holds `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`
-or `CREDENTIAL` is masked without being asked. `GH_PAT` holds none of
-those words, so it is listed in `secret`. Masking covers more than the
-live log: the output the cache keeps and a hit replays, the command a
-remote cache receives, `vx show`, `vx why`, `vx last`, telemetry, and
-the JSON an agent reads. A multi-line key is masked line by line,
-and a value split across two chunks of output is still caught.
+A name holding `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or
+`CREDENTIAL` is masked unasked. `GH_PAT` holds none, so it is listed in
+`secret`. Masking covers the live log, the output a hit replays, the
+command a remote cache receives, `vx show`, `vx why`, `vx last`,
+telemetry and agent JSON. A multi-line key is masked line by line, and
+a value split across two output chunks is still caught.
 
 ## When a variable changes the output
 
-Some variables do change what a build produces, like `NODE_OPTIONS`
-loading a loader. vx does not guess which. Say so, and the value joins
+Some variables change what a build produces, like `NODE_OPTIONS`
+loading a loader. vx doesn't guess which. Name it, and the value joins
 the key:
 
 ```ts
@@ -96,14 +86,17 @@ inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, cache: { outputs: { files:
 
 ## Hygiene, not a wall
 
-Dropping variables keeps builds the same from machine to machine. It
-does not stop a task that goes looking: an unsandboxed task runs as you.
-vx keeps its own environment out of reach. On Linux vx makes itself
-non-dumpable, so a task cannot read it there (`VX_DEBUG_DUMPABLE=1`
-turns that off for strace and debuggers). On macOS vx zeroes the values
-`ps eww` reads, every variable but the essentials every task gets. That
-guards the environment only, not your files. To keep a task away from
-what it was not given, sandbox it with `exec.sandbox`.
+Dropping variables keeps builds the same across machines. It doesn't
+stop a task that goes looking: an unsandboxed task runs as you.
 
-What the task gets and what the key sees are separate on purpose. The
-whole set of rules is in the [schema](../../schema/).
+- **Linux:** vx makes itself non-dumpable, so a task can't read vx's
+  environment (`VX_DEBUG_DUMPABLE=1` turns that off for strace and
+  debuggers).
+- **macOS:** vx zeroes the values `ps eww` reads, all but the
+  essentials every task gets.
+
+That guards the environment, not your files. To keep a task away from
+what it wasn't given, use `exec.sandbox`.
+
+Rules: [schema](../../schema/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

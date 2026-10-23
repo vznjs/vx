@@ -10,30 +10,38 @@ tags:
 excerpt: "A vx.config.ts can import a preset, compute a command, read a constant from another file. The cache key sees the evaluated object, so all of that participates in the key. Static JSON tools cannot see it at all."
 ---
 
-Turborepo's `turbo.json` and Nx's `project.json` are data. The tools
-hash the file and call the config part of the key. That works exactly
-as long as the file is the whole story.
-
-A `vx.config.ts` is a program:
+A `vx.config.ts` is a program. This one spreads a preset:
 
 ```ts
+// packages/b/vx.config.ts
 import { defineProject } from '@vzn/vx/config'
 import { lib } from '../../vx-preset.ts'
 
 export default defineProject({
   tasks: {
     ...lib({ entry: 'src/index.ts' }),
-    docs: {
-      exec: { command: `typedoc --out ${process.env.DOCS_OUT ?? 'docs'}` },
-      inputs: { files: ['src/**'] }, cache: { outputs: { files: ['docs/**'] } },
-    },
   },
 })
 ```
 
-Hashing this file's bytes would miss every change to `vx-preset.ts`.
-It would also miss the value of `DOCS_OUT`. Both change what the task
-does.
+Change the preset, not the config:
+
+```sh frame="terminal"
+$ sed -i 's/--outdir dist`/--outdir dist --minify`/' vx-preset.ts
+$ vx lock --check
+✗ vx lock --check  packages/b/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
+
+$ vx lock && vx run packages/b#build
+  cache     local 1↑
+
+$ vx why packages/b#build
+  verdict    cache key changed: config
+  what changed (1 component, 3 unchanged):
+    changed config  config  59020bd1597ff7c8 → 524418371d4d83ba
+```
+
+`packages/b/vx.config.ts` didn't change a byte. Its task did, so its
+key did. Demo workspace, vx at `69617eb`, 2026-10-23.
 
 ## The key sees the object
 
@@ -78,8 +86,11 @@ read at eval time, an import that changed. The CI recipe is
 
 ## Why not named inputs
 
-Turborepo's `globalDependencies` and Nx's `namedInputs` exist because
-JSON cannot compose. A `vx.config.ts` can: a shared input list is a
+A JSON config is data: a tool hashes the file and calls that the
+config's part of the key. Turborepo's `globalDependencies` and Nx's
+`namedInputs` exist because JSON can't compose. A `vx.config.ts` can: a shared input list is a
 constant in a file you import, and the resolved-config hash sees the
 result. Named inputs, global inputs and global env are on the
 repository's rejected list for that reason, and they will stay there.
+
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

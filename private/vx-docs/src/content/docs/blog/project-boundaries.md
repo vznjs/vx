@@ -9,27 +9,47 @@ tags:
 excerpt: 'In a monorepo, projects nest. A root package that globs **/* would otherwise hash, and clean, every member under it. vx draws a fence at every nested project, so a key sees only its own project, and a change elsewhere reaches it only through a declared edge.'
 ---
 
-Monorepos nest. The workspace root is often a package itself, and
-`apps/web` can sit inside a folder that is also a project. So the
-question every cache has to answer is: when a task in the outer project
-says `src/**` or `**/*`, which files does it mean?
+The workspace root is a project here, and its task globs `**/*.ts`:
 
-vx's answer: **only its own.** A project's globs never reach into
-another project's directory, even when the pattern would match.
+```ts
+// vx.config.ts (workspace root)
+count: {
+  exec: { command: "find . -name '*.ts' -not -path './node_modules/*' | wc -l" },
+  inputs: { files: ['**/*.ts'] },
+  cache: { outputs: { files: [] } },
+}
+```
 
-## Why the fence matters
+```sh frame="terminal"
+$ echo "// e" >> packages/a/src/index.ts
+$ vx run //#count
+  cache     local 1✓
 
-Without a fence, a root task that declares `**/*.ts` as its inputs
-hashes every TypeScript file in every member. Each edit anywhere then
-re-runs the root task, so the key is too wide to be useful. And it is
-wrong in a quieter way: the root now depends on its members through a
-side door that no `dependsOn` edge describes, so `--affected` and the
-task graph disagree with the cache about what depends on what.
+$ echo "// e" >> scripts/x.ts
+$ vx run //#count
+  cache     local 1↑
 
-Outputs have the same problem in reverse. A root task that declares
-`outputs.files: ['**/*.js']` owns those files, and vx wipes a task's
-declared outputs before every run and restore. Without a fence, that
-wipe would reach into members and delete their sources.
+$ vx why //#count
+  what changed (1 component, 6 unchanged):
+    changed file  scripts/x.ts  fdfb0708… → b549282e…
+```
+
+An edit inside `packages/a` doesn't move the root's key, even though
+`**/*.ts` matches it. A root file does. Demo workspace, vx at
+`69617eb`, 2026-10-23.
+
+A project's globs never reach into another project's directory.
+
+## Why the fence
+
+| Without it                               | What goes wrong                                    |
+| ---------------------------------------- | -------------------------------------------------- |
+| root inputs `**/*.ts`                    | every edit anywhere re-runs the root task          |
+| root depends on members, no edge says so | `--affected` and the graph disagree with the cache |
+| root outputs `**/*.js`                   | the pre-run wipe deletes members' files            |
+
+vx wipes a task's declared outputs before every run and restore, so an
+unfenced output glob is a delete across projects.
 
 ## How it works
 
@@ -68,9 +88,6 @@ that genuinely belong to the root, like a shared `tsconfig.base.json`.
 Reaching into another project's directory through them works, but it is
 the side door again, so prefer an edge.
 
-## What you get
-
-A key that means one project. An output clean that cannot delete a
-neighbour's source. And a graph you can read, because every
-cross-project dependency is an edge you wrote. Details:
-[Caching, cross-project boundaries](../../caching/#cross-project-boundaries).
+Details: [Caching, cross-project
+boundaries](../../caching/#cross-project-boundaries). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

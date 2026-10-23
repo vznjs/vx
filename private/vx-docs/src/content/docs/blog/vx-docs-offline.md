@@ -9,30 +9,39 @@ tags:
 excerpt: 'vx docs <query> searches the reference your vx version wrote, read from its release tag on GitHub: the sections that match print whole, with their URL.'
 ---
 
-The site shows the newest docs. The vx you run may be older. `vx docs
-<query>` searches the reference as your version wrote it, so an agent
-gets the flags and fields your vx takes.
+The site shows the newest docs. The vx you run may be older. `vx docs`
+searches the reference your version wrote:
 
 ```sh frame="terminal"
-$ vx docs frozen lock --limit 1
-── cli.md § vx lock · https://vznjs.github.io/vx/cli/#vx-lock
+$ vx docs exit codes --limit 1
+── cli.md § Exit codes · https://vznjs.github.io/vx/cli/#exit-codes
+
+### Exit codes
 …
 ```
 
-It reads every page of `packages/vx/docs` at your release tag
-(`v<version>`) on GitHub, each time it runs: nothing ships inside vx. A
-section matches when it holds every word of the query, and a word in its
-heading ranks it first. The best three print whole; `--limit` changes how
-many.
+About one second per query (948 to 1,095 ms, two queries, Linux x64,
+2026-10-23), most of it the fetch.
+
+## How it works
+
+- It reads every page of `packages/vx/docs` at your release tag
+  (`v<version>`) on GitHub, each time. Nothing ships inside vx.
+- A section matches when it holds every word of the query. A word in
+  its heading ranks it first.
+- The best three print whole. `--limit` changes how many.
 
 | You ask                     | You get                               |
 | --------------------------- | ------------------------------------- |
 | `vx docs cache inputs`      | how a task's inputs are declared      |
 | `vx docs exit codes`        | each verb's exit codes                |
 | `vx docs sandbox allow`     | what a sandboxed task may touch       |
+| `vx docs VX_E_UNKNOWN_TASK` | the fix for that [refusal](../error-codes/) |
 | `vx docs ... --format json` | `{query, hits: [{page, heading, url, text}]}` |
 
 With no network it refuses with `VX_E_NETWORK` and names the site. The
-JSON shape is `schemas/docs.json`. The guides stay on the site;
-[llms.txt](https://vznjs.github.io/vx/llms.txt) indexes them. See the
-[CLI reference](../../cli/#vx-docs).
+JSON shape is `schemas/docs.json`. Guides stay on the site;
+[llms.txt](https://vznjs.github.io/vx/llms.txt) indexes them.
+
+Reference: [`vx docs`](../../cli/#vx-docs). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
