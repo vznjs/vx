@@ -6,7 +6,13 @@ import { describe, expect, it, beforeAll, afterAll } from 'bun:test'
 import { mkdtemp, mkdir, rm, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { buildInputTree, encodeDirectory, sha256 } from '../src/merkle.js'
+import {
+  buildInputTree,
+  decodeDirectory,
+  encodeCommand,
+  encodeDirectory,
+  sha256,
+} from '../src/merkle.js'
 
 let root: string
 
@@ -225,5 +231,32 @@ describe('the input tree is canonical, and encodeDirectory is what makes it so',
       ensureDirs: [''],
     })
     expect(reverse.root.hash).toBe(forward.root.hash)
+  })
+})
+
+// REAPI sorts names by UTF-8 bytes, as servers compare them; the default
+// sort's UTF-16 order put an emoji before U+FF01, a Directory a server
+// refuses and one another client hashes to another digest.
+describe('names in UTF-8 byte order', () => {
+  const names = ['z', '\u{1F600}', '\uFF01', 'a']
+  const utf8 = [...names].sort((x, y) => Buffer.compare(Buffer.from(x), Buffer.from(y)))
+
+  it('a Directory lists its files so', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'vx-reapi-utf8-'))
+    try {
+      for (const n of names) await writeFile(path.join(dir, n), n)
+      const tree = await buildInputTree({ workspaceRoot: dir, paths: names })
+      const rootBlob = tree.blobs.find((b) => b.digest.hash === tree.root.hash)!
+      expect(decodeDirectory(rootBlob.data).files.map((f) => f.name)).toEqual(utf8)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('a Command lists its outputs so', () => {
+    const spec = { arguments: ['x'], environmentVariables: [], platform: [], workingDirectory: '' }
+    const bytes = Buffer.from(encodeCommand({ ...spec, outputPaths: names }))
+    const at = (n: string) => bytes.indexOf(Buffer.from(n))
+    expect([...names].sort((x, y) => at(x) - at(y))).toEqual(utf8)
   })
 })

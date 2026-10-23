@@ -332,6 +332,33 @@ export async function buildInputTree(args: {
 }
 
 /**
+ * REAPI's sort: names by UTF-8 bytes, which servers compare (Go's string
+ * order). JS's default sort is by UTF-16 units, which puts an astral name
+ * (an emoji) before one in U+E000-U+FFFF; a server refused the Directory,
+ * and another client hashed the same tree to another digest.
+ */
+function byUtf8(a: string, b: string): number {
+  const n = Math.min(a.length, b.length)
+  for (let i = 0; i < n; i++) {
+    let x = a.charCodeAt(i)
+    let y = b.charCodeAt(i)
+    if (x === y) continue
+    // Surrogates (D800-DFFF) are code points past FFFF: move them after E000-FFFF.
+    if (x >= 0xd800 && y >= 0xd800) {
+      x += x >= 0xe000 ? -0x800 : 0x2000
+      y += y >= 0xe000 ? -0x800 : 0x2000
+    }
+    return x - y
+  }
+  return a.length - b.length
+}
+
+/** `xs` sorted by `byUtf8`; the default sort when no unit can differ. */
+function utf8Sorted(xs: string[]): string[] {
+  return xs.some((x) => /[\ud800-\uffff]/.test(x)) ? xs.sort(byUtf8) : xs.sort()
+}
+
+/**
  * Depth-first, children before parents: a Directory's digest covers its
  * children's digests, so they must be finalised first. REAPI requires `files`
  * and `directories` sorted by name — a server may reject an unsorted
@@ -340,7 +367,7 @@ export async function buildInputTree(args: {
  */
 function serialise(node: DirNode, blobs: Blob[], seen: Set<string>): Digest {
   const directories: DirectoryNode[] = []
-  const dirNames = [...new Set([...node.dirs.keys(), ...node.rawDirs.keys()])].sort()
+  const dirNames = utf8Sorted([...new Set([...node.dirs.keys(), ...node.rawDirs.keys()])])
   for (const name of dirNames) {
     const sub = node.dirs.get(name)
     directories.push({
@@ -351,8 +378,8 @@ function serialise(node: DirNode, blobs: Blob[], seen: Set<string>): Digest {
       digest: node.rawDirs.get(name) ?? serialise(sub!, blobs, seen),
     })
   }
-  const files = [...node.files.keys()].sort().map((n) => node.files.get(n)!)
-  const symlinks = [...node.symlinks.keys()].sort().map((n) => node.symlinks.get(n)!)
+  const files = utf8Sorted([...node.files.keys()]).map((n) => node.files.get(n)!)
+  const symlinks = utf8Sorted([...node.symlinks.keys()]).map((n) => node.symlinks.get(n)!)
   const dir: Directory = { files, directories, symlinks }
   const data = encodeDirectory(dir)
   const digest = sha256(data)
@@ -585,15 +612,13 @@ interface CommandSpec {
  * over these bytes and canonical encoders write ascending field numbers.
  */
 export function encodeCommand(c: CommandSpec): Uint8Array {
-  const env = [...c.environmentVariables].sort((a, b) =>
-    a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
-  )
-  const platform = [...c.platform].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  const env = [...c.environmentVariables].sort((a, b) => byUtf8(a.name, b.name))
+  const platform = [...c.platform].sort((a, b) => byUtf8(a.name, b.name))
   return concat([
     ...c.arguments.map((a) => repStrField(1, a)),
     ...env.map((e) => lenField(2, concat([strField(1, e.name), strField(2, e.value)]))),
-    ...[...(c.legacyOutputFiles ?? [])].sort().map((p) => repStrField(3, p)),
-    ...[...(c.legacyOutputDirectories ?? [])].sort().map((p) => repStrField(4, p)),
+    ...utf8Sorted([...(c.legacyOutputFiles ?? [])]).map((p) => repStrField(3, p)),
+    ...utf8Sorted([...(c.legacyOutputDirectories ?? [])]).map((p) => repStrField(4, p)),
     ...(platform.length > 0
       ? [
           lenField(
@@ -605,8 +630,8 @@ export function encodeCommand(c: CommandSpec): Uint8Array {
         ]
       : []),
     ...(c.workingDirectory === '' ? [] : [strField(6, c.workingDirectory)]),
-    ...[...c.outputPaths].sort().map((p) => repStrField(7, p)),
-    ...[...(c.outputNodeProperties ?? [])].sort().map((n) => repStrField(8, n)),
+    ...utf8Sorted([...c.outputPaths]).map((p) => repStrField(7, p)),
+    ...utf8Sorted([...(c.outputNodeProperties ?? [])]).map((n) => repStrField(8, n)),
     ...(c.outputDirectoryFormat === undefined || c.outputDirectoryFormat === 0
       ? []
       : [intField(9, c.outputDirectoryFormat)]),
@@ -628,9 +653,7 @@ export function encodeAction(a: {
   /** `platform` (field 10) — REAPI v2.2 moved it here from `Command`. */
   platform?: ReadonlyArray<{ name: string; value: string }>
 }): Uint8Array {
-  const platform = [...(a.platform ?? [])].sort((x, y) =>
-    x.name < y.name ? -1 : x.name > y.name ? 1 : 0,
-  )
+  const platform = [...(a.platform ?? [])].sort((x, y) => byUtf8(x.name, y.name))
   return concat([
     lenField(1, encodeDigest(a.commandDigest)),
     lenField(2, encodeDigest(a.inputRootDigest)),
