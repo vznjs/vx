@@ -54,6 +54,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         ['dirSlash', 0],
         ['dirGlob', 0],
       ])
-    })
+      // Three sandboxed runs, each near a second on CI and more on a loaded shard.
+    }, 30_000)
   },
 )
