@@ -1339,6 +1339,7 @@ async function runOnBus(
             target: profile,
             cwd: options.cwd,
             outcomes: list,
+            executors: executors.map(executorProfile),
           }),
         )
         log.status(`vx: profile written to ${wrote}`)
@@ -1941,6 +1942,18 @@ function executorFooter(e: TaskExecutor): (readonly [string, ui.Inline])[] {
         typeof r[0] === 'string' &&
         (typeof r[1] === 'string' || (typeof r[1] === 'object' && r[1] !== null)),
     )
+  } catch {
+    return []
+  }
+}
+
+/** An executor's `--profile` events; a throw or a bad shape adds none. */
+function executorProfile(e: TaskExecutor): readonly Record<string, unknown>[] {
+  try {
+    const events = e.profile?.()
+    return Array.isArray(events)
+      ? events.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
+      : []
   } catch {
     return []
   }

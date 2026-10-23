@@ -85,6 +85,41 @@ describe('writeRunProfile', () => {
     expect(ev['dur']).toBe(100) // (200_000 - 100_000) / 1000 = 100 us
   })
 
+  // A distributed run's workers, in time (owner, 2026-10-23): an executor's
+  // events join the run's, its processes after the run's own, on one clock.
+  it('adds each executor’s events after the run’s process, on the runner’s clock', async () => {
+    const now = performance.now()
+    const hr = process.hrtime.bigint()
+    const out = await writeRunProfile({
+      target: path.join(tmp, 'profile.json'),
+      cwd: tmp,
+      outcomes: [
+        outcome({ node: execNode('a', 'build'), wallclockStartNs: hr, wallclockEndNs: hr }),
+      ],
+      executors: [
+        [
+          { ph: 'M', name: 'process_name', pid: 1, tid: 0, args: { name: 'orchestrator' } },
+          { ph: 'X', name: 'a#build', pid: 2, tid: 1, ts: now * 1000, dur: 5 },
+        ],
+        [{ ph: 'X', name: 'other', pid: 1, tid: 1, ts: now * 1000, dur: 5 }],
+      ],
+    })
+    const ev = (
+      JSON.parse(await readFile(out, 'utf8')) as {
+        traceEvents: Array<Record<string, unknown>>
+      }
+    ).traceEvents
+    expect(ev[0]).toEqual({ ph: 'M', name: 'process_name', pid: 1, tid: 0, args: { name: 'run' } })
+    expect(ev.filter((e) => e['ph'] !== 'M').map((e) => [e['name'], e['pid']])).toEqual([
+      ['a#build', 1],
+      ['a#build', 3],
+      ['other', 4],
+    ])
+    const runTs = ev[1]!['ts'] as number
+    const workerTs = ev.find((e) => e['pid'] === 3)!['ts'] as number
+    expect(Math.abs(workerTs - runTs)).toBeLessThan(5_000)
+  })
+
   it('assigns a distinct tid per project (so parallel tasks land on separate lanes)', async () => {
     const out = await writeRunProfile({
       target: path.join(tmp, 'profile.json'),

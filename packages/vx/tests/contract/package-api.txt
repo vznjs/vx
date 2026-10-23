@@ -1792,6 +1792,7 @@ export interface TaskExecutor {
   demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
   footer?(): readonly (readonly [label: string, text: ui.Inline])[]
   machines?(): readonly MachineReport[]
+  profile?(): readonly Record<string, unknown>[]
   running?(taskId: string): string | null | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }

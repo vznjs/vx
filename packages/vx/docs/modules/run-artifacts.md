@@ -13,6 +13,7 @@ export interface ProfileArgs {
   target: string // 'profile.json' default chosen by CLI parser
   cwd: string
   outcomes: readonly TaskOutcome[]
+  executors?: readonly (readonly Record<string, unknown>[])[] // TaskExecutor.profile(), each
 }
 
 export function writeRunProfile(args: ProfileArgs): Promise<string> // returns final path
@@ -33,6 +34,11 @@ render on distinct lanes. The shared `pid: 1` is arbitrary.
 
 `cat` carries the task's final status (e.g. `cache-hit`, `failed`)
 so trace viewers can color-code.
+
+Each executor's own events (`TaskExecutor.profile`, `ts` on
+`performance.now()`) follow: its processes are moved past the ones
+before it and its times onto the runner's hrtime clock, and the run's
+own process is named `run`.
 
 ## Errors
 

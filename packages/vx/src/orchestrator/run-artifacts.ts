@@ -10,6 +10,8 @@ export interface ProfileArgs {
   target: string
   cwd: string
   outcomes: readonly TaskOutcome[]
+  /** Each executor's own events (`TaskExecutor.profile`), `ts` on `performance.now()`. */
+  executors?: readonly (readonly Record<string, unknown>[])[]
 }
 
 /**
@@ -52,6 +54,31 @@ export async function writeRunProfile(args: ProfileArgs): Promise<string> {
         },
       }
     })
-  await Bun.write(outPath, JSON.stringify({ traceEvents }, null, 2))
+  // An executor's processes follow the run's own, each executor's after
+  // the last; its times move onto the runner's hrtime clock.
+  const shiftUs = Number(process.hrtime.bigint() / 1000n) - performance.now() * 1000
+  let next = 2
+  const theirs: Record<string, unknown>[] = []
+  for (const events of args.executors ?? []) {
+    let top = 0
+    for (const e of events) {
+      const pid = typeof e['pid'] === 'number' ? e['pid'] : 1
+      top = Math.max(top, pid)
+      theirs.push({
+        ...e,
+        pid: next - 1 + pid,
+        ...(typeof e['ts'] === 'number' ? { ts: Math.round(e['ts'] + shiftUs) } : {}),
+      })
+    }
+    next += top
+  }
+  const named =
+    theirs.length === 0
+      ? []
+      : [{ ph: 'M', name: 'process_name', pid: 1, tid: 0, args: { name: 'run' } }]
+  await Bun.write(
+    outPath,
+    JSON.stringify({ traceEvents: [...named, ...traceEvents, ...theirs] }, null, 2),
+  )
   return outPath
 }

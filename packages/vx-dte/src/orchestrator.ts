@@ -10,7 +10,6 @@
 // as its own.
 
 import { realpathSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   ui,
@@ -147,8 +146,6 @@ export interface OrchestratorOptions {
   readonly home?: string | undefined
   /** No task began or ended for `stallMs`: what the run waits on, one line a task. */
   readonly stalled?: (waiting: string) => void
-  /** Where the run's trace goes (`trace.ts`), workspace-relative. */
-  readonly traceFile?: string
   /** Default `STALL_MS`. */
   readonly stallMs?: number
 }
@@ -228,10 +225,8 @@ export class Orchestrator {
   private pumping = false
   private joined = 0
   private readonly startedAt = performance.now()
-  /** The run in time, written on close (`traceFile`). */
-  readonly trace = new Trace(this.startedAt)
-  /** Where it was written, for the footer. */
-  private traced: string | undefined
+  /** The run in time, for `--profile` (`profile`). */
+  readonly trace = new Trace()
   /** When a task last began, ended or faulted, or the run last said it waits. */
   private movedAt = performance.now()
   /** Each time the run asked for workers: when, how many, for which work, ending when. */
@@ -329,22 +324,12 @@ export class Orchestrator {
     await this.loop
     await this.o.me.leave()
     for (const a of this.workers.values()) this.trace.left(a.label, 'stopped', this.endedAt)
-    await this.writeTrace()
   }
 
-  /** The trace, once the run has workers; a failed write costs the run nothing but its footer row. */
-  private async writeTrace(): Promise<void> {
-    const rel = this.o.traceFile
-    if (rel === undefined || this.spawnedAt.size + this.workers.size + this.gone.length === 0)
-      return
-    try {
-      const at = path.join(this.o.root, rel)
-      await mkdir(path.dirname(at), { recursive: true })
-      await writeFile(at, this.trace.json(this.endedAt, { run: this.o.run }))
-      this.traced = rel
-    } catch {
-      this.traced = undefined
-    }
+  /** The run's trace events (`TaskExecutor.profile`), once it had workers. */
+  profile(): Record<string, unknown>[] {
+    if (this.spawnedAt.size + this.workers.size + this.gone.length === 0) return []
+    return this.trace.events(this.ended ? this.endedAt : performance.now())
   }
 
   private abort(job: Job): void {
@@ -1356,14 +1341,6 @@ export class Orchestrator {
                 ]),
           ]
         : []),
-      ...(this.traced === undefined
-        ? []
-        : [
-            [
-              '',
-              ui.dim(`${'trace'.padEnd(width)}  ${this.traced} · open in https://ui.perfetto.dev`),
-            ] as [string, ui.Inline],
-          ]),
       ...(coreMs > 0
         ? [
             [
