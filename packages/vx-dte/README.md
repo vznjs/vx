@@ -450,6 +450,9 @@ machine together:
 HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     `.vx/` change counts every cached task. A hit it guessed wrong costs a
     worker the plan cancels; with no parent, the run waits for its misses.
+    Each task core's up-front cache probe found in no store
+    (`TaskExecutor.demand`'s `missed`) counts as work too, the moment the
+    probe answers.
     It scales each task's cores by what the workers use over what the run
     booked, as placing by load packs them.
     A worker the plan needs later starts when its warm-up nears. An idle

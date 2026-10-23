@@ -477,7 +477,10 @@ export function dte(options: DteOptions) {
         const p = decide({
           remaining,
           nodes: nodes ?? new Map(),
-          executed: likely.size === 0 ? executed : new Set([...likely, ...executed]),
+          executed:
+            likely.size === 0 && sure.size === 0
+              ? executed
+              : new Set([...likely, ...sure, ...executed]),
           need,
           durationMs: (id) => peaks.get(id)?.p50DurationMs,
           workers,
@@ -546,6 +549,8 @@ export function dte(options: DteOptions) {
       // Until a task misses, demand waits: a run all hits starts no worker.
       let missed = false
       let pending: ReadonlySet<string> | undefined
+      // The tasks core's probe found in no cache: they run, known before any worker keys them.
+      let sure: ReadonlySet<string> = new Set()
       const measured = (id: string): boolean => peaks.get(id)?.maxCpuParallelism !== undefined
       // Needs another plugin fetches (the default branch's timings) land a
       // moment into the run. Asked before them, every task books a whole
@@ -599,8 +604,10 @@ export function dte(options: DteOptions) {
         footer: () => o.footer(),
         machines: () => o.machines(),
         running: (id) => o.where(id),
-        demand(remaining) {
+        demand(remaining, misses) {
           pending = remaining
+          sure = misses
+          if (misses.size > 0) missed = true
           replan()
         },
       }
