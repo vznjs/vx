@@ -94,6 +94,16 @@ describe('the requests', () => {
       ).get('aa'),
     ).rejects.toThrow('HTTP 500')
   })
+  // "HTTP 500" alone said nothing of why (2026-10-23).
+  it('a refused GET or PUT says the server’s own words', async () => {
+    const { fetchImpl } = stub(() => new Response('disk full', { status: 507 }))
+    const c = new NxRemoteCache(
+      { server: SERVER, accessToken: '', timeoutMs: 1000, retries: 0 },
+      fetchImpl,
+    )
+    await expect(c.get('aa')).rejects.toThrow('HTTP 507: disk full')
+    await expect(c.put('aa', new Blob(['x']))).rejects.toThrow('HTTP 507: disk full')
+  })
   it('a GET answering 403 says a read was refused, not a write', async () => {
     const { fetchImpl } = stub(() => new Response(null, { status: 403 }))
     const err = await new NxRemoteCache(

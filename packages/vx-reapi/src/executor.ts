@@ -156,7 +156,10 @@ async function decomposeOutputDir(
     digest: e.tree_digest,
     data: (e as unknown as { __data: Uint8Array }).__data,
   }))
-  await client.uploadBlobs(blobs).catch(async () => {
+  await client.uploadBlobs(blobs).catch(async (err: unknown) => {
+    warn(
+      `vx/reapi: uploading ${entry.path}'s Tree blobs together failed (${errText(err)}) — writing each`,
+    )
     for (const b of blobs) await client.writeBlob(b.digest, b.data)
   })
   return {
@@ -520,7 +523,8 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       )
     }
   }
-  const warn = opts.warn ?? (() => undefined)
+  // No listener is no reason to say nothing.
+  const warn = opts.warn ?? ((m: string) => void process.stderr.write(`[vx] ${m}\n`))
   // One Capabilities round trip per executor, not per task — the answer
   // cannot change mid-run, and a 400-task graph would otherwise ask 400 times.
   let capsPromise: ReturnType<ReapiClient['capabilities']> | undefined
@@ -591,7 +595,12 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           // and would replay a record whose blobs were never checked.
           const gone =
             referenced.length > 0
-              ? await client.findMissingBlobs(referenced).catch(() => referenced)
+              ? await client.findMissingBlobs(referenced).catch((err: unknown) => {
+                  warn(
+                    `vx/reapi: ${req.taskId} could not check its execution record's blobs (${errText(err)}) — executing`,
+                  )
+                  return referenced
+                })
               : []
           // The record's paths are WORKSPACE-relative (rebased when it was
           // written), so the anchor is the workspace root, not the cwd.
@@ -917,6 +926,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         queued.signal,
         ...(req.signal === undefined ? [] : [req.signal]),
       ])
+      // A cancel the server refused leaves the action running on its worker.
+      const cancelFailed = (err: unknown): void =>
+        warn(
+          `vx/reapi: cancelling ${req.taskId}'s operation failed (${errText(err)}) — it may still run on its worker`,
+        )
       let op: Operation
       try {
         if (req.signal?.aborted === true) throw new Error('aborted before Execute')
@@ -942,7 +956,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           // closed stream left the action running on its worker. The action
           // is cancelled and the task ends as a killed local one does: 143,
           // which core reports timed out when its timer fired.
-          if (operation !== '') await client.cancelOperation(operation).catch(() => undefined)
+          if (operation !== '') await client.cancelOperation(operation).catch(cancelFailed)
           return {
             exitCode: 143,
             durationMs: Math.round((Bun.nanoseconds() - started) / 1e6),
@@ -955,7 +969,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         if (queued.signal.aborted) {
           // Best effort: a server without the service, or one that has lost
           // the operation, still has the task given back.
-          if (operation !== '') await client.cancelOperation(operation).catch(() => undefined)
+          if (operation !== '') await client.cancelOperation(operation).catch(cancelFailed)
           throw executorFallback(
             `vx/reapi: no worker started the action within queueTimeoutMs (${opts.queueTimeoutMs}ms); its operation was cancelled`,
           )
@@ -988,14 +1002,22 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         // partial result, as the spec suggests: what the command printed
         // is delivered before the refusal, best effort (F-48).
         if (result !== undefined) {
+          const unread = (stream: string) => (e: unknown) => {
+            warn(`vx/reapi: ${req.taskId}'s ${stream} could not be read (${errText(e)})`)
+            return ''
+          }
           const [out, err] = await Promise.all([
-            this_readStream(client, result.stdout_raw, result.stdout_digest).catch(() => ''),
-            this_readStream(client, result.stderr_raw, result.stderr_digest).catch(() => ''),
+            this_readStream(client, result.stdout_raw, result.stdout_digest).catch(
+              unread('stdout'),
+            ),
+            this_readStream(client, result.stderr_raw, result.stderr_digest).catch(
+              unread('stderr'),
+            ),
           ])
           if (out.length > 0) req.onStdout(out)
           if (err.length > 0) req.onStderr(err)
         }
-        const logs = await fetchServerLogs(client, decoded.serverLogs)
+        const logs = await fetchServerLogs(client, decoded.serverLogs, warn)
         throw new UserError(
           `vx/reapi: ${req.taskId} execution failed: ${decoded.status.message || `code ${decoded.status.code}`}` +
             (decoded.message === undefined ? '' : ` — ${decoded.message}`) +
@@ -1031,7 +1053,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       ])
       // Settled below with the outputs; a log that cannot be read still
       // fails the task, after the outputs have landed or failed.
+      // quiet: settled below, where its error fails the task
       logs.catch(() => undefined)
+      // quiet: settled below, where its error fails the task
       materialised.catch(() => undefined)
       const [stdout, stderr] = await logs.catch(async (err: unknown) => {
         await materialised.catch(() => undefined)
@@ -1082,13 +1106,23 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
                 stdoutDigest = result.stdout_digest
               } else if (stdoutBytes.length > 0 && !inlineStdout) {
                 const d = sha256(stdoutBytes)
-                const missing = await client.findMissingBlobs([d]).catch(() => [d])
+                const missing = await client.findMissingBlobs([d]).catch((err: unknown) => {
+                  warn(
+                    `vx/reapi: ${req.taskId}'s stdout probe failed (${errText(err)}) — uploading it`,
+                  )
+                  return [d]
+                })
                 const uploaded =
                   missing.length === 0
                     ? true
                     : await client.writeBlob(d, stdoutBytes).then(
                         () => true,
-                        () => false,
+                        (err: unknown) => {
+                          warn(
+                            `vx/reapi: ${req.taskId}'s stdout upload failed (${errText(err)}) — recorded without it`,
+                          )
+                          return false
+                        },
                       )
                 if (uploaded) stdoutDigest = d
               }
@@ -1191,12 +1225,16 @@ function namedRefusal(taskId: string, err: unknown): unknown {
 async function fetchServerLogs(
   client: ReapiClient,
   logs: ReadonlyArray<{ name: string; digest: Digest; humanReadable: boolean }>,
+  warn: (m: string) => void,
 ): Promise<string> {
   const readable = logs.filter((l) => l.humanReadable && l.digest.size_bytes <= 64 * 1024)
   if (readable.length === 0) return ''
   const parts: string[] = []
   for (const log of readable) {
-    const bytes = await client.readBlob(log.digest).catch(() => null)
+    const bytes = await client.readBlob(log.digest).catch((err: unknown) => {
+      warn(`vx/reapi: the server log ${log.name} could not be read (${errText(err)})`)
+      return null
+    })
     if (bytes !== null)
       parts.push(`\n--- server log ${log.name} ---\n${new TextDecoder().decode(bytes)}`)
   }
@@ -1553,6 +1591,7 @@ class Fence {
    * containment checks passed). The landing must itself be declared.
    */
   async landing(abs: string): Promise<void> {
+    // quiet: a local realpath; the root as given stands
     this.realRoot ??= await realpath(this.root).catch(() => this.root)
     const dir = path.dirname(abs)
     let real = this.realDirs.get(dir)
@@ -1585,9 +1624,11 @@ class Fence {
   /** `dir`, or its deepest existing ancestor, resolves inside the root. */
   async dir(dir: string): Promise<void> {
     if (this.checked.has(dir)) return
+    // quiet: a local realpath; the root as given stands
     this.realRoot ??= await realpath(this.root).catch(() => this.root)
     let probe = dir
     for (;;) {
+      // quiet: a local path not there yet: its parent is checked
       const real = await realpath(probe).catch(() => null)
       if (real !== null) {
         if (real !== this.realRoot && !real.startsWith(this.realRoot + path.sep)) {
@@ -1619,6 +1660,7 @@ class Fence {
    * escaping link is removed before the refusal.
    */
   async verifyLinks(): Promise<void> {
+    // quiet: a local realpath; the root as given stands
     this.realRoot ??= await realpath(this.root).catch(() => this.root)
     for (const { abs, target } of this.links) {
       const to = await resolveThrough(
@@ -1694,6 +1736,7 @@ async function resolveThrough(p: string): Promise<string> {
       continue
     }
     const next = path.join(at, c)
+    // quiet: a local path that is no link
     const target = await readlink(next).catch(() => null)
     if (target === null || ++hops > 40) {
       at = next

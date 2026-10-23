@@ -503,7 +503,8 @@ export class ReapiClient {
     // Derived, not required: raising `callTimeoutMs` for a big upload must
     // not silently lengthen every metadata probe too.
     this.metaTimeoutMs = opts.metaTimeoutMs ?? Math.min(this.callTimeoutMs, META_TIMEOUT_CAP_MS)
-    this.onWarn = opts.onWarn ?? (() => undefined)
+    // No listener is no reason to say nothing.
+    this.onWarn = opts.onWarn ?? ((m) => void process.stderr.write(`[vx] ${m}\n`))
     // A zero, negative or non-number deadline ended every call as it began.
     for (const [name, ms] of [
       ['callTimeoutMs', this.callTimeoutMs],
@@ -1097,6 +1098,7 @@ export class ReapiClient {
                 this.bounded(),
               )
               return
+              // quiet: a resume that fails starts afresh; its last failure throws
             } catch {
               // fall through to a fresh attempt
             }
@@ -1155,6 +1157,7 @@ export class ReapiClient {
     })
     // Raced against every drain wait and awaited at the end; a failure that
     // lands between the two is not an unhandled rejection.
+    // quiet: raced and awaited below, where its error throws
     done.catch(() => undefined)
     let offset = startOffset
     let first = true

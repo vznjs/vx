@@ -34,6 +34,9 @@ function fmtMs(ms: number): string {
 }
 
 function statusLabel(t: TaskTelemetry): string {
+  // A carried server ran inside each dependant, on its worker: its time is
+  // theirs, and a `ran 0ms` row read as a run that did nothing (M, 2026-10-23).
+  if (t.carried === true) return '🔗 served'
   // A hit that found its outputs in place restored nothing: up to date,
   // whichever layer answered, as vx's own summary says it.
   if (isCacheHit(t.status) && t.restored !== true) return '✔️ up-to-date'
@@ -183,7 +186,11 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   // order as delivered.
   const ordered = [...failed, ...summary.tasks.filter((t) => t.status !== 'failed')]
   for (const t of ordered) {
-    const cells = [escapeMarkdownCell(escapeInline(t.taskId)), statusLabel(t), fmtMs(t.durationMs)]
+    const cells = [
+      escapeMarkdownCell(escapeInline(t.taskId)),
+      statusLabel(t),
+      t.carried === true ? '' : fmtMs(t.durationMs),
+    ]
     lines.push(`| ${cells.join(' | ')} |`)
   }
   lines.push('')

@@ -73,6 +73,7 @@ function parseBlob(
   let parsed: unknown
   try {
     parsed = JSON.parse(new TextDecoder().decode(bytes))
+    // quiet: not JSON: keep() says the blob is unreadable
   } catch {
     return null
   }
@@ -181,6 +182,8 @@ export interface ImportArgs {
   readonly branch: boolean
   /** Resolves when the run ends: the import stops, keeping nothing more. */
   readonly stopped?: Promise<void>
+  /** Where a failed import is said: the run orders without it, but not in silence. */
+  readonly warn: (message: string) => void
 }
 
 /**
@@ -211,7 +214,16 @@ export async function importTimings(args: ImportArgs): Promise<boolean> {
     return false
   })
   try {
-    return await Promise.race([work.catch(() => false), deadline, ...(stopped ? [stopped] : [])])
+    const failed = (err: unknown): false => {
+      // Past the deadline or the run's end the import was given up: its
+      // failure (the run's database closed under it) is no news.
+      if (late) return false
+      args.warn(
+        `[vx] schedule-history: the shared timings could not be read: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      return false
+    }
+    return await Promise.race([work.catch(failed), deadline, ...(stopped ? [stopped] : [])])
   } finally {
     clearTimeout(timer)
   }
@@ -226,6 +238,7 @@ async function importBase(args: ImportArgs, late: () => boolean): Promise<boolea
   if (shas === null) return false
   const blob = await newestBlob(args.cache, shas, args.ids)
   if (late()) return false
+  // quiet: a local marker; unwritten, the next run asks again
   await Bun.write(args.triedFile, base).catch(() => {})
   return keep(args, base, blob)
 }
@@ -244,6 +257,7 @@ async function importParent(args: ImportArgs, late: () => boolean): Promise<bool
   let blob: Uint8Array | null = null
   for (const key of keysOf(parent, args.ids)) if ((blob = await args.cache.get(key)) !== null) break
   if (late()) return false
+  // quiet: a local marker; unwritten, the next run asks again
   await Bun.write(tried, parent).catch(() => {})
   return keep(args, parent, blob)
 }
@@ -251,12 +265,19 @@ async function importParent(args: ImportArgs, late: () => boolean): Promise<bool
 const readTried = (file: string): Promise<string> =>
   Bun.file(file)
     .text()
+    // quiet: a local marker; none read is none tried
     .catch(() => '')
 
 /** Keep `blob`'s timings as `sha`'s rows; true when any were added. */
 function keep(args: ImportArgs, sha: string, blob: Uint8Array | null): boolean {
   const parsed = blob === null ? null : parseBlob(blob, new Set(args.ids))
-  if (parsed === null) return false
+  if (parsed === null) {
+    if (blob !== null)
+      args.warn(
+        `[vx] schedule-history: ${sha.slice(0, 12)}'s shared timings are unreadable (${blob.byteLength} B: past ${MAX_BLOB_BYTES} B or not a timings blob)`,
+      )
+    return false
+  }
   args.provider.importTimings(sha, parsed.timings, parsed.needs, parsed.defs)
   return parsed.timings.size > 0
 }

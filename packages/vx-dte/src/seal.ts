@@ -8,7 +8,7 @@
 
 import { createHash } from 'node:crypto'
 import { type Bytes, type CipherState, Handshake, MAX_PLAINTEXT } from './noise.js'
-import type { Participant, RelayMessage } from './wire.js'
+import { unsent as unsentBy, type Participant, type RelayMessage } from './wire.js'
 
 /**
  * What admits a side: the run's key (Noise's psk), or each side's CI
@@ -84,6 +84,7 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
     let p = seen.get(u)
     if (p === undefined) {
       p = read(u)
+      // quiet: the caller awaits p and hears its error; this only forgets it
       p.catch(() => seen.delete(u))
       seen.set(u, p)
     }
@@ -185,6 +186,7 @@ class Session {
       for (const p of parts) plain.push(await this.rx.decrypt(p.n, new Uint8Array(0), unb64(p.c)))
       for (const p of parts) this.seen.add(p.n)
       return JSON.parse(Buffer.concat(plain).toString())
+      // quiet: a body that does not open is the relay's tampering, which the caller says
     } catch {
       return undefined
     }
@@ -207,7 +209,13 @@ function canonical(info: Record<string, unknown>): string {
  * completes is answered with the second and passed on with that info, one
  * it cannot is refused here and never seen.
  */
-export function sealOrchestrator(me: Participant, run: string, proof: Proof): Participant {
+export function sealOrchestrator(
+  me: Participant,
+  run: string,
+  proof: Proof,
+  warn: (message: string) => void = (m) => void process.stderr.write(`[vx] ${m}\n`),
+): Participant {
+  const unsent = (what: string, to: string) => unsentBy(warn, what, to)
   const sessions = new Map<string, Session>()
   /** A worker's first message, read: its info, and this side's answer. */
   const admit = async (
@@ -223,6 +231,7 @@ export function sealOrchestrator(me: Participant, run: string, proof: Proof): Pa
     let payload: Uint8Array
     try {
       payload = await hs.read(unb64(noise))
+      // quiet: a handshake that fails is a key mismatch, which the caller says
     } catch {
       return undefined
     }
@@ -250,19 +259,21 @@ export function sealOrchestrator(me: Participant, run: string, proof: Proof): Pa
           const b = m.body as { type?: string; id?: string; info?: Record<string, unknown> | null }
           if (b.type === 'joined') {
             const id = b.id!
-            const got = await admit(b.info ?? {}).catch(() => undefined)
-            if (got === undefined) {
-              await me
-                .send(id, {
-                  type: 'refused',
-                  reason: `its key is not the run’s: ${proof.mismatch}`,
-                })
-                .catch(() => undefined)
-              await me.remove(id).catch(() => undefined)
+            // A check that could not run (GitHub's keys unreachable) is no
+            // mismatch: it was refused as one, and the cause never said.
+            const got = await admit(b.info ?? {}).catch(
+              (err: unknown) =>
+                `its token could not be checked: ${err instanceof Error ? err.message : String(err)}`,
+            )
+            if (got === undefined || typeof got === 'string') {
+              const reason = got ?? `its key is not the run’s: ${proof.mismatch}`
+              warn(`dte: refused a worker: ${reason}`)
+              await me.send(id, { type: 'refused', reason }).catch(unsent('refused', id))
+              await me.remove(id).catch(unsent('remove', id))
               continue
             }
             sessions.set(id, got.session)
-            await me.send(id, got.hello).catch(() => undefined)
+            await me.send(id, got.hello).catch(unsent('hello', id))
             out.push({ from: 'relay', body: { ...b, info: got.info } })
             continue
           }
@@ -311,6 +322,7 @@ export async function sealWorker(
     if (typeof b.noise !== 'string') return false
     try {
       await hs.read(unb64(b.noise))
+      // quiet: a hello that does not open is refused by the throw below
     } catch {
       return false
     }

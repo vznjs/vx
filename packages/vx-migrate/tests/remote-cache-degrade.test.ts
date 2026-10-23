@@ -457,7 +457,9 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
 
     it('a 413: green, one warning naming the upload, its artifact and the server', async () => {
       const { warnings, hash } = await upload('put413')
-      expect(warnings).toEqual([`${prefix} upload ${hash} to ${srv.url}${base} failed: HTTP 413`])
+      expect(warnings).toEqual([
+        `${prefix} upload ${hash} to ${srv.url}${base} failed: HTTP 413: too large`,
+      ])
     })
 
     it('an upload past its deadline: green, one warning naming the upload and the deadline', async () => {

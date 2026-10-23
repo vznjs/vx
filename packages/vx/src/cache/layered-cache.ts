@@ -57,6 +57,7 @@ function endsOnStop(
   // which the flag turns into an error rather than a short body.
   void stopped.then(() => {
     stop = true
+    // quiet: stopping: a reader already done has nothing to cancel
     void reader.cancel().catch(() => undefined)
   })
   const stream = new ReadableStream<Uint8Array>({
@@ -577,6 +578,7 @@ export class LayeredCache implements CacheLayer {
         endsOnStop(remoteBody.body, ends, (n) => (dl.received += n)),
         meta,
       )
+      // quiet: raced and awaited below, where its error is reported
       ingest.catch(() => undefined)
       if ((await Promise.race([ingest, ends])) === STOPPED) return false
     } catch (err) {

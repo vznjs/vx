@@ -61,14 +61,11 @@ function encodeDuration(durationMs: number): Uint8Array {
   return new TextEncoder().encode(JSON.stringify({ durationMs }))
 }
 
+/** The duration a record carries; throws on bytes that are not one. */
 function decodeDuration(raw: Uint8Array | undefined): number | undefined {
   if (raw === undefined || raw.length === 0) return undefined
-  try {
-    const parsed = JSON.parse(new TextDecoder().decode(raw)) as { durationMs?: number }
-    return typeof parsed.durationMs === 'number' ? parsed.durationMs : undefined
-  } catch {
-    return undefined
-  }
+  const parsed = JSON.parse(new TextDecoder().decode(raw)) as { durationMs?: number }
+  return typeof parsed.durationMs === 'number' ? parsed.durationMs : undefined
 }
 
 /** Artifacts up to this size are batch-uploaded without a FindMissingBlobs probe. */
@@ -78,10 +75,33 @@ export class ReapiRemoteCache {
   private readonly client: ReapiClient
   /** Named in core's degrade line: a gRPC status carries no server. */
   readonly endpoint: string
+  private readonly onWarn: (message: string) => void
+  /** What was said already: a fault every hit meets is said once a run. */
+  private readonly said = new Set<string>()
 
   constructor(opts: ReapiOptions) {
     this.client = new ReapiClient(opts)
     this.endpoint = opts.endpoint
+    this.onWarn = opts.onWarn ?? ((m) => void process.stderr.write(`[vx] ${m}\n`))
+  }
+
+  /** A fault the cache works around, said once per kind (2026-10-23: none is silent). */
+  private warn(kind: string, err: unknown): void {
+    if (this.said.has(kind)) return
+    this.said.add(kind)
+    this.onWarn(
+      `vx/reapi: ${kind} at ${this.endpoint} failed: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  /** The duration a hit carries; one that cannot be read is unknown, and said. */
+  private duration(raw: Uint8Array | undefined): number | undefined {
+    try {
+      return decodeDuration(raw)
+    } catch (err) {
+      this.warn('reading a task duration', err)
+      return undefined
+    }
   }
 
   /**
@@ -103,7 +123,7 @@ export class ReapiRemoteCache {
     if (file === undefined) return null
     if ((await this.client.findMissingBlobs([file.digest])).length > 0) return null
     // The duration only when it rode inline: a CAS read for it is a round trip.
-    const durationMs = decodeDuration(result.stdout_raw)
+    const durationMs = this.duration(result.stdout_raw)
     return {
       size: Number(file.digest.size_bytes),
       ...(durationMs === undefined ? {} : { durationMs }),
@@ -149,7 +169,7 @@ export class ReapiRemoteCache {
 
   private async durationOf(result: ActionResult): Promise<number | undefined> {
     if (result.stdout_raw !== undefined && result.stdout_raw.length > 0) {
-      return decodeDuration(result.stdout_raw)
+      return this.duration(result.stdout_raw)
     }
     // The server normalised our inline bytes into CAS (bazel-remote does).
     // An absent digest arrives as `null` on this path (proto-loader's
@@ -158,8 +178,11 @@ export class ReapiRemoteCache {
     // blob failing its digest) leaves it unknown, where it made core drop a
     // valid hit as a miss (F-21).
     if ((result.stdout_digest?.size_bytes ?? 0) > 0) {
-      const raw = await this.client.readBlob(result.stdout_digest!).catch(() => null)
-      return decodeDuration(raw ?? undefined)
+      const raw = await this.client.readBlob(result.stdout_digest!).catch((err: unknown) => {
+        this.warn('reading a task duration', err)
+        return null
+      })
+      return this.duration(raw ?? undefined)
     }
     return undefined
   }
@@ -178,7 +201,10 @@ export class ReapiRemoteCache {
     const action = actionDigestFor(hash)
     const stored = this.client.getActionResult(action).then(
       (r) => r?.output_files?.some((f) => f.path === ARTIFACT_PATH) === true,
-      () => false,
+      (err: unknown) => {
+        this.warn('looking up a stored entry before an upload', err)
+        return false
+      },
     )
     // Read once, and those bytes hashed and sent, wherever `writeBlob` would
     // read the Blob whole anyway: a second writer of the key renames its
@@ -192,9 +218,10 @@ export class ReapiRemoteCache {
       // it (102 → 71 ms per save at 15 ms one-way, F-26). Content-addressed,
       // so a re-send is harmless.
       // A server whose batch limit is smaller refuses it; stream instead.
-      await this.client
-        .batchUpdateBlobs([{ digest, data }])
-        .catch(() => this.client.writeBlob(digest, data))
+      await this.client.batchUpdateBlobs([{ digest, data }]).catch((err: unknown) => {
+        this.warn('a batch upload (streamed instead)', err)
+        return this.client.writeBlob(digest, data)
+      })
     } else {
       // Upload only what the server lacks: for a large artifact the probe is
       // cheap next to the bytes it can skip.

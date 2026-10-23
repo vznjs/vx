@@ -16,7 +16,8 @@ beforeAll(async () => {
 afterAll(() => fake.stop())
 beforeEach(() => {
   cache?.close()
-  cache = new ReapiRemoteCache({ endpoint: fake.endpoint })
+  // Each row that meets a fault is told of it; the two below read what was said.
+  cache = new ReapiRemoteCache({ endpoint: fake.endpoint, onWarn: () => undefined })
 })
 
 const bytes = (s: string) => new TextEncoder().encode(s)
@@ -53,6 +54,40 @@ describe.if(CHUNKING_SUPPORTED)('the cache layer, past the sweep', () => {
       ['a', undefined],
       ['b', undefined],
     ])
+  })
+
+  // Each fault the cache works around is said, once a run (2026-10-23:
+  // Vercel's refused batch query hid for a day behind a silent fallback).
+  it('a duration it cannot read or parse is said, once', async () => {
+    const said: string[] = []
+    cache.close()
+    cache = new ReapiRemoteCache({ endpoint: fake.endpoint, onWarn: (m) => said.push(m) })
+    entry('k-warn-dur', 'a', { stdout_digest: fake.put(bytes('{"durationMs":9}')) })
+    fake.fail('Read', grpc.status.DATA_LOSS)
+    await restored('k-warn-dur')
+    entry('k-warn-junk', 'b', { stdout_raw: bytes('not json') })
+    entry('k-warn-junk2', 'c', { stdout_raw: bytes('nor this') })
+    await restored('k-warn-junk')
+    await restored('k-warn-junk2')
+    expect(said).toEqual([
+      expect.stringMatching(/^vx\/reapi: reading a task duration at .* failed: 15 DATA_LOSS/),
+    ])
+  })
+
+  it('an upload that looks up or batches in vain says so, and still uploads', async () => {
+    const said: string[] = []
+    cache.close()
+    cache = new ReapiRemoteCache({ endpoint: fake.endpoint, onWarn: (m) => said.push(m) })
+    fake.fail('GetActionResult', grpc.status.DATA_LOSS)
+    fake.fail('BatchUpdateBlobs', grpc.status.DATA_LOSS)
+    await cache.put('k-warn-put', new Blob([bytes('payload')]), { durationMs: 1 })
+    expect({ said, stored: await restored('k-warn-put') }).toEqual({
+      said: [
+        expect.stringContaining('looking up a stored entry before an upload'),
+        expect.stringContaining('a batch upload (streamed instead)'),
+      ],
+      stored: ['payload', 1],
+    })
   })
 
   it('an entry naming another path is no hit for has() or get()', async () => {

@@ -20,6 +20,7 @@ import {
   type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadline } from '../remote-deadline.js'
+import { refusal } from '../remote-refusal.js'
 import { OutageBreaker } from '../remote-breaker.js'
 import { Cooldown, withRetry } from '../remote-retry.js'
 import {
@@ -220,9 +221,11 @@ export class NxRemoteCache implements RemoteCacheLayer {
     const res = await this.request('GET', hash)
     if (res === undefined) return null
     if (res.status !== 200) {
-      await res.body?.cancel()
-      if (res.status === 404) return null
-      throw new Error(`HTTP ${res.status}`)
+      if (res.status === 404) {
+        await res.body?.cancel()
+        return null
+      }
+      throw await refusal(res)
     }
     return res
   }
@@ -241,7 +244,7 @@ export class NxRemoteCache implements RemoteCacheLayer {
     const res = await this.request('PUT', hash, body)
     if (res === undefined) return
     if (res.status === 200 || res.status === 202 || res.status === 409) return
-    throw new Error(`HTTP ${res.status}`)
+    throw await refusal(res)
   }
 }
 

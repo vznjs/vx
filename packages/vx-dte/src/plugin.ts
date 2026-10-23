@@ -86,6 +86,8 @@ export interface DteAdapter {
   render?(plan: DtePlan): Readonly<Record<string, string>>
   /** Whether a plan's workers beyond the first wait for the run to start them. */
   live?(): boolean
+  /** Where it says a fault it works around (a status poll or a cancel that failed); called as the run starts. */
+  report?(warn: (message: string) => void): void
   /** Its workers prove themselves by their CI identity (GitHub OIDC): the run makes no secret for them. */
   readonly keyless?: boolean
   /** The run id `vx dte plan` names when `VX_DTE_RUN` is unset. */
@@ -392,6 +394,7 @@ export function dte(options: DteOptions) {
           await join(relay, run, 'orchestrator', null, () => token(relay)),
           run,
           proof,
+          ctx.warn,
         ),
         root: ctx.workspaceRoot,
         tree,
@@ -423,6 +426,7 @@ export function dte(options: DteOptions) {
         faulted: () => onChange(true),
         stalled: (waiting) =>
           ctx.warn(`dte(): no task began or ended for a minute; waiting on\n${waiting}`),
+        warn: ctx.warn,
       })
       orchestrator = o
       const started = new Map<string, number>()
@@ -484,6 +488,7 @@ export function dte(options: DteOptions) {
           exited: (reason) => o.failed(id, reason),
         }
       }
+      adapter?.report?.(ctx.warn)
       // Workers the CI started before the run did (`DteAdapter.adopt`).
       adapter?.adopt?.((id, size) => {
         const s = sizes.find((x) => x.name === size)
@@ -675,6 +680,7 @@ function givenSecret(root: string): string | undefined {
   if (env !== undefined && env !== '') return env
   try {
     return readFileSync(path.join(root, SECRET_FILE), 'utf8').trim() || undefined
+    // quiet: no secret file: the run makes one
   } catch {
     return undefined
   }
@@ -740,6 +746,7 @@ async function firstWave(
     const db = new Database(index, { readonly: true })
     try {
       peaks = await new LocalHistoryProvider(db).resourcesFor([...remaining])
+      // quiet: no history: every task books unmeasured
     } catch {
       // No history: every task books `unmeasured`, as a run packs it.
     } finally {
@@ -903,6 +910,7 @@ async function changedSinceParent(workspaceRoot: string): Promise<string[]> {
     })
     const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
     return exit === 0 ? out.split('\n').filter((l) => l !== '') : []
+    // quiet: a local git read; no files is the answer
   } catch {
     return []
   }

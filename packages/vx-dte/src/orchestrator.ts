@@ -37,7 +37,7 @@ import type { PlanWorker } from './planner.js'
 import { Usage, type UsageStats } from './usage.js'
 import { assign, ordered, type Need } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
-import { RelayError, type Participant } from './wire.js'
+import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
 
 /** What a task is expected to hold while it runs, from its history; `Infinity`: a whole worker (one that filled its worker). */
@@ -146,6 +146,8 @@ export interface OrchestratorOptions {
   readonly home?: string | undefined
   /** No task began or ended for `stallMs`: what the run waits on, one line a task. */
   readonly stalled?: (waiting: string) => void
+  /** A fault the run works around (a message the relay would not take); default stderr. */
+  readonly warn?: (message: string) => void
   /** Default `STALL_MS`. */
   readonly stallMs?: number
 }
@@ -265,6 +267,7 @@ export class Orchestrator {
     this.realRoot = (() => {
       try {
         return realpathSync(o.root)
+        // quiet: a root that is gone fails the run's own reads first
       } catch {
         return o.root
       }
@@ -686,7 +689,11 @@ export class Orchestrator {
   }
 
   private post(a: Worker, m: ToWorker): void {
-    a.chain = a.chain.then(() => this.o.me.send(a.id, m)).catch(() => undefined)
+    a.chain = a.chain.then(() => this.o.me.send(a.id, m)).catch(this.unsent(m.type, a.label))
+  }
+
+  private unsent(what: string, to: string): (err: unknown) => void {
+    return unsent(this.o.warn ?? ((m) => void process.stderr.write(`[vx] ${m}\n`)), what, to)
   }
 
   /** Worker `a` began `task`: from now its cores are booked. */
@@ -807,7 +814,7 @@ export class Orchestrator {
       const refuse = (reason: string): void => {
         void this.o.me
           .send(id, { type: 'refused', reason } satisfies ToWorker)
-          .catch(() => undefined)
+          .catch(this.unsent('refused', id))
       }
       if (
         info?.v !== 1 ||
@@ -828,7 +835,9 @@ export class Orchestrator {
         )
       }
       if (info.id !== undefined && this.cancelled.has(info.id)) {
-        void this.o.me.send(id, { type: 'exit' } satisfies ToWorker).catch(() => undefined)
+        void this.o.me
+          .send(id, { type: 'exit' } satisfies ToWorker)
+          .catch(this.unsent('exit', info.id))
         return
       }
       // A worker this run started keeps the name it was started under;
@@ -881,7 +890,7 @@ export class Orchestrator {
               cache,
             } satisfies ToWorker),
           )
-          .catch(() => undefined),
+          .catch(this.unsent('welcome', label)),
         sandboxes: false,
         faulty: false,
       })

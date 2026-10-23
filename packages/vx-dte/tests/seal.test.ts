@@ -139,6 +139,35 @@ it('refuses a worker with another secret, and a worker refuses an orchestrator w
   await expect(a2.poll()).rejects.toThrow(SealError)
 })
 
+// M, 2026-10-23: a fault is at least a warning. A token check that could
+// not run (GitHub's keys unreachable) was refused as a key mismatch, and
+// the orchestrator said nothing.
+it('a token it could not check refuses the worker by that cause, and says it', async () => {
+  const r = relay()
+  const said: string[] = []
+  const proof = (check: () => Promise<boolean>) => ({
+    sign: async () => 'token',
+    check,
+    mismatch: 'run both in this repository',
+  })
+  const o = sealOrchestrator(
+    await join(r.url, R3, 'orchestrator', null, undefined),
+    R3,
+    proof(() => Promise.reject(new Error('GitHub keys: HTTP 503'))),
+    (m) => said.push(m),
+  )
+  const a = await sealWorker(
+    (info) => join(r.url, R3, 'worker', info, undefined),
+    R3,
+    proof(async () => true),
+    { v: 1 },
+  )
+  expect(await o.poll()).toEqual([])
+  const reason = 'its token could not be checked: GitHub keys: HTTP 503'
+  expect((await until(a)).map((m) => m.body)).toEqual([{ type: 'refused', reason }])
+  expect(said).toEqual([`dte: refused a worker: ${reason}`])
+})
+
 it('loses a worker whose body the relay changed, and drops one it replays', async () => {
   const { r, o, a } = await pair()
   await until(o)

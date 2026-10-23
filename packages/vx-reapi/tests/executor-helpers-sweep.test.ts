@@ -283,6 +283,28 @@ describe.if(CHUNKING_SUPPORTED)('the record’s output directories', () => {
     ])
   })
 
+  // 2026-10-23: the batch of a split's Tree blobs failed in silence.
+  it('a split whose Tree blobs cannot be batched says so and writes each', async () => {
+    const gen = dir(['g'])
+    executeReturning('mods', fake.put(encodeTree(dir([], { gen }), [gen])))
+    const planned = fake.onExecute
+    fake.onExecute = (req, method) => {
+      fake.fail('BatchUpdateBlobs', grpc.status.DATA_LOSS, 1)
+      return planned(req, method)
+    }
+    const warns: string[] = []
+    const split = request({
+      cacheKey: 'k-batchfail',
+      outputs: { files: ['mods/*'], workspaceFiles: [] },
+      remoteOnly: true,
+    })
+    expect(await refusal(runOne(split, warns))).toBe('resolved')
+    expect(recordOf('k-batchfail').map((d) => d.path)).toEqual(['pkg/mods/gen'])
+    expect(warns).toEqual([
+      "vx/reapi: uploading pkg/mods's Tree blobs together failed (15 DATA_LOSS: injected DATA_LOSS) — writing each",
+    ])
+  })
+
   it('a glob that matches nothing, or has a partial wildcard, is recorded whole', async () => {
     // `x*` names a directory literally called so: a partial wildcard is not
     // decomposed even where a name would match it character for character.

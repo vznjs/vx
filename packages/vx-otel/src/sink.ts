@@ -203,6 +203,7 @@ async function postOnce(
     // collector each exported nothing and said nothing, for every run
     // (walked the adopter's path, 2026-09-20). The body is the
     // collector's own explanation, so a line of it rides the message.
+    // quiet: the status alone still names the refusal
     const text = await res.text().catch(() => '')
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location')
@@ -244,6 +245,7 @@ function partialSuccess(body: string): string | undefined {
   let parsed: unknown
   try {
     parsed = JSON.parse(body)
+    // quiet: not JSON: the caller says the body as text
   } catch {
     return undefined
   }
@@ -779,6 +781,7 @@ function shownUrl(url: string): string {
   let u: URL
   try {
     u = new URL(url)
+    // quiet: not a URL: the caller says it
   } catch {
     return '(an unparsable URL)'
   }

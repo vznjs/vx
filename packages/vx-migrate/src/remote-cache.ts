@@ -28,6 +28,7 @@ export function remoteCacheSignal(root: string, runner: 'turbo' | 'nx'): string 
         rc = (
           Bun.JSONC.parse(readFileSync(path.join(root, f), 'utf8')) as { remoteCache?: unknown }
         )?.remoteCache
+        // quiet: a local config file: none read is none declared
       } catch {
         continue
       }
@@ -42,6 +43,7 @@ export function remoteCacheSignal(root: string, runner: 'turbo' | 'nx'): string 
     let linked: unknown
     try {
       linked = JSON.parse(readFileSync(path.join(root, '.turbo', 'config.json'), 'utf8'))
+      // quiet: a local config file: none read is none linked
     } catch {}
     if (
       typeof linked === 'object' &&
@@ -63,6 +65,7 @@ export function remoteCacheSignal(root: string, runner: 'turbo' | 'nx'): string 
     let text: string
     try {
       text = readFileSync(path.join(root, f), 'utf8')
+      // quiet: a local config file: none read is none declared
     } catch {
       continue
     }
@@ -84,6 +87,7 @@ function usesNxCloud(root: string): boolean {
   } | null
   try {
     json = Bun.JSONC.parse(readFileSync(path.join(root, 'nx.json'), 'utf8')) as typeof json
+    // quiet: a local config file: none read is none declared
   } catch {
     return false
   }
