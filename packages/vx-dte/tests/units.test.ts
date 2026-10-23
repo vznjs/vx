@@ -225,6 +225,7 @@ async function harness(
   heartbeatMs?: number,
   keyOf: (id: string) => string | undefined = () => undefined,
   tail?: (id: string) => number,
+  more: { faulted?: () => void } = {},
 ) {
   const store = fakeArtifacts()
   const cache: { facts: CacheFacts } = { facts: { refs: [], lent: {} } }
@@ -241,6 +242,7 @@ async function harness(
     run: R,
     keyOf,
     ...(tail === undefined ? {} : { tail }),
+    ...more,
   })
   const worker = async (cores: number, id?: string) => {
     const me = await join(url, R, 'worker', { v: 1, cores, memory: 100, tree: 'c', id }, undefined)
@@ -414,7 +416,7 @@ it('books a worker the cores of a task from its start to its command’s end', a
   await Bun.sleep(50)
   await h.stop()
   const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
-  expect(rows.find((r) => r.includes('booked'))).toContain('booked 0.0 ·')
+  expect(rows.find((r) => r.includes('expected'))).toContain('expected 0.0 ·')
 })
 
 // Main, 2026-10-23: vx-docs#build (41 s, then its test) got ready 3 s in,
@@ -496,6 +498,27 @@ it('a task that runs alone holds the worker it waits for; none after it takes it
     await Bun.sleep(50)
     await a.finish('t1')
     expect(await a.batches()).toEqual([['alone']])
+  } finally {
+    await h.stop()
+  }
+})
+
+// M, 2026-10-23: "If workers joined and nothing is queued anymore orch
+// should ... close them": one started and not needed is cancelled, and
+// told to exit should it join anyway.
+it('a worker cancelled before it joined is told to exit when it joins, and never counted', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
+    h.o.spawned('small#2', { size: 'small', cpu: 1, memory: 100 })
+    const a = await h.worker(1, 'small#1')
+    await Bun.sleep(50)
+    expect(h.o.release(['small#2'])).toEqual(['small#2'])
+    expect(h.o.planState(() => undefined, 0).workers.map((w) => w.id)).toEqual([a.id])
+    const b = await h.worker(1, 'small#2')
+    expect(await b.types()).toEqual(['exit'])
+    h.o.failed('small#2', 'job cancelled')
+    expect(h.o.machines().map((m) => m.name)).toEqual(['small#1'])
   } finally {
     await h.stop()
   }
@@ -708,13 +731,13 @@ it('reports a worker still there at the summary online until then', async () => 
     expect((await t1).exitCode).toBe(0)
     const [m] = h.o.machines()
     expect(m!.status).toBe('ok')
-    // small#3 read ok with 28 of its tasks failed (main bf77a58, 2026-10-23).
+    // A failed task is the task's, not its worker's (M, 2026-10-23).
     const t2 = h.o.execute(h.req('t2'))
     expect(await a.batches()).toEqual([['t2']])
     h.store.saved.set('k-t2', { stdout: '', stderr: '' })
     await a.say({ type: 'end', task: 't2', key: 'k-t2', result: { exitCode: 1, durationMs: 1 } })
     expect((await t2).exitCode).toBe(1)
-    expect(h.o.machines()[0]!.status).toBe('failed')
+    expect(h.o.machines()[0]!.status).toBe('ok')
     expect(m!.onlineMs).toBeGreaterThanOrEqual(100)
     expect(m!.bookedAvg).toBeLessThanOrEqual(m!.cores)
   } finally {
@@ -1124,6 +1147,29 @@ it('a task its only worker could not run fails when no worker is left', async ()
         (e: Error) => e.message,
       ),
     ).toBe('small#1 could not run t1 (ENOSPC) and no worker is left')
+  } finally {
+    await h.stop()
+  }
+}, 3_000)
+
+// Main's macOS run, 2026-10-23: mac#1 let unsafe.shard-1's lease end,
+// mac#2 had left, and the run failed rather than start another.
+it('a task its only worker failed waits for the worker the run starts for it then', async () => {
+  let h: Awaited<ReturnType<typeof harness>>
+  h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    faulted: () => h.o.spawned('small#2', { size: 'small', cpu: 1, memory: 100 }),
+  })
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
+    const a = await h.worker(1, 'small#1')
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.say({ type: 'fault', task: 't1', reason: 'ENOSPC' })
+    const b = await h.worker(1, 'small#2')
+    expect(await b.batches()).toEqual([['t1']])
+    await b.finish('t1')
+    expect((await t1).exitCode).toBe(0)
   } finally {
     await h.stop()
   }

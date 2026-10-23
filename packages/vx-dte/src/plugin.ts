@@ -67,6 +67,8 @@ export interface DteAdapter {
   spawn(worker: WorkerSpawn): void | Promise<void>
   /** At run end: stop what it started. */
   close?(): void | Promise<void>
+  /** Workers `ids` it started are not needed: stop each that has not joined, if it can. */
+  cancel?(ids: readonly string[]): void
   /**
    * The files that start the plan's workers (workspace-relative path to
    * text), which `vx dte plan` writes. An adapter with it starts every
@@ -353,6 +355,10 @@ export function dte(options: DteOptions) {
           onChange(true)
         },
         joined: () => onChange(),
+        // Before the run counts what is left to start: a worker that let a
+        // task's lease end failed main's macOS run with another to start
+        // (2026-10-23).
+        faulted: () => onChange(true),
       })
       orchestrator = o
       const started = new Map<string, number>()
@@ -437,7 +443,16 @@ export function dte(options: DteOptions) {
           adapter !== undefined,
         )
         // At the end the relay closing ends them all.
-        if (p.release.length > 0 && remaining.size > 0) o.release(p.release)
+        if (p.release.length > 0 && remaining.size > 0) {
+          const cancelled = o.release(p.release)
+          for (const id of cancelled) {
+            const s = sizeOf.get(id)
+            if (s === undefined) continue
+            sizeOf.delete(id)
+            started.set(s.name, started.get(s.name)! - 1)
+          }
+          if (cancelled.length > 0) adapter?.cancel?.(cancelled)
+        }
         if (again !== undefined) clearTimeout(again)
         again = undefined
         if (p.againInMs !== undefined && !final) {

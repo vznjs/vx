@@ -123,6 +123,8 @@ export interface OrchestratorOptions {
   readonly lost?: (id: string) => void
   /** A worker joined: the run plans again. */
   readonly joined?: () => void
+  /** A worker failed a task or its lease: the run plans again, now, so a replacement starts. */
+  readonly faulted?: () => void
   /** How much of the run waits on a task (`tailsMs`): the queue places the most first. */
   readonly tail?: (taskId: string) => number
 }
@@ -179,6 +181,8 @@ export class Orchestrator {
   private readonly retired = new Set<Worker>()
   /** Workers asked for that never joined, with why. */
   private readonly unstarted = new Map<string, string>()
+  /** Started, then not needed before they joined (`release`). */
+  private readonly cancelled = new Set<string>()
   /** A failed start was given another worker (`failed`). */
   private restarted = false
   private pumping = false
@@ -400,6 +404,7 @@ export class Orchestrator {
         if (
           !joined.has(id) &&
           !this.unstarted.has(id) &&
+          !this.cancelled.has(id) &&
           (declared.cpu > above.cores || declared.memory > above.memory)
         )
           return undefined
@@ -563,6 +568,7 @@ export class Orchestrator {
         }
     if (back.length === 0) return
     this.queue.unshift(...back)
+    this.o.faulted?.()
     if (this.spawnedAt.size > 0) this.stranded(`a task's lease ended and no worker is left`)
     this.pumpSoon()
   }
@@ -640,6 +646,10 @@ export class Orchestrator {
       }
       if (info.tree !== this.o.tree) {
         return refuse(`checked out tree ${info.tree}, the run is on ${this.o.tree}`)
+      }
+      if (info.id !== undefined && this.cancelled.has(info.id)) {
+        void this.o.me.send(id, { type: 'exit' } satisfies ToWorker).catch(() => undefined)
+        return
       }
       // A worker this run started keeps the name it was started under;
       // one that joined on its own is numbered in the order it joined.
@@ -756,6 +766,7 @@ export class Orchestrator {
           // It began it whether or not its `start` came first.
           this.begun(a, m.task)
           if (this.retry(a, j, m.reason) !== undefined) this.queue.unshift(j)
+          if (a.faulty) this.o.faulted?.()
           if (a.faulty && this.spawnedAt.size > 0)
             this.stranded(`${a.label} could not run ${m.task} (${m.reason}) and no worker is left`)
           this.pumpSoon()
@@ -828,7 +839,7 @@ export class Orchestrator {
     }
     const joined = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
     for (const [id, { at, declared }] of this.spawnedAt)
-      if (!joined.has(id) && !this.unstarted.has(id))
+      if (!joined.has(id) && !this.unstarted.has(id) && !this.cancelled.has(id))
         workers.push({
           id,
           cores: declared.cpu,
@@ -836,17 +847,31 @@ export class Orchestrator {
           at: Math.max(0, warmUpMs - (now - at)),
           idle: false,
           running: [],
+          starting: true,
         })
     return { workers, running }
   }
 
-  /** Workers `ids` leave (`exit`) if still idle, and each faulty idle one: none comes back. */
-  release(ids: Iterable<string>): void {
+  /**
+   * Workers `ids` leave (`exit`) if still idle, and each faulty idle one:
+   * none comes back. Of `ids`, each started and not joined is cancelled:
+   * the ones returned, for the adapter to stop; one that joins anyway is
+   * told to exit at once.
+   */
+  release(ids: Iterable<string>): string[] {
     for (const a of this.workers.values()) if (a.faulty && a.busy.size === 0) this.letGo(a)
+    const joined = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
+    const cancelled: string[] = []
     for (const id of ids) {
       const a = this.workers.get(id)
-      if (a !== undefined && a.busy.size === 0) this.letGo(a)
+      if (a !== undefined) {
+        if (a.busy.size === 0) this.letGo(a)
+      } else if (this.spawnedAt.has(id) && !joined.has(id) && !this.unstarted.has(id)) {
+        this.cancelled.add(id)
+        cancelled.push(id)
+      }
     }
+    return cancelled
   }
 
   private letGo(a: Worker): void {
@@ -863,7 +888,7 @@ export class Orchestrator {
    * waiting).
    */
   failed(id: string, reason: string): void {
-    if (this.ended) return
+    if (this.ended || this.cancelled.has(id)) return
     const live = [...this.workers.values()].find((a) => a.label === id)
     if (live !== undefined) {
       this.lose(live)
@@ -886,7 +911,7 @@ export class Orchestrator {
   private stranded(reason: string): void {
     const joined = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
     const starting = [...this.spawnedAt.keys()].some(
-      (s) => !this.unstarted.has(s) && !joined.has(s),
+      (s) => !this.unstarted.has(s) && !this.cancelled.has(s) && !joined.has(s),
     )
     const working = [...this.workers.values()].some((a) => !a.faulty)
     if (!working && !starting) this.fail(reason)
@@ -950,7 +975,7 @@ export class Orchestrator {
       // Whether it failed or ran its part, not why it left (M, 2026-10-23).
       ...report(
         a.label,
-        (gone.has(a) && !this.retired.has(a)) || a.faulty || a.usage.failed > 0 ? 'failed' : 'ok',
+        (gone.has(a) && !this.retired.has(a)) || a.faulty ? 'failed' : 'ok',
         a.usage,
         a.reported.cores,
         a.reported.memory,
@@ -1004,11 +1029,14 @@ export class Orchestrator {
           (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : ''),
       ])
     for (const id of this.spawnedAt.keys())
-      if (!joined.has(id)) {
+      if (!joined.has(id) && !this.cancelled.has(id)) {
         const why = this.unstarted.get(id)
         lines.push(why === undefined ? [id, 'starting', ''] : [id, 'failed', why])
       }
     lines.sort((x, y) => x[0].localeCompare(y[0], 'en', { numeric: true }))
+    const cancelled = [...this.cancelled].filter((id) => !joined.has(id)).length
+    if (cancelled > 0)
+      lines.push([`${cancelled} worker${cancelled === 1 ? '' : 's'}`, 'cancelled', 'not needed'])
     if (left.length > 0)
       lines.push([
         `${left.length} worker${left.length === 1 ? '' : 's'}`,
@@ -1124,7 +1152,7 @@ function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string):
 function describe(st: UsageStats, u: Usage): string[] {
   return [
     `online ${seconds(st.onlineMs)} · busy ${seconds(st.busyMs)} · idle ${seconds(Math.max(0, st.onlineMs - st.busyMs))}`,
-    `cpu peak ${st.cpuPeak.toFixed(1)} · avg ${st.cpuAvg.toFixed(1)} cores · booked ${st.bookedAvg.toFixed(1)} · cpu utilization ${percent(st.utilization)}`,
+    `cpu peak ${st.cpuPeak.toFixed(1)} · avg ${st.cpuAvg.toFixed(1)} cores · expected ${st.bookedAvg.toFixed(1)} · cpu utilization ${percent(st.utilization)}`,
     // No task said what it held: `memory peak 0 B` would be a claim.
     ...(st.memoryPeak > 0
       ? [`memory peak ${bytes(st.memoryPeak)} · avg ${bytes(st.memoryAvg)}`]

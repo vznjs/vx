@@ -48,6 +48,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
   const watched = new Map<string, Map<string, WorkerSpawn>>()
   let watch: ReturnType<typeof setTimeout> | undefined
   let closed = false
+  // Workers the run no longer needs: a run of only these is cancelled.
+  const cancelled = new Set<string>()
   const look = (ms: number): void => {
     watch = setTimeout(() => {
       void Promise.all(
@@ -66,7 +68,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
             const a = workers.get(j.name)
             if (a === undefined || j.status !== 'completed') continue
             workers.delete(j.name)
-            if (j.conclusion === 'success' || closed) continue
+            if (j.conclusion === 'success' || closed || cancelled.has(j.name)) continue
             const step = j.steps?.find((x) => x.conclusion === 'failure')?.name
             a.exited(`job ${j.conclusion}${step === undefined ? '' : ` at ${step}`}`)
           }
@@ -180,6 +182,22 @@ export function github(options: GithubOptions = {}): DteAdapter {
           .finally(() => pending.delete(p))
         pending.add(p)
       })
+    },
+    // Before a worker's setup when its job has yet to run: its runner is
+    // free for others (M, 2026-10-23). A run with a worker still needed
+    // goes on; that worker's fellows are told to exit when they join.
+    cancel(ids) {
+      for (const id of ids) cancelled.add(id)
+      for (const [run, workers] of watched) {
+        if (![...workers.keys()].every((id) => cancelled.has(id))) continue
+        watched.delete(run)
+        runs.splice(runs.indexOf(run), 1)
+        const p = call(`${run}/cancel`, { method: 'POST' })
+          .then(() => {})
+          .catch(() => {})
+          .finally(() => pending.delete(p))
+        pending.add(p)
+      }
     },
     // A finished run answers 409; one still queued or running is the
     // run's no more: its results are in, or the run failed without them.

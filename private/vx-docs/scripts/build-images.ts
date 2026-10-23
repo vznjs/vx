@@ -20,8 +20,9 @@ const OUT = path.join(ROOT, 'public/_img')
 
 export type Entry = { width: number; height: number; hash: string }
 
-rmSync(OUT, { recursive: true, force: true })
+// The Linux sandbox mounts its write grant in place: empty it, never remove it.
 mkdirSync(OUT, { recursive: true })
+for (const f of readdirSync(OUT)) rmSync(path.join(OUT, f), { recursive: true, force: true })
 
 const jobs: (() => Promise<void>)[] = []
 const manifest: Record<string, Entry> = {}

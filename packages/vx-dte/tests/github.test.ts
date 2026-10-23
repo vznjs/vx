@@ -144,6 +144,50 @@ it('cancels the workflow runs it dispatched when the run closes', async () => {
   }
 })
 
+// M, 2026-10-23: workers joined only to be let go; one not needed is
+// stopped before its setup, when its run holds no worker still needed.
+it('cancels a dispatched run once every worker in it is not needed', async () => {
+  const calls: string[] = []
+  let id = 0
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const path = new URL(req.url).pathname
+      calls.push(`${req.method} ${path}`)
+      if (path.endsWith('/dispatches')) return Response.json({ workflow_run_id: ++id })
+      return new Response(null, { status: 202 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const adapter = github()
+    void adapter.spawn(spawn('small#1', 'small'))
+    void adapter.spawn(spawn('small#2', 'small'))
+    await Bun.sleep(50)
+    void adapter.spawn(spawn('mac#3', 'mac'))
+    await Bun.sleep(50)
+    // small#2 shares its run with small#1, still needed: that run goes on.
+    adapter.cancel?.(['small#2', 'mac#3'])
+    await Bun.sleep(50)
+    expect(calls.filter((c) => c.endsWith('/cancel'))).toEqual([
+      'POST /repos/o/r/actions/runs/2/cancel',
+    ])
+    adapter.cancel?.(['small#1'])
+    await adapter.close?.()
+    expect(calls.filter((c) => c.endsWith('/cancel'))).toEqual([
+      'POST /repos/o/r/actions/runs/2/cancel',
+      'POST /repos/o/r/actions/runs/1/cancel',
+    ])
+  } finally {
+    await server.stop(true)
+  }
+})
+
 // A killed orchestrator never closes: the job's `if: always()` step cancels
 // what this file lists, or the queued workers hold macOS runners.
 it('lists each run it dispatched in RUNNER_TEMP for the job to cancel', async () => {
