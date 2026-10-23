@@ -6,104 +6,56 @@ authors:
 tags:
   - comparison
   - design
-excerpt: "Turborepo is fast and stops at the edge of a laptop. Nx scales and is a product with a runner attached. Between a tool that will not grow and a platform that will not get out of the way, the thing a large JavaScript monorepo actually needs did not exist. That is why vx does."
+excerpt: 'Turborepo runs and caches. Nx adds a platform around its runner. vx is the runner with open seams: remote cache, remote execution and scheduling are plugins anyone can write, and nothing sits behind a paid cloud.'
 ---
 
-vx exists because of a gap, and the gap is easiest to describe by what
-sits on either side of it.
-
-```mermaid
-flowchart LR
-  T[Turborepo: fast, stops at run and cache] --> G{the gap}
-  N[Nx: scales, comes as a product] --> G
-  G --> V[vx: fast, open seams, nothing behind a paid cloud]
-  style V stroke:#c6f84e,stroke-width:2px
-```
-
-## Turborepo: fast, and it stops
-
-Turborepo got the important thing right. One `turbo.json`, a
-content-addressed cache, `dependsOn` micro-syntax that reads the way
-you think, a `--filter` DSL borrowed from pnpm. It is quick on a warm
-cache and it stays out of the way.
-
-It also stops. It runs a task here and caches it, in Vercel's remote
-cache or in a self-hosted one through its open cache API; past that,
-there is no remote execution and no seam to add one. There is no way to
-change where a task runs. The config is JSON, so a shared input list is
-a `globalDependencies` array you keep in sync by hand, and nothing
-computed can participate in a key. Inputs default to every file in the
-package, which turns a README edit into a rebuild and adds hashing to
-every task. The flag surface is the largest of any tool in this space.
-
-Turborepo is the right tool until the repository is large enough or
-the team needs something it cannot do, and then there is no next step
-inside it.
-
-## Nx: scales, and it is a product
-
-Nx got the other important thing right. It has a project graph that
-scales, `affected` that works, and a plugin model that reaches into
-Rust, .NET, Java and Gradle. The company behind it is serious about
-large repositories.
-
-It is also a product, and the runner is the part of the product that
-gets you to the rest. Several features that make a large monorepo bearable, distributed task
-execution, flaky-task detection and the analytics, are Nx Cloud, a paid
-service. The graph view is free, and a remote cache can be self-hosted.
-The
-open-source runner carries a daemon that is on by default, a heavy
-schema (`project.json`, `nx.json`, `namedInputs`, `targetDefaults`,
-executors wrapping every tool behind a JSON options object), and a
-cached-run cost of its own: on a 9,603-task
-workspace with nothing changed, Nx adds 26.21 s against Turborepo's
-1.05 s and vx's 720 ms, Nx's daemon off as in
-CI. Its cold build burns 7 min 43 s of runner CPU where Turborepo burns
-1 min 30 s and vx 49.58 s.
+| Time added over the ideal run, 9,603 tasks | vx      | Turborepo  | Nx         | Vite Task |
+| ------------------------------------------ | ------- | ---------- | ---------- | --------- |
+| Nothing changed                            | 720 ms  | 1.05 s     | 26.21 s    | 12.89 s   |
+| Cold build                                 | 9.27 s  | 11.05 s    | 5 min 1 s  | 9.89 s    |
+| Cold build: CPU the runner burns           | 49.58 s | 1 min 30 s | 7 min 43 s | 29.74 s   |
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
 Run 2026-10-23 on linux x64, 4 cores, concurrency 10: vx at commit 0be036747, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.
 
-Nx is the right tool if you want the platform. If you want the runner,
-you pay for the platform's weight and are steered toward its price.
+With nothing changed, Nx adds 26.21 s against Turborepo's 1.05 s and
+vx's 720 ms, Nx's daemon off as in CI. Source:
+[Benchmarks](../../benchmarks/).
 
-## The gap
+## What each one is
 
-Between them is the thing a large JavaScript monorepo actually needs:
+| Tool      | In one line                                                                 |
+| --------- | --------------------------------------------------------------------------- |
+| Turborepo | runs and caches tasks from one `turbo.json`; remote cache over an open API  |
+| Nx        | a project graph, `affected` and plugins; distribution and flaky detection in Nx Cloud |
+| vx        | runs and caches; where a task runs and where artifacts live are plugins     |
 
-- a runner as small and as fast as Turborepo's, on the warm path and
-  the cold one;
-- a key that is correct in the cases Turbo's is not: computed config,
-  strict outputs, no spurious miss at a commit;
-- seams for the things Nx sells, remote execution, remote cache, task
-  scheduling, telemetry, so that they can be built by anyone, on any
-  wire, without the runner having an opinion about who provides them;
-- no daemon, no account, no cloud, no dashboard, nothing that needs a
-  business model to keep working.
+Both got important things right. Turborepo's `dependsOn` micro-syntax
+and pnpm-style `--filter` read the way you think, and vx uses both. Nx's
+project graph and `affected` scale to very large repositories.
 
-Nobody was building that, for a reason that is not technical: the
-seams are where the money is. A runner whose remote execution is a
-plugin on a public API is a runner nobody can sell a cloud for. vx is
-built that way on purpose and ships no service in its own repository.
-`@vzn/vx-dte` spreads a run over workers your own CI starts, through a
-relay you host. `@vzn/vx-reapi`, which does remote cache and remote
-execution against any Bazel Remote Execution API server, exists to
-prove the seams are wide enough for someone else to build the
-platform, and to make sure no one has to.
+## What vx adds
+
+- **A key that is right in more cases:** [computed
+  config](../resolved-config-hashing/), [strict
+  outputs](../strict-output-ownership/), no spurious miss at a commit
+  ([keys from git](../keys-from-git/)).
+- **Seams instead of a service.** Remote cache, remote execution,
+  scheduling and telemetry are plugin stages on a public API.
+  `@vzn/vx-reapi` speaks the Bazel Remote Execution API to any server.
+  `@vzn/vx-dte` spreads a run over workers your own CI starts, through a
+  relay you host.
+- **Nothing to keep alive:** no daemon, no account, no cloud, no
+  dashboard.
 
 ## The bar
 
-vx has to clear the same bar as both of them, and the way to know is
-to run their tests. The parity suite in the repository takes the
-behaviours a Turborepo or Nx user would reach for, spells each one in
-vx, and pins it with a test that runs the real CLI. Where vx diverges
-on purpose (bare task names never widen an anchored `pkg#task`'s
-scope; there is no `--parallel` because `dependsOn` is explicit) the
-divergence is documented as such. The matrix is
-[Compared to Turborepo, Nx, vite-task](../../comparison/), and every
-claim in it cites a file in the upstream repository so it can be
-re-verified as they change.
+vx has to clear the same bar as both, and the way to know is to run
+their behaviours. The parity suite spells each behaviour a Turborepo or
+Nx user reaches for in vx and pins it with a test that runs the real
+CLI. Where vx differs on purpose (no `--parallel`, because `dependsOn`
+is explicit) the page says so. The matrix is [Compared to Turborepo,
+Nx, vite-task](../../comparison/); every claim cites a file upstream so
+it can be checked as they change.
 
-That is what "no choice on the market" meant: not that the others are
-bad, but that they are each half of the tool, and the halves do not
-combine. vx is the whole runner and nothing else.
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
