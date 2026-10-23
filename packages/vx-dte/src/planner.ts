@@ -87,6 +87,28 @@ export interface Plan {
   readonly againInMs: number | undefined
 }
 
+/** History the run's finished tasks must have had before `slowdown` says anything. */
+const SLOWDOWN_MS = 20_000
+
+/**
+ * How much longer than history the run's finished tasks took (`took` ms,
+ * `forecast` ms), at least 1, once they had 20 s of history: the plan
+ * stretches what is left by it. A task past its forecast was planned to
+ * end now, so a run whose tasks took twice theirs planned 27 s left for
+ * 100 s, asked a worker, cancelled it as not needed, and asked again (PR
+ * #4192, 2026-10-23).
+ */
+export function slowdown(done: Iterable<{ took: number; forecast: number | undefined }>): number {
+  let took = 0
+  let forecast = 0
+  for (const d of done)
+    if (d.forecast !== undefined && d.forecast > 0) {
+      took += d.took
+      forecast += d.forecast
+    }
+  return forecast < SLOWDOWN_MS ? 1 : Math.max(1, took / forecast)
+}
+
 /**
  * Each task's tail: its usual duration and its longest chain of
  * dependants after it, the most of the run that waits on it starting.
@@ -442,7 +464,9 @@ export function plan(
     if (at === undefined) continue
     // Given work within its warm-up and a margin: it starts now.
     const warmUp = added[i]!.at
-    if (at <= warmUp + MARGIN_MS) start.push(candidates[i]!)
+    // Within a millisecond counts: `againInMs` of 1e-10 replanned the
+    // same plan 100,000 times at one instant (tests/sim.test.ts).
+    if (at < warmUp + MARGIN_MS + 1) start.push(candidates[i]!)
     else againInMs = Math.min(againInMs ?? Infinity, at - warmUp - MARGIN_MS)
   }
   return { start, release, endsInMs: end, boundMs: bound, againInMs }

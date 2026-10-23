@@ -931,7 +931,7 @@ it('the final summary says how each worker ended, its size and machine under it'
   h.o.release([b.id])
   expect(await b.types()).toContain('exit')
   await h.stop()
-  const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+  const rows = h.o.footer(() => 98_240).map(([, line]) => ui.inline(line, { enabled: false }))
   const at = (label: string) => rows.findIndex((r) => r.startsWith(label + ' '))
   expect(rows[at('worker#1')]).toMatch(/^worker#1 +lost/)
   expect(rows[at('small#1')]).toMatch(/^small#1 +stopped/)
@@ -946,6 +946,10 @@ it('the final summary says how each worker ended, its size and machine under it'
   // When the run asked for workers, for which work, and when its plan ended: why it had as many as it did.
   expect(rows.filter((r) => r.startsWith('asked'))).toEqual([
     expect.stringMatching(/^asked +2 at 0\.\ds for 3 tasks \(1 measured\), plan 70\.0s$/),
+  ])
+  // Every log carries how close the run came, beside core's time row (2026-10-23).
+  expect(rows.filter((r) => r.startsWith('ideal'))).toEqual([
+    expect.stringMatching(/^ideal +98\.2s: each task as long as it took, placed perfectly$/),
   ])
   // Main 68b851d: 41 of 119 unmeasured, each a whole worker, and the
   // summary said only how many (2026-10-23).

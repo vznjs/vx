@@ -364,3 +364,38 @@ describe('the blog post: other ways to split a run', () => {
       for (const o of c.ways.slice(0, -1)) expect(dte.endMs).toBeLessThanOrEqual(o.endMs + 1e-6)
     })
 })
+
+/** A graph of 20-120 tasks whose history was 1.5-3x too short, from a seed. */
+function slowerThanHistory(seed: number): SimTask[] {
+  let s = seed
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647
+  const n = 20 + Math.floor(rnd() * 100)
+  const k = 1.5 + rnd() * 1.5
+  return Array.from({ length: n }, (_, i) => {
+    const deps = i > 0 && rnd() < 0.5 ? [`t${Math.floor(rnd() * i)}`] : []
+    const ms = 3_000 + rnd() * 40_000
+    const cores = rnd() < 0.2 ? 3 : 1
+    return {
+      id: `t${i}`,
+      deps,
+      exec: true,
+      cache: true,
+      known: { ms, cores, memory: 2e8 },
+      ran: { ms: ms * k, cores, memory: 2e8 },
+    }
+  })
+}
+
+// PR #4192's run: its tasks took twice their history, a running task past
+// its forecast was planned to end now, and the plan asked a worker every
+// 10 s and cancelled each as not needed. What is left takes as much longer
+// as what ended did. Seeds that cancelled (195 also asked one again), and
+// two whose plan spun on a sub-millisecond `againInMs` (74, 283).
+it.each([14, 29, 74, 90, 151, 195, 283])(
+  'a run slower than its history asks for more, not a worker it then cancels (seed %d)',
+  (seed) => {
+    const r = simulate(slowerThanHistory(seed), { sizes: [small] })
+    expect(r.workers.filter((w) => w.cancelledAt !== undefined).map((w) => w.id)).toEqual([])
+    expect(r.churn).toBe(0)
+  },
+)

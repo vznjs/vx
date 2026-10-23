@@ -12,6 +12,7 @@ import { booked, DEFAULT_STRATEGY, type Strategy } from '../src/strategy.js'
 import {
   decide,
   simulate as play,
+  slowdown,
   tailsMs,
   type PlanTask,
   type PlanWorker,
@@ -178,6 +179,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   const waitedMs = new Map<string, number>()
   const startedAt = new Map<string, number>()
   const endedAt = new Map<string, number>()
+  const finished: { took: number; forecast: number | undefined }[] = []
   const ready = (id: string): void => {
     const t = byId.get(id)!
     if (t.exec && t.ran !== undefined) {
@@ -262,6 +264,12 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   const replan = (): void => {
     const likely = options.likely ?? new Set<string>()
     if (executed.size === 0 && likely.size === 0) return
+    // As the plugin: what is left takes as much longer than history as what ended did.
+    const slow = slowdown(finished)
+    const ms = (id: string): number | undefined => {
+      const m = durationMs(id)
+      return m === undefined ? undefined : m * slow
+    }
     const warmUp = warmUpOf(1)
     const planWorkers: PlanWorker[] = []
     const running = new Set<string>()
@@ -286,7 +294,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
           id: r.id,
           cores: Math.min(w.cores, Math.min(r.booked.cores, w.cores) * over),
           memory: Math.min(r.booked.memory, w.memory),
-          endsIn: Math.max(0, (r.knownMs ?? 0) - (now - r.startedAt)),
+          endsIn: Math.max(0, (r.knownMs ?? 0) * slow - (now - r.startedAt)),
         })),
       })
     }
@@ -308,7 +316,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       nodes,
       executed: likely.size === 0 ? executed : new Set([...likely, ...executed]),
       need,
-      durationMs,
+      durationMs: ms,
       workers: planWorkers,
       running,
       sizes: options.sizes,
@@ -415,6 +423,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
           w.running.delete(r.id)
           w.has.add(r.id)
           endedAt.set(r.id, now)
+          finished.push({ took: now - r.startedAt, forecast: r.knownMs })
           end(r.id)
         }
     step()

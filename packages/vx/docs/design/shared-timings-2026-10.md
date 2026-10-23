@@ -87,7 +87,7 @@ The blob is untrusted input from a shared store:
 - Size cap 1 MiB before parsing; above it, ignored.
 - A missing or refused forecast is not the user's problem: no warning
   ever, only `VX_DEBUG` output (M: no extra runtime warnings).
-- Shape `{ version: 1, tasks: { id: ms }, needs?: { id: { cpu, rss?,
+- Shape `{ version: 3, tasks: { id: ms }, needs?: { id: { cpu, rss?,
 cores?, memory? } } }`; `ms` a finite number in `[0, 86_400_000]`; at
   most 50 000 ids; ids not in this run's graph are dropped; nothing from
   it is ever evaluated, spawned or used as a path.
