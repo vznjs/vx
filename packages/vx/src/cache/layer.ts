@@ -230,6 +230,8 @@ export interface RunRecord {
   /** That machine's cores and memory (v44). */
   placementCores?: number
   placementMemoryBytes?: number
+  /** The share of a core each runnable thread got there (`ExecuteResult.machine.cpuShare`, v49). */
+  cpuShare?: number
 }
 
 /**

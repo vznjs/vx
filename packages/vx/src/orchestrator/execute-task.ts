@@ -1523,7 +1523,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     ...(load !== undefined ? { peakCores: load.peakCores, avgRssBytes: load.avgRssBytes } : {}),
     ...(result.where !== undefined ? { where: result.where } : {}),
     ...(result.where !== undefined && result.machine !== undefined
-      ? { whereCores: result.machine.cores, whereMemoryBytes: result.machine.memoryBytes }
+      ? {
+          whereCores: result.machine.cores,
+          whereMemoryBytes: result.machine.memoryBytes,
+          ...(result.machine.cpuShare === undefined ? {} : { cpuShare: result.machine.cpuShare }),
+        }
       : {}),
     ...(deferralRequested && result.outputs?.kind === 'deferred'
       ? { outputs: 'deferred' as const }

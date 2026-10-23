@@ -639,6 +639,7 @@ transaction (`recordRunBundle`), one row per real task (hits included) to the
 | `placement_cores` / `placement_memory`    | that machine's cores and memory bytes (v44)                                     |
 | `keyless_by`                              | the task with no `inputs` its key folded; it never read or saved (v46)          |
 | `def`                                     | the task's definition (command + `env.define`), which history reads by (v48)    |
+| `cpu_share`                               | the share of a core its threads got there; history divides `cpu_ms` by it (v49) |
 | `wallclock_start_ns` / `wallclock_end_ns` | hrtime ns relative to run t=0                                                   |
 | `cache_hit`                               | convenience boolean (derivable from status)                                     |
 | `attempts`                                | attempts a retried task took (> 1); NULL for a once-run task                    |

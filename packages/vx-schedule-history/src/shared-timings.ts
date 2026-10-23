@@ -41,8 +41,8 @@ const graphKeyOf = (sha: string, ids: readonly string[]): string =>
 const keysOf = (sha: string, ids: readonly string[]): string[] => [graphKeyOf(sha, ids), keyOf(sha)]
 
 /**
- * A blob's timings, the entries a run's graph has: `{ version: 1, tasks:
- * { id: ms } }`, each ms a finite number in [0, 24 h]; anything else is
+ * A blob's timings, the entries a run's graph has: `{ version: 2, tasks:
+ * { id: ms } }` (or 1), each ms a finite number in [0, 24 h]; anything else is
  * dropped. Null for a blob that is not that shape, or over the caps.
  */
 export function parseTimings(
@@ -60,6 +60,8 @@ export function parseTimings(
  * `defs: { id: definition }` says which task each timing is of
  * (`taskDefinitions`); a reader keeps only a timing of the task as it is now.
  */
+const VERSIONS: ReadonlySet<unknown> = new Set([1, 2])
+
 function parseBlob(
   bytes: Uint8Array,
   /** Null: every task's. */
@@ -79,7 +81,7 @@ function parseBlob(
   }
   const tasks = (parsed as { tasks?: unknown } | null)?.tasks
   if (
-    (parsed as { version?: unknown } | null)?.version !== 1 ||
+    !VERSIONS.has((parsed as { version?: unknown } | null)?.version) ||
     typeof tasks !== 'object' ||
     tasks === null ||
     Array.isArray(tasks)
@@ -99,7 +101,13 @@ function parseBlob(
       out.set(id, ms)
   }
   const needs = new Map<string, TaskResources>()
-  const raw = (parsed as { needs?: unknown }).needs
+  // A version 1 blob's needs were learned as the share of a core a task got
+  // on a crowded worker, not what it needs (main c27c238 packed nine test
+  // shards on 4 cores): its timings stand, its needs do not.
+  const raw =
+    (parsed as { version: number; needs?: unknown }).version === 1
+      ? undefined
+      : (parsed as { needs?: unknown }).needs
   if (typeof raw === 'object' && raw !== null && !Array.isArray(raw))
     for (const [id, n] of Object.entries(raw)) {
       if (!out.has(id) || typeof n !== 'object' || n === null) continue
@@ -332,7 +340,7 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
   for (const key of keysOf(head[0], args.ids)) await args.cache.put(key, bytes)
 }
 
-/** `{ version: 1, tasks, needs?, defs? }`, each map by task id. */
+/** `{ version: 2, tasks, needs?, defs? }`, each map by task id. */
 function encode(
   timings: ReadonlyMap<string, number>,
   resources: ReadonlyMap<string, TaskResources>,
@@ -355,7 +363,7 @@ function encode(
     }
   }
   const blob = {
-    version: 1,
+    version: 2,
     tasks,
     ...(Object.keys(needs).length === 0 ? {} : { needs }),
     ...(Object.keys(defs).length === 0 ? {} : { defs }),

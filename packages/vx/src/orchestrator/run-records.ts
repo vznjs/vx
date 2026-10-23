@@ -123,6 +123,7 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     if (o.where !== undefined) r.placement = o.where
     if (o.whereCores !== undefined) r.placementCores = o.whereCores
     if (o.whereMemoryBytes !== undefined) r.placementMemoryBytes = o.whereMemoryBytes
+    if (o.cpuShare !== undefined) r.cpuShare = o.cpuShare
     if (o.wallclockStartNs !== undefined) r.wallclockStartNs = o.wallclockStartNs
     if (o.wallclockEndNs !== undefined) r.wallclockEndNs = o.wallclockEndNs
     if (hit) r.restored = o.restored === true

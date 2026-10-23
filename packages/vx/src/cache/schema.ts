@@ -116,7 +116,10 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       keyless_by          TEXT,
       -- v48: the task's definition (taskDefinition): a history reader
       -- counts only the rows of the task as it is now.
-      def                 TEXT
+      def                 TEXT,
+      -- v49: the share of a core each runnable thread got where it ran
+      -- (ExecuteResult.machine.cpuShare); NULL = all it wanted.
+      cpu_share           REAL
     );
     -- Two whole-table indexes only, and both APPEND: every row of a run carries the
     -- same run_id and a started_at newer than everything before it, so

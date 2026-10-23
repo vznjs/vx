@@ -185,6 +185,8 @@ export interface TaskOutcome {
   /** The cores and memory of the machine `where` names (`ExecuteResult.machine`). */
   whereCores?: number
   whereMemoryBytes?: number
+  /** `ExecuteResult.machine.cpuShare`: the share of a core its threads got there. */
+  cpuShare?: number
   /** `'deferred'` when the task's outputs were left in the remote store
    *  (`--cache-download=none`) instead of landing on this machine. Absent for
    *  every ordinary outcome. Telemetry-only. */

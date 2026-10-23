@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v48",
+    "version": "v49",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -185,7 +185,8 @@
       "placement_cores     INTEGER,",
       "placement_memory    INTEGER,",
       "keyless_by          TEXT,",
-      "def                 TEXT",
+      "def                 TEXT,",
+      "cpu_share           REAL",
       ")",
       "",
       "CREATE TABLE schema_meta (",

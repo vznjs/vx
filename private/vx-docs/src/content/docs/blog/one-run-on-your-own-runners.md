@@ -367,29 +367,31 @@ Why each loses:
 
 ## What is still slow
 
-These are known, measured, and on the list before DTE leaves alpha:
+Fixed since the first runs: real runs now match the simulator (c5d8353
+above), a task with no history takes one free core instead of a whole
+worker ([#4148](https://github.com/vznjs/vx/pull/4148)), the first ask
+waits for history ([#4132](https://github.com/vznjs/vx/pull/4132)), and
+workers no longer restore a Bun package cache
+([#4147](https://github.com/vznjs/vx/pull/4147)).
 
-- **Real runs trail the simulator**, a known gap under investigation.
-  a09b987's real workers ended at
-  210.8 s, against 120.5 s simulated; the fixture records both.
-  `sim.test.ts` marks the 90% utilization bound as not yet met on every
-  recorded run, and the 5% makespan bound on most.
-- **Booking ran ahead of use.** On 49adc41 the run booked small#4 for
-  3.9 cores on average and it used 0.4; across every machine, cpu
-  utilization was 42%. Part of it was a bug: the plans saw no task
-  timings. [#4135](https://github.com/vznjs/vx/pull/4135) fixes it, and
-  [e3c76a2](https://github.com/vznjs/vx/actions/runs/39989179814) planned
-  with 75 measured tasks at 48%. The rest is a choice: a task books the
-  most cores any of its recent runs kept busy, not a typical run's, so
-  it is never short of cores.
-- **The first ask came before history.** 49adc41 first asked 14 workers
-  for 122 tasks with none measured, and cancelled 13 of them.
-  [#4132](https://github.com/vznjs/vx/pull/4132) now waits for history
-  before the first ask.
-- **Mac workers warm up longer**: 31.9 s and 37.2 s, against about 20 s
-  on Linux. Most of it is the macOS runner's own boot.
-  [#4136](https://github.com/vznjs/vx/pull/4136) shares Bun's package
-  cache with Linux workers; Mac workers keep their own.
+What is left, measured on main's last full run,
+[c27c238](https://github.com/vznjs/vx/actions/runs/40021500639/attempts/1):
+129 tasks, 73 known misses.
+
+- **It asks for more workers than it uses.** 22 asked in three rounds
+  (13 at 1.0 s, 8 at 17.8 s, 1 at 42.5 s); 8 ran tasks and 14 were
+  cancelled before they joined. The plan said 114.5 s; `vx run` took
+  164.1 s.
+- **Crowded workers.** small#16 peaked at 6.3 busy cores on 4. A task
+  that ran beside others is recorded with the share of CPU it got, so
+  the next run books it lower and packs more beside it.
+  [#4156](https://github.com/vznjs/vx/pull/4156) records what it needs
+  instead.
+- **CPU used is 72%** across the run's machines. The simulator's bound
+  is 90%; `sim.test.ts` marks it not yet met on 7 of its 15 cases.
+- **Mac workers warm up longer**: 20.9 to 26.6 s on main's last two
+  runs, against 14.8 to 22.1 s on Linux. The difference is the macOS
+  runner's own boot.
 
 ## What it costs, next to Nx Cloud
 

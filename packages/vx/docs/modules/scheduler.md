@@ -61,6 +61,7 @@ export interface TaskOutcome {
   carried?: true // a persistent task each dependant's executor starts where it runs: nothing ran here
   whereCores?: number // that machine's cores and memory (ExecuteResult.machine)
   whereMemoryBytes?: number
+  cpuShare?: number // ExecuteResult.machine.cpuShare: the share of a core its threads got there
   outputs?: 'deferred' // outputs left in the remote store (`--cache-download=none`)
   saved?: true // ran here and its result went to the cache: the footer's `↑`
   wallclockStartNs?: bigint // hrtime span relative to run t=0
