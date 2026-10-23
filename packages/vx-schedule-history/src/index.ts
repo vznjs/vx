@@ -315,10 +315,14 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
             triedFile: path.join(ctx.cacheDir, 'schedule-history-base'),
             branch: ctx.branch !== null && ctx.branch !== (options.defaultBranch ?? DEFAULT_BRANCH),
             stopped,
+            warn: ctx.warn,
           })
           return imported ? order(await provider.resourcesFor(ids)) : undefined
-        })().catch(() => {
-          // A hint: a failed import orders the run without it.
+        })().catch((err: unknown) => {
+          // A hint: a failed import orders the run without it, and says so.
+          ctx.warn(
+            `[vx] schedule-history: the shared timings were not applied: ${err instanceof Error ? err.message : String(err)}`,
+          )
           return undefined
         })
         // Promised, so a plugin sizing the run by these timings waits for them.
@@ -354,11 +358,11 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
   let shared:
     | { cache: Cache; ids: string[]; branch: string | null; defs: ReadonlyMap<string, string> }
     | undefined
-  let exporting: { cache: PluginCache; root: string } | undefined
+  let exporting: { cache: PluginCache; root: string; warn: (m: string) => void } | undefined
   hooks.setup = (ctx) => {
     // A branch's write lands under its scope (M, 2026-10-18), for its next
     // commit's runs to read.
-    exporting = ctx.ci ? { cache: ctx.cache, root: ctx.workspaceRoot } : undefined
+    exporting = ctx.ci ? { cache: ctx.cache, root: ctx.workspaceRoot, warn: ctx.warn } : undefined
     if (options.file === undefined) return
     inRun = true
     changed = false
@@ -397,8 +401,12 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
           ids: run.ids,
           defs: run.defs,
         })
-      } catch {
-        // A hint: the next commit's runs walk back to an older blob.
+      } catch (err) {
+        // A hint: the next commit's runs walk back to an older blob, and the
+        // runs it would have measured read as unmeasured, so it is said.
+        out.warn(
+          `[vx] schedule-history: the shared timings were not written: ${err instanceof Error ? err.message : String(err)}`,
+        )
       }
     }
     const done = scheduled

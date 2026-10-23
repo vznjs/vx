@@ -33,10 +33,12 @@ beforeEach(() => {
   root = mkdtempSync(path.join(tmpdir(), 'vx-shared-timings-'))
   git('init', '-q', '-b', 'main')
   cache = new Cache(path.join(root, '.vx', 'cache'), { read: true, write: true })
+  said = []
 })
 afterEach(() => {
   cache.close()
   rmSync(root, { recursive: true, force: true })
+  expect(said).toEqual([])
 })
 
 function git(...args: string[]): string {
@@ -133,6 +135,8 @@ function node(id: string): TaskNode {
   }
 }
 
+/** What an import said: a test that expects a warning reads it; the rest expect none. */
+let said: string[] = []
 const triedFile = (): string => path.join(root, '.vx', 'cache', 'schedule-history-base')
 
 /** One run of the plugin's hooks, as core calls them: setup, schedule, teardown. */
@@ -151,7 +155,11 @@ async function runPlugin(
   },
 ): Promise<ReadonlyMap<string, number> | undefined> {
   const plugin = scheduleHistoryPlugin({ resources: false })
-  const base = { workspaceRoot: root, cacheDir: path.join(root, '.vx', 'cache'), warn: () => {} }
+  const base = {
+    workspaceRoot: root,
+    cacheDir: path.join(root, '.vx', 'cache'),
+    warn: (m: string) => void said.push(m),
+  }
   await plugin.setup!({
     ...base,
     cache: shared,
@@ -242,6 +250,7 @@ describe('shared timings', () => {
       cache: shared,
       provider,
       ids: ['p#x', 'p#y'],
+      warn: (m: string) => said.push(m),
       triedFile: triedFile(),
       branch: true,
     })
@@ -277,6 +286,7 @@ describe('shared timings', () => {
       cache: shared,
       provider,
       ids: ['p#shard'],
+      warn: (m: string) => said.push(m),
       triedFile: triedFile(),
       branch: false,
     })
@@ -307,6 +317,7 @@ describe('shared timings', () => {
         cache: shared,
         provider,
         ids,
+        warn: (m: string) => said.push(m),
         triedFile: path.join(root, `tried-${ids.join('-')}`),
         branch: false,
       })
@@ -377,6 +388,7 @@ describe('shared timings', () => {
         cache: shared,
         provider,
         ids: ['p#x'],
+        warn: (m: string) => said.push(m),
         triedFile: triedFile(),
         branch: false,
       })
@@ -396,11 +408,65 @@ describe('shared timings', () => {
       cache: shared,
       provider,
       ids: ['p#x'],
+      warn: (m: string) => said.push(m),
       triedFile: triedFile(),
       branch: false,
     })
     expect((await provider.p50sFor(['p#x'])).get('p#x')).toBe(42)
     expect(shared.calls).toEqual(['hasMany', 'get'])
+  })
+
+  // M, 2026-10-23: a remote's failure is at least a warning, never a silent miss.
+  it('a remote that fails the read is said, and the run orders without it', async () => {
+    commit()
+    const shared = spyCache()
+    shared.hasMany = () => Promise.reject(new Error('HTTP 403: forbidden'))
+    const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'main')
+    const imported = await importTimings({
+      root,
+      defaultBranch: 'main',
+      cache: shared,
+      provider,
+      ids: ['p#x'],
+      warn: (m: string) => said.push(m),
+      triedFile: triedFile(),
+      branch: false,
+    })
+    expect(imported).toBe(false)
+    expect(said.splice(0)).toEqual([
+      '[vx] schedule-history: the shared timings could not be read: HTTP 403: forbidden',
+    ])
+  })
+
+  it('a blob it cannot read is said by commit and size', async () => {
+    const a = commit()
+    const shared = spyCache()
+    shared.store.set(key(a), new TextEncoder().encode('<html>proxy</html>'))
+    const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'main')
+    await importTimings({
+      root,
+      defaultBranch: 'main',
+      cache: shared,
+      provider,
+      ids: ['p#x'],
+      warn: (m: string) => said.push(m),
+      triedFile: triedFile(),
+      branch: false,
+    })
+    expect(said.splice(0)).toEqual([
+      `[vx] schedule-history: ${a.slice(0, 12)}'s shared timings are unreadable (18 B: past 1048576 B or not a timings blob)`,
+    ])
+  })
+
+  it('a write the remote refuses is said', async () => {
+    commit()
+    const shared = spyCache()
+    shared.put = () => Promise.reject(new Error('HTTP 507: quota exceeded'))
+    timed('main', 'p#x', 10)
+    await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#x'] })
+    expect(said.splice(0)).toEqual([
+      '[vx] schedule-history: the shared timings were not written: HTTP 507: quota exceeded',
+    ])
   })
 
   it('a remote that never answers costs at most the deadline, and the run orders without it', async () => {
@@ -413,6 +479,7 @@ describe('shared timings', () => {
       cache: spyCache({ hang: true }),
       provider,
       ids: ['p#x'],
+      warn: (m: string) => said.push(m),
       triedFile: triedFile(),
       branch: false,
     })
@@ -477,6 +544,7 @@ describe('shared timings', () => {
         cache: shared,
         provider,
         ids: ['p#x'],
+        warn: (m: string) => said.push(m),
         triedFile: triedFile(),
         branch: false,
       })
@@ -556,6 +624,7 @@ describe('shared timings', () => {
       cache: shared,
       provider,
       ids: ['p#x', 'p#y'],
+      warn: (m: string) => said.push(m),
       triedFile: triedFile(),
       branch: false,
     })
@@ -588,6 +657,7 @@ describe('shared timings', () => {
       cache: shared,
       provider,
       ids: ['p#x'],
+      warn: (m: string) => said.push(m),
       triedFile: triedFile(),
       branch: true,
     })
