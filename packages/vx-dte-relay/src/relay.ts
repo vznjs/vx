@@ -40,8 +40,11 @@ export interface RelayStore {
 /** A participant's websocket, as its host holds it. */
 export interface RelaySocket {
   send(text: string): void
-  close(): void
+  close(code?: number, reason?: string): void
 }
+
+/** The close code of a socket whose participant the relay lost, let go, or never knew. */
+export const GONE = 4404
 
 export interface Relay {
   fetch(req: Request): Promise<Response>
@@ -233,11 +236,19 @@ export function createRelay(opts: RelayOptions = {}): Relay {
   const drop = (run: Run, p: Participant, tell = true): void => {
     if (!run.byId.delete(p.id)) return
     const left = drain(run, p)
-    if (!tell) (run.removed ??= new Map()).set(p.id, left)
+    if (!tell) {
+      ;(run.removed ??= new Map()).set(p.id, left)
+      // What queued, its `refused` among it, before the socket closes.
+      if (left.length > 0) {
+        try {
+          p.socket?.send(JSON.stringify({ messages: left }))
+        } catch {}
+      }
+    }
     store?.delete(pAt(run, p.id))
     store?.delete(qAt(run, p.id))
-    // Its next request, over HTTP, learns it is gone.
-    p.socket?.close()
+    // Its next request learns it is gone; its socket, by the close code.
+    p.socket?.close(GONE, 'gone')
     if (p.role === 'orchestrator') {
       close(run)
       // A poll it held has no one to answer to.
@@ -491,6 +502,16 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     // an id cannot open it first.
     const key = await runKey(runId, token)
     let run = runs.get(key)
+    if (verb === 'socket') {
+      if (opts.upgrade === undefined) throw new HttpError(404, 'no such route')
+      if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
+        throw new HttpError(426, 'not a websocket')
+      }
+      const id = url.searchParams.get('id') ?? ''
+      // One the relay lost or let go learns it from the close code (GONE)
+      // its host gives the socket attach refuses: a failed upgrade says nothing.
+      if (run === undefined || run.closed || !run.byId.has(id)) return opts.upgrade(key, id, req)
+    }
     if (run?.closed === true) throw new HttpError(410, 'run closed')
     // As the orchestrator: in its CI job, and signed by the key it joined with.
     const as = async (run: Run, id: unknown, body: string): Promise<Participant> => {
@@ -507,11 +528,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
         return Response.json({ messages: told })
       }
       if (verb === 'poll') return poll(run, await as(run, id, ''), url, req.signal)
-      if (opts.upgrade === undefined) throw new HttpError(404, 'no such route')
-      if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
-        throw new HttpError(426, 'not a websocket')
-      }
-      return opts.upgrade(key, (await as(run, url.searchParams.get('id'), '')).id, req)
+      return opts.upgrade!(key, (await as(run, id, '')).id, req)
     }
     const [body, text] = await readBody(req)
     if (verb === 'join') {

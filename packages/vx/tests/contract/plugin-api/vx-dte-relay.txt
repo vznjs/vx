@@ -68,7 +68,7 @@ export interface RelayServer {
 == type RelaySocket (src/relay.ts)
 export interface RelaySocket {
   send(text: string): void
-  close(): void
+  close(code?: number, reason?: string): void
 }
 == type RelayStore (src/relay.ts)
 export interface RelayStore {

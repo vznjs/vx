@@ -2,7 +2,9 @@
 
 A relay carries messages between one run's orchestrator and its agents.
 CI runners take no inbound connection, so every participant dials out to
-the relay: over a websocket where the relay offers one, else by polling. Any server that speaks this protocol can stand in
+the relay: `join` over HTTP, then a websocket. vx-dte's client speaks
+only those two; the HTTP `send`, `poll`, `leave` and `remove` remain for
+other clients. Any server that speaks this protocol can stand in
 for `@vzn/vx-dte-relay`; `@vzn/vx-dte` knows only the relay's URL.
 
 The relay never reads a message body. What the orchestrator and agents say
@@ -73,8 +75,8 @@ for the participant (`426` without the upgrade). Frames are text:
   with `null` or `{ "status", "error" }` for each; `{ "n", "remove":
 "<agent>" }`, as `remove`; and `{ "n", "leave": true }`, as `leave`, whose
   answer is the socket's close. A frame that fails is answered
-  `{ "n", "status", "error" }`, any other frame `400`. With such a socket open, `join`, its upgrade and
-  the quiet check below are the only requests a participant makes. A frame is held to `send`'s 1 MiB
+  `{ "n", "status", "error" }`, any other frame `400`. With such a socket open, `join` and its upgrade
+  are the only requests a participant makes. A frame is held to `send`'s 1 MiB
   body limit whole; one over it is answered `413` by its `n` when the
   frame starts `{"n":`. vx-dte's client keeps a frame of several sends
   under 512 KiB;
@@ -84,28 +86,30 @@ for the participant (`426` without the upgrade). Frames are text:
   network that stops carrying a socket sends no close. A host may answer
   pings without the relay (Cloudflare's auto-response), so the client also
   treats a socket that leaves a frame unanswered for two heartbeats as
-  closed, and sends or leaves over HTTP. An HTTP request it gives three
+  closed, and sends again down a new one; an upgrade it gives three
   heartbeats.
 
-A socket's close does not lose its participant: it polls again, or opens
-another. vx-dte's client does both: it polls over HTTP and dials a new
-socket after a backoff with full jitter (up to 250 ms, doubling per failed
-dial to 30 s). The relay closes the socket of a participant that left or was
-lost, so its next request learns why, and a socket a push failed on: left
-open, its pings answered, it would carry nothing again while the messages
-queue for polls. vx-dte's client also polls once with `wait=0` when its
-socket brought no message for three heartbeats; anything queued there
-means the relay no longer pushes down that socket, and the client dials a
-new one.
+A socket's close does not lose its participant: it opens another, and
+the relay pushes what queued meanwhile. vx-dte's client dials again
+after a backoff with full jitter (up to 250 ms, doubling per failed dial
+to half a heartbeat), and gives the participant up after three
+heartbeats with no socket, as the relay does. The relay closes with code
+`4404` the socket of a participant that left or was lost, after pushing
+what queued for it (a removed agent's `refused`), and lets in a `socket`
+request of an `id` or run it does not know only to close it so: a failed
+upgrade tells a client nothing it can read. It closes a socket a push
+failed on without a code: left open, its pings answered, it would carry
+nothing again. vx-dte's client also dials anew when its socket brought
+no message for three heartbeats, which a relay that let go of a socket
+without closing it would otherwise never send down again.
 
 Every request naming an `id` counts as a heartbeat. A participant silent
 for three `heartbeatMs` is lost, as if it had left; one with an open
 socket, for twelve, so a host that bills its wake-ups sleeps between
 them. Polling with a `wait` below `heartbeatMs`, or a socket's `ping`,
 keeps a participant alive.
-vx-dte's client asks again through a `5xx` or a dropped connection (a
-host restarting the relay) until faults have lasted three `heartbeatMs`,
-or 15 s for `join`, before it knows a heartbeat.
+vx-dte's client asks `join` again through a `5xx` or a dropped
+connection (a host restarting the relay) for 15 s.
 
 ## Leases (planned, above the relay)
 

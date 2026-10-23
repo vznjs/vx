@@ -204,10 +204,9 @@ it('fails a task that fails on its agent, with its output', () => {
 }, 60_000)
 
 it('runs on an agent started by hand, with no adapter, under one name on both sides', async () => {
-  const { createRelay } = await import('@vzn/vx-dte-relay')
-  const relay = createRelay()
-  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
-  const url = `http://127.0.0.1:${server.port}`
+  const { serveRelay } = await import('@vzn/vx-dte-relay')
+  const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
+  const url = relay.url
   try {
     await writeFile(
       path.join(root, '.vx/workspace.mjs'),
@@ -248,18 +247,16 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)} })] }
     expect(own).toMatch(/agent +agent#1/)
     expect(own).toContain('✓ b#use')
   } finally {
-    relay.close()
-    await server.stop(true)
+    await relay.stop()
   }
 }, 60_000)
 
 // A CI step that started an agent before the run began (github()'s
 // adopt): the run counts it against its size's max and starts no other.
 it('runs on an agent the adapter adopted, and starts none of its own', async () => {
-  const { createRelay } = await import('@vzn/vx-dte-relay')
-  const relay = createRelay()
-  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
-  const url = `http://127.0.0.1:${server.port}`
+  const { serveRelay } = await import('@vzn/vx-dte-relay')
+  const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
+  const url = relay.url
   const spawns = path.join(root, 'spawns.log')
   try {
     await writeFile(
@@ -301,8 +298,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, agents: { small:
     expect(await agent.exited).toBe(0)
     expect(await Bun.file(spawns).exists()).toBe(false)
   } finally {
-    relay.close()
-    await server.stop(true)
+    await relay.stop()
   }
 }, 60_000)
 
