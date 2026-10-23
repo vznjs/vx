@@ -804,6 +804,18 @@ try { await install(${JSON.stringify(path.join(root, 'ws'))}, ['@vzn/vx']) } cat
     )
   })
 
+  it('names a registry 404 and the retry, not the exit code', async () => {
+    // v0.0.646's platform tarball answered 404 for minutes after publish.
+    expect(
+      await probe(
+        '',
+        '#!/bin/sh\necho " ERR_PNPM_FETCH_404  GET https://registry.npmjs.org/@vzn%2fvx-linux-x64/-/vx-linux-x64-0.0.646.tgz: Not Found - 404" >&2\nexit 1\n',
+      ),
+    ).toBe(
+      'installing vx failed: the npm registry does not serve @vzn/vx-linux-x64@0.0.646 yet (404), as a release can take minutes to reach it; run vx init again',
+    )
+  })
+
   it("shows the manager's own output only when it fails", async () => {
     await probe('', '#!/bin/sh\necho deprecated-noise\n')
     // Off a terminal nothing prints: the report's `ran` row names the command.
