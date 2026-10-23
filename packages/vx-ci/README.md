@@ -125,11 +125,12 @@ the sandbox nests), and proves bwrap starts a sandbox, failing the step
 if it cannot. On macOS the sandbox is built in and it does nothing.
 
 The packages it fetched stay in a directory the job's cache can keep:
-`~/.cache/vx/setup-debs` on Actions, `.vx-setup-debs` in the project on
-GitLab, or `--debs <dir>`. When that directory holds them, they install
+`~/.cache/vx/setup-debs` on Actions, `.vx-setup-debs` under
+`CI_PROJECT_DIR` on GitLab, or `--debs <dir>`. When that directory holds them, they install
 with no index fetch; when they do not install (an older image's), they
-are fetched again. On Actions the step's outputs are `fetched` and
-`key` (the runner image's), so a cache step saves only what it fetched:
+are fetched again. On Actions the step's outputs, written to
+`GITHUB_OUTPUT`, are `fetched` and `key` (the runner image's), so a
+cache step saves only what it fetched:
 
 ```yaml
 - uses: actions/cache/restore@v5
