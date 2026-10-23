@@ -279,6 +279,33 @@ it('on GitHub, admits by OIDC tokens of this repository whose audience is the ke
   }
 })
 
+it('says a token check GitHub’s keys could not answer, never a key mismatch', async () => {
+  process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] = 'http://127.0.0.1:1/token?v=1'
+  process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] = 'req-token'
+  process.env['GITHUB_REPOSITORY_ID'] = '11'
+  try {
+    const b64 = (v: unknown): string => Buffer.from(JSON.stringify(v)).toString('base64url')
+    const token = `${b64({ alg: 'RS256', kid: 'k1' })}.${b64({
+      iss: 'https://token.actions.githubusercontent.com',
+      aud: 'x',
+      exp: Date.now() / 1000 + 300,
+    })}.${'A'.repeat(342)}`
+    const proof = githubProof(async (url) => {
+      throw new Error(`${url}: 503`)
+    })
+    await expect(proof.check!(token, ['join', R3, 'n'])).rejects.toThrow(
+      'https://token.actions.githubusercontent.com/.well-known/openid-configuration: 503',
+    )
+  } finally {
+    for (const k of [
+      'ACTIONS_ID_TOKEN_REQUEST_URL',
+      'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+      'GITHUB_REPOSITORY_ID',
+    ])
+      delete process.env[k]
+  }
+})
+
 // PR #4146, 2026-10-23: one 503 from GitHub's token endpoint ended small#2
 // before it joined.
 it('asks GitHub for an OIDC token again after a 5xx, three tries at most, never after a 4xx', async () => {

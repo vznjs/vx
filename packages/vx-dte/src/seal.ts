@@ -96,15 +96,25 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
     },
     async check(token, parts) {
       const { createVerifier } = await import('@vzn/vx-dte-relay')
+      // A read of GitHub's keys that failed is no check: refused as one, a
+      // keys outage read "its key is not the run's" (2026-10-23).
+      let unread: unknown
       const verify = createVerifier({
         allow: [{ issuer: GITHUB }],
         audience: aud(parts),
         runClaims: { [GITHUB]: ['repository_id'] },
-        fetchJson: once,
+        fetchJson: (u) =>
+          once(u).catch((err: unknown) => {
+            unread = err
+            throw err
+          }),
       })
       return verify(token).then(
         (t) => t.run[0] === repo,
-        () => false,
+        () => {
+          if (unread !== undefined) throw unread
+          return false
+        },
       )
     },
     mismatch: 'run it in a job of this repository with id-token: write',
