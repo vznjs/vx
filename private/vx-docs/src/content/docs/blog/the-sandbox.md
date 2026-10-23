@@ -6,133 +6,120 @@ authors:
 tags:
   - correctness
   - sandbox
-excerpt: "A cache is only correct if the declared inputs are the complete set of files the task reads. Instead of inferring that set, vx lets a task run with the declared paths as the only workspace files it can touch, and fails the run on an undeclared one of its own."
+excerpt: "A cache is only correct if the declared inputs are every file the task reads. Instead of guessing that set, vx runs a task with the declared paths as the only workspace files it can touch, and fails the run on an undeclared one of its own."
 ---
 
-The [previous post](../explicit-over-magical/) argued that inputs must
-be declared, not inferred. Declared inputs have a weakness of their own:
-they can be wrong, and a task that reads a file its inputs never named
-produces a cache entry that silently depends on that file. Green check,
-stale hit, nothing downstream can tell.
+A task that reads a file it never declared makes a cache entry that
+quietly depends on that file. The check is green, the next hit is stale,
+and nothing downstream can tell.
 
-vx's answer is to let you *enforce* the declaration. A task with a
-`sandbox` block runs inside an OS-level sandbox where the paths you
-grant are the only ones it can read, write or reach.
+vx lets you enforce the declaration instead. Here a task reads a file
+its grants don't name:
 
 ```ts
-lint: {
+check: {
   exec: {
-    command: 'eslint .',
-    sandbox: { allow: { read: ['.'] } },
+    command: 'cat src/index.ts notes.md',
+    sandbox: { allow: { read: ['src'] } },
   },
-  inputs: { files: ['src/**', '.eslintrc'] }, cache: { outputs: { files: [] } },
+  inputs: { files: ['src/**'] },
+  cache: { outputs: { files: [] } },
 }
 ```
 
-## One allow-list, no inheritance
+```sh frame="terminal"
+$ vx run packages/a#check
+┌─ packages/a#check > $ cat src/index.ts notes.md
+export const a = (n: number) => n * 2
+export const extra = 1
+cat: notes.md: No such file or directory
+├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
 
-`sandbox: {}` is the baseline: reads nothing in the workspace, writes
-nothing but its own `TMPDIR`, no network of its own (a run's domain lists are one union
-every sandboxed task reaches; schema.md § `exec.sandbox`). Not even the project's own directory, which is why
-`read: ['.']` is the first line of nearly every real block. The read wall
-stands at the workspace root: `~/.cache` and `/etc` stay readable, and
-fold into no key. Credential stores such as `~/.ssh` and `~/.npmrc`
-stay denied unless a grant names them. On top of the baseline
-you grant exactly what the tool needs:
+openat(notes.md) = -1 ENOENT  [.../packages/a/notes.md]
 
-- `read` and `write` paths or globs, project-relative, absolute or
-  `~`-expanded. A write grant is readable too, so `tsc --incremental`
-  can re-read its own `.tsbuildinfo`.
-- `network`: `true`, or a list of domains with wildcards. Domain lists
-  are enforced by one filtering proxy per run, started with the union
-  of every task's lists, and every sandboxed task is handed it.
-- `localBinding` for a test that boots its own server, `unixSockets`,
-  `systemInfo`, `gitConfig` for the rare tool that must write
-  `.git/config`, and the macOS-specific `machLookup` and `pty`.
+fix: exec.sandbox.allow: { read: ['notes.md'] }
+and, if the output depends on them, inputs.files: ['notes.md']
 
-Two lists sit beside `allow`. `deny` (its one field is `network`) refuses domains for the
-whole run, checked before the allowlist, so a domain in both is
-denied. `ignore` keeps a denial out of the report without granting it.
-
-There is no workspace-wide default and no inheritance between tasks.
-Network aside, those three lists are the whole permission surface of
-that one task.
-
-## Why it derives nothing from `cache`
-
-The obvious shortcut would be to grant the `inputs` globs as
-reads. vx did that once and removed it. `inputs` says what
-*invalidates* a task; `sandbox.allow` says what it may *touch*. When
-one was derived from the other, a path added for caching silently
-widened the sandbox, and a path the task genuinely needed had to be
-laundered through the cache key to become readable. Two declarations,
-and the violation is judged against the grants alone: a sandboxed task
-that reads a project file its grants never named fails on the denied
-read. `read: ['.']` grants the whole project, inputs or not; grant
-reads no wider than `inputs` (`read: ['src', '.eslintrc']`) and
-that denial is exactly the under-declaration you wanted to find.
-
-## What a violation looks like
-
-An undeclared path *inside* the project is a finding: the run fails
-and the report names the path. An undeclared path *outside* the
-project is the wall, denied silently, because a project reading its
-neighbour is not a mis-declaration to fix but a boundary being held.
-
-The report ends with the line that would have allowed each denial,
-ready to paste:
-
-```
-fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }
+└─ packages/a#check ── (109ms) failed (exit 1, 1 sandbox violation)
 ```
 
-A write grants the directory it landed in, unless the task reads that
-directory as an input: then it grants the file alone, so a fix never
-lets a task write its own inputs. Agents get the same grants as
-`sandboxFix` in `vx last --format json`. Because an agent may apply
-them as given, a credential path (`~/.ssh`, `~/.aws`, `~/.npmrc`, a
-`.env` file and the like) never goes in the line. It is listed apart,
-to grant only on purpose. A cached task's read that no input glob
-matches is named again as an `inputs.files` entry: the grant lets
-the task read the file, and only an input makes a change to it miss the
-cache.
+The file does not exist inside the sandbox. The run fails, names the
+path, and prints the line that fixes it. A failed task is never cached,
+so the violation cannot poison the cache.
 
-A failed task is never cached, so a violation cannot poison the cache.
-When a tool is legitimately noisy (a probe for a file that may not
-exist), `ignore` silences the specific pattern without granting it.
+## What a task may touch
+
+`sandbox: {}` reads nothing in the workspace, writes only its own
+`TMPDIR`, and has no network. Not even the project's own directory,
+which is why most real blocks start with
+`sandbox: { allow: { read: ['.'] } }`. Outside the workspace, `~/.cache`
+and `/etc` stay readable; credential stores like `~/.ssh` and `~/.npmrc`
+stay denied unless a grant names them.
+
+`allow` holds every grant:
+
+| Grant          | What it opens                                                     |
+| -------------- | ----------------------------------------------------------------- |
+| `read`         | paths or globs: project-relative, absolute or `~`                 |
+| `write`        | the same; a write grant is readable too (`.tsbuildinfo`)          |
+| `network`      | `true`, or domains with wildcards, through one proxy per run      |
+| `localBinding` | ports a test server listens on                                    |
+| `unixSockets`  | unix sockets                                                      |
+| `systemInfo`   | named system values                                               |
+| `gitConfig`    | writing `.git/config`, for this task only                         |
+| `machLookup`   | macOS services                                                    |
+| `pty`          | a terminal, on macOS                                              |
+
+Beside it, `deny` (one field, `network`) refuses domains for the whole
+run before any allow list, and `ignore` hides a known-noisy denial
+without granting it. No workspace default, no inheritance: that is the
+task's whole permission surface.
+
+## Grants are not inputs
+
+`inputs` says what *invalidates* a task. `sandbox.allow` says what it
+may *touch*. vx derives neither from the other, so the violation is
+judged against the grants alone. `read: ['.']` grants the whole
+project. Grant no wider than your inputs (`read: ['src', '.eslintrc']`)
+and every denial is an under-declared input you wanted to find.
+
+A denial *inside* the project fails the task. A denial *outside* it is
+the project wall, held silently. The `fix:` line never lists a
+credential path (`~/.ssh`, `~/.aws`, a `.env` file); those are listed
+apart, to grant only on purpose. Agents get the same grants as
+`sandboxFix` in `vx last --format json`.
+
+## What it costs
+
+One task, `cat` of two files, the whole `vx run --force` timed from
+outside:
+
+```
+no sandbox                         min 130.7 ms · median 152.5 ms   (20 runs)
+sandboxed (bwrap + strace report)  min 377.7 ms · median 410.2 ms   (20 runs)
+```
+
+Linux x64, 4 cores, as root in a container, vx at `0be0367`,
+2026-10-23. Turn it on where the inputs matter most: in CI, and before a
+task goes to [remote execution](../remote-execution/), where a worker
+sees only what was declared.
 
 ## How it is built
 
-- **Linux** needs three binaries on `PATH`: `bwrap` for the
-  namespaces, `socat` for the network bridge, and ripgrep (`rg`) to
-  expand the runtime's mandatory deny globs. The child lives in its own
-  mount and network namespaces; an undeclared path structurally does
-  not exist, so the tool sees `ENOENT`. With `strace` present, that
-  becomes the same structured report macOS produces. Each `localBinding`
-  port is bridged to the host's loopback over a unix socket so a
-  downstream task or your browser can reach the server.
-- **macOS** uses the system sandbox (seatbelt) plus a log monitor for
-  the report. Enforcement is the OS's; the unified log feeding the
-  report is lossy under load, so a violation can go unreported while
-  still having been denied.
+- **Linux** needs `bwrap` (namespaces), `socat` (the network bridge)
+  and `rg` (ripgrep, to expand the deny globs). An undeclared path does
+  not exist in the task's mount namespace, so the tool sees `ENOENT`.
+  With `strace` present, vx turns that into the report above.
+- **macOS** uses seatbelt plus a log monitor. The OS enforces every
+  denial, but its log can drop a report under load.
 - **Windows** is WSL, where the Linux sandbox applies.
 
-The two limits worth knowing: root inside a container usually cannot
-create the nested user namespace the Linux runtime needs (run as an
-unprivileged user, or accept `weakerWhenNested`), and seatbelt cannot
-nest, so a task that itself sandboxes cannot be sandboxed on macOS.
-In vx's own repository exactly three tasks have no sandbox block: the
-part of the core suite a sandbox cannot host, and the two
-`@vzn/vx-reapi` suites that dial service containers on the host's
-loopback.
-Everything else, lint, format, docs build, every other package's
-tests, runs inside one.
+Root in a container often cannot create the nested user namespace (run
+unprivileged, or accept `weakerWhenNested`), and seatbelt cannot nest.
 
-## Where it fits
+vx's own repository runs 132 of its 148 command tasks sandboxed. The 16
+others are suites a sandbox cannot host, services in Docker, and checks
+that drive the sandbox themselves.
 
-The sandbox is opt-in per task. Use it on the tasks whose inputs you
-are least sure of, in CI where hermeticity is worth the setup, and
-before marking a task eligible for [remote
-execution](../remote-execution/), where a worker will see exactly the
-declared inputs and nothing else. The guide is
-[Sandboxing tasks](../../guides/sandboxing/).
+Guide: [Sandboxing tasks](../../guides/sandboxing/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

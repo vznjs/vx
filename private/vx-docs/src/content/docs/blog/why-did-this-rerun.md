@@ -6,38 +6,32 @@ authors:
 tags:
   - dx
   - caching
-excerpt: "You changed one file and expected one rebuild; you got twelve. Most tools say 'miss' and stop. vx keeps the per-component fingerprints behind every key, so `vx why` names the component that moved."
+excerpt: "You changed one file and expected one rebuild; you got twelve. vx keeps the parts behind every cache key, so `vx why` names the one that moved."
 ---
 
-A cache key is one opaque hash. When it changes, knowing *that* it
-changed is nearly useless. You need to know which of its parts moved.
-Most tools do not keep that information; they compute the hash, compare
-it, and print `miss`. The afternoon you then spend bisecting your own
-inputs is the real cost of the cache.
+A cache key is one hash. When it changes, you need to know which part
+moved. vx stores every part next to every entry, so it can tell you:
 
-vx records the per-component input fingerprint alongside every cache
-entry. That makes the question answerable from the terminal:
+```sh frame="terminal"
+$ vx why packages/b#build
+packages/b#build — run 01a16ac6-3270-70fe-aad8-7c5385ba6c66
+  this run   2026-10-23T21:58:56.386Z · success · executed · key c3ee933a220000aa
+  previous   2026-10-23T21:58:05.369Z · cache-hit · up-to-date · key e96eab4891dec23d
+  verdict    cache key changed: file packages/b/src/index.ts
 
-```console
-$ vx why app#build
-app#build — run 019f5a02-…
-  this run   2026-07-13T05:39:20.590Z · success · executed · key f7ee661520…
-  previous   2026-07-13T05:37:29.550Z · success · key 8b2e9bb2e8…
-  verdict    cache key changed: file packages/app/src/input.txt
-
-  what changed (1 component, 41 unchanged):
-    changed file  packages/app/src/input.txt  3fe2a1b0… → 91c47d22…
+  what changed (1 component, 3 unchanged):
+    changed file  packages/b/src/index.ts  8e079521fa79cce256e6f53a5428ae3a347fc0de → 9b735bd1261c512e4b0bf2f2546c2b5e4e14d075
 
   what to do:
     file  an edit re-runs by design; a file the task does not read belongs out of inputs.files
 ```
 
-One component moved and it is named. Forty-one did not.
+One part moved, and it is named, with the blob id before and after.
 
-When the component that moved is `upstream`, a dependency's key, that
-row only carries the change. `vx why` follows each dependency that
-moved in the same run down to the task whose own inputs moved, and
-prints the chain:
+## Follow it upstream
+
+When the part that moved is `upstream`, a dependency's key, `vx why`
+follows it down to the task whose own inputs moved:
 
 ```
   root cause:
@@ -46,35 +40,33 @@ prints the chain:
 
 ## What it reads
 
-`vx why` is read-only over the local `cache.db`. It evaluates no
-project config (the workspace file, once, for the cache directory,
-unless `--cache-dir` names it), re-hashes nothing, runs nothing. It
-compares the task's latest recorded run with the one before it (or a
-run you pin with `--run`) and diffs the stored components, one row per
-kind: `file` (path and blob id), `linked` (what a symlinked `file` points
-to), `env` (a declared variable), `runtime`
-and `ws-runtime` (a declared command's output, project- or
-workspace-rooted), `forward` (the argv forwarded after `--`), `config`
-(the evaluated task config), `upstream` (a dependency's input key, by
-task id), `plugin` (a plugin's material, by name), `platform` (the
-platform a task naming `exec.platforms` ran on) and `format` (the key
-format, which moves only with a vx upgrade). Core keys no package file,
-so a lockfile plugin's part shows as `plugin`. When
-`@vzn/vx-lockfile` is declared, a dependency bump shows up as
-`plugin @vzn/vx-lockfile/pnpm` for exactly the projects it reaches.
+`vx why` only reads the local `cache.db`. It evaluates no project
+config, hashes nothing and runs nothing. It diffs the task's last run
+against the one before (or `--run <id>`), one row per kind of part:
 
-Because it only reads the database, it works after the fact and on
-another machine: a CI job that copied `.vx/cache` out can be asked why
-it rebuilt, tomorrow, from a laptop. By default the entries `vx why`
-compares live in the shared store, `~/.vx/<id>/cache`, not in
-`.vx/cache`. A CI job that names a `cache.dir` keeps both there, and
-that directory is the one to copy.
+| Kind         | What it is                                                        |
+| ------------ | ----------------------------------------------------------------- |
+| `file`       | a path and its blob id                                            |
+| `linked`     | what a symlinked `file` points to                                 |
+| `env`        | a variable from `inputs.env`                                      |
+| `runtime`    | a declared command's output, run in the project                   |
+| `ws-runtime` | the same, run at the workspace root                               |
+| `forward`    | the argv forwarded after `--`                                     |
+| `config`     | the evaluated task config                                         |
+| `upstream`   | a dependency's input key, by task id                              |
+| `plugin`     | a plugin's material, by name (`plugin @vzn/vx-lockfile/pnpm`)     |
+| `platform`   | the platform, for a task that names `exec.platforms`              |
+| `format`     | the key format; moves only with a vx upgrade                      |
 
-## Eleven endings for an unchanged key
+Because it only reads a database, it works later and elsewhere. A CI job
+that keeps its `cache.dir` can be asked tomorrow, from a laptop, why it
+rebuilt. Without `cache.dir`, entries live in `~/.vx/<id>/cache`.
 
-The interesting cases are the ones where the key did *not* change, and
-`vx why` distinguishes them rather than calling all eleven a re-run. The
-verdict line is one of these fifteen sentences, quoted from the code:
+## When the key did not change
+
+Most "why did it re-run" questions end with an unchanged key.
+`vx why` says which case it was. Each verdict below is quoted from the
+code:
 
 | vx says                                                                                                    | What happened                                                    |
 | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
@@ -95,21 +87,18 @@ verdict line is one of these fifteen sentences, quoted from the code:
 | this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only    | not a cache decision at all                                      |
 | this task recorded no cache key (skipped, or a persistent task) — nothing to compare | there is no key to compare |
 
-The "re-executed on the same key" row is the one to read
-twice: vx could not name the cause. An undeclared input does not end
-up there. A file, env var or tool version the key cannot see changes
-the output but not the key, so the task hits and replays stale bytes.
-The way to make that impossible is the [sandbox](../the-sandbox/),
-which turns the input declaration into a boundary the task cannot
-cross.
+Read "vx cannot name the cause" twice. An undeclared input never shows
+up there: a file or env var the key can't see changes the output but
+not the key, so the task hits and replays stale bytes. The
+[sandbox](../the-sandbox/) makes that impossible by turning the inputs
+you declare into a wall the task can't cross.
 
 ## The same answer for machines
 
-`--format json` emits one object: `{ taskId, runId, why, diff, roots }`.
-The [agent skill](../../guides/agents/) teaches a coding agent the
-command, so "why is CI rebuilding everything" is a question an agent
-can answer without reading the source of the runner.
+`vx why --format json` prints one object:
+`{ taskId, runId, why, diff, roots }`. The
+[agent skill](../../guides/agents/) teaches a coding agent the command,
+so "why is CI rebuilding everything" is a question it can answer.
 
-A cache is a claim that the work has been done before. `vx why` is how
-the claim is audited. The guide is
-[Configure › Why did it re-run?](../../guides/configure/#why-did-it-re-run).
+Guide: [Configure › Why did it re-run?](../../guides/configure/#why-did-it-re-run).
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
