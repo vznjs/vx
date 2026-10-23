@@ -19,10 +19,9 @@ server that speaks [PROTOCOL.md](./PROTOCOL.md) can take its place.
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay)
 
 The button copies this directory into a new repository of yours and
-deploys it. It asks for one secret, `ALLOW`: who may take part, space
-separated, each `issuer:owner/repo:workflow`. A secret, not a var, since
-a deploy replaces vars with `wrangler.jsonc`'s and leaves secrets. A deploy
-to a Worker without `ALLOW` fails and leaves the live one.
+deploys it. It asks for one var, `ALLOW`: who may take part, space
+separated, each `issuer:owner/repo:workflow`. It is not a secret: keep it
+in your copy's `wrangler.jsonc`, since each deploy sets vars from that file.
 `https://token.actions.githubusercontent.com:vznjs/vx:ci.yml` admits the
 jobs of `.github/workflows/ci.yml` in `vznjs/vx`;
 `https://gitlab.com:group/project:.gitlab-ci.yml` a GitLab project's.
@@ -38,11 +37,9 @@ Or deploy from this directory with Cloudflare's
 bun install
 bunx wrangler login
 bunx wrangler deploy
-bunx wrangler secret put ALLOW
 ```
 
-`secret put` asks for the value. Later deploys keep it; change it with
-`secret put` again, or in the Worker's settings in the dashboard.
+Set `ALLOW` in `wrangler.jsonc`'s `vars` first.
 
 `src/worker.ts` is the same relay as the one on Bun. Each run is one
 Durable Object, so its mailboxes live in one place. Participants hold

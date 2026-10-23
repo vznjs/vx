@@ -29,6 +29,7 @@ the browser, not a consumer of its API, and
 | `packages/vx-dte-relay`        | `@vzn/vx-dte-relay` — the reference relay of `@vzn/vx-dte`: per-run mailboxes for CI agents behind CI OIDC tokens (`PROTOCOL.md`); private until it is on npm                    |
 | `private/vx-bench`             | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                            |
 | `private/vx-plugin-examples`   | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                      |
+| `private/vx-dte-relay-deploy`  | vznjs's own relay deploy: `@vzn/vx-dte-relay`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                               |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the public API (47 runtime symbols, a deliberate

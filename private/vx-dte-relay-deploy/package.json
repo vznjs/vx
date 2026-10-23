@@ -1,0 +1,21 @@
+{
+  "name": "@vzn/vx-dte-relay-deploy",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "vznjs's own relay deploy: @vzn/vx-dte-relay's worker under this repo's Cloudflare settings, built by Workers Builds.",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4"
+  },
+  "//": [
+    "@vzn/vx-dte-relay: the worker this deploys, unchanged.",
+    "wrangler: Workers Builds deploys src/worker.ts with it by wrangler.jsonc."
+  ],
+  "dependencies": {
+    "@vzn/vx-dte-relay": "workspace:*"
+  },
+  "devDependencies": {
+    "wrangler": "4.149.0"
+  }
+}
