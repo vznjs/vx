@@ -97,7 +97,7 @@ function printableEndpoint(endpoint: unknown): string | undefined {
 
 /**
  * What makes two failures "the same way": the error's `code` when it
- * carries one (a gRPC status, an errno, Bun's `ConnectionRefused`), because
+ * carries one (a gRPC status, an errno, Bun's `ECONNREFUSED`), because
  * gRPC writes the elapsed time into its message and no two deadline messages
  * match; else the message with the artifact's hash taken out, so a 500 on
  * one hash and a 500 on the next are one class. The operation is not part of
