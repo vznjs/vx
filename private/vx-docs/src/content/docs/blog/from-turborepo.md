@@ -46,8 +46,7 @@ $ vx run build test --all
 Five tasks mapped, nothing to fix by hand. vx-migrate at `69617eb`,
 2026-10-23. What it wrote for `web`:
 
-```ts
-// packages/web/vx.config.ts
+```ts title="packages/web/vx.config.ts"
 import type { ProjectConfig } from '@vzn/vx/config'
 
 export default {

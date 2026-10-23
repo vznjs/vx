@@ -35,8 +35,7 @@ It read the graph from the installed Nx (24.0.1), not from `nx.json`
 alone. `targetDefaults` came along as each task's `dependsOn`, inputs
 and outputs:
 
-```ts
-// apps/web/vx.config.ts
+```ts title="apps/web/vx.config.ts"
 import type { ProjectConfig } from '@vzn/vx/config'
 
 export default {
