@@ -64,7 +64,7 @@ await pb.load('build/bazel/remote/execution/v2/remote_execution.proto')
 
 describe('the Bun floor', () => {
   it('a patch release of the floor passes', () => {
-    expect(() => assertBunSupportsChunking('1.4.0')).not.toThrow()
+    expect(() => assertBunSupportsChunking('1.4.4')).not.toThrow()
   })
 })
 

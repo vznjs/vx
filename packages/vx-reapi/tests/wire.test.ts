@@ -23,7 +23,7 @@ describe('CHUNK_BYTES', () => {
 
   it('stays at or below the smallest threshold the supported Bun range allows', () => {
     // Bun 1.4.0 hangs above ~192-256 KB per message; 1.3.x hangs above ~64 KB.
-    // MIN_BUN is 1.4.0 so a larger `chunkBytes` is inside the window. If someone
+    // MIN_BUN is 1.4.4 so a larger `chunkBytes` is inside the window. If someone
     // lowers MIN_BUN back to 1.3, this fails and points at the real conflict
     // rather than letting uploads wedge in the field.
     const [maj, min] = MIN_BUN
@@ -36,16 +36,17 @@ describe('assertBunSupportsChunking', () => {
   it('refuses a Bun older than MIN_BUN, naming the fix', () => {
     // A hang gives a user nothing to act on, so the version check has to be
     // the thing that speaks.
-    expect(() => assertBunSupportsChunking('1.3.14')).toThrow(/needs Bun >= 1\.4\.0/)
+    expect(() => assertBunSupportsChunking('1.3.14')).toThrow(/needs Bun >= 1\.4\.4/)
     expect(() => assertBunSupportsChunking('1.3.14')).toThrow(/bun upgrade/)
     expect(() => assertBunSupportsChunking('0.9.9')).toThrow(/needs Bun/)
+    expect(() => assertBunSupportsChunking('1.4.3')).toThrow(/needs Bun/)
   })
 
   it('accepts MIN_BUN exactly and anything newer', () => {
     // The false-positive control: a refusal that also refuses valid versions
     // is just a broken plugin.
-    expect(() => assertBunSupportsChunking('1.4.0')).not.toThrow()
-    expect(() => assertBunSupportsChunking('1.4.1')).not.toThrow()
+    expect(() => assertBunSupportsChunking('1.4.4')).not.toThrow()
+    expect(() => assertBunSupportsChunking('1.4.5')).not.toThrow()
     expect(() => assertBunSupportsChunking('1.10.0')).not.toThrow()
     expect(() => assertBunSupportsChunking('2.0.0')).not.toThrow()
   })
