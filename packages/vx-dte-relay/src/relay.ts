@@ -219,12 +219,17 @@ export function createRelay(opts: RelayOptions): Relay {
       }
     }
     if (p.queue.length === 0) return
+    const bytes = p.bytes
     const messages = drain(run, p)
     try {
       socket.send(JSON.stringify({ messages }))
     } catch {
       unplug(p)
-      for (const m of messages) deliver(run, p, m)
+      // Queued again as they were: delivered anew, their bytes were lost and
+      // past the cap (the relay's own notices go over it) a 429 threw from here.
+      p.queue = messages
+      p.bytes = bytes
+      store?.put(qAt(run, p.id), true)
     }
   }
 
