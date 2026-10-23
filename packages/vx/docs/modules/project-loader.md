@@ -267,8 +267,9 @@ is produced), an input no loader hook saw (JSON), a file this process had alread
 the core alias (`cli/core-alias.ts`, synchronous for that reason);
 without it `@vzn/vx` resolves only for `import` and the source loads.
 
-Only a run's first workspace load uses it (not a `vx watch` re-load),
-and only once `.vx/cache` exists, so a reading verb on a fresh
+Every workspace load asks for it, so a repeat load in one process (the
+run after the CLI's selection pass) gets the same required module and
+plugin instances. It is built only once `.vx/cache` exists, so a reading verb on a fresh
 workspace writes nothing (item 900). A cache clear removes `compiled/`.
 `.vx/cache` is trusted as the rest of the cache is. Pinned by
 `tests/config-bytecode.test.ts`.

@@ -143,7 +143,7 @@ async function loadDefaultExport(
   configPath: string,
   kind: string,
   bytes: Uint8Array,
-  /** The workspace root, where a first load may run the config's bytecode bundle (config-bytecode.ts). */
+  /** The workspace root, where the load may run the config's bytecode bundle (config-bytecode.ts). */
   compiledRoot?: string,
 ): Promise<unknown> {
   refuseUnprovidedImports(bytes, configPath, kind)
@@ -211,7 +211,7 @@ async function loadDefaultExport(
   }
   const mod = defaultOf(ns, kind, configPath)
   if (compiledRoot !== undefined && loaded !== undefined) {
-    await buildCompiled(compiledRoot, configPath, bytes, loaded)
+    await buildCompiled(compiledRoot, configPath, bytes, loaded, ns)
   }
   return mod
 }
@@ -688,12 +688,14 @@ interface BuiltinSnapshot {
  */
 const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'Archive',
+  'BuildMetafile',
   'BunFile',
   'CryptoHasher',
   'Glob',
   'JSONC',
   'Subprocess',
   'Transpiler',
+  'build',
   'color',
   'deepEquals',
   'env',
@@ -703,9 +705,11 @@ const BUN_MEMBERS_VX_READS: readonly PropertyKey[] = [
   'inspect',
   'main',
   'nanoseconds',
+  'pathToFileURL',
   'plugin',
   'randomUUIDv7',
   'resolveSync',
+  'revision',
   'secrets',
   'serve',
   'sleep',
@@ -1029,7 +1033,10 @@ export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig
         configPath,
         'Workspace',
         bytes,
-        since === undefined ? path.resolve(root) : undefined,
+        // Every load, not only the first: a repeat load (the run after the
+        // CLI's selection pass) must get the same plugin instances, and a
+        // required bundle is the cached module.
+        path.resolve(root),
       )) as WorkspaceConfig
     } finally {
       const changed = [
