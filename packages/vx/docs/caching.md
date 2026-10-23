@@ -35,7 +35,7 @@ opt _out_ via `cache: false`. We chose the strictest of the three.
 
 Core keys no package file: no `package.json`, lockfile or install
 setting is a part of its own. A `package.json` keys a task as an input
-it lists (step 10), a lockfile or install setting as a plugin's key
+it lists (step 11), a lockfile or install setting as a plugin's key
 material (step 9); `@vzn/vx-lockfile`'s `bun()`, `pnpm()`, `npm()` and
 `yarn()` add both. Without a lockfile plugin an install moves no key, so
 a JS workspace declares one (`vx init` and `@vzn/vx-migrate` write it).
@@ -149,7 +149,11 @@ over (in order):
    [`modules/fingerprint-watch.md`](./modules/fingerprint-watch.md)).
    With nothing claimed, no root file is read or watched.
 
-10. **Input files' content hashes** — `inputs.files` resolved to
+10. **Task platform** — the platform core placed a task naming
+    `exec.platforms` on (`platform:linux-x64`), folded ONLY for such a
+    task, so each platform it runs on keeps its own entry and a task
+    naming none keys as before. `vx why` names it as `platform`.
+11. **Input files' content hashes** — `inputs.files` resolved to
     a concrete list of project-relative paths (gitignore-aware,
     declared-outputs-excluded, nested-projects-excluded), each file
     contributing its **git blob OID** (v20). On a clean tree the OID
@@ -781,7 +785,7 @@ edit, was filed under the key and restored over the original (item
 one status line names the file (``[vx] app#format: `packages/app/a.ts`
 changed after its key was taken — …``), and the run forgets what it
 knew about the project, as after an uncached task (§ Cache key
-derivation, step 10). This covers a formatter rewriting its own input
+derivation, step 11). This covers a formatter rewriting its own input
 (turborepo#10111) and a user's edit mid-run (turborepo#1146). A task
 left remote (`--cache-download=none`) is held to the same checks: a moved
 key still lets a local consumer fetch its outputs, but the fetch saves
@@ -1001,12 +1005,12 @@ A task's cache becomes invalid when any of these change:
 
 | Trigger                                                                                                                                  | Mechanism                                                                                                                                                                                               |
 | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Edit a file in the task's `inputs.files` set                                                                                             | step 10 of key derivation                                                                                                                                                                               |
-| Edit a file in the task's `inputs.workspaceFiles` set (root-anchored; may live in ANY project's dir — the documented boundary exception) | step 10 — resolved workspace files join the same input-file list                                                                                                                                        |
+| Edit a file in the task's `inputs.files` set                                                                                             | step 11 of key derivation                                                                                                                                                                               |
+| Edit a file in the task's `inputs.workspaceFiles` set (root-anchored; may live in ANY project's dir — the documented boundary exception) | step 11 — resolved workspace files join the same input-file list                                                                                                                                        |
 | Any package manager updates a lockfile (`pnpm`, `npm`, `yarn`, `bun`)                                                                    | step 9 — the `key` material of the plugin that claims it (`@vzn/vx-lockfile`: only the projects whose dependency closure moved); **NOT a trigger** with no such plugin, since core keys no package file |
 | Edit an install setting (`.npmrc`, `bunfig.toml`, `pnpm-workspace.yaml`, `.yarnrc.yml`)                                                  | step 9 — the claiming lockfile plugin folds it whole into every task; **NOT a trigger** without one                                                                                                     |
-| Edit `package.json`'s `workspaces` field                                                                                                 | membership: a project that joins or leaves changes which projects exist and which nested dirs its parent's globs exclude (step 10)                                                                      |
-| Edit the project's `package.json` (dep / version / scripts change)                                                                       | step 10 — an input file of every cached task when `@vzn/vx-lockfile` is declared (it adds `package.json` to `inputs.files`), or when a task lists it; **NOT a trigger** otherwise                       |
+| Edit `package.json`'s `workspaces` field                                                                                                 | membership: a project that joins or leaves changes which projects exist and which nested dirs its parent's globs exclude (step 11)                                                                      |
+| Edit the project's `package.json` (dep / version / scripts change)                                                                       | step 11 — an input file of every cached task when `@vzn/vx-lockfile` is declared (it adds `package.json` to `inputs.files`), or when a task lists it; **NOT a trigger** otherwise                       |
 | Edit the task's `vx.config.ts`                                                                                                           | step 3 (task config hash)                                                                                                                                                                               |
 | Edit a config file that the task config imports                                                                                          | step 3 (configHash sees the resolved object after Bun evaluates imports)                                                                                                                                |
 | Change CLI `forwardArgs` (after `--`)                                                                                                    | step 4                                                                                                                                                                                                  |
@@ -1700,7 +1704,7 @@ CREATE INDEX runs_run_id     ON runs(run_id);
 
 -- The file-hash memo: a content hash per input file that git could not
 -- answer (untracked or dirty), keyed by the stat identity that proves
--- the bytes unchanged. Machine-local; § Cache key derivation step 10.
+-- the bytes unchanged. Machine-local; § Cache key derivation step 11.
 -- A prune (`vx cache clean` with a bound) drops rows unwritten for
 -- 30 days (a memo miss is the whole cost of a dropped row; item 1082).
 CREATE TABLE file_hashes (

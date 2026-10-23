@@ -56,7 +56,8 @@ to), `env` (a declared variable), `runtime`
 and `ws-runtime` (a declared command's output, project- or
 workspace-rooted), `forward` (the argv forwarded after `--`), `config`
 (the evaluated task config), `upstream` (a dependency's input key, by
-task id), `plugin` (a plugin's material, by name) and `format` (the key
+task id), `plugin` (a plugin's material, by name), `platform` (the
+platform a task naming `exec.platforms` ran on) and `format` (the key
 format, which moves only with a vx upgrade). Core keys no package file,
 so a lockfile plugin's part shows as `plugin`. When
 `@vzn/vx-lockfile` is declared, a dependency bump shows up as

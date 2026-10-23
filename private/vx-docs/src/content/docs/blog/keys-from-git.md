@@ -23,9 +23,9 @@ flowchart LR
   style K stroke:#c6f84e,stroke-width:2px
 ```
 
-## Ten parts, one chain
+## Eleven parts, one chain
 
-A vx cache key is an xxh3 hash, seed-chained across ten parts:
+A vx cache key is an xxh3 hash, seed-chained across eleven parts:
 each part folds into the running digest under its own label
 (`task:`, `config:`, `upstream:`, `plugin:`, `inputs:`, …), and
 every list of pairs folds its length first and delimits name from
@@ -50,7 +50,9 @@ as [Caching](../../caching/) numbers them:
    after the upstream keys and before the input files, and only when a
    plugin returned any. A lockfile plugin (`@vzn/vx-lockfile`) folds
    each project's dependency closure here.
-10. The content hashes of every file `inputs.files` resolves to:
+10. The platform the task runs on, only for a task that names
+    `exec.platforms`, so each platform keeps its own entry.
+11. The content hashes of every file `inputs.files` resolves to:
     each file's git blob id, with its mode when it is an executable or
     a symlink, and for a symlink what it points to: the file's content,
     or every file under a linked directory. A lockfile plugin also lists the project's
@@ -137,6 +139,6 @@ root (a shared `tsconfig.base.json`) and says so in its name.
   produced.
 - `.vx/projects.lock.json`, so that `vx lock` itself does not re-key the world.
 
-When a key does change and you want to know which of the ten parts
+When a key does change and you want to know which of the eleven parts
 moved, that is [`vx why`](../why-did-this-rerun/). The full derivation
 with every rule and its history is in [Caching](../../caching/).

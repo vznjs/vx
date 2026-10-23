@@ -461,8 +461,8 @@ describe('the why pages name every component kind the key records', () => {
     'utf8',
   )
   const kinds = [...new Set([...src.matchAll(/kind: '([\w-]+)'/g)].map((m) => m[1]!))]
-  it('key-fold.ts records ten kinds', () => {
-    expect(kinds.length).toBe(10)
+  it('key-fold.ts records eleven kinds', () => {
+    expect(kinds.length).toBe(11)
   })
   for (const [label, file] of [
     ['the why-did-this-rerun post', path.join(DOCS, 'blog', 'why-did-this-rerun.md')],
@@ -614,9 +614,9 @@ describe('the keys-from-git post counts the parts the key folds', () => {
     src.slice(src.indexOf('let h = foldHead('))
   const labels = [...new Set([...key.matchAll(/h = xxh3\(`([a-z-]+):/g)].map((m) => m[1]!))]
   const page = readFileSync(path.join(DOCS, 'blog', 'keys-from-git.md'), 'utf8')
-  it('"ten parts" is CACHE_VERSION plus every labelled fold', () => {
-    expect(labels.length + 1).toBe(10)
-    expect(page).toContain('seed-chained across ten parts')
+  it('"eleven parts" is CACHE_VERSION plus every labelled fold', () => {
+    expect(labels.length + 1).toBe(11)
+    expect(page).toContain('seed-chained across eleven parts')
     // Anchored on the paragraph, not on the number it cites: the old
     // anchor was the literal `Part 11`, which is the cross-reference item
     // 397 had to move when it fixed the 11/12 inversion — a pin that
@@ -625,7 +625,7 @@ describe('the keys-from-git post counts the parts the key folds', () => {
       /\n1\. The key-derivation sentinel([\s\S]*?)\n\nPart \d+ is where the money is/.exec(page)
     expect(list).not.toBeNull()
     const items = [...list![1]!.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]))
-    expect([1, ...items]).toEqual([...Array(10)].map((_, i) => i + 1))
+    expect([1, ...items]).toEqual([...Array(11)].map((_, i) => i + 1))
   })
   it('every label it quotes is one the key folds under', () => {
     const quoted = [...page.matchAll(/`([a-z-]+):`/g)].map((m) => m[1]!)

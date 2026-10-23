@@ -113,7 +113,9 @@ const KITCHEN = `export default {
       },
     },
     dev: { exec: { command: 'echo dev', persistent: { readyWhen: 'ready' } } },
-    build: { exec: { command: 'true' } },
+    build: {
+      exec: { command: 'true', platforms: ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'] },
+    },
     ask: { exec: { command: 'true', interactive: true } },
   },
 }`
@@ -611,6 +613,7 @@ describe('each schema object is its source type', () => {
         persistent: true,
         interactive: true,
         sandbox: true,
+        platforms: true,
       }),
     )
     expect(def('show', ...exec, 'properties', 'env')).toEqual(

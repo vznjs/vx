@@ -249,7 +249,7 @@ terminal and a task succeeding or failing. Read it alongside
  │       4. cache.key({ taskId, taskConfigHash,
  │                      forwardArgs, envValues, runtimeValues,
  │                      workspaceRuntimeValues, upstreamHashes,
- │                      pluginParts, inputFiles }) → 16-hex xxh3
+ │                      pluginParts, platform, inputFiles }) → 16-hex xxh3
  │          (pluginParts is whatever the `key` stage contributed,
  │          folded between the upstream keys and the input files —
  │          see caching.md § Cache key derivation for the order.)

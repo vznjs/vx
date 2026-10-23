@@ -105,9 +105,10 @@ describe('caching.md lists the key parts in the order key() folds them', () => {
       'ws-runtime-values',
       'upstream',
       'plugin',
+      'platform',
       'inputs',
     ])
-    // Step 1 is CACHE_VERSION (unlabelled); steps 2..10 are the labels above.
+    // Step 1 is CACHE_VERSION (unlabelled); steps 2..11 are the labels above.
     const expected: Record<string, RegExp> = {
       task: /\*\*`taskId`\*\*/,
       config: /\*\*Task config hash\*\*/,
@@ -117,6 +118,7 @@ describe('caching.md lists the key parts in the order key() folds them', () => {
       'ws-runtime-values': /\*\*`inputs\.workspaceRuntime` resolved output\*\*/,
       upstream: /\*\*Filtered upstream task cache hashes\*\*/,
       plugin: /\*\*Plugin key material\*\*/,
+      platform: /\*\*Task platform\*\*/,
       inputs: /\*\*Input files' content hashes\*\*/,
     }
     const section = doc.slice(
@@ -127,7 +129,7 @@ describe('caching.md lists the key parts in the order key() folds them', () => {
       n: Number(m[1]!),
       text: m[2]!,
     }))
-    expect(steps.map((s) => s.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    expect(steps.map((s) => s.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
     expect(steps[0]!.text).toMatch(/\*\*`CACHE_VERSION`\*\*/)
     for (const [i, label] of labels.entries()) {
       const step = steps[i + 1]!

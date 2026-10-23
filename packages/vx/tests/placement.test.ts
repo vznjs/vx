@@ -475,6 +475,8 @@ describe('hasPooledExecutor / poolOfPlacement', () => {
       remoteOnly: new Set(),
       servers: new Map(),
       carried: new Set(),
+      otherPlatform: new Map(),
+      unroutable: new Map(),
     })
     expect([poolOf('a#x'), poolOf('a#y'), poolOf('a#z'), poolOf('a#unplaced')]).toEqual([
       { name: 'pool-x', capacity: 4 },
@@ -500,6 +502,8 @@ describe('hasPooledExecutor / poolOfPlacement', () => {
       remoteOnly: new Set(),
       servers: new Map(),
       carried: new Set(),
+      otherPlatform: new Map(),
+      unroutable: new Map(),
     })
     expect([poolOf('a#x'), poolOf('a#w'), poolOf('a#y'), poolOf('a#z')]).toEqual([
       { name: 'pool', capacity: 4 },
@@ -535,6 +539,8 @@ describe('locallyPlaced — "not remote", not "declared local"', () => {
     remoteOnly: new Set(),
     servers: new Map(),
     carried: new Set(),
+    otherPlatform: new Map(),
+    unroutable: new Map(),
   })
 
   it('counts the floor executor, which declares no `remote` at all', () => {
