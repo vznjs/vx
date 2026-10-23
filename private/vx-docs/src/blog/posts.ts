@@ -8,7 +8,7 @@ import { FALLBACK, TONES } from './tones.js'
 
 export type Author = { name: string; title: string; url: string }
 
-export const AUTHORS: Record<string, Author> = {
+const AUTHORS: Record<string, Author> = {
   vzn: { name: 'vzn', title: 'vx maintainer', url: 'https://github.com/vznjs' },
 }
 

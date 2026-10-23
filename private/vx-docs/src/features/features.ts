@@ -697,20 +697,6 @@ export default defineProject({
     docs: { label: 'Migrate', href: 'guides/migrate/' },
     deepDive: { label: 'Moving to vx from Turborepo', href: 'blog/from-turborepo/' },
   },
-  {
-    slug: 'playground',
-    title: 'The playground',
-    category: 'adoption',
-    hook: 'Try vx’s planner in your browser, with nothing to install.',
-    body: [
-      'The playground runs vx’s own planner, bundled for the web, on four small packages.',
-      'Edit a file, an env var or a config, press Run, and read which tasks would run and why.',
-    ],
-    example: { lang: 'sh', code: 'vx run build test --all --dry=json   # what the page computes' },
-    image: 'playground.png',
-    imageAlt: 'The playground: four packages, a Run button and the plan.',
-    docs: { label: 'Try it', href: 'playground/' },
-  },
 
   // ---- Plugins ----
   {

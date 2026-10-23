@@ -38,8 +38,8 @@ type SidebarItem = NonNullable<StarlightUserConfig['sidebar']>[number]
 
 /** Each sidebar section's items, keyed by the label its top-level group carries. */
 const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
-  // What each feature is and does, then the playground; the landing's
-  // diagram teaches the ideas.
+  // What each feature is and does; the landing's diagram teaches the
+  // ideas.
   Docs: [
     { label: 'Quickstart', link: '/quickstart/' },
     { label: 'Configure', link: '/guides/configure/' },
@@ -48,7 +48,6 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
     { label: 'Plugins', link: '/guides/plugins/' },
     { label: 'AI agents', link: '/guides/agents/' },
     { label: 'Upgrading to 1.0', link: '/guides/upgrading/' },
-    { label: 'Try it', link: '/playground/' },
   ],
   // One task per page, titled as the task, grouped by area (as Bun's guides
   // are; org style guide). guides/index.mdx lists the same pages.

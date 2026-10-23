@@ -23,7 +23,8 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   machine `where` names, which the run history keeps, and the share of a
   core the task's threads got there (history divides its CPU by it)
   — `footer()` returns `[label, text]` rows the run's footer shows, live
-  and at the end (a throw or a bad shape shows none); `ExecuteResult.where`
+  and at the end (a bad shape shows none; a throw from any of these
+  reports leaves it out and is warned once per executor and method); `ExecuteResult.where`
   is shown on the task's row and frame after its id, as `<id>@<where>`; `running(id)`
   says where a task it was handed runs, for the live row, or `null` while
   it holds the task for a machine (no row; the tasks line counts it `scheduled`)

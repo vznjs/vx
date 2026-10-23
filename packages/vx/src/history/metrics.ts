@@ -635,7 +635,7 @@ export function loadEntryInputs(db: Database, entryHash: string): TaskInputCompo
 }
 
 /**
- * The rule `vx why` and the site's playground both name a moved key by: join
+ * The rule `vx why` names a moved key by: join
  * two keys' components over `(kind, name)`. A component in both with a
  * different hash is `changed`, one only in `after` is `added`, one only in
  * `before` is `removed`, and an equal one is counted. Entries are ordered by
@@ -677,8 +677,7 @@ export function diffKeyComponents(
     }
   }
   // Code-unit order, not `localeCompare`: collation follows the machine's
-  // locale, and the playground runs this same join in the reader's browser,
-  // so the CLI and the page could list one diff in two orders. Code units
+  // locale, so two machines could list one diff in two orders. Code units
   // are also SQLite's BINARY order, the `entry_inputs` scan's own.
   const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
   entries.sort((x, y) => byCodeUnit(x.kind, y.kind) || byCodeUnit(x.name, y.name))

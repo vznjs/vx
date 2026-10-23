@@ -9,7 +9,7 @@
 import type { Database } from 'bun:sqlite'
 import { xxh3hex } from '../util/index.js'
 import type { CachePolicy } from './policy.js'
-import type { ResolvedRemote } from './remote-lane.js'
+import { sayRemoteFault, type ResolvedRemote } from './remote-lane.js'
 import { scopedKey } from './scoped-cache.js'
 import { runReadKeys } from './run-store.js'
 
@@ -73,6 +73,7 @@ async function capped(body: unknown, max = PLUGIN_ENTRY_MAX_BYTES): Promise<Uint
     if (done) break
     size += value.byteLength
     if (size > max) {
+      // quiet: the body is refused for its size, said by the miss; its cancel adds nothing
       await reader.cancel().catch(() => {})
       return null
     }
@@ -103,6 +104,17 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
   // for 128 tasks with 0 measured, at 25% of their cores (2026-10-23).
   const readers = host.remotes.filter((r) => r.read || r.write)
   const writers = host.remotes.filter((r) => r.write)
+  // Each remote's fault said once per kind: unsaid, a remote down left DTE
+  // planning on no timings and no line said why.
+  const said = new Map<ResolvedRemote, Set<string>>()
+  const fault = (r: ResolvedRemote, op: string, what: string, err: unknown): void => {
+    const message = err instanceof Error ? err.message : String(err)
+    const seen = said.get(r) ?? new Set<string>()
+    said.set(r, seen)
+    if (seen.has(`${op}\0${message}`)) return
+    seen.add(`${op}\0${message}`)
+    sayRemoteFault(r, new Error(`${op} of ${plugin}'s ${what} failed: ${message}`, { cause: err }))
+  }
   const readKey = (name: string, scoped: boolean): string => {
     const key = entryKey(plugin, name)
     return scope === undefined || !scoped ? key : scopedKey(scope, key)
@@ -119,6 +131,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
         bytes: Uint8Array
       } | null
       return row === null ? null : new Uint8Array(row.bytes)
+      // quiet: the local index, not a remote: an unreadable one holds nothing
     } catch {
       return null
     }
@@ -131,6 +144,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
         .query(`SELECT key FROM plugin_blobs WHERE key IN (${keys.map(() => '?').join(', ')})`)
         .all(...keys) as Array<{ key: string }>
       for (const r of rows) found.add(r.key)
+      // quiet: the local index, not a remote
     } catch {
       // an unreadable index holds nothing
     }
@@ -143,6 +157,7 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
         bytes,
         Date.now(),
       )
+      // quiet: the local index, not a remote
     } catch {
       // a read-only or busy index keeps nothing
     }
@@ -154,16 +169,17 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       const hit = localGet(local)
       if (hit !== null) return hit
       const key = readKey(name, scoped)
-      for (const { remote } of readers) {
+      for (const r of readers) {
         try {
-          const got = await remote.get(key)
+          const got = await r.remote.get(key)
           if (got === null) continue
           const bytes = await capped(got.body)
           if (bytes === null) continue
           if (policy.localWrite) localPut(local, bytes)
           return bytes
-        } catch {
+        } catch (err) {
           // a failing remote is a miss there
+          fault(r, 'get', name, err)
         }
       }
       return null
@@ -173,11 +189,12 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       if (bytes.byteLength === 0 || bytes.byteLength > PLUGIN_ENTRY_MAX_BYTES) return
       const key = writeKey(name)
       if (policy.localWrite) localPut(entryKey(plugin, name), bytes)
-      for (const { remote } of writers) {
+      for (const r of writers) {
         try {
-          await remote.put(key, new Blob([bytes]), { durationMs: 0 })
-        } catch {
+          await r.remote.put(key, new Blob([bytes]), { durationMs: 0 })
+        } catch (err) {
           // the other layers still keep it
+          fault(r, 'put', name, err)
         }
       }
     },
@@ -186,12 +203,13 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       if (localHas([entryKey(plugin, name)]).size > 0) return true
       const key = readKey(name, scoped)
       let answered = policy.localRead
-      for (const { remote } of readers) {
+      for (const r of readers) {
         try {
-          if (await remote.has(key)) return true
+          if (await r.remote.has(key)) return true
           answered = true
-        } catch {
+        } catch (err) {
           // no answer from this remote
+          fault(r, 'has', name, err)
         }
       }
       return answered ? false : null
@@ -203,16 +221,17 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
       const keys = [...byKey.keys()]
       const found = new Set<string>()
       for (const key of localHas(names.map((n) => entryKey(plugin, n)))) found.add(byKey.get(key)!)
-      for (const { remote } of readers) {
+      for (const r of readers) {
         const ask = keys.filter((k) => !found.has(byKey.get(k)!))
         if (ask.length === 0) break
-        if (remote.hasMany === undefined) return null
+        if (r.remote.hasMany === undefined) return null
         try {
-          const got: unknown = await remote.hasMany(ask)
+          const got: unknown = await r.remote.hasMany(ask)
           if (!(got instanceof Map)) return null
           for (const key of got.keys())
             if (byKey.has(key as string)) found.add(byKey.get(key as string)!)
-        } catch {
+        } catch (err) {
+          fault(r, 'hasMany', `${ask.length} entries`, err)
           return null
         }
       }
@@ -220,15 +239,16 @@ export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache 
     },
 
     async getRun(name) {
-      for (const { remote } of readers) {
+      for (const r of readers) {
         for (const key of runReadKeys(name, scope)) {
           try {
-            const got = await remote.get(key)
+            const got = await r.remote.get(key)
             if (got === null) continue
             const bytes = await capped(got.body, Infinity)
             if (bytes !== null) return bytes
-          } catch {
+          } catch (err) {
             // a failing remote is a miss there
+            fault(r, 'get', name, err)
           }
         }
       }

@@ -90,10 +90,7 @@ packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fi
                         task on its project's own dependency closure; --affected follows. Parsers over core's
                         `lockfileClaim` (orchestrator/lockfile-claim.ts: memo, per-run gate, --affected diff).
                         This repo declares bun()
-private/vx-docs         Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts;
-                        src/playground/ is core's own planner bundled for the browser behind a shim
-                        (build.playground → public/playground/planner.js), held to the CLI by core's
-                        tests/playground-parity.unsafe.test.ts
+private/vx-docs         Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts
 packages/vx-dte         distributed runs: `dte()` executor + `vx dte worker` over the relay, `local()` adapter
                         (workers in git worktrees). Private until npm has it
 packages/vx-dte-relay   the reference relay of `@vzn/vx-dte` (PROTOCOL.md): mailboxes per run behind CI

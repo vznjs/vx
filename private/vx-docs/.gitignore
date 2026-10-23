@@ -27,8 +27,5 @@ dist/
 /src/content/docs/design/
 /src/content/docs/plugins/
 
-# The playground bundle, built by `build.playground` (scripts/build-playground.ts)
-/public/playground/
-
 # The resized images, built by `build.images` (scripts/build-images.ts)
 /public/_img/

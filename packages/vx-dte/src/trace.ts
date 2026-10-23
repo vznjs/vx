@@ -117,7 +117,13 @@ export class Trace {
     const tracks = [
       ORCHESTRATOR,
       ...new Set(
-        [...this.slices.map((s) => s.track), ...this.marks.map((m) => m.track)]
+        // Every source of a row: a worker with no slice yet still has its idle and counters.
+        [
+          ...this.slices.map((s) => s.track),
+          ...this.marks.map((m) => m.track),
+          ...this.online.keys(),
+          ...this.uses.map((u) => u.track),
+        ]
           .filter((t) => t !== ORCHESTRATOR)
           .sort((a, b) => a.localeCompare(b, 'en', { numeric: true })),
       ),

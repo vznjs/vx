@@ -143,8 +143,8 @@ export function isKeyless(task: TaskConfig): boolean {
 }
 
 /**
- * Drawn once per process, so no run derives another run's keyless keys;
- * on first use, as the browser playground loads this module with no `crypto`.
+ * Drawn once per process, on first use, so no run derives another run's
+ * keyless keys.
  */
 let keylessSalt: string | undefined
 

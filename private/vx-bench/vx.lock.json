@@ -195,11 +195,7 @@
         "sandbox": {
           "allow": {
             "read": [
-              "**/*",
-              "../vx-docs/scripts/build-playground.ts",
-              "../vx-docs/src/playground/**",
-              "../vx-docs/tests/glob-fuzz.ts",
-              "../vx-docs/tests/helpers/rng.ts"
+              "**/*"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -214,16 +210,9 @@
         "files": [
           "*.ts",
           "tests/**",
-          "playground-spike/**/*.ts",
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
-        ],
-        "workspaceFiles": [
-          "private/vx-docs/scripts/build-playground.ts",
-          "private/vx-docs/src/playground/**",
-          "private/vx-docs/tests/glob-fuzz.ts",
-          "private/vx-docs/tests/helpers/rng.ts"
         ]
       },
       "cache": {

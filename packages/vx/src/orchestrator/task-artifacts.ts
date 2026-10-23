@@ -9,6 +9,7 @@ import {
   type ResolvedRemote,
   resolveOutputTree,
   resolveWorkspaceOutputs,
+  sayRemoteFault,
 } from '../cache/index.js'
 import { secretMask } from '../util/index.js'
 import { decodeOutputLog, encodeOutputLog } from './output-log.js'
@@ -122,7 +123,7 @@ export interface CacheFacts {
   readonly expiresAt?: number
 }
 
-/** The run's `CacheFacts`: each readable remote's `lend`, asked now; one that throws lends nothing. */
+/** The run's `CacheFacts`: each readable remote's `lend`, asked now; one that throws lends nothing, said. */
 export async function cacheFacts(
   remotes: readonly ResolvedRemote[],
   refs: readonly string[],
@@ -132,7 +133,15 @@ export async function cacheFacts(
   await Promise.all(
     remotes.map(async (r) => {
       if (r.plugin === undefined || r.remote.lend === undefined || !r.read) return
-      const got = await r.remote.lend().catch(() => undefined)
+      const got = await r.remote.lend().catch((err: unknown) => {
+        // Said: unsaid, the run's workers went without this remote and no line said why.
+        const message = err instanceof Error ? err.message : String(err)
+        sayRemoteFault(
+          r,
+          new Error(`lend of ${r.plugin}'s access failed: ${message}`, { cause: err }),
+        )
+        return undefined
+      })
       if (got === undefined) return
       lent[r.plugin] = got.token
       if (got.expiresAt !== undefined) expiresAt = Math.min(expiresAt ?? Infinity, got.expiresAt)

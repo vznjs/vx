@@ -543,6 +543,55 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
+  // Isolated, a report a plugin threw on was dropped with nothing said: the
+  // summary lacked its machines and no line told why.
+  it("an executor's report that throws is left out, and said once", async () => {
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      await Bun.write(
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
+        localWorkspaceSource(
+          [
+            pluginSource(
+              'org/fleet',
+              `{ executor() {
+               return {
+                 name: 'fleet',
+                 async execute() {
+                   return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+                 },
+                 machines() { throw new Error('machines broke') },
+                 idealMs() { throw new Error('ideal broke') },
+               }
+             },
+             telemetry() { return { onRunSummary(s) { globalThis.__vxFleet = s } } },
+           }`,
+            ),
+          ],
+          '',
+        ),
+      )
+      await gitInit(workspaceRoot)
+      const lines: string[] = []
+      const summary = await run({
+        cwd: workspaceRoot,
+        projects: ['pkg-a'],
+        tasks: ['hello'],
+        log: makeSilentLogger((l) => lines.push(l)),
+        handleSignals: false,
+      })
+      expect(summary.ok).toBe(true)
+      const s = (globalThis as unknown as { __vxFleet: RunSummaryRecord }).__vxFleet
+      expect(s.machines ?? []).toEqual([])
+      expect(lines.filter((l) => l.includes('fleet'))).toEqual([
+        "[vx] executor 'fleet': machines() threw: machines broke — left out",
+        "[vx] executor 'fleet': idealMs() threw: ideal broke — left out",
+      ])
+    } finally {
+      cleanup()
+    }
+  })
+
   it('an executor that declines a task falls through to the local executor declared after it', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()
     try {

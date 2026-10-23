@@ -1,7 +1,7 @@
 // The site's places and three sidebars (design/site-short-2026-09.md §
 // The shape; Features, standalone pages, and Guides, as Bun's docs have
 // them, came after), read from the built HTML: what a reader sees, not what
-// the config says. The Docs' sidebar is its pages, then the playground; the
+// the config says. The Docs' sidebar is its pages; the
 // Guides' is the index, then one group per area; the Reference ends with the
 // glossary. Every page shows exactly one of the three (the blog keeps its
 // own), and no sidebar links an internals page.
@@ -113,9 +113,9 @@ describe('the sidebars', () => {
   const guides = sidebarList(html('guides/'))!
   const reference = sidebarList(html('cli/'))!
 
-  it('the Docs are their pages, then the playground', () => {
+  it('the Docs are their pages', () => {
     expect(groupLabels(docs)).toEqual([])
-    expect(sidebarLinks(docs)).toEqual([...DOCS_PAGES, ['Try it', 'playground/']])
+    expect(sidebarLinks(docs)).toEqual(DOCS_PAGES)
   })
 
   // The index lists every guide the sidebar does, so neither drifts.
@@ -174,7 +174,6 @@ describe('the sidebars', () => {
 
   it('puts a Docs page, a guide, a Reference page and a post each in its own section', () => {
     expect(places(html('guides/configure/')).current).toEqual(['Docs'])
-    expect(places(html('playground/')).current).toEqual(['Docs'])
     expect(places(html('guides/migrate/')).current).toEqual(['Guides'])
     expect(places(html('guides/caching/why-a-task-missed/')).current).toEqual(['Guides'])
     expect(places(html('caching/')).current).toEqual(['Reference'])

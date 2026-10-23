@@ -112,6 +112,7 @@ it('collects what each readable remote lends, by plugin, and the first end', asy
     ...memoryRemote().layer,
     lend: async () => ({ token, ...(expiresAt === undefined ? {} : { expiresAt }) }),
   })
+  const said: string[] = []
   const facts = await cacheFacts(
     [
       { remote: lending('a', 2000), plugin: 'pa', read: true, write: true },
@@ -123,6 +124,7 @@ it('collects what each readable remote lends, by plugin, and the first end', asy
         plugin: 'pd',
         read: true,
         write: true,
+        onError: (e) => said.push(e.message),
       },
       { remote: memoryRemote().layer, plugin: 'pe', read: true, write: true },
     ],
@@ -133,6 +135,8 @@ it('collects what each readable remote lends, by plugin, and the first end', asy
     lent: { pa: 'a', pb: 'b' },
     expiresAt: 1000,
   })
+  // One that cannot lend is said: unsaid, the run's workers went without it.
+  expect(said).toEqual(["lend of pd's access failed: down"])
 })
 
 it('gives each cache plugin the token lent to it, read when asked', async () => {

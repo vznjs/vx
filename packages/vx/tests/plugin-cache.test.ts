@@ -272,18 +272,30 @@ describe('ctx.cache', () => {
     expect(await noBatch.hasMany(['a'])).toBeNull()
   })
 
-  it('a failing remote is an absent answer, never a throw', async () => {
+  // Said, as a task artifact's remote fault is: dropped unsaid, a remote
+  // down left DTE planning on no timings with no line saying why.
+  it('a failing remote is an absent answer, never a throw, and said once per kind', async () => {
+    const said: string[] = []
     const c = pluginCache('org/a', {
       db: localStore().dbHandle(),
       policy: FULL,
-      remotes: [remoteOf(wire({ fail: true, batch: true }))],
+      remotes: [
+        { ...remoteOf(wire({ fail: true, batch: true })), onError: (e) => said.push(e.message) },
+      ],
       scope: undefined,
     })
     expect(await c.get('x')).toBeNull()
+    expect(await c.get('y')).toBeNull()
     expect(await c.has('x')).toBe(false)
     expect(await c.hasMany(['x'])).toBeNull()
     await c.put('x', bytes('kept here'))
     expect(text(await c.get('x'))).toBe('kept here')
+    expect(said).toEqual([
+      "get of org/a's x failed: remote down",
+      "has of org/a's x failed: remote down",
+      "hasMany of org/a's 1 entries failed: remote down",
+      "put of org/a's x failed: remote down",
+    ])
   })
 
   it('a remote body over the cap is a miss, and a put over it stores nothing', async () => {

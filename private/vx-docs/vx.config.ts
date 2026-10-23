@@ -42,12 +42,7 @@ const IMPORTED = [
 // A key reads no other task's outputs (`vx lock`, X-54): each
 // arrives through that task's key and `dependsOn`. All three are gitignored,
 // so no key read them before either.
-const NOT_GENERATED = [
-  ...IMPORTED,
-  'public/playground/planner.js',
-  'public/_img/**',
-  'dist/**',
-].map((g) => `!${g}`)
+const NOT_GENERATED = [...IMPORTED, 'public/_img/**', 'dist/**'].map((g) => `!${g}`)
 
 export default defineProject({
   tasks: {
@@ -60,21 +55,20 @@ export default defineProject({
     },
 
     // The site's TypeScript is type-checked like every package's (item 702):
-    // `bun test` and astro's build only transpile, so a type error in the
-    // playground, a widget's model or a test failed nothing. The directories
+    // `bun test` and astro's build only transpile, so a type error in a
+    // widget's model or a test failed nothing. The directories
     // are named, not `.`: a type-checker pointed at a directory holding a
     // symlinked node_modules walks it. `src/content/`, `src/llms/` and
     // `src/blog/` are left out: they import `astro:content`, whose types
     // exist only after astro generates them; src/env.d.ts gives the rest of
     // astro's types. They are inputs all the same, as the files checked
-    // import them. The check follows the playground's
-    // imports across the boundary into core's source (a devDependency, its
-    // key through `install`).
+    // import them. The check follows the tests' imports across the boundary
+    // into core's source (a devDependency, its key through `install`).
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
         command:
-          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/features src/nav src/pages src/playground src/plugins tests',
+          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/features src/nav src/pages src/plugins tests',
         sandbox: {
           allow: {
             read: ['**/*', '../../packages/vx/src/**'],
@@ -94,7 +88,6 @@ export default defineProject({
           'src/llms/**',
           'src/nav/**',
           'src/pages/**',
-          'src/playground/**',
           'src/plugins/**',
           'tests/**',
           'package.json',
@@ -168,8 +161,8 @@ export default defineProject({
       },
     },
 
-    // `build` because the page pins (landing, sidebar, redirects, links,
-    // the playground page) read what the site shipped: whether a widget's
+    // `build` because the page pins (landing, sidebar, redirects, links)
+    // read what the site shipped: whether a widget's
     // no-JavaScript fallback is there is a fact about the built HTML, not
     // about any source file. `dist/` is not an input here; `build`'s key
     // reaches this one through `dependsOn`, and a hit on `build` restores
@@ -182,7 +175,7 @@ export default defineProject({
     // guide's snippets type-check against `@vzn/vx-schedule-history`.
     test: {
       description:
-        'bun test — the landing, sidebar, redirect, diagram, playground, compare and site-link pins (needs the imported content and dist/)',
+        'bun test — the landing, sidebar, redirect, diagram, compare and site-link pins (needs the imported content and dist/)',
       dependsOn: ['install', 'import', 'build'],
       exec: {
         command: 'bun test --only-failures',
@@ -205,12 +198,9 @@ export default defineProject({
         files: [
           'tests/**',
           'src/content/docs/**',
-          // The compare and playground pins import the widgets' model to
-          // hold the built pages to it.
+          // The compare pins import the widgets' model to hold the built
+          // pages to it.
           'src/components/demos/model/**',
-          // playground-page.test.ts reads the element's source for the
-          // markup it queries.
-          'src/components/demos/playground.ts',
           // sidebar-coverage.test.ts imports the sidebars; diagram-kit.test.ts
           // reads the kit's styles, the widgets' and the theme's tokens, and
           // with landing.test.ts the landing's picture.
@@ -223,12 +213,7 @@ export default defineProject({
           'src/components/landing/**',
           'src/components/Demo.astro',
           'src/components/demos/widget.css',
-          'src/components/demos/Playground.astro',
           'src/styles/theme.css',
-          // The playground rows: its glob and xxh3 against Bun's, and the
-          // shipped bundle against a fresh build.
-          'src/playground/**',
-          'scripts/build-playground.ts',
           'astro.config.*',
           '.gitignore',
           'package.json',
@@ -243,35 +228,6 @@ export default defineProject({
 
     install: {
       dependsOn: ['^build'],
-    },
-
-    // The playground's planner (roadmap W9, item 695): core's planner source
-    // behind the browser shim, bundled by Bun into `public/`, which astro
-    // copies into `dist/` as it is. Bun and not the site's Vite, so the file
-    // core's parity rows build (with this script's own function) is the file
-    // the site ships. The bundle IS core's source, read across the project
-    // boundary by relative import. Core is a devDependency, whose directory
-    // the sandbox grants by itself (the stub's export names come from core's
-    // own `node_modules` that way), but the read is named so the config says
-    // what the bundle is made of; its key arrives through `install` (core's
-    // `source`, item 687).
-    'build.playground': {
-      description: 'bundle the playground planner → public/playground/planner.js',
-      dependsOn: ['install'],
-      exec: {
-        command: 'bun scripts/build-playground.ts',
-        sandbox: {
-          allow: {
-            read: ['**/*', '../../packages/vx/src/**'],
-            write: ['public/playground/**'],
-            systemInfo: ['vfs.disk-space'],
-          },
-        },
-      },
-      inputs: { files: ['scripts/build-playground.ts', 'src/playground/**', 'package.json'] },
-      cache: {
-        outputs: { files: ['public/playground/planner.js'] },
-      },
     },
 
     // The images, resized before the build and keyed on the images alone:
@@ -305,7 +261,7 @@ export default defineProject({
 
     build: {
       description: 'astro build → dist/',
-      dependsOn: ['install', 'import', 'build.playground', 'build.images'],
+      dependsOn: ['install', 'import', 'build.images'],
       exec: {
         // Under Bun, prerender included. `bun --bun` runs astro's bin on Bun,
         // but astro prerenders in a CHILD process it starts as `node`, and
@@ -355,11 +311,9 @@ export default defineProject({
       },
     },
 
-    // The playground page's element fetches the bundle on the first Run, so
-    // the dev server serves it as the build does.
     dev: {
       description: 'astro dev server (persistent)',
-      dependsOn: ['install', 'build.playground', 'build.images'],
+      dependsOn: ['install', 'build.images'],
       exec: {
         command: 'bun --bun astro dev',
         env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },

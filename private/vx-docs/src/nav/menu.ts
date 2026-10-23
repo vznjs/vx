@@ -23,7 +23,6 @@ export const MENU: Partial<Record<SectionId, MenuLink[]>> = {
     { label: 'CI and remote', href: 'guides/ci/', line: 'Affected runs, remote cache, execution.' },
     { label: 'AI agents', href: 'guides/agents/', line: 'The agent skill, JSON output, vx why.' },
     { label: 'Plugins', href: 'guides/plugins/', line: 'Every stage is a seam.' },
-    { label: 'Playground', href: 'playground/', line: 'The planner, in your browser.' },
   ],
   guides: [
     {

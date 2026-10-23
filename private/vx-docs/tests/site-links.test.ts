@@ -179,24 +179,24 @@ describe('every internal link in the built site', () => {
 
   it('reports each kind of dead link, and passes the ones that land', () => {
     const fixture = `
-      <a href="${BASE}playground/">page</a>
+      <a href="${BASE}compare/">page</a>
       <a href="${BASE}#cache">anchor</a>
       <a href="../caching/#_top">relative</a>
       <a href="#_top">same page</a>
-      <a href="${SITE}playground/">absolute</a>
+      <a href="${SITE}compare/">absolute</a>
       <a href="https://example.com/nowhere/">external</a>
       <img src="${BASE}favicon.svg">
-      <a href="${BASE}playground/no-such-page/">gone</a>
-      <a href="${BASE}playground/#no-such-heading">bad anchor</a>
-      <a href="${BASE}playground">no slash</a>
+      <a href="${BASE}compare/no-such-page/">gone</a>
+      <a href="${BASE}compare/#no-such-heading">bad anchor</a>
+      <a href="${BASE}compare">no slash</a>
       <a href="../no-such/">bad relative</a>
       <a href="/elsewhere/">outside</a>
       <a href="${SITE}gone/">bad absolute</a>
     `
     expect(broken('glossary/index.html', fixture)).toEqual([
-      `glossary/index.html: ${BASE}playground/no-such-page/ (no such file)`,
-      `glossary/index.html: ${BASE}playground/#no-such-heading (no such id)`,
-      `glossary/index.html: ${BASE}playground (no such file)`,
+      `glossary/index.html: ${BASE}compare/no-such-page/ (no such file)`,
+      `glossary/index.html: ${BASE}compare/#no-such-heading (no such id)`,
+      `glossary/index.html: ${BASE}compare (no such file)`,
       'glossary/index.html: ../no-such/ (no such file)',
       'glossary/index.html: /elsewhere/ (outside the base path)',
       `glossary/index.html: ${SITE}gone/ (no such file)`,
