@@ -9,8 +9,8 @@
 // on a shared runner moves with the box, so what is held is the RATIO
 // vx / turbo taken in the same job: a slower box slows both. Restore and
 // nothing-changed are the runner's own overhead and are held: a case fails
-// when its ratio grew past TOLERANCE over the recorded one. Cold is printed,
-// not held: 200 spawns on 4 cores moved its ratio from 0.71 to 1.12 between
+// when its ratio grew past TOLERANCE over the recorded one. Cold is printed
+// from one warm-up run, not held: 200 spawns on 4 cores moved its ratio from 0.71 to 1.12 between
 // two CI runs of one commit (2026-10-12). A case vx loses prints LOSS.
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -146,10 +146,14 @@ try {
     best.set(k, Math.min(best.get(k) ?? Infinity, ms))
   }
   // Warm both tools once, then interleave: vx and Turbo alternate within each rep.
+  // A check reps only the held arms and prints cold from the warm-up: cold
+  // reps were 14 of its 44 runs and most of its time (102 s on CI, the
+  // longest task of a full run, 2026-10-23).
   for (const tool of ['vx', 'turbo'] as const) time(tool, 'cold')
-  best.clear()
+  if (update) best.clear()
   for (let rep = 0; rep < REPS; rep++) {
-    for (const arm of ARMS) for (const tool of ['vx', 'turbo'] as const) time(tool, arm)
+    for (const arm of update ? ARMS : HELD)
+      for (const tool of ['vx', 'turbo'] as const) time(tool, arm)
   }
 
   const ratios = Object.fromEntries(
