@@ -154,12 +154,14 @@ describe('renderJobSummary', () => {
     expect(md).toContain('| this machine | ok |  | 1 |  |  |  |  |  |  |')
     expect(md).toContain('3 executed: 2 on workers, 1 on this machine: e#gen.')
     expect(md).toContain(
-      '| small#1 | left | 21.0s | 3 | 40.0s | 4.0s | 3.9 of 4 | 2.0 | 9.8 of 16.0 GB | 50% |',
+      '| small#1 | left | 21.0s | 3 | 40.0s | 4.0s | 3.9 of 4 | 2.0 of 4 | 9.8 of 16.0 GB | 50% |',
     )
     expect(md).toContain(
-      '| small#2 | left | 1m 30s | 0 | 10.0s | 10.0s | 0.0 of 4 | 0.0 | 1.0 of 16.0 GB | 0% |',
+      '| small#2 | left | 1m 30s | 0 | 10.0s | 10.0s | 0.0 of 4 | 0.0 of 4 | 1.0 of 16.0 GB | 0% |',
     )
-    expect(md).toContain("Expected 78% of the workers' core-time, used 40%.")
+    expect(md).toContain(
+      "Over their online time, tasks booked 78% of the workers' cores and used 40%.",
+    )
     expect(renderJobSummary(summary([task({})]))).not.toContain('### Workers')
     // "13 (1 failed)" read as 13 in all (owner, 2026-10-23).
     const one = renderJobSummary(
