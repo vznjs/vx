@@ -100,6 +100,56 @@ Actions, the scope keys only plugin entries. `gitlab({ cacheScope: false })` (`G
 `undefined`, so declaring both plugins is safe. Merge request comments
 and reports are not part of it yet.
 
+## The sandbox runtime: `vx setup`
+
+A task that declares `exec.sandbox` needs the OS sandbox on the machine
+that runs it. On Linux that is bubblewrap, socat, strace and ripgrep,
+with bwrap allowed its user namespaces. One step before vx runs sets it
+up:
+
+```yaml
+# GitHub Actions
+- run: bunx vx setup github
+```
+
+```yaml
+# GitLab CI
+script:
+  - bunx vx setup gitlab
+```
+
+It installs what is missing (apt-get by sudo, or apk), lets bwrap make
+user namespaces where AppArmor restricts them (Ubuntu 24+; Ubuntu 26's
+`bwrap-userns-restrict` profile is replaced, as it strips the namespace
+the sandbox nests), and proves bwrap starts a sandbox, failing the step
+if it cannot. On macOS the sandbox is built in and it does nothing.
+
+The packages it fetched stay in a directory the job's cache can keep:
+`~/.cache/vx/setup-debs` on Actions, `.vx-setup-debs` in the project on
+GitLab, or `--debs <dir>`. When that directory holds them, they install
+with no index fetch; when they do not install (an older image's), they
+are fetched again. On Actions the step's outputs are `fetched` and
+`key` (the runner image's), so a cache step saves only what it fetched:
+
+```yaml
+- uses: actions/cache/restore@v5
+  with:
+    path: ~/.cache/vx/setup-debs
+    key: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}
+    restore-keys: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}-
+- id: setup
+  run: bunx vx setup github
+- if: steps.setup.outputs.fetched == 'true'
+  uses: actions/cache/save@v5
+  with:
+    path: ~/.cache/vx/setup-debs
+    key: ${{ steps.setup.outputs.key }}
+```
+
+The verb is the plugin's: `vx setup github` exists where `github()` is
+declared and the job is on Actions, `vx setup gitlab` where `gitlab()` is
+and the job is on GitLab CI. Core has no `setup` verb.
+
 ## How it works
 
 `github()` contributes one observe-only telemetry sink through vx's

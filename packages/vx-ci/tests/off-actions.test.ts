@@ -20,6 +20,6 @@ it('off Actions the factory returns undefined, options unchecked', () => {
 
 it('on Actions it is the plugin, options checked', () => {
   process.env['GITHUB_ACTIONS'] = 'true'
-  expect(Object.keys(github() ?? {}).sort()).toEqual(['config', 'name', 'telemetry'])
+  expect(Object.keys(github() ?? {}).sort()).toEqual(['commands', 'config', 'name', 'telemetry'])
   expect(() => github({ titel: 'x' } as never)).toThrow('unknown option "titel"')
 })

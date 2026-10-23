@@ -145,6 +145,7 @@ config key or an environment variable is missing here.
 - **PR check run** (`github({ checks })`) — a check run on the commit with the run summary as its output. [page](https://vznjs.github.io/vx/features/pr-check-run/) · post: [Your run, on the pull request](https://vznjs.github.io/vx/blog/results-on-github/)
 - **Cache scope from the ref** (`github({ cacheScope })`) — names the plugin-entry scope: none on main or a merge queue, else `<owner>/<repo>:<branch>`; the PR's base commit is a bare `--affected`'s base. [page](https://vznjs.github.io/vx/features/ref-cache-scope/) · post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
 - **Cache scope on GitLab CI** (`@vzn/vx-ci`: `gitlab({ cacheScope })`) — names the plugin-entry scope: none on the default branch or a merge train, else `<project path>:<branch>`; the merge request's diff base is a bare `--affected`'s base. [page](https://vznjs.github.io/vx/features/ref-cache-scope/) · post: [The cache on your terms](https://vznjs.github.io/vx/blog/the-cache-on-your-terms/)
+- **Sandbox runtime on CI** (`@vzn/vx-ci`: `vx setup github`, `vx setup gitlab`, `--debs`) — one step before vx runs installs bubblewrap, socat, strace and ripgrep, lets bwrap make user namespaces under AppArmor, and proves the sandbox starts; nothing on macOS. [page](https://vznjs.github.io/vx/plugins/vx-ci/)
 
 ## Adoption
 

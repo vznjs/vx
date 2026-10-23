@@ -5,6 +5,8 @@
 // `github()` costs nothing on a laptop.
 import { appendFile, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
+import { homedir } from 'node:os'
+import path from 'node:path'
 import {
   refuseUnknownOptions,
   type PluginOptionKinds,
@@ -96,6 +98,19 @@ export function github(options: GithubPluginOptions = {}): VxPlugin | undefined 
       throw new UserError(`github() option "${key}" must be a non-empty string, got ""`)
   }
   return definePlugin(import.meta, {
+    commands: {
+      // Kept where actions/cache can save it: a hit installs the
+      // packages from it, no index fetch (14 to 52 s, 2026-10-22).
+      setup: {
+        description: 'github: install and prove the sandbox runtime on this runner',
+        run: async (argv) =>
+          (await import('./setup.js')).runSetup(
+            'github',
+            argv,
+            path.join(homedir(), '.cache', 'vx', 'setup-debs'),
+          ),
+      },
+    },
     async config(_workspace, ctx) {
       if (options.cacheScope === false) return
       ctx.setBranch(await githubBranch(process.env))

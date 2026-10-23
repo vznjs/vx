@@ -49,8 +49,21 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - if: runner.os == 'Linux'
-        uses: ./.github/actions/vx-runner
+      # The sandbox runtime, as @vzn/vx-ci sets it up. Its packages are
+      # kept per runner image: a hit installs them with no index fetch
+      # (14 to 52 s of an agent's warm-up, 2026-10-22).
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/vx/setup-debs
+          key: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}
+          restore-keys: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}-
+      - id: setup
+        run: bun packages/vx/src/bin.ts setup github
+      - if: steps.setup.outputs.fetched == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/vx/setup-debs
+          key: ${{ steps.setup.outputs.key }}
 
       - name: vx dte agent
         run: bun packages/vx/src/bin.ts dte agent

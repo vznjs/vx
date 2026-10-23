@@ -44,8 +44,8 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
-      # `release.auto` declares `exec.sandbox`; see ci.yml.
-      - uses: ./.github/actions/vx-runner
+      # `release.auto` declares `exec.sandbox`: the runtime, as @vzn/vx-ci sets it up.
+      - run: bun packages/vx/src/bin.ts setup github
 
       # Pick the commit, decide the version, write the notes, tag, release
       # and dispatch the two workflows that build and publish it
