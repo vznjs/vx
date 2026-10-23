@@ -141,7 +141,7 @@ interface RunSummaryRecord {
   stages?: readonly RunStage[] // VX_DEBUG_TIMING's stages; those before the run lock end before startedAt
   uploads?: { count: number; bytes: number; ms: number; failed: number } // remote uploads once settled; ms summed
   machines?: readonly MachineReport[] // TaskExecutor.machines: each machine an executor ran tasks on, with what it did
-  plannedMs?: number // TaskExecutor.plannedMs: how long its plan said the run would take, beside totalDurationMs
+  idealMs?: number // TaskExecutor.idealMs: the run's end placed perfectly, beside totalDurationMs
 }
 
 interface FailedAttempt {

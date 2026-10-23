@@ -11,9 +11,10 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 
 ## Public surface
 
-- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining, missed); footer?(); machines?(); plannedMs?(); profile?(); running?(id); execute(req) }`
-  — `plannedMs()` is how long its first plan said the run would take, from
-  the run's start (the run summary's `plannedMs`, shown beside the real time)
+- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining, missed); footer?(); machines?(); idealMs?(); profile?(); running?(id); execute(req) }`
+  — `idealMs()` is the run's end had it placed its tasks perfectly, from
+  the run's start, replayed from what each took (the run summary's
+  `idealMs`, shown beside the real time)
   — `machines()` returns a `MachineReport` per machine it ran tasks on
   (`{ name; status; cores; memoryBytes; done; failed; onlineMs; busyMs;
 cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked

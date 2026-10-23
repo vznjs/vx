@@ -880,17 +880,31 @@ it('a worker that left is not failed or replaced when its job then ends', async 
   }
 })
 
-// M, 2026-10-23: the job summary lost the sim's time beside the real one.
-it("plans the run's end by its first ask, not a later one", async () => {
-  const h = await harness(new Map([node('t1')]))
-  expect(h.o.plannedMs()).toBeUndefined()
-  h.o.asked(2, 3, 1, 70_000)
-  const first = h.o.plannedMs()!
-  expect(first).toBeGreaterThanOrEqual(70_000)
-  expect(first).toBeLessThan(75_000)
-  h.o.asked(1, 1, 1, 5_000)
-  expect(h.o.plannedMs()).toBe(first)
-  await h.stop()
+// M, 2026-10-23: "we need the ideal time possible taking into account actual run numbers".
+it('replays what each task took on every worker the sizes allow: the ideal end', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const sizes = [{ name: 'small', max: 2, cpu: 4, memory: 1e10 }]
+    expect(h.o.idealMs(() => [], sizes)).toBeUndefined()
+    const w = await h.worker(4)
+    await Bun.sleep(50)
+    const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
+    await w.batches()
+    await Bun.sleep(200)
+    const done = { exitCode: 0, durationMs: 200, cpuMs: 200 }
+    await w.finish('t1', 'k-t1', done)
+    await Bun.sleep(200)
+    await w.finish('t2', 'k-t2', { ...done, durationMs: 400, cpuMs: 400 })
+    await Promise.all(runs)
+    // Side by side the longer ends it; one after the other, both.
+    const apart = h.o.idealMs(() => [], sizes)!
+    const chained = h.o.idealMs((id) => (id === 't2' ? ['t1'] : []), sizes)!
+    expect(apart).toBeGreaterThanOrEqual(380)
+    expect(apart).toBeLessThan(600)
+    expect(chained - apart).toBeGreaterThanOrEqual(180)
+  } finally {
+    await h.stop()
+  }
 })
 
 // M, 2026-10-21: a worker the run's end stopped still read `online`, and

@@ -158,10 +158,10 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
       (summary.hitCount > 0 ? ` ${hitSplit(summary)}` : ''),
     ...(summary.failedCount > 0 ? [`**${summary.failedCount}** failed`] : []),
     ...(summary.abortedCount > 0 ? [`**${summary.abortedCount}** aborted`] : []),
-    // The plan the executor sized the run by, its sim, beside the real time.
-    summary.plannedMs === undefined
+    // The run played perfectly on what each task took, beside the real time (M, 2026-10-23).
+    summary.idealMs === undefined
       ? fmtMs(summary.totalDurationMs)
-      : `${fmtMs(summary.totalDurationMs)} (planned ${fmtMs(summary.plannedMs)})`,
+      : `${fmtMs(summary.totalDurationMs)} (ideal ${fmtMs(summary.idealMs)})`,
   ]
   lines.push(stats.join(' · '))
   lines.push('')

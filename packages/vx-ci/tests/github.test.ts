@@ -842,10 +842,10 @@ describe('every output the vx-ci sweep found unheld', () => {
     )
     const one = renderJobSummary(summary([task({})]))
     expect(one.split('\n')[2]).toBe('**1** task · **1** executed · **0** cache hits · 4.3s')
-    // M, 2026-10-23: the time a distributed run's plan said, beside the real one.
-    const planned = renderJobSummary(summary([task({})], { plannedMs: 3_000 }))
-    expect(planned.split('\n')[2]).toBe(
-      '**1** task · **1** executed · **0** cache hits · 4.3s (planned 3.0s)',
+    // M, 2026-10-23: the ideal time of a distributed run, beside the real one.
+    const ideal = renderJobSummary(summary([task({})], { idealMs: 3_000 }))
+    expect(ideal.split('\n')[2]).toBe(
+      '**1** task · **1** executed · **0** cache hits · 4.3s (ideal 3.0s)',
     )
   })
 

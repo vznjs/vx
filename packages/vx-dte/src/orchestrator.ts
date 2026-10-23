@@ -33,7 +33,7 @@ import {
   type ToOrchestrator,
   type WiredResult,
 } from './messages.js'
-import type { PlanWorker } from './planner.js'
+import { simulate, type PlanTask, type PlanWorker, type Size } from './planner.js'
 import { Usage, type UsageStats } from './usage.js'
 import { assign, ordered, type Need } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
@@ -233,6 +233,11 @@ export class Orchestrator {
   private movedAt = performance.now()
   /** When core's cache probe answered, how many placed tasks it left to run, and how many it found in no cache. */
   private probe?: { at: number; left: number; misses: number }
+  /** Each task a worker ran: how long it held the worker, the cores it would use with them free, its memory, the platform. */
+  private readonly took = new Map<
+    string,
+    { ms: number; cores: number; memory: number; platform: string | undefined }
+  >()
   /** Each time the run asked for workers: when, how many, for which work, ending when. */
   private readonly asks: {
     at: number
@@ -718,6 +723,16 @@ export class Orchestrator {
     a.done.push(task)
     a.usage.record(head)
     const share = shareOf(head.cpuShare)
+    const held = Math.max(1, job.startedAt === undefined ? head.durationMs : endAt - job.startedAt)
+    this.took.set(task, {
+      ms: held,
+      cores:
+        head.cpuMs === undefined
+          ? (job.held?.cores ?? 1)
+          : Math.min(a.cores, Math.max(0.25, head.cpuMs / share / Math.max(1, head.durationMs))),
+      memory: head.peakRssBytes ?? job.held?.memory ?? 0,
+      platform: a.platform,
+    })
     if (
       job.need.cores !== Infinity &&
       job.need.ask === undefined &&
@@ -1210,18 +1225,60 @@ export class Orchestrator {
   }
 
   /**
+   * The run's end had it placed its tasks perfectly (M, 2026-10-23: "how
+   * close the run was"): each task a worker ran, as long as it held its
+   * worker and with the cores it would use with them free, played on as
+   * many workers as the sizes allow, each joining after its platform's
+   * fastest real warm-up, from when the run first knew its work. A task
+   * waits on its deps through those no worker ran (groups, hits).
+   */
+  idealMs(depsOf: (id: string) => readonly string[], sizes: readonly Size[]): number | undefined {
+    if (this.took.size === 0) return undefined
+    const all = [...this.workers.values(), ...this.gone]
+    const warm = new Map<string | undefined, number>()
+    for (const a of all)
+      if (a.warmUpMs !== undefined && !(warm.get(a.platform)! <= a.warmUpMs))
+        warm.set(a.platform, a.warmUpMs)
+    const least = this.warmUpMs() ?? 0
+    const pool: PlanWorker[] = (
+      sizes.length > 0
+        ? sizes.flatMap((s) =>
+            Array.from({ length: Math.min(s.max, this.took.size) }, () => ({
+              cores: s.cpu,
+              memory: s.memory,
+              platform: s.platform,
+            })),
+          )
+        : all.map((a) => ({ cores: a.cores, memory: a.memory, platform: a.platform }))
+    ).map((w, i) => ({
+      ...w,
+      id: `ideal#${i}`,
+      at: warm.get(w.platform) ?? least,
+      running: [],
+      idle: false,
+    }))
+    const seen = new Map<string, string[]>()
+    const ran = (id: string): string[] => {
+      const known = seen.get(id)
+      if (known !== undefined) return known
+      seen.set(id, [])
+      const out = depsOf(id).flatMap((d) => (this.took.has(d) ? [d] : ran(d)))
+      seen.set(id, out)
+      return out
+    }
+    const tasks: PlanTask[] = [...this.took].map(([id, t]) => ({ id, ...t, deps: ran(id) }))
+    const end = simulate(tasks, pool)
+    if (!Number.isFinite(end)) return undefined
+    return (this.probe?.at ?? this.asks[0]?.at ?? 0) + end
+  }
+
+  /**
    * Each machine that joined, and this one when it ran tasks, with what it
    * did: the run summary's `machines`. Core asks once its tasks are over,
    * before its teardown ends this run: then is its end, so one still here
    * was online until now (small#2 read online 1ms, booked 433802 of 4:
    * main, 2026-10-23). Each is `ok`, or `failed` when lost or faulty.
    */
-  /** When the run's first plan said it would end, from the orchestrator's start: the sim real time is held to. */
-  plannedMs(): number | undefined {
-    const first = this.asks[0]
-    return first === undefined ? undefined : first.at + first.endsInMs
-  }
-
   machines(): MachineReport[] {
     const gone = new Set(this.gone)
     const until = this.ended ? this.endedAt : performance.now()
