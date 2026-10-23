@@ -108,12 +108,17 @@ export function configRefusal(message: string, cwd: string): ConfigRefusal | und
   const frame = framed.slice(cut + 2)
   const at = /^(\S+?:\d+:\d+):? (.*)$/s.exec(line)
   if (at === null) return { where: line, problem: '', frame }
-  const said = /^(.*?)(?: \(allowed: ([^)]*)\))?(?: — did you mean ([^?]+)\?)?$/s.exec(at[2]!)!
+  // After ` — `: the field meant, or how vx spells another runner's field.
+  const said =
+    /^(.*?)(?: \(allowed: ([^)]*)\))?(?: — (?:did you mean ([^?]+)\?|vx spells it (.+)))?$/s.exec(
+      at[2]!,
+    )!
   return {
     where: at[1]!,
     problem: said[1]!.replace(/^has /, ''),
     ...(said[2] !== undefined ? { allowed: said[2] } : {}),
     ...(said[3] !== undefined ? { fix: `use ${said[3]}` } : {}),
+    ...(said[4] !== undefined ? { fix: `use ${said[4]}` } : {}),
     frame,
   }
 }

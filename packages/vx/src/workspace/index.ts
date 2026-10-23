@@ -29,6 +29,7 @@ export {
   type LockedProject,
 } from './lockfile.js'
 export {
+  ConfigsRefused,
   loadProjectConfig,
   loadProjectConfigs,
   loadWorkspaceConfig,

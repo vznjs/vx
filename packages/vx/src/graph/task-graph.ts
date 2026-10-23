@@ -6,6 +6,7 @@ import {
   isLiteralPattern,
   literalPath,
   listedSync,
+  nearest,
   normalizeGlob,
   relPosix,
   splitNegations,
@@ -298,9 +299,14 @@ export type GraphRules = WorkspaceRules & { readonly locked?: boolean }
  * legal without a holder — a preset spreads `^build` over projects whose
  * dependencies lack it.
  */
-export function undeclaredDepsError(taskId: string, name: string): UserError {
+export function undeclaredDepsError(
+  taskId: string,
+  name: string,
+  declared: Iterable<string>,
+): UserError {
+  const meant = nearest(name, declared)
   return new UserError(
-    `${taskId}: dependsOn ^${name} but no project in the workspace declares ${name}`,
+    `${taskId}: dependsOn ^${name} but no project in the workspace declares ${name}${meant === undefined ? '' : `. Did you mean ^${meant}?`}`,
     'VX_E_DEPENDS_ON',
   )
 }
@@ -535,8 +541,14 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
         // Missing target is a hard error — the user typed a name that
         // doesn't resolve in this project.
         if (!visit(frame, projectName, spec.task, false)) {
+          const meant = nearest(
+            spec.task,
+            Object.keys(projects.get(projectName)!.config.tasks ?? {}).filter(
+              (n) => n !== taskName,
+            ),
+          )
           throw new UserError(
-            `${id}: dependsOn ${taskId(projectName, spec.task)} but no such task is declared`,
+            `${id}: dependsOn ${taskId(projectName, spec.task)} but no such task is declared${meant === undefined ? '' : `. Did you mean ${meant}?`}`,
             'VX_E_DEPENDS_ON',
           )
         }
@@ -584,7 +596,7 @@ export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode
       if (!isTaskPattern(spec.task)) {
         const held = walkHolders(frame, spec.task, visited, projectName)
         if (!held && !declaredAnywhere(projectName, spec.task)) {
-          if (undeclaredDeps === undefined) throw undeclaredDepsError(id, spec.task)
+          if (undeclaredDeps === undefined) throw undeclaredDepsError(id, spec.task, declared ?? [])
           undeclaredDeps(id, spec.task)
         }
         return

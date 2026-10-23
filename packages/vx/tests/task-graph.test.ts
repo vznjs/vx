@@ -813,7 +813,22 @@ describe('a ^name no project declares is refused (nx#32779)', () => {
     )
     expect(err).toBeInstanceOf(UserError)
     expect((err as Error).message).toBe(
-      'app#typo: dependsOn ^biuld but no project in the workspace declares biuld',
+      'app#typo: dependsOn ^biuld but no project in the workspace declares biuld. Did you mean ^build?',
+    )
+  })
+
+  it("names the project's own task a same-project typo meant", () => {
+    const err = caught(() =>
+      buildTaskGraph({
+        projects: projects(
+          project('app', { lint: cmd('l'), typo: { ...cmd('t'), dependsOn: ['lnt'] } }),
+        ),
+        packageGraph: packageGraph({ app: [] }),
+        requested: request,
+      }),
+    )
+    expect((err as Error).message).toBe(
+      'app#typo: dependsOn app#lnt but no such task is declared. Did you mean lint?',
     )
   })
 

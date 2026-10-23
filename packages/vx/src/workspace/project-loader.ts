@@ -1,7 +1,7 @@
 import { existsSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 import type { ProjectConfig, WorkspaceConfig } from '../config.js'
-import { UserError, xxh3hex } from '../util/index.js'
+import { isUserError, UserError, xxh3hex } from '../util/index.js'
 import { isSkippedPlugin, validateProjectConfig, validateWorkspace } from './config-schema.js'
 import {
   beginEvalRound,
@@ -385,6 +385,18 @@ function loadFailure(err: unknown, configPath: string, kind: string): unknown {
 }
 
 /**
+ * More than one config refused in one load: the first is the error, and
+ * `all` names each. A rename after an upgrade refuses every config at once,
+ * and naming one a run made a 200-config repo take 200 runs.
+ */
+export class ConfigsRefused extends UserError {
+  constructor(readonly all: readonly UserError[]) {
+    super(all[0]!.message, all[0]!.code)
+    if (all[0]!.parts !== undefined) this.parts = all[0]!.parts
+  }
+}
+
+/**
  * Evaluate many configs at once: every file's bytes in parallel, then each
  * one evaluated (in the order given, so a failure names the first broken
  * file the way a one-by-one load did). A single-path load is the
@@ -513,7 +525,14 @@ export async function loadProjectConfigs(configPaths: readonly string[]): Promis
       }
       throw builtinsChanged(changedInRound)
     }
-    if (first !== undefined) throw first.failed
+    if (first !== undefined) {
+      const refused = results.flatMap((r) =>
+        'failed' in r && isUserError(r.failed) ? [r.failed] : [],
+      )
+      throw refused.length > 1 && refused[0] === first.failed
+        ? new ConfigsRefused(refused)
+        : first.failed
+    }
     // One load in the round, in the worker (a repeat load), is the one
     // that moved it: the worker no longer reads the umask to say so.
     if (changed.length > 0)

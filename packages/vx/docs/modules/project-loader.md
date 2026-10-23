@@ -24,6 +24,12 @@ export async function loadWorkspaceConfig(workspaceRoot: string): Promise<Worksp
 // config is evaluated; nothing is cached (runs read the lock).
 export async function loadProjectConfigs(configPaths: readonly string[]): Promise<ProjectConfig[]>
 
+// Thrown by the batch when more than one config refuses: the first's
+// message, and `all` of them, so `vx lock` names each.
+export class ConfigsRefused extends UserError {
+  readonly all: readonly UserError[]
+}
+
 // The names a workspace config may take, in resolution order.
 export const WORKSPACE_CONFIG_FILENAMES = [
   '.vx/workspace.ts',
