@@ -532,6 +532,7 @@ export function dte(options: DteOptions) {
           tasks.length,
           tasks.filter((t) => measured(t.id)).length,
           p.endsInMs,
+          tasks.filter((t) => !measured(t.id)).map((t) => t.id),
         )
         for (const s of p.start) {
           ++index

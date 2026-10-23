@@ -760,7 +760,7 @@ it('a worker that left is not failed or replaced when its job then ends', async 
 it('the final summary says how each worker ended, its size and machine under it', async () => {
   const h = await harness(new Map([node('t1')]))
   const small = { size: 'small', cpu: 2, memory: 4e9 }
-  h.o.asked(2, 3, 1, 70_000)
+  h.o.asked(2, 3, 1, 70_000, ['p#a', 'p#b'])
   h.o.spawned('small#1', small)
   h.o.spawned('big#1', { size: 'big', cpu: 4, memory: 4e9 })
   const a = await h.worker(2, 'small#1')
@@ -784,12 +784,31 @@ it('the final summary says how each worker ended, its size and machine under it'
   expect(rows.filter((r) => r.startsWith('asked'))).toEqual([
     expect.stringMatching(/^asked +2 at 0\.\ds for 3 tasks \(1 measured\), plan 70\.0s$/),
   ])
+  // Main 68b851d: 41 of 119 unmeasured, each a whole worker, and the
+  // summary said only how many (2026-10-23).
+  expect(rows.filter((r) => r.startsWith('unmeasured'))).toEqual(['unmeasured  p#a, p#b'])
   // Tasks that reported no memory read `memory peak 0 B`.
   expect(rows.filter((r) => r.includes('memory peak'))).toEqual([])
   // A few hundred bytes read `0 KB`.
   expect(rows.filter((r) => r.includes(' 0 KB'))).toEqual([])
   expect(rows.some((r) => /^ +sent \d+ messages? · \d+ B, received/.test(r))).toBe(true)
   void a
+})
+
+// small#7 held 3.9 cores 61 s for one task using 0.3, and the summary
+// did not say which task (main 68b851d, 2026-10-23).
+it('the final summary names the tasks of a worker that ran few', async () => {
+  const h = await harness(new Map([node('t1')]), undefined, 60_000)
+  const a = await h.worker(1, 'small#7')
+  await Bun.sleep(50)
+  const t1 = h.o.execute(h.req('t1'))
+  expect(await a.batches()).toEqual([['t1']])
+  await a.begin('t1')
+  await a.finish('t1')
+  expect((await t1).exitCode).toBe(0)
+  await h.stop()
+  const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+  expect(rows.find((r) => r.includes('done'))).toMatch(/1 done · t1$/)
 })
 
 // Live, the workers that left are one line, so the rows that run fit.

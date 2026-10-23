@@ -422,7 +422,9 @@ time the run asked for workers: how many, when, for how many tasks that
 missed, how many of them with a measured need (an unmeasured one books a
 whole worker), and when its plan ended then. The first ask
 waits for the needs another plugin fetches (`ctx.refining()`), such as
-`@vzn/vx-schedule-history`'s default-branch timings. The `total` line is the cpu utilization of every
+`@vzn/vx-schedule-history`'s default-branch timings. The `unmeasured`
+line names the tasks the first ask had no measure of, and a worker that
+ran two tasks or fewer names them on its row. The `total` line is the cpu utilization of every
 machine together:
 
 ```

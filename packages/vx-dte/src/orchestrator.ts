@@ -80,6 +80,8 @@ interface Worker {
   readonly declared: Declared | undefined
   /** Tasks it finished. */
   ran: number
+  /** Their ids, for the summary of a worker that ran few: what held it. */
+  readonly done: string[]
   readonly usage: Usage
   /** Sent to it and not finished: running there or in its queue. */
   readonly busy: Map<string, Job>
@@ -154,6 +156,10 @@ const RELEND_MS = 4 * 60_000
  * 1 MiB at most, and sealing it grows it by a third.
  */
 const BATCH_BYTES = 512 * 1024
+/** A worker that ran this many tasks or fewer names them in the summary. */
+const FEW = 2
+/** The unmeasured tasks the summary names; the rest it counts. */
+const NAMED = 40
 /** Failed starts the run replaces before it calls its setup broken. */
 const RESTARTS = 3
 
@@ -220,6 +226,12 @@ export class Orchestrator {
     measured: number
     endsInMs: number
   }[] = []
+  /**
+   * The tasks the first ask had no measure of, each booking a whole worker:
+   * named, so a run that packed badly says which (main 68b851d, 2026-10-23:
+   * 41 of 119, small#7 holding 3.9 cores for a task using 0.3).
+   */
+  private unmeasured: readonly string[] = []
   private readonly stop = new AbortController()
   private readonly loop: Promise<void>
   private readonly realRoot: string
@@ -633,6 +645,7 @@ export class Orchestrator {
     this.unhold(a, job)
     a.started.delete(task)
     a.ran++
+    a.done.push(task)
     a.usage.record(head)
     this.savedAs.set(task, key)
     this.pumpSoon()
@@ -720,6 +733,7 @@ export class Orchestrator {
         warmUpMs,
         declared: spawn?.declared,
         ran: 0,
+        done: [],
         usage: new Usage(),
         cores,
         memory,
@@ -846,7 +860,14 @@ export class Orchestrator {
   }
 
   /** The run asks for `workers` more for `tasks` it knows miss, its plan ending in `endsInMs`. */
-  asked(workers: number, tasks: number, measured: number, endsInMs: number): void {
+  asked(
+    workers: number,
+    tasks: number,
+    measured: number,
+    endsInMs: number,
+    unmeasured: readonly string[] = [],
+  ): void {
+    if (this.asks.length === 0) this.unmeasured = unmeasured
     this.asks.push({ at: performance.now() - this.startedAt, workers, tasks, measured, endsInMs })
   }
 
@@ -1112,7 +1133,10 @@ export class Orchestrator {
         a.label,
         this.state(a, gone),
         count(a.usage, gone.has(a) ? 0 : a.started.size) +
-          (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : ''),
+          (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : '') +
+          (this.ended && a.done.length > 0 && a.done.length <= FEW
+            ? ` · ${a.done.join(', ')}`
+            : ''),
       ])
     for (const id of this.spawnedAt.keys())
       if (!joined.has(id) && !this.cancelled.has(id)) {
@@ -1170,6 +1194,16 @@ export class Orchestrator {
                   .join(' · ')}`,
               ),
             ] as [string, ui.Inline],
+            ...(this.unmeasured.length === 0
+              ? []
+              : [
+                  [
+                    '',
+                    ui.dim(
+                      `${'unmeasured'.padEnd(width)}  ${this.unmeasured.slice(0, NAMED).join(', ')}${this.unmeasured.length > NAMED ? ` and ${this.unmeasured.length - NAMED} more` : ''}`,
+                    ),
+                  ] as [string, ui.Inline],
+                ]),
           ]
         : []),
       ...(coreMs > 0
