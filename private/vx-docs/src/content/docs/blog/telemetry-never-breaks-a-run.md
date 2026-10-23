@@ -9,13 +9,30 @@ tags:
 excerpt: "A telemetry sink in vx receives plain-data records and a read-only context. There is no API path from a sink back into scheduling, caching or execution, a sink that throws is disabled for the run, and a sink that hangs is cut off after three seconds. The guarantee is structural."
 ---
 
-Every build tool eventually grows an integration point for "tell
-someone what happened": Sentry, Slack, a metrics endpoint, an
-OpenTelemetry collector. Every one of those integrations is also a way
-for a network hiccup to fail a build, and the usual defence is a
-policy: please catch your errors, please do not block.
+Two broken telemetry plugins: one sink throws on every record, the other
+never finishes its `flush`.
 
-vx's `telemetry` capability makes it a structure instead.
+```ts
+telemetry: () => ({ onRecord() { throw new Error('collector is down') } })
+telemetry: () => ({ onRunSummary() {}, flush: () => new Promise<void>(() => {}) })
+```
+
+```sh frame="terminal"
+$ vx run build test --all
+[vx] telemetry sink 'sink-that-throws' threw in onRecord; disabled for this run: collector is down
+ ⏺︎     9ms success miss     packages/a#test
+ ⏺︎    15ms success miss     packages/b#test
+[vx] telemetry flush timed out after 3000ms; buffered records lost
+            8 success · 8 total
+$ echo $?
+0
+```
+
+Eight tasks, all green, exit 0, a warning for each broken sink. The
+hanging sink cost the run its three-second bound and nothing more (wall
+3.19 s; vx `0be0367`, 2026-10-23).
+
+That is not a policy sinks follow. It is the shape of the API.
 
 ## The contract
 
@@ -39,16 +56,12 @@ absence of a path.
 
 ## Crash isolation
 
-- If a sink throws, from `onRecord`, `onRunSummary` or `flush`, it is
-  **disabled for the rest of the run** and a warning is printed. Other
-  sinks keep receiving records. The run's outcome is unaffected.
-- `onRecord` must return promptly, so the contract says buffer and do
-  not await. `flush()` is the one awaited drain point, at the end of
-  the run. All sinks flush at once under one shared, fixed bound of
-  three seconds, so a wedged collector cannot hold the process's exit
-  hostage.
-- A sink that lists what it `wants` costs the source nothing for the
-  kinds it skips; the large `task.log` stream is off unless asked for.
+| A sink that…                    | What vx does                                            |
+| ------------------------------- | ------------------------------------------------------- |
+| throws (any method)             | disables it for the run, warns, keeps the others        |
+| hangs in `flush`                | cuts every flush off at one shared 3 s bound            |
+| blocks in `onRecord`            | the contract says buffer there; `flush` is for I/O     |
+| skips kinds via `wants`         | never builds them (`task.log` is off unless asked for)  |
 
 The other direction is isolated too. A plugin whose `setup()` throws
 aborts the run before any work starts, naming the plugin, because a
@@ -89,4 +102,5 @@ is wrapped the same way; a remote outage is a slower run, never a
 broken one, and a plugin that never fails still warns so you know it
 happened.
 
-The guide is [Writing a vx plugin](../../guides/plugins/).
+Guide: [Writing a vx plugin](../../guides/plugins/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
