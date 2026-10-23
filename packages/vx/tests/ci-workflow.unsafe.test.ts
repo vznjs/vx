@@ -48,7 +48,7 @@ describe('ci.yml', () => {
       "github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size"
     expect(
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
-    ).toEqual([['linux', 'linux-x64', 'ubuntu-latest', top, undefined]])
+    ).toEqual([['linux', 'VX DTE', 'ubuntu-latest', top, undefined]])
   })
 
   // A merged PR's run held its workers' runners until it ended, and the next

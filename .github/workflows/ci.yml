@@ -50,7 +50,7 @@ jobs:
   # (vx-worker.yml) as the plan's width needs, cancels them at the end and
   # reads the remote cache; @vzn/vx-ci writes the job summary.
   linux:
-    name: linux-x64
+    name: VX DTE
     if: github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size
     runs-on: ubuntu-latest
     timeout-minutes: 25
