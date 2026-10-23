@@ -1347,9 +1347,10 @@ export class Orchestrator {
    * The `workers` rows, live and at the end: one per worker by `size#index`
    * with its status, the tasks it has done and the ones it runs now, then
    * this machine's; once over, each joined worker's warm-up and, under
-   * each, the cores and memory its size declares and its machine reports.
+   * each, the cores and memory its size declares and its machine reports;
+   * and `ideal`, the run's `idealMs`, asked once it ended.
    */
-  footer(): [string, ui.Inline][] {
+  footer(ideal?: () => number | undefined): [string, ui.Inline][] {
     if (this.spawnedAt.size === 0 && this.workers.size === 0 && this.gone.length === 0) return []
     const gone = new Set(this.gone)
     const all = [...this.workers.values(), ...this.gone]
@@ -1456,6 +1457,18 @@ export class Orchestrator {
                   .join(' · ')}`,
               ),
             ] as [string, ui.Inline],
+            // Beside core's time row, how close the run came (M, 2026-10-23).
+            ...((ms) =>
+              ms === undefined
+                ? []
+                : [
+                    [
+                      '',
+                      ui.dim(
+                        `${'ideal'.padEnd(width)}  ${seconds(ms)}: each task as long as it took, placed perfectly`,
+                      ),
+                    ] as [string, ui.Inline],
+                  ])(ideal?.()),
             ...(this.unmeasured.length === 0
               ? []
               : [

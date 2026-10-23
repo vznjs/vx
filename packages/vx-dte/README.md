@@ -429,7 +429,8 @@ core's cache probe answered, how many tasks it left to run (held in no
 cache, or not answered for) and how many of them it found in none. The `asked` line says each
 time the run asked for workers: how many, when, for how many tasks that
 missed, how many of them with a measured need (an unmeasured one counts
-as `unmeasured`), and when its plan ended then. The first ask
+as `unmeasured`), and when its plan ended then. The `ideal` line is the run's ideal end
+(below), so every log reads it beside core's `time` row. The first ask
 waits for the needs another plugin fetches (`ctx.refining()`), such as
 `@vzn/vx-schedule-history`'s default-branch timings. The `unmeasured`
 line names the tasks the first ask had no measure of, and a worker that
@@ -445,6 +446,7 @@ machine together, and the share of their history the run's tasks used:
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
             probe    at 0.4s: 5 tasks left to run, 5 known misses
             asked    1 at 0.5s for 5 tasks (5 measured), plan 12.0s
+            ideal    10.8s: each task as long as it took, placed perfectly
             total    cpu utilization 58%
 ```
 
@@ -466,7 +468,8 @@ After the run, `dte()` replays it perfectly: each task as long as it held
 its worker and with the cores it would use with them free, on as many
 workers as the sizes allow, each joining after its platform's fastest
 real warm-up. That ideal end (`TaskExecutor.idealMs`) sits beside the
-real time in the run summary, and `@vzn/vx-ci` prints it.
+real time in the run summary and the footer's `ideal` line, and
+`@vzn/vx-ci` prints it.
 
 ## API
 

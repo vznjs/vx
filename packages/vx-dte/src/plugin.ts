@@ -687,7 +687,7 @@ export function dte(options: DteOptions) {
           replan()
           return o.execute(req)
         },
-        footer: () => o.footer(),
+        footer: () => o.footer(() => o.idealMs((id) => nodes?.get(id)?.deps ?? [], sizes)),
         machines: () => o.machines(),
         idealMs: () => o.idealMs((id) => nodes?.get(id)?.deps ?? [], sizes),
         profile: () => o.profile(),
