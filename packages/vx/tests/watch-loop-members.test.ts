@@ -372,6 +372,8 @@ describe('vx watch loop (e2e): the watched set', () => {
     // landed meanwhile, and the re-arm after the run swapped watchers before
     // FSEvents delivered it; the new lock ran nothing until the next edit.
     // The poller's tick holds the event back the same way, every time.
+    // The write below is not atomic: a cycle that read it half written
+    // failed, and skipped the re-lock check with it (Linux CI, 2026-10-23).
     const lock = path.join(f.root, '.vx/projects.lock.json')
     const declares = `export default {
       tasks: {

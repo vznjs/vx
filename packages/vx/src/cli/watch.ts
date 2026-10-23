@@ -509,11 +509,6 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             await before?.stop()
             if (cycle.refused !== undefined) sayNotice('error', 'vx watch', cycle.refused)
             changes.lastCycle = { start, end: Date.now() }
-            // A re-lock since this cycle began: the re-arm below can
-            // close the watcher its event was still on its way to (FSEvents'
-            // latency, a poller's tick), and the new lock ran nothing until
-            // the next edit (macOS CI, 2026-10-23).
-            if (lockStamp() !== lockAtRun) rootFileEvent(LOCKFILE_NAME)
           } catch (err) {
             // A re-run can fail catastrophically when the workspace
             // itself moved out from under us — e.g. the user deleted
@@ -525,6 +520,13 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // A config's own throw or a plugin's failure may quote a secret (L-11).
             const message = maskedLine(err instanceof Error ? err.message : String(err))
             sayNotice('error', 'vx watch', `cycle failed: ${message}`)
+          } finally {
+            // A re-lock since this cycle began: the re-arm below can
+            // close the watcher its event was still on its way to (FSEvents'
+            // latency, a poller's tick), and the new lock ran nothing until
+            // the next edit (macOS CI, 2026-10-23). A cycle that read the
+            // lock mid-write failed on it, and is the same case.
+            if (lockStamp() !== lockAtRun) rootFileEvent(LOCKFILE_NAME)
           }
         // After a failed cycle too: a package added with a config that does
         // not load yet fails its cycle, and unarmed, the fix to that config
