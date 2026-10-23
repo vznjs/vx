@@ -1,6 +1,6 @@
 // The home guard (tests/helpers/home-guard.ts) fails a test process that
 // added a store to the real home. This repository's own store is no
-// fixture's: on a DTE agent the vx running the suite writes it beside a
+// fixture's: on a DTE worker the vx running the suite writes it beside a
 // sandboxed shard, which cannot read `.git` to name it, and the guard failed
 // the shard (2026-10-22).
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'

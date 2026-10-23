@@ -110,21 +110,30 @@ function client(opts: Partial<RelayOptions> = {}, provers = new Map<string, Prov
   return { relay, provers, request, call, join, keyOf, plug, poll, closes, frame, send }
 }
 
-describe('the relay carries one run between its orchestrator and agents', () => {
-  it('tells the orchestrator of agents that joined before and after it', async () => {
+describe('the relay carries one run between its orchestrator and workers', () => {
+  it('tells the orchestrator of workers that joined before and after it', async () => {
     const c = client()
-    const early = await c.join(R1, 'agent', { size: 'small' })
+    const early = await c.join(R1, 'worker', { size: 'small' })
     const o = await c.join(R1, 'orchestrator')
-    const late = await c.join(R1, 'agent', { size: 'large' })
+    const late = await c.join(R1, 'worker', { size: 'large' })
     expect(await c.poll(R1, o)).toEqual([
       { from: 'relay', body: { type: 'joined', id: early, info: { size: 'small' } } },
       { from: 'relay', body: { type: 'joined', id: late, info: { size: 'large' } } },
     ])
   })
 
-  // Two agents joined a run at once on CI and each made it: the second
-  // replaced the first, whose agent the relay then never knew (2026-10-23).
-  it('puts agents that join a new run at once in one run', async () => {
+  it('takes the old role name agent as a worker', async () => {
+    const c = client()
+    const o = await c.join(R, 'orchestrator')
+    const w = await c.join(R, 'agent', { size: 'small' })
+    expect(await c.poll(R, o)).toEqual([
+      { from: 'relay', body: { type: 'joined', id: w, info: { size: 'small' } } },
+    ])
+  })
+
+  // Two workers joined a run at once on CI and each made it: the second
+  // replaced the first, whose worker the relay then never knew (2026-10-23).
+  it('puts workers that join a new run at once in one run', async () => {
     const c = client()
     // Bodies that arrive over the network, as a host's do: each join waits on its own.
     const slow = (ms: number) =>
@@ -133,25 +142,25 @@ describe('the relay carries one run between its orchestrator and agents', () => 
         body: new ReadableStream({
           async start(s) {
             await Bun.sleep(ms)
-            s.enqueue(new TextEncoder().encode(JSON.stringify({ role: 'agent' })))
+            s.enqueue(new TextEncoder().encode(JSON.stringify({ role: 'worker' })))
             s.close()
           },
         }),
       })
-    const agents = await Promise.all(
+    const workers = await Promise.all(
       [10, 20, 30].map(async (ms) => ((await (await c.relay.fetch(slow(ms))).json()) as any).id),
     )
     const o = await c.join(R1, 'orchestrator')
     const told: string[] = (await c.poll(R1, o)).map((m) => m.body.id)
-    expect(new Set(told)).toEqual(new Set(agents))
+    expect(new Set(told)).toEqual(new Set(workers))
     expect(told).toHaveLength(3)
   })
 
-  it('passes messages both ways, and an agent reaches only the orchestrator', async () => {
+  it('passes messages both ways, and a worker reaches only the orchestrator', async () => {
     const c = client()
     const o = await c.join(R, 'orchestrator')
-    const a = await c.join(R, 'agent')
-    const b = await c.join(R, 'agent')
+    const a = await c.join(R, 'worker')
+    const b = await c.join(R, 'worker')
     await c.poll(R, o)
     expect((await c.send(R, o, a, { run: 'x#build' })).status).toBe(204)
     expect(await c.poll(R, a)).toEqual([{ from: 'orchestrator', body: { run: 'x#build' } }])
@@ -167,11 +176,11 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     expect((await c.call(R, 'join', { role: 'orchestrator' })).status).toBe(409)
   })
 
-  it('reports a lost agent and closes the run when the orchestrator goes', async () => {
+  it('reports a lost worker and closes the run when the orchestrator goes', async () => {
     const c = client({ heartbeatMs: 20 })
     const o = await c.join(R, 'orchestrator')
-    const a = await c.join(R, 'agent')
-    const b = await c.join(R, 'agent')
+    const a = await c.join(R, 'worker')
+    const b = await c.join(R, 'worker')
     await c.poll(R, o)
     await c.poll(R, a)
     // a and o keep pinging; b, with no socket, falls silent past three heartbeats.
@@ -191,7 +200,7 @@ describe('the relay carries one run between its orchestrator and agents', () => 
   it('pins a run to its orchestrator’s CI job: its id acts from no other', async () => {
     const c = client({ verify: async (t) => ({ iss: 'i', run: ['1'], job: t }) })
     const o = (await c.call(R, 'join', { role: 'orchestrator' }, '', 'job-1')).json.id
-    const a = (await c.call(R, 'join', { role: 'agent' }, '', 'job-2')).json.id
+    const a = (await c.call(R, 'join', { role: 'worker' }, '', 'job-2')).json.id
     const upgrade = async (id: string, token: string) =>
       (
         await c.relay.fetch(
@@ -219,7 +228,7 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     })
     expect((await c.call(R, 'join', { role: 'orchestrator', key: 'AAAA' })).status).toBe(400)
     const o = await c.join(R, 'orchestrator')
-    const a = await c.join(R, 'agent')
+    const a = await c.join(R, 'worker')
     const owner = c.provers.get(o)!
     const other = await createProver()
     const status = async (req: Request) => (await c.relay.fetch(req)).status
@@ -247,8 +256,8 @@ describe('the relay carries one run between its orchestrator and agents', () => 
   it('limits each participant’s frames to a burst, then a steady rate', async () => {
     const c = client()
     await c.join(R, 'orchestrator')
-    const a = await c.join(R, 'agent')
-    const b = await c.join(R, 'agent')
+    const a = await c.join(R, 'worker')
+    const b = await c.join(R, 'worker')
     const send = (id: string) => c.send(R, id, 'orchestrator', 1)
     // The burst, and what refilled while it was spent.
     let taken = 0
@@ -272,11 +281,11 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     expect((await send(a)).status).toBe(204)
   })
 
-  it('lets the orchestrator remove an agent it did not admit, before or after it came', async () => {
+  it('lets the orchestrator remove a worker it did not admit, before or after it came', async () => {
     const c = client()
-    const early = await c.join(R, 'agent')
+    const early = await c.join(R, 'worker')
     const o = await c.join(R, 'orchestrator')
-    const late = await c.join(R, 'agent')
+    const late = await c.join(R, 'worker')
     expect(await c.frame(R, early, { remove: late })).toEqual({
       n: 0,
       status: 403,
@@ -286,9 +295,9 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     // `early` gets what it was told before its socket closes; `late` has none to tell.
     await c.send(R, o, early, { type: 'refused' })
     await c.plug(R, early)
-    for (const agent of [early, late]) {
-      expect(await c.frame(R, o, { remove: agent })).toEqual({ n: expect.any(Number) })
-      expect((await c.send(R, agent, 'orchestrator', 1)).status).toBe(404)
+    for (const worker of [early, late]) {
+      expect(await c.frame(R, o, { remove: worker })).toEqual({ n: expect.any(Number) })
+      expect((await c.send(R, worker, 'orchestrator', 1)).status).toBe(404)
     }
     expect(await c.poll(R, early)).toEqual([{ from: 'orchestrator', body: { type: 'refused' } }])
     expect(c.closes.get(early)).toEqual([GONE])
@@ -302,12 +311,12 @@ describe('the relay carries one run between its orchestrator and agents', () => 
 
   it('answers malformed requests with their status', async () => {
     const c = client()
-    expect((await c.call('bad run', 'join', { role: 'agent' })).status).toBe(400)
-    expect((await c.call('900-42', 'join', { role: 'agent' })).json).toEqual({
+    expect((await c.call('bad run', 'join', { role: 'worker' })).status).toBe(400)
+    expect((await c.call('900-42', 'join', { role: 'worker' })).json).toEqual({
       error: 'run id is not a random UUID',
     })
     expect((await c.call(R, 'join', { role: 'boss' })).status).toBe(400)
-    expect((await c.call(R, 'join', { role: 'agent', info: 'x'.repeat(1 << 20) })).json).toEqual({
+    expect((await c.call(R, 'join', { role: 'worker', info: 'x'.repeat(1 << 20) })).json).toEqual({
       error: 'body over 1 MiB',
     })
     expect((await c.call(R, 'socket', { id: 'x' })).status).toBe(405)
@@ -320,7 +329,7 @@ describe('the relay carries one run between its orchestrator and agents', () => 
   it('holds at most 64 MiB for a participant with no socket', async () => {
     const c = client()
     const o = await c.join(R, 'orchestrator')
-    const a = await c.join(R, 'agent')
+    const a = await c.join(R, 'worker')
     const body = 'x'.repeat((1 << 20) - 100)
     const statuses: number[] = []
     for (let i = 0; i < 66; i++) statuses.push((await c.send(R, o, a, body)).status)
@@ -331,8 +340,8 @@ describe('the relay carries one run between its orchestrator and agents', () => 
 
   it('wants a bearer token when it verifies', async () => {
     const c = client({ verify: async () => ({ iss: 'i', run: ['1'] }) })
-    expect((await c.call(R, 'join', { role: 'agent' })).status).toBe(401)
-    expect((await c.call(R, 'join', { role: 'agent' }, '', 't')).status).toBe(200)
+    expect((await c.call(R, 'join', { role: 'worker' })).status).toBe(401)
+    expect((await c.call(R, 'join', { role: 'worker' }, '', 't')).status).toBe(200)
   })
 
   it('names a run by its id and its repository: another repository cannot take its id', async () => {
@@ -341,15 +350,15 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     const c = client({ verify: async (t) => ({ iss: 'https://gitlab.com', run: [t] }) })
     const theirs = (await c.call(R, 'join', { role: 'orchestrator' }, '', 'other')).json.id
     const mine = await c.call(R, 'join', { role: 'orchestrator' }, '', 'mine')
-    const agent = (await c.call(R, 'join', { role: 'agent' }, '', 'mine')).json.id
+    const worker = (await c.call(R, 'join', { role: 'worker' }, '', 'mine')).json.id
     expect([
       mine.status,
       await c.poll(R, mine.json.id, 'mine'),
       await c.poll(R, theirs, 'other'),
-      await c.plug(R, agent, 'other'),
+      await c.plug(R, worker, 'other'),
     ]).toEqual([
       200,
-      [{ from: 'relay', body: { type: 'joined', id: agent, info: null } }],
+      [{ from: 'relay', body: { type: 'joined', id: worker, info: null } }],
       [],
       false,
     ])
@@ -373,11 +382,11 @@ describe('a host that keeps runs and holds websockets', () => {
     const verify = async () => ({ iss: 'https://gitlab.example', run: ['project-xyz'] })
     const before = client({ store, timer: false, verify })
     const o = (await before.call(R, 'join', { role: 'orchestrator' }, '', 't')).json.id
-    const a = (await before.call(R, 'join', { role: 'agent', info: 'sealed' }, '', 't')).json.id
-    const b = (await before.call(R, 'join', { role: 'agent', info: 'sealed' }, '', 't')).json.id
+    const a = (await before.call(R, 'join', { role: 'worker', info: 'sealed' }, '', 't')).json.id
+    const b = (await before.call(R, 'join', { role: 'worker', info: 'sealed' }, '', 't')).json.id
     await before.poll(R, o, 't')
     await before.send(R, o, a, 'secret', 't')
-    // Nothing kept says whose run it is, what was sent, or what an agent said once told.
+    // Nothing kept says whose run it is, what was sent, or what a worker said once told.
     const kept = JSON.stringify([...store.kv])
     expect([
       kept.includes('secret'),
@@ -395,10 +404,10 @@ describe('a host that keeps runs and holds websockets', () => {
     ]).toEqual([false, [], [{ from: 'relay', body: { type: 'lost', id: a } }]])
   })
 
-  it('holds an agent’s info only until the orchestrator is told it', async () => {
+  it('holds a worker’s info only until the orchestrator is told it', async () => {
     const store = memory()
     const c = client({ store, timer: false })
-    const a = await c.join(R, 'agent', 'sealed')
+    const a = await c.join(R, 'worker', 'sealed')
     expect(JSON.stringify([...store.kv]).includes('sealed')).toBe(true)
     const o = await c.join(R, 'orchestrator')
     expect(JSON.stringify([...store.kv]).includes('sealed')).toBe(false)
@@ -420,14 +429,14 @@ describe('a host that keeps runs and holds websockets', () => {
   }
 
   // An object kept a day per run held 100+ on one host (owner, 2026-10-22).
-  it('keeps nothing of a run its orchestrator signed off, once its agents heard', async () => {
+  it('keeps nothing of a run its orchestrator signed off, once its workers heard', async () => {
     const store = memory()
     const c = client({ store, timer: false })
     const o = await c.join(R, 'orchestrator')
-    await c.join(R, 'agent')
+    await c.join(R, 'worker')
     await c.frame(R, o, { leave: true })
-    // The agent has no socket: the run keeps it a minute to tell it, then nothing is kept.
-    expect((await c.call(R, 'join', { role: 'agent' })).status).toBe(410)
+    // The worker has no socket: the run keeps it a minute to tell it, then nothing is kept.
+    expect((await c.call(R, 'join', { role: 'worker' })).status).toBe(410)
     expect(later(c, 61_000)).toBeUndefined()
     expect([...store.kv]).toEqual([])
     const alone = client({ store, timer: false })
@@ -437,24 +446,24 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(alone.relay.sweep()).toBeUndefined()
   })
 
-  it('forgets a run whose agents all went before an orchestrator joined', async () => {
+  it('forgets a run whose workers all went before an orchestrator joined', async () => {
     const store = memory()
     const c = client({ store, timer: false })
-    await c.join(R, 'agent')
+    await c.join(R, 'worker')
     expect(later(c, 16_000)).toBeUndefined()
     expect([...store.kv]).toEqual([])
   })
 
-  // Agents start after their orchestrator joins: one alone is late for a run that ended.
+  // Workers start after their orchestrator joins: one alone is late for a run that ended.
   it('closes a run no orchestrator joined in ten minutes', async () => {
     const store = memory()
     const c = client({ store, timer: false })
-    const a = await c.join(R, 'agent')
+    const a = await c.join(R, 'worker')
     // Heard from all along.
     c.relay.seen(K, a, Date.now() + 10 * 60_000)
     expect(later(c, 9 * 60_000)! - Date.now()).toBeLessThanOrEqual(10 * 60_000 + 1)
     later(c, 10 * 60_000 + 2)
-    expect((await c.call(R, 'join', { role: 'agent' })).status).toBe(410)
+    expect((await c.call(R, 'join', { role: 'worker' })).status).toBe(410)
   })
 
   // Restored as heard just now, a gone participant kept its object waking
@@ -463,7 +472,7 @@ describe('a host that keeps runs and holds websockets', () => {
     const store = memory()
     const before = client({ store, timer: false })
     const o = await before.join(R, 'orchestrator')
-    await before.join(R, 'agent')
+    await before.join(R, 'worker')
     await before.poll(R, o)
     before.relay.sweep()
     const after = client({ store, timer: false }, before.provers)
@@ -485,7 +494,7 @@ describe('a host that keeps runs and holds websockets', () => {
     }
     const c = client({ store, timer: false })
     const o = await c.join(R, 'orchestrator')
-    const a = await c.join(R, 'agent')
+    const a = await c.join(R, 'worker')
     await c.poll(R, o)
     await c.poll(R, a)
     writes.length = 0
@@ -507,7 +516,7 @@ describe('a host that keeps runs and holds websockets', () => {
   it('sweeps when its host asks, and says when to ask next', async () => {
     const c = client({ heartbeatMs: 20, timer: false })
     const o = await c.join(R, 'orchestrator')
-    const a = await c.join(R, 'agent')
+    const a = await c.join(R, 'worker')
     const next = c.relay.sweep()!
     expect(next - Date.now()).toBeGreaterThan(40)
     expect(next - Date.now()).toBeLessThanOrEqual(61)
@@ -525,8 +534,8 @@ describe('a host that keeps runs and holds websockets', () => {
   it('gives a participant on a socket twelve heartbeats, one with none three', async () => {
     const c = client({ heartbeatMs: 20, timer: false })
     const o = await c.join(R, 'orchestrator')
-    const a = await c.join(R, 'agent')
-    const b = await c.join(R, 'agent')
+    const a = await c.join(R, 'worker')
+    const b = await c.join(R, 'worker')
     expect(await c.plug(R, a)).toBe(true)
     expect(await c.plug(R, o)).toBe(true)
     await Bun.sleep(70)
@@ -552,7 +561,7 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(Object.keys(joined.json).sort()).toEqual(['heartbeatMs', 'id', 'socket'])
     expect(joined.json.socket).toBe(true)
     const o = joined.json.id
-    const a = await c.join(R, 'agent')
+    const a = await c.join(R, 'worker')
     await c.send(R, o, a, 'queued')
     const frames: unknown[] = []
     const socket = { send: (t: string) => void frames.push(JSON.parse(t)), close() {} }
@@ -594,7 +603,7 @@ describe('a host that keeps runs and holds websockets', () => {
   it('closes a socket a push failed on, so its participant redials for what queued', async () => {
     const c = client()
     const o = (await c.call(R, 'join', { role: 'orchestrator' })).json.id
-    const a = await c.join(R, 'agent')
+    const a = await c.join(R, 'worker')
     let closed = 0
     const socket = {
       send() {
@@ -610,7 +619,7 @@ describe('a host that keeps runs and holds websockets', () => {
 
   it('answers a socket request without the upgrade header 426', async () => {
     const c = client()
-    const a = await c.join(R, 'agent')
+    const a = await c.join(R, 'worker')
     expect((await c.call(R, 'socket', undefined, `?id=${a}`)).status).toBe(426)
   })
 })
@@ -629,7 +638,7 @@ it('the Bun entry serves the protocol, without auth on loopback only', async () 
     const url = /http:\/\/\S+/.exec(line)![0]
     const res = await fetch(`${url}/v1/runs/${R}/join`, {
       method: 'POST',
-      body: JSON.stringify({ role: 'agent' }),
+      body: JSON.stringify({ role: 'worker' }),
     })
     expect([res.status, typeof ((await res.json()) as { id: unknown }).id]).toEqual([200, 'string'])
   } finally {

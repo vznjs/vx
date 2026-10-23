@@ -74,7 +74,7 @@ export default defineProject({
           allow: {
             read: ['**/*'],
             systemInfo: ['vfs.disk-space', 'net.link.addr'],
-            // `pgrep`, which the agent tests list processes with, asks it (macOS).
+            // `pgrep`, which the worker tests list processes with, asks it (macOS).
             machLookup: ['com.apple.sysmond'],
             localBinding: true,
           },

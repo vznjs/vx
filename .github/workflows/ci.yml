@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
   # `closed`: a merged or closed PR's own run joins its concurrency group
-  # and cancels the one still running, so its agents free their runners
-  # (2026-10-23: agents queued 108-184 s behind merged PRs' runs). Its jobs
+  # and cancels the one still running, so its workers free their runners
+  # (2026-10-23: workers queued 108-184 s behind merged PRs' runs). Its jobs
   # are skipped.
   pull_request:
     types: [opened, synchronize, reopened, closed]
@@ -45,7 +45,7 @@ jobs:
   # Each job is one distributed run (@vzn/vx-dte, .vx/workspace.ts): it
   # checks out, installs Bun and the deps, checks the lock and runs vx,
   # as any repo would (owner, 2026-10-23: "super simple, same as devs
-  # would add it"). vx names the run, plans it, starts as many agents
+  # would add it"). vx names the run, plans it, starts as many workers
   # (vx-agent.yml) as the plan's width needs, cancels them at the end and
   # reads the remote cache; @vzn/vx-ci writes the job summary.
   linux:
@@ -57,13 +57,13 @@ jobs:
     environment: ${{ github.event_name == 'push' && 'github-pages' || '' }}
     permissions:
       id-token: write
-      # Dispatching and cancelling the agents.
+      # Dispatching and cancelling the workers.
       actions: write
       pages: write
       # release.sync gives each GitHub release its post's body.
       contents: write
     env:
-      CI_AGENTS_OS: Linux
+      CI_WORKERS_OS: Linux
       VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
       GITHUB_TOKEN: ${{ github.token }}
       GH_TOKEN: ${{ github.token }}
@@ -78,13 +78,13 @@ jobs:
       VX_PR_TITLE: ${{ github.event.pull_request.title }}
       VX_PR_BASE: ${{ github.event.pull_request.base.sha }}
       VX_PR_HEAD: ${{ github.event.pull_request.head.sha }}
-      # The 2 MiB tmpfs each Linux agent mounts (vx-agent.yml).
-      # Cold reads nothing but still writes: agents hand outputs back
+      # The 2 MiB tmpfs each Linux worker mounts (vx-agent.yml).
+      # Cold reads nothing but still writes: workers hand outputs back
       # through the remote.
       VX_CACHE_POLICY: ${{ inputs.cold && 'local:w,remote:w' || '' }}
     steps:
       # The default branch's history: schedule-history reads the
-      # merge-base's timings to pack agents. Commits and trees only.
+      # merge-base's timings to pack workers. Commits and trees only.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -94,7 +94,7 @@ jobs:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
       - run: bun packages/vx/src/bin.ts lock --check
-      # Plans the graph, starts the agents its width needs, then
+      # Plans the graph, starts the workers its width needs, then
       # orchestrates them. A PR runs what its diff affects, inputs outside
       # a project included (owner, 2026-10-23); main runs everything.
       - run: bun packages/vx/src/bin.ts run ci test.live check.vs-turbo build.bun.linux-arm64 build.bun.darwin-arm64 ${{ github.event_name == 'push' && 'release.sync' || '' }} ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
@@ -106,7 +106,7 @@ jobs:
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
 
   # The linux-arm64 release binary is cross-compiled and never run
-  # elsewhere: this proves it launches on an arm agent, on main only.
+  # elsewhere: this proves it launches on an arm worker, on main only.
   binary-linux-arm64:
     name: linux-arm64
     if: github.event_name != 'pull_request'
@@ -117,7 +117,7 @@ jobs:
       actions: write
       contents: read
     env:
-      CI_AGENTS_OS: Linux-ARM64
+      CI_WORKERS_OS: Linux-ARM64
       VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
       GITHUB_TOKEN: ${{ github.token }}
     steps:
@@ -135,7 +135,7 @@ jobs:
   # macOS-only defects reached main unseen on Linux (2026-08-22: tar
   # formats, symlinked bases, SQLite): `test.platform` runs the files that
   # guard tar, filesystem, SQLite, the sandbox, signals and watching, on
-  # Mac agents, on main only (owner, 2026-10-22).
+  # Mac workers, on main only (owner, 2026-10-22).
   macos:
     name: darwin-arm64
     if: github.event_name != 'pull_request'
@@ -146,7 +146,7 @@ jobs:
       actions: write
       contents: read
     env:
-      CI_AGENTS_OS: macOS
+      CI_WORKERS_OS: macOS
       VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
       GITHUB_TOKEN: ${{ github.token }}
       VX_REQUIRE_SANDBOX: '1'

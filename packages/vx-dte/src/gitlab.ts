@@ -1,40 +1,40 @@
-// `gitlab()`: agents as jobs of a child pipeline that `vx dte plan` writes
+// `gitlab()`: workers as jobs of a child pipeline that `vx dte plan` writes
 // (design dte-2026-10.md, "Adapters"). The user's own pipeline runs the
 // plan job, triggers the child it wrote, and runs the orchestrator, their
-// own `vx run`. Every agent the plan wrote starts at once, unless
+// own `vx run`. Every worker the plan wrote starts at once, unless
 // `VX_DTE_GITLAB_TOKEN` is set: then only the first does, and the run
 // plays the others, manual jobs, as its work needs them.
 
 import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
-import type { AgentSpawn, DteAdapter } from './plugin.js'
+import type { WorkerSpawn, DteAdapter } from './plugin.js'
 
 export interface GitlabOptions {
-  /** The workspace-relative file that holds `.vx-agent`, the job template every agent job extends. */
+  /** The workspace-relative file that holds `.vx-worker`, the job template every worker job extends. */
   readonly include: string
-  /** Runner tags by agent size: the runners each size's jobs go to. */
+  /** Runner tags by worker size: the runners each size's jobs go to. */
   readonly tags?: Readonly<Record<string, readonly string[]>>
 }
 
 const KEYS: PluginOptionKinds<GitlabOptions> = { include: 'string', tags: 'object' }
 
 /** What the child pipeline is written to, workspace-relative. */
-const AGENTS_FILE = 'vx-agents.yml'
+const WORKERS_FILE = 'vx-workers.yml'
 
 export function gitlab(options: GitlabOptions): DteAdapter {
   refuseUnknownOptions('gitlab()', options, KEYS)
   if (typeof options.include !== 'string' || options.include === '') {
     throw new UserError(
-      "gitlab() needs include: the file holding .vx-agent, such as '.gitlab/vx.yml'",
+      "gitlab() needs include: the file holding .vx-worker, such as '.gitlab/vx.yml'",
     )
   }
   const token = (): string | undefined => process.env['VX_DTE_GITLAB_TOKEN'] || undefined
   let jobs: Promise<Map<string, number>> | undefined
   const played = new Set<string>()
-  // A played job that fails before its agent joins (checkout, install)
-  // tells the run nothing, and a run with no other agent waited for the
+  // A played job that fails before its worker joins (checkout, install)
+  // tells the run nothing, and a run with no other worker waited for the
   // job's timeout. Each played job is read until it ends; one that ends
   // badly says so.
-  const watched = new Map<number, AgentSpawn>()
+  const watched = new Map<number, WorkerSpawn>()
   let watch: ReturnType<typeof setTimeout> | undefined
   let closed = false
   const look = (t: string, ms: number): void => {
@@ -59,7 +59,7 @@ export function gitlab(options: GitlabOptions): DteAdapter {
   return {
     live: () => token() !== undefined,
 
-    // A live agent's job, played in the child pipeline; the others the
+    // A live worker's job, played in the child pipeline; the others the
     // plan started.
     async spawn(a) {
       const t = token()
@@ -68,9 +68,9 @@ export function gitlab(options: GitlabOptions): DteAdapter {
         jobs = undefined
         throw err
       })
-      const name = `vx-agent ${a.id}`
+      const name = `vx-worker ${a.id}`
       const id = (await jobs).get(name)
-      if (id === undefined) throw new Error(`no manual job ${name} in the vx-agents pipeline`)
+      if (id === undefined) throw new Error(`no manual job ${name} in the vx-workers pipeline`)
       played.add(name)
       await api(t, 'POST', `jobs/${id}/play`)
       watched.set(id, a)
@@ -97,12 +97,12 @@ export function gitlab(options: GitlabOptions): DteAdapter {
         'include:',
         `  - local: ${json(options.include)}`,
       ]
-      for (const a of plan.agents) {
+      for (const a of plan.workers) {
         const tags = options.tags?.[a.size]
         lines.push(
           '',
-          `${json(`vx-agent ${a.id}`)}:`,
-          '  extends: .vx-agent',
+          `${json(`vx-worker ${a.id}`)}:`,
+          '  extends: .vx-worker',
           '  needs:',
           '    - pipeline: $PARENT_PIPELINE_ID',
           '      job: vx-plan',
@@ -110,14 +110,14 @@ export function gitlab(options: GitlabOptions): DteAdapter {
           ...(a.live ? ['  when: manual'] : []),
           '  variables:',
           `    VX_DTE_RUN: ${json(plan.run)}`,
-          `    VX_DTE_AGENT: ${json(a.id)}`,
+          `    VX_DTE_WORKER: ${json(a.id)}`,
           `    VX_DTE_RELAY: ${json(plan.relay)}`,
           '  script:',
-          `    - ${json('bunx @vzn/vx dte agent')}`,
+          `    - ${json('bunx @vzn/vx dte worker')}`,
         )
       }
       return {
-        [AGENTS_FILE]: `${lines.join('\n')}\n`,
+        [WORKERS_FILE]: `${lines.join('\n')}\n`,
         // The orchestrator job's run id, as a dotenv report.
         'vx-dte.env': `VX_DTE_RUN=${plan.run}\n`,
       }
@@ -138,7 +138,7 @@ const WATCH_MAX_MS = 60_000
 /** A job status no job leaves. */
 const ENDED = new Set(['success', 'failed', 'canceled', 'skipped'])
 
-/** How long the run waits for the vx-agents child pipeline to exist: a minute. */
+/** How long the run waits for the vx-workers child pipeline to exist: a minute. */
 const BRIDGE_TRIES = 30
 const BRIDGE_WAIT_MS = 2_000
 
@@ -159,7 +159,7 @@ async function api(token: string, method: string, route: string): Promise<unknow
   return res.json()
 }
 
-/** The manual jobs of the child pipeline this pipeline's `vx-agents` job triggered, by name. */
+/** The manual jobs of the child pipeline this pipeline's `vx-workers` job triggered, by name. */
 async function manualJobs(token: string): Promise<Map<string, number>> {
   // The trigger job runs beside this one: its child may not be there yet.
   let child: number | undefined
@@ -169,9 +169,10 @@ async function manualJobs(token: string): Promise<Map<string, number>> {
       'GET',
       `pipelines/${process.env['CI_PIPELINE_ID']}/bridges?per_page=100`,
     )) as { name: string; downstream_pipeline: { id: number } | null }[]
-    child = bridges.find((b) => b.name === 'vx-agents')?.downstream_pipeline?.id
+    child = bridges.find((b) => b.name === 'vx-workers')?.downstream_pipeline?.id
     if (child !== undefined) break
-    if (i >= BRIDGE_TRIES) throw new Error('gitlab(): no vx-agents child pipeline in this pipeline')
+    if (i >= BRIDGE_TRIES)
+      throw new Error('gitlab(): no vx-workers child pipeline in this pipeline')
     await Bun.sleep(BRIDGE_WAIT_MS)
   }
   const out = new Map<string, number>()

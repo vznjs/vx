@@ -2,7 +2,7 @@
 // that does leaves a store per fixture repo on the developer's disk (457 MB
 // on one host, 2026-10-21). Fails the process that added one. The store of
 // this repository is not a fixture's: the vx running the suite writes it, as
-// a DTE agent does while its other tasks finish beside this one. A sandboxed
+// a DTE worker does while its other tasks finish beside this one. A sandboxed
 // shard cannot read `.git` to name it, so a store holding only this
 // repository's projects is taken as its own; an empty one is a few KB.
 import { Database } from 'bun:sqlite'

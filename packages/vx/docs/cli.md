@@ -765,7 +765,7 @@ other persistent task`), and a non-zero exit makes the run exit 1
    elapsed time leads (`     568ms running  <id>`). A task stays in
    its row for its whole life, so nothing jumps; a task running beyond
    the slots gets a row after them until one frees. A dim header names
-   the columns over the rows (`time status cache task`, `· agent` when an
+   the columns over the rows (`time status cache task`, `· worker` when an
    executor places tasks), and once over the list's first row on a
    terminal. From the first frame, an idle worker row holds a task an
    unfinished dependency blocks, one per row, in the order the
@@ -1154,7 +1154,7 @@ macOS, `sandbox-exec`), that task fails with one line, `sandbox not
 available: <reason>`, and never runs unsandboxed. Tasks without a
 sandbox run as usual, and the failure's dependents follow `--continue`.
 A task an executor that enforces the sandbox where it runs takes
-(`@vzn/vx-dte`'s agents) arms nothing here, so a distributed run's
+(`@vzn/vx-dte`'s workers) arms nothing here, so a distributed run's
 orchestrator needs no sandbox runtime.
 
 ## `vx watch`
@@ -3009,7 +3009,7 @@ nothing) yellow, each its own segment; `N not downloaded` (outputs left in the r
 every count show only when non-zero. `vx last` names each remote
 failure on its task's row. A task an executor plugin ran elsewhere
 says where last on its row and after the id on its frame (`app#build · small#2`), and the plugin may
-add rows of its own above `info` (`agents`), in which case `info`
+add rows of its own above `info` (`workers`), in which case `info`
 names no worker pool. The `info` row ends with `run <id>`: the
 run's whole id, as `vx last <id>` takes it. The
 `time` row is the wall time, then the spread over executed tasks

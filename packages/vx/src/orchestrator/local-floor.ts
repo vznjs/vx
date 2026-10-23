@@ -1,7 +1,7 @@
 // Core's local floor for a plugin that runs tasks itself: `@vzn/vx-dte`'s
-// orchestrator for its own share, and its agents, which run tasks another
+// orchestrator for its own share, and its workers, which run tasks another
 // machine placed. A run arms the sandbox runtime before it builds a
-// sandboxed request; an agent is no run, so it arms here. It starts a
+// sandboxed request; a worker is no run, so it arms here. It starts a
 // request's servers (`ExecuteRequest.servers`) once each, before the
 // task, and stops them when it closes.
 
@@ -82,7 +82,7 @@ export function localFloor(
       if (req.sandbox !== undefined) await armer?.arm()
       const stop = req.signal
       if (stop === undefined || req.liveChildren !== undefined) return local.execute(req)
-      // No run holds this task's children (an agent's): its stop is ours to carry out.
+      // No run holds this task's children (a worker's): its stop is ours to carry out.
       const live = new Set<ReturnType<typeof Bun.spawn>>()
       const end = (): void => void terminateChildren(() => [...live], forwardedSignal(stop.reason))
       stop.addEventListener('abort', end, { once: true })

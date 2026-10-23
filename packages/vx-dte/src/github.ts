@@ -1,17 +1,17 @@
-// `github()`: agents as jobs of one workflow the run dispatches per wave
+// `github()`: workers as jobs of one workflow the run dispatches per wave
 // (design dte-2026-10.md, "Adapters"): `workflow_dispatch` with the run,
-// the relay, the commit, a size and the agents of that size, which the
-// workflow runs as a matrix on the runners it names for the size. Agents
+// the relay, the commit, a size and the workers of that size, which the
+// workflow runs as a matrix on the runners it names for the size. Workers
 // prove themselves by their OIDC identity: the run makes no secret.
 
 import { readFileSync } from 'node:fs'
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
 import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
-import type { AgentSpawn, DteAdapter } from './plugin.js'
+import type { WorkerSpawn, DteAdapter } from './plugin.js'
 
 export interface GithubOptions {
-  /** The agents' workflow file in `.github/workflows` (default `vx-agent.yml`). */
+  /** The workers' workflow file in `.github/workflows` (default `vx-worker.yml`). */
   readonly workflow?: string
 }
 
@@ -21,8 +21,8 @@ const KEYS: PluginOptionKinds<GithubOptions> = { workflow: 'string' }
 const RUNS_FILE = 'vx-dte-runs'
 
 /**
- * In `RUNNER_TEMP`: the agent runs a step dispatched before the run began,
- * one per line, `<API path> <agent>,<agent>`: they start while the job
+ * In `RUNNER_TEMP`: the worker runs a step dispatched before the run began,
+ * one per line, `<API path> <worker>,<worker>`: they start while the job
  * checks out and installs (`adopt`).
  */
 const STARTED_FILE = 'vx-dte-started'
@@ -33,25 +33,25 @@ const WATCH_MAX_MS = 60_000
 
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
-  const workflow = options.workflow ?? 'vx-agent.yml'
-  // The agents one demand starts, by size: one dispatch each.
-  const waves = new Map<string, AgentSpawn[]>()
+  const workflow = options.workflow ?? 'vx-worker.yml'
+  // The workers one demand starts, by size: one dispatch each.
+  const waves = new Map<string, WorkerSpawn[]>()
   // The workflow runs dispatched, and the dispatches still in flight: a
   // run that ends first cancels those still queued, or they hold runners
-  // (macOS: five a plan) that the next run's agents wait for.
+  // (macOS: five a plan) that the next run's workers wait for.
   const runs: string[] = []
   const pending = new Set<Promise<void>>()
-  // A job that fails before its agent joins (checkout, install) told the
-  // run nothing: its agent stayed `starting`, held its size's `max`, and a
-  // run with no other agent waited for the job's timeout (2026-10-22).
-  // Each job is named for its agent; one that ends badly says so.
-  const watched = new Map<string, Map<string, AgentSpawn>>()
+  // A job that fails before its worker joins (checkout, install) told the
+  // run nothing: its worker stayed `starting`, held its size's `max`, and a
+  // run with no other worker waited for the job's timeout (2026-10-22).
+  // Each job is named for its worker; one that ends badly says so.
+  const watched = new Map<string, Map<string, WorkerSpawn>>()
   let watch: ReturnType<typeof setTimeout> | undefined
   let closed = false
   const look = (ms: number): void => {
     watch = setTimeout(() => {
       void Promise.all(
-        [...watched].map(async ([run, agents]) => {
+        [...watched].map(async ([run, workers]) => {
           const res = await call(`${run}/jobs?per_page=100`).catch(() => undefined)
           if (res?.ok !== true) return
           const { jobs = [] } = ((await res.json().catch(() => null)) ?? {}) as {
@@ -63,14 +63,14 @@ export function github(options: GithubOptions = {}): DteAdapter {
             }[]
           }
           for (const j of jobs) {
-            const a = agents.get(j.name)
+            const a = workers.get(j.name)
             if (a === undefined || j.status !== 'completed') continue
-            agents.delete(j.name)
+            workers.delete(j.name)
             if (j.conclusion === 'success' || closed) continue
             const step = j.steps?.find((x) => x.conclusion === 'failure')?.name
             a.exited(`job ${j.conclusion}${step === undefined ? '' : ` at ${step}`}`)
           }
-          if (agents.size === 0) watched.delete(run)
+          if (workers.size === 0) watched.delete(run)
         }),
       ).then(() => {
         if (!closed && watched.size > 0) look(Math.min(2 * ms, WATCH_MAX_MS))
@@ -93,17 +93,17 @@ export function github(options: GithubOptions = {}): DteAdapter {
       signal: AbortSignal.timeout(30_000),
     })
   }
-  const dispatch = async (size: string, agents: AgentSpawn[]): Promise<void> => {
+  const dispatch = async (size: string, workers: WorkerSpawn[]): Promise<void> => {
     const env = process.env
     const { GITHUB_API_URL: api, GITHUB_REPOSITORY: repo, GITHUB_TOKEN: token } = env
     if (!api || !repo || !token)
       throw new Error(
-        'github(): dispatching agents needs GITHUB_TOKEN (actions: write) in a GitHub Actions job',
+        'github(): dispatching workers needs GITHUB_TOKEN (actions: write) in a GitHub Actions job',
       )
     const sha = env['GITHUB_SHA']
-    const first = agents[0]!
+    const first = workers[0]!
     // The branch's workflow file, or, once a merged PR's branch is deleted
-    // mid-run (GitHub answers 422 "No ref found"), its base's: the agents
+    // mid-run (GitHub answers 422 "No ref found"), its base's: the workers
     // check out `sha` either way.
     const refs = [env['GITHUB_HEAD_REF'] || env['GITHUB_REF_NAME'], env['GITHUB_BASE_REF']]
     let res: Response
@@ -117,7 +117,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
             relay: first.relay,
             sha,
             size,
-            agents: JSON.stringify(agents.map((a) => a.id)),
+            workers: JSON.stringify(workers.map((a) => a.id)),
           },
         }),
       })
@@ -131,7 +131,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
       if (id !== undefined) {
         const run = `/repos/${repo}/actions/runs/${id}`
         runs.push(run)
-        watched.set(run, new Map(agents.map((a) => [a.id, a])))
+        watched.set(run, new Map(workers.map((a) => [a.id, a])))
         if (watch === undefined && !closed) look(WATCH_FIRST_MS)
         // For the job's last step, which cancels them when this process
         // dies before close() (a kill, an OOM, the job's timeout).
@@ -142,7 +142,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
   }
   return {
     keyless: true,
-    adopt(agent) {
+    adopt(worker) {
       const temp = process.env['RUNNER_TEMP']
       if (!temp) return
       let text: string
@@ -154,10 +154,11 @@ export function github(options: GithubOptions = {}): DteAdapter {
       for (const line of text.split('\n')) {
         const [run, ids] = line.trim().split(/\s+/)
         if (!run || !ids) continue
-        const agents = new Map<string, AgentSpawn>()
-        for (const id of ids.split(',')) agents.set(id, agent(id, id.slice(0, id.lastIndexOf('#'))))
+        const workers = new Map<string, WorkerSpawn>()
+        for (const id of ids.split(','))
+          workers.set(id, worker(id, id.slice(0, id.lastIndexOf('#'))))
         runs.push(run)
-        watched.set(run, agents)
+        watched.set(run, workers)
       }
       if (watched.size > 0 && watch === undefined) look(WATCH_FIRST_MS)
     },
@@ -167,14 +168,14 @@ export function github(options: GithubOptions = {}): DteAdapter {
         wave.push(a)
         return
       }
-      const agents = [a]
-      waves.set(a.size, agents)
+      const workers = [a]
+      waves.set(a.size, workers)
       queueMicrotask(() => {
         waves.delete(a.size)
-        const p = dispatch(a.size, agents)
+        const p = dispatch(a.size, workers)
           .catch((err: unknown) => {
             const why = err instanceof Error ? err.message : String(err)
-            for (const x of agents) x.exited(why)
+            for (const x of workers) x.exited(why)
           })
           .finally(() => pending.delete(p))
         pending.add(p)

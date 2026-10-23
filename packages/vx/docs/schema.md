@@ -320,7 +320,7 @@ daemon, a Docker socket, a device, a VPN-only host.
   depends on one (transitively), is pinned regardless of what it
   declares — a worker cannot reach a port served on the submitter —
   unless the executor starts the server where it runs the dependant
-  (`@vzn/vx-dte`: each agent starts it once, beside its dependants, and
+  (`@vzn/vx-dte`: each worker starts it once, beside its dependants, and
   the orchestrator never does; a server with a `sandbox` or
   `exec.remote: false` stays here). So is
   a task with a `sandbox` block, and its dependants: the sandbox is this

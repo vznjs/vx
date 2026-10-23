@@ -1,7 +1,7 @@
 export {
   dte,
-  type AgentSize,
-  type AgentSpawn,
+  type WorkerSize,
+  type WorkerSpawn,
   type DteAdapter,
   type DteOptions,
   type DtePlan,

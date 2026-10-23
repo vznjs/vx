@@ -58,7 +58,7 @@ it('learns from its socket’s close that the relay let it go, asking HTTP nothi
   const a = await join(s.url, R, 'agent', null, undefined)
   await o.poll()
   const asked = verbs()
-  // Removed by the orchestrator, so the relay closes the agent's socket as gone.
+  // Removed by the orchestrator, so the relay closes the worker's socket as gone.
   await o.remove(a.id)
   await expect(a.poll()).rejects.toThrow('relay: unknown id')
   expect(asked).toEqual([])
@@ -162,7 +162,7 @@ it('joins again when its first socket does not open', async () => {
 })
 
 it('keeps its quiet socket while a new one fails to open, so the relay keeps it', async () => {
-  // An agent busy on long tasks heard nothing for three heartbeats, closed
+  // A worker busy on long tasks heard nothing for three heartbeats, closed
   // its socket, and its next dial failed: the relay lost it and the run ran
   // its task again elsewhere (CI, 2026-10-23).
   const { url, open, host } = sockets(200)
@@ -186,12 +186,12 @@ it('dials its socket again after it drops, and gets what queued meanwhile', asyn
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'agent', null, undefined)
   await o.poll()
-  const agentSockets = () => open.filter((w) => w.data.id === a.id)
+  const workerSockets = () => open.filter((w) => w.data.id === a.id)
   const asked = verbs()
-  agentSockets()[0]!.close()
+  workerSockets()[0]!.close()
   await o.send(a.id, 'while down')
   expect(await a.poll()).toEqual([{ from: 'orchestrator', body: 'while down' }])
-  expect(agentSockets()).toHaveLength(2)
+  expect(workerSockets()).toHaveLength(2)
   await a.send('orchestrator', 'back')
   expect(await o.poll()).toEqual([{ from: a.id, body: 'back' }])
   expect(asked).toEqual([])
@@ -201,7 +201,7 @@ it('dials its socket again after it drops, and gets what queued meanwhile', asyn
 
 it('leaves only once its socket has closed, so exiting next cuts nothing', async () => {
   // A socket a process exits under before its close handshake is cut: the
-  // host logs a client that disconnected. The relay closes an agent's
+  // host logs a client that disconnected. The relay closes a worker's
   // socket once it told it the run closed; its leave then cuts nothing.
   const closed: WebSocket[] = []
   const Real = globalThis.WebSocket
@@ -351,7 +351,7 @@ function dropping(): { url: string; drop(id: string, mode: 'all' | 'frames'): vo
   }
 }
 
-// A socket a network stops carrying sends no close: on a CI runner an agent's
+// A socket a network stops carrying sends no close: on a CI runner a worker's
 // `held` frames waited on acks that never came, its lease lapsed mid-task, and
 // its polls read nothing while the relay queued its next batch (2026-10-22).
 it('drops a socket the relay stopped answering, and carries on over a new one', async () => {
@@ -422,8 +422,8 @@ it('gives up on a socket upgrade the relay holds past three heartbeats', async (
 }, 5_000)
 
 // Cloudflare answers 5xx while a Durable Object restarts, and a runner's
-// network drops a connection now and then: one such answer to an agent's
-// request ended the agent and lost what it ran (2026-10-22).
+// network drops a connection now and then: one such answer to a worker's
+// request ended the worker and lost what it ran (2026-10-22).
 it('dials again through a relay fault shorter than three heartbeats', async () => {
   let faults = 0
   let fail = false

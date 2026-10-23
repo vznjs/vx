@@ -119,7 +119,7 @@ config key or an environment variable is missing here.
 ## Daily work
 
 - **Watch mode** (`vx watch`, `--poll`, `watch.poll`, `VX_WATCH_POLL`, `VX_DEBUG_WATCH`) — re-run what a change affects, on content, not events. [page](https://vznjs.github.io/vx/features/watch/) · post: [Watch: a content gate](https://vznjs.github.io/vx/blog/watch-mode/)
-- **Dev servers in the graph** (`exec.persistent`, `readyWhen`) — a server is a node; dependents start when it is ready, and on a distributed run each agent starts it beside the dependents it runs. [page](https://vznjs.github.io/vx/features/dev-servers/) · post: [Dev servers as graph nodes](https://vznjs.github.io/vx/blog/dev-servers-in-the-graph/)
+- **Dev servers in the graph** (`exec.persistent`, `readyWhen`) — a server is a node; dependents start when it is ready, and on a distributed run each worker starts it beside the dependents it runs. [page](https://vznjs.github.io/vx/features/dev-servers/) · post: [Dev servers as graph nodes](https://vznjs.github.io/vx/blog/dev-servers-in-the-graph/)
 - **Interactive tasks** (`exec.interactive`) — a task that owns the terminal. [page](https://vznjs.github.io/vx/features/interactive-tasks/) · post: [When a task misbehaves](https://vznjs.github.io/vx/blog/tasks-that-misbehave/)
 - **Shell completions** (`vx completions`) — bash, zsh, fish. [page](https://vznjs.github.io/vx/features/completions/) · post: [The small things](https://vznjs.github.io/vx/blog/the-small-things/)
 - **Project-local vx** (`VX_HANDED_OFF`) — a global vx hands every call to the project's own `@vzn/vx`. [page](https://vznjs.github.io/vx/cli/#which-vx-runs)

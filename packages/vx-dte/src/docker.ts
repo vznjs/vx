@@ -1,4 +1,4 @@
-// `docker()`: each agent a container on this machine, held to its size's
+// `docker()`: each worker a container on this machine, held to its size's
 // cores and memory, in a fresh clone made inside it of the tracked files
 // as the run sees them, sharing this machine's store. The relay
 // is the run's own on loopback; a container reaches it through the host's
@@ -14,7 +14,7 @@ import type { DteAdapter } from './plugin.js'
 export interface DockerOptions {
   /** An image with Bun and git, such as one built `FROM oven/bun` with git added. */
   readonly image: string
-  /** A shell line the clone runs before its agent starts, such as `bun install`. */
+  /** A shell line the clone runs before its worker starts, such as `bun install`. */
   readonly prepare?: string
 }
 
@@ -26,7 +26,7 @@ export function docker(options: DockerOptions): DteAdapter {
     throw new Error("docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git")
   }
   let relay: { url: string; stop(): void } | undefined
-  const agents = new Map<string, ReturnType<typeof Bun.spawn>>()
+  const workers = new Map<string, ReturnType<typeof Bun.spawn>>()
   const linux = process.platform === 'linux'
   let tree: Promise<{ commit: string }> | undefined
   let closed = false
@@ -73,10 +73,10 @@ export function docker(options: DockerOptions): DteAdapter {
         `git checkout -q --detach ${sha}`,
         `cd ${quote(rel)}`,
         ...(options.prepare === undefined ? [] : [options.prepare]),
-        'exec ./node_modules/.bin/vx dte agent',
+        'exec ./node_modules/.bin/vx dte worker',
       ].join('\n')
       // This machine's store and cache dir at their own paths, as local()'s
-      // agents share them: what an agent saves, the run reads.
+      // workers share them: what a worker saves, the run reads.
       const home = process.env['HOME'] || homedir()
       const store = path.join(home, '.vx')
       mkdirSync(store, { recursive: true })
@@ -131,23 +131,23 @@ export function docker(options: DockerOptions): DteAdapter {
         ],
         { env: { ...process.env, ...env }, stdin: 'ignore', stdout: 'ignore', stderr: 'pipe' },
       )
-      agents.set(name, proc)
+      workers.set(name, proc)
       void (async () => {
         const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
-        agents.delete(name)
+        workers.delete(name)
         if (code !== 0 && !closed) a.exited(await why(`exited ${code}`, a.id, err))
       })()
     },
 
     async close() {
       closed = true
-      // The relay closing the run tells each agent to leave; a container
+      // The relay closing the run tells each worker to leave; a container
       // still up after the grace is removed.
       relay?.stop()
       relay = undefined
-      const left = [...agents]
+      const left = [...workers]
       await Promise.race([Promise.all(left.map(([, p]) => p.exited)), Bun.sleep(2_000)])
-      const up = left.filter(([name]) => agents.has(name)).map(([name]) => name)
+      const up = left.filter(([name]) => workers.has(name)).map(([name]) => name)
       if (up.length > 0)
         Bun.spawnSync(['docker', 'rm', '-f', ...up], { stdout: 'ignore', stderr: 'ignore' })
     },

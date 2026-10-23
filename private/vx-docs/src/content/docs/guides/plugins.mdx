@@ -440,7 +440,7 @@ export default defineWorkspace({ plugins: [acmeCache()] })
 A remote that needs a credential adds `open`, asked once per run before
 the first task; a throw sits the remote out. `ctx.secret` works there.
 An optional `lend` hands this run's own access (never a stored secret)
-to a machine that runs its tasks elsewhere, such as a `@vzn/vx-dte` agent.
+to a machine that runs its tasks elsewhere, such as a `@vzn/vx-dte` worker.
 
 ### Signed artifacts
 

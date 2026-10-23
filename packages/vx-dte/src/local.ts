@@ -1,7 +1,7 @@
-// `local()`: agents as processes on this machine, each in its own git
+// `local()`: workers as processes on this machine, each in its own git
 // worktree of the working tree's tracked state, and a relay of its own on
 // loopback. For tests, demos
-// and trying a distributed run before a CI starts the agents.
+// and trying a distributed run before a CI starts the workers.
 
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -10,7 +10,7 @@ import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
 import type { DteAdapter } from './plugin.js'
 
 export interface LocalOptions {
-  /** A shell line each worktree runs before its agent starts, such as `bun install`. */
+  /** A shell line each worktree runs before its worker starts, such as `bun install`. */
   readonly prepare?: string
 }
 
@@ -28,7 +28,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
   const trees: Array<{ root: string; dir: string }> = []
   const pending = new Set<Promise<unknown>>()
 
-  // Async throughout: a run starts its agents while it shows its first rows.
+  // Async throughout: a run starts its workers while it shows its first rows.
   const start = <P extends Bun.Subprocess>(p: P): P => {
     procs.add(p)
     void p.exited.then(() => procs.delete(p))
@@ -85,7 +85,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
         trees.push({ root: a.workspaceRoot, dir })
         const env: Record<string, string | undefined> = { ...process.env, ...a.env }
         // A relative cache dir would name each worktree's own store, where
-        // the run cannot read what the agent saved.
+        // the run cannot read what the worker saved.
         const cacheDir = env['VX_CACHE_DIR']
         if (
           cacheDir !== undefined &&
@@ -101,7 +101,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
             throw new Error(await why(`prepare exited ${p.code}`, a.id, p.err))
         }
         if (closed) return
-        void run([...vx(), 'dte', 'agent'], dir, env, false).then(async (r) => {
+        void run([...vx(), 'dte', 'worker'], dir, env, false).then(async (r) => {
           if (r.code !== 0 && !closed) a.exited(await why(`exited ${r.code}`, a.id, r.err))
         })
       })()
@@ -115,7 +115,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
 
     async close() {
       closed = true
-      // The relay closing the run tells each agent to leave; a prepare
+      // The relay closing the run tells each worker to leave; a prepare
       // still running is stopped.
       relay?.stop()
       relay = undefined
@@ -150,7 +150,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
 }
 
 /**
- * `<what>: <its error line> (log: <path>)`, an agent's whole stderr kept at
+ * `<what>: <its error line> (log: <path>)`, a worker's whole stderr kept at
  * that path, which outlives the run.
  */
 export function reasons(): (what: string, id: string, err: string) => Promise<string> {

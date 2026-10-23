@@ -67,7 +67,7 @@ const GITHUB = 'https://token.actions.githubusercontent.com'
 
 /**
  * The claims a run binds: its repository, GitHub's or GitLab's. Not the
- * pipeline: agents run in another one (a GitLab child pipeline, a GitHub
+ * pipeline: workers run in another one (a GitLab child pipeline, a GitHub
  * workflow the run dispatches), and the run's own key admits them.
  */
 export function runClaimsOf(iss: string): readonly string[] {

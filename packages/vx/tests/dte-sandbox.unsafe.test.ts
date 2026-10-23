@@ -1,4 +1,4 @@
-// A sandboxed task runs on a `@vzn/vx-dte` agent inside the agent's own
+// A sandboxed task runs on a `@vzn/vx-dte` worker inside the worker's own
 // sandbox (`TaskExecutor.sandbox`, `localFloor`): its writes land there and
 // come back, and a read outside its grants fails it with the violation in
 // this checkout's paths. Unsafe: it runs a sandbox, which cannot nest inside
@@ -15,7 +15,7 @@ const DTE = path.resolve(import.meta.dir, '../../vx-dte/src/index.ts')
 const RELAY = path.resolve(import.meta.dir, '../../vx-dte-relay/src/index.ts')
 const BIN = path.resolve(import.meta.dir, '../src/bin.ts')
 
-describe.skipIf(!available)('a sandboxed task on an agent', () => {
+describe.skipIf(!available)('a sandboxed task on a worker', () => {
   let root = ''
   beforeAll(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-sb-'))
@@ -23,7 +23,7 @@ describe.skipIf(!available)('a sandboxed task on an agent', () => {
       'package.json': JSON.stringify({ name: 'ws', private: true }),
       '.gitignore': 'out\n.vx/cache\n',
       '.vx/workspace.mjs': `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ agents: { small: { max: 1, cpu: 2, memory: '1GB' } }, adapter: local() })] }
+export default { plugins: [dte({ workers: { small: { max: 1, cpu: 2, memory: '1GB' } }, adapter: local() })] }
 `,
       'secret/s.txt': 'secret\n',
       'secret/vx.config.mjs': `export default { name: 'secret', tasks: {} }\n`,
@@ -71,7 +71,7 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 2, memory: '1GB
     })
   }
 
-  it('writes in its grants on the agent, and the files come back', async () => {
+  it('writes in its grants on the worker, and the files come back', async () => {
     const r = vx(['run', 'a#gen'], crypto.randomUUID())
     expect([r.exitCode, r.stdout.toString() + r.stderr.toString()]).toEqual([0, expect.any(String)])
     const where = (await readFile(path.join(root, 'a/out/where.txt'), 'utf8')).trim()
@@ -87,10 +87,10 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 2, memory: '1GB
     expect(out).toContain(path.join('secret', 's.txt'))
   }, 60_000)
 
-  // The agent builds a task's sandbox on its own machine: its home's
+  // The worker builds a task's sandbox on its own machine: its home's
   // credential stores are walled, not the orchestrator's (which may be
   // another OS, owner 2026-10-22).
-  it('walls the agent’s own credential stores, not the orchestrator’s', async () => {
+  it('walls the worker’s own credential stores, not the orchestrator’s', async () => {
     // Typed here: the checker of this project may not read the relay's source.
     const { serveRelay } = (await import(RELAY)) as {
       serveRelay(o: { hostname: string; port: number }): { url: string; stop(): Promise<void> }
@@ -102,9 +102,9 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 2, memory: '1GB
     const commit = () =>
       git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'r')
     try {
-      await mkdir(path.join(homes, 'agent/.ssh'), { recursive: true })
+      await mkdir(path.join(homes, 'worker/.ssh'), { recursive: true })
       await mkdir(path.join(homes, 'orc'), { recursive: true })
-      await writeFile(path.join(homes, 'agent/.ssh/id'), 'AGENT-KEY\n')
+      await writeFile(path.join(homes, 'worker/.ssh/id'), 'WORKER-KEY\n')
       await writeFile(
         config,
         `import { dte } from ${JSON.stringify(DTE)}
@@ -125,11 +125,11 @@ export default { plugins: [dte({ relay: ${JSON.stringify(server.url)}, local: 0 
           stdout: 'pipe',
           stderr: 'pipe',
         })
-      const agent = spawn(['dte', 'agent'], 'agent')
+      const worker = spawn(['dte', 'worker'], 'worker')
       const run = spawn(['run', 'k#key'], 'orc')
       const out = (await new Response(run.stdout).text()) + (await new Response(run.stderr).text())
-      expect([await run.exited, out.includes('AGENT-KEY')]).toEqual([1, false])
-      await agent.exited
+      expect([await run.exited, out.includes('WORKER-KEY')]).toEqual([1, false])
+      await worker.exited
     } finally {
       await server.stop()
       await rm(homes, { recursive: true, force: true })

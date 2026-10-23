@@ -8,25 +8,6 @@ export function github(options: GithubOptions = {}): DteAdapter
 export function gitlab(options: GitlabOptions): DteAdapter
 == function local (src/local.ts)
 export function local(options: LocalOptions = {}): DteAdapter
-== type AgentSize (src/plugin.ts)
-export interface AgentSize {
-  readonly max?: number
-  readonly cpu: number
-  readonly memory: number | string
-}
-== type AgentSpawn (src/plugin.ts)
-export interface AgentSpawn {
-  readonly run: string
-  readonly relay: string
-  readonly size: string
-  readonly cpu: number
-  readonly memory: number
-  readonly index: number
-  readonly id: string
-  readonly workspaceRoot: string
-  readonly env: Readonly<Record<string, string>>
-  readonly exited: (reason: string) => void
-}
 == type DockerOptions (src/docker.ts)
 export interface DockerOptions {
   readonly image: string
@@ -35,17 +16,17 @@ export interface DockerOptions {
 == type DteAdapter (src/plugin.ts)
 export interface DteAdapter {
   relay?(): Promise<string>
-  spawn(agent: AgentSpawn): void | Promise<void>
+  spawn(worker: WorkerSpawn): void | Promise<void>
   close?(): void | Promise<void>
   render?(plan: DtePlan): Readonly<Record<string, string>>
   live?(): boolean
   readonly keyless?: boolean
   runId?(): string | undefined
-  adopt?(agent: (id: string, size: string) => AgentSpawn): void
+  adopt?(worker: (id: string, size: string) => WorkerSpawn): void
 }
 == type DteOptions (src/plugin.ts)
 export interface DteOptions {
-  readonly agents?: Readonly<Record<string, AgentSize>>
+  readonly workers?: Readonly<Record<string, WorkerSize>>
   readonly adapter?: DteAdapter
   readonly relay?: string
   readonly token?: () => string | undefined | Promise<string | undefined>
@@ -55,7 +36,7 @@ export interface DtePlan {
   readonly run: string
   readonly relay: string
   readonly workspaceRoot: string
-  readonly agents: readonly {
+  readonly workers: readonly {
     id: string
     size: string
     cpu: number
@@ -75,4 +56,23 @@ export interface GitlabOptions {
 == type LocalOptions (src/local.ts)
 export interface LocalOptions {
   readonly prepare?: string
+}
+== type WorkerSize (src/plugin.ts)
+export interface WorkerSize {
+  readonly max?: number
+  readonly cpu: number
+  readonly memory: number | string
+}
+== type WorkerSpawn (src/plugin.ts)
+export interface WorkerSpawn {
+  readonly run: string
+  readonly relay: string
+  readonly size: string
+  readonly cpu: number
+  readonly memory: number
+  readonly index: number
+  readonly id: string
+  readonly workspaceRoot: string
+  readonly env: Readonly<Record<string, string>>
+  readonly exited: (reason: string) => void
 }

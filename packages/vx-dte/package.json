@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "license": "MIT",
   "private": true,
-  "description": "Distributed task execution for vx: one run spread over agents your own CI spawns, joined through a relay.",
+  "description": "Distributed task execution for vx: one run spread over workers your own CI spawns, joined through a relay.",
   "keywords": [
     "vx",
     "vx-plugin",

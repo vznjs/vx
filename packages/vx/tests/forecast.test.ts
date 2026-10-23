@@ -255,7 +255,7 @@ describe('rows under an executor that places tasks', () => {
     )
     expect(lines).toEqual([
       '',
-      '      time status  cache    task · agent',
+      '      time status  cache    task · worker',
       '     500ms running          p#a · small#2',
     ])
   })

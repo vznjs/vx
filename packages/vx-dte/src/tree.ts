@@ -1,5 +1,5 @@
-// What an agent must have checked out: the tracked files as the run sees
-// them. Agents compare trees, not commits, so a run on uncommitted changes
+// What a worker must have checked out: the tracked files as the run sees
+// them. Workers compare trees, not commits, so a run on uncommitted changes
 // still matches the worktrees `local()` makes from them.
 
 /** A commit of the tracked files as they are now (`HEAD` when none changed), and its tree. */

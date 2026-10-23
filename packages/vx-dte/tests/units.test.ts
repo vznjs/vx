@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { localEnv, runAgent, swapRoots } from '../src/agent.js'
+import { localEnv, runWorker, swapRoots } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes, needOf } from '../src/plugin.js'
@@ -35,7 +35,7 @@ const tmp = async (): Promise<string> => {
   return d
 }
 
-it('an agent clears the files a task’s outputs match, links included, before it runs it', async () => {
+it('a worker clears the files a task’s outputs match, links included, before it runs it', async () => {
   const from = await tmp()
   await mkdir(path.join(from, 'p/out/deep'), { recursive: true })
   await writeFile(path.join(from, 'p/out/deep/a.sh'), 'echo hi\n')
@@ -46,9 +46,9 @@ it('an agent clears the files a task’s outputs match, links included, before i
   ).toEqual(['p/out/deep/a.sh', 'p/out/link'])
 })
 
-it('an agent runs the orchestrator’s env with its own root, host names and PATH', () => {
+it('a worker runs the orchestrator’s env with its own root, host names and PATH', () => {
   const saved = { HOME: process.env['HOME'], PATH: process.env['PATH'] }
-  process.env['HOME'] = '/agent/home'
+  process.env['HOME'] = '/worker/home'
   process.env['PATH'] = '/usr/bin'
   try {
     expect(
@@ -60,12 +60,12 @@ it('an agent runs the orchestrator’s env with its own root, host names and PAT
           X: '1',
         },
         '/orc/ws',
-        '/agent/ws',
+        '/worker/ws',
       ),
     ).toMatchObject({
-      HOME: '/agent/home',
-      PATH: '/agent/ws/node_modules/.bin:/usr/bin',
-      VX_RUN_WORKSPACE: '/agent/ws',
+      HOME: '/worker/home',
+      PATH: '/worker/ws/node_modules/.bin:/usr/bin',
+      VX_RUN_WORKSPACE: '/worker/ws',
       X: '1',
     })
   } finally {
@@ -73,16 +73,20 @@ it('an agent runs the orchestrator’s env with its own root, host names and PAT
   }
 })
 
-it('an agent swaps each root once, the first pair naming it winning', () => {
+it('a worker swaps each root once, the first pair naming it winning', () => {
   expect(
     swapRoots({ a: '/ws/p/x', b: ['/ws', '/ws2/q', '/private/ws/r'], c: 'x:/ws/b' }, [
-      ['/ws', '/agent/ws'],
+      ['/ws', '/worker/ws'],
       ['/ws2', '/ws'],
     ]),
-  ).toEqual({ a: '/agent/ws/p/x', b: ['/agent/ws', '/ws/q', '/private/ws/r'], c: 'x:/agent/ws/b' })
+  ).toEqual({
+    a: '/worker/ws/p/x',
+    b: ['/worker/ws', '/ws/q', '/private/ws/r'],
+    c: 'x:/worker/ws/b',
+  })
 })
 
-it('an agent with other tracked files than the run is refused', async () => {
+it('a worker with other tracked files than the run is refused', async () => {
   const served = servedRelay()
   const url = served.url
   try {
@@ -97,9 +101,15 @@ it('an agent with other tracked files than the run is refused', async () => {
       run: R,
       keyOf: () => undefined,
     })
-    const agent = await join(url, R, 'agent', { v: 1, cores: 1, memory: 1, tree: 'bbb' }, undefined)
+    const worker = await join(
+      url,
+      R,
+      'agent',
+      { v: 1, cores: 1, memory: 1, tree: 'bbb' },
+      undefined,
+    )
     let got: unknown[] = []
-    for (let i = 0; i < 20 && got.length === 0; i++) got = await agent.poll()
+    for (let i = 0; i < 20 && got.length === 0; i++) got = await worker.poll()
     expect(got).toEqual([
       {
         from: 'orchestrator',
@@ -112,16 +122,16 @@ it('an agent with other tracked files than the run is refused', async () => {
   }
 })
 
-// CI starts agents beside the orchestrator; on a warm run it can finish
-// before a slow runner's agent joins, and that agent's job is not a failure.
-// The relay keeps nothing of a run that ended: an agent late for it joins
+// CI starts workers beside the orchestrator; on a warm run it can finish
+// before a slow runner's worker joins, and that worker's job is not a failure.
+// The relay keeps nothing of a run that ended: a worker late for it joins
 // an empty run, which closes when no orchestrator joins (120 heartbeats).
-it('an agent late for a run that ended exits 0', async () => {
+it('a worker late for a run that ended exits 0', async () => {
   const served = servedRelay({ heartbeatMs: 20 })
   const url = served.url
   try {
     await (await join(url, R, 'orchestrator', null, undefined)).leave()
-    const code = await runAgent({
+    const code = await runWorker({
       relay: url,
       run: R,
       root: process.cwd(),
@@ -135,15 +145,15 @@ it('an agent late for a run that ended exits 0', async () => {
   }
 })
 
-// A relay restart, or silence past three heartbeats, loses the agent: its
-// next poll answers 404. The run gave its tasks to others; the agent's CI
+// A relay restart, or silence past three heartbeats, loses the worker: its
+// next poll answers 404. The run gave its tasks to others; the worker's CI
 // job is no failure (mac#1 on #3895).
-it('an agent the relay lost exits 0', async () => {
+it('a worker the relay lost exits 0', async () => {
   const served = servedRelay()
   const url = served.url
   try {
     const o = await join(url, R, 'orchestrator', null, undefined)
-    const code = runAgent({
+    const code = runWorker({
       relay: url,
       run: R,
       root: process.cwd(),
@@ -159,7 +169,7 @@ it('an agent the relay lost exits 0', async () => {
   }
 })
 
-it('gives a failed agent start one more agent, then fails the run', async () => {
+it('gives a failed worker start one more worker, then fails the run', async () => {
   const served = servedRelay()
   const url = served.url
   try {
@@ -176,7 +186,7 @@ it('gives a failed agent start one more agent, then fails the run', async () => 
       keyOf: () => undefined,
       left: (id) => {
         freed.push(id)
-        // As dte() does: the freed place starts the next agent.
+        // As dte() does: the freed place starts the next worker.
         o.spawned(`small#${freed.length + 1}`, { size: 'small', cpu: 1, memory: 1 })
       },
     })
@@ -186,7 +196,7 @@ it('gives a failed agent start one more agent, then fails the run', async () => 
     const run = o.execute({ taskId: 'p#t' } as Parameters<typeof o.execute>[0])
     expect([freed, await run.catch((e: Error) => e.message)]).toEqual([
       ['small#1'],
-      'no agent could start: small#2 install exited 1: ECONNRESET',
+      'no worker could start: small#2 install exited 1: ECONNRESET',
     ])
     await o.close()
   } finally {
@@ -194,7 +204,7 @@ it('gives a failed agent start one more agent, then fails the run', async () => 
   }
 })
 
-/** A cache by key, in memory: what agents saved, and each restore asked. */
+/** A cache by key, in memory: what workers saved, and each restore asked. */
 function fakeArtifacts() {
   const saved = new Map<string, { stdout: string; stderr: string }>()
   const restored: string[] = []
@@ -208,7 +218,7 @@ function fakeArtifacts() {
   return { artifacts, saved, restored }
 }
 
-/** An orchestrator on a loopback relay, and agents of it that only listen. */
+/** An orchestrator on a loopback relay, and workers of it that only listen. */
 async function harness(
   nodes: Map<string, TaskNode>,
   need: (id: string) => Need = () => ({ cores: 1, memory: 10 }),
@@ -232,7 +242,7 @@ async function harness(
     keyOf,
     ...(tail === undefined ? {} : { tail }),
   })
-  const agent = async (cores: number, id?: string) => {
+  const worker = async (cores: number, id?: string) => {
     const me = await join(url, R, 'agent', { v: 1, cores, memory: 100, tree: 'c', id }, undefined)
     const orders: RunOrder[] = []
     const batches = async (): Promise<string[][]> => {
@@ -301,10 +311,10 @@ async function harness(
     await o.close()
     await served.stop()
   }
-  return { o, agent, req, stop, store, cache }
+  return { o, worker, req, stop, store, cache }
 }
 
-it('an agent reads the cache as the run does, and is lent its remotes’ access again before it ends', async () => {
+it('a worker reads the cache as the run does, and is lent its remotes’ access again before it ends', async () => {
   const h = await harness(new Map())
   try {
     h.cache.facts = {
@@ -312,7 +322,7 @@ it('an agent reads the cache as the run does, and is lent its remotes’ access 
       lent: { '@vzn/vx-migrate': 't1' },
       expiresAt: Date.now() + 4 * 60_000 + 300,
     }
-    const a = await h.agent(2)
+    const a = await h.worker(2)
     const got: unknown[] = []
     for (let i = 0; i < 20 && got.length < 2; i++) {
       got.push(...(await a.poll()).map((m) => m.body))
@@ -322,7 +332,7 @@ it('an agent reads the cache as the run does, and is lent its remotes’ access 
     expect(got).toEqual([
       {
         type: 'welcome',
-        name: 'agent#1',
+        name: 'worker#1',
         cache: {
           refs: ['refs/heads/feat', 'refs/heads/main'],
           lent: { '@vzn/vx-migrate': 't1' },
@@ -341,10 +351,10 @@ it('an agent reads the cache as the run does, and is lent its remotes’ access 
 const node = (id: string, deps: string[] = []) =>
   [id, { id, deps, projectDir: '/ws', config: {} } as unknown as TaskNode] as const
 
-it('fills an agent’s cores and a prefetch in one batch', async () => {
+it('fills a worker’s cores and a prefetch in one batch', async () => {
   const h = await harness(new Map([node('t1'), node('t2'), node('t3'), node('t4')]))
   try {
-    const a = await h.agent(2)
+    const a = await h.worker(2)
     await Bun.sleep(50)
     for (const id of ['t1', 't2', 't3', 't4']) void h.o.execute(h.req(id))
     // 2 cores and 1 of prefetch: t4 waits for one to finish.
@@ -356,13 +366,13 @@ it('fills an agent’s cores and a prefetch in one batch', async () => {
   }
 })
 
-// Main, 2026-10-23: 12 agents of 4 cores each ran about one task, at 25%
+// Main, 2026-10-23: 12 workers of 4 cores each ran about one task, at 25%
 // CPU all their time online; packed, the ones the rest does not need leave.
-it('packs tasks onto the agent with fewest cores free, and the idle one leaves', async () => {
+it('packs tasks onto the worker with fewest cores free, and the idle one leaves', async () => {
   const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
   try {
-    const a = await h.agent(4)
-    const b = await h.agent(4)
+    const a = await h.worker(4)
+    const b = await h.worker(4)
     await Bun.sleep(50)
     for (const id of ['t1', 't2', 't3']) void h.o.execute(h.req(id))
     expect(await a.batches()).toEqual([['t1', 't2', 't3']])
@@ -373,11 +383,11 @@ it('packs tasks onto the agent with fewest cores free, and the idle one leaves',
   }
 })
 
-// Main, 2026-10-23: agents read booked 4.6 of 4 cores, a prefetch
+// Main, 2026-10-23: workers read booked 4.6 of 4 cores, a prefetch
 // waiting in the queue counted as held: booked is what began.
-it('books an agent the cores of the tasks it began, not of its queue', async () => {
+it('books a worker the cores of the tasks it began, not of its queue', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
-  const a = await h.agent(1)
+  const a = await h.worker(1)
   await Bun.sleep(50)
   for (const id of ['t1', 't2']) void h.o.execute(h.req(id))
   expect(await a.batches()).toEqual([['t1', 't2']])
@@ -393,7 +403,7 @@ it('places the queued task the most of the run waits on first, not the first ask
   const tail = (id: string) => (id === 'build' ? 45_000 : 35_000)
   const h = await harness(new Map(ids.map((id) => node(id))), undefined, undefined, undefined, tail)
   try {
-    const a = await h.agent(1)
+    const a = await h.worker(1)
     await Bun.sleep(50)
     for (const id of ids) void h.o.execute(h.req(id))
     expect(await a.batches()).toEqual([['build', 't1']])
@@ -427,17 +437,17 @@ it('a task’s tail is its duration and its longest chain of dependants', () => 
   ])
 })
 
-// M, 2026-10-21: check.bun, ahead of 8 shards, sat in a busy agent's
-// queue as its prefetch while agents that joined later stood idle.
-it('a task waiting in a busy agent’s queue moves to an agent that is free', async () => {
+// M, 2026-10-21: check.bun, ahead of 8 shards, sat in a busy worker's
+// queue as its prefetch while workers that joined later stood idle.
+it('a task waiting in a busy worker’s queue moves to a worker that is free', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
   try {
-    const a = await h.agent(1)
+    const a = await h.worker(1)
     await Bun.sleep(50)
     for (const id of ['t1', 't2']) void h.o.execute(h.req(id))
     expect(await a.batches()).toEqual([['t1', 't2']])
     await a.begin('t1')
-    const b = await h.agent(1)
+    const b = await h.worker(1)
     expect(await a.bodies()).toEqual([{ type: 'withdraw', task: 't2' }])
     // Idle while t2 comes back, b is not let go: t2 is on its way to it.
     h.o.retire(0, () => false)
@@ -451,13 +461,13 @@ it('a task waiting in a busy agent’s queue moves to an agent that is free', as
   }
 })
 
-// An agent that faulted got no more work yet was never let go: it held
+// A worker that faulted got no more work yet was never let go: it held
 // its CI runner idle until the run ended (2026-10-22).
-it('an idle agent that faulted is let go', async () => {
+it('an idle worker that faulted is let go', async () => {
   const h = await harness(new Map([node('t1')]))
   try {
-    const a = await h.agent(1)
-    const b = await h.agent(1)
+    const a = await h.worker(1)
+    const b = await h.worker(1)
     await Bun.sleep(50)
     void h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
@@ -470,13 +480,13 @@ it('an idle agent that faulted is let go', async () => {
   }
 })
 
-// Growth, 2026-10-21: four local() agents of 1 core on a 4-core host each
+// Growth, 2026-10-21: four local() workers of 1 core on a 4-core host each
 // reported the host and took 4 tasks plus a prefetch, 16 wide on 4 cores.
-it('an agent of a declared size is sent work for that size, not its machine', async () => {
+it('a worker of a declared size is sent work for that size, not its machine', async () => {
   const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
   try {
     h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
-    const a = await h.agent(4, 'small#1')
+    const a = await h.worker(4, 'small#1')
     await Bun.sleep(50)
     for (const id of ['t1', 't2', 't3']) void h.o.execute(h.req(id))
     // 1 core and 1 of prefetch.
@@ -486,12 +496,12 @@ it('an agent of a declared size is sent work for that size, not its machine', as
   }
 })
 
-// M, 2026-10-21: 16 rows said running while 4 agents ran 4 of them; and
-// an agent's cores and memory belong to the final summary only.
-it('a task waits until an agent begins it; the live rows leave out its machine', async () => {
+// M, 2026-10-21: 16 rows said running while 4 workers ran 4 of them; and
+// a worker's cores and memory belong to the final summary only.
+it('a task waits until a worker begins it; the live rows leave out its machine', async () => {
   const h = await harness(new Map([node('t1'), node('t2'), node('t3'), node('t4')]))
   try {
-    const a = await h.agent(2)
+    const a = await h.worker(2)
     await Bun.sleep(50)
     for (const id of ['t1', 't2', 't3', 't4']) void h.o.execute(h.req(id))
     expect(await a.batches()).toEqual([['t1', 't2', 't3']])
@@ -499,7 +509,7 @@ it('a task waits until an agent begins it; the live rows leave out its machine',
     expect(h.o.where('other')).toBeUndefined()
     await a.begin('t1')
     for (let i = 0; i < 40 && h.o.where('t1') === null; i++) await Bun.sleep(25)
-    expect(['t1', 't2'].map((t) => h.o.where(t))).toEqual(['agent#1', null])
+    expect(['t1', 't2'].map((t) => h.o.where(t))).toEqual(['worker#1', null])
     const live = JSON.stringify(h.o.footer())
     expect(live).toContain('1 running')
     expect(live).not.toMatch(/\dc\//)
@@ -508,13 +518,13 @@ it('a task waits until an agent begins it; the live rows leave out its machine',
   }
 })
 
-// An agent the rest of the run cannot keep busy leaves rather than idle
+// A worker the rest of the run cannot keep busy leaves rather than idle
 // until the run ends; one a remaining task needs for its size stays.
-it('an idle agent the run no longer needs leaves; one a big task needs stays', async () => {
+it('an idle worker the run no longer needs leaves; one a big task needs stays', async () => {
   const h = await harness(new Map([node('t1')]))
   try {
-    const a = await h.agent(4)
-    const b = await h.agent(2)
+    const a = await h.worker(4)
+    const b = await h.worker(2)
     await Bun.sleep(50)
     h.o.retire(0, (x) => x.cores >= 4)
     expect(await b.types()).toContain('exit')
@@ -529,17 +539,17 @@ it('an idle agent the run no longer needs leaves; one a big task needs stays', a
   }
 })
 
-// M, 2026-10-21: an agent the run's end stopped still read `online`, and
-// a size's machines were a `!` line apart from its agents.
-it('the final summary says how each agent ended, its size and machine under it', async () => {
+// M, 2026-10-21: a worker the run's end stopped still read `online`, and
+// a size's machines were a `!` line apart from its workers.
+it('the final summary says how each worker ended, its size and machine under it', async () => {
   const h = await harness(new Map([node('t1')]))
   const small = { size: 'small', cpu: 2, memory: 4e9 }
   h.o.asked(5.5, 2, 3, 1)
   h.o.spawned('small#1', small)
   h.o.spawned('big#1', { size: 'big', cpu: 4, memory: 4e9 })
-  const a = await h.agent(2, 'small#1')
-  const b = await h.agent(4, 'big#1')
-  const c = await h.agent(1)
+  const a = await h.worker(2, 'small#1')
+  const b = await h.worker(4, 'big#1')
+  const c = await h.worker(1)
   await Bun.sleep(50)
   await c.leave()
   for (let i = 0; i < 40 && !JSON.stringify(h.o.footer()).includes('lost'); i++) await Bun.sleep(25)
@@ -548,13 +558,13 @@ it('the final summary says how each agent ended, its size and machine under it',
   await h.stop()
   const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
   const at = (label: string) => rows.findIndex((r) => r.startsWith(label + ' '))
-  expect(rows[at('agent#1')]).toMatch(/^agent#1 +lost/)
+  expect(rows[at('worker#1')]).toMatch(/^worker#1 +lost/)
   expect(rows[at('small#1')]).toMatch(/^small#1 +stopped/)
   expect(rows[at('small#1') + 1]).toMatch(/^ +declared 2c\/4G · actual 2c\/0G$/)
   expect(rows[at('big#1')]).toMatch(/^big#1 +left/)
   expect(rows.some((r) => r.trimStart().startsWith('!'))).toBe(false)
   expect(rows.filter((r) => /^\S+ +online/.test(r))).toEqual([])
-  // When the run asked for agents, and for how many cores: why it had as many as it did.
+  // When the run asked for workers, and for how many cores: why it had as many as it did.
   expect(rows.filter((r) => r.startsWith('asked'))).toEqual([
     expect.stringMatching(/^asked +2 at 0\.\ds for 6 cores, 3 tasks \(1 measured\)$/),
   ])
@@ -566,33 +576,33 @@ it('the final summary says how each agent ended, its size and machine under it',
   void a
 })
 
-// Live, the agents that left are one line, so the rows that run fit.
-it('lists the agents that left as one line while the run goes', async () => {
+// Live, the workers that left are one line, so the rows that run fit.
+it('lists the workers that left as one line while the run goes', async () => {
   const h = await harness(new Map([node('t1')]))
   try {
-    const a = await h.agent(4)
-    const b = await h.agent(2)
-    const c = await h.agent(2)
+    const a = await h.worker(4)
+    const b = await h.worker(2)
+    const c = await h.worker(2)
     await Bun.sleep(50)
     h.o.retire(0, (x) => x.cores >= 4)
     expect(await b.types()).toContain('exit')
     expect(await c.types()).toContain('exit')
     const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
     expect(rows).toHaveLength(2)
-    expect(rows[0]).toMatch(/^agent#1 +online/)
-    expect(rows[1]).toMatch(/^2 agents +left +0 done$/)
+    expect(rows[0]).toMatch(/^worker#1 +online/)
+    expect(rows[1]).toMatch(/^2 workers +left +0 done$/)
     void a
   } finally {
     await h.stop()
   }
 })
 
-// A lost agent's begun task runs again on another, two agents at most;
+// A lost worker's begun task runs again on another, two workers at most;
 // one it had not begun goes back and does not count.
-it('a task lost with two agents fails naming both; one not begun goes back free', async () => {
+it('a task lost with two workers fails naming both; one not begun goes back free', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
   try {
-    const a = await h.agent(1)
+    const a = await h.worker(1)
     await Bun.sleep(50)
     // Its failure lands while b leaves, before the test awaits it.
     const t1 = h.o.execute(h.req('t1')).then(
@@ -604,14 +614,14 @@ it('a task lost with two agents fails naming both; one not begun goes back free'
     await a.begin('t1')
     await Bun.sleep(50)
     await a.leave()
-    const b = await h.agent(1)
+    const b = await h.worker(1)
     expect(await b.batches()).toEqual([['t1', 't2']])
     await b.begin('t1')
     await b.begin('t2')
     await Bun.sleep(50)
     await b.leave()
-    expect(await t1).toBe('t1: failed on 2 agents: agent#1 lost, agent#2 lost')
-    const c = await h.agent(1)
+    expect(await t1).toBe('t1: failed on 2 workers: worker#1 lost, worker#2 lost')
+    const c = await h.worker(1)
     expect(await c.batches()).toEqual([['t2']])
     await c.finish('t2')
     expect((await t2).exitCode).toBe(0)
@@ -620,40 +630,40 @@ it('a task lost with two agents fails naming both; one not begun goes back free'
   }
 })
 
-// An adapter that saw its agent's process or job end says so: its tasks
+// An adapter that saw its worker's process or job end says so: its tasks
 // went back when the relay stopped hearing it, 20 s later (2026-10-23).
-it('an agent its adapter says exited is lost at once, its task run again', async () => {
+it('a worker its adapter says exited is lost at once, its task run again', async () => {
   const h = await harness(new Map([node('t1')]), undefined, 60_000)
   try {
-    const a = await h.agent(1)
+    const a = await h.worker(1)
     await Bun.sleep(50)
     const t1 = h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
     await a.begin('t1')
     await Bun.sleep(50)
-    h.o.failed('agent#1', 'exited 137')
-    const b = await h.agent(1)
+    h.o.failed('worker#1', 'exited 137')
+    const b = await h.worker(1)
     expect(await b.batches()).toEqual([['t1']])
     await b.finish('t1')
     expect((await t1).exitCode).toBe(0)
     expect(h.o.machines().map((m) => [m.name, m.status])).toEqual([
-      ['agent#2', 'online'],
-      ['agent#1', 'lost'],
+      ['worker#2', 'online'],
+      ['worker#1', 'lost'],
     ])
   } finally {
     await h.stop()
   }
 })
 
-it('an agent that could not run a task it began gets no more; two such fail it', async () => {
+it('a worker that could not run a task it began gets no more; two such fail it', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
   try {
-    const a = await h.agent(1)
+    const a = await h.worker(1)
     await Bun.sleep(50)
     const t1 = h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
     await a.say({ type: 'fault', task: 't1', reason: 'ENOSPC' })
-    const b = await h.agent(1)
+    const b = await h.worker(1)
     expect(await b.batches()).toEqual([['t1']])
     void h.o.execute(h.req('t2'))
     expect(await b.batches()).toEqual([['t2']])
@@ -663,26 +673,26 @@ it('an agent that could not run a task it began gets no more; two such fail it',
         () => '',
         (e: Error) => e.message,
       ),
-    ).toBe('t1: failed on 2 agents: agent#1 ENOSPC, agent#2 unpack failed')
+    ).toBe('t1: failed on 2 workers: worker#1 ENOSPC, worker#2 unpack failed')
   } finally {
     await h.stop()
   }
 })
 
-it('a task an agent stops saying it holds goes back when its lease ends', async () => {
+it('a task a worker stops saying it holds goes back when its lease ends', async () => {
   const h = await harness(new Map([node('t1')]), undefined, 100)
   try {
-    const a = await h.agent(1)
+    const a = await h.worker(1)
     await Bun.sleep(50)
     void h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
     // One `held` lasts three of its own period, `HELD_EVERY` heartbeats
-    // each: an agent says it that seldom, as each is a relay message billed.
+    // each: a worker says it that seldom, as each is a relay message billed.
     await a.say({ type: 'held', running: ['t1'], queued: [] })
     // Five heartbeats, polled so the relay keeps it.
     for (let i = 0; i < 5; i++) await a.poll()
-    expect(h.o.where('t1')).toBe('agent#1')
-    const b = await h.agent(1)
+    expect(h.o.where('t1')).toBe('worker#1')
+    const b = await h.worker(1)
     // Alive, holding nothing: t1's lease ends and it moves.
     const alive = setInterval(() => void a.say({ type: 'held', running: [], queued: [] }), 50)
     try {
@@ -699,7 +709,7 @@ it('a task an agent stops saying it holds goes back when its lease ends', async 
 
 // M, 2026-10-21: files go through the cache, the relay carries only
 // orders and status.
-it('an order names its key and each dependency’s; the result comes back by the key its agent saved', async () => {
+it('an order names its key and each dependency’s; the result comes back by the key its worker saved', async () => {
   const cached = (id: string, deps: string[] = []) =>
     [
       id,
@@ -722,7 +732,7 @@ it('an order names its key and each dependency’s; the result comes back by the
     (id) => (id === 'lib' ? 'k-lib-hit' : undefined),
   )
   try {
-    const a = await h.agent(1)
+    const a = await h.worker(1)
     await Bun.sleep(50)
     const mid = h.o.execute(h.req('mid', 'k-mid'))
     expect(await a.batches()).toEqual([['mid']])
@@ -739,14 +749,14 @@ it('an order names its key and each dependency’s; the result comes back by the
     expect(h.store.restored).toEqual([runKey(R, 'mid')])
     void h.o.execute(h.req('app', 'k-app'))
     expect(await a.batches()).toEqual([['app']])
-    // Named though it holds them: the agent restores each key once.
+    // Named though it holds them: the worker restores each key once.
     expect(a.orders.find((o) => o.task === 'app')!.deps.map((d) => [d.task, d.key])).toEqual([
       ['mid', runKey(R, 'mid')],
       ['lib', 'k-lib-hit'],
     ])
-    const b = await h.agent(1)
+    const b = await h.worker(1)
     await Bun.sleep(50)
-    // Another agent, with room where the first has none, is sent both.
+    // Another worker, with room where the first has none, is sent both.
     void h.o.execute(h.req('top', 'k-top'))
     expect(await b.batches()).toEqual([['top']])
     expect(b.orders[0]!.deps.map((d) => [d.task, d.key])).toEqual([
@@ -758,16 +768,16 @@ it('an order names its key and each dependency’s; the result comes back by the
   }
 })
 
-it('sends a task to the agent that holds its dependency’s outputs', async () => {
+it('sends a task to the worker that holds its dependency’s outputs', async () => {
   const h = await harness(new Map([node('x'), node('y', ['x'])]))
   try {
-    const small = await h.agent(1)
+    const small = await h.worker(1)
     await Bun.sleep(50)
     const ran = h.o.execute(h.req('x'))
     expect(await small.batches()).toEqual([['x']])
     await small.finish('x')
     await ran
-    const big = await h.agent(8)
+    const big = await h.worker(8)
     await Bun.sleep(50)
     void h.o.execute(h.req('y'))
     expect(await small.batches()).toEqual([['y']])
@@ -777,10 +787,10 @@ it('sends a task to the agent that holds its dependency’s outputs', async () =
   }
 })
 
-// An agent that gave a task back had never run it, yet the orchestrator
-// counted its outputs there: a dependant sent to that agent was ordered
+// A worker that gave a task back had never run it, yet the orchestrator
+// counted its outputs there: a dependant sent to that worker was ordered
 // with no dependency to restore, and ran without its files (2026-10-22).
-it('an order names every dependency, held by its agent or not', async () => {
+it('an order names every dependency, held by its worker or not', async () => {
   const cached = (id: string, deps: string[] = []) =>
     [
       id,
@@ -793,13 +803,13 @@ it('an order names every dependency, held by its agent or not', async () => {
     ] as const
   const h = await harness(new Map([cached('t1'), cached('x'), cached('w'), cached('y', ['x'])]))
   try {
-    const a = await h.agent(1)
+    const a = await h.worker(1)
     await Bun.sleep(50)
     const t1 = h.o.execute(h.req('t1'))
     void h.o.execute(h.req('x', 'k-x'))
     expect(await a.batches()).toEqual([['t1', 'x']])
     await a.begin('t1')
-    const b = await h.agent(1)
+    const b = await h.worker(1)
     expect(await a.bodies()).toEqual([{ type: 'withdraw', task: 'x' }])
     await a.say({ type: 'withdrawn', task: 'x' })
     expect(await b.batches()).toEqual([['x']])
@@ -821,7 +831,7 @@ it('an order names every dependency, held by its agent or not', async () => {
 
 // Two tasks begun together needing one dependency: the one whose order
 // did not carry it ran before the other had restored it (2026-10-22).
-it('an agent restores a dependency once, before any task that needs it runs', async () => {
+it('a worker restores a dependency once, before any task that needs it runs', async () => {
   const root = await tmp()
   const served = servedRelay()
   const url = served.url
@@ -841,7 +851,7 @@ it('an agent restores a dependency once, before any task that needs it runs', as
         return { stdout: '', stderr: '' }
       },
     }
-    const code = runAgent({
+    const code = runWorker({
       relay: url,
       run: R,
       root,
@@ -905,9 +915,9 @@ it('an agent restores a dependency once, before any task that needs it runs', as
 })
 
 // A task whose outputs overlap a restored dependency's cleared its files,
-// and a later task that needed them ran without them: the agent still
+// and a later task that needed them ran without them: the worker still
 // counted them restored (2026-10-22).
-it('an agent restores a dependency again after a task cleared its files', async () => {
+it('a worker restores a dependency again after a task cleared its files', async () => {
   const root = await tmp()
   const served = servedRelay()
   const url = served.url
@@ -918,7 +928,7 @@ it('an agent restores a dependency again after a task cleared its files', async 
       secretProof('s'),
     )
     let restores = 0
-    const code = runAgent({
+    const code = runWorker({
       relay: url,
       run: R,
       root,
@@ -994,12 +1004,12 @@ it('an agent restores a dependency again after a task cleared its files', async 
   }
 })
 
-// A stopped run whose agent was lost before it answered the cancel waited
+// A stopped run whose worker was lost before it answered the cancel waited
 // on that task forever (2026-10-22).
-it('a task stopped while its agent is lost ends as stopped', async () => {
+it('a task stopped while its worker is lost ends as stopped', async () => {
   const h = await harness(new Map([node('t1')]))
   try {
-    const a = await h.agent(1)
+    const a = await h.worker(1)
     await Bun.sleep(50)
     const stop = new AbortController()
     const t1 = h.o.execute({ ...h.req('t1'), signal: stop.signal })
@@ -1030,13 +1040,13 @@ it('a task handed over already stopped ends as stopped', async () => {
   }
 }, 3_000)
 
-// A run's only agent faulted on a task: no agent was left to run it, none
+// A run's only worker faulted on a task: no worker was left to run it, none
 // was starting, and the run waited forever (2026-10-22).
-it('a task its only agent could not run fails when no agent is left', async () => {
+it('a task its only worker could not run fails when no worker is left', async () => {
   const h = await harness(new Map([node('t1')]))
   try {
     h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
-    const a = await h.agent(1, 'small#1')
+    const a = await h.worker(1, 'small#1')
     await Bun.sleep(50)
     const t1 = h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
@@ -1046,18 +1056,18 @@ it('a task its only agent could not run fails when no agent is left', async () =
         () => '',
         (e: Error) => e.message,
       ),
-    ).toBe('small#1 could not run t1 (ENOSPC) and no agent is left')
+    ).toBe('small#1 could not run t1 (ENOSPC) and no worker is left')
   } finally {
     await h.stop()
   }
 }, 3_000)
 
-// A batch for a wide agent passed the relay's 1 MiB body limit and every
+// A batch for a wide worker passed the relay's 1 MiB body limit and every
 // task in it failed with `413 body over 1 MiB` (2026-10-22).
 it('a batch past the relay’s body limit goes in parts', async () => {
   const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
   try {
-    const a = await h.agent(3)
+    const a = await h.worker(3)
     await Bun.sleep(50)
     const env = { BIG: 'x'.repeat(400_000) }
     for (const id of ['t1', 't2', 't3']) void h.o.execute({ ...h.req(id), env })
@@ -1069,16 +1079,16 @@ it('a batch past the relay’s body limit goes in parts', async () => {
   }
 })
 
-// An agent answering a cancel the run sent as it closed failed its CI job
+// A worker answering a cancel the run sent as it closed failed its CI job
 // on the relay's `410 run closed` (2026-10-22).
-it('an agent whose answer meets a closed run exits 0', async () => {
+it('a worker whose answer meets a closed run exits 0', async () => {
   const root = await tmp()
   const served = servedRelay()
   const url = served.url
   try {
     const raw = await join(url, R, 'orchestrator', null, undefined)
     const o = sealOrchestrator(raw, R, secretProof('s'))
-    const code = runAgent({
+    const code = runWorker({
       relay: url,
       run: R,
       root,
@@ -1135,10 +1145,10 @@ it('an agent whose answer meets a closed run exits 0', async () => {
   }
 })
 
-// Main, 2026-10-23: agents booked 3.7 cores and used 2.4; a task held its
+// Main, 2026-10-23: workers booked 3.7 cores and used 2.4; a task held its
 // cores while its outputs went up to the cache. The next begins once the
 // command is done.
-it('an agent begins its next task while the last one saves', async () => {
+it('a worker begins its next task while the last one saves', async () => {
   const root = await tmp()
   const served = servedRelay()
   const url = served.url
@@ -1147,7 +1157,7 @@ it('an agent begins its next task while the last one saves', async () => {
   try {
     const raw = await join(url, R, 'orchestrator', null, undefined)
     const o = sealOrchestrator(raw, R, secretProof('s'))
-    const code = runAgent({
+    const code = runWorker({
       relay: url,
       run: R,
       root,
@@ -1205,8 +1215,8 @@ it('an agent begins its next task while the last one saves', async () => {
   }
 })
 
-// M, 2026-10-22: agents at 30-50% CPU; "close to 100%". A task books the
-// cores it keeps busy on average, so a 4-core agent takes five at 0.7.
+// M, 2026-10-22: workers at 30-50% CPU; "close to 100%". A task books the
+// cores it keeps busy on average, so a 4-core worker takes five at 0.7.
 it('books the cores a task keeps busy on average, unrounded, a quarter at least', () => {
   expect(
     [0.7, 2.4, 0.01].map((c) => needOf({ p50DurationMs: 1, maxCpuParallelism: c }).cores),
@@ -1234,26 +1244,26 @@ const refusal = (make: () => unknown): string => {
   }
 }
 
-it('refuses options it does not read and agents it cannot start', () => {
+it('refuses options it does not read and workers it cannot start', () => {
   const adapter = local()
-  expect(refusal(() => dte({ agents: {}, adapter, relays: 'x' } as never))).toContain(
+  expect(refusal(() => dte({ workers: {}, adapter, relays: 'x' } as never))).toContain(
     'dte() has unknown option "relays"',
   )
-  expect(refusal(() => dte({ agents: { s: { max: 1, cpu: 0, memory: '1GB' } }, adapter }))).toBe(
-    "dte(): agents.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any",
+  expect(refusal(() => dte({ workers: { s: { max: 1, cpu: 0, memory: '1GB' } }, adapter }))).toBe(
+    "dte(): workers.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any",
   )
-  expect(refusal(() => dte({ agents: { s: { max: 1, cpu: 1, memory: '8 lots' } }, adapter }))).toBe(
-    "dte(): agents.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any",
-  )
+  expect(
+    refusal(() => dte({ workers: { s: { max: 1, cpu: 1, memory: '8 lots' } }, adapter })),
+  ).toBe("dte(): workers.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any")
   expect(refusal(() => dte({}))).toBe(
-    'dte(): with no adapter, set relay: the agents that join it run the tasks',
+    'dte(): with no adapter, set relay: the workers that join it run the tasks',
   )
   expect(refusal(() => dte({ relay: 'http://relay.test' }))).toBe('taken')
-  expect(refusal(() => dte({ agents: { s: { cpu: 2, memory: '8GB' } }, adapter }))).toBe('taken')
+  expect(refusal(() => dte({ workers: { s: { cpu: 2, memory: '8GB' } }, adapter }))).toBe('taken')
   expect(refusal(() => local({ prepar: 'x' } as never))).toContain(
     'local() has unknown option "prepar"',
   )
-  expect(refusal(() => dte({ agents: {}, adapter }))).toBe('taken')
+  expect(refusal(() => dte({ workers: {}, adapter }))).toBe('taken')
   expect(refusal(() => docker({} as never))).toBe(
     "docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git",
   )
@@ -1261,7 +1271,7 @@ it('refuses options it does not read and agents it cannot start', () => {
 
 it('a run that is not distributed loads none of it', async () => {
   // Every run evaluates `.vx/workspace.ts`: importing the plugin may not
-  // load the orchestrator, the agent or the relay.
+  // load the orchestrator, the worker or the relay.
   const probe = `
 const seen = []
 Bun.plugin({ name: 'seen', setup(b) {
@@ -1271,7 +1281,7 @@ Bun.plugin({ name: 'seen', setup(b) {
   })
 } })
 const m = await import(process.argv[1])
-m.dte({ agents: {}, adapter: m.local() })
+m.dte({ workers: {}, adapter: m.local() })
 console.log(JSON.stringify(seen.sort()))
 `
   const p = Bun.spawnSync([
@@ -1290,7 +1300,7 @@ console.log(JSON.stringify(seen.sort()))
   ])
 })
 
-it('docker() starts each agent as a container of its size, on a fresh clone', async () => {
+it('docker() starts each worker as a container of its size, on a fresh clone', async () => {
   const ws = await tmp()
   const git = (...a: string[]) =>
     Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: ws })
@@ -1299,7 +1309,7 @@ it('docker() starts each agent as a container of its size, on a fresh clone', as
   const sha = git('rev-parse', 'HEAD').stdout.toString().trim()
   await mkdir(path.join(ws, 'sub'))
   // The root through a link, as macOS's /tmp is: git names the real path,
-  // and the agent's `cd` climbed out of the clone (M's Mac, 2026-10-21).
+  // and the worker's `cd` climbed out of the clone (M's Mac, 2026-10-21).
   const link = path.join(await tmp(), 'ws')
   await symlink(ws, link)
   const bin = await tmp()
@@ -1326,7 +1336,7 @@ it('docker() starts each agent as a container of its size, on a fresh clone', as
       index: 3,
       id: 'small#3',
       workspaceRoot: path.join(link, 'sub'),
-      env: { VX_DTE_RUN: R, VX_DTE_AGENT: 'small#3', VX_DTE_RELAY: 'http://127.0.0.1:9' },
+      env: { VX_DTE_RUN: R, VX_DTE_WORKER: 'small#3', VX_DTE_RELAY: 'http://127.0.0.1:9' },
       exited: () => {},
     })
     for (let i = 0; i < 100 && !(await Bun.file(argv).exists()); i++) await Bun.sleep(20)
@@ -1354,7 +1364,7 @@ it('docker() starts each agent as a container of its size, on a fresh clone', as
         `git checkout -q --detach ${sha}`,
         "cd 'sub'",
         'bun install',
-        'exec ./node_modules/.bin/vx dte agent',
+        'exec ./node_modules/.bin/vx dte worker',
       ].join('\n'),
     )
     await d.close?.()
@@ -1394,7 +1404,7 @@ it('a machine’s usage: peaks of tasks at once, averages over its time online',
   })
 })
 
-// Main ran 12 agents at 25% with each busy all its time online: what the
+// Main ran 12 workers at 25% with each busy all its time online: what the
 // run held on each says whether packing or the tasks left the cores idle.
 it('a machine’s booked cores: what the run held for its tasks, averaged over its time online', () => {
   const u = new Usage(0)
@@ -1435,7 +1445,7 @@ it('starts the cores that fit the rest of the run in its critical path, not its 
     ['p#c', ['p#b0', 'p#b1', 'p#b2', 'p#b3']],
   ])
   expect(busyCores(new Set(mid.keys()), mid, one, () => 1000)).toBe(2)
-  // Its peak, for agents that cannot come back once they leave: four.
+  // Its peak, for workers that cannot come back once they leave: four.
   expect(busyCores(new Set(mid.keys()), mid, one, () => 1000, true)).toBe(4)
   // The same, the wide part long: four.
   expect(busyCores(new Set(mid.keys()), mid, one, (id) => (id.includes('#b') ? 5000 : 1000))).toBe(
@@ -1451,7 +1461,7 @@ it('starts the cores that fit the rest of the run in its critical path, not its 
     ['p#u', []],
   ])
   expect(busyCores(new Set(tail.keys()), tail, one, (id) => (id === 'p#u' ? 4000 : 1000))).toBe(3)
-  // Eight for 4 s, then one for 4 s: five now, but an agent that takes 5 s
+  // Eight for 4 s, then one for 4 s: five now, but a worker that takes 5 s
   // to join finds one.
   const early = graph([
     ...Array.from({ length: 8 }, (_, i): [string, string[]] => [`p#w${i}`, []]),
@@ -1468,7 +1478,7 @@ it('starts the cores that fit the rest of the run in its critical path, not its 
   expect(busyCores(new Set(shards.keys()), shards, () => 0.8, ms)).toBe(29)
 })
 
-it('knows how long the rest of the run takes at the least, and how long an agent took to join', async () => {
+it('knows how long the rest of the run takes at the least, and how long a worker took to join', async () => {
   const graph = new Map(
     [
       ['p#a', []],
@@ -1487,10 +1497,10 @@ it('knows how long the rest of the run takes at the least, and how long an agent
   try {
     expect(h.o.warmUpMs()).toBeUndefined()
     // One that joined on its own was never asked for: it says nothing.
-    await h.agent(2)
+    await h.worker(2)
     h.o.spawned('small#1', { size: 'small', cpu: 2, memory: 100 })
     await Bun.sleep(120)
-    await h.agent(2, 'small#1')
+    await h.worker(2, 'small#1')
     await Bun.sleep(50)
     expect(h.o.warmUpMs()).toBeGreaterThanOrEqual(100)
   } finally {
@@ -1498,36 +1508,36 @@ it('knows how long the rest of the run takes at the least, and how long an agent
   }
 })
 
-it('gives an unmeasured task a whole agent, and one that filled its agent a bigger one', async () => {
+it('gives an unmeasured task a whole worker, and one that filled its worker a bigger one', async () => {
   const whole = { cores: Infinity, memory: Infinity }
   const h = await harness(new Map([node('u1'), node('u2'), node('heavy')]), (id) =>
     id === 'heavy' ? { ...whole, above: { cores: 2, memory: 100 } } : whole,
   )
   try {
-    const small = await h.agent(2)
+    const small = await h.worker(2)
     await Bun.sleep(50)
-    // No history: alone on its agent.
+    // No history: alone on its worker.
     const u1 = h.o.execute(h.req('u1'))
     void h.o.execute(h.req('u2'))
     expect(await small.batches()).toEqual([['u1']])
     await small.finish('u1')
     // The run keeps where it ran and that machine's size, for the next run.
-    expect(await u1).toMatchObject({ where: 'agent#1', machine: { cores: 2, memoryBytes: 100 } })
+    expect(await u1).toMatchObject({ where: 'worker#1', machine: { cores: 2, memoryBytes: 100 } })
     expect(await small.batches()).toEqual([['u2']])
     await small.finish('u2')
-    // It filled a 2-core agent: the idle one is passed over for the
+    // It filled a 2-core worker: the idle one is passed over for the
     // bigger one starting.
     h.o.spawned('big#2', { size: 'big', cpu: 8, memory: 1000 })
     void h.o.execute(h.req('heavy'))
     await Bun.sleep(50)
-    const big = await h.agent(8)
+    const big = await h.worker(8)
     expect(await big.batches()).toEqual([['heavy']])
   } finally {
     await h.stop()
   }
 }, 30_000)
 
-it('an agent’s reason is its error line, not the hint after it', () => {
+it('a worker’s reason is its error line, not the hint after it', () => {
   expect([
     errorLine("\u001b[31m✗\u001b[0m vx  'dte' is not a vx command\n  fix  vx run dev --all\n"),
     errorLine('resolving\nerror: cannot find module\n  at x\n'),
@@ -1546,16 +1556,16 @@ it('an agent’s reason is its error line, not the hint after it', () => {
   ])
 })
 
-// Main's agents booked 3.2 of 4 cores and used 2.6 (2026-10-23): a task
+// Main's workers booked 3.2 of 4 cores and used 2.6 (2026-10-23): a task
 // waited for its whole need while a core stood free. It begins while one
-// is; memory still has to fit, and one asking the whole agent waits.
+// is; memory still has to fit, and one asking the whole worker waits.
 it('a task begins beside others while a core is free, its memory fitting', () => {
-  const agent = { cores: 4, memory: 16e9 }
-  expect(shares({ cores: 3.2, memory: 1e9 }, { cores: 1.5, memory: 1e9 }, agent)).toBe(true)
-  expect(shares({ cores: 4, memory: 1e9 }, { cores: 0.25, memory: 0 }, agent)).toBe(false)
-  expect(shares({ cores: 1, memory: 15e9 }, { cores: 1, memory: 2e9 }, agent)).toBe(false)
-  expect(shares({ cores: 0.5, memory: 0 }, { cores: 4, memory: 0 }, agent)).toBe(false)
-  expect(shares({ cores: 0.5, memory: 0 }, { cores: Infinity, memory: Infinity }, agent)).toBe(
+  const worker = { cores: 4, memory: 16e9 }
+  expect(shares({ cores: 3.2, memory: 1e9 }, { cores: 1.5, memory: 1e9 }, worker)).toBe(true)
+  expect(shares({ cores: 4, memory: 1e9 }, { cores: 0.25, memory: 0 }, worker)).toBe(false)
+  expect(shares({ cores: 1, memory: 15e9 }, { cores: 1, memory: 2e9 }, worker)).toBe(false)
+  expect(shares({ cores: 0.5, memory: 0 }, { cores: 4, memory: 0 }, worker)).toBe(false)
+  expect(shares({ cores: 0.5, memory: 0 }, { cores: Infinity, memory: Infinity }, worker)).toBe(
     false,
   )
 })

@@ -1,4 +1,4 @@
-// `vx dte agent`: one CI job's share of a run. It joins the run's relay
+// `vx dte worker`: one CI job's share of a run. It joins the run's relay
 // with what its machine has, runs what the orchestrator sends in its own
 // checkout, as many at once as its cores and memory hold by each task's
 // recorded peak. A task's dependencies' files come from the workspace's
@@ -23,13 +23,13 @@ import {
 import {
   HELD_EVERY,
   shares,
-  type AgentInfo,
+  type WorkerInfo,
   type RunOrder,
-  type ToAgent,
+  type ToWorker,
   type WiredResult,
 } from './messages.js'
 import { names, outputFiles } from './outputs.js'
-import { sealAgent, type Proof } from './seal.js'
+import { sealWorker, type Proof } from './seal.js'
 import { join, RelayError } from './wire.js'
 
 /** Names whose value is this machine's, never the orchestrator's. */
@@ -46,10 +46,10 @@ const HOST_ENV = [
   'COREPACK_HOME',
 ]
 
-export async function runAgent(opts: {
+export async function runWorker(opts: {
   relay: string
   run: string
-  /** `AgentSpawn.id`, when the run started it. */
+  /** `WorkerSpawn.id`, when the run started it. */
   id?: string
   root: string
   token: () => Promise<string | undefined>
@@ -63,9 +63,9 @@ export async function runAgent(opts: {
     .trim()
   const cores = machineParallelism()
   const memory = machineMemoryBytes()
-  // What the run holds it to, once welcomed: a local() agent shares its host.
+  // What the run holds it to, once welcomed: a local() worker shares its host.
   let share = { cores, memory }
-  const info: AgentInfo = {
+  const info: WorkerInfo = {
     v: 1,
     ...(opts.id === undefined ? {} : { id: opts.id }),
     cores,
@@ -74,14 +74,14 @@ export async function runAgent(opts: {
   }
   let me
   try {
-    me = await sealAgent(
+    me = await sealWorker(
       (signed) => join(opts.relay, opts.run, 'agent', signed, opts.token),
       opts.run,
       opts.proof,
       { ...info },
     )
   } catch (err) {
-    // The run ended before this agent came up: nothing is left for it.
+    // The run ended before this worker came up: nothing is left for it.
     if (err instanceof RelayError && err.status === 410) return 0
     throw err
   }
@@ -97,7 +97,7 @@ export async function runAgent(opts: {
   let floor: LocalFloor | undefined
   let usedCores = 0
   let usedMemory = 0
-  /** Tasks whose cores are held: a task asking the whole agent begins at none. */
+  /** Tasks whose cores are held: a task asking the whole worker begins at none. */
   let holding = 0
   /**
    * Entries whose files are here, restored or run here, by key: tasks
@@ -141,7 +141,7 @@ export async function runAgent(opts: {
 
   /**
    * Starts each queued task while a core is free and its memory fits; with
-   * none holding cores, the first one. A task asking a whole agent waits for
+   * none holding cores, the first one. A task asking a whole worker waits for
    * an idle one.
    */
   const start = (): void => {
@@ -175,7 +175,7 @@ export async function runAgent(opts: {
         })
         .finally(() => {
           work.delete(p)
-          // Freed already, it still ran: a task that waits for an idle agent starts now.
+          // Freed already, it still ran: a task that waits for an idle worker starts now.
           if (held) free()
           else start()
         })
@@ -183,7 +183,7 @@ export async function runAgent(opts: {
     }
   }
 
-  // Each probe once per agent, as a run answers it once.
+  // Each probe once per worker, as a run answers it once.
   const probes = new Map<string, Promise<string>>()
   /** The first probe this machine answers otherwise than the orchestrator did. */
   const runtimeDiffers = async (m: RunOrder): Promise<string | undefined> => {
@@ -197,7 +197,7 @@ export async function runAgent(opts: {
       }
       const mine = await p
       if (mine !== r.output)
-        return `\`${r.command}\` answers ${JSON.stringify(mine)} on this agent, ${JSON.stringify(r.output)} on the run's machine, whose answer its key holds`
+        return `\`${r.command}\` answers ${JSON.stringify(mine)} on this worker, ${JSON.stringify(r.output)} on the run's machine, whose answer its key holds`
     }
     return undefined
   }
@@ -232,7 +232,7 @@ export async function runAgent(opts: {
             })
             .then((log) => {
               if (log === null)
-                throw new Error(`${d.task}'s entry ${d.key} is in no cache this agent reads`)
+                throw new Error(`${d.task}'s entry ${d.key} is in no cache this worker reads`)
             })
           present.set(d.key, got)
           holds.set(d.key, names(d.project, d.outputs))
@@ -294,7 +294,7 @@ export async function runAgent(opts: {
       const { outputs: _, ...res } = await floor.execute(req)
       // Its command is done: saving its outputs to the cache is the
       // network's time, and its cores are the next task's (main,
-      // 2026-10-23: agents booked 3.7 cores and used 2.4).
+      // 2026-10-23: workers booked 3.7 cores and used 2.4).
       free()
       const took = ui.dim(`${Math.round(res.durationMs)}ms`)
       ui.print(
@@ -350,7 +350,10 @@ export async function runAgent(opts: {
         // The relay lost it (silent too long, or restarted): the run gave its
         // tasks to others, so this job has nothing left and is no failure.
         if (err instanceof RelayError && err.status === 404) {
-          ui.print('err', ui.status('warn', 'vx dte agent', 'the relay no longer knows this agent'))
+          ui.print(
+            'err',
+            ui.status('warn', 'vx dte worker', 'the relay no longer knows this worker'),
+          )
           return 0
         }
         throw err
@@ -360,9 +363,9 @@ export async function runAgent(opts: {
           if ((body as { type?: string }).type === 'closed') return 0
           continue
         }
-        const m = body as ToAgent
+        const m = body as ToWorker
         if (m.type === 'refused') {
-          ui.print('err', ui.status('error', 'vx dte agent', `refused: ${m.reason}`))
+          ui.print('err', ui.status('error', 'vx dte worker', `refused: ${m.reason}`))
           return 1
         }
         if (m.type === 'exit') return 0
@@ -372,8 +375,8 @@ export async function runAgent(opts: {
           share = { cores: m.cores, memory: m.memory }
           ui.print(
             'out',
-            ui.report('vx dte agent', [
-              ['agent', ui.id(m.name)],
+            ui.report('vx dte worker', [
+              ['worker', ui.id(m.name)],
               ['run', opts.run],
               ['relay', opts.relay],
               ['machine', `${cores} cores · ${gb(memory)}`],
@@ -413,7 +416,7 @@ export async function runAgent(opts: {
       }
     }
   } catch (err) {
-    // The run closed under a poll or an answer: nothing is left for this agent.
+    // The run closed under a poll or an answer: nothing is left for this worker.
     if (err instanceof RelayError && err.status === 410) return 0
     throw err
   } finally {

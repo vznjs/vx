@@ -197,7 +197,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
 const pct = (x: number): string => `${Math.round(x * 100)}%`
 
 /**
- * The machines an executor ran the run on (vx-dte's agents): what each
+ * The machines an executor ran the run on (vx-dte's workers): what each
  * was booked for beside what it used, so an idle or overbooked one shows
  * on the page (owner, 2026-10-23).
  */

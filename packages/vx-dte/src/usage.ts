@@ -1,5 +1,5 @@
 // What one machine did in a distributed run, from its tasks' results: the
-// final summary's per-agent block.
+// final summary's per-worker block.
 
 interface Span {
   readonly start: number

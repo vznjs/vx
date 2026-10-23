@@ -5,10 +5,10 @@ import { defineProject } from '@vzn/vx'
 // only speed: `bun test` pins ~2 descriptors per imported module and macOS
 // caps a process at 10 240, so the whole suite in one process does not
 // clear the cap. Forty-six, not the four cores of the smallest box it
-// runs on: a distributed run spreads the shards over agents, and the
+// runs on: a distributed run spreads the shards over workers, and the
 // slowest shard is its critical path. On 4 cores, 24 shards finished in
 // the same wall time as 12 (393 s), each 58 to 72 s against 131 s; on
-// CI's agents 36 took 60 to 80 s, still the critical path (2026-10-23).
+// CI's workers 36 took 60 to 80 s, still the critical path (2026-10-23).
 // The heaviest file (34 s) caps it: a shard cannot hold less than one file.
 export const SHARD_COUNT = 46
 // The suite's git fixtures assume git's defaults. A machine's global config
@@ -24,12 +24,12 @@ const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' 
 // what another saved.
 // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
 // CI's macOS jobs share the remote cache with Linux; a key that named no
-// platform replayed Linux's pass as the macOS result (#3854). The agents'
+// platform replayed Linux's pass as the macOS result (#3854). The workers'
 // OS, which ci.yml names: the run's own job is Linux for both runs (owner,
 // 2026-10-22), so its RUNNER_OS says nothing of where a suite ran. An env
 // read when the key is taken: a value the config computes is frozen into
 // the lock.
-const PLATFORM = ['CI_AGENTS_OS']
+const PLATFORM = ['CI_WORKERS_OS']
 const SUITE_ENV = {
   ...GIT_HERMETIC,
   BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0',
@@ -460,7 +460,7 @@ export default defineProject({
     },
 
     // macOS CI's checks of this machine's own sandbox, as tasks so they run on
-    // a Mac agent: nothing runs on a distributed run's orchestrator. Neither
+    // a Mac worker: nothing runs on a distributed run's orchestrator. Neither
     // is sandboxed, as each drives the sandbox itself, and neither is cached.
     'check.sandbox-canary': {
       description:

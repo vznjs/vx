@@ -71,8 +71,8 @@ export interface Participant {
   send(to: string, body: unknown): Promise<void>
   /** Held up to one heartbeat, which also keeps this participant alive. */
   poll(signal?: AbortSignal): Promise<RelayMessage[]>
-  /** The orchestrator takes an agent it did not admit off the run. */
-  remove(agent: string): Promise<void>
+  /** The orchestrator takes a worker it did not admit off the run. */
+  remove(worker: string): Promise<void>
   leave(): Promise<void>
 }
 
@@ -98,7 +98,7 @@ export async function join(
     return h
   }
   // A join asked again that the relay took leaves a second participant,
-  // lost in three heartbeats; an agent whose join failed is lost for good.
+  // lost in three heartbeats; a worker whose join failed is lost for good.
   let faultMs = JOIN_FAULT_MS
   const call = (verb: string, body?: unknown, query = '', signal?: AbortSignal) =>
     paced(() => once(verb, body, query, signal), faultMs, signal)
@@ -153,7 +153,7 @@ export async function join(
   let socket: Socket | undefined = await dial()
   // The relay made a run twice when two joins came at once and forgot the
   // first's participants, whose first socket never opened: two of twelve
-  // agents on CI (2026-10-23). Joined again, it lands in the run that stayed.
+  // workers on CI (2026-10-23). Joined again, it lands in the run that stayed.
   if (socket === undefined) {
     id = (await enter())['id'] as string
     socket = await dial()
@@ -295,8 +295,8 @@ export async function join(
       if (ended !== undefined) throw ended
       return []
     },
-    async remove(agent) {
-      await over((s) => s.request({ remove: agent }))
+    async remove(worker) {
+      await over((s) => s.request({ remove: worker }))
     },
     async leave() {
       left = true

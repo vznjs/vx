@@ -32,7 +32,7 @@ Pipeline stages a plugin can fill, in order: `config` → `discover` → `projec
 Decision drivers, in order: **performance, modularity, extensibility.**
 No cloud or dashboard ships in this repo; the seams exist so someone can
 build those on top. The one exception is `@vzn/vx-dte` (owner, 2026-10-21):
-one run spread over agents the user's own CI spawns, through a relay
+one run spread over workers the user's own CI spawns, through a relay
 (`@vzn/vx-dte-relay`) anyone can host. `@vzn/vx-reapi` is the proof
 the seams are wide enough. Pre-alpha, owner-delegated: you own it, ship it.
 
@@ -94,8 +94,8 @@ private/vx-docs         Astro Starlight site; packages/vx/docs is imported by sc
                         src/playground/ is core's own planner bundled for the browser behind a shim
                         (build.playground → public/playground/planner.js), held to the CLI by core's
                         tests/playground-parity.unsafe.test.ts
-packages/vx-dte         distributed runs: `dte()` executor + `vx dte agent` over the relay, `local()` adapter
-                        (agents in git worktrees). Private until npm has it
+packages/vx-dte         distributed runs: `dte()` executor + `vx dte worker` over the relay, `local()` adapter
+                        (workers in git worktrees). Private until npm has it
 packages/vx-dte-relay   the reference relay of `@vzn/vx-dte` (PROTOCOL.md): mailboxes per run behind CI
                         OIDC tokens; imports only jose, not even core. Private until npm has it
 private/vx-bench        synthetic workspace generator + runners (vx / turbo / nx)
@@ -151,7 +151,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   loopback, unreachable from a Linux sandbox's network namespace), its
   `services.cache` / `services.exec` (Docker), `@vzn/vx-migrate#nx.install`
   (npm), `check.sandbox-canary` and
-  `check.build-cold` (each drives the sandbox itself, on a Mac agent) are
+  `check.build-cold` (each drives the sandbox itself, on a Mac worker) are
   the ONLY tasks in the whole repo with no `exec.sandbox`.
 - Every package's suite is its `test` task, so `vx run ci --all` gates
   them all; CI runs nothing but vx tasks (a workspace step is a design
@@ -263,7 +263,7 @@ platform claim or a timed test, and add new lessons there.
 Named inputs / `globalInputs` / `globalEnv` (TS configs compose); auto-input
 inference via tracing; folding `NODE_OPTIONS` into the key; lookahead /
 idle-insertion scheduling (measured: `remCP` already ties or wins); a
-first-party platform, dashboard, cloud, or CI-provider features (agents
+first-party platform, dashboard, cloud, or CI-provider features (workers
 only as `@vzn/vx-dte`);
 Turbo remote-cache wire in core; HTTP/3.
 

@@ -2,46 +2,46 @@
 
 Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 
-Distributed task execution for vx: one `vx run` spread over agents your
+Distributed task execution for vx: one `vx run` spread over workers your
 own CI starts, replayed here as one run. The run you start is the
-orchestrator. It keeps a share of the tasks, starts agents for the rest,
-and hands the ready tasks to the agents with room, critical path first. An agent runs it in its own checkout and saves the task's
+orchestrator. It keeps a share of the tasks, starts workers for the rest,
+and hands the ready tasks to the workers with room, critical path first. A worker runs it in its own checkout and saves the task's
 output and the files its declared outputs left to the workspace's cache,
 under the task's key. They land here before the task ends, so the run
 reports the task as its own. No file travels through the relay: it
-carries only orders and status, so the agents and this machine need one
-cache they all read (a remote the agents write, or one shared store). An agent reads that cache as the run does:
+carries only orders and status, so the workers and this machine need one
+cache they all read (a remote the workers write, or one shared store). A worker reads that cache as the run does:
 under the run's refs, with the short-lived access the run's remote lends
 it (an OIDC exchange's token, never a stored secret) when it has none of
 its own.
 
-Agents and the orchestrator meet at a relay
+Workers and the orchestrator meet at a relay
 ([`@vzn/vx-dte-relay`](../vx-dte-relay/PROTOCOL.md)), since CI runners
 take no inbound connection. Host your own: its
 [README](../vx-dte-relay/README.md) has a Deploy to Cloudflare button,
 which asks only for the repositories whose runs it carries.
 
-A run id is a channel. Agents join it before or after the orchestrator
+A run id is a channel. Workers join it before or after the orchestrator
 does, and the orchestrator claims it with a key made for that run; the
 relay keeps the public half and passes nothing to or from a side that
-cannot sign by it. The orchestrator checks each agent the moment it
+cannot sign by it. The orchestrator checks each worker the moment it
 appears and removes any without the run's key from the channel.
 
-The relay reads nothing they say. Each agent and the orchestrator run a
+The relay reads nothing they say. Each worker and the orchestrator run a
 [Noise](https://noiseprotocol.org/noise.html) handshake through it, one
-session per agent, with keys made for that session only. With the run's
+session per worker, with keys made for that session only. With the run's
 key (`VX_DTE_SECRET`, the one `vx dte plan` wrote, or one an adapter made
-for its agents) it is `Noise_NNpsk0_25519_AESGCM_SHA256`: the key is the
+for its workers) it is `Noise_NNpsk0_25519_AESGCM_SHA256`: the key is the
 pre-shared key, so a side without it cannot finish the handshake, and the
-agent's `join` info (cores, memory, tree) is already encrypted. On GitHub
+worker's `join` info (cores, memory, tree) is already encrypted. On GitHub
 Actions with no key it is `Noise_NN_25519_AESGCM_SHA256`, and each side
 binds the handshake by an OIDC token of this repository (`id-token:
 write`): no secret is stored anywhere. With no adapter and no GitHub, set
-the same `VX_DTE_SECRET` on the run and each agent. A message the relay
-changes loses its agent; one it replays is dropped. The key never
+the same `VX_DTE_SECRET` on the run and each worker. A message the relay
+changes loses its worker; one it replays is dropped. The key never
 encrypts a message, so a leaked one opens no past run.
 
-It is not on npm yet: it is being built in this repo. It runs agents with
+It is not on npm yet: it is being built in this repo. It runs workers with
 `local()`, `docker()`, `github()` and `gitlab()`.
 
 ## Try it
@@ -57,7 +57,7 @@ import { dte, local } from '/path/to/vx/packages/vx-dte/src/index.ts'
 export default defineWorkspace({
   plugins: [
     dte({
-      agents: { small: { max: 4, cpu: 2, memory: '8GB' } },
+      workers: { small: { max: 4, cpu: 2, memory: '8GB' } },
       adapter: local({ prepare: 'bun install' }),
     }),
   ],
@@ -71,21 +71,21 @@ VX_DTE_RUN=$(uuidgen) vx run build --all
 `VX_DTE_RUN` names the run and turns distribution on; without it, `vx run`
 runs here as always (on GitHub Actions, `github()` with a relay names one
 itself). It is a random UUID, so no one can guess a run to
-open it first or join it; vx and the relay refuse any other. `local()` starts each agent as a process in its own
+open it first or join it; vx and the relay refuse any other. `local()` starts each worker as a process in its own
 git worktree of the tracked files as they are, uncommitted changes
-included (untracked files are not). When an agent fails, its row names
+included (untracked files are not). When a worker fails, its row names
 the error line and the log that holds its whole stderr. At the run's end,
 or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
 a detached shell removes them and prunes git's records.
 
-`docker()` starts each agent as a container held to its size: `--cpus`
+`docker()` starts each worker as a container held to its size: `--cpus`
 and `--memory` come from `cpu` and `memory`. The container clones this
 checkout (mounted read-only) into its own filesystem at its tracked
 files as they are, uncommitted changes too, runs
-`prepare`, then the workspace's own `node_modules/.bin/vx dte agent`, so
+`prepare`, then the workspace's own `node_modules/.bin/vx dte worker`, so
 the image needs Bun and git, and `prepare` installs vx. This machine's store
 (`~/.vx`) and `VX_CACHE_DIR` are mounted at their own paths, and the
-clone keeps this checkout's `origin`, so the agents save where the run
+clone keeps this checkout's `origin`, so the workers save where the run
 reads, as `local()`'s do; no remote is needed. On Linux a container runs
 as this user (its home is `/tmp`, where the store is mounted), so what it
 writes is this user's and git trusts the mounted checkout. A container that fails
@@ -93,17 +93,17 @@ names its error line and the log of its whole stderr:
 
 ```ts
 dte({
-  agents: { small: { max: 4, cpu: 2, memory: '4GB' } },
+  workers: { small: { max: 4, cpu: 2, memory: '4GB' } },
   adapter: docker({ image: 'my/bun-git', prepare: 'bun install' }),
 })
 ```
 
 The relay stays on loopback: on Linux a container joins the host's
 network; elsewhere it reaches the relay through `host.docker.internal`.
-A container ends with its agent; one still up when the run ends is
+A container ends with its worker; one still up when the run ends is
 removed.
 
-With no adapter, vx starts no agents: the run uses whichever join its
+With no adapter, vx starts no workers: the run uses whichever join its
 relay. In three terminals on one checkout's commit:
 
 ```ts
@@ -115,16 +115,16 @@ export default defineWorkspace({ plugins: [dte({ relay: 'http://127.0.0.1:8080' 
 bun /path/to/vx/packages/vx-dte-relay/src/bun.ts --no-auth --port 8080   # the relay
 export VX_DTE_SECRET=$(openssl rand -base64 32)                          # in each terminal: the same one
 export VX_DTE_RUN=$(uuidgen)                                             # in each terminal: the same one
-vx dte agent                                                             # an agent, as many as you like
+vx dte worker                                                             # a worker, as many as you like
 vx run build --all                                                       # the run
 ```
 
-An agent prints its name, the run, the relay and its machine, then a row
+A worker prints its name, the run, the relay and its machine, then a row
 as each task starts and ends:
 
 ```
-─ vx dte agent ───────────────────────────────────────────────
-  agent     agent#1
+─ vx dte worker ───────────────────────────────────────────────
+  worker     worker#1
   run       5f0c7a52-…
   relay     http://127.0.0.1:8080
   machine   10 cores · 17.2 GB
@@ -134,11 +134,11 @@ as each task starts and ends:
 
 ## On GitHub
 
-The run is your own job's `vx run`. When it needs agents it dispatches
-`.github/workflows/vx-agent.yml` once per size, with the agents of that
-size as a matrix, each job named for its agent (`name: ${{ matrix.agent }}`):
-a job that ends badly before its agent joins marks that agent `failed`
-with the step it failed at, and the run starts another in its place. When the run ends it cancels each agent run it
+The run is your own job's `vx run`. When it needs workers it dispatches
+`.github/workflows/vx-worker.yml` once per size, with the workers of that
+size as a matrix, each job named for its worker (`name: ${{ matrix.worker }}`):
+a job that ends badly before its worker joins marks that worker `failed`
+with the step it failed at, and the run starts another in its place. When the run ends it cancels each worker run it
 dispatched, so one still queued does not hold a runner the next run
 waits for. On GitHub Actions with a relay, the run names itself: no
 `VX_DTE_RUN` to set. No secret: each side proves its key with the job's OIDC
@@ -152,7 +152,7 @@ export default defineWorkspace({
   plugins: [
     dte({
       relay: 'https://relay.example.com',
-      agents: { small: { max: 8, cpu: 4, memory: '16GB' } },
+      workers: { small: { max: 8, cpu: 4, memory: '16GB' } },
       adapter: github(),
     }),
   ],
@@ -170,8 +170,8 @@ steps:
 ```
 
 ```yaml
-# .github/workflows/vx-agent.yml
-name: vx-agent
+# .github/workflows/vx-worker.yml
+name: vx-worker
 on:
   workflow_dispatch:
     inputs:
@@ -180,31 +180,31 @@ on:
         relay: { required: true },
         sha: { required: true },
         size: { required: true },
-        agents: { required: true },
+        workers: { required: true },
       }
 permissions: { id-token: write, contents: read }
 jobs:
-  agent:
+  worker:
     runs-on: ${{ fromJSON('{"small":"ubuntu-latest"}')[inputs.size] }}
-    strategy: { matrix: { agent: '${{ fromJSON(inputs.agents) }}' } }
+    strategy: { matrix: { worker: '${{ fromJSON(inputs.workers) }}' } }
     env:
       {
         VX_DTE_RUN: '${{ inputs.run }}',
         VX_DTE_RELAY: '${{ inputs.relay }}',
-        VX_DTE_AGENT: '${{ matrix.agent }}',
+        VX_DTE_WORKER: '${{ matrix.worker }}',
       }
     steps:
       - uses: actions/checkout@v4
         with: { ref: '${{ inputs.sha }}' }
       - run: bun install --frozen-lockfile
-      - run: bunx @vzn/vx dte agent
+      - run: bunx @vzn/vx dte worker
 ```
 
 ## On GitLab
 
-Three jobs of your own pipeline: `vx-plan` writes the agents' child
-pipeline, `vx-agents` triggers it, and `vx` is the orchestrator, your own
-`vx run`. Every agent the plan wrote starts at once, beside the
+Three jobs of your own pipeline: `vx-plan` writes the workers' child
+pipeline, `vx-workers` triggers it, and `vx` is the orchestrator, your own
+`vx run`. Every worker the plan wrote starts at once, beside the
 orchestrator, and leaves when the run ends.
 
 ```ts
@@ -213,7 +213,7 @@ export default defineWorkspace({
   plugins: [
     dte({
       relay: 'https://relay.example.com',
-      agents: { small: { max: 4, cpu: 2, memory: '8GB' } },
+      workers: { small: { max: 4, cpu: 2, memory: '8GB' } },
       adapter: gitlab({ include: '.gitlab/vx.yml' }),
     }),
   ],
@@ -228,16 +228,16 @@ vx-plan:
   extends: .vx
   script: [bunx @vzn/vx dte plan build test --all] # the run's selection
   artifacts:
-    paths: [vx-agents.yml, .vx/dte/]
+    paths: [vx-workers.yml, .vx/dte/]
     reports: { dotenv: vx-dte.env }
     access: none
     expire_in: 1 hour # as long as the pipeline may run
 
-vx-agents:
+vx-workers:
   needs: [vx-plan]
   variables: { PARENT_PIPELINE_ID: $CI_PIPELINE_ID }
   trigger:
-    include: [{ artifact: vx-agents.yml, job: vx-plan }]
+    include: [{ artifact: vx-workers.yml, job: vx-plan }]
 
 vx:
   extends: .vx
@@ -252,131 +252,131 @@ vx:
   image: oven/bun:1.4
   before_script: [pnpm install --frozen-lockfile]
 
-.vx-agent:
+.vx-worker:
   extends: .vx
   id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
 ```
 
 The run's secret is an artifact no one can download (`access: none`);
-the orchestrator and the agents get it through `needs`. Set
+the orchestrator and the workers get it through `needs`. Set
 `VX_DTE_SECRET` to use your own instead.
 
 Set `VX_DTE_GITLAB_TOKEN` (an access token with `api` scope, as a masked
 CI/CD variable both `vx-plan` and `vx` see) to spawn live: the plan then
-starts with the run only the agents its start keeps busy, and writes the
+starts with the run only the workers its start keeps busy, and writes the
 others as `when: manual` jobs. It reads that from the run's own graph
 (`vx run <its args> --dry=json`) and history, so give `vx dte plan` the
-run's selection; a task with no history takes a whole agent. The run plays one when its work needs it and cancels
+run's selection; a task with no history takes a whole worker. The run plays one when its work needs it and cancels
 the ones it never played when it ends. A played job that fails before
-its agent joins fails the run's wait for it, so the run starts another or
+its worker joins fails the run's wait for it, so the run starts another or
 stops, instead of waiting for the job's timeout.
 
 ## What runs where
 
-- An agent reports the cores and memory its machine has when it joins.
+- A worker reports the cores and memory its machine has when it joins.
   One the run started is held to the size it was started as, so
-  `local()` agents sharing a host split it rather than each take all of
+  `local()` workers sharing a host split it rather than each take all of
   it. Tasks go to it in batches that fill those by each task's recorded peak
-  (cores used, peak memory; a whole agent for a task with no history), plus a
+  (cores used, peak memory; a whole worker for a task with no history), plus a
   quarter of its cores as a prefetch, so a successor is there when a task
-  ends. The agent starts a task while one of its cores is free and the
+  ends. The worker starts a task while one of its cores is free and the
   task's memory fits, so no core waits for a task's whole need; a task
-  asking a whole agent, or bigger than any, runs alone on an idle one. A prefetched task an agent has not begun moves to
-  an agent with nothing to do, so a short gate is never stuck behind a
+  asking a whole worker, or bigger than any, runs alone on an idle one. A prefetched task a worker has not begun moves to
+  a worker with nothing to do, so a short gate is never stuck behind a
   long task while another machine idles.
 - Tasks waiting for room go out longest tail first: a task's recorded
   duration and its longest chain of dependants, so a long chain that got
   ready late does not queue behind many short tasks ready at once.
-- A task goes to the agent that holds most of its dependencies' outputs,
+- A task goes to the worker that holds most of its dependencies' outputs,
   so a chain stays on one machine; then to the one with fewest cores
-  free that it fits, so agents fill before the next takes work and the
+  free that it fits, so workers fill before the next takes work and the
   ones the rest no longer needs fall idle and leave.
-- A sandboxed task runs on an agent inside the agent's own sandbox, with
+- A sandboxed task runs on a worker inside the worker's own sandbox, with
   the same `exec.sandbox`, built there (`sandboxRequestFor`): its paths,
-  walls and credential stores are the agent's, so an orchestrator on
-  Linux can run macOS agents. A violation there fails it here, named in
+  walls and credential stores are the worker's, so an orchestrator on
+  Linux can run macOS workers. A violation there fails it here, named in
   this checkout's paths.
-- A persistent task a task depends on starts on the agent that runs the
-  task, once per agent, ready before it, and stops when the agent leaves;
-  the orchestrator never starts it, and an agent no dependant reaches
+- A persistent task a task depends on starts on the worker that runs the
+  task, once per worker, ready before it, and stops when the worker leaves;
+  the orchestrator never starts it, and a worker no dependant reaches
   never does (owner, 2026-10-22).
 - A task whose key folds a runtime probe (`inputs.runtime`, such as
-  `bun --version`) runs on an agent, which answers the probe first and
+  `bun --version`) runs on a worker, which answers the probe first and
   fails the task when it answers otherwise than this machine did.
 - Tasks that must run here stay here: a requested persistent task, one
   with `exec.remote: false`, interactive tasks, and their dependants
   (core's placement).
-- An agent restores, by key, the declared outputs of every task the one
+- A worker restores, by key, the declared outputs of every task the one
   it runs depends on, unless it ran or restored them before. Files a task
-  writes without declaring them stay on the agent.
+  writes without declaring them stay on the worker.
 - A failed or uncached task is saved under a key of the run and the task,
   so no later lookup ever hits it.
-- An agent whose tracked files differ from the orchestrator's (another
+- A worker whose tracked files differ from the orchestrator's (another
   tree) is refused.
-- An agent that stops answering, stops saying it holds a task, or cannot
+- A worker that stops answering, stops saying it holds a task, or cannot
   run one (a full disk) gets no more work, and its tasks run again on
-  another. A task two such agents had begun fails, naming both; one an
-  agent had not begun yet does not count. With no agent of the run left
+  another. A task two such workers had begun fails, naming both; one an
+  worker had not begun yet does not count. With no worker of the run left
   to take it and none starting, it fails at once.
 - A relay unreachable for three heartbeats fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller
-  than the agents. What finished is saved, so a rerun resumes from it.
+  than the workers. What finished is saved, so a rerun resumes from it.
   A shorter fault (a `5xx` while the host restarts the relay, a dropped
-  connection) is asked through, by the orchestrator and agents alike.
-- An agent that never joins says why on its row (`failed  exited 1:
-…`). The first such failure in a run starts another agent in its
+  connection) is asked through, by the orchestrator and workers alike.
+- A worker that never joins says why on its row (`failed  exited 1:
+…`). The first such failure in a run starts another worker in its
   place, as a checkout or install can fail on the network; a second
   starts none. When none is online or starting and this machine has no
-  share, the remaining tasks fail with `no agent could start`.
+  share, the remaining tasks fail with `no worker could start`.
 
 ## What the run shows
 
-Each task an agent ran says which one last on its row and after the id
-on its frame, in that agent's own color, by size and the order the run
+Each task a worker ran says which one last on its row and after the id
+on its frame, in that worker's own color, by size and the order the run
 started it:
 
 ```
  ⏺︎   308ms success miss     c#build · small#1
 ```
 
-An idle agent the rest of the run cannot keep busy leaves (`left`): one
+An idle worker the rest of the run cannot keep busy leaves (`left`): one
 beyond the peak of the cores the remaining tasks keep busy, so a lull
 between two wide parts keeps it. One a remaining task needs for its size
-stays. A lost agent's begun tasks run again on
-another, and the run starts one in its place. An agent is lost when the
+stays. A lost worker's begun tasks run again on
+another, and the run starts one in its place. A worker is lost when the
 relay stops hearing it, or at once when its adapter sees its process or
-job end. Agents start at the first
+job end. Workers start at the first
 task the cache does not answer, so a warm run starts none. Once one has
 joined, its warm-up is what the next takes at the least: work that ends
-sooner starts no agent while others are online or starting, and new
-agents are started for the cores the run keeps busy after that warm-up,
+sooner starts no worker while others are online or starting, and new
+workers are started for the cores the run keeps busy after that warm-up,
 not before it.
 
-The `agents` rows, live while the run goes and again in the footer,
-give each agent its status (`starting`, `online`, `left`, `gone`, or `failed`
+The `workers` rows, live while the run goes and again in the footer,
+give each worker its status (`starting`, `online`, `left`, `gone`, or `failed`
 with why, such as `exited 1: Cannot find package '@vzn/vx-dte'`), the tasks it
 has done, failed or had aborted by a stop, and the ones it runs now; while the run goes, those that left
-are one line (`3 agents  left  9 done`). An agent the
+are one line (`3 workers  left  9 done`). A worker the
 run started is named by its size and the order it was started in; one
-that joined on its own is `agent#N`. A task sent to an agent but not yet
+that joined on its own is `worker#N`. A task sent to a worker but not yet
 begun there has no row; the tasks line counts it `scheduled`
 (`30 success · 4 running · 12 scheduled · 62 total`). Its row and clock
-start when the agent begins it. An agent is `online` while the run
+start when the worker begins it. A worker is `online` while the run
 goes; it ends `left` when the run let it go as not needed, `lost` when
 it crashed or went silent, and `stopped` when the run's end stopped it.
-Once the run is over, each agent adds its warm-up (from asking the
+Once the run is over, each worker adds its warm-up (from asking the
 adapter to its join), and under it the cores and memory its size
 declares and its machine reports, green when they agree and red when
 not:
 
 ```
-  agents    small#1  online    3 done · 2 running
+  workers    small#1  online    3 done · 2 running
             small#2  starting
             local    online    1 done
 ```
 
 ```
-  agents    small#1  stopped  5 done · warm-up 0.1s
+  workers    small#1  stopped  5 done · warm-up 0.1s
                      declared 2c/8G · actual 4c/16G
             small#2  lost     1 done · warm-up 0.2s
                      declared 2c/8G · actual 4c/16G
@@ -384,15 +384,15 @@ not:
                      actual 10c/32G
 ```
 
-Under each agent, and `local`, the footer then spells out what it did:
+Under each worker, and `local`, the footer then spells out what it did:
 its time online, busy and idle; its CPU peak and average in cores and
 the cores the run booked for the tasks it was running, on average (a
 task waiting in its queue books none); its cpu utilization (the core-time its
-tasks used over the core-time it had); its memory peak and average, when its tasks reported any; and, for an agent, the messages and
+tasks used over the core-time it had); its memory peak and average, when its tasks reported any; and, for a worker, the messages and
 bytes the run sent it and received from it. The `asked` line says each
-time the run asked for agents: how many, when, the cores its remaining
+time the run asked for workers: how many, when, the cores its remaining
 work kept busy then, and how many tasks remained, how many of them with
-a measured need (an unmeasured one books a whole agent). The first ask
+a measured need (an unmeasured one books a whole worker). The first ask
 waits for the needs another plugin fetches (`ctx.refining()`), such as
 `@vzn/vx-schedule-history`'s default-branch timings. The `total` line is the cpu utilization of every
 machine together:
@@ -411,62 +411,62 @@ machine together:
 ## API
 
 - `dte(options: DteOptions)` is the plugin. `DteOptions` is
-  `{ agents?, adapter?, relay?, local?, token? }`:
-  - `agents` names each `AgentSize`, `{ cpu, memory, max? }`: its cores
+  `{ workers?, adapter?, relay?, local?, token? }`:
+  - `workers` names each `WorkerSize`, `{ cpu, memory, max? }`: its cores
     and memory (bytes, or `'8GB'`, `'512MiB'`), which the run counts on
-    when it starts one, until the agent reports what its machine has, and
-    how many of it one run may start (absent, no cap). Agents start in
+    when it starts one, until the worker reports what its machine has, and
+    how many of it one run may start (absent, no cap). Workers start in
     declared order for the cores the remaining tasks keep busy: laid out
     as early as their dependencies allow, each for its usual duration
     (1 s without history), their work spread over their critical path
     (core-seconds over its length, rounded up), and at least the cores of
     the tasks longer than half that path, which run at once wherever they
     go in it. None stops before the
-    run ends. A task the history has not measured runs alone on an agent;
-    one that used all of its agent's cores or memory (90%) last time runs
+    run ends. A task the history has not measured runs alone on a worker;
+    one that used all of its worker's cores or memory (90%) last time runs
     alone on the smallest bigger size, which the run starts for it. Each
     run's history keeps where every task ran and that machine's size, so
     sizing improves run by run.
-  - `adapter` is the `DteAdapter` that starts agents. Absent, the run
-    starts none and uses the agents that join `relay`.
+  - `adapter` is the `DteAdapter` that starts workers. Absent, the run
+    starts none and uses the workers that join `relay`.
   - `relay` is the relay's URL; absent, the adapter's own.
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`). It
     is asked again a minute before the token's `exp`, when it has one.
-- `vx dte agent` is an agent. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else
+- `vx dte worker` is a worker. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else
   `relay`), `VX_DTE_SECRET` (the run's) and, when the run started it,
-  `VX_DTE_AGENT` (its name). With no `VX_DTE_SECRET` it reads
+  `VX_DTE_WORKER` (its name). With no `VX_DTE_SECRET` it reads
   `.vx/dte/secret`, the one `vx dte plan` wrote. It is
   described only by the cores and memory its machine reports. It exits 0
   when the run ended before it joined.
 - `vx dte plan [<tasks> <run flags>]` writes the CI files that start the
-  run's agents, through the adapter's `render`: every size's `max`
-  agents. With an adapter that spawns live (`live()`), only the first
-  wave starts at once: the agents the run's start keeps busy, from
+  run's workers, through the adapter's `render`: every size's `max`
+  workers. With an adapter that spawns live (`live()`), only the first
+  wave starts at once: the workers the run's start keeps busy, from
   `vx run <args> --dry=json` and history, as the run's own demand counts
   them. It names the run (`VX_DTE_RUN`, else the adapter's `runId()`),
-  writes the agents for the orchestrator to `.vx/dte/plan.json` and,
+  writes the workers for the orchestrator to `.vx/dte/plan.json` and,
   unless `VX_DTE_SECRET` is set, a secret to `.vx/dte/secret`.
-- `DteAdapter` is `{ spawn(agent: AgentSpawn), relay?(), close?(), render?(plan: DtePlan), live?(), runId?(), adopt?(agent) }`; `adopt` hands each agent the CI started before the run to `agent(id, size)`, which counts it and returns its spawn.
-  `DtePlan` is `{ run, relay, workspaceRoot, agents }`, each agent
+- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), render?(plan: DtePlan), live?(), runId?(), adopt?(worker) }`; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn.
+  `DtePlan` is `{ run, relay, workspaceRoot, workers }`, each worker
   `{ id, size, cpu, memory, live }`: a `live` one the run `spawn`s when
   it needs it.
-  `AgentSpawn` is `{ run, relay, size, cpu, memory, index, id, workspaceRoot, env }`,
+  `WorkerSpawn` is `{ run, relay, size, cpu, memory, index, id, workspaceRoot, env }`,
   with `memory` in bytes,
-  where `id` is the agent's name (`small#2`) and `env` holds the three
-  variables the agent reads.
-- `docker(options: DockerOptions)` starts agents as containers and a relay
+  where `id` is the worker's name (`small#2`) and `env` holds the three
+  variables the worker reads.
+- `docker(options: DockerOptions)` starts workers as containers and a relay
   of its own on loopback. `DockerOptions` is `{ image, prepare? }`.
-- `github(options?: GithubOptions)` dispatches agents as matrix jobs of
+- `github(options?: GithubOptions)` dispatches workers as matrix jobs of
   one workflow, one dispatch per size and demand. `GithubOptions` is
-  `{ workflow? }` (default `vx-agent.yml`). Its agents are `keyless`. It
+  `{ workflow? }` (default `vx-worker.yml`). Its workers are `keyless`. It
   needs `GITHUB_TOKEN` with `actions: write`. See [On GitHub](#on-github).
-- `gitlab(options: GitlabOptions)` runs agents as jobs of a child
+- `gitlab(options: GitlabOptions)` runs workers as jobs of a child
   pipeline. `GitlabOptions` is `{ include, tags? }`: the file holding the
-  `.vx-agent` job template every agent job extends, and runner tags by
+  `.vx-worker` job template every worker job extends, and runner tags by
   size. See [On GitLab](#on-gitlab).
-- `local(options?: LocalOptions)` starts agents on this machine and a relay
+- `local(options?: LocalOptions)` starts workers on this machine and a relay
   of its own on loopback. `LocalOptions` is `{ prepare? }`: a shell line
-  each worktree runs before its agent starts.
+  each worktree runs before its worker starts.
 
 `@vzn/vx-dte-relay` is a dependency for `local()`'s and `docker()`'s relay, loaded only
 when a distributed run starts.

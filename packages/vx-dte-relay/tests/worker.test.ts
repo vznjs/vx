@@ -79,7 +79,7 @@ const join = (env: Env, run: string, token?: string, origin = 'https://relay.exa
     new Request(`${origin}/v1/runs/${run}/join`, {
       method: 'POST',
       headers: token === undefined ? {} : { authorization: `Bearer ${token}` },
-      body: JSON.stringify({ role: 'agent' }),
+      body: JSON.stringify({ role: 'worker' }),
     }),
     env,
   )

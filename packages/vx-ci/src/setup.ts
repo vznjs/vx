@@ -163,8 +163,8 @@ function readdir(dir: string): string[] {
 /**
  * The key to save fetched packages under: this runner image's, after the
  * `vx-setup-debs-<runner.os>-<runner.arch>-` a job restores by. Led by the
- * image alone, no restore ever matched it and every agent fetched again
- * (main, 2026-10-23: 6-55 s of each agent's start).
+ * image alone, no restore ever matched it and every worker fetched again
+ * (main, 2026-10-23: 6-55 s of each worker's start).
  */
 export function debsKey(env: Record<string, string | undefined>): string {
   return `vx-setup-debs-${env['RUNNER_OS'] ?? ''}-${env['RUNNER_ARCH'] ?? ''}-${env['ImageOS'] ?? ''}-${env['ImageVersion'] ?? ''}`

@@ -1,13 +1,13 @@
-// `github()`: the agents one demand starts are one `workflow_dispatch` per
-// size, naming the run, the relay, the commit and the agents; a refused
-// dispatch says so for each agent.
+// `github()`: the workers one demand starts are one `workflow_dispatch` per
+// size, naming the run, the relay, the commit and the workers; a refused
+// dispatch says so for each worker.
 
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import type { AgentSpawn } from '../src/index.js'
+import type { WorkerSpawn } from '../src/index.js'
 import { github as make } from '../src/index.js'
 
 const saved = { ...process.env }
@@ -23,11 +23,11 @@ afterEach(async () => {
   process.env = { ...saved }
 })
 
-function spawn(id: string, size: string, exited: (why: string) => void = () => {}): AgentSpawn {
-  return { id, size, run: 'r1', relay: 'https://relay.test', exited } as AgentSpawn
+function spawn(id: string, size: string, exited: (why: string) => void = () => {}): WorkerSpawn {
+  return { id, size, run: 'r1', relay: 'https://relay.test', exited } as WorkerSpawn
 }
 
-it('dispatches one workflow run per size for the agents one demand starts', async () => {
+it('dispatches one workflow run per size for the workers one demand starts', async () => {
   const calls: { path: string; auth: string | null; body: unknown }[] = []
   const server = Bun.serve({
     port: 0,
@@ -56,24 +56,24 @@ it('dispatches one workflow run per size for the agents one demand starts', asyn
     void adapter.spawn(spawn('small#2', 'small'))
     void adapter.spawn(spawn('big#3', 'big'))
     await Bun.sleep(100)
-    const inputs = (size: string, agents: string[]) => ({
+    const inputs = (size: string, workers: string[]) => ({
       ref: 'main',
       inputs: {
         run: 'r1',
         relay: 'https://relay.test',
         sha: 'abc123',
         size,
-        agents: JSON.stringify(agents),
+        workers: JSON.stringify(workers),
       },
     })
     expect(calls).toEqual([
       {
-        path: '/repos/o/r/actions/workflows/vx-agent.yml/dispatches',
+        path: '/repos/o/r/actions/workflows/vx-worker.yml/dispatches',
         auth: 'Bearer ght',
         body: inputs('small', ['small#1', 'small#2']),
       },
       {
-        path: '/repos/o/r/actions/workflows/vx-agent.yml/dispatches',
+        path: '/repos/o/r/actions/workflows/vx-worker.yml/dispatches',
         auth: 'Bearer ght',
         body: inputs('big', ['big#3']),
       },
@@ -83,7 +83,7 @@ it('dispatches one workflow run per size for the agents one demand starts', asyn
   }
 })
 
-it('says why for each agent of a dispatch GitHub refused', async () => {
+it('says why for each worker of a dispatch GitHub refused', async () => {
   const server = Bun.serve({
     port: 0,
     hostname: '127.0.0.1',
@@ -96,13 +96,13 @@ it('says why for each agent of a dispatch GitHub refused', async () => {
   })
   try {
     const why: string[] = []
-    const adapter = github({ workflow: 'agents.yml' })
+    const adapter = github({ workflow: 'workers.yml' })
     void adapter.spawn(spawn('small#1', 'small', (w) => why.push(`small#1: ${w}`)))
     void adapter.spawn(spawn('small#2', 'small', (w) => why.push(`small#2: ${w}`)))
     await Bun.sleep(100)
     expect(why).toEqual([
-      'small#1: github(): dispatching agents.yml: 403 nope',
-      'small#2: github(): dispatching agents.yml: 403 nope',
+      'small#1: github(): dispatching workers.yml: 403 nope',
+      'small#2: github(): dispatching workers.yml: 403 nope',
     ])
   } finally {
     await server.stop(true)
@@ -136,8 +136,8 @@ it('cancels the workflow runs it dispatched when the run closes', async () => {
     expect(calls.toSorted()).toEqual([
       'POST /repos/o/r/actions/runs/1/cancel 2026-03-10',
       'POST /repos/o/r/actions/runs/2/cancel 2026-03-10',
-      'POST /repos/o/r/actions/workflows/vx-agent.yml/dispatches 2026-03-10',
-      'POST /repos/o/r/actions/workflows/vx-agent.yml/dispatches 2026-03-10',
+      'POST /repos/o/r/actions/workflows/vx-worker.yml/dispatches 2026-03-10',
+      'POST /repos/o/r/actions/workflows/vx-worker.yml/dispatches 2026-03-10',
     ])
   } finally {
     await server.stop(true)
@@ -145,7 +145,7 @@ it('cancels the workflow runs it dispatched when the run closes', async () => {
 })
 
 // A killed orchestrator never closes: the job's `if: always()` step cancels
-// what this file lists, or the queued agents hold macOS runners.
+// what this file lists, or the queued workers hold macOS runners.
 it('lists each run it dispatched in RUNNER_TEMP for the job to cancel', async () => {
   let id = 0
   const server = Bun.serve({
@@ -177,9 +177,9 @@ it('lists each run it dispatched in RUNNER_TEMP for the job to cancel', async ()
   }
 })
 
-// A job that failed at its install told the run nothing: its agent stayed
+// A job that failed at its install told the run nothing: its worker stayed
 // `starting` and the run waited for the job's timeout (2026-10-22).
-it('says why for each agent whose job ended badly before it joined', async () => {
+it('says why for each worker whose job ended badly before it joined', async () => {
   const server = Bun.serve({
     port: 0,
     hostname: '127.0.0.1',
@@ -224,7 +224,7 @@ it('says why for each agent whose job ended badly before it joined', async () =>
 
 it("dispatches on the base branch once a merged PR's branch is gone", async () => {
   // Before: a PR merged mid-run, its branch was deleted, GitHub answered
-  // 422 "No ref found" and every agent of the dispatch failed (2026-10-22).
+  // 422 "No ref found" and every worker of the dispatch failed (2026-10-22).
   const refs: string[] = []
   const server = Bun.serve({
     port: 0,
@@ -254,10 +254,10 @@ it("dispatches on the base branch once a merged PR's branch is gone", async () =
   }
 })
 
-// A step before checkout dispatches agents, so they start while the job
+// A step before checkout dispatches workers, so they start while the job
 // installs (~20 s on CI); the run adopts them as its own: it watches their
 // jobs and cancels their run when it closes.
-it('adopts the agents a step started, watching and stopping them as its own', async () => {
+it('adopts the workers a step started, watching and stopping them as its own', async () => {
   const calls: string[] = []
   const server = Bun.serve({
     port: 0,
