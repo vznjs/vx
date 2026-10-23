@@ -125,25 +125,27 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
 }
 
 // Each ping is a message a relay host may bill: at two a heartbeat they
-// were nearly all of a run's (2026-10-23).
+// were nearly all of a run's (2026-10-23). Frames go every 50 ms, a tenth
+// of the heartbeat: at a heartbeat twice the cadence a loaded runner's
+// one late frame let a tick through (CI, 2026-10-23).
 it('pings once a heartbeat, and not in one it sent a frame in', async () => {
-  const { url, pings } = sockets(100)
+  const { url, pings } = sockets(500)
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   pings.length = 0
-  const t = performance.now()
-  while (performance.now() - t < 1_000) await Bun.sleep(50)
+  await Bun.sleep(2_600)
   const quiet = pings.filter((id) => id === a.id).length
   pings.length = 0
-  for (let i = 0; i < 20; i++) {
+  const t = performance.now()
+  for (let i = 0; performance.now() - t < 2_000; i++) {
     await a.send('orchestrator', i)
     await Bun.sleep(50)
   }
-  expect([quiet >= 4 && quiet <= 11, pings.filter((id) => id === a.id)]).toEqual([true, []])
+  expect([quiet >= 3 && quiet <= 6, pings.filter((id) => id === a.id)]).toEqual([true, []])
   await a.leave()
   await o.leave()
-})
+}, 15_000)
 
 it('joins again when its first socket does not open', async () => {
   // A relay that made a run twice for two joins at once forgot the first
