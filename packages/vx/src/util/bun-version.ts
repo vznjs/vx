@@ -20,8 +20,11 @@
  * refusing would be heavier than the measurement supports. What the
  * measurement supports is that a green exit can hide a truncated answer, and
  * that is what the warning says.
+ *
+ * 1.4.4: vx expands a brace range (`{1..3}`) as `Bun.Glob` does from 1.4.4
+ * on; an older `Bun.Glob` reads it as text, so a scan and a match disagree.
  */
-export const MIN_BUN = [1, 4, 0] as const
+export const MIN_BUN = [1, 4, 4] as const
 
 /** True when `version` is older than {@link MIN_BUN}. */
 export function isUnsupportedBun(version: string): boolean {

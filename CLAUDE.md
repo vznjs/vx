@@ -38,7 +38,7 @@ the seams are wide enough. Pre-alpha, owner-delegated: you own it, ship it.
 
 ## Stack
 
-Bun ≥ 1.4 only (`bun:sqlite`, `Bun.spawn`, `Bun.Glob`, `Bun.zstd*` are
+Bun ≥ 1.4.4 only (`bun:sqlite`, `Bun.spawn`, `Bun.Glob`, `Bun.zstd*` are
 hard dependencies; the artifact's tar is vx's own streaming code, and
 `Bun.Archive` is a TEST oracle only). `bun test`. `oxlint --type-aware --type-check` +
 `oxfmt`. No build step: `src/bin.ts` runs via shebang; release binaries via

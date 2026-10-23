@@ -10,7 +10,7 @@ in `src/cli/index.ts` dispatches to per-subcommand handlers under
 # that installs @vzn/vx, it runs that one (§ Which vx runs):
 bun add -g @vzn/vx
 
-# From source (Bun ≥ 1.4):
+# From source (Bun ≥ 1.4.4):
 bun src/bin.ts --version
 ```
 
@@ -2475,7 +2475,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   script or a bug-report template: `vx`, `vxPath` (the file that ran),
   `handedOffFrom` (the vx that handed the call to the project's own, else
   null), `bun`, `bunSupported` (false
-  below Bun 1.4.0), `git` (null when not
+  below Bun 1.4.4), `git` (null when not
   found), `gitStatusCache` (`{ fsmonitor, untrackedCache }`, null when
   git could not answer), `workspaceRoot`, `projects`, `tasks`,
   `plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
