@@ -1574,6 +1574,14 @@ it('books the cores a task keeps busy on average, unrounded, a quarter at least'
   expect(needOf(undefined).cores).toBe(Infinity)
 })
 
+// Main cc5a276, 2026-10-23: check.bun, vx-docs#import and release.sync end
+// before the Linux sandbox's first look, so none has a CPU measure; each
+// booked a whole worker and small#1 ran at 13%.
+it('books one core for a task timed under a second with no CPU measured, a worker if longer', () => {
+  expect(needOf({ p50DurationMs: 143 })).toEqual({ cores: 1, memory: 0 })
+  expect(needOf({ p50DurationMs: 30_000 }).cores).toBe(Infinity)
+})
+
 it('reads memory as bytes or with a unit', () => {
   expect([
     bytes('8GB'),

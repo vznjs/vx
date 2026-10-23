@@ -767,8 +767,21 @@ interface DryTask {
   readonly p50Ms?: number
 }
 
+/** A task timed under this with no CPU measured books one core, not a worker. */
+const SHORT_MS = 1_000
+
 /** What a task asks of a worker, from its history. */
 export function needOf(r: TaskResources | undefined): Need {
+  // Timed but never measured: on Linux the sandbox measures a task by
+  // looking at it while it runs, so one over before the first look has no
+  // CPU (core's watchTree). Short, it books a core: three of them booked a
+  // whole worker each and main's small#1 ran at 13% (2026-10-23).
+  if (
+    r?.maxCpuParallelism === undefined &&
+    r?.p50DurationMs !== undefined &&
+    r.p50DurationMs < SHORT_MS
+  )
+    return { cores: 1, memory: r.maxPeakRssBytes ?? 0 }
   // Unmeasured: a whole worker, until its first run measures it. One that
   // filled its worker: a whole bigger one.
   if (r?.maxCpuParallelism === undefined) return { cores: Infinity, memory: Infinity }
