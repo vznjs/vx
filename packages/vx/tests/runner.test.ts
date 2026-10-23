@@ -326,6 +326,10 @@ describe('signalExitCode', () => {
   it('falls back to 130 for unknown signal names', () => {
     expect(signalExitCode('SIGNOTREAL')).toBe(130)
   })
+
+  it('takes the number Bun 1.4.4 gives for a signal with no name', () => {
+    expect(signalExitCode(34)).toBe(162)
+  })
 })
 
 // The trailing sleeper is `exec`'d in every fixture below: without it the
