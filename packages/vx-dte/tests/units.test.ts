@@ -573,10 +573,7 @@ it('writes the run’s trace on close: each worker’s tasks in time, the run’
   const tasks = ev.filter(
     (e) => e.ph === 'X' && e.cat === 'task' && e.pid === w && e.name.startsWith('t'),
   )
-  expect(tasks.map((e) => [e.name, e.tid]).sort()).toEqual([
-    ['t1', 1],
-    ['t2', 2],
-  ])
+  expect(Object.fromEntries(tasks.map((e) => [e.name, e.tid]))).toEqual({ t1: 1, t2: 2 })
   for (const part of ['sent', 'restore deps', 'command', 'save'])
     expect(ev.some((e) => e.ph === 'X' && e.pid === w && e.name === part)).toBe(true)
   const run = ev.filter((e) => e.ph === 'X' && e.pid === 1)

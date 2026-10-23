@@ -161,24 +161,33 @@ export class Trace {
       if (until > at)
         idle.push({ track, name: 'idle', cat: 'idle', from: at, to: until, life: true })
     }
-    // Rows by first free: slices sorted by start take the lowest row whose last ended.
-    const rows = new Map<string, number[]>()
-    const named = new Set<string>()
+    // Rows by first free, one set per kind (a worker's tasks, the run's
+    // waits, its restores): a slice takes the lowest of its kind whose last ended.
+    const rows = new Map<string, { tid: number; end: number }[]>()
+    const tids = new Map<string, number>()
     for (const s of [...this.slices, ...idle].sort((a, b) => a.from - b.from)) {
       const p = pid.get(s.track)!
       let tid = 0
       if (s.life !== true) {
-        const ends = rows.get(s.track) ?? []
-        rows.set(s.track, ends)
-        let i = ends.findIndex((e) => e <= s.from)
-        if (i < 0) i = ends.push(0) - 1
-        ends[i] = s.to
-        tid = i + 1
-        const key = `${p}:${tid}`
-        if (!named.has(key)) {
-          named.add(key)
-          events.push({ ph: 'M', name: 'thread_name', pid: p, tid, args: { name: `slot ${tid}` } })
+        const kind = `${s.track}\0${s.cat}`
+        const free = rows.get(kind) ?? []
+        rows.set(kind, free)
+        let row = free.find((r) => r.end <= s.from)
+        if (row === undefined) {
+          tid = (tids.get(s.track) ?? 0) + 1
+          tids.set(s.track, tid)
+          row = { tid, end: 0 }
+          free.push(row)
+          events.push({
+            ph: 'M',
+            name: 'thread_name',
+            pid: p,
+            tid,
+            args: { name: `${s.cat} ${free.length}` },
+          })
         }
+        row.end = s.to
+        tid = row.tid
       }
       events.push({
         ph: 'X',
