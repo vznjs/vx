@@ -95,6 +95,25 @@ jobs:
           echo "$r $ids" >> "$RUNNER_TEMP/vx-dte-started"
           echo "$r" >> "$RUNNER_TEMP/vx-dte-runs"
 
+      # A merged PR's run kept its agents' runners 80 s past the merge
+      # before its `closed` run cancelled it, and this run's agents waited
+      # 65 s for them (2026-10-23). Every run still going on the merged
+      # head is cancelled now (a newer push to its branch is not); a
+      # cancelled CI run cancels its agents.
+      - if: github.event_name == 'push'
+        name: Cancel the merged PR's runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '.[].head | "\(.ref) \(.sha)"' |
+            while read -r b sha; do
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=$b&head_sha=$sha&per_page=50" \
+                --jq '.workflow_runs[] | select(.status != "completed") | .id'
+            done |
+            while read -r id; do
+              gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/cancel" > /dev/null 2>&1 || true
+            done || true
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # The default branch and its history: schedule-history finds the
         # merge-base's timings, which carry each task's measured need, so

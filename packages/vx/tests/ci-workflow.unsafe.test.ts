@@ -80,6 +80,17 @@ describe('ci.yml', () => {
       expect(j.if).toMatch(/github\.event\.action != 'closed'|github\.event_name != 'pull_request'/)
   })
 
+  // A merged PR's run held its 12 agents' runners 80 s past the merge, and
+  // main's agents waited 65 s for them (2026-10-23).
+  it("cancels the merged PR's runs once main's agents are asked for", () => {
+    const steps = doc.jobs['linux']!.steps!
+    const i = steps.findIndex((s) => s.run?.includes('/commits/$GITHUB_SHA/pulls'))
+    expect(steps[i]?.if).toBe("github.event_name == 'push'")
+    expect(steps[i]!.run).toContain('/cancel')
+    expect(i).toBeGreaterThan(steps.findIndex((s) => s.run?.includes('vx-dte-started')))
+    expect(i).toBeLessThan(steps.findIndex((s) => s.uses?.startsWith('actions/checkout')))
+  })
+
   it('makes each run distributed, over its relay', () => {
     for (const id of RUNS) {
       const steps = doc.jobs[id]!.steps!
@@ -157,7 +168,9 @@ describe('ci.yml', () => {
 
   it('cancels the agent runs a run dispatched, on any outcome', () => {
     for (const id of RUNS) {
-      const cancel = doc.jobs[id]!.steps!.find((s) => s.run?.includes('/cancel'))
+      const cancel = doc.jobs[id]!.steps!.find(
+        (s) => s.run?.includes('vx-dte-runs') && s.run.includes('/cancel'),
+      )
       expect([id, cancel?.if]).toEqual([id, 'always()'])
     }
   })
