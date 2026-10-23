@@ -217,7 +217,9 @@ it('leaves only once its socket has closed, so exiting next cuts nothing', async
     await o.leave()
     expect(await a.poll()).toEqual([{ from: 'relay', body: { type: 'closed' } }])
     await a.leave()
-    expect(closed).toHaveLength(2)
+    // Only this relay's: a participant another test left dialing may close one meanwhile.
+    const port = new URL(s.url).port
+    expect(closed.filter((w) => new URL(w.url).port === port)).toHaveLength(2)
   } finally {
     globalThis.WebSocket = Real
   }
