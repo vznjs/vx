@@ -33,6 +33,12 @@ export interface Need {
   readonly above?: { readonly cores: number; readonly memory: number } | undefined
   /** The platform it runs on (`ExecuteRequest.platform`): only a worker of it takes it. */
   readonly platform?: string | undefined
+  /**
+   * What it counts for when the plan sizes the run, when that is not what
+   * it books: an unmeasured task books next to nothing, so it goes to any
+   * free core, but a run of only such tasks still asks enough workers.
+   */
+  readonly ask?: { readonly cores: number; readonly memory: number } | undefined
 }
 
 /** A worker as dispatch sees it: its size and what is in use on it now. */

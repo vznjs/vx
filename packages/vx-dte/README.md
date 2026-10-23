@@ -266,7 +266,7 @@ CI/CD variable both `vx-plan` and `vx` see) to spawn live: the plan then
 starts with the run only the workers its start keeps busy, and writes the
 others as `when: manual` jobs. It reads that from the run's own graph
 (`vx run <its args> --dry=json`) and history, so give `vx dte plan` the
-run's selection; a task with no history books as `unmeasured` says. The run plays one when its work needs it and cancels
+run's selection; a task with no history counts as `unmeasured` says. The run plays one when its work needs it and cancels
 the ones it never played when it ends. A played job that fails before
 its worker joins fails the run's wait for it, so the run starts another or
 stops, instead of waiting for the job's timeout.
@@ -419,8 +419,8 @@ booked from a task's start to its command's end); its cpu utilization (the core-
 tasks used over the core-time it had); its memory peak and average, when its tasks reported any; and, for a worker, the messages and
 bytes the run sent it and received from it. The `asked` line says each
 time the run asked for workers: how many, when, for how many tasks that
-missed, how many of them with a measured need (an unmeasured one books
-the measured ones' average), and when its plan ended then. The first ask
+missed, how many of them with a measured need (an unmeasured one counts
+as `unmeasured`), and when its plan ended then. The first ask
 waits for the needs another plugin fetches (`ctx.refining()`), such as
 `@vzn/vx-schedule-history`'s default-branch timings. The `unmeasured`
 line names the tasks the first ask had no measure of, and a worker that
@@ -431,7 +431,7 @@ machine together, and the share of their history the run's tasks used:
             small#1  stopped  5 done · warm-up 0.2s
                      declared 4c/14G · actual 4c/14G
                      online 12.1s · busy 9.8s · idle 2.3s
-                     cpu peak 3.6 · avg 2.4 cores · expected 3.8 · cpu utilization 61%
+                     cpu peak 3.6 · used avg 2.4 cores · booked avg 3.8 · cpu utilization 61%
                      memory peak 1.2 GB · avg 640.0 MB
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
             asked    1 at 0.0s for 4 cores, 5 tasks (5 measured)
@@ -476,8 +476,8 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     stops it before its setup if it can (`github()` cancels its workflow
     run once no worker in it is needed), and one that joins anyway is told
     to exit. The same signal changes nothing. The
-    run ends: a task the history has not measured books the average of
-    the run's measured tasks (`unmeasured` when none is); one that used all of its worker's cores or memory (90%) last time runs
+    run ends: a task the history has not measured books one free core on
+    any worker (`unmeasured` sizes the run); one that used all of its worker's cores or memory (90%) last time runs
     alone on the smallest bigger size, which the run starts for it. Each
     run's history keeps where every task ran and that machine's size, so
     sizing improves run by run.
@@ -487,9 +487,10 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`). It
     is asked again a minute before the token's `exp`, when it has one.
   - `unmeasured`, `{ cpu, memory }` (default 2 cores, `'4GB'`), is what a
-    task with no measure books when no task of the run has one either: a
-    new task, or one over before the Linux sandbox's first look (250 ms),
-    which leaves no CPU. With some measured, it books their average.
+    task with no measure counts for when the run decides how many workers
+    to start: a new task, or one over before the Linux sandbox's first
+    look (250 ms), which leaves no CPU. It books one free core on any
+    worker, so it waits for no worker of its own.
   - `scheduler` (a partial `Strategy`) picks each layer of how the run schedules; a layer left
     out is the default (first named):
     - `order`, which waiting task goes first: `critical-path` (the

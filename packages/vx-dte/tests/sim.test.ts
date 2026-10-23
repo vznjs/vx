@@ -113,14 +113,40 @@ const cases: Case[] = [
     measured: true,
     failing: ['utilization', 'makespan'],
   },
-  { name: 'main a09b987, no history', graph: load(a09, () => null), measured: false },
+  // Each unmeasured task on a free core, the run sized as if each held 2
+  // (2026-10-23): it ends at 174 s where a whole worker each took 350 s,
+  // but with no forecast the plan sized by 2 cores cancels workers it
+  // started as tasks pack onto one core each.
   {
-    name: 'main 2163fff, no history',
-    graph: load(f2163, () => null),
+    name: 'main a09b987, no history',
+    graph: load(a09, () => null),
     measured: false,
     failing: ['churn'],
   },
+  { name: 'main 2163fff, no history', graph: load(f2163, () => null), measured: false },
+  // A third of the tasks new, the rest measured: the common run.
+  {
+    name: 'main a09b987, a third of its tasks unmeasured',
+    graph: aThirdUnmeasured(),
+    measured: false,
+    likely: misses(load(a09)),
+  },
 ]
+
+/** a09b987 with every third task that ran never measured. */
+function aThirdUnmeasured(): SimTask[] {
+  let i = 0
+  return load(a09).map((t) => (t.ran !== undefined && i++ % 3 === 0 ? { ...t, known: null } : t))
+}
+
+// M, 2026-10-23: "we can't waste whole worker for one task", "pack them
+// where we have free capability". Booking each unmeasured task a whole
+// worker ended this run at 195 s, its workers 37% busy.
+it('a run a third unmeasured ends within 165 s, its workers 70% busy', () => {
+  const r = simulate(aThirdUnmeasured(), { sizes: [small], likely: misses(load(a09)) })
+  expect(r.endMs).toBeLessThanOrEqual(165_000)
+  expect(r.utilization).toBeGreaterThanOrEqual(0.7)
+})
 
 for (const c of cases) {
   describe(c.name, () => {
