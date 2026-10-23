@@ -68,12 +68,25 @@ interface Case {
 const misses = (g: SimTask[]) =>
   new Set(g.filter((t) => t.ran !== undefined && t.cache).map((t) => t.id))
 
+/** Two of a09b987's misses that the probe called hits. */
+const LATE = [...misses(load(a09))].sort().slice(-2)
+
 const cases: Case[] = [
   {
     name: 'main a09b987, its misses forecast',
     graph: load(a09),
     measured: true,
     likely: misses(load(a09)),
+    failing: ['utilization'],
+  },
+  // The probe said a remote held these two; each GET then 404'd and core
+  // ran them as misses (M, 2026-10-23). They must join the queue and run
+  // on a worker like any other.
+  {
+    name: 'main a09b987, two probed hits gone by their GET',
+    graph: load(a09),
+    measured: true,
+    likely: new Set([...misses(load(a09))].filter((id) => !LATE.includes(id))),
     failing: ['utilization'],
   },
   {
