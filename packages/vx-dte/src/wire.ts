@@ -134,32 +134,46 @@ export async function join(
     }
     return json as Record<string, unknown>
   }
-  const enter = async () =>
-    (await call('join', { role, info, ...(prover && { key: prover.key }) }))!
-  const joined = await enter()
-  let id = joined['id'] as string
-  const heartbeatMs = joined['heartbeatMs'] as number
+  const asked = { role, info, ...(prover && { key: prover.key }) }
+  const enter = async () => (await call('join', asked))!
+  let id = ''
+  let heartbeatMs = 0
+  const dial = async () =>
+    connect(base, `id=${id}`, await headers('GET', `${base}socket?id=${id}`, ''), heartbeatMs)
+  /** What the sockets brought and nobody took yet, kept across redials. */
+  const inbox: RelayMessage[] = []
+  // One request a participant, which a host may bill: the socket joins as
+  // it opens. One that does not (an older relay, a refusal only `join`
+  // says the reason for) joins by request.
+  const query = `join=${encodeURIComponent(JSON.stringify(asked))}`
+  let socket: (Socket & { joined?: Joined }) | undefined = await connect(
+    base,
+    query,
+    await headers('GET', `${base}socket?${query}`, ''),
+  ).catch(() => undefined)
+  if (socket?.joined !== undefined) ({ id, heartbeatMs } = socket.joined)
+  else {
+    const joined = await enter()
+    id = joined['id'] as string
+    heartbeatMs = joined['heartbeatMs'] as number
+    if (joined['socket'] !== true) {
+      throw new RelayError(
+        501,
+        'relay join: the relay offers no socket, which vx-dte needs (PROTOCOL.md § Sockets)',
+      )
+    }
+    socket = await dial()
+    // The relay made a run twice when two joins came at once and forgot the
+    // first's participants, whose first socket never opened: two of twelve
+    // workers on CI (2026-10-23). Joined again, it lands in the run that stayed.
+    if (socket === undefined) {
+      id = (await enter())['id'] as string
+      socket = await dial()
+    }
+  }
   deadlineMs = Math.max(3 * heartbeatMs, MIN_WAIT_MS)
   // The relay loses a participant silent this long: past it, nothing is left to reach.
   faultMs = 3 * heartbeatMs
-  if (joined['socket'] !== true) {
-    throw new RelayError(
-      501,
-      'relay join: the relay offers no socket, which vx-dte needs (PROTOCOL.md § Sockets)',
-    )
-  }
-  const dial = async () =>
-    connect(base, id, await headers('GET', `${base}socket?id=${id}`, ''), heartbeatMs)
-  /** What the sockets brought and nobody took yet, kept across redials. */
-  const inbox: RelayMessage[] = []
-  let socket: Socket | undefined = await dial()
-  // The relay made a run twice when two joins came at once and forgot the
-  // first's participants, whose first socket never opened: two of twelve
-  // workers on CI (2026-10-23). Joined again, it lands in the run that stayed.
-  if (socket === undefined) {
-    id = (await enter())['id'] as string
-    socket = await dial()
-  }
   let failures = 0
   /** Since when no socket is open: the relay loses a participant silent three heartbeats. */
   let downSince: number | undefined
@@ -359,6 +373,12 @@ interface Socket {
   close(): Promise<void>
 }
 
+/** What a socket that joined says first (PROTOCOL.md `socket?join`). */
+interface Joined {
+  id: string
+  heartbeatMs: number
+}
+
 /**
  * The participant's websocket (PROTOCOL.md `socket`): messages arrive the
  * moment they are sent, with no poll between. Undefined when it fails to
@@ -366,14 +386,17 @@ interface Socket {
  */
 async function connect(
   base: string,
-  id: string,
+  /** `id=<id>`, or `join=<body>` for one that joins as it opens. */
+  query: string,
   headers: Record<string, string>,
-  heartbeatMs: number,
-): Promise<Socket | undefined> {
-  const ws = new WebSocket(`${base.replace(/^http/, 'ws')}socket?id=${id}`, { headers })
+  /** Unknown to one that joins, until its socket says. */
+  heartbeatMs?: number,
+): Promise<(Socket & { joined?: Joined }) | undefined> {
+  const ws = new WebSocket(`${base.replace(/^http/, 'ws')}socket?${query}`, { headers })
   // An upgrade the relay holds is a dial that failed, as a request past three heartbeats.
+  const wait = heartbeatMs === undefined ? JOIN_DEADLINE_MS : Math.max(3 * heartbeatMs, MIN_WAIT_MS)
   const opened = await new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => resolve(false), Math.max(3 * heartbeatMs, MIN_WAIT_MS))
+    const timer = setTimeout(() => resolve(false), wait)
     const settle = (ok: boolean) => () => {
       clearTimeout(timer)
       resolve(ok)
@@ -390,6 +413,7 @@ async function connect(
   const inbox: RelayMessage[] = []
   let code = 0
   let n = 0
+  let hb = heartbeatMs ?? JOIN_DEADLINE_MS
   type Answer = {
     status?: number
     error?: string
@@ -408,7 +432,7 @@ async function connect(
         closed(UNANSWERED)
         ws.close()
       },
-      Math.max(2 * heartbeatMs, MIN_WAIT_MS),
+      Math.max(2 * hb, MIN_WAIT_MS),
     ).unref()
   }
   const refused = (a: Answer): RelayError =>
@@ -474,16 +498,24 @@ async function connect(
   // frame the relay itself answers, which also makes this socket the one
   // it pushes to; traffic that already flows proves the relay for free.
   let spoke = performance.now()
-  const ping = setInterval(() => {
-    const now = performance.now()
-    if (now - heard > 2.5 * heartbeatMs) {
-      closed()
-      ws.close()
-    } else if (framed) framed = false
-    else if (now - spoke >= QUIET_BEATS * heartbeatMs) frame([])
-    else ws.send('ping')
-  }, heartbeatMs)
-  ping.unref()
+  let ping: ReturnType<typeof setInterval> | undefined
+  const beat = (): void => {
+    ping = setInterval(() => {
+      const now = performance.now()
+      if (now - heard > 2.5 * hb) {
+        closed()
+        ws.close()
+      } else if (framed) framed = false
+      else if (now - spoke >= QUIET_BEATS * hb) frame([])
+      else ws.send('ping')
+    }, hb)
+    ping.unref()
+  }
+  if (heartbeatMs !== undefined) beat()
+  let said: (j: Joined | undefined) => void = () => {}
+  const joined = new Promise<Joined | undefined>((resolve) => {
+    said = resolve
+  })
   const closed = (why = 'socket closed', by = 0): void => {
     if (!open) return
     open = false
@@ -491,6 +523,7 @@ async function connect(
     clearInterval(ping)
     for (const p of pending.values()) p.reject(new Error(why))
     pending.clear()
+    said(undefined)
     me.onClose?.(by)
   }
   let shut: () => void = () => {}
@@ -506,7 +539,18 @@ async function connect(
     heard = performance.now()
     if (e.data === 'pong') return
     spoke = heard
-    const m = JSON.parse(String(e.data)) as Answer & { messages?: RelayMessage[]; n?: number }
+    const m = JSON.parse(String(e.data)) as Answer & {
+      messages?: RelayMessage[]
+      n?: number
+      joined?: Joined
+    }
+    if (m.joined !== undefined) {
+      hb = m.joined.heartbeatMs
+      me.joined = m.joined
+      beat()
+      said(m.joined)
+      return
+    }
     if (m.messages !== undefined) {
       if (me.onMessages === undefined) inbox.push(...m.messages)
       else me.onMessages(m.messages)
@@ -516,7 +560,7 @@ async function connect(
     pending.delete(m.n!)
     p?.settle(m)
   }
-  const me: Socket = {
+  const me: Socket & { joined?: Joined } = {
     get open() {
       return open
     },
@@ -539,6 +583,15 @@ async function connect(
       // socket (the host logs that as a client that disconnected).
       await Promise.race([done, Bun.sleep(CLOSE_WAIT_MS)])
     },
+  }
+  if (heartbeatMs === undefined) {
+    const timer = setTimeout(() => said(undefined), wait)
+    const j = await joined
+    clearTimeout(timer)
+    if (j === undefined) {
+      await me.close()
+      return undefined
+    }
   }
   return me
 }
