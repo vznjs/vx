@@ -9,30 +9,43 @@ tags:
 excerpt: 'A cache key describes the inputs at the moment it was taken. If one changes while the command runs, the output was built from something the key does not name. vx keeps your result, saves no entry, and names the file, on CI too.'
 ---
 
-A cache key is a promise: these outputs were built from exactly these
-inputs. vx takes the key just before the command runs. If an input
-changes while the command is running, the output was built from bytes the
-key does not describe, and filing it under that key would replay the
-wrong output on the next hit.
+A one-second build, and a save in the editor halfway through it:
 
-So when an input moves mid-run, vx keeps the run's result, saves no
-entry, and tells you which file moved:
+```sh frame="terminal"
+$ (sleep 0.5; echo "// saved mid-build" >> packages/a/src/index.ts) &
+$ vx run packages/a#slow
+┌─ packages/a#slow > $ sleep 1 && mkdir -p gen && cp src/index.ts gen/copy.ts
+[vx] packages/a#slow: `packages/a/src/index.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs
+└─ packages/a#slow ── (1.01s) success
+  tasks     1 success · 1 total
+  cache     1 not saved
 
+$ vx run packages/a#slow
+└─ packages/a#slow ── (1.01s) success
+  cache     local 1↑
 ```
-[vx] app#build: `packages/app/src/routes.gen.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs
-```
 
-The next run is a miss and builds again from what is on disk now.
+The run is green and its output stays. No entry is saved, and the next
+run builds again from what is on disk. Demo workspace, vx at
+`69617eb`, 2026-10-23.
+
+vx takes the key just before the command runs. The output above was
+built from bytes that key doesn't describe. Filed under it, the next
+hit would replay the wrong output.
 
 ## How it notices
 
-After the command, vx checks each input once. It stats the file, and any
-file touched after its digest was learned is hashed again and compared. A
-file that is gone has moved. A file added under an input glob since the
-listing (a new match the declaration would have picked up) withholds the
-save the same way. On a miss that saves, this costs one `lstat` per
-input and per directory a glob reaches. A cache hit runs no command and
-checks nothing.
+After the command, vx checks each input once:
+
+| Input after the command                 | Verdict |
+| --------------------------------------- | ------- |
+| touched after its digest was learned    | hashed again and compared |
+| gone                                    | moved   |
+| new file matching an input glob         | moved   |
+
+On a miss that saves, this costs one `lstat` per input and per
+directory a glob reaches. A cache hit runs no command and checks
+nothing.
 
 ## Why even identical bytes count
 
@@ -97,6 +110,6 @@ verified.
 ## The trade
 
 A run whose inputs moved pays a rebuild next time. In exchange, an entry
-in the cache always means what its declared inputs say, and a hit can be trusted
-without re-reading your inputs. Details:
-[Caching](../../caching/).
+always means what its declared inputs say, and a hit can be trusted
+without re-reading your inputs. Details: [Caching](../../caching/).
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
