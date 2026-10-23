@@ -1587,8 +1587,11 @@ it('a worker begins its next task while the last one saves', async () => {
       cores: 1,
       memory: 0,
     })
+    // Each `start` is sent unawaited, so the relay may hand them over in
+    // either order, and t2 (`true`) may end in the same poll it starts.
     const seen: string[] = []
-    for (let i = 0; i < 100 && !seen.includes('start t2'); i++) {
+    const started = () => seen.includes('start t1') && seen.includes('start t2')
+    for (let i = 0; i < 100 && !started(); i++) {
       for (const { from, body } of await o.poll()) {
         const m = body as { type: string; id?: string; task?: string }
         if (from === 'relay' && m.type === 'joined') {
@@ -1608,7 +1611,8 @@ it('a worker begins its next task while the last one saves', async () => {
         } else if (m.type === 'start' || m.type === 'end') seen.push(`${m.type} ${m.task}`)
       }
     }
-    expect(seen).toEqual(['start t1', 'start t2'])
+    expect(started()).toBe(true)
+    expect(seen).not.toContain('end t1')
     saved()
     await raw.leave()
     expect(await code).toBe(0)
