@@ -83,6 +83,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun add -g @vzn/vx # hands off to the repo's own vx
       - run: bun install --frozen-lockfile
+      # The OS sandbox, for tasks that declare exec.sandbox (@vzn/vx-ci).
+      - run: vx setup github
       # A lock that no longer matches the configs fails here, before any task.
       - run: vx lock --check
       # main runs everything and fills the cache every pull request
@@ -183,7 +185,9 @@ export default defineWorkspace({ plugins: [gitlab()] })
 ```
 
 `gitlab({ cacheScope: false })` turns the scoping off. It writes no merge
-request comments yet.
+request comments yet. `vx setup gitlab`, a `script` line before vx runs,
+installs the OS sandbox for tasks that declare `exec.sandbox`
+([vx-ci](../../plugins/vx-ci/#the-sandbox-runtime-vx-setup)).
 
 ## Remote cache
 

@@ -65,6 +65,7 @@ describe('auto-release.yml', () => {
   it('runs release.auto on main with every tag checked out, for the dispatched commit', () => {
     expect(runs.map((s) => [s.run, s.env])).toEqual([
       ['bun install --frozen-lockfile', undefined],
+      ['bun packages/vx/src/bin.ts setup github', undefined],
       [
         'bun packages/vx/src/bin.ts run release.auto --filter @vzn/vx',
         {
