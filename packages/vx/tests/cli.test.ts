@@ -1975,6 +1975,13 @@ describe('formatBytes', () => {
     expect(formatBytes(4 * 1024 ** 4)).toBe('4.0 TB')
     expect(formatBytes(2048 * 1024 ** 4)).toBe('2 PB')
   })
+
+  // The tier is the printed value's: 1 MiB less a byte printed `1024 KB`.
+  it('a value that rounds up to the next tier prints in it', () => {
+    expect(formatBytes(1024 ** 2 - 1)).toBe('1.0 MB')
+    expect(formatBytes(10 * 1024 - 1)).toBe('10 KB')
+    expect(formatBytes(1024 ** 5 - 1)).toBe('1 PB')
+  })
 })
 
 describe('parseDuration', () => {

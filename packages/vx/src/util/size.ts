@@ -55,8 +55,14 @@ export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
   const units = ['KB', 'MB', 'GB', 'TB']
   let v = n / 1024
+  // The tier is the printed value's: 1 MiB less a byte printed `1024 KB`,
+  // and 10 KiB less one `10.0 KB`.
+  const shown = (x: number): string => {
+    const one = x.toFixed(1)
+    return Number(one) < 10 ? one : x.toFixed(0)
+  }
   for (const u of units) {
-    if (v < 1024) return `${v.toFixed(v < 10 ? 1 : 0)} ${u}`
+    if (Number(shown(v)) < 1024) return `${shown(v)} ${u}`
     v /= 1024
   }
   return `${v.toFixed(0)} PB`
