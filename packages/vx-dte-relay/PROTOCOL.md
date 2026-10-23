@@ -100,7 +100,10 @@ what queued for it (a removed worker's `refused`), and lets in a `socket`
 request of an `id` or run it does not know only to close it so: a failed
 upgrade tells a client nothing it can read. It closes a socket a push
 failed on without a code: left open, its pings answered, it would carry
-nothing again.
+nothing again. Each close it makes is said first in a frame, `{ "close":
+4404 }` or `{ "close": 0 }` for none, and a client acts on that frame: a
+host may never end TCP after its close (workerd does not), and a client
+that reports a close only then (Bun 1.4.4) hears it 10 s late.
 
 Every frame and ping counts as a heartbeat. A participant silent two
 `heartbeatMs` (10 s on the default) is lost, as if it had left, on a

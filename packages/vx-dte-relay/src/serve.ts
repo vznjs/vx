@@ -1,7 +1,7 @@
 // The relay on Bun.serve, its participants' websockets included.
 
 import type { ServerWebSocket } from 'bun'
-import { createRelay, GONE, type RelayOptions, type RelaySocket } from './relay.js'
+import { closeSocket, createRelay, GONE, type RelayOptions, type RelaySocket } from './relay.js'
 
 export interface ServeOptions extends Pick<RelayOptions, 'verify' | 'heartbeatMs'> {
   hostname: string
@@ -49,7 +49,7 @@ export function serveRelay(opts: ServeOptions): RelayServer {
           },
           close: (code, reason) => ws.close(code, reason),
         }
-        if (!relay.attach(key, id, ws.data.socket)) ws.close(GONE, 'gone')
+        if (!relay.attach(key, id, ws.data.socket)) closeSocket(ws.data.socket, GONE, 'gone')
       },
       message(ws: ServerWebSocket<Held>, message) {
         const { key, id } = ws.data

@@ -46,6 +46,20 @@ export interface RelaySocket {
 /** The close code of a socket whose participant the relay lost, let go, or never knew. */
 export const GONE = 4404
 
+/**
+ * Close `socket` with `code`, said first in a frame (`{ "close": code }`,
+ * 0 for none): Bun 1.4.4's client fires its close only once the host ends
+ * TCP too, and workerd never did, so a lost worker heard 4404 10 s late,
+ * at its own redial limit (PR #4171, 2026-10-23).
+ */
+export function closeSocket(socket: RelaySocket, code?: number, reason?: string): void {
+  try {
+    socket.send(JSON.stringify({ close: code ?? 0 }))
+    // quiet: a socket that can carry nothing is closed all the same
+  } catch {}
+  socket.close(code, reason)
+}
+
 export interface Relay {
   fetch(req: Request): Promise<Response>
   /**
@@ -202,7 +216,7 @@ export function createRelay(opts: RelayOptions): Relay {
     const s = p.socket
     p.socket = undefined
     try {
-      s?.close()
+      if (s !== undefined) closeSocket(s)
     } catch {}
   }
 
@@ -272,7 +286,7 @@ export function createRelay(opts: RelayOptions): Relay {
     store?.delete(pAt(run, p.id))
     store?.delete(qAt(run, p.id))
     // Its socket learns it is gone by the close code; its next socket, from `socket`.
-    p.socket?.close(GONE, 'gone')
+    if (p.socket !== undefined) closeSocket(p.socket, GONE, 'gone')
     if (p.role === 'orchestrator') {
       close(run)
       return
@@ -572,7 +586,7 @@ export function createRelay(opts: RelayOptions): Relay {
       // Closed, the other's client dials again and gets what queued.
       if (p.socket !== undefined && p.socket !== socket) {
         try {
-          p.socket.close()
+          closeSocket(p.socket)
         } catch {}
       }
       plug(run, p, socket)

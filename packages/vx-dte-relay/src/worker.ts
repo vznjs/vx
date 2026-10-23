@@ -5,7 +5,7 @@
 // `wrangler.jsonc` deploys it; ALLOW is a var in it.
 
 import { claimedRun, createVerifier, parseAllow } from './oidc.js'
-import { createRelay, GONE, runKey, type Relay, type RelayStore } from './relay.js'
+import { closeSocket, createRelay, GONE, runKey, type Relay, type RelayStore } from './relay.js'
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
 interface DurableObjectId {}
@@ -158,7 +158,7 @@ export class RelayRun {
         const pair = new WebSocketPair()
         state.acceptWebSocket(pair[1])
         pair[1].serializeAttachment({ key, id })
-        if (!this.relay.attach(key, id, pair[1])) pair[1].close(GONE, 'gone')
+        if (!this.relay.attach(key, id, pair[1])) closeSocket(pair[1], GONE, 'gone')
         return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit)
       },
     })
@@ -167,7 +167,7 @@ export class RelayRun {
     for (const ws of state.getWebSockets()) {
       const { key, id } = ws.deserializeAttachment()
       const heard = state.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? 0
-      if (!this.relay.attach(key, id, ws, heard)) ws.close(GONE, 'gone')
+      if (!this.relay.attach(key, id, ws, heard)) closeSocket(ws, GONE, 'gone')
     }
   }
 

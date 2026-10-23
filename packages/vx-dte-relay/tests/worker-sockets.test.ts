@@ -142,10 +142,16 @@ it('closes a socket of a run or id it does not know as gone, and refuses one wit
   await join('orchestrator', R3)
   const a = await join('worker', R3)
   expect(a.socket).toBe(true)
+  // Said in a frame first: workerd never ends TCP after its close, and Bun
+  // 1.4.4's client fires onclose only when it does, 10 s on (PR #4171).
   const closed = async (run: string, id: string): Promise<number> => {
     const path = `/v1/runs/${run}/socket?id=${id}`
     const ws = new WebSocket(new URL(path, base).href.replace(/^http/, 'ws'), { headers: auth })
-    return new Promise((resolve) => (ws.onclose = (e) => resolve(e.code)))
+    const code = await new Promise<number>(
+      (resolve) => (ws.onmessage = (e) => resolve(JSON.parse(String(e.data)).close)),
+    )
+    ws.close()
+    return code
   }
   expect([await closed(R2, a.id), await closed(R3, 'nobody')]).toEqual([4404, 4404])
   const bare = await fetch(new URL(`/v1/runs/${R3}/socket?id=${a.id}`, base), {

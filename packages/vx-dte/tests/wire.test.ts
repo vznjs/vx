@@ -65,6 +65,21 @@ it('learns from its socket’s close that the relay let it go, asking HTTP nothi
   expect(asked).toEqual([])
 })
 
+// workerd ends no TCP after it closes a socket, and Bun 1.4.4's client
+// fires onclose only once TCP ends: a removed worker heard 4404 10 s late
+// (PR #4171). The relay says its close in a frame first.
+it('learns it was let go from the frame the relay says it in, not the close', async () => {
+  const { url, host } = sockets()
+  const o = await join(url, R, 'orchestrator', null, undefined)
+  const a = await join(url, R, 'worker', null, undefined)
+  await o.poll()
+  host.deaf = true
+  const t0 = performance.now()
+  await o.remove(a.id)
+  await expect(a.poll()).rejects.toThrow('relay: unknown id')
+  expect(performance.now() - t0).toBeLessThan(1_000)
+}, 3_000)
+
 /** A relay on Bun.serve whose participants' sockets the test sees, and can drop as a network does. */
 function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof createRelay>[0]> = {}) {
   type Held = { key: string; id: string; socket?: { send(t: string): void; close(): void } }
@@ -78,8 +93,10 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
    * Once `forget` is set, the next participant to dial is refused for good.
    * `older`: a socket that would join is refused, as a relay before
    * PROTOCOL.md's `socket?join` refuses it, so each joins over HTTP.
+   * `deaf`: the relay's closes never reach the client, as workerd's under
+   * Bun 1.4.4 (it ends no TCP, and the client waits 10 s for it).
    */
-  const host = { refusing: false, forget: false, forgotten: '', older: false }
+  const host = { refusing: false, forget: false, forgotten: '', older: false, deaf: false }
   let server: Bun.Server<Held> | undefined
   const relay = createRelay({
     ...options,
@@ -101,7 +118,10 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
     websocket: {
       open(ws) {
         open.push(ws)
-        ws.data.socket = { send: (t) => void ws.send(t), close: () => ws.close() }
+        ws.data.socket = {
+          send: (t) => void ws.send(t),
+          close: () => void (host.deaf || ws.close()),
+        }
         relay.attach(ws.data.key, ws.data.id, ws.data.socket)
       },
       message(ws, m) {
