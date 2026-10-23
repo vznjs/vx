@@ -6,7 +6,8 @@
 // What the summary's Workers table would say comes back with it.
 
 import type { TaskNode } from '@vzn/vx'
-import { assign, type Need } from '../src/dispatch.js'
+import { assign, ordered, type Need } from '../src/dispatch.js'
+import { booked, DEFAULT_STRATEGY, type Strategy } from '../src/strategy.js'
 import {
   decide,
   simulate as play,
@@ -32,6 +33,10 @@ export interface SimOptions {
   readonly sizes: readonly Size[]
   /** How long the n-th worker started (1 first) takes to join. */
   readonly warmUpMs?: (n: number) => number
+  /** The tasks the forecast says miss (`likelyMisses`), before any does. */
+  readonly likely?: ReadonlySet<string>
+  /** How it orders, places, books and scales; default `DEFAULT_STRATEGY`. */
+  readonly how?: Strategy
 }
 
 export interface SimWorker {
@@ -83,6 +88,7 @@ interface Live extends SimWorker {
 
 export function simulate(graph: readonly SimTask[], options: SimOptions): SimResult {
   const warmUpOf = options.warmUpMs ?? (() => 20_000)
+  const how = options.how ?? DEFAULT_STRATEGY
   const byId = new Map(graph.map((t) => [t.id, t]))
   const nodes = new Map<string, TaskNode>(
     graph.map((t) => [
@@ -103,7 +109,10 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   }
   const need = (id: string): Need => {
     const k = known(id)
-    return k === undefined ? UNMEASURED : { cores: Math.max(0.25, k.cores), memory: k.memory }
+    return booked(
+      k === undefined ? UNMEASURED : { cores: Math.max(0.25, k.cores), memory: k.memory },
+      how.book,
+    )
   }
   const durationMs = (id: string): number | undefined => known(id)?.ms
   const tail = tailsMs(nodes, durationMs)
@@ -117,6 +126,9 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   const goneAt: { size: string; at: number }[] = []
   let churn = 0
   let again: number | undefined
+  // The run's deadline (`Plan.boundMs`), and the work its plans knew.
+  let deadline: number | undefined
+  const planned = new Set<string>()
   let index = 0
   const sizeOf = new Map<string, Size>()
 
@@ -147,7 +159,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     workers.filter((w) => w.joinedAt === undefined && w.cancelledAt === undefined)
 
   const dispatch = (): void => {
-    queue.sort((x, y) => tail(y) - tail(x))
+    const widest = Math.max(1, ...joined().map((w) => w.cores))
+    queue.splice(0, queue.length, ...ordered(queue, how.order, tail, need, widest))
     const bins = joined().map((w) => {
       let cores = 0
       let memory = 0
@@ -168,6 +181,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     const to = assign(
       queue.map((id) => ({ id, need: need(id), up: byId.get(id)!.deps })),
       bins,
+      undefined,
+      how.place,
     )
     for (const [id, bin] of to) {
       const w = bin.w
@@ -194,7 +209,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   }
 
   const replan = (): void => {
-    if (executed.size === 0) return
+    const likely = options.likely ?? new Set<string>()
+    if (executed.size === 0 && likely.size === 0) return
     const warmUp = warmUpOf(1)
     const planWorkers: PlanWorker[] = []
     const running = new Set<string>()
@@ -208,6 +224,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         at: 0,
         idle: jobs.length === 0,
         running: jobs.map((r) => ({
+          id: r.id,
           cores: Math.min(r.booked.cores, w.cores),
           memory: Math.min(r.booked.memory, w.memory),
           endsIn: Math.max(0, (r.knownMs ?? 0) - (now - r.startedAt)),
@@ -228,7 +245,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     const p = decide({
       remaining,
       nodes,
-      executed,
+      executed: likely.size === 0 ? executed : new Set([...likely, ...executed]),
       need,
       durationMs,
       workers: planWorkers,
@@ -238,7 +255,12 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       final: false,
       warmUpMs: warmUp,
       replaceable: true,
+      limitMs: deadline === undefined ? undefined : deadline - now,
+      known: planned,
+      how,
     })
+    deadline = now + p.boundMs
+    for (const t of p.tasks) planned.add(t.id)
     if (p.release.length > 0 && remaining.length > 0)
       for (const id of p.release) {
         const w = workers.find((x) => x.id === id)!

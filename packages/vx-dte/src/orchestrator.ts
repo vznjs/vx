@@ -35,7 +35,8 @@ import {
 } from './messages.js'
 import type { PlanWorker } from './planner.js'
 import { Usage, type UsageStats } from './usage.js'
-import { assign, type Need } from './dispatch.js'
+import { assign, ordered, type Need } from './dispatch.js'
+import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 import { RelayError, type Participant } from './wire.js'
 
 /** What a task is expected to hold while it runs, from its history; `Infinity` (unmeasured): a whole worker. */
@@ -121,6 +122,8 @@ export interface OrchestratorOptions {
   readonly faulted?: () => void
   /** How much of the run waits on a task (`tailsMs`): the queue places the most first. */
   readonly tail?: (taskId: string) => number
+  /** How waiting tasks are ordered and placed (`Strategy`). */
+  readonly how?: Strategy
 }
 
 /**
@@ -285,9 +288,20 @@ export class Orchestrator {
     // long chain ready a moment late queued behind 46 shards ready at once,
     // and its 41 s build began 47 s in, the run's end (main, 2026-10-23).
     const tail = this.o.tail
-    const queue = this.queue.splice(0)
-    if (tail !== undefined) queue.sort((x, y) => tail(y.req.taskId) - tail(x.req.taskId))
+    const how = this.o.how ?? DEFAULT_STRATEGY
+    const waiting = this.queue.splice(0)
     const workers = [...this.workers.values()].filter((a) => !a.faulty)
+    const byId = new Map(waiting.map((j) => [j.req.taskId, j]))
+    const queue =
+      tail === undefined
+        ? waiting
+        : ordered(
+            waiting.map((j) => j.req.taskId),
+            how.order,
+            tail,
+            (id) => byId.get(id)!.need,
+            Math.max(1, ...workers.map((a) => a.cores)),
+          ).map((id) => byId.get(id)!)
     const bins = workers.map((a) => {
       let running = 0
       for (const j of a.busy.values()) if (j.held !== undefined) running++
@@ -310,6 +324,7 @@ export class Orchestrator {
       })),
       bins,
       (above) => this.bigger(above),
+      how.place,
     )
     for (const job of queue) {
       const a = to.get(job.req.taskId)?.a
@@ -795,6 +810,7 @@ export class Orchestrator {
         at: 0,
         idle: a.busy.size === 0,
         running: jobs.map((j) => ({
+          id: j.req.taskId,
           cores: j.held?.cores ?? 0,
           memory: j.held?.memory ?? 0,
           endsIn: Math.max(0, (ms(j.req.taskId) ?? 0) - (now - j.startedAt!)),

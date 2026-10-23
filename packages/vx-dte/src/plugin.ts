@@ -13,6 +13,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Need } from './dispatch.js'
+import { booked, DEFAULT_STRATEGY, STRATEGIES, type Strategy } from './strategy.js'
 import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
 import type { Size } from './planner.js'
@@ -100,6 +101,8 @@ export interface DteOptions {
   readonly relay?: string
   /** The bearer token for the relay (default `VX_DTE_TOKEN`, else on GitHub Actions an OIDC token for the relay's URL). */
   readonly token?: () => string | undefined | Promise<string | undefined>
+  /** How the run orders, places, books and scales (`Strategy`); each layer absent is the default's. */
+  readonly scheduler?: Partial<Strategy>
 }
 
 const KEYS: PluginOptionKinds<DteOptions> = {
@@ -107,10 +110,20 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   adapter: 'object',
   relay: 'string',
   token: 'function',
+  scheduler: 'object',
 }
 
 export function dte(options: DteOptions) {
   refuseUnknownOptions('dte()', options, KEYS)
+  const how: Strategy = { ...DEFAULT_STRATEGY }
+  for (const [layer, choice] of Object.entries(options.scheduler ?? {})) {
+    const choices = STRATEGIES[layer as keyof Strategy] as readonly string[] | undefined
+    if (choices === undefined || !choices.includes(choice as string))
+      throw new UserError(
+        `dte(): scheduler.${layer} ${choices === undefined ? `is no layer: the layers are ${Object.keys(STRATEGIES).join(', ')}` : `is one of ${choices.join(', ')}`}`,
+      )
+    ;(how as unknown as Record<string, unknown>)[layer] = choice
+  }
   const sizes = Object.entries(options.workers ?? {}).map(([name, s]) => {
     const memory = bytes(s?.memory)
     if (
@@ -154,6 +167,8 @@ export function dte(options: DteOptions) {
   let tails: ((id: string) => number) | undefined
   /** Settles once the needs other plugins fetch are in `peaks`: `ctx.refining()`, then the read. */
   let needsIn: (() => Promise<void>) | undefined
+  /** The cached tasks the last commit's changes make miss (`forecast.ts`): work before any worker can say. */
+  let likely: ReadonlySet<string> = new Set()
   // Each finished task's cache key, a hit's too: what a worker restores a
   // dependency by.
   const keys = new Map<string, string>()
@@ -167,6 +182,7 @@ export function dte(options: DteOptions) {
     peaks = new Map()
     tails = undefined
     needsIn = undefined
+    likely = new Set()
     keys.clear()
     await o?.close()
     await adapter?.close?.()
@@ -276,7 +292,11 @@ export function dte(options: DteOptions) {
         }
       }
       let reading = read()
-      await reading
+      const guess = changedSinceParent(ctx.workspaceRoot).then(async (changed) => {
+        const { likelyMisses } = await import('./forecast.js')
+        likely = likelyMisses(graph, changed, ctx.workspaceRoot)
+      })
+      await Promise.all([reading, guess])
       // Needs another plugin fetched (the default branch's timings) land
       // in history after this: the tasks not yet placed pack by them, and
       // the first ask for workers waits for them.
@@ -322,7 +342,7 @@ export function dte(options: DteOptions) {
       proof ??= seal.secretProof(secret!)
       const { tree } = await snapshot(ctx.workspaceRoot)
       if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
-      const need = (id: string): Need => needOf(peaks.get(id))
+      const need = (id: string): Need => booked(needOf(peaks.get(id)), how.book)
       // The run plans again on it, now when `now`; set once the plan is.
       let onChange = (_now?: boolean): void => {}
       const o = new Orchestrator({
@@ -341,6 +361,7 @@ export function dte(options: DteOptions) {
         keyOf: (id) => keys.get(id),
         tail: (id) =>
           (tails ??= tailsMs(nodes ?? new Map(), (x) => peaks.get(x)?.p50DurationMs))(id),
+        how,
         lost: (id) => {
           // A planned worker is not started again: its job is spent.
           const s = sizeOf.get(id)
@@ -408,6 +429,9 @@ export function dte(options: DteOptions) {
       })
       // Tasks core handed over: each missed the cache (`missedWork`).
       const executed = new Set<string>()
+      // The run's deadline (`Plan.boundMs`), and the work its plans knew.
+      let deadline: number | undefined
+      const known = new Set<string>()
       // A plan that needs a worker later plans again then.
       let again: ReturnType<typeof setTimeout> | undefined
       // The fewest workers that end the run's known work within a margin of
@@ -420,7 +444,7 @@ export function dte(options: DteOptions) {
         const p = decide({
           remaining,
           nodes: nodes ?? new Map(),
-          executed,
+          executed: likely.size === 0 ? executed : new Set([...likely, ...executed]),
           need,
           durationMs: (id) => peaks.get(id)?.p50DurationMs,
           workers,
@@ -430,7 +454,12 @@ export function dte(options: DteOptions) {
           final,
           warmUpMs: warmUp,
           replaceable: adapter !== undefined,
+          limitMs: deadline === undefined ? undefined : deadline - performance.now(),
+          known,
+          how,
         })
+        deadline = performance.now() + p.boundMs
+        for (const t of p.tasks) known.add(t.id)
         const { tasks } = p
         // At the end the relay closing ends them all.
         if (p.release.length > 0 && remaining.size > 0) {
@@ -501,6 +530,11 @@ export function dte(options: DteOptions) {
         return false
       }
       onChange = replan
+      // Work the last commit's changes make: planned before any task misses.
+      if (likely.size > 0) {
+        missed = true
+        replan()
+      }
       return {
         name: 'dte',
         remote: true,
@@ -738,4 +772,24 @@ function givenRun(): string | undefined {
     )
   }
   return run
+}
+
+/**
+ * The workspace-relative paths changed since HEAD's first parent, the
+ * working tree's changes included: none when git cannot say (no parent, a
+ * shallow clone), and the run waits for its misses as before.
+ */
+async function changedSinceParent(workspaceRoot: string): Promise<string[]> {
+  try {
+    const proc = Bun.spawn({
+      cmd: ['git', 'diff', '--name-only', '--relative', '--no-renames', 'HEAD^', '--'],
+      cwd: workspaceRoot,
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+    return exit === 0 ? out.split('\n').filter((l) => l !== '') : []
+  } catch {
+    return []
+  }
 }

@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import type { Size } from '../src/planner.js'
+import { DEFAULT_STRATEGY, STRATEGIES } from '../src/strategy.js'
 import a09 from './fixtures/main-run-a09b987.json'
 import f2163 from './fixtures/main-run-2026-10-23.json'
 import { bestMs, simulate, type SimResult, type SimTask } from './sim.js'
@@ -59,9 +60,22 @@ interface Case {
   readonly measured: boolean
   /** Invariants it breaks today. */
   readonly failing?: readonly string[]
+  /** What the forecast says misses before any does (`likelyMisses`). */
+  readonly likely?: ReadonlySet<string>
 }
 
+/** Its true misses: a forecast that guessed right. */
+const misses = (g: SimTask[]) =>
+  new Set(g.filter((t) => t.ran !== undefined && t.cache).map((t) => t.id))
+
 const cases: Case[] = [
+  {
+    name: 'main a09b987, its misses forecast',
+    graph: load(a09),
+    measured: true,
+    likely: misses(load(a09)),
+    failing: ['utilization'],
+  },
   {
     name: 'main a09b987 (65 misses)',
     graph: load(a09),
@@ -78,7 +92,7 @@ const cases: Case[] = [
     name: 'a growing graph',
     graph: growing(),
     measured: true,
-    failing: ['every worker that joins runs a task', 'utilization'],
+    failing: ['utilization'],
   },
   {
     name: 'main a09b987, history 40% high on cores',
@@ -97,7 +111,7 @@ const cases: Case[] = [
 
 for (const c of cases) {
   describe(c.name, () => {
-    const r = simulate(c.graph, { sizes: [small] })
+    const r = simulate(c.graph, { sizes: [small], ...(c.likely ? { likely: c.likely } : {}) })
     const check = (name: string, body: () => void) =>
       (c.failing?.includes(name) === true ? it.failing : it)(name, body)
 
@@ -130,3 +144,18 @@ for (const c of cases) {
     })
   })
 }
+
+// Each choice of each layer (`dte({ scheduler })`), the rest the default's:
+// whatever a workspace picks, no worker is booked past its cores and every
+// miss runs once.
+describe('each scheduler choice, on main a09b987', () => {
+  const graph = load(a09)
+  for (const [layer, choices] of Object.entries(STRATEGIES))
+    for (const choice of choices)
+      it(`${layer}: ${choice}`, () => {
+        const how = { ...DEFAULT_STRATEGY, [layer]: choice }
+        const r = simulate(graph, { sizes: [small], how, likely: misses(graph) })
+        for (const w of r.workers) expect(w.peakBooked).toBeLessThanOrEqual(w.cores + 1e-9)
+        expect(r.workers.reduce((n, w) => n + w.tasks, 0)).toBe(r.executed)
+      })
+})

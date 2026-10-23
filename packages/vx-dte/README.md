@@ -417,7 +417,7 @@ machine together:
 ## API
 
 - `dte(options: DteOptions)` is the plugin. `DteOptions` is
-  `{ workers?, adapter?, relay?, local?, token? }`:
+  `{ workers?, adapter?, relay?, local?, token?, scheduler? }`:
   - `workers` names each `WorkerSize`, `{ cpu, memory, max? }`: its cores
     and memory (bytes, or `'8GB'`, `'512MiB'`), which the run counts on
     when it starts one, until the worker reports what its machine has, and
@@ -427,11 +427,19 @@ machine together:
     that work out on its workers and on N more (`src/planner.ts`), each new
     one joining after the warm-up the first took (20 s before one has),
     and takes the fewest N that end within 5% (5 s at least) of the best.
+    That margin is spent once: later plans keep its deadline until new
+    work is known. A task waiting on one that runs waits until it ends.
+    Before any worker can say what misses, the run counts as work each
+    cached task whose inputs changed since HEAD's parent (`git diff
+HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
+    `.vx/` change counts every cached task. A hit it guessed wrong costs a
+    worker the plan cancels; with no parent, the run waits for its misses.
     It scales each task's cores by what the workers use over what the run
     booked, as placing by load packs them.
     A worker the plan needs later starts when its warm-up nears. An idle
-    worker leaves when the plan still ends in that margin with one started
-    in its place: none is let go and started again. A worker still
+    worker leaves when the plan still ends in that margin without it, or,
+    when its next task is two warm-ups away, with one started in its place
+    a warm-up after it left: none is let go and started again. A worker still
     starting that the plan ends as well without is cancelled: the adapter
     stops it before its setup if it can (`github()` cancels its workflow
     run once no worker in it is needed), and one that joins anyway is told
@@ -446,6 +454,19 @@ machine together:
   - `relay` is the relay's URL; absent, the adapter's own.
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`). It
     is asked again a minute before the token's `exp`, when it has one.
+  - `scheduler` picks each layer of how the run schedules; a layer left
+    out is the default (first named):
+    - `order`, which waiting task goes first: `critical-path` (the
+      longest chain after it), `graphene` (the long and the wide first),
+      `fifo`;
+    - `place`, which worker takes it: `best-fit` (fewest cores left),
+      `tetris` (needs aligned with what is free), `worst-fit`,
+      `first-fit`;
+    - `book`, what a task holds: `measured` (its history), `margin`
+      (a fifth more), `whole` (a worker each);
+    - `scale`, how many workers: `plan` (above), `backlog` (cores for
+      what is ready or running, Spark's dynamic allocation).
+      `tests/sim.test.ts` plays main's runs with each.
 - `vx dte worker` is a worker. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else
   `relay`), `VX_DTE_SECRET` (the run's) and, when the run started it,
   `VX_DTE_WORKER` (its name). With no `VX_DTE_SECRET` it reads
