@@ -54,6 +54,10 @@ export function runKeysToken(args: RunKeysArgs): { id: string; token: string } |
   ]
   const ids: string[] = []
   const envNames = new Set<string>()
+  // Tasks of one project mostly declare the same files and outputs, and the
+  // token is a function of that declaration (`filesToken`): one walk each,
+  // not one per task (5 of 12 ms at 1,206 tasks, 2026-10-23).
+  const tokens = new Map<string, string>()
   for (const node of args.nodes.values()) {
     const cfg = node.config
     if (isKeyless(cfg) || node.excludedUpstream !== undefined) return undefined
@@ -66,14 +70,20 @@ export function runKeysToken(args: RunKeysArgs): { id: string; token: string } |
       if ((inputs.workspaceFiles?.length ?? 0) > 0) return undefined
       // No positive entry resolves no files (`filesPlan`).
       if (inputs.files === undefined || inputs.files.some((e) => !e.startsWith('!'))) {
-        const token = taskFilesToken({
-          node,
-          workspaceRoot: args.workspaceRoot,
-          nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],
-          gitFilesCache: args.gitFilesCache,
-          hashCache: args.hashCache,
-        })
-        if (token === undefined) return undefined
+        const outputs = cfg.cache?.outputs
+        const declared = `${node.projectName}\0${JSON.stringify([inputs.files, outputs?.files, outputs?.workspaceFiles])}`
+        let token = tokens.get(declared)
+        if (token === undefined) {
+          token = taskFilesToken({
+            node,
+            workspaceRoot: args.workspaceRoot,
+            nestedProjectDirs: args.nestedDirsByProject.get(node.projectName) ?? [],
+            gitFilesCache: args.gitFilesCache,
+            hashCache: args.hashCache,
+          })
+          if (token === undefined) return undefined
+          tokens.set(declared, token)
+        }
         files = token
       }
       for (const name of inputs.env ?? []) envNames.add(name)
