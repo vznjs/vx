@@ -73,8 +73,8 @@ for the participant (`426` without the upgrade). Frames are text:
   with `null` or `{ "status", "error" }` for each; `{ "n", "remove":
 "<agent>" }`, as `remove`; and `{ "n", "leave": true }`, as `leave`, whose
   answer is the socket's close. A frame that fails is answered
-  `{ "n", "status", "error" }`, any other frame `400`. With such a socket open, `join` and its upgrade are the
-  only requests a participant makes. A frame is held to `send`'s 1 MiB
+  `{ "n", "status", "error" }`, any other frame `400`. With such a socket open, `join`, its upgrade and
+  the quiet check below are the only requests a participant makes. A frame is held to `send`'s 1 MiB
   body limit whole; one over it is answered `413` by its `n` when the
   frame starts `{"n":`. vx-dte's client keeps a frame of several sends
   under 512 KiB;
@@ -91,7 +91,12 @@ A socket's close does not lose its participant: it polls again, or opens
 another. vx-dte's client does both: it polls over HTTP and dials a new
 socket after a backoff with full jitter (up to 250 ms, doubling per failed
 dial to 30 s). The relay closes the socket of a participant that left or was
-lost, so its next request learns why.
+lost, so its next request learns why, and a socket a push failed on: left
+open, its pings answered, it would carry nothing again while the messages
+queue for polls. vx-dte's client also polls once with `wait=0` when its
+socket brought no message for three heartbeats; anything queued there
+means the relay no longer pushes down that socket, and the client dials a
+new one.
 
 Every request naming an `id` counts as a heartbeat. A participant silent
 for three `heartbeatMs` is lost, as if it had left; one with an open

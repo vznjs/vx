@@ -532,6 +532,23 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(c.relay.attach(K, 'gone', socket)).toBe(false)
   })
 
+  it('closes a socket a push failed on, so its participant polls for what queued', async () => {
+    const c = client({ upgrade: () => new Response(null, { status: 101 }) })
+    const o = (await c.call(R, 'join', { role: 'orchestrator' })).json.id
+    const a = await c.join(R, 'agent')
+    let closed = 0
+    const socket = {
+      send() {
+        throw new Error('dropped')
+      },
+      close: () => void closed++,
+    }
+    expect(c.relay.attach(K, a, socket)).toBe(true)
+    await c.call(R, 'send', { id: o, to: a, body: 'lost?' })
+    expect(closed).toBe(1)
+    expect(await c.poll(R, a)).toEqual([{ from: 'orchestrator', body: 'lost?' }])
+  })
+
   it('answers a socket request without the upgrade header 426', async () => {
     const c = client({ upgrade: () => new Response(null, { status: 101 }) })
     const a = await c.join(R, 'agent')
