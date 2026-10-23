@@ -338,7 +338,9 @@ An idle agent the rest of the run cannot keep busy leaves (`left`): one
 beyond the peak of the cores the remaining tasks keep busy, so a lull
 between two wide parts keeps it. One a remaining task needs for its size
 stays. A lost agent's begun tasks run again on
-another, and the run starts one in its place. Agents start at the first
+another, and the run starts one in its place. An agent is lost when the
+relay stops hearing it, or at once when its adapter sees its process or
+job end. Agents start at the first
 task the cache does not answer, so a warm run starts none. Once one has
 joined, its warm-up is what the next takes at the least: work that ends
 sooner starts no agent while others are online or starting, and new

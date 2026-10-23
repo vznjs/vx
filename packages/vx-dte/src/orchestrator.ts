@@ -620,24 +620,29 @@ export class Orchestrator {
     } else if (body.type === 'lost') {
       const a = this.agents.get(body.id!)
       if (a === undefined) return
-      this.agents.delete(a.id)
-      a.usage.to = performance.now()
-      this.gone.push(a)
-      // Its tasks run again: first, as they were first to go.
-      const back: Job[] = []
-      for (const j of [...a.busy.values()]) {
-        const again = this.retry(a, j, 'lost')
-        if (again !== undefined) back.push(again)
-      }
-      this.queue.unshift(...back)
-      this.o.left?.(a.label)
-      // Agents that join on their own may yet join; ones this run starts
-      // are all it gets.
-      if (this.spawnedAt.size > 0) this.stranded(`${a.label} was lost and no agent is left`)
+      this.lose(a)
     } else {
       return
     }
     this.pumpSoon()
+  }
+
+  /** Agent `a` is gone without a word: its tasks run again elsewhere. */
+  private lose(a: Agent): void {
+    this.agents.delete(a.id)
+    a.usage.to = performance.now()
+    this.gone.push(a)
+    // Its tasks run again: first, as they were first to go.
+    const back: Job[] = []
+    for (const j of [...a.busy.values()]) {
+      const again = this.retry(a, j, 'lost')
+      if (again !== undefined) back.push(again)
+    }
+    this.queue.unshift(...back)
+    this.o.left?.(a.label)
+    // Agents that join on their own may yet join; ones this run starts
+    // are all it gets.
+    if (this.spawnedAt.size > 0) this.stranded(`${a.label} was lost and no agent is left`)
   }
 
   private async listen(): Promise<void> {
@@ -775,9 +780,20 @@ export class Orchestrator {
     this.o.left?.(a.label)
   }
 
-  /** Agent `id` will not join: its start failed or it exited first. */
+  /**
+   * Agent `id` will not join: its start failed or it exited first. One that
+   * joined is lost now, not when the relay stops hearing it (20 s, its tasks
+   * waiting).
+   */
   failed(id: string, reason: string): void {
-    if (this.unstarted.has(id) || this.ended) return
+    if (this.ended) return
+    const live = [...this.agents.values()].find((a) => a.label === id)
+    if (live !== undefined) {
+      this.lose(live)
+      this.pumpSoon()
+      return
+    }
+    if (this.unstarted.has(id)) return
     this.unstarted.set(id, reason)
     // A checkout or install can fail on the network; one more agent gets a
     // go. A second failed start is the setup's, and none more are started.
