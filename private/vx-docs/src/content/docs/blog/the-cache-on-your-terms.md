@@ -17,15 +17,16 @@ untrusted runs from writing what everyone else reads.
 
 ```sh frame="terminal"
 $ vx run build --all
-  time      18ms
+  cache     local 4✓
+  time      15ms
 
 $ vx run build --all --force
   cache     local 4↑
-  time      658ms
+  time      56ms
 
 $ vx run build --all --no-cache
   cache     local 4∅
-  time      638ms
+  time      42ms
 ```
 
 `--force` runs everything again and saves what the cache lacks. A key
@@ -72,11 +73,11 @@ $ git worktree add ../demo-wt && cd ../demo-wt
 $ vx run build --all
   cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
             local 4↓
-  time      22ms
+  time      30ms
 ```
 
 The new worktree had no `dist`. All four builds came back from the shared
-store in 22ms. To put the cache somewhere else, use `--cache-dir`,
+store in 30 ms. To put the cache somewhere else, use `--cache-dir`,
 `VX_CACHE_DIR` or `cache.dir` in `.vx/workspace.ts`.
 
 ## Who may write the remote cache
@@ -107,5 +108,7 @@ flowchart LR
 [Branch caches a server enforces](../branch-caches-a-server-enforces/)
 shows how a server builds its half.
 
-Every flag is in the [CLI reference](../../cli/), and `cache` is in
-the [schema](../../schema/).
+Outputs above: demo workspace, vx at `4c308fb`, 2026-10-23. Every flag
+is in the [CLI reference](../../cli/), and `cache` is in the
+[schema](../../schema/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

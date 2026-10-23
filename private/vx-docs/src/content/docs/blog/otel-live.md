@@ -62,11 +62,21 @@ span opens its output.
 A task's end only queues its records. Sends are batched: at most one per
 second, one in flight at a time, each taking everything that ended
 meanwhile. A refused send warns once per signal, and the build goes on.
-On 60 tasks against a local collector, live export burned the same CPU as
-one send at the end: 815 ms both, median of 10 runs.
+Live export costs no more than one send at the end:
+
+| Export                     | Requests | CPU    | Wall   |
+| -------------------------- | -------- | ------ | ------ |
+| live (default)             | 4        | 535 ms | 274 ms |
+| at the end (`live: false`) | 2        | 575 ms | 291 ms |
+
+Median of 10 interleaved runs per arm. `private/vx-bench/generate.ts`
+with 60 projects, `build --all --no-cache`, a local OTLP stub that
+answers at once. CPU is the vx process's user plus system time. Linux
+x64, 4 cores, vx at `4c308fb`, 2026-10-23.
 
 To send everything at the end instead, use `otel({ live: false })`. Why
 telemetry can never fail a build is its own story:
 [Observability that cannot break a run](../telemetry-never-breaks-a-run/).
 The full attribute list is in the
 [vx-otel README](https://github.com/vznjs/vx/tree/main/packages/vx-otel#live-export).
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
