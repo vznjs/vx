@@ -6,52 +6,59 @@ authors:
 tags:
   - config
   - ci
-excerpt: "Configs are programs and programs can read the environment. `vx lock` evaluates every config once and writes the resolved objects to a lockfile; every run reads them without evaluating; `vx lock --check` catches drift a byte hash cannot see."
+excerpt: "Configs are programs, and programs can read the environment. `vx lock` evaluates every config once and writes what it got; every run reads that; `vx lock --check` catches drift a byte hash can't see."
 ---
 
-A TypeScript config buys composition and costs one guarantee: what it
-evaluates to can depend on where it is evaluated. `process.env.CI`,
-a `Date`, an import that resolved differently on another machine. On a
-laptop that is fine. In a pipeline that must run exactly the config a
-reviewer approved, it is a hole.
+A TypeScript config can depend on where it runs. This one does:
 
-`vx lock` closes it the way package managers closed the same hole for
-dependencies.
+```ts
+exec: { command: `bun build src/index.ts --outdir dist --minify=${process.env.MINIFY ?? 'false'}` },
+```
+
+Nothing in the file changes when `MINIFY` does. `vx lock --check`
+still sees it:
+
+```sh frame="terminal"
+$ vx lock
+✓ vx lock  4 project configs → .vx/projects.lock.json
+
+$ vx lock --check
+✓ vx lock --check  up to date (4 projects)
+
+$ MINIFY=true vx lock --check
+✗ vx lock --check  packages/d/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
+$ echo $?
+1
+```
 
 ## Two verbs
 
 ```bash
 vx lock              # evaluate every vx.config.* now; write .vx/projects.lock.json
-vx lock --check      # audit: full re-evaluation against the lock; exit 1 on drift
+vx lock --check      # re-evaluate everything; exit 1 on any difference
 ```
 
-`vx lock` evaluates each config in the current environment, checks the
-graph rules, and stores the post-evaluation object under the project's
-name. It is the only verb that evaluates a config or writes the lock.
-
-Every `vx run`, every `vx watch` cycle, every `--affected` selection
-and the picker read configs only from the lock. A run never evaluates
-a config or checks the graph rules: a config's env reads keep their
-lock-time values, a config added since the lock is no project until
-`vx lock` (naming its task says so), and with no lock a run stops:
+`vx lock` is the only verb that evaluates a config or writes the lock.
+It also checks the graph rules. Every `vx run`, every `vx watch` cycle,
+every `--affected` selection reads configs only from the lock. With no
+lock, a run stops:
 
 ```sh frame="terminal"
 $ vx run build --all
 ✗ vx run  no lock: run `vx lock`
 ```
 
-A project with no `vx.config.*`, its tasks from a plugin's `project`
-stage such as `turbo()`, has nothing to lock and gets its tasks live on
-every run.
+A project with no `vx.config.*`, whose tasks come from a plugin's
+`project` stage such as `turbo()`, has nothing to lock and gets its
+tasks live on every run.
 
-## The check that a hash cannot do
+## The check a hash can't do
 
-`--check` re-evaluates every config in the current environment and
-compares the result to the frozen object. That catches an edit, and it
-catches what an edit-detector cannot: an env value read at evaluation
-time that differs from the lock's, an imported preset that changed, a
-computed command whose input moved. Every mismatched project is listed
-on stderr and the exit code is 1.
+`--check` evaluates every config again and compares the result to the
+lock. It catches an edit, and also what an edit detector can't: an env
+value read at evaluation time, a changed preset import, a computed
+command whose input moved. On this repository (12 projects) it takes
+170 ms (min of 10, linux x64, 2026-10-23).
 
 The CI recipe is two commands:
 
@@ -59,36 +66,26 @@ The CI recipe is two commands:
 vx lock --check && vx run ci --all
 ```
 
-The first proves the lock still describes the configs as this machine
-would evaluate them. The second runs exactly the lock. A pull request
-that changes a config without re-running `vx lock` fails the first
-command, which is the point.
+A pull request that changes a config without running `vx lock` fails
+the first one. That is the point.
 
 ## What the lock is not
 
-- **Not a cache key input.** `.vx/projects.lock.json` is in no task's
-  input set, so running `vx lock` does not re-key the workspace.
-- **Not a substitute for `inputs.env`.** The lock freezes what a
-  config *evaluated to*. An env var a task reads at run time is still a
-  run-time input and belongs under `inputs.env`, where it joins
-  the key. The two mechanisms are parallel on purpose: config-time
-  values are locked, run-time values are keyed.
-- **Not only a performance feature.** A run that reads data instead of
-  evaluating programs starts sooner, but the lock is about determinism:
-  every run uses the configs a reviewer saw.
+| Not…                           | Because                                                                 |
+| ------------------------------ | ----------------------------------------------------------------------- |
+| a cache key input              | `vx lock` must not re-key the workspace.                                |
+| a substitute for `inputs.env`  | The lock freezes config-time values; run-time env belongs in the key.   |
+| only about speed               | Every run uses the configs a reviewer saw.                              |
 
 ## For agents
 
-An agent asks the same question in JSON: `vx lock --check --format json`
-prints `{"upToDate": false, "audited": 4, "notAudited": 0, "problems": [...]}`
-with the same exit code. Each problem is the line a person would read
-on stderr.
+`vx lock --check --format json` answers with the same exit code:
 
-## Where it came from
+```json
+{"upToDate":false,"audited":4,"notAudited":0,"problems":["packages/d/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'"]}
+```
 
-The lock exists because the resolved-config hash made configs
-powerful, and power needs an audit. Package managers learned the same
-lesson with `--frozen-lockfile`: let resolution be dynamic in
-development and pin it where reproducibility is the contract. The
-design note is in the repository under `docs/design/config-lock`; the
-reference is [`vx lock`](../../cli/#vx-lock).
+Package managers learned the same lesson with `--frozen-lockfile`:
+resolve freely in development, pin where reproducibility is the
+contract. Reference: [`vx lock`](../../cli/#vx-lock). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

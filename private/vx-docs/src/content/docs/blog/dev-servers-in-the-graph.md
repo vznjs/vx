@@ -9,27 +9,38 @@ tags:
 excerpt: "The hard part of 'start the tests once the server is up' is knowing when it is up. vx watches a persistent task's output for a pattern, holds its dependents until the line appears, and tears the server down when the run ends."
 ---
 
-Some tasks do not finish. A dev server, a watcher, a database for the
-integration tests. Most runners either refuse to model them or model
-them as "run this and never wait," which leaves the interesting problem
-to a `sleep 5` in a shell script.
-
-vx models them as **persistent** tasks and gives them the two things a
-graph node needs: a notion of *ready*, and a guaranteed *end*.
+A dev server never finishes, so "start the tests once it's up" usually
+ends up as a `sleep 5`. vx waits for the line the server prints instead.
 
 ```ts
 dev: {
   exec: {
-    command: 'vite',
-    persistent: { readyWhen: 'Local:' },
+    command: 'bun server.ts', // sleeps 800 ms, then listens on :3999
+    persistent: { readyWhen: 'Listening on' },
     timeout: '30s',
   },
 },
 e2e: {
   dependsOn: ['dev'],
-  exec: { command: 'playwright test' },
+  exec: { command: 'curl -sf localhost:3999' },
 },
 ```
+
+```sh frame="terminal"
+$ vx run packages/c#e2e
+┌─ packages/c#e2e > $ curl -sf localhost:3999
+ok
+└─ packages/c#e2e ── (9ms) success
+            2 success · 2 total
+  time      841ms · max 808ms · avg 409ms · min 9ms
+
+$ curl localhost:3999
+curl: (7) Failed to connect to localhost port 3999 after 0 ms: Couldn't connect to server
+```
+
+The server was ready at 808 ms, the test started right then, and the
+whole run took 841 ms. After it, nothing listens on the port. (vx at
+`0be0367`, 2026-10-23.)
 
 ## Ready is a line of output
 
@@ -44,8 +55,7 @@ the process and fails the task instead of hanging the run. A persistent
 task with no `readyWhen` is ready on spawn, which is right for a daemon
 nothing gates on.
 
-No polling loop, no `wait-on` package, no guessed number of seconds.
-The server tells you when it is up, and you wrote down what it says.
+No polling loop, no `wait-on` package, no guessed seconds.
 
 ## The end is guaranteed
 
@@ -87,4 +97,5 @@ to the server re-runs the tests. And a server only its cache hits need is
 never started: when every dependant is a confirmed hit, the run does not
 boot it.
 
-The guide is [Configure › Dev tasks](../../guides/configure/#dev-tasks).
+Guide: [Configure › Dev tasks](../../guides/configure/#dev-tasks). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
