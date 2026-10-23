@@ -62,9 +62,17 @@ that was undone mid-run cannot be told apart from no edit at all. A
 moved input keeps the run's result, saves no entry, and names the file;
 every task downstream skips its save too.
 
+A task that rewrites a file it also reads:
+
+```sh frame="terminal"
+$ vx run packages/api#build
+┌─ packages/api#build > $ echo "export const r = $RANDOM" > src/routes.gen.ts && mkdir -p out && cp src/index.ts out/
+[vx] packages/api#build: `packages/api/src/routes.gen.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs
+└─ packages/api#build ── (6ms) success
+  cache     1 not saved
 ```
-[vx] app#build: `packages/app/src/routes.gen.ts` changed after its key was taken — the result stands, but is not saved under a key that no longer describes it; if the task writes it, declare it in cache.outputs
-```
+
+One-project workspace, vx at `c1ad075`, 2026-10-23.
 
 How strict this is, is yours to choose with `cache.inputStability`:
 `'mutable'` saves when the bytes end identical (for a tool that rewrites
