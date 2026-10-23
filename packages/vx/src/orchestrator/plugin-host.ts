@@ -427,12 +427,16 @@ export interface ScheduleRun {
 export async function applyScheduleHooks(
   plugins: readonly VxPlugin[],
   nodes: ReadonlyMap<string, TaskNode>,
-  ctx: Omit<ScheduleHookContext, 'cache' | 'refine' | 'onRefine'>,
+  ctx: Omit<ScheduleHookContext, 'cache' | 'refine' | 'onRefine' | 'refining'>,
   cacheFor: (plugin: string) => PluginCache = () => absentPluginCache,
   run: ScheduleRun = {},
 ): Promise<ReadonlyMap<string, number>> {
   const sets: (ReadonlyMap<string, number> | undefined)[] = []
   const listeners: { plugin: VxPlugin; i: number; listener: () => void }[] = []
+  const promised = new Set<Promise<void>>()
+  const refining = async (): Promise<void> => {
+    while (promised.size > 0) await Promise.all(promised)
+  }
   const merged = (): ReadonlyMap<string, number> => {
     const out = new Map<string, number>()
     for (const set of sets) if (set !== undefined) for (const [id, w] of set) out.set(id, w)
@@ -440,7 +444,24 @@ export async function applyScheduleHooks(
   }
   for (const [i, plugin] of plugins.entries()) {
     if (plugin.schedule === undefined) continue
-    const refine = (weights: ReadonlyMap<string, number>): void => {
+    const refine = (
+      weights: ReadonlyMap<string, number> | Promise<ReadonlyMap<string, number> | undefined>,
+    ): void => {
+      if (weights instanceof Promise) {
+        const p: Promise<void> = weights
+          .then(
+            (w) => {
+              if (w !== undefined) refine(w)
+            },
+            (err: unknown) =>
+              ctx.warn(
+                `[vx] plugin '${plugin.name}' failed to refine: ${err instanceof Error ? err.message : String(err)}`,
+              ),
+          )
+          .finally(() => promised.delete(p))
+        promised.add(p)
+        return
+      }
       if (run.refined === undefined) return
       try {
         sets[i] = scheduleWeights(plugin, weights, nodes)
@@ -463,7 +484,7 @@ export async function applyScheduleHooks(
     const onRefine = (listener: () => void): void => {
       if (run.refined !== undefined) listeners.push({ plugin, i, listener })
     }
-    const own = { ...ctx, cache: cacheFor(plugin.name), refine, onRefine }
+    const own = { ...ctx, cache: cacheFor(plugin.name), refine, onRefine, refining }
     const call = (): Promise<ReadonlyMap<string, number> | undefined> =>
       safe(plugin, 'schedule', () => plugin.schedule!(nodes, own))
     const weights = await (run.step === undefined

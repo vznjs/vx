@@ -151,8 +151,13 @@ async function runPlugin(
     localCache: cache,
     branch: opts.branch,
     cache: shared,
-    refine: (w) => opts.refined?.push(w),
+    // Promised: the weights it resolves to, as core takes them.
+    refine: (w) =>
+      void Promise.resolve(w).then((x) => {
+        if (x !== undefined) opts.refined?.push(x)
+      }),
     onRefine: () => {},
+    refining: async () => {},
   })
   opts.during?.()
   await plugin.teardown!()

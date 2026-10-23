@@ -513,8 +513,18 @@ export interface ScheduleHookContext extends BaseContext {
    * Replace this plugin's weights while the run goes on: the tasks not yet
    * started re-rank at once. For weights that arrive late (timings fetched
    * from a remote). Ignored in a plan and once the run's tasks are done.
+   * Given a promise, the weights it resolves to, if any, when it does:
+   * `refining()` waits for it meanwhile.
    */
-  refine(weights: ReadonlyMap<string, number>): void
+  refine(
+    weights: ReadonlyMap<string, number> | Promise<ReadonlyMap<string, number> | undefined>,
+  ): void
+  /**
+   * Settles once every refine promised so far (a promise to `refine`) has
+   * landed or failed, its listeners called: a plugin that sizes the run by
+   * the fetched data waits for it here rather than guessing without it.
+   */
+  refining(): Promise<void>
   /**
    * Calls `listener` each time another plugin `refine`s: the late data it
    * waited for (timings fetched from a remote) has landed in history, so a

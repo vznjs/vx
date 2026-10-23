@@ -143,3 +143,38 @@ export default { plugins: [${pluginSource(
   },
   TIMEOUT,
 )
+
+// A plugin that sizes the run by fetched timings (vx-dte's agents) waited
+// on nothing and asked before they landed: main asked 12 agents for 13
+// misses, 5 ran nothing (2026-10-23). A promised refine is waited for.
+it(
+  'refining() settles once a promised refine has landed and its listeners heard it',
+  async () => {
+    await addProject(fixture.root, 'p', {
+      config: `export default { name: 'p', tasks: { a: { exec: { command: 'true' } } } }\n`,
+    })
+    const heard = path.join(fixture.root, 'heard.txt')
+    await Bun.write(
+      path.join(fixture.root, '.vx/workspace.mjs'),
+      `${PLUGIN_IMPORT}import { appendFileSync } from 'node:fs'
+const hear = (what) => appendFileSync(${JSON.stringify(heard)}, what + '\\n')
+export default { plugins: [${pluginSource(
+        'org/late',
+        `{ schedule(nodes, ctx) { ctx.refine(Bun.sleep(200).then(() => new Map([['p#a', 5]]))) } }`,
+      )}, ${pluginSource(
+        'org/sizer',
+        `{ schedule(nodes, ctx) { ctx.onRefine(() => hear('refined')); ctx.refining().then(() => hear('settled')) } }`,
+      )}] }\n`,
+    )
+    const result = await run({
+      cwd: fixture.root,
+      tasks: ['a'],
+      log: silentLogger(fixture),
+    })
+    expect(result.ok).toBe(true)
+    for (let i = 0; i < 40 && !(await Bun.file(heard).exists()); i++) await Bun.sleep(25)
+    await Bun.sleep(300)
+    expect(await Bun.file(heard).text()).toBe('refined\nsettled\n')
+  },
+  TIMEOUT,
+)
