@@ -525,6 +525,27 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     ])
   })
 
+  // A stat is untraced (a stop per stat cost vx's own no-op run 69%), so
+  // a tool that stats before it opens, as Ubuntu 26's cat (uutils) does,
+  // reports nothing. What keeps its run keyed is the wall: an ungranted
+  // file is absent in the sandbox on every run, whatever the host holds.
+  it('shows a stat no ungranted file, however the host has it', async () => {
+    const proj = path.join(dir, 'proj')
+    await mkdir(path.join(proj, 'src'), { recursive: true })
+    await writeFile(path.join(proj, 'src', 'x.txt'), 'x')
+    await writeFile(path.join(proj, 'package.json'), '{}')
+    const r = await runSandboxed(
+      args('test -e src/x.txt && echo seen || echo absent', {
+        cwd: proj,
+        baseAllowRead: [],
+        baseDenyRead: [dir],
+        reportWithin: proj,
+        config: resolveSandboxConfig({ allow: { read: ['package.json'] } }, proj),
+      }),
+    )
+    expect([r.exitCode, r.stdout]).toEqual([0, 'absent\n'])
+  })
+
   it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {
     const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
     // spawnFailed: no shell ran, so execute-task says nothing of a missing command (A-41).
