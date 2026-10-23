@@ -139,6 +139,7 @@ it('offers sockets, pushes each message down one and takes sends from it', async
 // A failed upgrade tells a client nothing it can read: one the relay does
 // not know is let in and closed as gone, so it stops dialing.
 it('closes a socket of a run or id it does not know as gone, and refuses one without a token', async () => {
+  await join('orchestrator', R3)
   const a = await join('worker', R3)
   expect(a.socket).toBe(true)
   const closed = async (run: string, id: string): Promise<number> => {

@@ -274,6 +274,8 @@ it('asks for a new token a minute before the one it holds expires', async () => 
   const { url, host } = sockets(undefined, { verify: async () => ({ iss: 'i', run: ['1'] }) })
   // Several requests a participant, to tell one token from several.
   host.older = true
+  // A worker joins a run its orchestrator started.
+  await join(url, R, 'orchestrator', null, async () => jwt(300))
   const asked = async (inS: number): Promise<number> => {
     let n = 0
     const me = await join(url, R, 'worker', null, async () => (n++, jwt(inS)))
@@ -287,6 +289,7 @@ it('asks for a new token a minute before the one it holds expires', async () => 
 it('waits out the relay’s rate limit and joins again', async () => {
   const s = sockets()
   s.host.older = true
+  await join(s.url, R, 'orchestrator', null, undefined)
   let limited = 0
   globalThis.fetch = ((input: string, init?: RequestInit) =>
     input.endsWith('/join') && limited++ === 0
@@ -398,12 +401,13 @@ it('hears again within a few heartbeats when the relay lets its socket go', asyn
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
-  forget(o.id)
-  await a.send('orchestrator', 'result')
+  await a.poll()
+  forget(a.id)
+  await o.send(a.id, 'task')
   const at = performance.now()
   const got = []
-  for (let i = 0; i < 10 && got.length === 0; i++) got.push(...(await o.poll()))
-  expect(got).toEqual([{ from: a.id, body: 'result' }])
+  for (let i = 0; i < 10 && got.length === 0; i++) got.push(...(await a.poll()))
+  expect(got).toEqual([{ from: 'orchestrator', body: 'task' }])
   // Three quiet heartbeats of 100 ms, then the beat the relay answers.
   expect(performance.now() - at).toBeLessThan(600)
   await a.leave()
@@ -418,11 +422,12 @@ it('sends again on a new socket when one answers pings but not frames', async ()
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
-  drop(o.id, 'frames')
-  await o.send(a.id, 'batch')
+  await a.poll()
+  drop(a.id, 'frames')
+  await a.send('orchestrator', 'result')
   const read = []
-  for (let i = 0; i < 10 && read.length === 0; i++) read.push(...(await a.poll()))
-  expect(read).toEqual([{ from: 'orchestrator', body: 'batch' }])
+  for (let i = 0; i < 10 && read.length === 0; i++) read.push(...(await o.poll()))
+  expect(read).toEqual([{ from: a.id, body: 'result' }])
   await o.leave()
   await a.leave()
 }, 5_000)
@@ -443,7 +448,7 @@ it('leaves when its socket answers pings but not frames: the run still closes', 
 // A relay that held a poll left the run waiting on Bun's own five-minute
 // limit before it failed (CI, 2026-10-22): an upgrade held past three
 // heartbeats is a dial that failed, and no socket for three is the end.
-it('gives up on a socket upgrade the relay holds past three heartbeats', async () => {
+it('gives up on a socket upgrade the relay holds, after 3 dials', async () => {
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port: 0,
@@ -457,9 +462,9 @@ it('gives up on a socket upgrade the relay holds past three heartbeats', async (
   servers.push({ url: '', stop: () => server.stop(true) })
   const at = performance.now()
   const o = await join(`http://127.0.0.1:${server.port}`, R, 'orchestrator', null, undefined)
-  await expect(o.poll()).rejects.toThrow('no socket for three heartbeats')
-  expect(performance.now() - at).toBeLessThan(3_000)
-}, 5_000)
+  await expect(o.poll()).rejects.toThrow('no socket in 3 dials')
+  expect(performance.now() - at).toBeLessThan(6_000)
+}, 10_000)
 
 // Cloudflare answers 5xx while a Durable Object restarts, and a runner's
 // network drops a connection now and then: one such answer to a worker's
@@ -518,7 +523,7 @@ it('dials again through a relay fault shorter than three heartbeats', async () =
   await o.leave()
 })
 
-it('gives up on a relay down for three heartbeats', async () => {
+it('gives up on a relay down after 3 dials, not a wait', async () => {
   const { url, open } = sockets(50)
   let down = false
   globalThis.fetch = ((input: string, init?: RequestInit) =>
@@ -527,6 +532,7 @@ it('gives up on a relay down for three heartbeats', async () => {
       : realFetch(input, init)) as typeof fetch
   const Real = globalThis.WebSocket
   try {
+    await join(url, R, 'orchestrator', null, undefined)
     const a = await join(url, R, 'worker', null, undefined)
     down = true
     // Its upgrades fail as the relay's host is down.
@@ -536,12 +542,12 @@ it('gives up on a relay down for three heartbeats', async () => {
       }
     } as typeof WebSocket
     const at = performance.now()
-    for (const w of open) w.close()
+    for (const w of open) if (w.data.id === a.id) w.close()
     const polls = async (): Promise<never> => {
       for (;;) await a.poll()
     }
-    await expect(polls()).rejects.toThrow('no socket for three heartbeats')
-    expect(performance.now() - at).toBeGreaterThanOrEqual(140)
+    await expect(polls()).rejects.toThrow('no socket in 3 dials')
+    expect(performance.now() - at).toBeLessThan(2_000)
   } finally {
     globalThis.WebSocket = Real
   }

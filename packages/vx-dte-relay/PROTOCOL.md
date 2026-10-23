@@ -23,8 +23,10 @@ the run id, a random (v4) UUID, so no one can guess it; any other answers
 
 - `join` makes a participant and returns its `id`, a secret the relay
   picked: whoever holds it, with a token of this run, acts as it. A run
-  has one orchestrator; a second `orchestrator` join answers `409`. Workers
-  may join before the orchestrator does. `"socket": true` says the relay
+  has one orchestrator; a second `orchestrator` join answers `409`. The
+  orchestrator's join starts the run, and a run is kept only while it is
+  live: a worker's join of any other answers `410`, and the worker leaves.
+  `"socket": true` says the relay
   speaks this version.
 - `socket` opens the participant's websocket (§ Sockets). With `join`
   in place of `id` it joins too, as `join` would, and the socket's first
@@ -94,8 +96,8 @@ Frames are text:
 A socket's close does not lose its participant: it opens another, and
 the relay pushes what queued meanwhile. vx-dte's client dials again
 after a backoff with full jitter (up to 250 ms, doubling per failed dial
-to half a heartbeat), and gives the participant up after three
-heartbeats with no socket, as the relay does. The relay closes with code
+to half a heartbeat), and gives the participant up after 3 failed
+dials. The relay closes with code
 `4404` the socket of a participant that left or was lost, after pushing
 what queued for it (a removed worker's `refused`), and lets in a `socket`
 request of an `id` or run it does not know only to close it so: a failed
@@ -106,9 +108,9 @@ nothing again.
 Every frame and ping counts as a heartbeat. A participant with no socket
 is lost after three `heartbeatMs`, as if it had left; one with an open
 socket, after twelve, so a host that bills its wake-ups sleeps between
-them.
-vx-dte's client asks `join` again through a `5xx` or a dropped
-connection (a host restarting the relay) for 15 s.
+them. The orchestrator's socket closing closes the run at once.
+vx-dte's client asks again through a `5xx`, a dropped connection or a
+`429`, 3 times at most.
 
 ## Leases (planned, above the relay)
 
@@ -123,18 +125,13 @@ task's current lease holder and drops any late one. The design is in
 
 The relay itself sends with `"from": "relay"`:
 
-- to the orchestrator, `{ "type": "joined", "id", "info" }` for each worker,
-  including workers that joined before it;
+- to the orchestrator, `{ "type": "joined", "id", "info" }` for each worker;
 - to the orchestrator, `{ "type": "lost", "id" }` when a worker leaves or
   is lost;
 - to every worker, `{ "type": "closed" }` when the orchestrator leaves or is
-  lost. The run is then closed: a worker on a socket is told and let go
-  at once, one with no socket gets `4404` when it opens one, a `join`
-  answers `410` for ten minutes, so a worker its CI started late leaves
-  rather than opening the run anew, and then the relay keeps nothing of
-  the run. A run no orchestrator joined in ten minutes
-  closes the same way: workers start after their orchestrator joins, so
-  one alone is late for a run that ended.
+  lost, or its socket closes. The relay then keeps nothing of the run: a
+  worker on a socket is told and let go at once, one with no socket gets
+  `4404` when it opens one, and a `join` answers `410`.
 
 A worker's messages carry `"from": "<its id>"`, the orchestrator's
 `"from": "orchestrator"`.
@@ -197,7 +194,7 @@ Only what routing needs, and no longer:
 - A message waits in memory, never in storage, until it is delivered. A
   relay restart loses a participant whose queue was not empty, as if it
   went silent.
-- A closed run is gone within ten minutes; while open, each participant's
+- A closed run is gone at once; while open, each participant's
   role and when it was last heard from are kept, so a restart still
   loses the silent.
 - It logs nothing. It still sees each message's size, time and recipient.

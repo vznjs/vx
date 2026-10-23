@@ -223,12 +223,6 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)} })] }
     expect(vx(['run', 'a#gen']).exitCode).toBe(0)
     const { VX_DTE_RUN: _, ...env } = process.env
     const hand = crypto.randomUUID()
-    const worker = Bun.spawn([process.execPath, CORE_BIN, 'dte', 'worker'], {
-      cwd: root,
-      env: { ...env, VX_DTE_RUN: hand, VX_DTE_SECRET: 'hand-secret', NO_COLOR: '1' },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
     // Async: the relay is served by this process.
     const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#use'], {
       cwd: root,
@@ -236,14 +230,24 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)} })] }
       stdout: 'pipe',
       stderr: 'pipe',
     })
+    const worker = workerOf(
+      () =>
+        Bun.spawn([process.execPath, CORE_BIN, 'dte', 'worker'], {
+          cwd: root,
+          env: { ...env, VX_DTE_RUN: hand, VX_DTE_SECRET: 'hand-secret', NO_COLOR: '1' },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        }),
+      run,
+    )
     const out = await new Response(run.stdout).text()
     expect([await run.exited, out]).toEqual([
       0,
       expect.stringMatching(/└─ b#use · worker#1 ── .*success/),
     ])
     expect(out).toMatch(/workers +worker#1  stopped  1 done\n +actual \d+c\/[\d.]+G$/m)
-    const own = await new Response(worker.stdout).text()
-    expect(await worker.exited).toBe(0)
+    const { exited, out: own } = await worker
+    expect(exited).toBe(0)
     expect(own).toMatch(/worker +worker#1/)
     expect(own).toContain('✓ b#use')
   } finally {
@@ -278,24 +282,28 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { small
     const { VX_DTE_RUN: _, ...env } = process.env
     const id = crypto.randomUUID()
     const shared = { ...env, VX_DTE_RUN: id, VX_DTE_SECRET: 'adopt-secret', NO_COLOR: '1' }
-    const worker = Bun.spawn([process.execPath, CORE_BIN, 'dte', 'worker'], {
-      cwd: root,
-      env: { ...shared, VX_DTE_WORKER: 'small#3' },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
     const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#use'], {
       cwd: root,
       env: shared,
       stdout: 'pipe',
       stderr: 'pipe',
     })
+    const worker = workerOf(
+      () =>
+        Bun.spawn([process.execPath, CORE_BIN, 'dte', 'worker'], {
+          cwd: root,
+          env: { ...shared, VX_DTE_WORKER: 'small#3' },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        }),
+      run,
+    )
     const out = await new Response(run.stdout).text()
     expect([await run.exited, out]).toEqual([
       0,
       expect.stringMatching(/└─ b#use · small#3 ── .*success/),
     ])
-    expect(await worker.exited).toBe(0)
+    expect((await worker).exited).toBe(0)
     expect(await Bun.file(spawns).exists()).toBe(false)
   } finally {
     await relay.stop()
@@ -335,28 +343,50 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { mac: 
       VX_DTE_SECRET: 'other-secret',
       NO_COLOR: '1',
     }
-    const worker = Bun.spawn([process.execPath, '--preload', preload, CORE_BIN, 'dte', 'worker'], {
-      cwd: root,
-      env: { ...shared, VX_DTE_WORKER: 'mac#1' },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
     const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#use'], {
       cwd: root,
       env: shared,
       stdout: 'pipe',
       stderr: 'pipe',
     })
+    const worker = workerOf(
+      () =>
+        Bun.spawn([process.execPath, '--preload', preload, CORE_BIN, 'dte', 'worker'], {
+          cwd: root,
+          env: { ...shared, VX_DTE_WORKER: 'mac#1' },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        }),
+      run,
+    )
     const out = await new Response(run.stdout).text()
     expect([await run.exited, out]).toEqual([
       0,
       expect.stringMatching(/└─ b#use · mac#1 ── .*success/),
     ])
-    expect(await worker.exited).toBe(0)
+    expect((await worker).exited).toBe(0)
   } finally {
     await relay.stop()
   }
 }, 60_000)
+
+/**
+ * A worker started as CI starts one, after its run's orchestrator: one
+ * that finds no live run yet leaves at once, and is started again.
+ */
+async function workerOf(
+  start: () => Bun.Subprocess<'ignore', 'pipe', 'pipe'>,
+  run: Bun.Subprocess,
+): Promise<{ exited: number; out: string }> {
+  let over = false
+  void run.exited.then(() => (over = true))
+  for (;;) {
+    const w = start()
+    const [out, exited] = await Promise.all([new Response(w.stdout).text(), w.exited])
+    if (out !== '' || over) return { exited, out }
+    await Bun.sleep(100)
+  }
+}
 
 /**
  * The pids under `pid`, by `pgrep -P`: macOS's `ps` is setuid, which the

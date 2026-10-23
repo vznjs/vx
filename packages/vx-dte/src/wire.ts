@@ -33,36 +33,33 @@ const UNANSWERED = 'the relay answered no frame'
 const GONE = 4404
 /** How long `join` waits on the relay, before it says how long a heartbeat is. */
 const JOIN_DEADLINE_MS = 30_000
-/** How long `join` asks again through faults (a 500 while a host restarts the relay). */
-const JOIN_FAULT_MS = 15_000
+/**
+ * How many times a request or a socket is tried again, after a fault (a
+ * 5xx, a dropped connection) or a rate limit, before the participant gives
+ * up: the run is live, or it isn't (owner, 2026-10-23: "3 retries nothing
+ * more").
+ */
+const RETRIES = 3
 /** The least either wait is: a loaded machine's loopback, under a test's short heartbeat. */
 const MIN_WAIT_MS = 1_000
 
-/**
- * Runs `f` again after each rate-limit answer, as long as the relay asks to
- * wait, and after a fault of the relay's host or the
- * network (a 5xx, a dropped connection) until faults have lasted that long.
- */
-async function paced<T>(f: () => Promise<T>, faultMs: number, signal?: AbortSignal): Promise<T> {
-  let since: number | undefined
-  let faults = 0
-  for (;;) {
+/** Runs `f` again, at most `RETRIES` times, after a rate-limit answer or (`faults`) a fault. */
+async function paced<T>(f: () => Promise<T>, signal?: AbortSignal, faults = true): Promise<T> {
+  for (let tries = 0; ; tries++) {
     try {
       return await f()
     } catch (err) {
-      if (err instanceof RelayError && err.retryAfterMs !== undefined) {
-        await Bun.sleep(err.retryAfterMs)
-        continue
-      }
       // A request the relay held past its deadline already took the whole wait.
       const fault =
-        err instanceof RelayError ? err.status >= 500 : (err as Error).name !== 'TimeoutError'
-      if (!fault || signal?.aborted === true) throw err
-      since ??= performance.now()
-      const left = since + faultMs - performance.now()
-      if (left <= 0) throw err
-      // Each wait at most half a heartbeat, so a short fault costs little.
-      await Bun.sleep(Math.min(left, faultMs / 6, Math.random() * FIRST_REDIAL_MS * 2 ** faults++))
+        err instanceof RelayError
+          ? err.retryAfterMs !== undefined || (faults && err.status >= 500)
+          : faults && (err as Error).name !== 'TimeoutError'
+      if (!fault || tries >= RETRIES || signal?.aborted === true) throw err
+      await Bun.sleep(
+        err instanceof RelayError && err.retryAfterMs !== undefined
+          ? err.retryAfterMs
+          : Math.random() * FIRST_REDIAL_MS * 2 ** tries,
+      )
     }
   }
 }
@@ -99,11 +96,8 @@ export async function join(
     }
     return h
   }
-  // A join asked again that the relay took leaves a second participant,
-  // lost in three heartbeats; a worker whose join failed is lost for good.
-  let faultMs = JOIN_FAULT_MS
   const call = (verb: string, body?: unknown, query = '', signal?: AbortSignal) =>
-    paced(() => once(verb, body, query, signal), faultMs, signal)
+    paced(() => once(verb, body, query, signal), signal)
   // A relay that holds a request past its longest poll is stuck: Bun's
   // own limit let one poll wait five minutes before the run failed (CI,
   // 2026-10-22). Three heartbeats, once `join` says what one is.
@@ -172,11 +166,7 @@ export async function join(
     }
   }
   deadlineMs = Math.max(3 * heartbeatMs, MIN_WAIT_MS)
-  // The relay loses a participant silent this long: past it, nothing is left to reach.
-  faultMs = 3 * heartbeatMs
   let failures = 0
-  /** Since when no socket is open: the relay loses a participant silent three heartbeats. */
-  let downSince: number | undefined
   let redial: ReturnType<typeof setTimeout> | undefined
   /** A redial in flight, which `leave` waits out: its socket closes before the process exits. */
   let dialing: Promise<void> | undefined
@@ -196,7 +186,6 @@ export async function join(
   }
   const adopt = (s: Socket): void => {
     socket = s
-    downSince = undefined
     s.onMessages = (messages) => {
       inbox.push(...messages)
       if (
@@ -220,7 +209,6 @@ export async function join(
   /** A socket that failed or dropped is dialed again after a jittered backoff. */
   const again = (): void => {
     if (left || ended !== undefined || redial !== undefined || socket?.open === true) return
-    downSince ??= performance.now()
     const ms = Math.random() * Math.min(heartbeatMs / 2, FIRST_REDIAL_MS * 2 ** failures)
     redial = setTimeout(() => {
       dialing = dial()
@@ -240,32 +228,21 @@ export async function join(
       failures = 0
       adopt(s)
     } else if (s?.code === GONE) end(new RelayError(404, 'relay: unknown id'))
-    else {
-      failures++
-      again()
-    }
+    else if (++failures > RETRIES) end(new RelayError(404, `relay: no socket in ${RETRIES} dials`))
+    else again()
   }
   const first = socket
   socket = undefined
   took(first)
-  /**
-   * The open socket, waiting out a redial. Three heartbeats without one
-   * and the relay has lost this participant, as it would one silent.
-   */
+  /** The open socket, waiting out a redial: `RETRIES` failed dials and the participant is gone. */
   const live = async (signal?: AbortSignal): Promise<Socket> => {
     for (;;) {
       if (ended !== undefined) throw ended
       const s = socket
       if (s?.open === true) return s
       again()
-      const waited = performance.now() - (downSince ?? performance.now())
-      if (waited >= faultMs)
-        throw new RelayError(
-          404,
-          'relay: no socket for three heartbeats, so it lost this participant',
-        )
       if (signal?.aborted === true) throw signal.reason as Error
-      await idle(faultMs - waited, signal)
+      await idle(heartbeatMs, signal)
     }
   }
   /** Until `nudge`, `ms` or `signal`, whichever comes first. */
@@ -286,7 +263,7 @@ export async function join(
     for (;;) {
       const s = await live()
       try {
-        await paced(() => down(s), 0)
+        await paced(() => down(s), undefined, false)
         return
       } catch (err) {
         // Closed under it: sent again on the next (a resent seal is a
