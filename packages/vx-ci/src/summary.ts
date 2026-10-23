@@ -128,8 +128,9 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   const lines: string[] = []
   lines.push(`## ${verdict} ${title}`)
   lines.push('')
+  // A carried server ran inside its dependants, on their worker.
   const executed = summary.tasks.filter(
-    (t) => t.status === 'success' || t.status === 'failed',
+    (t) => (t.status === 'success' || t.status === 'failed') && t.carried !== true,
   ).length
   const stats = [
     `**${summary.taskCount}** task${summary.taskCount === 1 ? '' : 's'}`,
@@ -242,23 +243,24 @@ function renderWorkers(
       ].join(' | ')} |`,
     )
   }
-  // Tasks the executor left to this machine (services, unsandboxed ones):
-  // without their row the workers' tasks fell short of the run's executed
-  // count, 13 of 17 on main (owner, 2026-10-23).
-  const ran = tasks.filter((t) => t.status === 'success' || t.status === 'failed')
+  // Nothing runs on a distributed run's own machine (owner, 2026-10-23):
+  // a task that did is named, a bug to see. A carried server ran inside its
+  // dependants, on their worker.
+  const ran = tasks.filter(
+    (t) => (t.status === 'success' || t.status === 'failed') && t.carried !== true,
+  )
   const here = ran.filter((t) => t.where === undefined)
   if (here.length > 0) {
     const failed = here.filter((t) => t.status === 'failed').length
     lines.push(
       `| this machine | ok |  | ${tasksCell(here.length - failed, failed)} |  |  |  |  |  |  |`,
+      '',
+      `${ran.length} executed: ${ran.length - here.length} on workers, ${here.length} on this machine: ${here.map((t) => t.taskId).join(', ')}.`,
     )
   }
-  lines.push(
-    '',
-    `${ran.length} executed: ${ran.length - here.length} on workers, ${here.length} on this machine.`,
-  )
   if (coreMs > 0)
     lines.push(
+      '',
       `Expected ${pct(bookedMs / coreMs)} of the workers' core-time, used ${pct(cpuMs / coreMs)}.`,
     )
   return lines

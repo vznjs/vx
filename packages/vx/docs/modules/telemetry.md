@@ -95,6 +95,7 @@ interface TaskTelemetry {
   cpuMs?: number
   peakRssBytes?: number
   where?: string // an executor's placement; absent when run here
+  carried?: true // a persistent task its dependants' executor started where they ran: no execution of its own
   outputs?: 'deferred' // the outputs stayed remote (`--cache-download=none`)
   attempts?: number // more than one: the task retried
   blockedBy?: string // on a skipped task, the failure at the root of it

@@ -57,6 +57,7 @@ export interface TaskOutcome {
   notReady?: 'timeout' | 'exited' | 'spawn' // failed persistent task: why it never became ready
   inputMoved?: string // failed by inputStability.severity 'error': the input that changed ('' unnamed)
   where?: string // executor-reported placement, when not this host
+  carried?: true // a persistent task each dependant's executor starts where it runs: nothing ran here
   whereCores?: number // that machine's cores and memory (ExecuteResult.machine)
   whereMemoryBytes?: number
   outputs?: 'deferred' // outputs left in the remote store (`--cache-download=none`)

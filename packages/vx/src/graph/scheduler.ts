@@ -174,6 +174,8 @@ export interface TaskOutcome {
   /** Executor-reported placement label (`ExecuteResult.where`) — set only
    *  when the task ran somewhere other than this host: telemetry and the task's row. */
   where?: string
+  /** A persistent task each dependant's executor starts where it runs: nothing ran here, and it is no execution of its own. */
+  carried?: true
   /** The cores and memory of the machine `where` names (`ExecuteResult.machine`). */
   whereCores?: number
   whereMemoryBytes?: number

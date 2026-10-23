@@ -1864,6 +1864,7 @@ export interface TaskOutcome {
   notReady?: 'timeout' | 'exited' | 'spawn'
   inputMoved?: string
   where?: string
+  carried?: true
   whereCores?: number
   whereMemoryBytes?: number
   outputs?: 'deferred'
@@ -1923,6 +1924,7 @@ export interface TaskTelemetry {
   cpuMs?: number
   peakRssBytes?: number
   where?: string
+  carried?: true
   outputs?: 'deferred'
   attempts?: number
   blockedBy?: string

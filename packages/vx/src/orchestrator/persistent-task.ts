@@ -82,6 +82,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
       status: 'success',
       exitCode: 0,
       durationMs: 0,
+      carried: true,
       ...(hash === undefined ? {} : { hash }),
       wallclockStartNs,
       wallclockEndNs: wallclockStartNs,
