@@ -224,6 +224,8 @@ export async function join(
     redial = undefined
     nudge()
   }
+  /** The last socket that closed: its close handshake may not have ended. */
+  let dropped: Socket | undefined
   const adopt = (s: Socket): void => {
     socket = s
     s.onMessages = (messages) => {
@@ -241,6 +243,7 @@ export async function join(
       if (code === GONE) end(new RelayError(404, 'relay: unknown id'))
       if (code === NOT_PROTOCOL) end(new RelayError(502, `relay: ${why}`))
       if (socket === s) socket = undefined
+      dropped = s
       again()
       nudge()
     }
@@ -345,7 +348,9 @@ export async function join(
       // no socket, the relay loses this participant as one gone silent.
       // quiet: leaving: the socket's close is the answer either way
       if (s?.open === true) await s.request({ leave: true }).catch(() => undefined)
-      await Promise.all([s?.close(), dialing])
+      // One the relay's close frame dropped may still be in its handshake:
+      // Bun 1.4.4 fires the close only after it.
+      await Promise.all([(s ?? dropped)?.close(), dialing])
     },
   }
 }
