@@ -229,6 +229,11 @@ too: they format one run's result.
      in a new project was silence (`tests/watch-loop-members.test.ts`).
      With no lock at start the first cycle fails naming `vx lock` and
      the loop watches for the lock.
+   - A lock whose stat moved since a cycle began is that cycle's
+     event too, queued after the run: a re-lock landing mid-cycle had
+     its event on the way to a watcher the post-run `rearm` closed
+     (FSEvents' latency, a poller's tick), and the new lock ran
+     nothing until the next edit (macOS CI, 2026-10-23).
    - The same re-read follows a cycle started by a file that shapes
      the watched set (`shapesWatchedSet`): a project config (a task
      that starts or stops declaring `workspaceFiles` swaps the arm

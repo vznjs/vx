@@ -437,6 +437,15 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   }
   let windowOpened = 0
 
+  const lockAbs = path.join(workspaceRoot, LOCKFILE_NAME)
+  const lockStamp = (): string => {
+    try {
+      const st = fs.statSync(lockAbs)
+      return `${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`
+    } catch {
+      return ''
+    }
+  }
   const trigger = (label: string, abs: string): void => {
     if (!changes.pending.has(abs)) changes.pending.set(abs, label)
     if (running) return interruptIfWaiting()
@@ -461,6 +470,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   const runCycle = async (first: string | undefined, initial?: InitialCycle): Promise<void> => {
     try {
       let label: string | undefined = first
+      let lockAtRun = ''
       // The initial run is collected even after a stop: its server is the
       // loop's to stop.
       while (initial !== undefined || (label !== undefined && !stop.aborted)) {
@@ -473,6 +483,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // new package while its first cycle runs queues like any other; armed
             // only after, it fell in the gap and ran nothing (X-138). The re-read
             // after the run stays, for what the run itself changed.
+            lockAtRun = lockStamp()
             if (reread) await rearm(false)
             process.stdout.write(`\nchanged ${label}\n`)
             if (stop.aborted) break
@@ -498,6 +509,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             await before?.stop()
             if (cycle.refused !== undefined) sayNotice('error', 'vx watch', cycle.refused)
             changes.lastCycle = { start, end: Date.now() }
+            // A re-lock since this cycle began: the re-arm below can
+            // close the watcher its event was still on its way to (FSEvents'
+            // latency, a poller's tick), and the new lock ran nothing until
+            // the next edit (macOS CI, 2026-10-23).
+            if (lockStamp() !== lockAtRun) rootFileEvent(LOCKFILE_NAME)
           } catch (err) {
             // A re-run can fail catastrophically when the workspace
             // itself moved out from under us — e.g. the user deleted
