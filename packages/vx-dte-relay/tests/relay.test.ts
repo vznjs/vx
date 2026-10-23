@@ -122,6 +122,31 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     ])
   })
 
+  // Two agents joined a run at once on CI and each made it: the second
+  // replaced the first, whose agent the relay then never knew (2026-10-23).
+  it('puts agents that join a new run at once in one run', async () => {
+    const c = client()
+    // Bodies that arrive over the network, as a host's do: each join waits on its own.
+    const slow = (ms: number) =>
+      new Request(`http://relay/v1/runs/${R1}/join`, {
+        method: 'POST',
+        body: new ReadableStream({
+          async start(s) {
+            await Bun.sleep(ms)
+            s.enqueue(new TextEncoder().encode(JSON.stringify({ role: 'agent' })))
+            s.close()
+          },
+        }),
+      })
+    const agents = await Promise.all(
+      [10, 20, 30].map(async (ms) => ((await (await c.relay.fetch(slow(ms))).json()) as any).id),
+    )
+    const o = await c.join(R1, 'orchestrator')
+    const told: string[] = (await c.poll(R1, o)).map((m) => m.body.id)
+    expect(new Set(told)).toEqual(new Set(agents))
+    expect(told).toHaveLength(3)
+  })
+
   it('passes messages both ways, and an agent reaches only the orchestrator', async () => {
     const c = client()
     const o = await c.join(R, 'orchestrator')
