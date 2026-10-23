@@ -370,6 +370,8 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB
     const stopMs = performance.now() - t0
     // The worktrees go after vx exits, and still go.
     // What is left names itself, so a failure says which part stayed.
+    // Up to 60 s: removing 300k files outlasted 20 s on a CI agent busy
+    // with other suites (main, 2026-10-23), while the run had exited fast.
     const left = async (): Promise<string[]> => [
       ...(await readdir(tmp)).filter((d) => d.startsWith('vx-dte-')),
       ...Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
@@ -378,12 +380,12 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB
         .filter((l) => l.startsWith('worktree '))
         .slice(1),
     ]
-    for (let i = 0; i < 400 && (await left()).length > 0; i++) await Bun.sleep(50)
+    for (let i = 0; i < 1200 && (await left()).length > 0; i++) await Bun.sleep(50)
     expect({ left: await left(), fast: stopMs < 1000 }).toEqual({ left: [], fast: true })
   } finally {
     await rm(tmp, { recursive: true, force: true })
   }
-}, 90_000)
+}, 180_000)
 
 it('says why an agent never joined, and fails the run when none can', async () => {
   await writeFile(
