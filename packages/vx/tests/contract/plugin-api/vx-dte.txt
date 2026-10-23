@@ -41,6 +41,7 @@ export interface DteAdapter {
   live?(): boolean
   readonly keyless?: boolean
   runId?(): string | undefined
+  adopt?(agent: (id: string, size: string) => AgentSpawn): void
 }
 == type DteOptions (src/plugin.ts)
 export interface DteOptions {
