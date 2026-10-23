@@ -11,10 +11,13 @@ import type { LocalHistoryProvider, PluginCache, TaskResources } from '@vzn/vx'
 
 /**
  * How long an import may take. The run never waits on it (M, 2026-10-16:
- * it orders from local history and re-ranks when the import lands); only
- * the plugin's teardown does, so the rows land before the cache closes.
+ * it orders from local history and re-ranks when the import lands), and
+ * its teardown stops it (M, 2026-10-23: "without dte we should not wait
+ * for hisotry"). Only a plugin sizing the run by it (`ctx.refining()`,
+ * vx-dte) waits, this long at most: 500 ms on CI left a main run's 107
+ * tasks unmeasured, each asking for a whole worker (2026-10-23).
  */
-const IMPORT_DEADLINE_MS = 500
+const IMPORT_DEADLINE_MS = 5_000
 /** Commits walked back from the merge-base (and from HEAD on write) for a blob. */
 const WALK = 5
 const MAX_BLOB_BYTES = 1024 * 1024
@@ -164,12 +167,15 @@ export interface ImportArgs {
   readonly triedFile: string
   /** The run is on a branch: also import its last commit's blob, scoped. */
   readonly branch: boolean
+  /** Resolves when the run ends: the import stops, keeping nothing more. */
+  readonly stopped?: Promise<void>
 }
 
 /**
  * Import the merge-base's timings once per merge-base, and on a branch its
  * last commit's: each unless a row already carries that commit or its
- * tried file names it. Gives up after `IMPORT_DEADLINE_MS`. Resolves true
+ * tried file names it. Gives up after `IMPORT_DEADLINE_MS` or once
+ * `stopped`. Resolves true
  * when rows were added. The caller asks only when its forecast read lacked
  * some branch timing.
  */
@@ -188,8 +194,12 @@ export async function importTimings(args: ImportArgs): Promise<boolean> {
       resolve(false)
     }, IMPORT_DEADLINE_MS)
   })
+  const stopped = args.stopped?.then(() => {
+    late = true
+    return false
+  })
   try {
-    return await Promise.race([work.catch(() => false), deadline])
+    return await Promise.race([work.catch(() => false), deadline, ...(stopped ? [stopped] : [])])
   } finally {
     clearTimeout(timer)
   }

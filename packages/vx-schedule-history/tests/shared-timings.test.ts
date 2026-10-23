@@ -130,6 +130,8 @@ async function runPlugin(
     groups?: string[]
     during?: () => void
     refined?: ReadonlyMap<string, number>[]
+    /** The run ends before a promised refine lands; by default it outlasts it. */
+    short?: boolean
   },
 ): Promise<ReadonlyMap<string, number> | undefined> {
   const plugin = scheduleHistoryPlugin({ resources: false })
@@ -143,6 +145,7 @@ async function runPlugin(
     secret: () => Promise.reject(new Error('no secrets here')),
     forgetSecret: async () => {},
   })
+  const refines: Promise<void>[] = []
   const nodes = new Map(opts.ids.map((id) => [id, node(id)]))
   for (const id of opts.groups ?? [])
     nodes.set(id, { ...node(id), config: {} as TaskNode['config'] })
@@ -153,13 +156,16 @@ async function runPlugin(
     cache: shared,
     // Promised: the weights it resolves to, as core takes them.
     refine: (w) =>
-      void Promise.resolve(w).then((x) => {
-        if (x !== undefined) opts.refined?.push(x)
-      }),
+      void refines.push(
+        Promise.resolve(w).then((x) => {
+          if (x !== undefined) opts.refined?.push(x)
+        }),
+      ),
     onRefine: () => {},
     refining: async () => {},
   })
   opts.during?.()
+  if (opts.short !== true) await Promise.all(refines)
   await plugin.teardown!()
   return weights
 }
@@ -392,8 +398,23 @@ describe('shared timings', () => {
       triedFile: triedFile(),
       branch: false,
     })
-    expect(performance.now() - started).toBeLessThan(2_000)
+    expect(performance.now() - started).toBeLessThan(7_000)
     expect((await provider.p50sFor(['p#x'])).size).toBe(0)
+  }, 10_000)
+
+  // Owner, 2026-10-23: "without dte we should not wait for hisotry".
+  it("a run's end stops the import: its teardown waits on no remote", async () => {
+    commit()
+    git('checkout', '-q', '-b', 'feature')
+    commit()
+    const started = performance.now()
+    await runPlugin(spyCache({ hang: true }), {
+      ci: false,
+      branch: 'feature',
+      ids: ['p#x'],
+      short: true,
+    })
+    expect(performance.now() - started).toBeLessThan(1_000)
   })
 
   it('every task has current-branch history: no git spawn, no fetch', async () => {
