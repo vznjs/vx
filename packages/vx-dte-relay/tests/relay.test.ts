@@ -482,6 +482,42 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(await after.plug(R, o)).toBe(false)
   })
 
+  // A host restores its sockets at each wake: restored, a dead
+  // orchestrator's socket counted as heard, and its run's workers waited
+  // out their job's timeout (main, 2026-10-23).
+  it('loses an orchestrator whose restored socket is silent, and lets its workers go', async () => {
+    const store = memory()
+    const before = client({ store, timer: false })
+    const o = await before.join(R, 'orchestrator')
+    const a = await before.join(R, 'worker')
+    await before.poll(R, o)
+    await before.poll(R, a)
+    const joinedAt = Date.now()
+    const told: unknown[] = []
+    const dead = { send: () => {}, close: () => {} }
+    const live = {
+      send: (t: string) => void told.push(...(JSON.parse(t) as { messages: unknown[] }).messages),
+      close: () => {},
+    }
+    const wake = (ms: number) => {
+      const clock = Date.now
+      Date.now = () => joinedAt + ms
+      try {
+        const host = client({ store, timer: false }, before.provers)
+        host.relay.attach(K, o, dead, 0)
+        host.relay.attach(K, a, live, joinedAt + ms)
+        return host
+      } finally {
+        Date.now = clock
+      }
+    }
+    wake(50_000)
+    const host = wake(70_000)
+    host.relay.seen(K, a, joinedAt + 70_000)
+    later(host, 70_000)
+    expect(told).toEqual([{ from: 'relay', body: { type: 'closed' } }])
+  })
+
   // Each write is a row of a free host's 100 000 a day: a write per
   // participant per sweep spent them in about 40 CI runs (2026-10-23).
   it('writes a participant on a socket once, not at each sweep', async () => {

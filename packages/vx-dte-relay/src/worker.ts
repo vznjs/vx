@@ -166,7 +166,8 @@ export class RelayRun {
     state.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'))
     for (const ws of state.getWebSockets()) {
       const { key, id } = ws.deserializeAttachment()
-      if (!this.relay.attach(key, id, ws)) ws.close(GONE, 'gone')
+      const heard = state.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? 0
+      if (!this.relay.attach(key, id, ws, heard)) ws.close(GONE, 'gone')
     }
   }
 
