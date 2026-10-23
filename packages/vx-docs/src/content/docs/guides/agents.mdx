@@ -3,12 +3,10 @@ title: AI agents
 description: Let a coding agent run vx, read its answers as JSON, and branch on stable error codes. People get the same answers as text.
 ---
 
-import { Steps, Tabs, TabItem, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
+import { Steps, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
 
-vx is built to be run by agents as much as by people. An agent can ask
-what to run, run it, and learn why it failed, all as typed JSON, without
-scraping terminal output. People get the same answers, formatted for
-reading.
+An agent asks vx what to run, runs it, and learns why it failed, all as
+typed JSON. People get the same answers as text.
 
 ## Set up your agent
 
@@ -16,54 +14,34 @@ reading.
 
 1. **Install the vx skill**
 
-   One `SKILL.md` that teaches any coding agent to run tasks, read
-   failures and query the workspace as JSON:
+   One `SKILL.md` teaches any coding agent to run tasks, read failures
+   and query the workspace as JSON:
 
-   <Tabs>
-     <TabItem label="Any agent">
-       ```sh
-       bunx skills add vznjs/vx
-       ```
-     </TabItem>
-     <TabItem label="Claude Code, by hand">
-       Copy the skill your installed vx ships:
-
-       ```sh
-       mkdir -p .claude/skills/vx
-       cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
-       ```
-     </TabItem>
-   </Tabs>
+   ```sh
+   bunx skills add vznjs/vx
+   ```
 
 2. **Give it the docs**
 
-   Point the agent at [llms.txt](https://vznjs.github.io/vx/llms.txt): an
-   index of every page as markdown.
-   [llms-full.txt](https://vznjs.github.io/vx/llms-full.txt) is every docs
-   page in one file. Any page is also served raw beside its HTML: add `.md`
-   to its path, as in [quickstart.md](https://vznjs.github.io/vx/quickstart.md).
-
-   `vx docs <query>` searches the reference as your vx's version wrote it,
-   read from its release tag on GitHub, and prints the matching sections
-   whole; `--format json` gives `{query, hits}`.
+   [llms.txt](https://vznjs.github.io/vx/llms.txt) indexes every page as
+   markdown; [llms-full.txt](https://vznjs.github.io/vx/llms-full.txt) is
+   all of them in one file. Add `.md` to any page's path for its markdown.
+   `vx docs <query>` prints the matching reference sections for your vx's
+   version.
 
 3. **Let it run tasks**
 
-   The commands are the same as yours:
+   The same commands as yours:
 
    ```sh
    vx run build --all
    vx run test --affected=origin/main
    ```
 
-   Outside a terminal vx prints plain lines, with no live status region. A
-   run missing its task name does not open the picker without a TTY; it
-   fails and lists the tasks it found.
+   Outside a terminal vx prints plain lines. A run with no task name fails
+   and lists the tasks, instead of opening the picker.
 
 </Steps>
-
-The agent runs with your permissions, as you would; nothing sits between
-it and the shell.
 
 ## Every question has a command
 
@@ -83,19 +61,14 @@ it and the shell.
 
 ## Read answers as JSON
 
-`vx show`, `vx info`, `vx why`, `vx last`, `vx cache clean`,
-`vx lock --check` and `vx init --dry` take `--format json`. Each prints
-one JSON document to stdout, and every notice goes to stderr, so stdout
-always parses. Each shape is a JSON Schema shipped in the package
-(`node_modules/@vzn/vx/schemas/`), and every object closes its key set, so
-a new field is a schema change, never a surprise.
+Each `--format json` prints one JSON document to stdout; notices go to
+stderr, so stdout always parses. Every shape is a JSON Schema in the
+package's `schemas/`, with a closed key set.
 
-Under `--affected`, `--dry=json` gives each kept task an `affected`
-reason: the changed input, or the `dependsOn` chain that reached it. A
+`--dry=json` under `--affected` gives each task the reason it was kept. A
 failed row of `vx last --format json` carries the task's `output` and the
 files it names (`locations`). `vx why --format json` gives each changed
-part of the key as one entry, so an agent fixes the cause instead of
-re-running to find it:
+part of the key, so an agent fixes the cause instead of re-running:
 
 ```text
 {"kind":"file","name":"packages/app/src/a.ts","change":"changed","before":"a853d874…","after":"d14600f9…"}
@@ -109,9 +82,8 @@ re-running to find it:
 | `1`                   | A task failed or was skipped, or vx refused the command (see below).   |
 | `130` / `143` / `129` | Interrupted by SIGINT / SIGTERM / SIGHUP; vx stopped every task first. |
 
-When vx refuses a command asked for JSON, stdout carries one line with a
-stable code, and the exit code stays `1`. The code stays; the message may
-change. Branch on the code:
+A refused command asked for JSON prints one line with a stable code, and
+exits `1`. Branch on the code, not the message:
 
 ```sh frame="terminal"
 $ vx run biuld --all --dry=json
@@ -127,8 +99,7 @@ $ vx run biuld --all --dry=json
 | `VX_E_INTERNAL`     | A defect in vx: report it with the stack from stderr.  |
 
 `docs` links the code's section of the [CLI reference](../../cli/#error-codes);
-`vx docs VX_E_UNKNOWN_TASK` prints the same section, and
-`node_modules/@vzn/vx/schemas/error.json` describes the line.
+`vx docs VX_E_UNKNOWN_TASK` prints it.
 
 <Aside type="tip">
   A mistyped flag gets the right one back: `--concurency` hints
