@@ -487,6 +487,10 @@ real time in the run summary, and `@vzn/vx-ci` prints it.
     and takes the fewest N that end within 5% (5 s at least) of the best.
     That margin is spent once: later plans keep its deadline until new
     work is known. A task waiting on one that runs waits until it ends.
+    What is left, running tasks too, takes as many times its history as
+    the run's finished tasks took theirs (once they had 20 s of it; never
+    less): a task past its forecast would otherwise be planned to end now,
+    and a plan that thinks the run nearly done cancels the worker it asked.
     Before any worker can say what misses, the run counts as work each
     cached task whose inputs changed since HEAD's parent (`git diff
 HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or

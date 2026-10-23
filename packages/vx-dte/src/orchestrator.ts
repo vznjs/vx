@@ -1086,6 +1086,13 @@ export class Orchestrator {
     return least
   }
 
+  /** Each task a worker ran, how long it held the worker, by `forecast`'s ms (`slowdown`). */
+  finished(
+    forecast: (id: string) => number | undefined,
+  ): { took: number; forecast: number | undefined }[] {
+    return [...this.took].map(([id, t]) => ({ took: t.ms, forecast: forecast(id) }))
+  }
+
   /** `warmUpMs` of each size a worker this run started joined as. */
   warmUpsMs(): Map<string, number> {
     const out = new Map<string, number>()
