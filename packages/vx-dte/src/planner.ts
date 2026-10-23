@@ -424,7 +424,11 @@ export function plan(
           k.platform === w.platform,
       )
       const without = kept.filter((k) => k !== (twin ?? w))
-      if (simulate(tasks, without, how) <= bound) {
+      const end = simulate(tasks, without, how)
+      // Asked, it goes only when it would add nothing: within the margin,
+      // the next plan's estimates (a task's end, the run's booking) moved
+      // a second later and cancelled 7 asked one at a time (PR #4214).
+      if (twin === undefined ? end <= simulate(tasks, kept, how) : end <= bound) {
         kept = without
         if (twin === undefined) release.push(w.id)
       }

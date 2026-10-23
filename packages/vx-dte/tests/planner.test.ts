@@ -150,6 +150,19 @@ it('cancels a worker still starting that the plan ends as well without', () => {
   expect(plan(wide, [online, starting], [], WARM).release).toEqual([])
 })
 
+// PR #4214: each plan asked one worker for a run 5% over its best, and
+// the next, a second later, found it ended within the margin without it:
+// 7 asked and cancelled. Asked, a worker goes only when it adds nothing.
+it('keeps a starting worker that ends the run sooner, though within the margin', () => {
+  const online = worker('one', { idle: false, running: [{ cores: 4, memory: 1e8, endsIn: 1_000 }] })
+  const starting = worker('two', { at: 1_000, idle: false, starting: true })
+  const tasks = [task('a', 40_000, [], 4), task('b', 3_000, [], 4)]
+  // Without it the run ends 3 s later, within 5 s of its best: it stays.
+  expect(simulate(tasks, [online])).toBeLessThanOrEqual(simulate(tasks, [online, starting]) + 5_000)
+  expect(simulate(tasks, [online])).toBeGreaterThan(simulate(tasks, [online, starting]))
+  expect(plan(tasks, [online, starting], [], WARM).release).toEqual([])
+})
+
 it('waits a task on the running task it depends on', () => {
   const busy = worker('busy', {
     idle: false,
