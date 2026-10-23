@@ -517,7 +517,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   it needs it.
   `WorkerSpawn` is `{ run, relay, size, cpu, memory, index, id, workspaceRoot, env }`,
   with `memory` in bytes,
-  where `id` is the worker's name (`small#2`) and `env` holds the three
+  where `id` is the worker's name (`small#2`, numbered within its size) and `env` holds the three
   variables the worker reads.
 - `docker(options: DockerOptions)` starts workers as containers and a relay
   of its own on loopback. `DockerOptions` is `{ image, prepare? }`.
