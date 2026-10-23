@@ -32,7 +32,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
       const dir = await addProject(root, 'app', {
         config: `export default { tasks: { t: {
         exec: {
-          command: '(cat ${file} 2>/dev/null || echo default) > out/r.txt${after}',
+          command: '(cat 2>/dev/null < ${file} || echo default) > out/r.txt${after}',
           sandbox: { allow: { read: ${JSON.stringify(read)}, write: ${JSON.stringify(write)} } },
         },
         inputs: { files: ['conf/**'] }, cache: { outputs: { files: ['out/**'] } },

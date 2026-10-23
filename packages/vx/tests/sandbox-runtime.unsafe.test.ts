@@ -694,7 +694,7 @@ describe.skipIf(!available)(`sandbox-runtime`, () => {
               tasks: {
                 leak: {
                   exec: {
-                    command: 'cat ../secret/token.txt > out.txt',
+                    command: 'cat < ../secret/token.txt > out.txt',
                     sandbox: { allow: { read: ['.'], write: ['out.txt'] } },
                   },
                   inputs: { files: ['src/**'] }, cache: { outputs: { files: ['out.txt'] } },

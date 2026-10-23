@@ -50,7 +50,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
     })
 
     it('CONTROL: a probe outside the glob is reported', async () => {
-      const r = await runIn(`cat gone.txt 2>/dev/null; ${cp}`)
+      const r = await runIn(`cat 2>/dev/null < gone.txt; ${cp}`)
       expect(r.violations.map((v) => String(v.target))).toContain(
         path.join(dir, 'proj', 'gone.txt'),
       )

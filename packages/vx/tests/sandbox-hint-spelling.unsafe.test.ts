@@ -39,7 +39,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a sandbox hint spel
   })
 
   it('a read grant with a quote, as a JS string', async () => {
-    expect(await hint(`cat "../../it's.json"`)).toEqual([
+    expect(await hint(`cat < "../../it's.json"`)).toEqual([
       '`allow: { read: ["../../it\'s.json"] }`.',
     ])
   })

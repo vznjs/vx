@@ -1504,16 +1504,16 @@ function ownGroupCommand(
 }
 
 /**
- * What strace stops on: the reads, the execs, the access and stat probes
- * (a refused `./gen.sh || fallback` passed unreported), and what moves or
- * makes a process's cwd. The stat family too, though a stop per stat costs
- * a stat-heavy tool (oxlint 19%, `git status` 30%, 2026-10-08): a tool that
- * stats before it opens never opens a path the wall hid. Ubuntu 26's cat
- * (uutils) does, and every refused read it made passed unreported, a
- * fallback cached green (2026-10-23).
+ * What strace stops on: the reads, the execs and access probes (a refused
+ * `./gen.sh || fallback` passed unreported), and what moves or makes a
+ * process's cwd. Not the stat family: a stop per stat cost oxlint 19% and
+ * `git status` 30%, where the execs and probes cost nothing measurable, and
+ * vx's own no-op run 69% (pr-bench, 495 → 835 ms, 2026-10-23). So a tool
+ * that stats before it opens, as Ubuntu 26's cat (uutils) does, refused
+ * nothing the trace sees.
  */
 const TRACED_CALLS =
-  'trace=openat,execve,?access,faccessat,?faccessat2,statx,newfstatat,chdir,fchdir,clone,?clone3,?fork,?vfork'
+  'trace=openat,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork'
 
 /** The descriptor an in-sandbox strace writes its trace to (`ownGroupCommand`). */
 const TRACE_FD = 5
@@ -1976,10 +1976,11 @@ async function runSandboxedOnce(
   // share a stream. Skipped when strace isn't on PATH — bwrap still
   // enforces structurally; we just lose the structured violation list.
   //
-  // We trace `openat`, the read itself, plus `execve` and the access and
-  // stat probes (`TRACED_CALLS`). A probe's ENOENT counts only where the
-  // host has the path (`parseStraceViolations`), so a PATH walk past a
-  // missing `node_modules/.bin` entry reports nothing.
+  // We trace `openat`, the read itself, plus `execve` and the access
+  // probes (`TRACED_CALLS`). Not `statx` / `newfstatat`: a stop per stat
+  // is a tax on every stat-heavy task. A probe's ENOENT counts only where
+  // the host has the path (`parseStraceViolations`), so a PATH walk past
+  // a missing `node_modules/.bin` entry reports nothing.
   //
   // `--seccomp-bpf` is what makes that filter cheap: without it strace
   // ptrace-stops the tracee on EVERY syscall and discards the untraced

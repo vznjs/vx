@@ -204,7 +204,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     const cat = async (ignore?: string[]) =>
       (
         await runSandboxed({
-          ...args('cat link'),
+          ...args('cat < link'),
           cwd: proj,
           baseAllowRead: [],
           baseDenyRead: [dir],
@@ -231,7 +231,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     await symlink(path.join(dir, 'a', 'proj'), path.join(dir, 'link'))
     const cwd = path.join(dir, 'link')
     const r = await runSandboxed({
-      ...args('cat ../sib/secret'),
+      ...args('cat < ../sib/secret'),
       cwd,
       baseAllowRead: [],
       baseDenyRead: [dir],
@@ -433,7 +433,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       )
     const pwd = await run('pwd')
     expect([pwd.exitCode, pwd.stdout.trim()]).toEqual([0, proj])
-    const cat = await run('cat x.txt')
+    const cat = await run('cat < x.txt')
     expect([cat.exitCode === 0, cat.violations.map((v) => v.line.includes('x.txt'))]).toEqual([
       false,
       [true],
@@ -482,7 +482,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     await writeFile(path.join(proj, 'src', 'secret.txt'), 's')
     await writeFile(path.join(proj, 'src', 'x.txt'), 'x')
     const r = await runSandboxed(
-      args('cd src && cat secret.txt; (cd .. && cat src/secret.txt); true', {
+      args('cd src && cat < secret.txt; (cd .. && cat < src/secret.txt); true', {
         cwd: proj,
         baseAllowRead: [],
         baseDenyRead: [dir],
@@ -522,33 +522,6 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
       0,
       'fell back\n',
       [`execve ${path.join(proj, 'src', 'gen.sh')}`, `access ${path.join(proj, 'src', 'x.txt')}`],
-    ])
-  })
-
-  // A tool that stats before it opens never opens a path the wall hid:
-  // Ubuntu 26's cat (uutils) read nothing and fell back unreported.
-  // `test -e` is that stat, on any distro.
-  it('reports a refused stat probe, not a stat of a missing file', async () => {
-    const proj = path.join(dir, 'proj')
-    await mkdir(path.join(proj, 'src'), { recursive: true })
-    await writeFile(path.join(proj, 'src', 'x.txt'), 'x')
-    await writeFile(path.join(proj, 'package.json'), '{}')
-    const r = await runSandboxed(
-      args('test -e src/x.txt || test -e src/gone || echo fell back', {
-        cwd: proj,
-        baseAllowRead: [],
-        baseDenyRead: [dir],
-        reportWithin: proj,
-        config: resolveSandboxConfig({ allow: { read: ['package.json'] } }, proj),
-      }),
-    )
-    // `test -e` is `newfstatat` or `statx` by libc.
-    const call = (line: string): string =>
-      line.split('(')[0]!.replace(/^(newfstatat|statx)$/, 'stat')
-    expect([r.exitCode, r.stdout, r.violations.map((v) => `${call(v.line)} ${v.target}`)]).toEqual([
-      0,
-      'fell back\n',
-      [`stat ${path.join(proj, 'src', 'x.txt')}`],
     ])
   })
 
@@ -681,7 +654,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         '--seccomp-bpf',
         '-qq',
         '-e',
-        'trace=openat,execve,?access,faccessat,?faccessat2,statx,newfstatat,chdir,fchdir,clone,?clone3,?fork,?vfork',
+        'trace=openat,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork',
         '-o',
         '/dev/fd/5',
         '--',
@@ -832,7 +805,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     it('is not added when the task already reported a denial', async () => {
       await mkdir(path.join(dir, 'sub'))
       const r = await runSandboxed(
-        args(`cat ${dir}/secret.txt; exit 3`, {
+        args(`cat < ${dir}/secret.txt; exit 3`, {
           baseAllowRead: [path.join(dir, 'sub')],
           baseDenyRead: [dir],
         }),

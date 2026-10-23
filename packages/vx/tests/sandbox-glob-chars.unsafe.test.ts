@@ -159,7 +159,7 @@ describe.skipIf(!available || !linux)('a sandboxed read of a file named with * o
     const spy = spyOn(process.stderr, 'write').mockImplementation(() => true)
     try {
       const r = await runSandboxed({
-        command: "cat x.txt; cat aXb.txt qZ.txt 'a*b.txt' 'b\\s.txt'; true",
+        command: "for f in x.txt aXb.txt qZ.txt 'a*b.txt' 'b\\s.txt'; do cat < \"$f\"; done; true",
         cwd: proj,
         env: process.env,
         baseAllowRead: [],
