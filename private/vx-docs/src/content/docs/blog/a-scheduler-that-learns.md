@@ -13,16 +13,6 @@ The core scheduler orders tasks by the shape of the graph: a task that
 many others wait on goes first. That is a good guess with no data. After
 a few runs there is data, and `@vzn/vx-schedule-history` uses it.
 
-```mermaid
-flowchart LR
-  R[past runs] --> H[(history: time, CPU, peak memory)]
-  H --> O[order: longest remaining chain first]
-  H --> A[admit: pack by learned memory]
-  O --> S[the next run]
-  A --> S
-  style O stroke:#c6f84e,stroke-width:2px
-```
-
 ## Turn it on
 
 ```ts

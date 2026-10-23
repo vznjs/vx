@@ -13,15 +13,6 @@ vx is a [pipeline with seams](../pipeline-with-seams/). This post is the
 practical side: how to write a plugin today, and how to call vx from
 code.
 
-```mermaid
-flowchart LR
-  I[vx init --plugin cache] --> P[plugins/cache.ts]
-  I --> T[plugins/cache.test.ts]
-  P --> W[.vx/workspace.ts]
-  T --> B[bun test]
-  style P stroke:#c6f84e,stroke-width:2px
-```
-
 ## Start from a working plugin
 
 ```sh frame="terminal"

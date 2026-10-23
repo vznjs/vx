@@ -13,15 +13,6 @@ A coding agent cannot read a progress bar. It reads stdout, parses it and
 decides what to do next. If the answer is buried in a frame meant for
 human eyes, the agent guesses. vx is built so it never has to.
 
-```mermaid
-flowchart LR
-  A[agent] -->|vx last --format json| R[result on stdout]
-  A -->|vx last --failed --format json| F[failed output + file:line]
-  A -->|sqlite3 cache.db| H[run history]
-  A -->|llms.txt + SKILL.md| D[how to use vx]
-  style F stroke:#c6f84e,stroke-width:2px
-```
-
 ## The result on stdout, the logs on stderr
 
 `vx run` prints the run for people: a live region on a terminal, plain

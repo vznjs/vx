@@ -614,14 +614,16 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     // one-run-on-your-own-runners quotes one CI run and the DTE simulator,
     // each linked beside its table. first-task-sooner times vx alone with
     // VX_DEBUG_TIMING, waiting-on-the-network against a delayed stub
-    // cache and a-hit-is-a-file-copy its two store formats, each setup line
-    // under its table (2026-10-23).
+    // cache, a-hit-is-a-file-copy its two store formats and
+    // when-running-beats-downloading a throttled stub, each setup line under
+    // its table (2026-10-23).
     const OWN_RUNS = new Set([
       'vx-on-real-repos.md',
       'one-run-on-your-own-runners.md',
       'first-task-sooner.md',
       'waiting-on-the-network.md',
       'a-hit-is-a-file-copy.md',
+      'when-running-beats-downloading.md',
     ])
     for (const file of readdirSync(BLOG).filter((f) => /\.mdx?$/.test(f) && !OWN_RUNS.has(f))) {
       for (const line of readFileSync(path.join(BLOG, file), 'utf8').split('\n')) {

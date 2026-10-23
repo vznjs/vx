@@ -12,18 +12,6 @@ excerpt: 'Files, env vars, tool versions and upstream tasks go into the key. Out
 A cache is only as good as two lists: what it hashes, and what it hands
 back. vx makes you write both down, then guards each end.
 
-```mermaid
-flowchart LR
-  F[files] --> K((key))
-  E[env vars] --> K
-  R[tool versions] --> K
-  T[upstream tasks] --> K
-  K --> H{hit?}
-  H -->|outputs already on disk| N[restore nothing]
-  H -->|outputs missing| X[copy from the store]
-  style N stroke:#c6f84e,stroke-width:2px
-```
-
 ## What goes in
 
 ```ts

@@ -14,16 +14,6 @@ while the build runs is a window. `@vzn/vx-otel` sends as it goes, so the
 slow task shows up in Grafana or Honeycomb while you can still do
 something about it.
 
-```mermaid
-flowchart LR
-  S[run starts] -->|log| C[(OTLP collector)]
-  A[task A ends] -->|span, metrics, output tail| C
-  B[task B ends] -->|span, metrics, output tail| C
-  E[run ends] -->|run span, stage spans, run metrics| C
-  C --> D[dashboard, live]
-  style D stroke:#c6f84e,stroke-width:2px
-```
-
 ## Turn it on
 
 Declare the plugin and point the standard OTel variables at a collector.
