@@ -10,6 +10,7 @@ import {
   refuseUnknownOptions,
   type VxPlugin,
 } from '@vzn/vx'
+import path from 'node:path'
 
 export interface GitlabPluginOptions {
   /**
@@ -30,6 +31,18 @@ export function gitlab(options: GitlabPluginOptions = {}): VxPlugin | undefined 
   if (process.env['GITLAB_CI'] !== 'true') return undefined
   refuseUnknownOptions('gitlab()', options, GITLAB_PLUGIN_KEYS)
   return definePlugin(import.meta, {
+    commands: {
+      // In the project: GitLab's `cache: paths` keeps only what is under it.
+      setup: {
+        description: 'gitlab: install and prove the sandbox runtime on this job',
+        run: async (argv) =>
+          (await import('./setup.js')).runSetup(
+            'gitlab',
+            argv,
+            path.join(process.env['CI_PROJECT_DIR'] ?? process.cwd(), '.vx-setup-debs'),
+          ),
+      },
+    },
     config(_workspace, ctx) {
       if (options.cacheScope === false) return
       ctx.setBranch(gitlabBranch(process.env))

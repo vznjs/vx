@@ -128,17 +128,11 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # What a Linux runner needs before `vx run` executes a sandboxed task:
-      # the sandbox runtime's deps (bubblewrap, socat, strace, ripgrep) and the
-      # AppArmor userns restriction lifted. Every task this job runs declares
-      # `exec.sandbox`, and a declared sandbox that cannot be built is a hard
-      # error — so without this the compile tasks fail in 0 ms with "sandbox
-      # not available: ripgrep (rg) not found; bubblewrap (bwrap) not
-      # installed; socat not installed". That is exactly what stopped
-      # v0.0.20: the darwin job published its two packages and this job
-      # never reached `npm publish`. The action is the one place those deps
-      # are named; ci.yml and release.yml use the same one.
-      - uses: ./.github/actions/vx-runner
+      # The sandbox runtime, as @vzn/vx-ci sets it up. Every task this job
+      # runs declares `exec.sandbox`, and a declared sandbox that cannot be
+      # built is a hard error: without it v0.0.20's compile tasks failed in
+      # 0 ms and @vzn/vx never reached `npm publish`.
+      - run: bun packages/vx/src/bin.ts setup github
 
       - name: Check npm can publish with provenance, and stamp the version
         run: bun packages/vx/src/bin.ts run release.npm release.stamp --filter @vzn/vx

@@ -43,12 +43,9 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: bun install --frozen-lockfile
 
-      # What a Linux runner needs before `vx run` executes a sandboxed task:
-      # the sandbox runtime's deps (every task here declares `exec.sandbox`)
-      # and the AppArmor userns restriction Ubuntu 24 imposes lifted. Shared with ci.yml
-      # and npm.yml so the deps are named in ONE place — npm.yml not having
-      # them is what stopped v0.0.20's publish.
-      - uses: ./.github/actions/vx-runner
+      # The sandbox runtime every task here needs (`exec.sandbox`), as
+      # @vzn/vx-ci sets it up: npm.yml not having it stopped v0.0.20's publish.
+      - run: bun packages/vx/src/bin.ts setup github
 
       # Stamp the release version into packages/vx/package.json BEFORE
       # compiling — `src/version.ts` inlines THAT manifest under

@@ -5,8 +5,8 @@
 // reached the registry, while the macOS job had already published its two
 // platform packages. Every task in this repo declares `exec.sandbox` and a
 // declared sandbox that cannot be built is a hard error, so the rule is the
-// class: a Linux job that runs a vx task installs the runtime first, and
-// `.github/actions/vx-runner` is the single place that install is written.
+// class: a Linux job that runs a vx task installs the runtime first, by
+// @vzn/vx-ci's `vx setup github`, the one place that install is written.
 //
 // `.unsafe`: the workflows live at the repo root, which a sandboxed project
 // task may not read (the cross-project law).
@@ -16,7 +16,7 @@ import { describe, expect, it } from 'bun:test'
 
 const repo = path.resolve(import.meta.dir, '..', '..', '..')
 const workflowDir = path.join(repo, '.github', 'workflows')
-const RUNNER_ACTION = './.github/actions/vx-runner'
+const SETUP = 'bun packages/vx/src/bin.ts setup github'
 
 interface Step {
   uses?: string
@@ -60,7 +60,8 @@ for (const file of files) {
       continue
     }
     covered.push(`${file}#${name}`)
-    if (!steps.some((s) => s.uses === RUNNER_ACTION)) missing.push(`${file}#${name}`)
+    const at = steps.findIndex((s) => s.run === SETUP)
+    if (at === -1 || at > steps.findIndex(runsVxTask)) missing.push(`${file}#${name}`)
   }
 }
 describe('a Linux CI job that runs a vx task', () => {
@@ -72,16 +73,13 @@ describe('a Linux CI job that runs a vx task', () => {
     expect(runs).toEqual(['ci.yml#linux', 'ci.yml#binary-linux-arm64', 'ci.yml#macos'])
   })
 
-  it('installs the sandbox runtime through the shared action', () => {
+  it('sets up the sandbox runtime before its first vx task', () => {
     expect(missing).toEqual([])
   })
 
   it('gets the three binaries the availability probe names, plus strace', () => {
-    const action = readFileSync(
-      path.join(repo, '.github', 'actions', 'vx-runner', 'action.yml'),
-      'utf8',
-    )
-    const absent = ['bubblewrap', 'socat', 'strace', 'ripgrep'].filter((d) => !action.includes(d))
+    const setup = readFileSync(path.join(repo, 'packages', 'vx-ci', 'src', 'setup.ts'), 'utf8')
+    const absent = ['bubblewrap', 'socat', 'strace', 'ripgrep'].filter((d) => !setup.includes(d))
     expect(absent).toEqual([])
   })
 })
@@ -116,6 +114,7 @@ describe('a workflow `run:` step', () => {
       .filter(
         ({ run }) =>
           run !== 'bun install --frozen-lockfile' &&
+          run !== SETUP &&
           !/^bun packages\/vx\/src\/bin\.ts run [\w. -]+ --filter @vzn\/vx(?: --concurrency \d+)?$/.test(
             run,
           ),

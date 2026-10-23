@@ -1753,8 +1753,8 @@ and Sigstore, the GitHub-Actions variables npm reads, and `~/.npm`;
 `release.upload.<os>` reaches it and `uploads.github.com`.
 A dispatch with `ref` builds that ref's code, so it must hold these tasks.
 
-All Linux jobs go through `.github/actions/vx-runner` before any
-`vx run`: every task in this repo declares `exec.sandbox`, and a
+Every Linux job that runs a task runs `vx setup github` (`@vzn/vx-ci`)
+before its first `vx run`: every task in this repo declares `exec.sandbox`, and a
 declared sandbox whose runtime is missing is a hard error, not a
 downgrade — the compile tasks fail in 0 ms saying which of bubblewrap,
 socat and ripgrep is absent. v0.0.20 shipped its darwin packages and

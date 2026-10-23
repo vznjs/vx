@@ -108,7 +108,7 @@ describe('ci.yml', () => {
   // Every sandboxed task runs on an agent, which enforces it there.
   it('installs no sandbox runtime on a run', () => {
     for (const id of RUNS)
-      expect([id, doc.jobs[id]!.steps!.some((s) => s.uses?.includes('vx-runner'))]).toEqual([
+      expect([id, doc.jobs[id]!.steps!.some((s) => s.run?.includes(' setup ') === true)]).toEqual([
         id,
         false,
       ])
@@ -159,13 +159,13 @@ describe('ci.yml', () => {
   })
 
   // The remote cache serves every hit (owner, 2026-10-23: "we dont need
-  // to carry any vx cache anymore").
+  // to carry any vx cache anymore"): an agent keeps only the sandbox
+  // runtime's packages.
   it('carries no vx cache between runs', () => {
-    for (const file of ['ci.yml', 'vx-agent.yml'])
-      expect([file, readFileSync(path.join(dir, file), 'utf8').includes('actions/cache')]).toEqual([
-        file,
-        false,
-      ])
+    const cached = [...Object.values(doc.jobs), agent].flatMap((j) =>
+      j.steps!.filter((s) => s.uses?.startsWith('actions/cache')).map((s) => s.with?.['path']),
+    )
+    expect(cached).toEqual(['~/.cache/vx/setup-debs', '~/.cache/vx/setup-debs'])
   })
 
   // release-notes.yml was a workflow of its own for one task.
@@ -226,27 +226,18 @@ describe('vx-agent.yml', () => {
   })
 
   // The agent is what a developer would write (owner, 2026-10-23: "why vx
-  // runner runs twice?"): one runner step, and no mount of its own.
+  // runner runs twice?"): the runtime set up by the CI plugin before the
+  // agent starts (owner: "vx setup github", "we should do before"), its
+  // packages kept per runner image, and no mount of its own.
   it('is checkout, Bun, install, the sandbox runtime and the agent', () => {
     expect(agent.steps!.map((s) => s.uses?.split('@')[0] ?? s.run)).toEqual([
       'actions/checkout',
       'oven-sh/setup-bun',
       'bun install --frozen-lockfile',
-      './.github/actions/vx-runner',
+      'actions/cache/restore',
+      'bun packages/vx/src/bin.ts setup github',
+      'actions/cache/save',
       'bun packages/vx/src/bin.ts dte agent',
     ])
-  })
-
-  // Ubuntu 26 runners confine bwrap with this profile and have no
-  // aa-disable: every sandboxed task failed on its agent (2026-10-23).
-  // Ubuntu's way for one program (discourse.ubuntu.com/t/58007): a profile
-  // granting it `userns`, the restriction kept for every other.
-  it('gives bwrap a userns profile in place of the one that strips its nested namespace', () => {
-    const action = readFileSync(path.join(dir, '..', 'actions', 'vx-runner', 'action.yml'), 'utf8')
-    expect(action).toContain('sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict')
-    expect(action).toContain("'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}'")
-    expect(action).toContain('sudo apparmor_parser -r /etc/apparmor.d/bwrap')
-    expect(action).not.toContain('apparmor_restrict_unprivileged_userns=0')
-    expect(action).not.toContain('aa-disable')
   })
 })
