@@ -267,6 +267,11 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   title the PR `type(scope)!:` before CI starts. CI reads the title from
   the event that started the run, so a title fixed later needs a new push;
   a re-run reads the old one (#3724).
+- A change to a `tests/contract/plugin-api/*.txt` record (an option
+  turned required, a method's arguments) is a break too: mark the commit
+  `type(scope)!:` with a `BREAKING CHANGE:` footer, and run
+  `api-break.unsafe.test.ts` before merging. #4026 and #4029 were not,
+  and main went red until a later commit said so.
 - In a `--minify` compiled binary `import.meta.dir` and `import.meta.path`
   are the build machine's source paths, not `/$bunfs/…`: detect the
   binary with `Bun.main`. The run key memo walked a `src/` an installed
