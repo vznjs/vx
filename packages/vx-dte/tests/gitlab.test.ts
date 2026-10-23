@@ -246,3 +246,44 @@ it('says a played worker job that ended before its worker joined, and why', asyn
     await server.stop(true)
   }
 }, 20_000)
+
+// M, 2026-10-23: a remote fault is at least a warning. A job poll or a
+// cancel GitLab refused went unsaid.
+it('says each job poll and cancel GitLab refused, by status and body, once', async () => {
+  process.env['VX_DTE_GITLAB_TOKEN'] = 'glpat-test'
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const url = new URL(req.url)
+      if (url.pathname.endsWith('/pipelines/900/bridges'))
+        return Response.json([{ name: 'vx-workers', downstream_pipeline: { id: 901 } }])
+      if (url.pathname.endsWith('/pipelines/901/jobs'))
+        return Response.json([
+          { id: 3, name: 'vx-worker small#3' },
+          { id: 4, name: 'vx-worker small#4' },
+        ])
+      if (url.pathname.endsWith('/jobs/3/play')) return Response.json({})
+      if (url.pathname.endsWith('/jobs/3')) return new Response('bad gateway', { status: 502 })
+      return new Response('cannot cancel', { status: 500 })
+    },
+  })
+  process.env['CI_API_V4_URL'] = `http://127.0.0.1:${server.port}/api/v4`
+  process.env['CI_PROJECT_ID'] = '7'
+  try {
+    const said: string[] = []
+    const adapter = gitlab({ include: '.gitlab/vx.yml' })
+    adapter.report?.((m) => said.push(m))
+    await adapter.spawn({ id: 'small#3', exited: () => {} } as unknown as Parameters<
+      typeof adapter.spawn
+    >[0])
+    for (let i = 0; i < 150 && said.length === 0; i++) await Bun.sleep(100)
+    await adapter.close!()
+    expect(said).toEqual([
+      'gitlab(): reading job 3 failed: GET jobs/3: 502 bad gateway',
+      'gitlab(): cancelling job 4 failed: POST jobs/4/cancel: 500 cannot cancel',
+    ])
+  } finally {
+    await server.stop(true)
+  }
+}, 20_000)

@@ -17,6 +17,24 @@ export class RelayError extends Error {
 }
 
 /**
+ * A send the relay would not take, said by `warn` (2026-10-23: no fault is
+ * silent). One to a participant the relay no longer knows (404) is not:
+ * its loss reaches the other side as a notice of its own.
+ */
+export function unsent(
+  warn: (message: string) => void,
+  what: string,
+  to: string,
+): (err: unknown) => void {
+  return (err) => {
+    if (err instanceof RelayError && err.status === 404) return
+    warn(
+      `dte: sending ${what} to ${to} failed: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+}
+
+/**
  * A dropped socket's first redial waits up to this, doubling per failure
  * (full jitter) to half a heartbeat: the relay loses a participant three
  * heartbeats without one.
@@ -130,6 +148,7 @@ export async function join(
     })
     if (res.status === 204) return null
     // A host's own error page (a proxy's, an empty one) is no relay answer.
+    // quiet: the status names the refusal; a host's page is no relay answer
     const json = ((await res.json().catch(() => null)) ?? {}) as {
       error?: string
       retryAfterMs?: number
@@ -160,6 +179,7 @@ export async function join(
     base,
     query,
     await headers('GET', `${base}socket?${query}`, ''),
+    // quiet: a socket join that fails joins by request, whose refusal throws
   ).catch(() => undefined)
   if (socket?.joined !== undefined) ({ id, heartbeatMs } = socket.joined)
   else {
@@ -231,6 +251,7 @@ export async function join(
     const ms = Math.random() * Math.min(heartbeatMs / 2, FIRST_REDIAL_MS * 2 ** failures)
     redial = setTimeout(() => {
       dialing = dial()
+        // quiet: a failed redial dials again; past REPLY_MS the wait throws
         .catch(() => undefined)
         .then(async (s) => {
           redial = undefined
@@ -319,6 +340,7 @@ export async function join(
       const s = socket
       // The relay drops it and closes the socket, which is its answer. With
       // no socket, the relay loses this participant as one gone silent.
+      // quiet: leaving: the socket's close is the answer either way
       if (s?.open === true) await s.request({ leave: true }).catch(() => undefined)
       await Promise.all([s?.close(), dialing])
     },
@@ -351,6 +373,7 @@ function expiry(token: string | undefined): number {
       }
     ).exp
     return typeof exp === 'number' ? exp * 1000 : Infinity
+    // quiet: a token with no readable expiry is asked for again only when refused
   } catch {
     return Infinity
   }

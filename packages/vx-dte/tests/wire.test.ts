@@ -4,7 +4,7 @@
 
 import { afterEach, expect, it } from 'bun:test'
 import { createRelay, serveRelay, type RelayServer } from '@vzn/vx-dte-relay'
-import { join } from '../src/wire.js'
+import { join, RelayError, unsent } from '../src/wire.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
@@ -613,4 +613,18 @@ it('does not join again after a 4xx, and names the relay that refused it', async
     `cannot connect to the relay ${new URL(s.url).origin}: repository o/r is not in this relay's ALLOW`,
   )
   expect(asked).toBe(1)
+})
+
+// M, 2026-10-23: a remote fault is at least a warning. Every send the
+// orchestrator and a worker make unawaited dropped its error.
+it('a send the relay would not take is said; one to a participant it lost is not', () => {
+  const said: string[] = []
+  const warn = (m: string): void => void said.push(m)
+  unsent(warn, 'welcome', 'small#1')(new RelayError(503, 'relay: 503 overloaded'))
+  unsent(warn, 'exit', 'small#2')(new RelayError(404, 'relay: unknown id'))
+  unsent(warn, 'ran', 'the orchestrator')(new Error('socket closed'))
+  expect(said).toEqual([
+    'dte: sending welcome to small#1 failed: relay: 503 overloaded',
+    'dte: sending ran to the orchestrator failed: socket closed',
+  ])
 })

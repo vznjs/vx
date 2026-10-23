@@ -50,13 +50,52 @@ export function github(options: GithubOptions = {}): DteAdapter {
   let closed = false
   // Workers the run no longer needs: a run of only these is cancelled.
   const cancelled = new Set<string>()
+  // A poll or cancel that failed is said, each cause once (2026-10-23: no
+  // fault is silent): a job that ended badly went unseen, a run held runners.
+  let warn = (m: string): void => void process.stderr.write(`[vx] ${m}\n`)
+  const said = new Set<string>()
+  const runOf = (run: string): string => `workflow run ${run.slice(run.lastIndexOf('/') + 1)}`
+  const failed = (what: string, why: string): void => {
+    const m = `github(): ${what} failed: ${why}`
+    if (said.has(m)) return
+    said.add(m)
+    warn(m)
+  }
+  /** A cancel's answer: 202, or 409 for a run already finished; anything else is said. */
+  const cancelOf = async (run: string): Promise<void> => {
+    const res = await call(`${run}/cancel`, { method: 'POST' }).catch((err: unknown) => {
+      failed(`cancelling ${runOf(run)}`, err instanceof Error ? err.message : String(err))
+      return undefined
+    })
+    if (res === undefined || res.ok || res.status === 409) return
+    failed(
+      `cancelling ${runOf(run)}`,
+      `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
+    )
+  }
   const look = (ms: number): void => {
     watch = setTimeout(() => {
       void Promise.all(
         [...watched].map(async ([run, workers]) => {
-          const res = await call(`${run}/jobs?per_page=100`).catch(() => undefined)
-          if (res?.ok !== true) return
-          const { jobs = [] } = ((await res.json().catch(() => null)) ?? {}) as {
+          const res = await call(`${run}/jobs?per_page=100`).catch((err: unknown) => {
+            failed(`reading ${runOf(run)}'s jobs`, err instanceof Error ? err.message : String(err))
+            return undefined
+          })
+          if (res === undefined) return
+          if (!res.ok) {
+            failed(
+              `reading ${runOf(run)}'s jobs`,
+              `${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`,
+            )
+            return
+          }
+          const { jobs = [] } = ((await res.json().catch((err: unknown) => {
+            failed(
+              `reading ${runOf(run)}'s jobs`,
+              `no JSON: ${err instanceof Error ? err.message : String(err)}`,
+            )
+            return null
+          })) ?? {}) as {
             jobs?: {
               name: string
               status: string
@@ -146,12 +185,16 @@ export function github(options: GithubOptions = {}): DteAdapter {
   }
   return {
     keyless: true,
+    report(w) {
+      warn = w
+    },
     adopt(worker) {
       const temp = process.env['RUNNER_TEMP']
       if (!temp) return
       let text: string
       try {
         text = readFileSync(path.join(temp, STARTED_FILE), 'utf8')
+        // quiet: no list: this job started no worker
       } catch {
         return
       }
@@ -194,10 +237,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
         if (![...workers.keys()].every((id) => cancelled.has(id))) continue
         watched.delete(run)
         runs.splice(runs.indexOf(run), 1)
-        const p = call(`${run}/cancel`, { method: 'POST' })
-          .then(() => {})
-          .catch(() => {})
-          .finally(() => pending.delete(p))
+        const p = cancelOf(run).finally(() => pending.delete(p))
         pending.add(p)
       }
     },
@@ -208,12 +248,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
       clearTimeout(watch)
       await Promise.resolve() // a wave spawned this tick dispatches first
       await Promise.all(pending)
-      await Promise.all(
-        runs.splice(0).map((run) =>
-          // A cancel that fails leaves the run to its timeout, as before.
-          call(`${run}/cancel`, { method: 'POST' }).catch(() => {}),
-        ),
-      )
+      // A cancel that fails leaves the run to its timeout, and says so.
+      await Promise.all(runs.splice(0).map(cancelOf))
     },
   }
 }

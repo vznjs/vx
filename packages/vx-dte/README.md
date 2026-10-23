@@ -356,6 +356,11 @@ stops, instead of waiting for the job's timeout.
   the relay hears nothing from for two heartbeats is lost.
 - A run where no task began or ended for a minute warns what it waits
   on, a line a task: which worker, and whether it runs or saves.
+- A message the relay would not take is a warning naming it, its
+  receiver and the relay's answer; one to a participant the relay already
+  lost (404) is not, since its loss is reported on its own. A worker whose
+  OIDC token could not be checked is refused by that cause, not as a key
+  mismatch, and the run says so.
 
 ## What the run shows
 
@@ -535,7 +540,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   them. It names the run (`VX_DTE_RUN`, else the adapter's `runId()`),
   writes the workers for the orchestrator to `.vx/dte/plan.json` and,
   unless `VX_DTE_SECRET` is set, a secret to `.vx/dte/secret`.
-- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), render?(plan: DtePlan), live?(), runId?(), adopt?(worker) }`; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined.
+- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), render?(plan: DtePlan), live?(), runId?(), adopt?(worker), report?(warn) }`; `report` hands it the run's warning channel as the run starts, where `github()` and `gitlab()` say a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined.
   `DtePlan` is `{ run, relay, workspaceRoot, workers }`, each worker
   `{ id, size, cpu, memory, live }`: a `live` one the run `spawn`s when
   it needs it.

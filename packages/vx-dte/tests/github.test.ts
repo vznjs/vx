@@ -356,3 +356,38 @@ it('adopts the workers a step started, watching and stopping them as its own', a
     await rm(temp, { recursive: true, force: true })
   }
 }, 10_000)
+
+// M, 2026-10-23: a remote fault is at least a warning. A jobs poll or a
+// cancel GitHub refused went unsaid: a dead worker unseen, a run left to
+// hold runners until its timeout.
+it('says each poll and cancel GitHub refused, by status and body, once', async () => {
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const path = new URL(req.url).pathname
+      if (path.endsWith('/dispatches')) return Response.json({ workflow_run_id: 7 })
+      if (path.endsWith('/jobs')) return new Response('bad gateway', { status: 502 })
+      return new Response('cannot cancel', { status: 500 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+  })
+  try {
+    const said: string[] = []
+    const adapter = github()
+    adapter.report?.((m) => said.push(m))
+    void adapter.spawn(spawn('small#1', 'small'))
+    for (let i = 0; i < 80 && said.length === 0; i++) await Bun.sleep(100)
+    await adapter.close?.()
+    expect(said).toEqual([
+      "github(): reading workflow run 7's jobs failed: 502 bad gateway",
+      'github(): cancelling workflow run 7 failed: 500 cannot cancel',
+    ])
+  } finally {
+    await server.stop(true)
+  }
+}, 15_000)

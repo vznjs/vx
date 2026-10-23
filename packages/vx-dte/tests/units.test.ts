@@ -19,7 +19,7 @@ import { assign, fits, type Need } from '../src/dispatch.js'
 import { outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
 import { planTasks, tailsMs } from '../src/planner.js'
-import { join } from '../src/wire.js'
+import { join, RelayError } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
 import type { RunOrder } from '../src/messages.js'
 import { servedRelay } from './served-relay.js'
@@ -118,6 +118,47 @@ it('a worker with other tracked files than the run is refused', async () => {
         body: { type: 'refused', reason: 'checked out tree bbb, the run is on aaa' },
       },
     ])
+    await o.close()
+  } finally {
+    await served.stop()
+  }
+})
+
+// M, 2026-10-23: a fault is at least a warning. The orchestrator dropped
+// every send the relay would not take; a refusal lost left the worker idle.
+it('a send to a worker the relay would not take is said', async () => {
+  const served = servedRelay()
+  try {
+    const me = await join(served.url, R, 'orchestrator', null, undefined)
+    const said: string[] = []
+    const o = new Orchestrator({
+      me: {
+        id: me.id,
+        heartbeatMs: me.heartbeatMs,
+        poll: (signal) => me.poll(signal),
+        remove: (id) => me.remove(id),
+        leave: () => me.leave(),
+        send: () => Promise.reject(new RelayError(503, 'relay: 503 overloaded')),
+      },
+      root: '/ws',
+      tree: 'aaa',
+      nodes: () => undefined,
+      need: () => ({ cores: 1, memory: 0 }),
+      artifacts: fakeArtifacts().artifacts,
+      cacheFacts: async () => ({ refs: [], lent: {} }),
+      run: R,
+      keyOf: () => undefined,
+      warn: (m) => said.push(m),
+    })
+    const worker = await join(
+      served.url,
+      R,
+      'worker',
+      { v: 1, cores: 1, memory: 1, tree: 'bbb' },
+      undefined,
+    )
+    for (let i = 0; i < 40 && said.length === 0; i++) await Bun.sleep(50)
+    expect(said).toEqual([`dte: sending refused to ${worker.id} failed: relay: 503 overloaded`])
     await o.close()
   } finally {
     await served.stop()

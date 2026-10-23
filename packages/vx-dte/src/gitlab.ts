@@ -37,11 +37,23 @@ export function gitlab(options: GitlabOptions): DteAdapter {
   const watched = new Map<number, WorkerSpawn>()
   let watch: ReturnType<typeof setTimeout> | undefined
   let closed = false
+  // A poll or cancel that failed is said, each cause once (2026-10-23).
+  let warn = (m: string): void => void process.stderr.write(`[vx] ${m}\n`)
+  const said = new Set<string>()
+  const failed = (what: string) => (err: unknown) => {
+    const why = (err instanceof Error ? err.message : String(err)).replace(/^gitlab\(\): /, '')
+    const m = `gitlab(): ${what} failed: ${why}`
+    if (!said.has(m)) {
+      said.add(m)
+      warn(m)
+    }
+    return undefined
+  }
   const look = (t: string, ms: number): void => {
     watch = setTimeout(() => {
       void Promise.all(
         [...watched].map(async ([id, a]) => {
-          const j = (await api(t, 'GET', `jobs/${id}`).catch(() => undefined)) as
+          const j = (await api(t, 'GET', `jobs/${id}`).catch(failed(`reading job ${id}`))) as
             | { status?: string; failure_reason?: string }
             | undefined
           if (j?.status === undefined || !ENDED.has(j.status)) return
@@ -58,6 +70,9 @@ export function gitlab(options: GitlabOptions): DteAdapter {
   }
   return {
     live: () => token() !== undefined,
+    report(w) {
+      warn = w
+    },
 
     // A live worker's job, played in the child pipeline; the others the
     // plan started.
@@ -83,11 +98,13 @@ export function gitlab(options: GitlabOptions): DteAdapter {
       clearTimeout(watch)
       const t = token()
       if (t === undefined || jobs === undefined) return
-      const all = await jobs.catch(() => new Map<string, number>())
+      const all = (await jobs.catch(failed('listing the worker jobs'))) ?? new Map<string, number>()
       await Promise.all(
         [...all]
           .filter(([name]) => !played.has(name))
-          .map(([, id]) => api(t, 'POST', `jobs/${id}/cancel`).catch(() => undefined)),
+          .map(([, id]) =>
+            api(t, 'POST', `jobs/${id}/cancel`).catch(failed(`cancelling job ${id}`)),
+          ),
       )
     },
 

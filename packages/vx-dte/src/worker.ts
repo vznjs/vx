@@ -32,7 +32,7 @@ import {
 } from './messages.js'
 import { names, outputFiles } from './outputs.js'
 import { sealWorker, type Proof } from './seal.js'
-import { join, RelayError } from './wire.js'
+import { join, RelayError, unsent as unsentBy } from './wire.js'
 
 /** Names whose value is this machine's, never the orchestrator's. */
 const HOST_ENV = [
@@ -137,6 +137,19 @@ export async function runWorker(opts: {
     await me.send('orchestrator', { type: 'end', task: m.task, key, result, load: load.now() })
   }
 
+  // A message the relay would not take is said, each kind once (2026-10-23):
+  // a lost `ran` or `held` left the run waiting on this worker for nothing.
+  const said = new Set<string>()
+  const unsent = (what: string): ((err: unknown) => void) =>
+    unsentBy(
+      (m) => {
+        if (said.has(what)) return
+        said.add(what)
+        ui.print('err', ui.status('warn', 'vx dte worker', m))
+      },
+      what,
+      'the orchestrator',
+    )
   /** Runs a task the orchestrator sent: it fits what this worker has free. */
   const start = (m: RunOrder): void => {
     let ran = false
@@ -145,7 +158,7 @@ export async function runWorker(opts: {
       ran = true
       void me
         .send('orchestrator', { type: 'ran', task: m.task, load: load.now() })
-        .catch(() => undefined)
+        .catch(unsent('ran'))
     }
     const p = runTask(m, done)
       .catch(async (err: unknown) => {
@@ -153,7 +166,7 @@ export async function runWorker(opts: {
         ui.print('err', ui.status('error', m.task, `could not run: ${reason}`))
         await me
           .send('orchestrator', { type: 'fault', task: m.task, reason })
-          .catch(() => undefined)
+          .catch(unsent('fault'))
       })
       .finally(() => work.delete(p))
     work.add(p)
@@ -184,7 +197,7 @@ export async function runWorker(opts: {
     // Not awaited: the task does not wait on the relay to say it began.
     void me
       .send('orchestrator', { type: 'start', task: m.task, load: load.now() })
-      .catch(() => undefined)
+      .catch(unsent('start'))
     try {
       const differs = await runtimeDiffers(m)
       if (differs !== undefined) {
@@ -214,6 +227,7 @@ export async function runWorker(opts: {
             })
           present.set(d.key, got)
           holds.set(d.key, names(d.project, d.outputs))
+          // quiet: awaited below, where its error is the task's fault
           got.catch(() => present.delete(d.key))
         }
         await got
@@ -283,6 +297,7 @@ export async function runWorker(opts: {
       )
       // A bind the task never wrote is not its output.
       for (const p of sb?.placeholders ?? [])
+        // quiet: a local stat; a missing bind is not an output
         if ((await lstat(p.path).catch(() => undefined))?.size === 0)
           await rm(p.path, { force: true })
       // Its violations name the orchestrator's paths. As JSON first: the swap
@@ -312,7 +327,7 @@ export async function runWorker(opts: {
     if (running.size === 0) return
     void me
       .send('orchestrator', { type: 'held', running: [...running.keys()], load: load.now() })
-      .catch(() => undefined)
+      .catch(unsent('held'))
   }, HELD_EVERY * me.heartbeatMs)
   try {
     for (;;) {
@@ -418,6 +433,7 @@ function available(): number {
   try {
     const m = /^MemAvailable:\s+(\d+) kB$/m.exec(readFileSync('/proc/meminfo', 'utf8'))
     if (m !== null) return Number(m[1]) * 1024
+    // quiet: no /proc: the machine's total memory stands
   } catch {
     // Not Linux.
   }
