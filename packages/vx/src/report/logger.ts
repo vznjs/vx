@@ -812,6 +812,8 @@ export function defaultLogger(
       if (node.config.exec?.persistent !== undefined && !persistentTails.has(node.id)) {
         persistentTails.set(node.id, { node, out: createTail(), err: createTail() })
       }
+      // The rows are the status region's; with none, nothing reads them.
+      if (statusDead) return
       const slot: WorkerSlot = { id: node.id, startedMs: Date.now() }
       // A blocked task starts in the row that held it; another takes a free
       // row, else the last held one, whose task moves to the next free row.
@@ -1045,11 +1047,13 @@ export function defaultLogger(
         }
         // Free the task's slot; the longest-waiting queued task
         // (if any) takes it over, keeping lowest-index-first reuse.
-        const si = slots.findIndex((s) => s !== null && s.id === node.id)
-        if (si >= 0) slots[si] = slotQueue.shift() ?? null
-        else {
-          const qi = slotQueue.findIndex((s) => s.id === node.id)
-          if (qi >= 0) slotQueue.splice(qi, 1)
+        if (!statusDead) {
+          const si = slots.findIndex((s) => s !== null && s.id === node.id)
+          if (si >= 0) slots[si] = slotQueue.shift() ?? null
+          else {
+            const qi = slotQueue.findIndex((s) => s.id === node.id)
+            if (qi >= 0) slotQueue.splice(qi, 1)
+          }
         }
         const bucket = cacheBucketOf(outcome)
         if (bucket !== undefined) {
