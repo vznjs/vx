@@ -117,6 +117,17 @@ source, id)`, exact however old the rows. A run learns its branch once
 `p99DurationMs`, the rates and the resource maxima stay over the
 window. `tests/history-forecast-branch.test.ts`.
 
+A reader given the run's definitions (`taskDefinitions`, the fourth
+argument) reads only the rows of each task as it is now. Every row
+carries the task's definition: an xxh3 of its id, command and
+`env.define` (`graph/definition.ts`). A task whose command or defines
+changed under the same name starts over (M, 2026-10-23); editing its
+inputs, outputs, cache, sandbox grants, timeout, description or
+dependencies keeps its history. An imported timing carries the
+definition it was taken of (the blob's `defs`); a row of none (a blob
+shared before definitions were kept) is read by every reader, or a PR's
+first run would have read every task unmeasured. `tests/history-definition.test.ts`.
+
 ## Who reads it
 
 - The live region's end-of-run forecast and each running row's usual

@@ -300,10 +300,8 @@ export interface TaskExecutor {
    *
    * `missed`: of `remaining`, those whose keys the run's up-front probe
    * found in no store (each store asked answered for every key), or, when
-   * the index keeps a remote's hits, those with no kept hit: they will
-   * run. The run's background probe revises both sets: a kept hit it calls
-   * gone comes back in, missed, and a miss it finds held leaves. The rest
-   * may still restore, or were not probed (a key an upstream's outputs can
+   * the remote has no batch probe, those the index keeps no hit of: they
+   * will run. The rest may still restore, or were not probed (a key an upstream's outputs can
    * change). The same set each call, changed in place.
    */
   demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
@@ -320,6 +318,13 @@ export interface TaskExecutor {
    * sink is on. A throw reports none.
    */
   machines?(): readonly MachineReport[]
+  /**
+   * Its own Chrome-trace events for `vx run --profile` (the machines it ran
+   * tasks on, in time), asked once at the end, only when the flag is set.
+   * `ts` is in microseconds of `performance.now()`; `pid` from 1, which
+   * the run moves past its own process. A throw adds none.
+   */
+  profile?(): readonly Record<string, unknown>[]
   /**
    * Where a task it was handed runs (`small#2`), for the live row; asked
    * per frame. `null` while it holds the task for a machine to begin it:

@@ -32,7 +32,7 @@ the browser, not a consumer of its API, and
 | `private/vx-dte-relay-worker`  | vznjs's own relay deploy: `@vzn/vx-dte-relay`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                               |
 
 Core never imports a sibling package. The integrations reach core
-through two seams: the public API (49 runtime symbols, a deliberate
+through two seams: the public API (50 runtime symbols, a deliberate
 snapshot) and the plugin capabilities (below).
 
 ## Module map
@@ -638,6 +638,7 @@ transaction (`recordRunBundle`), one row per real task (hits included) to the
 | `placement`                               | where an executor ran it (`small#1`, `TaskExecutor.running`); NULL = here (v44) |
 | `placement_cores` / `placement_memory`    | that machine's cores and memory bytes (v44)                                     |
 | `keyless_by`                              | the task with no `inputs` its key folded; it never read or saved (v46)          |
+| `def`                                     | the task's definition (command + `env.define`), which history reads by (v48)    |
 | `wallclock_start_ns` / `wallclock_end_ns` | hrtime ns relative to run t=0                                                   |
 | `cache_hit`                               | convenience boolean (derivable from status)                                     |
 | `attempts`                                | attempts a retried task took (> 1); NULL for a once-run task                    |

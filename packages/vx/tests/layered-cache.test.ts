@@ -414,6 +414,20 @@ describe('LayeredCache', () => {
     expect(await layered.remoteHasMany(['h-a'])).toBeNull()
   })
 
+  // Main f71b377 (2026-10-23): no batch answer, and the run planned as if
+  // nothing were held. Asked key by key, the answer is complete; one
+  // failed probe leaves it unknown, never a miss.
+  it('remoteHasEach() asks a remote with no batch answer each key; a failure is no answer', async () => {
+    delete (remote.layer as { hasMany?: unknown }).hasMany
+    remote.store.set('h-a', new Uint8Array([1]))
+    const layered = makeLayered()
+    expect([...((await layered.remoteHasEach(['h-a', 'h-b'], 4)) ?? new Map()).keys()]).toEqual([
+      'h-a',
+    ])
+    remote.failAll = true
+    expect(await makeLayered().remoteHasEach(['h-a', 'h-b'], 4)).toBeNull()
+  })
+
   it('remoteHasMany() returns null and reports the error when hasMany throws', async () => {
     remote.failAll = true
     const errors: Error[] = []

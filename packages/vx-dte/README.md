@@ -266,7 +266,7 @@ CI/CD variable both `vx-plan` and `vx` see) to spawn live: the plan then
 starts with the run only the workers its start keeps busy, and writes the
 others as `when: manual` jobs. It reads that from the run's own graph
 (`vx run <its args> --dry=json`) and history, so give `vx dte plan` the
-run's selection; a task with no history takes a whole worker. The run plays one when its work needs it and cancels
+run's selection; a task with no history counts as `unmeasured` says. The run plays one when its work needs it and cancels
 the ones it never played when it ends. A played job that fails before
 its worker joins fails the run's wait for it, so the run starts another or
 stops, instead of waiting for the job's timeout.
@@ -286,8 +286,8 @@ stops, instead of waiting for the job's timeout.
   shard idle for a second then uses all its cores. A command that ended
   frees its cores while its outputs save. Every
   task sent begins at once; none waits in a worker's queue. A task asking
-  a whole worker, or bigger than any, runs alone on an idle one (a whole
-  worker for a task with no history). The first such task waiting holds
+  a whole worker, or bigger than any, runs alone on an idle one (one that
+  filled its worker last time). The first such task waiting holds
   the worker that empties soonest: no task after it is sent there, so it
   is not passed over again and again.
 - A task naming `exec.platforms` runs only on a worker of the platform
@@ -417,29 +417,48 @@ its time online, busy and idle; its CPU peak and average in cores and
 the cores the run booked for the tasks it was running, on average (a
 booked from a task's start to its command's end); its cpu utilization (the core-time its
 tasks used over the core-time it had); its memory peak and average, when its tasks reported any; and, for a worker, the messages and
-bytes the run sent it and received from it. The `asked` line says each
+bytes the run sent it and received from it. The `probe` line says when
+core's cache probe answered, how many tasks it left to run (held in no
+cache, or not answered for) and how many of them it found in none. The `asked` line says each
 time the run asked for workers: how many, when, for how many tasks that
-missed, how many of them with a measured need (an unmeasured one books a
-whole worker), and when its plan ended then. The first ask
+missed, how many of them with a measured need (an unmeasured one counts
+as `unmeasured`), and when its plan ended then. The first ask
 waits for the needs another plugin fetches (`ctx.refining()`), such as
-`@vzn/vx-schedule-history`'s default-branch timings. The `total` line is the cpu utilization of every
-machine together:
+`@vzn/vx-schedule-history`'s default-branch timings. The `unmeasured`
+line names the tasks the first ask had no measure of, and a worker that
+ran two tasks or fewer names them on its row. The `total` line is the cpu utilization of every
+machine together, and the share of their history the run's tasks used:
 
 ```
             small#1  stopped  5 done · warm-up 0.2s
                      declared 4c/14G · actual 4c/14G
                      online 12.1s · busy 9.8s · idle 2.3s
-                     cpu peak 3.6 · avg 2.4 cores · expected 3.8 · cpu utilization 61%
+                     cpu peak 3.6 · used avg 2.4 cores · booked avg 3.8 · cpu utilization 61%
                      memory peak 1.2 GB · avg 640.0 MB
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
-            asked    1 at 0.0s for 4 cores, 5 tasks (5 measured)
+            probe    at 0.4s: 5 tasks left to run, 5 known misses
+            asked    1 at 0.5s for 5 tasks (5 measured), plan 12.0s
             total    cpu utilization 58%
 ```
+
+`vx run --profile[=<path>]` adds the run in time to the profile it
+writes (open it in https://ui.perfetto.dev or `chrome://tracing`).
+Each worker is a process: its first row holds its warm-up (split, when it
+says when its `vx` started, into its machine's start and vx's boot), its
+idle stretches, how it ended and a `cores` counter of the cores booked
+and used at once; each task takes the first lane free over its time
+there, from its send through restoring its dependencies, its command
+and its save, with its exit code, duration, CPU time and booked cores.
+The `orchestrator` process holds the cache probe, each ask for workers,
+stalls, the time each task waited for room, and each restore. Times are
+the orchestrator's: when it heard. Without `--profile` nothing is
+written. On CI, upload the file as an artifact; this repo's `ci.yml`
+does and links it from the job summary.
 
 ## API
 
 - `dte(options: DteOptions)` is the plugin. `DteOptions` is
-  `{ workers?, adapter?, relay?, local?, token?, scheduler? }`:
+  `{ workers?, adapter?, relay?, local?, token?, scheduler?, unmeasured? }`:
   - `workers` names each `WorkerSize`, `{ cpu, memory, max?, platform? }`: its cores
     and memory (bytes, or `'8GB'`, `'512MiB'`), which the run counts on
     when it starts one, until the worker reports what its machine has,
@@ -462,8 +481,10 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     Each task core's up-front cache probe found in no store
     (`TaskExecutor.demand`'s `missed`) counts as work too, the moment the
     probe answers.
-    It scales each task's cores by what the workers use over what the run
-    booked, as placing by load packs them.
+    A measured task books its cores times the share of their history the
+    run's finished tasks used (once they used a minute of core-time; never
+    under two thirds), so a worker's bookings may reach 1.5 times its
+    cores when tasks use less than history says; plans book the same.
     A worker the plan needs later starts when its warm-up nears. An idle
     worker leaves when the plan still ends in that margin without it, or,
     when its next task is two warm-ups away, with one started in its place
@@ -472,8 +493,8 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     stops it before its setup if it can (`github()` cancels its workflow
     run once no worker in it is needed), and one that joins anyway is told
     to exit. The same signal changes nothing. The
-    run ends: a task the history has not measured runs alone on a worker;
-    one that used all of its worker's cores or memory (90%) last time runs
+    run ends: a task the history has not measured books one free core on
+    any worker (`unmeasured` sizes the run); one that used all of its worker's cores or memory (90%) last time runs
     alone on the smallest bigger size, which the run starts for it. Each
     run's history keeps where every task ran and that machine's size, so
     sizing improves run by run.
@@ -482,6 +503,11 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   - `relay` is the relay's URL; absent, the adapter's own.
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`). It
     is asked again a minute before the token's `exp`, when it has one.
+  - `unmeasured`, `{ cpu, memory }` (default 2 cores, `'4GB'`), is what a
+    task with no measure counts for when the run decides how many workers
+    to start: a new task, or one over before the Linux sandbox's first
+    look (250 ms), which leaves no CPU. It books one free core on any
+    worker, so it waits for no worker of its own.
   - `scheduler` (a partial `Strategy`) picks each layer of how the run schedules; a layer left
     out is the default (first named):
     - `order`, which waiting task goes first: `critical-path` (the
@@ -515,7 +541,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   it needs it.
   `WorkerSpawn` is `{ run, relay, size, cpu, memory, index, id, workspaceRoot, env }`,
   with `memory` in bytes,
-  where `id` is the worker's name (`small#2`) and `env` holds the three
+  where `id` is the worker's name (`small#2`, numbered within its size) and `env` holds the three
   variables the worker reads.
 - `docker(options: DockerOptions)` starts workers as containers and a relay
   of its own on loopback. `DockerOptions` is `{ image, prepare? }`.

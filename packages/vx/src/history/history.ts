@@ -110,7 +110,36 @@ export class LocalHistoryProvider implements HistoryProvider {
     readonly recent: number = DEFAULT_RECENT,
     /** The run's branch (`currentBranch`); undefined: a forecast reads every branch's timings. */
     private readonly branch?: string | null,
+    /**
+     * Each task's definition (`taskDefinitions`): given, a task reads only
+     * the rows of it as it is now, and a task not in it reads none. A row
+     * of no definition (timings shared before definitions were kept) is
+     * read: dropping them left a PR's run with no task measured (#4150).
+     */
+    private readonly defs?: ReadonlyMap<string, string>,
   ) {}
+
+  /** `r.def` in a SELECT and GROUP BY when rows are matched to definitions. */
+  private get byDef(): string {
+    return this.defs === undefined ? '' : ', r.def'
+  }
+
+  /** Whether a row of `id` under `def` is the task as it is now. */
+  private current(id: string, def: string | null | undefined): boolean {
+    return this.defs === undefined || def == null || this.defs.get(id) === def
+  }
+
+  /** A task id's `[project, task, def?]`, the JSON a statement matches rows by. */
+  private keyOf(id: string): string[] {
+    const [project, task] = splitTaskId(id)
+    if (this.defs === undefined) return [project, task]
+    return [project, task, this.defs.get(id) ?? '']
+  }
+
+  /** The condition on a `task_durations` row's `def`, against `j.value ->> 2`. */
+  private get durationDef(): string {
+    return this.defs === undefined ? '' : 'AND (def IS NULL OR def = j.value ->> 2)'
+  }
 
   /**
    * The window is the last `recent` INVOCATIONS, read as one rowid slice.
@@ -150,7 +179,7 @@ export class LocalHistoryProvider implements HistoryProvider {
     const sql = `
       SELECT
         r.project,
-        r.task,
+        r.task${this.defs === undefined ? '' : ', r.def AS def'},
         COUNT(*) AS total,
         SUM(CASE WHEN r.status IN ${PASS_STATUSES} THEN 1 ELSE 0 END) AS successes,
         SUM(CASE WHEN r.cache_hit = 1 THEN 1 ELSE 0 END) AS hits,
@@ -175,11 +204,12 @@ export class LocalHistoryProvider implements HistoryProvider {
       -- since contributes nothing.
       LEFT JOIN entries e ON r.cache_hit = 1 AND e.hash = r.hash
       WHERE r.id >= ? AND ${EXECUTED_RUNS_SQL}
-      GROUP BY r.project, r.task
+      GROUP BY r.project, r.task${this.byDef}
     `
     type Row = {
       project: string
       task: string
+      def?: string | null
       total: number
       successes: number
       hits: number
@@ -192,9 +222,10 @@ export class LocalHistoryProvider implements HistoryProvider {
     // Every pair in the slice is grouped (the slice is bounded, so this is
     // cheap) and the asked-for ones are picked out here — a per-row IN-list
     // probe in SQL cost more than the grouping it would have saved.
-    const rows = (this.db.query(sql).all(floor) as Row[]).filter(
-      (r) => wanted === null || wanted.has(`${r.project}#${r.task}`),
-    )
+    const rows = (this.db.query(sql).all(floor) as Row[]).filter((r) => {
+      const id = `${r.project}#${r.task}`
+      return (wanted === null || wanted.has(id)) && this.current(id, r.def)
+    })
 
     // The flakiness signal needs per-key outcomes, which the aggregate above
     // folded away — one more pass over the slice, only for the pairs whose
@@ -264,11 +295,13 @@ export class LocalHistoryProvider implements HistoryProvider {
     sha: string,
     timings: ReadonlyMap<string, number>,
     needs: ReadonlyMap<string, TaskResources> = new Map(),
+    /** Each task's definition when it was timed (`taskDefinition`). */
+    defs: ReadonlyMap<string, string> = new Map(),
   ): void {
     const insert = this.db.query(
       `INSERT OR IGNORE INTO task_durations(project, task, source, sha, duration_ms, recorded_at,
-         cpu_parallelism, peak_rss_bytes, saturated_cores, saturated_memory_bytes)
-       VALUES (?, ?, 'remote', ?, ?, ?, ?, ?, ?, ?)`,
+         cpu_parallelism, peak_rss_bytes, saturated_cores, saturated_memory_bytes, def)
+       VALUES (?, ?, 'remote', ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     const now = Date.now()
     this.db
@@ -286,6 +319,7 @@ export class LocalHistoryProvider implements HistoryProvider {
             n?.maxPeakRssBytes ?? null,
             n?.saturatedCores ?? null,
             n?.saturatedMemoryBytes ?? null,
+            defs.get(id) ?? null,
           )
         }
       })
@@ -333,11 +367,11 @@ export class LocalHistoryProvider implements HistoryProvider {
         .query(
           `SELECT j.key AS i, (SELECT group_concat(ms) FROM (
              SELECT duration_ms AS ms FROM task_durations
-             WHERE project = j.value ->> 0 AND task = j.value ->> 1 AND ${tier.where}
+             WHERE project = j.value ->> 0 AND task = j.value ->> 1 AND ${tier.where} ${this.durationDef}
              ORDER BY id DESC LIMIT ${tier.limit})) AS ds
            FROM json_each(?) AS j`,
         )
-        .all(...tier.params, JSON.stringify(pending.map(splitTaskId))) as {
+        .all(...tier.params, JSON.stringify(pending.map((id) => this.keyOf(id)))) as {
         i: number
         ds: string | null
       }[]
@@ -377,43 +411,51 @@ export class LocalHistoryProvider implements HistoryProvider {
     type Executed = {
       project: string
       task: string
+      def?: string | null
       rss: number | null
       cpu: number | null
     }
     const executed = this.db
       .query(
-        `SELECT project, task, MAX(peak_rss_bytes) AS rss,
-           MAX(CASE WHEN cpu_ms IS NOT NULL AND duration_ms > 0
-                    THEN cpu_ms * 1.0 / duration_ms END) AS cpu
-         FROM runs
-         WHERE id >= ? AND status = 'success' AND (cache_hit IS NULL OR cache_hit = 0)
-         GROUP BY project, task`,
+        `SELECT r.project, r.task${this.byDef}, MAX(r.peak_rss_bytes) AS rss,
+           MAX(CASE WHEN r.cpu_ms IS NOT NULL AND r.duration_ms > 0
+                    THEN r.cpu_ms * 1.0 / r.duration_ms END) AS cpu
+         FROM runs r
+         WHERE r.id >= ? AND r.status = 'success' AND (r.cache_hit IS NULL OR r.cache_hit = 0)
+         GROUP BY r.project, r.task${this.byDef}`,
       )
       .all(floor) as Executed[]
     const p50s = this.forecasts(wanted)
     for (const row of executed) {
       const key = `${row.project}#${row.task}`
-      if (!wanted.has(key)) continue
+      if (!wanted.has(key) || !this.current(key, row.def)) continue
       out.set(key, {
         p50DurationMs: p50s.get(key),
         ...(row.rss !== null ? { maxPeakRssBytes: row.rss } : {}),
         ...(row.cpu !== null ? { maxCpuParallelism: row.cpu } : {}),
       })
     }
-    type Hit = { project: string; task: string; rss: number | null; cpu: number | null }
+    type Hit = {
+      project: string
+      task: string
+      def?: string | null
+      rss: number | null
+      cpu: number | null
+    }
     const hits = this.db
       .query(
-        `SELECT h.project, h.task, MAX(e.peak_rss_bytes) AS rss,
+        `SELECT r.project, r.task${this.byDef}, MAX(e.peak_rss_bytes) AS rss,
            MAX(CASE WHEN e.cpu_ms IS NOT NULL AND e.duration_ms > 0
                     THEN e.cpu_ms * 1.0 / e.duration_ms END) AS cpu
-         FROM (SELECT DISTINCT project, task, hash FROM runs WHERE id >= ? AND cache_hit = 1) h
-         JOIN entries e ON e.hash = h.hash
-         GROUP BY h.project, h.task`,
+         FROM (SELECT DISTINCT project, task, hash, def FROM runs WHERE id >= ? AND cache_hit = 1) r
+         JOIN entries e ON e.hash = r.hash
+         GROUP BY r.project, r.task${this.byDef}`,
       )
       .all(floor) as Hit[]
     for (const row of hits) {
       const key = `${row.project}#${row.task}`
-      if (!wanted.has(key) || (row.rss === null && row.cpu === null)) continue
+      if (!wanted.has(key) || !this.current(key, row.def) || (row.rss === null && row.cpu === null))
+        continue
       const had = out.get(key)
       const rss = Math.max(had?.maxPeakRssBytes ?? -Infinity, row.rss ?? -Infinity)
       const cpu = Math.max(had?.maxCpuParallelism ?? -Infinity, row.cpu ?? -Infinity)
@@ -424,23 +466,34 @@ export class LocalHistoryProvider implements HistoryProvider {
       })
     }
     // A failure counts: a task killed for memory filled its machine too.
-    type Saturated = { project: string; task: string; cores: number | null; memory: number | null }
+    type Saturated = {
+      project: string
+      task: string
+      def?: string | null
+      cores: number | null
+      memory: number | null
+    }
     const saturated = this.db
       .query(
-        `SELECT project, task,
-           MAX(CASE WHEN cpu_ms * 1.0 / duration_ms >= ${SATURATED} * placement_cores
-                    THEN placement_cores END) AS cores,
-           MAX(CASE WHEN peak_rss_bytes >= ${SATURATED} * placement_memory
-                    THEN placement_memory END) AS memory
-         FROM runs
-         WHERE id >= ? AND placement_cores IS NOT NULL AND duration_ms > 0
-           AND status IN ('success', 'failed') AND (cache_hit IS NULL OR cache_hit = 0)
-         GROUP BY project, task`,
+        `SELECT r.project, r.task${this.byDef},
+           MAX(CASE WHEN r.cpu_ms * 1.0 / r.duration_ms >= ${SATURATED} * r.placement_cores
+                    THEN r.placement_cores END) AS cores,
+           MAX(CASE WHEN r.peak_rss_bytes >= ${SATURATED} * r.placement_memory
+                    THEN r.placement_memory END) AS memory
+         FROM runs r
+         WHERE r.id >= ? AND r.placement_cores IS NOT NULL AND r.duration_ms > 0
+           AND r.status IN ('success', 'failed') AND (r.cache_hit IS NULL OR r.cache_hit = 0)
+         GROUP BY r.project, r.task${this.byDef}`,
       )
       .all(floor) as Saturated[]
     for (const row of saturated) {
       const key = `${row.project}#${row.task}`
-      if (!wanted.has(key) || (row.cores === null && row.memory === null)) continue
+      if (
+        !wanted.has(key) ||
+        !this.current(key, row.def) ||
+        (row.cores === null && row.memory === null)
+      )
+        continue
       out.set(key, {
         ...(out.get(key) ?? { p50DurationMs: p50s.get(key) }),
         ...(row.cores !== null ? { saturatedCores: row.cores } : {}),
@@ -477,10 +530,10 @@ export class LocalHistoryProvider implements HistoryProvider {
          JOIN task_durations d ON d.id = (
            SELECT id FROM task_durations
            WHERE project = j.value ->> 0 AND task = j.value ->> 1 AND source = 'remote'
-             AND cpu_parallelism IS NOT NULL
+             AND cpu_parallelism IS NOT NULL ${this.durationDef}
            ORDER BY id DESC LIMIT 1)`,
       )
-      .all(JSON.stringify(pending.map(splitTaskId))) as {
+      .all(JSON.stringify(pending.map((id) => this.keyOf(id)))) as {
       i: number
       cpu: number
       rss: number | null

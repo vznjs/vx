@@ -15,10 +15,10 @@ import {
   ui,
 } from '@vzn/vx'
 import { Orchestrator, runKey } from '../src/orchestrator.js'
-import { fits, type Need } from '../src/dispatch.js'
+import { assign, fits, type Need } from '../src/dispatch.js'
 import { outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
-import { tailsMs } from '../src/planner.js'
+import { planTasks, tailsMs } from '../src/planner.js'
 import { join } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
 import type { RunOrder } from '../src/messages.js'
@@ -455,6 +455,39 @@ it('sends a worker what its booking fits, though its load reads low; busier than
   }
 })
 
+// Cold run 3, 2026-10-23: tasks booked at their history used 82% of it,
+// and every Linux worker ran at 63-73% CPU against the sim's 86%.
+it('books measured tasks at the share of their history the run’s tasks used, at most half again more', async () => {
+  const ids = Array.from({ length: 12 }, (_, i) => `t${i + 1}`)
+  const h = await harness(new Map(ids.map((id) => node(id))))
+  try {
+    const a = await h.worker(4)
+    await Bun.sleep(50)
+    for (const id of ids.slice(0, 4)) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
+    for (const id of ['t1', 't2', 't3', 't4']) {
+      await a.begin(id)
+      h.store.saved.set(`k-${id}`, { stdout: '', stderr: '' })
+      // Half a core of the one its history booked.
+      await a.say({
+        type: 'end',
+        task: id,
+        key: `k-${id}`,
+        result: { exitCode: 0, durationMs: 20_000, cpuMs: 10_000 },
+      })
+    }
+    await Bun.sleep(50)
+    for (const id of ids.slice(4)) void h.o.execute(h.req(id))
+    // Half each would fit 8; bookings stop at 1.5 times its cores.
+    expect((await a.batches()).flat()).toEqual(['t5', 't6', 't7', 't8', 't9', 't10'])
+    await h.stop()
+    const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows.find((r) => r.includes('total'))).toContain('tasks used 50% of their history')
+  } finally {
+    await h.stop()
+  }
+})
+
 // Main, 2026-10-23: 12 workers of 4 cores each ran about one task, at 25%
 // CPU all their time online; packed, the ones the rest does not need leave.
 it('packs tasks onto the worker with fewest cores free, and the idle one leaves', async () => {
@@ -487,7 +520,59 @@ it('books a worker the cores of a task from its start to its command’s end', a
   await Bun.sleep(50)
   await h.stop()
   const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
-  expect(rows.find((r) => r.includes('expected'))).toContain('expected 0.0 ·')
+  expect(rows.find((r) => r.includes('booked avg'))).toContain('booked avg 0.0 ·')
+})
+
+// M, 2026-10-23: "a generated Chrome profile with all workers and tasks
+// they executed in time so you could debug better".
+it('profiles the run: each worker’s tasks on their own lanes, the run’s waits and restores', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  const a = await h.worker(2)
+  await Bun.sleep(50)
+  const done = ['t1', 't2'].map((id) => h.o.execute(h.req(id)))
+  expect(await a.batches()).toEqual([['t1', 't2']])
+  for (const t of ['t1', 't2']) await a.begin(t)
+  await Bun.sleep(20)
+  await a.say({ type: 'ran', task: 't1' })
+  await Bun.sleep(20)
+  for (const t of ['t1', 't2']) await a.finish(t)
+  await Promise.all(done)
+  await h.stop()
+  const ev = h.o.profile() as unknown as {
+    ph: string
+    name: string
+    cat?: string
+    pid: number
+    tid: number
+    args?: { name?: string }
+  }[]
+  const pidOf = (name: string) =>
+    ev.find((e) => e.ph === 'M' && e.name === 'process_name' && e.args?.name === name)?.pid
+  const w = pidOf('worker#1')
+  expect(pidOf('orchestrator')).toBe(1)
+  expect(w).toBe(2)
+  // Both at once on the worker: one row each.
+  const tasks = ev.filter(
+    (e) => e.ph === 'X' && e.cat === 'task' && e.pid === w && e.name.startsWith('t'),
+  )
+  expect(Object.fromEntries(tasks.map((e) => [e.name, e.tid]))).toEqual({ t1: 1, t2: 2 })
+  for (const part of ['sent', 'restore deps', 'command', 'save'])
+    expect(ev.some((e) => e.ph === 'X' && e.pid === w && e.name === part)).toBe(true)
+  const run = ev.filter((e) => e.ph === 'X' && e.pid === 1)
+  expect(
+    run
+      .filter((e) => e.cat === 'queue')
+      .map((e) => e.name)
+      .sort(),
+  ).toEqual(['t1', 't2'])
+  expect(
+    run
+      .filter((e) => e.cat === 'restore')
+      .map((e) => e.name)
+      .sort(),
+  ).toEqual(['t1', 't2'])
+  expect(ev.some((e) => e.ph === 'i' && e.pid === w && e.name === 'stopped')).toBe(true)
+  expect(ev.some((e) => e.ph === 'C' && e.pid === w && e.name === 'cores')).toBe(true)
 })
 
 // Main, 2026-10-23: vx-docs#build (41 s, then its test) got ready 3 s in,
@@ -760,7 +845,9 @@ it('a worker that left is not failed or replaced when its job then ends', async 
 it('the final summary says how each worker ended, its size and machine under it', async () => {
   const h = await harness(new Map([node('t1')]))
   const small = { size: 'small', cpu: 2, memory: 4e9 }
-  h.o.asked(2, 3, 1, 70_000)
+  h.o.probed(3, 1)
+  h.o.probed(9, 9)
+  h.o.asked(2, 3, 1, 70_000, ['p#a', 'p#b'])
   h.o.spawned('small#1', small)
   h.o.spawned('big#1', { size: 'big', cpu: 4, memory: 4e9 })
   const a = await h.worker(2, 'small#1')
@@ -780,16 +867,39 @@ it('the final summary says how each worker ended, its size and machine under it'
   expect(rows[at('big#1')]).toMatch(/^big#1 +left/)
   expect(rows.some((r) => r.trimStart().startsWith('!'))).toBe(false)
   expect(rows.filter((r) => /^\S+ +online/.test(r))).toEqual([])
+  // What the cache probe left to run, the first answer only: why the asks counted what they did.
+  expect(rows.filter((r) => r.startsWith('probe'))).toEqual([
+    expect.stringMatching(/^probe +at 0\.\ds: 3 tasks left to run, 1 known misses$/),
+  ])
   // When the run asked for workers, for which work, and when its plan ended: why it had as many as it did.
   expect(rows.filter((r) => r.startsWith('asked'))).toEqual([
     expect.stringMatching(/^asked +2 at 0\.\ds for 3 tasks \(1 measured\), plan 70\.0s$/),
   ])
+  // Main 68b851d: 41 of 119 unmeasured, each a whole worker, and the
+  // summary said only how many (2026-10-23).
+  expect(rows.filter((r) => r.startsWith('unmeasured'))).toEqual(['unmeasured  p#a, p#b'])
   // Tasks that reported no memory read `memory peak 0 B`.
   expect(rows.filter((r) => r.includes('memory peak'))).toEqual([])
   // A few hundred bytes read `0 KB`.
   expect(rows.filter((r) => r.includes(' 0 KB'))).toEqual([])
   expect(rows.some((r) => /^ +sent \d+ messages? · \d+ B, received/.test(r))).toBe(true)
   void a
+})
+
+// small#7 held 3.9 cores 61 s for one task using 0.3, and the summary
+// did not say which task (main 68b851d, 2026-10-23).
+it('the final summary names the tasks of a worker that ran few', async () => {
+  const h = await harness(new Map([node('t1')]), undefined, 60_000)
+  const a = await h.worker(1, 'small#7')
+  await Bun.sleep(50)
+  const t1 = h.o.execute(h.req('t1'))
+  expect(await a.batches()).toEqual([['t1']])
+  await a.begin('t1')
+  await a.finish('t1')
+  expect((await t1).exitCode).toBe(0)
+  await h.stop()
+  const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+  expect(rows.find((r) => r.includes('done'))).toMatch(/1 done · t1$/)
 })
 
 // Live, the workers that left are one line, so the rows that run fit.
@@ -1483,8 +1593,11 @@ it('a worker begins its next task while the last one saves', async () => {
       cores: 1,
       memory: 0,
     })
+    // Each `start` is sent unawaited, so the relay may hand them over in
+    // either order, and t2 (`true`) may end in the same poll it starts.
     const seen: string[] = []
-    for (let i = 0; i < 100 && !seen.includes('start t2'); i++) {
+    const started = () => seen.includes('start t1') && seen.includes('start t2')
+    for (let i = 0; i < 100 && !started(); i++) {
       for (const { from, body } of await o.poll()) {
         const m = body as { type: string; id?: string; task?: string }
         if (from === 'relay' && m.type === 'joined') {
@@ -1504,7 +1617,8 @@ it('a worker begins its next task while the last one saves', async () => {
         } else if (m.type === 'start' || m.type === 'end') seen.push(`${m.type} ${m.task}`)
       }
     }
-    expect(seen).toEqual(['start t1', 'start t2'])
+    expect(started()).toBe(true)
+    expect(seen).not.toContain('end t1')
     saved()
     await raw.leave()
     expect(await code).toBe(0)
@@ -1519,7 +1633,55 @@ it('books the cores a task keeps busy on average, unrounded, a quarter at least'
   expect(
     [0.7, 2.4, 0.01].map((c) => needOf({ p50DurationMs: 1, maxCpuParallelism: c }).cores),
   ).toEqual([0.7, 2.4, 0.25])
-  expect(needOf(undefined).cores).toBe(Infinity)
+  expect(needOf(undefined)).toEqual({ cores: 1, memory: 0, ask: { cores: 2, memory: 4e9 } })
+})
+
+// Main cc5a276, 2026-10-23: check.bun, vx-docs#import and release.sync end
+// before the Linux sandbox's first look, so none has a CPU measure; each
+// booked a whole worker and small#1 ran at 13%. M: "we can't waste whole
+// worker for one task", "pack them where we have free capability".
+it('places an unmeasured task on any free core, and sizes the run by 2 cores and 4GB or what is set', () => {
+  const fresh = needOf({ p50DurationMs: 143 })
+  expect(fresh).toEqual({ cores: 1, memory: 0, ask: { cores: 2, memory: 4e9 } })
+  expect(needOf(undefined, { cores: 1, memory: 5 }).ask).toEqual({ cores: 1, memory: 5 })
+  // A worker with 3 cores free takes all three: none waits for a new one.
+  const busy = {
+    id: 'w',
+    cores: 4,
+    memory: 16e9,
+    used: { cores: 1, memory: 15e9 },
+    running: 1,
+    has: new Set<string>(),
+    platform: undefined,
+  }
+  const to = assign(
+    ['a', 'b', 'c'].map((id) => ({ id, need: fresh, up: [] })),
+    [busy],
+    undefined,
+    'best-fit',
+  )
+  expect([...to.keys()].sort()).toEqual(['a', 'b', 'c'])
+  // CONTROL: a task measured at 4 cores does not fit there.
+  expect(
+    assign([{ id: 'm', need: { cores: 4, memory: 1 }, up: [] }], [busy], undefined, 'best-fit')
+      .size,
+  ).toBe(0)
+  // The plan counts each as its ask: two of them want 4 cores of workers.
+  const node = (id: string) =>
+    [id, { id, deps: [], config: { exec: { command: 'x' } } } as unknown as TaskNode] as const
+  const work = planTasks(
+    ['a', 'b'],
+    new Map([node('a'), node('b')]),
+    () => fresh,
+    () => 100,
+  )
+  expect(work.map((t) => [t.cores, t.memory])).toEqual([
+    [2, 4e9],
+    [2, 4e9],
+  ])
+  expect(
+    refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 0, memory: '1GB' } })),
+  ).toContain('unmeasured needs cpu > 0')
 })
 
 it('reads memory as bytes or with a unit', () => {

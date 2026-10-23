@@ -595,6 +595,11 @@ a CI job that believes it is filling a shared cache should be told.
 Whatever the axes, a lookup asks the local cache first, then each
 remote in the order the plugins declare them.
 
+The axes govern task artifacts. A plugin's own entries (`ctx.cache`, such
+as the default branch's timings a scheduler plans by) are read from
+every remote the run may read or write, so a `remote:w` run is still
+planned on the shared timings.
+
 So `--no-cache` always wins over `--force`. The common cases:
 
 - `--no-cache` → nothing reads, nothing writes, and declared output
@@ -1084,6 +1089,11 @@ render on separate lanes. `ts` and `dur` are microseconds derived
 from the per-task `hrtime.bigint()` spans the runner captures.
 `cat` carries the task's final status (`success`, `cache-hit`,
 `cache-hit-remote`, `failed`).
+
+An executor adds its own events after the run's process
+(`TaskExecutor.profile`): `@vzn/vx-dte` adds one process per worker,
+each task on a lane of its own, and the orchestrator's waits
+([its README](https://github.com/vznjs/vx/tree/main/packages/vx-dte#readme)).
 
 Default path: `profile.json` (cwd-relative).
 
@@ -2382,7 +2392,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-  cache versions    keys vx-cache-v48 · index schema v47
+  cache versions    keys vx-cache-v48 · index schema v48
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)

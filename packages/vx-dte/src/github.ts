@@ -222,10 +222,11 @@ export function github(options: GithubOptions = {}): DteAdapter {
 export async function githubRelayToken(relay: string): Promise<string | undefined> {
   const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: bearer } = process.env
   if (!url || !bearer) return undefined
-  const res = await fetch(`${url}&audience=${encodeURIComponent(relay)}`, {
-    headers: { authorization: `bearer ${bearer}` },
-    signal: AbortSignal.timeout(10_000),
+  // Loaded when asked: a run that is not distributed loads none of it.
+  const { oidcToken } = await import('./seal.js')
+  return oidcToken(url, bearer, relay).catch((err: unknown) => {
+    throw new UserError(
+      `dte(): ${err instanceof Error ? err.message : String(err)} (for the relay)`,
+    )
   })
-  if (!res.ok) throw new UserError(`dte(): GitHub's OIDC token for the relay: ${res.status}`)
-  return ((await res.json()) as { value: string }).value
 }

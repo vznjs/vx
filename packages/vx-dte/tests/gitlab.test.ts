@@ -67,6 +67,18 @@ include:
   script:
     - "bunx @vzn/vx dte worker"
 
+"vx-worker small#1":
+  extends: .vx-worker
+  needs:
+    - pipeline: $PARENT_PIPELINE_ID
+      job: vx-plan
+  variables:
+    VX_DTE_RUN: "${run}"
+    VX_DTE_WORKER: "small#1"
+    VX_DTE_RELAY: "https://relay.example.com"
+  script:
+    - "bunx @vzn/vx dte worker"
+
 "vx-worker small#2":
   extends: .vx-worker
   needs:
@@ -75,18 +87,6 @@ include:
   variables:
     VX_DTE_RUN: "${run}"
     VX_DTE_WORKER: "small#2"
-    VX_DTE_RELAY: "https://relay.example.com"
-  script:
-    - "bunx @vzn/vx dte worker"
-
-"vx-worker small#3":
-  extends: .vx-worker
-  needs:
-    - pipeline: $PARENT_PIPELINE_ID
-      job: vx-plan
-  variables:
-    VX_DTE_RUN: "${run}"
-    VX_DTE_WORKER: "small#3"
     VX_DTE_RELAY: "https://relay.example.com"
   script:
     - "bunx @vzn/vx dte worker"

@@ -61,8 +61,7 @@ nothing runs and caches here.
   `settle(hits, missed)`, once the cache has said what it holds (the local
   probe, or the remote prefetch's answer), without those, and which it
   surely lacks (`missed`, passed narrowed alongside); then as each
-  `finished`, when a later probe answer `revise`s it (hits out, gone
-  hits back in as missed), and when a left-out task is `executing` after all. A
+  `finished`, and when a left-out task is `executing` after all. A
   throwing `demand` is warned once and not asked again. With no such
   executor every call does nothing.
 - `nameExecutorFailure(executor, err)` — a plugin executor's throw from

@@ -336,6 +336,10 @@ export interface CacheLayer {
   readonly local?: Cache | undefined
   readonly hasRemote?: boolean
   remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
+  remoteHasEach?(
+    hashes: readonly string[],
+    concurrency: number,
+  ): Promise<Map<string, ArtifactInfo> | null>
   localHasMany?(hashes: readonly string[]): Promise<Set<string>>
   remoteKnown?(hashes: readonly string[]): Map<string, ArtifactInfo>
   markRemoteAbsent?(hashes: Iterable<string>): void
@@ -1165,6 +1169,7 @@ export class LocalHistoryProvider implements HistoryProvider {
     private readonly db: Database,
     readonly recent: number
     private readonly branch?: string | null,
+    private readonly defs?: ReadonlyMap<string, string>,
   ) {}
   async loadFor(taskIds: readonly string[]): Promise<HistoryTable>
   async loadAll(): Promise<HistoryTable>
@@ -1175,6 +1180,7 @@ export class LocalHistoryProvider implements HistoryProvider {
     sha: string,
     timings: ReadonlyMap<string, number>,
     needs: ReadonlyMap<string, TaskResources> = new Map(),
+    defs: ReadonlyMap<string, string> = new Map(),
   ): void
   async resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
 }
@@ -2226,6 +2232,7 @@ export interface RunRecord {
   avgRssBytes?: number
   placement?: string
   keylessBy?: string
+  def?: string
   placementCores?: number
   placementMemoryBytes?: number
 }
@@ -2599,6 +2606,16 @@ export interface TaskConfig {
 }
 ```
 
+## `taskDefinitions`
+
+function · `src/graph/definition.ts`
+
+Each task's definition (`taskDefinition`) by id, groups left out: what a history reader matches rows to.
+
+```ts
+export function taskDefinitions(nodes: Iterable<TaskNode>): Map<string, string>
+```
+
 ## `TaskExecutor`
 
 type · `src/exec/executor.ts`
@@ -2616,6 +2633,7 @@ export interface TaskExecutor {
   demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
   footer?(): readonly (readonly [label: string, text: ui.Inline])[]
   machines?(): readonly MachineReport[]
+  profile?(): readonly Record<string, unknown>[]
   running?(taskId: string): string | null | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>
 }

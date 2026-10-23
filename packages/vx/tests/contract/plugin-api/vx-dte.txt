@@ -32,6 +32,7 @@ export interface DteOptions {
   readonly relay?: string
   readonly token?: () => string | undefined | Promise<string | undefined>
   readonly scheduler?: Partial<Strategy>
+  readonly unmeasured?: { readonly cpu: number; readonly memory: number | string }
 }
 == type DtePlan (src/plugin.ts)
 export interface DtePlan {

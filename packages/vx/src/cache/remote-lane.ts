@@ -229,6 +229,41 @@ export class RemoteLane {
   }
 
   /**
+   * `hashes` asked one by one (`has`), `concurrency` at a time: what a
+   * remote that answered no batch query holds, recording the rest as
+   * absent. Null when any probe failed: then the answer is not complete.
+   */
+  async hasEach(
+    hashes: readonly string[],
+    concurrency: number,
+  ): Promise<Map<string, ArtifactInfo> | null> {
+    const out = new Map<string, ArtifactInfo>()
+    const absent: string[] = []
+    let failed = false
+    let next = 0
+    const one = async (): Promise<void> => {
+      while (!failed && next < hashes.length) {
+        const h = hashes[next++]!
+        let found: unknown
+        try {
+          found = this.held.get(h) ?? (this.absent.has(h) ? null : await this.remote.has(h))
+        } catch (err) {
+          this.report('probe', h, err)
+          failed = true
+          return
+        }
+        if (found === null || found === undefined) absent.push(h)
+        else out.set(h, artifactInfo(found) ?? {})
+      }
+    }
+    await Promise.all(Array.from({ length: Math.max(1, concurrency) }, one))
+    if (failed) return null
+    for (const h of absent) this.absent.add(h)
+    for (const [h, info] of out) this.held.set(h, info)
+    return out
+  }
+
+  /**
    * The artifact's body, null on a miss or a known absence (unless
    * `fresh`: saved since the probe), undefined on a failure or a
    * malformed answer: the key may still be there.

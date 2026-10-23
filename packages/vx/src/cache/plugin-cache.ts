@@ -97,7 +97,11 @@ async function capped(body: unknown, max = PLUGIN_ENTRY_MAX_BYTES): Promise<Uint
  */
 export function pluginCache(plugin: string, host: PluginCacheHost): PluginCache {
   const { db, policy, scope } = host
-  const readers = host.remotes.filter((r) => r.read)
+  // A plugin's entries are not task artifacts: a policy that reads no
+  // remote artifact (a cold run, `--force`) still reads them, so the run is
+  // planned on the default branch's timings. A cold CI run asked workers
+  // for 128 tasks with 0 measured, at 25% of their cores (2026-10-23).
+  const readers = host.remotes.filter((r) => r.read || r.write)
   const writers = host.remotes.filter((r) => r.write)
   const readKey = (name: string, scoped: boolean): string => {
     const key = entryKey(plugin, name)

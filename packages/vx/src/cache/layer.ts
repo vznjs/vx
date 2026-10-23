@@ -225,6 +225,8 @@ export interface RunRecord {
   placement?: string
   /** The task with no `inputs` its key folded, so it never read or saved (v46). */
   keylessBy?: string
+  /** The task's definition (`taskDefinition`): what its history is kept under (v48). */
+  def?: string
   /** That machine's cores and memory (v44). */
   placementCores?: number
   placementMemoryBytes?: number
@@ -580,6 +582,15 @@ export interface CacheLayer {
    * batch omits it and the prefetch pass falls back to per-hash GETs.
    */
   remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
+  /**
+   * `remoteHasMany`, with a remote that answers no batch query asked each
+   * key, `concurrency` at a time: a complete answer or `null`. For a run
+   * that plans on the answer (an executor's demand); others pull instead.
+   */
+  remoteHasEach?(
+    hashes: readonly string[],
+    concurrency: number,
+  ): Promise<Map<string, ArtifactInfo> | null>
   /**
    * The subset of `hashes` the local store already holds. The prefetch
    * pass probes the remote only for the rest, so a run the local cache

@@ -113,7 +113,10 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       placement_cores     INTEGER,
       placement_memory    INTEGER,
       -- v46: the task with no inputs its key folded (TaskOutcome.keylessBy).
-      keyless_by          TEXT
+      keyless_by          TEXT,
+      -- v48: the task's definition (taskDefinition): a history reader
+      -- counts only the rows of the task as it is now.
+      def                 TEXT
     );
     -- Two whole-table indexes only, and both APPEND: every row of a run carries the
     -- same run_id and a started_at newer than everything before it, so
@@ -298,7 +301,9 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       cpu_parallelism        REAL,
       peak_rss_bytes         INTEGER,
       saturated_cores        INTEGER,
-      saturated_memory_bytes INTEGER
+      saturated_memory_bytes INTEGER,
+      -- v48: the task's definition (taskDefinition), as on \`runs\`.
+      def                    TEXT
     );
     CREATE INDEX IF NOT EXISTS ${store}.task_durations_task
       ON task_durations(project, task, source, id);

@@ -112,6 +112,8 @@ it('runs a task on a worker with its dependency’s outputs, and brings its outp
   const where = (await readFile(path.join(root, 'b/out/where.txt'), 'utf8')).trim()
   expect(where).not.toBe(path.join(root, 'b'))
   expect(where.endsWith(`${path.sep}b`)).toBe(true)
+  // No --profile, no file.
+  expect(await Bun.file(path.join(root, 'profile.json')).exists()).toBe(false)
   // Saved here as the run's own: the next run is all hits.
   const second = vx(['run', 'b#use'], 'e2e-2')
   expect(second.exitCode).toBe(0)
@@ -122,6 +124,21 @@ it('runs a task on a worker with its dependency’s outputs, and brings its outp
 
 // `--force` reads no hit, but a worker's entry is the run's own work: it
 // came back unreadable and every task failed.
+// The run in time (owner, 2026-10-23): --profile holds the workers' lanes.
+it('profiles a distributed run’s workers with --profile', async () => {
+  const r = vx(['run', 'b#use', '--profile=out.json'], 'e2e-profile')
+  expect(r.exitCode).toBe(0)
+  const ev = (
+    JSON.parse(await readFile(path.join(root, 'out.json'), 'utf8')) as {
+      traceEvents: { ph: string; name: string; cat?: string; args?: { name?: string } }[]
+    }
+  ).traceEvents
+  const names = ev.filter((e) => e.ph === 'M' && e.name === 'process_name')
+  expect(names.map((e) => e.args?.name)).toEqual(['run', 'orchestrator', 'small#1'])
+  expect(ev.some((e) => e.ph === 'X' && e.cat === 'task' && e.name === 'b#use')).toBe(true)
+  expect(ev.some((e) => e.ph === 'X' && e.name === 'warm-up')).toBe(true)
+}, 60_000)
+
 it('brings a worker’s outputs back under --force', async () => {
   const run = vx(['run', 'b#use', '--force'], 'e2e-force')
   const out = run.stdout.toString() + run.stderr.toString()
@@ -245,7 +262,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)} })] }
       0,
       expect.stringMatching(/└─ b#use · worker#1 ── .*success/),
     ])
-    expect(out).toMatch(/workers +worker#1  stopped  1 done\n +actual \d+c\/[\d.]+G$/m)
+    expect(out).toMatch(/workers +worker#1  stopped  1 done · b#use\n +actual \d+c\/[\d.]+G$/m)
     const { exited, out: own } = await worker
     expect(exited).toBe(0)
     expect(own).toMatch(/worker +worker#1/)

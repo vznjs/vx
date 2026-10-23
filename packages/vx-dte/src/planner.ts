@@ -6,7 +6,7 @@
 // a TETRIS game. every time we get new data we refine next step").
 
 import type { TaskNode } from '@vzn/vx'
-import { assign, ordered, type Bin } from './dispatch.js'
+import { assign, ordered, type Bin, type Need } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 
 /**
@@ -112,7 +112,7 @@ export function tailsMs(
 export function planTasks(
   ids: Iterable<string>,
   nodes: ReadonlyMap<string, TaskNode>,
-  need: (id: string) => { cores: number; memory: number; above?: PlanTask['above'] },
+  need: (id: string) => Need,
   durationMs: (id: string) => number | undefined,
   home?: string,
 ): PlanTask[] {
@@ -130,8 +130,8 @@ export function planTasks(
     const n = need(id)
     return {
       id,
-      cores: n.cores,
-      memory: n.memory,
+      cores: n.ask?.cores ?? n.cores,
+      memory: n.ask?.memory ?? n.memory,
       above: n.above,
       ms: durationMs(id),
       deps: depsOf(id),
@@ -152,7 +152,7 @@ export function missedWork(
   remaining: Iterable<string>,
   nodes: ReadonlyMap<string, TaskNode>,
   executed: ReadonlySet<string>,
-  need: (id: string) => { cores: number; memory: number; above?: PlanTask['above'] },
+  need: (id: string) => Need,
   durationMs: (id: string) => number | undefined,
   home?: string,
 ): PlanTask[] {
@@ -478,7 +478,7 @@ export function decide(input: {
   readonly remaining: Iterable<string>
   readonly nodes: ReadonlyMap<string, TaskNode>
   readonly executed: ReadonlySet<string>
-  readonly need: (id: string) => { cores: number; memory: number; above?: PlanTask['above'] }
+  readonly need: (id: string) => Need
   readonly durationMs: (id: string) => number | undefined
   readonly workers: readonly PlanWorker[]
   readonly running: ReadonlySet<string>

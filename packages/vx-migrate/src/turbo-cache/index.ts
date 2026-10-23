@@ -432,6 +432,16 @@ const MAX_SIGNED_BODY = 2 * 1024 ** 3 + ((2 * 1024 ** 3) >> 8) + 64 * 1024
 /** A lent token ending sooner than this is exchanged again first, so an agent's request never carries a spent one. */
 const LEND_MARGIN_MS = 5 * 60_000
 
+/** Statuses of a server that has no batch query. */
+const NO_BATCH = new Set([404, 405, 501])
+
+/**
+ * The most hashes one batch query may carry: Vercel answers more with 400
+ * "Too many hashes. Limit is 100." (main f71b377 asked 107 at once, and
+ * the run planned as if none were held).
+ */
+const BATCH_MAX = 100
+
 /**
  * The seam implementation: `has` is HEAD, `hasMany` is the batch query,
  * `get`/`put` carry `x-artifact-duration` (and the tag when signing). An
@@ -694,12 +704,30 @@ export class TurboRemoteCache implements RemoteCacheLayer {
 
   async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
     if (this.disabled || hashes.length === 0) return this.disabled ? new Map() : null
+    if (hashes.length <= BATCH_MAX) return this.batch(hashes)
+    const parts = await Promise.all(
+      Array.from({ length: Math.ceil(hashes.length / BATCH_MAX) }, (_, i) =>
+        this.batch(hashes.slice(i * BATCH_MAX, (i + 1) * BATCH_MAX)),
+      ),
+    )
+    if (parts.some((p) => p === null)) return null
+    return new Map(parts.flatMap((p) => [...p!]))
+  }
+
+  private async batch(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
     const res = await this.request('POST', '', {
       body: JSON.stringify({ hashes }),
       headers: { 'Content-Type': 'application/json', ...this.reads },
     })
     if (res === undefined) return new Map()
-    if (res.status !== 200) return null
+    if (res.status !== 200) {
+      const said = (await boundedText(res, 512).catch(() => null))?.trim()
+      // A server with no batch query (404, 405, 501) is asked per hash. Any
+      // other refusal was silent: main f71b377's probe gave no answer and no
+      // one could say why, and DTE sized the run as if every task ran.
+      if (NO_BATCH.has(res.status)) return null
+      throw new Error(`batch query answered HTTP ${res.status}${said ? `: ${said}` : ''}`)
+    }
     // An answer per hash is a few hundred bytes of ArtifactInfo; a reply
     // past this bound is no answer, read no further than the bound (L-9).
     const bound = hashes.length * 4096 + 64 * 1024

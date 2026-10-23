@@ -103,9 +103,38 @@ describe('what a status means', () => {
     await expect(c.get('aa')).rejects.toThrow('HTTP 500')
   })
 
-  it('a batch query answering other than 200 is no answer, so each hash is asked', async () => {
-    const { fetchImpl } = stub(() => new Response(null, { status: 404 }))
-    expect(await cacheWith(fetchImpl).hasMany(['aa'])).toBeNull()
+  it('a server with no batch query is no answer, so each hash is asked', async () => {
+    for (const status of [404, 405, 501]) {
+      const { fetchImpl } = stub(() => new Response(null, { status }))
+      expect(await cacheWith(fetchImpl).hasMany(['aa'])).toBeNull()
+    }
+  })
+
+  // Main f71b377 asked Vercel for 107 hashes at once: "Too many hashes. Limit is 100."
+  it('a batch query carries at most 100 hashes', async () => {
+    const sizes: number[] = []
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      const { hashes } = JSON.parse(init.body as string) as { hashes: string[] }
+      sizes.push(hashes.length)
+      if (hashes.length > 100) return Response.json({ error: {} }, { status: 400 })
+      return Response.json(Object.fromEntries(hashes.map((h) => [h, { size: 1 }])))
+    }) as unknown as typeof fetch
+    const hashes = Array.from({ length: 250 }, (_, i) => i.toString(16).padStart(4, '0'))
+    const held = await cacheWith(fetchImpl).hasMany(hashes)
+    expect({ sizes: sizes.sort((a, b) => b - a), held: held?.size }).toEqual({
+      sizes: [100, 100, 50],
+      held: 250,
+    })
+  })
+
+  // Main f71b377: the batch query gave no answer and nothing said why.
+  it('a batch query refused for another reason says its status and body', async () => {
+    const { fetchImpl } = stub(() =>
+      Response.json({ error: { code: 'bad_request' } }, { status: 400 }),
+    )
+    await expect(cacheWith(fetchImpl).hasMany(['aa'])).rejects.toThrow(
+      'batch query answered HTTP 400: {"error":{"code":"bad_request"}}',
+    )
   })
 
   // Item 929: the batch query answers each hash with ArtifactInfo, null, or

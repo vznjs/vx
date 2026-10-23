@@ -4,6 +4,7 @@ import {
   LocalHistoryProvider,
   PLATFORMS,
   refuseUnknownOptions,
+  taskDefinitions,
   UserError,
   type CommandContext,
   type Platform,
@@ -41,9 +42,9 @@ export interface WorkerSpawn {
   /** Its size's cores and memory (bytes), for an adapter that sets a machine's limits. */
   readonly cpu: number
   readonly memory: number
-  /** 1 for the first worker this run starts, counting every size. */
+  /** 1 for the first worker this run starts, counting every size: unique where `id` is per size. */
   readonly index: number
-  /** Its name in the run's output and its own (`small#2`), which it reports back on joining. */
+  /** Its name in the run's output and its own (`small#2`, numbered within its size), which it reports back on joining. */
   readonly id: string
   readonly workspaceRoot: string
   /** What the worker's `vx dte worker` reads: `VX_DTE_RUN`, `VX_DTE_WORKER` (`id`), `VX_DTE_RELAY`, `VX_DTE_SECRET` (the run’s). */
@@ -108,6 +109,12 @@ export interface DteOptions {
   readonly token?: () => string | undefined | Promise<string | undefined>
   /** How the run orders, places, books and scales (`Strategy`); each layer absent is the default's. */
   readonly scheduler?: Partial<Strategy>
+  /**
+   * What a task with no measure counts for when the run decides how many
+   * workers to start (default 2 cores, 4GB). It books next to nothing, so
+   * it runs on any free core.
+   */
+  readonly unmeasured?: { readonly cpu: number; readonly memory: number | string }
 }
 
 const KEYS: PluginOptionKinds<DteOptions> = {
@@ -116,6 +123,7 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   relay: 'string',
   token: 'function',
   scheduler: 'object',
+  unmeasured: 'object',
 }
 
 export function dte(options: DteOptions) {
@@ -160,6 +168,7 @@ export function dte(options: DteOptions) {
     return platform === undefined ? {} : { platform }
   }
   const home = homeOf(sizes, hostPlatform())
+  const unmeasured = unmeasuredOf(options.unmeasured)
   const adapter = options.adapter
   // A keyless adapter's run on GitHub Actions with a relay names its own
   // run: ci.yml sets nothing (owner, 2026-10-23: "super simple" CI).
@@ -225,7 +234,7 @@ export function dte(options: DteOptions) {
     if (options.relay === undefined) throw new UserError('vx dte plan needs dte({ relay })')
     const { runSecret } = await import('./seal.js')
     const live = adapter.live?.() === true
-    const workers = planned(sizes, live ? await firstWave(args, ctx, sizes) : undefined)
+    const workers = planned(sizes, live ? await firstWave(args, ctx, sizes, unmeasured) : undefined)
     const files: Record<string, string> = {
       ...adapter.render({ run, relay: options.relay, workspaceRoot: root, workers }),
     }
@@ -306,6 +315,7 @@ export function dte(options: DteOptions) {
             ctx.localCache.dbHandle(),
             undefined,
             ctx.branch,
+            taskDefinitions(graph.values()),
           ).resourcesFor(ids)
           tails = undefined
         } catch (err) {
@@ -374,7 +384,7 @@ export function dte(options: DteOptions) {
       proof ??= seal.secretProof(secret!)
       const { tree } = await snapshot(ctx.workspaceRoot)
       if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
-      const need = (id: string): Need => booked(needOf(peaks.get(id)), how.book)
+      const need = (id: string): Need => booked(needOf(peaks.get(id), unmeasured), how.book)
       // The run plans again on it, now when `now`; set once the plan is.
       let onChange = (_now?: boolean): void => {}
       const o = new Orchestrator({
@@ -418,6 +428,14 @@ export function dte(options: DteOptions) {
       const started = new Map<string, number>()
       const sizeOf = new Map<string, Size>()
       let index = 0
+      // Numbered within its size: one count across sizes left M asking
+      // where small#1 was (mac#1 had it, 2026-10-23).
+      const numbered = new Map<string, number>()
+      const nextId = (size: string): string => {
+        const n = (numbered.get(size) ?? 0) + 1
+        numbered.set(size, n)
+        return `${size}#${n}`
+      }
       // A planned run's first wave is on its way already; the rest, if
       // any, waits for the run to start it, by size.
       const later = new Map<string, string[]>()
@@ -435,6 +453,7 @@ export function dte(options: DteOptions) {
           ...named(a.size),
         })
         started.set(a.size, (started.get(a.size) ?? 0) + 1)
+        numbered.set(a.size, (numbered.get(a.size) ?? 0) + 1)
         index++
       }
       // A worker the run counts as started, against its size's max.
@@ -471,8 +490,8 @@ export function dte(options: DteOptions) {
         const n = Number(id.slice(id.lastIndexOf('#') + 1))
         if (s === undefined || !Number.isInteger(n) || n < 1)
           throw new UserError(`dte(): a started worker ${id} is no worker of a declared size`)
-        index = Math.max(index, n)
-        return spawnOf(s, id, n)
+        numbered.set(size, Math.max(numbered.get(size) ?? 0, n))
+        return spawnOf(s, id, ++index)
       })
       // Tasks core handed over: each missed the cache (`missedWork`).
       const executed = new Set<string>()
@@ -492,7 +511,8 @@ export function dte(options: DteOptions) {
           remaining,
           nodes: nodes ?? new Map(),
           executed: knownMisses(likely, sure, executed, remaining),
-          need,
+          // As the run books them: a plan of history alone asks for workers it then fills less.
+          need: (id) => o.booking(need(id)),
           durationMs: (id) => peaks.get(id)?.p50DurationMs,
           workers,
           running,
@@ -532,12 +552,12 @@ export function dte(options: DteOptions) {
           tasks.length,
           tasks.filter((t) => measured(t.id)).length,
           p.endsInMs,
+          tasks.filter((t) => !measured(t.id)).map((t) => t.id),
         )
         for (const s of p.start) {
           ++index
           // Counted against its size's max, so a planned one is left.
-          const id =
-            plannedWorkers === undefined ? `${s.name}#${index}` : later.get(s.name)!.shift()!
+          const id = plannedWorkers === undefined ? nextId(s.name) : later.get(s.name)!.shift()!
           const a = spawnOf(s, id, index)
           void Promise.resolve(adapter.spawn(a)).catch((err: unknown) =>
             o.failed(id, err instanceof Error ? err.message : String(err)),
@@ -622,8 +642,10 @@ export function dte(options: DteOptions) {
         },
         footer: () => o.footer(),
         machines: () => o.machines(),
+        profile: () => o.profile(),
         running: (id) => o.where(id),
         demand(remaining, misses) {
+          if (pending === undefined) o.probed(remaining.size, misses.size)
           pending = remaining
           sure = misses
           if (misses.size > 0) missed = true
@@ -683,6 +705,7 @@ async function firstWave(
   args: readonly string[],
   ctx: CommandContext,
   sizes: readonly Size[],
+  unmeasured: Need,
 ): Promise<Map<string, number>> {
   const { VX_DTE_RUN: _, ...env } = process.env
   const dry = Bun.spawnSync([...ctx.vx, 'run', ...args, '--dry=json'], {
@@ -718,13 +741,13 @@ async function firstWave(
     try {
       peaks = await new LocalHistoryProvider(db).resourcesFor([...remaining])
     } catch {
-      // No history: every task a whole worker, as a run packs it.
+      // No history: every task books `unmeasured`, as a run packs it.
     } finally {
       db.close()
     }
   }
   const { candidates, plan, planTasks } = await import('./planner.js')
-  const need = (id: string): Need => needOf(peaks.get(id))
+  const need = (id: string): Need => needOf(peaks.get(id), unmeasured)
   const work = planTasks(
     remaining,
     nodes,
@@ -757,11 +780,38 @@ interface DryTask {
   readonly p50Ms?: number
 }
 
+/**
+ * What an unmeasured task counts for in the worker ask (`dte({ unmeasured
+ * })`): fixed, since a plan cannot know which worker it lands on (M,
+ * 2026-10-23: "by default, 2 cores, 4 gigs").
+ */
+const FRESH: Need = { cores: 2, memory: 4e9 }
+/**
+ * What it books: one free core, no memory (M, 2026-10-23: "pack them
+ * where we have free capability"). Simulated on main's graph with a third
+ * of its tasks unmeasured, it ended at 161 s where a whole worker each
+ * ended at 195 s; a quarter core packed a cold run's tasks 16 to a
+ * 4-core worker and ended at 267 s.
+ */
+const PLACED = { cores: 1, memory: 0 }
+
+function unmeasuredOf(u: DteOptions['unmeasured']): Need {
+  if (u === undefined) return FRESH
+  const memory = bytes(u.memory)
+  if (!(typeof u.cpu === 'number' && u.cpu > 0) || memory === undefined)
+    throw new UserError("dte(): unmeasured needs cpu > 0 and memory such as '4GB'")
+  return { cores: u.cpu, memory }
+}
+
 /** What a task asks of a worker, from its history. */
-export function needOf(r: TaskResources | undefined): Need {
-  // Unmeasured: a whole worker, until its first run measures it. One that
-  // filled its worker: a whole bigger one.
-  if (r?.maxCpuParallelism === undefined) return { cores: Infinity, memory: Infinity }
+export function needOf(r: TaskResources | undefined, ask: Need = FRESH): Need {
+  // Unmeasured (new, or over before the Linux sandbox's first look, which
+  // leaves no CPU): any free core, counted as `ask` when the run is sized.
+  // A whole worker each left main's small#1 at 13% for three sub-second
+  // tasks (M, 2026-10-23: "we can't waste whole worker for one task").
+  // One that filled its worker: a whole bigger one.
+  if (r?.maxCpuParallelism === undefined)
+    return { ...PLACED, ask: { cores: ask.cores, memory: ask.memory } }
   if (r.saturatedCores !== undefined || r.saturatedMemoryBytes !== undefined)
     return {
       cores: Infinity,
@@ -775,8 +825,8 @@ export function needOf(r: TaskResources | undefined): Need {
 }
 
 /**
- * Each size's `max` workers, numbered across sizes as a run numbers those
- * it starts. With a `wave` (workers by size), only that many of each start
+ * Each size's `max` workers, numbered within their size as a run numbers
+ * those it starts. With a `wave` (workers by size), only that many of each start
  * with the run: the run starts the rest, `live`, as its work needs them.
  */
 function planned(
@@ -789,7 +839,7 @@ function planned(
       throw new UserError(`dte(): workers.${s.name} needs max: a plan writes that many`)
     for (let i = 0; i < s.max; i++)
       out.push({
-        id: `${s.name}#${out.length + 1}`,
+        id: `${s.name}#${i + 1}`,
         size: s.name,
         cpu: s.cpu,
         memory: s.memory,

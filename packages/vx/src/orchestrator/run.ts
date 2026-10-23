@@ -32,6 +32,7 @@ import {
   isGroupTask,
   markSurfacedDeps,
   runGraph,
+  taskDefinitions,
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
@@ -902,6 +903,7 @@ async function runOnBus(
           prepared.localCache.dbHandle(),
           undefined,
           prepared.branch(),
+          taskDefinitions(nodes.values()),
         ).p50sFor(ids)
         return createForecast(nodes, p50s, concurrency)
       },
@@ -925,8 +927,6 @@ async function runOnBus(
             ? {
                 held: (ids: readonly string[], missed: readonly string[]) =>
                   demand.settle(ids, missed),
-                revised: (hits: readonly string[], missed: readonly string[]) =>
-                  demand.revise(hits, missed),
               }
             : {}),
           nodes,
@@ -1341,6 +1341,7 @@ async function runOnBus(
             target: profile,
             cwd: options.cwd,
             outcomes: list,
+            executors: executors.map(executorProfile),
           }),
         )
         log.status(`vx: profile written to ${wrote}`)
@@ -1685,6 +1686,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
         prepared.localCache.dbHandle(),
         undefined,
         prepared.branch(),
+        taskDefinitions(prepared.nodes.values()),
       ),
       // Placement, by the same rules the run applies. Only worth showing
       // when there is a choice to show — with one declared executor every
@@ -1943,6 +1945,18 @@ function executorFooter(e: TaskExecutor): (readonly [string, ui.Inline])[] {
         typeof r[0] === 'string' &&
         (typeof r[1] === 'string' || (typeof r[1] === 'object' && r[1] !== null)),
     )
+  } catch {
+    return []
+  }
+}
+
+/** An executor's `--profile` events; a throw or a bad shape adds none. */
+function executorProfile(e: TaskExecutor): readonly Record<string, unknown>[] {
+  try {
+    const events = e.profile?.()
+    return Array.isArray(events)
+      ? events.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
+      : []
   } catch {
     return []
   }
