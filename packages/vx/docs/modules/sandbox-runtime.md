@@ -375,6 +375,9 @@ export function refusedConnections(records: readonly string[]): SandboxViolation
    - Prepends a unique `: 'vx-<hash>';` shell no-op to the command so
      SRT's `getViolationsForCommand` can disambiguate concurrent tasks
      with identical commands (it keys by base64 of the first 100 chars).
+     On Linux the tag also leads the wrap SRT keys write records by, ahead
+     of the proxy-bridge wait every networked task shares
+     (`tests/sandbox-records-key.unsafe.test.ts`).
    - Builds a `customConfig` by merging the baseline (dependency dirs
      and the workspace-root deny anchor) with the user's resolved
      sandbox block, then appends the rules SRT's config cannot carry.
