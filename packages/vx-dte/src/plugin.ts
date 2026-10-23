@@ -14,7 +14,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Need, Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
-import type { Size } from './width.js'
+import type { Size } from './planner.js'
 
 /** One kind of worker the adapter can start. */
 export interface WorkerSize {
@@ -293,13 +293,13 @@ export function dte(options: DteOptions) {
       const [
         { Orchestrator },
         { join },
-        { busyCores, endsInMs, tailsMs, toStart },
+        { candidates, missedWork, plan, tailsMs, WARM_UP_MS },
         { snapshot },
         seal,
       ] = await Promise.all([
         import('./orchestrator.js'),
         import('./wire.js'),
-        import('./width.js'),
+        import('./planner.js'),
         import('./tree.js'),
         import('./seal.js'),
       ])
@@ -325,6 +325,8 @@ export function dte(options: DteOptions) {
       const { tree } = await snapshot(ctx.workspaceRoot)
       if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
       const need = (id: string): Need => needOf(peaks.get(id))
+      // The run plans again on it, now when `now`; set once the plan is.
+      let onChange = (_now?: boolean): void => {}
       const o = new Orchestrator({
         me: seal.sealOrchestrator(
           await join(relay, run, 'orchestrator', null, () => token(relay)),
@@ -341,19 +343,20 @@ export function dte(options: DteOptions) {
         keyOf: (id) => keys.get(id),
         tail: (id) =>
           (tails ??= tailsMs(nodes ?? new Map(), (x) => peaks.get(x)?.p50DurationMs))(id),
-        left: (id) => {
+        lost: (id) => {
           // A planned worker is not started again: its job is spent.
           const s = sizeOf.get(id)
           if (s === undefined || plannedWorkers !== undefined) return
           sizeOf.delete(id)
           started.set(s.name, started.get(s.name)! - 1)
-          if (missed && pending !== undefined && !demanding) demand(pending)
+          // Before the run counts what is left to start: none would fail it.
+          onChange(true)
         },
+        joined: () => onChange(),
       })
       orchestrator = o
       const started = new Map<string, number>()
       const sizeOf = new Map<string, (typeof sizes)[number]>()
-      let demanding = false
       let index = 0
       // A planned run's first wave is on its way already; the rest, if
       // any, waits for the run to start it, by size.
@@ -401,43 +404,54 @@ export function dte(options: DteOptions) {
         index = Math.max(index, n)
         return spawnOf(s, id, n)
       })
-      // Workers in declared order for the cores the remaining tasks keep
-      // busy (`busyCores`); idle ones beyond it leave.
-      const demand = (remaining: ReadonlySet<string>): void => {
-        if (!ready()) return
-        demanding = true
-        try {
-          shape(remaining)
-        } finally {
-          demanding = false
-        }
-      }
+      // Tasks core handed over: each missed the cache (`missedWork`).
+      const executed = new Set<string>()
+      // A plan that needs a worker later plans again then.
+      let again: ReturnType<typeof setTimeout> | undefined
+      // The fewest workers that end the run's known work within a margin of
+      // the most would, played out (`planner.ts`); idle ones it does
+      // without leave. Again at each miss, finish, join and history read.
       const shape = (remaining: ReadonlySet<string>): void => {
-        // An unmeasured task takes the biggest worker there is.
-        const biggest = Math.max(1, o.biggestCores(), ...sizes.map((s) => s.cpu))
-        const warmUp = o.warmUpMs()
-        const width = (peak?: boolean, fromMs?: number): number =>
-          busyCores(
-            remaining,
-            nodes ?? new Map(),
-            (id) => Math.min(need(id).cores, biggest),
-            (id) => peaks.get(id)?.p50DurationMs,
-            peak,
-            fromMs,
-          )
-        // What a worker asked for now finds once it has warmed up; while
-        // none has joined, the warm-up is unknown and the width is now's.
-        const wantCores = width(false, warmUp)
-        const above = [...remaining].flatMap((id) => need(id).above ?? [])
+        const warmUp = o.warmUpMs() ?? WARM_UP_MS
+        const { workers, running } = o.planState((id) => peaks.get(id)?.p50DurationMs, warmUp)
+        const tasks = missedWork(
+          remaining,
+          nodes ?? new Map(),
+          executed,
+          need,
+          (id) => peaks.get(id)?.p50DurationMs,
+        ).filter((t) => !running.has(t.id))
         const final = adapter === undefined || (plannedWorkers !== undefined && later.size === 0)
-        // Idle workers beyond the rest's peak leave; one a task bigger than
-        // the rest waits for stays. Leaving at `wantCores` left one in a
-        // lull and started another for the wide part after it. At the end
-        // the relay closing ends them all.
-        if (remaining.size > 0)
-          o.retire(width(true), (a) => above.some((x) => a.cores > x.cores || a.memory > x.memory))
-        if (final) return
-        const start = (s: (typeof sizes)[number]): void => {
+        const p = plan(
+          tasks,
+          workers,
+          final
+            ? []
+            : candidates(
+                sizes,
+                started,
+                tasks.flatMap((t) => t.above ?? []),
+                tasks.length,
+              ),
+          warmUp,
+          adapter !== undefined,
+        )
+        // At the end the relay closing ends them all.
+        if (p.release.length > 0 && remaining.size > 0) o.release(p.release)
+        if (again !== undefined) clearTimeout(again)
+        again = undefined
+        if (p.againInMs !== undefined && !final) {
+          again = setTimeout(replan, p.againInMs)
+          again.unref?.()
+        }
+        if (p.start.length === 0 || final) return
+        o.asked(
+          p.start.length,
+          tasks.length,
+          tasks.filter((t) => measured(t.id)).length,
+          p.endsInMs,
+        )
+        for (const s of p.start) {
           ++index
           // Counted against its size's max, so a planned one is left.
           const id =
@@ -447,22 +461,19 @@ export function dte(options: DteOptions) {
             o.failed(id, err instanceof Error ? err.message : String(err)),
           )
         }
-        // A worker asked for now joins after the warm-up the first ones
-        // took: work that ends sooner is for the workers here or starting.
-        if (
-          warmUp !== undefined &&
-          o.cores() > 0 &&
-          endsInMs(remaining, nodes ?? new Map(), (id) => peaks.get(id)?.p50DurationMs) <= warmUp
-        )
-          return
-        const more = toStart(sizes, started, o.cores(), wantCores, above)
-        if (more.length > 0) {
-          const tasks = [...remaining].filter(
-            (id) => nodes?.get(id)?.config.exec?.command !== undefined,
-          )
-          o.asked(wantCores, more.length, tasks.length, tasks.filter((id) => measured(id)).length)
-        }
-        for (const s of more) start(s)
+      }
+      // Events come in bursts (core hands over tasks ready at once): one
+      // plan per tick.
+      let planning = false
+      const replan = (now?: boolean): void => {
+        if (!missed || pending === undefined || !ready()) return
+        if (now === true) return shape(pending)
+        if (planning) return
+        planning = true
+        setImmediate(() => {
+          planning = false
+          if (pending !== undefined) shape(pending)
+        })
       }
       // Until a task misses, demand waits: a run all hits starts no worker.
       let missed = false
@@ -479,11 +490,12 @@ export function dte(options: DteOptions) {
           waited = false
           void needsIn().then(() => {
             waited = true
-            if (missed && pending !== undefined) demand(pending)
+            replan()
           })
         }
         return false
       }
+      onChange = replan
       return {
         name: 'dte',
         remote: true,
@@ -502,12 +514,10 @@ export function dte(options: DteOptions) {
                 sizes.reduce((n, s) => n + 2 * s.max * s.cpu, 0),
               ),
         execute: (req) => {
-          // The first task that missed: workers start now, not for a run
-          // its cache answers whole.
-          if (!missed) {
-            missed = true
-            if (pending !== undefined) demand(pending)
-          }
+          // A miss: the run's known work grows.
+          missed = true
+          executed.add(req.taskId)
+          replan()
           return o.execute(req)
         },
         footer: () => o.footer(),
@@ -515,7 +525,7 @@ export function dte(options: DteOptions) {
         running: (id) => o.where(id),
         demand(remaining) {
           pending = remaining
-          if (missed) demand(remaining)
+          replan()
         },
       }
     },
@@ -611,18 +621,28 @@ async function firstWave(
       db.close()
     }
   }
-  const { busyCores, toStart } = await import('./width.js')
-  const biggest = Math.max(...sizes.map((s) => s.cpu))
-  const want = busyCores(
+  const { candidates, plan, planTasks } = await import('./planner.js')
+  const need = (id: string): Need => needOf(peaks.get(id))
+  const work = planTasks(
     remaining,
     nodes,
-    (id) => Math.min(needOf(peaks.get(id)).cores, biggest),
+    need,
     (id) => peaks.get(id)?.p50DurationMs ?? p50.get(id),
   )
-  const above = [...remaining].flatMap((id) => needOf(peaks.get(id)).above ?? [])
+  // All start at once: no warm-up between them.
+  const { start } = plan(
+    work,
+    [],
+    candidates(
+      sizes,
+      new Map(),
+      work.flatMap((t) => t.above ?? []),
+      work.length,
+    ),
+    0,
+  )
   const wave = new Map<string, number>()
-  for (const s of toStart(sizes, new Map(), 0, want, above))
-    wave.set(s.name, (wave.get(s.name) ?? 0) + 1)
+  for (const s of start) wave.set(s.name, (wave.get(s.name) ?? 0) + 1)
   return wave
 }
 
