@@ -83,8 +83,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun add -g @vzn/vx # hands off to the repo's own vx
       - run: bun install --frozen-lockfile
-      # The OS sandbox, for tasks that declare exec.sandbox (@vzn/vx-ci).
-      - run: vx setup github
       # A lock that no longer matches the configs fails here, before any task.
       - run: vx lock --check
       # main runs everything and fills the cache every pull request
@@ -99,6 +97,10 @@ jobs:
           VX_REAPI_ENDPOINT: ${{ vars.VX_REAPI_ENDPOINT }}
           VX_CACHE_TOKEN: ${{ secrets.VX_CACHE_TOKEN }} # read-write
 ```
+
+A task that declares `exec.sandbox` needs the OS sandbox on the runner:
+add `- run: vx setup github` after the install
+([vx-ci](../../plugins/vx-ci/#the-sandbox-runtime-vx-setup)).
 
 ### 2. Declare the plugins
 
