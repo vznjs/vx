@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import type { Size } from '../src/planner.js'
+import { DEFAULT_STRATEGY, STRATEGIES } from '../src/strategy.js'
 import a09 from './fixtures/main-run-a09b987.json'
 import f2163 from './fixtures/main-run-2026-10-23.json'
 import { bestMs, simulate, type SimResult, type SimTask } from './sim.js'
@@ -143,3 +144,18 @@ for (const c of cases) {
     })
   })
 }
+
+// Each choice of each layer (`dte({ scheduler })`), the rest the default's:
+// whatever a workspace picks, no worker is booked past its cores and every
+// miss runs once.
+describe('each scheduler choice, on main a09b987', () => {
+  const graph = load(a09)
+  for (const [layer, choices] of Object.entries(STRATEGIES))
+    for (const choice of choices)
+      it(`${layer}: ${choice}`, () => {
+        const how = { ...DEFAULT_STRATEGY, [layer]: choice }
+        const r = simulate(graph, { sizes: [small], how, likely: misses(graph) })
+        for (const w of r.workers) expect(w.peakBooked).toBeLessThanOrEqual(w.cores + 1e-9)
+        expect(r.workers.reduce((n, w) => n + w.tasks, 0)).toBe(r.executed)
+      })
+})

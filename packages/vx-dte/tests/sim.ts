@@ -6,7 +6,8 @@
 // What the summary's Workers table would say comes back with it.
 
 import type { TaskNode } from '@vzn/vx'
-import { assign, type Need } from '../src/dispatch.js'
+import { assign, ordered, type Need } from '../src/dispatch.js'
+import { booked, DEFAULT_STRATEGY, type Strategy } from '../src/strategy.js'
 import {
   decide,
   simulate as play,
@@ -34,6 +35,8 @@ export interface SimOptions {
   readonly warmUpMs?: (n: number) => number
   /** The tasks the forecast says miss (`likelyMisses`), before any does. */
   readonly likely?: ReadonlySet<string>
+  /** How it orders, places, books and scales; default `DEFAULT_STRATEGY`. */
+  readonly how?: Strategy
 }
 
 export interface SimWorker {
@@ -85,6 +88,7 @@ interface Live extends SimWorker {
 
 export function simulate(graph: readonly SimTask[], options: SimOptions): SimResult {
   const warmUpOf = options.warmUpMs ?? (() => 20_000)
+  const how = options.how ?? DEFAULT_STRATEGY
   const byId = new Map(graph.map((t) => [t.id, t]))
   const nodes = new Map<string, TaskNode>(
     graph.map((t) => [
@@ -105,7 +109,10 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   }
   const need = (id: string): Need => {
     const k = known(id)
-    return k === undefined ? UNMEASURED : { cores: Math.max(0.25, k.cores), memory: k.memory }
+    return booked(
+      k === undefined ? UNMEASURED : { cores: Math.max(0.25, k.cores), memory: k.memory },
+      how.book,
+    )
   }
   const durationMs = (id: string): number | undefined => known(id)?.ms
   const tail = tailsMs(nodes, durationMs)
@@ -152,7 +159,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     workers.filter((w) => w.joinedAt === undefined && w.cancelledAt === undefined)
 
   const dispatch = (): void => {
-    queue.sort((x, y) => tail(y) - tail(x))
+    const widest = Math.max(1, ...joined().map((w) => w.cores))
+    queue.splice(0, queue.length, ...ordered(queue, how.order, tail, need, widest))
     const bins = joined().map((w) => {
       let cores = 0
       let memory = 0
@@ -173,6 +181,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     const to = assign(
       queue.map((id) => ({ id, need: need(id), up: byId.get(id)!.deps })),
       bins,
+      undefined,
+      how.place,
     )
     for (const [id, bin] of to) {
       const w = bin.w
@@ -247,6 +257,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       replaceable: true,
       limitMs: deadline === undefined ? undefined : deadline - now,
       known: planned,
+      how,
     })
     deadline = now + p.boundMs
     for (const t of p.tasks) planned.add(t.id)
