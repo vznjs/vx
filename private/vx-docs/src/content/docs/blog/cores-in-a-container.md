@@ -9,26 +9,27 @@ tags:
 excerpt: 'Inside a container, the CPU count a program sees is the host’s. A task runner that trusts it starts more work than the kernel will run. Here is how vx picks its worker count.'
 ---
 
-A task runner's first number is how many tasks to run at once. Too few
-and cores sit idle. Too many and tasks fight for the same cores, each
-one slower, and the run ends later than it would have with fewer.
+The container this post was written in:
 
-The obvious answer is "one per CPU". Inside a container, that answer is
-wrong.
+```sh frame="terminal"
+$ bun -e 'console.log((require("os").totalmem() / 2 ** 30).toFixed(1), "GB")'
+15.7 GB
 
-## The CPU count lies in a container
+$ vx info
+  workers           4 — the CPU count
+  memory            13 GB usable — cgroup limit; the machine has 16 GB
+```
 
-A CI job often runs in a container with a CPU limit: Docker's
-`--cpus=2`, a Kubernetes `limits.cpu`, a hosted runner's plan. The
-kernel enforces that limit through the job's cgroup. But the CPU count
-a program reads (`navigator.hardwareConcurrency` in Bun, `os.cpus()` in
-Node) is the HOST's.
+`os.totalmem()` reports the host. The kernel will kill a task at the
+cgroup's limit. vx reads the limit. Linux x64, cgroup v1, vx at
+`69617eb`, 2026-10-23.
 
-So on a 32-core host, a job limited to two cores still reads 32. A
-runner that starts 32 tasks there gets two cores of work done, slower,
-with 30 tasks waiting on the scheduler of the kernel instead of its own.
-Memory has the same trap: `os.totalmem()` reports the host's RAM, not
-the container's limit.
+CPUs have the same trap. A CI job limited to two cores
+(`--cpus=2`, a Kubernetes `limits.cpu`) on a 32-core host still reads
+32 from `navigator.hardwareConcurrency` or `os.cpus()`. A runner that
+starts 32 tasks there gets two cores of work done, slower, with 30
+tasks waiting on the kernel's scheduler instead of its own. With a CPU
+quota, the line reads `workers 2 — cgroup CPU quota 2 of 32 cores`.
 
 ## Read the limit the kernel enforces
 
@@ -47,18 +48,6 @@ Memory follows the same walk (`memory.max`, or `memory.limit_in_bytes`
 on v1).
 
 On macOS there are no cgroups, so the machine's numbers stand.
-
-## See what vx chose
-
-`vx info` prints the worker count and where it came from:
-
-```sh frame="terminal"
-$ vx info
-  workers           2 — cgroup CPU quota 2 of 32 cores
-  memory            4 GB usable — cgroup limit; the machine has 128 GB
-```
-
-On a laptop the same line reads `8 — the CPU count`.
 
 ## When you know better
 
@@ -86,4 +75,5 @@ Two kinds of work never take a worker slot:
   64-worker remote pool stays full even from a 10-core laptop, or a run
   with `--concurrency 1`.
 
-The details are in [Concurrency](../../execution/#concurrency).
+The details are in [Concurrency](../../execution/#concurrency). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
