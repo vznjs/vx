@@ -434,7 +434,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
             tasks: {
               build: {
                 exec: {
-                  command: 'cat undeclared.txt > probe/root.txt 2>/dev/null; cat dist/sibling.txt > probe/dist.txt 2>/dev/null; echo done',
+                  command: 'cat 2>/dev/null > probe/root.txt < undeclared.txt; cat 2>/dev/null > probe/dist.txt < dist/sibling.txt; echo done',
                   sandbox: { allow: { read: ['src/**'], write: ['${write}', 'probe/'] } },
                 },
                 inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
@@ -503,7 +503,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         tasks: {
           build: {
             exec: {
-              command: 'mkdir -p dist && cat src/index.ts banner.txt > dist/out.txt',
+              command: 'mkdir -p dist && cat src/index.ts - < banner.txt > dist/out.txt',
               sandbox: { allow: { read: ${JSON.stringify(files)}, write: ['dist/'] } },
             },
             inputs: { files: ${JSON.stringify(files)} }, cache: { outputs: { files: ['dist/**'] } },
@@ -524,17 +524,16 @@ describe.skipIf(!available || process.platform !== 'linux')(
         })
         const r = await run({ cwd: fixture.root, tasks: ['build'], log: collectingLogger(fixture) })
         expect(r.outcomes[0]?.status).toBe('failed')
-        expect(r.outcomes[0]?.exitCode).toBe(1)
+        // The shell opens banner.txt, so it reads on any cat: Ubuntu 26's
+        // (uutils) stats first and so never opens a hidden path.
+        expect(r.outcomes[0]?.exitCode).toBe(2)
         expect(r.outcomes[0]?.sandboxViolationLines).toEqual([
           `openat(banner.txt) = -1 ENOENT  [${realpathSync(dir)}/banner.txt]`,
         ])
-        // The logger trims each stderr chunk, and cat's message arrives split
-        // wherever its writes land (after `cat:` in one gate, and as
-        // `cat:` / `banner.txt` / `: No such…` on CI), so the comparison drops
-        // whitespace, which no split can move.
-        expect(fixture.log.join('').replace(/\s/g, '')).toContain(
-          'cat:banner.txt:Nosuchfileordirectory',
-        )
+        // The logger trims each stderr chunk, and the message arrives split
+        // wherever its writes land, so the comparison drops whitespace,
+        // which no split can move.
+        expect(fixture.log.join('').replace(/\s/g, '')).toContain('cannotopenbanner.txt:Nosuchfile')
 
         await writeFile(path.join(dir, 'vx.config.mjs'), config(['src/**', 'banner.txt']))
         const declared = await run({
@@ -682,7 +681,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         },
       }
     `
-    const demo = 'mkdir -p dist && cat src/index.ts banner.txt > dist/out.txt'
+    const demo = 'mkdir -p dist && cat src/index.ts - < banner.txt > dist/out.txt'
 
     /** `web` and `ui`, both linked at the root as npm lays them out; returns web's dir. */
     const npmWorkspace = async (command: string): Promise<string> => {
@@ -780,7 +779,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
         tasks: {
           test: {
             exec: {
-              command: 'mkdir -p dist && cat ${linkPath[layout]}/src/index.js > dist/out.txt',
+              command: 'mkdir -p dist && cat < ${linkPath[layout]}/src/index.js > dist/out.txt',
               sandbox: { allow: { read: ['.'], write: ['dist/'] } },
             },
             dependsOn: ${JSON.stringify(opts.dependsOn)},
@@ -1059,7 +1058,7 @@ describe.skipIf(!available || process.platform !== 'linux')(
             tasks: {
               build: {
                 exec: {
-                  command: 'sleep 0.4; mkdir -p probe; cat secret.txt > probe/got.txt 2>/dev/null; echo done',
+                  command: 'sleep 0.4; mkdir -p probe; cat 2>/dev/null > probe/got.txt < secret.txt; echo done',
                   sandbox: { allow: { read: ['src/**'], write: ['probe/'] } },
                 },
                 inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },

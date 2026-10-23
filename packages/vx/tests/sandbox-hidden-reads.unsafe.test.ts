@@ -34,7 +34,7 @@ describe.skipIf(!available || process.platform !== 'linux')('a read hidden by th
   }
 
   it('is named beside a failed task, with the grant', async () => {
-    expect(await outcome('cat ../../tsconfig.base.json')).toEqual([
+    expect(await outcome('cat < ../../tsconfig.base.json')).toEqual([
       'failed',
       [
         `vx: the sandbox hid paths outside the project that exist on this machine, which are ` +
@@ -45,10 +45,10 @@ describe.skipIf(!available || process.platform !== 'linux')('a read hidden by th
   })
 
   it('CONTROL: never beside a passing task', async () => {
-    expect(await outcome('cat ../../tsconfig.base.json || true')).toEqual(['success', []])
+    expect(await outcome('cat < ../../tsconfig.base.json || true')).toEqual(['success', []])
   })
 
   it('CONTROL: a path the host lacks too is the tool’s own miss', async () => {
-    expect(await outcome('cat ../../nope.json')).toEqual(['failed', []])
+    expect(await outcome('cat < ../../nope.json')).toEqual(['failed', []])
   })
 })
