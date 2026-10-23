@@ -1,6 +1,6 @@
 // The critical-path score, apart from the plugin that feeds it to the
 // scheduler. It imports only types, so the Learn page's scheduler simulator
-// (through packages/vx-bench/schedule-policy.ts) bundles it for the browser
+// (through private/vx-bench/schedule-policy.ts) bundles it for the browser
 // without the rest of `@vzn/vx`.
 
 import type { HistoryTable, TaskNode, TaskResources } from '@vzn/vx'

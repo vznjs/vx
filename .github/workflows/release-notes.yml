@@ -9,7 +9,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'packages/vx-docs/src/content/docs/releases/**'
+      - 'private/vx-docs/src/content/docs/releases/**'
   workflow_dispatch:
 
 permissions: {}

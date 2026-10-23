@@ -2019,7 +2019,7 @@ declares it in the workspace file a run reads (`.vx/workspace.ts` when
 there is none). The templates are TypeScript, so `--mjs` with
 `--plugin` is refused. An existing file is refused without
 `--force`; `--dry` names the files and writes nothing. The two files are
-`packages/vx-plugin-examples/plugins`, which the gate runs, copied into
+`private/vx-plugin-examples/plugins`, which the gate runs, copied into
 core (`src/cli/plugin-templates.ts`) and held equal by
 `tests/plugin-templates.unsafe.test.ts` (H-21).
 

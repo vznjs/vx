@@ -23,9 +23,9 @@ const repo = path.resolve(import.meta.dir, '..', '..', '..')
 
 const CODE = /\.(?:ts|mts|cts|js|mjs|cjs|astro)$/
 const SKIP =
-  /(?:^|\/)(?:index\.ts|bin\.ts|content\.config\.ts|vx\.config\.ts|vx\.workspace\.ts|astro\.config\.mjs)$|^packages\/vx-docs\/src\/nav\/route-data\.ts$/
+  /(?:^|\/)(?:index\.ts|bin\.ts|content\.config\.ts|vx\.config\.ts|vx\.workspace\.ts|astro\.config\.mjs)$|^private\/vx-docs\/src\/nav\/route-data\.ts$/
 const FRAMEWORK_READ = (file: string, name: string): boolean =>
-  name === 'getStaticPaths' && /^packages\/vx-docs\/src\/pages\/.*\.(?:astro|ts)$/.test(file)
+  name === 'getStaticPaths' && /^private\/vx-docs\/src\/pages\/.*\.(?:astro|ts)$/.test(file)
 const DECLARATION =
   /^export (?:async )?(?:function\*?|const|let|class|abstract class|enum) ([A-Za-z_$][\w$]*)/gm
 const IDENT = /[A-Za-z_$][\w$]*/g

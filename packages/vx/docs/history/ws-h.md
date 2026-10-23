@@ -215,7 +215,7 @@ its fix.
 
 ## H-17: runnable example plugins, one per seam
 
-`packages/vx-plugin-examples` (private): executor, cache, telemetry,
+`private/vx-plugin-examples` (private): executor, cache, telemetry,
 schedule, admit, commands, project, graph and key, each a complete
 plugin in one file, each run by `tests/examples.test.ts` through `run()`
 or the CLI with an observable result (a remote hit after the local cache
@@ -269,7 +269,7 @@ types, and those types are already held to the validator both ways
 `plugins/<seam>.test.ts` for any of the nine seams, and prints the
 line that declares it. The files are H-17's examples, now one plugin
 and one standalone test per seam side by side
-(`packages/vx-plugin-examples/plugins`), so the gate runs exactly what a
+(`private/vx-plugin-examples/plugins`), so the gate runs exactly what a
 user gets. Core cannot import a sibling package, so
 `src/cli/plugin-templates.ts` is a generated copy, held to the examples
 byte for byte by `plugin-templates.unsafe.test.ts`. A scaffolded test

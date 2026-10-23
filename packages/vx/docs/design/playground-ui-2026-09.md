@@ -97,7 +97,7 @@ The page is `learn/playground`, last in Learn before the glossary, and
 the caching and correctness pages link to it in one sentence each.
 
 - **Where things are.** The workspace is
-  `packages/vx-docs/src/playground/workspace.ts`: `CONFIG_TEXTS` (one
+  `private/vx-docs/src/playground/workspace.ts`: `CONFIG_TEXTS` (one
   `vx.config.mjs` text per package), `FILES`, `ENV` (`API_URL`, which
   `api#build` declares) and `TASKS` (`build test`). What the page
   computes is `src/components/demos/model/playground-view.ts`. The
@@ -163,16 +163,16 @@ The rows:
 | The page's Run on its workspace: every key, cache status and deps equal `vx run build test --all --dry=json`, committed | `packages/vx/tests/playground-parity.unsafe.test.ts` (`test.bun.unsafe`: git, no sandbox) |
 | The same after an uncommitted edit to `packages/ui/src/button.tsx`                                                      | same                                                                                      |
 | That edit moves exactly `app#build`, `app#test`, `ui#build` and `ui#test`, in both planners                             | same                                                                                      |
-| Diff, summary, failure sentence, order line, env and spec parsing against hand-written truth                            | `packages/vx-docs/tests/playground-view.test.ts` (sandboxed, reads `dist/`)               |
+| Diff, summary, failure sentence, order line, env and spec parsing against hand-written truth                            | `private/vx-docs/tests/playground-view.test.ts` (sandboxed, reads `dist/`)                |
 | The static table equals a hand-written one, and its "waits for" equals the planner's deps                               | same                                                                                      |
 | The page's Run over the shipped planner: all miss, then all hit; the edit moves the four; a new README moves nothing    | same                                                                                      |
 | A broken config names its project and file; core's refusal is unchanged; an unknown spec gets the CLI's words           | same                                                                                      |
-| The built page: the static table for every task, the file list, each config's text                                      | `packages/vx-docs/tests/learn-playground.test.ts` (sandboxed, reads `dist/`)              |
+| The built page: the static table for every task, the file list, each config's text                                      | `private/vx-docs/tests/learn-playground.test.ts` (sandboxed, reads `dist/`)               |
 | The controls ship hidden, with the starting env and specs and the planner's URL, and the planner is in `dist/`          | same                                                                                      |
 | Every selector and `data-action` the element reads matches exactly one element                                          | same                                                                                      |
 | The page's scripts define `<vx-playground>`, and no chunk they reach carries the planner                                | same                                                                                      |
 | The checkpoint names exactly the keys the planner moves                                                                 | same                                                                                      |
-| The bundle exports exactly `evaluateConfig`, `listPlaygroundProjects` and `planPlayground`                              | `packages/vx-docs/tests/playground-bundle.test.ts`                                        |
+| The bundle exports exactly `evaluateConfig`, `listPlaygroundProjects` and `planPlayground`                              | `private/vx-docs/tests/playground-bundle.test.ts`                                         |
 
 Differentials, each restored by reverse edit:
 
@@ -258,10 +258,10 @@ The rows:
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
 | `cacheKeyDiff` names changed / added / removed, orders by kind, and (new) orders one kind by name                                                                                                                                        | `packages/vx/tests/metrics.test.ts`                  |
 | A real `vx run build test --all`, then the `button.tsx` edit, a new file, and that file gone: per step, `vx why <id> --format json`'s entries for the four moved tasks are the exact expected set, and equal the page's, hashes included | `packages/vx/tests/playground-parity.unsafe.test.ts` |
-| `diffRuns` diffs only a moved key's components, through the bundle's function                                                                                                                                                            | `packages/vx-docs/tests/playground-view.test.ts`     |
+| `diffRuns` diffs only a moved key's components, through the bundle's function                                                                                                                                                            | `private/vx-docs/tests/playground-view.test.ts`      |
 | `describeChange` for each kind and verdict; the cell's "and N more" cut                                                                                                                                                                  | same                                                 |
 | The page's Run over the shipped planner names the `button.tsx` edit for all four moved tasks (exact set and cells)                                                                                                                       | same                                                 |
-| The bundle exports exactly `diffKeyComponents`, `evaluateConfig`, `listPlaygroundProjects` and `planPlayground`                                                                                                                          | `packages/vx-docs/tests/playground-bundle.test.ts`   |
+| The bundle exports exactly `diffKeyComponents`, `evaluateConfig`, `listPlaygroundProjects` and `planPlayground`                                                                                                                          | `private/vx-docs/tests/playground-bundle.test.ts`    |
 
 The parity row's workspace is the page's with every command made
 `true`: the page's commands (`vite build`, `tsc -b`, `astro build`)

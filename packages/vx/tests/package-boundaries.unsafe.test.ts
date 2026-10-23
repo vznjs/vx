@@ -9,7 +9,7 @@
 //         caught from any depth (the pattern that stood here matched only
 //         `../src/`, core's path before it moved under packages/, and let
 //         any reach from a sibling through). One directory is exempt by
-//         name: the site's playground (packages/vx-docs/src/playground/,
+//         name: the site's playground (private/vx-docs/src/playground/,
 //         item 695) IS core's planner source bundled for the browser, not
 //         a consumer of its API, and core's playground-parity rows hold it
 //         to the CLI.
@@ -40,6 +40,7 @@ const CORE_SRC = path.join(CORE, 'src')
 // The plugin packages are core's SIBLINGS under the workspace root, which is
 // two levels above core now that core is `packages/vx` rather than the root.
 const PACKAGES_DIR = path.join(CORE, '..')
+const PRIVATE_DIR = path.join(CORE, '..', '..', 'private')
 
 async function importsOf(dir: string): Promise<{ file: string; specifier: string }[]> {
   const out: { file: string; specifier: string }[] = []
@@ -57,18 +58,19 @@ async function importsOf(dir: string): Promise<{ file: string; specifier: string
 async function packageSrcDirs(): Promise<{ name: string; src: string }[]> {
   const out: { name: string; src: string }[] = []
   const glob = new Bun.Glob('*/src')
-  for await (const rel of glob.scan({ cwd: PACKAGES_DIR, onlyFiles: false })) {
-    const name = rel.split(path.sep)[0]!
-    // Core lives under packages/ too, but it is the thing the others import —
-    // scanning it here would ask core to import itself by bare specifier.
-    if (name === 'vx') continue
-    out.push({ name, src: path.join(PACKAGES_DIR, rel) })
-  }
+  for (const dir of [PACKAGES_DIR, PRIVATE_DIR])
+    for await (const rel of glob.scan({ cwd: dir, onlyFiles: false })) {
+      const name = rel.split(path.sep)[0]!
+      // Core lives under packages/ too, but it is the thing the others import —
+      // scanning it here would ask core to import itself by bare specifier.
+      if (name === 'vx') continue
+      out.push({ name, src: path.join(dir, rel) })
+    }
   return out
 }
 
 describe('package boundaries', () => {
-  it('every packages/*/src imports vx only via the bare @vzn/vx specifier', async () => {
+  it('every packages/*/src and private/*/src imports vx only via the bare @vzn/vx specifier', async () => {
     const dirs = await packageSrcDirs()
     expect(dirs.length).toBeGreaterThan(0)
     const allViolations: string[] = []

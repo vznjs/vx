@@ -1,0 +1,365 @@
+import { defineProject } from '@vzn/vx'
+
+// The choosing page (item 689) links each vx guarantee to the test row that
+// holds it, and compare.test.ts reads each file for that row's title,
+// so a renamed row or a moved file fails the site's test instead of leaving
+// a dead link. Granted by name and keyed as inputs.
+const PROOFS = [
+  'packages/vx/tests/config.test.ts',
+  'packages/vx/tests/sandbox-runtime.unsafe.test.ts',
+  'packages/vx/tests/task-hash-derive.test.ts',
+  'packages/vx/tests/plugin-pipeline.test.ts',
+  'packages/vx/tests/layered-cache.test.ts',
+  'packages/vx-reapi/tests/exec-e2e.test.ts',
+  'packages/vx-migrate/tests/turbo.test.ts',
+]
+
+// What `import` generates from packages/vx/docs: a hit restores only these,
+// so a page missing here vanishes from the site on a hit. Pinned to the
+// .gitignore manifest by tests/sidebar-coverage.test.ts.
+const IMPORTED = [
+  'src/content/docs/all-features.md',
+  'src/content/docs/api.md',
+  'src/content/docs/architecture.md',
+  'src/content/docs/benchmarks.md',
+  'src/content/docs/caching.md',
+  'src/content/docs/cli.md',
+  'src/content/docs/compare/turbo-nx-support.md',
+  'src/content/docs/comparison.md',
+  'src/content/docs/execution.md',
+  'src/content/docs/flows.md',
+  'src/content/docs/optimizations.md',
+  'src/content/docs/overview.md',
+  'src/content/docs/parity.md',
+  'src/content/docs/patterns.md',
+  'src/content/docs/schema.md',
+  'src/content/docs/security.md',
+  'src/content/docs/upstream-ledger.md',
+  'src/content/docs/modules/**',
+  'src/content/docs/design/**',
+  'src/content/docs/plugins/**',
+]
+// A key reads no other task's outputs (`vx lock`, X-54): each
+// arrives through that task's key and `dependsOn`. All three are gitignored,
+// so no key read them before either.
+const NOT_GENERATED = [...IMPORTED, 'public/playground/planner.js', 'dist/**'].map((g) => `!${g}`)
+
+export default defineProject({
+  tasks: {
+    ci: {
+      dependsOn: ['lint', 'build', 'test'],
+    },
+
+    lint: {
+      dependsOn: ['lint.oxlint', 'lint.oxfmt'],
+    },
+
+    // The site's TypeScript is type-checked like every package's (item 702):
+    // `bun test` and astro's build only transpile, so a type error in the
+    // playground, a widget's model or a test failed nothing. The directories
+    // are named, not `.`: a type-checker pointed at a directory holding a
+    // symlinked node_modules walks it. `src/content/`, `src/llms/` and
+    // `src/blog/` are left out: they import `astro:content`, whose types
+    // exist only after astro generates them; src/env.d.ts gives the rest of
+    // astro's types. They are inputs all the same, as the files checked
+    // import them. The check follows the playground's
+    // imports across the boundary into core's source (a devDependency, its
+    // key through `install`).
+    'lint.oxlint': {
+      description: 'oxlint with tsgolint-backed type-aware checks',
+      exec: {
+        command:
+          'oxlint --type-aware --type-check astro.config.mjs scripts src/components src/features src/nav src/pages src/playground src/plugins tests',
+        sandbox: {
+          allow: {
+            read: ['**/*', '../../packages/vx/src/**'],
+            systemInfo: ['vfs.disk-space'],
+          },
+        },
+      },
+      dependsOn: ['install'],
+      inputs: {
+        files: [
+          'astro.config.mjs',
+          'scripts/**',
+          'src/env.d.ts',
+          'src/blog/**',
+          'src/components/**',
+          'src/features/**',
+          'src/llms/**',
+          'src/nav/**',
+          'src/pages/**',
+          'src/playground/**',
+          'src/plugins/**',
+          'tests/**',
+          'package.json',
+          '.oxlintrc.json',
+          'tsconfig.json',
+        ],
+      },
+      cache: {
+        outputs: { files: [] },
+      },
+    },
+
+    // The site's code is formatted like every package's. Its Markdown is
+    // not: oxfmt rewrites code fragments in prose into multi-line objects
+    // and moves spaces into inline code at wrap points, so the package's
+    // `.oxfmtrc.json` ignores `.md` and `.mdx` (item 693; the root ignore
+    // named the whole package, no task checked it, and six code files had
+    // drifted).
+    'lint.oxfmt': {
+      description: 'oxfmt --check (no rewrite; CI-safe)',
+      exec: {
+        command: 'oxfmt --check .',
+        sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
+      },
+      dependsOn: ['install'],
+      inputs: {
+        files: ['**/*', ...NOT_GENERATED],
+      },
+      cache: {
+        outputs: { files: [] },
+      },
+    },
+
+    // The Starlight collection is generated from `packages/vx/docs`. That is
+    // a read across a project boundary, which the sandbox denies unless the
+    // task declares it — so the task declares it: the read grant names the
+    // sibling's docs directory, and `workspaceFiles` makes the same files
+    // the task's inputs, so an edit there re-keys this task and, through
+    // `dependsOn`, `build` and `test`. Every generated page carries a
+    // marker and lives beside the hand-written ones, so the outputs are the
+    // generated set by name — a hit restores exactly them and never wipes
+    // a tracked page.
+    import: {
+      description: 'generate src/content/docs from packages/vx/docs and the plugin READMEs',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun scripts/import-docs.ts',
+        sandbox: {
+          allow: {
+            read: [
+              '**/*',
+              '../../packages/vx/docs/**',
+              '../../packages/vx-*/README.md',
+              '../../packages/vx-*/package.json',
+            ],
+            write: ['src/content/docs/**'],
+            systemInfo: ['vfs.disk-space'],
+          },
+        },
+      },
+      inputs: {
+        files: ['scripts/import-docs.ts'],
+        workspaceFiles: [
+          'packages/vx/docs/**',
+          'packages/vx-*/README.md',
+          'packages/vx-*/package.json',
+        ],
+      },
+      cache: {
+        outputs: { files: IMPORTED },
+      },
+    },
+
+    // `build` because the page pins (landing, sidebar, redirects, links,
+    // the playground page) read what the site shipped: whether a widget's
+    // no-JavaScript fallback is there is a fact about the built HTML, not
+    // about any source file. `dist/` is not an input here; `build`'s key
+    // reaches this one through `dependsOn`, and a hit on `build` restores
+    // `dist/` before this runs.
+    //
+    // Two rows read across project boundaries through packages this one
+    // links (package.json), whose keys arrive through `install`
+    // (`^build` folds each linked package's `source`, item 687): the CI
+    // guide's job summary is rendered by `@vzn/vx-ci`, and the plugins
+    // guide's snippets type-check against `@vzn/vx-schedule-history`.
+    test: {
+      description:
+        'bun test — the landing, sidebar, redirect, diagram, playground, compare and site-link pins (needs the imported content and dist/)',
+      dependsOn: ['install', 'import', 'build'],
+      exec: {
+        command: 'bun test --only-failures',
+        // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
+        env: { define: { BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0', VX_CACHE_DIR: '.vx/cache' } },
+        sandbox: {
+          allow: {
+            read: [
+              '**/*',
+              '../../packages/vx/src/**',
+              '../../packages/vx-ci/src/**',
+              '../../packages/vx-schedule-history/src/**',
+              ...PROOFS.map((p) => `../../${p}`),
+            ],
+            systemInfo: ['vfs.disk-space'],
+          },
+        },
+      },
+      inputs: {
+        files: [
+          'tests/**',
+          'src/content/docs/**',
+          // The compare and playground pins import the widgets' model to
+          // hold the built pages to it.
+          'src/components/demos/model/**',
+          // playground-page.test.ts reads the element's source for the
+          // markup it queries.
+          'src/components/demos/playground.ts',
+          // sidebar-coverage.test.ts imports the sidebars; diagram-kit.test.ts
+          // reads the kit's styles, the widgets' and the theme's tokens, and
+          // with landing.test.ts the landing's picture.
+          'src/nav/**',
+          // features.test.ts holds the feature data's copy, commands and
+          // config examples, and its images on disk.
+          'src/features/**',
+          'src/assets/features/**',
+          'src/components/guide/**',
+          'src/components/landing/**',
+          'src/components/Demo.astro',
+          'src/components/demos/widget.css',
+          'src/components/demos/Playground.astro',
+          'src/styles/theme.css',
+          // The playground rows: its glob and xxh3 against Bun's, and the
+          // shipped bundle against a fresh build.
+          'src/playground/**',
+          'scripts/build-playground.ts',
+          'astro.config.*',
+          '.gitignore',
+          'package.json',
+          ...NOT_GENERATED,
+        ],
+        workspaceFiles: PROOFS,
+      },
+      cache: {
+        outputs: { files: [] },
+      },
+    },
+
+    install: {
+      dependsOn: ['^build'],
+    },
+
+    // The playground's planner (roadmap W9, item 695): core's planner source
+    // behind the browser shim, bundled by Bun into `public/`, which astro
+    // copies into `dist/` as it is. Bun and not the site's Vite, so the file
+    // core's parity rows build (with this script's own function) is the file
+    // the site ships. The bundle IS core's source, read across the project
+    // boundary by relative import. Core is a devDependency, whose directory
+    // the sandbox grants by itself (the stub's export names come from core's
+    // own `node_modules` that way), but the read is named so the config says
+    // what the bundle is made of; its key arrives through `install` (core's
+    // `source`, item 687).
+    'build.playground': {
+      description: 'bundle the playground planner → public/playground/planner.js',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun scripts/build-playground.ts',
+        sandbox: {
+          allow: {
+            read: ['**/*', '../../packages/vx/src/**'],
+            write: ['public/playground/**'],
+            systemInfo: ['vfs.disk-space'],
+          },
+        },
+      },
+      inputs: { files: ['scripts/build-playground.ts', 'src/playground/**', 'package.json'] },
+      cache: {
+        outputs: { files: ['public/playground/planner.js'] },
+      },
+    },
+
+    build: {
+      description: 'astro build → dist/',
+      dependsOn: ['install', 'import', 'build.playground'],
+      exec: {
+        // Under Bun, prerender included. `bun --bun` runs astro's bin on Bun,
+        // but astro prerenders in a CHILD process it starts as `node`, and
+        // `bun --bun` redirects that only through a shim it writes under
+        // `/tmp/bun-node-*`, which this sandbox cannot write: on Linux CI the
+        // prerender ran under the PATH's Node (no global `Worker`, item 700),
+        // and a box whose shim already existed ran Bun and saw nothing. So the
+        // command gives the build its own `node` → `bun` link in `.astro/bin`
+        // (already a write grant) ahead of PATH. Probed without a host shim:
+        // the prerender reports `typeof Bun` `undefined` before, `object`
+        // after; min of three interleaved sandboxed builds, 17.2 s before and
+        // 14.5 s after (item 708). Build-time code still must not assume Bun:
+        // astro 6 refuses a Node below 22.12 wherever it does run on Node.
+        command:
+          'mkdir -p .astro/bin && ln -sf "$(command -v bun)" .astro/bin/node && PATH="$PWD/.astro/bin:$PATH" bun --bun astro build',
+        // astro's telemetry does `mkdir ~/.config` before anything else; a
+        // sandboxed task may read HOME but not write it, so it is told to
+        // stay home.
+        env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },
+        sandbox: {
+          allow: {
+            read: ['**/*'],
+            // astro's and vite's caches live under `.astro/` (astro.config.mjs),
+            // never under node_modules: a write grant there makes the sandbox
+            // punch the read grant into node_modules' children, and bwrap
+            // mounts a SYMLINKED child (every package in Bun's isolated
+            // layout) as a plain directory — astro then could not resolve
+            // its own `yargs-parser` (Linux CI, 2026-09-05 → 09-09).
+            write: ['dist/**', '.astro/**'],
+            // A static build binds no port; `localBinding` belongs to `dev`
+            // and `preview` below, which serve.
+            systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
+          },
+        },
+      },
+      // The generated pages are gitignored, so `**/*` does not see them;
+      // `import`'s key does (its inputs are the docs), and it cascades
+      // through `dependsOn`. This used to name `docs/**` at the workspace
+      // root — a path that stopped existing when core moved under
+      // `packages/`, so a docs edit never re-keyed the build.
+      inputs: {
+        files: ['**/*', ...NOT_GENERATED],
+      },
+      cache: {
+        outputs: { files: ['dist/**'] },
+      },
+    },
+
+    // The playground page's element fetches the bundle on the first Run, so
+    // the dev server serves it as the build does.
+    dev: {
+      description: 'astro dev server (persistent)',
+      dependsOn: ['install', 'build.playground'],
+      exec: {
+        command: 'bun --bun astro dev',
+        env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },
+        persistent: { readyWhen: 'Local' },
+        timeout: '2m',
+        sandbox: {
+          allow: {
+            read: ['**/*'],
+            write: ['.astro/**'],
+            systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
+            localBinding: true,
+          },
+        },
+      },
+    },
+
+    preview: {
+      description: 'serve the built dist/ (persistent)',
+      dependsOn: ['build'],
+      exec: {
+        command: 'bun --bun astro preview',
+        env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },
+        persistent: { readyWhen: 'Local' },
+        timeout: '2m',
+        sandbox: {
+          allow: {
+            read: ['**/*'],
+            systemInfo: ['vfs.disk-space', 'net.link.addr'],
+            machLookup: ['com.apple.SystemConfiguration.DNSConfiguration'],
+            localBinding: true,
+          },
+        },
+      },
+    },
+  },
+})

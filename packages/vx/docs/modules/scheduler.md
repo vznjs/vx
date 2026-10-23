@@ -178,7 +178,7 @@ dependant is then in the tier, else it dispatches as usual
 
 The ranking lives in `src/graph/priorities.ts`, a file with no runtime
 import at all. The Learn page's scheduler simulator bundles it for the
-browser (through `packages/vx-bench/schedule-policy.ts`), and
+browser (through `private/vx-bench/schedule-policy.ts`), and
 `scheduler.ts` imports `util/`, whose modules read `Bun` and `process`
 when they load:
 

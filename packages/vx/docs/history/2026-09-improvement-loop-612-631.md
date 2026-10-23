@@ -136,7 +136,7 @@ Items 1–64 in
       WAL append, not an fsync — 615's win was the count, not the sync.
 617.  DONE (2026-09-23, three rules the morning taught, in CLAUDE.md's
       list: a stage's SQLite cost is its statement count before its
-      sync mode, with the tally preload (`packages/vx-bench/sqlite-tally.ts`
+      sync mode, with the tally preload (`private/vx-bench/sqlite-tally.ts`
       now, beside `profile-summary.ts`) and its one trap; a summed span
       is not a cost until the wall is A/B'd; a sandboxed shard has no
       git). Handoff 14az with it; Next 6 carries the cold-path number.
@@ -242,7 +242,7 @@ scope`: an empty scope is refused earlier as "not inside a
       cache and close flushes — the second cycle reads rows the first
       wrote.
 625.  DONE (2026-09-23, the harness rows after the cold-path work — Next
-      6's duty for the cold and restore arms). `bun packages/vx-bench/run.ts
+      6's duty for the cold and restore arms). `bun private/vx-bench/run.ts
 1000 5` and `5000 3` on this container class: 1,000 projects warm
       239 ms (231–265), restore 906 (831–1,009), cold 2,634
       (2,418–2,814); 5,000 warm 711 (702–733), restore 3,253
@@ -254,14 +254,14 @@ scope`: an empty scope is refused earlier as "not inside a
       machine's table.
 626.  DONE (2026-09-23, the head-to-head on this container class — the
       other half of Next 6's duty, against the other runners).
-      `bun packages/vx-bench/compare.ts 10 5 1` here (46 packages,
+      `bun private/vx-bench/compare.ts 10 5 1` here (46 packages,
       Turbo 2.11.3, Nx 23.2.1, daemons on, vx compiled): vx cold 10.29 s /
       warm 78 ms / restore 98 ms; Turbo 10.44 s / 112 / 150; Nx
       27.21 s / 754 / 711; CPU cold 755 ms / 1.38 s / 1m 2s. The
       2026-09-03 macOS warm tie (76 vs 71) is a 1.4× lead here, and
       Nx's cold run 2.6× off (was 1.9×). A different machine, so the
       page says only the ratios compare; the committed
-      `packages/vx-bench/RESULTS.md` stays the owner's dev-box run.
+      `private/vx-bench/RESULTS.md` stays the owner's dev-box run.
       Block under the 2026-09-03 table in `docs/benchmarks.md`.
 627.  DONE (2026-09-23, the restore path's spare round trips — the lead
       the restore profile gave, since a restore at 1,000 projects costs
@@ -279,7 +279,7 @@ scope`: an empty scope is refused earlier as "not inside a
       own line), the eager `mkdir` is gone, the base resolves lazily.
       Counts per run: `readlink` 1,003 → 3, `mkdir` 2,002 → 1,002,
       `newfstatat` −2,000, `openat` −1,000, `futex` −1,447. Sequential
-      restore of the 1,000 artifacts (`packages/vx-bench/restore-bench.ts`,
+      restore of the 1,000 artifacts (`private/vx-bench/restore-bench.ts`,
       new, min of 5, three interleaved rounds): 525–576 µs → 470–484 per
       artifact, −10 %, arms disjoint. The four-worker restore run: min
       658 → 637 ms, median 859 → 841 (7 reps interleaved) — inside this
@@ -342,7 +342,7 @@ scope`: an empty scope is refused earlier as "not inside a
       page names exists (314 names across the packages, none missing).
 631.  DONE (2026-09-23, the method of 627 and 630 kept). The syscall
       counter that told vx's threads from the tasks' shells was a
-      scratchpad script; it is `packages/vx-bench/strace-vx.ts` now
+      scratchpad script; it is `private/vx-bench/strace-vx.ts` now
       (an `strace -f -o` file in, vx-only counts out, a per-syscall diff
       with a second file), checked against the two cold traces of 630:
       222,150 → 216,226, `mkdir` 2,004 → 4. `save-bench.ts` sits beside

@@ -100,7 +100,7 @@ vx info --format json   # vx and Bun versions, projects, config errors, plugins,
   print whole.
 - Docs as markdown: https://vznjs.github.io/vx/llms.txt (its index).
   When that host is unreachable, the same pages are
-  `https://raw.githubusercontent.com/vznjs/vx/main/packages/vx-docs/src/content/docs/<page>.md`:
+  `https://raw.githubusercontent.com/vznjs/vx/main/private/vx-docs/src/content/docs/<page>.md`:
   `quickstart`, `guides/migrate`, `guides/configure`, `guides/agents`,
   `guides/troubleshooting`, `guides/ci`, `guides/plugins`.
 

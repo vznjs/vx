@@ -2,7 +2,7 @@
 // 695; design: docs/design/playground-spike-2026-09.md § W9 decisions).
 //
 // The playground is core's own planner source, bundled for the browser
-// behind a shim (packages/vx-docs/src/playground/). These rows build that
+// behind a shim (private/vx-docs/src/playground/). These rows build that
 // bundle with the site's own `buildPlayground()`, the function
 // `@vzn/vx-docs#build.playground` runs, so the bytes under test are the
 // bytes the site ships (`@vzn/vx-docs`'s playground-bundle row holds the
@@ -33,7 +33,7 @@ import type { TaskNode } from '../src/graph/index.js'
 import { evaluateConfigFresh } from '../src/workspace/config-eval.js'
 
 const REPO = path.resolve(import.meta.dir, '../../..')
-const DOCS = path.join(REPO, 'packages/vx-docs')
+const DOCS = path.join(REPO, 'private/vx-docs')
 const BIN = path.join(REPO, 'packages/vx/src/bin.ts')
 
 interface PlanTask {
@@ -642,7 +642,7 @@ describe('the playground bundle plans what the CLI plans', () => {
   })
 })
 
-// Item 835's sweep of the entry (packages/vx-docs/src/playground/entry.ts):
+// Item 835's sweep of the entry (private/vx-docs/src/playground/entry.ts):
 // what it adds to core's planner, one field at a time. The parity rows above
 // held 12 of 21 mutations; these hold the rest that can happen.
 describe("the bundle's entry, one field at a time (item 835)", () => {

@@ -1,0 +1,538 @@
+---
+// vx landing page (owner, 2026-10-02: vx is its own tool; Turbo and Nx
+// only through migration): the hero with the newest release, what agents
+// get, what plugins unlock, the benchmark chart and why it is faster, what shipped lately
+// (owner, 2026-10-08: "it should look like we are busy"), how to start, then the one diagram with its six callouts, the four pillars
+// and a strip of the feature pages.
+// In the site's one Starlight shell (header, search, theme, phone menu),
+// with its own footer; static, one script for the copy button. The benchTable and benchFormula blocks and the graph's size in the #bench
+// kicker are written by private/vx-bench/update-site.ts from results.json
+// (check.site guards them). tests/landing.test.ts holds the rest.
+import Diagram from '../components/guide/diagram/Diagram.astro'
+import FeatureCard from '../components/features/FeatureCard.astro'
+import Footer from '../components/landing/Footer.astro'
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import { FEATURES } from '../features/features.js'
+import { CALLOUTS, oneRun } from '../components/landing/one-run.js'
+import '../styles/landing.css'
+import '../styles/charts.css'
+import '../styles/features.css'
+import '../styles/blog.css'
+import { parseDuration, renderBars } from '../plugins/data-charts.ts'
+import { coverShowsTitle, formatDate, posts } from '../blog/posts.js'
+import Cover from '../components/blog/Cover.astro'
+
+const base = import.meta.env.BASE_URL // '/vx/' on Pages, '/' on a custom domain
+const href = (p: string) => `${base}${p}`
+const GH = 'https://github.com/vznjs/vx'
+const TITLE = 'vx — task orchestration you own'
+const DESCRIPTION =
+  'Correct, sandboxed, extensible task orchestration. Plugins decide where tasks run and where the cache lives. MIT, no cloud, no account.'
+
+/** A callout's line, each backticked span as code. */
+const codeHtml = (s: string): string => s.replace(/`([^`]+)`/g, '<code>$1</code>')
+
+// One card per pillar: an icon, a title, one sentence of at most fifteen
+// words, and the Docs page that says the rest.
+const pillars = [
+  {
+    id: 'correct',
+    icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>',
+    tone: 'var(--vx-ok)',
+    title: 'Correctness',
+    body: 'A task’s cache key covers every file, setting and env var it declares.',
+    more: 'Caching in depth',
+    doc: href('caching/'),
+  },
+  {
+    id: 'sandboxed',
+    icon: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>',
+    tone: 'var(--vx-link)',
+    title: 'Sandbox',
+    body: 'A sandboxed task cannot read a workspace file it did not declare.',
+    more: 'Sandboxing',
+    doc: href('guides/sandboxing/'),
+  },
+  {
+    id: 'extensible',
+    icon: '<path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 01-12 0V8zM12 18v4"/>',
+    tone: 'var(--vx-accent)',
+    title: 'Extensibility',
+    body: 'Plugins decide where tasks run, where the cache lives and who watches.',
+    more: 'Writing a plugin',
+    doc: href('guides/plugins/'),
+  },
+  {
+    id: 'free',
+    icon: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 019.9-1"/>',
+    tone: 'var(--vx-warn)',
+    title: 'Freedom',
+    body: 'MIT, no paywall, no cloud, no account.',
+    more: 'Migrate',
+    doc: href('guides/migrate/'),
+  },
+]
+
+const benchTable = [
+  { label: 'Nothing changed', vx: '757 ms', turbo: '761 ms', nx: '22.63 s', vt: '12.26 s' },
+  { label: 'Nothing changed, outputs restored', vx: '1.27 s', turbo: '1.76 s', nx: '22.16 s', vt: '11.66 s' },
+  { label: 'Cold build', vx: '6.13 s', turbo: '8.87 s', nx: '3 min 20 s', vt: '7.94 s' },
+  { label: 'Cold build: CPU the runner burns', vx: '30.06 s', turbo: '1 min 8 s', nx: '5 min 45 s', vt: '23.91 s' },
+]
+const benchFormula = 'Time each tool adds over the ideal run; lower is better.'
+const benchWorkload = 'Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.'
+const benchRun = 'Run 2026-10-20 on linux x64, 4 cores: vx at commit a88652b0b, Turborepo 2.11.9, Nx 23.3.0, Vite Task (vite-plus) 1.3.0.'
+
+/** A competitor cell's value and its "vx N× faster". */
+const vsOf = (c: string): [string, string] => {
+  const at = c.indexOf(' (')
+  return at === -1 ? [c, ''] : [c.slice(0, at), c.slice(at + 2, -1)]
+}
+const benchBars = renderBars(
+  benchTable.map((r) => ({
+    title: r.label,
+    bars: [
+      { name: 'vx', ms: parseDuration(r.vx)!, value: r.vx, hero: true },
+      ...(
+        [
+          ['Turborepo', r.turbo],
+          ['Nx', r.nx],
+          ['Vite Task', r.vt],
+        ] as const
+      ).map(([name, c]) => ({ name, ms: parseDuration(c)!, value: vsOf(c)[0], note: vsOf(c)[1] })),
+    ],
+  })),
+)
+
+// The hero's three facts (owner, 2026-10-12: lead with ownership and
+// extensibility; speed is never the headline, the chart shows it).
+const wins = [
+  { n: '15', line: 'pipeline stages a plugin can fill' },
+  { n: 'MIT', line: 'sandbox, remote cache and remote execution, no paid tier' },
+  { n: '0', line: 'daemons, accounts or cloud services to run it' },
+]
+
+// Plugins: what core's seams unlock (owner, 2026-10-12: plugins are not
+// core features; the section shows they are examples, not the limit).
+const plugins = [
+  { pkg: 'vx-reapi', title: 'Remote cache and remote execution', line: 'Any Bazel REAPI server: NativeLink, BuildBuddy, your own.' },
+  { pkg: 'vx-migrate', title: 'Keep the cache you have', line: 'Keep Turbo’s or Nx’s remote cache while you move to native config.' },
+  { pkg: 'vx-otel', title: 'Observability', line: 'Every run and task in any OpenTelemetry backend.' },
+  { pkg: 'vx-ci', title: 'CI results on the PR', line: 'GitHub job summary and Checks.' },
+  { pkg: 'vx-schedule-history', title: 'Smarter scheduling', line: 'Order by the critical path learned from your run history.' },
+  { pkg: 'vx-lockfile', title: 'Precise lockfile keys', line: 'Each task keyed on its own dependency closure: pnpm, bun, npm, yarn.' },
+]
+
+// Where vx differs from both, each cell as the choosing page's model says it
+// (src/components/demos/model/choosing.ts, checked against each tool's own
+// docs): yes, no, or only as a paid cloud service.
+type Edge = { kind: 'yes' | 'no' | 'paid'; text: string }
+const edges: { trait: string; vx: Edge; turbo: Edge; nx: Edge }[] = [
+  {
+    trait: 'A file sandbox for every task',
+    vx: { kind: 'yes', text: 'Local and free, Linux and macOS' },
+    turbo: { kind: 'no', text: 'None' },
+    nx: { kind: 'paid', text: 'Nx Cloud add-on' },
+  },
+  {
+    trait: 'Remote execution you host',
+    vx: { kind: 'yes', text: 'Bazel’s open REAPI protocol' },
+    turbo: { kind: 'no', text: 'None' },
+    nx: { kind: 'paid', text: 'Nx Agents on Nx Cloud' },
+  },
+  {
+    trait: 'A remote cache on any backend',
+    vx: { kind: 'yes', text: 'REAPI, Turborepo’s or Nx’s wire, by plugin' },
+    turbo: { kind: 'no', text: 'Its own HTTP API' },
+    nx: { kind: 'no', text: 'Nx Cloud or its own API' },
+  },
+  {
+    trait: 'Config is code',
+    vx: { kind: 'yes', text: 'TypeScript, evaluated and hashed' },
+    turbo: { kind: 'no', text: 'JSON' },
+    nx: { kind: 'no', text: 'JSON, merged with inferred tasks' },
+  },
+  {
+    trait: 'No background daemon',
+    vx: { kind: 'yes', text: 'None' },
+    turbo: { kind: 'yes', text: 'None for turbo run' },
+    nx: { kind: 'no', text: 'On by default' },
+  },
+]
+const mark = { yes: '✓', no: '✕', paid: '$' }
+
+// Why the overhead stays low: three reasons, one short sentence each.
+const reasons = [
+  { term: 'Nothing boots per task.', line: 'No daemon, no Node process per task: vx spawns your command.' },
+  { term: 'Hashing without reading.', line: 'On a clean tree, cache keys come from git’s index.' },
+  { term: 'One pass over the repo.', line: 'One git walk per run; each stat and lookup happens once.' },
+]
+
+// The feature strip: eight of the feature pages, the rest one click away.
+const STRIP = ['sandbox', 'vx-why', 'strict-outputs', 'affected', 'dev-servers', 'watch', 'remote-execution', 'agent-skill']
+const strip = STRIP.map((slug) => FEATURES.find((f) => f.slug === slug)!)
+
+// Start: three commands, native config from the first one; init installs vx.
+// The live strip: what shipped last, newest first, read from the posts.
+const releases = (await posts('releases')).slice(0, 4)
+const essays = (await posts('blog')).slice(0, 3)
+const latest = releases[0]!
+const firstSentence = (t: string): string => t.split(/(?<=[.!?])\s/)[0]!
+const SKILL_COMMANDS = ['vx run', 'vx last --failed', 'vx last --stats', 'vx why', 'vx docs']
+const whyRun = `$ vx why @demo/web#build
+  verdict    cache key changed: upstream @demo/ui#build
+  root cause:
+    @demo/web#build ← @demo/ui#build ← file packages/ui/src/index.ts`
+
+const startCommands = `bunx @vzn/vx init    # installs vx, writes .vx/workspace.ts and an empty vx.config.ts
+vx lock              # after you declare a task in vx.config.ts
+vx run build         # runs it and stores what it writes
+vx run build         # again: up-to-date, from the cache`
+
+---
+
+<!doctype html>
+<StarlightPage
+  frontmatter={{
+    title: TITLE,
+    description: DESCRIPTION,
+    template: 'splash',
+    // The whole title, not Starlight's `<title> | vx`.
+    head: [
+      { tag: 'title', content: TITLE },
+      { tag: 'meta', attrs: { property: 'og:title', content: TITLE } },
+    ],
+  }}
+  hasSidebar={false}
+>
+  <div class="not-content vx-landing">
+
+      <section class="hero">
+        <div class="container">
+          <a class="announce" href={latest.href}>
+            <span class="announce-tag">New</span>
+            <span class="announce-ver">{latest.version}</span>
+            <span class="announce-title">{latest.title}</span>
+            <span aria-hidden="true">→</span>
+          </a>
+          <h1>Task orchestration you <span class="phosphor">own</span>.</h1>
+          <p class="lede">vx runs and caches your task graph correctly, and every stage after that is a seam you can fill.</p>
+          <ul class="wins">
+            {
+              wins.map((w) => (
+                <li>
+                  <strong>{w.n}</strong>
+                  <span>{w.href ? <a href={w.href}>{w.line}</a> : w.line}</span>
+                </li>
+              ))
+            }
+          </ul>
+          <div class="actions">
+            <button class="install-pill" data-copy="bunx @vzn/vx init" type="button">
+              <span class="dollar">$</span>
+              <span class="cmd">bunx @vzn/vx init</span>
+              <span class="copy">
+                <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  ><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 012-2h10"></path></svg
+                >
+                <svg class="icon-check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"></path></svg>
+              </span>
+            </button>
+          </div>
+          <div class="actions">
+            <a class="btn btn-primary btn-lg" href={href('quickstart/')}
+              >Quickstart <span class="arr">→</span></a
+            >
+            <a class="btn btn-ghost btn-lg" href={GH}>GitHub</a>
+          </div>
+          <img
+            class="demo"
+            src={href('demo.svg')}
+            width="760"
+            alt="vx run ci --all on the starter: cold, three tasks run; again, three up-to-date."
+          />
+        </div>
+      </section>
+
+      <section class="section" id="agents">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// ai first</p>
+            <h2>The build your agents can run.</h2>
+          </div>
+          <div class="agents-grid">
+            <article class="agent-card">
+              <h3><code>bunx skills add vznjs/vx</code></h3>
+              <p>One skill teaches any coding agent the CLI: run tasks, read failures and history, ask why.</p>
+              <ul class="tool-chips">{SKILL_COMMANDS.map((t) => <li><code>{t}</code></li>)}</ul>
+              <a class="section-link" href={href('guides/agents/')}>Built for agents →</a>
+            </article>
+            <article class="agent-card">
+              <h3><code>vx why</code></h3>
+              <p>A re-run names its cause, down to the file that changed.</p>
+              <pre class="agent-term"><code>{whyRun}</code></pre>
+              <a class="section-link" href={href('features/vx-why/')}>How vx why works →</a>
+            </article>
+            <article class="agent-card">
+              <h3><code>--format json</code></h3>
+              <p>Every report verb prints JSON with a published schema, and failures keep their full log.</p>
+              <ul class="tool-chips">
+                <li><code>vx show</code></li>
+                <li><code>vx info</code></li>
+                <li><code>vx last</code></li>
+                <li><code>vx why</code></li>
+                <li><code>--dry=json</code></li>
+              </ul>
+              <a class="section-link" href={href('cli/')}>Every command →</a>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="plugins">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// extensibility is king</p>
+            <h2>What vx can do. Not what it is limited to.</h2>
+          </div>
+          <p class="sub">Every plugin below is a separate package on core’s public seams, and yours can be too.</p>
+          <div class="plugin-grid">
+            {
+              plugins.map((p) => (
+                <a class="plugin-card" href={href(`plugins/${p.pkg}/`)}>
+                  <h3>{p.title}</h3>
+                  <code class="plugin-pkg">@vzn/{p.pkg}</code>
+                  <p>{p.line}</p>
+                </a>
+              ))
+            }
+            <a class="plugin-card plugin-own" href={href('guides/plugins/')}>
+              <h3>Your own</h3>
+              <code class="plugin-pkg">definePlugin()</code>
+              <p>Fill any of the 15 stages: where tasks run, where the cache lives, who watches, what the terminal draws, which commands exist.</p>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="bench">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// 9,603 tasks · 1,601 projects · 30 levels · identical commands, identical concurrency</p>
+            <h2>Fast, never at the cost of a correct cache.</h2>
+          </div>
+          <div class="bench-panel">
+            <Fragment set:html={benchBars} />
+            <p class="bench-formula">{benchFormula}</p>
+            <p class="bench-formula bench-workload">{benchWorkload}</p>
+            <p class="bench-formula bench-workload">{benchRun}</p>
+          </div>
+          <ul class="reasons">
+            {
+              reasons.map((r) => (
+                <li>
+                  <strong>{r.term}</strong> {r.line}
+                </li>
+              ))
+            }
+          </ul>
+          <div class="section-links">
+            <a class="section-link" href={href('benchmarks/')}>Benchmarks: tables, methodology, reproduce it <span class="arr">→</span></a>
+            <a class="section-link" href={href('compare/')}>When another tool is the better pick <span class="arr">→</span></a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="shipping">
+        <div class="container">
+          <div class="section-head ship-head">
+            <div>
+              <p class="vx-kicker">// shipping every day</p>
+              <h2>New in vx.</h2>
+            </div>
+            <div class="ship-head-links">
+              <a class="section-link" href={href('releases/')}>Every release →</a>
+              <a class="section-link" href={href('blog/')}>The blog →</a>
+            </div>
+          </div>
+          <div class="ship-top">
+            <a class="ship-feature" href={latest.href}>
+              <span class="ship-badge">
+                <span class="ship-dot" aria-hidden="true"></span>Latest release · {latest.version}
+              </span>
+              <h3 class="ship-feature-title">{latest.title}</h3>
+              <p class="ship-feature-lead">{firstSentence(latest.excerpt)}</p>
+              <span class="ship-feature-foot">
+                <span class="ship-date">{formatDate(latest.date)}</span>
+                <span class="ship-read">Read the release <span class="arr">→</span></span>
+              </span>
+            </a>
+            <ol class="ship-timeline">
+              {
+                releases.slice(1).map((r) => (
+                  <li>
+                    <a href={r.href}>
+                      <span class="ship-date">{formatDate(r.date)}</span>
+                      <span class="ship-ver">{r.version}</span>
+                      <span class="ship-title">{r.title}</span>
+                    </a>
+                  </li>
+                ))
+              }
+            </ol>
+          </div>
+          <h3 class="ship-sub">From the blog</h3>
+          <div class="ship-posts">
+            {
+              essays.map((p) => (
+                <a class="ship-post" href={p.href}>
+                  <Cover post={p} sizes="(min-width: 1100px) 380px, 80vw" />
+                  <span class:list={['ship-title', { 'vx-title-in-cover': coverShowsTitle(p) }]}>{p.title}</span>
+                  <span class="ship-date">{formatDate(p.date)}</span>
+                </a>
+              ))
+            }
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="edge">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// vx vs Turborepo vs Nx</p>
+            <h2>Built in, free, on your own machines.</h2>
+          </div>
+          <table class="edge-table">
+            <thead>
+              <tr>
+                <th scope="col"></th>
+                <th scope="col" class="vx">vx</th>
+                <th scope="col">Turborepo</th>
+                <th scope="col">Nx</th>
+              </tr>
+            </thead>
+            <tbody>
+              {
+                edges.map((e) => (
+                  <tr>
+                    <th scope="row">{e.trait}</th>
+                    {(
+                      [
+                        ['vx', e.vx],
+                        ['Turborepo', e.turbo],
+                        ['Nx', e.nx],
+                      ] as const
+                    ).map(([tool, c]) => (
+                      <td class={c.kind} data-tool={tool}>
+                        <span class="mark" aria-hidden="true">
+                          {mark[c.kind]}
+                        </span>
+                        {c.text}
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+          <div class="section-links">
+            <a class="section-link" href={href('compare/')}>Every choice, with sources, and when another tool fits better <span class="arr">→</span></a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="try">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// three commands</p>
+            <h2>Start in a minute.</h2>
+          </div>
+          <pre class="code"><code>{startCommands}</code></pre>
+          <p class="sub">Coming from Turbo or Nx: the same <code>vx init</code> writes the native vx config from it.</p>
+          <div class="section-links">
+            <a class="section-link" href={href('quickstart/')}>Quickstart: your first cached task <span class="arr">→</span></a>
+            <a class="section-link" href={href('guides/migrate/')}>Migrate from Turbo or Nx <span class="arr">→</span></a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="one-run">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// one run, after you edit app</p>
+            <h2>Everything vx does, in one picture.</h2>
+          </div>
+          <div class="one-run">
+            <Diagram {...oneRun} />
+            <ol class="callouts">
+              {
+                CALLOUTS.map((c, i) => (
+                  <li id={c.id}>
+                    <span class="n">{i + 1}</span>
+                    <span>
+                      <strong>{c.term}</strong> <Fragment set:html={codeHtml(c.line)} />
+                    </span>
+                  </li>
+                ))
+              }
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="pillars">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// what you can count on</p>
+            <h2>Correct. Sandboxed. Extensible. Free.</h2>
+          </div>
+          <div class="cards">
+            {
+              pillars.map((p) => (
+                <a class="card" id={p.id} style={`--c:${p.tone}`} href={p.doc}>
+                  <span class="ico">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" set:html={p.icon} />
+                  </span>
+                  <h3>{p.title}</h3>
+                  <p>{p.body}</p>
+                  <span class="learn">{p.more} <span class="arr">→</span></span>
+                </a>
+              ))
+            }
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="features">
+        <div class="container">
+          <div class="section-head">
+            <p class="vx-kicker">// {FEATURES.length} features, a page each</p>
+            <h2>And everything else.</h2>
+          </div>
+          <div class="fgrid">
+            {strip.map((f) => <FeatureCard feature={f} />)}
+          </div>
+          <div class="section-links">
+            <a class="section-link" href={href('features/')}>All features <span class="arr">→</span></a>
+          </div>
+        </div>
+      </section>
+
+      <Footer />
+  </div>
+
+    <script>
+      // The one interaction on the page: the install command copies itself.
+      const pill = document.querySelector<HTMLButtonElement>('.install-pill')
+      pill?.addEventListener('click', async () => {
+        const text = pill.dataset['copy'] ?? ''
+        try {
+          await navigator.clipboard.writeText(text)
+          pill.classList.add('copied')
+          setTimeout(() => pill.classList.remove('copied'), 1400)
+        } catch {
+          // clipboard unavailable: the command is visible to select by hand
+        }
+      })
+    </script>
+</StarlightPage>

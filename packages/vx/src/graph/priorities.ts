@@ -1,6 +1,6 @@
 // The ready-queue ranking, apart from the scheduler that uses it. Nothing
 // here touches the platform: the Learn page's scheduler simulator
-// (packages/vx-docs, through packages/vx-bench/schedule-policy.ts) bundles
+// (private/vx-docs, through private/vx-bench/schedule-policy.ts) bundles
 // these two functions for the browser, and an import of the scheduler would
 // bring `util/` and its load-time `Bun` reads with them.
 

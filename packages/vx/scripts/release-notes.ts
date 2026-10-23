@@ -95,7 +95,7 @@ export const SITE = 'https://vznjs.github.io/vx/'
 
 /** The site's release post for `version` (`0.0.637`), relative to the repo root. */
 export const postPath = (version: string): string =>
-  `packages/vx-docs/src/content/docs/releases/vx-${version.replaceAll('.', '-')}.md`
+  `private/vx-docs/src/content/docs/releases/vx-${version.replaceAll('.', '-')}.md`
 
 /**
  * A release post as a GitHub release body: its title as the heading,

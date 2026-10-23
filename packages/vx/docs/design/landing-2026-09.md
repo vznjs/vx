@@ -40,7 +40,7 @@ labs (W10) and the checkpoints (W11) now exist to link to.
   - The benchmark sections (`bench`, `real`, `scale`) move below the
     ideas.
   - `const benchRows = [...]` and the three stat tiles keep the exact
-    shape `packages/vx-bench/update-site.ts` rewrites. The generator is
+    shape `private/vx-bench/update-site.ts` rewrites. The generator is
     not changed, and `@vzn/vx-bench#check.site` stays green, which proves
     it.
   - The headline "First in every row." stays next to its table. It is a
@@ -118,7 +118,7 @@ today's later sections in their places (`#why`, `#open`, `#plugins`,
   script it had, the install pill's copy button, and astro's site-wide
   prefetch module. "No JavaScript" was read as "this step adds none".
 
-Rows (`packages/vx-docs/tests/landing.test.ts`, reading `dist/`):
+Rows (`private/vx-docs/tests/landing.test.ts`, reading `dist/`):
 
 - the `h1`, then the exact order of the section ids;
 - the hero's three actions, in order;

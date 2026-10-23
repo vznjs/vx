@@ -1474,14 +1474,14 @@ info` listed it. X-131 covered only the failure, by dropping its key.
   re-sent. Re-dispatched release.yml published v0.0.575 with all four
   binaries. Rows: `release.test.ts`.
 - **X-219** Timings file measured on real runs
-  (`packages/vx-bench/timings-file-bench.ts`, EA ask): 24 chained 0.5 s
+  (`private/vx-bench/timings-file-bench.ts`, EA ask): 24 chained 0.5 s
   tasks and three 10 s leaves, 4 workers, min of 3. Cold with no file
   12.09 s, cold with the file 10.68 s, full local history 10.64 s
   (bound 10.5). On vx's own CI job one 194 s suite is the wall, so the
   file changed nothing there (194.07 vs 194.60 s). Numbers in the
   `ci-timings-file` post.
 - **X-220** New head-to-head shape (owner's spec, 2026-10-09):
-  `packages/vx-bench/shape.ts`, 1,601 projects and 9,603 tasks in 30
+  `private/vx-bench/shape.ts`, 1,601 projects and 9,603 tasks in 30
   levels, five core libs, a leaf and a core edit, build 1 s and owner's
   ratios. The site shows only time over the ideal run (no cold totals).
   Nx needs `^` inputs and Vite Task each dependency's output as an input,

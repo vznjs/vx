@@ -377,7 +377,7 @@ what shipped and the numbers behind it. Items 1–64 are in
       that figure. The root README's headline numbers are NOT drift and
       were left alone: the block between its `bench:start` / `bench:end`
       markers is rendered from `results.json` by
-      `packages/vx-bench/update-site.ts` (its own rounding, the same
+      `private/vx-bench/update-site.ts` (its own rounding, the same
       committed run), which is why it reads 35 s where benchmarks.md
       reads 34.61s. The other eight package READMEs carry no claim of
       either class. Two pins, both failing on the old files. A

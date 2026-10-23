@@ -592,7 +592,7 @@ tokenizes a regex literal by the character before the`/`.
       shell is gone, the row now says `parentAlive: false` instead of
       a state mismatch nobody can read.
       And one REAL race, found by the same gate and fixed: the site
-      link row walks `packages/vx-docs/src/content/docs`, which is
+      link row walks `private/vx-docs/src/content/docs`, which is
       `@vzn/vx-docs#build`'s OUTPUT, while that task runs beside it
       under `vx run ci --all`. A page the import script was rewriting
       vanished between the walk and the read, and an ENOENT stack

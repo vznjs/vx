@@ -11,7 +11,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 
 const CORE = path.resolve(import.meta.dir, '..')
-const DOCS_SITE = path.resolve(CORE, '../vx-docs')
+const DOCS_SITE = path.resolve(CORE, '../../private/vx-docs')
 const md = readFileSync(path.join(CORE, 'docs/features.md'), 'utf8')
 const spans = [...md.matchAll(/`([^`]+)`/g)].map((m) => m[1]!)
 const named = (word: string): boolean => {

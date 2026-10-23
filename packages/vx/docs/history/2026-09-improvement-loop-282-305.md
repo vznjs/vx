@@ -193,7 +193,7 @@ what shipped and the numbers behind it. Items 1–64 are in
       the site's overview page, read whole against source after 290
       and 292 found two stale claims in one section of it): four more.
       The benchmark numbers came "from `bench/`" (the harness has been
-      `packages/vx-bench/` since the move); the layout said "the root
+      `private/vx-bench/` since the move); the layout said "the root
       member is core" (core is `packages/vx`, a sibling of the
       plugins), "eight modules" with a `plugins/` row (seven
       directories; the floor lives in `exec/` and `cache/`, and the
@@ -241,7 +241,7 @@ what shipped and the numbers behind it. Items 1–64 are in
 295.  DONE (2026-09-16, 294's class grepped across every doc surface):
       `modules/telemetry.md` quoted `TELEMETRY_SCHEMA_VERSION = 1` too
       (the version pin now reads both pages), and
-      `packages/vx-docs/src/assets/screenshots/` — 2.6 MB of dashboard
+      `private/vx-docs/src/assets/screenshots/` — 2.6 MB of dashboard
       baselines and a README that tells the reader to run
       `packages/cloud/tests/visual.test.ts` — had outlived the cloud
       removal (2026-08-23) by three weeks, referenced by nothing on the

@@ -78,7 +78,7 @@ what shipped and the numbers behind it. Items 1–64 are in
 375.  DONE (2026-09-19, the site guides begin — three pages, and a
       documented knob wired to nothing). The module-page series
       (306–332) exhausted `docs/modules/`; handoff 14ae names the site
-      pages under `packages/vx-docs/src/content/docs/` as what follows,
+      pages under `private/vx-docs/src/content/docs/` as what follows,
       guides first, by the same oldest-page queue and the same three
       per item. The three oldest by last touch: `otel-bridge.md`,
       `running-tasks.md`, `environment-variables.md`.
@@ -390,7 +390,7 @@ what shipped and the numbers behind it. Items 1–64 are in
       pages beside it had not been read as a series.
       (1) `patterns.md`'s performance table is the 476-package /
       1,428-node run, and the sentence above it called it the
-      3,270-task one and cited `packages/vx-bench/RESULTS.md`, which
+      3,270-task one and cited `private/vx-bench/RESULTS.md`, which
       `benchmarks.md` says IS the 3,270-task run — two wrong
       attributions in one sentence, made easy to believe because that
       run's baseline critical path (1m 40s) is also this table's cold
@@ -631,7 +631,7 @@ what shipped and the numbers behind it. Items 1–64 are in
       said so.
 391.  DONE (2026-09-19, `benchmarks.md` — right everywhere, pinned
       nowhere). Checked the 3,270-task table figure by figure against
-      the committed `packages/vx-bench/results.json`: five rows × three
+      the committed `private/vx-bench/results.json`: five rows × three
       runners, all ten `(N×)` ratios, the baseline row, the three
       measured floors and the per-package overhead sentence. Every one
       agreed, to the digit — vx cold 226 449.85 ms as "3m 46s", Nx CPU

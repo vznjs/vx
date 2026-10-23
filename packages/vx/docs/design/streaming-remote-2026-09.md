@@ -1,7 +1,7 @@
 # A streaming remote cache seam (2026-09-23, roadmap 2.2)
 
 **Status:** IMPLEMENTED (2026-09-23) as written. Proof 1 measured with
-`packages/vx-bench/stream-remote-bench.ts` on a 150 MiB artifact over a
+`private/vx-bench/stream-remote-bench.ts` on a 150 MiB artifact over a
 disk-backed stub: peak RSS +495 MiB over the round trip before, +45 MiB
 after. The signed Turbo download writes its temp first and signs it from
 the file (the tag's length prefix precedes the body, and a chunked

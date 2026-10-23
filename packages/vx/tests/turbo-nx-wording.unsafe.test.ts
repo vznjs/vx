@@ -25,7 +25,7 @@ const PAGES = [
   'packages/*/README.md',
   'examples/*/README.md',
   'packages/vx/docs/**/*.md',
-  'packages/vx-docs/src/**/*.{md,mdx,astro,ts}',
+  'private/vx-docs/src/**/*.{md,mdx,astro,ts}',
 ]
 
 function pages(): string[] {

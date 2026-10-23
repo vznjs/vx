@@ -45,7 +45,7 @@ you must bump it; otherwise stale entries can produce wrong restores.
    (from `packages/vx`). It records each stored layout beside its version
    and fails a layout that moved under an unchanged one.
 
-8. **`packages/vx-docs/src/content/docs/guides/upgrading.md`** — a bump is a
+8. **`private/vx-docs/src/content/docs/guides/upgrading.md`** — a bump is a
    breaking commit (`type!:` + `BREAKING CHANGE:` footer), and
    `site-upgrading.unsafe.test.ts` wants its footer there, newest first
    (`bun packages/vx/scripts/upgrading.ts` regenerates it from a full clone;

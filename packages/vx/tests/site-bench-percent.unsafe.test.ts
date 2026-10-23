@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 
-const DOCS = path.resolve(import.meta.dir, '../../vx-docs/src/content/docs')
+const DOCS = path.resolve(import.meta.dir, '../../../private/vx-docs/src/content/docs')
 const QUOTE = /\(vx (?:[\d.]+×|\d+%) (?:faster|slower)\)/g
 
 function pages(): string[] {

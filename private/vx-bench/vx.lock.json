@@ -1,0 +1,314 @@
+{
+  "tasks": {
+    "install": {
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "ci": {
+      "dependsOn": [
+        "lint",
+        "test",
+        "check.site",
+        "check.perf"
+      ]
+    },
+    "check.perf": {
+      "description": "perf-guard.ts: hot-path counts and times against perf-baseline.json",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun perf-guard.ts",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "perf-guard.ts",
+          "perf-baseline.json",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "check.vs-turbo": {
+      "description": "pr-bench.ts: vx vs Turborepo ratios against pr-bench-baseline.json",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun pr-bench.ts",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "pr-bench.ts",
+          "pr-bench-baseline.json",
+          "bench-env.ts",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "vs-turbo.update": {
+      "description": "pr-bench.ts --update: record this platform in pr-bench-baseline.json",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun pr-bench.ts --update",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "write": [
+              "pr-bench-baseline.json"
+            ]
+          }
+        }
+      }
+    },
+    "perf.update": {
+      "description": "perf-guard.ts --update: rewrite perf-baseline.json for this platform",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun perf-guard.ts --update",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "write": [
+              "perf-baseline.json"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      }
+    },
+    "check.site": {
+      "description": "update-site.ts --check: the site matches results.json",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun update-site.ts --check",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../vx-docs/src/pages/index.astro",
+              "../../packages/vx/docs/benchmarks.md",
+              "../../README.md",
+              "../vx-docs/src/content/docs/compare/turborepo.md",
+              "../vx-docs/src/content/docs/compare/nx.md"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "update-site.ts",
+          "results.json",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "private/vx-docs/src/pages/index.astro",
+          "packages/vx/docs/benchmarks.md",
+          "README.md",
+          "private/vx-docs/src/content/docs/compare/turborepo.md",
+          "private/vx-docs/src/content/docs/compare/nx.md"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "lint": {
+      "dependsOn": [
+        "lint.oxlint",
+        "lint.oxfmt"
+      ]
+    },
+    "lint.oxlint": {
+      "description": "oxlint with tsgolint-backed type-aware checks",
+      "exec": {
+        "command": "oxlint --type-aware --type-check",
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../vx-docs/scripts/build-playground.ts",
+              "../vx-docs/src/playground/**",
+              "../vx-docs/tests/glob-fuzz.ts",
+              "../vx-docs/tests/helpers/rng.ts"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "*.ts",
+          "tests/**",
+          "playground-spike/**/*.ts",
+          "package.json",
+          ".oxlintrc.json",
+          "tsconfig.json"
+        ],
+        "workspaceFiles": [
+          "private/vx-docs/scripts/build-playground.ts",
+          "private/vx-docs/src/playground/**",
+          "private/vx-docs/tests/glob-fuzz.ts",
+          "private/vx-docs/tests/helpers/rng.ts"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "lint.oxfmt": {
+      "description": "oxfmt --check (no rewrite; CI-safe)",
+      "exec": {
+        "command": "oxfmt --check .",
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "**/*",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test": {
+      "description": "bun test",
+      "exec": {
+        "command": "bun test --only-failures",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space",
+              "net.link.addr"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "*.ts",
+          "tests/**",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": {
+        "files": [
+          "**"
+        ]
+      }
+    }
+  }
+}

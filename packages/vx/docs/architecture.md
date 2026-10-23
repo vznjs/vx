@@ -11,7 +11,7 @@ ever needs. Its sibling packages integrate with core exclusively
 through its public API (`src/index.ts`, imported as the bare `@vzn/vx`
 specifier — enforced by `tests/package-boundaries.unsafe.test.ts`). One
 directory is exempt by name: the site's playground
-(`packages/vx-docs/src/playground/`) is core's planner source bundled for
+(`private/vx-docs/src/playground/`) is core's planner source bundled for
 the browser, not a consumer of its API, and
 `tests/playground-parity.unsafe.test.ts` holds it to the CLI:
 
@@ -24,11 +24,11 @@ the browser, not a consumer of its API, and
 | `packages/vx-schedule-history` | `@vzn/vx-schedule-history` — `schedule` + `admit` + `commands` plugin: order by the critical path learned from run history, pack by what past executions used, `vx history`      |
 | `packages/vx-migrate`          | `@vzn/vx-migrate` — adoption: `turbo()` / `nx()` project-stage plugins, `nx-exec` (one Nx executor per process), `turboCache()` / `nxCache()` cache plugins, the migrate CLI     |
 | `packages/vx-lockfile`         | `@vzn/vx-lockfile` — `bun()` `pnpm()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim` |
-| `packages/vx-docs`             | Astro Starlight docs site; imports `packages/vx/docs/**` at build time; bundles core's planner for the browser playground (private)                                              |
+| `private/vx-docs`              | Astro Starlight docs site; imports `packages/vx/docs/**` at build time; bundles core's planner for the browser playground (private)                                              |
 | `packages/vx-dte`              | `@vzn/vx-dte` — distributed task execution: one run spread over agents the CI starts, through a relay; `local()` adapter; private until it is on npm                             |
 | `packages/vx-dte-relay`        | `@vzn/vx-dte-relay` — the reference relay of `@vzn/vx-dte`: per-run mailboxes for CI agents behind CI OIDC tokens (`PROTOCOL.md`); private until it is on npm                    |
-| `packages/vx-bench`            | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                            |
-| `packages/vx-plugin-examples`  | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                      |
+| `private/vx-bench`             | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                            |
+| `private/vx-plugin-examples`   | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                      |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the public API (47 runtime symbols, a deliberate
