@@ -1135,6 +1135,76 @@ it('an agent whose answer meets a closed run exits 0', async () => {
   }
 })
 
+// Main, 2026-10-23: agents booked 3.7 cores and used 2.4; a task held its
+// cores while its outputs went up to the cache. The next begins once the
+// command is done.
+it('an agent begins its next task while the last one saves', async () => {
+  const root = await tmp()
+  const served = servedRelay()
+  const url = served.url
+  let saved!: () => void
+  const saving = new Promise<void>((r) => (saved = r))
+  try {
+    const raw = await join(url, R, 'orchestrator', null, undefined)
+    const o = sealOrchestrator(raw, R, secretProof('s'))
+    const code = runAgent({
+      relay: url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => ({
+        async save(_key, task) {
+          if (task.id === 't1') await saving
+        },
+        async restore() {
+          return null
+        },
+      }),
+    })
+    const order = (task: string): RunOrder => ({
+      task,
+      runKey: runKey(R, task),
+      deps: [],
+      nested: [],
+      command: 'true',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    })
+    const seen: string[] = []
+    for (let i = 0; i < 100 && !seen.includes('start t2'); i++) {
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string; task?: string }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 1,
+            memory: 1e9,
+          })
+          await o.send(m.id!, {
+            type: 'batch',
+            root,
+            realRoot: root,
+            tasks: [order('t1'), order('t2')],
+          })
+        } else if (m.type === 'start' || m.type === 'end') seen.push(`${m.type} ${m.task}`)
+      }
+    }
+    expect(seen).toEqual(['start t1', 'start t2'])
+    saved()
+    await raw.leave()
+    expect(await code).toBe(0)
+  } finally {
+    await served.stop()
+  }
+})
+
 // M, 2026-10-22: agents at 30-50% CPU; "close to 100%". A task books the
 // cores it keeps busy on average, so a 4-core agent takes five at 0.7.
 it('books the cores a task keeps busy on average, unrounded, a quarter at least', () => {

@@ -150,7 +150,15 @@ export async function runAgent(opts: {
       queue.splice(i, 1)
       usedCores += m.cores
       usedMemory += m.memory
-      const p = runTask(m)
+      let held = true
+      const free = (): void => {
+        if (!held) return
+        held = false
+        usedCores -= m.cores
+        usedMemory -= m.memory
+        start()
+      }
+      const p = runTask(m, free)
         .catch(async (err: unknown) => {
           const reason = err instanceof Error ? err.message : String(err)
           ui.print('err', ui.status('error', m.task, `could not run: ${reason}`))
@@ -159,10 +167,10 @@ export async function runAgent(opts: {
             .catch(() => undefined)
         })
         .finally(() => {
-          usedCores -= m.cores
-          usedMemory -= m.memory
           work.delete(p)
-          start()
+          // Freed already, it still ran: a task that waits for an idle agent starts now.
+          if (held) free()
+          else start()
         })
       work.add(p)
     }
@@ -187,7 +195,7 @@ export async function runAgent(opts: {
     return undefined
   }
 
-  const runTask = async (m: RunOrder): Promise<void> => {
+  const runTask = async (m: RunOrder, free: () => void): Promise<void> => {
     const stop = new AbortController()
     running.set(m.task, stop)
     // Not awaited: the task does not wait on the relay to say it began.
@@ -277,6 +285,10 @@ export async function runAgent(opts: {
       floor ??= localFloor()
       ui.print('out', ui.status('info', m.task, ui.dim('running')))
       const { outputs: _, ...res } = await floor.execute(req)
+      // Its command is done: saving its outputs to the cache is the
+      // network's time, and its cores are the next task's (main,
+      // 2026-10-23: agents booked 3.7 cores and used 2.4).
+      free()
       const took = ui.dim(`${Math.round(res.durationMs)}ms`)
       ui.print(
         'out',
