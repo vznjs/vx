@@ -46,8 +46,21 @@ jobs:
         with:
           bun-version: 1.4.2
 
+      # Bun's package cache: the run saved it before it started this worker.
+      - id: bun
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      # A platform the run is not (macOS, arm64) keeps its own.
+      - if: steps.bun.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
 
       # The sandbox runtime, as @vzn/vx-ci sets it up. Its packages are
       # kept per runner image: a hit installs them with no index fetch
