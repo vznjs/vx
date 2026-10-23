@@ -4,10 +4,14 @@
 
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from 'bun:test'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 import { noticed } from './helpers/notice.js'
+
+// One test spawns vx 7 times, each `run` locking first: past 5 s on a
+// loaded CI worker (2026-10-23).
+setDefaultTimeout(30_000)
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TASKS = `export default { tasks: { build: { exec: { command: 'true' } }, dev: { exec: { command: 'true' } } } }`
