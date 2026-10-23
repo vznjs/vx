@@ -8,6 +8,7 @@ import type { Size } from '../src/planner.js'
 import { DEFAULT_STRATEGY, STRATEGIES } from '../src/strategy.js'
 import a09 from './fixtures/main-run-a09b987.json'
 import f2163 from './fixtures/main-run-2026-10-23.json'
+import { compare } from '../scripts/compare.js'
 import { bestMs, simulate, type SimResult, type SimTask } from './sim.js'
 
 const small: Size = { name: 'small', max: 12, cpu: 4, memory: 16e9 }
@@ -352,4 +353,14 @@ it('sends no task to a worker its tasks use whole, whatever history said', () =>
   const r = simulate(graph, { sizes: [small], likely: misses(graph) })
   expect(r.overSent).toBe(0)
   expect(r.workers.reduce((n, w) => n + w.tasks, 0)).toBe(r.executed)
+})
+
+describe('the blog post: other ways to split a run', () => {
+  // one-run-on-your-own-runners: vx DTE ends no later than one machine, a
+  // static matrix, a build stage or naive DTE, on each of its four runs.
+  for (const c of compare())
+    it(c.name, () => {
+      const dte = c.ways.at(-1)!
+      for (const o of c.ways.slice(0, -1)) expect(dte.endMs).toBeLessThanOrEqual(o.endMs + 1e-6)
+    })
 })

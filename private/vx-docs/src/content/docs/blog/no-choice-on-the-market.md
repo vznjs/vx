@@ -84,8 +84,9 @@ Between them is the thing a large JavaScript monorepo actually needs:
 Nobody was building that, for a reason that is not technical: the
 seams are where the money is. A runner whose remote execution is a
 plugin on a public API is a runner nobody can sell a cloud for. vx is
-built that way on purpose and ships nothing distributed in its own
-repository. `@vzn/vx-reapi`, which does remote cache and remote
+built that way on purpose and ships no service in its own repository.
+`@vzn/vx-dte` spreads a run over workers your own CI starts, through a
+relay you host. `@vzn/vx-reapi`, which does remote cache and remote
 execution against any Bazel Remote Execution API server, exists to
 prove the seams are wide enough for someone else to build the
 platform, and to make sure no one has to.

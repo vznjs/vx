@@ -80,3 +80,94 @@
 .vx-chart-table[open] > summary {
   margin-bottom: 0.5rem;
 }
+
+/* Runs drawn as lanes over time by packages/vx-dte/scripts/compare.ts
+   (`--html`): a job or worker per lane, a task per bar as tall as the
+   cores it used. `--vxg-t` sweeps 0 to 1000 so every lane fills on one
+   clock; without @property, or for a reader who asks for less motion,
+   it stays at 1000 and the runs show whole. */
+@property --vxg-t {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 1000;
+}
+@keyframes vxg-run {
+  0% {
+    --vxg-t: 0;
+  }
+  80%,
+  100% {
+    --vxg-t: 1000;
+  }
+}
+.vx-gantt {
+  display: grid;
+  gap: 14px;
+  margin: 1.25rem 0;
+  padding: 16px 18px 18px;
+  background: var(--vx-surface);
+  border: 1px solid var(--vx-border);
+  border-radius: 12px;
+  animation: vxg-run 14s linear infinite;
+}
+.vx-gantt :is(figcaption, div, span, svg) {
+  margin: 0;
+}
+.vx-gantt figcaption {
+  font: 600 12px / 1.4 var(--vx-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vx-muted);
+}
+.vx-gantt-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  font: 500 14px / 1.35 var(--vx-font-body);
+  color: var(--vx-text);
+}
+.vx-gantt-end {
+  font-family: var(--vx-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: clamp(0.2, calc(var(--vxg-t) - var(--e) + 1), 1);
+}
+.vx-gantt-lead .vx-gantt-head {
+  font-weight: 700;
+  color: var(--vx-accent);
+}
+.vx-gantt svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+.vx-gantt rect[style] {
+  transform-box: fill-box;
+  transform-origin: 0 0;
+  transform: scaleX(clamp(0, calc((var(--vxg-t) - var(--s)) / max(0.1, var(--e) - var(--s))), 1));
+}
+.vx-gantt .w {
+  fill: color-mix(in srgb, var(--vx-warn) 35%, transparent);
+}
+.vx-gantt .o {
+  fill: color-mix(in srgb, var(--vx-border) 45%, transparent);
+}
+.vx-gantt .t {
+  fill: var(--vx-muted);
+}
+.vx-gantt-lead .t {
+  fill: var(--vx-accent);
+}
+.vx-gantt-now {
+  fill: var(--vx-fg);
+  transform: translateX(calc(var(--vxg-t) * 1px));
+}
+@media (prefers-reduced-motion: reduce) {
+  .vx-gantt {
+    animation: none;
+  }
+  .vx-gantt-now {
+    display: none;
+  }
+}

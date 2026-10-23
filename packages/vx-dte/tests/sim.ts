@@ -89,6 +89,8 @@ export interface SimResult {
   readonly overSent: number
   /** Each executed task's ms from ready to started. */
   readonly waitedMs: ReadonlyMap<string, number>
+  /** Each executed task's start. */
+  readonly startedAt: ReadonlyMap<string, number>
   /** Each executed task's end. */
   readonly endedAt: ReadonlyMap<string, number>
 }
@@ -174,6 +176,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   }
   const readyAt = new Map<string, number>()
   const waitedMs = new Map<string, number>()
+  const startedAt = new Map<string, number>()
   const endedAt = new Map<string, number>()
   const ready = (id: string): void => {
     const t = byId.get(id)!
@@ -244,6 +247,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       w.tasks++
       w.ran.push(id)
       waitedMs.set(id, now - readyAt.get(id)!)
+      startedAt.set(id, now)
       let booked = 0
       let memory = 0
       for (const r of w.running.values()) {
@@ -429,6 +433,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     executed: executed.size,
     overSent,
     waitedMs,
+    startedAt,
     endedAt,
     utilization: had === 0 ? 0 : cpu / had,
   }
