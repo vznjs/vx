@@ -520,11 +520,14 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
      * missing host is the platform's (a sandbox without DNS says it
      * differently), so the closed-port row pins that part too.
      */
-    const unreachable = async (url: string): Promise<{ warnings: string[]; first: string }> => {
+    const unreachable = async (
+      url: string,
+      timeoutMs = 700,
+    ): Promise<{ warnings: string[]; first: string }> => {
       const decl =
         wire === 'turboCache'
-          ? `turboCache({ apiUrl: ${JSON.stringify(url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: 700, uploadTimeoutMs: 700, retries: 0 })`
-          : `nxCache({ server: ${JSON.stringify(url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: 700, retries: 0 })`
+          ? `turboCache({ apiUrl: ${JSON.stringify(url)}, token: ${JSON.stringify(TOKEN)}, timeoutMs: ${timeoutMs}, uploadTimeoutMs: ${timeoutMs}, retries: 0 })`
+          : `nxCache({ server: ${JSON.stringify(url)}, accessToken: ${JSON.stringify(TOKEN)}, timeoutMs: ${timeoutMs}, retries: 0 })`
       const root = await fixture(decl, wire)
       try {
         const r = await cliRun(root, prefix)
@@ -566,8 +569,11 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
     })
 
     it('a host that does not resolve: green, the task executes, and ONE warning names the request and the server', async () => {
-      const { first } = await unreachable('http://no-such-host.invalid')
+      // Behind CI's sandbox proxy the answer is the proxy's 403, which a
+      // loaded worker sent past 700 ms: one request timed out, the next was
+      // refused, and the lines mixed two causes. A resolver fails at once.
+      const { first } = await unreachable('http://no-such-host.invalid', 10_000)
       expect(first).not.toBe('')
-    })
+    }, 40_000)
   })
 }
