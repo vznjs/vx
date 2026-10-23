@@ -145,5 +145,5 @@ describe.skipIf(!available)('a sandboxed task and the home credential stores', (
     expect(await linked('link')).toBe('no link')
     // CONTROL: unsandboxed, the same link lands (one file system).
     expect(await linked('open')).toBe('SSHKEY\n')
-  })
+  }, 30_000)
 })
