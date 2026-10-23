@@ -365,8 +365,33 @@ async function writeLock(
   ])
   const n = metas.length
   say(`${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}`)
+  // Named here too: a lock that wrote clean failed the `--check` after it.
+  if (check.reviewFiles)
+    for (const file of await strayCopies(check)) sayNotice('warn', 'vx lock', strayLine(root, file))
   return 0
 }
+
+/**
+ * Review copies with no config beside them, sorted. One left beside a
+ * config since deleted shows reviewers tasks nothing runs, and keys the
+ * `**` of a project around it. vx never deletes a committed file; it
+ * names it. A project kept without a config (a plugin's) is checked on
+ * disk; any other directory is what discovery listed.
+ */
+async function strayCopies(check: GraphCheck): Promise<string[]> {
+  const kept = await Promise.all(
+    check.all
+      .filter((m) => m.configPath === null)
+      .map(async (m) => {
+        const file = path.join(m.dir, REVIEW_FILE)
+        return (await Bun.file(file).exists()) ? file : null
+      }),
+  )
+  return [...new Set([...kept.filter((f) => f !== null), ...check.strayReviews])].sort()
+}
+
+const strayLine = (root: string, file: string): string =>
+  `${relPosix(root, file)} has no vx.config beside it — delete it`
 
 /**
  * Each place an evaluated config holds the value of a secret in this
@@ -469,22 +494,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       }),
     )
     for (const f of stale) if (f !== null) failures.push(f)
-    // A copy left beside a config since deleted shows reviewers tasks
-    // nothing runs, and keys the `**` of a project around it. vx never
-    // deletes a committed file; it names it. A project kept without a
-    // config (a plugin's) is checked on disk; any other directory is
-    // what discovery listed.
-    const kept = await Promise.all(
-      check.all
-        .filter((m) => m.configPath === null)
-        .map(async (m) => {
-          const file = path.join(m.dir, REVIEW_FILE)
-          return (await Bun.file(file).exists()) ? file : null
-        }),
-    )
-    const orphans = new Set([...kept.filter((f) => f !== null), ...check.strayReviews])
-    for (const file of [...orphans].sort())
-      failures.push(`${relPosix(root, file)} has no vx.config beside it — delete it`)
+    for (const file of await strayCopies(check)) failures.push(strayLine(root, file))
   }
   for (const dir of Object.keys(lock.projects)) {
     if (!Object.hasOwn(check.fresh.projects, dir)) {
