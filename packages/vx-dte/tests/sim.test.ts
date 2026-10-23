@@ -20,7 +20,7 @@ interface Fixture {
 }
 
 /** The fixture's graph; `known` is what history said before the run (default: how it ran). */
-function load(f: Fixture, known?: (r: Ran) => Ran | null): SimTask[] {
+function load(f: Fixture, known?: (r: Ran) => NonNullable<SimTask['known']> | null): SimTask[] {
   return f.nodes.map((n) => {
     const r = f.ran[n.id]
     if (r === undefined) return n
@@ -399,3 +399,13 @@ it.each([14, 29, 74, 90, 151, 195, 283])(
     expect(r.churn).toBe(0)
   },
 )
+
+// Cold main bcc84f1: no task had a measured need, so the plan counted each
+// as `unmeasured` (2 cores) while it waited and as the one core it held
+// once it ran. Each start freed a core the plan then found spare, and 11
+// of the 25 workers it asked were cancelled as not needed.
+it('a run of unmeasured needs keeps the workers it asks', () => {
+  const graph = load(a09, (r) => ({ ms: r.ms, memory: r.memory }))
+  const r = simulate(graph, { sizes: [small] })
+  expect(r.workers.filter((w) => w.cancelledAt !== undefined).map((w) => w.id)).toEqual([])
+})

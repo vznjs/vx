@@ -500,6 +500,31 @@ it('sends a worker what its booking fits, though its load reads low; busier than
   }
 })
 
+// Cold main bcc84f1: an unmeasured task counted 2 cores waiting and the
+// one it holds running, so each start freed room the plan found spare and
+// it cancelled 11 of the 25 workers it asked.
+it('plans a running unmeasured task as it planned it waiting', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]), () => ({
+    cores: 1,
+    memory: 0,
+    ask: { cores: 2, memory: 4e9 },
+  }))
+  try {
+    const a = await h.worker(4)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    void h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t1', 't2']])
+    for (const id of ['t1', 't2'])
+      await a.say({ type: 'start', task: id, load: { cpu: 0.1, memory: 0 } })
+    await Bun.sleep(50)
+    const running = h.o.planState(() => undefined, 0).workers.find((w) => w.id === a.id)!.running
+    expect(running.map((r) => r.cores)).toEqual([2, 2])
+  } finally {
+    await h.stop()
+  }
+})
+
 // Cold run 3, 2026-10-23: tasks booked at their history used 82% of it,
 // and every Linux worker ran at 63-73% CPU against the sim's 86%.
 it('books measured tasks at the share of their history the run’s tasks used, at most half again more', async () => {
