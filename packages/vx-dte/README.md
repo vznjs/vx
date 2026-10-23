@@ -508,7 +508,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     cores when tasks use less than history says; plans book the same.
     What a task used counts divided by its share of the CPU: a Linux
     worker reads its run queue (`procs_running` in /proc/stat) every 200 ms,
-    a macOS one its load average, and a task whose threads got a third of a core each used a third of
+    a macOS one its load average while all its cores are busy (a GitHub Mac reads a load of 49 with a core idle), and a task whose threads got a third of a core each used a third of
     its need, not its need. The run history keeps that share
     (`ExecuteResult.machine.cpuShare`) and learns the need, at most the
     machine's cores: learning the share packed the next run tighter, nine

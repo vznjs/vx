@@ -2006,10 +2006,13 @@ it('reads how crowded the CPU is from the run queue', async () => {
   } finally {
     meter.stop()
   }
-  // No /proc/stat (macOS): the load average says it.
+  // No /proc/stat (macOS): the load average says it, while every core is busy.
+  let ticks = 0
+  const full = (): [number, number] => [(ticks += 100), ticks]
   const mac = loadMeter(
     () => undefined,
     () => cores * 2,
+    full,
   )
   try {
     const from = mac.mark()
@@ -2017,6 +2020,22 @@ it('reads how crowded the CPU is from the run queue', async () => {
     expect(mac.shareSince(from)).toBeCloseTo(1 / 2, 2)
   } finally {
     mac.stop()
+  }
+  // Main 8fa3c98: a macOS runner's load average read 49 with a core idle,
+  // and each shard was learned to need the whole machine. Not crowded.
+  let spare = 0
+  const idle = (): [number, number] => [(spare += 50), spare * 2]
+  const roomy = loadMeter(
+    () => undefined,
+    () => cores * 16,
+    idle,
+  )
+  try {
+    const from = roomy.mark()
+    await Bun.sleep(450)
+    expect(roomy.shareSince(from)).toBe(1)
+  } finally {
+    roomy.stop()
   }
   // Neither (Windows): no correction.
   const none = loadMeter(

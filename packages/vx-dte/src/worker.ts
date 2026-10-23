@@ -403,6 +403,19 @@ export async function runWorker(opts: {
 
 /** How often the run queue is read: a test shard's spawns come and go within a second. */
 const CROWD_EVERY_MS = 200
+/** The share of the CPUs' time busy at which a Mac may be crowded. */
+const FULL = 0.9
+
+function cpuTimes(): [number, number] {
+  let idle = 0
+  let total = 0
+  for (const c of os.cpus()) {
+    const t = c.times
+    idle += t.idle
+    total += t.user + t.nice + t.sys + t.irq + t.idle
+  }
+  return [total - idle, total]
+}
 
 /**
  * The share of a core each runnable thread gets now: the machine's cores
@@ -424,31 +437,27 @@ export function crowdShare(stat: string, cores: number): number | undefined {
  * 3-core Mac reported no share, so the run learned their crowded use as
  * their need and packed them as tight again: 66-78 s each (main 1e19c00,
  * 2026-10-23). Lagging a minute, it fits the long tasks a
- * crowd stretches. A load average of 0 (Windows) is none.
+ * crowd stretches. A load average of 0 (Windows) is none. It counts
+ * more than the threads that wait for a core: a GitHub macOS runner
+ * read 49 with two test shards on 3 cores and a core idle, and the run
+ * learned each shard needed the whole machine (main 8fa3c98). So a
+ * Mac whose cores were not all busy since the last look is not crowded.
  */
 export function loadMeter(
   read: () => string | undefined = procStat,
   average: () => number = () => os.loadavg()[0] ?? 0,
+  /** The CPUs' busy and total time so far (`os.cpus()`). */
+  times: () => [number, number] = cpuTimes,
 ): {
   now: () => Load
   mark: () => { sum: number; n: number }
   shareSince: (from: { sum: number; n: number }) => number | undefined
   stop: () => void
 } {
-  const busy = (): [number, number] => {
-    let idle = 0
-    let total = 0
-    for (const c of os.cpus()) {
-      const t = c.times
-      idle += t.idle
-      total += t.user + t.nice + t.sys + t.irq + t.idle
-    }
-    return [total - idle, total]
-  }
-  let last = busy()
+  let last = times()
   let cpu = 0
   const timer = setInterval(() => {
-    const next = busy()
+    const next = times()
     const total = next[1] - last[1]
     if (total > 0) cpu = ((next[0] - last[0]) / total) * os.cpus().length
     last = next
@@ -456,11 +465,24 @@ export function loadMeter(
   timer.unref?.()
   const cores = os.cpus().length
   const crowd = { sum: 0, n: 0 }
+  let looked = last
   const look = (): void => {
     const stat = read()
     const avg = stat === undefined ? average() : 0
+    let full = true
+    if (stat === undefined && avg > 0) {
+      const now = times()
+      full = now[1] <= looked[1] || (now[0] - looked[0]) / (now[1] - looked[1]) >= FULL
+      looked = now
+    }
     const share =
-      stat !== undefined ? crowdShare(stat, cores) : avg > 0 ? Math.min(1, cores / avg) : undefined
+      stat !== undefined
+        ? crowdShare(stat, cores)
+        : avg > 0
+          ? full
+            ? Math.min(1, cores / avg)
+            : 1
+          : undefined
     if (share === undefined) return clearInterval(crowded)
     crowd.sum += share
     crowd.n++
