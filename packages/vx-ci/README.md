@@ -29,7 +29,11 @@ per-task table with their exit code, the signal an exit above 128
 stands for (`exit 137 (128 + SIGKILL)`, as the run's own frame and
 `vx last` say it), a timeout as `timed out, exit 143`, a persistent task
 that never became ready as `never ready (timed out)`, a sandboxed task's
-violation count, and the tasks each failure blocked. A footer line
+violation count, and the tasks each failure blocked. When an executor
+ran the run on other machines (`@vzn/vx-dte`'s agents), a Machines table
+shows each one's status, warm-up, tasks, time online and idle, the cores
+booked for it beside the cores it used, and its utilization, under a line
+of the booked and used share of all their core-time. A footer line
 names the vx version, the command (what follows `--` counted, not
 quoted), tasks passed and outputs restored.
 Anywhere else (`GITHUB_ACTIONS` not `true`: laptops, other CI)

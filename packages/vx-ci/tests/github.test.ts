@@ -99,6 +99,52 @@ describe('renderJobSummary', () => {
     expect(md).not.toContain('| Verify |')
   })
 
+  // Owner, 2026-10-23: the page shows each DTE agent, booked beside used.
+  it('names each machine the run used, booked beside used, and the totals', () => {
+    const m = {
+      status: 'left',
+      cores: 4,
+      memoryBytes: 16e9,
+      failed: 0,
+      cpuPeak: 3,
+      memoryPeakBytes: 1e9,
+      memoryAvgBytes: 5e8,
+    }
+    const md = renderJobSummary(
+      summary([task({})], {
+        machines: [
+          {
+            ...m,
+            name: 'small#1',
+            done: 3,
+            onlineMs: 40_000,
+            busyMs: 36_000,
+            cpuAvg: 2,
+            bookedAvg: 3.9,
+            utilization: 0.5,
+            warmUpMs: 21_000,
+          },
+          {
+            ...m,
+            name: 'small#2',
+            done: 0,
+            onlineMs: 10_000,
+            busyMs: 0,
+            cpuAvg: 0,
+            bookedAvg: 0,
+            utilization: 0,
+            warmUpMs: 90_000,
+          },
+        ],
+      }),
+    )
+    expect(md).toContain('### Machines')
+    expect(md).toContain('| small#1 | left | 21.0s | 3 | 40.0s | 4.0s | 3.9 of 4 | 2.0 | 50% |')
+    expect(md).toContain('| small#2 | left | 1m 30s | 0 | 10.0s | 10.0s | 0.0 of 4 | 0.0 | 0% |')
+    expect(md).toContain("Booked 78% of the machines' core-time, used 40%.")
+    expect(renderJobSummary(summary([task({})]))).not.toContain('### Machines')
+  })
+
   it('failures head the table and get a callout section', () => {
     const md = renderJobSummary(
       summary([task({}), task({ taskId: 'b#build', status: 'failed', exitCode: 2 })]),
