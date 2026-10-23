@@ -70,14 +70,18 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
   const open: Bun.ServerWebSocket<Held>[] = []
   const closes: { id: string; code: number }[] = []
   const frames: string[] = []
-  /** While set, the host answers each new dial 503, as one overloaded. */
-  const host = { refusing: false }
+  /**
+   * While `refusing`, the host answers each new dial 503, as one overloaded.
+   * Once `forget` is set, the next participant to dial is refused for good.
+   */
+  const host = { refusing: false, forget: false, forgotten: '' }
   let server: Bun.Server<Held> | undefined
   const relay = createRelay({
     ...options,
     ...(heartbeatMs === undefined ? {} : { heartbeatMs }),
     upgrade: (key, id, req) => {
-      if (host.refusing) return new Response(null, { status: 503 })
+      if (host.forget && host.forgotten === '') host.forgotten = id
+      if (host.refusing || id === host.forgotten) return new Response(null, { status: 503 })
       server!.upgrade(req, { data: { key, id } })
       return new Response(null, { status: 101 })
     },
@@ -134,6 +138,22 @@ it('dials anew once its socket goes quiet, and gets what the relay queued', asyn
   await o.send(a.id, 'pushed')
   expect(await a.poll()).toEqual([{ from: 'orchestrator', body: 'pushed' }])
   expect(asked).toEqual([])
+  await a.leave()
+  await o.leave()
+})
+
+it('joins again when its first socket does not open', async () => {
+  // A relay that made a run twice for two joins at once forgot the first
+  // one's participants: their first socket never opened (CI, 2026-10-23).
+  const { url, host } = sockets()
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  host.forget = true
+  const a = await join(url, R2, 'agent', null, undefined)
+  expect(a.id).not.toBe(host.forgotten)
+  const told = await o.poll()
+  expect(told.map((m) => (m.body as { id: string }).id)).toContain(a.id)
+  await o.send(a.id, 'hi')
+  expect(await a.poll()).toEqual([{ from: 'orchestrator', body: 'hi' }])
   await a.leave()
   await o.leave()
 })

@@ -130,8 +130,10 @@ export async function join(
     }
     return json as Record<string, unknown>
   }
-  const joined = (await call('join', { role, info, ...(prover && { key: prover.key }) }))!
-  const id = joined['id'] as string
+  const enter = async () =>
+    (await call('join', { role, info, ...(prover && { key: prover.key }) }))!
+  const joined = await enter()
+  let id = joined['id'] as string
   const heartbeatMs = joined['heartbeatMs'] as number
   deadlineMs = Math.max(3 * heartbeatMs, MIN_WAIT_MS)
   // The relay loses a participant silent this long: past it, nothing is left to reach.
@@ -147,6 +149,13 @@ export async function join(
   /** What the sockets brought and nobody took yet, kept across redials. */
   const inbox: RelayMessage[] = []
   let socket: Socket | undefined = await dial()
+  // The relay made a run twice when two joins came at once and forgot the
+  // first's participants, whose first socket never opened: two of twelve
+  // agents on CI (2026-10-23). Joined again, it lands in the run that stayed.
+  if (socket === undefined) {
+    id = (await enter())['id'] as string
+    socket = await dial()
+  }
   let failures = 0
   /** Since when no socket is open: the relay loses a participant silent three heartbeats. */
   let downSince: number | undefined
