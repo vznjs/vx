@@ -8,6 +8,7 @@
 // the isolation boundary. A local host without the deps still skips.
 
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
+import { freePort } from './helpers/free-port.js'
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { createConnection } from 'node:net'
@@ -423,13 +424,6 @@ describe.skipIf(!available || process.platform !== 'linux')(
     })
 
     /** A port nothing on this box listens on: bind it, read it, release it. */
-    function freePort(): number {
-      const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })
-      const port = l.port
-      l.stop(true)
-      return port
-    }
-
     function ipv6Loopback(): boolean {
       try {
         Bun.listen({ hostname: '::1', port: 0, socket: { data() {} } }).stop(true)

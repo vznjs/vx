@@ -13,6 +13,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { initSandbox, resetSandbox, resolveSandboxConfig, runSandboxed } from '../src/exec/index.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
+import { freePort } from './helpers/free-port.js'
 
 const available = await sandboxAvailable('sandbox port bridge ready test')
 const realSocat = Bun.which('socat')
@@ -26,13 +27,6 @@ function accepts(port: number): Promise<boolean> {
     })
     sock.once('error', () => resolve(false))
   })
-}
-
-function freePort(): number {
-  const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })
-  const port = l.port
-  l.stop(true)
-  return port
 }
 
 describe.skipIf(!available || process.platform !== 'linux' || realSocat === null)(

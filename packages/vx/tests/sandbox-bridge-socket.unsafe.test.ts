@@ -11,16 +11,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { initSandbox, resetSandbox, resolveSandboxConfig, runSandboxed } from '../src/exec/index.js'
 import { portBridgeSocket } from '../src/exec/sandbox-runtime.js'
 import { sandboxAvailable } from './helpers/sandbox-gate.js'
+import { freePort } from './helpers/free-port.js'
 
 const available = await sandboxAvailable('sandbox bridge socket test')
-
-/** A port nothing on this box listens on: bind it, read it, release it. */
-function freePort(): number {
-  const l = Bun.listen({ hostname: '127.0.0.1', port: 0, socket: { data() {} } })
-  const port = l.port
-  l.stop(true)
-  return port
-}
 
 /** The bridge sockets for `port`, whatever their task's tag: each in its task's own directory (L-10). */
 function sockets(port: number): string[] {
