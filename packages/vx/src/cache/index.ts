@@ -91,7 +91,7 @@ export {
   type RemoteCacheLayer,
   type RemoteOpenContext,
 } from './layered-cache.js'
-export { networkConcurrency } from './remote-lane.js'
+export { networkConcurrency, sayRemoteFault } from './remote-lane.js'
 export type { ResolvedRemote } from './remote-lane.js'
 export {
   absentPluginCache,

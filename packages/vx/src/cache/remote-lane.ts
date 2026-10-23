@@ -21,6 +21,19 @@ export interface ResolvedRemote {
 }
 
 /**
+ * A fault of `r` that a caller outside its lane degrades to a miss, said as
+ * the lane says its own: to its `onError`, else stderr. Reporting never
+ * escalates.
+ */
+export function sayRemoteFault(r: ResolvedRemote, e: Error): void {
+  try {
+    if (r.onError) r.onError(e)
+    else process.stderr.write(`[vx] remote cache: ${e.message}\n`)
+    // quiet: a throwing reporter must never fail the run
+  } catch {}
+}
+
+/**
  * Requests at once to a remote, by default: pnpm's network concurrency
  * (Bun's is a fixed 64). A request waits on the network, not a core, so
  * the cap follows cores only past 21 of them.
