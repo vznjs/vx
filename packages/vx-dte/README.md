@@ -380,10 +380,12 @@ another, and the run starts one in its place. A worker is lost when the
 relay stops hearing it, or at once when its adapter sees its process or
 job end. Workers start at the first
 task the cache does not answer, so a warm run starts none. Once one has
-joined, its warm-up is what the next takes at the least: work that ends
-sooner starts no worker while others are online or starting, and new
-workers are started for the cores the run keeps busy after that warm-up,
-not before it.
+joined, its warm-up is what the next of its size takes at the least: work
+that ends sooner starts no worker while others are online or starting, and
+new workers are started for the cores the run keeps busy after that
+warm-up, not before it. A run on CI keeps each size's warm-up in the
+workspace's cache under its commit, and the next commit's run plans by it
+before any worker of that size joins.
 
 The `workers` rows, live while the run goes and again in the footer,
 give each worker its status (`starting`, `online`, `left`, `gone`, or `failed`
@@ -480,7 +482,8 @@ real time in the run summary, and `@vzn/vx-ci` prints it.
     a task that missed the cache, or waits on a cached one that did; groups
     and hits need no worker. At each miss, finish and join the run plays
     that work out on its workers and on N more (`src/planner.ts`), each new
-    one joining after the warm-up the first took (20 s before one has),
+    one joining after its size's warm-up: this run's first of that size,
+    else an earlier run's, else any size's this run, else 20 s,
     and takes the fewest N that end within 5% (5 s at least) of the best.
     That margin is spent once: later plans keep its deadline until new
     work is known. A task waiting on one that runs waits until it ends.

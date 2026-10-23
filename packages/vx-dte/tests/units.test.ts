@@ -1531,6 +1531,9 @@ it('a task its only worker failed waits for the worker the run starts for it the
   })
   try {
     h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
+    // Its join sets small's join limit at twice it: one at once gave
+    // small#2 a few ms, and a loaded CI box missed them (PR #4169).
+    await Bun.sleep(1_000)
     const a = await h.worker(1, 'small#1')
     await Bun.sleep(50)
     const t1 = h.o.execute(h.req('t1'))
@@ -1543,7 +1546,7 @@ it('a task its only worker failed waits for the worker the run starts for it the
   } finally {
     await h.stop()
   }
-}, 3_000)
+}, 5_000)
 
 // A batch for a wide worker passed the relay's 1 MiB body limit and every
 // task in it failed with `413 body over 1 MiB` (2026-10-22).
@@ -2045,6 +2048,9 @@ it('knows how long a worker took to join', async () => {
     await h.worker(2, 'small#1')
     await Bun.sleep(50)
     expect(h.o.warmUpMs()).toBeGreaterThanOrEqual(100)
+    // By the size it was asked as; the one that joined on its own has none.
+    expect([...h.o.warmUpsMs().keys()]).toEqual(['small'])
+    expect(h.o.warmUpsMs().get('small')).toBe(h.o.warmUpMs()!)
   } finally {
     await h.stop()
   }

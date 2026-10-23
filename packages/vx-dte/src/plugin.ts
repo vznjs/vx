@@ -8,6 +8,7 @@ import {
   UserError,
   type CommandContext,
   type Platform,
+  type PluginCache,
   type PluginOptionKinds,
   type TaskNode,
   type TaskResources,
@@ -194,6 +195,11 @@ export function dte(options: DteOptions) {
 
   let nodes: ReadonlyMap<string, TaskNode> | undefined
   let peaks: ReadonlyMap<string, TaskResources> = new Map()
+  /** Each size's warm-up an earlier run learned (`warm-ups.ts`), and the read of it. */
+  let learned: ReadonlyMap<string, number> = new Map()
+  let warming: Promise<void> = Promise.resolve()
+  /** On CI, where the run keeps the warm-ups it learned: `setup`'s cache, root and warn. */
+  let keep: { cache: PluginCache; root: string; warn: (m: string) => void } | undefined
   /** Each task's tail by `nodes` and `peaks`, made again when either changes. */
   let tails: ((id: string) => number) | undefined
   /** Settles once the needs other plugins fetch are in `peaks`: `ctx.refining()`, then the read. */
@@ -212,6 +218,17 @@ export function dte(options: DteOptions) {
     const o = orchestrator
     orchestrator = undefined
     nodes = undefined
+    const ups = o?.warmUpsMs()
+    const k = keep
+    keep = undefined
+    if (k !== undefined && ups !== undefined) {
+      const { writeWarmUps } = await import('./warm-ups.js')
+      await writeWarmUps(k.cache, k.root, learned, ups).catch((err: unknown) =>
+        k.warn(`dte: warm-ups not kept: ${err instanceof Error ? err.message : String(err)}`),
+      )
+    }
+    learned = new Map()
+    warming = Promise.resolve()
     peaks = new Map()
     tails = undefined
     needsIn = undefined
@@ -297,6 +314,7 @@ export function dte(options: DteOptions) {
     setup(ctx) {
       // A run that is not distributed subscribes nothing.
       if (runOf() === undefined) return
+      if (ctx.ci) keep = { cache: ctx.cache, root: ctx.workspaceRoot, warn: (m) => ctx.warn(m) }
       ctx.on('onTaskComplete', (node, outcome) => {
         if (outcome.hash !== undefined) keys.set(node.id, outcome.hash)
       })
@@ -327,6 +345,15 @@ export function dte(options: DteOptions) {
         }
       }
       let reading = read()
+      warming = import('./warm-ups.js')
+        .then((w) => w.readWarmUps(ctx.cache, ctx.workspaceRoot))
+        .then(
+          (m) => void (learned = m),
+          (err: unknown) =>
+            ctx.warn(
+              `dte: no warm-ups learned: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+        )
       const guess = changedSinceParent(ctx.workspaceRoot).then(async (changed) => {
         const { likelyMisses } = await import('./forecast.js')
         likely = likelyMisses(graph, changed, ctx.workspaceRoot)
@@ -340,7 +367,8 @@ export function dte(options: DteOptions) {
       // own. Read again then: a refine that landed before `onRefine` above
       // was listening left the first read's empty history, and main planned
       // 9 asks on 0 measured tasks, 25% of its cores used (2026-10-23).
-      needsIn = () => ctx.refining().then(() => (reading = read()))
+      needsIn = () =>
+        Promise.all([ctx.refining().then(() => (reading = read())), warming]).then(() => {})
       scheduled?.()
       return undefined
     },
@@ -509,7 +537,14 @@ export function dte(options: DteOptions) {
       // the most would, played out (`planner.ts`); idle ones it does
       // without leave. Again at each miss, finish, join and history read.
       const shape = (remaining: ReadonlySet<string>): void => {
-        const warmUp = o.warmUpMs() ?? WARM_UP_MS
+        // This run's for the size, else an earlier run's, else any size's
+        // this run, else the default.
+        const ups = o.warmUpsMs()
+        const any = o.warmUpMs()
+        const warmUp = (size: string | undefined): number =>
+          (size === undefined ? undefined : (ups.get(size) ?? learned.get(size))) ??
+          any ??
+          WARM_UP_MS
         const { workers, running } = o.planState((id) => peaks.get(id)?.p50DurationMs, warmUp)
         const final = adapter === undefined || (plannedWorkers !== undefined && later.size === 0)
         const p = decide({

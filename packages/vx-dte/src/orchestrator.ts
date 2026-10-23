@@ -33,7 +33,7 @@ import {
   type ToOrchestrator,
   type WiredResult,
 } from './messages.js'
-import { simulate, type PlanTask, type PlanWorker, type Size } from './planner.js'
+import { simulate, type PlanTask, type PlanWorker, type Size, type WarmUp } from './planner.js'
 import { Usage, type UsageStats } from './usage.js'
 import { assign, ordered, type Need } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
@@ -1086,14 +1086,25 @@ export class Orchestrator {
     return least
   }
 
+  /** `warmUpMs` of each size a worker this run started joined as. */
+  warmUpsMs(): Map<string, number> {
+    const out = new Map<string, number>()
+    for (const a of [...this.workers.values(), ...this.gone]) {
+      const size = a.declared?.size
+      if (a.warmUpMs === undefined || size === undefined) continue
+      if (!(out.get(size)! <= a.warmUpMs)) out.set(size, a.warmUpMs)
+    }
+    return out
+  }
+
   /**
    * The workers the plan places on (`planner.ts`): each online, what it
    * runs and how long that has left by `ms`, and each still starting,
-   * joining after `warmUpMs` from its ask. With them, the tasks they run.
+   * joining after its size's `warmUpMs` from its ask. With them, the tasks they run.
    */
   planState(
     ms: (taskId: string) => number | undefined,
-    warmUpMs: number,
+    warmUpMs: WarmUp,
   ): { workers: PlanWorker[]; running: Set<string> } {
     const now = performance.now()
     const running = new Set<string>()
@@ -1110,6 +1121,7 @@ export class Orchestrator {
         cores: a.cores,
         memory: a.memory,
         platform: a.platform,
+        ...(a.declared === undefined ? {} : { size: a.declared.size }),
         at: 0,
         idle: a.busy.size === 0,
         running: jobs.map((j) => ({
@@ -1128,7 +1140,11 @@ export class Orchestrator {
           cores: declared.cpu,
           memory: declared.memory,
           platform: declared.platform,
-          at: Math.max(0, warmUpMs - (now - at)),
+          size: declared.size,
+          at: Math.max(
+            0,
+            (typeof warmUpMs === 'number' ? warmUpMs : warmUpMs(declared.size)) - (now - at),
+          ),
           idle: false,
           running: [],
           starting: true,

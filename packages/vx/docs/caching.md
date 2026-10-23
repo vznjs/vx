@@ -1864,7 +1864,10 @@ CREATE TABLE store_meta (
 -- transaction, in the store so every worktree forecasts from it.
 -- source: 'branch:<name>'; the forecast reads the newest five per task.
 -- v37: 'remote' rows are a default-branch commit's timings a plugin
--- imported, one per (sha, task).
+-- imported, one per (sha, task). A run on a crowded worker (runs.cpu_share
+-- < 1) is kept as the time it would take alone: its CPU's wait for a core,
+-- cpu/share - cpu, spread over the cores it kept busy (at least one), off
+-- its wall time.
 CREATE TABLE task_durations (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   project     TEXT NOT NULL,

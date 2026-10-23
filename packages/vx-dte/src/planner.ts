@@ -61,7 +61,15 @@ export interface PlanWorker {
   /** Started and not joined yet: the run may cancel it. */
   readonly starting?: boolean
   readonly platform?: string | undefined
+  /** The size it was started as (`Size.name`): what its warm-up is learned by. */
+  readonly size?: string | undefined
 }
+
+/** A worker's warm-up, one for all, or by its size (`Size.name`; none for one that joined on its own). */
+export type WarmUp = number | ((size: string | undefined) => number)
+
+const warmOf = (w: WarmUp): ((size: string | undefined) => number) =>
+  typeof w === 'number' ? () => w : w
 
 export interface Plan {
   /** Sizes to start now, in order: each the plan gives work within its warm-up. */
@@ -323,7 +331,7 @@ function play(
 
 /**
  * The workers to start and to let go. The fewest new ones (`candidates`,
- * in the order the run would start them, each joining after `warmUpMs`)
+ * in the order the run would start them, each joining after its size's `warmUpMs`)
  * whose plan ends within a margin of the best; of those, the ones it gives
  * work within their warm-up start now, the rest when that nears
  * (`againInMs`): a graph that widens later starts its workers later (M,
@@ -335,7 +343,7 @@ export function plan(
   tasks: readonly PlanTask[],
   workers: readonly PlanWorker[],
   candidates: readonly Size[],
-  warmUpMs: number,
+  warmUpMs: WarmUp,
   // Whether the run can start one in a let-go one's place: not with
   // workers that join on their own.
   replaceable = true,
@@ -343,8 +351,9 @@ export function plan(
   limitMs = Infinity,
   how: Strategy = DEFAULT_STRATEGY,
 ): Plan {
+  const warm = warmOf(warmUpMs)
   const fresh = (
-    s: { cpu: number; memory: number; platform?: string | undefined },
+    s: { cpu: number; memory: number; platform?: string | undefined; size?: string | undefined },
     id: string,
     at: number,
   ): PlanWorker => ({
@@ -352,16 +361,17 @@ export function plan(
     cores: s.cpu,
     memory: s.memory,
     platform: s.platform,
+    ...(s.size === undefined ? {} : { size: s.size }),
     at,
     running: [],
     idle: false,
   })
-  const added = candidates.map((s, i) => fresh(s, `\0new${i}`, warmUpMs))
+  const added = candidates.map((s, i) => fresh({ ...s, size: s.name }, `\0new${i}`, warm(s.name)))
   const ends: number[] = []
   for (let n = 0; n <= candidates.length; n++) {
     ends.push(simulate(tasks, [...workers, ...added.slice(0, n)], how))
     // Past the plan's own length more cannot end it sooner.
-    if (n > 0 && ends[n] === ends[n - 1] && ends[n]! <= warmUpMs) break
+    if (n > 0 && ends[n] === ends[n - 1] && ends[n]! <= added[n - 1]!.at) break
   }
   const best = Math.min(...ends)
   // Margin spent at each decision adds up: releases 4 s apart each lost
@@ -412,9 +422,9 @@ export function plan(
       // started again at 20.06 (tests/sim.test.ts, a09b987 forecast).
       if (!replaceable) continue
       const next = play(tasks, kept, how).first.get(w.id)
-      if (next !== undefined && next < 2 * warmUpMs + MARGIN_MS) continue
+      if (next !== undefined && next < 2 * warm(w.size) + MARGIN_MS) continue
       const instead = fresh(
-        { cpu: w.cores, memory: w.memory, platform: w.platform },
+        { cpu: w.cores, memory: w.memory, platform: w.platform, size: w.size },
         w.id,
         next ?? Infinity,
       )
@@ -431,8 +441,9 @@ export function plan(
     const at = first.get(added[i]!.id)
     if (at === undefined) continue
     // Given work within its warm-up and a margin: it starts now.
-    if (at <= warmUpMs + MARGIN_MS) start.push(candidates[i]!)
-    else againInMs = Math.min(againInMs ?? Infinity, at - warmUpMs - MARGIN_MS)
+    const warmUp = added[i]!.at
+    if (at <= warmUp + MARGIN_MS) start.push(candidates[i]!)
+    else againInMs = Math.min(againInMs ?? Infinity, at - warmUp - MARGIN_MS)
   }
   return { start, release, endsInMs: end, boundMs: bound, againInMs }
 }
@@ -499,7 +510,7 @@ export function decide(input: {
   readonly started: ReadonlyMap<string, number>
   /** No worker may be started: a planned run's last, or one without an adapter. */
   readonly final: boolean
-  readonly warmUpMs: number
+  readonly warmUpMs: WarmUp
   readonly replaceable: boolean
   /** The last plan's `boundMs`, less the time since: kept while `known` holds all its work. */
   readonly limitMs?: number | undefined
@@ -555,7 +566,7 @@ function backlog(
   tasks: readonly PlanTask[],
   workers: readonly PlanWorker[],
   candidates: readonly Size[],
-  warmUpMs: number,
+  warmUpMs: WarmUp,
   how: Strategy,
 ): Plan {
   const ids = new Set(tasks.map((t) => t.id))
@@ -587,7 +598,8 @@ function backlog(
       cores: c.cpu,
       memory: c.memory,
       platform: c.platform,
-      at: warmUpMs,
+      size: c.name,
+      at: warmOf(warmUpMs)(c.name),
       running: [],
       idle: false,
     })),

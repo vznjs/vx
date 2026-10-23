@@ -257,3 +257,22 @@ it('counts no work after a forecast miss the probe found held', () => {
   const still = knownMisses(new Set(['b']), new Set(), new Set(), both)
   expect(missedWork(both, nodes, still, one, () => 1000).map((t) => t.id)).toEqual(['b', 't'])
 })
+
+// Main fd5c72e: small workers joined in 15 s and its Mac in 27 s, while
+// every plan waited 20 s for each.
+it("plans each size's own warm-up", () => {
+  const linux: Size = { ...small, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 1, cpu: 3, memory: 7e9, platform: 'darwin-arm64' }
+  const work: PlanTask[] = [
+    { ...task('l', 75_000), platform: 'linux-x64' },
+    { ...task('ios', 10_000), platform: 'darwin-arm64' },
+  ]
+  const ups = new Map([
+    ['small', 15_000],
+    ['mac', 27_000],
+  ])
+  const p = plan(work, [], [linux, mac], (size) => ups.get(size!)!)
+  expect(p.start.map((s) => s.name)).toEqual(['small', 'mac'])
+  expect(p.endsInMs).toBe(90_000)
+  expect(plan(work, [], [linux, mac], WARM).endsInMs).toBe(95_000)
+})
