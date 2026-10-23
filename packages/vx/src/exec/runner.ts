@@ -8,6 +8,7 @@ import type { Pointer } from 'bun:ffi'
 import { closeSync, existsSync, readFileSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
 import {
+  formatBytes,
   shellArgv,
   isExecutableMissing,
   isOutOfFds,
@@ -1107,9 +1108,6 @@ function rssFloorFor(peak: number): number {
 export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
 export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
 
-const mib = (n: number): string => `${(n / (1024 * 1024)).toFixed(1)} MiB`
-const size = (n: number): string => (n < 1024 * 1024 ? `${n / 1024} KiB` : mib(n))
-
 /** The line that stands where the dropped middle was. */
 export function droppedOutputLine(
   dropped: number,
@@ -1117,8 +1115,9 @@ export function droppedOutputLine(
   tailChars = CAPTURE_TAIL_CHARS,
 ): string {
   return (
-    `\n[vx] ${mib(dropped)} of output not kept — vx keeps the first ${size(headChars)} ` +
-    `and the last ${size(tailChars)} of a task's output\n`
+    // In vx's own units: a fixed MiB tier printed a few KiB dropped as `0.0 MiB`.
+    `\n[vx] ${formatBytes(dropped)} of output not kept — vx keeps the first ${formatBytes(headChars)} ` +
+    `and the last ${formatBytes(tailChars)} of a task's output\n`
   )
 }
 
@@ -1137,7 +1136,7 @@ export function maskCaptured(text: string, secrets: SecretMask): string {
   return head + text.slice(at, end) + tail
 }
 
-const DROPPED_LINE = /^\n\[vx\] [\d.]+ MiB of output not kept — /
+const DROPPED_LINE = /^\n\[vx\] [\d.]+ [KMGTP]?B of output not kept — /
 
 const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff
 
