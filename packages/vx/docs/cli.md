@@ -3103,8 +3103,9 @@ run history alone, no service:
 
 A task is flaky when its exact cache key FAILED AFTER IT HAD PASSED
 (this run counted; a cache hit is a pass, it replayed one), or when it
-needed a retry (`exec.retries` / `--retries`) this run. A failure on a
-key that never passed is a break and carries no note — a changed input
+passed only on a retry (`exec.retries` / `--retries`) this run. A failure on a
+key that never passed is a break and carries no note, every retry of it
+failed too — a changed input
 that fails is what a red run usually means — and the first pass after
 only failures is a recovery (a missing tool installed), not a flake.
 Only tasks with a `cache` block are judged: "same inputs, red after

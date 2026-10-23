@@ -612,8 +612,13 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     // vx-on-real-repos quotes its own run (wall times on seven outside
     // repos, 2026-10-15), not benchmarks.md; its method section says where.
     // one-run-on-your-own-runners quotes one CI run and the DTE simulator,
-    // each linked beside its table.
-    const OWN_RUNS = new Set(['vx-on-real-repos.md', 'one-run-on-your-own-runners.md'])
+    // each linked beside its table. first-task-sooner times vx alone with
+    // VX_DEBUG_TIMING, its setup line under the table (2026-10-23).
+    const OWN_RUNS = new Set([
+      'vx-on-real-repos.md',
+      'one-run-on-your-own-runners.md',
+      'first-task-sooner.md',
+    ])
     for (const file of readdirSync(BLOG).filter((f) => /\.mdx?$/.test(f) && !OWN_RUNS.has(f))) {
       for (const line of readFileSync(path.join(BLOG, file), 'utf8').split('\n')) {
         if (!line.startsWith('|') || /^\|\s*-/.test(line)) continue
@@ -654,8 +659,9 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     // real-repo claims (owner, 2026-10-02); a new blog table raises this.
     // The eleven are scheduling-strategies' rows (2026-10-09), the three
     // more ci-timings-file's; seven more where-a-run-spends-its-time's
-    // (2026-10-14).
-    expect(checked).toBe(21)
+    // (2026-10-14); four more why-vx-is-fast's head-to-head and three
+    // no-choice-on-the-market's (2026-10-23).
+    expect(checked).toBe(28)
     expect(wrong).toEqual([])
   })
 

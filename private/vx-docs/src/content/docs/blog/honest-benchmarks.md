@@ -9,88 +9,66 @@ tags:
 excerpt: "A synthetic 9,603-task workspace where vx, Turborepo, Nx and Vite Task each run the same graph from their own native config. Every number is a command away."
 ---
 
-Benchmark numbers are only worth what the method behind them is worth.
-Here is the method, then the numbers.
-
-One number first, because it is the one that decides whether a runner
-is worth having. Imagine your tasks take two minutes on their own.
-What does the tool add on top? On the 9,603-task workspace below the
-tasks alone take 1 min 53 s under an ideal schedule. On a cold build vx
-adds **6.13 s**, the least of the four: Vite Task **7.94 s**, Turborepo
-**8.87 s** and Nx **3 min 20 s**. With nothing changed, vx adds **757 ms**
-and Turborepo **761 ms**. No tool leads every row, and the table says
-where vx does not.
-
-```mermaid
-flowchart LR
-  G[one generated graph] --> V[vx]
-  G --> T[Turborepo]
-  G --> N[Nx]
-  G --> VT[Vite Task]
-  V --> R[same machine, each in its own native config]
-  T --> R
-  N --> R
-  VT --> R
-  style R stroke:#c6f84e,stroke-width:2px
-```
-
-## Synthetic: the same graph, four runners
-
-`bun private/vx-bench/compare.ts 3` scaffolds one workspace of
-1,601 projects in 30 dependency levels, five core libraries that about
-a quarter of the projects use, and six kinds of task (`build`, `lint`,
-`test`, `typecheck`, `publish`, `installDeps`), 9,603 task nodes. It runs
-vx, Turborepo, Nx and Vite Task cold, with nothing changed and with
-outputs restored. Edit runs are left out: Nx needs its daemon for them,
-and the harness runs every tool as CI does.
-The run below is Turborepo 2.11.7, Nx 23.3.0 and Vite Task (`vp run`,
-vite-plus 1.1.0) on Linux x64 with 4 cores, every runner pinned to
-concurrency 10, every Nx task an `nx:run-commands` target. Fairness is deliberate: vx runs as
-the compiled binary users install, from a `vx lock` snapshot as a CI
-pipeline runs it, Turbo and Nx run as they would in
-CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`), and
-the runners are measured strictly one at a
-time, each daemon stopped before the next runner is timed so it cannot
-idle-contend for CPU. Every task is a `sleep` in fixed ratios (build
-1 s, test and typecheck 0.5 s, lint 0.25 s, publish 0.1 s), so the
-numbers isolate the runner's own overhead from compilation.
-
-The runner's overhead: the time it adds over the ideal run (a cold
-build over its ideal schedule; with nothing changed the ideal is 0):
+The time each runner adds on top of the tasks themselves, on one
+9,603-task graph:
 
 | Runner    | Cold build overhead | Nothing changed | Cold build CPU |
 | --------- | ------------------- | --------------- | -------------- |
-| vx        | **6.13 s** | **757 ms** | 30.06 s |
-| Turborepo | 8.87 s | 761 ms | 1 min 8 s |
-| Nx        | 3 min 20 s | 22.63 s | 5 min 45 s |
-| Vite Task | 7.94 s | 12.26 s | 23.91 s |
+| vx        | **9.27 s** | **720 ms** | 49.58 s |
+| Turborepo | 11.05 s | 1.05 s | 1 min 30 s |
+| Nx        | 5 min 1 s | 26.21 s | 7 min 43 s |
+| Vite Task | 9.89 s | 12.89 s | 29.74 s |
 
-Time each tool adds over the ideal run; lower is better.
+Lower is better. On a cold build the tasks alone take 1 min 53 s under
+an ideal schedule; with nothing changed the ideal is 0, so every
+millisecond there is the runner. No tool leads every row: Vite Task
+burns the least CPU.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-Run 2026-10-20 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.9, Nx 23.3.0, Vite Task (vite-plus) 1.3.0.
+Run 2026-10-23 on linux x64, 4 cores, concurrency 10: vx at commit 0be036747, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.
 
-The first two columns are wall clock; the third is CPU time (user plus
+## Re-run it
+
+```sh frame="terminal"
+$ bun private/vx-bench/compare.ts 3
+```
+
+One workspace: 1,601 projects in 30 dependency levels, five core
+libraries about a quarter of the projects use, six kinds of task
+(`build`, `lint`, `test`, `typecheck`, `publish`, `installDeps`). Every
+runner runs it cold, with nothing changed, and with outputs restored.
+Every task is a `sleep` in fixed ratios, so the numbers isolate the
+runner from compilation.
+
+| Rule                         | Why                                                   |
+| ---------------------------- | ----------------------------------------------------- |
+| each tool in its native config | Turborepo `turbo.json`, Nx `nx:run-commands` targets, Vite Task `vite.config.ts` |
+| concurrency 10 for all       | same parallelism                                      |
+| vx as the compiled binary, from a `vx lock` snapshot | what users install and CI runs |
+| CI mode                      | as CI runs them                                       |
+| one runner at a time         | no daemon idle-contends for CPU                       |
+| no edit row                  | Nx needs its daemon for one, and CI doesn't run it    |
+
+Turbo and Nx run as they would in CI (`CI=1`: Nx's daemon off, and
+Turbo uses none for `turbo run`).
+
+## Reading the columns
+
+The first two columns are wall clock. The third is CPU time (user plus
 system, of the invocation and every child it waited for, less what the
-task commands burn), because on a synthetic workspace the tasks sleep
-and that column measures the runner's own work. A daemon that outlives
-the invocation is not counted, so Turborepo's and Nx's are floors. Every
-row and the ideal run are in [Benchmarks](../../benchmarks/).
+task commands burn): the tasks sleep, so it measures the runner's own
+work. A daemon that outlives the invocation isn't counted, so
+Turborepo's and Nx's are floors. Every row and the ideal run are in
+[Benchmarks](../../benchmarks/).
 
-## Real repositories: rerun pending
+Real-repo rows return once each repo is rerun on the native config
+`bunx @vzn/vx-migrate` writes.
 
-An earlier version of this post measured solidjs/solid with vx on top of
-its own `turbo.json` through `turbo()`. That measured a migration
-bridge, not vx, so its numbers are gone. Real-repo rows return once each
-repo is rerun on the native config `bunx @vzn/vx-migrate` writes.
-(Updated 2026-10-02.)
+## The method
 
-## The method is the point
+Every warm-path change in vx ships with a number measured this way: A/B
+arms interleaved, min-of-N, the "before" arm in an immutable git
+worktree, one workspace copy per arm pre-warmed by that arm. If a number
+here doesn't reproduce on your machine, that is a bug report.
 
-Every warm-path change in vx's history shipped with a number measured
-this way: A/B arms interleaved, min-of-N, the "before" arm checked out
-into an immutable git worktree, one workspace copy per arm pre-warmed
-by that arm. Where the headroom went, release by release, is a table in
-[Benchmarks](../../benchmarks/). The scripts are in the repository:
-`private/vx-bench/compare.ts` for the synthetic workspace. If a number here does not reproduce on your
-machine, that is a bug report.
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -9,38 +9,55 @@ tags:
 excerpt: 'Turborepo and Nx restore outputs on top of whatever is already there. vx wipes the declared outputs before a miss and removes from a hit what its entry does not hold, so the tree after either is the cached snapshot and nothing else. Stale files cannot survive.'
 ---
 
-Ask a monorepo tool what `dist/` contains after a cache hit and the
-honest answer from most of them is "the cached files, plus whatever was
-already there." That "plus" is the source of an entire genre of bugs:
-the deleted module that keeps being served, the renamed asset with two
-copies, the test fixture from a branch you checked out last week.
+A stray file in `dist/`, then a cache hit:
 
-vx's answer is shorter. The declared outputs are **exactly** the cached
-snapshot.
+```sh frame="terminal"
+$ echo "stale" > packages/a/dist/old.js
+$ ls packages/a/dist
+index.js  old.js
+
+$ vx run packages/a#build
+└─ packages/a#build ── (20ms) restored-local
+
+$ ls packages/a/dist
+index.js
+```
+
+After a hit, the declared outputs are **exactly** the cached snapshot.
+No deleted module that keeps being served, no renamed asset with two
+copies. Demo workspace, vx at `69617eb`, 2026-10-23.
 
 ## The rule
 
-Every task with a `cache` block declares `outputs.files`. vx treats
-those globs as territory the task owns:
+Every task with a `cache` block declares `outputs.files`. Those globs
+are territory the task owns:
 
 - **Before a miss executes**, the current matches are removed. A
-  leftover `dist/old.js` from a previous build cannot be picked up by
-  the new build's globs and cached as if it were produced now.
+  leftover `dist/old.js` can't be picked up by the new build's globs
+  and cached as if it were produced now.
 - **When a hit restores**, each cached file is renamed over the one it
   replaces, a file that already holds the cached bytes is left alone,
   a missing folder (a cleaned `dist/`) is moved in whole, and then
-  every match the entry does not hold is removed. The
-  post-restore tree is the snapshot, not the snapshot merged with the
-  present, and a reader never finds a file missing while it lands.
-  The restore writes only what the globs declare: an entry holding
-  anything else is dropped and the task runs.
+  every match the entry does not hold is removed. A reader never finds
+  a file missing while it lands. The restore writes only what the
+  globs declare: an entry holding anything else is dropped and the
+  task runs.
 
-Outputs are a task's territory in the other direction too: two tasks
-whose output declarations provably overlap (equal literals, or a
-literal that another task's glob matches) are refused when the graph
-is built, because a restore of one would delete the other's work. Two
-globs that only *might* overlap are let through, and there the last
-restore wins. By default the refusal holds even when one task depends
+## Two owners, refused
+
+```sh frame="terminal"
+$ vx lock
+✗ vx lock  lock not written
+
+  packages/a#notes and packages/a#slow both write out/** / out/copy.ts
+  vx clears a task's outputs before it runs, so one deletes the other's
+
+  fix  give each task its own output path
+```
+
+Two tasks whose output declarations provably overlap (equal literals,
+or a literal another task's glob matches) are refused. Two globs that
+only *might* overlap are let through, and the last restore wins. By default the refusal holds even when one task depends
 on the other (`rules.exclusiveOutputs` in `.vx/workspace.ts`). Set it to
 `false` and vx accepts the ordered overlap: the second task runs after
 the first and adds to the tree (twenty's `build:individual` writing
@@ -85,11 +102,11 @@ means for a directory it only ever adds to.
 A task with no `cache` block declares no outputs and owns nothing. It
 runs every time and vx does not touch its tree.
 
-## The consequences you feel
+## What you feel
 
-The one you notice first: `git status` after a hit is clean in the way
-you expect, because the restore did not leave a merged pile behind. The
-one you notice never: the build that would have shipped a deleted file.
-Cache correctness is the worst failure class this tool can have, a
-stale hit replays wrong bytes under a green check, and strict ownership
-is the cheapest rule that removes one whole species of it.
+`git status` after a hit is clean the way you expect. And the build
+that would have shipped a deleted file never happens. A stale hit is
+the worst failure a cache can have; strict ownership is the cheapest
+rule that removes one whole species of it.
+
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

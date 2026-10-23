@@ -44,16 +44,19 @@ describe('renderHistory', () => {
   it.each([
     [999, '999ms'],
     [1000, '1.00s'],
-    [59_999, '60.00s'],
+    // A value that rounds into the next unit prints in it: `60.00s`, and
+    // 119.7 s read `1m 60s`.
+    [59_999, '1m 0s'],
     [60_000, '1m 0s'],
+    [119_700, '2m 0s'],
   ])('a p50 of %d ms reads %s', (ms, shown) => {
     expect(cells(table([row({ id: 'a#t', p50DurationMs: ms })]), 'a#t')[2]).toBe(shown)
   })
 
   it.each([
-    [MB - 1, '1024 KB'],
+    [MB - 1, '1 MB'],
     [MB, '1 MB'],
-    [1024 * MB - 1, '1024 MB'],
+    [1024 * MB - 1, '1.0 GB'],
     [1024 * MB, '1.0 GB'],
   ])('a peak of %d bytes reads %s', (bytes, shown) => {
     expect(cells(table([row({ id: 'a#t', maxPeakRssBytes: bytes })]), 'a#t')[3]).toBe(shown)

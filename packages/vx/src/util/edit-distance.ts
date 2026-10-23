@@ -40,6 +40,9 @@ export function nearest(
     // `--continue-on-error` was nine edits from `--concurrency`, capped to
     // the three `vx run`'s same-prefix hint allows, and offered.
     const d = editDistance(name, c, maxEdits + 1)
+    // Edits that rewrite the whole of both leave nothing in common:
+    // `--filter=x9` offered the root, `//`.
+    if (d >= Math.max(name.length, c.length)) continue
     if (d < bestD) {
       bestD = d
       best = c

@@ -185,7 +185,10 @@ stay exact). Measured 2026-09-09 at 116k rows, 1,000 pairs, window 50:
   what the PRODUCING execution used, read from the hit's `entries` row
   (a primary-key join, hit rows only): the artifact's sidecar carries it,
   save and ingest index it, so a task this machine has only ever
-  restored (a fresh runner behind a remote cache) still has a number. A
+  restored (a fresh runner behind a remote cache) still has a number.
+  The entry keeps no CPU share, so a crowded producer's use reads low:
+  a hit's `maxCpuParallelism` counts only for a task no execution here
+  measured and (`resourcesFor`) no default-branch import names. A
   hit's own row says what the restore cost, never what the task needs; a
   failure's usage is not what the task needs to succeed; an entry pruned
   since contributes nothing. Absent when no row carried the number.

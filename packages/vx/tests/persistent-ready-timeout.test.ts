@@ -259,7 +259,11 @@ describe('exec.timeout — persistent task (readiness bound)', () => {
       const r = await run({ cwd: fixture.root, tasks: ['dev'], log: silentLogger(fixture) })
       expect(r.outcomes[0]!.notReady).toBe('timeout')
       const pid = Number(readFileSync(path.join(dir, 'pid.txt'), 'utf8').trim())
-      expect(isAlive(pid)).toBe(false)
+      // SIGKILLed, the server is an orphan's zombie until the namespace's
+      // init reaps it, and under the sandbox (a procfs of another pid
+      // namespace) a zombie reads as alive: the shard failed on it. Unkilled,
+      // the server sleeps 30 s, so a bounded wait still catches it.
+      expect(await waitForDead(pid, 1_000)).toBe(true)
     },
     TIMEOUT,
   )

@@ -6,100 +6,93 @@ authors:
 tags:
   - performance
   - internals
-excerpt: 'With nothing changed, vx adds 757 ms to a 9,603-task run, with no daemon. That number is the sum of five structural decisions, each of which is also a correctness win.'
+excerpt: 'With nothing changed, vx adds 720 ms to a 9,603-task run, with no daemon. That number is five structural decisions, and each one is also a correctness win.'
 ---
 
-The number this post explains is the runner's overhead: the time it adds on top
-of the tasks themselves. On a synthetic workspace of 1,601 projects and
-9,603 tasks, with nothing changed, vx adds 757 ms,
-Turborepo 761 ms, Vite Task 12.26 s and
-Nx 22.63 s. On a cold build vx adds 6.13 s, Turborepo
-8.87 s and Nx 3 min 20 s; Vite Task
-7.94 s. Each runner runs in its own native
-config.
+With nothing changed, vx adds **720 ms** to a 9,603-task run. No daemon
+keeps it warm.
 
-Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-Run 2026-10-12 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
+| Time added over the ideal run, 1,601 projects, 9,603 tasks | vx      | Turborepo | Nx         | Vite Task |
+| ---------------------------------------------------------- | ------- | --------- | ---------- | --------- |
+| Nothing changed                                            | 720 ms  | 1.05 s    | 26.21 s    | 12.89 s   |
+| Nothing changed, outputs restored                          | 1.72 s  | 2.45 s    | 29.40 s    | 13.48 s   |
+| Cold build                                                 | 9.27 s  | 11.05 s   | 5 min 1 s  | 9.89 s    |
+| Cold build: CPU the runner burns                           | 49.58 s | 1 min 30 s | 7 min 43 s | 29.74 s  |
 
-None of that comes from a microbenchmark trick. It comes from five
-decisions, and every one of them is also a reason to trust the cache
-more, not less.
+Synthetic monorepo, 30 dependency levels; build 300 ms, test and
+typecheck 150 ms, lint 75 ms, publish 30 ms. Run 2026-10-23 on linux
+x64, 4 cores, concurrency 10: vx at `0be036747`, Turborepo 2.11.10, Nx
+24.0.1, Vite Task (vite-plus) 1.4.0, each in its own native config. Real repos with uneven
+task times will differ. Source: [Benchmarks](../../benchmarks/).
 
-```mermaid
-flowchart LR
-  A[keys from git's index] --> F[fast warm run]
-  B[bitsets, not walks] --> F
-  C[strict output ownership] --> F
-  D[one artifact format] --> F
-  E[nothing runs when nothing is needed] --> F
-  style F stroke:#c6f84e,stroke-width:2px
+The time comes from five decisions.
+
+## 1. The key is already in git's index
+
+A cache key needs a hash of every input file. Git already has one: the
+blob id of every tracked file. vx asks git instead of reading files.
+
+```
+git ls-files -s -v                           min 2.3 ms   (20 runs)
+git status --porcelain -uall                 min 5.6 ms   (10 runs)
+read + xxh3 every tracked file yourself      min 154.1 ms (10 runs)
 ```
 
-## 1. The cache key is already in git's index
+This repo: 2,527 tracked files, 48 MB. Linux x64, 4 cores, warm page
+cache, 2026-10-23.
 
-A content-addressed key needs a hash of every input file. Most tools
-read each file and hash it, or keep a daemon around so they do not have
-to. vx spawns one `git ls-files -s`, which returns the file list *and*
-every clean file's blob object id, and one concurrent `git status` to
-prune anything that diverges from the index. Clean-tree key derivation
-costs zero source-file reads and zero per-file stats.
+Clean-tree key derivation costs zero source-file reads. Only dirty
+files are hashed, and they get the same blob id git would
+give them. So committing a file never changes its key.
+[Your cache key is already in git's index](../keys-from-git/) has the
+details.
 
-Dirty files get the identical blob id computed in-process, so a key
-never flips when you commit. That class of spurious miss, "I committed
-and everything rebuilt", does not exist here.
+## 2. Bitsets, not walks
 
-There is a whole post on this: [Your cache key is already in git's
-index](../keys-from-git/).
+The scheduler starts the task with the most work below it first
+(`most-work`, the default). Counting that work with a depth-first walk
+over sets took 8.5 s of a 10 s warm run on a 1,090-package, 100-level
+graph. Packed bitsets with popcount do it in single-digit milliseconds.
 
-## 2. Bitsets where others walk
+Then each tick is cheap: ready tasks sit in a binary heap, and a task
+that finishes only decrements its direct dependents' counters.
+[Bitsets and the scheduler](../bitsets-and-the-scheduler/).
 
-Scheduling priority and the package graph are computed over packed
-bitsets with popcount instead of set-union depth-first search. On the
-3,270-task graph that turned an 8.5 s priority computation into
-single-digit milliseconds. The scheduler tick re-scans nothing: ready
-tasks come off an exact most-blocked-first binary heap, a completion
-decrements its direct dependents' counters and pushes the ones that
-reach zero, and the run costs one pass over the edges plus an
-`O(log N)` heap operation per task.
+## 3. vx knows what a hit leaves on disk
 
-## 3. Strict output ownership makes restore cheap
+Declared outputs are wiped before a task runs, and a hit leaves exactly
+the cached files. So vx knows the tree after either one. When each file
+on disk still matches what it recorded (size, mode, millisecond mtime,
+inode and ctime), a hit is a few `stat` calls: no
+copy, no decompress, no write.
 
-Declared outputs are wiped before a miss executes, and a hit rewrites
-the files that differ and removes the ones its entry does not hold, so
-the tree after either is exactly the cached snapshot.
-That is a correctness rule first (no stale `dist/old.js` survives), but
-it also means vx *knows* what the tree looks like after a hit. On a
-warm-on-warm run it verifies the recorded `(size, mode, mtime, inode, ctime)` of each
-output with a stat and writes nothing, decompresses nothing. A restore
-onto a current tree costs about what an untouched tree costs.
+## 4. A hit is a file copy
 
-## 4. One artifact format end to end
+The local cache keeps each entry as plain files, unpacked once. A hit
+hands them to the kernel (`copy_file_range`, or a clone on APFS, Btrfs
+or XFS). The `tar.zst` exists only on the wire to a remote. Metadata and
+the captured stdout live in the index (the stdout in a side table), so
+a hit replays its log with a SQL read.
 
-A cache entry is one `tar.zst` archive plus SQLite rows. Metadata and
-the captured stdout live in the index (the stdout in a side table, so
-the run's access-time bump never rewrites it), so a hit is a few indexed
-`SELECT`s and a replay from them, not a decompression. The same bytes go over
-the wire to a remote cache; nothing is repacked at the boundary.
-Packing is in-process (vx's own streaming tar), the publish is an atomic
-rename, and each save is a single transaction.
+```
+restore 1,000 entries of 96 KiB    from tar.zst 1.26 s   →   plain files 0.76 s   (min of 5)
+```
 
-## 5. Nothing runs when nothing is needed
+[A cache hit is a file copy](../a-hit-is-a-file-copy/).
 
-vx has no daemon, so there is no process to keep warm and no staleness
-window between what the daemon believes and what the disk holds. What
-replaces the daemon is a set of zero-cost gates: no telemetry plugin
-means no event-bus subscriber, no summary, no git spawn for provenance;
-a plugin that declines a task costs nothing; and a run evaluates no
-config at all: it reads them from `.vx/projects.lock.json`, which
-`vx lock` writes.
+## 5. Nothing runs that is not needed
 
-## The method behind the numbers
+- A run evaluates no config. It reads `.vx/projects.lock.json`.
+- No telemetry plugin means no event subscriber, no summary, no `git`
+  spawn.
+- A plugin that declines a task costs nothing.
 
-Every change to the warm path in this repository ships with a number,
-measured the same way: A/B arms interleaved, min-of-N, the "before" arm
-checked out into an immutable git worktree, one workspace copy per arm
-pre-warmed by that arm. A change without a number is not done. The
-history of where the headroom went is in
-[Benchmarks](../../benchmarks/), and the full catalogue of decisions,
-each with its invariant and its source file, is in
+## How each number is kept
+
+Every change to the warm path ships with a number: two arms
+interleaved, min of N, the "before" arm in its own git worktree, each
+arm on its own pre-warmed copy. A change without a number is not done.
+The full list, each with its invariant and source file:
 [Optimizations](../../optimizations/).
+
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

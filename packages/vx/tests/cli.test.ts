@@ -1975,6 +1975,13 @@ describe('formatBytes', () => {
     expect(formatBytes(4 * 1024 ** 4)).toBe('4.0 TB')
     expect(formatBytes(2048 * 1024 ** 4)).toBe('2 PB')
   })
+
+  // The tier is the printed value's: 1 MiB less a byte printed `1024 KB`.
+  it('a value that rounds up to the next tier prints in it', () => {
+    expect(formatBytes(1024 ** 2 - 1)).toBe('1.0 MB')
+    expect(formatBytes(10 * 1024 - 1)).toBe('10 KB')
+    expect(formatBytes(1024 ** 5 - 1)).toBe('1 PB')
+  })
 })
 
 describe('parseDuration', () => {
@@ -2266,6 +2273,15 @@ describe('nearest', () => {
     // The default budget of two: unchanged.
     expect(nearest('buidl', ['build'])).toBe('build')
     expect(nearest('bxyzl', ['build'])).toBeUndefined()
+  })
+
+  // `--filter=x9` offered `fix  //`: two edits rewrite any two letters.
+  it('a candidate the edits rewrite whole is no near miss', () => {
+    expect(nearest('x9', ['//', 'packages/p1'])).toBeUndefined()
+    expect(nearest('b', ['a'])).toBeUndefined()
+    // CONTROL: a real typo of a short name still hints.
+    expect(nearest('p1', ['p2'])).toBe('p2')
+    expect(nearest('b', ['ab'])).toBe('ab')
   })
 })
 

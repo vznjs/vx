@@ -9,30 +9,20 @@ tags:
 excerpt: 'A sandbox refusal names the path and the grant to add. Two tasks writing the same folder are stopped before they delete each other. A config that hangs times out with its name. And a run never evaluates a config at all.'
 ---
 
-A refusal is only useful if it says what to do next. Each guard in this
-post stops something real, and each one ends with the fix.
-
-```mermaid
-flowchart LR
-  T[a task or a config] --> G{guard}
-  G -->|write outside its grants| S[names the path and the grant]
-  G -->|two tasks, one output| O[names both and the fix]
-  G -->|config hangs| C[names the config]
-  style S stroke:#c6f84e,stroke-width:2px
-```
-
-## The sandbox names what to grant
-
-A sandboxed task that writes outside its grants fails, and vx says
-where it tried to write and which grant would allow it:
+A sandboxed task writes one file outside its grant:
 
 ```sh frame="terminal"
-$ vx run @demo/api#gen
-┌─ @demo/api#gen > $ mkdir -p dist && echo ok > dist/out.js && echo x > ../shared.txt
+$ vx run packages/d#gen
+┌─ packages/d#gen > $ mkdir -p dist && echo ok > dist/out.js && echo x > ../shared.txt
 /usr/bin/sh: 1: cannot create ../shared.txt: Read-only file system
+├─ SANDBOX ─────────────────────────────────────────────────
+
 vx: the sandbox refused writes outside the project, which are not reported as violations: …/demo/packages/shared.txt. If the task needs one, grant its directory, e.g. `allow: { write: ['../'] }`.
-└─ @demo/api#gen ── (52ms) failed (exit 2)
+└─ packages/d#gen ── (44ms) failed (exit 2)
 ```
+
+Demo workspace, Linux x64, vx at `69617eb`, 2026-10-23 (path
+shortened). Each guard here stops something real and ends with the fix.
 
 The tool's own error says "read-only file system". vx says which file,
 and the line to add to `exec.sandbox`.
@@ -47,7 +37,7 @@ tasks that declare the same output would delete each other's work, so
 $ vx lock
 ✗ vx lock  lock not written
 
-  @demo/api#build and @demo/api#bundle both write dist/**
+  packages/a#notes and packages/a#slow both write out/** / out/copy.ts
   vx clears a task's outputs before it runs, so one deletes the other's
 
   fix  give each task its own output path
@@ -76,9 +66,8 @@ leave out of `inputs.tasks` so the key hashes its bytes.
 ## A config that hangs
 
 A `vx.config.ts` is code, and code can hang: an `await` on a server that
-is down, or a loop. Each config gets 30 seconds, and then `vx lock`
-fails and names the config. A real evaluation takes about 10 ms.
-`VX_CONFIG_WORKER_TIMEOUT` changes the limit.
+is down, or a loop. Each config gets 30 seconds, then `vx lock` fails
+and names the config. `VX_CONFIG_WORKER_TIMEOUT` changes the limit.
 
 ## A run never evaluates a config
 
@@ -88,4 +77,5 @@ running a file. A config that reads the environment or calls
 `Math.random` is read once, at lock time, and `vx lock --check` reports
 when evaluating it again would give a different answer.
 
-The [schema](../../schema/) lists every rule and sandbox grant.
+The [schema](../../schema/) lists every rule and sandbox grant. More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

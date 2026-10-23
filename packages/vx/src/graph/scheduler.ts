@@ -220,7 +220,7 @@ export interface TaskOutcome {
   failedAttempts?: readonly { endedAt: number; exitCode: number; timedOut?: true }[]
   /**
    * Set when this run proved the task flaky: its key failed after it had
-   * passed (this run's included) or it needed a retry. Its row carries it.
+   * passed (this run's included) or it passed only on a retry. Its row carries it.
    */
   flaky?: { passes: number; failures: number }
   /**

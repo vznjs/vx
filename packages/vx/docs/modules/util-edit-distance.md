@@ -17,7 +17,9 @@ listed(names, limit = 8): string      // sorted, deduped, `, and N more` past th
 
 - `nearest` is THE hint: the closest candidate within `maxEdits`, or
   nothing — an exact match is not a hint, and anything further would
-  guess rather than help. `flagHint` (`cli/help.ts`) widens to three edits only among
+  guess rather than help. Nor is a candidate the edits rewrite whole
+  (as many edits as the longer name has letters): `--filter=x9`
+  offered the root, `//`. `flagHint` (`cli/help.ts`) widens to three edits only among
   flags sharing a five-character stem (`--retrie` → `--retries`), so
   `--zzz` never reaches `--all`.
 - `nearMatches` is for the inspection verbs (`why`, `show`) that list

@@ -1,59 +1,59 @@
 ---
-title: 'The first task starts sooner on a cold run'
+title: 'A cold run asks the cache nothing'
 date: 2026-10-09T17:30:00Z
 authors:
   - vzn
 tags:
   - performance
   - caching
-excerpt: 'On a cold run every cache lookup misses, so vx no longer asks. The first task of a 1,090-package build now starts in about 230 ms, down from about 380 ms earlier the same day.'
+excerpt: 'On an empty cache every lookup would miss, so vx skips them. On a 1,000-project workspace the first task starts 136 ms after `vx run`.'
 ---
 
-The time before the first task starts is the part of a run you wait
-through with nothing happening. On a fresh checkout with an empty
-cache, vx used to spend part of it on work that could not pay off.
+A 1,000-project workspace, an empty cache, and vx's own stage timer:
 
-## Asking a cache that holds nothing
+```sh frame="terminal"
+$ VX_DEBUG_TIMING=1 vx run build --all
+[vx timing]  stage                    own   cumulative
+             startup                 47.9ms      47.9ms
+             …
+             git enumeration         41.5ms     157.9ms
+             classify + probe         9.8ms     168.3ms
+             schedule                 0.1ms     168.4ms
+             run graph             1855.1ms    2023.5ms
+```
 
-Before a run starts, vx works out every task's cache key and looks each
-one up, so it knows up front which tasks will be restored and which will
-run. On a warm cache that is what makes a fully cached run fast.
+`schedule` ends when the first task starts. Everything above it is the
+wait before anything happens.
 
-On an empty cache, every one of those lookups misses. Now vx checks
-first whether the local cache holds anything at all. If it holds
-nothing, it skips the up-front pass, and each task works out its own
-key as it starts, the same way a run against a remote cache already
-does. The keys are the same either way, so nothing about what is cached
-or restored changes.
+| Cache before the run | `classify + probe` | First task starts |
+| -------------------- | ------------------ | ----------------- |
+| empty                | 8.8 ms             | 136 ms            |
+| holds all 1,000 keys | 47.3 ms            | 162 ms            |
 
-## The numbers
+Min of 7 runs each, `private/vx-bench/generate.ts` with 1,000 projects,
+`build --all`, Linux x64, 4 cores, vx at `13f6908`, 2026-10-23.
 
-Time from `vx run` to the first task starting, cold, reading the lock,
-on the synthetic 1,090-package benchmark:
+## Why the empty cache is cheaper
 
-- Earlier the same day: about 380 ms.
-- After a lock that `vx lock` wrote stopped being re-checked on every
-  cold run (#3378): about 330 ms.
-- After skipping the lookups on an empty cache (#3382): 225 to 232 ms.
+Before a run, vx works out each task's key and looks it up, so it knows
+which tasks restore and which run. With a full cache that pass is what
+makes a cached run fast.
 
-Turborepo 2.11 takes 276 ms on the same graph, so vx now starts its
-first task about 20% sooner. The whole cold build takes as long as
-before: the saving is at the start, where you notice it, not a faster
-build overall.
+With an empty cache every lookup would miss. So vx checks once whether
+the local cache holds anything. If not, it skips the pass, and each task
+works out its own key as it starts. The keys are the same either way;
+only when they are computed moves.
 
-Benchmark workload: a synthetic monorepo of 1,090 packages and 3,270
-tasks with equal task durations and deep dependency chains, best of
-several runs. Run 2026-10-09 on linux x64, 4 cores: vx from source at
-`main` (63e6e0f), Turborepo 2.11.7. Real repos will differ; see
-[vx on real repos](https://vznjs.github.io/vx/compare/real-repos/).
+The whole cold build takes as long as before. The saving is at the
+start, where you sit and wait.
 
 ## Nothing to turn on
 
-This is how every cold run works from vx 0.0.634. Try it in your repo:
+Every cold run works this way. Try it in your repo:
 
 ```sh
 bunx @vzn/vx init
-vx run build --all
+VX_DEBUG_TIMING=1 vx run build --all
 ```
 
-More on vx at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

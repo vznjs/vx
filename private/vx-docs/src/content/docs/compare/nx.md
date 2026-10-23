@@ -14,15 +14,15 @@ says when Nx is the better choice. The design choices behind both are on
 
 | Time added over the ideal run, 1,601 projects, 9,603 tasks | vx          | Nx         |
 | ---------------------------------------------------------- | ----------- | ---------- |
-| Nothing changed                                            | **757 ms**  | 22.63 s    |
-| Nothing changed, outputs restored                          | **1.27 s**  | 22.16 s    |
-| Cold build                                                 | **6.13 s**  | 3 min 20 s |
-| Cold build: CPU the runner burns                           | **30.06 s** | 5 min 45 s |
+| Nothing changed                                            | **720 ms**  | 26.21 s    |
+| Nothing changed, outputs restored                          | **1.72 s**  | 29.40 s    |
+| Cold build                                                 | **9.27 s**  | 5 min 1 s  |
+| Cold build: CPU the runner burns                           | **49.58 s** | 7 min 43 s |
 
 Time each tool adds over the ideal run; lower is better.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-Run 2026-10-20 on linux x64, 4 cores: vx at commit a88652b0b, Turborepo 2.11.9, Nx 23.3.0, Vite Task (vite-plus) 1.3.0.
+Run 2026-10-23 on linux x64, 4 cores: vx at commit 0be036747, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.
 
 Same graph, commands and concurrency, each tool in its own native config: [how it is measured](../../benchmarks/).
 

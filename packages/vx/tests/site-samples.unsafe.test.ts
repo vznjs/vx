@@ -318,14 +318,14 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     for (const figure of [
       '1 min 53 s',
-      '6.13 s',
-      '8.87 s',
-      '3 min 20 s',
-      '7.94 s',
-      '757 ms',
-      '761 ms',
-      '22.63 s',
-      '12.26 s',
+      '9.27 s',
+      '11.05 s',
+      '5 min 1 s',
+      '9.89 s',
+      '720 ms',
+      '1.05 s',
+      '26.21 s',
+      '12.89 s',
       '9,603 tasks',
       '74 ms',
       '172 ms',
@@ -415,7 +415,7 @@ describe('the no-daemon post quotes the benchmarks page', () => {
   it('each warm-run figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['757 ms', '761 ms', '22.63 s']) {
+    for (const figure of ['720 ms', '1.05 s', '26.21 s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -516,14 +516,14 @@ describe('the why-vx-is-fast post quotes the benchmarks page', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     for (const figure of [
-      '757 ms',
-      '761 ms',
-      '22.63 s',
-      '12.26 s',
-      '6.13 s',
-      '8.87 s',
-      '3 min 20 s',
-      '7.94 s',
+      '720 ms',
+      '1.05 s',
+      '26.21 s',
+      '12.89 s',
+      '9.27 s',
+      '11.05 s',
+      '5 min 1 s',
+      '9.89 s',
     ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
@@ -663,23 +663,23 @@ describe('the honest-benchmarks post quotes the benchmarks page', () => {
     // and 340 fixed on two other posts (item 342, 2026-09-19).
     for (const figure of [
       '1 min 53 s',
-      '6.13 s',
-      '8.87 s',
-      '3 min 20 s',
-      '7.94 s',
-      '757 ms',
-      '761 ms',
-      '22.63 s',
-      '30.06 s',
-      '1 min 8 s',
-      '5 min 45 s',
+      '9.27 s',
+      '11.05 s',
+      '5 min 1 s',
+      '9.89 s',
+      '720 ms',
+      '1.05 s',
+      '26.21 s',
+      '49.58 s',
+      '1 min 30 s',
+      '7 min 43 s',
     ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
   })
   it('the runners it names are the versions the benchmarks page ran', () => {
-    for (const version of ['Turborepo 2.11.7', 'Nx 23.3.0']) {
+    for (const version of ['Turborepo 2.11.10', 'Nx 24.0.1']) {
       expect(page).toContain(version)
       expect(bench).toContain(version)
     }
@@ -771,7 +771,7 @@ describe('the from-nx post says how executors run, and names the servers', () =>
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['757 ms', '22.63 s', '30.06 s', '5 min 45 s']) {
+    for (const figure of ['720 ms', '26.21 s', '49.58 s', '7 min 43 s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -1481,7 +1481,7 @@ describe('the no-choice-on-the-market post quotes the benchmarks page', () => {
   it('its warm figures are on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'no-choice-on-the-market.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['22.63 s', '761 ms', '757 ms']) {
+    for (const figure of ['26.21 s', '1.05 s', '720 ms']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -2019,7 +2019,7 @@ describe('the posts state the daemons as the benchmark ran them', () => {
       'utf8',
     )
     expect(harness).toContain("(`CI=1`, so Nx's daemon is off;")
-    expect(post('no-choice-on-the-market.md')).toContain("vx's 757 ms, Nx's daemon off as in CI.")
+    expect(post('no-choice-on-the-market.md')).toContain("vx's 720 ms, Nx's daemon off as in CI.")
     expect(post('honest-benchmarks.md')).toContain(
       "CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`)",
     )
@@ -2112,14 +2112,14 @@ describe('no migration page times a mapped run', () => {
 describe("the Turbo pages say where a script-less package's task comes from", () => {
   // The from-turborepo post said the migrator "emits a task only where the
   // script exists"; a package a `^` edge reaches without it gets a key-only
-  // `true` (G-117, J-97). vx-migrate's migrate.test.ts drives the mapper.
+  // group (G-117, J-97). vx-migrate's migrate.test.ts drives the mapper.
   it('the post and the support table name the key-only task', () => {
     const post = readFileSync(path.join(DOCS, 'blog', 'from-turborepo.md'), 'utf8').replace(
       /\s+/g,
       ' ',
     )
     expect(post).toContain(
-      "and to a package without it that another package's `^` task reaches: a cached `true` with no outputs",
+      "and to a package without it that another package's `^` task reaches: a key-only group with no outputs",
     )
     const support = readFileSync(
       path.resolve(import.meta.dir, '..', 'docs', 'turbo-nx-support.md'),

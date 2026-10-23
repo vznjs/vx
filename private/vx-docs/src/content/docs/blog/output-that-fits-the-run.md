@@ -9,24 +9,29 @@ tags:
 excerpt: 'One task shows everything. Fifty tasks show a line for each one that ran. CI shows every frame. Then pick a mode yourself, report to the PR through a plugin, or open the run as a Chrome trace.'
 ---
 
-`vx run test` in one package should feel like running the test command
-directly. `vx run test --all` across fifty packages should not bury you
-in fifty logs. vx picks what to print from what you asked for.
+Ten tasks, one edit:
 
-```mermaid
-flowchart LR
-  R[vx run] --> F{what was asked?}
-  F -->|one task| A[focused: the task's full output, live]
-  F -->|many tasks| B[broad: one line per task that ran]
-  F -->|CI is set| C[CI: every frame]
-  B --> E[failures replay in full at the end]
-  style E stroke:#c6f84e,stroke-width:2px
+```sh frame="terminal"
+$ vx run build test --all
+ ⏺︎    14ms success no-cache packages/e#codegen
+ ⏺︎     9ms success miss     packages/b#build
+ ⏺︎    15ms success miss     packages/b#test
+
+─ vx 0.0.0 ───────────────────────────────────────────────────
+  projects  5 affected · 6 total
+  tasks     10 success · 10 total
+  cache     local 3✓ 1∅ 4↓ 2↑
+  time      61ms · max 15ms · avg 13ms · min 9ms
 ```
 
-A broad run prints one line for each task that ran and stays silent for
-hits. A failure prints its line right away, and its full log replays
-just above the summary, so it is the last thing you read. A truthy `CI`
-always wins and shows every frame.
+Three lines for the three tasks that ran. The seven hits print
+nothing. Demo workspace, vx at `69617eb`, 2026-10-23.
+
+| You ask         | vx prints                                          |
+| --------------- | -------------------------------------------------- |
+| one task        | its full output, live, like running it directly   |
+| many tasks      | one line per task that ran; failures replay in full above the summary |
+| `CI` is truthy  | every frame                                        |
 
 ## Pick a mode yourself
 
@@ -34,9 +39,12 @@ always wins and shows every frame.
 `none`. `hash-only` is handy when a script wants each task's cache key:
 
 ```sh frame="terminal"
-$ vx run @demo/web#build --force --output-logs=hash-only
-success @demo/ui#build 46046abb75e9c084
-success @demo/web#build b25e5bf41cb7a54d
+$ vx run build --all --force --output-logs=hash-only
+success packages/e#codegen 7e5a9912933413c4
+success packages/a#build 6802a43d515f6017
+success packages/d#build 9f1cef08a2fd4006
+success packages/b#build e8c0e9d5b1f5d0c9
+…
 ```
 
 Each task line also starts with a glyph that says where its result came
@@ -68,19 +76,10 @@ which task held up the rest.
 $ vx run build --all --force --profile=prof.json
 ```
 
-```text
-{
-  "traceEvents": [
-    {
-      "name": "@demo/ui#build",
-      "cat": "success",
-      "ph": "X",
-      "ts": 10234,
-      "dur": 315466,
-      "pid": 1,
-      "tid": 1,
-      "args": { "exitCode": 0, "hash": "46046abb75e9c084", "cpuMs": 5.72 }
-    },
+```sh frame="terminal"
+$ jq -c '.traceEvents[0]' prof.json
+{"name":"packages/e#codegen","cat":"success","ph":"X","ts":10028,"dur":10853,"pid":1,"tid":1,"args":{"exitCode":0,"hash":"7e5a9912933413c4","cpuMs":2.543}}
 ```
 
-Every flag is in the [CLI reference](../../cli/).
+Every flag is in the [CLI reference](../../cli/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
