@@ -10,7 +10,7 @@
 // well within a generous wall-clock bound.
 //
 // Methodology mirrors tests/scheduler.test.ts's priority-scale guard: min of
-// several runs (de-noises machine load), a bound ~10x the observed healthy
+// several runs' CPU time (a crowded machine adds wall, not CPU), a bound ~10x the observed healthy
 // time (guarding ALGORITHMIC COMPLEXITY, not absolute speed), and a
 // functional pin (the graph is correct at scale, not merely fast).
 
@@ -22,6 +22,7 @@ import path from 'node:path'
 import { planRun } from './helpers/orchestrator.js'
 import type { RunPlan } from '../src/orchestrator/index.js'
 import { defaultLogger } from '../src/report/logger.js'
+import { cpuClock } from './helpers/cpu-clock.js'
 
 const PROJECT_COUNT = 2000
 // Requested tasks (bare names fan out across the whole workspace): build +
@@ -151,19 +152,18 @@ describe('core pipeline at ~2000 projects / ~6000 tasks', () => {
   })
 
   it('plans ~6000 tasks well within a generous wall-clock bound', async () => {
-    // Calibration (this machine): planRun over 6000 tasks min-of-3 ~= 510 ms
-    // (config eval + git OID enumeration + graph build + per-task hashing +
-    // cache probes). A super-linear regression (e.g. an accidental O(N^2) in
-    // the graph builder or priority sweep) would push this into many seconds.
-    // Bound at ~12x the healthy time — separates cleanly while staying robust
-    // to CI's slower disk/CPU (the pipeline is FS/SQLite-bound, so noisier
-    // than a pure-CPU loop).
+    // Timed in CPU, not wall: on a 4-core box with 24 busy loops beside it,
+    // one planRun took 6-18 s of wall and 1.6-1.7 s of CPU, as idle (1.7-1.9 s
+    // CPU over ~1 s wall: config eval runs in workers). PR #4169 failed this
+    // bound at 6.6 s of wall on a worker booked 3.7 of 4 cores. A
+    // super-linear regression (an O(N^2) in the graph builder or priority
+    // sweep) costs CPU, so it still crosses the bound.
     let best = Infinity
     let plan: RunPlan | undefined
     for (let i = 0; i < 3; i++) {
-      const t0 = performance.now()
+      const cpu = cpuClock()
       plan = await planRun({ cwd: root, tasks: TASKS, log })
-      best = Math.min(best, performance.now() - t0)
+      best = Math.min(best, cpu())
     }
     // Functional pin alongside the perf pin: the timed runs produced the full
     // graph too (a broken run that returned early would be "fast" but wrong).
