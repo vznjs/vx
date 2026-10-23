@@ -109,13 +109,13 @@ up:
 
 ```yaml
 # GitHub Actions
-- run: bunx vx setup github
+- run: vx setup github
 ```
 
 ```yaml
 # GitLab CI
 script:
-  - bunx vx setup gitlab
+  - vx setup gitlab
 ```
 
 It installs what is missing (apt-get by sudo, or apk), lets bwrap make
@@ -138,7 +138,7 @@ are fetched again. On Actions the step's outputs are `fetched` and
     key: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}
     restore-keys: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}-
 - id: setup
-  run: bunx vx setup github
+  run: vx setup github
 - if: steps.setup.outputs.fetched == 'true'
   uses: actions/cache/save@v5
   with:
