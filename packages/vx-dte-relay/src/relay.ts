@@ -116,23 +116,6 @@ const MAX_QUEUE = 10_000
 /** 10 000 bodies of 1 MiB would be 10 GiB held for one participant with no socket. */
 const MAX_QUEUE_BYTES = 64 << 20
 /**
- * A closed run answers `join` `410` this many heartbeats (ten minutes, as
- * long as one no orchestrator joined waits); one on a socket is told at
- * once. Forgotten when its last worker went, a worker whose CI queued it
- * past its run's end opened the run anew and held its runner ten minutes,
- * while the next run's workers queued behind it (main, 2026-10-23). Its
- * storage goes after: an object kept a day per run held 100+ on one host
- * (owner, 2026-10-22).
- */
-const CLOSED_BEATS = 120
-/**
- * A run no orchestrator joined closes after this many heartbeats (ten
- * minutes). Workers start after their orchestrator joins, so one alone is
- * late for a run that ended, which nothing remembers; a CI that starts
- * workers beside it has this long to join.
- */
-const ORPHAN_BEATS = 120
-/**
  * A participant on a socket is lost after this many heartbeats of silence,
  * not three: its pings cost a host nothing, but each sweep wakes it, and a
  * Durable Object woken every 12 s stayed awake, billed, the whole run
@@ -169,8 +152,6 @@ const errorBody = (err: HttpError | TokenError): object =>
 
 export function createRelay(opts: RelayOptions): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 5_000
-  const closedTtl = CLOSED_BEATS * heartbeatMs
-  const orphanTtl = ORPHAN_BEATS * heartbeatMs
   const runs = new Map<string, Run>()
   const store = opts.store
   const runAt = (key: string): string => `r/${key}`
@@ -259,9 +240,13 @@ export function createRelay(opts: RelayOptions): Relay {
     for (const p of [...run.byId.values()]) {
       if (p.role !== 'worker') continue
       deliver(run, p, { from: 'relay', body: { type: 'closed' } })
-      // Down its socket: it has heard, and needs the run no more.
-      if (p.queue.length === 0) drop(run, p, false)
+      drop(run, p, false)
     }
+    // A run is live while its orchestrator is, and only a live one is kept:
+    // a worker that comes or calls after it learns it at once (owner,
+    // 2026-10-23: "job is live, or it isnt"). Kept closed, or opened by a
+    // worker alone, a run held a late worker's runner ten minutes.
+    forget(run)
   }
 
   /** `tell`: the orchestrator hears its worker was lost (not when it removed it). */
@@ -328,19 +313,11 @@ export function createRelay(opts: RelayOptions): Relay {
       next = Math.min(next ?? t, t)
     }
     for (const run of [...runs.values()]) {
-      if (!run.closed && run.orchestrator === undefined && now - run.openedAt > orphanTtl) {
-        close(run)
-      }
-      if (run.closed) {
-        if (now - run.closedAt! > closedTtl) forget(run)
-        else at(run.closedAt! + closedTtl + 1)
-        continue
-      }
       for (const p of [...run.byId.values()]) {
         if (now - p.seen > lostAfter(p)) drop(run, p)
       }
-      if (run.closed) at(run.closedAt! + closedTtl + 1)
-      else if (run.byId.size === 0) forget(run)
+      if (!runs.has(run.key)) continue
+      if (run.orchestrator === undefined) close(run)
       else {
         for (const p of run.byId.values()) {
           // One on a socket is heard anew when its host restores the socket;
@@ -349,7 +326,6 @@ export function createRelay(opts: RelayOptions): Relay {
           if (p.socket === undefined && p.saved !== p.seen) saveParticipant(run, p)
           at(p.seen + lostAfter(p) + 1)
         }
-        if (run.orchestrator === undefined) at(run.openedAt + orphanTtl + 1)
       }
     }
     return next
@@ -548,22 +524,22 @@ export function createRelay(opts: RelayOptions): Relay {
         throw new HttpError(400, 'an orchestrator joins with key: its P-256 public key')
       }
     }
-    // Read again: another join may have made the run while this one's body
-    // came, and a second one made here would replace it and its workers.
-    let run = runs.get(key)
-    if (run?.closed === true) throw new HttpError(410, 'run closed')
-    if (run === undefined) {
-      run = { key, closed: false, byId: new Map(), openedAt: Date.now() }
-      runs.set(key, run)
-      saveRun(run)
+    if (body['role'] !== 'orchestrator' && body['role'] !== 'worker') {
+      throw new HttpError(400, 'role is orchestrator or worker')
     }
-    if (body['role'] === 'orchestrator') {
-      if (run.orchestrator !== undefined) throw new HttpError(409, 'the run has an orchestrator')
-      await prove(run, req, url, req.method === 'GET' ? '' : text, body['key'] as string)
-      // It may have closed while the key was checked; a socket's attach refuses a closed run itself.
-      if (run.closed || runs.get(key) !== run) throw new HttpError(410, 'run closed')
+    const run = runs.get(key)
+    if (body['role'] === 'worker') {
+      // Its orchestrator starts it: a worker finds it live, or leaves.
+      if (run === undefined || run.closed) throw new HttpError(410, 'no live run')
+      return join(run, body, token)
     }
-    return join(run, body, token)
+    if (run !== undefined) throw new HttpError(409, 'the run has an orchestrator')
+    const fresh: Run = { key, closed: false, byId: new Map(), openedAt: Date.now() }
+    await prove(fresh, req, url, req.method === 'GET' ? '' : text, body['key'] as string)
+    // Another orchestrator may have joined while the key was checked.
+    if (runs.has(key)) throw new HttpError(409, 'the run has an orchestrator')
+    runs.set(key, fresh)
+    return join(fresh, body, token)
   }
 
   return {
@@ -603,6 +579,9 @@ export function createRelay(opts: RelayOptions): Relay {
       const p = run?.byId.get(id)
       if (p === undefined || p.socket !== socket) return
       p.socket = undefined
+      // Its workers go with it at once (owner, 2026-10-23: "if the
+      // orchestrator is disconnected we close all agents").
+      if (p.role === 'orchestrator') return drop(run!, p)
       // Its silence counts from now, though its host evicts this before the next sweep.
       saveParticipant(run!, p)
     },

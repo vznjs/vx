@@ -209,10 +209,11 @@ it('takes its own URL as the audience when AUDIENCE is not set', async () => {
     await token('https://other.example.com'),
     'https://other.example.com',
   )
+  // 410, past the token: no live run.
   expect([mine.status, other.status, await other.json(), elsewhere.status]).toEqual([
-    200,
+    410,
     401,
     { error: 'wrong audience' },
-    200,
+    410,
   ])
 })
