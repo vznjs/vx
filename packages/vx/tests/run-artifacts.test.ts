@@ -152,6 +152,34 @@ describe('writeRunProfile', () => {
     expect(byName['b#build']).not.toBe(byName['a#build'])
   })
 
+  // Two tasks of one project side by side shared its tid, and slices on
+  // one thread must nest: Perfetto drew one and dropped the other.
+  it('a task beside another of its project takes the next lane, never one in use', async () => {
+    const span = (project: string, task: string, from: bigint, to: bigint): TaskOutcome =>
+      outcome({ node: execNode(project, task), wallclockStartNs: from, wallclockEndNs: to })
+    const out = await writeRunProfile({
+      target: path.join(tmp, 'profile.json'),
+      cwd: tmp,
+      outcomes: [
+        span('a', 'test', 2_000_000n, 6_000_000n),
+        span('a', 'lint', 0n, 3_000_000n),
+        span('a', 'types', 1_000_000n, 2_000_000n),
+        span('a', 'docs', 3_000_000n, 4_000_000n),
+        span('b', 'build', 0n, 1_000_000n),
+      ],
+    })
+    const parsed = JSON.parse(await readFile(out, 'utf8')) as {
+      traceEvents: Array<{ name: string; tid: number }>
+    }
+    expect(Object.fromEntries(parsed.traceEvents.map((e) => [e.name, e.tid]))).toEqual({
+      'a#lint': 1,
+      'b#build': 2,
+      'a#types': 3,
+      'a#test': 3,
+      'a#docs': 1,
+    })
+  })
+
   it('omits tasks without hrtime spans (group tasks, legacy outcomes)', async () => {
     const out = await writeRunProfile({
       target: path.join(tmp, 'profile.json'),
