@@ -517,7 +517,8 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     worker leaves when the plan still ends in that margin without it, or,
     when its next task is two warm-ups away, with one started in its place
     a warm-up after it left: none is let go and started again. A worker still
-    starting that the plan ends as well without is cancelled: the adapter
+    starting that the plan ends no later without (the margin does not
+    count: asked, a worker stays unless it adds nothing) is cancelled: the adapter
     stops it before its setup if it can (`github()` cancels its workflow
     run once no worker in it is needed), and one that joins anyway is told
     to exit. The same signal changes nothing. The
