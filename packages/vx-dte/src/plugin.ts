@@ -324,8 +324,11 @@ export function dte(options: DteOptions) {
       // in history after this: the tasks not yet placed pack by them, and
       // the first ask for workers waits for them.
       ctx.onRefine(() => void (reading = read()))
-      // Asked at the first ask, when every plugin's schedule has promised its own.
-      needsIn = () => ctx.refining().then(() => reading)
+      // Asked at the first ask, when every plugin's schedule has promised its
+      // own. Read again then: a refine that landed before `onRefine` above
+      // was listening left the first read's empty history, and main planned
+      // 9 asks on 0 measured tasks, 25% of its cores used (2026-10-23).
+      needsIn = () => ctx.refining().then(() => (reading = read()))
       scheduled?.()
       return undefined
     },
