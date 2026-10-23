@@ -48,23 +48,17 @@ describe('ci.yml', () => {
     expect(
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
-      ['linux', 'bun-linux-x64', 'ubuntu-latest', top, undefined],
+      ['linux', 'linux-x64', 'ubuntu-latest', top, undefined],
       // Each run only plans and dispatches: Linux x64, so every macOS and
       // arm runner is an agent's.
       [
         'binary-linux-arm64',
-        'bun-linux-arm64',
+        'linux-arm64',
         'ubuntu-latest',
         "github.event_name != 'pull_request'",
         undefined,
       ],
-      [
-        'macos',
-        'bun-darwin-arm64',
-        'ubuntu-latest',
-        "github.event_name != 'pull_request'",
-        undefined,
-      ],
+      ['macos', 'darwin-arm64', 'ubuntu-latest', "github.event_name != 'pull_request'", undefined],
     ])
   })
 
