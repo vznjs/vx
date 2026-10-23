@@ -96,4 +96,5 @@ changes a cache key, and a task whose outputs another task's inputs could
 read stays eager on its own.
 
 The full list of options and guarantees is in the
-[vx-reapi README](https://github.com/vznjs/vx/tree/main/packages/vx-reapi#readme).
+[vx-reapi README](https://github.com/vznjs/vx/tree/main/packages/vx-reapi#readme). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
