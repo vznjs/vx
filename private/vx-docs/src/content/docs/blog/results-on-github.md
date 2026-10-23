@@ -53,15 +53,6 @@ With `GITHUB_TOKEN` in the job, the plugin also posts a check run
 (named `vx` unless you pass `checkName`) whose output is that same
 summary, so the result sits next to the commit and the pull request.
 
-```mermaid
-flowchart LR
-  RUN["vx run"] --> SINK["github() sink"]
-  SINK --> SUM["job summary"]
-  SINK --> CHECK["check run on the commit"]
-  CFG["config stage"] --> SCOPE["cache scope from the ref"]
-  style CHECK stroke:#c6f84e,stroke-width:2px
-```
-
 ## A cache a pull request cannot poison
 
 Where a pull request may write is the cache server's call: the CI OIDC
@@ -79,5 +70,5 @@ The summary is written by a telemetry sink. vx isolates sinks and bounds
 their flush, so a slow or failing GitHub write can never fail or stall
 the run.
 
-Learn more: [CI and remote](../../guides/ci/) and
-[Results on GitHub](https://vznjs.github.io/vx/features/github-ci/).
+Guide: [CI and remote](../../guides/ci/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
