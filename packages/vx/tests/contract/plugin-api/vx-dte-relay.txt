@@ -45,7 +45,7 @@ export interface Prover {
 == type Relay (src/relay.ts)
 export interface Relay {
   fetch(req: Request): Promise<Response>
-  attach(key: string, id: string, socket: RelaySocket): boolean
+  attach(key: string, id: string, socket: RelaySocket, heardAt?: number): boolean
   detach(key: string, id: string, socket: RelaySocket): void
   frame(key: string, id: string, text: string): string
   seen(key: string, id: string, at: number): void
