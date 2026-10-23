@@ -244,6 +244,48 @@ describe('the relay carries one run between its orchestrator and workers', () =>
     expect(await status(stale)).toBe(403)
   })
 
+  it('joins a participant on the socket it opens: one request, its id said first', async () => {
+    const pushed = new Map<string, unknown[]>()
+    const relay: Relay = createRelay({
+      upgrade: (key, id) => {
+        const inbox: unknown[] = []
+        pushed.set(id, inbox)
+        relay.attach(key, id, { send: (t) => void inbox.push(JSON.parse(t)), close() {} })
+        return new Response(null, { status: 101 })
+      },
+    })
+    relays.push(relay)
+    const open = async (body: object, prover?: Prover) => {
+      const path = `/v1/runs/${R}/socket?join=${encodeURIComponent(JSON.stringify(body))}`
+      const proof = prover && (await prover.proof('GET', path, ''))
+      return relay.fetch(
+        new Request(`http://relay${path}`, {
+          headers: { upgrade: 'websocket', ...(proof === undefined ? {} : { 'vx-proof': proof }) },
+        }),
+      )
+    }
+    const owner = await createProver()
+    const other = await createProver()
+    // Signed like a join: by the key it claims the run with, over the query that carries it.
+    expect((await open({ role: 'orchestrator', key: owner.key }, other)).status).toBe(403)
+    expect((await open({ role: 'orchestrator', key: owner.key }, owner)).status).toBe(101)
+    expect((await open({ role: 'worker', info: { size: 'small' } })).status).toBe(101)
+    expect((await open({ role: 'nobody' })).status).toBe(400)
+    const [o, w] = [...pushed.keys()] as [string, string]
+    const [oSaw, wSaw] = [pushed.get(o)!, pushed.get(w)!]
+    expect(oSaw).toEqual([
+      { joined: { id: o, heartbeatMs: 5000 } },
+      { messages: [{ from: 'relay', body: { type: 'joined', id: w, info: { size: 'small' } } }] },
+    ])
+    expect(wSaw).toEqual([{ joined: { id: w, heartbeatMs: 5000 } }])
+    // Its frames go as any participant's.
+    const k = await runKey(R, undefined)
+    expect(
+      relay.frame(k, w, JSON.stringify({ n: 1, sends: [{ to: 'orchestrator', body: 'hi' }] })),
+    ).toBe('{"n":1}')
+    expect(oSaw.at(-1)).toEqual({ messages: [{ from: w, body: 'hi' }] })
+  })
+
   it('limits each participant’s frames to a burst, then a steady rate', async () => {
     const c = client()
     await c.join(R, 'orchestrator')
