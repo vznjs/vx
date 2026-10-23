@@ -598,7 +598,7 @@ describe('the request derives nothing from cache', () => {
   // `SandboxConfig`'s doc comment claimed the baseline could "write the
   // prefixes of its `cache.outputs.files`" — three times over — while the
   // code granted none of it (item 443). The behavioural rows live in
-  // `sandbox-runtime.unsafe.test.ts` and are Linux-gated on the bwrap
+  // `sandbox-grants.unsafe.test.ts` and are Linux-gated on the bwrap
   // denial message; this pins the same claim where it actually lives, on
   // every platform, with no sandbox required to run it.
   it('a task declaring cache.outputs and no grant gets no write at all', async () => {

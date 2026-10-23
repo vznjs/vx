@@ -496,7 +496,7 @@ sandboxed task ran twice. Then the plain form is probed and used if it
 is quiet; if it speaks too, tasks run untraced, said once (B-64).
 The memo is the probe's promise, not its answer: a wave of tasks that
 started together each ran their own probe before the first answer
-landed (`sandbox-runtime.unsafe.test.ts` › "tasks that start together
+landed (`sandbox-run-direct.unsafe.test.ts` › "tasks that start together
 ask once").
 
 A task that failed with nothing to show gets vx's own notes beside the
@@ -845,7 +845,7 @@ other declarations, and whether a grant can be MOUNTED.
 `sandbox_apply` is refused inside a sandboxed process, at any permission
 level — an inner `sandbox-exec` with a `(allow default)` profile still
 dies with `sandbox_apply: Operation not permitted` (exit 71, measured
-2026-09-05, pinned by `tests/sandbox-runtime.unsafe.test.ts`). A task that
+2026-09-05, pinned by `tests/sandbox-grants.unsafe.test.ts`). A task that
 itself sandboxes something therefore cannot be sandboxed on macOS, which
 is why `@vzn/vx#test.bun.shard-*` is the one task in this repo with no
 `sandbox` block. `weakerWhenNested` covers the Linux case; SRT offers no
@@ -964,7 +964,7 @@ connection, before any byte moves, and dials `::1` when only `::1`
 listens on the port, else 127.0.0.1: a fixed 127.0.0.1 dial refused a
 server bound to `::1` alone, Vite's `localhost` on a host that resolves
 `::1` first (X-91, `port-bridge-dial.test.ts`; the live `::1` row in
-`sandbox-runtime.unsafe.test.ts` skips on a box with no IPv6). It is a
+`sandbox-lifecycle.unsafe.test.ts` skips on a box with no IPv6). It is a
 file, not inline, so the socat address holds no `:` or `,` of its own.
 vx then spawns the host side, `portBridgeHostArgv`: one
 `socat TCP-LISTEN:<port>,bind=127.0.0.1,fork UNIX-CONNECT:<sock>,retry=…`
@@ -994,7 +994,7 @@ when the spawn itself fails), the persistent path on the server's exit,
 struck from the guard's list once it has exited (`kill-tree.md`): a plain
 child of vx was in no group the guard lists, and a `kill -9` of vx left it
 listening under init, where the next run's bridge could not bind the port
-(item 873, `sandbox-runtime.unsafe.test.ts` › "a kill -9 of vx takes the
+(item 873, `sandbox-lifecycle.unsafe.test.ts` › "a kill -9 of vx takes the
 host side of a port bridge with it"). The runtime's own network bridge, a
 socat SRT spawns in vx's group, is listed by pid with its sockets and
 the observer directory when `initSandbox` brings a session up, and struck

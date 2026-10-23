@@ -76,7 +76,7 @@ turborepo#9666). A group kill reaches what the task forked, so a
   a `kill -9` there left its group unlisted (4 of 40 runs at tenfold
   load, and macOS CI). The child holds the pipe until it has listed
   itself, so no window is left (B-9; `keep-alive-sigkill.test.ts` and
-  `sandbox-runtime.unsafe.test.ts` stall vx after the spawn with a
+  `sandbox-lifecycle.unsafe.test.ts` stall vx after the spawn with a
   preload, red without it). A `true` spawn cost 1.31 ms against 1.32
   before it (min of 3 × 200, interleaved): a tie. A 300-project `test --all --no-cache` run
   (600 tasks) took 4,462 ms against 4,473 before it (min of 9,
@@ -217,7 +217,7 @@ release, and "a run that spawns no task starts no guard" fails on a guard
 started at load, after the spawn, or once per spawn. A terminal's Ctrl-C
 (SIGINT to vx's group) leaves the guard alive for a `kill -9` in the
 teardown grace, and the one-shot row's child ignores SIGTERM, so a
-guard that sent it fails. In `sandbox-runtime.unsafe.test.ts`, "a traced
+guard that sent it fails. In `sandbox-lifecycle.unsafe.test.ts`, "a traced
 sandboxed one-shot task’s children die with vx" (strace, then bwrap's
 parent, outlived vx before the guard; since B-11 strace runs inside), and the unsandboxed control has the backgrounded
 child die and the `setsid` one live. In `keep-alive-sigkill.test.ts`, "a kill -9 in

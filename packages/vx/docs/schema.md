@@ -1469,7 +1469,7 @@ directory's listing included. The declared file and what the task made
 there itself stay readable. Put declared outputs in a subdirectory and
 the rest stays denied outright. macOS matches paths rather than
 mounting, so a file grant stays exact there. Pinned in
-`tests/sandbox-runtime.unsafe.test.ts` (2026-09-20) and
+`tests/sandbox-grants.unsafe.test.ts` (2026-09-20) and
 `tests/sandbox-widened-reads.unsafe.test.ts`.
 
 **A `network` entry is a host pattern**: `example.com`, `*.example.com`,
