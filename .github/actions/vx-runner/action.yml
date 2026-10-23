@@ -102,3 +102,8 @@ runs:
         echo "::group::probeSandbox()"
         bun -e 'import("./packages/vx/src/exec/sandbox-runtime.js").then(m => m.probeSandbox()).then(a => { console.log(JSON.stringify(a)); process.exit(0) })'
         echo "::endgroup::"
+        echo "::group::coreutils probe"
+        readlink -f "$(command -v cat)" "$(command -v sleep)"
+        cat --version | head -1
+        strace -f -e trace=openat,statx,newfstatat,access,faccessat2 cat /vx-no-such-file 2>&1 | tail -5 || true
+        echo "::endgroup::"
