@@ -722,6 +722,12 @@ describe('formatStatusRegion', () => {
     expect(lines[6]).toBe('     2.00s running          e#x')
   })
 
+  it('an expected duration that rounds to a second prints in seconds', () => {
+    const expected = new Map([['a#x', 999.6]])
+    const lines = formatStatusRegion({ ...base, slots: [slot('a#x')], expected })
+    expect(lines[2]).toBe('     2.00s running ~1.0s    a#x')
+  })
+
   it('long ids are shown in full (never truncated — name is the last column)', () => {
     const long = '@scope/very-long-package-name-here#build-something-long'
     const lines = formatStatusRegion({ ...base, slots: [slot(long)] })
