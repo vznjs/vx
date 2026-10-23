@@ -35,6 +35,15 @@ arm. `private/vx-bench/generate.ts` with 1,000 projects, each build
 writing 96 KiB of random bytes. Linux x64, 4 cores, vx at `a1786b3`,
 2026-10-23.
 
+```mermaid
+flowchart LR
+  S[task runs] -->|save: copy outputs once| T[(entry as plain files)]
+  R[(remote)] -->|download: decompress once| T
+  T -->|hit: kernel copy, 1,000 in 411 ms| D[dist/]
+  T -->|upload: pack tar.zst| R
+  style T stroke:#c6f84e,stroke-width:2px
+```
+
 ## The kernel does the copy
 
 The archive exists only on the wire. The local cache keeps each entry

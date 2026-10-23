@@ -49,6 +49,13 @@ wrong.
 Two workers. One task takes 60 seconds and nothing depends on it. Two
 chains each have a 29.75-second parent and a 0.25-second child.
 
+```mermaid
+flowchart LR
+  L[long · 60 s]
+  PL[parent · 29.75 s] --> CL[child · 0.25 s]
+  PR[parent · 29.75 s] --> CR[child · 0.25 s]
+```
+
 The best order starts the 60-second task at once and runs both chains
 on the other worker: 60 seconds in all. Counting dependents puts both
 parents ahead of the long task, because each has work behind it and the
@@ -86,6 +93,12 @@ no way to know that; it only started the task that was ready first.
 
 Ten workers. 100 independent tasks and one chain of two, A then B.
 Every task takes 2 seconds.
+
+```mermaid
+flowchart LR
+  T[100 independent tasks · 2 s each]
+  A[A · 2 s] --> B[B · 2 s]
+```
 
 Counting dependents starts A first, so B runs beside the last wave of
 independent tasks. Ready order can leave A behind the other 100. Then B

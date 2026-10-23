@@ -9,9 +9,41 @@ tags:
 excerpt: 'With @vzn/vx-schedule-history, vx starts the longest chain first and packs tasks by the memory they really used. vx history shows what it learned, task by task.'
 ---
 
-The core scheduler orders tasks by the shape of the graph: a task that
-many others wait on goes first. That is a good guess with no data. After
-a few runs there is data, and `@vzn/vx-schedule-history` uses it.
+A few runs of the demo workspace, then:
+
+```sh frame="terminal"
+$ vx history
+history: last 20 runs · budgets 4 cores (the default worker count; --concurrency changes it per run) · 13677 MB (what this process may use)
+  task              runs      p50  peak rss    cpu  reserves
+  packages/a#build    15     15ms         —   1.1×  —
+  packages/a#test      8     12ms         —   0.8×  —
+  packages/b#build    12     19ms         —   0.9×  —
+  packages/b#test      7    635ms    587 MB   0.5×  768 MB
+  packages/c#build    10      7ms         —   1.2×  —
+  packages/c#test      7     21ms         —   0.7×  —
+  packages/d#build    12     13ms         —   0.8×  —
+  packages/d#test      7     10ms         —   0.9×  —
+  16 tasks with no execution in the window reserve nothing
+```
+
+`b#test` allocates 600 MB, so it reserves 768 MB: its peak plus a
+quarter, rounded up to 64 MB. The light tasks reserve nothing and run
+freely. Demo workspace, vx at `22f6eb7`, 2026-10-23.
+
+That table is `@vzn/vx-schedule-history` at work. The core scheduler
+orders tasks by the shape of the graph: a task that many others wait on
+goes first. That is a good guess with no data. After a few runs there
+is data, and the plugin uses it.
+
+```mermaid
+flowchart LR
+  R[7 runs of b#test] --> H[(history: p50 635 ms, peak 587 MB)]
+  H --> O[order: longest remaining chain first]
+  H --> A[admit: reserve 768 MB for b#test]
+  O --> S[the next run]
+  A --> S
+  style O stroke:#c6f84e,stroke-width:2px
+```
 
 ## Turn it on
 
@@ -43,37 +75,18 @@ A recorded median always wins over an assumption.
 
 ## Packed by real memory
 
-Every execution records its CPU time and peak memory. The plugin
-reserves each task's largest peak in the window plus 25% headroom, and
-starts a task only while everything running beside it fits in the
-machine's memory, capped by the container's limit. Two memory-hungry test
-suites stop starting at the same moment and crashing a small runner.
+Every execution records its CPU time and peak memory. The plugin starts
+a task only while every reservation running beside it fits in the
+machine's memory, capped by the container's limit. Two memory-hungry
+test suites stop starting at the same moment and crashing a small
+runner.
 
-A cache hit carries the usage of the run that produced it. So a runner
+A cache hit carries the usage of the run that produced it, so a runner
 that restored a task from a remote cache knows its reservation without
-ever executing it.
-
-## See what it learned
-
-```sh frame="terminal"
-$ vx history
-history: last 20 runs · budgets 4 cores (the default worker count; --concurrency changes it per run) · 13680 MB (what this process may use)
-  task              runs      p50  peak rss    cpu  reserves
-  @demo/api#build     13    314ms         —   0.0×  —
-  @demo/api#test       5    203ms         —   0.0×  —
-  @demo/docs#build    10    308ms         —   0.0×  —
-  @demo/docs#test      3    204ms         —   0.0×  —
-  @demo/ui#build      15    310ms         —   0.0×  —
-  @demo/ui#test        3    205ms         —   0.0×  —
-  @demo/web#build     14    308ms         —   0.0×  —
-  @demo/web#test       5    203ms    587 MB   0.4×  768 MB
-```
-
-`web#test` allocates 600 MB, so it reserves 768 MB. The light tasks
-reserve nothing and run freely. `--format json` gives the same table for
-scripts, and `reservations` declares a size by hand for what history
-cannot know yet.
+ever executing it. `--format json` gives the table for scripts, and
+`reservations` declares a size by hand for what history cannot know yet.
 
 It orders and admits. It never changes what runs or how a task is keyed.
 Every option is in the
 [vx-schedule-history README](https://github.com/vznjs/vx/tree/main/packages/vx-schedule-history#readme).
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
