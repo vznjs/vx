@@ -24,7 +24,6 @@ import {
 } from '@vzn/vx'
 import {
   HELD_EVERY,
-  shares,
   type WorkerInfo,
   type DepOrder,
   type RunOrder,
@@ -36,15 +35,10 @@ import {
 } from './messages.js'
 import type { PlanWorker } from './planner.js'
 import { Usage, type UsageStats } from './usage.js'
+import { assign, type Need } from './dispatch.js'
 import { RelayError, type Participant } from './wire.js'
 
 /** What a task is expected to hold while it runs, from its history; `Infinity` (unmeasured): a whole worker. */
-export interface Need {
-  readonly cores: number
-  readonly memory: number
-  /** It filled a machine this big last time: only a bigger one takes it, if any worker is. */
-  readonly above?: { readonly cores: number; readonly memory: number }
-}
 
 interface Job {
   readonly req: ExecuteRequest
@@ -293,17 +287,34 @@ export class Orchestrator {
     const tail = this.o.tail
     const queue = this.queue.splice(0)
     if (tail !== undefined) queue.sort((x, y) => tail(y.req.taskId) - tail(x.req.taskId))
-    // A task that runs alone waits for a worker to empty: the first such
-    // keeps that worker from taking anything after it. Else tasks behind
-    // it filled the worker again and again: check.bun, the gate of 56
-    // tasks, waited 50 s on main 871ffba (2026-10-23).
-    const reserved = new Set<Worker>()
+    const workers = [...this.workers.values()].filter((a) => !a.faulty)
+    const bins = workers.map((a) => {
+      let running = 0
+      for (const j of a.busy.values()) if (j.held !== undefined) running++
+      return {
+        id: a.id,
+        cores: a.cores,
+        memory: a.memory,
+        used: this.used(a),
+        running,
+        has: a.has,
+        a,
+      }
+    })
+    const nodes = this.o.nodes()
+    const to = assign(
+      queue.map((job) => ({
+        id: job.req.taskId,
+        need: job.need,
+        up: upstream(nodes, job.req.taskId),
+      })),
+      bins,
+      (above) => this.bigger(above),
+    )
     for (const job of queue) {
-      const a = this.place(job, reserved)
+      const a = to.get(job.req.taskId)?.a
       if (a === undefined) {
         left.push(job)
-        const w = this.emptiest(job, reserved)
-        if (w !== undefined) reserved.add(w)
         continue
       }
       job.worker = a.id
@@ -343,20 +354,6 @@ export class Orchestrator {
     return { cores: Math.max(booked.cores, cores), memory: Math.max(booked.memory, memory) }
   }
 
-  /**
-   * For `job`, which runs alone on a worker it fits only empty: the worker
-   * that empties soonest, the one using least, to hold for it.
-   */
-  private emptiest(job: Job, reserved: ReadonlySet<Worker>): Worker | undefined {
-    let best: Worker | undefined
-    for (const a of this.workers.values()) {
-      if (a.faulty || reserved.has(a) || !this.holding(a)) continue
-      if (job.need.cores < a.cores && job.need.memory <= a.memory - this.used(a).memory) continue
-      if (best === undefined || this.used(a).cores < this.used(best).cores) best = a
-    }
-    return best
-  }
-
   /** Whether a task of `a`'s holds its cores: its command still runs, or has yet to. */
   private holding(a: Worker): boolean {
     for (const j of a.busy.values()) if (j.held !== undefined) return true
@@ -378,51 +375,18 @@ export class Orchestrator {
     a.load = { cpu: Number(load.cpu) || 0, memory: Number(load.memory) || 0, at: performance.now() }
   }
 
-  /**
-   * The worker for `job`: one it fits on now (`used`), none else; among
-   * those, the one holding most of its dependencies' outputs, then the one
-   * with fewest cores free: spread one a piece, 12 workers of 4
-   * cores each ran about 1 at 25% (main, 2026-10-23); packed, the workers
-   * the rest no longer needs fall idle and leave. A task bigger than
-   * every worker goes to an idle one, alone.
-   */
-  private place(job: Job, reserved: ReadonlySet<Worker>): Worker | undefined {
-    const up = upstream(this.o.nodes(), job.req.taskId)
-    let best: Worker | undefined
-    let bestScore: number[] = []
-    const bigger = (a: Worker): boolean =>
-      job.need.above === undefined ||
-      a.cores > job.need.above.cores ||
-      a.memory > job.need.above.memory
-    // A bigger worker online takes it; one starting is waited for; else
-    // the biggest there is.
-    const workers = [...this.workers.values()].filter((a) => !a.faulty)
-    if (job.need.above !== undefined && !workers.some(bigger)) {
-      const above = job.need.above
-      const joined = new Set([...workers, ...this.gone].map((x) => x.label))
-      for (const [id, { declared }] of this.spawnedAt)
-        if (
-          !joined.has(id) &&
-          !this.unstarted.has(id) &&
-          !this.cancelled.has(id) &&
-          (declared.cpu > above.cores || declared.memory > above.memory)
-        )
-          return undefined
-    }
-    const pool = workers.some(bigger) ? workers.filter(bigger) : workers
-    for (const a of pool) {
-      if (reserved.has(a)) continue
-      const used = this.used(a)
-      if (this.holding(a) && !shares(used, job.need, a)) continue
-      let held = 0
-      for (const id of up) if (a.has.has(id)) held++
-      const score = [held, used.cores - a.cores]
-      if (best === undefined || greater(score, bestScore)) {
-        best = a
-        bestScore = score
-      }
-    }
-    return best
+  /** Whether a worker bigger than `above` is starting: a task that filled that size waits for it. */
+  private bigger(above: { readonly cores: number; readonly memory: number }): boolean {
+    const joined = new Set([...this.workers.values(), ...this.gone].map((x) => x.label))
+    for (const [id, { declared }] of this.spawnedAt)
+      if (
+        !joined.has(id) &&
+        !this.unstarted.has(id) &&
+        !this.cancelled.has(id) &&
+        (declared.cpu > above.cores || declared.memory > above.memory)
+      )
+        return true
+    return false
   }
 
   private send(a: Worker, jobs: readonly Job[]): void {
@@ -1099,11 +1063,6 @@ export class Orchestrator {
 
   /** Why the relay was given up on; then every task runs here. */
   lost: string | undefined
-}
-
-function greater(a: readonly number[], b: readonly number[]): boolean {
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i]! > b[i]!
-  return false
 }
 
 function result(r: WiredResult, log: { stdout: string; stderr: string }): ExecuteResult {

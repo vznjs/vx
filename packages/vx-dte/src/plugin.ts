@@ -12,7 +12,8 @@ import { Database } from 'bun:sqlite'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Need, Orchestrator } from './orchestrator.js'
+import type { Need } from './dispatch.js'
+import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
 import type { Size } from './planner.js'
 
@@ -292,19 +293,14 @@ export function dte(options: DteOptions) {
       const relay = options.relay ?? (await adapter?.relay?.())
       if (relay === undefined)
         throw new UserError('dte(): no relay: set relay, or use an adapter that has one')
-      const [
-        { Orchestrator },
-        { join },
-        { candidates, missedWork, plan, tailsMs, WARM_UP_MS },
-        { snapshot },
-        seal,
-      ] = await Promise.all([
-        import('./orchestrator.js'),
-        import('./wire.js'),
-        import('./planner.js'),
-        import('./tree.js'),
-        import('./seal.js'),
-      ])
+      const [{ Orchestrator }, { join }, { decide, tailsMs, WARM_UP_MS }, { snapshot }, seal] =
+        await Promise.all([
+          import('./orchestrator.js'),
+          import('./wire.js'),
+          import('./planner.js'),
+          import('./tree.js'),
+          import('./seal.js'),
+        ])
       // VX_DTE_SECRET or the plan's wins. On GitHub, workers that join on
       // their own or an adapter's keyless ones prove themselves by OIDC;
       // the workers another adapter starts get a secret made for this run.
@@ -420,28 +416,22 @@ export function dte(options: DteOptions) {
       const shape = (remaining: ReadonlySet<string>): void => {
         const warmUp = o.warmUpMs() ?? WARM_UP_MS
         const { workers, running } = o.planState((id) => peaks.get(id)?.p50DurationMs, warmUp)
-        const tasks = missedWork(
+        const final = adapter === undefined || (plannedWorkers !== undefined && later.size === 0)
+        const p = decide({
           remaining,
-          nodes ?? new Map(),
+          nodes: nodes ?? new Map(),
           executed,
           need,
-          (id) => peaks.get(id)?.p50DurationMs,
-        ).filter((t) => !running.has(t.id))
-        const final = adapter === undefined || (plannedWorkers !== undefined && later.size === 0)
-        const p = plan(
-          tasks,
+          durationMs: (id) => peaks.get(id)?.p50DurationMs,
           workers,
-          final
-            ? []
-            : candidates(
-                sizes,
-                started,
-                tasks.flatMap((t) => t.above ?? []),
-                tasks.length,
-              ),
-          warmUp,
-          adapter !== undefined,
-        )
+          running,
+          sizes,
+          started,
+          final,
+          warmUpMs: warmUp,
+          replaceable: adapter !== undefined,
+        })
+        const { tasks } = p
         // At the end the relay closing ends them all.
         if (p.release.length > 0 && remaining.size > 0) {
           const cancelled = o.release(p.release)
