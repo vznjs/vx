@@ -443,7 +443,7 @@ PR run kept Linux workers online 4.2 minutes on average (0 to 18.9), a
 main run 2.1 (0.7 to 12.9). Weighted by last week's mix, a run is 67
 agent credits and, with the 500 per execution, 567. That is 1,846,529
 credits a month: $1,016, with one contributor. The Hobby plan's 50,000
-credits cover 88 runs, under one day. [The per-run numbers](https://github.com/vznjs/vx/pull/4138) are
+credits cover 88 runs, under one day. [The per-run numbers](https://github.com/vznjs/vx/pull/4167) are
 in the PR.
 
 **A 20-person team**, a made-up case, with 200 executions per working day, 21 working
