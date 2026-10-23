@@ -57,6 +57,8 @@ interface ArtifactEndpoint {
   getsInFlight: () => number
   /** Number of `POST /artifacts/batch` existence probes served. */
   batchCalls: () => number
+  /** Hashes the batch probe says it holds though a GET 404s: gone since. */
+  phantoms: Set<string>
 }
 
 function startArtifactEndpoint(opts?: {
@@ -72,6 +74,7 @@ function startArtifactEndpoint(opts?: {
   holdUntilBatch?: boolean
 }): ArtifactEndpoint {
   const store = new Map<string, Uint8Array>()
+  const phantoms = new Set<string>()
   const getCounts = new Map<string, number>()
   const headCounts = new Map<string, number>()
   const putCounts = new Map<string, number>()
@@ -102,7 +105,7 @@ function startArtifactEndpoint(opts?: {
       const held = await probe()
       if (held !== undefined) return held
       const { hashes } = (await req.json()) as { hashes: string[] }
-      return Response.json({ present: hashes.filter((h) => store.has(h)) })
+      return Response.json({ present: hashes.filter((h) => store.has(h) || phantoms.has(h)) })
     }
     const m = url.pathname.match(/^\/artifacts\/([0-9a-f]+)$/)
     if (!m) return new Response('not found', { status: 404 })
@@ -178,6 +181,7 @@ function startArtifactEndpoint(opts?: {
     probes,
     getsInFlight: () => maxInFlight,
     batchCalls: () => batchCalls,
+    phantoms,
   }
 }
 
@@ -247,6 +251,46 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         })
         expect(second.outcomes[0]!.status).toBe('cache-hit-remote')
         expect(second.ok).toBe(true)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a key the probe said a remote holds, gone by its GET, runs: a miss, not a failure',
+    async () => {
+      // The probe is a past answer: an eviction between it and the GET
+      // leaves a 404, and the task executes as any miss (M, 2026-10-23).
+      const fixture = await makeFixture('vx-remote-e2e-')
+      const remote = startArtifactEndpoint()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const first = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        const hash = first.outcomes[0]!.hash!
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
+        remote.store.delete(hash)
+        remote.phantoms.add(hash)
+        const before = remote.batchCalls()
+        const second = await run({
+          cwd: fixture.root,
+          tasks: ['build'],
+          log: silentLogger(fixture),
+          remoteCache: remote.layer,
+        })
+        expect(remote.batchCalls() - before).toBe(1)
+        expect(second.ok).toBe(true)
+        expect(second.outcomes[0]!.status).toBe('success')
+        expect(remote.getCounts.get(hash)).toBe(1)
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }
@@ -863,6 +907,8 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(remote.store.size).toBe(1)
         await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
         remote.getCounts.clear()
+        remote.headCounts.clear()
+        const batches = remote.batchCalls()
         absent.mockClear()
         prefetch.mockClear()
 
@@ -884,6 +930,10 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(prefetch.mock.calls.map((c) => c[0]).filter((h) => h !== aHash)).toEqual([])
         expect(remote.getCounts.get(aHash)).toBe(1)
         expect(remote.getCounts.get(bHash) ?? 0).toBeLessThanOrEqual(1)
+        // One existence probe a run: no task's lookup asks the remote again
+        // whether it holds a key (M, 2026-10-23).
+        expect(remote.batchCalls() - batches).toBe(1)
+        expect(remote.headCounts.size).toBe(0)
       } finally {
         absent.mockRestore()
         prefetch.mockRestore()

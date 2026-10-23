@@ -44,3 +44,19 @@ it('a task that executes before the cache answers stays demand', () => {
   d.settle(['a'])
   expect(heard).toEqual([['a']])
 })
+
+// DTE sized a run by guesses for 20 s while the up-front probe had already
+// found which keys no store held (main a09b987, 2026-10-23): the executor
+// hears those misses with its demand.
+it('tells the tasks the probe found in no store, narrowed as they finish', () => {
+  const missed: string[][] = []
+  const executor = {
+    name: 'spy',
+    demand: (_: ReadonlySet<string>, m: ReadonlySet<string>) => missed.push([...m].sort()),
+    execute: () => Promise.reject(new Error('not run')),
+  } as unknown as TaskExecutor
+  const d = executorDemand(new Map(['a', 'b', 'c'].map((id) => [id, executor])), () => {})
+  d.settle(['c'], ['a', 'b', 'not-placed'])
+  d.finished('a')
+  expect(missed).toEqual([['a', 'b'], ['b']])
+})

@@ -899,7 +899,12 @@ async function runOnBus(
     if (prepared.hasRemoteLayer) {
       prefetchDone = steps.background('vx:prefetch', () =>
         startRemotePrefetch({
-          ...(demand.any ? { held: (ids: readonly string[]) => demand.settle(ids) } : {}),
+          ...(demand.any
+            ? {
+                held: (ids: readonly string[], missed: readonly string[]) =>
+                  demand.settle(ids, missed),
+              }
+            : {}),
           nodes,
           cache,
           workspaceRoot,
@@ -969,8 +974,13 @@ async function runOnBus(
       if (prefetchSettles) void prefetchDone.finally(() => demand.settle([]))
       else {
         const hits: string[] = []
-        for (const [id, probe] of shortCircuit.preProbed) if (probe.hit !== null) hits.push(id)
-        demand.settle(hits)
+        const missed: string[] = []
+        for (const [id, probe] of shortCircuit.preProbed)
+          (probe.hit !== null ? hits : missed).push(id)
+        // An empty store was not asked: it holds none of them.
+        if (coldLocal && !remote)
+          for (const [id, n] of nodes) if (n.config.cache !== undefined) missed.push(id)
+        demand.settle(hits, missed)
       }
     }
 
