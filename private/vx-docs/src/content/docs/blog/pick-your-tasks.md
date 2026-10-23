@@ -9,18 +9,30 @@ tags:
 excerpt: 'Edges in dependsOn, selections in --filter. A small grammar covers upstream builds, cross-project tasks, groups, dependents, folders and tags. And a name that matches nothing stops the run before it starts.'
 ---
 
-Two questions decide every run: what does each task need first, and
-which projects should this run touch? vx answers the first in
-`dependsOn` and the second in `--filter`. Both are small languages, and
-both fit on one screen.
+```sh frame="terminal"
+$ vx run build --filter '...packages/a' --dry
+would run:
+  ✓  packages/a#build  cache hit (local)         6802a43d
+  ✓  packages/c#build  cache hit (local)         24d525d5
 
-```mermaid
-flowchart LR
-  F[--filter picks projects] --> T[the task in each]
-  T --> D[dependsOn pulls in what it needs]
-  D --> R[the run]
-  style F stroke:#c6f84e,stroke-width:2px
+2 task(s) planned, 2 cache hits (2 local).
+
+$ vx run build lnit --all
+✗ vx run  no projects declare task(s): lnit
+
+  Tasks: build, check, codegen, color, count, dev, e2e, env, and 9 more
+  A run reads the lock: after editing a vx.config, run `vx lock`
+$ echo $?
+1
 ```
+
+`...packages/a` is `a` and everything that depends on it. A typo stops
+the run before anything starts, so it never turns into a green run that
+quietly skipped your linter. Demo workspace, vx at `69617eb`,
+2026-10-23.
+
+Two small languages decide a run: `dependsOn` says what a task needs
+first, `--filter` says which projects to touch.
 
 ## What a task needs: dependsOn
 
@@ -53,20 +65,7 @@ else. `dependsOn: []` is a named no-op you can fill in later.
 
 ## Which projects: --filter
 
-The demo workspace has four packages, and `web` and `docs` both use `ui`.
-
-```sh frame="terminal"
-$ vx run build --filter '...@demo/ui' --dry
-would run:
-  ✓  @demo/docs#build  cache hit (local)         1f858edb
-  ✓  @demo/ui#build    cache hit (local)         46046abb
-  ✓  @demo/web#build   cache hit (local)         b25e5bf4
-
-3 task(s) planned, 3 cache hits (3 local).
-```
-
-`...ui` takes ui and everything that depends on it. The other spellings
-follow pnpm:
+The spellings follow pnpm:
 
 ```sh frame="terminal"
 $ vx run build --filter @demo/web           # one project by name
@@ -82,19 +81,6 @@ $ vx run test --filter '...[main]'          # what changed since main, and its d
 `--exclude-dependencies` runs only what you selected and skips the
 `dependsOn` edges, or only the edges you name.
 
-## A typo stops the run
-
-If you ask for several tasks and one name matches nothing, vx refuses
-before anything starts, and lists what exists:
-
-```sh frame="terminal"
-$ vx run build lnit --all
-✗ vx run  no projects declare task(s): lnit
-
-  Tasks: build, test
-  A run reads the lock: after editing a vx.config, run `vx lock`
-```
-
-A typo never turns into a quiet green run that skipped your linter. Every
-selector is in the [CLI reference](../../cli/), and `dependsOn` is in the
-[schema](../../schema/).
+Every selector is in the [CLI reference](../../cli/), and `dependsOn`
+is in the [schema](../../schema/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
