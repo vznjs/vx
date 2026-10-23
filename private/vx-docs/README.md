@@ -176,7 +176,7 @@ metadata, shown as a `v0.0.637` chip beside the date, read from the
 slug. Every post has a cover (`src/assets/blog/vx-0-0-<version>.png`,
 1200×630). The slug is `vx-0-0-<version>`, the tag `release`, and the
 date the release's day. The GitHub release's body is the post
-(`release-notes.yml` keeps it current). Old `/blog/vx-0-0-*/` URLs
+(`release.sync`, in ci.yml's Linux run on main, keeps it current). Old `/blog/vx-0-0-*/` URLs
 redirect (`astro.config.mjs`).
 
 ## Commands

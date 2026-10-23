@@ -1,8 +1,8 @@
-// release-notes.yml's one step, the `release.sync` task: a release post
-// rewritten after its release shipped changes the GitHub release too, so
-// GitHub and the site tell the same story. Each GitHub release with a post
-// on main whose body differs gets the post's (postNotes); a release with
-// no post keeps its body.
+// The `release.sync` task, which ci.yml's Linux run runs on each push to
+// main: a release post rewritten after its release shipped changes the
+// GitHub release too, so GitHub and the site tell the same story. Each
+// GitHub release with a post on main whose body differs gets the post's
+// (postNotes); a release with no post keeps its body.
 //
 //   GH_TOKEN=… GITHUB_REPOSITORY=owner/repo bun scripts/release-sync.ts
 

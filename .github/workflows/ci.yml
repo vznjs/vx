@@ -69,10 +69,12 @@ jobs:
     # 2026-10-23: owner, "merge seprate workflows into vx tasks").
     environment: ${{ github.event_name == 'push' && 'github-pages' || '' }}
     permissions:
-      contents: read
       id-token: write
       actions: write
       pages: write
+      # A push to main gives each GitHub release its post's body
+      # (release.sync; release-notes.yml until 2026-10-23).
+      contents: write
     steps:
       - name: A run id no one can guess
         run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
@@ -155,6 +157,7 @@ jobs:
       - name: vx run ci
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
           # An unavailable OS sandbox is a test FAILURE, not a skip: a
           # `describe.skipIf` would delete the tests covering the isolation
           # boundary under a green check.
@@ -188,7 +191,7 @@ jobs:
           # writes nothing under a green check, so assert it in this step
           # (`$GITHUB_STEP_SUMMARY` is per step); vx's exit code stays the gate.
           set +e
-          bun packages/vx/src/bin.ts run ci test.live check.vs-turbo build.bun.linux-arm64 build.bun.darwin-arm64 --all
+          bun packages/vx/src/bin.ts run ci test.live check.vs-turbo build.bun.linux-arm64 build.bun.darwin-arm64 ${{ github.event_name == 'push' && 'release.sync' || '' }} --all
           code=$?
           set -e
           test -s "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is empty — did @vzn/vx-ci decline?"; exit 1; }

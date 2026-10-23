@@ -68,7 +68,6 @@ describe('a Linux CI job that runs a vx task', () => {
     expect(covered).toEqual([
       'auto-release.yml#release',
       'npm.yml#publish',
-      'release-notes.yml#sync',
       'release.yml#assets',
     ])
   })

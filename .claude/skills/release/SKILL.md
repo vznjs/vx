@@ -115,7 +115,7 @@ Wait for `main`'s CI to go green on the merge commit, then dispatch
 `actions_run_trigger`).
 It refuses a commit CI did not pass. The GitHub release's body is the
 post (`scripts/release-notes.ts`, `postNotes`); a later edit of the post
-on main rewrites it (`release-notes.yml`). Confirm the tag is the version the
+on main rewrites it (`release.sync` in ci.yml's Linux run). Confirm the tag is the version the
 post names; if another release landed first and the number moved, rename
 the post in a follow-up PR before sharing it.
 
