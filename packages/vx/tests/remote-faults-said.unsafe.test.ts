@@ -12,7 +12,8 @@ import { expect, it } from 'bun:test'
 const repo = path.resolve(import.meta.dir, '..', '..', '..')
 
 const REMOTE = [
-  /^packages\/vx\/src\/cache\/(?:remote-lane|layered-cache)\.ts$/,
+  /^packages\/vx\/src\/cache\/(?:remote-lane|layered-cache|plugin-cache)\.ts$/,
+  /^packages\/vx\/src\/orchestrator\/task-artifacts\.ts$/,
   /^packages\/vx-migrate\/src\/(?:turbo-cache|nx-cache)\/.+\.ts$/,
   /^packages\/vx-migrate\/src\/remote-[^/]+\.ts$/,
   /^packages\/vx-reapi\/src\/.+\.ts$/,

@@ -58,3 +58,18 @@ it('a worker’s cores counter sums what its tasks booked and used at once', () 
     { booked: 3.5, used: 0.7 },
   ])
 })
+
+// Processes were named from slices and marks only: a worker that joined on
+// its own and has run nothing yet (the profile is read before the run's
+// close marks each one stopped) had its idle and counters under no pid.
+it('every row belongs to a named process, a worker with no task yet too', () => {
+  const t = new Trace()
+  t.joined('w', 0)
+  t.use({ track: 'u', from: 0, to: 10, booked: 1, used: 0 })
+  const ev = events(t, 20)
+  const named = new Map(
+    ev.filter((e) => e.name === 'process_name').map((e) => [e.pid, e.args!['name']]),
+  )
+  expect(new Set(named.values())).toEqual(new Set(['orchestrator', 'u', 'w']))
+  for (const e of ev) expect(named.has(e.pid)).toBe(true)
+})

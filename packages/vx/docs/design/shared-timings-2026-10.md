@@ -58,8 +58,9 @@ context gains `cache`: `get(key)` / `put(key, bytes)` backed by the same
 layered cache tasks use: the local store first, then each declared remote
 in order, under the run's write policy and scope. Core keys the name per
 plugin (`xxh3(pluginName\0key)`), bounds each call by the layers' own
-deadlines, and degrades every error to `null`, silently (`VX_DEBUG` names
-why). The plugin never learns whether a remote exists: with none, `get`
+deadlines, and degrades every error to `null` (a remote's thrown fault is
+said once since 2026-10-23, M: never swallow a remote error; an absent
+entry stays silent). The plugin never learns whether a remote exists: with none, `get`
 is a local lookup. `cache.hasMany(keys)`, namespaced the same way, asks
 the layers' existing batch probes and resolves `null` when no layer has
 one; the plugin then falls back to sequential `get`. So the walk back

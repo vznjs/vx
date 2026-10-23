@@ -11,6 +11,7 @@ order, the local store and provenance.
 
 ```ts
 export function networkConcurrency(): number // min(96, max(cores × 3, 64)): requests at once to a remote
+export function sayRemoteFault(r: ResolvedRemote, e: Error): void // its onError, else a `[vx] remote cache:` line on stderr
 export interface ResolvedRemote {
   readonly remote: RemoteCacheLayer
   readonly plugin?: string // the plugin that supplied it: its keychain is what `open` reads

@@ -57,8 +57,11 @@ export function packRunOutputs(
   cancelled at the cap. An empty `put` stores nothing, and an empty or
   odd remote body (no Blob or Response, a null body) is a miss, never
   kept: write-once would hide every later good body on this machine.
-- **Silent.** Every failure is an absent answer (`null`, `false`, a
-  skipped write), never a throw or a warning. `has` is `null` when no
+- **Never a throw.** Every failure is an absent answer (`null`, `false`, a
+  skipped write). A remote's fault is said once per remote, call and
+  message, as a task artifact's is (to the remote's `onError`, else
+  stderr): unsaid, a remote down left DTE planning on no timings with
+  no line saying why. `has` is `null` when no
   layer could answer; `hasMany` is `null` when a readable remote has no
   batch probe or its probe fails, so the plugin falls back to `get`.
 - Entries are pruned by age with the run history (`pruneOlderThan`).

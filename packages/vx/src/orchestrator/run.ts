@@ -839,14 +839,17 @@ async function runOnBus(
 
     // Run context for the footer. The top-of-run header is gone — the
     // banner now lives in the summary, where the eye lands at the end.
+    const fault = executorFaults(warnOf(log))
     const footers = executors.filter((e) => e.footer !== undefined)
     const placers = executors.filter((e) => e.running !== undefined)
     const runContext = {
-      ...(footers.length > 0 ? { executorRows: () => footers.flatMap(executorFooter) } : {}),
+      ...(footers.length > 0
+        ? { executorRows: () => footers.flatMap((e) => executorFooter(e, fault)) }
+        : {}),
       ...(placers.length > 0
         ? {
             whereRunning: (id: string) =>
-              placers.map((e) => executorWhere(e, id)).find((w) => w !== undefined),
+              placers.map((e) => executorWhere(e, id, fault)).find((w) => w !== undefined),
           }
         : {}),
       version: VERSION,
@@ -1341,7 +1344,7 @@ async function runOnBus(
             target: profile,
             cwd: options.cwd,
             outcomes: list,
-            executors: executors.map(executorProfile),
+            executors: executors.map((e) => executorProfile(e, fault)),
           }),
         )
         log.status(`vx: profile written to ${wrote}`)
@@ -1460,8 +1463,8 @@ async function runOnBus(
         abortedCount: list.filter((o) => o.status === 'aborted' && !isGroupTask(o.node)).length,
         stages: stageTimes(),
         uploads: prepared.localCache.uploads,
-        machines: executors.flatMap(executorMachines),
-        idealMs: executors.map(executorIdeal).find((ms) => ms !== undefined),
+        machines: executors.flatMap((e) => executorMachines(e, fault)),
+        idealMs: executors.map((e) => executorIdeal(e, fault)).find((ms) => ms !== undefined),
       })
       telemetry.emitSummary(summary)
       const sinks = telemetry
@@ -1935,8 +1938,27 @@ function canonical(dir: string): string {
   }
 }
 
+/** What an executor's report threw: said once by `executorFaults`, the report left out. */
+type ExecutorFault = (e: TaskExecutor, what: string, err: unknown) => void
+
+/**
+ * Each executor report that throws is said once and left out: isolated,
+ * it was dropped with nothing said, a summary short its machines.
+ */
+function executorFaults(warn: (line: string) => void): ExecutorFault {
+  const said = new Set<string>()
+  return (e, what, err) => {
+    const k = `${e.name}\0${what}`
+    if (said.has(k)) return
+    said.add(k)
+    warn(
+      `[vx] executor '${e.name}': ${what}() threw: ${err instanceof Error ? err.message : String(err)} — left out`,
+    )
+  }
+}
+
 /** An executor's footer rows; a plugin's throw or bad shape shows none. */
-function executorFooter(e: TaskExecutor): (readonly [string, ui.Inline])[] {
+function executorFooter(e: TaskExecutor, fault: ExecutorFault): (readonly [string, ui.Inline])[] {
   try {
     const rows = e.footer?.()
     if (!Array.isArray(rows)) return []
@@ -1946,48 +1968,60 @@ function executorFooter(e: TaskExecutor): (readonly [string, ui.Inline])[] {
         typeof r[0] === 'string' &&
         (typeof r[1] === 'string' || (typeof r[1] === 'object' && r[1] !== null)),
     )
-  } catch {
+  } catch (err) {
+    fault(e, 'footer', err)
     return []
   }
 }
 
 /** An executor's `--profile` events; a throw or a bad shape adds none. */
-function executorProfile(e: TaskExecutor): readonly Record<string, unknown>[] {
+function executorProfile(
+  e: TaskExecutor,
+  fault: ExecutorFault,
+): readonly Record<string, unknown>[] {
   try {
     const events = e.profile?.()
     return Array.isArray(events)
       ? events.filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
       : []
-  } catch {
+  } catch (err) {
+    fault(e, 'profile', err)
     return []
   }
 }
 
-function executorMachines(e: TaskExecutor): readonly MachineReport[] {
+function executorMachines(e: TaskExecutor, fault: ExecutorFault): readonly MachineReport[] {
   try {
     const m = e.machines?.()
     return Array.isArray(m) ? m : []
-  } catch {
+  } catch (err) {
+    fault(e, 'machines', err)
     return []
   }
 }
 
-function executorIdeal(e: TaskExecutor): number | undefined {
+function executorIdeal(e: TaskExecutor, fault: ExecutorFault): number | undefined {
   try {
     const ms = e.idealMs?.()
     return typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 ? Math.round(ms) : undefined
-  } catch {
+  } catch (err) {
+    fault(e, 'idealMs', err)
     return undefined
   }
 }
 
 /** Where `e` says a task runs, or `null` while it waits; a throw or anything else says nothing. */
-function executorWhere(e: TaskExecutor, id: string): string | null | undefined {
+function executorWhere(
+  e: TaskExecutor,
+  id: string,
+  fault: ExecutorFault,
+): string | null | undefined {
   try {
     const w = e.running?.(id)
     if (w === null) return null
     return typeof w === 'string' && w !== '' ? w : undefined
-  } catch {
+  } catch (err) {
+    fault(e, 'running', err)
     return undefined
   }
 }
