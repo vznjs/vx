@@ -78,7 +78,7 @@ const cases: Case[] = [
     name: 'a growing graph',
     graph: growing(),
     measured: true,
-    failing: ['every worker that joins runs a task', 'utilization'],
+    failing: ['utilization'],
   },
   {
     name: 'main a09b987, history 40% high on cores',

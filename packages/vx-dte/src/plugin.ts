@@ -408,6 +408,9 @@ export function dte(options: DteOptions) {
       })
       // Tasks core handed over: each missed the cache (`missedWork`).
       const executed = new Set<string>()
+      // The run's deadline (`Plan.boundMs`), and the work its plans knew.
+      let deadline: number | undefined
+      const known = new Set<string>()
       // A plan that needs a worker later plans again then.
       let again: ReturnType<typeof setTimeout> | undefined
       // The fewest workers that end the run's known work within a margin of
@@ -430,7 +433,11 @@ export function dte(options: DteOptions) {
           final,
           warmUpMs: warmUp,
           replaceable: adapter !== undefined,
+          limitMs: deadline === undefined ? undefined : deadline - performance.now(),
+          known,
         })
+        deadline = performance.now() + p.boundMs
+        for (const t of p.tasks) known.add(t.id)
         const { tasks } = p
         // At the end the relay closing ends them all.
         if (p.release.length > 0 && remaining.size > 0) {

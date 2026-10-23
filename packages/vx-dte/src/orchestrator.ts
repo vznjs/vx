@@ -795,6 +795,7 @@ export class Orchestrator {
         at: 0,
         idle: a.busy.size === 0,
         running: jobs.map((j) => ({
+          id: j.req.taskId,
           cores: j.held?.cores ?? 0,
           memory: j.held?.memory ?? 0,
           endsIn: Math.max(0, (ms(j.req.taskId) ?? 0) - (now - j.startedAt!)),

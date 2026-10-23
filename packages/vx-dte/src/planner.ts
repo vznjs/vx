@@ -45,6 +45,8 @@ export interface PlanWorker {
   readonly memory: number
   readonly at: number
   readonly running: readonly {
+    /** The task: one the plan's tasks wait on waits until it ends. */
+    readonly id?: string
     readonly cores: number
     readonly memory: number
     readonly endsIn: number
@@ -62,6 +64,11 @@ export interface Plan {
   readonly release: readonly string[]
   /** When the rest ends, from now. */
   readonly endsInMs: number
+  /**
+   * The latest it may end, from now: the run's deadline, pass it back as
+   * `limitMs` while no new work is known, so the margin is spent once.
+   */
+  readonly boundMs: number
   /** When to plan again for a worker the plan needs later, from now; undefined for none. */
   readonly againInMs: number | undefined
 }
@@ -179,10 +186,13 @@ function play(
   const byId = new Map(tasks.map((t) => [t.id, t]))
   const dependants = new Map<string, string[]>()
   const waits = new Map<string, number>()
+  // A dependency running now ends when it does; one ended or a hit, now.
+  const runningIds = new Set<string>()
+  for (const w of workers) for (const r of w.running) if (r.id !== undefined) runningIds.add(r.id)
   for (const t of tasks) {
     let n = 0
     for (const d of t.deps)
-      if (byId.has(d)) {
+      if (byId.has(d) || runningIds.has(d)) {
         n++
         dependants.set(d, [...(dependants.get(d) ?? []), t.id])
       }
@@ -214,7 +224,7 @@ function play(
       s.used.cores += r.cores
       s.used.memory += r.memory
       s.running++
-      ends.push([Math.max(0, r.endsIn), s, r.cores, r.memory, undefined])
+      ends.push([Math.max(0, r.endsIn), s, r.cores, r.memory, r.id])
     }
   })
   const ready = tasks.filter((t) => waits.get(t.id) === 0)
@@ -260,7 +270,7 @@ function play(
       s.used.memory -= memory
       s.running--
       if (id === undefined) continue
-      left--
+      if (byId.has(id)) left--
       for (const d of dependants.get(id) ?? []) {
         const n = waits.get(d)! - 1
         waits.set(d, n)
@@ -277,8 +287,8 @@ function play(
  * work within their warm-up start now, the rest when that nears
  * (`againInMs`): a graph that widens later starts its workers later (M,
  * 2026-10-23). An idle worker goes when the plan still ends in that margin
- * with one started in its place, after its warm-up: needed again sooner,
- * it stays, so none is let go and started again.
+ * with one started in its place a warm-up later, joining after its own:
+ * needed again sooner, it stays, so none is let go and started again.
  */
 export function plan(
   tasks: readonly PlanTask[],
@@ -288,6 +298,8 @@ export function plan(
   // Whether the run can start one in a let-go one's place: not with
   // workers that join on their own.
   replaceable = true,
+  // The latest an earlier plan of the same work allowed, from now.
+  limitMs = Infinity,
 ): Plan {
   const fresh = (s: { cpu: number; memory: number }, id: string, at: number): PlanWorker => ({
     id,
@@ -305,7 +317,13 @@ export function plan(
     if (n > 0 && ends[n] === ends[n - 1] && ends[n]! <= warmUpMs) break
   }
   const best = Math.min(...ends)
-  const bound = best === Infinity ? Infinity : best + Math.max(MARGIN_MS, best * MARGIN)
+  // Margin spent at each decision adds up: releases 4 s apart each lost
+  // 4 s of 5 (tests/sim.test.ts, a growing graph). Spent once, unless the
+  // rest can no longer end by then.
+  const bound =
+    best === Infinity
+      ? Infinity
+      : Math.max(best, Math.min(best + Math.max(MARGIN_MS, best * MARGIN), limitMs))
   const n = Math.max(
     0,
     ends.findIndex((e) => e <= bound),
@@ -327,8 +345,11 @@ export function plan(
     const idle = workers.filter((w) => w.idle).sort((a, b) => b.cores - a.cores)
     for (const w of idle) {
       const without = kept.filter((k) => k !== w)
+      // Its stand-in starts a warm-up after it goes at the soonest, or it
+      // is churn: one let go at 25 s, its stand-in started at 30 s
+      // (tests/sim.test.ts, a growing graph).
       const instead = replaceable
-        ? [fresh({ cpu: w.cores, memory: w.memory }, w.id, warmUpMs + MARGIN_MS)]
+        ? [fresh({ cpu: w.cores, memory: w.memory }, w.id, 2 * warmUpMs + MARGIN_MS)]
         : []
       if (simulate(tasks, [...without, ...instead]) <= bound) {
         kept = without
@@ -346,7 +367,7 @@ export function plan(
     if (at <= warmUpMs + MARGIN_MS) start.push(candidates[i]!)
     else againInMs = Math.min(againInMs ?? Infinity, at - warmUpMs - MARGIN_MS)
   }
-  return { start, release, endsInMs: end, againInMs }
+  return { start, release, endsInMs: end, boundMs: bound, againInMs }
 }
 
 /**
@@ -396,6 +417,10 @@ export function decide(input: {
   readonly final: boolean
   readonly warmUpMs: number
   readonly replaceable: boolean
+  /** The last plan's `boundMs`, less the time since: kept while `known` holds all its work. */
+  readonly limitMs?: number | undefined
+  /** The work earlier plans knew. */
+  readonly known?: ReadonlySet<string>
 }): Plan & { readonly tasks: readonly PlanTask[] } {
   const tasks = missedWork(
     input.remaining,
@@ -417,6 +442,8 @@ export function decide(input: {
         ),
     input.warmUpMs,
     input.replaceable,
+    // New work moves the deadline; work done or known already does not.
+    tasks.every((t) => input.known?.has(t.id) === true) ? input.limitMs : undefined,
   )
   return { ...p, tasks }
 }
