@@ -367,6 +367,41 @@ describe('vx watch loop (e2e): the watched set', () => {
     await until(async () => (await executions(f.log)) === 3, 'the cycle after the root file edit')
   }, 40_000)
 
+  it('a re-lock that lands while a cycle runs is a cycle, though the re-arm closes the watcher it was on its way to', async () => {
+    // macOS CI: the config edit's cycle ran on the old lock, the re-lock
+    // landed meanwhile, and the re-arm after the run swapped watchers before
+    // FSEvents delivered it; the new lock ran nothing until the next edit.
+    // The poller's tick holds the event back the same way, every time.
+    const lock = path.join(f.root, '.vx/projects.lock.json')
+    const declares = `export default {
+      tasks: {
+        build: {
+          exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt && echo run >> ${f.log}' },
+          inputs: { files: ['src/**'], workspaceFiles: ['tsconfig.base.json'] },
+          cache: { outputs: { files: ['dist/**'] } },
+        },
+      },
+    }\n`
+    await writeFile(path.join(f.root, 'tsconfig.base.json'), '{"a":1}\n')
+    const config = path.join(f.dir, 'vx.config.mjs')
+    const old = await readFile(config, 'utf8')
+    await writeFile(config, declares)
+    relock()
+    const newLock = await readFile(lock, 'utf8')
+    await writeFile(config, old)
+    relock()
+    f.watch = startWatch(f.root, ['--all'], { ...ARMS, VX_WATCH_POLL: '1' })
+    const w = f.watch
+    await until(() => w.out().includes('watching 1 project '), 'the per-project arm')
+    await initialOnly(w, f.log)
+
+    await writeFile(config, declares)
+    await until(() => w.out().includes('changed app vx.config.mjs'), "the config edit's cycle")
+    await writeFile(lock, newLock)
+    await until(() => arms(w) >= 2, 'the swap to the root watcher')
+    await until(async () => (await executions(f.log)) >= 2, "the new lock's cycle")
+  }, 40_000)
+
   it('a project added with a broken config waits for a lock: once fixed and locked its edits are cycles', async () => {
     // A config the lock does not hold is no project yet; `vx lock` refuses
     // it and leaves the lock as it was. The lock the fix lets it write is
