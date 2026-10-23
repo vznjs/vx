@@ -93,7 +93,9 @@ export class LocalHistoryProvider implements HistoryProvider {
 Every `p50DurationMs` (and `p50sFor`) is a forecast (owner, 2026-10-14):
 the median of the task's last five timings on this run's branch, else
 the default branch's newest imported timing, else the median of the last
-five on any branch, else none. An import (`importTimings`, by
+five on any branch, else none. A timing from a crowded worker (`cpuShare`
+< 1) is the time the task would take alone, so a plan does not carry the
+crowd of the run it learned from. An import (`importTimings`, by
 `@vzn/vx-schedule-history` from the workspace's cache, design
 `design/shared-timings-2026-10.md`) is rows tagged `remote` with the
 commit, unique per (commit, task), so a repeat import from any worktree

@@ -26,7 +26,13 @@ afterEach(() => {
 })
 
 /** One invocation on `branch` executing `task` for `ms` (a hit when `hit`). */
-function record(branch: string | null, task: string, ms: number, hit = false): void {
+function record(
+  branch: string | null,
+  task: string,
+  ms: number,
+  hit = false,
+  crowd: Pick<RunRecord, 'cpuMs' | 'cpuShare'> = {},
+): void {
   const runId = `inv-${++seq}`
   const run: RunRecord = {
     hash: `h${seq}`,
@@ -41,6 +47,7 @@ function record(branch: string | null, task: string, ms: number, hit = false): v
     wallclockStartNs: 0n,
     wallclockEndNs: 1n,
     cacheHit: hit,
+    ...crowd,
   }
   const invocation: InvocationRecord = {
     runId,
@@ -93,6 +100,25 @@ it("reads the last five executed successes on this run's branch", async () => {
   for (let i = 0; i < 10; i++) record('main', 't', 60_000)
   // The newest five on feature are 100..500; the 900 is older and the hit ran nothing.
   expect(await forecast('feature')).toBe(300)
+})
+
+it('forecasts a run on a crowded worker as the time it would take alone', async () => {
+  // Under one core (20 s CPU in 75 s at a 0.8 share), it lost only its own
+  // CPU's wait: 20 s / 0.8 - 20 s. vx-dte#test beside test shards, main fd5c72e.
+  record('main', 't', 75_000, false, { cpuMs: 20_000, cpuShare: 0.8 })
+  expect(await forecast('main')).toBe(70_000)
+})
+
+it('a crowded run over one core loses its wait spread over the cores it kept busy', async () => {
+  // 30 s CPU in 40 s at 0.6: 1.25 cores alone, so 20 s of wait over 1.25.
+  record('main', 't', 40_000, false, { cpuMs: 30_000, cpuShare: 0.6 })
+  expect(await forecast('main')).toBe(24_000)
+})
+
+it('a run with no crowding, or no share measured, keeps its wall time', async () => {
+  record('main', 't', 50_000, false, { cpuMs: 20_000, cpuShare: 1 })
+  record('main', 'u', 50_000, false, { cpuMs: 20_000 })
+  expect(await forecast('main')).toBe(50_000)
 })
 
 it('falls back to the last five on any branch when this branch never ran the task', async () => {

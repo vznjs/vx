@@ -47,7 +47,7 @@ const NEED_SQL = `MIN(r.cpu_ms * 1.0 / (r.duration_ms * COALESCE(r.cpu_share, 1)
 export interface TaskHistory {
   /** Total runs in the recent window. */
   runs: number
-  /** Wall-clock p50 (ms). Cache-hit rows excluded so this reflects work actually done. */
+  /** Wall-clock p50 (ms), a crowded run's as if alone. Cache-hit rows excluded so this reflects work actually done. */
   p50DurationMs: number | undefined
   /** Wall-clock p99 (ms). Same exclusion. */
   p99DurationMs: number | undefined
