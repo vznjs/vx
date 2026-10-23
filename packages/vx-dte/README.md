@@ -429,11 +429,17 @@ machine together:
     and takes the fewest N that end within 5% (5 s at least) of the best.
     That margin is spent once: later plans keep its deadline until new
     work is known. A task waiting on one that runs waits until it ends.
+    Before any worker can say what misses, the run counts as work each
+    cached task whose inputs changed since HEAD's parent (`git diff
+HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
+    `.vx/` change counts every cached task. A hit it guessed wrong costs a
+    worker the plan cancels; with no parent, the run waits for its misses.
     It scales each task's cores by what the workers use over what the run
     booked, as placing by load packs them.
     A worker the plan needs later starts when its warm-up nears. An idle
-    worker leaves when the plan still ends in that margin with one started
-    in its place a warm-up later: none is let go and started again. A worker still
+    worker leaves when the plan still ends in that margin without it, or,
+    when its next task is two warm-ups away, with one started in its place
+    a warm-up after it left: none is let go and started again. A worker still
     starting that the plan ends as well without is cancelled: the adapter
     stops it before its setup if it can (`github()` cancels its workflow
     run once no worker in it is needed), and one that joins anyway is told

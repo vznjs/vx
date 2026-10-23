@@ -154,6 +154,8 @@ export function dte(options: DteOptions) {
   let tails: ((id: string) => number) | undefined
   /** Settles once the needs other plugins fetch are in `peaks`: `ctx.refining()`, then the read. */
   let needsIn: (() => Promise<void>) | undefined
+  /** The cached tasks the last commit's changes make miss (`forecast.ts`): work before any worker can say. */
+  let likely: ReadonlySet<string> = new Set()
   // Each finished task's cache key, a hit's too: what a worker restores a
   // dependency by.
   const keys = new Map<string, string>()
@@ -167,6 +169,7 @@ export function dte(options: DteOptions) {
     peaks = new Map()
     tails = undefined
     needsIn = undefined
+    likely = new Set()
     keys.clear()
     await o?.close()
     await adapter?.close?.()
@@ -276,7 +279,11 @@ export function dte(options: DteOptions) {
         }
       }
       let reading = read()
-      await reading
+      const guess = changedSinceParent(ctx.workspaceRoot).then(async (changed) => {
+        const { likelyMisses } = await import('./forecast.js')
+        likely = likelyMisses(graph, changed, ctx.workspaceRoot)
+      })
+      await Promise.all([reading, guess])
       // Needs another plugin fetched (the default branch's timings) land
       // in history after this: the tasks not yet placed pack by them, and
       // the first ask for workers waits for them.
@@ -423,7 +430,7 @@ export function dte(options: DteOptions) {
         const p = decide({
           remaining,
           nodes: nodes ?? new Map(),
-          executed,
+          executed: likely.size === 0 ? executed : new Set([...likely, ...executed]),
           need,
           durationMs: (id) => peaks.get(id)?.p50DurationMs,
           workers,
@@ -508,6 +515,11 @@ export function dte(options: DteOptions) {
         return false
       }
       onChange = replan
+      // Work the last commit's changes make: planned before any task misses.
+      if (likely.size > 0) {
+        missed = true
+        replan()
+      }
       return {
         name: 'dte',
         remote: true,
@@ -745,4 +757,24 @@ function givenRun(): string | undefined {
     )
   }
   return run
+}
+
+/**
+ * The workspace-relative paths changed since HEAD's first parent, the
+ * working tree's changes included: none when git cannot say (no parent, a
+ * shallow clone), and the run waits for its misses as before.
+ */
+async function changedSinceParent(workspaceRoot: string): Promise<string[]> {
+  try {
+    const proc = Bun.spawn({
+      cmd: ['git', 'diff', '--name-only', '--relative', '--no-renames', 'HEAD^', '--'],
+      cwd: workspaceRoot,
+      stdout: 'pipe',
+      stderr: 'ignore',
+    })
+    const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+    return exit === 0 ? out.split('\n').filter((l) => l !== '') : []
+  } catch {
+    return []
+  }
 }

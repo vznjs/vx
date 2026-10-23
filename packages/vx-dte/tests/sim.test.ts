@@ -59,9 +59,22 @@ interface Case {
   readonly measured: boolean
   /** Invariants it breaks today. */
   readonly failing?: readonly string[]
+  /** What the forecast says misses before any does (`likelyMisses`). */
+  readonly likely?: ReadonlySet<string>
 }
 
+/** Its true misses: a forecast that guessed right. */
+const misses = (g: SimTask[]) =>
+  new Set(g.filter((t) => t.ran !== undefined && t.cache).map((t) => t.id))
+
 const cases: Case[] = [
+  {
+    name: 'main a09b987, its misses forecast',
+    graph: load(a09),
+    measured: true,
+    likely: misses(load(a09)),
+    failing: ['utilization'],
+  },
   {
     name: 'main a09b987 (65 misses)',
     graph: load(a09),
@@ -97,7 +110,7 @@ const cases: Case[] = [
 
 for (const c of cases) {
   describe(c.name, () => {
-    const r = simulate(c.graph, { sizes: [small] })
+    const r = simulate(c.graph, { sizes: [small], ...(c.likely ? { likely: c.likely } : {}) })
     const check = (name: string, body: () => void) =>
       (c.failing?.includes(name) === true ? it.failing : it)(name, body)
 
