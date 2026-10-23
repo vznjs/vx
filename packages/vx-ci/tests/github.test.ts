@@ -203,6 +203,13 @@ describe('renderJobSummary', () => {
     )
     expect(one).toContain('| small#1 | left |  | 13 ok, 1 failed |')
     expect(one).not.toContain('this machine')
+    // The workers line named a task that ran on the run's own machine raw.
+    const here = renderJobSummary(
+      summary([task({ taskId: 'a#*x*' }), task({ taskId: 'b#y', where: 'w' })], {
+        machines: [{ ...m, name: 'w', done: 1, onlineMs: 1, busyMs: 1, cpuAvg: 0, utilization: 0 }],
+      }),
+    )
+    expect(here).toContain('1 on this machine: a#\\*x\\*.')
   })
 
   it('failures head the table and get a callout section', () => {
