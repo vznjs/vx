@@ -148,6 +148,18 @@ describe('ctx.cache', () => {
     expect(text([...remote.store.values()][0]!)).toBe('first')
   })
 
+  it('reads a remote the policy reads no artifact from, one it may write', async () => {
+    const remote = wire()
+    remote.store.set(xxh3hex('vx-plugin\0org/a\0x'), bytes('timings'))
+    const c = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: { ...FULL, remoteRead: false },
+      remotes: [remoteOf(remote, false, true)],
+      scope: undefined,
+    })
+    expect(text(await c.get('x'))).toBe('timings')
+  })
+
   it('a read-only policy keeps a put out of the remote', async () => {
     const remote = wire()
     const c = pluginCache('org/a', {

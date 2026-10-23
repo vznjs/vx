@@ -595,6 +595,11 @@ a CI job that believes it is filling a shared cache should be told.
 Whatever the axes, a lookup asks the local cache first, then each
 remote in the order the plugins declare them.
 
+The axes govern task artifacts. A plugin's own entries (`ctx.cache`, such
+as the default branch's timings a scheduler plans by) are read from
+every remote the run may read or write, so a `remote:w` run is still
+planned on the shared timings.
+
 So `--no-cache` always wins over `--force`. The common cases:
 
 - `--no-cache` → nothing reads, nothing writes, and declared output
