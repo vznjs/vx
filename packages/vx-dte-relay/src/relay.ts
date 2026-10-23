@@ -607,7 +607,10 @@ export function createRelay(opts: RelayOptions): Relay {
         } catch {
           throw new HttpError(400, 'frame is not JSON')
         }
-        n = body?.n ?? null
+        // `null` or an array read as a frame threw a TypeError out of the relay.
+        if (typeof body !== 'object' || body === null || Array.isArray(body))
+          throw new HttpError(400, 'frame is not a JSON object')
+        n = body.n ?? null
         const run = live(key)
         const p = participant(run, id, 'socket')
         // It spoke down this socket, so this socket reaches it: one its
@@ -622,6 +625,8 @@ export function createRelay(opts: RelayOptions): Relay {
           // Several sends in one frame: one message the host bills, each answered.
           const results = body.sends.map((one: { to?: unknown; body?: unknown }) => {
             try {
+              if (typeof one !== 'object' || one === null)
+                throw new HttpError(400, 'a send is an object')
               send(run, p, one, JSON.stringify(one).length)
               return null
             } catch (err) {

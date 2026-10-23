@@ -354,6 +354,18 @@ describe('the relay carries one run between its orchestrator and workers', () =>
       error: 'body over 1 MiB',
     })
     expect((await c.call(R, 'socket', { id: 'x' })).status).toBe(405)
+    // A signature that is not base64url threw out of the relay: its host answered 500.
+    const forged = await c.relay.fetch(
+      new Request(`http://relay/v1/runs/${R}/join`, {
+        method: 'POST',
+        headers: { 'vx-proof': `${Date.now()}.abcdefghijklmnopq.a` },
+        body: JSON.stringify({ role: 'orchestrator', key: (await createProver()).key }),
+      }),
+    )
+    expect([forged.status, await forged.json()]).toEqual([
+      403,
+      { error: 'not signed by the run’s orchestrator key' },
+    ])
     // Only `join` and `socket` are HTTP: the rest goes down the socket.
     for (const verb of ['send', 'poll', 'leave', 'remove']) {
       expect((await c.call(R, verb, { id: 'x' })).json).toEqual({ error: 'no such route' })
@@ -746,6 +758,16 @@ describe('a host that keeps runs and holds websockets', () => {
       status: 400,
       error: 'frame is sends, remove or leave',
     })
+    // JSON that is no object, or a send that is none: a 400, never a throw out of the relay.
+    expect(JSON.parse(c.relay.frame(K, a, 'null'))).toEqual({
+      n: null,
+      status: 400,
+      error: 'frame is not a JSON object',
+    })
+    expect((await c.frame(R, a, { sends: [null, 7] })).results).toEqual([
+      { status: 400, error: 'a send is an object' },
+      { status: 400, error: 'a send is an object' },
+    ])
     // Refused for its size, still answered by its number, or its sender waits on it forever.
     const huge = JSON.stringify({
       n: 99,

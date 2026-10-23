@@ -167,14 +167,17 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
 
   return async (token) => {
     let iss: unknown
+    let alg: unknown
     try {
       iss = decodeJwt(token).iss
+      // decodeJwt reads no header: one that does not decode threw out of the relay (a 500).
+      alg = decodeProtectedHeader(token).alg
       // A token that cannot be signed costs no fetch of its issuer's keys.
       if (!SIGNATURE.test(token.slice(token.lastIndexOf('.') + 1))) throw new Error()
     } catch {
       throw new TokenError('not a JWT', 401)
     }
-    if (decodeProtectedHeader(token).alg !== 'RS256') throw new TokenError('alg is not RS256', 401)
+    if (alg !== 'RS256') throw new TokenError('alg is not RS256', 401)
     const ofIssuer = opts.allow.filter((a) => a.issuer === iss)
     if (typeof iss !== 'string' || ofIssuer.length === 0) {
       throw new TokenError('untrusted issuer', 401)

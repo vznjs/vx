@@ -216,6 +216,11 @@ describe('a CI OIDC token', () => {
     const [h, p] = (await sign(good)).split('.')
     expect(await refusal(verify(`${h}.${p}.x`))).toEqual([401, 'not a JWT'])
     expect(await refusal(verify(`${h}.${p}.`))).toEqual([401, 'not a JWT'])
+    // A header that does not decode: decodeJwt reads only the payload, and
+    // the header's throw left the relay as a 500.
+    const sig = (await sign(good)).split('.')[2]
+    expect(await refusal(verify(`!!.${p}.${sig}`))).toEqual([401, 'not a JWT'])
+    expect(await refusal(verify(`${b64('x')}.${p}.${sig}`))).toEqual([401, 'not a JWT'])
     expect(await refusal(verify(await sign(good, { alg: 'HS256' })))).toEqual([
       401,
       'alg is not RS256',
