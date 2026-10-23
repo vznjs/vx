@@ -24,6 +24,7 @@ import {
 } from '@vzn/vx'
 import {
   HELD_EVERY,
+  SAVE_DEADLINE_MS,
   type Load,
   type WorkerInfo,
   type RunOrder,
@@ -33,14 +34,6 @@ import {
 import { names, outputFiles } from './outputs.js'
 import { sealWorker, type Proof } from './seal.js'
 import { join, RelayError } from './wire.js'
-
-/**
- * A save past this is given up: the task faults and runs elsewhere. Main
- * 32f73ed sat 13 min twice: a worker's save never settled, its `held`
- * kept the task's lease, and no `end` came (2026-10-23). Above a remote's
- * own upload deadlines (`turboCache()`: 60 s a request, one resend).
- */
-const SAVE_DEADLINE_MS = 5 * 60_000
 
 /** `save`, or a throw once `ms` passes. */
 async function saved(save: Promise<void>, ms: number): Promise<void> {
@@ -304,6 +297,9 @@ export async function runWorker(opts: {
       // network's time, and its cores are the next task's (main,
       // 2026-10-23: workers booked 3.7 cores and used 2.4).
       free()
+      // It runs no more: `held` stops renewing its lease, which the
+      // orchestrator now holds for the save alone.
+      running.delete(m.task)
       const took = ui.dim(`${Math.round(res.durationMs)}ms`)
       ui.print(
         'out',
