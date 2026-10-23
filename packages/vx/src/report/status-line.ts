@@ -5,7 +5,7 @@
 // ordinary write erases the status display first, writes its content,
 // then redraws, so the display can never interleave with task output.
 
-import { dumbTerminal, paint, ui, type ColorSupport } from '../util/index.js'
+import { dumbTerminal, paint, type ColorSupport } from '../util/index.js'
 import {
   formatListHeader,
   formatTaskRow,

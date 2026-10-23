@@ -8,11 +8,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { formatPlanText } from '../src/cli/plan-format.js'
-import {
-  flakyNote,
-  formatTaskExecutedLine,
-  formatTaskHitLine,
-} from '../src/report/framed-output.js'
+import { flakyNote, formatTaskExecutedLine } from '../src/report/framed-output.js'
 import { formatFailureLine } from '../src/report/status-line.js'
 import { localExecutor } from '../src/exec/local-executor.js'
 import { REMOTE_CACHE_METHODS } from '../src/orchestrator/plugin-host.js'
