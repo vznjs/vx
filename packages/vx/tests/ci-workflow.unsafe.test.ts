@@ -101,12 +101,20 @@ describe('ci.yml', () => {
   })
 
   // An agent the run asks for later came online 82-90 s in (2026-10-23).
-  it("starts all of small's max before checkout, so none comes late", () => {
-    const start = doc.jobs['linux']!.steps!.find((s) => s.run?.includes('vx-dte-started'))!
+  it("starts all of each run's agent size before checkout, so none comes late", () => {
     const workspace = readFileSync(path.join(dir, '..', '..', '.vx', 'workspace.ts'), 'utf8')
-    expect(/seq -f 'small#%g' 1 (\d+)/.exec(start.run!)?.[1]).toBe(
-      /small: \{ max: (\d+)/.exec(workspace)?.[1],
-    )
+    for (const [id, size] of [
+      ['linux', 'small'],
+      ['macos', 'mac'],
+    ] as const) {
+      const steps = doc.jobs[id]!.steps!
+      const start = steps.findIndex((s) => s.run?.includes('vx-dte-started'))
+      expect(start).toBeLessThan(steps.findIndex((s) => s.uses?.startsWith('actions/checkout')))
+      expect([
+        id,
+        new RegExp(`seq -f '${size}#%g' 1 (\\d+)`).exec(steps[start]!.run!)?.[1],
+      ]).toEqual([id, new RegExp(`${size}: \\{ max: (\\d+)`).exec(workspace)?.[1]])
+    }
   })
 
   // Shallow, a run found no merge-base and so no measured needs, and every
@@ -134,7 +142,7 @@ describe('ci.yml', () => {
   it('runs the macOS sandbox checks as tasks of the run', () => {
     const steps = doc.jobs['macos']!.steps!
     expect(steps.filter((s) => /sandbox-canary\.ts|--cache-policy/.test(s.run ?? ''))).toEqual([])
-    const run = steps.find((s) => s.env?.['VX_DTE_RELAY'] !== undefined)!.run!
+    const run = steps.find((s) => s.run?.includes('bin.ts run '))!.run!
     expect(run).toContain(' check.sandbox-canary ')
     expect(run).toContain(' check.build-cold ')
   })
