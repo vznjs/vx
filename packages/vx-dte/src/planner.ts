@@ -379,13 +379,22 @@ export function plan(
   const release: string[] = []
   if (best < Infinity) {
     // One starting that the plan ends as well without is cancelled before
-    // it joins, last to join first; none is started in its place.
+    // it joins, last to join first; none is started in its place: a new
+    // one of its shape is dropped instead. Main c27c238 cancelled four
+    // 17 s into their warm-up and asked seven new ones at once.
     const starting = workers.filter((w) => w.starting === true).sort((a, b) => b.at - a.at)
     for (const w of starting) {
-      const without = kept.filter((k) => k !== w)
+      const twin = kept.find(
+        (k) =>
+          k.id.startsWith('\0new') &&
+          k.cores === w.cores &&
+          k.memory === w.memory &&
+          k.platform === w.platform,
+      )
+      const without = kept.filter((k) => k !== (twin ?? w))
       if (simulate(tasks, without, how) <= bound) {
         kept = without
-        release.push(w.id)
+        if (twin === undefined) release.push(w.id)
       }
     }
     // Biggest first: a big idle one costs the most to keep.
@@ -453,15 +462,19 @@ export function candidates(
     const z = up.find((s) => s.cpu > a.cores || s.memory > a.memory)
     if (z !== undefined && (count.get(z.name) ?? 0) === 0 && z.max > 0) add(z)
   }
-  // A platform the declared order reaches late gets its workers too.
-  for (const [platform, tasks] of platforms) {
-    let n = 0
-    for (const s of sizes) {
-      if (s.platform !== platform) continue
-      while (n < tasks && (count.get(s.name) ?? 0) < s.max) {
-        add(s)
-        n++
-      }
+  // A platform the declared order reaches late gets its workers too, one
+  // a round each: listed after all of another's, a plan took twelve Linux
+  // workers to reach the Mac one (main c27c238 asked 13, cancelled 7).
+  const wants = new Map(platforms)
+  for (let added = true; added;) {
+    added = false
+    for (const [platform, tasks] of wants) {
+      if (tasks === 0) continue
+      const s = sizes.find((x) => x.platform === platform && (count.get(x.name) ?? 0) < x.max)
+      if (s === undefined) continue
+      add(s)
+      wants.set(platform, tasks - 1)
+      added = true
     }
   }
   for (const s of sizes) while (out.length < limit && (count.get(s.name) ?? 0) < s.max) add(s)

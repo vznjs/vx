@@ -1461,6 +1461,7 @@ async function runOnBus(
         stages: stageTimes(),
         uploads: prepared.localCache.uploads,
         machines: executors.flatMap(executorMachines),
+        idealMs: executors.map(executorIdeal).find((ms) => ms !== undefined),
       })
       telemetry.emitSummary(summary)
       const sinks = telemetry
@@ -1968,6 +1969,15 @@ function executorMachines(e: TaskExecutor): readonly MachineReport[] {
     return Array.isArray(m) ? m : []
   } catch {
     return []
+  }
+}
+
+function executorIdeal(e: TaskExecutor): number | undefined {
+  try {
+    const ms = e.idealMs?.()
+    return typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 ? Math.round(ms) : undefined
+  } catch {
+    return undefined
   }
 }
 

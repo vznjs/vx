@@ -190,6 +190,51 @@ it('starts a worker of each platform its work needs, though that size is declare
   expect(plan([task], workers, sizes, WARM).start.map((s) => s.name)).toEqual(['mac'])
 })
 
+// Main c27c238 asked 13 workers at 2.4 s and cancelled 7 at 2.6 s: the
+// Mac came after every Linux size, so reaching it took all twelve.
+it("reaches each platform's first worker without taking another's all", () => {
+  const linux: Size = { ...small, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' }
+  const platforms = new Map([
+    ['linux-x64', 70],
+    ['darwin-arm64', 4],
+  ])
+  const sizes = candidates([linux, mac], new Map(), [], 74, platforms)
+  expect(sizes.slice(0, 2).map((s) => s.name)).toEqual(['small', 'mac'])
+  const work: PlanTask[] = [
+    ...Array.from({ length: 8 }, (_, i) => ({ ...task(`l${i}`, 30_000), platform: 'linux-x64' })),
+    { ...task('ios', 30_000), platform: 'darwin-arm64' },
+  ]
+  expect(plan(work, [], sizes, WARM).start.map((s) => s.name)).toEqual(['small', 'mac', 'small'])
+})
+
+// Main c27c238 at 19.2 s: four Linux workers 17 s into their warm-up were
+// cancelled while seven new ones were asked, each a warm-up away.
+it('keeps a worker still starting over a new one of its shape', () => {
+  const linux: Size = { ...small, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' }
+  const starting = ['small#2', 'small#3'].map((id) =>
+    worker(id, { at: 0, idle: false, starting: true, platform: 'linux-x64' }),
+  )
+  const work: PlanTask[] = [
+    ...Array.from({ length: 8 }, (_, i) => ({ ...task(`l${i}`, 30_000), platform: 'linux-x64' })),
+    { ...task('ios', 30_000), platform: 'darwin-arm64' },
+  ]
+  const sizes = candidates(
+    [linux, mac],
+    new Map([['small', 2]]),
+    [],
+    work.length,
+    new Map([
+      ['linux-x64', 8],
+      ['darwin-arm64', 1],
+    ]),
+  )
+  const p = plan(work, starting, sizes, WARM, true, 100_000)
+  expect(p.start.map((s) => s.name)).toEqual(['mac'])
+  expect(p.release).toEqual([])
+})
+
 // Main e3c76a2: the commit's forecast kept a build the probe found held,
 // and every test after it counted as work: 121 tasks asked for, 16 ran.
 it('counts no work after a forecast miss the probe found held', () => {

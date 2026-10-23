@@ -647,6 +647,7 @@ export function dte(options: DteOptions) {
         },
         footer: () => o.footer(),
         machines: () => o.machines(),
+        idealMs: () => o.idealMs((id) => nodes?.get(id)?.deps ?? [], sizes),
         profile: () => o.profile(),
         running: (id) => o.where(id),
         demand(remaining, misses) {

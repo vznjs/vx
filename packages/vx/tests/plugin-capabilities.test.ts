@@ -512,6 +512,7 @@ describe('executor capability — end-to-end via run()', () => {
                  machines: () => [{ name: 'small#1', status: 'online', cores: 2, memoryBytes: 8e9,
                    done: 1, failed: 0, onlineMs: 10, busyMs: 1, cpuPeak: 1, cpuAvg: 0.1,
                    memoryPeakBytes: 1, memoryAvgBytes: 1, utilization: 0.05 }],
+                 idealMs: () => 1234.4,
                }
              },
              telemetry() { return { onRunSummary(s) { globalThis.__vxFleet = s } } },
@@ -528,6 +529,7 @@ describe('executor capability — end-to-end via run()', () => {
       expect(s.machines?.map((m) => [m.name, m.cores, m.utilization])).toEqual([
         ['small#1', 2, 0.05],
       ])
+      expect(s.idealMs).toBe(1234)
       const db = new Database(path.join(workspaceRoot, '.vx/cache/cache.db'), { readonly: true })
       try {
         expect(

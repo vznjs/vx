@@ -24,8 +24,9 @@ export default defineWorkspace({
 That's the whole setup. On a GitHub Actions runner (`GITHUB_STEP_SUMMARY`
 set) every `vx run` appends a summary block, on its own line after
 anything already written in the step: verdict headline, stats
-(tasks / executed / cache hits / duration), failures called out above the
-per-task table with their exit code, the signal an exit above 128
+(tasks / executed / cache hits / duration, and the ideal time an executor says
+the run could have taken, as `@vzn/vx-dte` replays it), failures called out above the
+per-task table (rows by status, failures first, then the longest first) with their exit code, the signal an exit above 128
 stands for (`exit 137 (128 + SIGKILL)`, as the run's own frame and
 `vx last` say it), a timeout as `timed out, exit 143`, a persistent task
 that never became ready as `never ready (timed out)`, a sandboxed task's

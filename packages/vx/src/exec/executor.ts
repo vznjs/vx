@@ -328,6 +328,13 @@ export interface TaskExecutor {
    */
   machines?(): readonly MachineReport[]
   /**
+   * The run's end had it placed its tasks perfectly, from the run's
+   * start: what each took, replayed on the machines it could have had, for
+   * the run summary beside the real time. Asked once at the end, only when a sink is on. A throw, or
+   * anything but a finite number, reports none.
+   */
+  idealMs?(): number | undefined
+  /**
    * Its own Chrome-trace events for `vx run --profile` (the machines it ran
    * tasks on, in time), asked once at the end, only when the flag is set.
    * `ts` is in microseconds of `performance.now()`; `pid` from 1, which
