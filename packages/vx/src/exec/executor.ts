@@ -330,6 +330,10 @@ export interface MachineReport {
   memoryAvgBytes: number
   /** Core-time its tasks used over the core-time it had, 0 to 1. */
   utilization: number
+  /** Cores the executor booked for the tasks it ran, on average over its time online. */
+  bookedAvg?: number
+  /** From when the executor asked for it to when it joined, for one it started. */
+  warmUpMs?: number
 }
 
 /**

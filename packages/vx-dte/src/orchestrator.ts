@@ -892,11 +892,13 @@ export class Orchestrator {
         memoryPeakBytes: st.memoryPeak,
         memoryAvgBytes: st.memoryAvg,
         utilization: st.utilization,
+        bookedAvg: st.bookedAvg,
       }
     }
-    return [...this.agents.values(), ...this.gone].map((a) =>
-      report(a.label, this.state(a, gone), a.usage, a.reported.cores, a.reported.memory),
-    )
+    return [...this.agents.values(), ...this.gone].map((a) => ({
+      ...report(a.label, this.state(a, gone), a.usage, a.reported.cores, a.reported.memory),
+      ...(a.warmUpMs === undefined ? {} : { warmUpMs: a.warmUpMs }),
+    }))
   }
 
   /**

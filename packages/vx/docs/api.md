@@ -1315,6 +1315,8 @@ export interface MachineReport {
   memoryPeakBytes: number
   memoryAvgBytes: number
   utilization: number
+  bookedAvg?: number
+  warmUpMs?: number
 }
 ```
 

@@ -166,6 +166,10 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
     lines.push('')
   }
 
+  if (summary.machines !== undefined && summary.machines.length > 0) {
+    lines.push(...renderMachines(summary.machines), '')
+  }
+
   const header = ['Task', 'Status', 'Duration']
   lines.push(`| ${header.join(' | ')} |`)
   lines.push(`|${header.map(() => ' --- ').join('|')}|`)
@@ -188,4 +192,47 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   )
   lines.push('')
   return lines.join('\n')
+}
+
+const pct = (x: number): string => `${Math.round(x * 100)}%`
+
+/**
+ * The machines an executor ran the run on (vx-dte's agents): what each
+ * was booked for beside what it used, so an idle or overbooked one shows
+ * on the page (owner, 2026-10-23).
+ */
+function renderMachines(machines: NonNullable<RunSummaryRecord['machines']>): string[] {
+  const lines = [
+    '### Machines',
+    '',
+    '| Machine | Status | Warm-up | Tasks | Online | Idle | Booked | CPU avg | Utilization |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+  ]
+  let coreMs = 0
+  let cpuMs = 0
+  let bookedMs = 0
+  for (const m of machines) {
+    coreMs += m.cores * m.onlineMs
+    cpuMs += m.cpuAvg * m.onlineMs
+    bookedMs += (m.bookedAvg ?? 0) * m.onlineMs
+    lines.push(
+      `| ${[
+        escapeMarkdownCell(escapeInline(m.name)),
+        escapeMarkdownCell(m.status),
+        m.warmUpMs === undefined ? '' : fmtMs(m.warmUpMs),
+        `${m.done}${m.failed > 0 ? ` (${m.failed} failed)` : ''}`,
+        fmtMs(m.onlineMs),
+        fmtMs(Math.max(0, m.onlineMs - m.busyMs)),
+        m.bookedAvg === undefined ? '' : `${m.bookedAvg.toFixed(1)} of ${m.cores}`,
+        m.cpuAvg.toFixed(1),
+        pct(m.utilization),
+      ].join(' | ')} |`,
+    )
+  }
+  if (coreMs > 0)
+    lines.push(
+      '',
+      `Booked ${pct(bookedMs / coreMs)} of the machines' core-time, used ${pct(cpuMs / coreMs)}.`,
+    )
+  return lines
 }
