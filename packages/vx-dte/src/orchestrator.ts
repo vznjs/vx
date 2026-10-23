@@ -296,6 +296,7 @@ export class Orchestrator {
       }
       a.usedCores += job.held.cores
       a.usedMemory += job.held.memory
+      a.usage.book(job.held.cores)
       const batch = batches.get(a)
       if (batch === undefined) batches.set(a, [job])
       else batch.push(job)
@@ -483,6 +484,7 @@ export class Orchestrator {
     a.has.delete(job.req.taskId)
     a.usedCores -= job.held?.cores ?? 0
     a.usedMemory -= job.held?.memory ?? 0
+    a.usage.book(-(job.held?.cores ?? 0))
     delete job.agent
     delete job.held
     delete job.leaseUntil
@@ -533,6 +535,7 @@ export class Orchestrator {
     a.started.delete(task)
     a.usedCores -= job.held?.cores ?? 0
     a.usedMemory -= job.held?.memory ?? 0
+    a.usage.book(-(job.held?.cores ?? 0))
     a.ran++
     a.usage.record(head)
     this.savedAs.set(task, key)
@@ -1044,7 +1047,7 @@ function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string):
 function describe(st: UsageStats, u: Usage): string[] {
   return [
     `online ${seconds(st.onlineMs)} · busy ${seconds(st.busyMs)} · idle ${seconds(Math.max(0, st.onlineMs - st.busyMs))}`,
-    `cpu peak ${st.cpuPeak.toFixed(1)} · avg ${st.cpuAvg.toFixed(1)} cores · cpu utilization ${percent(st.utilization)}`,
+    `cpu peak ${st.cpuPeak.toFixed(1)} · avg ${st.cpuAvg.toFixed(1)} cores · booked ${st.bookedAvg.toFixed(1)} · cpu utilization ${percent(st.utilization)}`,
     // No task said what it held: `memory peak 0 B` would be a claim.
     ...(st.memoryPeak > 0
       ? [`memory peak ${bytes(st.memoryPeak)} · avg ${bytes(st.memoryAvg)}`]

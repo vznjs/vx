@@ -383,8 +383,9 @@ not:
 
 Under each agent, and `local`, the footer then spells out what it did:
 its time online, busy and idle; its CPU peak and average in cores and
-its cpu utilization (the core-time its tasks used over the core-time it
-had); its memory peak and average, when its tasks reported any; and, for an agent, the messages and
+the cores the run booked for its tasks on it, on average (a prefetch
+counts, so it can pass its cores); its cpu utilization (the core-time its
+tasks used over the core-time it had); its memory peak and average, when its tasks reported any; and, for an agent, the messages and
 bytes the run sent it and received from it. The `asked` line says each
 time the run asked for agents: how many, when, and the cores its remaining
 work kept busy then. The `total` line is the cpu utilization of every
@@ -394,7 +395,7 @@ machine together:
             small#1  stopped  5 done · warm-up 0.2s
                      declared 4c/14G · actual 4c/14G
                      online 12.1s · busy 9.8s · idle 2.3s
-                     cpu peak 3.6 · avg 2.4 cores · cpu utilization 61%
+                     cpu peak 3.6 · avg 2.4 cores · booked 3.8 · cpu utilization 61%
                      memory peak 1.2 GB · avg 640.0 MB
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
             asked    1 at 0.0s for 4 cores

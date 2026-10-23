@@ -20,6 +20,8 @@ export interface UsageStats {
   /** Core-time its tasks used over the core-time it had. */
   readonly utilization: number
   readonly cpuMs: number
+  /** Cores the run held for its tasks, on average over its time online: what packing gave it. */
+  readonly bookedAvg: number
 }
 
 export class Usage {
@@ -35,6 +37,9 @@ export class Usage {
   /** When it left, if before the run ended. */
   to: number | undefined
   private readonly spans: Span[] = []
+  private booked = 0
+  private bookedMs = 0
+  private bookedAt = 0
 
   constructor(readonly from: number = performance.now()) {}
 
@@ -61,8 +66,16 @@ export class Usage {
     })
   }
 
+  /** The run now holds `cores` more of it for its tasks (fewer when negative). */
+  book(cores: number, at: number = performance.now()): void {
+    this.bookedMs += this.booked * (at - this.bookedAt)
+    this.bookedAt = at
+    this.booked += cores
+  }
+
   stats(cores: number, until: number): UsageStats {
-    const onlineMs = Math.max(1, (this.to ?? until) - this.from)
+    const end = this.to ?? until
+    const onlineMs = Math.max(1, end - this.from)
     // Ends before starts at one instant: back to back is not at once.
     const events = this.spans
       .flatMap((s) => [[s.start, 1, s] as const, [s.end, -1, s] as const])
@@ -98,6 +111,7 @@ export class Usage {
       memoryAvg: memoryMs / onlineMs,
       utilization: cpuMs / (cores * onlineMs),
       cpuMs,
+      bookedAvg: (this.bookedMs + this.booked * Math.max(0, end - this.bookedAt)) / onlineMs,
     }
   }
 }

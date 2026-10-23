@@ -1290,7 +1290,20 @@ it('a machine’s usage: peaks of tasks at once, averages over its time online',
     memoryAvg: 87.5,
     utilization: 0.25,
     cpuMs: 4000,
+    bookedAvg: 0,
   })
+})
+
+// Main ran 12 agents at 25% with each busy all its time online: what the
+// run held on each says whether packing or the tasks left the cores idle.
+it('a machine’s booked cores: what the run held for its tasks, averaged over its time online', () => {
+  const u = new Usage(0)
+  u.book(4, 0)
+  u.book(-4, 1000)
+  u.book(1, 1000)
+  u.book(1, 2000)
+  // Still held when the run ends at 4000: 4 + 1 + 2 * 2 core-seconds.
+  expect(u.stats(4, 4000).bookedAvg).toBe(2.25)
 })
 
 // A Ctrl-C read `0 done · 2 failed` for one failed and one stopped task.
