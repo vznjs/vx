@@ -736,13 +736,10 @@ function formatStatusTag(o: TaskOutcome, colors: ColorSupport): string {
  * The fix as the config line it is: `exec.sandbox.allow: { read: ['a'] }`,
  * or undefined when every denial was a withheld credential path.
  */
-function sandboxFixLine({
-  withheld: _,
-  inputs: __,
-  ...fix
-}: NonNullable<TaskOutcome['sandboxFix']>): string | undefined {
-  if (Object.keys(fix).length === 0) return undefined
-  const parts = Object.entries(fix).map(
+function sandboxFixLine(f: NonNullable<TaskOutcome['sandboxFix']>): string | undefined {
+  const fix = Object.entries(f).filter(([k]) => k !== 'withheld' && k !== 'inputs')
+  if (fix.length === 0) return undefined
+  const parts = fix.map(
     ([k, list]: [string, string[]]) => `${k}: [${list.map((p) => `'${p}'`).join(', ')}]`,
   )
   return `exec.sandbox.allow: { ${parts.join(', ')} }`

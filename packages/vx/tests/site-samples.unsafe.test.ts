@@ -11,7 +11,6 @@ import { formatPlanText } from '../src/cli/plan-format.js'
 import {
   flakyNote,
   formatTaskExecutedLine,
-  formatTaskHitLine,
 } from '../src/report/framed-output.js'
 import { formatFailureLine } from '../src/report/status-line.js'
 import { localExecutor } from '../src/exec/local-executor.js'
