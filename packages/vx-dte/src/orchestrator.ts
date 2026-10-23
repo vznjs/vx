@@ -717,6 +717,7 @@ export class Orchestrator {
     a.ran++
     a.done.push(task)
     a.usage.record(head)
+    const share = shareOf(head.cpuShare)
     if (
       job.need.cores !== Infinity &&
       job.need.ask === undefined &&
@@ -724,7 +725,9 @@ export class Orchestrator {
       head.exitCode === 0
     ) {
       const ms = Math.max(1, head.durationMs)
-      this.usedMs += head.cpuMs
+      // What it would have used with a core free: on a crowded worker its
+      // share only, and booking the next tasks by that packed them tighter.
+      this.usedMs += Math.min(head.cpuMs / share, a.cores * ms)
       this.needMs += Math.min(job.need.cores, a.cores) * ms
     }
     this.savedAs.set(task, key)
@@ -762,7 +765,11 @@ export class Orchestrator {
     job.resolve({
       ...result(head, log),
       where: a.label,
-      machine: { cores: a.reported.cores, memoryBytes: a.reported.memory },
+      machine: {
+        cores: a.reported.cores,
+        memoryBytes: a.reported.memory,
+        ...(share < 1 ? { cpuShare: share } : {}),
+      },
     })
   }
 
@@ -788,6 +795,7 @@ export class Orchestrator {
         ...(head.cpuMs === undefined ? {} : { cpuMs: Math.round(head.cpuMs) }),
         ...(head.peakRssBytes === undefined ? {} : { peakRssBytes: head.peakRssBytes }),
         bookedCores: job.booked ?? 0,
+        ...(head.cpuShare === undefined ? {} : { cpuShare: head.cpuShare }),
       },
       parts: [
         { name: 'sent', from: sent, to: began },
@@ -1390,8 +1398,18 @@ export class Orchestrator {
 }
 
 function result(r: WiredResult, log: { stdout: string; stderr: string }): ExecuteResult {
+  const { cpuShare: _, ...rest } = r
   const violations = (r.violations ?? []).map((v) => ({ ...v, timestamp: new Date(v.timestamp) }))
-  return { ...r, ...log, violations, outputs: { kind: 'disk' } }
+  return { ...rest, ...log, violations, outputs: { kind: 'disk' } }
+}
+
+/**
+ * A worker's `cpuShare`, read at the boundary: in (0, 1], else 1. A twentieth
+ * at least: a share that small is a misread, and dividing by it would book
+ * a task a whole machine.
+ */
+function shareOf(share: unknown): number {
+  return typeof share === 'number' && share > 0 && share <= 1 ? Math.max(0.05, share) : 1
 }
 
 /** What a task that is not a cache hit to be is saved under: of this run and task, so no lookup ever finds it. */

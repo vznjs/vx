@@ -343,7 +343,10 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //        (taskDefinition), so a task whose command changed under the same
 //        name reads none of the old one's timings. The cache KEY is
 //        unchanged.
-export const SCHEMA_VERSION = 'v48'
+//   v49: runs.cpu_share — the share of a core each runnable thread got
+//        where the task ran, so a crowded run's CPU reads as need. The
+//        cache KEY is unchanged.
+export const SCHEMA_VERSION = 'v49'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON

@@ -690,7 +690,11 @@ export interface ExecuteResult extends RunResult {
   readonly violations: readonly SandboxViolation[]
   readonly outputs?: { kind: 'disk' } | { kind: 'deferred'; materialize: () => Promise<void> }
   readonly where?: string
-  readonly machine?: { readonly cores: number; readonly memoryBytes: number }
+  readonly machine?: {
+    readonly cores: number
+    readonly memoryBytes: number
+    readonly cpuShare?: number
+  }
 }
 ```
 
@@ -2235,6 +2239,7 @@ export interface RunRecord {
   def?: string
   placementCores?: number
   placementMemoryBytes?: number
+  cpuShare?: number
 }
 ```
 
@@ -2782,6 +2787,7 @@ export interface TaskOutcome {
   carried?: true
   whereCores?: number
   whereMemoryBytes?: number
+  cpuShare?: number
   outputs?: 'deferred'
   saved?: true
   wallclockStartNs?: bigint

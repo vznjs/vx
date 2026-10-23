@@ -16,8 +16,9 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
   (`{ name; status; cores; memoryBytes; done; failed; onlineMs; busyMs;
 cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   once at the end for the run summary when a telemetry sink is on;
-  `ExecuteResult.machine` (`{ cores; memoryBytes }`) is the size of the
-  machine `where` names, which the run history keeps
+  `ExecuteResult.machine` (`{ cores; memoryBytes; cpuShare? }`) is the size of the
+  machine `where` names, which the run history keeps, and the share of a
+  core the task's threads got there (history divides its CPU by it)
   — `footer()` returns `[label, text]` rows the run's footer shows, live
   and at the end (a throw or a bad shape shows none); `ExecuteResult.where`
   is shown on the task's row and frame after its id, as `<id>@<where>`; `running(id)`

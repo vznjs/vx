@@ -14,11 +14,12 @@ const INSERT_RUNS = `
         run_id, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns,
         cache_hit, attempts, cached,
         blocked_by, timed_out, sandbox_violations, not_ready, restored, remote_error,
-        peak_cores, avg_rss_bytes, placement, placement_cores, placement_memory, keyless_by, def
+        peak_cores, avg_rss_bytes, placement, placement_cores, placement_memory, keyless_by, def,
+        cpu_share
       )
       VALUES `
-/** One `runs` row's placeholders: the 30 columns `bindRun` fills. */
-const RUN_TUPLE = `(${Array(30).fill('?').join(', ')})`
+/** One `runs` row's placeholders: the 31 columns `bindRun` fills. */
+const RUN_TUPLE = `(${Array(31).fill('?').join(', ')})`
 
 /** An INSERT of `n` `runs` rows. */
 function insertRunsSql(n: number): string {
@@ -277,6 +278,7 @@ function bindRun(run: RunRecord, digestValue: (v: string) => string): SQLQueryBi
     run.placementMemoryBytes ?? null,
     run.keylessBy ?? null,
     run.def ?? null,
+    run.cpuShare ?? null,
   ]
 }
 

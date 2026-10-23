@@ -33,6 +33,16 @@ export const PASS_STATUSES = `(${TASK_STATUSES.filter(isPassStatus)
 /** The share of a machine a task must use to have filled it. */
 const SATURATED = 0.9
 
+/**
+ * The cores a run of `runs r` kept busy, as need: its CPU over its time,
+ * divided by the share of a core its threads got (`cpu_share`, v49). A run
+ * on a crowded worker used its fair share only: nine test shards on four
+ * cores each used 0.36 of the 1.1 they take alone, and learning 0.36 packed
+ * the next run as tight (main c27c238, 2026-10-23). Never past the machine.
+ */
+const NEED_SQL = `MIN(r.cpu_ms * 1.0 / (r.duration_ms * COALESCE(r.cpu_share, 1)),
+        COALESCE(r.placement_cores, r.cpu_ms * 1.0 / (r.duration_ms * COALESCE(r.cpu_share, 1))))`
+
 /** Per (project#task) — last RECENT runs collapsed into a summary. */
 export interface TaskHistory {
   /** Total runs in the recent window. */
@@ -192,7 +202,7 @@ export class LocalHistoryProvider implements HistoryProvider {
                  WHEN r.cache_hit = 1 THEN e.peak_rss_bytes END) AS rss,
         MAX(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
                       AND r.cpu_ms IS NOT NULL AND r.duration_ms > 0
-                 THEN r.cpu_ms * 1.0 / r.duration_ms
+                 THEN ${NEED_SQL}
                  WHEN r.cache_hit = 1 AND e.cpu_ms IS NOT NULL AND e.duration_ms > 0
                  THEN e.cpu_ms * 1.0 / e.duration_ms END) AS cpu
       FROM runs r
@@ -419,7 +429,7 @@ export class LocalHistoryProvider implements HistoryProvider {
       .query(
         `SELECT r.project, r.task${this.byDef}, MAX(r.peak_rss_bytes) AS rss,
            MAX(CASE WHEN r.cpu_ms IS NOT NULL AND r.duration_ms > 0
-                    THEN r.cpu_ms * 1.0 / r.duration_ms END) AS cpu
+                    THEN ${NEED_SQL} END) AS cpu
          FROM runs r
          WHERE r.id >= ? AND r.status = 'success' AND (r.cache_hit IS NULL OR r.cache_hit = 0)
          GROUP BY r.project, r.task${this.byDef}`,
@@ -476,7 +486,7 @@ export class LocalHistoryProvider implements HistoryProvider {
     const saturated = this.db
       .query(
         `SELECT r.project, r.task${this.byDef},
-           MAX(CASE WHEN r.cpu_ms * 1.0 / r.duration_ms >= ${SATURATED} * r.placement_cores
+           MAX(CASE WHEN ${NEED_SQL} >= ${SATURATED} * r.placement_cores
                     THEN r.placement_cores END) AS cores,
            MAX(CASE WHEN r.peak_rss_bytes >= ${SATURATED} * r.placement_memory
                     THEN r.placement_memory END) AS memory

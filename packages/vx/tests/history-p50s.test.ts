@@ -210,3 +210,39 @@ it('names the biggest machine a task filled, by its cores or its memory', async 
   expect(r.get('p#roomy')?.saturatedCores).toBeUndefined()
   expect(r.get('p#burst')?.saturatedCores).toBeUndefined()
 })
+
+// Main c27c238 (2026-10-23): nine test shards on a 4-core worker each used
+// 0.36 cores of the 1.1 they take alone; history learned 0.36, the next run
+// packed them as tight, and their 5 s tests timed out. A run's CPU is
+// divided by the share of a core its threads got there.
+it('learns a crowded run’s need, not its share, and never past its machine', async () => {
+  const base = (task: string, over: Partial<RunRecord>): RunRecord => ({
+    ...run(0, 'crowd', task),
+    status: 'success',
+    exitCode: 0,
+    cacheHit: false,
+    durationMs: 100_000,
+    placement: 'small#16',
+    placementCores: 4,
+    placementMemoryBytes: 16e9,
+    ...over,
+  })
+  cache.recordRunBundle({
+    runs: [
+      base('shard', { cpuMs: 36_000, cpuShare: 0.33 }),
+      base('free', { cpuMs: 36_000 }),
+      base('misread', { cpuMs: 36_000, cpuShare: 0.05 }),
+    ],
+    invocation: invocation('crowd', 5_000),
+  })
+  const r = await new LocalHistoryProvider(cache.dbHandle()).resourcesFor([
+    'p#shard',
+    'p#free',
+    'p#misread',
+  ])
+  expect(r.get('p#shard')?.maxCpuParallelism).toBeCloseTo(1.09, 2)
+  expect(r.get('p#free')?.maxCpuParallelism).toBeCloseTo(0.36, 2)
+  // 7.2 cores wanted on 4: its machine, which it filled.
+  expect(r.get('p#misread')?.maxCpuParallelism).toBe(4)
+  expect(r.get('p#misread')?.saturatedCores).toBe(4)
+})
