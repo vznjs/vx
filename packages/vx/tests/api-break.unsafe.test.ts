@@ -60,6 +60,10 @@ function recordBreaks(from: string, to?: string): string[] {
     )
   const inTo = to === undefined ? RECORD_DIRS.flatMap(walk).filter(isRecord) : listed(to)
   const records = [...new Set([...listed(from), ...inTo, ...EXTRA_RECORDS])].sort()
+  // A blob:none checkout (the DTE workers') fetched each record of `from`
+  // on its own, a round trip apiece: about 20 took this test past its 5 s
+  // (main 87596b3, 2026-10-23). A diff fetches the missing ones at once.
+  git('diff', '--numstat', from, ...(to === undefined ? [] : [to]), '--', ...records)
   return records.flatMap((record) => {
     const before = git('show', `${from}:./${record}`)
     if (!before.ok) return [] // the record did not exist then
