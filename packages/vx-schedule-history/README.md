@@ -58,7 +58,8 @@ configure:
 - **Per definition.** Each timing is of the task as it was: its command
   and `env.define` (`taskDefinitions`). A task whose command changed reads
   none of its old timings; editing its inputs, outputs or deps keeps them.
-- **Untrusted.** A blob over 1 MiB, not `{ version: 1, tasks }`, with
+- **Untrusted.** A blob over 1 MiB, not `{ version: 2, tasks }` (a version 1 blob's timings are read, its
+  needs, learned as a crowded worker's share of a core, are not), with
   more than 50 000 tasks, or with a time outside 0 to 24 h, is dropped,
   silently; ids not in the run's graph are dropped. It can only order a
   run, never change what runs. The first write of a commit's blob stays,

@@ -110,7 +110,7 @@ function spyCache(opts: { hang?: boolean; scoped?: boolean } = {}): Spy {
 const defOf = (id: string): string => taskDefinitions([node(id)]).get(id)!
 const defsOf = (ids: Iterable<string>): Record<string, string> =>
   Object.fromEntries([...ids].map((id) => [id, defOf(id)]))
-const blob = (tasks: Record<string, unknown>, version: unknown = 1): Uint8Array =>
+const blob = (tasks: Record<string, unknown>, version: unknown = 2): Uint8Array =>
   new TextEncoder().encode(JSON.stringify({ version, tasks, defs: defsOf(Object.keys(tasks)) }))
 /** A written blob, its `defs` aside: each test task's is `defOf`. */
 const read = (b: Uint8Array | undefined): unknown => {
@@ -209,7 +209,7 @@ describe('shared timings', () => {
       during: () => timed('main', 'p#y', 300),
     })
     expect(read(shared.store.get(key(b)))).toEqual({
-      version: 1,
+      version: 2,
       tasks: { 'p#gone': 5, 'p#x': 100, 'p#y': 300 },
     })
     // Each timing says which task it is of, a carried one's carried.
@@ -231,7 +231,7 @@ describe('shared timings', () => {
     const shared = spyCache({ scoped: true })
     timed('feature', 'p#x', 10)
     await runPlugin(shared, { ci: true, branch: 'feature', ids: ['p#x'] })
-    expect(read(shared.scoped.get(key(head)))).toEqual({ version: 1, tasks: { 'p#x': 10 } })
+    expect(read(shared.scoped.get(key(head)))).toEqual({ version: 2, tasks: { 'p#x': 10 } })
     expect(shared.store.size).toBe(0)
   })
 
@@ -272,7 +272,7 @@ describe('shared timings', () => {
     timed('main', 'p#shard', 100)
     await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#bench'] })
     await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#shard'] })
-    expect(read(shared.store.get(key(a)))).toEqual({ version: 1, tasks: { 'p#bench': 5 } })
+    expect(read(shared.store.get(key(a)))).toEqual({ version: 2, tasks: { 'p#bench': 5 } })
     git('checkout', '-q', '-b', 'feature')
     commit()
     const provider = new LocalHistoryProvider(
@@ -567,7 +567,7 @@ describe('shared timings', () => {
       key(a),
       new TextEncoder().encode(
         JSON.stringify({
-          version: 1,
+          version: 2,
           tasks: { 'p#x': 100, 'p#y': 50, 'p#z': 5 },
           defs: defsOf(['p#x', 'p#y', 'p#z']),
           needs: {
@@ -606,7 +606,7 @@ describe('shared timings', () => {
       key(a),
       new TextEncoder().encode(
         JSON.stringify({
-          version: 1,
+          version: 2,
           tasks: { 'p#x': 100, 'p#y': 50 },
           defs: { 'p#x': 'old', ...defsOf(['p#y']) },
         }),
@@ -641,7 +641,7 @@ describe('shared timings', () => {
     commit()
     const shared = spyCache()
     const put = (sha: string, body: object): void => {
-      shared.store.set(key(sha), new TextEncoder().encode(JSON.stringify({ version: 1, ...body })))
+      shared.store.set(key(sha), new TextEncoder().encode(JSON.stringify({ version: 2, ...body })))
     }
     put(a, { tasks: { 'p#x': 100 }, needs: { 'p#x': { cpu: 3 } } })
     put(b, { tasks: { 'p#x': 120 }, defs: defsOf(['p#x']) })
@@ -673,13 +673,53 @@ describe('shared timings', () => {
     shared.store.set(
       key(a),
       new TextEncoder().encode(
-        JSON.stringify({ version: 1, tasks: { 'p#x': 100 }, needs: { 'p#x': { cpu: 3 } } }),
+        JSON.stringify({ version: 2, tasks: { 'p#x': 100 }, needs: { 'p#x': { cpu: 3 } } }),
       ),
     )
     await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#x'] })
     expect((read(shared.store.get(key(b))) as { needs: unknown }).needs).toEqual({
       'p#x': { cpu: 3 },
     })
+  })
+
+  // Main c27c238: a version 1 blob's needs were each test shard's share of
+  // a crowded worker (0.36 of a core for one that takes 1.1), and the next
+  // run packed nine shards on 4 cores. Its timings stand; its needs go.
+  it("reads a version 1 blob's timings, not its needs, and main writes none of them on", async () => {
+    const a = commit()
+    const b = commit()
+    const shared = spyCache()
+    shared.store.set(
+      key(a),
+      new TextEncoder().encode(
+        JSON.stringify({
+          version: 1,
+          tasks: { 'p#x': 100 },
+          defs: defsOf(['p#x']),
+          needs: { 'p#x': { cpu: 0.36 } },
+        }),
+      ),
+    )
+    const provider = new LocalHistoryProvider(
+      cache.dbHandle(),
+      undefined,
+      'main',
+      taskDefinitions([node('p#x')]),
+    )
+    await importTimings({
+      root,
+      defaultBranch: 'main',
+      cache: shared,
+      provider,
+      ids: ['p#x'],
+      warn: (m: string) => said.push(m),
+      triedFile: triedFile(),
+      branch: true,
+    })
+    expect([...(await provider.p50sFor(['p#x']))]).toEqual([['p#x', 100]])
+    expect((await provider.resourcesFor(['p#x'])).get('p#x')?.maxCpuParallelism).toBeUndefined()
+    await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#x'] })
+    expect(read(shared.store.get(key(b)))).toEqual({ version: 2, tasks: { 'p#x': 100 } })
   })
 
   it('drops oversized, malformed, out-of-range and non-graph entries', () => {
@@ -703,7 +743,7 @@ describe('shared timings', () => {
         ['p#f', 86_400_000],
       ]),
     )
-    expect(parseTimings(blob({ 'p#a': 1 }, 2), graph)).toBeNull()
+    expect(parseTimings(blob({ 'p#a': 1 }, 3), graph)).toBeNull()
     expect(parseTimings(new TextEncoder().encode('{'), graph)).toBeNull()
     expect(parseTimings(new TextEncoder().encode('[1]'), graph)).toBeNull()
     expect(parseTimings(new TextEncoder().encode('null'), graph)).toBeNull()
