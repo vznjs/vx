@@ -5,7 +5,7 @@
 // `wrangler.jsonc` deploys it; ALLOW is a secret the deployer sets.
 
 import { claimedRun, createVerifier, parseAllow } from './oidc.js'
-import { createRelay, runKey, type Relay, type RelayStore } from './relay.js'
+import { createRelay, GONE, runKey, type Relay, type RelayStore } from './relay.js'
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
 interface DurableObjectId {}
@@ -18,7 +18,7 @@ export interface DurableObjectNamespace {
 }
 interface Socket {
   send(text: string): void
-  close(): void
+  close(code?: number, reason?: string): void
   serializeAttachment(v: Attachment): void
   deserializeAttachment(): Attachment
 }
@@ -136,7 +136,7 @@ export class RelayRun {
         const pair = new WebSocketPair()
         state.acceptWebSocket(pair[1])
         pair[1].serializeAttachment({ key, id })
-        this.relay.attach(key, id, pair[1])
+        if (!this.relay.attach(key, id, pair[1])) pair[1].close(GONE, 'gone')
         return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit)
       },
     })
@@ -144,7 +144,7 @@ export class RelayRun {
     state.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'))
     for (const ws of state.getWebSockets()) {
       const { key, id } = ws.deserializeAttachment()
-      if (!this.relay.attach(key, id, ws)) ws.close()
+      if (!this.relay.attach(key, id, ws)) ws.close(GONE, 'gone')
     }
   }
 

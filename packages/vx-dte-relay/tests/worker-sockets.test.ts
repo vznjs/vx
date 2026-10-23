@@ -144,13 +144,17 @@ it('offers sockets, pushes each message down one and takes sends from it', async
   ])
 })
 
-it('refuses a socket without a token of the run', async () => {
+// A failed upgrade tells a client nothing it can read: one the relay does
+// not know is let in and closed as gone, so it stops dialing.
+it('closes a socket of a run or id it does not know as gone, and refuses one without a token', async () => {
   const a = await join('agent', R3)
   expect(a.socket).toBe(true)
-  const res = await fetch(new URL(`/v1/runs/${R2}/socket?id=${a.id}`, base), {
-    headers: { ...auth, upgrade: 'websocket' },
-  })
-  expect([res.status, await res.json()]).toEqual([404, { error: 'unknown run' }])
+  const closed = async (run: string, id: string): Promise<number> => {
+    const path = `/v1/runs/${run}/socket?id=${id}`
+    const ws = new WebSocket(new URL(path, base).href.replace(/^http/, 'ws'), { headers: auth })
+    return new Promise((resolve) => (ws.onclose = (e) => resolve(e.code)))
+  }
+  expect([await closed(R2, a.id), await closed(R3, 'nobody')]).toEqual([4404, 4404])
   const bare = await fetch(new URL(`/v1/runs/${R3}/socket?id=${a.id}`, base), {
     headers: { upgrade: 'websocket' },
   })

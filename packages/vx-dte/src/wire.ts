@@ -16,20 +16,20 @@ export class RelayError extends Error {
   }
 }
 
-/** A dropped socket's first redial waits up to this, doubling per failure (full jitter). */
+/**
+ * A dropped socket's first redial waits up to this, doubling per failure
+ * (full jitter) to half a heartbeat: the relay loses a participant three
+ * heartbeats without one.
+ */
 const FIRST_REDIAL_MS = 250
-const MAX_REDIAL_MS = 30_000
 /** A frame of several sends stays under this, half the relay's 1 MiB body limit. */
 const FRAME_BYTES = 512 * 1024
 /** How long `leave` waits on its socket's close handshake. */
 const CLOSE_WAIT_MS = 2_000
 const UNANSWERED = 'the relay answered no frame'
-/**
- * A socket that brought no message this many heartbeats is asked about
- * over HTTP: a relay whose push to it failed queues for HTTP polls and
- * leaves it open, its pings answered, so nothing arrives again (two CI
- * runs hung 20 min, 2026-10-23).
- */
+/** The close code of a socket whose participant the relay lost or let go (PROTOCOL.md § Sockets). */
+const GONE = 4404
+/** A socket that brought no message this many heartbeats is dialed anew. */
 const QUIET_BEATS = 3
 /** How long `join` waits on the relay, before it says how long a heartbeat is. */
 const JOIN_DEADLINE_MS = 30_000
@@ -136,137 +136,177 @@ export async function join(
   deadlineMs = Math.max(3 * heartbeatMs, MIN_WAIT_MS)
   // The relay loses a participant silent this long: past it, nothing is left to reach.
   faultMs = 3 * heartbeatMs
-  const offered = joined['socket'] === true
+  if (joined['socket'] !== true) {
+    throw new RelayError(
+      501,
+      'relay join: the relay offers no socket, which vx-dte needs (PROTOCOL.md § Sockets)',
+    )
+  }
   const dial = async () =>
     connect(base, id, await headers('GET', `${base}socket?id=${id}`, ''), heartbeatMs)
-  let socket = offered ? await dial() : undefined
+  /** What the sockets brought and nobody took yet, kept across redials. */
+  const inbox: RelayMessage[] = []
+  let socket: Socket | undefined = await dial()
   let failures = 0
-  /** When a quiet socket's relay was last asked over HTTP what it queued. */
-  let askedAt = 0
+  /** Since when no socket is open: the relay loses a participant silent three heartbeats. */
+  let downSince: number | undefined
   let redial: ReturnType<typeof setTimeout> | undefined
   /** A redial in flight, which `leave` waits out: its socket closes before the process exits. */
   let dialing: Promise<void> | undefined
   let left = false
-  /** The relay closed the run or forgot this participant: no socket is dialed again. */
-  let ended = false
-  const end = (): void => {
-    ended = true
+  /** Why no socket is dialed again: the relay closed the run or forgot this participant. */
+  let ended: RelayError | undefined
+  /** Woken when a socket opens, brings messages or ends. */
+  const waiters = new Set<() => void>()
+  const nudge = (): void => {
+    for (const w of [...waiters]) w()
+  }
+  const end = (err: RelayError): void => {
+    ended ??= err
     clearTimeout(redial)
     redial = undefined
+    nudge()
   }
-  const heard = (messages: RelayMessage[]): RelayMessage[] => {
-    if (
-      messages.some((m) => m.from === 'relay' && (m.body as { type?: unknown })?.type === 'closed')
-    )
-      end()
-    return messages
+  const adopt = (s: Socket): void => {
+    socket = s
+    downSince = undefined
+    s.onMessages = (messages) => {
+      inbox.push(...messages)
+      if (
+        messages.some(
+          (m) => m.from === 'relay' && (m.body as { type?: unknown })?.type === 'closed',
+        )
+      )
+        end(new RelayError(410, 'relay: the run is closed'))
+      nudge()
+    }
+    s.onClose = (code) => {
+      // The relay closes the socket of a participant it lost or let go.
+      if (code === GONE) end(new RelayError(404, 'relay: unknown id'))
+      if (socket === s) socket = undefined
+      again()
+      nudge()
+    }
+    inbox.push(...s.inbox.splice(0))
+    nudge()
   }
-  /** A socket that failed or dropped is dialed again after a jittered backoff; HTTP carries meanwhile. */
+  /** A socket that failed or dropped is dialed again after a jittered backoff. */
   const again = (): void => {
-    if (!offered || left || ended || redial !== undefined || socket?.open === true) return
-    const ms = Math.random() * Math.min(MAX_REDIAL_MS, FIRST_REDIAL_MS * 2 ** failures)
+    if (left || ended !== undefined || redial !== undefined || socket?.open === true) return
+    downSince ??= performance.now()
+    const ms = Math.random() * Math.min(heartbeatMs / 2, FIRST_REDIAL_MS * 2 ** failures)
     redial = setTimeout(() => {
       dialing = dial()
         .catch(() => undefined)
         .then(async (s) => {
           redial = undefined
           dialing = undefined
-          if (left) await s?.close()
-          else if (s === undefined) {
-            failures++
-            again()
-          } else {
-            failures = 0
-            // What the dropped one received and nobody polled yet.
-            if (socket !== undefined) s.inbox.unshift(...socket.inbox.splice(0))
-            socket = s
-          }
+          if (left || ended !== undefined) await s?.close()
+          else took(s)
         })
     }, ms)
     redial.unref()
   }
-  again()
-  /** `down` the socket when it is open, else (or when it closes under it) `http`. */
-  const over = async (
-    down: (s: Socket) => Promise<void>,
-    http: () => Promise<unknown>,
-  ): Promise<void> => {
-    again()
-    const s = socket
+  /** A dial's socket: one the relay closed at once is a failed dial, or the end. */
+  const took = (s: Socket | undefined): void => {
     if (s?.open === true) {
+      failures = 0
+      adopt(s)
+    } else if (s?.code === GONE) end(new RelayError(404, 'relay: unknown id'))
+    else {
+      failures++
+      again()
+    }
+  }
+  const first = socket
+  socket = undefined
+  took(first)
+  /**
+   * The open socket, waiting out a redial. Three heartbeats without one
+   * and the relay has lost this participant, as it would one silent.
+   */
+  const live = async (signal?: AbortSignal): Promise<Socket> => {
+    for (;;) {
+      if (ended !== undefined) throw ended
+      const s = socket
+      if (s?.open === true) return s
+      again()
+      const waited = performance.now() - (downSince ?? performance.now())
+      if (waited >= faultMs)
+        throw new RelayError(
+          404,
+          'relay: no socket for three heartbeats, so it lost this participant',
+        )
+      if (signal?.aborted === true) throw signal.reason as Error
+      await idle(faultMs - waited, signal)
+    }
+  }
+  /** Until `nudge`, `ms` or `signal`, whichever comes first. */
+  const idle = (ms: number, signal?: AbortSignal): Promise<void> =>
+    new Promise<void>((resolve) => {
+      const done = (): void => {
+        clearTimeout(timer)
+        signal?.removeEventListener('abort', done)
+        waiters.delete(done)
+        resolve()
+      }
+      const timer = setTimeout(done, ms)
+      signal?.addEventListener('abort', done)
+      waiters.add(done)
+    })
+  /** Down the open socket; one that closes under it is redialed and asked again. */
+  const over = async (down: (s: Socket) => Promise<void>): Promise<void> => {
+    for (;;) {
+      const s = await live()
       try {
         await paced(() => down(s), 0)
         return
       } catch (err) {
+        // Closed under it: sent again on the next (a resent seal is a
+        // replay its receiver drops).
         if (err instanceof RelayError) throw err
-        // Closed under it: HTTP says whether the relay took it (a resent
-        // seal is a replay its receiver drops).
       }
     }
-    await http()
-  }
-  const polled = async (wait: number, signal?: AbortSignal): Promise<RelayMessage[]> => {
-    const r = await call('poll', undefined, `?id=${id}&wait=${wait}`, signal).catch(
-      (err: unknown) => {
-        if (err instanceof RelayError && (err.status === 404 || err.status === 410)) end()
-        throw err
-      },
-    )
-    return (r?.['messages'] ?? []) as RelayMessage[]
   }
   return {
     id,
     heartbeatMs,
     async send(to, body) {
-      await over(
-        (s) => s.send(to, body),
-        () => call('send', { id, to, body }),
-      )
+      await over((s) => s.send(to, body))
     },
     async poll(signal) {
-      again()
-      if (socket?.inbox.length) return heard(socket.inbox.splice(0))
-      const s = socket
-      if (s?.open === true) {
-        const messages = await s.poll(signal)
-        if (messages.length > 0 || signal?.aborted === true) return heard(messages)
-        if (s.open) {
-          if (performance.now() - Math.max(s.pushedAt, askedAt) < QUIET_BEATS * heartbeatMs)
-            return []
-          askedAt = performance.now()
-          const queued = await polled(0, signal)
-          // Queued for HTTP: the relay pushes down this socket no more. A
-          // new one is dialed; what this one still brings is kept.
-          if (queued.length > 0) {
-            socket = undefined
-            void s.close()
-            const late = s.inbox.splice(0)
-            again()
-            return heard([...late, ...queued])
-          }
-          return []
+      if (inbox.length === 0 && signal?.aborted !== true) {
+        const s = await live(signal)
+        // It may have closed, or brought something, since `live` returned it.
+        if (s.open && inbox.length === 0) await idle(heartbeatMs, signal)
+        // Quiet for three heartbeats: a relay whose push to it failed may
+        // have let go of it while answering its pings (two CI runs hung
+        // 20 min, 2026-10-23). A new socket gets what queued.
+        if (
+          inbox.length === 0 &&
+          s.open &&
+          socket === s &&
+          performance.now() - s.pushedAt >= QUIET_BEATS * heartbeatMs
+        ) {
+          socket = undefined
+          void s.close()
+          again()
         }
-        // Closed while it waited: HTTP says why.
       }
-      return heard(await polled(heartbeatMs, signal))
+      if (inbox.length > 0) return inbox.splice(0)
+      if (ended !== undefined) throw ended
+      return []
     },
     async remove(agent) {
-      await over(
-        (s) => s.request({ remove: agent }),
-        () => call('remove', { id, agent }),
-      )
+      await over((s) => s.request({ remove: agent }))
     },
     async leave() {
       left = true
       clearTimeout(redial)
       const s = socket
-      // The relay drops it and closes the socket, which is its answer.
-      const http = () => call('leave', { id }).catch(() => undefined)
-      if (s?.open === true)
-        await s.request({ leave: true }).catch(async (err: Error) => {
-          if (err.message === UNANSWERED) await http()
-        })
-      else await http()
+      // The relay drops it and closes the socket, which is its answer. With
+      // no socket, the relay loses this participant as one gone silent.
+      if (s?.open === true) await s.request({ leave: true }).catch(() => undefined)
       await Promise.all([s?.close(), dialing])
     },
   }
@@ -305,22 +345,26 @@ function expiry(token: string | undefined): number {
 
 interface Socket {
   readonly open: boolean
+  /** What it brought before `onMessages` was set. */
   readonly inbox: RelayMessage[]
   /** When the relay last pushed messages down it. */
   readonly pushedAt: number
+  /** The close code it closed with; 0 while open or with none. */
+  readonly code: number
+  onMessages?: (messages: RelayMessage[]) => void
+  /** Its close, by the close code the relay gave (`GONE`) or none. */
+  onClose?: (code: number) => void
   /** One frame, `{ leave: true }` or `{ remove }`; resolves on the relay's answer. */
   request(frame: Record<string, unknown>): Promise<void>
   /** A send; those asked for in one turn of the event loop go as one frame. */
   send(to: string, body: unknown): Promise<void>
-  poll(signal?: AbortSignal): Promise<RelayMessage[]>
   close(): Promise<void>
 }
 
 /**
- * The participant's websocket (PROTOCOL.md `socket`), when the relay offers
- * one: messages arrive the moment they are sent, with no poll between. A
- * failure leaves the participant on HTTP polling, which reports the truth,
- * until `join`'s redial gets a socket back.
+ * The participant's websocket (PROTOCOL.md `socket`): messages arrive the
+ * moment they are sent, with no poll between. Undefined when it fails to
+ * open; `join` dials again.
  */
 async function connect(
   base: string,
@@ -329,16 +373,25 @@ async function connect(
   heartbeatMs: number,
 ): Promise<Socket | undefined> {
   const ws = new WebSocket(`${base.replace(/^http/, 'ws')}socket?id=${id}`, { headers })
+  // An upgrade the relay holds is a dial that failed, as a request past three heartbeats.
   const opened = await new Promise<boolean>((resolve) => {
-    ws.onopen = () => resolve(true)
-    ws.onerror = () => resolve(false)
-    ws.onclose = () => resolve(false)
+    const timer = setTimeout(() => resolve(false), Math.max(3 * heartbeatMs, MIN_WAIT_MS))
+    const settle = (ok: boolean) => () => {
+      clearTimeout(timer)
+      resolve(ok)
+    }
+    ws.onopen = settle(true)
+    ws.onerror = settle(false)
+    ws.onclose = settle(false)
   })
-  if (!opened) return undefined
+  if (!opened) {
+    ws.close()
+    return undefined
+  }
   let open = true
   const inbox: RelayMessage[] = []
   let pushedAt = performance.now()
-  let wake: (() => void) | undefined
+  let code = 0
   let n = 0
   type Answer = {
     status?: number
@@ -419,20 +472,21 @@ async function connect(
     } else ws.send('ping')
   }, heartbeatMs / 2)
   ping.unref()
-  const closed = (why = 'socket closed'): void => {
+  const closed = (why = 'socket closed', by = 0): void => {
     if (!open) return
     open = false
+    code = by
     clearInterval(ping)
     for (const p of pending.values()) p.reject(new Error(why))
     pending.clear()
-    wake?.()
+    me.onClose?.(by)
   }
   let shut: () => void = () => {}
   const done = new Promise<void>((resolve) => {
     shut = resolve
   })
-  ws.onclose = () => {
-    closed()
+  ws.onclose = (e) => {
+    closed('socket closed', e.code)
     shut()
   }
   ws.onerror = () => closed()
@@ -442,20 +496,23 @@ async function connect(
     const m = JSON.parse(String(e.data)) as Answer & { messages?: RelayMessage[]; n?: number }
     if (m.messages !== undefined) {
       pushedAt = performance.now()
-      inbox.push(...m.messages)
-      wake?.()
+      if (me.onMessages === undefined) inbox.push(...m.messages)
+      else me.onMessages(m.messages)
       return
     }
     const p = pending.get(m.n!)
     pending.delete(m.n!)
     p?.settle(m)
   }
-  return {
+  const me: Socket = {
     get open() {
       return open
     },
     get pushedAt() {
       return pushedAt
+    },
+    get code() {
+      return code
     },
     inbox,
     request,
@@ -466,22 +523,6 @@ async function connect(
         sends.push({ to, body, resolve, reject })
       })
     },
-    async poll(signal) {
-      if (inbox.length === 0 && open && signal?.aborted !== true) {
-        await new Promise<void>((resolve) => {
-          const done = (): void => {
-            clearTimeout(timer)
-            signal?.removeEventListener('abort', done)
-            wake = undefined
-            resolve()
-          }
-          const timer = setTimeout(done, heartbeatMs)
-          signal?.addEventListener('abort', done)
-          wake = done
-        })
-      }
-      return inbox.splice(0)
-    },
     async close() {
       closed()
       ws.close(1000)
@@ -490,4 +531,5 @@ async function connect(
       await Promise.race([done, Bun.sleep(CLOSE_WAIT_MS)])
     },
   }
+  return me
 }

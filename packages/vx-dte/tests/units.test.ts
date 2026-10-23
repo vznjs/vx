@@ -2,7 +2,6 @@ import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { createRelay } from '@vzn/vx-dte-relay'
 import { localEnv, runAgent, swapRoots } from '../src/agent.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
@@ -21,6 +20,7 @@ import { busyCores, endsInMs } from '../src/width.js'
 import { join } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
 import type { RunOrder } from '../src/messages.js'
+import { servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
@@ -83,9 +83,8 @@ it('an agent swaps each root once, the first pair naming it winning', () => {
 })
 
 it('an agent with other tracked files than the run is refused', async () => {
-  const relay = createRelay()
-  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
-  const url = `http://127.0.0.1:${server.port}`
+  const served = servedRelay()
+  const url = served.url
   try {
     const o = new Orchestrator({
       me: await join(url, R, 'orchestrator', null, undefined),
@@ -109,8 +108,7 @@ it('an agent with other tracked files than the run is refused', async () => {
     ])
     await o.close()
   } finally {
-    relay.close()
-    await server.stop(true)
+    await served.stop()
   }
 })
 
@@ -119,9 +117,8 @@ it('an agent with other tracked files than the run is refused', async () => {
 // The relay keeps nothing of a run that ended: an agent late for it joins
 // an empty run, which closes when no orchestrator joins (120 heartbeats).
 it('an agent late for a run that ended exits 0', async () => {
-  const relay = createRelay({ heartbeatMs: 20 })
-  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
-  const url = `http://127.0.0.1:${server.port}`
+  const served = servedRelay({ heartbeatMs: 20 })
+  const url = served.url
   try {
     await (await join(url, R, 'orchestrator', null, undefined)).leave()
     const code = await runAgent({
@@ -134,8 +131,7 @@ it('an agent late for a run that ended exits 0', async () => {
     })
     expect(code).toBe(0)
   } finally {
-    relay.close()
-    await server.stop(true)
+    await served.stop()
   }
 })
 
@@ -143,9 +139,8 @@ it('an agent late for a run that ended exits 0', async () => {
 // next poll answers 404. The run gave its tasks to others; the agent's CI
 // job is no failure (mac#1 on #3895).
 it('an agent the relay lost exits 0', async () => {
-  let relay = createRelay()
-  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
-  const url = `http://127.0.0.1:${server.port}`
+  const served = servedRelay()
+  const url = served.url
   try {
     const o = await join(url, R, 'orchestrator', null, undefined)
     const code = runAgent({
@@ -157,19 +152,16 @@ it('an agent the relay lost exits 0', async () => {
       artifacts: () => fakeArtifacts().artifacts,
     })
     for (let i = 0; i < 50 && (await o.poll()).length === 0; i++);
-    relay.close()
-    relay = createRelay()
+    served.restart()
     expect(await code).toBe(0)
   } finally {
-    relay.close()
-    await server.stop(true)
+    await served.stop()
   }
 })
 
 it('gives a failed agent start one more agent, then fails the run', async () => {
-  const relay = createRelay()
-  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
-  const url = `http://127.0.0.1:${server.port}`
+  const served = servedRelay()
+  const url = served.url
   try {
     const freed: string[] = []
     const o = new Orchestrator({
@@ -198,8 +190,7 @@ it('gives a failed agent start one more agent, then fails the run', async () => 
     ])
     await o.close()
   } finally {
-    relay.close()
-    await server.stop(true)
+    await served.stop()
   }
 })
 
@@ -226,9 +217,8 @@ async function harness(
 ) {
   const store = fakeArtifacts()
   const cache: { facts: CacheFacts } = { facts: { refs: [], lent: {} } }
-  const relay = createRelay(heartbeatMs === undefined ? {} : { heartbeatMs })
-  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
-  const url = `http://127.0.0.1:${server.port}`
+  const served = servedRelay(heartbeatMs === undefined ? {} : { heartbeatMs })
+  const url = served.url
   const o = new Orchestrator({
     me: await join(url, R, 'orchestrator', null, undefined),
     root: '/ws',
@@ -307,8 +297,7 @@ async function harness(
     }) as unknown as ExecuteRequest
   const stop = async () => {
     await o.close()
-    relay.close()
-    await server.stop(true)
+    await served.stop()
   }
   return { o, agent, req, stop, store, cache }
 }
@@ -532,7 +521,11 @@ it('a task lost with two agents fails naming both; one not begun goes back free'
   try {
     const a = await h.agent(1)
     await Bun.sleep(50)
-    const t1 = h.o.execute(h.req('t1'))
+    // Its failure lands while b leaves, before the test awaits it.
+    const t1 = h.o.execute(h.req('t1')).then(
+      () => '',
+      (e: Error) => e.message,
+    )
     const t2 = h.o.execute(h.req('t2'))
     expect(await a.batches()).toEqual([['t1', 't2']])
     await a.begin('t1')
@@ -544,12 +537,7 @@ it('a task lost with two agents fails naming both; one not begun goes back free'
     await b.begin('t2')
     await Bun.sleep(50)
     await b.leave()
-    expect(
-      await t1.then(
-        () => '',
-        (e: Error) => e.message,
-      ),
-    ).toBe('t1: failed on 2 agents: agent#1 lost, agent#2 lost')
+    expect(await t1).toBe('t1: failed on 2 agents: agent#1 lost, agent#2 lost')
     const c = await h.agent(1)
     expect(await c.batches()).toEqual([['t2']])
     await c.finish('t2')
@@ -762,9 +750,8 @@ it('an order names every dependency, held by its agent or not', async () => {
 // did not carry it ran before the other had restored it (2026-10-22).
 it('an agent restores a dependency once, before any task that needs it runs', async () => {
   const root = await tmp()
-  const relay = createRelay()
-  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
-  const url = `http://127.0.0.1:${server.port}`
+  const served = servedRelay()
+  const url = served.url
   try {
     const o = sealOrchestrator(
       await join(url, R, 'orchestrator', null, undefined),
@@ -840,8 +827,7 @@ it('an agent restores a dependency once, before any task that needs it runs', as
     ])
     expect(restores).toBe(1)
   } finally {
-    relay.close()
-    await server.stop(true)
+    await served.stop()
   }
 })
 
@@ -850,9 +836,8 @@ it('an agent restores a dependency once, before any task that needs it runs', as
 // counted them restored (2026-10-22).
 it('an agent restores a dependency again after a task cleared its files', async () => {
   const root = await tmp()
-  const relay = createRelay()
-  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
-  const url = `http://127.0.0.1:${server.port}`
+  const served = servedRelay()
+  const url = served.url
   try {
     const o = sealOrchestrator(
       await join(url, R, 'orchestrator', null, undefined),
@@ -932,8 +917,7 @@ it('an agent restores a dependency again after a task cleared its files', async 
     ])
     expect(restores).toBe(2)
   } finally {
-    relay.close()
-    await server.stop(true)
+    await served.stop()
   }
 })
 
@@ -1016,9 +1000,8 @@ it('a batch past the relay’s body limit goes in parts', async () => {
 // on the relay's `410 run closed` (2026-10-22).
 it('an agent whose answer meets a closed run exits 0', async () => {
   const root = await tmp()
-  const relay = createRelay()
-  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
-  const url = `http://127.0.0.1:${server.port}`
+  const served = servedRelay()
+  const url = served.url
   try {
     const raw = await join(url, R, 'orchestrator', null, undefined)
     const o = sealOrchestrator(raw, R, secretProof('s'))
@@ -1075,8 +1058,7 @@ it('an agent whose answer meets a closed run exits 0', async () => {
     await raw.leave()
     expect(await code).toBe(0)
   } finally {
-    relay.close()
-    await server.stop(true)
+    await served.stop()
   }
 })
 

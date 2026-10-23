@@ -3,9 +3,9 @@
 // does not get through.
 
 import { afterEach, expect, it } from 'bun:test'
-import { createRelay } from '@vzn/vx-dte-relay'
 import { githubProof, SealError, sealAgent, sealOrchestrator, secretProof } from '../src/seal.js'
 import { join, type Participant, type RelayMessage } from '../src/wire.js'
+import { servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
@@ -17,31 +17,27 @@ afterEach(async () => {
   for (const s of stops.splice(0)) await s()
 })
 
-/** A relay that keeps every body it carries, and can change the next one. */
+/** A relay that keeps every send it carries, and can change the next one. */
 function relay() {
-  const r = createRelay()
   const bodies: string[] = []
   let tamper: ((body: string) => string) | undefined
-  const server = Bun.serve({
-    port: 0,
-    hostname: '127.0.0.1',
-    async fetch(req) {
-      if (req.method !== 'POST' || !req.url.endsWith('/send')) return r.fetch(req)
-      let text = await req.text()
-      bodies.push(text)
+  const served = servedRelay({}, (text) => {
+    const frame = JSON.parse(text) as { sends?: unknown[] }
+    if (frame.sends === undefined) return text
+    frame.sends = frame.sends.map((send) => {
+      let one = JSON.stringify(send)
+      bodies.push(one)
       if (tamper !== undefined) {
-        text = tamper(text)
+        one = tamper(one)
         tamper = undefined
       }
-      return r.fetch(new Request(req.url, { method: 'POST', headers: req.headers, body: text }))
-    },
+      return JSON.parse(one) as unknown
+    })
+    return JSON.stringify(frame)
   })
-  stops.push(async () => {
-    r.close()
-    await server.stop(true)
-  })
+  stops.push(() => served.stop())
   return {
-    url: `http://127.0.0.1:${server.port}`,
+    url: served.url,
     bodies,
     tamperNext(f: (body: string) => string) {
       tamper = f
@@ -119,7 +115,7 @@ it('refuses an agent with another secret, and an agent refuses an orchestrator w
     { type: 'refused', reason: 'its key is not the run’s: set the same VX_DTE_SECRET' },
   ])
   // And off the run: the relay no longer knows it.
-  await expect(a.poll()).rejects.toThrow('relay poll: 404 unknown id')
+  await expect(a.poll()).rejects.toThrow('relay: unknown id')
 
   const r = relay()
   const o2 = await join(r.url, R2, 'orchestrator', null, undefined)
