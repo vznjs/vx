@@ -56,3 +56,4 @@ stays in the command with a TODO, so nothing is dropped without a word.
 
 The full mapping table is in the
 [vx-migrate README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#readme).
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
