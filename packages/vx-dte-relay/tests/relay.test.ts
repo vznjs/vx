@@ -457,6 +457,28 @@ describe('a host that keeps runs and holds websockets', () => {
     expect((await c.call(R, 'join', { role: 'worker' })).status).toBe(410)
   })
 
+  // The run closed while an orchestrator's join awaited its key's proof:
+  // the join read the emptied run and threw (main, 3e8a96b).
+  it('answers 410 to an orchestrator whose run closed while its key was checked', async () => {
+    const answers = new Set<string>()
+    for (let ticks = 0; ticks < 32; ticks++) {
+      const c = client({ timer: false })
+      await c.join(R, 'worker')
+      const [req] = await c.request(R, 'join', { role: 'orchestrator' })
+      let answered = false
+      const res = c.relay.fetch(req).finally(() => (answered = true))
+      for (let i = 0; i < ticks; i++) await new Promise((r) => setImmediate(r))
+      const before = answered
+      later(c, 10 * 60_000 + 2)
+      const status = await res.then(
+        (r) => r.status,
+        (err: Error) => err.message,
+      )
+      if (!before) answers.add(String(status))
+    }
+    expect([...answers]).toEqual(['410'])
+  })
+
   // Restored as heard just now, a gone participant kept its object waking
   // every 15 s, forever (2026-10-22).
   it('drops a participant silent across a restart', async () => {
