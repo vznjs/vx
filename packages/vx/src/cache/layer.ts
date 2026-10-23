@@ -583,6 +583,15 @@ export interface CacheLayer {
    */
   remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   /**
+   * `remoteHasMany`, with a remote that answers no batch query asked each
+   * key, `concurrency` at a time: a complete answer or `null`. For a run
+   * that plans on the answer (an executor's demand); others pull instead.
+   */
+  remoteHasEach?(
+    hashes: readonly string[],
+    concurrency: number,
+  ): Promise<Map<string, ArtifactInfo> | null>
+  /**
    * The subset of `hashes` the local store already holds. The prefetch
    * pass probes the remote only for the rest, so a run the local cache
    * answers makes no remote call. Absent reads as "none held".

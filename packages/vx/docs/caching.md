@@ -610,7 +610,11 @@ Hard invariants of the remote prefetch:
   with no row may still be held (M, 2026-10-23: "We wait for remote
   before we plan. We need data to plan. We don't wait for remote without
   dte"; `remote-prefetch.test.ts` › "a kept hit is pulled before the
-  probe answers…"). Each run still asks `hasMany` for every key the local
+  probe answers…"). When a remote's batch gives no answer (Vercel's on
+  main f71b377: every task then counted as left to run, and 11 of 15
+  workers asked were cancelled), such a run asks that remote `has` for
+  each key instead (`remoteHasEach`, `concurrency` at a time); a failed
+  one leaves the run with no answer, as before. Each run still asks `hasMany` for every key the local
   store lacks, in the background, and its whole answer rewrites the
   rows it asked: new hits are added, gone ones dropped. A GET every
   remote answers with nothing drops the row too, and the task runs
