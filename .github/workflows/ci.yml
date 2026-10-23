@@ -12,8 +12,14 @@ on:
   # The merge queue tests each group's merge before main moves.
   merge_group:
   # Manual re-run without a push — for distinguishing runner-infra flakes
-  # from real regressions when a main run goes red.
+  # from real regressions when a main run goes red. `cold` reads no cache,
+  # so every task runs: how DTE packs a full run, measured on demand.
   workflow_dispatch:
+    inputs:
+      cold:
+        description: Read no cache; every task runs
+        type: boolean
+        default: false
 
 # Checkout is all the token does here: a PR's code runs in these jobs, and
 # a default token may hold write access (L-29).
@@ -133,6 +139,8 @@ jobs:
           # The 2 MiB tmpfs each Linux agent mounts (vx-agent.yml) for
           # `tests/disk-full.unsafe.test.ts`.
           VX_SMALL_DISK: /tmp/vx-small
+          # Empty is unset: the workspace's own policy.
+          VX_CACHE_POLICY: ${{ inputs.cold && 'local:,remote:' || '' }}
         run: |
           # The summary is written by a PLUGIN, and a plugin that declines
           # writes nothing under a green check, so assert it in this step
