@@ -545,14 +545,20 @@ it('joins again after the relay answers 5xx or the network drops', async () => {
   await o.leave()
 })
 
-it('does not join again after a 4xx', async () => {
+// A run its relay did not admit fails at once, naming the relay (owner,
+// 2026-10-23); a refusal is never waited out as a fault is.
+it('does not join again after a 4xx, and names the relay that refused it', async () => {
   const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
   servers.push(s)
   let asked = 0
   globalThis.fetch = (() => {
     asked++
-    return Promise.resolve(new Response('{"error":"no"}', { status: 403 }))
+    return Promise.resolve(
+      Response.json({ error: "repository o/r is not in this relay's ALLOW" }, { status: 403 }),
+    )
   }) as unknown as typeof fetch
-  await expect(join(s.url, R, 'agent', null, undefined)).rejects.toThrow('relay join: 403 no')
+  await expect(join(s.url, R, 'agent', null, undefined)).rejects.toThrow(
+    `cannot connect to the relay ${new URL(s.url).origin}: repository o/r is not in this relay's ALLOW`,
+  )
   expect(asked).toBe(1)
 })

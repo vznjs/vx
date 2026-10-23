@@ -147,10 +147,10 @@ describe('a CI OIDC token', () => {
     ]).toEqual([
       'ok',
       'ok',
-      'workflow org/app/.github/workflows/evil.yml is not one this relay serves',
-      'workflow org/app/.github/workflows/deploy.yml is not one this relay serves',
+      "workflow org/app/.github/workflows/evil.yml is not in this relay's ALLOW",
+      "workflow org/app/.github/workflows/deploy.yml is not in this relay's ALLOW",
       'no job_workflow_ref claim',
-      'repository org/third is not one this relay serves',
+      "repository org/third is not in this relay's ALLOW",
       'ok',
     ])
   })
@@ -231,11 +231,11 @@ describe('a CI OIDC token', () => {
     })
     expect(await refusal(verify(await sign({ ...good, project_path: 'group/app2' })))).toEqual([
       403,
-      'repository group/app2 is not one this relay serves',
+      "repository group/app2 is not in this relay's ALLOW",
     ])
     expect(await refusal(verify(await sign({ ...good, project_path: 'group' })))).toEqual([
       403,
-      'repository group is not one this relay serves',
+      "repository group is not in this relay's ALLOW",
     ])
     expect(await refusal(verify(await sign({ ...good, project_path: undefined })))).toEqual([
       403,

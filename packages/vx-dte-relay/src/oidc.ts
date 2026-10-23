@@ -197,7 +197,7 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
       if (typeof repo !== 'string') throw new TokenError(`no ${claim} claim`, 403)
       ofRepo = ofIssuer.filter((a) => a.repository === undefined || same(a.repository, repo))
       if (ofRepo.length === 0) {
-        throw new TokenError(`repository ${repo} is not one this relay serves`, 403)
+        throw new TokenError(`repository ${repo} is not in this relay's ALLOW`, 403)
       }
     }
     if (ofRepo.every((a) => a.workflow !== undefined)) {
@@ -209,7 +209,7 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
       if (
         !ofRepo.some((a) => same(workflow, workflowPath(iss, a.repository ?? repo, a.workflow!)))
       ) {
-        throw new TokenError(`workflow ${workflow} is not one this relay serves`, 403)
+        throw new TokenError(`workflow ${workflow} is not in this relay's ALLOW`, 403)
       }
     }
     const run = (opts.runClaims?.[iss] ?? runClaimsOf(iss)).map((c) => {

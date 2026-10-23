@@ -79,6 +79,26 @@ async function fetchJson(url: string, fresh: boolean): Promise<unknown> {
   return JSON.parse(body)
 }
 
+/** What is wrong with an ALLOW, read once per value. */
+let allowChecked: { allow: string | undefined; why: string | undefined } | undefined
+
+/**
+ * Why no run can join under `allow`, or `undefined`. A 403, not the 503 an
+ * object that will not start gives: a client retries a 5xx, and this
+ * refusal does not pass (owner, 2026-10-23: fail quickly).
+ */
+function allowRefusal(allow: string | undefined): string | undefined {
+  if (allowChecked !== undefined && allowChecked.allow === allow) return allowChecked.why
+  let why: string | undefined
+  try {
+    if (parseAllow(allow ?? '').length === 0) why = "this relay's ALLOW is empty: it admits no run"
+  } catch (err) {
+    why = `this relay's ALLOW: ${(err as Error).message}`
+  }
+  allowChecked = { allow, why }
+  return why
+}
+
 /** Verifiers by ALLOW and audience, shared by the runs of one isolate. */
 const verifiers = new Map<string, ReturnType<typeof createVerifier>>()
 
@@ -86,6 +106,8 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const run = RUN.exec(new URL(req.url).pathname)?.[1]
     if (run === undefined) return Response.json({ error: 'no such route' }, { status: 404 })
+    const refused = allowRefusal(env.ALLOW)
+    if (refused !== undefined) return Response.json({ error: refused }, { status: 403 })
     const token = /^Bearer (\S+)$/.exec(req.headers.get('authorization') ?? '')?.[1]
     const claimed = token === undefined ? undefined : claimedRun(token)
     const stub = env.RELAY.get(env.RELAY.idFromName(await runKey(run, claimed)))
