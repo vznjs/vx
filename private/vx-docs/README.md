@@ -305,8 +305,8 @@ for it against the built HTML; a new widget adds its rows there.
 
 ## Deploy
 
-Pushed to `main`, the [`Deploy docs`](../../.github/workflows/docs.yml)
-workflow builds the site and publishes `private/vx-docs/dist` to GitHub
+Pushed to `main`, the Linux run of [`ci.yml`](../../.github/workflows/ci.yml)
+builds the site with the rest and publishes `private/vx-docs/dist` to GitHub
 Pages. Enable it once under **Settings → Pages → Source: "GitHub Actions"**.
 
 The site is served from `https://vznjs.github.io/vx/`, so `base` is set

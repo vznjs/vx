@@ -121,7 +121,7 @@ the post in a follow-up PR before sharing it.
 
 Then wait until the release is published (`release.yml` publishes the
 draft after its last upload) and the post is live at
-`https://vznjs.github.io/vx/releases/vx-0-0-<N+1>/` (`docs.yml` deploys
+`https://vznjs.github.io/vx/releases/vx-0-0-<N+1>/` (ci.yml's Linux run deploys
 main).
 
 Then check npm has it: `curl -s https://registry.npmjs.org/@vzn%2fvx | jq -r '."dist-tags".latest'`

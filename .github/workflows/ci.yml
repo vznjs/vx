@@ -65,11 +65,14 @@ jobs:
     env:
       CI_AGENTS_OS: Linux
       VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
+    # A push to main deploys the docs site the run built (docs.yml until
+    # 2026-10-23: owner, "merge seprate workflows into vx tasks").
+    environment: ${{ github.event_name == 'push' && 'github-pages' || '' }}
     permissions:
       contents: read
       id-token: write
       actions: write
-      # GITHUB_TOKEN dispatches the agents, so vx-ci posts the run's check too.
+      pages: write
     steps:
       - name: A run id no one can guess
         run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
@@ -203,6 +206,14 @@ jobs:
           f="$RUNNER_TEMP/vx-dte-runs"
           [ -f "$f" ] || exit 0
           while read -r r; do gh api -X POST "$r/cancel" > /dev/null 2>&1 || true; done < "$f"
+
+      - if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: private/vx-docs/dist
+      - if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        name: Deploy the docs site
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
 
       # Bounded, or each run carries every artifact before it: 1.4 GB after
       # a day of DTE runs, 13 s to restore and 14 s to save (2026-10-22).
