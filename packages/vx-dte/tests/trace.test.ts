@@ -12,11 +12,10 @@ interface Ev {
   args?: Record<string, unknown>
 }
 
-const events = (t: Trace, end: number): Ev[] =>
-  (JSON.parse(t.json(end)) as { traceEvents: Ev[] }).traceEvents
+const events = (t: Trace, end: number): Ev[] => t.events(end) as unknown as Ev[]
 
 it('a task takes the first row free over its time; idle is what tasks leave of a worker’s time online', () => {
-  const t = new Trace(0)
+  const t = new Trace()
   t.joined('w', 0)
   t.slice({ track: 'w', name: 'a', cat: 'task', from: 10, to: 30 })
   t.slice({ track: 'w', name: 'b', cat: 'task', from: 20, to: 40 })
@@ -35,7 +34,7 @@ it('a task takes the first row free over its time; idle is what tasks leave of a
 })
 
 it('a worker’s warm-up splits at the wall-clock time its vx booted', () => {
-  const t = new Trace(performance.now())
+  const t = new Trace()
   const now = performance.now()
   t.joined('w', now, now - 10_000, Date.now() - 2_000)
   const ev = events(t, now)
@@ -46,7 +45,7 @@ it('a worker’s warm-up splits at the wall-clock time its vx booted', () => {
 })
 
 it('a worker’s cores counter sums what its tasks booked and used at once', () => {
-  const t = new Trace(0)
+  const t = new Trace()
   t.use({ track: 'w', from: 0, to: 10, booked: 2, used: 0 })
   t.use({ track: 'w', from: 5, to: 15, booked: 1.5, used: 0 })
   t.use({ track: 'w', from: 5, to: 10, booked: 0, used: 0.7 })

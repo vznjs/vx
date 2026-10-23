@@ -11,7 +11,7 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 
 ## Public surface
 
-- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining, missed); footer?(); machines?(); running?(id); execute(req) }`
+- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining, missed); footer?(); machines?(); profile?(); running?(id); execute(req) }`
   — `machines()` returns a `MachineReport` per machine it ran tasks on
   (`{ name; status; cores; memoryBytes; done; failed; onlineMs; busyMs;
 cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked

@@ -319,6 +319,13 @@ export interface TaskExecutor {
    */
   machines?(): readonly MachineReport[]
   /**
+   * Its own Chrome-trace events for `vx run --profile` (the machines it ran
+   * tasks on, in time), asked once at the end, only when the flag is set.
+   * `ts` is in microseconds of `performance.now()`; `pid` from 1, which
+   * the run moves past its own process. A throw adds none.
+   */
+  profile?(): readonly Record<string, unknown>[]
+  /**
    * Where a task it was handed runs (`small#2`), for the live row; asked
    * per frame. `null` while it holds the task for a machine to begin it:
    * the row says `waiting`, and its clock starts when a machine begins it.

@@ -419,7 +419,6 @@ export function dte(options: DteOptions) {
         // task's lease end failed main's macOS run with another to start
         // (2026-10-23).
         faulted: () => onChange(true),
-        traceFile: TRACE_FILE,
         stalled: (waiting) =>
           ctx.warn(`dte(): no task began or ended for a minute; waiting on\n${waiting}`),
       })
@@ -641,6 +640,7 @@ export function dte(options: DteOptions) {
         },
         footer: () => o.footer(),
         machines: () => o.machines(),
+        profile: () => o.profile(),
         running: (id) => o.where(id),
         demand(remaining, misses) {
           if (pending === undefined)
@@ -665,9 +665,6 @@ export function dte(options: DteOptions) {
 
 /** Where `vx dte plan` keeps the run's secret, workspace-relative: a CI artifact no one downloads. */
 const SECRET_FILE = '.vx/dte/secret'
-
-/** Where the orchestrator writes the run's trace (`trace.ts`), workspace-relative. */
-const TRACE_FILE = '.vx/dte/trace.json'
 
 /** A GitHub Actions job that may ask for OIDC tokens. */
 function onGitHub(): boolean {

@@ -1090,6 +1090,11 @@ from the per-task `hrtime.bigint()` spans the runner captures.
 `cat` carries the task's final status (`success`, `cache-hit`,
 `cache-hit-remote`, `failed`).
 
+An executor adds its own events after the run's process
+(`TaskExecutor.profile`): `@vzn/vx-dte` adds one process per worker,
+each task on a lane of its own, and the orchestrator's waits
+([its README](https://github.com/vznjs/vx/tree/main/packages/vx-dte#readme)).
+
 Default path: `profile.json` (cwd-relative).
 
 ## Sandbox

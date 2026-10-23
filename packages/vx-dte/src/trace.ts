@@ -1,6 +1,6 @@
-// A distributed run in time, for chrome://tracing or https://ui.perfetto.dev
-// (owner, 2026-10-23: "a Chrome profile with all workers and tasks they
-// executed in time"): the Trace Event Format, one process per machine.
+// A distributed run in time, for `vx run --profile` (owner, 2026-10-23: "a
+// Chrome profile with all workers and tasks they executed in time"): Trace
+// Event Format events, one process per machine.
 // A worker's first row is its life (warm-up, idle, leave); each task gets
 // the first row free over its time there. The orchestrator's rows hold
 // what it asked and when, the tasks it held waiting for room, and its
@@ -48,8 +48,6 @@ export class Trace {
   private readonly online = new Map<string, { from: number; to?: number }>()
   /** `performance.now()` here when `Date.now()` was `wall`: a worker's own clock to ours. */
   private readonly wall = Date.now() - performance.now()
-
-  constructor(private readonly origin: number = performance.now()) {}
 
   slice(s: Slice): void {
     if (s.to >= s.from) this.slices.push(s)
@@ -113,9 +111,9 @@ export class Trace {
     })
   }
 
-  /** The Trace Event Format JSON of the run, ended at `end`. */
-  json(end: number, meta: Record<string, unknown> = {}): string {
-    const us = (ms: number): number => Math.round((ms - this.origin) * 1000)
+  /** The run's events, ended at `end`: `ts` in microseconds of `performance.now()` (`TaskExecutor.profile`). */
+  events(end: number): Event[] {
+    const us = (ms: number): number => Math.round(ms * 1000)
     const tracks = [
       ORCHESTRATOR,
       ...new Set(
@@ -246,7 +244,7 @@ export class Trace {
         })
       }
     }
-    return `${JSON.stringify({ traceEvents: events, displayTimeUnit: 'ms', otherData: meta })}\n`
+    return events
   }
 }
 
