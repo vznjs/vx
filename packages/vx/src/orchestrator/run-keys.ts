@@ -95,7 +95,7 @@ export function runKeysToken(args: RunKeysArgs): { id: string; token: string } |
     }
     ids.push(node.id)
     if (graph !== undefined) {
-      parts.push(node.id, node.requested ? '1' : '0', files)
+      parts.push(node.id, node.requested ? '1' : '0', node.platform ?? '', files)
       continue
     }
     parts.push(
@@ -107,6 +107,7 @@ export function runKeysToken(args: RunKeysArgs): { id: string; token: string } |
       node.requested ? '1' : '0',
       hashTaskConfig(cfg, args.hashCache),
       JSON.stringify(node.keyParts ?? []),
+      node.platform ?? '',
       JSON.stringify(node.addsToOutputsOf ?? []),
       JSON.stringify(node.outputsAddedToBy ?? []),
       files,

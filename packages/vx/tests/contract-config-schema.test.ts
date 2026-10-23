@@ -119,6 +119,7 @@ const LEVEL_TYPES: Record<'workspace' | 'project', Record<string, string[]>> = {
       retries: true,
       persistent: true,
       interactive: true,
+      platforms: true,
       sandbox: true,
     }),
     'tasks.*.exec.env': keys<ExecEnv>({ passThrough: true, define: true, secret: true }),
@@ -239,7 +240,7 @@ function projectSeed(): Record<string, unknown> {
           },
         },
       },
-      i: { exec: { command: 'true', interactive: true } },
+      i: { exec: { command: 'true', interactive: true, platforms: ['linux-x64', 'darwin-arm64'] } },
       c: {
         exec: { command: 'true', retries: 1 },
         inputs: {

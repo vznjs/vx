@@ -63,7 +63,7 @@ the values it takes and each refusal's exact words are recorded in
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | (top)                               | `name`, `tags`, `tasks`                                                                                   |
 | `tasks.<name>`                      | `cache`, `dependsOn`, `description`, `exec`, `inputs`                                                     |
-| `tasks.<name>.exec`                 | `command`, `env`, `interactive`, `persistent`, `remote`, `retries`, `sandbox`, `timeout`                  |
+| `tasks.<name>.exec`                 | `command`, `env`, `interactive`, `persistent`, `platforms`, `remote`, `retries`, `sandbox`, `timeout`     |
 | `tasks.<name>.exec.env`             | `define`, `passThrough`, `secret`                                                                         |
 | `tasks.<name>.exec.persistent`      | `readyWhen`                                                                                               |
 | `tasks.<name>.exec.sandbox`         | `allow`, `deny`, `ignore`, `weakerNetworkIsolation`, `weakerWhenNested`                                   |

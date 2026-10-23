@@ -1677,6 +1677,7 @@
         "env",
         "interactive",
         "persistent",
+        "platforms",
         "remote",
         "retries",
         "sandbox",
@@ -1958,7 +1959,7 @@
           "\"10G\"",
           "\"10\""
         ],
-        "$CONFIG: tasks.t.exec must be an object (fields: command, env, interactive, persistent, remote, retries, sandbox, timeout), not an array": [
+        "$CONFIG: tasks.t.exec must be an object (fields: command, env, interactive, persistent, platforms, remote, retries, sandbox, timeout), not an array": [
           "[]",
           "[\"x\"]",
           "[\"\"]",
@@ -1975,7 +1976,7 @@
           "[\"A*\"]"
         ],
         "$CONFIG: tasks.t.exec.command must be a non-empty string": ["{}"],
-        "$CONFIG: tasks.t.exec has unknown field \"x\" (allowed: command, env, interactive, persistent, remote, retries, sandbox, timeout)": [
+        "$CONFIG: tasks.t.exec has unknown field \"x\" (allowed: command, env, interactive, persistent, platforms, remote, retries, sandbox, timeout)": [
           "{\"x\":\"y\"}"
         ]
       },
@@ -3150,6 +3151,42 @@
         "ok": ["<absent>", "true", "false"],
         "$CONFIG: tasks.i.exec.interactive must be a boolean (or omitted)": [
           "null",
+          "0",
+          "1",
+          "1.5",
+          "-1",
+          "65536",
+          "2147483648",
+          "\"\"",
+          "\"x\"",
+          "\"(\"",
+          "\"30d\"",
+          "\"10G\"",
+          "\"10\"",
+          "[]",
+          "[\"x\"]",
+          "[\"\"]",
+          "[1]",
+          "[3000]",
+          "[\"/x\"]",
+          "[\"!/x\"]",
+          "[\"../x\"]",
+          "[\"!x\"]",
+          "[\"!!x\",\"y\"]",
+          "[\".\"]",
+          "[\"**\"]",
+          "[\"A=B\"]",
+          "[\"A*\"]",
+          "{}",
+          "{\"x\":\"y\"}"
+        ]
+      },
+      "tasks.*.exec.platforms": {
+        "ok": ["<absent>", "[\"linux-x64\",\"darwin-arm64\"]"],
+        "$CONFIG: tasks.i.exec.platforms must be a non-empty array of distinct platforms, each one of linux-x64, linux-arm64, darwin-x64, darwin-arm64": [
+          "null",
+          "true",
+          "false",
           "0",
           "1",
           "1.5",

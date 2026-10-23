@@ -142,6 +142,12 @@ export interface TaskOutcome {
    */
   blockedBy?: string
   /**
+   * On a `skipped` outcome: its `exec.platforms` leave out this machine.
+   * Its dependants are skipped with `blockedBy` naming it, and neither
+   * fails the run.
+   */
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
+  /**
    * On a `failed` outcome: vx's own `timeout` killed the final attempt.
    * The exit is the shell's 143, and every label says "timed out" instead
    * of reading it as a signal (item 268).
@@ -769,7 +775,10 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             break
           }
           if (u?.status === 'skipped') {
-            blockedRestores.set(id, u.blockedBy)
+            blockedRestores.set(
+              id,
+              u.blockedBy ?? (u.otherPlatform !== undefined ? dep : undefined),
+            )
             break
           }
           if (blockedRestores.has(dep)) {
@@ -949,6 +958,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
             blocker?.node.id ??
             node.deps.map(deadServerVia).find((d) => d !== undefined) ??
             viaSkip?.blockedBy ??
+            (viaSkip?.otherPlatform !== undefined ? viaSkip.node.id : undefined) ??
             (viaRestore === undefined ? undefined : blockedRestores.get(viaRestore))
           finishOne(id, {
             node,

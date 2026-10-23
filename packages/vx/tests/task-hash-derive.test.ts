@@ -216,6 +216,7 @@ describe('computeTaskHash — what the config contributes', () => {
       interactive: true,
       remote: true,
       sandbox: {},
+      platforms: ['linux-x64'],
     }
     const taskValues: Record<string, unknown> = {
       description: 'what it does',

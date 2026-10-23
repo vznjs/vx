@@ -26,6 +26,8 @@ export interface Placements {
   remoteOnly: Set<string> // `remote: 'only'` tasks a remote executor took
   servers: Map<string, TaskNode[]> // task on a `servers` executor → the persistent tasks it starts there
   carried: Set<string> // persistent tasks every dependant carries: never started here
+  otherPlatform: Map<string, readonly string[]> // placed here, `exec.platforms` leave this machine out → its platforms
+  unroutable: Map<string, readonly string[]> // of those, ones a routing executor could not take → platforms on offer
 }
 export function placeTasks(
   nodes: Map<string, TaskNode>,
@@ -33,6 +35,11 @@ export function placeTasks(
 ): Placements
 // `ids` whose executor is not `remote` — they write in place
 export function locallyPlaced(placements: Placements, ids: Iterable<string>): Set<string>
+// the run's word on `otherPlatform`: refuse (an unroutable task, or CI), warn and skip, or nothing
+export function platformVerdict(
+  placements: Placements,
+  ci: boolean,
+): { refuse: string } | { warn: string } | undefined
 
 export async function planExecutorOf(
   prepared: PreparedRun,

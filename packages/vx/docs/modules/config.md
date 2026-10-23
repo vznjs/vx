@@ -53,6 +53,8 @@ export interface InputStability
 // The plugin contract
 export interface Plugin
 export const PLUGIN_PACKAGE: unique symbol
+export const PLATFORMS: readonly Platform[] // what `exec.platforms` may name: linux-x64, linux-arm64, darwin-x64, darwin-arm64
+export type Platform
 export const PLUGIN_HOOKS: readonly PluginHook[] // every hook name, in pipeline order
 export type PluginHook
 export const PLUGIN_FUNCTION_HOOKS: readonly PluginHook[] // the hooks that are functions (not `commands` or `fingerprint`, which are objects)

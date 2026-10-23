@@ -617,6 +617,7 @@ type · `src/config.ts`
 export interface ExecConfig {
   command: string
   remote?: boolean | 'only'
+  platforms?: readonly Platform[]
   env?: ExecEnv
   timeout?: Duration
   retries?: number
@@ -650,6 +651,7 @@ export interface ExecuteRequest {
   readonly cacheKey?: string
   readonly refresh?: boolean
   readonly remoteOnly?: boolean
+  readonly platform?: string
   readonly download?: 'eager' | 'deferred'
   readonly outputs: {
     readonly files: readonly string[]
@@ -1398,6 +1400,7 @@ export interface OutcomeView {
   notReady?: 'timeout' | 'exited' | 'spawn'
   inputMoved?: string
   blockedBy?: string
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   admissionHeldMs?: number
   queuedMs?: number
   inputFiles?: number
@@ -2577,6 +2580,7 @@ export interface TaskExecutor {
   readonly sandbox?: boolean
   readonly servers?: boolean
   readonly runtime?: boolean
+  readonly platforms?: readonly string[]
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void
@@ -2683,6 +2687,7 @@ export interface TaskNode {
   requested: boolean
   surfaced?: boolean
   keyParts?: ReadonlyArray<readonly [name: string, value: string]>
+  platform?: string
   addsToOutputsOf?: string[]
   outputsAddedToBy?: string[]
   excludedUpstream?: TaskOutcome[]
@@ -2719,12 +2724,14 @@ export interface TaskOutcome {
   keylessBy?: string
   cacheOff?: true
   blockedBy?: string
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   timedOut?: true
   failedOutput?: string
   runLog?: string
   notReady?: 'timeout' | 'exited' | 'spawn'
   inputMoved?: string
   where?: string
+  carried?: true
   whereCores?: number
   whereMemoryBytes?: number
   outputs?: 'deferred'
@@ -2815,9 +2822,11 @@ export interface TaskTelemetry {
   cpuMs?: number
   peakRssBytes?: number
   where?: string
+  carried?: true
   outputs?: 'deferred'
   attempts?: number
   blockedBy?: string
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   timedOut?: true
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'

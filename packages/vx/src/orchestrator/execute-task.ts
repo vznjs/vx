@@ -1257,6 +1257,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(inputs !== undefined ? { inputs } : {}),
       ...(cfgCacheable ? { cacheKey: hash } : {}),
       ...(remoteOnly ? { remoteOnly: true } : {}),
+      ...(node.platform !== undefined ? { platform: node.platform } : {}),
       ...(deferralRequested ? { download: 'deferred' as const } : {}),
       // `--force`/`--no-cache` reach a remote executor's private record
       // through this flag — the policy gates above only cover vx's OWN cache.

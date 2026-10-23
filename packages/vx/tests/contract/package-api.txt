@@ -546,6 +546,7 @@ export interface CacheKeyInput {
   forwardArgs?: readonly string[]
   fileHashes?: ReadonlyMap<string, string>
   pluginParts?: ReadonlyArray<readonly [name: string, value: string]>
+  platform?: string
   captureInto?: Array<{ kind: string; name: string; hash: string }>
 }
 == type CacheLayer (src/cache/layer.ts)
@@ -730,6 +731,7 @@ export interface EventBus {
 export interface ExecConfig {
   command: string
   remote?: boolean | 'only'
+  platforms?: readonly Platform[]
   env?: ExecEnv
   timeout?: Duration
   retries?: number
@@ -751,6 +753,7 @@ export interface ExecuteRequest {
   readonly cacheKey?: string
   readonly refresh?: boolean
   readonly remoteOnly?: boolean
+  readonly platform?: string
   readonly download?: 'eager' | 'deferred'
   readonly outputs: {
     readonly files: readonly string[]
@@ -1108,6 +1111,7 @@ export interface OutcomeView {
   notReady?: 'timeout' | 'exited' | 'spawn'
   inputMoved?: string
   blockedBy?: string
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   admissionHeldMs?: number
   queuedMs?: number
   inputFiles?: number
@@ -1174,6 +1178,8 @@ export interface PlanPrediction {
   unknownCount: number
   criticalPath: string[]
 }
+== type Platform (src/config.ts)
+export type Platform = (typeof PLATFORMS)[number]
 == type Plugin (src/config.ts)
 export interface Plugin {
   readonly name: string
@@ -1759,6 +1765,7 @@ export interface TaskExecutor {
   readonly sandbox?: boolean
   readonly servers?: boolean
   readonly runtime?: boolean
+  readonly platforms?: readonly string[]
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>): void
@@ -1828,6 +1835,7 @@ export interface TaskNode {
   requested: boolean
   surfaced?: boolean
   keyParts?: ReadonlyArray<readonly [name: string, value: string]>
+  platform?: string
   addsToOutputsOf?: string[]
   outputsAddedToBy?: string[]
   excludedUpstream?: TaskOutcome[]
@@ -1858,6 +1866,7 @@ export interface TaskOutcome {
   keylessBy?: string
   cacheOff?: true
   blockedBy?: string
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   timedOut?: true
   failedOutput?: string
   runLog?: string
@@ -1928,6 +1937,7 @@ export interface TaskTelemetry {
   outputs?: 'deferred'
   attempts?: number
   blockedBy?: string
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   timedOut?: true
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
