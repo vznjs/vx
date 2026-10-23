@@ -46,7 +46,7 @@ export function gitlab(options: GitlabOptions): DteAdapter {
             | undefined
           if (j?.status === undefined || !ENDED.has(j.status)) return
           watched.delete(id)
-          if (j.status === 'success' || closed) return
+          if (closed) return
           a.exited(`job ${j.status}${j.failure_reason ? ` (${j.failure_reason})` : ''}`)
         }),
       ).then(() => {

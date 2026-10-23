@@ -127,10 +127,8 @@ export interface OrchestratorOptions {
   readonly lost?: (id: string) => void
   /** A worker joined: the run plans again. */
   readonly joined?: () => void
-  /** Worker `id` did not join within `joinDeadlineMs`: given up, for its adapter to stop. */
+  /** Worker `id` did not join within twice its size's first join: given up, for its adapter to stop. */
   readonly overdue?: (id: string) => void
-  /** How long a started worker may take to join; default `JOIN_DEADLINE_MS`. */
-  readonly joinDeadlineMs?: number
   /** A worker failed a task or its lease: the run plans again, now, so a replacement starts. */
   readonly faulted?: () => void
   /** How much of the run waits on a task (`tailsMs`): the queue places the most first. */
@@ -156,8 +154,6 @@ const RELEND_MS = 4 * 60_000
  * 1 MiB at most, and sealing it grows it by a third.
  */
 const BATCH_BYTES = 512 * 1024
-/** How long a started worker may take to join: a CI job queues, checks out and installs well inside it. */
-const JOIN_DEADLINE_MS = 3 * 60_000
 /** Failed starts the run replaces before it calls its setup broken. */
 const RESTARTS = 3
 
@@ -194,6 +190,12 @@ export class Orchestrator {
   /** When each worker this run started was asked for, by `WorkerSpawn.index`. */
   private readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
   private ended = false
+  /**
+   * How long a worker of a size may take to join: twice the first of its
+   * size that did (owner, 2026-10-23: "we learn that from first we get, and
+   * double its time"). Unknown until one joins, so no wait before.
+   */
+  private readonly joinLimitMs = new Map<string, number>()
   private endedAt = 0
   /** Workers that joined and left, for the footer. */
   private readonly gone: Worker[] = []
@@ -706,9 +708,16 @@ export class Orchestrator {
       // was started as is its share (Growth, 2026-10-21: 16 wide on 4 cores).
       const cores = Math.min(Number(info.cores), spawn?.declared.cpu ?? Infinity)
       const memory = Math.min(Number(info.memory), spawn?.declared.memory ?? Infinity)
+      const warmUpMs = asked === undefined ? undefined : performance.now() - asked
+      const size = spawn?.declared.size
+      if (warmUpMs !== undefined && size !== undefined && !this.joinLimitMs.has(size)) {
+        this.joinLimitMs.set(size, 2 * warmUpMs)
+        for (const [s, { at, declared }] of this.spawnedAt)
+          if (s !== info.id && declared.size === size) this.deadline(s, at, size)
+      }
       this.workers.set(id, {
         id,
-        warmUpMs: asked === undefined ? undefined : performance.now() - asked,
+        warmUpMs,
         declared: spawn?.declared,
         ran: 0,
         usage: new Usage(),
@@ -843,19 +852,29 @@ export class Orchestrator {
 
   /** `demand` asked the adapter for worker `id` (`WorkerSpawn.id`). */
   spawned(id: string, declared: Declared): void {
-    this.spawnedAt.set(id, { at: performance.now(), declared })
-    // A worker whose start broke where no adapter sees it (its job never
-    // reported, its join timed out on the relay) counted as starting for
-    // good: the plan waited on it and main's run sat 18 min (ee3fc6e,
-    // 2026-10-23). Past the deadline it is given up and replaced.
-    const ms = this.o.joinDeadlineMs ?? JOIN_DEADLINE_MS
-    setTimeout(() => {
-      if (this.ended || this.cancelled.has(id) || this.unstarted.has(id)) return
-      if ([...this.workers.values(), ...this.gone].some((a) => a.label === id)) return
-      this.cancelled.add(id)
-      this.o.overdue?.(id)
-      this.failed(id, `did not join within ${Math.round(ms / 1000)} s`, true)
-    }, ms).unref()
+    // A worker whose start broke where no adapter sees it counted as
+    // starting for good: main's run sat 18 min (ee3fc6e, 2026-10-23). Its
+    // job ending says so (`failed`); one that never ends is given up past
+    // its size's join limit.
+    const at = performance.now()
+    this.spawnedAt.set(id, { at, declared })
+    this.deadline(id, at, declared.size)
+  }
+
+  /** Worker `id`, started at `at`, is given up once its size's join limit passes unjoined. */
+  private deadline(id: string, at: number, size: string): void {
+    const ms = this.joinLimitMs.get(size)
+    if (ms === undefined) return
+    setTimeout(
+      () => {
+        if (this.ended || this.cancelled.has(id) || this.unstarted.has(id)) return
+        if ([...this.workers.values(), ...this.gone].some((a) => a.label === id)) return
+        this.cancelled.add(id)
+        this.o.overdue?.(id)
+        this.failed(id, `did not join within ${Math.round(ms / 1000)} s`, true)
+      },
+      Math.max(0, at + ms - performance.now()),
+    ).unref()
   }
 
   /**
@@ -962,12 +981,12 @@ export class Orchestrator {
       this.pumpSoon()
       return
     }
-    if (this.unstarted.has(id)) return
+    // Gone already: its job ending says nothing new.
+    if (this.gone.some((a) => a.label === id) || this.unstarted.has(id)) return
     this.unstarted.set(id, reason)
     // A checkout, an install or a join can fail on the network; a few more
     // workers get a go. Failing that often, the setup is broken: none more.
-    const joined = [...this.workers.values(), ...this.gone].some((a) => a.label === id)
-    if (!joined && this.restarts < RESTARTS) {
+    if (this.restarts < RESTARTS) {
       this.restarts++
       this.o.lost?.(id)
     }

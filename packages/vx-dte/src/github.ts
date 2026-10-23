@@ -68,7 +68,9 @@ export function github(options: GithubOptions = {}): DteAdapter {
             const a = workers.get(j.name)
             if (a === undefined || j.status !== 'completed') continue
             workers.delete(j.name)
-            if (j.conclusion === 'success' || closed || cancelled.has(j.name)) continue
+            if (closed || cancelled.has(j.name)) continue
+            // A success too: a worker that found no live run left at once,
+            // and the run must not wait on it (owner, 2026-10-23).
             const step = j.steps?.find((x) => x.conclusion === 'failure')?.name
             a.exited(`job ${j.conclusion}${step === undefined ? '' : ` at ${step}`}`)
           }

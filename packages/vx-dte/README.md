@@ -341,12 +341,14 @@ stops, instead of waiting for the job's timeout.
   A shorter fault (a `5xx` while the host restarts the relay, a dropped
   connection) is asked through, by the orchestrator and workers alike.
 - A worker that never joins says why on its row (`failed  exited 1:
-…`). One not joined 3 minutes after it was started is given up
-  (`did not join within 180 s`) and its job stopped. The first three
-  such failures in a run each start another worker in its place, as a
-  checkout, install or join can fail on the network; a fourth starts
-  none. When none is online or starting and this machine has no
-  share, the remaining tasks fail with `no worker could start`.
+…`); its job ending, a success too, is what says so. Once the first
+  worker of a size joins, each other of that size not joined within twice
+  that first join is given up (`did not join within 60 s`) and its job
+  stopped; before one has, none is. The first three such failures in a
+  run each start another worker in its place, as a checkout, install or
+  join can fail on the network; a fourth starts none. When none is online
+  or starting and this machine has no share, the remaining tasks fail
+  with `no worker could start`.
 - A socket the relay stopped pushing to, though its pings are answered,
   is found within three heartbeats (15 s on the relay's default): quiet
   that long, the client's beat is a frame the relay must answer, which
