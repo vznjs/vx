@@ -356,6 +356,23 @@ it('fills an agent’s cores and a prefetch in one batch', async () => {
   }
 })
 
+// Main, 2026-10-23: 12 agents of 4 cores each ran about one task, at 25%
+// CPU all their time online; packed, the ones the rest does not need leave.
+it('packs tasks onto the agent with fewest cores free, and the idle one leaves', async () => {
+  const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
+  try {
+    const a = await h.agent(4)
+    const b = await h.agent(4)
+    await Bun.sleep(50)
+    for (const id of ['t1', 't2', 't3']) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3']])
+    h.o.retire(3, () => false)
+    expect(await b.bodies()).toEqual([{ type: 'exit' }])
+  } finally {
+    await h.stop()
+  }
+})
+
 // Main, 2026-10-23: vx-docs#build (41 s, then its test) got ready 3 s in,
 // behind 46 shards ready at once, and began 47 s in: the run's end.
 it('places the queued task the most of the run waits on first, not the first asked', async () => {

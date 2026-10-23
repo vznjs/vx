@@ -330,8 +330,10 @@ export class Orchestrator {
   /**
    * The agent for `job`: one it fits on, else one with prefetch room left;
    * among those, the one holding most of its dependencies' outputs, then
-   * the one with most cores free. A task bigger than every agent goes to an
-   * idle one, alone.
+   * the one with fewest cores free: spread one a piece, 12 agents of 4
+   * cores each ran about 1 at 25% (main, 2026-10-23); packed, the agents
+   * the rest no longer needs fall idle and leave. A task bigger than
+   * every agent goes to an idle one, alone.
    */
   private place(job: Job): Agent | undefined {
     const up = upstream(this.o.nodes(), job.req.taskId)
@@ -363,7 +365,7 @@ export class Orchestrator {
       if (!fits && a.usedCores + job.need.cores > a.cores + prefetch(a.cores)) continue
       let held = 0
       for (const id of up) if (a.has.has(id)) held++
-      const score = [fits ? 1 : 0, held, a.cores - a.usedCores]
+      const score = [fits ? 1 : 0, held, a.usedCores - a.cores]
       if (best === undefined || greater(score, bestScore)) {
         best = a
         bestScore = score
