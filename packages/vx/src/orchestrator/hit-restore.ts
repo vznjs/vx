@@ -55,13 +55,27 @@ export interface RestoreHitArgs {
  * schedule using the IDENTICAL logic — there is one restore path, not
  * two that could drift.
  */
-export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> {
-  const { args, hash, hit, cacheOpStart, taskStartNs } = restore
-  const { node, log } = args
+export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
+  const { args, hash } = given
+  const { node } = args
   const cacheCfg: CacheConfig | undefined = node.config.cache
   const outputs = cacheCfg?.outputs.files ?? []
   const wsOutputs = cacheCfg?.outputs.workspaceFiles ?? []
   const anyOutputs = outputs.length > 0 || wsOutputs.length > 0
+  // A layer that handed no rows: one SELECT, read by both paths below.
+  const restore =
+    anyOutputs && given.hit.outputRows === undefined
+      ? {
+          ...given,
+          hit: {
+            ...given.hit,
+            outputRows: args.cache.loadOutputFilesBatch([hash]).get(hash) ?? [],
+          },
+        }
+      : given
+  const { hit } = restore
+  const now = currentHit(restore)
+  if (now !== undefined) return now()
   // The directories the positive globs cover whole. A `!` entry inside one
   // leaves the snapshot sound: a file added or removed there still bumps a
   // recorded directory, and the walk that follows applies the `!` (A-46).
@@ -108,9 +122,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   // (X-161).
   let walked: { proj: string[]; ws: string[] } | undefined
   if (anyOutputs) {
-    const endRows = span('output rows')
-    const expected = hit.outputRows ?? args.cache.loadOutputFilesBatch([hash]).get(hash) ?? []
-    endRows()
+    const expected = hit.outputRows ?? []
     if (expected.length > 0) {
       // Two namespaces in the rows: bare rels are project outputs,
       // `workspace-outputs/<rel>` rows anchor at the workspace root.
@@ -118,87 +130,57 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
       const wsExpected = expected
         .filter((e) => e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))
         .map((e) => ({ ...e, path: e.path.slice(WORKSPACE_OUTPUT_PREFIX.length) }))
-      // The directory short-circuit: for whole-subtree globs, unchanged
-      // mtimes on every directory recorded at the last save/restore prove
-      // the output SET is unchanged (a file added or removed anywhere the
-      // glob could see bumps a recorded directory), so the walk that cost
-      // 0.36 ms per warm hit is replaced by a few stats. The per-file
-      // fingerprint check below still runs; only the enumeration is skipped.
-      let setKnown = false
-      if (dirPrefixes !== null && wsOutputs.length === 0 && args.cache.outputDirsCurrent) {
-        const endDirs = span('output dirs')
-        // Loaded with the entry (batched by getMany, or with the lazy get).
-        const dirRows = hit.outputDirRows ?? []
-        // Rows are recorded for these same prefixes under this same key
-        // (the outputs are folded into it), so `covers` cannot be false
-        // today — deleting it reddens nothing (item 638). Kept: a row
-        // set that shrank would otherwise vouch for a tree it never saw,
-        // and the failure it would let through is a skipped restore.
-        const covers = dirPrefixes.every((pre) => dirRows.some((r) => r.path === pre))
-        setKnown = covers && (await args.cache.outputDirsCurrent(node.projectDir, dirRows))
-        endDirs()
+      const endGlob = span('output glob')
+      const actualAbs = await resolveOutputs({
+        projectDir: node.projectDir,
+        outputs,
+        nestedProjectDirs: args.nestedProjectDirs,
+      })
+      const actualWsAbs = await resolveWorkspaceOutputs({
+        workspaceRoot: args.workspaceRoot,
+        outputs: wsOutputs,
+      })
+      endGlob()
+      const setsMatch = (
+        actual: readonly string[],
+        exp: ReadonlyArray<{ path: string }>,
+      ): boolean => {
+        const expSet = new Set(exp.map((e) => e.path).filter((p) => !p.endsWith('/')))
+        return actual.length === expSet.size && actual.every((r) => expSet.has(r))
       }
-      let treeMatches: boolean
-      if (setKnown) {
-        // The snapshot proved the tree holds exactly the entry's project
-        // rows (one per path, the table's key) and no workspace output is
-        // declared, so the comparisons below hold by construction: mapping
-        // each row to a path and back was ~5 ms per 1,000 warm hits.
-        treeMatches = wsExpected.length === 0
-      } else {
-        const endGlob = span('output glob')
-        const actualAbs = await resolveOutputs({
-          projectDir: node.projectDir,
-          outputs,
-          nestedProjectDirs: args.nestedProjectDirs,
-        })
-        const actualWsAbs = await resolveWorkspaceOutputs({
-          workspaceRoot: args.workspaceRoot,
-          outputs: wsOutputs,
-        })
-        endGlob()
-        const setsMatch = (
-          actual: readonly string[],
-          exp: ReadonlyArray<{ path: string }>,
-        ): boolean => {
-          const expSet = new Set(exp.map((e) => e.path).filter((p) => !p.endsWith('/')))
-          return actual.length === expSet.size && actual.every((r) => expSet.has(r))
-        }
-        // A stray a dependant's glob could have added is not a stray; a path
-        // this entry recorded is never dropped, even where that glob covers
-        // the whole tree (strapi's shape: both on `dist`).
-        const expectedRels = new Set(projExpected.map((e) => e.path))
-        const expectedWsRels = new Set(wsExpected.map((e) => e.path))
-        const actualRels = actualAbs
-          .map((p) => relPosix(node.projectDir, p))
-          .filter((rel) => expectedRels.has(rel) || !isAddition(rel))
-        const actualWsRels = actualWsAbs
-          .map((p) => relPosix(args.workspaceRoot, p))
-          .filter((rel) => expectedWsRels.has(rel) || !isAddition(rel))
-        const rowsPresent = (
-          actual: readonly string[],
-          exp: ReadonlyArray<{ path: string }>,
-        ): boolean => {
-          const have = new Set(actual)
-          return exp.every((e) => e.path.endsWith('/') || have.has(e.path))
-        }
-        treeMatches = additive
-          ? rowsPresent(actualRels, projExpected) && rowsPresent(actualWsRels, wsExpected)
-          : setsMatch(actualRels, projExpected) && setsMatch(actualWsRels, wsExpected)
-        if (!treeMatches) walked = { proj: actualAbs, ws: actualWsAbs }
+      // A stray a dependant's glob could have added is not a stray; a path
+      // this entry recorded is never dropped, even where that glob covers
+      // the whole tree (strapi's shape: both on `dist`).
+      const expectedRels = new Set(projExpected.map((e) => e.path))
+      const expectedWsRels = new Set(wsExpected.map((e) => e.path))
+      const actualRels = actualAbs
+        .map((p) => relPosix(node.projectDir, p))
+        .filter((rel) => expectedRels.has(rel) || !isAddition(rel))
+      const actualWsRels = actualWsAbs
+        .map((p) => relPosix(args.workspaceRoot, p))
+        .filter((rel) => expectedWsRels.has(rel) || !isAddition(rel))
+      const rowsPresent = (
+        actual: readonly string[],
+        exp: ReadonlyArray<{ path: string }>,
+      ): boolean => {
+        const have = new Set(actual)
+        return exp.every((e) => e.path.endsWith('/') || have.has(e.path))
       }
+      const treeMatches = additive
+        ? rowsPresent(actualRels, projExpected) && rowsPresent(actualWsRels, wsExpected)
+        : setsMatch(actualRels, projExpected) && setsMatch(actualWsRels, wsExpected)
+      if (!treeMatches) walked = { proj: actualAbs, ws: actualWsAbs }
       if (treeMatches) {
         const endStat = span('output stat')
         skipRestore =
-          (await args.cache.isOutputsCurrent(node.projectDir, projExpected)) &&
-          (await args.cache.isOutputsCurrent(args.workspaceRoot, wsExpected))
+          args.cache.isOutputsCurrent(node.projectDir, projExpected) &&
+          args.cache.isOutputsCurrent(args.workspaceRoot, wsExpected)
         endStat()
         // The walk ran and proved the tree current (rows absent, or a
         // directory had moved — a benign touch): snapshot the directories
         // so the next hit skips the walk.
         if (
           skipRestore &&
-          !setKnown &&
           dirPrefixes !== null &&
           hit.outputDirRows?.some((r) => r.mtimeMs === OUTPUT_DIRS_OVER_CAP) !== true
         ) {
@@ -213,7 +195,7 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   // of the tar is spared. A stray under the glob still falls through to
   // the clean, as strict ownership requires (item 589).
   if (anyOutputs && !skipRestore) {
-    const expected = hit.outputRows ?? args.cache.loadOutputFilesBatch([hash]).get(hash) ?? []
+    const expected = hit.outputRows ?? []
     if (expected.length === 0) {
       const endGlob = span('output glob')
       const actual = await resolveOutputs({
@@ -354,6 +336,47 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
       ])
     }
   }
+  return hitOutcome(restore, !skipRestore && anyOutputs)
+}
+
+/**
+ * The hit's outcome now, when its tree is provably current without a walk
+ * or an await: it declares no outputs, or every directory the entry
+ * recorded and every file it holds are as the entry left them (the
+ * directory snapshot proves the set, the stamps the bytes). Undefined
+ * sends it down `restoreHit`'s full path. Nothing happens until the thunk
+ * runs, which replays the stored output: the scheduler starts a hit it
+ * settles in place first, so its output follows its start.
+ */
+export function currentHit(restore: RestoreHitArgs): (() => TaskOutcome) | undefined {
+  const { args, hash, hit } = restore
+  const { node } = args
+  const outputs = node.config.cache?.outputs.files ?? []
+  if ((node.config.cache?.outputs.workspaceFiles?.length ?? 0) > 0) return undefined
+  if (outputs.length > 0) {
+    const dirPrefixes = dirPrefixesOf(outputs)
+    if (dirPrefixes === null || args.cache.outputDirsCurrent === undefined) return undefined
+    const expected = hit.outputRows ?? args.cache.loadOutputFilesBatch([hash]).get(hash) ?? []
+    if (expected.length === 0) return undefined
+    // Loaded with the entry (batched by getMany, or with the lazy get).
+    const dirRows = hit.outputDirRows ?? []
+    // Rows are recorded for these same prefixes under this same key (the
+    // outputs are folded into it), so this cannot fail today (item 638).
+    // Kept: a row set that shrank would otherwise vouch for a tree it never
+    // saw, and the failure it would let through is a skipped restore.
+    if (!dirPrefixes.every((pre) => dirRows.some((r) => r.path === pre))) return undefined
+    if (!args.cache.outputDirsCurrent(node.projectDir, dirRows)) return undefined
+    // No workspace output is declared, so every row is the project's.
+    if (expected.some((e) => e.path.startsWith(WORKSPACE_OUTPUT_PREFIX))) return undefined
+    if (!args.cache.isOutputsCurrent(node.projectDir, expected)) return undefined
+  }
+  return () => hitOutcome(restore, false)
+}
+
+/** Replay the stored output and build the hit's outcome. */
+function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
+  const { args, hash, hit, cacheOpStart, taskStartNs } = restore
+  const { node, log } = args
   if (hit.stdout) {
     // An entry saved before masking, or by another machine, can hold a
     // secret-named variable's value (L-11). Asked only of a hit that prints.
@@ -376,7 +399,6 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   // framed block. Only meaningful when at least one output was
   // declared — no-outputs tasks never materialize anything, so
   // they're vacuously up-to-date.
-  const restored = !skipRestore && anyOutputs
   return {
     node,
     status,

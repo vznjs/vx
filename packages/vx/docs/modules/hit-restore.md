@@ -33,9 +33,18 @@ export interface RestoreHitArgs {
   taskStartNs: bigint
 }
 export function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome>
+// the hit's outcome as a thunk when its tree is current with no walk and no await, else undefined
+export function currentHit(restore: RestoreHitArgs): (() => TaskOutcome) | undefined
 ```
 
-`execute-task.ts` re-exports both, so the entry stays importable from
+`restoreHit` asks `currentHit` first: a hit that declares no outputs,
+or whose recorded output directories and stamped files are all as the
+entry left them, replays and returns. The run's scheduler settles such a
+restore-tier hit in place through `settleProbedHit` (scheduler.md,
+`settleNow`), so a warm hit costs no dispatch and no promise. Anything
+else (no rows, a moved directory, a workspace output) walks.
+
+`execute-task.ts` re-exports `restoreHit` and its args, so the entry stays importable from
 where it was.
 
 ## In place, never clean-then-restore

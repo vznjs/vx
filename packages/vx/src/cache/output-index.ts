@@ -206,7 +206,7 @@ export class OutputIndex {
     return out
   }
 
-  async isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean> {
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean {
     // Empty manifest case (a task produced no outputs) → trivially
     // current; the on-disk tree under projectDir is whatever it was,
     // and nothing was supposed to land there.
@@ -442,7 +442,7 @@ export class OutputIndex {
   }
 
   /** True iff every recorded directory exists with its recorded mtime (ms). Same forged-mtime trade as the file check. */
-  async outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean> {
+  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean {
     if (rows.length === 0) return false
     const results = rows.map((r) => {
       let st

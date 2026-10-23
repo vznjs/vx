@@ -670,7 +670,7 @@ export interface CacheLayer {
    * out-of-band file edits or deletions and falls through to a real
    * restore.
    */
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   /**
    * The directory-mtime short-circuit behind a warm hit (optional — a layer
    * without it keeps the output walk). `recordOutputDirs` snapshots every
@@ -699,7 +699,7 @@ export interface CacheLayer {
    */
   recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
+  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
   /**
    * Extract the artifact's `outputs/` entries into `projectDir` and —
    * when `workspaceRoot` is given — its `workspace-outputs/` entries

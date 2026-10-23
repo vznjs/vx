@@ -69,7 +69,7 @@ import {
 } from './sandbox-request.js'
 import { markUnsaved, saveMiss, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
 import type { FingerprintWatch } from './fingerprint-watch.js'
-import { restoreHit } from './hit-restore.js'
+import { currentHit, restoreHit } from './hit-restore.js'
 import type { MissExplainer } from '../history/index.js'
 import { shellVerdict } from './shell-verdict.js'
 import { sandboxFix } from './sandbox-fix.js'
@@ -306,6 +306,28 @@ export async function executeTask(args: ExecuteArgs): Promise<TaskOutcome> {
     )
   }
   return executeCachedTask(args)
+}
+
+/**
+ * A probed hit `executeTask` would restore, settled now when its tree is
+ * already current (`currentHit`): the thunk replays its output and returns
+ * the outcome. Undefined dispatches it as usual. A dispatch, a slot and the
+ * promises around it were ~10 µs of each of a warm run's hits.
+ */
+export function settleProbedHit(args: ExecuteArgs): (() => TaskOutcome) | undefined {
+  const probed = args.preProbed
+  if (probed?.hit == null || !readsCache(args) || args.remoteOnlyNoop === true) return undefined
+  if (isGroupTask(args.node) || args.node.config.exec?.persistent !== undefined) return undefined
+  // A moved fingerprint is said, and demotes the hit, on the dispatch.
+  if (args.fingerprintWatch?.moved() !== undefined) return undefined
+  const restore = {
+    args,
+    hash: probed.hash,
+    hit: probed.hit,
+    cacheOpStart: performance.now(),
+    taskStartNs: process.hrtime.bigint() - args.runStartHrTimeNs,
+  }
+  return currentHit(restore)
 }
 
 /** Whether this task reads the cache: a cached, not remote-only task with a read axis on. */

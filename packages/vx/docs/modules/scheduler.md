@@ -94,7 +94,7 @@ export interface ScheduleOptions {
   /** What an outcome still owes before its dependents may start (the off-slot cache save). */
   settledOf?: (outcome: TaskOutcome) => Promise<Partial<TaskOutcome> | void> | undefined
   /** The outcome of an exec-tier task settled in place, or undefined to dispatch it. */
-  settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => TaskOutcome | undefined
+  settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => (() => TaskOutcome) | undefined
   /** Optional per-node weight override (a scheduling policy's seam). */
   priorities?: ReadonlyMap<string, number>
   /** Later weights for `priorities`: the ready queues re-rank at once (a `schedule` plugin's `refine`). */
@@ -155,12 +155,14 @@ been running ahead of those deps, so running its command in the
 restore slot would build from outputs they have not written.
 `onStart` fires once; its dependents wait for the second dispatch.
 
-`settleNow` is asked of an exec-tier task once it is due, after the
-skip check. An outcome lands in the same tick: no slot, no admission
-ask, no `execute` promise; `onStart` and `onFinish` hear it as any
-other, and a throw dispatches it instead. The run passes it for unkeyed
-groups (they run nothing), unless a taint or `--continue=always` needs
-the full path (X-192).
+`settleNow` is asked of a task once it is due (a restore-tier one when
+its lane has room), after the skip check. A thunk settles it in the
+same tick: `onStart` hears it, the thunk runs (a hit replays its output
+there), and `onFinish` hears the outcome; no slot, no admission ask, no
+`execute` promise. A throw from either dispatches it instead, started
+once. The run passes it for unkeyed groups (they run nothing, X-192)
+and for restore-tier hits whose tree is current (`currentHit`), unless a
+taint or `--continue=always` needs the full path.
 
 A persistent task neither requested nor surfaced whose every dependant
 is in the restore tier is idle (X-59): due, it goes dormant instead of

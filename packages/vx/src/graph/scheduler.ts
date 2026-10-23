@@ -303,14 +303,16 @@ export interface ScheduleOptions {
    */
   settledOf?: (outcome: TaskOutcome) => Promise<Partial<TaskOutcome> | void> | undefined
   /**
-   * The outcome of a task the caller settles in place, or undefined to
-   * dispatch it through `execute`. Asked of an exec-tier task the lane has
-   * room for, after the skip check; its outcome lands in the same tick, it
-   * holds no slot, and `onStart` / `onFinish` hear it as any other. An
-   * unkeyed group runs nothing, and the dispatch, the slot and the promise
-   * around it were ~10 µs of each of a warm run's 1,090 groups (X-192).
+   * A task the caller settles in place: a thunk returning its outcome, or
+   * undefined to dispatch it through `execute`. Asked of a task its lane
+   * has room for, after the skip check; `onStart` hears it, then the thunk
+   * runs (a hit replays its output there), and its outcome lands in the
+   * same tick, holding no slot. An unkeyed group runs nothing, and the
+   * dispatch, the slot and the promise around it were ~10 µs of each of a
+   * warm run's 1,090 groups (X-192); a hit whose tree is current does no
+   * more. A restore-tier task's `upstream` may hold undefined entries.
    */
-  settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => TaskOutcome | undefined
+  settleNow?: (node: TaskNode, upstream: TaskOutcome[]) => (() => TaskOutcome) | undefined
   /**
    * Optional priority override: callers pass their own per-node weight
    * (e.g. `computePredictedPriorities` from the orchestrator's history
@@ -845,12 +847,23 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
     }
 
     // A throw falls back to the dispatch, whose `execute` reports it.
-    const settleInPlace = (node: TaskNode, upstream: TaskOutcome[]): TaskOutcome | undefined => {
+    const settleInPlace = (
+      node: TaskNode,
+      upstream: TaskOutcome[],
+    ): (() => TaskOutcome) | undefined => {
       if (options.settleNow === undefined) return undefined
       try {
         return options.settleNow(node, upstream)
       } catch {
         return undefined
+      }
+    }
+    const started = (node: TaskNode): void => {
+      try {
+        onStart?.(node)
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err)
+        process.stderr.write(`[vx] onStart observer threw for ${node.id}: ${m}\n`)
       }
     }
 
@@ -955,14 +968,17 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
 
         const queuedMs = Date.now() - (readyAt.get(id) ?? Date.now())
         readyAt.delete(id)
-        const now = inRestoreTier(id) ? undefined : settleInPlace(node, upstream)
-        if (now !== undefined) {
+        const settle = settleInPlace(node, upstream)
+        let now: TaskOutcome | undefined
+        if (settle !== undefined) {
+          if (!demoted.has(id)) started(node)
           try {
-            onStart?.(node)
-          } catch (err) {
-            const m = err instanceof Error ? err.message : String(err)
-            process.stderr.write(`[vx] onStart observer threw for ${id}: ${m}\n`)
+            now = settle()
+          } catch {
+            // Dispatched below, already started: `execute` reports it.
           }
+        }
+        if (now !== undefined) {
           finishOne(id, queuedMs === 0 ? now : { ...now, queuedMs })
           continue
         }
@@ -983,15 +999,9 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
               }
         // Crash-isolated observer hook — a throwing onStart must not abort
         // the dispatch loop (it would strand the tick with the slot held).
-        // A demoted task's second dispatch is the same task, already started.
-        if (!demoted.has(id)) {
-          try {
-            onStart?.(node)
-          } catch (err) {
-            const m = err instanceof Error ? err.message : String(err)
-            process.stderr.write(`[vx] onStart observer threw for ${id}: ${m}\n`)
-          }
-        }
+        // A demoted task's second dispatch is the same task, already started,
+        // as is one whose settle threw.
+        if (!demoted.has(id) && settle === undefined) started(node)
 
         // `.then(onFulfilled, onRejected)` — NOT `.then(f).catch(g)`. The
         // rejection arm handles ONLY `execute()` rejecting; a throw from

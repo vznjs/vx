@@ -30,8 +30,8 @@ vx-otel draws as child spans of the run
 
 A span's total is WALL summed per call, and the calls run under the
 scheduler's concurrency, so a span that overlaps other work reads far
-larger than the work it names — `output dirs` at 124 µs a task is a
-handful of `lstat`s. The table says so in its own footer now (items 254
+larger than the work it names — a span over a handful of `lstat`s once
+read 124 µs a task. The table says so in its own footer now (items 254
 and 407 both chased that number before measuring it in isolation);
 compare spans to each other, and isolate a suspect one before acting.
 
@@ -74,9 +74,7 @@ Spans, accumulated per call:
 - `miss: resolve outputs`
 - `miss: save`
 - `miss: stamp outputs`
-- `output dirs`
 - `output glob`
-- `output rows`
 - `output stat`
 - `probe`
 - `restore: extract`
