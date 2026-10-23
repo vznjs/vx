@@ -96,6 +96,11 @@ cores?, memory? } } }`; `ms` a finite number in `[0, 86_400_000]`; at
   never run on this machine takes it (`resourcesFor`), so `@vzn/vx-dte`
   packs a fresh CI machine's agents by what the default branch measured.
   A value out of range is dropped.
+- `defs` (2026-10-23) is each task's definition (`taskDefinitions`: its
+  command and `env.define`). A reader keeps only a timing whose
+  definition is the task's now (schema v48), so a task whose command
+  changed under its name starts over; one with no `defs` entry is read
+  by no such reader. A string over 64 characters is dropped.
 - It changes only order, ETA and packing. A poisoned file can at worst
   order or pack a run badly; it cannot change a key, an output or what
   runs.

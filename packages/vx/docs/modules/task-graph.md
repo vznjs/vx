@@ -44,6 +44,9 @@ export interface BuildGraphOptions {
 export type GraphRules = WorkspaceRules & { readonly locked?: boolean }
 
 export function taskId(project: string, task: string): string
+// graph/definition.ts: what history keys a task by (## Definitions)
+export function taskDefinition(node: TaskNode): string | undefined
+export function taskDefinitions(nodes: Iterable<TaskNode>): Map<string, string>
 export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode>
 // Removes the unscheduled tasks from `nodes` (returned, deps intact, as
 // `keyOnly`) and trims each scheduled task's `deps` (the ids it lost in
@@ -248,6 +251,14 @@ Whatever the rules, `refuseSelfClean` refuses a task whose own outputs
 take back one of its input entries whole (`src/**` as both): vx removes
 a task's outputs before it runs, so it would delete its own sources. An
 in-place rewriter (a formatter) declares no outputs.
+
+## Definitions
+
+`graph/definition.ts`: `taskDefinition(node)` hashes a task's id, command
+and sorted `env.define` (undefined for a group); `taskDefinitions(nodes)`
+maps each id to it. History stores it per row (`runs.def`, v48) and reads
+only rows of the task's current definition, so a changed command starts
+over and an inputs edit keeps its timings.
 
 ## What this does NOT do
 

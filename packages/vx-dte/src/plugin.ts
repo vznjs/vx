@@ -4,6 +4,7 @@ import {
   LocalHistoryProvider,
   PLATFORMS,
   refuseUnknownOptions,
+  taskDefinitions,
   UserError,
   type CommandContext,
   type Platform,
@@ -314,6 +315,7 @@ export function dte(options: DteOptions) {
             ctx.localCache.dbHandle(),
             undefined,
             ctx.branch,
+            taskDefinitions(graph.values()),
           ).resourcesFor(ids)
           tails = undefined
         } catch (err) {
@@ -643,11 +645,7 @@ export function dte(options: DteOptions) {
         profile: () => o.profile(),
         running: (id) => o.where(id),
         demand(remaining, misses) {
-          if (pending === undefined)
-            o.trace.mark('orchestrator', 'cache probe', {
-              remaining: remaining.size,
-              misses: misses.size,
-            })
+          if (pending === undefined) o.probed(remaining.size, misses.size)
           pending = remaining
           sure = misses
           if (misses.size > 0) missed = true

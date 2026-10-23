@@ -610,7 +610,11 @@ Hard invariants of the remote prefetch:
   with no row may still be held (M, 2026-10-23: "We wait for remote
   before we plan. We need data to plan. We don't wait for remote without
   dte"; `remote-prefetch.test.ts` › "a kept hit is pulled before the
-  probe answers…"). Each run still asks `hasMany` for every key the local
+  probe answers…"). When a remote's batch gives no answer (Vercel's on
+  main f71b377: every task then counted as left to run, and 11 of 15
+  workers asked were cancelled), such a run asks that remote `has` for
+  each key instead (`remoteHasEach`, `concurrency` at a time); a failed
+  one leaves the run with no answer, as before. Each run still asks `hasMany` for every key the local
   store lacks, in the background, and its whole answer rewrites the
   rows it asked: new hits are added, gone ones dropped. A GET every
   remote answers with nothing drops the row too, and the task runs
@@ -1616,7 +1620,7 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v47', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v48', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
 -- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
@@ -1680,7 +1684,8 @@ CREATE TABLE runs (
   placement           TEXT,             -- v44: where an executor ran it; NULL = here
   placement_cores     INTEGER,          -- v44: that machine's cores
   placement_memory    INTEGER,          -- v44: that machine's memory, bytes
-  keyless_by          TEXT              -- v46: the task with no inputs its key folded
+  keyless_by          TEXT,             -- v46: the task with no inputs its key folded
+  def                 TEXT              -- v48: the task's definition (command, env.define)
 );
 
 -- Two indexes, both append-only under a run's inserts: every row of a run
@@ -1871,7 +1876,9 @@ CREATE TABLE task_durations (
   cpu_parallelism        REAL,
   peak_rss_bytes         INTEGER,
   saturated_cores        INTEGER,
-  saturated_memory_bytes INTEGER
+  saturated_memory_bytes INTEGER,
+  -- v48: the task's definition the row is of (`taskDefinition`)
+  def                    TEXT
 );
 CREATE INDEX task_durations_task ON task_durations(project, task, source, id);
 CREATE UNIQUE INDEX task_durations_remote

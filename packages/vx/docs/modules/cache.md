@@ -73,6 +73,10 @@ export interface CacheLayer {
   localHasMany?(hashes: readonly string[]): Promise<Set<string>> // the keys the local store holds; the prefetch probes the remote for the rest
   remoteKnown?(hashes: readonly string[]): Map<string, ArtifactInfo> // the keys the index says a remote holds (remote_hits); their pulls wait on no probe
   remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> // one hasMany per readable remote; null = a remote cannot batch or did not answer; a whole answer rewrites remote_hits
+  remoteHasEach?(
+    hashes: readonly string[],
+    concurrency: number,
+  ): Promise<Map<string, ArtifactInfo> | null> // `has` per key per readable remote, for a remote whose batch did not answer; null = one failed
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeFirst?(started: Promise<void>): void // a pull waits until the run's batch probe starts, then for its answer
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void // `--force`: one batch probe per remote written but not read; a key it holds is not uploaded
@@ -350,6 +354,7 @@ export interface RunRecord {
   placementCores?: number // v44: that machine's cores
   placementMemoryBytes?: number // v44: and memory
   keylessBy?: string // v46: the task with no inputs its key folded
+  def?: string // v48: the task's definition (`taskDefinition`), which history reads by
 }
 
 export interface CacheStats {
@@ -721,7 +726,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v48'`; `SCHEMA_VERSION` is
-`'v47'`. Bump `CACHE_VERSION` when:
+`'v48'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

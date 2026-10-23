@@ -22,6 +22,7 @@ import {
   type TaskResources,
   type VxPlugin,
   loadResolvedProjects,
+  taskDefinitions,
   UserError,
   refuseUnknownOptions,
   type PluginOptionKinds,
@@ -175,8 +176,9 @@ const readHistory = (
   ids: readonly string[],
   options: ScheduleHistoryOptions,
   branch: string | null,
+  defs: ReadonlyMap<string, string>,
 ): Promise<ReadonlyMap<string, TaskResources>> =>
-  new LocalHistoryProvider(cache.dbHandle(), windowOf(options), branch).resourcesFor(ids)
+  new LocalHistoryProvider(cache.dbHandle(), windowOf(options), branch, defs).resourcesFor(ids)
 
 /** What each task reserves: learned from the history unless `resources: false`, a declared reservation over either. */
 const reservationsFor = (
@@ -259,6 +261,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
       // Loaded with the option: every run evaluates the workspace config.
       const carried =
         file === undefined ? {} : (await import('./timings-file.js')).readTimings(file, ctx.warn)
+      const defs = taskDefinitions(nodes.values())
       if (file !== undefined)
         scheduled = {
           file,
@@ -266,13 +269,14 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
           cache: ctx.localCache,
           ids: [...nodes.keys()],
           branch: ctx.branch,
+          defs,
         }
       // Only a task that runs a command has a timing: a group asked for
       // read as a task with no history on this branch, so every run
       // tried a default-branch import (and paid a query per group).
       const ids: string[] = []
       for (const n of nodes.values()) if (n.config.exec?.command !== undefined) ids.push(n.id)
-      shared = { cache: ctx.localCache, ids, branch: ctx.branch }
+      shared = { cache: ctx.localCache, ids, branch: ctx.branch, defs }
       let table: ReadonlyMap<string, TaskResources>
       let provider: LocalHistoryProvider
       try {
@@ -280,6 +284,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
           ctx.localCache.dbHandle(),
           windowOf(options),
           ctx.branch,
+          defs,
         )
         table = await provider.resourcesFor(ids)
       } catch (err) {
@@ -337,6 +342,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
         cache: Cache
         ids: string[]
         branch: string | null
+        defs: ReadonlyMap<string, string>
       }
     | undefined
   let inRun = false
@@ -345,7 +351,9 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
   let changed = false
   // What the run's export needs, from `schedule` (which a run that starts
   // no task never calls) and `setup` (which a plan never calls).
-  let shared: { cache: Cache; ids: string[]; branch: string | null } | undefined
+  let shared:
+    | { cache: Cache; ids: string[]; branch: string | null; defs: ReadonlyMap<string, string> }
+    | undefined
   let exporting: { cache: PluginCache; root: string } | undefined
   hooks.setup = (ctx) => {
     // A branch's write lands under its scope (M, 2026-10-18), for its next
@@ -380,8 +388,14 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
         ).exportTimings({
           root: out.root,
           cache: out.cache,
-          provider: new LocalHistoryProvider(run.cache.dbHandle(), windowOf(options), run.branch),
+          provider: new LocalHistoryProvider(
+            run.cache.dbHandle(),
+            windowOf(options),
+            run.branch,
+            run.defs,
+          ),
           ids: run.ids,
+          defs: run.defs,
         })
       } catch {
         // A hint: the next commit's runs walk back to an older blob.
@@ -392,7 +406,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
     scheduled = undefined
     inRun = false
     if (!wrote || done === undefined) return
-    const table = await readHistory(done.cache, done.ids, options, done.branch)
+    const table = await readHistory(done.cache, done.ids, options, done.branch, done.defs)
     ;(await import('./timings-file.js')).writeTimings(done.file, done.carried, table)
   }
   // What the run's tasks reserve, learned in `schedule` (one history read

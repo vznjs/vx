@@ -44,6 +44,14 @@ export interface SimOptions {
   readonly home?: string
   /** What an unmeasured task counts for in the worker ask (`dte({ unmeasured })`). */
   readonly unmeasured?: Need
+  /**
+   * Whether core's cache probe answered before the first plan (default
+   * true): a held task leaves the run's remaining work at once. False is
+   * a probe with no answer: a hit stays remaining until it restores.
+   */
+  readonly probe?: boolean
+  /** How long a hit takes to restore (default 0: it ends at once). */
+  readonly restoreMs?: number
 }
 
 export interface SimWorker {
@@ -173,8 +181,11 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       readyAt.set(id, now)
       executed.add(id)
       queue.push(id)
-    } else end(id)
+    } else if (t.ran === undefined && t.cache && (options.restoreMs ?? 0) > 0)
+      restoring.set(id, now + options.restoreMs!)
+    else end(id)
   }
+  const restoring = new Map<string, number>()
 
   const joined = (): Live[] =>
     workers.filter((w) => w.joinedAt !== undefined && w.leftAt === undefined)
@@ -286,7 +297,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         running: [],
         starting: true,
       })
-    const remaining = graph.map((t) => t.id).filter((id) => !done.has(id))
+    const held = (t: SimTask): boolean => options.probe !== false && t.cache && t.ran === undefined
+    const remaining = graph.filter((t) => !done.has(t.id) && !held(t)).map((t) => t.id)
     const p = decide({
       remaining,
       nodes,
@@ -367,6 +379,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     }
     for (const w of starting()) next = Math.min(next, joinAt.get(w.id)!)
     if (again !== undefined) next = Math.min(next, again)
+    for (const at of restoring.values()) next = Math.min(next, at)
     if (next === Infinity) throw new Error(`sim: stuck at ${now} ms with ${queue.length} queued`)
     const dt = next - now
     for (const w of joined()) {
@@ -387,6 +400,11 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     now = next
     if (again !== undefined && again <= now) again = undefined
     for (const w of starting()) if (joinAt.get(w.id)! <= now) w.joinedAt = now
+    for (const [id, at] of restoring)
+      if (at <= now) {
+        restoring.delete(id)
+        end(id)
+      }
     for (const w of joined())
       for (const r of [...w.running.values()])
         if (r.left <= 1e-6) {

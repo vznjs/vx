@@ -282,6 +282,48 @@ describe('startRemotePrefetch', () => {
     TIMEOUT,
   )
 
+  // Main f71b377 (2026-10-23): the remote answered no batch query, so demand
+  // heard of no hit: 15 workers were asked for 116 tasks, 107 restored, and
+  // small#1 joined to nothing. With demand waiting, each key is asked on its
+  // own; a run that plans nothing asks no more than before.
+  it(
+    'with no batch answer, demand hears each key asked on its own; a run without it asks none',
+    async () => {
+      for (const name of ['a', 'b']) {
+        await addProject(root, name, {
+          files: { 'src/in.txt': name },
+          config: CACHED('echo built > out.txt', `{ files: ['out.txt'] }`),
+        })
+      }
+      const run = async (plans: boolean) => {
+        const calls: [string[], string[]][] = []
+        let each = 0
+        await prefetchWith(4, undefined, (a) => ({
+          ...a,
+          cache: new Proxy(a.cache, {
+            get: (t, prop, r) => {
+              if (prop === 'remoteHasMany') return async () => null
+              if (prop === 'remoteHasEach')
+                return async (hashes: readonly string[]) => {
+                  each++
+                  return new Map([[hashes[0]!, {}]])
+                }
+              return Reflect.get(t, prop, r) as unknown
+            },
+          }),
+          ...(plans ? { held: (ids, missed) => void calls.push([[...ids], [...missed]]) } : {}),
+        }))
+        return { calls, each }
+      }
+      const planned = await run(true)
+      expect(planned.each).toBe(1)
+      expect(planned.calls).toHaveLength(1)
+      expect(planned.calls[0]!.map((ids) => ids.length)).toEqual([1, 1])
+      expect((await run(false)).each).toBe(0)
+    },
+    TIMEOUT,
+  )
+
   // M, 2026-10-23: "We wait for remote before we plan. We need data to
   // plan. We don't wait for remote without dte". The kept hit's pull starts
   // before the probe answers either way; only demand (an executor that

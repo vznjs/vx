@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v47",
+    "version": "v48",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -184,7 +184,8 @@
       "placement           TEXT,",
       "placement_cores     INTEGER,",
       "placement_memory    INTEGER,",
-      "keyless_by          TEXT",
+      "keyless_by          TEXT,",
+      "def                 TEXT",
       ")",
       "",
       "CREATE TABLE schema_meta (",
@@ -208,7 +209,8 @@
       "cpu_parallelism        REAL,",
       "peak_rss_bytes         INTEGER,",
       "saturated_cores        INTEGER,",
-      "saturated_memory_bytes INTEGER",
+      "saturated_memory_bytes INTEGER,",
+      "def                    TEXT",
       ")",
       "",
       "CREATE TABLE task_outcomes (",

@@ -145,7 +145,13 @@ async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<voi
   // prefetching every stable key, exactly as before.
   // Every lookup that waited on the probe now finds its hash in it.
   probing()
-  const present = (await asked) ?? null
+  // A remote that answered no batch query is asked key by key when demand
+  // plans on the answer: main f71b377 asked 15 workers for 116 tasks, 107
+  // restored, and small#1 joined to nothing (2026-10-23). A run that plans
+  // nothing pulls instead, as before.
+  let present = (await asked) ?? null
+  if (present === null && args.held !== undefined && asked !== undefined)
+    present = (await args.cache.remoteHasEach?.(uniqueHashes, args.concurrency)) ?? null
   if (!early) tell((h) => held?.has(h) === true || present?.has(h) === true, present !== null)
   if (present !== null) {
     args.cache.markRemoteAbsent?.(uniqueHashes.filter((h) => !present.has(h)))

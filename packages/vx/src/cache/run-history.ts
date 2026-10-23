@@ -14,11 +14,11 @@ const INSERT_RUNS = `
         run_id, cpu_ms, peak_rss_bytes, wallclock_start_ns, wallclock_end_ns,
         cache_hit, attempts, cached,
         blocked_by, timed_out, sandbox_violations, not_ready, restored, remote_error,
-        peak_cores, avg_rss_bytes, placement, placement_cores, placement_memory, keyless_by
+        peak_cores, avg_rss_bytes, placement, placement_cores, placement_memory, keyless_by, def
       )
       VALUES `
-/** One `runs` row's placeholders: the 29 columns `bindRun` fills. */
-const RUN_TUPLE = `(${Array(29).fill('?').join(', ')})`
+/** One `runs` row's placeholders: the 30 columns `bindRun` fills. */
+const RUN_TUPLE = `(${Array(30).fill('?').join(', ')})`
 
 /** An INSERT of `n` `runs` rows. */
 function insertRunsSql(n: number): string {
@@ -26,14 +26,14 @@ function insertRunsSql(n: number): string {
 }
 
 /**
- * Rows per INSERT: 34 × 29 variables stays under 999, the oldest default
+ * Rows per INSERT: 33 × 30 variables stays under 999, the oldest default
  * ceiling. A statement per row was 8.7 ms of 1,000 rows, 40 at a time 6.4
  * (2026-10-03).
  */
-const RUNS_PER_INSERT = 34
+const RUNS_PER_INSERT = 33
 
-/** Rows per `task_durations` INSERT: 6 variables each, under 999. */
-const DURATIONS_PER_INSERT = 160
+/** Rows per `task_durations` INSERT: 7 variables each, under 999. */
+const DURATIONS_PER_INSERT = 140
 
 /** Rows per `task_outcomes` INSERT: 6 variables each, under 999. */
 const OUTCOMES_PER_INSERT = 160
@@ -112,10 +112,11 @@ export class RunHistory {
     for (let i = 0; i < done.length; i += DURATIONS_PER_INSERT) {
       const block = done.slice(i, i + DURATIONS_PER_INSERT)
       const params: SQLQueryBindings[] = []
-      for (const r of block) params.push(r.project, r.task, source, sha, r.durationMs, r.endedAt)
+      for (const r of block)
+        params.push(r.project, r.task, source, sha, r.durationMs, r.endedAt, r.def ?? null)
       this.db
         .query(
-          `INSERT INTO task_durations(project, task, source, sha, duration_ms, recorded_at) VALUES ${Array(block.length).fill('(?, ?, ?, ?, ?, ?)').join(', ')}`,
+          `INSERT INTO task_durations(project, task, source, sha, duration_ms, recorded_at, def) VALUES ${Array(block.length).fill('(?, ?, ?, ?, ?, ?, ?)').join(', ')}`,
         )
         .run(...params)
     }
@@ -275,6 +276,7 @@ function bindRun(run: RunRecord, digestValue: (v: string) => string): SQLQueryBi
     run.placementCores ?? null,
     run.placementMemoryBytes ?? null,
     run.keylessBy ?? null,
+    run.def ?? null,
   ]
 }
 

@@ -7,7 +7,13 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test'
-import { Cache, LocalHistoryProvider, type PluginCache, type TaskNode } from '@vzn/vx'
+import {
+  Cache,
+  LocalHistoryProvider,
+  taskDefinitions,
+  type PluginCache,
+  type TaskNode,
+} from '@vzn/vx'
 import { scheduleHistoryPlugin } from '../src/index.js'
 import { importTimings, parseTimings } from '../src/shared-timings.js'
 
@@ -50,9 +56,9 @@ function timed(branch: string, id: string, ms: number): void {
   cache
     .dbHandle()
     .query(
-      'INSERT INTO task_durations(project, task, source, sha, duration_ms, recorded_at) VALUES (?, ?, ?, NULL, ?, ?)',
+      'INSERT INTO task_durations(project, task, source, sha, duration_ms, recorded_at, def) VALUES (?, ?, ?, NULL, ?, ?, ?)',
     )
-    .run(project!, task!, `branch:${branch}`, ms, Date.now())
+    .run(project!, task!, `branch:${branch}`, ms, Date.now(), defOf(id))
 }
 
 interface Spy extends PluginCache {
@@ -98,10 +104,20 @@ function spyCache(opts: { hang?: boolean; scoped?: boolean } = {}): Spy {
   }
 }
 
+// Every test task is `node(id)`: a blob's timing is of it.
+const defOf = (id: string): string => taskDefinitions([node(id)]).get(id)!
+const defsOf = (ids: Iterable<string>): Record<string, string> =>
+  Object.fromEntries([...ids].map((id) => [id, defOf(id)]))
 const blob = (tasks: Record<string, unknown>, version: unknown = 1): Uint8Array =>
-  new TextEncoder().encode(JSON.stringify({ version, tasks }))
-const read = (b: Uint8Array | undefined): unknown =>
-  b === undefined ? undefined : JSON.parse(new TextDecoder().decode(b))
+  new TextEncoder().encode(JSON.stringify({ version, tasks, defs: defsOf(Object.keys(tasks)) }))
+/** A written blob, its `defs` aside: each test task's is `defOf`. */
+const read = (b: Uint8Array | undefined): unknown => {
+  if (b === undefined) return undefined
+  const { defs: _, ...rest } = JSON.parse(new TextDecoder().decode(b)) as Record<string, unknown>
+  return rest
+}
+const defsIn = (b: Uint8Array | undefined): unknown =>
+  (JSON.parse(new TextDecoder().decode(b)) as { defs?: unknown }).defs
 const key = (sha: string): string => `timings\0${sha}`
 
 function node(id: string): TaskNode {
@@ -188,6 +204,8 @@ describe('shared timings', () => {
       version: 1,
       tasks: { 'p#gone': 5, 'p#x': 100, 'p#y': 300 },
     })
+    // Each timing says which task it is of, a carried one's carried.
+    expect(defsIn(shared.store.get(key(b)))).toEqual(defsOf(['p#gone', 'p#x', 'p#y']))
   })
 
   it('a local run never writes', async () => {
@@ -483,6 +501,7 @@ describe('shared timings', () => {
         JSON.stringify({
           version: 1,
           tasks: { 'p#x': 100, 'p#y': 50, 'p#z': 5 },
+          defs: defsOf(['p#x', 'p#y', 'p#z']),
           needs: {
             'p#x': { cpu: 3.5, rss: 2e9, cores: 4 },
             'p#y': { cpu: -1 },
@@ -506,6 +525,90 @@ describe('shared timings', () => {
     expect((read(shared.store.get(key(b))) as { needs: unknown }).needs).toEqual({
       'p#x': { cpu: 3.5, rss: 2e9, cores: 4 },
       'p#z': { cpu: 1 },
+    })
+  })
+
+  // A task whose command changed under its name is a new task (M, 2026-10-23).
+  it("an imported timing of the task's old definition is not read", async () => {
+    const a = commit()
+    git('checkout', '-q', '-b', 'feature')
+    commit()
+    const shared = spyCache()
+    shared.store.set(
+      key(a),
+      new TextEncoder().encode(
+        JSON.stringify({
+          version: 1,
+          tasks: { 'p#x': 100, 'p#y': 50 },
+          defs: { 'p#x': 'old', ...defsOf(['p#y']) },
+        }),
+      ),
+    )
+    const provider = new LocalHistoryProvider(
+      cache.dbHandle(),
+      undefined,
+      'feature',
+      taskDefinitions([node('p#x'), node('p#y')]),
+    )
+    await importTimings({
+      root,
+      defaultBranch: 'main',
+      cache: shared,
+      provider,
+      ids: ['p#x', 'p#y'],
+      triedFile: triedFile(),
+      branch: false,
+    })
+    expect([...(await provider.p50sFor(['p#x', 'p#y']))]).toEqual([['p#y', 50]])
+  })
+
+  // PR #4150: main's blob, shared before definitions were kept, carried
+  // every need; the branch's own blob had definitions and no needs, and
+  // the run packed every task unmeasured.
+  it('a need shared before definitions is read beside a branch blob that has them', async () => {
+    const a = commit()
+    git('checkout', '-q', '-b', 'feature')
+    const b = commit()
+    commit()
+    const shared = spyCache()
+    const put = (sha: string, body: object): void => {
+      shared.store.set(key(sha), new TextEncoder().encode(JSON.stringify({ version: 1, ...body })))
+    }
+    put(a, { tasks: { 'p#x': 100 }, needs: { 'p#x': { cpu: 3 } } })
+    put(b, { tasks: { 'p#x': 120 }, defs: defsOf(['p#x']) })
+    const provider = new LocalHistoryProvider(
+      cache.dbHandle(),
+      undefined,
+      'feature',
+      taskDefinitions([node('p#x')]),
+    )
+    await importTimings({
+      root,
+      defaultBranch: 'main',
+      cache: shared,
+      provider,
+      ids: ['p#x'],
+      triedFile: triedFile(),
+      branch: true,
+    })
+    expect((await provider.resourcesFor(['p#x'])).get('p#x')?.maxCpuParallelism).toBe(3)
+  })
+
+  // PR #4150: a need of no definition (a blob shared before they were
+  // kept) was dropped on the write, so main's next blob carried none.
+  it('CI on main carries on a need shared before definitions were kept', async () => {
+    const a = commit()
+    const b = commit()
+    const shared = spyCache()
+    shared.store.set(
+      key(a),
+      new TextEncoder().encode(
+        JSON.stringify({ version: 1, tasks: { 'p#x': 100 }, needs: { 'p#x': { cpu: 3 } } }),
+      ),
+    )
+    await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#x'] })
+    expect((read(shared.store.get(key(b))) as { needs: unknown }).needs).toEqual({
+      'p#x': { cpu: 3 },
     })
   })
 

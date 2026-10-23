@@ -339,7 +339,11 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //   v47: the store's remote_hits — what a remote's hasMany said it holds,
 //        hits only, so another process trusts it. The cache KEY is
 //        unchanged.
-export const SCHEMA_VERSION = 'v47'
+//   v48: runs.def and task_durations.def — the task's definition
+//        (taskDefinition), so a task whose command changed under the same
+//        name reads none of the old one's timings. The cache KEY is
+//        unchanged.
+export const SCHEMA_VERSION = 'v48'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON

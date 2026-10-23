@@ -154,6 +154,9 @@ What `hasMany` said is recorded in the index's `remote_hits`
 probe. A whole `hasMany` answer rewrites the rows it asked (new hits
 in, gone ones out), and a `get` every remote answers with `null` drops
 its row. A `get` that fails keeps it: the key may still be there.
+A remote whose batch gives no answer is asked `has` per key when a run
+needs the answer to plan (`remoteHasEach`); that whole answer is
+recorded the same way, and one failed `has` is no answer.
 
 ## What a failure says
 

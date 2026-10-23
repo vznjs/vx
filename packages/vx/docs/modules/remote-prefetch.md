@@ -54,7 +54,10 @@ export function getContext(node: TaskNode, command: string): CacheGetContext
    so a key the probe calls absent costs no GET. Its whole answer is
    kept for the next run, and `held` hears it: a key the index lacked
    was often stored since (a PR's CI stores its merged tree), and
-   calling it missed sized a run for work that restored.
+   calling it missed sized a run for work that restored. When the
+   batch gives no answer and `held` is set, each key is asked on its
+   own (`remoteHasEach`): with no answer demand counts every task left
+   (main f71b377 asked 15 workers and cancelled 11).
 5. `concurrency` pumps drain the list through the layer's `prefetch`
    (the hash, the task id and its command); a rejected fetch is
    swallowed.

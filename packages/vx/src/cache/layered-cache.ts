@@ -322,6 +322,27 @@ export class LayeredCache implements CacheLayer {
     return answer
   }
 
+  /**
+   * Each readable remote asked key by key (`RemoteLane.hasEach`), a key
+   * its batch answer already covered not asked again: a complete answer,
+   * for a run that plans on it. Null when a probe failed or none may be read.
+   */
+  async remoteHasEach(
+    hashes: readonly string[],
+    concurrency: number,
+  ): Promise<Map<string, ArtifactInfo> | null> {
+    if (this.readable.length === 0) return null
+    const out = new Map<string, ArtifactInfo>()
+    for (const lane of this.readable) {
+      const found = await lane.hasEach(hashes, concurrency)
+      if (found === null) return null
+      for (const [h, info] of found) if (!out.has(h)) out.set(h, info)
+    }
+    for (const [h, info] of out) this.infos.set(h, info)
+    this.local.remoteHits.record(hashes, out)
+    return out
+  }
+
   private async probeMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
     let out: Map<string, ArtifactInfo> | null = new Map()
     for (const lane of this.readable) {

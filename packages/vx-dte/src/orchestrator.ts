@@ -229,6 +229,8 @@ export class Orchestrator {
   readonly trace = new Trace()
   /** When a task last began, ended or faulted, or the run last said it waits. */
   private movedAt = performance.now()
+  /** When core's cache probe answered, how many placed tasks it left to run, and how many it found in no cache. */
+  private probe?: { at: number; left: number; misses: number }
   /** Each time the run asked for workers: when, how many, for which work, ending when. */
   private readonly asks: {
     at: number
@@ -985,6 +987,18 @@ export class Orchestrator {
     return this.queue.some((j) => j.req.taskId === taskId) ? null : undefined
   }
 
+  /**
+   * Core's cache probe answered: `left` placed tasks no cache holds or none
+   * answered for, `misses` of them found in none. Said in the footer: main
+   * d0cdc2c asked 15 workers for 119 tasks, 91 restored, and no line said
+   * what the probe had answered (2026-10-23).
+   */
+  probed(left: number, misses: number): void {
+    if (this.probe !== undefined) return
+    this.probe = { at: performance.now() - this.startedAt, left, misses }
+    this.trace.mark(ORCHESTRATOR, 'cache probe', { remaining: left, misses })
+  }
+
   /** The run asks for `workers` more for `tasks` it knows miss, its plan ending in `endsInMs`. */
   asked(
     workers: number,
@@ -1316,6 +1330,16 @@ export class Orchestrator {
         ...(res.has(l) ? [['', res.get(l)!] as [string, ui.Inline]] : []),
         ...(usage.get(l) ?? []).map((d): [string, ui.Inline] => ['', ui.dim(`${indent}${d}`)]),
       ]),
+      ...(this.ended && this.probe !== undefined
+        ? [
+            [
+              '',
+              ui.dim(
+                `${'probe'.padEnd(width)}  at ${seconds(this.probe.at)}: ${this.probe.left} tasks left to run, ${this.probe.misses} known misses`,
+              ),
+            ] as [string, ui.Inline],
+          ]
+        : []),
       ...(this.ended && this.asks.length > 0
         ? [
             [

@@ -845,6 +845,8 @@ it('a worker that left is not failed or replaced when its job then ends', async 
 it('the final summary says how each worker ended, its size and machine under it', async () => {
   const h = await harness(new Map([node('t1')]))
   const small = { size: 'small', cpu: 2, memory: 4e9 }
+  h.o.probed(3, 1)
+  h.o.probed(9, 9)
   h.o.asked(2, 3, 1, 70_000, ['p#a', 'p#b'])
   h.o.spawned('small#1', small)
   h.o.spawned('big#1', { size: 'big', cpu: 4, memory: 4e9 })
@@ -865,6 +867,10 @@ it('the final summary says how each worker ended, its size and machine under it'
   expect(rows[at('big#1')]).toMatch(/^big#1 +left/)
   expect(rows.some((r) => r.trimStart().startsWith('!'))).toBe(false)
   expect(rows.filter((r) => /^\S+ +online/.test(r))).toEqual([])
+  // What the cache probe left to run, the first answer only: why the asks counted what they did.
+  expect(rows.filter((r) => r.startsWith('probe'))).toEqual([
+    expect.stringMatching(/^probe +at 0\.\ds: 3 tasks left to run, 1 known misses$/),
+  ])
   // When the run asked for workers, for which work, and when its plan ended: why it had as many as it did.
   expect(rows.filter((r) => r.startsWith('asked'))).toEqual([
     expect.stringMatching(/^asked +2 at 0\.\ds for 3 tasks \(1 measured\), plan 70\.0s$/),
@@ -1587,8 +1593,11 @@ it('a worker begins its next task while the last one saves', async () => {
       cores: 1,
       memory: 0,
     })
+    // Each `start` is sent unawaited, so the relay may hand them over in
+    // either order, and t2 (`true`) may end in the same poll it starts.
     const seen: string[] = []
-    for (let i = 0; i < 100 && !seen.includes('start t2'); i++) {
+    const started = () => seen.includes('start t1') && seen.includes('start t2')
+    for (let i = 0; i < 100 && !started(); i++) {
       for (const { from, body } of await o.poll()) {
         const m = body as { type: string; id?: string; task?: string }
         if (from === 'relay' && m.type === 'joined') {
@@ -1608,7 +1617,8 @@ it('a worker begins its next task while the last one saves', async () => {
         } else if (m.type === 'start' || m.type === 'end') seen.push(`${m.type} ${m.task}`)
       }
     }
-    expect(seen).toEqual(['start t1', 'start t2'])
+    expect(started()).toBe(true)
+    expect(seen).not.toContain('end t1')
     saved()
     await raw.leave()
     expect(await code).toBe(0)

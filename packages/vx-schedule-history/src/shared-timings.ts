@@ -25,6 +25,7 @@ const MAX_TASKS = 50_000
 const MAX_MS = 86_400_000
 const MAX_CORES = 65_536
 const MAX_BYTES = 2 ** 50
+const MAX_DEF = 64
 
 const keyOf = (sha: string): string => `timings\0${sha}`
 
@@ -56,12 +57,18 @@ export function parseTimings(
  * optional `needs: { id: { cpu, rss?, cores?, memory? } }` (`cpu` its most
  * cores busy, `rss` its peak memory, `cores` / `memory` the machine it
  * filled): what a fresh machine packs by. A need out of range is dropped.
+ * `defs: { id: definition }` says which task each timing is of
+ * (`taskDefinitions`); a reader keeps only a timing of the task as it is now.
  */
 function parseBlob(
   bytes: Uint8Array,
   /** Null: every task's. */
   graph: ReadonlySet<string> | null,
-): { timings: Map<string, number>; needs: Map<string, TaskResources> } | null {
+): {
+  timings: Map<string, number>
+  needs: Map<string, TaskResources>
+  defs: Map<string, string>
+} | null {
   if (bytes.byteLength > MAX_BLOB_BYTES) return null
   let parsed: unknown
   try {
@@ -105,7 +112,12 @@ function parseBlob(
         ...(within(memory, MAX_BYTES) ? { saturatedMemoryBytes: memory } : {}),
       })
     }
-  return { timings: out, needs }
+  const defs = new Map<string, string>()
+  const rawDefs = (parsed as { defs?: unknown }).defs
+  if (typeof rawDefs === 'object' && rawDefs !== null && !Array.isArray(rawDefs))
+    for (const [id, d] of Object.entries(rawDefs))
+      if (out.has(id) && typeof d === 'string' && d.length <= MAX_DEF) defs.set(id, d)
+  return { timings: out, needs, defs }
 }
 
 const within = (v: unknown, max: number): v is number =>
@@ -245,7 +257,7 @@ const readTried = (file: string): Promise<string> =>
 function keep(args: ImportArgs, sha: string, blob: Uint8Array | null): boolean {
   const parsed = blob === null ? null : parseBlob(blob, new Set(args.ids))
   if (parsed === null) return false
-  args.provider.importTimings(sha, parsed.timings, parsed.needs)
+  args.provider.importTimings(sha, parsed.timings, parsed.needs, parsed.defs)
   return parsed.timings.size > 0
 }
 
@@ -254,6 +266,8 @@ export interface ExportArgs {
   readonly cache: PluginCache
   readonly provider: LocalHistoryProvider
   readonly ids: readonly string[]
+  /** The run's tasks' definitions (`taskDefinitions`), written beside their timings. */
+  readonly defs: ReadonlyMap<string, string>
 }
 
 /**
@@ -273,32 +287,43 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
   const carried = prior === null ? null : parseBlob(prior, null)
   const timings = new Map(carried?.timings)
   const resources = new Map(carried?.needs)
+  const defs = new Map(carried?.defs)
   for (const [id, ms] of p50s) {
     timings.set(id, ms)
+    const def = args.defs.get(id)
+    // A carried need of the task as it was is not this task's.
+    if (defs.get(id) !== def) resources.delete(id)
+    if (def === undefined) defs.delete(id)
+    else defs.set(id, def)
     const r = measured.get(id)
     if (r?.maxCpuParallelism !== undefined) resources.set(id, r)
   }
-  let bytes = encode(timings, resources)
+  let bytes = encode(timings, resources, defs)
   // Tasks a repo dropped stay in the carried blob; past the cap, the run's own.
   if (bytes.byteLength > MAX_BLOB_BYTES) {
     const own = (id: string): boolean => p50s.has(id)
     bytes = encode(
       new Map([...timings].filter(([id]) => own(id))),
       new Map([...resources].filter(([id]) => own(id))),
+      defs,
     )
   }
   for (const key of keysOf(head[0], args.ids)) await args.cache.put(key, bytes)
 }
 
-/** `{ version: 1, tasks, needs? }`, each map by task id. */
+/** `{ version: 1, tasks, needs?, defs? }`, each map by task id. */
 function encode(
   timings: ReadonlyMap<string, number>,
   resources: ReadonlyMap<string, TaskResources>,
+  defsById: ReadonlyMap<string, string>,
 ): Uint8Array {
   const tasks: Record<string, number> = {}
   const needs: Record<string, Record<string, number>> = {}
+  const defs: Record<string, string> = {}
   for (const [id, ms] of [...timings].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     tasks[id] = Math.round(ms)
+    const def = defsById.get(id)
+    if (def !== undefined) defs[id] = def
     const r = resources.get(id)
     if (r?.maxCpuParallelism === undefined) continue
     needs[id] = {
@@ -308,7 +333,11 @@ function encode(
       ...(r.saturatedMemoryBytes === undefined ? {} : { memory: r.saturatedMemoryBytes }),
     }
   }
-  const blob =
-    Object.keys(needs).length === 0 ? { version: 1, tasks } : { version: 1, tasks, needs }
+  const blob = {
+    version: 1,
+    tasks,
+    ...(Object.keys(needs).length === 0 ? {} : { needs }),
+    ...(Object.keys(defs).length === 0 ? {} : { defs }),
+  }
   return new TextEncoder().encode(JSON.stringify(blob))
 }
