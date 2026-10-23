@@ -284,6 +284,8 @@ async function harness(
     stalled?: (waiting: string) => void
     stallMs?: number
     overdue?: (id: string) => void
+    root?: string
+    traceFile?: string
   } = {},
 ) {
   const store = fakeArtifacts()
@@ -521,6 +523,81 @@ it('books a worker the cores of a task from its start to its command’s end', a
   await h.stop()
   const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
   expect(rows.find((r) => r.includes('expected'))).toContain('expected 0.0 ·')
+})
+
+// M, 2026-10-23: "a generated Chrome profile with all workers and tasks
+// they executed in time so you could debug better".
+it('writes the run’s trace on close: each worker’s tasks in time, the run’s waits and restores', async () => {
+  const root = await tmp()
+  const h = await harness(
+    new Map([node('t1'), node('t2')]),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {
+      root,
+      traceFile: '.vx/dte/trace.json',
+    },
+  )
+  const a = await h.worker(2)
+  await Bun.sleep(50)
+  const done = ['t1', 't2'].map((id) => h.o.execute(h.req(id)))
+  expect(await a.batches()).toEqual([['t1', 't2']])
+  for (const t of ['t1', 't2']) await a.begin(t)
+  await Bun.sleep(20)
+  await a.say({ type: 'ran', task: 't1' })
+  await Bun.sleep(20)
+  for (const t of ['t1', 't2']) await a.finish(t)
+  await Promise.all(done)
+  await h.stop()
+  const trace = JSON.parse(await readFile(path.join(root, '.vx/dte/trace.json'), 'utf8')) as {
+    traceEvents: {
+      ph: string
+      name: string
+      cat?: string
+      pid: number
+      tid: number
+      args?: { name?: string }
+    }[]
+    otherData: { run: string }
+  }
+  expect(trace.otherData.run).toBe(R)
+  const ev = trace.traceEvents
+  const pidOf = (name: string) =>
+    ev.find((e) => e.ph === 'M' && e.name === 'process_name' && e.args?.name === name)?.pid
+  const w = pidOf('worker#1')
+  expect(pidOf('orchestrator')).toBe(1)
+  expect(w).toBe(2)
+  // Both at once on the worker: one row each.
+  const tasks = ev.filter(
+    (e) => e.ph === 'X' && e.cat === 'task' && e.pid === w && e.name.startsWith('t'),
+  )
+  expect(tasks.map((e) => [e.name, e.tid]).sort()).toEqual([
+    ['t1', 1],
+    ['t2', 2],
+  ])
+  for (const part of ['sent', 'restore deps', 'command', 'save'])
+    expect(ev.some((e) => e.ph === 'X' && e.pid === w && e.name === part)).toBe(true)
+  const run = ev.filter((e) => e.ph === 'X' && e.pid === 1)
+  expect(
+    run
+      .filter((e) => e.cat === 'queue')
+      .map((e) => e.name)
+      .sort(),
+  ).toEqual(['t1', 't2'])
+  expect(
+    run
+      .filter((e) => e.cat === 'restore')
+      .map((e) => e.name)
+      .sort(),
+  ).toEqual(['t1', 't2'])
+  expect(ev.some((e) => e.ph === 'i' && e.pid === w && e.name === 'stopped')).toBe(true)
+  expect(ev.some((e) => e.ph === 'C' && e.pid === w && e.name === 'cores')).toBe(true)
+  const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+  expect(rows.find((r) => r.startsWith('trace'))).toMatch(
+    /^trace +\.vx\/dte\/trace\.json · open in https:\/\/ui\.perfetto\.dev$/,
+  )
 })
 
 // Main, 2026-10-23: vx-docs#build (41 s, then its test) got ready 3 s in,

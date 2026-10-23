@@ -10,6 +10,7 @@
 // as its own.
 
 import { realpathSync } from 'node:fs'
+import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   ui,
@@ -38,6 +39,7 @@ import { Usage, type UsageStats } from './usage.js'
 import { assign, ordered, type Need } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 import { RelayError, type Participant } from './wire.js'
+import { ORCHESTRATOR, Trace } from './trace.js'
 
 /** What a task is expected to hold while it runs, from its history; `Infinity` (unmeasured): a whole worker. */
 
@@ -49,6 +51,10 @@ interface Job {
   readonly resolve: (r: ExecuteResult) => void
   readonly reject: (err: unknown) => void
   worker?: string
+  /** When it last joined the run's queue. */
+  queuedAt?: number
+  /** The cores its worker booked for it. */
+  booked?: number
   /** The workers that failed it after beginning it, with why: two fail it. */
   faults?: string[]
   /** Its worker's lease on it ends then unless the worker says it still holds it. */
@@ -141,6 +147,8 @@ export interface OrchestratorOptions {
   readonly home?: string | undefined
   /** No task began or ended for `stallMs`: what the run waits on, one line a task. */
   readonly stalled?: (waiting: string) => void
+  /** Where the run's trace goes (`trace.ts`), workspace-relative. */
+  readonly traceFile?: string
   /** Default `STALL_MS`. */
   readonly stallMs?: number
 }
@@ -220,6 +228,10 @@ export class Orchestrator {
   private pumping = false
   private joined = 0
   private readonly startedAt = performance.now()
+  /** The run in time, written on close (`traceFile`). */
+  readonly trace = new Trace(this.startedAt)
+  /** Where it was written, for the footer. */
+  private traced: string | undefined
   /** When a task last began, ended or faulted, or the run last said it waits. */
   private movedAt = performance.now()
   /** Each time the run asked for workers: when, how many, for which work, ending when. */
@@ -271,6 +283,7 @@ export class Orchestrator {
       const job: Job = {
         req,
         need: { ...need, platform: req.platform ?? this.o.home },
+        queuedAt: performance.now(),
         resolve,
         reject,
       }
@@ -315,6 +328,23 @@ export class Orchestrator {
     this.stop.abort()
     await this.loop
     await this.o.me.leave()
+    for (const a of this.workers.values()) this.trace.left(a.label, 'stopped', this.endedAt)
+    await this.writeTrace()
+  }
+
+  /** The trace, once the run has workers; a failed write costs the run nothing but its footer row. */
+  private async writeTrace(): Promise<void> {
+    const rel = this.o.traceFile
+    if (rel === undefined || this.spawnedAt.size + this.workers.size + this.gone.length === 0)
+      return
+    try {
+      const at = path.join(this.o.root, rel)
+      await mkdir(path.dirname(at), { recursive: true })
+      await writeFile(at, this.trace.json(this.endedAt, { run: this.o.run }))
+      this.traced = rel
+    } catch {
+      this.traced = undefined
+    }
   }
 
   private abort(job: Job): void {
@@ -397,6 +427,15 @@ export class Orchestrator {
         cores: Math.min(this.booking(job.need).cores, a.cores),
         memory: Math.min(job.need.memory, a.memory),
       }
+      job.booked = job.held.cores
+      this.trace.slice({
+        track: ORCHESTRATOR,
+        name: job.req.taskId,
+        cat: 'queue',
+        from: job.queuedAt ?? job.sentAt,
+        to: job.sentAt,
+        args: { to: a.label },
+      })
       a.usedCores += job.held.cores
       a.usedMemory += job.held.memory
       const batch = batches.get(a)
@@ -580,6 +619,16 @@ export class Orchestrator {
    * queue goes back free.
    */
   private retry(a: Worker, job: Job, why: string): Job | undefined {
+    const now = performance.now()
+    this.trace.slice({
+      track: a.label,
+      name: job.req.taskId,
+      cat: 'task',
+      from: job.sentAt ?? now,
+      to: now,
+      args: { failed: why },
+    })
+    job.queuedAt = now
     a.busy.delete(job.req.taskId)
     // Its outputs are not there to place a dependant by.
     a.has.delete(job.req.taskId)
@@ -627,6 +676,7 @@ export class Orchestrator {
       }
     if (lines.length === 0) return
     this.movedAt = now
+    this.trace.mark(ORCHESTRATOR, 'stalled', { waiting: lines })
     this.o.stalled?.(lines.join('\n'))
   }
 
@@ -664,6 +714,8 @@ export class Orchestrator {
   private async finish(a: Worker, task: string, key: string, head: WiredResult): Promise<void> {
     const job = a.busy.get(task)
     if (job === undefined) return
+    const endAt = performance.now()
+    this.traceTask(a, job, head, endAt)
     a.busy.delete(task)
     this.unhold(a, job)
     a.started.delete(task)
@@ -689,6 +741,13 @@ export class Orchestrator {
         job.reject(err)
         return undefined
       })
+    this.trace.slice({
+      track: ORCHESTRATOR,
+      name: task,
+      cat: 'restore',
+      from: endAt,
+      to: performance.now(),
+    })
     if (log === undefined) return
     if (log === null) {
       job.reject(
@@ -705,6 +764,47 @@ export class Orchestrator {
       where: a.label,
       machine: { cores: a.reported.cores, memoryBytes: a.reported.memory },
     })
+  }
+
+  /**
+   * Task `job` ended on `a` at `endAt`: one slice from its send, in its
+   * parts (sent, restoring its dependencies, its command, saving), and
+   * the cores it booked there and used.
+   */
+  private traceTask(a: Worker, job: Job, head: WiredResult, endAt: number): void {
+    const sent = job.sentAt ?? endAt
+    const began = Math.max(sent, job.startedAt ?? sent)
+    const ran = Math.min(endAt, Math.max(began, job.ranAt ?? endAt))
+    const command = Math.max(began, ran - Math.max(0, head.durationMs))
+    this.trace.slice({
+      track: a.label,
+      name: job.req.taskId,
+      cat: 'task',
+      from: sent,
+      to: endAt,
+      args: {
+        exitCode: head.exitCode,
+        durationMs: Math.round(head.durationMs),
+        ...(head.cpuMs === undefined ? {} : { cpuMs: Math.round(head.cpuMs) }),
+        ...(head.peakRssBytes === undefined ? {} : { peakRssBytes: head.peakRssBytes }),
+        bookedCores: job.booked ?? 0,
+      },
+      parts: [
+        { name: 'sent', from: sent, to: began },
+        { name: 'restore deps', from: began, to: command },
+        { name: 'command', from: command, to: ran },
+        { name: 'save', from: ran, to: endAt },
+      ],
+    })
+    this.trace.use({ track: a.label, from: began, to: ran, booked: job.booked ?? 0, used: 0 })
+    if (head.cpuMs !== undefined && ran > command)
+      this.trace.use({
+        track: a.label,
+        from: command,
+        to: ran,
+        booked: 0,
+        used: head.cpuMs / Math.max(1, head.durationMs),
+      })
   }
 
   private onRelay(body: { type?: string; id?: string; info?: unknown }): void {
@@ -750,6 +850,12 @@ export class Orchestrator {
       const cores = Math.min(Number(info.cores), spawn?.declared.cpu ?? Infinity)
       const memory = Math.min(Number(info.memory), spawn?.declared.memory ?? Infinity)
       const warmUpMs = asked === undefined ? undefined : performance.now() - asked
+      this.trace.joined(
+        label,
+        performance.now(),
+        asked,
+        typeof info.booted === 'number' ? info.booted : undefined,
+      )
       const size = spawn?.declared.size
       if (warmUpMs !== undefined && size !== undefined && !this.joinLimitMs.has(size)) {
         this.joinLimitMs.set(size, 2 * warmUpMs)
@@ -801,6 +907,7 @@ export class Orchestrator {
   private lose(a: Worker): void {
     this.workers.delete(a.id)
     a.usage.to = performance.now()
+    this.trace.left(a.label, 'lost', a.usage.to)
     this.gone.push(a)
     // Its tasks run again: first, as they were first to go.
     const back: Job[] = []
@@ -897,6 +1004,11 @@ export class Orchestrator {
   ): void {
     if (this.asks.length === 0) this.unmeasured = unmeasured
     this.asks.push({ at: performance.now() - this.startedAt, workers, tasks, measured, endsInMs })
+    this.trace.mark(ORCHESTRATOR, `ask ${workers} worker${workers === 1 ? '' : 's'}`, {
+      tasks,
+      measured,
+      planEndsInMs: Math.round(endsInMs),
+    })
   }
 
   /** `demand` asked the adapter for worker `id` (`WorkerSpawn.id`). */
@@ -1004,6 +1116,7 @@ export class Orchestrator {
       } else if (this.spawnedAt.has(id) && !joined.has(id) && !this.unstarted.has(id)) {
         this.cancelled.add(id)
         cancelled.push(id)
+        this.trace.unstarted(id, this.spawnedAt.get(id)!.at, 'cancelled: not needed')
       }
     }
     return cancelled
@@ -1012,6 +1125,7 @@ export class Orchestrator {
   private letGo(a: Worker): void {
     this.workers.delete(a.id)
     a.usage.to = performance.now()
+    this.trace.left(a.label, 'left', a.usage.to)
     this.gone.push(a)
     this.retired.add(a)
     this.post(a, { type: 'exit' })
@@ -1033,6 +1147,8 @@ export class Orchestrator {
     // Gone already: its job ending says nothing new.
     if (this.gone.some((a) => a.label === id) || this.unstarted.has(id)) return
     this.unstarted.set(id, reason)
+    const asked = this.spawnedAt.get(id)?.at
+    if (asked !== undefined) this.trace.unstarted(id, asked, reason)
     // A checkout, an install or a join can fail on the network; a few more
     // workers get a go. Failing that often, the setup is broken: none more.
     if (this.restarts < RESTARTS) {
@@ -1234,6 +1350,14 @@ export class Orchestrator {
                 ]),
           ]
         : []),
+      ...(this.traced === undefined
+        ? []
+        : [
+            [
+              '',
+              ui.dim(`${'trace'.padEnd(width)}  ${this.traced} · open in https://ui.perfetto.dev`),
+            ] as [string, ui.Inline],
+          ]),
       ...(coreMs > 0
         ? [
             [

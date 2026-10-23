@@ -436,7 +436,21 @@ machine together, and the share of their history the run's tasks used:
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
             asked    1 at 0.0s for 4 cores, 5 tasks (5 measured)
             total    cpu utilization 58%
+            trace    .vx/dte/trace.json · open in https://ui.perfetto.dev
 ```
+
+At its end the run writes `.vx/dte/trace.json`, the run in time as a
+Chrome trace (open it in https://ui.perfetto.dev or `chrome://tracing`).
+Each worker is a process: its first row holds its warm-up (split, when it
+says when its `vx` started, into its machine's start and vx's boot), its
+idle stretches and how it ended; each task takes the first row free over
+its time there, from its send through restoring its dependencies, its
+command and its save, with its exit code, duration, CPU time and booked
+cores. A `cores` counter per worker shows the cores booked and used at
+once. The `orchestrator` process holds the cache probe, each ask for
+workers, stalls, the time each task waited for room, and each restore.
+Times are the orchestrator's: when it heard. On CI, upload the file as an
+artifact; this repo's `ci.yml` does and links it from the job summary.
 
 ## API
 
