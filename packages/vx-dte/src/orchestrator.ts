@@ -160,6 +160,10 @@ const BATCH_BYTES = 512 * 1024
 const FEW = 2
 /** The unmeasured tasks the summary names; the rest it counts. */
 const NAMED = 40
+/** Core-time of history the run's tasks finish before their use reshapes bookings: a few tasks' worth. */
+const LEARN_MS = 60_000
+/** The most a worker's bookings may add up to, in its cores, when tasks use less than their history. */
+const OVERBOOK = 1.5
 /** Failed starts the run replaces before it calls its setup broken. */
 const RESTARTS = 3
 
@@ -232,6 +236,14 @@ export class Orchestrator {
    * 41 of 119, small#7 holding 3.9 cores for a task using 0.3).
    */
   private unmeasured: readonly string[] = []
+  /**
+   * Core-time measured tasks used here, and what their history said they
+   * would: tasks booked at their history used 82% of it on every Linux
+   * worker of cold run 3 (66% of the cores against the sim's 86%,
+   * 2026-10-23). A measured task books its need times what they used.
+   */
+  private usedMs = 0
+  private needMs = 0
   private readonly stop = new AbortController()
   private readonly loop: Promise<void>
   private readonly realRoot: string
@@ -365,7 +377,7 @@ export class Orchestrator {
     const to = assign(
       queue.map((job) => ({
         id: job.req.taskId,
-        need: job.need,
+        need: this.booking(job.need),
         up: upstream(nodes, job.req.taskId),
       })),
       bins,
@@ -382,7 +394,7 @@ export class Orchestrator {
       job.sentAt = performance.now()
       a.busy.set(job.req.taskId, job)
       job.held = {
-        cores: Math.min(job.need.cores, a.cores),
+        cores: Math.min(this.booking(job.need).cores, a.cores),
         memory: Math.min(job.need.memory, a.memory),
       }
       a.usedCores += job.held.cores
@@ -419,6 +431,17 @@ export class Orchestrator {
   private holding(a: Worker): boolean {
     for (const j of a.busy.values()) if (j.held !== undefined) return true
     return false
+  }
+
+  /**
+   * What a task books: a measured one its need times the share of their
+   * history the run's tasks used, once they used `LEARN_MS` of it, and
+   * never under `1 / OVERBOOK` of its need.
+   */
+  booking(need: Need): Need {
+    if (need.cores === Infinity || this.needMs < LEARN_MS) return need
+    const used = Math.min(1, Math.max(1 / OVERBOOK, this.usedMs / this.needMs))
+    return { ...need, cores: need.cores * used }
   }
 
   /** `job`'s cores and memory go back to its worker, once: its command ended, or it left. */
@@ -647,6 +670,11 @@ export class Orchestrator {
     a.ran++
     a.done.push(task)
     a.usage.record(head)
+    if (job.need.cores !== Infinity && head.cpuMs !== undefined && head.exitCode === 0) {
+      const ms = Math.max(1, head.durationMs)
+      this.usedMs += head.cpuMs
+      this.needMs += Math.min(job.need.cores, a.cores) * ms
+    }
     this.savedAs.set(task, key)
     this.pumpSoon()
     const node = this.o.nodes()?.get(task)
@@ -1208,10 +1236,10 @@ export class Orchestrator {
         : []),
       ...(coreMs > 0
         ? [
-            ['', `${'total'.padEnd(width)}  cpu utilization ${percent(cpuMs / coreMs)}`] as [
-              string,
-              ui.Inline,
-            ],
+            [
+              '',
+              `${'total'.padEnd(width)}  cpu utilization ${percent(cpuMs / coreMs)}${this.needMs < LEARN_MS ? '' : ` · tasks used ${percent(this.usedMs / this.needMs)} of their history`}`,
+            ] as [string, ui.Inline],
           ]
         : []),
     ]

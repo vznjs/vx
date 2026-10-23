@@ -425,7 +425,7 @@ waits for the needs another plugin fetches (`ctx.refining()`), such as
 `@vzn/vx-schedule-history`'s default-branch timings. The `unmeasured`
 line names the tasks the first ask had no measure of, and a worker that
 ran two tasks or fewer names them on its row. The `total` line is the cpu utilization of every
-machine together:
+machine together, and the share of their history the run's tasks used:
 
 ```
             small#1  stopped  5 done · warm-up 0.2s
@@ -464,8 +464,10 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     Each task core's up-front cache probe found in no store
     (`TaskExecutor.demand`'s `missed`) counts as work too, the moment the
     probe answers.
-    It scales each task's cores by what the workers use over what the run
-    booked, as placing by load packs them.
+    A measured task books its cores times the share of their history the
+    run's finished tasks used (once they used a minute of core-time; never
+    under two thirds), so a worker's bookings may reach 1.5 times its
+    cores when tasks use less than history says; plans book the same.
     A worker the plan needs later starts when its warm-up nears. An idle
     worker leaves when the plan still ends in that margin without it, or,
     when its next task is two warm-ups away, with one started in its place

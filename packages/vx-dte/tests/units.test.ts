@@ -455,6 +455,39 @@ it('sends a worker what its booking fits, though its load reads low; busier than
   }
 })
 
+// Cold run 3, 2026-10-23: tasks booked at their history used 82% of it,
+// and every Linux worker ran at 63-73% CPU against the sim's 86%.
+it('books measured tasks at the share of their history the run’s tasks used, at most half again more', async () => {
+  const ids = Array.from({ length: 12 }, (_, i) => `t${i + 1}`)
+  const h = await harness(new Map(ids.map((id) => node(id))))
+  try {
+    const a = await h.worker(4)
+    await Bun.sleep(50)
+    for (const id of ids.slice(0, 4)) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
+    for (const id of ['t1', 't2', 't3', 't4']) {
+      await a.begin(id)
+      h.store.saved.set(`k-${id}`, { stdout: '', stderr: '' })
+      // Half a core of the one its history booked.
+      await a.say({
+        type: 'end',
+        task: id,
+        key: `k-${id}`,
+        result: { exitCode: 0, durationMs: 20_000, cpuMs: 10_000 },
+      })
+    }
+    await Bun.sleep(50)
+    for (const id of ids.slice(4)) void h.o.execute(h.req(id))
+    // Half each would fit 8; bookings stop at 1.5 times its cores.
+    expect((await a.batches()).flat()).toEqual(['t5', 't6', 't7', 't8', 't9', 't10'])
+    await h.stop()
+    const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+    expect(rows.find((r) => r.includes('total'))).toContain('tasks used 50% of their history')
+  } finally {
+    await h.stop()
+  }
+})
+
 // Main, 2026-10-23: 12 workers of 4 cores each ran about one task, at 25%
 // CPU all their time online; packed, the ones the rest does not need leave.
 it('packs tasks onto the worker with fewest cores free, and the idle one leaves', async () => {

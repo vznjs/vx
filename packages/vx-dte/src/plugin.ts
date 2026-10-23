@@ -501,7 +501,8 @@ export function dte(options: DteOptions) {
           remaining,
           nodes: nodes ?? new Map(),
           executed: knownMisses(likely, sure, executed, remaining),
-          need,
+          // As the run books them: a plan of history alone asks for workers it then fills less.
+          need: (id) => o.booking(need(id)),
           durationMs: (id) => peaks.get(id)?.p50DurationMs,
           workers,
           running,
