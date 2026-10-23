@@ -4,7 +4,7 @@ import { expect, it } from 'bun:test'
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { runSetup, setup, type SetupOptions } from '../src/setup.js'
+import { debsKey, runSetup, setup, type SetupOptions } from '../src/setup.js'
 
 function machine(
   o: Partial<SetupOptions> & { bins?: string[]; probe?: number; dpkg?: number } = {},
@@ -106,4 +106,12 @@ it('takes only its own CI and --debs', async () => {
     expect(runSetup('github', argv, os.tmpdir())).rejects.toThrow(
       'Usage: vx setup github [--debs <dir>]',
     )
+})
+
+// vx-agent.yml restores by `vx-setup-debs-<runner.os>-<runner.arch>-`
+// (ci-workflow.unsafe.test.ts): a key led by the image matched none.
+it('saves packages under the runner OS and arch, then the image', () => {
+  expect(
+    debsKey({ RUNNER_OS: 'Linux', RUNNER_ARCH: 'X64', ImageOS: 'ubuntu26', ImageVersion: '1.2' }),
+  ).toBe('vx-setup-debs-Linux-X64-ubuntu26-1.2')
 })

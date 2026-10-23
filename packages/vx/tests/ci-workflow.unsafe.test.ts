@@ -168,6 +168,16 @@ describe('ci.yml', () => {
     expect(cached).toEqual(['~/.cache/vx/setup-debs', '~/.cache/vx/setup-debs'])
   })
 
+  // `vx setup github` saves under `vx-setup-debs-<RUNNER_OS>-<RUNNER_ARCH>-<image>`
+  // (vx-ci's debsKey): a key led by the image matched no restore, and
+  // every agent fetched again (2026-10-23).
+  it('restores the setup packages by the prefix setup saves them under', () => {
+    const restore = agent.steps!.find((s) => s.uses?.startsWith('actions/cache/restore'))!
+    expect(restore.with?.['restore-keys']).toBe(
+      'vx-setup-debs-${{ runner.os }}-${{ runner.arch }}-',
+    )
+  })
+
   // release-notes.yml was a workflow of its own for one task.
   it('syncs the release notes as a task of the Linux run, on a push', () => {
     const job = doc.jobs['linux']!
