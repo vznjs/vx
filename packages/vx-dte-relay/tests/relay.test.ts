@@ -634,6 +634,32 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(pushed).toContainEqual({ from: a, body: 'result' })
   })
 
+  // Main 13baaf6: a socket whose host let it go, its pings still
+  // answered, left the orchestrator deaf for 8 min (2026-10-23).
+  it('makes the socket a frame came down its sender’s, and pushes what queued down it', async () => {
+    const c = client()
+    const o = await c.join(R, 'orchestrator')
+    const a = await c.join(R, 'worker')
+    const live: unknown[] = []
+    const socket = {
+      send: (t: string) => void live.push(...(JSON.parse(t) as { messages: unknown[] }).messages),
+      close() {},
+    }
+    expect(c.relay.attach(K, o, socket)).toBe(true)
+    live.splice(0)
+    // Its host let the socket go: the relay queues, the client hears pongs.
+    c.relay.detach(K, o, socket)
+    await c.send(R, a, 'orchestrator', 'result')
+    expect(live).toEqual([])
+    // Its next frame, an empty beat, comes down the same socket.
+    expect(JSON.parse(c.relay.frame(K, o, JSON.stringify({ n: 7, sends: [] }), socket))).toEqual({
+      n: 7,
+    })
+    expect(live).toEqual([{ from: a, body: 'result' }])
+    await c.send(R, a, 'orchestrator', 'next')
+    expect(live.at(-1)).toEqual({ from: a, body: 'next' })
+  })
+
   it('pushes messages down a socket and takes sends from it', async () => {
     const c = client()
     const joined = await c.call(R, 'join', { role: 'orchestrator' })

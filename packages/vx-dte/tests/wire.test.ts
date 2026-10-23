@@ -298,7 +298,11 @@ type Held = { key: string; id: string; socket?: { send(t: string): void; close()
  * `frames`, while the host itself still answers pings (Cloudflare's
  * auto-response). A socket dialed after works.
  */
-function dropping(): { url: string; drop(id: string, mode: 'all' | 'frames'): void } {
+function dropping(): {
+  url: string
+  drop(id: string, mode: 'all' | 'frames'): void
+  forget(id: string): void
+} {
   const drops = new Map<Bun.ServerWebSocket<Held>, 'all' | 'frames'>()
   const open = new Set<Bun.ServerWebSocket<Held>>()
   let server: Bun.Server<Held> | undefined
@@ -330,7 +334,8 @@ function dropping(): { url: string; drop(id: string, mode: 'all' | 'frames'): vo
           if (drop === 'all') return
           relay.seen(ws.data.key, ws.data.id, Date.now())
           ws.send('pong')
-        } else if (drop === undefined) ws.send(relay.frame(ws.data.key, ws.data.id, String(m)))
+        } else if (drop === undefined)
+          ws.send(relay.frame(ws.data.key, ws.data.id, String(m), ws.data.socket))
       },
       close(ws) {
         open.delete(ws)
@@ -349,6 +354,10 @@ function dropping(): { url: string; drop(id: string, mode: 'all' | 'frames'): vo
     url: `http://127.0.0.1:${server.port}`,
     drop(id, mode) {
       for (const ws of open) if (ws.data.id === id) drops.set(ws, mode)
+    },
+    /** The relay lets `id`'s socket go, which stays open and answers its pings. */
+    forget(id) {
+      for (const ws of open) if (ws.data.id === id) relay.detach(ws.data.key, id, ws.data.socket!)
     },
   }
 }
@@ -370,6 +379,25 @@ it('drops a socket the relay stopped answering, and carries on over a new one', 
   const read = []
   for (let i = 0; i < 10 && read.length === 0; i++) read.push(...(await a.poll()))
   expect(read).toEqual([{ from: 'orchestrator', body: 'batch' }])
+  await a.leave()
+  await o.leave()
+}, 5_000)
+
+// Main 13baaf6: the relay let the orchestrator's socket go while its host
+// still answered its pings, and it heard nothing for 8 min (2026-10-23).
+it('hears again within a few heartbeats when the relay lets its socket go', async () => {
+  const { url, forget } = dropping()
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
+  await o.poll()
+  forget(o.id)
+  await a.send('orchestrator', 'result')
+  const at = performance.now()
+  const got = []
+  for (let i = 0; i < 10 && got.length === 0; i++) got.push(...(await o.poll()))
+  expect(got).toEqual([{ from: a.id, body: 'result' }])
+  // Three quiet heartbeats of 100 ms, then the beat the relay answers.
+  expect(performance.now() - at).toBeLessThan(600)
   await a.leave()
   await o.leave()
 }, 5_000)

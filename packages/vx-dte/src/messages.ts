@@ -12,15 +12,6 @@ import type { CacheFacts, ExecuteResult, SandboxConfig } from '@vzn/vx'
  */
 export const HELD_EVERY = 6
 
-/**
- * A worker gives a task up when its outputs have not saved this long after
- * its command ended, and the orchestrator holds the task that long once
- * told the command ended. Main 32f73ed sat 13 min twice: a worker's save
- * never settled, and its `held` kept the task's lease (2026-10-23). Above a
- * remote's own upload deadlines (`turboCache()`: 60 s a request, one resend).
- */
-export const SAVE_DEADLINE_MS = 5 * 60_000
-
 /** A worker's `join` info. */
 export interface WorkerInfo {
   readonly v: 1

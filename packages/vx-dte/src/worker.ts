@@ -24,7 +24,6 @@ import {
 } from '@vzn/vx'
 import {
   HELD_EVERY,
-  SAVE_DEADLINE_MS,
   type Load,
   type WorkerInfo,
   type RunOrder,
@@ -34,24 +33,6 @@ import {
 import { names, outputFiles } from './outputs.js'
 import { sealWorker, type Proof } from './seal.js'
 import { join, RelayError } from './wire.js'
-
-/** `save`, or a throw once `ms` passes. */
-async function saved(save: Promise<void>, ms: number): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    await Promise.race([
-      save,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`its outputs did not save within ${ms / 1000} s`)),
-          ms,
-        )
-      }),
-    ])
-  } finally {
-    clearTimeout(timer)
-  }
-}
 
 /** Names whose value is this machine's, never the orchestrator's. */
 const HOST_ENV = [
@@ -78,8 +59,6 @@ export async function runWorker(opts: {
   proof: Proof
   /** The workspace's cache read under the facts it is handed (`CommandContext.artifactsFor`). */
   artifacts: (facts: () => CacheFacts | undefined) => TaskArtifacts
-  /** How long a task's save may take before the worker gives the task up; default `SAVE_DEADLINE_MS`. */
-  saveDeadlineMs?: number
 }): Promise<number> {
   const tree = Bun.spawnSync(['git', 'rev-parse', 'HEAD^{tree}'], { cwd: opts.root })
     .stdout.toString()
@@ -132,26 +111,23 @@ export async function runWorker(opts: {
     res: WiredResult & { stdout: string; stderr: string },
   ): Promise<void> => {
     const { stdout, stderr, ...result } = res
-    await saved(
-      artifacts.save(
-        key,
-        {
-          id: m.task,
-          projectDir: path.join(opts.root, m.project),
-          command: m.command,
-          outputs: m.outputs,
-          nestedProjectDirs: m.nested.map((n) => path.join(opts.root, n)),
-        },
-        {
-          stdout,
-          stderr,
-          durationMs: res.durationMs,
-          ...(res.cpuMs === undefined ? {} : { cpuMs: res.cpuMs }),
-          ...(res.peakRssBytes === undefined ? {} : { peakRssBytes: res.peakRssBytes }),
-          env: m.env,
-        },
-      ),
-      opts.saveDeadlineMs ?? SAVE_DEADLINE_MS,
+    await artifacts.save(
+      key,
+      {
+        id: m.task,
+        projectDir: path.join(opts.root, m.project),
+        command: m.command,
+        outputs: m.outputs,
+        nestedProjectDirs: m.nested.map((n) => path.join(opts.root, n)),
+      },
+      {
+        stdout,
+        stderr,
+        durationMs: res.durationMs,
+        ...(res.cpuMs === undefined ? {} : { cpuMs: res.cpuMs }),
+        ...(res.peakRssBytes === undefined ? {} : { peakRssBytes: res.peakRssBytes }),
+        env: m.env,
+      },
     )
     if (res.exitCode === 0) {
       present.set(key, Promise.resolve())
@@ -297,9 +273,6 @@ export async function runWorker(opts: {
       // network's time, and its cores are the next task's (main,
       // 2026-10-23: workers booked 3.7 cores and used 2.4).
       free()
-      // It runs no more: `held` stops renewing its lease, which the
-      // orchestrator now holds for the save alone.
-      running.delete(m.task)
       const took = ui.dim(`${Math.round(res.durationMs)}ms`)
       ui.print(
         'out',

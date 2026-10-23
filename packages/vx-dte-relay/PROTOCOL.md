@@ -78,7 +78,12 @@ Frames are text:
   pings without the relay (Cloudflare's auto-response), so the client also
   treats a socket that leaves a frame unanswered for two heartbeats as
   closed, and sends again down a new one; an upgrade it gives three
-  heartbeats.
+  heartbeats. Pongs are no word from the relay: after three heartbeats
+  with neither a push nor an answer, its beat is `{ "n", "sends": [] }`,
+  which the relay itself answers;
+- the socket a frame comes down is its participant's from then on, and
+  what queued for it is pushed down it: a host that let the socket go
+  while answering its pings left the participant deaf.
 
 A socket's close does not lose its participant: it opens another, and
 the relay pushes what queued meanwhile. vx-dte's client dials again

@@ -189,7 +189,7 @@ export class RelayRun {
   webSocketMessage(ws: Socket, message: string | ArrayBuffer): void {
     const { key, id } = ws.deserializeAttachment()
     const text = typeof message === 'string' ? message : new TextDecoder().decode(message)
-    const answer = this.relay.frame(key, id, text)
+    const answer = this.relay.frame(key, id, text, ws)
     // A `leave` closed the socket it came down: its close is the answer.
     try {
       ws.send(answer)
