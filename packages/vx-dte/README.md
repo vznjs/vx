@@ -385,8 +385,8 @@ not:
 
 Under each agent, and `local`, the footer then spells out what it did:
 its time online, busy and idle; its CPU peak and average in cores and
-the cores the run booked for its tasks on it, on average (a prefetch
-counts, so it can pass its cores); its cpu utilization (the core-time its
+the cores the run booked for the tasks it was running, on average (a
+task waiting in its queue books none); its cpu utilization (the core-time its
 tasks used over the core-time it had); its memory peak and average, when its tasks reported any; and, for an agent, the messages and
 bytes the run sent it and received from it. The `asked` line says each
 time the run asked for agents: how many, when, and the cores its remaining

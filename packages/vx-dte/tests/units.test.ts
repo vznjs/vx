@@ -373,6 +373,19 @@ it('packs tasks onto the agent with fewest cores free, and the idle one leaves',
   }
 })
 
+// Main, 2026-10-23: agents read booked 4.6 of 4 cores, a prefetch
+// waiting in the queue counted as held: booked is what began.
+it('books an agent the cores of the tasks it began, not of its queue', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  const a = await h.agent(1)
+  await Bun.sleep(50)
+  for (const id of ['t1', 't2']) void h.o.execute(h.req(id))
+  expect(await a.batches()).toEqual([['t1', 't2']])
+  await h.stop()
+  const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+  expect(rows.find((r) => r.includes('booked'))).toContain('booked 0.0 ·')
+})
+
 // Main, 2026-10-23: vx-docs#build (41 s, then its test) got ready 3 s in,
 // behind 46 shards ready at once, and began 47 s in: the run's end.
 it('places the queued task the most of the run waits on first, not the first asked', async () => {

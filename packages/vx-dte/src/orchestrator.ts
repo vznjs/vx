@@ -296,7 +296,6 @@ export class Orchestrator {
       }
       a.usedCores += job.held.cores
       a.usedMemory += job.held.memory
-      a.usage.book(job.held.cores)
       const batch = batches.get(a)
       if (batch === undefined) batches.set(a, [job])
       else batch.push(job)
@@ -486,7 +485,7 @@ export class Orchestrator {
     a.has.delete(job.req.taskId)
     a.usedCores -= job.held?.cores ?? 0
     a.usedMemory -= job.held?.memory ?? 0
-    a.usage.book(-(job.held?.cores ?? 0))
+    if (a.started.has(job.req.taskId)) a.usage.book(-(job.held?.cores ?? 0))
     delete job.agent
     delete job.held
     delete job.leaseUntil
@@ -529,15 +528,22 @@ export class Orchestrator {
     a.chain = a.chain.then(() => this.o.me.send(a.id, m)).catch(() => undefined)
   }
 
+  /** Agent `a` began `task`: from now its cores are booked, where a prefetch waiting in its queue held none. */
+  private begun(a: Agent, task: string): void {
+    const job = a.busy.get(task)
+    if (job === undefined || a.started.has(task)) return
+    a.started.add(task)
+    a.usage.book(job.held?.cores ?? 0)
+  }
+
   /** Agent `a` ran `task` and saved it under `key`: it is done there, and done here once restored. */
   private async finish(a: Agent, task: string, key: string, head: WiredResult): Promise<void> {
     const job = a.busy.get(task)
     if (job === undefined) return
     a.busy.delete(task)
-    a.started.delete(task)
+    if (a.started.delete(task)) a.usage.book(-(job.held?.cores ?? 0))
     a.usedCores -= job.held?.cores ?? 0
     a.usedMemory -= job.held?.memory ?? 0
-    a.usage.book(-(job.held?.cores ?? 0))
     a.ran++
     a.usage.record(head)
     this.savedAs.set(task, key)
@@ -685,13 +691,13 @@ export class Orchestrator {
         if (a === undefined) continue
         const m = body as ToOrchestrator
         if (m.type === 'start') {
-          if (a.busy.has(m.task)) a.started.add(m.task)
+          this.begun(a, m.task)
         } else if (m.type === 'held') {
           for (const t of [...m.running, ...m.queued]) {
             const j = a.busy.get(t)
             if (j?.leaseUntil !== undefined) this.lease(j)
           }
-          for (const t of m.running) if (a.busy.has(t)) a.started.add(t)
+          for (const t of m.running) this.begun(a, t)
         } else if (m.type === 'withdrawn') {
           const j = a.busy.get(m.task)
           if (j === undefined || a.started.has(m.task)) continue
@@ -701,7 +707,7 @@ export class Orchestrator {
           const j = a.busy.get(m.task)
           if (j === undefined) continue
           // It began it whether or not its `start` came first.
-          a.started.add(m.task)
+          this.begun(a, m.task)
           if (this.retry(a, j, m.reason) !== undefined) this.queue.unshift(j)
           if (a.faulty && this.spawnedAt.size > 0)
             this.stranded(`${a.label} could not run ${m.task} (${m.reason}) and no agent is left`)
