@@ -110,6 +110,23 @@ describe('what a status means', () => {
     }
   })
 
+  // Main f71b377 asked Vercel for 107 hashes at once: "Too many hashes. Limit is 100."
+  it('a batch query carries at most 100 hashes', async () => {
+    const sizes: number[] = []
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      const { hashes } = JSON.parse(init.body as string) as { hashes: string[] }
+      sizes.push(hashes.length)
+      if (hashes.length > 100) return Response.json({ error: {} }, { status: 400 })
+      return Response.json(Object.fromEntries(hashes.map((h) => [h, { size: 1 }])))
+    }) as unknown as typeof fetch
+    const hashes = Array.from({ length: 250 }, (_, i) => i.toString(16).padStart(4, '0'))
+    const held = await cacheWith(fetchImpl).hasMany(hashes)
+    expect({ sizes: sizes.sort((a, b) => b - a), held: held?.size }).toEqual({
+      sizes: [100, 100, 50],
+      held: 250,
+    })
+  })
+
   // Main f71b377: the batch query gave no answer and nothing said why.
   it('a batch query refused for another reason says its status and body', async () => {
     const { fetchImpl } = stub(() =>
