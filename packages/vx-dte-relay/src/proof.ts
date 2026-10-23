@@ -58,7 +58,12 @@ export async function verifyProof(
   sig: string,
   signed: Uint8Array<ArrayBuffer>,
 ): Promise<boolean> {
-  return crypto.subtle.verify(SIGN, key, unb64u(sig), signed).catch(() => false)
+  // A signature that is not base64url is a bad one: atob threw out of the relay (a 500).
+  try {
+    return await crypto.subtle.verify(SIGN, key, unb64u(sig), signed)
+  } catch {
+    return false
+  }
 }
 
 // No Buffer: a Worker has none.
