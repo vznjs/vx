@@ -124,10 +124,8 @@ export function ciConcurrency(): VxPlugin {
 }
 ```
 
-A project is a directory holding a `vx.config.ts`, which `vx lock`
-finds. `discover` makes any other directory a project too, and names one
-its path would name; its tasks come from a `project` hook. It runs in
-`vx lock` and in every run:
+`discover` makes a directory with no `vx.config.ts` a project; its
+tasks come from a `project` hook:
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'
@@ -139,19 +137,18 @@ export function scriptsProject(): VxPlugin {
 }
 ```
 
-An entry can also give a project edges, as directories. `deps` orders
-`^build` and reaches `--filter app...` and `--affected`; `reach` only
-reaches. These and `pkg#task` are the only project edges vx has (it
-reads none from a `package.json`): with no plugin returning `deps`, a
-`^build` is refused. An entry for an existing project needs no `name`:
+An entry also gives a project edges. `deps` orders `^build` and reaches
+`--filter app...` and `--affected`; `reach` only reaches. vx reads no
+edges from a `package.json`, so with no plugin returning `deps`, a
+`^build` is refused:
 
 ```ts
 discover: () => [{ dir: 'apps/web', deps: ['packages/ui'], reach: ['packages/config'] }]
 ```
 
-`fingerprint` claims a root file the plugin reads. An edit to it makes
-`--affected` ask `affected` which projects it touches (`undefined`: all of
-them) and re-runs `vx watch`. Fold its bytes into the key with `key`:
+`fingerprint` claims a root file. An edit to it asks `affected` which
+projects it touches (`undefined`: all). Fold its bytes into the key with
+`key`:
 
 ```ts
 import { readFileSync } from 'node:fs'
@@ -167,9 +164,7 @@ export function toolVersions(): VxPlugin {
 }
 ```
 
-A lockfile is claimed the same way: core keys no package file, and
-[`@vzn/vx-lockfile`](../configure/#lockfiles) keys each project on its
-own dependencies.
+[`@vzn/vx-lockfile`](../configure/#lockfiles) claims a lockfile this way.
 
 ## Keys and order
 
@@ -199,10 +194,8 @@ export function oneDatabase(): VxPlugin {
 }
 ```
 
-`schedule` ranks ready tasks. The run waits for its answer before the
-first task, so answer from what is at hand; weights that need a fetch go
-to `ctx.refine(weights)` when they arrive, and the tasks not yet started
-re-rank. This one learns from your run history:
+`schedule` ranks ready tasks; weights that need a fetch go to
+`ctx.refine(weights)` when they arrive. This one learns from run history:
 
 ```ts
 import { defineWorkspace } from '@vzn/vx/config'
@@ -211,19 +204,14 @@ import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 export default defineWorkspace({ plugins: [scheduleHistoryPlugin()] })
 ```
 
-A CI runner starts with no history. With a remote cache declared, CI
-writes its timings there (a branch's under its scope) and a fresh runner
-or a new branch reads its merge-base's, then on a branch its last
-commit's, whose tasks win. Without one, `scheduleHistoryPlugin({ file: '.vx-timings.json' })`
-keeps what it learned in one file your CI cache carries
+On CI it keeps timings in the remote cache; with none,
+`scheduleHistoryPlugin({ file: '.vx-timings.json' })` keeps them in a file
 ([post](../../blog/ci-timings-file/)).
 
 ## Setup and teardown
 
-`setup` runs once per run, before the first task; a throw stops the run.
-`ctx.on` subscribes to the run's events (`onRunStart`, `onTaskStart`,
-`onTaskStdout`, `onTaskStderr`, `onTaskComplete`, `onRunStatus`,
-`onRunEnd`). `teardown` runs at the end, even on Ctrl-C:
+`setup` runs before the first task; a throw stops the run. `ctx.on`
+subscribes to run events. `teardown` runs at the end, even on Ctrl-C:
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'
@@ -243,30 +231,18 @@ export function taskLog(): VxPlugin {
 }
 ```
 
-`ctx.cache` keeps your plugin's own small entries in the workspace's
-cache: `get(name)`, `put(name, bytes)`, `has(name)`, `hasMany(names)`.
-The local cache answers first, then each remote, under the run's cache
-policy and scope. On a branch a read asks the branch's entry; pass
-`false` as the last argument (`get(name, false)`) to read the base
-branch's. Names are yours alone; an entry is written once, never
-replaced, and at most 1 MiB. A failure is an empty answer, never an
-error. `schedule` gets it too. `ctx.ci` and `ctx.branch` say where the
-run is.
+`ctx.cache` keeps your plugin's own small entries (`get`, `put`, `has`,
+`hasMany`) in the local cache and every remote. An entry is written once,
+at most 1 MiB; a failure is an empty answer. `ctx.ci` and `ctx.branch`
+say where the run is.
 
 ### Secrets
 
-`ctx.secret({ key, prompt })`, on `setup` and a remote's `open`, reads
-your plugin's entry `key` from the OS keychain (`Bun.secrets`, service:
-your package name). Missing, and given a `prompt`, it asks on the
-terminal with the input hidden and saves the answer, but only when stdin
-and stderr are TTYs and the run is not on CI; never once the status line
-is up. Otherwise it rejects: `isSecretUnavailable(err)` is true and
-`err.reason` says why (`not-found`, `no-terminal`, `declined`,
-`store-unavailable`). It reads no environment: check your option and
-variable first, so the keychain is the last source. One answer per key
-per run; prompts from two plugins never overlap.
-`ctx.forgetSecret({ key })` deletes the entry when your server refuses
-it, so the next run asks again.
+`ctx.secret({ key, prompt })` reads a token from the OS keychain. When
+it is missing and a terminal is attached (not on CI), it asks with the
+input hidden and saves the answer. Otherwise it rejects, and
+`isSecretUnavailable(err)` is true. Check your env var first.
+`ctx.forgetSecret({ key })` drops a token your server refused.
 
 ```ts
 import { definePlugin, isSecretUnavailable, type VxPlugin } from '@vzn/vx'
@@ -290,17 +266,9 @@ export function acme(): VxPlugin {
 }
 ```
 
-A run that writes a remote cache (CI by default) keeps there the log of
-each task that saved no entry, and, when `cache.upload.failures` covers
-the run (`'ci'`, the default), a failed task's log and the files its
-outputs left. Each leaves when its task ends, and the footer counts it
-under `remote ↑`.
-`teardown(run)` then gets the run's report: `runId`, `commit`, `ciRun`
-(provider, run URL, pipeline, job), `ok`, and every task with its
-`status`, `durationMs`, `key` and the `log` / `outputs` names vx kept.
-`ctx.cache.getRun(name)` reads them back; the outputs are a plain tar.
-vx keeps no manifest: write your own from the report with
-`ctx.cache.put`, and a verb can read it all back on any machine.
+`teardown(run)` gets the run's report: every task with its status, key,
+and the log and outputs vx kept in the remote. `ctx.cache.getRun(name)`
+reads them back. See the [API](../../api/).
 
 ## A verb and a sink
 
@@ -348,14 +316,9 @@ export default defineWorkspace({ plugins: [hello()] })
 
 ## Draw the terminal
 
-`output` takes the terminal for a run, as a live dashboard would. Return
-a `Logger`, the object `run({ log })` takes, and it receives every line
-and task chunk vx would have printed, the summary included. Return
-`undefined` to leave vx's own output. The first plugin that returns one
-draws the run. `ctx.isTTY` and `ctx.ci` say where it would
-draw; decline off a terminal so pipes, CI and agents read what they
-always did. A `Logger` that throws hands the rest of the run back to
-vx's renderer, with one warning.
+`output` returns a `Logger` that gets every line vx would print. Decline
+off a terminal so pipes, CI and agents read what they always did. A
+`Logger` that throws hands the run back to vx's renderer.
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'
@@ -377,16 +340,10 @@ export function dots(): VxPlugin {
 
 ## Where a task runs
 
-`executor` returns a `TaskExecutor`: a `name`, an optional `accepts`
-that picks its tasks, and `execute`, which runs one command and returns
-its exit code and output. A task every executor declines runs here.
-Stream output through `onStdout` / `onStderr`, and stop on
-`req.signal`, which core aborts on Ctrl-C, an embedder's abort or the
-task's `exec.timeout`: core cannot reach a process your executor spawned,
-so a stop that misses the shell's children leaves them running after vx
-exits. Stopped on the timeout, return a non-zero exit and the task fails
-as timed out. An executor still running two seconds after the abort
-is abandoned: core settles the task without it.
+`executor` returns a `TaskExecutor`: a `name`, an optional `accepts`,
+and `execute`, which runs one command. A task every executor declines
+runs here. Stop on `req.signal` (Ctrl-C or `exec.timeout`), and stop the
+shell's children too: core cannot reach them.
 
 ```ts
 import { definePlugin, type ExecuteResult, type VxPlugin } from '@vzn/vx'
@@ -433,35 +390,13 @@ export function nice(): VxPlugin {
 
 Return core's `RemoteCacheLayer` from the `cache` hook: `has`, `get` and
 `put`, plus an optional `hasMany`. `has` answers `null` for a key the
-remote lacks, else what it knows of the entry: `{ size, durationMs }`,
-either one, or `{}`; `hasMany` answers a `Map` of the held keys to the
-same. A size reaches `--dry` and the run's footer, and with a duration
-core runs a task here when its download would take longer than twice the
-task's stored time. Write `hasMany` only when your wire
-answers many keys in one call: its presence tells core to ask it once
-per run (and once for `--dry` and `--force`); without it core GETs each
-key directly and asks `has` per key only for `--dry` and `--force`. An
-entry is immutable: core never asks `has` before a `put`, so a `put` of
-a key the remote holds must keep the stored bytes (check inside when
-your server would overwrite). An optional `lend` hands this run's own
-access (an OIDC exchange's token, never a stored secret) to a machine
-that runs its tasks elsewhere, such as a `@vzn/vx-dte` agent, whose
-plugin reads it as `ctx.lent`. Keys are plain: no call names a branch,
-and where a write lands is your server's call, from the token it
-checks. The hook's `ctx.refs` lists the run's refs, own branch first
-(`['refs/heads/feat-x', 'refs/heads/main']`), for a wire that steers
-reads by branch, as `turboCache()` does; `ctx.scope` is the scope
-plugin entries use (`'acme/app:feat-x'`, `undefined` when none). Core
-owns the rest: the local cache is asked first, then each plugin's remote
-in the order `plugins` lists them; `--cache-policy`, `VX_CACHE_POLICY`
-and `cache.policy` gate every remote. A remote error is a miss and one
-warning per kind of failure, naming the plugin, the request, the artifact
-and the remote's `endpoint` (`download <hash> from <endpoint> failed: HTTP
-500`). A remote cannot narrow the policy: a read-only credential pairs
-with `remote:r`, and a refused upload is a warning. Core awaits every call and bounds none: a `get` that
-never settles holds its task, and a `put` holds the end of the run. So
-give every request a deadline; a timeout is an error, and an error is a
-miss:
+remote lacks, else what it knows: `{ size, durationMs }` or `{}`. Write
+`hasMany` only when your wire answers many keys in one call. An entry is
+immutable: a `put` of a key the remote holds keeps the stored bytes.
+
+vx asks the local cache first, then each remote in `plugins` order, under
+`--cache-policy`. A remote error is a miss and one warning. Core bounds
+no call, so give every request a deadline:
 
 ```ts
 import { definePlugin, defineWorkspace, type RemoteCacheLayer, type VxPlugin } from '@vzn/vx'
@@ -502,19 +437,16 @@ function acmeCache(): VxPlugin {
 export default defineWorkspace({ plugins: [acmeCache()] })
 ```
 
-A remote that needs a credential first adds an optional `open`, asked once per
-run, before the first task and the status line, only when the policy
-reads or writes that remote (never by `--dry`, `--no-cache` or
-`--cache-policy=remote:`); a throw is a warning and the remote sits the
-run out. `ctx.secret` there is your [keychain](#secrets).
+A remote that needs a credential adds `open`, asked once per run before
+the first task; a throw sits the remote out. `ctx.secret` works there.
+An optional `lend` hands this run's own access (never a stored secret)
+to a machine that runs its tasks elsewhere, such as a `@vzn/vx-dte` agent.
 
 ### Signed artifacts
 
-Core needs nothing more to make a shared cache trust its writers, not its
-store. A body that errors as core streams it leaves nothing stored and the
-read is a miss, so a wrapper can hash the download as it passes and fail it
-at the end unless a key you trust signed it. Only main's CI holds the private
-key; readers list the public one:
+A wrapper can make a shared cache trust its writers, not its store: it
+hashes each download and fails it unless a trusted key signed it. A
+failed body is a miss. Only main's CI holds the private key:
 
 ```ts
 // signed-cache.ts
@@ -565,31 +497,20 @@ export function signedCache(remote: RemoteCacheLayer, trustedPem: string): VxPlu
 }
 ```
 
-`signedCache(new AcmeRemote(url), PUBLIC_KEY_PEM)` in `plugins`, and
-`CACHE_SIGNING_KEY` (the private key's PEM) only in main's CI job. Make the
-pair with `openssl genpkey -algorithm ed25519` and `openssl pkey -pubout`.
-A pull request's job, or anyone who can write the bucket, can still write
-bytes; no reader takes them.
-`has()` passes through unchecked, so `vx run --dry` can predict a hit
-that the real run turns into a miss.
+Declare `signedCache(new AcmeRemote(url), PUBLIC_KEY_PEM)` and set
+`CACHE_SIGNING_KEY` only in main's CI. Make the pair with
+`openssl genpkey -algorithm ed25519` and `openssl pkey -pubout`. `has()`
+is unchecked, so `--dry` can predict a hit the run then misses.
 
 ## What core refuses
 
-- A `cache` or `executor` hook whose return breaks the contract: the three `RemoteCacheLayer` methods, or `execute` and a `name`. A whole cache layer, what the hook returned before 0.0.637, is refused with the fix named.
+- A `cache` or `executor` hook that breaks its contract: the three `RemoteCacheLayer` methods, or `execute` and a `name`.
 - A `name` on the hooks object: the name is the package's.
-- A `ctx.on` hook name core does not know: `ctx.on: unknown hook '<h>' (one of …)`.
-- A `config` or `project` edit the loader would refuse from a user, checked after each plugin: `.vx/workspace (after plugin '<p>'): …`; a `project` edit names the project's config file, or `<name> (no config file)`, instead.
-- A verb that names a core verb, or one plugins of two packages both declare (one package's plugins are one owner; the first declared runs).
-- An executor `capacity` that is not a positive integer: `plugin '<p>' returned executor '<e>' with capacity <v>: it must be a positive integer`.
+- A `config` or `project` edit the loader would refuse from a user.
+- A verb that names a core verb, or that two packages both declare.
 
-An `admit` that throws, or answers a Promise (it is synchronous), is
-reported once and admits from then on. A sink that throws is switched
-off for the run, with a warning. So is a
-`ctx.on` handler that throws or rejects: its plugin is disabled for the
-run and warns once, `[vx] plugin '<p>' threw in <hook>; disabled for this run: <msg>`.
-
-A verb that throws anything but a `UserError` fails in one line, no stack:
-`plugin '<p>' failed in command '<verb>': <msg>`.
+A sink, `ctx.on` handler or `admit` that throws is switched off for the
+run with one warning. A verb that throws fails in one line.
 
 ## Plugins that ship
 
@@ -650,19 +571,12 @@ export default defineWorkspace({
 | a log per task    | the task's output at its end, linked to its span; `vx.log.chars_full` says when it was cut               |
 | every resource    | `service.instance.id` (the run id), `host.name`, `host.arch`, `os.type`, `vcs.ref.head.*`, `vcs.repository.*`, `vx.workspace.path` (the workspace root in its repository), and on CI `cicd.pipeline.run.url.full`, `cicd.pipeline.name`, `vcs.change.id` (the pull request), `vx.ci.job`, `vx.ci.attempt`: one key joins a run's traces, metrics and logs |
 
-By default each task is sent as it ends (batched, at most one send a
-second), and a log record as the run and each task start, so a dashboard
-follows a CI run while it runs; the run span follows at the end.
-`live: false` sends it all at the end. A send never holds a task, and one
-a collector never answers is cut at the end-of-run deadline.
+Each task is sent as it ends, so a dashboard follows a CI run live;
+`live: false` sends it all at the end. A failed task's span is `ERROR`.
+A failed or slow export warns, and the run still exits green.
 
-A failed task sets its span status to `ERROR`. A failed export warns once
-and names the reply; a slow collector is cut off after `timeoutMs`, and
-the run still exits green.
-
-To see it on your machine, run
-[otel-desktop-viewer](https://github.com/CtrlSpice/otel-desktop-viewer), a
-single binary that shows traces, metrics and logs:
+To see it locally, run
+[otel-desktop-viewer](https://github.com/CtrlSpice/otel-desktop-viewer):
 
 ```sh
 brew tap ctrlspice/otel-desktop-viewer
