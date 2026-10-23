@@ -83,7 +83,7 @@ describe('assembleRunRecords', () => {
         attempts: 2,
         cached: false,
         sandboxViolations: 3,
-        def: taskDefinition(outcome('a#build', 'success').node),
+        def: taskDefinition(outcome('a#build', 'success').node)!,
       },
       {
         project: 'b',
@@ -97,7 +97,7 @@ describe('assembleRunRecords', () => {
         cacheHit: false,
         cached: false,
         blockedBy: 'a#build',
-        def: taskDefinition(outcome('b#build', 'skipped').node),
+        def: taskDefinition(outcome('b#build', 'skipped').node)!,
       },
     ])
   })

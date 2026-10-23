@@ -350,6 +350,7 @@ export interface RunRecord {
   placementCores?: number // v44: that machine's cores
   placementMemoryBytes?: number // v44: and memory
   keylessBy?: string // v46: the task with no inputs its key folded
+  def?: string // v48: the task's definition (`taskDefinition`), which history reads by
 }
 
 export interface CacheStats {
@@ -721,7 +722,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v48'`; `SCHEMA_VERSION` is
-`'v47'`. Bump `CACHE_VERSION` when:
+`'v48'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).

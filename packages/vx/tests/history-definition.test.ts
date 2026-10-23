@@ -78,7 +78,7 @@ beforeEach(() => {
     cacheHit: false,
     cpuMs: 8_000,
     peakRssBytes: 1e9,
-    def: taskDefinition(BEFORE),
+    def: taskDefinition(BEFORE)!,
   }
   cache.recordRunBundle({ runs: [run], invocation: invocation('r1') })
 })
@@ -114,7 +114,7 @@ it('an imported timing is read only under the definition it was taken of', async
   fresh.importTimings(
     'abc',
     new Map([['p#t', 9_000]]),
-    new Map([['p#t', { maxCpuParallelism: 3 }]]),
+    new Map([['p#t', { p50DurationMs: 9_000, maxCpuParallelism: 3 }]]),
     taskDefinitions([COMMAND_CHANGED]),
   )
   expect([...(await fresh.p50sFor(['p#t']))]).toEqual([['p#t', 9_000]])

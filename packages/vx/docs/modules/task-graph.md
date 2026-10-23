@@ -249,6 +249,14 @@ take back one of its input entries whole (`src/**` as both): vx removes
 a task's outputs before it runs, so it would delete its own sources. An
 in-place rewriter (a formatter) declares no outputs.
 
+## Definitions
+
+`graph/definition.ts`: `taskDefinition(node)` hashes a task's id, command
+and sorted `env.define` (undefined for a group); `taskDefinitions(nodes)`
+maps each id to it. History stores it per row (`runs.def`, v48) and reads
+only rows of the task's current definition, so a changed command starts
+over and an inputs edit keeps its timings.
+
 ## What this does NOT do
 
 - It doesn't check that `inputs.tasks` names resolve to declared
