@@ -3,14 +3,6 @@ description: >-
   What a Linux runner needs before `vx run` can execute this repo's sandboxed
   tasks: the sandbox runtime's dependencies and a proof they work.
 
-inputs:
-  # A DTE agent's warm-up is on its run's critical path: `start` launches
-  # the install in the background, `finish` waits for it
-  # and proves it, so `bun install` runs in between. `all` is both at once.
-  phase:
-    description: all, start or finish
-    default: all
-
 runs:
   using: composite
   steps:
@@ -24,8 +16,7 @@ runs:
         echo "key=vx-runner-debs-$ImageOS-$ImageVersion-$(uname -m)" >> "$GITHUB_OUTPUT"
         echo "dir=$HOME/.vx-runner-debs" >> "$GITHUB_OUTPUT"
 
-    - if: inputs.phase != 'finish'
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.debs.outputs.dir }}
         key: ${{ steps.debs.outputs.key }}
@@ -35,77 +26,56 @@ runs:
     # detection), and an AppArmor profile that lets bwrap make its user
     # namespaces.
     - name: Install sandbox runtime deps
-      if: inputs.phase != 'finish'
       shell: bash
       env:
-        PHASE: ${{ inputs.phase }}
         DEBS: ${{ steps.debs.outputs.dir }}
       run: |
-        install() (
-          set -e
-          # man-db re-indexes every page on each install: seconds for nothing.
-          sudo rm -f /var/lib/man-db/auto-update
-          if ls "$DEBS"/*.deb > /dev/null 2>&1; then
-            sudo dpkg -i "$DEBS"/*.deb
-          else
-            # Only Ubuntu's own index is needed. The image also carries
-            # third-party sources (Chrome, Microsoft) whose mirrors can serve
-            # a stale index — `apt-get update` then exits 100 on a hash-sum
-            # mismatch before a single vx step runs (two heads on 2026-09-09).
-            # Drop them so the gate depends on the one repository it uses.
-            sudo find /etc/apt/sources.list.d -type f ! -name 'ubuntu.sources' -delete
-            sudo apt-get update
-            mkdir -p "$DEBS/partial"
-            # The debs it fetches stay in $DEBS, which the finish step saves.
-            sudo apt-get install -y -o Dir::Cache::Archives="$DEBS" \
-              -o APT::Keep-Downloaded-Packages=true bubblewrap socat strace ripgrep
-            sudo rm -rf "$DEBS/partial" "$DEBS/lock"
-            sudo chown -R "$USER" "$DEBS"
-            touch "$RUNNER_TEMP/vx-runner.fetched"
-          fi
-          # Ubuntu 24+ lets a program create user namespaces only under an
-          # AppArmor profile that grants `userns`; its documented way for one
-          # program is such a profile (discourse.ubuntu.com/t/58007), which
-          # keeps the restriction for every other. Ubuntu 26 ships
-          # bwrap-userns-restrict for bwrap instead, which strips the
-          # capabilities of the namespace nested in bwrap's, where the
-          # sandbox applies seccomp: every sandboxed task failed "nested
-          # userns is capability-restricted" (2026-10-23). So bwrap gets
-          # the plain profile in its place.
-          if [ -f /etc/apparmor.d/bwrap-userns-restrict ]; then
-            sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict
-            sudo rm /etc/apparmor.d/bwrap-userns-restrict
-          fi
-          printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
-            'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}' |
-            sudo tee /etc/apparmor.d/bwrap > /dev/null
-          sudo apparmor_parser -r /etc/apparmor.d/bwrap
-        )
-        if [ "$PHASE" = start ]; then
-          # The runner keeps a step's background process alive into later steps.
-          nohup bash -c "$(declare -f install); set +e; install; echo \$? > '$RUNNER_TEMP/vx-runner.done'" \
-            > "$RUNNER_TEMP/vx-runner.log" 2>&1 &
+        # man-db re-indexes every page on each install: seconds for nothing.
+        sudo rm -f /var/lib/man-db/auto-update
+        if ls "$DEBS"/*.deb > /dev/null 2>&1; then
+          sudo dpkg -i "$DEBS"/*.deb
         else
-          install
+          # Only Ubuntu's own index is needed. The image also carries
+          # third-party sources (Chrome, Microsoft) whose mirrors can serve
+          # a stale index — `apt-get update` then exits 100 on a hash-sum
+          # mismatch before a single vx step runs (two heads on 2026-09-09).
+          # Drop them so the gate depends on the one repository it uses.
+          sudo find /etc/apt/sources.list.d -type f ! -name 'ubuntu.sources' -delete
+          sudo apt-get update
+          mkdir -p "$DEBS/partial"
+          # The debs it fetches stay in $DEBS, which a later step saves.
+          sudo apt-get install -y -o Dir::Cache::Archives="$DEBS" \
+            -o APT::Keep-Downloaded-Packages=true bubblewrap socat strace ripgrep
+          sudo rm -rf "$DEBS/partial" "$DEBS/lock"
+          sudo chown -R "$USER" "$DEBS"
+          touch "$RUNNER_TEMP/vx-runner.fetched"
         fi
-
-    - name: Wait for sandbox runtime deps
-      if: inputs.phase == 'finish'
-      shell: bash
-      run: |
-        until [ -e "$RUNNER_TEMP/vx-runner.done" ]; do sleep 0.2; done
-        cat "$RUNNER_TEMP/vx-runner.log"
-        exit "$(cat "$RUNNER_TEMP/vx-runner.done")"
+        # Ubuntu 24+ lets a program create user namespaces only under an
+        # AppArmor profile that grants `userns`; its documented way for one
+        # program is such a profile (discourse.ubuntu.com/t/58007), which
+        # keeps the restriction for every other. Ubuntu 26 ships
+        # bwrap-userns-restrict for bwrap instead, which strips the
+        # capabilities of the namespace nested in bwrap's, where the
+        # sandbox applies seccomp: every sandboxed task failed "nested
+        # userns is capability-restricted" (2026-10-23). So bwrap gets
+        # the plain profile in its place.
+        if [ -f /etc/apparmor.d/bwrap-userns-restrict ]; then
+          sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict
+          sudo rm /etc/apparmor.d/bwrap-userns-restrict
+        fi
+        printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
+          'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}' |
+          sudo tee /etc/apparmor.d/bwrap > /dev/null
+        sudo apparmor_parser -r /etc/apparmor.d/bwrap
 
     # A miss saves what it fetched; agents racing to save one key lose
     # with a warning, not a failure.
     - name: Has the install fetched packages
-      if: inputs.phase != 'start'
       id: fetched
       shell: bash
       run: echo "yes=$([ -e "$RUNNER_TEMP/vx-runner.fetched" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
-    - if: inputs.phase != 'start' && steps.fetched.outputs.yes == 'true'
+    - if: steps.fetched.outputs.yes == 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.debs.outputs.dir }}
@@ -115,7 +85,6 @@ runs:
     # single task. Surfaces install / namespace issues directly in CI logs
     # instead of as opaque "tests skipped".
     - name: Diagnose sandbox availability
-      if: inputs.phase != 'start'
       shell: bash
       run: |
         echo "::group::which bwrap"

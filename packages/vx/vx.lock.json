@@ -3085,7 +3085,6 @@
             "VX_PR_TITLE",
             "VX_PR_BASE",
             "VX_PR_HEAD",
-            "VX_SMALL_DISK",
             "NODE_EXTRA_CA_CERTS"
           ],
           "define": {
@@ -3169,7 +3168,6 @@
             "VX_PR_TITLE",
             "VX_PR_BASE",
             "VX_PR_HEAD",
-            "VX_SMALL_DISK",
             "NODE_EXTRA_CA_CERTS"
           ],
           "define": {
@@ -3253,7 +3251,6 @@
             "VX_PR_TITLE",
             "VX_PR_BASE",
             "VX_PR_HEAD",
-            "VX_SMALL_DISK",
             "NODE_EXTRA_CA_CERTS"
           ],
           "define": {
@@ -3337,7 +3334,6 @@
             "VX_PR_TITLE",
             "VX_PR_BASE",
             "VX_PR_HEAD",
-            "VX_SMALL_DISK",
             "NODE_EXTRA_CA_CERTS"
           ],
           "define": {
@@ -3421,7 +3417,6 @@
             "VX_PR_TITLE",
             "VX_PR_BASE",
             "VX_PR_HEAD",
-            "VX_SMALL_DISK",
             "NODE_EXTRA_CA_CERTS"
           ],
           "define": {
@@ -3505,7 +3500,6 @@
             "VX_PR_TITLE",
             "VX_PR_BASE",
             "VX_PR_HEAD",
-            "VX_SMALL_DISK",
             "NODE_EXTRA_CA_CERTS"
           ],
           "define": {
@@ -3589,7 +3583,6 @@
             "VX_PR_TITLE",
             "VX_PR_BASE",
             "VX_PR_HEAD",
-            "VX_SMALL_DISK",
             "NODE_EXTRA_CA_CERTS"
           ],
           "define": {
@@ -3673,7 +3666,6 @@
             "VX_PR_TITLE",
             "VX_PR_BASE",
             "VX_PR_HEAD",
-            "VX_SMALL_DISK",
             "NODE_EXTRA_CA_CERTS"
           ],
           "define": {
@@ -3757,7 +3749,6 @@
             "VX_PR_TITLE",
             "VX_PR_BASE",
             "VX_PR_HEAD",
-            "VX_SMALL_DISK",
             "NODE_EXTRA_CA_CERTS"
           ],
           "define": {

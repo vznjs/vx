@@ -218,18 +218,16 @@ describe('vx-agent.yml', () => {
     expect(step?.env?.['VX_CACHE_DIR']).toBe('${{ runner.temp }}/vx-cache')
   })
 
-  // apt's ~9 s ran after `bun install`, on every agent's warm-up (2026-10-22).
-  it('installs the sandbox runtime while Bun installs, and proves it before the agent', () => {
-    const steps = agent.steps!
-    const at = (p: (s: Step) => boolean) => steps.findIndex(p)
-    const runner = (phase: string) =>
-      at((s) => s.uses === './.github/actions/vx-runner' && s.with?.['phase'] === phase)
-    const install = at((s) => s.run?.includes('bun install') === true)
-    const agentStep = at((s) => s.run?.includes('dte agent') === true)
-    expect(runner('start')).toBeGreaterThan(-1)
-    expect(runner('start')).toBeLessThan(install)
-    expect(runner('finish')).toBeGreaterThan(install)
-    expect(runner('finish')).toBeLessThan(agentStep)
+  // The agent is what a developer would write (owner, 2026-10-23: "why vx
+  // runner runs twice?"): one runner step, and no mount of its own.
+  it('is checkout, Bun, install, the sandbox runtime and the agent', () => {
+    expect(agent.steps!.map((s) => s.uses?.split('@')[0] ?? s.run)).toEqual([
+      'actions/checkout',
+      'oven-sh/setup-bun',
+      'bun install --frozen-lockfile',
+      './.github/actions/vx-runner',
+      'bun packages/vx/src/bin.ts dte agent',
+    ])
   })
 
   // Ubuntu 26 runners confine bwrap with this profile and have no
@@ -243,12 +241,5 @@ describe('vx-agent.yml', () => {
     expect(action).toContain('sudo apparmor_parser -r /etc/apparmor.d/bwrap')
     expect(action).not.toContain('apparmor_restrict_unprivileged_userns=0')
     expect(action).not.toContain('aa-disable')
-  })
-
-  it('mounts the small disk the Linux run names, on Linux', () => {
-    const mount = agent.steps!.find((s) => s.run?.includes('tmpfs'))
-    expect(mount?.if).toBe("runner.os == 'Linux'")
-    expect(mount?.run).toContain('/tmp/vx-small')
-    expect(doc.jobs['linux']!.env?.['VX_SMALL_DISK']).toBe('/tmp/vx-small')
   })
 })

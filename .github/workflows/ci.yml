@@ -79,7 +79,6 @@ jobs:
       VX_PR_BASE: ${{ github.event.pull_request.base.sha }}
       VX_PR_HEAD: ${{ github.event.pull_request.head.sha }}
       # The 2 MiB tmpfs each Linux agent mounts (vx-agent.yml).
-      VX_SMALL_DISK: /tmp/vx-small
       # Cold reads nothing but still writes: agents hand outputs back
       # through the remote.
       VX_CACHE_POLICY: ${{ inputs.cold && 'local:w,remote:w' || '' }}

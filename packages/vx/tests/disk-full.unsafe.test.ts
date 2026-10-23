@@ -1,11 +1,12 @@
-// The disk-full persona: a small file system named by `VX_SMALL_DISK` (CI
-// mounts a 2 MiB tmpfs and sets it; so does the manual gate). Unsafe, i.e.
-// outside the sandboxed shards: a sandboxed task sees a mount it did not
-// make as read-only (EROFS on the first CI run, 2026-09-16), and a disk
-// that cannot be written cannot be filled. Root is subject to ENOSPC like
-// any user, so no user switch is needed. The gate is an env var CI sets,
-// never a probe: absent, the suite skips on a laptop; on the machine whose
-// result gates a merge it runs.
+// The disk-full persona: a 2 MiB tmpfs that fills. Bubblewrap mounts one
+// with no privilege (`--size` + `--tmpfs`), and this file runs itself again
+// inside it with `VX_SMALL_DISK` naming it; CI's runners needed a sudo mount
+// step before (owner, 2026-10-23: "can we do this test without this
+// mount?"). Unsafe, i.e. outside the sandboxed shards: a sandboxed task
+// sees a mount it did not make as read-only (EROFS on the first CI run,
+// 2026-09-16). Root is subject to ENOSPC like any user. Without bwrap the
+// suite skips, except where VX_REQUIRE_SANDBOX (CI) makes that a failure:
+// a skip is a silent pass on the machine whose result gates a merge.
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -13,6 +14,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { addProject, gitIn, makeWorkspace } from './helpers/workspace.js'
 
 const SMALL = process.env['VX_SMALL_DISK']
+const BWRAP = Bun.which('bwrap')
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
 
@@ -64,6 +66,55 @@ async function project(root: string): Promise<void> {
   git('add', '-A')
   git('commit', '-q', '-m', 'init')
 }
+
+describe.skipIf(
+  SMALL !== undefined ||
+    process.platform !== 'linux' ||
+    (BWRAP === null && process.env['VX_REQUIRE_SANDBOX'] !== '1'),
+)('a full disk, in a 2 MiB tmpfs bubblewrap mounts', () => {
+  it(
+    'runs every case below on it, none skipped',
+    async () => {
+      expect(BWRAP).not.toBeNull()
+      const mount = await mkdtemp(path.join(os.tmpdir(), 'vx-small-'))
+      try {
+        const proc = Bun.spawn(
+          [
+            BWRAP!,
+            '--dev-bind',
+            '/',
+            '/',
+            '--size',
+            String(2 * 1024 * 1024),
+            '--tmpfs',
+            mount,
+            process.execPath,
+            'test',
+            import.meta.path,
+          ],
+          {
+            cwd: path.resolve(import.meta.dir, '..'),
+            stdout: 'pipe',
+            stderr: 'pipe',
+            env: { ...process.env, VX_SMALL_DISK: mount },
+          },
+        )
+        const [out, err, code] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+          proc.exited,
+        ])
+        expect(`${code}\n${out}${err}`).toStartWith('0\n')
+        expect(err).toMatch(/\b3 pass\b/)
+        // The one skip is this wrapper, inside.
+        expect(err).toMatch(/\b1 skip\b/)
+      } finally {
+        await rm(mount, { recursive: true, force: true })
+      }
+    },
+    3 * TIMEOUT,
+  )
+})
 
 describe.skipIf(SMALL === undefined)('a full disk (VX_SMALL_DISK)', () => {
   const small = SMALL ?? ''
