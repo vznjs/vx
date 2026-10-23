@@ -399,6 +399,8 @@ export function dte(options: DteOptions) {
         // task's lease end failed main's macOS run with another to start
         // (2026-10-23).
         faulted: () => onChange(true),
+        stalled: (waiting) =>
+          ctx.warn(`dte(): no task began or ended for a minute; waiting on\n${waiting}`),
       })
       orchestrator = o
       const started = new Map<string, number>()

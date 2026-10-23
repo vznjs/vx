@@ -348,8 +348,12 @@ stops, instead of waiting for the job's timeout.
   none. When none is online or starting and this machine has no
   share, the remaining tasks fail with `no worker could start`.
 - A task whose outputs a worker has not saved 5 minutes after its
-  command ended is given up there (`its outputs did not save within
-  300 s`) and runs on another worker, as any fault does.
+  command ended is given up there and runs on another worker, as any
+  fault does: `its outputs did not save within 300 s`. Once its command
+  ends a worker no longer says it holds the task; the run holds it for
+  the save alone.
+- A run where no task began or ended for a minute warns what it waits
+  on, a line a task: which worker, and whether it runs or saves.
 
 ## What the run shows
 

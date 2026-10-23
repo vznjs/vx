@@ -257,7 +257,12 @@ async function harness(
   heartbeatMs?: number,
   keyOf: (id: string) => string | undefined = () => undefined,
   tail?: (id: string) => number,
-  more: { faulted?: () => void; home?: string } = {},
+  more: {
+    faulted?: () => void
+    home?: string
+    stalled?: (waiting: string) => void
+    stallMs?: number
+  } = {},
 ) {
   const store = fakeArtifacts()
   const cache: { facts: CacheFacts } = { facts: { refs: [], lent: {} } }
@@ -907,6 +912,37 @@ it('a task a worker stops saying it holds goes back when its lease ends', async 
   }
 })
 
+// Main 32f73ed: a save that never settled held its task 13 min, renewed
+// by `held`, and the run said nothing (2026-10-23).
+it('a task whose command ended keeps its lease for its save, and a quiet run says what it waits on', async () => {
+  const waiting: string[] = []
+  const h = await harness(new Map([node('t1')]), undefined, 100, undefined, undefined, {
+    stalled: (w) => waiting.push(w),
+    stallMs: 300,
+  })
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.begin('t1')
+    await a.say({ type: 'ran', task: 't1' })
+    const b = await h.worker(1)
+    // Alive, saying it runs nothing: past a run's lease (1.8 s here), t1 stays.
+    const alive = setInterval(() => void a.say({ type: 'held', running: [] }), 50)
+    try {
+      expect(await b.batches()).toEqual([])
+      expect(await b.batches()).toEqual([])
+    } finally {
+      clearInterval(alive)
+    }
+    expect(h.o.where('t1')).toBe('worker#1')
+    expect(waiting[0]).toMatch(/^t1 on worker#1: saving its outputs for \d+ s$/)
+  } finally {
+    await h.stop()
+  }
+})
+
 // M, 2026-10-21: files go through the cache, the relay carries only
 // orders and status.
 it('an order names its key and each dependency’s; the result comes back by the key its worker saved', async () => {
@@ -1166,6 +1202,72 @@ it('a worker gives up a task whose save never settles, as a fault', async () => 
     }
     expect(await code).toBe(0)
     expect(heard).toEqual(['ran', 'fault: its outputs did not save within 0.2 s', 'fault'])
+  } finally {
+    await served.stop()
+  }
+})
+
+// Main 32f73ed: a worker said it held a task for 13 min after its command
+// ended (2026-10-23).
+it('a worker stops saying it holds a task once its command ends', async () => {
+  const root = await tmp()
+  const served = servedRelay({ heartbeatMs: 20 })
+  const url = served.url
+  try {
+    const o = sealOrchestrator(
+      await join(url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const code = runWorker({
+      relay: url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => ({
+        save: () => new Promise<void>(() => {}),
+        async restore() {
+          return null
+        },
+      }),
+      saveDeadlineMs: 1_000,
+    })
+    const order: RunOrder = {
+      task: 't',
+      runKey: runKey(R, 't'),
+      deps: [],
+      nested: [],
+      command: 'sleep 0.5',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    }
+    const held: { ran: boolean; running: string[] }[] = []
+    let ran = false
+    for (let i = 0; i < 400; i++) {
+      let fault = false
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string; running?: string[] }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
+          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+        } else if (m.type === 'ran') ran = true
+        else if (m.type === 'held') held.push({ ran, running: m.running! })
+        else if (m.type === 'fault') {
+          fault = true
+          await o.send(from, { type: 'exit' })
+        }
+      }
+      if (fault) break
+    }
+    expect(await code).toBe(0)
+    // Said while it ran, never once its command ended.
+    expect(held.some((h) => !h.ran && h.running.includes('t'))).toBe(true)
+    expect(held.filter((h) => h.ran && h.running.includes('t'))).toEqual([])
   } finally {
     await served.stop()
   }

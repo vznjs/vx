@@ -24,6 +24,7 @@ import {
 } from '@vzn/vx'
 import {
   HELD_EVERY,
+  SAVE_DEADLINE_MS,
   type WorkerInfo,
   type DepOrder,
   type RunOrder,
@@ -57,7 +58,12 @@ interface Job {
   sentAt?: number
   /** When its worker began it. */
   startedAt?: number
+  /** When its worker said its command ended: it saves since. */
+  ranAt?: number
 }
+
+/** No task began or ended this long: the run says what it waits on, each time again. */
+const STALL_MS = 60_000
 
 interface Worker {
   readonly id: string
@@ -134,6 +140,10 @@ export interface OrchestratorOptions {
   readonly how?: Strategy
   /** The platform a task naming none runs on (`homeOf`). */
   readonly home?: string | undefined
+  /** No task began or ended for `stallMs`: what the run waits on, one line a task. */
+  readonly stalled?: (waiting: string) => void
+  /** Default `STALL_MS`. */
+  readonly stallMs?: number
 }
 
 /**
@@ -199,6 +209,8 @@ export class Orchestrator {
   private pumping = false
   private joined = 0
   private readonly startedAt = performance.now()
+  /** When a task last began, ended or faulted, or the run last said it waits. */
+  private movedAt = performance.now()
   /** Each time the run asked for workers: when, how many, for which work, ending when. */
   private readonly asks: {
     at: number
@@ -539,6 +551,7 @@ export class Orchestrator {
     delete job.worker
     delete job.leaseUntil
     delete job.sentAt
+    delete job.ranAt
     const begun = a.started.delete(job.req.taskId)
     // Stopped, it runs nowhere again; the cancel sent its worker has no one to answer it.
     if (job.req.signal?.aborted === true) {
@@ -554,6 +567,31 @@ export class Orchestrator {
       }
     }
     return job
+  }
+
+  /**
+   * Nothing began or ended for `STALL_MS`: each task a worker holds, and
+   * whether it runs or saves. Main 32f73ed sat 13 min saying nothing
+   * (2026-10-23).
+   */
+  private stall(): void {
+    const now = performance.now()
+    if (now - this.movedAt < (this.o.stallMs ?? STALL_MS)) return
+    const lines: string[] = []
+    for (const a of this.workers.values())
+      for (const j of a.busy.values()) {
+        const s = (t: number | undefined) => `${Math.round((now - (t ?? now)) / 1000)} s`
+        lines.push(
+          j.ranAt !== undefined
+            ? `${j.req.taskId} on ${a.label}: saving its outputs for ${s(j.ranAt)}`
+            : a.started.has(j.req.taskId)
+              ? `${j.req.taskId} on ${a.label}: running for ${s(j.startedAt)}`
+              : `${j.req.taskId} sent to ${a.label} ${s(j.sentAt)} ago, not begun`,
+        )
+      }
+    if (lines.length === 0) return
+    this.movedAt = now
+    this.o.stalled?.(lines.join('\n'))
   }
 
   /** Each task whose worker's lease on it ended goes back. */
@@ -742,6 +780,7 @@ export class Orchestrator {
         return
       }
       this.expire()
+      this.stall()
       for (const { from, body } of messages) {
         if (from === 'relay') {
           this.onRelay(body as { type?: string })
@@ -751,6 +790,7 @@ export class Orchestrator {
         if (a === undefined) continue
         const m = body as ToOrchestrator
         if ('load' in m) this.heard(a, m.load)
+        if (m.type !== 'held') this.movedAt = performance.now()
         if (m.type === 'start') {
           this.begun(a, m.task)
           this.pumpSoon()
@@ -767,6 +807,10 @@ export class Orchestrator {
           if (j === undefined) continue
           this.begun(a, m.task)
           this.unhold(a, j)
+          // Its worker no longer says it holds it: its save has this long.
+          j.ranAt = performance.now()
+          if (j.leaseUntil !== undefined)
+            j.leaseUntil = j.ranAt + SAVE_DEADLINE_MS + 3 * HELD_EVERY * this.o.me.heartbeatMs
           this.pumpSoon()
         } else if (m.type === 'fault') {
           const j = a.busy.get(m.task)
