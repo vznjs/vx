@@ -8,6 +8,9 @@ import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import type { TaskOutcome } from '../src/graph/scheduler.js'
+import type { TaskNode } from '../src/graph/task-graph.js'
+import { formatTaskBlock } from '../src/report/framed-output.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const SRC = path.resolve(import.meta.dir, '..', 'src')
@@ -42,7 +45,7 @@ function stable(text: string): string {
     .trimEnd()
 }
 
-/** The fenced block holding `marker`, its `$ ` line dropped, dedented. */
+/** The fenced block holding `marker`, its opening `$ ` line dropped, dedented. */
 function sample(page: string, marker: string): string {
   const at = page.indexOf(marker)
   expect(at).toBeGreaterThan(-1)
@@ -52,7 +55,7 @@ function sample(page: string, marker: string): string {
   const indent = Math.min(...lines.filter((l) => l.trim()).map((l) => /^ */.exec(l)![0].length))
   return lines
     .map((l) => l.slice(indent))
-    .filter((l) => !l.startsWith('$ '))
+    .filter((l, i) => i > 0 || !l.startsWith('$ '))
     .join('\n')
 }
 
@@ -166,5 +169,61 @@ describe("configure's verdict table", () => {
         return !literals.some((re) => re.test(r))
       })
     expect(unknown).toEqual([])
+  })
+})
+
+// The sandbox needs bwrap, so the guide's two failures are rendered by the
+// frame renderer from the records the sandbox writes: `mkdir(<abs>) = a
+// write no grant covers  [<abs>]` (sandbox-runtime's "declaring
+// cache.outputs grants no write") and strace's `openat(<raw>) = -1 ENOENT
+// [<abs>]`. The tabs left out the frame's lines and the write's path.
+describe("the sandboxing guide's failures", () => {
+  const command = 'mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js'
+  const node = {
+    id: '@demo/app#build',
+    projectName: '@demo/app',
+    taskName: 'build',
+    config: { exec: { command } },
+  } as unknown as TaskNode
+  const block = (record: string, fix: Record<string, string[]>, stderr: string): string =>
+    formatTaskBlock(
+      node,
+      {
+        node,
+        status: 'failed',
+        exitCode: 1,
+        durationMs: 12,
+        sandboxViolations: 1,
+        sandboxViolationLines: [record],
+        sandboxFix: fix,
+      } as TaskOutcome,
+      { output: [{ text: `${stderr}\n`, err: true }] },
+    ).trimEnd()
+  const page = readFileSync(path.join(GUIDES, 'sandboxing.mdx'), 'utf8')
+  const tab = (label: string): string =>
+    sample(page.slice(page.indexOf(label)), '$ vx run build --all')
+
+  it('are the frames vx draws', () => {
+    expect(page).toContain(`command: '${command}'`)
+    expect(tab('label="1. The write"')).toBe(
+      block(
+        'mkdir(/repo/packages/app/dist) = a write no grant covers  [/repo/packages/app/dist]',
+        { write: ['dist/'] },
+        "mkdir: cannot create directory 'dist': Read-only file system",
+      ),
+    )
+    expect(tab('label="2. The read"')).toBe(
+      block(
+        'openat(tsconfig.json) = -1 ENOENT  [/repo/packages/app/tsconfig.json]',
+        { read: ['tsconfig.json'], inputs: ['tsconfig.json'] },
+        'cat: tsconfig.json: No such file or directory',
+      ),
+    )
+  })
+
+  it('the write record is the one the sandbox writes', () => {
+    expect(readFileSync(path.join(SRC, 'exec', 'sandbox-violations.ts'), 'utf8')).toContain(
+      'line: `${syscall}(${raw}) = a write no grant covers  [${abs}]`',
+    )
   })
 })
