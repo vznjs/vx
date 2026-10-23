@@ -26,6 +26,7 @@ import {
   type PluginOptionKinds,
 } from '@vzn/vx'
 import { deadline } from '../remote-deadline.js'
+import { refusal } from '../remote-refusal.js'
 import { keyedByRef, readScopes, remoteScope, type RemoteScope } from './scope.js'
 import { OutageBreaker } from '../remote-breaker.js'
 import { Cooldown, withRetry } from '../remote-retry.js'
@@ -721,18 +722,20 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     })
     if (res === undefined) return new Map()
     if (res.status !== 200) {
-      const said = (await boundedText(res, 512).catch(() => null))?.trim()
       // A server with no batch query (404, 405, 501) is asked per hash. Any
       // other refusal was silent: main f71b377's probe gave no answer and no
       // one could say why, and DTE sized the run as if every task ran.
-      if (NO_BATCH.has(res.status)) return null
-      throw new Error(`batch query answered HTTP ${res.status}${said ? `: ${said}` : ''}`)
+      if (NO_BATCH.has(res.status)) {
+        await res.body?.cancel()
+        return null
+      }
+      throw await refusal(res, 'batch query answered ')
     }
     // An answer per hash is a few hundred bytes of ArtifactInfo; a reply
     // past this bound is no answer, read no further than the bound (L-9).
     const bound = hashes.length * 4096 + 64 * 1024
     const text = await boundedText(res, bound)
-    if (text === null) return null
+    if (text === null) throw new Error(`batch query answered past ${bound} bytes; read no further`)
     const info = JSON.parse(text) as Record<string, unknown>
     // Each hash answers ArtifactInfo, null, or `{ error: { message } }`; an
     // error entry is not a stored artifact, and it was counted as one (a GET
@@ -758,12 +761,12 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     })
     if (res === undefined) return null
     if (res.status !== 200) {
-      await res.body?.cancel()
       if (res.status === 404) {
+        await res.body?.cancel()
         this.absent.add(hash)
         return null
       }
-      throw new Error(`HTTP ${res.status}`)
+      throw await refusal(res)
     }
     const duration = Number(res.headers.get('x-artifact-duration'))
     const durationMs = Number.isFinite(duration) && duration > 0 ? duration : undefined
@@ -841,7 +844,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     if (res === undefined) return
     // Turbo's client takes any 2xx (`error_for_status`); a server's 201 or
     // 204 stored the artifact and was counted a failed upload.
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    if (!res.ok) throw await refusal(res)
     this.absent.delete(hash)
   }
 }

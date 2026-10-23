@@ -103,6 +103,16 @@ describe('what a status means', () => {
     await expect(c.get('aa')).rejects.toThrow('HTTP 500')
   })
 
+  // "HTTP 500" alone said nothing of why (2026-10-23).
+  it('a refused GET or PUT says the server’s own words', async () => {
+    const { fetchImpl } = stub(() => new Response('quota exceeded\n', { status: 507 }))
+    const c = cacheWith(fetchImpl)
+    await expect(c.get('aa')).rejects.toThrow('HTTP 507: quota exceeded')
+    await expect(c.put('aa', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
+      'HTTP 507: quota exceeded',
+    )
+  })
+
   it('a server with no batch query is no answer, so each hash is asked', async () => {
     for (const status of [404, 405, 501]) {
       const { fetchImpl } = stub(() => new Response(null, { status }))
@@ -153,7 +163,7 @@ describe('what a status means', () => {
     )
   })
 
-  it('a batch reply past its bound is no answer, read no further (L-9)', async () => {
+  it('a batch reply past its bound is a refusal that says so, read no further (L-9)', async () => {
     let pulled = 0
     const chunk = new Uint8Array(64 * 1024).fill(32)
     const { fetchImpl } = stub(
@@ -168,15 +178,18 @@ describe('what a status means', () => {
           }),
         ),
     )
-    expect({
-      answer: await cacheWith(fetchImpl).hasMany(['aa']),
-      stopped: pulled < 1024 * 1024,
-    }).toEqual({ answer: null, stopped: true })
+    const said = await cacheWith(fetchImpl)
+      .hasMany(['aa'])
+      .catch((err: Error) => err.message)
+    expect({ said, stopped: pulled < 1024 * 1024 }).toEqual({
+      said: 'batch query answered past 69632 bytes; read no further',
+      stopped: true,
+    })
     // A length header past the bound is not read at all.
     const { fetchImpl: declared } = stub(
       () => new Response('{}', { headers: { 'content-length': String(1024 * 1024) } }),
     )
-    expect(await cacheWith(declared).hasMany(['aa'])).toBeNull()
+    await expect(cacheWith(declared).hasMany(['aa'])).rejects.toThrow('past 69632 bytes')
   })
 
   it('a duration header of 0 or Infinity is no duration', async () => {
