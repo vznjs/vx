@@ -70,7 +70,7 @@ describe('a Linux CI job that runs a vx task', () => {
   })
 
   it('leaves out only the distributed runs', () => {
-    expect(runs).toEqual(['ci.yml#linux', 'ci.yml#binary-linux-arm64', 'ci.yml#macos'])
+    expect(runs).toEqual(['ci.yml#linux'])
   })
 
   it('sets up the sandbox runtime before its first vx task', () => {

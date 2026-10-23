@@ -1,7 +1,7 @@
-# The workers of a distributed run (@vzn/vx-dte's github()): each of CI's
-# three jobs is a run, and dispatches this once per size with that size's
-# workers as the matrix: `small` for the Linux run, `arm` for the arm64
-# binary's, `mac` for the macOS one. Each worker proves itself to the relay and
+# The workers of a distributed run (@vzn/vx-dte's github()): CI's one job
+# is a run, and dispatches this once per size with that size's workers as
+# the matrix: `small` for the Linux work, `arm` for the arm64 binary, `mac`
+# for the macOS tasks. Each worker proves itself to the relay and
 # the run by its OIDC token; there is no secret.
 name: vx-worker
 
