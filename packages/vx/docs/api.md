@@ -2454,7 +2454,10 @@ export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
   readonly branch: string | null
   readonly cache: PluginCache
-  refine(weights: ReadonlyMap<string, number>): void
+  refine(
+    weights: ReadonlyMap<string, number> | Promise<ReadonlyMap<string, number> | undefined>,
+  ): void
+  refining(): Promise<void>
   onRefine(listener: () => void): void
 }
 ```

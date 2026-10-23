@@ -297,7 +297,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
       // and the run never waits on it: the order from local history stands
       // until the fetched timings re-rank what has not started.
       if (provider.lackedBranchHistory) {
-        importing = (async () => {
+        const weights = (async () => {
           const imported = await (
             await import('./shared-timings.js')
           ).importTimings({
@@ -309,10 +309,14 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
             triedFile: path.join(ctx.cacheDir, 'schedule-history-base'),
             branch: ctx.branch !== null && ctx.branch !== (options.defaultBranch ?? DEFAULT_BRANCH),
           })
-          if (imported) ctx.refine(order(await provider.resourcesFor(ids)))
+          return imported ? order(await provider.resourcesFor(ids)) : undefined
         })().catch(() => {
           // A hint: a failed import orders the run without it.
+          return undefined
         })
+        // Promised, so a plugin sizing the run by these timings waits for them.
+        importing = weights.then(() => {})
+        ctx.refine(weights)
       }
       return order(table)
     },

@@ -181,7 +181,13 @@ export class Orchestrator {
   private joined = 0
   private readonly startedAt = performance.now()
   /** Each time the run asked for agents: when, for how many cores in all, how many. */
-  private readonly asks: { at: number; cores: number; agents: number }[] = []
+  private readonly asks: {
+    at: number
+    cores: number
+    agents: number
+    tasks: number
+    measured: number
+  }[] = []
   private readonly stop = new AbortController()
   private readonly loop: Promise<void>
   private readonly realRoot: string
@@ -730,8 +736,8 @@ export class Orchestrator {
   }
 
   /** The run asks for `agents` more, as `cores` is what its remaining work keeps busy. */
-  asked(cores: number, agents: number): void {
-    this.asks.push({ at: performance.now() - this.startedAt, cores, agents })
+  asked(cores: number, agents: number, tasks: number, measured: number): void {
+    this.asks.push({ at: performance.now() - this.startedAt, cores, agents, tasks, measured })
   }
 
   /** `demand` asked the adapter for agent `id` (`AgentSpawn.id`). */
@@ -983,7 +989,10 @@ export class Orchestrator {
               '',
               ui.dim(
                 `${'asked'.padEnd(width)}  ${this.asks
-                  .map((x) => `${x.agents} at ${seconds(x.at)} for ${Math.ceil(x.cores)} cores`)
+                  .map(
+                    (x) =>
+                      `${x.agents} at ${seconds(x.at)} for ${Math.ceil(x.cores)} cores, ${x.tasks} tasks (${x.measured} measured)`,
+                  )
                   .join(' · ')}`,
               ),
             ] as [string, ui.Inline],

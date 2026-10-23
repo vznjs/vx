@@ -149,6 +149,8 @@ export function dte(options: DteOptions) {
   let peaks: ReadonlyMap<string, TaskResources> = new Map()
   /** Each task's tail by `nodes` and `peaks`, made again when either changes. */
   let tails: ((id: string) => number) | undefined
+  /** Settles once the needs other plugins fetch are in `peaks`: `ctx.refining()`, then the read. */
+  let needsIn: (() => Promise<void>) | undefined
   // Each finished task's cache key, a hit's too: what an agent restores a
   // dependency by.
   const keys = new Map<string, string>()
@@ -161,6 +163,7 @@ export function dte(options: DteOptions) {
     nodes = undefined
     peaks = new Map()
     tails = undefined
+    needsIn = undefined
     keys.clear()
     await o?.close()
     await adapter?.close?.()
@@ -267,10 +270,14 @@ export function dte(options: DteOptions) {
           )
         }
       }
-      await read()
+      let reading = read()
+      await reading
       // Needs another plugin fetched (the default branch's timings) land
-      // in history after this: the tasks not yet placed pack by them.
-      ctx.onRefine(() => void read())
+      // in history after this: the tasks not yet placed pack by them, and
+      // the first ask for agents waits for them.
+      ctx.onRefine(() => void (reading = read()))
+      // Asked at the first ask, when every plugin's schedule has promised its own.
+      needsIn = () => ctx.refining().then(() => reading)
       return undefined
     },
 
@@ -395,6 +402,7 @@ export function dte(options: DteOptions) {
       // Agents in declared order for the cores the remaining tasks keep
       // busy (`busyCores`); idle ones beyond it leave.
       const demand = (remaining: ReadonlySet<string>): void => {
+        if (!ready()) return
         demanding = true
         try {
           shape(remaining)
@@ -446,12 +454,34 @@ export function dte(options: DteOptions) {
         )
           return
         const more = toStart(sizes, started, o.cores(), wantCores, above)
-        if (more.length > 0) o.asked(wantCores, more.length)
+        if (more.length > 0) {
+          const tasks = [...remaining].filter(
+            (id) => nodes?.get(id)?.config.exec?.command !== undefined,
+          )
+          o.asked(wantCores, more.length, tasks.length, tasks.filter((id) => measured(id)).length)
+        }
         for (const s of more) start(s)
       }
       // Until a task misses, demand waits: a run all hits starts no agent.
       let missed = false
       let pending: ReadonlySet<string> | undefined
+      const measured = (id: string): boolean => peaks.get(id)?.maxCpuParallelism !== undefined
+      // Needs another plugin fetches (the default branch's timings) land a
+      // moment into the run. Asked before them, every task books a whole
+      // agent: main asked 12 agents for 13 misses and 5 ran nothing
+      // (2026-10-23). The first ask waits for them.
+      let waited: boolean | undefined
+      const ready = (): boolean => {
+        if (waited === true || needsIn === undefined) return true
+        if (waited === undefined) {
+          waited = false
+          void needsIn().then(() => {
+            waited = true
+            if (missed && pending !== undefined) demand(pending)
+          })
+        }
+        return false
+      }
       return {
         name: 'dte',
         remote: true,
@@ -482,8 +512,8 @@ export function dte(options: DteOptions) {
         machines: () => o.machines(),
         running: (id) => o.where(id),
         demand(remaining) {
+          pending = remaining
           if (missed) demand(remaining)
-          else pending = remaining
         },
       }
     },

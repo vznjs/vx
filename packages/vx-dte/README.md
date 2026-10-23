@@ -389,8 +389,11 @@ the cores the run booked for the tasks it was running, on average (a
 task waiting in its queue books none); its cpu utilization (the core-time its
 tasks used over the core-time it had); its memory peak and average, when its tasks reported any; and, for an agent, the messages and
 bytes the run sent it and received from it. The `asked` line says each
-time the run asked for agents: how many, when, and the cores its remaining
-work kept busy then. The `total` line is the cpu utilization of every
+time the run asked for agents: how many, when, the cores its remaining
+work kept busy then, and how many tasks remained, how many of them with
+a measured need (an unmeasured one books a whole agent). The first ask
+waits for the needs another plugin fetches (`ctx.refining()`), such as
+`@vzn/vx-schedule-history`'s default-branch timings. The `total` line is the cpu utilization of every
 machine together:
 
 ```
@@ -400,7 +403,7 @@ machine together:
                      cpu peak 3.6 · avg 2.4 cores · booked 3.8 · cpu utilization 61%
                      memory peak 1.2 GB · avg 640.0 MB
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
-            asked    1 at 0.0s for 4 cores
+            asked    1 at 0.0s for 4 cores, 5 tasks (5 measured)
             total    cpu utilization 58%
 ```
 
