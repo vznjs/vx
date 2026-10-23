@@ -7,10 +7,12 @@ import { describe, expect, it } from 'bun:test'
 import { assetsToUpload, isPartial, releaseFor, type Release } from '../scripts/release-assets.js'
 import { decideRelease, greenCommit, type Git } from '../scripts/auto-release.js'
 import {
+  awaitServed,
   publishAll,
   publishOrder,
   releaseVersion,
   supportsTrustedPublishing,
+  tarballUrl,
 } from '../scripts/release.js'
 
 const message = (f: () => unknown): string => {
@@ -261,5 +263,40 @@ describe('greenCommit', () => {
     expect(greenCommit('', runs.slice(0, 2))).toEqual({
       refuse: 'no green CI run on main to release',
     })
+  })
+})
+
+describe('awaitServed', () => {
+  it('names the tarball url npm serves, scoped or not', () => {
+    expect([tarballUrl('@vzn/vx-linux-x64', '0.0.646'), tarballUrl('vx', '1.0.0')]).toEqual([
+      'https://registry.npmjs.org/@vzn/vx-linux-x64/-/vx-linux-x64-0.0.646.tgz',
+      'https://registry.npmjs.org/vx/-/vx-1.0.0.tgz',
+    ])
+  })
+
+  it('waits while the CDN 404s a tarball, asking only for the ones not yet served', async () => {
+    const asked: string[] = []
+    let sleeps = 0
+    const answers: Record<string, number[]> = { a: [200], b: [404, 404, 200] }
+    await awaitServed(
+      ['a', 'b'],
+      async (url) => (asked.push(url), answers[url]!.shift()!),
+      { tries: 5, sleep: async () => void sleeps++ },
+      () => {},
+    )
+    expect({ asked, sleeps }).toEqual({ asked: ['a', 'b', 'b', 'b'], sleeps: 2 })
+  })
+
+  it('fails naming what npm still does not serve after the last try', async () => {
+    const err = await awaitServed(
+      ['a', 'b'],
+      async (url) => (url === 'a' ? 200 : 404),
+      { tries: 3, sleep: async () => {} },
+      () => {},
+    ).then(
+      () => 'no error',
+      (e: Error) => e.message,
+    )
+    expect(err).toBe('npm does not serve:\n  b')
   })
 })

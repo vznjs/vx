@@ -157,3 +157,6 @@ jobs:
       - name: Publish
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: bun packages/vx/src/bin.ts run release.publish.linux --filter @vzn/vx
+      - name: Wait until npm serves every tarball
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: bun packages/vx/src/bin.ts run release.served --filter @vzn/vx
