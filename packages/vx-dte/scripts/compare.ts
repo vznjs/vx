@@ -18,6 +18,10 @@ import { simulate, type SimTask } from '../tests/sim.js'
 const W = 20_000
 const CORES = 4
 const MEMORY = 16e9
+// The orchestrator only coordinates, so it runs on a 1 vCPU machine: a
+// quarter of a 4 vCPU one where minutes are priced by vCPU (Nx's credit
+// table: 5 a minute against 20).
+const ORCHESTRATOR = 0.25
 
 /** vx's own main run a09b987: its CI graph and the 65 tasks that missed. */
 function vxRun(): SimTask[] {
@@ -65,7 +69,10 @@ function appRepo(): SimTask[] {
 export interface Outcome {
   readonly way: string
   readonly endMs: number
-  /** Machine time billed: each job or worker from its start to its end, warm-up included. */
+  /**
+   * Machine time billed, in 4 vCPU minutes: each job or worker from its
+   * start to its end, warm-up included; the orchestrator at its share.
+   */
   readonly machineMs: number
   readonly jobs: number
 }
@@ -175,8 +182,12 @@ function naive(tasks: readonly PlanTask[], k: number): Outcome {
     book: 'whole',
     scale: 'backlog',
   })
-  // The orchestrator's job is billed for the run too.
-  return { way: `Naive DTE, ${k} workers`, endMs: end, machineMs: end * (k + 1), jobs: k + 1 }
+  return {
+    way: `Naive DTE, ${k} workers`,
+    endMs: end,
+    machineMs: end * (k + ORCHESTRATOR),
+    jobs: k + 1,
+  }
 }
 
 function vxDte(graph: readonly SimTask[]): Outcome {
@@ -186,7 +197,7 @@ function vxDte(graph: readonly SimTask[]): Outcome {
     how: DEFAULT_STRATEGY,
     likely: new Set(graph.filter((t) => t.ran !== undefined && t.cache).map((t) => t.id)),
   })
-  let machineMs = r.endMs
+  let machineMs = r.endMs * ORCHESTRATOR
   for (const w of r.workers) machineMs += (w.leftAt ?? w.cancelledAt ?? r.endMs) - w.spawnedAt
   return {
     way: `vx DTE, ${r.workers.length} workers`,
