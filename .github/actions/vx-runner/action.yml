@@ -32,9 +32,8 @@ runs:
 
     # Sandbox runtime deps: bubblewrap (kernel-level isolation) + socat
     # (network bridge) on Linux, plus strace (per-task violation
-    # detection). Ubuntu 24's default AppArmor profile blocks unprivileged
-    # user namespaces — that breaks bwrap. We disable the restriction via
-    # sysctl so the sandbox tests can actually exercise bwrap end-to-end.
+    # detection), and an AppArmor profile that lets bwrap make its user
+    # namespaces.
     - name: Install sandbox runtime deps
       if: inputs.phase != 'finish'
       shell: bash
@@ -64,15 +63,23 @@ runs:
             sudo chown -R "$USER" "$DEBS"
             touch "$RUNNER_TEMP/vx-runner.fetched"
           fi
-          # Ubuntu 24+ ships with AppArmor restricting unprivileged user
-          # namespaces. bwrap needs them; without this sysctl tweak it exits
-          # non-zero on first use.
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-          # AppArmor profile-based restriction (Ubuntu 24.04+): some builds
-          # also enforce via the unprivileged_userns profile.
-          if [ -f /etc/apparmor.d/unprivileged_userns ]; then
-            sudo aa-disable /etc/apparmor.d/unprivileged_userns || true
+          # Ubuntu 24+ lets a program create user namespaces only under an
+          # AppArmor profile that grants `userns`; its documented way for one
+          # program is such a profile (discourse.ubuntu.com/t/58007), which
+          # keeps the restriction for every other. Ubuntu 26 ships
+          # bwrap-userns-restrict for bwrap instead, which strips the
+          # capabilities of the namespace nested in bwrap's, where the
+          # sandbox applies seccomp: every sandboxed task failed "nested
+          # userns is capability-restricted" (2026-10-23). So bwrap gets
+          # the plain profile in its place.
+          if [ -f /etc/apparmor.d/bwrap-userns-restrict ]; then
+            sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict
+            sudo rm /etc/apparmor.d/bwrap-userns-restrict
           fi
+          printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
+            'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}' |
+            sudo tee /etc/apparmor.d/bwrap > /dev/null
+          sudo apparmor_parser -r /etc/apparmor.d/bwrap
         )
         if [ "$PHASE" = start ]; then
           # The runner keeps a step's background process alive into later steps.

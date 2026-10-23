@@ -37,6 +37,19 @@ describe('the sandbox-unavailable hint names a field the loader accepts', () => 
     ).toThrow(/unknown field "enableWeakerNestedSandbox"/)
   })
 
+  // Ubuntu 26 runners failed every sandboxed task this way (2026-10-23).
+  it('names the AppArmor profile to replace when it strips the nested namespace', () => {
+    const restricted = unavailableReason(
+      1,
+      'apply-seccomp: write /proc/self/setgroups (nested userns is capability-restricted; caller must provide CAP_SYS_ADMIN): Permission denied',
+    )
+    expect(restricted).toContain(
+      'bwrap-userns-restrict profile strips the capabilities of the seccomp helper',
+    )
+    expect(restricted).toContain('a profile for /usr/bin/bwrap that grants `userns,`')
+    expect(restricted).not.toContain('weakerWhenNested')
+  })
+
   it('a failure that is not the nested namespace carries no remedy', () => {
     const other = unavailableReason(127, 'bwrap: No such file or directory')
     expect(other).toBe('a sandboxed `true` failed (exit 127): bwrap: No such file or directory')
