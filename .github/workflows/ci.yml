@@ -70,7 +70,6 @@ jobs:
       id-token: write
       actions: write
       # GITHUB_TOKEN dispatches the agents, so vx-ci posts the run's check too.
-      checks: write
     steps:
       - name: A run id no one can guess
         run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
@@ -237,7 +236,6 @@ jobs:
       contents: read
       id-token: write
       actions: write
-      checks: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -304,7 +302,6 @@ jobs:
       contents: read
       id-token: write
       actions: write
-      checks: write
     steps:
       - name: A run id no one can guess
         run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
