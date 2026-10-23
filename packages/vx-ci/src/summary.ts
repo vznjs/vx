@@ -207,9 +207,11 @@ const tasksCell = (ok: number, failed: number): string =>
 const pct = (x: number): string => `${Math.round(x * 100)}%`
 
 /**
- * The workers an executor ran the run on (vx-dte's): the CPU its tasks
- * were expected to use, from their last run, beside what it used, so an
- * idle or overfilled one shows on the page (owner, 2026-10-23).
+ * The workers an executor ran the run on (vx-dte's): the cores its tasks
+ * booked beside the cores they used, each averaged over the time the
+ * worker was online, so an idle or overfilled one shows on the page
+ * (owner, 2026-10-23). "4.0 of 4" read as a peak; it is that average (M:
+ * "is this an avg booking?").
  */
 function renderWorkers(
   machines: NonNullable<RunSummaryRecord['machines']>,
@@ -218,7 +220,7 @@ function renderWorkers(
   const lines = [
     '### Workers',
     '',
-    '| Worker | Status | Warm-up | Tasks | Online | Idle | Expected CPU | CPU avg | Peak RAM | Utilization |',
+    '| Worker | Status | Warm-up | Tasks | Online | Idle | Booked cores, avg | Used cores, avg | Peak RAM | Used of all cores |',
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   ]
   let coreMs = 0
@@ -237,7 +239,7 @@ function renderWorkers(
         fmtMs(m.onlineMs),
         fmtMs(Math.max(0, m.onlineMs - m.busyMs)),
         m.bookedAvg === undefined ? '' : `${m.bookedAvg.toFixed(1)} of ${m.cores}`,
-        m.cpuAvg.toFixed(1),
+        `${m.cpuAvg.toFixed(1)} of ${m.cores}`,
         `${gb(m.memoryPeakBytes)} of ${gb(m.memoryBytes)} GB`,
         pct(m.utilization),
       ].join(' | ')} |`,
@@ -261,7 +263,7 @@ function renderWorkers(
   if (coreMs > 0)
     lines.push(
       '',
-      `Expected ${pct(bookedMs / coreMs)} of the workers' core-time, used ${pct(cpuMs / coreMs)}.`,
+      `Over their online time, tasks booked ${pct(bookedMs / coreMs)} of the workers' cores and used ${pct(cpuMs / coreMs)}.`,
     )
   return lines
 }

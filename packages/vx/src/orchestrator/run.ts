@@ -925,8 +925,6 @@ async function runOnBus(
             ? {
                 held: (ids: readonly string[], missed: readonly string[]) =>
                   demand.settle(ids, missed),
-                revised: (hits: readonly string[], missed: readonly string[]) =>
-                  demand.revise(hits, missed),
               }
             : {}),
           nodes,

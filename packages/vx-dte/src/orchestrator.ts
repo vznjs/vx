@@ -41,12 +41,12 @@ import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 import { RelayError, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
 
-/** What a task is expected to hold while it runs, from its history; `Infinity` (unmeasured): a whole worker. */
+/** What a task is expected to hold while it runs, from its history; `Infinity`: a whole worker (one that filled its worker). */
 
 interface Job {
   readonly req: ExecuteRequest
   readonly need: Need
-  /** The cores and memory it holds on its worker: its need, or the whole worker for an unmeasured one. */
+  /** The cores and memory it holds on its worker: its need, or the whole worker for one that filled its worker. */
   held?: Need
   readonly resolve: (r: ExecuteResult) => void
   readonly reject: (err: unknown) => void
@@ -243,7 +243,7 @@ export class Orchestrator {
     endsInMs: number
   }[] = []
   /**
-   * The tasks the first ask had no measure of, each booking a whole worker:
+   * The tasks the first ask had no measure of, each booking a guess:
    * named, so a run that packed badly says which (main 68b851d, 2026-10-23:
    * 41 of 119, small#7 holding 3.9 cores for a task using 0.3).
    */
@@ -475,10 +475,11 @@ export class Orchestrator {
   /**
    * What a task books: a measured one its need times the share of their
    * history the run's tasks used, once they used `LEARN_MS` of it, and
-   * never under `1 / OVERBOOK` of its need.
+   * never under `1 / OVERBOOK` of its need. An unmeasured one (`ask`)
+   * books what it books.
    */
   booking(need: Need): Need {
-    if (need.cores === Infinity || this.needMs < LEARN_MS) return need
+    if (need.cores === Infinity || need.ask !== undefined || this.needMs < LEARN_MS) return need
     const used = Math.min(1, Math.max(1 / OVERBOOK, this.usedMs / this.needMs))
     return { ...need, cores: need.cores * used }
   }
@@ -722,7 +723,12 @@ export class Orchestrator {
     a.ran++
     a.done.push(task)
     a.usage.record(head)
-    if (job.need.cores !== Infinity && head.cpuMs !== undefined && head.exitCode === 0) {
+    if (
+      job.need.cores !== Infinity &&
+      job.need.ask === undefined &&
+      head.cpuMs !== undefined &&
+      head.exitCode === 0
+    ) {
       const ms = Math.max(1, head.durationMs)
       this.usedMs += head.cpuMs
       this.needMs += Math.min(job.need.cores, a.cores) * ms
@@ -1419,7 +1425,7 @@ function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string):
 function describe(st: UsageStats, u: Usage): string[] {
   return [
     `online ${seconds(st.onlineMs)} · busy ${seconds(st.busyMs)} · idle ${seconds(Math.max(0, st.onlineMs - st.busyMs))}`,
-    `cpu peak ${st.cpuPeak.toFixed(1)} · avg ${st.cpuAvg.toFixed(1)} cores · expected ${st.bookedAvg.toFixed(1)} · cpu utilization ${percent(st.utilization)}`,
+    `cpu peak ${st.cpuPeak.toFixed(1)} · used avg ${st.cpuAvg.toFixed(1)} cores · booked avg ${st.bookedAvg.toFixed(1)} · cpu utilization ${percent(st.utilization)}`,
     // No task said what it held: `memory peak 0 B` would be a claim.
     ...(st.memoryPeak > 0
       ? [`memory peak ${bytes(st.memoryPeak)} · avg ${bytes(st.memoryAvg)}`]

@@ -249,6 +249,88 @@ describe('startRemotePrefetch', () => {
     TIMEOUT,
   )
 
+  // An index that kept some of the keys called the rest misses before the
+  // probe answered; the PR's CI had stored the merged tree, so main 7391c93
+  // asked 14 workers for 71 tasks and 17 ran (2026-10-23). With a probe on
+  // its way, demand waits for it.
+  it(
+    'an index that kept some keys waits for the probe, not calling the rest misses',
+    async () => {
+      for (const name of ['a', 'b']) {
+        await addProject(root, name, {
+          files: { 'src/in.txt': name },
+          config: CACHED('echo built > out.txt', `{ files: ['out.txt'] }`),
+        })
+      }
+      const calls: [string[], string[]][] = []
+      await prefetchWith(
+        4,
+        (h) => new Set(h),
+        (a) => ({
+          ...a,
+          cache: new Proxy(a.cache, {
+            get: (t, prop, r) =>
+              prop === 'remoteKnown'
+                ? (hashes: readonly string[]) => new Map([[hashes[0]!, {}]])
+                : (Reflect.get(t, prop, r) as unknown),
+          }),
+          held: (ids, missed) => calls.push([[...ids].sort(), [...missed]]),
+        }),
+      )
+      expect(calls).toEqual([[['a#build', 'b#build'], []]])
+    },
+    TIMEOUT,
+  )
+
+  // M, 2026-10-23: "We wait for remote before we plan. We need data to
+  // plan. We don't wait for remote without dte". The kept hit's pull starts
+  // before the probe answers either way; only demand (an executor that
+  // plans, `held`) hears after it.
+  it(
+    'a kept hit is pulled before the probe answers; demand alone waits for it',
+    async () => {
+      for (const name of ['a', 'b']) {
+        await addProject(root, name, {
+          files: { 'src/in.txt': name },
+          config: CACHED('echo built > out.txt', `{ files: ['out.txt'] }`),
+        })
+      }
+      const order = async (plans: boolean): Promise<string[]> => {
+        const seen: string[] = []
+        await prefetchWith(
+          4,
+          (h) => new Set(h),
+          (a) => ({
+            ...a,
+            cache: new Proxy(a.cache, {
+              get: (t, prop, r) => {
+                if (prop === 'remoteKnown')
+                  return (hashes: readonly string[]) => new Map([[hashes[0]!, {}]])
+                if (prop === 'prefetch')
+                  return (...args: Parameters<CacheLayer['prefetch']>) => {
+                    seen.push('pull')
+                    return t.prefetch(...args)
+                  }
+                if (prop === 'remoteHasMany')
+                  return async (hashes: readonly string[]) => {
+                    await new Promise((r) => setTimeout(r, 20))
+                    seen.push('answer')
+                    return t.remoteHasMany!(hashes)
+                  }
+                return Reflect.get(t, prop, r) as unknown
+              },
+            }),
+            ...(plans ? { held: () => void seen.push('held') } : {}),
+          }),
+        )
+        return seen.slice(0, 3)
+      }
+      expect(await order(false)).toEqual(['pull', 'answer', 'pull'])
+      expect(await order(true)).toEqual(['pull', 'answer', 'held'])
+    },
+    TIMEOUT,
+  )
+
   it(
     'a key derivation that throws leaves the handle resolved',
     async () => {

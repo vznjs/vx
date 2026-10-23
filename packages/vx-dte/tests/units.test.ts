@@ -15,10 +15,10 @@ import {
   ui,
 } from '@vzn/vx'
 import { Orchestrator, runKey } from '../src/orchestrator.js'
-import { fits, type Need } from '../src/dispatch.js'
+import { assign, fits, type Need } from '../src/dispatch.js'
 import { outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
-import { tailsMs } from '../src/planner.js'
+import { planTasks, tailsMs } from '../src/planner.js'
 import { join } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
 import type { RunOrder } from '../src/messages.js'
@@ -522,7 +522,7 @@ it('books a worker the cores of a task from its start to its command’s end', a
   await Bun.sleep(50)
   await h.stop()
   const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
-  expect(rows.find((r) => r.includes('expected'))).toContain('expected 0.0 ·')
+  expect(rows.find((r) => r.includes('booked avg'))).toContain('booked avg 0.0 ·')
 })
 
 // M, 2026-10-23: "a generated Chrome profile with all workers and tasks
@@ -1645,7 +1645,55 @@ it('books the cores a task keeps busy on average, unrounded, a quarter at least'
   expect(
     [0.7, 2.4, 0.01].map((c) => needOf({ p50DurationMs: 1, maxCpuParallelism: c }).cores),
   ).toEqual([0.7, 2.4, 0.25])
-  expect(needOf(undefined).cores).toBe(Infinity)
+  expect(needOf(undefined)).toEqual({ cores: 1, memory: 0, ask: { cores: 2, memory: 4e9 } })
+})
+
+// Main cc5a276, 2026-10-23: check.bun, vx-docs#import and release.sync end
+// before the Linux sandbox's first look, so none has a CPU measure; each
+// booked a whole worker and small#1 ran at 13%. M: "we can't waste whole
+// worker for one task", "pack them where we have free capability".
+it('places an unmeasured task on any free core, and sizes the run by 2 cores and 4GB or what is set', () => {
+  const fresh = needOf({ p50DurationMs: 143 })
+  expect(fresh).toEqual({ cores: 1, memory: 0, ask: { cores: 2, memory: 4e9 } })
+  expect(needOf(undefined, { cores: 1, memory: 5 }).ask).toEqual({ cores: 1, memory: 5 })
+  // A worker with 3 cores free takes all three: none waits for a new one.
+  const busy = {
+    id: 'w',
+    cores: 4,
+    memory: 16e9,
+    used: { cores: 1, memory: 15e9 },
+    running: 1,
+    has: new Set<string>(),
+    platform: undefined,
+  }
+  const to = assign(
+    ['a', 'b', 'c'].map((id) => ({ id, need: fresh, up: [] })),
+    [busy],
+    undefined,
+    'best-fit',
+  )
+  expect([...to.keys()].sort()).toEqual(['a', 'b', 'c'])
+  // CONTROL: a task measured at 4 cores does not fit there.
+  expect(
+    assign([{ id: 'm', need: { cores: 4, memory: 1 }, up: [] }], [busy], undefined, 'best-fit')
+      .size,
+  ).toBe(0)
+  // The plan counts each as its ask: two of them want 4 cores of workers.
+  const node = (id: string) =>
+    [id, { id, deps: [], config: { exec: { command: 'x' } } } as unknown as TaskNode] as const
+  const work = planTasks(
+    ['a', 'b'],
+    new Map([node('a'), node('b')]),
+    () => fresh,
+    () => 100,
+  )
+  expect(work.map((t) => [t.cores, t.memory])).toEqual([
+    [2, 4e9],
+    [2, 4e9],
+  ])
+  expect(
+    refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 0, memory: '1GB' } })),
+  ).toContain('unmeasured needs cpu > 0')
 })
 
 it('reads memory as bytes or with a unit', () => {

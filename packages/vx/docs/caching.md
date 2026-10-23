@@ -604,10 +604,13 @@ Hard invariants of the remote prefetch:
   is kept in the index's `remote_hits` table (shared by every worktree),
   so a later process trusts it: `vx run --dry` (or `vx dte plan`)
   followed by `vx run` probes once in each, and the run GETs the kept
-  hits before its own probe answers. Only hits are kept; a key with no
-  row is a miss, unless the index holds none of the run's keys (a fresh
-  CI runner's): then the probe alone says what is held
-  (`remote-prefetch.test.ts` › "an index that knows none…"). Each run still asks `hasMany` for every key the local
+  hits before its own probe answers. Only hits are kept. A plain run
+  waits on the remote for nothing; an executor that plans its machines
+  (`demand`, vx-dte) plans after the batch probe answers, since a key
+  with no row may still be held (M, 2026-10-23: "We wait for remote
+  before we plan. We need data to plan. We don't wait for remote without
+  dte"; `remote-prefetch.test.ts` › "a kept hit is pulled before the
+  probe answers…"). Each run still asks `hasMany` for every key the local
   store lacks, in the background, and its whole answer rewrites the
   rows it asked: new hits are added, gone ones dropped. A GET every
   remote answers with nothing drops the row too, and the task runs

@@ -7,6 +7,7 @@
 
 import type { TaskNode } from '@vzn/vx'
 import { assign, ordered, type Need } from '../src/dispatch.js'
+import { needOf } from '../src/plugin.js'
 import { booked, DEFAULT_STRATEGY, type Strategy } from '../src/strategy.js'
 import {
   decide,
@@ -41,6 +42,8 @@ export interface SimOptions {
   readonly how?: Strategy
   /** The platform a task naming none runs on (`homeOf`). */
   readonly home?: string
+  /** What an unmeasured task counts for in the worker ask (`dte({ unmeasured })`). */
+  readonly unmeasured?: Need
 }
 
 export interface SimWorker {
@@ -82,8 +85,6 @@ export interface SimResult {
   readonly endedAt: ReadonlyMap<string, number>
 }
 
-const UNMEASURED: Need = { cores: Infinity, memory: Infinity }
-
 interface Running {
   readonly id: string
   readonly booked: Need
@@ -124,7 +125,9 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   const need = (id: string): Need => {
     const k = known(id)
     const b = booked(
-      k === undefined ? UNMEASURED : { cores: Math.max(0.25, k.cores), memory: k.memory },
+      k === undefined
+        ? needOf(undefined, options.unmeasured)
+        : { cores: Math.max(0.25, k.cores), memory: k.memory },
       how.book,
     )
     const platform = byId.get(id)!.platform ?? options.home

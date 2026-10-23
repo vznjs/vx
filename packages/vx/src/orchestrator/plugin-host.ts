@@ -675,12 +675,6 @@ export interface ExecutorDemand {
    * call counts; the rest do nothing.
    */
   settle(hits: Iterable<string>, missed?: Iterable<string>): void
-  /**
-   * After `settle`, a later answer from the cache: `hits` it now holds
-   * (dropped, no longer missed) and `missed` it no longer holds (back in,
-   * and missed). A task that started or finished is left as it is.
-   */
-  revise(hits: Iterable<string>, missed: Iterable<string>): void
   /** A task about to execute: back in if `settle` dropped it (its artifact was gone). */
   executing(id: string): void
 }
@@ -689,7 +683,6 @@ const NO_DEMAND: ExecutorDemand = {
   any: false,
   finished: () => {},
   settle: () => {},
-  revise: () => {},
   executing: () => {},
 }
 
@@ -759,31 +752,6 @@ export function executorDemand(
         if (executor !== undefined && demandOf.get(executor)?.delete(id)) dropped.add(id)
       }
       for (const [executor, remaining] of demandOf) tell(executor, remaining)
-    },
-    revise(hits, misses) {
-      if (!settled) return
-      const changed = new Set<TaskExecutor>()
-      for (const id of misses) {
-        if (ran.has(id) || done.has(id) || !dropped.delete(id)) continue
-        const executor = placed.get(id)!
-        const remaining = demandOf.get(executor)
-        if (remaining === undefined) continue
-        remaining.add(id)
-        missed.add(id)
-        changed.add(executor)
-      }
-      for (const id of hits) {
-        if (ran.has(id) || done.has(id)) continue
-        const executor = placed.get(id)
-        if (executor === undefined || !demandOf.get(executor)?.delete(id)) continue
-        missed.delete(id)
-        dropped.add(id)
-        changed.add(executor)
-      }
-      for (const executor of changed) {
-        const remaining = demandOf.get(executor)
-        if (remaining !== undefined) tell(executor, remaining)
-      }
     },
     executing(id) {
       ran.add(id)

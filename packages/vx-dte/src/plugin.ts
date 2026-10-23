@@ -108,6 +108,12 @@ export interface DteOptions {
   readonly token?: () => string | undefined | Promise<string | undefined>
   /** How the run orders, places, books and scales (`Strategy`); each layer absent is the default's. */
   readonly scheduler?: Partial<Strategy>
+  /**
+   * What a task with no measure counts for when the run decides how many
+   * workers to start (default 2 cores, 4GB). It books next to nothing, so
+   * it runs on any free core.
+   */
+  readonly unmeasured?: { readonly cpu: number; readonly memory: number | string }
 }
 
 const KEYS: PluginOptionKinds<DteOptions> = {
@@ -116,6 +122,7 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   relay: 'string',
   token: 'function',
   scheduler: 'object',
+  unmeasured: 'object',
 }
 
 export function dte(options: DteOptions) {
@@ -160,6 +167,7 @@ export function dte(options: DteOptions) {
     return platform === undefined ? {} : { platform }
   }
   const home = homeOf(sizes, hostPlatform())
+  const unmeasured = unmeasuredOf(options.unmeasured)
   const adapter = options.adapter
   // A keyless adapter's run on GitHub Actions with a relay names its own
   // run: ci.yml sets nothing (owner, 2026-10-23: "super simple" CI).
@@ -225,7 +233,7 @@ export function dte(options: DteOptions) {
     if (options.relay === undefined) throw new UserError('vx dte plan needs dte({ relay })')
     const { runSecret } = await import('./seal.js')
     const live = adapter.live?.() === true
-    const workers = planned(sizes, live ? await firstWave(args, ctx, sizes) : undefined)
+    const workers = planned(sizes, live ? await firstWave(args, ctx, sizes, unmeasured) : undefined)
     const files: Record<string, string> = {
       ...adapter.render({ run, relay: options.relay, workspaceRoot: root, workers }),
     }
@@ -374,7 +382,7 @@ export function dte(options: DteOptions) {
       proof ??= seal.secretProof(secret!)
       const { tree } = await snapshot(ctx.workspaceRoot)
       if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
-      const need = (id: string): Need => booked(needOf(peaks.get(id)), how.book)
+      const need = (id: string): Need => booked(needOf(peaks.get(id), unmeasured), how.book)
       // The run plans again on it, now when `now`; set once the plan is.
       let onChange = (_now?: boolean): void => {}
       const o = new Orchestrator({
@@ -702,6 +710,7 @@ async function firstWave(
   args: readonly string[],
   ctx: CommandContext,
   sizes: readonly Size[],
+  unmeasured: Need,
 ): Promise<Map<string, number>> {
   const { VX_DTE_RUN: _, ...env } = process.env
   const dry = Bun.spawnSync([...ctx.vx, 'run', ...args, '--dry=json'], {
@@ -737,13 +746,13 @@ async function firstWave(
     try {
       peaks = await new LocalHistoryProvider(db).resourcesFor([...remaining])
     } catch {
-      // No history: every task a whole worker, as a run packs it.
+      // No history: every task books `unmeasured`, as a run packs it.
     } finally {
       db.close()
     }
   }
   const { candidates, plan, planTasks } = await import('./planner.js')
-  const need = (id: string): Need => needOf(peaks.get(id))
+  const need = (id: string): Need => needOf(peaks.get(id), unmeasured)
   const work = planTasks(
     remaining,
     nodes,
@@ -776,11 +785,38 @@ interface DryTask {
   readonly p50Ms?: number
 }
 
+/**
+ * What an unmeasured task counts for in the worker ask (`dte({ unmeasured
+ * })`): fixed, since a plan cannot know which worker it lands on (M,
+ * 2026-10-23: "by default, 2 cores, 4 gigs").
+ */
+const FRESH: Need = { cores: 2, memory: 4e9 }
+/**
+ * What it books: one free core, no memory (M, 2026-10-23: "pack them
+ * where we have free capability"). Simulated on main's graph with a third
+ * of its tasks unmeasured, it ended at 161 s where a whole worker each
+ * ended at 195 s; a quarter core packed a cold run's tasks 16 to a
+ * 4-core worker and ended at 267 s.
+ */
+const PLACED = { cores: 1, memory: 0 }
+
+function unmeasuredOf(u: DteOptions['unmeasured']): Need {
+  if (u === undefined) return FRESH
+  const memory = bytes(u.memory)
+  if (!(typeof u.cpu === 'number' && u.cpu > 0) || memory === undefined)
+    throw new UserError("dte(): unmeasured needs cpu > 0 and memory such as '4GB'")
+  return { cores: u.cpu, memory }
+}
+
 /** What a task asks of a worker, from its history. */
-export function needOf(r: TaskResources | undefined): Need {
-  // Unmeasured: a whole worker, until its first run measures it. One that
-  // filled its worker: a whole bigger one.
-  if (r?.maxCpuParallelism === undefined) return { cores: Infinity, memory: Infinity }
+export function needOf(r: TaskResources | undefined, ask: Need = FRESH): Need {
+  // Unmeasured (new, or over before the Linux sandbox's first look, which
+  // leaves no CPU): any free core, counted as `ask` when the run is sized.
+  // A whole worker each left main's small#1 at 13% for three sub-second
+  // tasks (M, 2026-10-23: "we can't waste whole worker for one task").
+  // One that filled its worker: a whole bigger one.
+  if (r?.maxCpuParallelism === undefined)
+    return { ...PLACED, ask: { cores: ask.cores, memory: ask.memory } }
   if (r.saturatedCores !== undefined || r.saturatedMemoryBytes !== undefined)
     return {
       cores: Infinity,

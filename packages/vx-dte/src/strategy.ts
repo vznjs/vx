@@ -44,7 +44,7 @@ export const STRATEGIES: { readonly [K in keyof Strategy]: readonly Strategy[K][
 /** `need` as `book` holds it. */
 export function booked(need: Need, book: Strategy['book']): Need {
   if (book === 'whole') return { cores: Infinity, memory: Infinity, above: need.above }
-  if (book === 'margin' && need.cores !== Infinity)
+  if (book === 'margin' && need.cores !== Infinity && need.ask === undefined)
     return { cores: need.cores * 1.2, memory: need.memory * 1.2, above: need.above }
   return need
 }
