@@ -115,7 +115,7 @@ export default defineProject({
     // main 2026-10-23): Bun deals the files by tests/timings.json, which
     // `bun test --timings=tests/timings.json --update-timings` refreshes.
     test: {
-      dependsOn: Array.from({ length: TEST_SHARDS }, (_, i) => `test.shard-${i + 1}`),
+      dependsOn: ['test.shard-*'],
     },
 
     ...Object.fromEntries(
