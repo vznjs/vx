@@ -231,9 +231,12 @@ function applyPolicyHere(): SandboxAvailability {
  * the loader).
  */
 export function unavailableReason(exitCode: number | null, stderr: string): string {
-  const hint = stderr.includes('uid_map')
-    ? " — the runtime's seccomp helper cannot create its nested user namespace here (root inside a container, or a kernel that forbids nested user namespaces): run as a non-root user, or set `sandbox.weakerWhenNested: true` on every sandboxed task"
-    : ''
+  const hint = stderr.includes('capability-restricted')
+    ? // Ubuntu 25.04+ confines bwrap with this AppArmor profile (2026-10-23).
+      " — AppArmor's bwrap-userns-restrict profile strips the capabilities of the seccomp helper's nested user namespace: replace it with a profile for /usr/bin/bwrap that grants `userns,` (https://discourse.ubuntu.com/t/58007)"
+    : stderr.includes('uid_map')
+      ? " — the runtime's seccomp helper cannot create its nested user namespace here (root inside a container, or a kernel that forbids nested user namespaces): run as a non-root user, or set `sandbox.weakerWhenNested: true` on every sandboxed task"
+      : ''
   return `a sandboxed \`true\` failed (exit ${exitCode}): ${stderr.slice(0, 200)}${hint}`
 }
 

@@ -231,6 +231,19 @@ describe('vx-agent.yml', () => {
     expect(runner('finish')).toBeLessThan(agentStep)
   })
 
+  // Ubuntu 26 runners confine bwrap with this profile and have no
+  // aa-disable: every sandboxed task failed on its agent (2026-10-23).
+  // Ubuntu's way for one program (discourse.ubuntu.com/t/58007): a profile
+  // granting it `userns`, the restriction kept for every other.
+  it('gives bwrap a userns profile in place of the one that strips its nested namespace', () => {
+    const action = readFileSync(path.join(dir, '..', 'actions', 'vx-runner', 'action.yml'), 'utf8')
+    expect(action).toContain('sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict')
+    expect(action).toContain("'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}'")
+    expect(action).toContain('sudo apparmor_parser -r /etc/apparmor.d/bwrap')
+    expect(action).not.toContain('apparmor_restrict_unprivileged_userns=0')
+    expect(action).not.toContain('aa-disable')
+  })
+
   it('mounts the small disk the Linux run names, on Linux', () => {
     const mount = agent.steps!.find((s) => s.run?.includes('tmpfs'))
     expect(mount?.if).toBe("runner.os == 'Linux'")
