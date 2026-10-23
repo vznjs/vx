@@ -1,11 +1,11 @@
 // A shared post's card shows its cover, not the site's. Kept out of
-// src/nav/ because `astro:assets` has types only after astro generates them,
+// src/nav/ because `astro:content` has types only after astro generates them,
 // and the lint task type-checks src/nav/.
 
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { getImage } from 'astro:assets'
 import type { StarlightRouteData } from '@astrojs/starlight/route-data'
+import { imageUrl } from '../images.js'
 
 // An essay's drawn cover is HTML; its 1200×630 render ships under
 // public/blog/covers/<slug>.png (#3340) for link previews.
@@ -17,8 +17,8 @@ export async function ogCover(route: StarlightRouteData, site: URL | undefined):
   const og = route.head.find((h) => h.attrs?.['property'] === 'og:image')!
   const alt = route.head.find((h) => h.attrs?.['property'] === 'og:image:alt')!
   if (cover) {
-    const img = await getImage({ src: cover.image, width: 1200, format: 'png' })
-    og.attrs = { ...og.attrs, content: new URL(img.src, site).href }
+    const name = cover.image.replace(/^.*\//, '').replace(/\.png$/, '')
+    og.attrs = { ...og.attrs, content: new URL(imageUrl(`blog/${name}`, 1200, 'png'), site).href }
     alt.attrs = { ...alt.attrs, content: cover.alt }
     return
   }

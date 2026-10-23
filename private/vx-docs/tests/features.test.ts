@@ -298,8 +298,7 @@ describe('the built feature pages', () => {
       for (const m of page(rel).matchAll(/<img\b[^>]*>/g)) {
         const tag = m[0]
         const src = /\ssrc="([^"]+)"/.exec(tag)?.[1] ?? ''
-        // The header's logo is an SVG, not a feature image.
-        if (!src.includes('/_astro/') || src.endsWith('.svg')) continue
+        if (!src.includes('/_img/')) continue
         imgs++
         const srcset = /\ssrcset="([^"]+)"/.exec(tag)?.[1] ?? ''
         const urls = [src, ...srcset.split(',').map((s) => s.trim().split(' ')[0]!)]
@@ -310,9 +309,10 @@ describe('the built feature pages', () => {
     expect(bad).toEqual([])
     expect(imgs).toBeGreaterThan(FEATURES.length * 2)
     const names = new Set(FEATURES.map((f) => f.image.replace(/\.png$/, '')))
-    const pngs = readdirSync(path.join(DIST, '_astro')).filter(
-      (f) => f.endsWith('.png') && names.has(f.split('.')[0]!),
-    )
+    const pngs = [
+      ...readdirSync(path.join(DIST, '_astro')),
+      ...readdirSync(path.join(DIST, '_img')),
+    ].filter((f) => f.endsWith('.png') && names.has(f.replace(/(-\d+)?\..*$/, '')))
     expect(pngs).toEqual([])
   })
 })

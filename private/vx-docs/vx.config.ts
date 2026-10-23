@@ -42,7 +42,12 @@ const IMPORTED = [
 // A key reads no other task's outputs (`vx lock`, X-54): each
 // arrives through that task's key and `dependsOn`. All three are gitignored,
 // so no key read them before either.
-const NOT_GENERATED = [...IMPORTED, 'public/playground/planner.js', 'dist/**'].map((g) => `!${g}`)
+const NOT_GENERATED = [
+  ...IMPORTED,
+  'public/playground/planner.js',
+  'public/_img/**',
+  'dist/**',
+].map((g) => `!${g}`)
 
 export default defineProject({
   tasks: {
@@ -269,9 +274,38 @@ export default defineProject({
       },
     },
 
+    // The images, resized before the build and keyed on the images alone:
+    // a page edit never re-encodes them, and on a miss they encode beside
+    // `import` instead of inside `build`.
+    'build.images': {
+      description: 'resize src/assets/{blog,features} → public/_img/',
+      dependsOn: ['install'],
+      exec: {
+        command: 'bun scripts/build-images.ts',
+        sandbox: {
+          allow: {
+            read: ['**/*'],
+            write: ['public/_img/**'],
+            systemInfo: ['vfs.disk-space'],
+          },
+        },
+      },
+      inputs: {
+        files: [
+          'scripts/build-images.ts',
+          'src/assets/blog/**',
+          'src/assets/features/**',
+          'package.json',
+        ],
+      },
+      cache: {
+        outputs: { files: ['public/_img/**'] },
+      },
+    },
+
     build: {
       description: 'astro build → dist/',
-      dependsOn: ['install', 'import', 'build.playground'],
+      dependsOn: ['install', 'import', 'build.playground', 'build.images'],
       exec: {
         // Under Bun, prerender included. `bun --bun` runs astro's bin on Bun,
         // but astro prerenders in a CHILD process it starts as `node`, and
@@ -325,7 +359,7 @@ export default defineProject({
     // the dev server serves it as the build does.
     dev: {
       description: 'astro dev server (persistent)',
-      dependsOn: ['install', 'build.playground'],
+      dependsOn: ['install', 'build.playground', 'build.images'],
       exec: {
         command: 'bun --bun astro dev',
         env: { define: { ASTRO_TELEMETRY_DISABLED: '1' } },
