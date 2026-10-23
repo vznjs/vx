@@ -1,8 +1,21 @@
 import type { APIRoute } from 'astro'
 import { agentPages, isInternal, markdownUrl } from '../llms/pages.ts'
+import { SIDEBAR } from '../nav/sections.ts'
+
+type Item = { link?: string; items?: Item[] }
+const ids = (items: readonly Item[]): string[] =>
+  items.flatMap((i) => (i.items ? ids(i.items) : i.link ? [i.link.replace(/^\/|\/$/g, '')] : []))
+/** The page ids a top-level sidebar group lists (`guides` for `/guides/`). */
+function listed(label: string): (id: string) => boolean {
+  const own = new Set(
+    ids((SIDEBAR as Item[]).filter((g) => (g as { label?: string }).label === label)),
+  )
+  return (id) => own.has(id === 'guides/index' ? 'guides' : id)
+}
 
 const SECTIONS: readonly [string, (id: string) => boolean][] = [
-  ['Docs', (id) => id === 'quickstart' || id.startsWith('guides/') || id === 'playground'],
+  ['Docs', listed('Docs')],
+  ['Guides', listed('Guides')],
   ['Reference', (id) => !/^(blog|releases)\//.test(id) && !isInternal(id)],
   ['Blog', (id) => id.startsWith('blog/')],
   ['Releases', (id) => id.startsWith('releases/')],

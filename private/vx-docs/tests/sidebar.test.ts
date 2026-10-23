@@ -1,9 +1,10 @@
-// The site's places and two sidebars (design/site-short-2026-09.md §
-// The shape; Features, standalone pages, came after), read from the built HTML: what a reader sees, not what the
-// config says. The Docs' sidebar is the eight pages, then the playground; the Reference ends
-// with the one way into the internals. Every page shows exactly one of the
-// two (the blog keeps its own), and no sidebar links an internals page. The
-// Guide is gone: no page shows a sidebar of its own.
+// The site's places and three sidebars (design/site-short-2026-09.md §
+// The shape; Features, standalone pages, and Guides, as Bun's docs have
+// them, came after), read from the built HTML: what a reader sees, not what
+// the config says. The Docs' sidebar is its pages, then the playground; the
+// Guides' is the index, then one group per area; the Reference ends with the
+// glossary. Every page shows exactly one of the three (the blog keeps its
+// own), and no sidebar links an internals page.
 
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -16,22 +17,22 @@ const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 const PLACES: [string, string][] = [
   ['Features', 'features/'],
   ['Docs', 'quickstart/'],
+  ['Guides', 'guides/'],
   ['Reference', 'cli/'],
   ['Blog', 'blog/'],
   ['Releases', 'releases/'],
 ]
-// The Docs are nine pages, no groups (design/site-short-2026-09.md's six, AI agents, Troubleshooting, Upgrading).
+// The Docs are seven pages, no groups.
 const DOCS_PAGES: [string, string][] = [
   ['Quickstart', 'quickstart/'],
   ['Configure', 'guides/configure/'],
   ['Sandboxing', 'guides/sandboxing/'],
   ['CI and remote', 'guides/ci/'],
-  ['Migrate', 'guides/migrate/'],
   ['Plugins', 'guides/plugins/'],
   ['AI agents', 'guides/agents/'],
-  ['Troubleshooting', 'guides/troubleshooting/'],
   ['Upgrading to 1.0', 'guides/upgrading/'],
 ]
+const GUIDES_GROUPS = ['Get started', 'Caching', 'Running', 'CI', 'Debugging']
 const REFERENCE_GROUPS = ['CLI', 'Config', 'Benchmarks', 'Compare', 'Plugins']
 const INTERNALS_TOP = ['overview/', 'architecture/', 'optimizations/', 'patterns/', 'flows/']
 const INTERNALS_DIRS = ['modules/', 'design/']
@@ -109,15 +110,30 @@ function places(page: string): { links: string[][]; current: string[] } {
 describe('the sidebars', () => {
   const all = pages()
   const docs = sidebarList(html('quickstart/'))!
+  const guides = sidebarList(html('guides/'))!
   const reference = sidebarList(html('cli/'))!
 
-  it('the Docs are the eight pages, then the playground and the graph explorer', () => {
+  it('the Docs are their pages, then the playground', () => {
     expect(groupLabels(docs)).toEqual([])
-    expect(sidebarLinks(docs)).toEqual([
-      ...DOCS_PAGES,
-      ['Try it', 'playground/'],
-      ['Graph explorer', 'guides/graph-explorer/'],
-    ])
+    expect(sidebarLinks(docs)).toEqual([...DOCS_PAGES, ['Try it', 'playground/']])
+  })
+
+  // The index lists every guide the sidebar does, so neither drifts.
+  it('the Guides are the index, then one group per area, each a guide the index lists', () => {
+    expect(groupLabels(guides)).toEqual(GUIDES_GROUPS)
+    const links = sidebarLinks(guides)
+    expect(links[0]).toEqual(['All guides', 'guides/'])
+    const page = html('guides/')
+    const index = page.slice(page.indexOf('sl-markdown-content'), page.indexOf('<footer'))
+    const listed = [...index.matchAll(/<li><a href="([^"]*)"/g)]
+      .map((m) => m[1]!)
+      .map((h) => (h.startsWith(BASE) ? h.slice(BASE.length) : `guides/${h}`))
+    expect(listed.sort()).toEqual(
+      links
+        .slice(1)
+        .map(([, h]) => h)
+        .sort(),
+    )
   })
 
   // vx takes issues, not contributions (M, 2026-10-20): no contributor
@@ -129,14 +145,14 @@ describe('the sidebars', () => {
     expect(links.map(([, href]) => href)).toContain('cli/')
   })
 
-  it('the two share no page', () => {
-    const sets = [docs, reference].map((l) => sidebarLinks(l).map(([, h]) => h))
+  it('the three share no page', () => {
+    const sets = [docs, guides, reference].map((l) => sidebarLinks(l).map(([, h]) => h))
     const seen = sets.flat()
     expect(new Set(seen).size).toBe(seen.length)
   })
 
-  it('every page shows exactly one of the two, the one its section owns', () => {
-    const lists = { Docs: docs, Reference: reference }
+  it('every page shows exactly one of the three, the one its section owns', () => {
+    const lists = { Docs: docs, Guides: guides, Reference: reference }
     const wrong: string[] = []
     for (const rel of all) {
       if (rel === '' || /^(?:blog|releases)\//.test(rel)) continue
@@ -156,9 +172,11 @@ describe('the sidebars', () => {
     expect(wrong).toEqual([])
   })
 
-  it('puts a Docs page, a Reference page and a post each in its own section', () => {
+  it('puts a Docs page, a guide, a Reference page and a post each in its own section', () => {
     expect(places(html('guides/configure/')).current).toEqual(['Docs'])
     expect(places(html('playground/')).current).toEqual(['Docs'])
+    expect(places(html('guides/migrate/')).current).toEqual(['Guides'])
+    expect(places(html('guides/caching/why-a-task-missed/')).current).toEqual(['Guides'])
     expect(places(html('caching/')).current).toEqual(['Reference'])
     expect(places(html('modules/')).current).toEqual(['Reference'])
     expect(places(html('blog/')).current).toEqual(['Blog'])

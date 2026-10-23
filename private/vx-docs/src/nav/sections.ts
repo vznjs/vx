@@ -1,11 +1,11 @@
 // The site's places (design/site-short-2026-09.md § The shape, plus the
-// feature pages): the Docs and the Reference each have a sidebar of their
-// own; the Blog, Releases, Features and the landing ('home', no place in the
+// feature pages, plus Guides as Bun's docs have them): the Docs, the Guides
+// and the Reference each have a sidebar of their own; the Blog, Releases, Features and the landing ('home', no place in the
 // top nav) have none. Every page is a Starlight page, so one header, search
 // and theme serve them all. The landing is the story; the Guide it replaced
 // redirects there.
 //
-// Starlight has one sidebar. SIDEBAR is it, as two top-level groups whose
+// Starlight has one sidebar. SIDEBAR is it, as three top-level groups whose
 // labels are the section names; route-data.ts shows a page only the group its
 // section owns. Internals (modules/, design/, overview, architecture,
 // optimizations, patterns, flows) are in no group: pages that explain them
@@ -13,7 +13,7 @@
 
 import type { StarlightUserConfig } from '@astrojs/starlight/types'
 
-export type SectionId = 'home' | 'features' | 'docs' | 'reference' | 'blog' | 'releases'
+export type SectionId = 'home' | 'features' | 'docs' | 'guides' | 'reference' | 'blog' | 'releases'
 
 declare global {
   namespace App {
@@ -28,6 +28,7 @@ declare global {
 export const SECTIONS: readonly { id: SectionId; label: string; href: string }[] = [
   { id: 'features', label: 'Features', href: 'features/' },
   { id: 'docs', label: 'Docs', href: 'quickstart/' },
+  { id: 'guides', label: 'Guides', href: 'guides/' },
   { id: 'reference', label: 'Reference', href: 'cli/' },
   { id: 'blog', label: 'Blog', href: 'blog/' },
   { id: 'releases', label: 'Releases', href: 'releases/' },
@@ -36,22 +37,52 @@ export const SECTIONS: readonly { id: SectionId; label: string; href: string }[]
 type SidebarItem = NonNullable<StarlightUserConfig['sidebar']>[number]
 
 /** Each sidebar section's items, keyed by the label its top-level group carries. */
-const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
-  // Eight pages (design/site-short-2026-09.md § The shape, plus
-  // Troubleshooting and Upgrading), each the goal in one line and short sections, then
-  // the playground; the landing's diagram teaches the ideas.
+const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
+  // What each feature is and does, then the playground; the landing's
+  // diagram teaches the ideas.
   Docs: [
     { label: 'Quickstart', link: '/quickstart/' },
     { label: 'Configure', link: '/guides/configure/' },
     { label: 'Sandboxing', link: '/guides/sandboxing/' },
     { label: 'CI and remote', link: '/guides/ci/' },
-    { label: 'Migrate', link: '/guides/migrate/' },
     { label: 'Plugins', link: '/guides/plugins/' },
     { label: 'AI agents', link: '/guides/agents/' },
-    { label: 'Troubleshooting', link: '/guides/troubleshooting/' },
     { label: 'Upgrading to 1.0', link: '/guides/upgrading/' },
     { label: 'Try it', link: '/playground/' },
-    { label: 'Graph explorer', link: '/guides/graph-explorer/' },
+  ],
+  // One task per page, titled as the task, grouped by area (as Bun's guides
+  // are; org style guide). guides/index.mdx lists the same pages.
+  Guides: [
+    { label: 'All guides', link: '/guides/' },
+    {
+      label: 'Get started',
+      items: [{ label: 'Migrate from Turborepo, Nx or Vite Task', link: '/guides/migrate/' }],
+    },
+    {
+      label: 'Caching',
+      items: [
+        { label: 'Find why a task missed the cache', link: '/guides/caching/why-a-task-missed/' },
+        { label: 'Clear the local cache', link: '/guides/caching/clean-the-cache/' },
+      ],
+    },
+    {
+      label: 'Running',
+      items: [
+        { label: 'Run only what changed', link: '/guides/running/run-what-changed/' },
+        { label: "Run one project's tasks", link: '/guides/running/run-one-project/' },
+      ],
+    },
+    {
+      label: 'CI',
+      items: [{ label: 'Fail CI when the lock is stale', link: '/guides/ci/check-the-lock/' }],
+    },
+    {
+      label: 'Debugging',
+      items: [
+        { label: 'Troubleshooting', link: '/guides/troubleshooting/' },
+        { label: 'Explore the task graph', link: '/guides/graph-explorer/' },
+      ],
+    },
   ],
   // Short groups in plain words; Plugins is each published plugin's README.
   // The caching deep dive and "What a run does" are reference only; the
@@ -118,5 +149,6 @@ export const SIDEBAR: SidebarItem[] = Object.entries(SIDEBAR_GROUPS).map(([label
 /** The section a group label names. */
 export const GROUP_SECTION: Record<string, SectionId> = {
   Docs: 'docs',
+  Guides: 'guides',
   Reference: 'reference',
 }
