@@ -65,18 +65,9 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   // The directories the positive globs cover whole. A `!` entry inside one
   // leaves the snapshot sound: a file added or removed there still bumps a
   // recorded directory, and the walk that follows applies the `!` (A-46).
-  const dirPrefixes = dirPrefixesOf(outputs)
-  const cleanArgs = {
-    projectDir: node.projectDir,
-    outputs,
-    nestedProjectDirs: args.nestedProjectDirs,
-    committed: committedFiles(args.gitFilesCache, node.projectDir),
-  }
-  const wsCleanArgs = {
-    workspaceRoot: args.workspaceRoot,
-    outputs: wsOutputs,
-    committed: committedFiles(args.gitFilesCache, args.workspaceRoot),
-  }
+  // Asked only of a task that declares outputs: most hits declare none,
+  // and a warm run of 1,000 such hits paid this set-up for each.
+  const dirPrefixes = anyOutputs ? dirPrefixesOf(outputs) : null
   // The two sides of an overlapping pair (item 588). An ADDITIVE task owns
   // only its recorded rows: its glob also selects the upstream's files it
   // adds beside, so "no strays" is not a claim it can make, and its clean
@@ -85,9 +76,10 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
   // addition below is not a stray — while its glob clean still takes them:
   // the dependant restores or runs after it, by the edge.
   const additive = (node.addsToOutputsOf?.length ?? 0) > 0
-  const addedGlobs = (node.outputsAddedToBy ?? [])
-    .flatMap((g) => asTrees([g]))
-    .map((g) => taskGlob(g))
+  const addedGlobs =
+    anyOutputs && node.outputsAddedToBy !== undefined
+      ? node.outputsAddedToBy.flatMap((g) => asTrees([g])).map((g) => taskGlob(g))
+      : []
   const isAddition = (rel: string): boolean => addedGlobs.some((g) => g.match(rel))
 
   // "Tree is already current" short-circuit — skip cleanOutputs
@@ -239,6 +231,17 @@ export async function restoreHit(restore: RestoreHitArgs): Promise<TaskOutcome> 
     }
   }
   if (!skipRestore) {
+    const cleanArgs = {
+      projectDir: node.projectDir,
+      outputs,
+      nestedProjectDirs: args.nestedProjectDirs,
+      committed: committedFiles(args.gitFilesCache, node.projectDir),
+    }
+    const wsCleanArgs = {
+      workspaceRoot: args.workspaceRoot,
+      outputs: wsOutputs,
+      committed: committedFiles(args.gitFilesCache, args.workspaceRoot),
+    }
     const heldRels = hit.outputFiles.filter((p) => !p.startsWith(WORKSPACE_OUTPUT_PREFIX))
     const heldWsRels = hit.outputFiles
       .filter((p) => p.startsWith(WORKSPACE_OUTPUT_PREFIX))
