@@ -58,7 +58,7 @@ jobs:
   # task failed on the PR page. The env below travels with each task to
   # the agent that runs it, through each task's exec.env.passThrough.
   linux:
-    name: lint · format · test
+    name: Linux DTE
     if: github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -291,7 +291,7 @@ jobs:
   # On main only (owner, 2026-10-22: "run macos tests only on main"): a
   # skipped job still satisfies the required check on a pull request.
   macos:
-    name: core tests (macOS)
+    name: macOS DTE
     if: github.event_name != 'pull_request'
     # The run only plans and dispatches: Linux boots sooner and keeps all
     # five of the account's macOS runners for agents (owner, 2026-10-22).
