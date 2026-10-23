@@ -22,10 +22,10 @@ export interface RelayOptions {
    */
   store?: RelayStore | undefined
   /**
-   * Answers a participant's `socket` request, which `join` then offers; the
-   * host accepts the websocket and `attach`es it.
+   * Answers a participant's `socket` request: the host accepts the
+   * websocket and `attach`es it. A participant speaks only over it.
    */
-  upgrade?: ((key: string, id: string, req: Request) => Response) | undefined
+  upgrade: (key: string, id: string, req: Request) => Response
   /** `false`: the host calls `sweep()` itself (a timer keeps a Durable Object from hibernating). */
   timer?: boolean
 }
@@ -57,7 +57,7 @@ export interface Relay {
   seen(key: string, id: string, at: number): void
   /** Loses the silent and forgets old runs; returns when to sweep next, if any run is left. */
   sweep(): number | undefined
-  /** Answers every held poll and stops the sweep. */
+  /** Stops the sweep. */
   close(): void
 }
 
@@ -78,7 +78,6 @@ interface Participant {
   queue: Message[]
   /** The queue's size, in bytes of the bodies that filled it. */
   bytes: number
-  waiter?: (() => void) | undefined
   socket?: RelaySocket | undefined
 }
 
@@ -97,22 +96,19 @@ interface Run {
   certKey?: Promise<CryptoKey>
   /** Proof nonces seen, and when: each is taken once. */
   nonces?: Map<string, number>
-  /** Agents the orchestrator removed, and what it last told each: its next poll reads why. */
-  removed?: Map<string, Message[]>
 }
 
 /** A random (v4) UUID: no one can guess a run id to open it first or join it. */
 const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_BODY = 1 << 20
 const MAX_QUEUE = 10_000
-/** 10 000 bodies of 1 MiB would be 10 GiB held for one participant that does not poll. */
+/** 10 000 bodies of 1 MiB would be 10 GiB held for one participant with no socket. */
 const MAX_QUEUE_BYTES = 64 << 20
-const MAX_WAIT_MS = 25_000
 /**
- * A closed run answers `410` this many heartbeats (a minute) to an agent
- * polling over HTTP; one on a socket is told at once, and the run goes
- * when none is left. Its storage goes with it: an object kept a day per
- * run held 100+ on one host (owner, 2026-10-22).
+ * A closed run with an agent that has no socket answers `join` `410`
+ * this many heartbeats (a minute); one on a socket is told at once, and
+ * the run goes when none is left. Its storage goes with it: an object
+ * kept a day per run held 100+ on one host (owner, 2026-10-22).
  */
 const CLOSED_BEATS = 12
 /**
@@ -157,7 +153,7 @@ const errorBody = (err: HttpError | TokenError): object =>
     ? { error: err.message, retryAfterMs: err.retryAfterMs }
     : { error: err.message }
 
-export function createRelay(opts: RelayOptions = {}): Relay {
+export function createRelay(opts: RelayOptions): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 5_000
   const closedTtl = CLOSED_BEATS * heartbeatMs
   const orphanTtl = ORPHAN_BEATS * heartbeatMs
@@ -195,12 +191,11 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     if (p.queue.length === 0) store?.put(qAt(run, p.id), true)
     p.queue.push(m)
     p.bytes += bytes
-    p.waiter?.()
   }
 
   /**
    * A socket a push failed on is closed, not only let go: left open, its
-   * pings answered, its participant never polled for what queued (two CI
+   * pings answered, its participant never redialed for what queued (two CI
    * runs hung 20 min, 2026-10-23).
    */
   const unplug = (p: Participant): void => {
@@ -237,7 +232,6 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     if (!run.byId.delete(p.id)) return
     const left = drain(run, p)
     if (!tell) {
-      ;(run.removed ??= new Map()).set(p.id, left)
       // What queued, its `refused` among it, before the socket closes.
       if (left.length > 0) {
         try {
@@ -247,15 +241,12 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     }
     store?.delete(pAt(run, p.id))
     store?.delete(qAt(run, p.id))
-    // Its next request learns it is gone; its socket, by the close code.
+    // Its socket learns it is gone by the close code; its next socket, from `socket`.
     p.socket?.close(GONE, 'gone')
     if (p.role === 'orchestrator') {
       close(run)
-      // A poll it held has no one to answer to.
-      p.waiter?.()
       return
     }
-    p.waiter?.()
     if (tell && run.orchestrator !== undefined && !run.closed) {
       deliver(run, run.orchestrator, { from: 'relay', body: { type: 'lost', id: p.id } })
     }
@@ -282,7 +273,6 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     delete run.cert
     delete run.certKey
     delete run.nonces
-    delete run.removed
     if (run.closed) saveRun(run)
   }
 
@@ -424,11 +414,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       // Held until an orchestrator joins to read it.
       saveParticipant(run, p)
     }
-    return Response.json({
-      id: p.id,
-      heartbeatMs,
-      ...(opts.upgrade === undefined ? {} : { socket: true }),
-    })
+    return Response.json({ id: p.id, heartbeatMs, socket: true })
   }
 
   const send = (
@@ -454,32 +440,6 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     )
   }
 
-  const poll = async (
-    run: Run,
-    p: Participant,
-    url: URL,
-    signal: AbortSignal,
-  ): Promise<Response> => {
-    const wait = Math.min(Math.max(Number(url.searchParams.get('wait')) || 0, 0), MAX_WAIT_MS)
-    if (p.queue.length === 0 && wait > 0) {
-      // One held poll per participant: a newer one answers the older.
-      p.waiter?.()
-      await new Promise<void>((resolve) => {
-        const done = (): void => {
-          clearTimeout(timer)
-          signal.removeEventListener('abort', done)
-          if (p.waiter === done) p.waiter = undefined
-          resolve()
-        }
-        const timer = setTimeout(done, wait)
-        signal.addEventListener('abort', done)
-        p.waiter = done
-      })
-      p.seen = Date.now()
-    }
-    return Response.json({ messages: drain(run, p) })
-  }
-
   const live = (key: string): Run => {
     const run = runs.get(key)
     if (run === undefined) missing()
@@ -489,12 +449,11 @@ export function createRelay(opts: RelayOptions = {}): Relay {
 
   const handle = async (req: Request): Promise<Response> => {
     const url = new URL(req.url)
-    const m = /^\/v1\/runs\/([^/]+)\/(join|send|poll|leave|remove|socket)$/.exec(url.pathname)
+    const m = /^\/v1\/runs\/([^/]+)\/(join|socket)$/.exec(url.pathname)
     if (m === null) throw new HttpError(404, 'no such route')
     const [, runId, verb] = m as unknown as [string, string, string]
     if (!RUN_ID.test(runId)) throw new HttpError(400, 'run id is not a random UUID')
-    const get = verb === 'poll' || verb === 'socket'
-    if (get !== (req.method === 'GET') || !['GET', 'POST'].includes(req.method)) {
+    if (req.method !== (verb === 'socket' ? 'GET' : 'POST')) {
       throw new HttpError(405, 'wrong method')
     }
     const token = await authorize(req, opts.verify)
@@ -503,7 +462,6 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     const key = await runKey(runId, token)
     let run = runs.get(key)
     if (verb === 'socket') {
-      if (opts.upgrade === undefined) throw new HttpError(404, 'no such route')
       if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
         throw new HttpError(426, 'not a websocket')
       }
@@ -511,61 +469,34 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       // One the relay lost or let go learns it from the close code (GONE)
       // its host gives the socket attach refuses: a failed upgrade says nothing.
       if (run === undefined || run.closed || !run.byId.has(id)) return opts.upgrade(key, id, req)
-    }
-    if (run?.closed === true) throw new HttpError(410, 'run closed')
-    // As the orchestrator: in its CI job, and signed by the key it joined with.
-    const as = async (run: Run, id: unknown, body: string): Promise<Participant> => {
+      // As the orchestrator: in its CI job, and signed by the key it joined with.
       const p = participant(run, id, token)
-      if (p.role === 'orchestrator') await prove(run, req, url, body)
-      return p
-    }
-    if (get) {
-      if (run === undefined) missing()
-      const id = url.searchParams.get('id') ?? ''
-      const told = run.removed?.get(id)
-      if (verb === 'poll' && told !== undefined) {
-        run.removed!.delete(id)
-        return Response.json({ messages: told })
-      }
-      if (verb === 'poll') return poll(run, await as(run, id, ''), url, req.signal)
-      return opts.upgrade!(key, (await as(run, id, '')).id, req)
+      if (p.role === 'orchestrator') await prove(run, req, url, '')
+      return opts.upgrade(key, p.id, req)
     }
     const [body, text] = await readBody(req)
-    if (verb === 'join') {
-      if (body['role'] === 'orchestrator') {
-        if (
-          typeof body['key'] !== 'string' ||
-          !(await importKey(body['key']).then(
-            () => true,
-            () => false,
-          ))
-        ) {
-          throw new HttpError(400, 'an orchestrator joins with key: its P-256 public key')
-        }
+    if (body['role'] === 'orchestrator') {
+      if (
+        typeof body['key'] !== 'string' ||
+        !(await importKey(body['key']).then(
+          () => true,
+          () => false,
+        ))
+      ) {
+        throw new HttpError(400, 'an orchestrator joins with key: its P-256 public key')
       }
-      if (run === undefined) {
-        run = { key, closed: false, byId: new Map(), openedAt: Date.now() }
-        runs.set(key, run)
-        saveRun(run)
-      }
-      if (body['role'] === 'orchestrator') {
-        if (run.orchestrator !== undefined) throw new HttpError(409, 'the run has an orchestrator')
-        await prove(run, req, url, text, body['key'] as string)
-      }
-      return join(run, body, token)
     }
-    if (run === undefined) missing()
-    const p = await as(run, body['id'], text)
-    if (verb === 'send') {
-      send(run, p, body, text.length)
-      return new Response(null, { status: 204 })
+    if (run?.closed === true) throw new HttpError(410, 'run closed')
+    if (run === undefined) {
+      run = { key, closed: false, byId: new Map(), openedAt: Date.now() }
+      runs.set(key, run)
+      saveRun(run)
     }
-    if (verb === 'remove') {
-      removeAgent(run, p, body['agent'])
-      return new Response(null, { status: 204 })
+    if (body['role'] === 'orchestrator') {
+      if (run.orchestrator !== undefined) throw new HttpError(409, 'the run has an orchestrator')
+      await prove(run, req, url, text, body['key'] as string)
     }
-    drop(run, p)
-    return new Response(null, { status: 204 })
+    return join(run, body, token)
   }
 
   return {
@@ -585,7 +516,6 @@ export function createRelay(opts: RelayOptions = {}): Relay {
       if (run === undefined || p === undefined) return false
       p.socket = socket
       p.seen = Date.now()
-      p.waiter?.()
       if (p.queue.length > 0) {
         const messages = drain(run, p)
         try {
@@ -624,7 +554,6 @@ export function createRelay(opts: RelayOptions = {}): Relay {
         n = body?.n ?? null
         const run = live(key)
         const p = participant(run, id, 'socket')
-        // `leave` and `remove` too, so a participant with a socket makes no request after it.
         if (body.leave === true) drop(run, p)
         else if (body.remove !== undefined) removeAgent(run, p, body.remove)
         else if (Array.isArray(body.sends)) {
@@ -653,7 +582,6 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     sweep,
     close() {
       clearInterval(timer)
-      for (const run of runs.values()) for (const p of run.byId.values()) p.waiter?.()
     },
   }
 }

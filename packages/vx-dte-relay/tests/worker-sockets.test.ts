@@ -132,16 +132,8 @@ it('offers sockets, pushes each message down one and takes sends from it', async
     { n: 1, results: [{ status: 404, error: 'unknown to' }] },
     'pong',
   ])
-  const leave = JSON.stringify({ id: o.id })
-  const left = await fetch(new URL(`/v1/runs/${R}/leave`, base), {
-    method: 'POST',
-    headers: await signed('POST', `/v1/runs/${R}/leave`, leave),
-    body: leave,
-  })
-  expect([left.status, await as.next()]).toEqual([
-    204,
-    { messages: [{ from: 'relay', body: { type: 'closed' } }] },
-  ])
+  os.ws.send(JSON.stringify({ n: 2, leave: true }))
+  expect(await as.next()).toEqual({ messages: [{ from: 'relay', body: { type: 'closed' } }] })
 })
 
 // A failed upgrade tells a client nothing it can read: one the relay does

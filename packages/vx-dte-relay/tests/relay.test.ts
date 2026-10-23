@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import path from 'node:path'
-import { createProver, createRelay, type Prover, type Relay } from '../src/index.js'
-import { runKey } from '../src/relay.js'
+import {
+  createProver,
+  createRelay,
+  type Prover,
+  type Relay,
+  type RelayOptions,
+} from '../src/index.js'
+import { GONE, runKey } from '../src/relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
@@ -14,8 +20,9 @@ afterEach(() => {
   for (const r of relays.splice(0)) r.close()
 })
 
-function client(opts: Parameters<typeof createRelay>[0] = {}, provers = new Map<string, Prover>()) {
-  const relay = createRelay(opts)
+/** A relay, and its participants' requests and sockets as a host would carry them. */
+function client(opts: Partial<RelayOptions> = {}, provers = new Map<string, Prover>()) {
+  const relay = createRelay({ upgrade: () => new Response(null, { status: 101 }), ...opts })
   relays.push(relay)
   // Each orchestrator's key, by its id: a request as one is signed by it.
   const request = async (
@@ -26,7 +33,7 @@ function client(opts: Parameters<typeof createRelay>[0] = {}, provers = new Map<
     token?: string,
     headers: Record<string, string> = {},
   ): Promise<[Request, Prover | undefined]> => {
-    const id = (body?.['id'] as string | undefined) ?? new URLSearchParams(query).get('id')
+    const id = new URLSearchParams(query).get('id')
     let prover = provers.get(id ?? '')
     if (verb === 'join' && body?.['role'] === 'orchestrator' && !('key' in body)) {
       prover = await createProver()
@@ -55,15 +62,52 @@ function client(opts: Parameters<typeof createRelay>[0] = {}, provers = new Map<
   ): Promise<{ status: number; json: any }> => {
     const [req, prover] = await request(run, verb, body, query, token)
     const res = await relay.fetch(req)
-    const json: any = res.status === 204 ? null : await res.json()
+    const json: any = res.status === 101 ? null : await res.json()
     if (verb === 'join' && res.ok && prover !== undefined) provers.set(json.id, prover)
     return { status: res.status, json }
   }
   const join = async (run: string, role: string, info?: unknown): Promise<string> =>
     (await call(run, 'join', { role, info })).json.id
-  const poll = async (run: string, id: string, wait = 0) =>
-    (await call(run, 'poll', undefined, `?id=${id}&wait=${wait}`)).json.messages
-  return { relay, provers, request, call, join, poll }
+  /** The run's name at its host, as `token` claims it. */
+  const keyOf = async (run: string, token?: string): Promise<string> =>
+    runKey(
+      run,
+      token === undefined || opts.verify === undefined
+        ? undefined
+        : await opts.verify(token, new Request('http://relay')),
+    )
+  /** What each participant's socket was pushed, and the codes it was closed with. */
+  const inboxes = new Map<string, unknown[]>()
+  const closes = new Map<string, (number | undefined)[]>()
+  const plug = async (run: string, id: string, token?: string): Promise<boolean> => {
+    const inbox: unknown[] = []
+    const closed: (number | undefined)[] = []
+    inboxes.set(id, inbox)
+    closes.set(id, closed)
+    return relay.attach(await keyOf(run, token), id, {
+      send: (t) => void inbox.push(...(JSON.parse(t) as { messages: unknown[] }).messages),
+      close: (code) => void closed.push(code),
+    })
+  }
+  /** What reached `id`'s socket since, its socket plugged in first if it has none. */
+  const poll = async (run: string, id: string, token?: string): Promise<any[]> => {
+    if (!inboxes.has(id)) await plug(run, id, token)
+    return inboxes.get(id)!.splice(0)
+  }
+  let n = 0
+  const frame = async (run: string, id: string, body: object, token?: string): Promise<any> => {
+    const answer = JSON.parse(
+      relay.frame(await keyOf(run, token), id, JSON.stringify({ n, ...body })),
+    )
+    expect(answer.n).toBe(n++)
+    return answer
+  }
+  /** One send down `id`'s socket: its status, as HTTP would say it. */
+  const send = async (run: string, id: string, to: string, body: unknown, token?: string) => {
+    const a = await frame(run, id, { sends: [{ to, body }] }, token)
+    return { status: a.status ?? a.results?.[0].status ?? 204, json: a.results?.[0] ?? a }
+  }
+  return { relay, provers, request, call, join, keyOf, plug, poll, closes, frame, send }
 }
 
 describe('the relay carries one run between its orchestrator and agents', () => {
@@ -84,30 +128,12 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     const a = await c.join(R, 'agent')
     const b = await c.join(R, 'agent')
     await c.poll(R, o)
-    expect((await c.call(R, 'send', { id: o, to: a, body: { run: 'x#build' } })).status).toBe(204)
+    expect((await c.send(R, o, a, { run: 'x#build' })).status).toBe(204)
     expect(await c.poll(R, a)).toEqual([{ from: 'orchestrator', body: { run: 'x#build' } }])
-    expect((await c.call(R, 'send', { id: a, to: 'orchestrator', body: 'done' })).status).toBe(204)
+    expect((await c.send(R, a, 'orchestrator', 'done')).status).toBe(204)
     expect(await c.poll(R, o)).toEqual([{ from: a, body: 'done' }])
-    expect((await c.call(R, 'send', { id: a, to: b, body: 'hi' })).status).toBe(404)
+    expect((await c.send(R, a, b, 'hi')).status).toBe(404)
     expect(await c.poll(R, b)).toEqual([])
-  })
-
-  it('holds a poll until a message arrives', async () => {
-    const c = client()
-    const o = await c.join(R, 'orchestrator')
-    const a = await c.join(R, 'agent')
-    const held = c.poll(R, a, 5_000)
-    await Bun.sleep(20)
-    await c.call(R, 'send', { id: o, to: a, body: 1 })
-    const t = performance.now()
-    expect(await held).toEqual([{ from: 'orchestrator', body: 1 }])
-    expect(performance.now() - t).toBeLessThan(1_000)
-  })
-
-  it('answers a held poll empty when its wait ends', async () => {
-    const c = client()
-    const a = await c.join(R, 'agent')
-    expect(await c.poll(R, a, 30)).toEqual([])
   })
 
   it('refuses a second orchestrator', async () => {
@@ -122,77 +148,43 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     const a = await c.join(R, 'agent')
     const b = await c.join(R, 'agent')
     await c.poll(R, o)
-    // a keeps polling; b falls silent past three heartbeats.
+    await c.poll(R, a)
+    // a and o keep pinging; b, with no socket, falls silent past three heartbeats.
     const deadline = Date.now() + 2_000
     let lost: unknown[] = []
     while (lost.length === 0 && Date.now() < deadline) {
-      await c.poll(R, a)
-      lost = (await c.poll(R, o, 10)).filter((m: any) => m.body.type === 'lost')
+      await Bun.sleep(10)
+      for (const id of [o, a]) c.relay.seen(K, id, Date.now())
+      lost = (await c.poll(R, o)).filter((m: any) => m.body.type === 'lost')
     }
     expect(lost).toEqual([{ from: 'relay', body: { type: 'lost', id: b } }])
-    const held = c.poll(R, a, 5_000)
-    await Bun.sleep(5)
-    expect((await c.call(R, 'leave', { id: o })).status).toBe(204)
-    expect(await held).toEqual([{ from: 'relay', body: { type: 'closed' } }])
-    expect((await c.call(R, 'join', { role: 'agent' })).status).toBe(410)
-  })
-
-  it('forgets a run whose agents all went before an orchestrator joined', async () => {
-    const c = client({ heartbeatMs: 20 })
-    await c.join(R, 'agent')
-    // Polled as nobody, so the agent itself stays silent.
-    const asked = async () => (await c.call(R, 'poll', undefined, '?id=x&wait=0')).json.error
-    expect(await asked()).toBe('unknown id')
-    const deadline = Date.now() + 2_000
-    let error = ''
-    while (error !== 'unknown run' && Date.now() < deadline) {
-      await Bun.sleep(20)
-      error = await asked()
-    }
-    expect(error).toBe('unknown run')
+    await c.frame(R, o, { leave: true })
+    expect(await c.poll(R, a)).toEqual([{ from: 'relay', body: { type: 'closed' } }])
+    expect([c.closes.get(o), c.closes.get(a)]).toEqual([[GONE], [GONE]])
   })
 
   it('pins a run to its orchestrator’s CI job: its id acts from no other', async () => {
     const c = client({ verify: async (t) => ({ iss: 'i', run: ['1'], job: t }) })
     const o = (await c.call(R, 'join', { role: 'orchestrator' }, '', 'job-1')).json.id
     const a = (await c.call(R, 'join', { role: 'agent' }, '', 'job-2')).json.id
-    const polled = async (id: string, token: string) =>
-      (await c.call(R, 'poll', undefined, `?id=${id}&wait=0`, token)).status
+    const upgrade = async (id: string, token: string) =>
+      (
+        await c.relay.fetch(
+          (
+            await c.request(R, 'socket', undefined, `?id=${id}`, token, { upgrade: 'websocket' })
+          )[0],
+        )
+      ).status
     expect([
-      await polled(o, 'job-2'),
-      (await c.call(R, 'send', { id: o, to: a, body: 1 }, '', 'job-2')).status,
+      await upgrade(o, 'job-2'),
       (await c.call(R, 'join', { role: 'orchestrator' }, '', 'job-2')).status,
-      await polled(o, 'job-1'),
-      await polled(a, 'job-1'),
-    ]).toEqual([403, 403, 409, 200, 200])
-  })
-
-  it('takes a pinned orchestrator’s sends down the socket its job opened', async () => {
-    let key = ''
-    const c = client({
-      verify: async (t) => ({ iss: 'i', run: ['1'], job: t }),
-      upgrade: (k) => {
-        key = k
-        return new Response(null, { status: 101 })
-      },
-    })
-    const o = (await c.call(R, 'join', { role: 'orchestrator' }, '', 'job-1')).json.id
-    const a = (await c.call(R, 'join', { role: 'agent' }, '', 'job-2')).json.id
-    const upgrade = async (token: string) =>
-      c.relay.fetch(
-        (await c.request(R, 'socket', undefined, `?id=${o}`, token, { upgrade: 'websocket' }))[0],
-      )
-    expect((await upgrade('job-2')).status).toBe(403)
-    expect((await upgrade('job-1')).status).toBe(101)
-    expect(c.relay.attach(key, o, { send() {}, close() {} })).toBe(true)
-    expect(
-      JSON.parse(c.relay.frame(key, o, JSON.stringify({ n: 1, sends: [{ to: a, body: 'go' }] }))),
-    ).toEqual({
-      n: 1,
-    })
-    expect((await c.call(R, 'poll', undefined, `?id=${a}&wait=0`, 'job-2')).json.messages).toEqual([
-      { from: 'orchestrator', body: 'go' },
-    ])
+      await upgrade(o, 'job-1'),
+      await upgrade(a, 'job-1'),
+    ]).toEqual([403, 409, 101, 101])
+    // Its socket, once open, is its job's: its frames need no token.
+    expect(await c.plug(R, o, 'job-1')).toBe(true)
+    expect(await c.frame(R, o, { sends: [{ to: a, body: 'go' }] }, 'job-1')).toEqual({ n: 0 })
+    expect(await c.poll(R, a, 'job-2')).toEqual([{ from: 'orchestrator', body: 'go' }])
   })
 
   it('keeps the key its orchestrator claimed the run with: no other acts as it', async () => {
@@ -206,34 +198,33 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     const owner = c.provers.get(o)!
     const other = await createProver()
     const status = async (req: Request) => (await c.relay.fetch(req)).status
-    const poll = (proof?: string) =>
-      new Request(`http://relay/v1/runs/${R}/poll?id=${o}&wait=0`, {
-        headers: proof === undefined ? {} : { 'vx-proof': proof },
+    const socket = (proof?: string) =>
+      new Request(`http://relay/v1/runs/${R}/socket?id=${o}`, {
+        headers: { upgrade: 'websocket', ...(proof === undefined ? {} : { 'vx-proof': proof }) },
       })
-    const path = `/v1/runs/${R}/poll?id=${o}&wait=0`
+    const path = `/v1/runs/${R}/socket?id=${o}`
     const replayed = await owner.proof('GET', path, '')
     // A key not the run's signs nothing as its orchestrator, nor claims the run again.
     expect([
-      await status(poll()),
-      await status(poll(await other.proof('GET', path, ''))),
-      await status(poll(await owner.proof('GET', `/v1/runs/${R}/poll?id=${a}&wait=0`, ''))),
-      await status(poll(replayed)),
-      await status(poll(replayed)),
-      (await c.call(R, 'send', { id: o, to: a, body: 1 })).status,
+      await status(socket()),
+      await status(socket(await other.proof('GET', path, ''))),
+      await status(socket(await owner.proof('GET', `/v1/runs/${R}/socket?id=${a}`, ''))),
+      await status(socket(replayed)),
+      await status(socket(replayed)),
       (await c.call(R, 'join', { role: 'orchestrator' })).status,
-    ]).toEqual([403, 403, 403, 200, 403, 204, 409])
-    const stale = poll(
+    ]).toEqual([403, 403, 403, 101, 403, 409])
+    const stale = socket(
       (await owner.proof('GET', path, '')).replace(/^\d+/, String(Date.now() - 3 * 60_000)),
     )
     expect(await status(stale)).toBe(403)
   })
 
-  it('limits each participant’s requests to a burst, then a steady rate', async () => {
+  it('limits each participant’s frames to a burst, then a steady rate', async () => {
     const c = client()
     await c.join(R, 'orchestrator')
     const a = await c.join(R, 'agent')
     const b = await c.join(R, 'agent')
-    const send = (id: string) => c.call(R, 'send', { id, to: 'orchestrator', body: 1 })
+    const send = (id: string) => c.send(R, id, 'orchestrator', 1)
     // The burst, and what refilled while it was spent.
     let taken = 0
     let limited = await send(a)
@@ -244,7 +235,12 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     expect(taken).toBeGreaterThanOrEqual(1000)
     expect(taken).toBeLessThan(2000)
     expect(limited.status).toBe(429)
-    expect(limited.json).toEqual({ error: 'rate limited', retryAfterMs: expect.any(Number) })
+    expect(limited.json).toEqual({
+      n: expect.any(Number),
+      status: 429,
+      error: 'rate limited',
+      retryAfterMs: expect.any(Number),
+    })
     // Another participant spends its own.
     expect((await send(b)).status).toBe(204)
     await Bun.sleep(limited.json.retryAfterMs)
@@ -256,18 +252,22 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     const early = await c.join(R, 'agent')
     const o = await c.join(R, 'orchestrator')
     const late = await c.join(R, 'agent')
-    expect((await c.call(R, 'remove', { id: early, agent: late })).json).toEqual({
+    expect(await c.frame(R, early, { remove: late })).toEqual({
+      n: 0,
+      status: 403,
       error: 'only the orchestrator removes',
     })
-    expect((await c.call(R, 'remove', { id: o, agent: o })).status).toBe(404)
-    await c.call(R, 'send', { id: o, to: early, body: { type: 'refused' } })
+    expect((await c.frame(R, o, { remove: o })).status).toBe(404)
+    // `early` gets what it was told before its socket closes; `late` has none to tell.
+    await c.send(R, o, early, { type: 'refused' })
+    await c.plug(R, early)
     for (const agent of [early, late]) {
-      expect((await c.call(R, 'remove', { id: o, agent })).status).toBe(204)
-      expect((await c.call(R, 'send', { id: agent, to: 'orchestrator', body: 1 })).status).toBe(404)
+      expect(await c.frame(R, o, { remove: agent })).toEqual({ n: expect.any(Number) })
+      expect((await c.send(R, agent, 'orchestrator', 1)).status).toBe(404)
     }
-    // What it was told before it went, once; then the relay knows it no more.
     expect(await c.poll(R, early)).toEqual([{ from: 'orchestrator', body: { type: 'refused' } }])
-    expect((await c.call(R, 'poll', undefined, `?id=${early}&wait=0`)).status).toBe(404)
+    expect(c.closes.get(early)).toEqual([GONE])
+    expect(await c.plug(R, early)).toBe(false)
     // Removed, not lost: the orchestrator hears only that each came.
     expect(await c.poll(R, o)).toEqual([
       { from: 'relay', body: { type: 'joined', id: early, info: null } },
@@ -282,25 +282,26 @@ describe('the relay carries one run between its orchestrator and agents', () => 
       error: 'run id is not a random UUID',
     })
     expect((await c.call(R, 'join', { role: 'boss' })).status).toBe(400)
-    expect((await c.call(R, 'send', { id: 'nope', to: 'orchestrator' })).status).toBe(404)
     expect((await c.call(R, 'join', { role: 'agent', info: 'x'.repeat(1 << 20) })).json).toEqual({
       error: 'body over 1 MiB',
     })
-    expect((await c.call(R, 'poll', { id: 'x' })).status).toBe(405)
+    expect((await c.call(R, 'socket', { id: 'x' })).status).toBe(405)
+    // Only `join` and `socket` are HTTP: the rest goes down the socket.
+    for (const verb of ['send', 'poll', 'leave', 'remove']) {
+      expect((await c.call(R, verb, { id: 'x' })).json).toEqual({ error: 'no such route' })
+    }
   })
 
-  it('holds at most 64 MiB for a participant that does not poll', async () => {
+  it('holds at most 64 MiB for a participant with no socket', async () => {
     const c = client()
     const o = await c.join(R, 'orchestrator')
     const a = await c.join(R, 'agent')
     const body = 'x'.repeat((1 << 20) - 100)
     const statuses: number[] = []
-    for (let i = 0; i < 66; i++) {
-      statuses.push((await c.call(R, 'send', { id: o, to: a, body })).status)
-    }
+    for (let i = 0; i < 66; i++) statuses.push((await c.send(R, o, a, body)).status)
     expect(statuses.indexOf(429)).toBe(64)
     expect((await c.poll(R, a)).length).toBe(64)
-    expect((await c.call(R, 'send', { id: o, to: a, body })).status).toBe(204)
+    expect((await c.send(R, o, a, body)).status).toBe(204)
   })
 
   it('wants a bearer token when it verifies', async () => {
@@ -316,18 +317,16 @@ describe('the relay carries one run between its orchestrator and agents', () => 
     const theirs = (await c.call(R, 'join', { role: 'orchestrator' }, '', 'other')).json.id
     const mine = await c.call(R, 'join', { role: 'orchestrator' }, '', 'mine')
     const agent = (await c.call(R, 'join', { role: 'agent' }, '', 'mine')).json.id
-    const polled = async (id: string, token: string) =>
-      (await c.call(R, 'poll', undefined, `?id=${id}&wait=0`, token)).json
     expect([
       mine.status,
-      await polled(mine.json.id, 'mine'),
-      await polled(theirs, 'other'),
-      await polled(agent, 'other'),
+      await c.poll(R, mine.json.id, 'mine'),
+      await c.poll(R, theirs, 'other'),
+      await c.plug(R, agent, 'other'),
     ]).toEqual([
       200,
-      { messages: [{ from: 'relay', body: { type: 'joined', id: agent, info: null } }] },
-      { messages: [] },
-      { error: 'unknown id' },
+      [{ from: 'relay', body: { type: 'joined', id: agent, info: null } }],
+      [],
+      false,
     ])
   })
 })
@@ -351,8 +350,8 @@ describe('a host that keeps runs and holds websockets', () => {
     const o = (await before.call(R, 'join', { role: 'orchestrator' }, '', 't')).json.id
     const a = (await before.call(R, 'join', { role: 'agent', info: 'sealed' }, '', 't')).json.id
     const b = (await before.call(R, 'join', { role: 'agent', info: 'sealed' }, '', 't')).json.id
-    await before.call(R, 'poll', undefined, `?id=${o}&wait=0`, 't')
-    await before.call(R, 'send', { id: o, to: a, body: 'secret' }, '', 't')
+    await before.poll(R, o, 't')
+    await before.send(R, o, a, 'secret', 't')
     // Nothing kept says whose run it is, what was sent, or what an agent said once told.
     const kept = JSON.stringify([...store.kv])
     expect([
@@ -362,16 +361,13 @@ describe('a host that keeps runs and holds websockets', () => {
       kept.includes('project-xyz'),
       kept.includes(R),
     ]).toEqual([false, false, false, false, false])
-    // The orchestrator's key, kept: it still signs as the run's orchestrator.
     const after = client({ store, timer: false, verify }, before.provers)
-    const polled = async (id: string) =>
-      (await after.call(R, 'poll', undefined, `?id=${id}&wait=0`, 't')).json
     // `a`'s queue held a message the restart lost: `a` is lost, `b` goes on.
-    expect([await polled(a), await polled(b), await polled(o)]).toEqual([
-      { error: 'unknown id' },
-      { messages: [] },
-      { messages: [{ from: 'relay', body: { type: 'lost', id: a } }] },
-    ])
+    expect([
+      await after.plug(R, a, 't'),
+      await after.poll(R, b, 't'),
+      await after.poll(R, o, 't'),
+    ]).toEqual([false, [], [{ from: 'relay', body: { type: 'lost', id: a } }]])
   })
 
   it('holds an agent’s info only until the orchestrator is told it', async () => {
@@ -404,16 +400,24 @@ describe('a host that keeps runs and holds websockets', () => {
     const c = client({ store, timer: false })
     const o = await c.join(R, 'orchestrator')
     await c.join(R, 'agent')
-    await c.call(R, 'leave', { id: o })
-    // The agent polls over HTTP: it reads `410` a minute, then nothing is kept.
+    await c.frame(R, o, { leave: true })
+    // The agent has no socket: the run keeps it a minute to tell it, then nothing is kept.
     expect((await c.call(R, 'join', { role: 'agent' })).status).toBe(410)
     expect(later(c, 61_000)).toBeUndefined()
     expect([...store.kv]).toEqual([])
     const alone = client({ store, timer: false })
     const o1 = await alone.join(R1, 'orchestrator')
-    await alone.call(R1, 'leave', { id: o1 })
+    await alone.frame(R1, o1, { leave: true })
     expect([...store.kv]).toEqual([])
     expect(alone.relay.sweep()).toBeUndefined()
+  })
+
+  it('forgets a run whose agents all went before an orchestrator joined', async () => {
+    const store = memory()
+    const c = client({ store, timer: false })
+    await c.join(R, 'agent')
+    expect(later(c, 16_000)).toBeUndefined()
+    expect([...store.kv]).toEqual([])
   })
 
   // Agents start after their orchestrator joins: one alone is late for a run that ended.
@@ -425,7 +429,7 @@ describe('a host that keeps runs and holds websockets', () => {
     c.relay.seen(K, a, Date.now() + 10 * 60_000)
     expect(later(c, 9 * 60_000)! - Date.now()).toBeLessThanOrEqual(10 * 60_000 + 1)
     later(c, 10 * 60_000 + 2)
-    expect((await c.call(R, 'poll', undefined, `?id=${a}&wait=0`)).status).toBe(410)
+    expect((await c.call(R, 'join', { role: 'agent' })).status).toBe(410)
   })
 
   // Restored as heard just now, a gone participant kept its object waking
@@ -438,10 +442,10 @@ describe('a host that keeps runs and holds websockets', () => {
     await before.poll(R, o)
     before.relay.sweep()
     const after = client({ store, timer: false }, before.provers)
-    // HTTP participants are lost after three heartbeats of 5 s.
+    // With no socket, participants are lost after three heartbeats of 5 s.
     expect(later(after, 16_000)).toBeUndefined()
     expect([...store.kv]).toEqual([])
-    expect((await after.call(R, 'poll', undefined, `?id=${o}&wait=0`)).status).toBe(404)
+    expect(await after.plug(R, o)).toBe(false)
   })
 
   it('sweeps when its host asks, and says when to ask next', async () => {
@@ -462,12 +466,13 @@ describe('a host that keeps runs and holds websockets', () => {
 
   // Each sweep wakes a Durable Object; at three heartbeats it woke every
   // 12 s and stayed billed the whole run (2026-10-22).
-  it('gives a participant on a socket twelve heartbeats, one polling three', async () => {
+  it('gives a participant on a socket twelve heartbeats, one with none three', async () => {
     const c = client({ heartbeatMs: 20, timer: false })
     const o = await c.join(R, 'orchestrator')
     const a = await c.join(R, 'agent')
     const b = await c.join(R, 'agent')
-    expect(c.relay.attach(K, a, { send() {}, close() {} })).toBe(true)
+    expect(await c.plug(R, a)).toBe(true)
+    expect(await c.plug(R, o)).toBe(true)
     await Bun.sleep(70)
     c.relay.seen(K, o, Date.now())
     const next = c.relay.sweep()!
@@ -476,7 +481,7 @@ describe('a host that keeps runs and holds websockets', () => {
       { from: 'relay', body: { type: 'joined', id: b, info: null } },
       { from: 'relay', body: { type: 'lost', id: b } },
     ])
-    // The socket's silence is what the next sweep waits for: o polls.
+    // The socket's silence is what the next sweep waits for: o pings.
     expect(next - Date.now()).toBeGreaterThan(40)
     await Bun.sleep(200)
     c.relay.seen(K, o, Date.now())
@@ -485,39 +490,37 @@ describe('a host that keeps runs and holds websockets', () => {
   })
 
   it('pushes messages down a socket and takes sends from it', async () => {
-    const c = client({ upgrade: () => new Response(null, { status: 101 }) })
+    const c = client()
     const joined = await c.call(R, 'join', { role: 'orchestrator' })
     // A socket takes every frame kind; no version to negotiate.
     expect(Object.keys(joined.json).sort()).toEqual(['heartbeatMs', 'id', 'socket'])
     expect(joined.json.socket).toBe(true)
     const o = joined.json.id
     const a = await c.join(R, 'agent')
-    await c.call(R, 'send', { id: o, to: a, body: 'queued' })
+    await c.send(R, o, a, 'queued')
     const frames: unknown[] = []
     const socket = { send: (t: string) => void frames.push(JSON.parse(t)), close() {} }
     expect(c.relay.attach(K, a, socket)).toBe(true)
-    await c.call(R, 'send', { id: o, to: a, body: 'pushed' })
-    expect(
-      JSON.parse(
-        c.relay.frame(K, a, JSON.stringify({ n: 1, sends: [{ to: 'orchestrator', body: 3 }] })),
-      ),
-    ).toEqual({ n: 1 })
-    expect(
-      JSON.parse(c.relay.frame(K, a, JSON.stringify({ n: 2, sends: [{ to: 'nobody' }] }))),
-    ).toEqual({ n: 2, results: [{ status: 404, error: 'unknown to' }] })
+    await c.send(R, o, a, 'pushed')
+    expect(await c.frame(R, a, { sends: [{ to: 'orchestrator', body: 3 }] })).toEqual({
+      n: expect.any(Number),
+    })
+    expect((await c.frame(R, a, { sends: [{ to: 'nobody' }] })).results).toEqual([
+      { status: 404, error: 'unknown to' },
+    ])
     // A lone send is no frame: only `sends`, `remove` and `leave` are.
-    expect(JSON.parse(c.relay.frame(K, a, JSON.stringify({ n: 3, to: 'orchestrator' })))).toEqual({
-      n: 3,
+    expect(await c.frame(R, a, { to: 'orchestrator' })).toEqual({
+      n: expect.any(Number),
       status: 400,
       error: 'frame is sends, remove or leave',
     })
     // Refused for its size, still answered by its number, or its sender waits on it forever.
     const huge = JSON.stringify({
-      n: 4,
+      n: 99,
       sends: [{ to: 'orchestrator', body: 'x'.repeat(1 << 20) }],
     })
     expect(JSON.parse(c.relay.frame(K, a, huge))).toEqual({
-      n: 4,
+      n: 99,
       status: 413,
       error: 'body over 1 MiB',
     })
@@ -527,13 +530,13 @@ describe('a host that keeps runs and holds websockets', () => {
     ])
     expect((await c.poll(R, o)).at(-1)).toEqual({ from: a, body: 3 })
     c.relay.detach(K, a, socket)
-    await c.call(R, 'send', { id: o, to: a, body: 'after' })
+    await c.send(R, o, a, 'after')
     expect(await c.poll(R, a)).toEqual([{ from: 'orchestrator', body: 'after' }])
     expect(c.relay.attach(K, 'gone', socket)).toBe(false)
   })
 
-  it('closes a socket a push failed on, so its participant polls for what queued', async () => {
-    const c = client({ upgrade: () => new Response(null, { status: 101 }) })
+  it('closes a socket a push failed on, so its participant redials for what queued', async () => {
+    const c = client()
     const o = (await c.call(R, 'join', { role: 'orchestrator' })).json.id
     const a = await c.join(R, 'agent')
     let closed = 0
@@ -544,13 +547,13 @@ describe('a host that keeps runs and holds websockets', () => {
       close: () => void closed++,
     }
     expect(c.relay.attach(K, a, socket)).toBe(true)
-    await c.call(R, 'send', { id: o, to: a, body: 'lost?' })
+    await c.send(R, o, a, 'lost?')
     expect(closed).toBe(1)
     expect(await c.poll(R, a)).toEqual([{ from: 'orchestrator', body: 'lost?' }])
   })
 
   it('answers a socket request without the upgrade header 426', async () => {
-    const c = client({ upgrade: () => new Response(null, { status: 101 }) })
+    const c = client()
     const a = await c.join(R, 'agent')
     expect((await c.call(R, 'socket', undefined, `?id=${a}`)).status).toBe(426)
   })

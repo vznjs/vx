@@ -92,11 +92,10 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 2, memory: '1GB
   // another OS, owner 2026-10-22).
   it('walls the agent’s own credential stores, not the orchestrator’s', async () => {
     // Typed here: the checker of this project may not read the relay's source.
-    const { createRelay } = (await import(RELAY)) as {
-      createRelay(): { fetch(r: Request): Response | Promise<Response>; close(): void }
+    const { serveRelay } = (await import(RELAY)) as {
+      serveRelay(o: { hostname: string; port: number }): { url: string; stop(): Promise<void> }
     }
-    const relay = createRelay()
-    const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+    const server = serveRelay({ hostname: '127.0.0.1', port: 0 })
     const homes = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-homes-'))
     const config = path.join(root, '.vx/workspace.mjs')
     const before = await readFile(config, 'utf8')
@@ -109,7 +108,7 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 2, memory: '1GB
       await writeFile(
         config,
         `import { dte } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ relay: ${JSON.stringify(`http://127.0.0.1:${server.port}`)}, local: 0 })] }
+export default { plugins: [dte({ relay: ${JSON.stringify(server.url)}, local: 0 })] }
 `,
       )
       commit()
@@ -132,8 +131,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(`http://127.0.0.1:${ser
       expect([await run.exited, out.includes('AGENT-KEY')]).toEqual([1, false])
       await agent.exited
     } finally {
-      relay.close()
-      await server.stop(true)
+      await server.stop()
       await rm(homes, { recursive: true, force: true })
       await writeFile(config, before)
       commit()
