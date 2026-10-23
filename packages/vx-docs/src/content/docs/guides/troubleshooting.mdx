@@ -74,13 +74,13 @@ $ vx run build --filter @demo/ap
 
   ```text
   $ vx why @demo/app#build
-  @demo/app#build — run 01a136e5-139e-74a4-b14f-55fa1b06c813
-    this run   2026-10-13T20:12:24.880Z · success · executed · key ecc2003cb26e7a00
-    previous   2026-10-13T20:12:24.429Z · success · key 7aadc81fe3f8c6d2
+  @demo/app#build — run 01a1661e-7a89-74f6-918e-d96743474a51
+    this run   2026-10-23T00:17:15.943Z · success · executed · key e45df494017b4fe9
+    previous   2026-10-23T00:17:15.733Z · success · key 3e6a03475b7efe74
     verdict    cache key changed: file packages/app/src/a.ts
 
-    what changed (1 component, 5 unchanged):
-      changed file  packages/app/src/a.ts  a853d874… → d14600f9…
+    what changed (1 component, 2 unchanged):
+      changed file  packages/app/src/a.ts  d00491fd7e5bb6fa28c517a0bb32b8b506539d4d → 0cfbf08886fca9a91cb753ec8734c84fcbe52c9f
 
     what to do:
       file  an edit re-runs by design; a file the task does not read belongs out of inputs.files
