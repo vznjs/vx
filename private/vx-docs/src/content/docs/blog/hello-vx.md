@@ -5,58 +5,66 @@ authors:
   - vzn
 tags:
   - announcement
-excerpt: 'vx runs and caches a task graph, correctly, and stops there. One picture, one run, and where to go next.'
+excerpt: 'vx runs and caches a task graph, correctly, and stops there. One picture, one measured run, and where to go next.'
 ---
 
 **vx runs and caches a task graph, correctly, and stops there.** It is a
-task runner and a content-addressed cache for JavaScript monorepos, built
-on Bun, with nothing hidden behind a paid cloud.
+task runner and a content-addressed cache for JavaScript monorepos,
+built on Bun. Nothing sits behind a paid cloud.
 
 ```mermaid
 flowchart LR
-  D[discover projects] --> C[evaluate vx.config.ts]
-  C --> G[one task graph]
+  D[find projects] --> G[one task graph]
   G --> K[a key per task]
-  K --> S[schedule]
-  S --> R[run here]
-  S --> X[or restore from the cache]
+  K --> R[run here]
+  K --> X[or restore from the cache]
   style K stroke:#c6f84e,stroke-width:2px
 ```
 
-## One run, then the same run again
+## Run it twice
 
-Eight tasks across four packages, run cold, then run again with nothing
-changed:
+Four packages, each with a `build` (`bun build`) and a `test`
+(`bun test`). Eight tasks:
 
 ```sh frame="terminal"
 $ vx run build test --all --force
+  tasks     8 success · 8 total
   cache     local 8↑
-  time      879ms
+  time      134ms
 
 $ vx run build test --all
-  time      26ms
+  cache     local 8✓
+  time      21ms
 ```
 
-The second run takes 26ms instead of 879ms, because every key matched and every output
-was already on disk. A cold run spends its time in your tools, not in the
-runner.
+The second run finds every key in the cache and every output already on
+disk, so nothing runs. Timed from outside, start-up included:
 
-## What is in the box, and what is not
+```
+cold  vx run build test --all --force   min 158.1 ms · median 170.9 ms   (20 runs)
+warm  vx run build test --all           min 115.0 ms · median 138.8 ms   (20 runs)
+```
 
-- **In core:** the graph, the keys, the scheduler, the local cache and
-  running on this machine. A workspace with no plugins runs and caches.
-- **Plugins:** remote caches, remote execution, telemetry, CI summaries,
-  lockfile-aware keys. Each one sits on a
-  documented seam, and you declare it in `.vx/workspace.ts`.
-- **Never:** a hosted dashboard, a daemon, or a cloud you have to buy
-  into.
+Linux x64, 4 cores, Bun 1.4.4, vx from source at `0be0367`, 2026-10-23.
+Most of the warm 115 ms is Bun loading vx; the run itself reports 21 ms.
 
-## Where to go next
+## What is in the box
 
-- [Quickstart](../../quickstart/): your first cached task in two
-  minutes, in a repo you already have.
-- [What vx is, and what it refuses to be](../what-vx-is/): the next
-  story.
-- [Benchmarks](../../benchmarks/): vx, Turborepo, Nx and Vite Task on the
-  same graph, each in its own native config.
-- [Features](../../features/): every feature, each with a short post.
+| Where       | What                                                                     |
+| ----------- | ------------------------------------------------------------------------ |
+| Core        | graph, keys, scheduler, local cache, running on this machine             |
+| Plugins     | remote caches, remote execution, telemetry, CI summaries, lockfile keys |
+| Never       | a hosted dashboard, a daemon, a cloud you must buy into                  |
+
+A workspace with no plugins still runs and caches. Each plugin sits on a
+documented seam and is declared in `.vx/workspace.ts`.
+
+## Next
+
+- [Quickstart](../../quickstart/): your first cached task, in a repo you
+  already have.
+- [What vx is, and what it refuses to be](../what-vx-is/).
+- [Benchmarks](../../benchmarks/): vx, Turborepo, Nx and Vite Task on
+  one graph, each in its own native config.
+
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
