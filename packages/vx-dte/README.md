@@ -294,7 +294,11 @@ stops, instead of waiting for the job's timeout.
   core placed it on: this machine's when a size has it, else the first of
   the task's a size has. A worker reports its platform when it joins: a
   size naming one refuses a worker of another; a size naming none is
-  planned as this machine's and takes any worker. The run starts a worker of each
+  planned as this machine's and takes any worker. When the sizes run
+  this machine's platform and another, a task naming none runs only on
+  this machine's: a worker of another platform runs only the tasks that
+  name it, so they never wait behind the rest, and leaves when they are
+  done. The run starts a worker of each
   platform its work needs. A task none of whose platforms any size has
   refuses the run before a worker starts.
 - Tasks waiting for room go out longest tail first: a task's recorded

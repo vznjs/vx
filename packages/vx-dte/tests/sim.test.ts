@@ -169,6 +169,30 @@ describe('a graph over two platforms', () => {
   })
 })
 
+// M, 2026-10-23: "the Mac would be only for Mac tasks". With a size of
+// this machine's platform, a task naming none runs on it only: a Mac worker
+// is never filled with the rest while its own tasks wait, and leaves once
+// they are done.
+describe('a Mac worker beside Linux ones', () => {
+  const linux: Size = { ...small, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 1, cpu: 4, memory: 16e9, platform: 'darwin-arm64' }
+  const graph = growing().map((t, i) =>
+    i >= 1 && i <= 4 ? { ...t, platform: 'darwin-arm64', ran: { ...t.ran!, ms: 60_000 } } : t,
+  )
+  const pinned = graph.filter((t) => t.platform !== undefined).map((t) => t.id)
+  const r = simulate(graph, { sizes: [linux, mac], home: 'linux-x64' })
+  const macs = r.workers.filter((w) => w.platform === 'darwin-arm64' && w.joinedAt !== undefined)
+  it('runs only the Mac tasks on it, none of them waiting past its warm-up', () => {
+    expect(macs.flatMap((w) => w.ran).sort()).toEqual([...pinned].sort())
+    for (const id of pinned) expect(r.waitedMs.get(id)!).toBeLessThanOrEqual(20_000)
+  })
+  it('lets it go once they are done, before the run ends', () => {
+    const last = Math.max(...pinned.map((id) => r.endedAt.get(id)!))
+    for (const w of macs) expect(w.leftAt!).toBeLessThan(r.endMs)
+    for (const w of macs) expect(w.leftAt! - last).toBeLessThan(1_000)
+  })
+})
+
 // Each choice of each layer (`dte({ scheduler })`), the rest the default's:
 // whatever a workspace picks, no worker is booked past its cores and every
 // miss runs once.

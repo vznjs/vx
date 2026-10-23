@@ -132,6 +132,8 @@ export interface OrchestratorOptions {
   readonly tail?: (taskId: string) => number
   /** How waiting tasks are ordered and placed (`Strategy`). */
   readonly how?: Strategy
+  /** The platform a task naming none runs on (`homeOf`). */
+  readonly home?: string | undefined
 }
 
 /**
@@ -231,7 +233,7 @@ export class Orchestrator {
       const need = this.o.need(req.taskId)
       const job: Job = {
         req,
-        need: req.platform === undefined ? need : { ...need, platform: req.platform },
+        need: { ...need, platform: req.platform ?? this.o.home },
         resolve,
         reject,
       }

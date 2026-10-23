@@ -114,6 +114,7 @@ export function planTasks(
   nodes: ReadonlyMap<string, TaskNode>,
   need: (id: string) => { cores: number; memory: number; above?: PlanTask['above'] },
   durationMs: (id: string) => number | undefined,
+  home?: string,
 ): PlanTask[] {
   const runs = (id: string): boolean => nodes.get(id)?.config.exec?.command !== undefined
   const ran = new Map<string, string[]>()
@@ -134,7 +135,7 @@ export function planTasks(
       above: n.above,
       ms: durationMs(id),
       deps: depsOf(id),
-      platform: nodes.get(id)?.platform,
+      platform: nodes.get(id)?.platform ?? home,
     }
   })
 }
@@ -153,6 +154,7 @@ export function missedWork(
   executed: ReadonlySet<string>,
   need: (id: string) => { cores: number; memory: number; above?: PlanTask['above'] },
   durationMs: (id: string) => number | undefined,
+  home?: string,
 ): PlanTask[] {
   const changed = new Map<string, boolean>()
   // Whether `id`'s key changed: a cached task that missed, or one after it.
@@ -167,7 +169,7 @@ export function missedWork(
   }
   const missed = (id: string): boolean =>
     executed.has(id) || (nodes.get(id)?.deps ?? []).some(changes)
-  return planTasks([...remaining].filter(missed), nodes, need, durationMs)
+  return planTasks([...remaining].filter(missed), nodes, need, durationMs, home)
 }
 
 interface Slot extends Bin {
@@ -475,6 +477,8 @@ export function decide(input: {
   readonly known?: ReadonlySet<string>
   /** How it orders, places and scales (`need` books already). */
   readonly how?: Strategy
+  /** The platform a task naming none runs on (`homeOf`). */
+  readonly home?: string | undefined
 }): Plan & { readonly tasks: readonly PlanTask[] } {
   const how = input.how ?? DEFAULT_STRATEGY
   const tasks = missedWork(
@@ -483,6 +487,7 @@ export function decide(input: {
     input.executed,
     input.need,
     input.durationMs,
+    input.home,
   ).filter((t) => !input.running.has(t.id))
   const platforms = new Map<string, number>()
   for (const t of tasks)
