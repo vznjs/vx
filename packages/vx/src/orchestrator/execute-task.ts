@@ -821,11 +821,13 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     for (const c of captured)
       if (c.kind === 'env' && named.includes(c.name) && !secretNamed(c.name))
         c.hash = MASKED + c.hash
+  // The values of secret-named variables, masked in what the task prints
+  // and what the cache keeps of it (L-11); null when there are none.
+  const secrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
   // A runtime probe's row is named by its command, which a TS config may
   // build from `process.env`: the run history stored it and `vx why`
   // printed it (L-11).
-  const nameSecrets =
-    captured.length > 0 ? secretMask([process.env, env, step.env?.define], step.env?.secret) : null
+  const nameSecrets = captured.length > 0 ? secrets : null
   if (nameSecrets !== null) {
     // Two probes that differ only by a secret mask to one name, and a row
     // is stored once per name: numbered, the second's change still shows.
@@ -1113,9 +1115,6 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
   }
 
-  // The values of secret-named variables, masked in what the task prints
-  // and what the cache keeps of it (L-11); null when there are none.
-  const secrets = secretMask([process.env, env, step.env?.define], step.env?.secret)
   let flushMasked = (): void => {}
   // The attempt's output as the logger got it (masked): the entry's when
   // the task saves, else only what a failure reports (`failedOutput`).
