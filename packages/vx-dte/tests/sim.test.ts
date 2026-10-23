@@ -158,7 +158,7 @@ const cases: Case[] = [
     likely: forecastAll(),
     probe: false,
     restoreMs: 1_000,
-    failing: ['churn', 'utilization'],
+    failing: ['utilization'],
   },
   // The forecast knows some keys: half its misses.
   {
