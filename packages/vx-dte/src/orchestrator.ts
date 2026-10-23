@@ -24,7 +24,6 @@ import {
 } from '@vzn/vx'
 import {
   HELD_EVERY,
-  SAVE_DEADLINE_MS,
   type WorkerInfo,
   type DepOrder,
   type RunOrder,
@@ -807,10 +806,8 @@ export class Orchestrator {
           if (j === undefined) continue
           this.begun(a, m.task)
           this.unhold(a, j)
-          // Its worker no longer says it holds it: its save has this long.
+          // Its worker still says it holds it while it saves.
           j.ranAt = performance.now()
-          if (j.leaseUntil !== undefined)
-            j.leaseUntil = j.ranAt + SAVE_DEADLINE_MS + 3 * HELD_EVERY * this.o.me.heartbeatMs
           this.pumpSoon()
         } else if (m.type === 'fault') {
           const j = a.busy.get(m.task)

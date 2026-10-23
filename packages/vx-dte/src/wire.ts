@@ -24,6 +24,8 @@ export class RelayError extends Error {
 const FIRST_REDIAL_MS = 250
 /** A frame of several sends stays under this, half the relay's 1 MiB body limit. */
 const FRAME_BYTES = 512 * 1024
+/** Heartbeats without a word from the relay itself before a beat it must answer. */
+const QUIET_BEATS = 3
 /** How long `leave` waits on its socket's close handshake. */
 const CLOSE_WAIT_MS = 2_000
 const UNANSWERED = 'the relay answered no frame'
@@ -466,11 +468,19 @@ async function connect(
   // a run's (2026-10-23).
   let heard = performance.now()
   let framed = false
+  // The host answers a ping without the relay behind it, so a socket the
+  // relay no longer pushes to still pongs: 13baaf6's orchestrator heard
+  // nothing for 8 min (2026-10-23). Quiet this long, the beat is an empty
+  // frame the relay itself answers, which also makes this socket the one
+  // it pushes to; traffic that already flows proves the relay for free.
+  let spoke = performance.now()
   const ping = setInterval(() => {
-    if (performance.now() - heard > 2.5 * heartbeatMs) {
+    const now = performance.now()
+    if (now - heard > 2.5 * heartbeatMs) {
       closed()
       ws.close()
     } else if (framed) framed = false
+    else if (now - spoke >= QUIET_BEATS * heartbeatMs) frame([])
     else ws.send('ping')
   }, heartbeatMs)
   ping.unref()
@@ -495,6 +505,7 @@ async function connect(
   ws.onmessage = (e) => {
     heard = performance.now()
     if (e.data === 'pong') return
+    spoke = heard
     const m = JSON.parse(String(e.data)) as Answer & { messages?: RelayMessage[]; n?: number }
     if (m.messages !== undefined) {
       if (me.onMessages === undefined) inbox.push(...m.messages)

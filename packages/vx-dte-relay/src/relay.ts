@@ -55,8 +55,11 @@ export interface Relay {
    */
   attach(key: string, id: string, socket: RelaySocket, heardAt?: number): boolean
   detach(key: string, id: string, socket: RelaySocket): void
-  /** One frame a participant sent down its socket; returns the answer frame. */
-  frame(key: string, id: string, text: string): string
+  /**
+   * One frame a participant sent down `socket`, which becomes its socket;
+   * returns the answer frame.
+   */
+  frame(key: string, id: string, text: string, socket?: RelaySocket): string
   /** The participant was heard from at `at` (a websocket ping the host answered). */
   seen(key: string, id: string, at: number): void
   /** Loses the silent and forgets old runs; returns when to sweep next, if any run is left. */
@@ -212,6 +215,19 @@ export function createRelay(opts: RelayOptions): Relay {
     try {
       s?.close()
     } catch {}
+  }
+
+  /** `socket` reaches the participant: what queued for it goes down it. */
+  const plug = (run: Run, p: Participant, socket: RelaySocket): void => {
+    p.socket = socket
+    if (p.queue.length === 0) return
+    const messages = drain(run, p)
+    try {
+      socket.send(JSON.stringify({ messages }))
+    } catch {
+      unplug(p)
+      for (const m of messages) deliver(run, p, m)
+    }
   }
 
   const drain = (run: Run, p: Participant): Message[] => {
@@ -542,19 +558,10 @@ export function createRelay(opts: RelayOptions): Relay {
           p.socket.close()
         } catch {}
       }
-      p.socket = socket
+      plug(run, p, socket)
       // A dead orchestrator's socket, restored at each wake, kept it alive
       // and its run's workers waited out their job's timeout (2026-10-23).
       p.seen = heardAt === undefined ? Date.now() : Math.max(p.seen, heardAt)
-      if (p.queue.length > 0) {
-        const messages = drain(run, p)
-        try {
-          socket.send(JSON.stringify({ messages }))
-        } catch {
-          unplug(p)
-          for (const m of messages) deliver(run, p, m)
-        }
-      }
       return true
     },
     detach(key, id, socket) {
@@ -565,7 +572,7 @@ export function createRelay(opts: RelayOptions): Relay {
       // Its silence counts from now, though its host evicts this before the next sweep.
       saveParticipant(run!, p)
     },
-    frame(key, id, text) {
+    frame(key, id, text, socket) {
       let n: unknown = null
       try {
         if (text.length > MAX_BODY) {
@@ -588,6 +595,12 @@ export function createRelay(opts: RelayOptions): Relay {
         n = body?.n ?? null
         const run = live(key)
         const p = participant(run, id, 'socket')
+        // It spoke down this socket, so this socket reaches it: one its
+        // host let go or never restored as its own left it deaf while its
+        // pings were answered, and 13baaf6's orchestrator heard nothing
+        // for 8 min (2026-10-23). Not closing the other: a host may hand
+        // the same socket as another object.
+        if (socket !== undefined && p.socket !== socket) plug(run, p, socket)
         if (body.leave === true) drop(run, p)
         else if (body.remove !== undefined) removeWorker(run, p, body.remove)
         else if (Array.isArray(body.sends)) {

@@ -347,11 +347,10 @@ stops, instead of waiting for the job's timeout.
   checkout, install or join can fail on the network; a fourth starts
   none. When none is online or starting and this machine has no
   share, the remaining tasks fail with `no worker could start`.
-- A task whose outputs a worker has not saved 5 minutes after its
-  command ended is given up there and runs on another worker, as any
-  fault does: `its outputs did not save within 300 s`. Once its command
-  ends a worker no longer says it holds the task; the run holds it for
-  the save alone.
+- A socket the relay stopped pushing to, though its pings are answered,
+  is found within three heartbeats (15 s on the relay's default): quiet
+  that long, the client's beat is a frame the relay must answer, which
+  also makes it push down that socket again.
 - A run where no task began or ended for a minute warns what it waits
   on, a line a task: which worker, and whether it runs or saves.
 

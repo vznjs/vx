@@ -58,7 +58,7 @@ export function serveRelay(opts: ServeOptions): RelayServer {
           ws.send('pong')
           return
         }
-        ws.send(relay.frame(key, id, String(message)))
+        ws.send(relay.frame(key, id, String(message), ws.data.socket))
       },
       close(ws: ServerWebSocket<Held>) {
         const { key, id, socket } = ws.data
