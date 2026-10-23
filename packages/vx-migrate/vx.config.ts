@@ -22,6 +22,36 @@ const SUITE_SANDBOX = {
   ignore: { network: ['no-such-host.invalid:80'] },
 }
 
+const TEST_SHARDS = 4
+
+const testShard = (i: number) => ({
+  description: `bun test, shard ${i} of ${TEST_SHARDS}`,
+  exec: {
+    command: `bun test --only-failures --shard=${i}/${TEST_SHARDS} --timings=tests/timings.json`,
+    // `nx-exec-live.test.ts` runs the bin against REAL Nx when
+    // VX_NX_MODULES names an install (CI puts one under `.nx-live/`,
+    // inside this project, so the sandbox's read grant covers it) and
+    // fails instead of skipping under VX_REQUIRE_NX. Both are key
+    // inputs: a skip-mode hit must never answer for the live run.
+    // VX_REQUIRE_REFTABLE: head-stamp-reftable.test.ts fails on a git
+    // too old for reftable instead of skipping; VX_REQUIRE_NONROOT:
+    // packages-foreign-owner.test.ts fails as root instead of skipping.
+    env: {
+      passThrough: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE', 'VX_REQUIRE_NONROOT'],
+      define: SUITE_ENV,
+    },
+    sandbox: SUITE_SANDBOX,
+  },
+  dependsOn: ['install'],
+  inputs: {
+    files: ['src/**', 'tests/**', 'package.json'],
+    env: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE', 'VX_REQUIRE_NONROOT'],
+  },
+  cache: {
+    outputs: { files: [] },
+  },
+})
+
 export default defineProject({
   tasks: {
     install: {
@@ -81,38 +111,16 @@ export default defineProject({
       },
     },
 
+    // One process was a distributed run's critical path (188 s of 206 s,
+    // main 2026-10-23): Bun deals the files by tests/timings.json, which
+    // `bun test --timings=tests/timings.json --update-timings` refreshes.
     test: {
-      description: 'bun test',
-      exec: {
-        command: 'bun test --only-failures',
-        // `nx-exec-live.test.ts` runs the bin against REAL Nx when
-        // VX_NX_MODULES names an install (CI puts one under `.nx-live/`,
-        // inside this project, so the sandbox's read grant covers it) and
-        // fails instead of skipping under VX_REQUIRE_NX. Both are key
-        // inputs: a skip-mode hit must never answer for the live run.
-        // VX_REQUIRE_REFTABLE: head-stamp-reftable.test.ts fails on a git
-        // too old for reftable instead of skipping; VX_REQUIRE_NONROOT:
-        // packages-foreign-owner.test.ts fails as root instead of skipping.
-        env: {
-          passThrough: [
-            'VX_NX_MODULES',
-            'VX_REQUIRE_NX',
-            'VX_REQUIRE_REFTABLE',
-            'VX_REQUIRE_NONROOT',
-          ],
-          define: SUITE_ENV,
-        },
-        sandbox: SUITE_SANDBOX,
-      },
-      dependsOn: ['install'],
-      inputs: {
-        files: ['src/**', 'tests/**', 'package.json'],
-        env: ['VX_NX_MODULES', 'VX_REQUIRE_NX', 'VX_REQUIRE_REFTABLE', 'VX_REQUIRE_NONROOT'],
-      },
-      cache: {
-        outputs: { files: [] },
-      },
+      dependsOn: Array.from({ length: TEST_SHARDS }, (_, i) => `test.shard-${i + 1}`),
     },
+
+    ...Object.fromEntries(
+      Array.from({ length: TEST_SHARDS }, (_, i) => [`test.shard-${i + 1}`, testShard(i + 1)]),
+    ),
 
     // Only the `*-live.test.ts` files, against the Nx `nx.install` puts in
     // `.nx-live`; `test` runs every file, these in skip mode. No cache: the
