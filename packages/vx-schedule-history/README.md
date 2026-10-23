@@ -55,6 +55,9 @@ configure:
 - **Order.** A forecast reads this branch's last five timings first,
   then the newest imported one, then any branch's, then
   `assume`.
+- **Per definition.** Each timing is of the task as it was: its command
+  and `env.define` (`taskDefinitions`). A task whose command changed reads
+  none of its old timings; editing its inputs, outputs or deps keeps them.
 - **Untrusted.** A blob over 1 MiB, not `{ version: 1, tasks }`, with
   more than 50 000 tasks, or with a time outside 0 to 24 h, is dropped,
   silently; ids not in the run's graph are dropped. It can only order a

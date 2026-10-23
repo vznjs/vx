@@ -32,6 +32,7 @@ import {
   isGroupTask,
   markSurfacedDeps,
   runGraph,
+  taskDefinitions,
   type TaskNode,
   type TaskOutcome,
 } from '../graph/index.js'
@@ -902,6 +903,7 @@ async function runOnBus(
           prepared.localCache.dbHandle(),
           undefined,
           prepared.branch(),
+          taskDefinitions(nodes.values()),
         ).p50sFor(ids)
         return createForecast(nodes, p50s, concurrency)
       },
@@ -1684,6 +1686,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
         prepared.localCache.dbHandle(),
         undefined,
         prepared.branch(),
+        taskDefinitions(prepared.nodes.values()),
       ),
       // Placement, by the same rules the run applies. Only worth showing
       // when there is a choice to show — with one declared executor every

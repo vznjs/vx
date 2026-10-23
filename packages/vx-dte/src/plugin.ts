@@ -4,6 +4,7 @@ import {
   LocalHistoryProvider,
   PLATFORMS,
   refuseUnknownOptions,
+  taskDefinitions,
   UserError,
   type CommandContext,
   type Platform,
@@ -314,6 +315,7 @@ export function dte(options: DteOptions) {
             ctx.localCache.dbHandle(),
             undefined,
             ctx.branch,
+            taskDefinitions(graph.values()),
           ).resourcesFor(ids)
           tails = undefined
         } catch (err) {

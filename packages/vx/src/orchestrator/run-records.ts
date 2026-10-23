@@ -7,7 +7,7 @@
 // tests/run-records.test.ts holds to this one.
 
 import type { InvocationRecord, RunRecord } from '../cache/index.js'
-import { isGroupTask, type TaskOutcome } from '../graph/index.js'
+import { isGroupTask, taskDefinition, type TaskOutcome } from '../graph/index.js'
 import { VERSION } from '../version.js'
 import type { CiContext, GitContext, HostContext } from './run-context.js'
 import { taskTelemetryOf, type TaskTelemetry } from './telemetry.js'
@@ -135,6 +135,8 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     if (o.notReady !== undefined) r.notReady = o.notReady
     if (remoteError !== undefined) r.remoteError = remoteError
     if (o.keylessBy !== undefined) r.keylessBy = o.keylessBy
+    const def = taskDefinition(o.node)
+    if (def !== undefined) r.def = def
     runs.push(r)
     if (o.status === 'failed') failedCount++
     if (o.status === 'cache-hit') hitLocalCount++

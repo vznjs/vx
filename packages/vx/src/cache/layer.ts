@@ -225,6 +225,8 @@ export interface RunRecord {
   placement?: string
   /** The task with no `inputs` its key folded, so it never read or saved (v46). */
   keylessBy?: string
+  /** The task's definition (`taskDefinition`): what its history is kept under (v48). */
+  def?: string
   /** That machine's cores and memory (v44). */
   placementCores?: number
   placementMemoryBytes?: number

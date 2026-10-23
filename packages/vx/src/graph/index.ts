@@ -17,6 +17,7 @@ export {
   selectFoldedDeps,
 } from './folds.js'
 export { computeReverseDepCount } from './priorities.js'
+export { taskDefinition, taskDefinitions } from './definition.js'
 export {
   type ContinueMode,
   deadServerBehind,

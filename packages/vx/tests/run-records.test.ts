@@ -6,6 +6,7 @@
 // count among them.
 
 import { describe, expect, it } from 'bun:test'
+import { taskDefinition } from '../src/graph/definition.js'
 import type { TaskOutcome } from '../src/graph/scheduler.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
 import { assembleRunRecords, type RunRecordsInput } from '../src/orchestrator/run-records.js'
@@ -82,6 +83,7 @@ describe('assembleRunRecords', () => {
         attempts: 2,
         cached: false,
         sandboxViolations: 3,
+        def: taskDefinition(outcome('a#build', 'success').node),
       },
       {
         project: 'b',
@@ -95,6 +97,7 @@ describe('assembleRunRecords', () => {
         cacheHit: false,
         cached: false,
         blockedBy: 'a#build',
+        def: taskDefinition(outcome('b#build', 'skipped').node),
       },
     ])
   })
