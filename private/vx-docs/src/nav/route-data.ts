@@ -32,7 +32,7 @@ export const onRequest = defineRouteMiddleware(async (context) => {
   const listed = groups.find((g) => links(g.entries).some((l) => l.isCurrent))
   const section = listed === undefined ? sectionByPath(route.id) : GROUP_SECTION[listed.label]!
   context.locals.vxSection = section
-  if (section !== 'docs' && section !== 'reference') {
+  if (section !== 'docs' && section !== 'guides' && section !== 'reference') {
     route.hasSidebar = false
     route.toc = undefined
     route.pagination = { prev: undefined, next: undefined }

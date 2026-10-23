@@ -128,6 +128,107 @@ describe('the guides show what vx prints', () => {
   })
 })
 
+// The Guides' one-task pages, on a two-project fixture: ui, and web, whose
+// build waits on ui's. Each page's command block is followed by the block
+// vx prints for it.
+describe('the one-task guides show what vx prints', () => {
+  let two = ''
+  const run = (...args: string[]) => {
+    const r = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: two, env: ENV })
+    return { code: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() }
+  }
+  const sh = (...args: string[]) =>
+    expect(Bun.spawnSync({ cmd: args, cwd: two, env: ENV }).exitCode).toBe(0)
+  const guide = (rel: string) => readFileSync(path.join(GUIDES, rel), 'utf8')
+  /** The fenced block after the one holding `command`. */
+  const printed = (page: string, command: string): string => {
+    const at = page.indexOf(`\n${command}\n`)
+    expect(at).toBeGreaterThan(-1)
+    const after = page.indexOf('```', page.indexOf('```', at) + 3)
+    return /```[^\n]*\n([\s\S]*?)\n```/.exec(page.slice(after))![1]!
+  }
+  /** What changes run to run in a plan: its keys and predicted times too. */
+  const plan = (text: string) =>
+    stable(text)
+      .replace(/ {2}[0-9a-f]{8} {2}~\d+ms/g, '  <key>  ~<ms>')
+      .replace(/~\d+ms/g, '~<ms>')
+  const config = (name: string, dependsOn: string) => `export default {
+  name: '@demo/${name}',
+  tasks: {
+    build: {
+      dependsOn: [${dependsOn}],
+      exec: { command: 'mkdir -p dist && cat src/index.ts > dist/index.js' },
+      inputs: { files: ['src/**'] },
+      cache: { outputs: { files: ['dist/**'] } },
+    },
+  },
+}
+`
+
+  beforeAll(async () => {
+    two = await mkdtemp(path.join(os.tmpdir(), 'vx-site-guides-'))
+    await mkdir(path.join(two, '.vx'))
+    await writeFile(path.join(two, '.vx/workspace.mjs'), 'export default {}\n')
+    await writeFile(path.join(two, '.gitignore'), 'dist\n')
+    for (const [name, dep] of [
+      ['ui', ''],
+      ['web', "'@demo/ui#build'"],
+    ] as const) {
+      await mkdir(path.join(two, `packages/${name}/src`), { recursive: true })
+      await writeFile(path.join(two, `packages/${name}/vx.config.ts`), config(name, dep))
+      await writeFile(path.join(two, `packages/${name}/src/index.ts`), '1\n')
+    }
+    sh('git', 'init', '-q', '-b', 'main')
+    expect(run('lock').code).toBe(0)
+    sh('git', 'add', '-A')
+    sh('git', 'commit', '-qm', 'one')
+    expect(run('run', 'build', '--all').code).toBe(0)
+    sh('git', 'checkout', '-qb', 'feature')
+    await writeFile(path.join(two, 'packages/ui/src/index.ts'), '2\n')
+  })
+
+  afterAll(async () => {
+    if (two !== '') await rm(two, { recursive: true, force: true })
+  })
+
+  it('run-what-changed: the --affected plan', () => {
+    const page = guide('running/run-what-changed.md')
+    const r = run('run', 'build', '--affected', '--dry')
+    expect(r.code).toBe(0)
+    expect(plan(printed(page, 'vx run build --affected --dry'))).toBe(plan(r.stdout))
+  })
+
+  it('run-one-project: the --filter plan', () => {
+    const page = guide('running/run-one-project.md')
+    const r = run('run', 'build', '--filter', '@demo/web', '--dry')
+    expect(r.code).toBe(0)
+    expect(plan(printed(page, 'vx run build --filter @demo/web --dry'))).toBe(plan(r.stdout))
+  })
+
+  it('check-the-lock: a drifted config, then a current lock', async () => {
+    const page = guide('ci/check-the-lock.md')
+    const file = path.join(two, 'packages/ui/vx.config.ts')
+    await writeFile(file, config('ui', '').replace("'src/**'", "'src/**', 'package.json'"))
+    const drift = run('lock', '--check')
+    await writeFile(file, config('ui', ''))
+    const ok = run('lock', '--check')
+    expect(drift.code).toBe(1)
+    expect(printed(page, 'vx lock --check')).toBe(drift.stderr.trim())
+    expect(ok.code).toBe(0)
+    expect(page).toContain(`\n${(ok.stdout + ok.stderr).trim()}\n`)
+  })
+
+  it('why-a-task-missed: a changed file, then a changed upstream', () => {
+    expect(run('run', 'build', '--all').code).toBe(0)
+    const page = guide('caching/why-a-task-missed.md')
+    for (const task of ['@demo/ui#build', '@demo/web#build']) {
+      const r = run('why', task)
+      expect(r.code).toBe(0)
+      expect(stable(printed(page, `vx why ${task}`))).toBe(stable(r.stdout))
+    }
+  })
+})
+
 describe("configure's verdict table", () => {
   it('every row is a verdict vx why can print', async () => {
     const page = readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8')

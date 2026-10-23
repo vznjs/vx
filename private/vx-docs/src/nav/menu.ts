@@ -21,9 +21,30 @@ export const MENU: Partial<Record<SectionId, MenuLink[]>> = {
       line: 'A task touches only what it declares.',
     },
     { label: 'CI and remote', href: 'guides/ci/', line: 'Affected runs, remote cache, execution.' },
-    { label: 'Migrate', href: 'guides/migrate/', line: 'From Turborepo or Nx in one command.' },
     { label: 'AI agents', href: 'guides/agents/', line: 'The agent skill, JSON output, vx why.' },
     { label: 'Plugins', href: 'guides/plugins/', line: 'Every stage is a seam.' },
+  ],
+  guides: [
+    {
+      label: 'Find why a task missed the cache',
+      href: 'guides/caching/why-a-task-missed/',
+      line: 'vx why names the input that moved.',
+    },
+    {
+      label: 'Run only what changed',
+      href: 'guides/running/run-what-changed/',
+      line: 'The tasks a git change reaches.',
+    },
+    {
+      label: 'Migrate from Turborepo, Nx or Vite Task',
+      href: 'guides/migrate/',
+      line: 'Convert your config in one command.',
+    },
+    {
+      label: 'Troubleshooting',
+      href: 'guides/troubleshooting/',
+      line: 'Every message and its fix.',
+    },
   ],
   reference: [
     { label: 'Commands', href: 'cli/', line: 'Every verb and flag.' },
