@@ -62,6 +62,12 @@ interface Case {
   readonly failing?: readonly string[]
   /** What the forecast says misses before any does (`likelyMisses`). */
   readonly likely?: ReadonlySet<string>
+  /** Core's cache probe answered before the first plan (default true). */
+  readonly probe?: boolean
+  /** How long a hit takes to restore (default: it ends at once). */
+  readonly restoreMs?: number
+  /** A worker's start, from its ask to its join (default sim.ts's). */
+  readonly warmUpMs?: number
 }
 
 /** Its true misses: a forecast that guessed right. */
@@ -131,7 +137,81 @@ const cases: Case[] = [
     measured: false,
     likely: misses(load(a09)),
   },
+  // main f71b377: the last commit's changes forecast nearly every task a
+  // miss, a remote held most, and its batch probe gave no answer: demand
+  // counted every forecast task, 15 workers were asked for 116 tasks, 11
+  // cancelled, and one joined to an empty queue. Core now asks each key
+  // when the batch has no answer (`remoteHasEach`), so the probe answers.
+  {
+    name: 'main a09b987, all forecast, its hits measured',
+    graph: hitsMeasured(),
+    measured: true,
+    likely: forecastAll(),
+    restoreMs: 1_000,
+    failing: ['utilization'],
+  },
+  {
+    name: 'main a09b987, all forecast, no probe answer',
+    graph: hitsMeasured(),
+    measured: true,
+    likely: forecastAll(),
+    probe: false,
+    restoreMs: 1_000,
+    failing: ['churn', 'utilization'],
+  },
+  // The forecast knows some keys: half its misses.
+  {
+    name: 'main a09b987, half its misses forecast',
+    graph: load(a09),
+    measured: true,
+    likely: new Set([...misses(load(a09))].filter((_, i) => i % 2 === 0)),
+    failing: ['utilization'],
+  },
+  // Short tasks: the work is gone before a worker started for it joins.
+  { name: 'forty short tasks', graph: short(40, 400), measured: false },
+  {
+    name: 'forty short tasks, a slow start',
+    graph: short(40, 400),
+    measured: false,
+    warmUpMs: 40_000,
+  },
+  {
+    name: 'forty short tasks, no probe answer',
+    graph: short(40, 400),
+    measured: false,
+    probe: false,
+    restoreMs: 1_000,
+  },
 ]
+
+/** a09b987, each hit measured as a 10 s task on one core: it ran on an earlier run. */
+function hitsMeasured(): SimTask[] {
+  return load(a09).map((t) =>
+    t.ran === undefined && t.exec && t.cache
+      ? { ...t, known: { ms: 10_000, cores: 1, memory: 5e8 } }
+      : t,
+  )
+}
+
+/** Every cached task that runs a command: a forecast of a change under all of them. */
+function forecastAll(): Set<string> {
+  return new Set(
+    load(a09)
+      .filter((t) => t.exec && t.cache)
+      .map((t) => t.id),
+  )
+}
+
+/** `n` misses of `ms` each on one core, beside as many hits, none depending on another. */
+function short(n: number, ms: number): SimTask[] {
+  return Array.from({ length: n * 2 }, (_, i) => ({
+    id: `t${i}`,
+    deps: [],
+    exec: true,
+    cache: true,
+    ...(i % 2 === 0 ? { ran: { ms, cores: 1, memory: 2e8 } } : {}),
+  }))
+}
 
 /** a09b987 with every third task that ran never measured. */
 function aThirdUnmeasured(): SimTask[] {
@@ -150,7 +230,13 @@ it('a run a third unmeasured ends within 165 s, its workers 70% busy', () => {
 
 for (const c of cases) {
   describe(c.name, () => {
-    const r = simulate(c.graph, { sizes: [small], ...(c.likely ? { likely: c.likely } : {}) })
+    const r = simulate(c.graph, {
+      sizes: [small],
+      ...(c.likely ? { likely: c.likely } : {}),
+      ...(c.probe === undefined ? {} : { probe: c.probe }),
+      ...(c.restoreMs === undefined ? {} : { restoreMs: c.restoreMs }),
+      ...(c.warmUpMs === undefined ? {} : { warmUpMs: () => c.warmUpMs! }),
+    })
     const check = (name: string, body: () => void) =>
       (c.failing?.includes(name) === true ? it.failing : it)(name, body)
 
