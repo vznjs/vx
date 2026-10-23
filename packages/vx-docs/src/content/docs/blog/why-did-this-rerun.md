@@ -79,6 +79,7 @@ verdict line is one of these fifteen sentences, quoted from the code:
 | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | cache key changed: file packages/app/src/input.txt | the key moved; up to three components are named, then a count, and listed below |
 | cache key changed between the previous run and this one (inputs differ) | the key moved but neither entry kept its components (pruned, or a failed run saved none) |
+| never cached: its key folds a task that declares no `inputs`, so each run derives a new key               | declare `inputs` on the task it names                            |
 | cache key unchanged — this run was served from cache, nothing re-ran                                       | it was a cache hit                                               |
 | cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit | a failure saves no entry |
 | cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read) | the run's policy read no cache |
