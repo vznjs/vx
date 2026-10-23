@@ -24,7 +24,6 @@ export const MENU: Partial<Record<SectionId, MenuLink[]>> = {
     { label: 'Migrate', href: 'guides/migrate/', line: 'From Turborepo or Nx in one command.' },
     { label: 'AI agents', href: 'guides/agents/', line: 'The agent skill, JSON output, vx why.' },
     { label: 'Plugins', href: 'guides/plugins/', line: 'Every stage is a seam.' },
-    { label: 'Playground', href: 'playground/', line: 'The planner, in your browser.' },
   ],
   reference: [
     { label: 'Commands', href: 'cli/', line: 'Every verb and flag.' },

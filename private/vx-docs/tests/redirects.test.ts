@@ -124,8 +124,12 @@ const MERGED: Record<string, string> = {
   'learn/scheduling/': '#parallel',
   'learn/architecture/': '#plugins',
   'learn/extending/': '#plugins',
-  'learn/playground/': 'playground/',
-  'learn/labs/': 'playground/',
+  'learn/playground/': 'quickstart/',
+  'learn/labs/': 'quickstart/',
+  // The playground was removed (owner, 2026-10-23).
+  'playground/': 'quickstart/',
+  'blog/the-playground/': 'quickstart/',
+  'features/playground/': 'quickstart/',
   'learn/choosing/': 'compare/',
   'learn/glossary/': 'glossary/',
   'guide/why/': '#one-run',
@@ -137,8 +141,8 @@ const MERGED: Record<string, string> = {
   'guide/affected/': '#changed',
   'guide/many-machines/': '#extensible',
   'guide/inside-vx/': '#plugins',
-  'guide/try-it/': 'playground/',
-  'guide/labs/': 'playground/',
+  'guide/try-it/': 'quickstart/',
+  'guide/labs/': 'quickstart/',
   // It measured vx running turbo.json and Nx configs; the native-config
   // rerun has no page yet (owner, 2026-10-02).
   'benchmarks/real-repos/': 'benchmarks/',

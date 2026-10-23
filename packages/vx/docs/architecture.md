@@ -9,11 +9,7 @@ The repo is a Bun workspace of `packages/*`. Core is `@vzn/vx` in
 `packages/vx` — the task runner, and the only thing a plain `vx run`
 ever needs. Its sibling packages integrate with core exclusively
 through its public API (`src/index.ts`, imported as the bare `@vzn/vx`
-specifier — enforced by `tests/package-boundaries.unsafe.test.ts`). One
-directory is exempt by name: the site's playground
-(`private/vx-docs/src/playground/`) is core's planner source bundled for
-the browser, not a consumer of its API, and
-`tests/playground-parity.unsafe.test.ts` holds it to the CLI:
+specifier — enforced by `tests/package-boundaries.unsafe.test.ts`):
 
 | Package                        | What                                                                                                                                                                             |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -24,7 +20,7 @@ the browser, not a consumer of its API, and
 | `packages/vx-schedule-history` | `@vzn/vx-schedule-history` — `schedule` + `admit` + `commands` plugin: order by the critical path learned from run history, pack by what past executions used, `vx history`      |
 | `packages/vx-migrate`          | `@vzn/vx-migrate` — adoption: `turbo()` / `nx()` project-stage plugins, `nx-exec` (one Nx executor per process), `turboCache()` / `nxCache()` cache plugins, the migrate CLI     |
 | `packages/vx-lockfile`         | `@vzn/vx-lockfile` — `bun()` `pnpm()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim` |
-| `private/vx-docs`              | Astro Starlight docs site; imports `packages/vx/docs/**` at build time; bundles core's planner for the browser playground (private)                                              |
+| `private/vx-docs`              | Astro Starlight docs site; imports `packages/vx/docs/**` at build time (private)                                                                                                 |
 | `packages/vx-dte`              | `@vzn/vx-dte` — distributed task execution: one run spread over workers the CI starts, through a relay; `local()` adapter; private until it is on npm                            |
 | `packages/vx-dte-relay`        | `@vzn/vx-dte-relay` — the reference relay of `@vzn/vx-dte`: per-run mailboxes for CI workers behind CI OIDC tokens (`PROTOCOL.md`); private until it is on npm                   |
 | `private/vx-bench`             | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                            |
@@ -144,8 +140,7 @@ cross-module import of a contracted module targets anything but its
 `tests/package-boundaries.unsafe.test.ts`, pins the cross-PACKAGE law: core
 never imports `@vzn/vx-*`; sibling packages import core only via the
 bare `@vzn/vx` specifier (a relative specifier is resolved, so a reach
-into `packages/vx/src` from any depth is caught; the site's playground is
-the one named exemption), and the public-API symbol set is a
+into `packages/vx/src` from any depth is caught), and the public-API symbol set is a
 deliberate snapshot. It also holds the RUNTIME floor: every package
 declares `engines.bun`, and a package that enforces a floor in code
 (core's `util/bun-version.ts`, `@vzn/vx-reapi`'s `wire.ts`) may require

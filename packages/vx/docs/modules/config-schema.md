@@ -66,9 +66,9 @@ rules (a plugin may not shadow a core verb; a verb has one owner, a package).
   after the file's path: "tasks.build.description is a function — a
   config must be JSON data, because the cache key folds its JSON". An `undefined`
   PROPERTY is allowed (JSON drops it, the schema reads it as absent, conditional
-  spreads write it). The config worker (config-eval.ts) and the
-  playground's worker run the same function, embedded by its source text
-  (`nonJsonPaths.toString()`), before their `JSON.stringify`, and report
+  spreads write it). The config worker (config-eval.ts) runs the same
+  function, embedded by its source text
+  (`nonJsonPaths.toString()`), before its `JSON.stringify`, and reports
   with `nonJsonMessage`, so there is one copy of the rule and one
   message. It changes no key: a config that passes is the object it was.
   `validateWorkspace` does not apply it: plugins are objects of

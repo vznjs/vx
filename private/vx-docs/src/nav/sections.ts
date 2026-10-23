@@ -39,7 +39,7 @@ type SidebarItem = NonNullable<StarlightUserConfig['sidebar']>[number]
 const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
   // Eight pages (design/site-short-2026-09.md § The shape, plus
   // Troubleshooting and Upgrading), each the goal in one line and short sections, then
-  // the playground; the landing's diagram teaches the ideas.
+  // the graph explorer; the landing's diagram teaches the ideas.
   Docs: [
     { label: 'Quickstart', link: '/quickstart/' },
     { label: 'Configure', link: '/guides/configure/' },
@@ -50,7 +50,6 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Reference', SidebarItem[]> = {
     { label: 'AI agents', link: '/guides/agents/' },
     { label: 'Troubleshooting', link: '/guides/troubleshooting/' },
     { label: 'Upgrading to 1.0', link: '/guides/upgrading/' },
-    { label: 'Try it', link: '/playground/' },
     { label: 'Graph explorer', link: '/guides/graph-explorer/' },
   ],
   // Short groups in plain words; Plugins is each published plugin's README.

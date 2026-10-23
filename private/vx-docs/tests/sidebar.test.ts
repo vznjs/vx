@@ -1,6 +1,6 @@
 // The site's places and two sidebars (design/site-short-2026-09.md §
 // The shape; Features, standalone pages, came after), read from the built HTML: what a reader sees, not what the
-// config says. The Docs' sidebar is the eight pages, then the playground; the Reference ends
+// config says. The Docs' sidebar is the eight pages, then the graph explorer; the Reference ends
 // with the one way into the internals. Every page shows exactly one of the
 // two (the blog keeps its own), and no sidebar links an internals page. The
 // Guide is gone: no page shows a sidebar of its own.
@@ -111,11 +111,10 @@ describe('the sidebars', () => {
   const docs = sidebarList(html('quickstart/'))!
   const reference = sidebarList(html('cli/'))!
 
-  it('the Docs are the eight pages, then the playground and the graph explorer', () => {
+  it('the Docs are the eight pages, then the graph explorer', () => {
     expect(groupLabels(docs)).toEqual([])
     expect(sidebarLinks(docs)).toEqual([
       ...DOCS_PAGES,
-      ['Try it', 'playground/'],
       ['Graph explorer', 'guides/graph-explorer/'],
     ])
   })
@@ -158,7 +157,7 @@ describe('the sidebars', () => {
 
   it('puts a Docs page, a Reference page and a post each in its own section', () => {
     expect(places(html('guides/configure/')).current).toEqual(['Docs'])
-    expect(places(html('playground/')).current).toEqual(['Docs'])
+    expect(places(html('guides/graph-explorer/')).current).toEqual(['Docs'])
     expect(places(html('caching/')).current).toEqual(['Reference'])
     expect(places(html('modules/')).current).toEqual(['Reference'])
     expect(places(html('blog/')).current).toEqual(['Blog'])

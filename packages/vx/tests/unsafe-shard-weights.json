@@ -34,7 +34,6 @@
   "package-entry-shims.unsafe.test.ts": 4,
   "persistent-lifecycle-properties.unsafe.test.ts": 1426,
   "persistent-sandbox-hint.unsafe.test.ts": 498,
-  "playground-parity.unsafe.test.ts": 10465,
   "plugin-env-documented.unsafe.test.ts": 9,
   "plugin-exports-documented.unsafe.test.ts": 55,
   "plugin-hooks-doc-drift.unsafe.test.ts": 1,

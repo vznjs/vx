@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro'
 import { agentPages, isInternal, markdownUrl } from '../llms/pages.ts'
 
 const SECTIONS: readonly [string, (id: string) => boolean][] = [
-  ['Docs', (id) => id === 'quickstart' || id.startsWith('guides/') || id === 'playground'],
+  ['Docs', (id) => id === 'quickstart' || id.startsWith('guides/')],
   ['Reference', (id) => !/^(blog|releases)\//.test(id) && !isInternal(id)],
   ['Blog', (id) => id.startsWith('blog/')],
   ['Releases', (id) => id.startsWith('releases/')],

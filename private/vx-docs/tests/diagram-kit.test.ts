@@ -288,10 +288,7 @@ describe("the kit's colours and faces", () => {
   // second hand.
   it('are the only colours and faces of the widgets, framed like a picture', () => {
     const DEMOS = path.join(SITE, 'src/components/demos')
-    const files = [
-      path.join(SITE, 'src/components/Demo.astro'),
-      ...['widget.css', 'Playground.astro'].map((f) => path.join(DEMOS, f)),
-    ]
+    const files = [path.join(SITE, 'src/components/Demo.astro'), path.join(DEMOS, 'widget.css')]
     const wrong: string[] = []
     for (const f of files) {
       const src = readFileSync(f, 'utf8')

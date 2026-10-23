@@ -1,8 +1,7 @@
 // The process umask, read when a restore starts: Bun reads it by setting 0
 // and putting it back in one synchronous call (project-loader.ts
 // `currentUmask`), so no spawn on this thread sees the 0, and a run
-// evaluates no config in a worker. Through globalThis: the playground's
-// shim has no umask.
+// evaluates no config in a worker.
 const proc = globalThis.process as { umask?: () => number } | undefined
 let umask = 0
 

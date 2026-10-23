@@ -82,7 +82,7 @@ describe('the key fold (item 691)', () => {
     }
   })
 
-  // What the playground calls: the fold with no `Cache` behind it. Its
+  // The fold with no `Cache` behind it. Its
   // hasher is asked only for the file the caller's map leaves out.
   it('is the same fold without a Cache, asking the hasher only for unmapped files', async () => {
     const asked: string[] = []

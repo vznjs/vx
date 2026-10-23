@@ -8,11 +8,7 @@
 //         specifier is resolved against its file, so `../../vx/src/x` is
 //         caught from any depth (the pattern that stood here matched only
 //         `../src/`, core's path before it moved under packages/, and let
-//         any reach from a sibling through). One directory is exempt by
-//         name: the site's playground (private/vx-docs/src/playground/,
-//         item 695) IS core's planner source bundled for the browser, not
-//         a consumer of its API, and core's playground-parity rows hold it
-//         to the CLI.
+//         any reach from a sibling through).
 // Rule 2: core (src/**) never imports a sibling @vzn/vx-* package or any
 //         packages/* path — the dependency direction is sibling → core, never
 //         the reverse. The OTel/HTTP SDK closures stay out of core's budget.
@@ -74,25 +70,27 @@ describe('package boundaries', () => {
     const dirs = await packageSrcDirs()
     expect(dirs.length).toBeGreaterThan(0)
     const allViolations: string[] = []
-    const reached: string[] = []
+    const intoCore = (src: string, i: { file: string; specifier: string }): boolean =>
+      i.specifier.startsWith('.') &&
+      path.resolve(src, path.dirname(i.file), i.specifier).startsWith(CORE_SRC + path.sep)
+    // Positive first: a relative reach from a sibling's nested file resolves
+    // into core, so the empty list below is not a blind check.
+    expect(
+      intoCore(path.join(PACKAGES_DIR, 'vx-otel', 'src'), {
+        file: 'a/b.ts',
+        specifier: '../../../vx/src/index.ts',
+      }),
+    ).toBe(true)
     for (const { name, src } of dirs) {
       const imports = await importsOf(src)
-      const intoCore = (i: { file: string; specifier: string }): boolean =>
-        i.specifier.startsWith('.') &&
-        path.resolve(src, path.dirname(i.file), i.specifier).startsWith(CORE_SRC + path.sep)
-      reached.push(...imports.filter(intoCore).map((i) => `${name}/src/${i.file}`))
       const violations = imports.filter(
         (i) =>
-          (i.specifier === '@vzn/vx/src' ||
-            i.specifier.startsWith('@vzn/vx/src/') ||
-            intoCore(i)) &&
-          !(name === 'vx-docs' && i.file.startsWith('playground/')),
+          i.specifier === '@vzn/vx/src' ||
+          i.specifier.startsWith('@vzn/vx/src/') ||
+          intoCore(src, i),
       )
       allViolations.push(...violations.map((v) => `${name}/src/${v.file} → ${v.specifier}`))
     }
-    // Positive first: the resolution sees the exempt reach, so the empty
-    // list below is the exemption's doing and not a blind check.
-    expect(reached).toContain('vx-docs/src/playground/entry.ts')
     expect(allViolations).toEqual([])
   })
 
