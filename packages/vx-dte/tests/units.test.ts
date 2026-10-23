@@ -19,7 +19,7 @@ import { Usage } from '../src/usage.js'
 import { busyCores, endsInMs, tailsMs } from '../src/width.js'
 import { join } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
-import type { RunOrder } from '../src/messages.js'
+import { shares, type RunOrder } from '../src/messages.js'
 import { servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
@@ -1544,4 +1544,18 @@ it('an agent’s reason is its error line, not the hint after it', () => {
     '',
     "fatal: detected dubious ownership in repository at '/src/.git'",
   ])
+})
+
+// Main's agents booked 3.2 of 4 cores and used 2.6 (2026-10-23): a task
+// waited for its whole need while a core stood free. It begins while one
+// is; memory still has to fit, and one asking the whole agent waits.
+it('a task begins beside others while a core is free, its memory fitting', () => {
+  const agent = { cores: 4, memory: 16e9 }
+  expect(shares({ cores: 3.2, memory: 1e9 }, { cores: 1.5, memory: 1e9 }, agent)).toBe(true)
+  expect(shares({ cores: 4, memory: 1e9 }, { cores: 0.25, memory: 0 }, agent)).toBe(false)
+  expect(shares({ cores: 1, memory: 15e9 }, { cores: 1, memory: 2e9 }, agent)).toBe(false)
+  expect(shares({ cores: 0.5, memory: 0 }, { cores: 4, memory: 0 }, agent)).toBe(false)
+  expect(shares({ cores: 0.5, memory: 0 }, { cores: Infinity, memory: Infinity }, agent)).toBe(
+    false,
+  )
 })

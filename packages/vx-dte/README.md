@@ -279,8 +279,9 @@ stops, instead of waiting for the job's timeout.
   it. Tasks go to it in batches that fill those by each task's recorded peak
   (cores used, peak memory; a whole agent for a task with no history), plus a
   quarter of its cores as a prefetch, so a successor is there when a task
-  ends. The agent starts only what fits; a task bigger than any agent runs
-  alone on an idle one. A prefetched task an agent has not begun moves to
+  ends. The agent starts a task while one of its cores is free and the
+  task's memory fits, so no core waits for a task's whole need; a task
+  asking a whole agent, or bigger than any, runs alone on an idle one. A prefetched task an agent has not begun moves to
   an agent with nothing to do, so a short gate is never stuck behind a
   long task while another machine idles.
 - Tasks waiting for room go out longest tail first: a task's recorded

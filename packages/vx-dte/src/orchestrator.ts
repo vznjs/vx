@@ -24,6 +24,7 @@ import {
 } from '@vzn/vx'
 import {
   HELD_EVERY,
+  shares,
   type AgentInfo,
   type DepOrder,
   type RunOrder,
@@ -293,8 +294,7 @@ export class Orchestrator {
       }
       job.agent = a.id
       job.prefetched =
-        a.busy.size > 0 &&
-        (a.usedCores + job.need.cores > a.cores || a.usedMemory + job.need.memory > a.memory)
+        a.busy.size > 0 && !shares({ cores: a.usedCores, memory: a.usedMemory }, job.need, a)
       a.busy.set(job.req.taskId, job)
       job.held = {
         cores: Math.min(job.need.cores, a.cores),
@@ -365,8 +365,7 @@ export class Orchestrator {
     const pool = agents.some(bigger) ? agents.filter(bigger) : agents
     for (const a of pool) {
       const fits =
-        a.busy.size === 0 ||
-        (a.usedCores + job.need.cores <= a.cores && a.usedMemory + job.need.memory <= a.memory)
+        a.busy.size === 0 || shares({ cores: a.usedCores, memory: a.usedMemory }, job.need, a)
       if (!fits && a.usedCores + job.need.cores > a.cores + prefetch(a.cores)) continue
       let held = 0
       for (const id of up) if (a.has.has(id)) held++
