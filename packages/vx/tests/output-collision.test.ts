@@ -28,6 +28,7 @@ import {
 import type { ProjectEntry } from '../src/workspace/index.js'
 import type { PackageGraph } from '../src/workspace/index.js'
 import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../src/config.js'
+import { cpuClock } from './helpers/cpu-clock.js'
 
 function task(outputs: string[], wsOutputs?: string[]): TaskConfig {
   return {
@@ -755,9 +756,9 @@ describe('the check must not cost the graph its linearity', () => {
     }
     let best = Infinity
     for (let r = 0; r < 3; r++) {
-      const t0 = performance.now()
+      const cpu = cpuClock()
       graph(projects)
-      best = Math.min(best, performance.now() - t0)
+      best = Math.min(best, cpu())
     }
     expect(best).toBeLessThan(600)
   }, 120_000)
@@ -779,9 +780,9 @@ describe('the check must not cost the graph its linearity', () => {
     for (const tasks of [literals, globs]) {
       let best = Infinity
       for (let r = 0; r < 3; r++) {
-        const t0 = performance.now()
+        const cpu = cpuClock()
         graph({ app: tasks })
-        best = Math.min(best, performance.now() - t0)
+        best = Math.min(best, cpu())
       }
       expect(best).toBeLessThan(250)
     }

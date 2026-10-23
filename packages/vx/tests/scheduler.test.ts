@@ -7,6 +7,7 @@ import {
 import { RestoreDemoted, runGraph, type TaskOutcome } from '../src/graph/scheduler.js'
 import { machineParallelism } from '../src/util/index.js'
 import type { TaskNode } from '../src/graph/task-graph.js'
+import { cpuClock } from './helpers/cpu-clock.js'
 
 function node(id: string, deps: string[] = []): TaskNode {
   return {
@@ -620,9 +621,9 @@ describe('priority computation scale', () => {
     const graph = nodes(...all)
     let best = Infinity
     for (let i = 0; i < 8 && best >= 1500; i++) {
-      const t0 = performance.now()
+      const cpu = cpuClock()
       computeReverseDepCount(graph)
-      best = Math.min(best, performance.now() - t0)
+      best = Math.min(best, cpu())
     }
     expect(best).toBeLessThan(1500)
   }, 120_000)
