@@ -129,8 +129,10 @@ The packages it fetched stay in a directory the job's cache can keep:
 `CI_PROJECT_DIR` on GitLab, or `--debs <dir>`. When that directory holds them, they install
 with no index fetch; when they do not install (an older image's), they
 are fetched again. On Actions the step's outputs, written to
-`GITHUB_OUTPUT`, are `fetched` and `key` (the runner image's), so a
-cache step saves only what it fetched:
+`GITHUB_OUTPUT`, are `fetched` and `key`
+(`vx-setup-debs-<RUNNER_OS>-<RUNNER_ARCH>-<image>-<version>`, the
+runner image's, which the restore prefix below finds), so a cache step
+saves only what it fetched:
 
 ```yaml
 - uses: actions/cache/restore@v5

@@ -160,6 +160,16 @@ function readdir(dir: string): string[] {
   }
 }
 
+/**
+ * The key to save fetched packages under: this runner image's, after the
+ * `vx-setup-debs-<runner.os>-<runner.arch>-` a job restores by. Led by the
+ * image alone, no restore ever matched it and every agent fetched again
+ * (main, 2026-10-23: 6-55 s of each agent's start).
+ */
+export function debsKey(env: Record<string, string | undefined>): string {
+  return `vx-setup-debs-${env['RUNNER_OS'] ?? ''}-${env['RUNNER_ARCH'] ?? ''}-${env['ImageOS'] ?? ''}-${env['ImageVersion'] ?? ''}`
+}
+
 /** The `setup` verb of `github()` or `gitlab()`: `vx setup <ci> [--debs <dir>]`. */
 export async function runSetup(
   ci: 'github' | 'gitlab',
@@ -175,12 +185,7 @@ export async function runSetup(
   }
   await mkdir(debs, { recursive: true })
   const output = ci === 'github' ? process.env['GITHUB_OUTPUT'] : undefined
-  // The key to save fetched packages under: this runner image's.
   if (output !== undefined && output !== '')
-    await writeFile(
-      output,
-      `key=vx-setup-debs-${process.env['ImageOS'] ?? ''}-${process.env['ImageVersion'] ?? ''}-${process.arch}\n`,
-      { flag: 'a' },
-    )
+    await writeFile(output, `key=${debsKey(process.env)}\n`, { flag: 'a' })
   return setup({ ci, debs, output })
 }
