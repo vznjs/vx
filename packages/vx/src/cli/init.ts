@@ -170,6 +170,21 @@ function globalVersion(): string | undefined {
 }
 
 /**
+ * The package a manager's output says the registry answered 404 for, as
+ * `name@version`: a release's platform tarball stays unserved for minutes
+ * after publish (v0.0.646, 2026-10-23). bun: `GET <url> - 404`; npm:
+ * `404 Not Found - GET <url>`; pnpm: `GET <url>: Not Found - 404`.
+ */
+export function notServed(output: string): string | undefined {
+  for (const line of output.split('\n')) {
+    if (!line.includes('404')) continue
+    const m = /https?:\/\/\S+?\/((?:@[^/\s]+\/)?[^/\s]+)\/-\/[^/\s]+?-(\d[^/\s]*?)\.tgz/.exec(line)
+    if (m !== null) return `${decodeURIComponent(m[1]!)}@${m[2]}`
+  }
+  return undefined
+}
+
+/**
  * Run `initInstalls`, in order. A source checkout (0.0.0, which npm never
  * had) installs nothing: the release would replace the code under test.
  */
@@ -200,13 +215,26 @@ async function install(
       'out',
       ui.text([ui.cmd(s.argv.join(' ')), ui.dim(s.cwd === null ? '' : ` in ${s.cwd}`)]),
     )
-    const proc = Bun.spawnSync({
+    const proc = Bun.spawn({
       cmd: [bin, ...s.argv.slice(1)],
       cwd: s.cwd ?? process.cwd(),
-      stdio: ['inherit', 'inherit', 'inherit'],
+      stdio: ['inherit', 'inherit', 'pipe'],
     })
-    if (proc.exitCode !== 0) {
-      throw new UserError(`vx init: ${s.argv.join(' ')} failed (exit ${proc.exitCode})`)
+    // Shown as it comes, and kept: a registry 404 is the cause to name.
+    let said = ''
+    const decoder = new TextDecoder()
+    for await (const chunk of proc.stderr) {
+      process.stderr.write(chunk)
+      said += decoder.decode(chunk, { stream: true })
+    }
+    const code = await proc.exited
+    if (code !== 0) {
+      const missing = notServed(said)
+      throw new UserError(
+        missing === undefined
+          ? `vx init: ${s.argv.join(' ')} failed (exit ${code})`
+          : `vx init: the npm registry does not serve ${missing} yet (404), as a release can take minutes to reach it; run bunx @vzn/vx init again`,
+      )
     }
   }
   return steps.map((s) => s.argv.join(' '))

@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
-import { initInstalls } from '../src/cli/init.js'
+import { initInstalls, notServed } from '../src/cli/init.js'
 import { ui } from '../src/util/index.js'
 import { VERSION } from '../src/version.js'
 
@@ -219,5 +219,20 @@ describe('initInstalls', () => {
     expect(initInstalls('1.2.3', undefined, null, '1.2.2')).toEqual([
       { argv: ['bun', 'add', '-g', '@vzn/vx@1.2.3'], cwd: null },
     ])
+  })
+})
+
+// v0.0.646's platform tarball answered 404 for minutes after publish, and
+// init said only "bun add … failed (exit 1)".
+describe('notServed', () => {
+  it("names the package a manager's 404 line names, and nothing for any other failure", () => {
+    expect(
+      [
+        'warn: GET https://registry.npmjs.org/@vzn/vx-linux-x64/-/vx-linux-x64-0.0.646.tgz - 404',
+        'npm error 404 Not Found - GET https://registry.npmjs.org/@vzn/vx-lockfile/-/vx-lockfile-0.0.646.tgz - Not found',
+        ' ERR_PNPM_FETCH_404  GET https://registry.npmjs.org/@vzn%2fvx/-/vx-1.2.3.tgz: Not Found - 404',
+        'error: ENOSPC: no space left on device',
+      ].map(notServed),
+    ).toEqual(['@vzn/vx-linux-x64@0.0.646', '@vzn/vx-lockfile@0.0.646', '@vzn/vx@1.2.3', undefined])
   })
 })

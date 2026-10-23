@@ -279,9 +279,26 @@ async function runManager(
   if (live) process.stdout.write('\r\x1b[2K\x1b[1A')
   if (code !== 0) {
     process.stderr.write(said)
+    const missing = notServed(said)
     throw new UserError(
-      `${what} failed (${line} exited ${code}${failed}); run it, then vx-migrate again${code > 0 ? ranHint : ''}`,
+      missing === undefined
+        ? `${what} failed (${line} exited ${code}${failed}); run it, then vx-migrate again${code > 0 ? ranHint : ''}`
+        : `${what} failed: the npm registry does not serve ${missing} yet (404), as a release can take minutes to reach it; run vx init again`,
     )
   }
   return line
+}
+
+/**
+ * The package a manager's output says the registry answered 404 for, as
+ * `name@version` (core's `vx init` reads its installs the same way): a
+ * release's platform tarball stays unserved for minutes after publish.
+ */
+export function notServed(output: string): string | undefined {
+  for (const line of output.split('\n')) {
+    if (!line.includes('404')) continue
+    const m = /https?:\/\/\S+?\/((?:@[^/\s]+\/)?[^/\s]+)\/-\/[^/\s]+?-(\d[^/\s]*?)\.tgz/.exec(line)
+    if (m !== null) return `${decodeURIComponent(m[1]!)}@${m[2]}`
+  }
+  return undefined
 }
