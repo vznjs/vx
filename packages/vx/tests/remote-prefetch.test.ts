@@ -249,6 +249,39 @@ describe('startRemotePrefetch', () => {
     TIMEOUT,
   )
 
+  // An index that kept some of the keys called the rest misses before the
+  // probe answered; the PR's CI had stored the merged tree, so main 7391c93
+  // asked 14 workers for 71 tasks and 17 ran (2026-10-23). With a probe on
+  // its way, demand waits for it.
+  it(
+    'an index that kept some keys waits for the probe, not calling the rest misses',
+    async () => {
+      for (const name of ['a', 'b']) {
+        await addProject(root, name, {
+          files: { 'src/in.txt': name },
+          config: CACHED('echo built > out.txt', `{ files: ['out.txt'] }`),
+        })
+      }
+      const calls: [string[], string[]][] = []
+      await prefetchWith(
+        4,
+        (h) => new Set(h),
+        (a) => ({
+          ...a,
+          cache: new Proxy(a.cache, {
+            get: (t, prop, r) =>
+              prop === 'remoteKnown'
+                ? (hashes: readonly string[]) => new Map([[hashes[0]!, {}]])
+                : (Reflect.get(t, prop, r) as unknown),
+          }),
+          held: (ids, missed) => calls.push([[...ids].sort(), [...missed]]),
+        }),
+      )
+      expect(calls).toEqual([[['a#build', 'b#build'], []]])
+    },
+    TIMEOUT,
+  )
+
   it(
     'a key derivation that throws leaves the handle resolved',
     async () => {

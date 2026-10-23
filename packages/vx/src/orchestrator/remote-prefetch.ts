@@ -51,12 +51,6 @@ export interface PrefetchArgs {
    * remote, and those every store answered it does not: they run.
    */
   held?: ((ids: readonly string[], missed: readonly string[]) => void) | undefined
-  /**
-   * Told after the probe when `held` was told before it, from the hits the
-   * index kept (`remoteKnown`): the tasks it now holds that `held` called
-   * missed, and those `held` called held that it no longer holds.
-   */
-  revised?: ((hits: readonly string[], missed: readonly string[]) => void) | undefined
 }
 
 /**
@@ -125,18 +119,22 @@ async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<voi
   const pool = fetchPool(args.concurrency, (k) =>
     args.cache.prefetch(k.hash, getContext(k.node, k.node.config.exec?.command ?? '')),
   )
-  // Trusted at once: a key the index says a remote holds is a hit, its pull
-  // starts now, and every other key is a miss, before any remote answers
-  // (M, 2026-10-23). The probe below still asks for all of them and revises.
+  // Trusted at once: a key the index says a remote holds is a hit and its
+  // pull starts now, before any remote answers (M, 2026-10-23). The probe
+  // below still asks for all of them.
   // One that knows none of them says nothing: a fresh CI runner's empty
   // index called every key a miss, and main asked 15 workers for 16 misses
   // (75f58f9, 2026-10-23). The probe answers them.
   const kept = args.cache.remoteKnown?.(uniqueHashes)
   const known = kept === undefined || kept.size === 0 ? undefined : kept
-  if (known !== undefined) {
-    tell((h) => held?.has(h) === true || known.has(h), true)
-    pool.push(toPrefetch.filter((k) => known.has(k.hash)))
-  }
+  if (known !== undefined) pool.push(toPrefetch.filter((k) => known.has(k.hash)))
+  const asked = args.cache.remoteHasMany?.(uniqueHashes)
+  // Demand hears the index only when no probe will answer: a key the
+  // index lacks may still be held (a PR's CI stored main's next tree), and
+  // calling it a miss asked 14 workers for 71 tasks, 17 of which ran
+  // (main 7391c93, 2026-10-23). The probe is one round-trip.
+  const early = known !== undefined && asked === undefined
+  if (early) tell((h) => held?.has(h) === true || known.has(h), true)
 
   // Batch existence probe (when the remote supports it): one round-trip
   // tells us which of the N stable hashes exist remotely, so we GET only the
@@ -145,17 +143,10 @@ async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<voi
   // would 404. When the remote can't batch (`null` — an older remote, reads
   // disabled, or a layer that doesn't implement the hook at all), fall back to
   // prefetching every stable key, exactly as before.
-  const asked = args.cache.remoteHasMany?.(uniqueHashes)
   // Every lookup that waited on the probe now finds its hash in it.
   probing()
   const present = (await asked) ?? null
-  if (known === undefined)
-    tell((h) => held?.has(h) === true || present?.has(h) === true, present !== null)
-  else if (present !== null)
-    args.revised?.(
-      toPrefetch.filter((k) => present.has(k.hash) && !known.has(k.hash)).map((k) => k.node.id),
-      toPrefetch.filter((k) => known.has(k.hash) && !present.has(k.hash)).map((k) => k.node.id),
-    )
+  if (!early) tell((h) => held?.has(h) === true || present?.has(h) === true, present !== null)
   if (present !== null) {
     args.cache.markRemoteAbsent?.(uniqueHashes.filter((h) => !present.has(h)))
     // The pre-mark above already answers a pull for an absent hash from

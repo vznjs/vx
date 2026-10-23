@@ -300,10 +300,8 @@ export interface TaskExecutor {
    *
    * `missed`: of `remaining`, those whose keys the run's up-front probe
    * found in no store (each store asked answered for every key), or, when
-   * the index keeps a remote's hits, those with no kept hit: they will
-   * run. The run's background probe revises both sets: a kept hit it calls
-   * gone comes back in, missed, and a miss it finds held leaves. The rest
-   * may still restore, or were not probed (a key an upstream's outputs can
+   * the remote has no batch probe, those the index keeps no hit of: they
+   * will run. The rest may still restore, or were not probed (a key an upstream's outputs can
    * change). The same set each call, changed in place.
    */
   demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
