@@ -168,7 +168,8 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   `type(scope): imperative summary`, first line < 72 chars, body says
   why. Types: feat fix perf refactor test docs ci build chore revert; scope is
   the module or package (`cache`, `cli`, `vx-reapi`). CI holds a PR's title and
-  commits to it (`tests/conventional-commits.unsafe.test.ts`). One coherent
+  commits to it (`tests/conventional-commits.unsafe.test.ts`); a `!` title
+  needs exactly one breaking commit, as main's squash has. One coherent
   change per commit. Commit early; assume interruption.
 - A feature is not done until its docs land in the same commit.
 - A user-facing feature (verb, flag, config key, env var, plugin) also

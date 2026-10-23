@@ -1,6 +1,6 @@
 // A PR's title and every commit it adds are Conventional Commits headers
-// (scripts/conventional.ts): the repo rebase-merges, so each commit subject
-// lands on main as written, and the release notes and version read them.
+// (scripts/conventional.ts): the repo squash-merges, so main's subject is the
+// title and its body the commits', and the release notes and version read them.
 // CI's PR runs pass the title and the PR's base and head; a push to main
 // (already checked as a PR) and a local gate pass none, and the rows have
 // nothing to judge there.
@@ -8,7 +8,8 @@
 // `.unsafe`: it asks git for the PR's commits, and a sandboxed shard has no git.
 import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { conventionalError } from '../scripts/conventional.js'
+import { conventionalError, squashBreakingError } from '../scripts/conventional.js'
+import { commitsBetween } from '../scripts/release-notes.js'
 
 const title = process.env['VX_PR_TITLE'] ?? ''
 const base = process.env['VX_PR_BASE'] ?? ''
@@ -35,4 +36,10 @@ it('every commit the PR adds has a Conventional Commits subject', () => {
       return why === null ? [] : [`${l}: ${why}`]
     })
   expect(bad).toEqual([])
+})
+
+it('the squash lands as many breaking commits as the branch holds', () => {
+  if (title === '' || base === '' || head === '') return
+  const commits = commitsBetween(base, head, path.resolve(import.meta.dir, '..'))
+  expect(squashBreakingError(title, commits)).toBeNull()
 })
