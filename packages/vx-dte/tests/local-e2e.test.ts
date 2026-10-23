@@ -333,12 +333,14 @@ it.each(['SIGHUP', 'SIGINT'] as const)(
 )
 
 // M, 2026-10-21: "After I kill it, long delay". Removing a worktree an
-// install filled took seconds, all of them before vx exited.
+// install filled took seconds, all of them before vx exited. An `rm` that
+// takes 3 s stands in for that install's 300k files, which took 45 s to
+// make on a CI-sized machine.
 it('a stopped run exits before its installed worktrees are removed', async () => {
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),
     `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'mkdir nm && cd nm && seq 1 300000 | xargs touch' }) })] }
+export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'mkdir nm && touch nm/a' }) })] }
 `,
   )
   Bun.spawnSync(
@@ -348,11 +350,22 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB
     },
   )
   const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-stop-'))
+  const bin = path.join(tmp, 'bin')
+  await mkdir(bin)
+  await writeFile(path.join(bin, 'rm'), `#!/bin/sh\nsleep 3\nexec ${Bun.which('rm')} "$@"\n`, {
+    mode: 0o755,
+  })
   try {
     const { VX_DTE_RUN: _, ...env } = process.env
     const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#slow'], {
       cwd: root,
-      env: { ...env, VX_DTE_RUN: crypto.randomUUID(), NO_COLOR: '1', TMPDIR: tmp },
+      env: {
+        ...env,
+        VX_DTE_RUN: crypto.randomUUID(),
+        NO_COLOR: '1',
+        TMPDIR: tmp,
+        PATH: `${bin}:${env['PATH']}`,
+      },
       stdout: 'ignore',
       stderr: 'ignore',
     })
@@ -368,10 +381,7 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB
     run.kill('SIGINT')
     await run.exited
     const stopMs = performance.now() - t0
-    // The worktrees go after vx exits, and still go.
     // What is left names itself, so a failure says which part stayed.
-    // Up to 60 s: removing 300k files outlasted 20 s on a CI agent busy
-    // with other suites (main, 2026-10-23), while the run had exited fast.
     const left = async (): Promise<string[]> => [
       ...(await readdir(tmp)).filter((d) => d.startsWith('vx-dte-')),
       ...Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
@@ -380,12 +390,18 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB
         .filter((l) => l.startsWith('worktree '))
         .slice(1),
     ]
-    for (let i = 0; i < 1200 && (await left()).length > 0; i++) await Bun.sleep(50)
-    expect({ left: await left(), fast: stopMs < 1000 }).toEqual({ left: [], fast: true })
+    // Still there as vx exits, however it removes them; gone after.
+    const atExit = (await left()).length
+    for (let i = 0; i < 400 && (await left()).length > 0; i++) await Bun.sleep(50)
+    expect({ atExit: atExit > 0, left: await left(), fast: stopMs < 1000 }).toEqual({
+      atExit: true,
+      left: [],
+      fast: true,
+    })
   } finally {
     await rm(tmp, { recursive: true, force: true })
   }
-}, 180_000)
+}, 60_000)
 
 it('says why an agent never joined, and fails the run when none can', async () => {
   await writeFile(
