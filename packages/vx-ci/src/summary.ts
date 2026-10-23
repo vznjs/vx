@@ -202,15 +202,15 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
 const pct = (x: number): string => `${Math.round(x * 100)}%`
 
 /**
- * The workers an executor ran the run on (vx-dte's): what each
- * was booked for beside what it used, so an idle or overbooked one shows
- * on the page (owner, 2026-10-23).
+ * The workers an executor ran the run on (vx-dte's): the CPU its tasks
+ * were expected to use, from their last run, beside what it used, so an
+ * idle or overfilled one shows on the page (owner, 2026-10-23).
  */
 function renderWorkers(machines: NonNullable<RunSummaryRecord['machines']>): string[] {
   const lines = [
     '### Workers',
     '',
-    '| Worker | Status | Warm-up | Tasks | Online | Idle | Booked | CPU avg | Peak RAM | Utilization |',
+    '| Worker | Status | Warm-up | Tasks | Online | Idle | Expected CPU | CPU avg | Peak RAM | Utilization |',
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   ]
   let coreMs = 0
@@ -238,7 +238,7 @@ function renderWorkers(machines: NonNullable<RunSummaryRecord['machines']>): str
   if (coreMs > 0)
     lines.push(
       '',
-      `Booked ${pct(bookedMs / coreMs)} of the workers' core-time, used ${pct(cpuMs / coreMs)}.`,
+      `Expected ${pct(bookedMs / coreMs)} of the workers' core-time, used ${pct(cpuMs / coreMs)}.`,
     )
   return lines
 }

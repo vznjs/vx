@@ -289,10 +289,17 @@ export class Orchestrator {
     const tail = this.o.tail
     const queue = this.queue.splice(0)
     if (tail !== undefined) queue.sort((x, y) => tail(y.req.taskId) - tail(x.req.taskId))
+    // A task that runs alone waits for a worker to empty: the first such
+    // keeps that worker from taking anything after it. Else tasks behind
+    // it filled the worker again and again: check.bun, the gate of 56
+    // tasks, waited 50 s on main 871ffba (2026-10-23).
+    const reserved = new Set<Worker>()
     for (const job of queue) {
-      const a = this.place(job)
+      const a = this.place(job, reserved)
       if (a === undefined) {
         left.push(job)
+        const w = this.emptiest(job, reserved)
+        if (w !== undefined) reserved.add(w)
         continue
       }
       job.worker = a.id
@@ -313,16 +320,15 @@ export class Orchestrator {
   }
 
   /**
-   * What worker `a` has in use: the load it last reported and what was
-   * sent it since; until it reports, or on a host it shares (local()),
-   * what the run booked. A task that uses less than history booked leaves
-   * room for the next at once (M, 2026-10-23).
+   * What worker `a` has in use: what the run booked there, or more when
+   * its last load and what was sent since say more. Never less: load lags
+   * a task's start, so placing below the booking sent small#3 38 test
+   * shards on 4 cores at once, 28 failed (main bf77a58, 2026-10-23).
    */
   private used(a: Worker): { cores: number; memory: number } {
+    const booked = { cores: a.usedCores, memory: a.usedMemory }
     const l = a.load
-    if (l === undefined || a.cores !== a.reported.cores) {
-      return { cores: a.usedCores, memory: a.usedMemory }
-    }
+    if (l === undefined || a.cores !== a.reported.cores) return booked
     let cores = l.cpu
     let memory = l.memory
     for (const j of a.busy.values())
@@ -330,7 +336,21 @@ export class Orchestrator {
         cores += j.held.cores
         memory += j.held.memory
       }
-    return { cores, memory }
+    return { cores: Math.max(booked.cores, cores), memory: Math.max(booked.memory, memory) }
+  }
+
+  /**
+   * For `job`, which runs alone on a worker it fits only empty: the worker
+   * that empties soonest, the one using least, to hold for it.
+   */
+  private emptiest(job: Job, reserved: ReadonlySet<Worker>): Worker | undefined {
+    let best: Worker | undefined
+    for (const a of this.workers.values()) {
+      if (a.faulty || reserved.has(a) || !this.holding(a)) continue
+      if (job.need.cores < a.cores && job.need.memory <= a.memory - this.used(a).memory) continue
+      if (best === undefined || this.used(a).cores < this.used(best).cores) best = a
+    }
+    return best
   }
 
   /** Whether a task of `a`'s holds its cores: its command still runs, or has yet to. */
@@ -362,7 +382,7 @@ export class Orchestrator {
    * the rest no longer needs fall idle and leave. A task bigger than
    * every worker goes to an idle one, alone.
    */
-  private place(job: Job): Worker | undefined {
+  private place(job: Job, reserved: ReadonlySet<Worker>): Worker | undefined {
     const up = upstream(this.o.nodes(), job.req.taskId)
     let best: Worker | undefined
     let bestScore: number[] = []
@@ -386,6 +406,7 @@ export class Orchestrator {
     }
     const pool = workers.some(bigger) ? workers.filter(bigger) : workers
     for (const a of pool) {
+      if (reserved.has(a)) continue
       const used = this.used(a)
       if (this.holding(a) && !shares(used, job.need, a)) continue
       let held = 0
@@ -929,7 +950,7 @@ export class Orchestrator {
       // Whether it failed or ran its part, not why it left (M, 2026-10-23).
       ...report(
         a.label,
-        (gone.has(a) && !this.retired.has(a)) || a.faulty ? 'failed' : 'ok',
+        (gone.has(a) && !this.retired.has(a)) || a.faulty || a.usage.failed > 0 ? 'failed' : 'ok',
         a.usage,
         a.reported.cores,
         a.reported.memory,
