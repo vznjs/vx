@@ -64,6 +64,20 @@ const PASSED_HASHES = `
 /** A local run's `task_durations.source`: its branch, `''` when it had none. */
 export const branchSource = (branch: string | null): string => `branch:${branch ?? ''}`
 
+/**
+ * How long a run would have taken alone: on a crowded worker
+ * (`cpuShare` < 1) each runnable thread waited for a core. A task that
+ * kept `n` cores busy lost its CPU's wait spread over them, under one
+ * core all of it. vx-dte#test (20 s CPU in 75 s) took 81-102 s beside
+ * test shards and the plan, reading those, said 118 s for a 92 s run
+ * (main fd5c72e, 2026-10-23).
+ */
+function aloneMs(r: Pick<RunRecord, 'durationMs' | 'cpuMs' | 'cpuShare'>): number {
+  const { durationMs: d, cpuMs: c, cpuShare: s } = r
+  if (c === undefined || s === undefined || !(s > 0 && s < 1) || !(d > 0)) return d
+  return Math.round(d - (c / s - c) / Math.max(1, c / (d * s)))
+}
+
 export class RunHistory {
   private readonly insertInvocation: ReturnType<Database['prepare']>
 
@@ -107,14 +121,14 @@ export class RunHistory {
       .immediate()
   }
 
-  /** One `task_durations` row per executed success: what a forecast reads. */
+  /** One `task_durations` row per executed success, as if run alone: what a forecast reads. */
   private insertDurations(runs: readonly RunRecord[], source: string, sha: string | null): void {
     const done = runs.filter((r) => r.status === 'success' && r.cacheHit !== true)
     for (let i = 0; i < done.length; i += DURATIONS_PER_INSERT) {
       const block = done.slice(i, i + DURATIONS_PER_INSERT)
       const params: SQLQueryBindings[] = []
       for (const r of block)
-        params.push(r.project, r.task, source, sha, r.durationMs, r.endedAt, r.def ?? null)
+        params.push(r.project, r.task, source, sha, aloneMs(r), r.endedAt, r.def ?? null)
       this.db
         .query(
           `INSERT INTO task_durations(project, task, source, sha, duration_ms, recorded_at, def) VALUES ${Array(block.length).fill('(?, ?, ?, ?, ?, ?, ?)').join(', ')}`,

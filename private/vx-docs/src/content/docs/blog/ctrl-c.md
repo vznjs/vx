@@ -6,87 +6,81 @@ authors:
 tags:
   - execution
   - correctness
-excerpt: "A task runner spawns processes, and the one thing every process spawner owes you is that they die when it does. Here is the teardown vx runs on a signal, an abort, a timeout or a crashed sibling, and the tests that pin it."
+excerpt: "A task runner spawns processes, and it owes you one thing: they die when it does. The teardown vx runs on a signal, an abort, a timeout or a crashed sibling, and the tests that pin it."
 ---
 
-Ask around about any monorepo tool and you will hear the same story: a
-`vite` still holding port 5173 after the run was cancelled, a `tsc -w`
-from last Tuesday, a CI job whose cancellation left a database container
-running until the runner was reclaimed. A task runner spawns processes.
-The least it owes you is that they die when it does.
+A `vite` still holding port 5173. A `tsc -w` from last Tuesday. A task
+runner spawns processes, and the least it owes you is that they die
+when it does.
 
-vx has one teardown, and every way a run can end goes through it.
+Here a task starts two background `sleep`s. Shells ignore `SIGINT` in
+background jobs, so these two won't stop on Ctrl-C:
+
+```ts
+serve: { exec: { command: 'sleep 301 & sleep 302 & wait' } }
+```
+
+```
+before Ctrl-C   sh -c … ; sleep 301 ; sleep 302      3 processes
+after  Ctrl-C   vx exits 130 after 2,008 ms           0 processes
+```
+
+Linux x64, vx at `0be0367`, 2026-10-23; 5 runs, 2,008 to 2,011 ms. The
+two seconds are the grace period. Then vx sends `SIGKILL`.
 
 ## The teardown
 
-1. Every live child's process group receives the signal vx got:
-   `SIGINT` stays `SIGINT`, so a Ctrl-C cleanup runs, and `SIGTERM` or
-   `SIGHUP` arrives as `SIGTERM`.
-2. vx waits a fixed grace period of two seconds.
-3. It re-reads its registries, because a child may have spawned during
-   the grace, and sends `SIGKILL` to anything still alive.
-4. It reaps, so nothing is left as a zombie. Then the run finishes the
-   way any run does: the summary prints, every telemetry sink flushes
-   and every plugin tears down, each within its bound. Only then does
-   the process exit.
+1. Every live child's process group gets the signal vx got. `SIGINT`
+   stays `SIGINT`, so a Ctrl-C cleanup runs. `SIGTERM` and `SIGHUP`
+   arrive as `SIGTERM`.
+2. vx waits two seconds.
+3. It looks again, since a child may have spawned during the wait, and
+   sends `SIGKILL` to anything still alive.
+4. It reaps, so nothing is left as a zombie. The summary prints, every
+   telemetry sink flushes and every plugin tears down, each within its
+   bound. Then vx exits.
 
-While it waits, the screen keeps the run: each running task reads
-`aborting` with its timer, each one that exits lists as `aborted`, and
-the summary replaces the view. A remote cache lookup or download in
-flight is dropped, not waited on.
+A second Ctrl-C skips the wait. A remote cache download in flight is
+dropped, not waited on.
 
-The exit code says what happened: 130 after `SIGINT`, 143 after
-`SIGTERM`, 129 after `SIGHUP`, 1 when a foreground persistent task
-ended the run with a non-zero code. A second Ctrl-C during the grace skips the rest of it and
-escalates immediately, for the case where you already know the child
-will not listen.
+| How the run ended                     | Exit code |
+| ------------------------------------- | --------- |
+| `SIGINT` (Ctrl-C)                     | 130       |
+| `SIGHUP` (the terminal closed)        | 129       |
+| `SIGTERM` (a CI cancel)               | 143       |
+| a foreground persistent task failed   | 1         |
 
-## Every way a run ends
+## Every way a run ends goes through it
 
-The teardown is not a signal handler bolted to the side. It is the
-same function called from every exit path:
-
-- **A signal.** `SIGINT`, `SIGTERM` or `SIGHUP` to the `vx` process,
-  including a CI cancellation. `SIGHUP` is the one that matters most
-  here and is easiest to forget: a task runs in its own session, so a
-  closing terminal no longer reaches it — only `vx` hears the hang-up,
-  and unless `vx` passes it on the tree outlives the window.
-- **An abort.** `run()` is also a library call, and it takes an
-  `AbortSignal`. Abort it and the same teardown runs; tasks that never
-  started are reported as `not run`, not `skipped`, so a summary can
-  tell the two apart.
+- **A signal.** `SIGINT`, `SIGTERM` or `SIGHUP`. A task runs in its own
+  session, so a closing terminal reaches only `vx`. Unless `vx` passes
+  the hang-up on, the tree outlives the window.
+- **An abort.** `run()` is also a library call that takes an
+  `AbortSignal`. Tasks that never started report `not run`, not
+  `skipped`.
 - **A readiness timeout.** A persistent task whose `readyWhen` never
-  matched is `SIGTERM`ed, then `SIGKILL`ed after the grace if it
-  ignores that.
-- **A foreground persistent task exiting.** `vx run dev` with three
-  servers up: when one exits, the other two are torn down, and `vx`
-  exits 1 if that one failed.
-- **The normal end of a run.** Persistent tasks that gated other work
-  are torn down when the graph completes.
-- **`vx watch`.** A Ctrl-C mid-cycle tears the cycle's children down
-  first and returns only once they are gone, so a cancelled watch never
-  orphans a task.
+  matched gets `SIGTERM`, then `SIGKILL` after the grace.
+- **A foreground persistent task exits.** With three dev servers up,
+  one exiting tears down the other two.
+- **The normal end.** Persistent tasks that gated other work stop when
+  the graph completes.
+- **`vx watch`.** Ctrl-C mid-cycle tears the cycle's children down
+  before it returns.
 
 ## The tests are the claim
 
-Every one of those paths has a test that spawns a real child, records
-its pid to a marker file, ends the run the way that path ends it, and
-asserts the child is dead within the window, with a zombie counting as
-alive. The window is the shortest one that still fails without the fix,
-because a timed wait in a test is a claim about time and a generous
-window would hide a regression that merely got slower. "The task has
-started" is a marker file, never a `sleep`.
+Each path has a test that spawns a real child, writes its pid to a
+marker file, ends the run that way, and asserts the child is dead in
+time, counting a zombie as alive. "Started" is a marker file, never a
+`sleep`. The tests set `VX_TEST_KILL_GRACE` to 200 ms so they prove the
+escalation without waiting two seconds each; the default is
+`SIGNAL_SHUTDOWN_GRACE_MS`.
 
-That is also why the grace is a named constant rather than a literal:
-`SIGNAL_SHUTDOWN_GRACE_MS` is the default, `VX_TEST_KILL_GRACE` is the
-env var the tests set to 200 ms so they prove the escalation without
-waiting two seconds each, and a change to either is a visible diff.
+## A nested run is refused
 
-## One more refusal
+A task can run `vx`. Against the *same* workspace, the inner run would
+claim the same cache and race the outer teardown for the same children
+on Ctrl-C. vx puts the workspace it runs into the task's environment and
+refuses a nested run on it with a clear error.
 
-A task can run `vx` itself. If it runs `vx` against the *same*
-workspace, the inner run would build the same graph, claim the same
-cache, and, on Ctrl-C, race the outer teardown for the same children.
-vx exports the workspace it is running into the task's environment and
-refuses a nested run on it with a clear error, instead of letting the
-recursion look like it worked.
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
