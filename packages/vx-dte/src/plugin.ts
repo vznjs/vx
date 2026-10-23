@@ -139,6 +139,8 @@ export function dte(options: DteOptions) {
 
   let nodes: ReadonlyMap<string, TaskNode> | undefined
   let peaks: ReadonlyMap<string, TaskResources> = new Map()
+  /** Each task's tail by `nodes` and `peaks`, made again when either changes. */
+  let tails: ((id: string) => number) | undefined
   // Each finished task's cache key, a hit's too: what an agent restores a
   // dependency by.
   const keys = new Map<string, string>()
@@ -150,6 +152,7 @@ export function dte(options: DteOptions) {
     orchestrator = undefined
     nodes = undefined
     peaks = new Map()
+    tails = undefined
     keys.clear()
     await o?.close()
     await adapter?.close?.()
@@ -235,6 +238,7 @@ export function dte(options: DteOptions) {
 
     async schedule(graph, ctx) {
       nodes = graph
+      tails = undefined
       // A run that is not distributed reads nothing.
       if (orchestrator === undefined) return undefined
       const ids = [...graph.values()]
@@ -248,6 +252,7 @@ export function dte(options: DteOptions) {
             undefined,
             ctx.branch,
           ).resourcesFor(ids)
+          tails = undefined
         } catch (err) {
           ctx.warn(
             `dte: tasks are packed one core each: ${err instanceof Error ? err.message : String(err)}`,
@@ -268,14 +273,19 @@ export function dte(options: DteOptions) {
       const relay = options.relay ?? (await adapter?.relay?.())
       if (relay === undefined)
         throw new UserError('dte(): no relay: set relay, or use an adapter that has one')
-      const [{ Orchestrator }, { join }, { busyCores, endsInMs, toStart }, { snapshot }, seal] =
-        await Promise.all([
-          import('./orchestrator.js'),
-          import('./wire.js'),
-          import('./width.js'),
-          import('./tree.js'),
-          import('./seal.js'),
-        ])
+      const [
+        { Orchestrator },
+        { join },
+        { busyCores, endsInMs, tailsMs, toStart },
+        { snapshot },
+        seal,
+      ] = await Promise.all([
+        import('./orchestrator.js'),
+        import('./wire.js'),
+        import('./width.js'),
+        import('./tree.js'),
+        import('./seal.js'),
+      ])
       // VX_DTE_SECRET or the plan's wins. On GitHub, agents that join on
       // their own or an adapter's keyless ones prove themselves by OIDC;
       // the agents another adapter starts get a secret made for this run.
@@ -312,6 +322,8 @@ export function dte(options: DteOptions) {
         cacheFacts: () => ctx.cacheFacts(),
         run,
         keyOf: (id) => keys.get(id),
+        tail: (id) =>
+          (tails ??= tailsMs(nodes ?? new Map(), (x) => peaks.get(x)?.p50DurationMs))(id),
         left: (id) => {
           // A planned agent is not started again: its job is spent.
           const s = sizeOf.get(id)

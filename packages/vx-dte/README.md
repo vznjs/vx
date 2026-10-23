@@ -289,6 +289,9 @@ stops, instead of waiting for the job's timeout.
   alone on an idle one. A prefetched task an agent has not begun moves to
   an agent with nothing to do, so a short gate is never stuck behind a
   long task while another machine idles.
+- Tasks waiting for room go out longest tail first: a task's recorded
+  duration and its longest chain of dependants, so a long chain that got
+  ready late does not queue behind many short tasks ready at once.
 - A task goes to the agent that holds most of its dependencies' outputs,
   so a chain stays on one machine.
 - A sandboxed task runs on an agent inside the agent's own sandbox, with
