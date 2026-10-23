@@ -6,28 +6,40 @@ authors:
 tags:
   - caching
   - performance
-excerpt: 'vx used to decompress an archive on every local hit. Now the local cache keeps each entry as plain files, unpacked once, and a hit is a copy the kernel does. Why the archive stays only on the wire, why a hit checks nothing, and why vx never hard-links.'
+excerpt: 'The local cache keeps each entry as plain files, unpacked once, so a hit is a copy the kernel does. 1,000 hits of 96 KiB restore in 411 ms. Why the archive stays only on the wire, why a hit checks nothing, and why vx never hard-links.'
 ---
 
-A build cache restores the same entry over and over. Switch branches
-and back, delete `dist`, run CI's warm job again: it is the same bytes
-each time. Until 0.0.644 vx stored every local entry as one `tar.zst`,
-so every one of those hits paid to decompress and untar it again.
+1,000 tasks, each with a 96 KiB output, `dist` deleted, then one run:
 
-Now the archive exists only on the wire. The local cache keeps each
-entry as its plain files, unpacked once when it is saved or downloaded,
-and a hit copies them out.
+```sh frame="terminal"
+$ rm -rf packages/*/dist && time vx run build --all
+  cache     local 1000↓
+  time      214ms
+real    0m0.411s
 
-```mermaid
-flowchart LR
-  S[task runs] -->|save: copy outputs once| T[(entry as plain files)]
-  R[(remote)] -->|download: decompress once| T
-  T -->|hit: kernel copy, no decode| D[dist/]
-  T -->|upload: pack tar.zst| R
-  style T stroke:#c6f84e,stroke-width:2px
+$ rm -rf packages/*/dist && time VX_CACHE_STORE_DECOMPRESS=false vx run build --all
+  cache     local 1000↓
+  time      618ms
+real    0m0.686s
 ```
 
+Same entries, two ways to keep them on disk:
+
+| Store (`cache.store.decompress`) | Restore all 1,000 | Store on disk |
+| -------------------------------- | ----------------- | ------------- |
+| plain files (`true`, default)    | 411 ms            | 111 MB        |
+| one `tar.zst` each (`false`)     | 686 ms            | 99 MB         |
+
+Min of 5 restores per arm, 3 interleaved arms each, a fresh store per
+arm. `private/vx-bench/generate.ts` with 1,000 projects, each build
+writing 96 KiB of random bytes. Linux x64, 4 cores, vx at `a1786b3`,
+2026-10-23.
+
 ## The kernel does the copy
+
+The archive exists only on the wire. The local cache keeps each entry
+as its plain files, unpacked once when it is saved or downloaded, and
+a hit copies them out.
 
 A hit hands each file to the kernel: `copy_file_range` on Linux, or a
 clone where the filesystem supports one (APFS on macOS, Btrfs or XFS on
@@ -39,9 +51,6 @@ still, but the restored file and the cached one would be the same inode.
 A build that later edits `dist/index.js` in place would then edit the
 cache, and the next hit would replay the edit. A copy or a clone keeps
 the cache's version as it was.
-
-On 1,000 entries of 96 KiB each, a full restore went from 1.26 s to
-0.76 s (min of 5 runs, before and after the change, same machine).
 
 ## Small entries stay in the index
 
@@ -59,32 +68,28 @@ export default defineWorkspace({
 ```
 
 If disk matters more than speed, `decompress: false` keeps each larger
-entry as one `tar.zst` instead. That saves space, but every restore
-decompresses it just in time.
+entry as one `tar.zst`, as in the table: smaller on disk for output that
+compresses, and every restore decompresses it.
 
 ## A local hit checks nothing
 
-The first version of the file store checked each file's size and mtime
-before a hit copied it out, and could hash every byte. We removed it.
-The local store is vx's own directory: nothing else writes there, so the
-check guarded against nothing, and every save had to read its outputs
-back to record what the check compared. A local hit now copies the
-stored files as they are.
+The local store is vx's own directory: nothing else writes there. A
+check of each file's size or bytes before a hit would guard against
+nothing, and every save would have to read its outputs back to record
+what the check compares. A local hit copies the stored files as they
+are.
 
-Anything that crosses a network is still checked. A remote entry is a
+Anything that crosses a network is checked. A remote entry is a
 `tar.zst` that ends with a CRC-32 over everything before it, checked
 before the entry is used. A wrong sum is a miss, and the task runs.
 
 ## A download is decompressed once
 
-A remote hit used to be written to a temp archive, decompressed once to
-check it, then decompressed again to unpack it. Now a download of up to
-4 MiB is fetched whole, decompressed once and written straight into the
-store, where it is checked before anything points at it. A larger one
-still goes through a temp file, decompressed once. Filling 200 tasks with 1 MB of output each from a
-remote on the same machine went from 965 ms to 726 ms, and from a remote
-30 ms away from 1,091 ms to 820 ms (min of 6 runs each).
+A download of up to 4 MiB is fetched whole, decompressed once and
+written straight into the store, where it is checked before anything
+points at it. A larger one goes through a temp file, still decompressed
+once.
 
-The storage layout and every setting are in [Caching](../../caching/)
-and the [schema](../../schema/). More on vx at
+Storage layout and settings: [Caching](../../caching/) and the
+[schema](../../schema/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).
