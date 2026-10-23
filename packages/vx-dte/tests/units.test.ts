@@ -1112,6 +1112,65 @@ it('a worker restores a dependency once, before any task that needs it runs', as
   }
 })
 
+// Main 32f73ed sat 13 min twice: a worker's save never settled, its
+// `held` kept the lease, and no `end` came (2026-10-23).
+it('a worker gives up a task whose save never settles, as a fault', async () => {
+  const root = await tmp()
+  const served = servedRelay()
+  const url = served.url
+  try {
+    const o = sealOrchestrator(
+      await join(url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const code = runWorker({
+      relay: url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => ({
+        save: () => new Promise<void>(() => {}),
+        async restore() {
+          return null
+        },
+      }),
+      saveDeadlineMs: 200,
+    })
+    const order: RunOrder = {
+      task: 't',
+      runKey: runKey(R, 't'),
+      deps: [],
+      nested: [],
+      command: 'true',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    }
+    const heard: string[] = []
+    for (let i = 0; i < 100 && !heard.includes('fault'); i++) {
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string; reason?: string }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
+          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+        } else if (m.type === 'fault') {
+          heard.push(`fault: ${m.reason}`, 'fault')
+          await o.send(from, { type: 'exit' })
+        } else if (m.type === 'end' || m.type === 'ran') heard.push(m.type)
+      }
+    }
+    expect(await code).toBe(0)
+    expect(heard).toEqual(['ran', 'fault: its outputs did not save within 0.2 s', 'fault'])
+  } finally {
+    await served.stop()
+  }
+})
+
 // A task whose outputs overlap a restored dependency's cleared its files,
 // and a later task that needed them ran without them: the worker still
 // counted them restored (2026-10-22).
