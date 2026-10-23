@@ -21,6 +21,7 @@ export interface DteAdapter {
   cancel?(ids: readonly string[]): void
   render?(plan: DtePlan): Readonly<Record<string, string>>
   live?(): boolean
+  report?(warn: (message: string) => void): void
   readonly keyless?: boolean
   runId?(): string | undefined
   adopt?(worker: (id: string, size: string) => WorkerSpawn): void
