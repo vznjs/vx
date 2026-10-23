@@ -75,14 +75,16 @@ jobs:
       - name: A run id no one can guess
         run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
 
-      # Four agents start while this job checks out and installs (about
-      # 19 s); github() adopts them from vx-dte-started and asks for more
-      # only past them. A failed dispatch leaves the run to start its own.
+      # All of small's max start while this job checks out and installs
+      # (about 19 s); github() adopts them from vx-dte-started. One the run
+      # asked for later took 82-90 s to come online, half the run
+      # (2026-10-23). A failed dispatch leaves the run to start its own.
       - name: Start agents
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          agents='["small#1","small#2","small#3","small#4"]'
+          ids=$(seq -f 'small#%g' 1 12 | paste -sd,)
+          agents=$(jq -nc --arg ids "$ids" '$ids | split(",")')
           id=$(jq -n --arg ref "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" --arg run "$VX_DTE_RUN" \
             --arg relay "$VX_DTE_RELAY" --arg sha "$GITHUB_SHA" --arg agents "$agents" \
             '{ref: $ref, inputs: {run: $run, relay: $relay, sha: $sha, size: "small", agents: $agents}}' |
@@ -90,7 +92,7 @@ jobs:
               -H 'X-GitHub-Api-Version: 2026-03-10' --input - --jq .workflow_run_id) || exit 0
           [ -n "$id" ] || exit 0
           r="/repos/$GITHUB_REPOSITORY/actions/runs/$id"
-          echo "$r small#1,small#2,small#3,small#4" >> "$RUNNER_TEMP/vx-dte-started"
+          echo "$r $ids" >> "$RUNNER_TEMP/vx-dte-started"
           echo "$r" >> "$RUNNER_TEMP/vx-dte-runs"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

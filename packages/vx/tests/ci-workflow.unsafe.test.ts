@@ -100,6 +100,15 @@ describe('ci.yml', () => {
     expect(steps[start]!.run).toContain('vx-dte-runs')
   })
 
+  // An agent the run asks for later came online 82-90 s in (2026-10-23).
+  it("starts all of small's max before checkout, so none comes late", () => {
+    const start = doc.jobs['linux']!.steps!.find((s) => s.run?.includes('vx-dte-started'))!
+    const workspace = readFileSync(path.join(dir, '..', '..', '.vx', 'workspace.ts'), 'utf8')
+    expect(/seq -f 'small#%g' 1 (\d+)/.exec(start.run!)?.[1]).toBe(
+      /small: \{ max: (\d+)/.exec(workspace)?.[1],
+    )
+  })
+
   // Shallow, a run found no merge-base and so no measured needs, and every
   // shard booked a whole agent at ~25% CPU (2026-10-22).
   it('checks each run out with the history its timings import walks', () => {
