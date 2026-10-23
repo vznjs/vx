@@ -181,6 +181,7 @@ export class Cache implements CacheLayer {
   readonly uploads: UploadTally
   readonly downloads: { count: number; bytes: number }
   readonly traffic: RemoteTraffic
+  readonly remoteHits: RemoteHits
   readonly storeDir: string | undefined
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
@@ -336,6 +337,7 @@ export interface CacheLayer {
   readonly hasRemote?: boolean
   remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   localHasMany?(hashes: readonly string[]): Promise<Set<string>>
+  remoteKnown?(hashes: readonly string[]): Map<string, ArtifactInfo>
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
   probeFirst?(started: Promise<void>): void
@@ -2611,7 +2613,7 @@ export interface TaskExecutor {
   readonly platforms?: readonly string[]
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
-  demand?(remaining: ReadonlySet<string>): void
+  demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
   footer?(): readonly (readonly [label: string, text: ui.Inline])[]
   machines?(): readonly MachineReport[]
   running?(taskId: string): string | null | undefined

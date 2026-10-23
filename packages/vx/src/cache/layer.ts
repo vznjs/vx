@@ -587,6 +587,13 @@ export interface CacheLayer {
    */
   localHasMany?(hashes: readonly string[]): Promise<Set<string>>
   /**
+   * The subset of `hashes` a remote said it holds, as the local index
+   * keeps it across runs and processes: trusted now, with no round-trip.
+   * A pull of one starts at once, waiting on no batch probe. Absent, a
+   * run learns its remote hits from `remoteHasMany` alone.
+   */
+  remoteKnown?(hashes: readonly string[]): Map<string, ArtifactInfo>
+  /**
    * Record that the remote has NO artifact for each of `hashes` (from a
    * batch probe), so a later `get`/`prefetch` short-circuits to a miss with
    * no round-trip. Only meaningful with `hasRemote`.

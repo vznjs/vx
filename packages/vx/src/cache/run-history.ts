@@ -234,6 +234,7 @@ export class RunHistory {
     this.db.prepare('DELETE FROM task_durations WHERE recorded_at < ?').run(cutoff)
     this.db.prepare('DELETE FROM task_outcomes WHERE recorded_at < ?').run(cutoff)
     this.db.prepare('DELETE FROM plugin_blobs WHERE at < ?').run(cutoff)
+    this.db.prepare('DELETE FROM remote_hits WHERE seen_at < ?').run(cutoff)
   }
 }
 

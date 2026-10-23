@@ -4,6 +4,7 @@ export class Cache implements CacheLayer {
   readonly uploads: UploadTally
   readonly downloads: { count: number; bytes: number }
   readonly traffic: RemoteTraffic
+  readonly remoteHits: RemoteHits
   readonly storeDir: string | undefined
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
@@ -161,6 +162,16 @@ export class LocalHistoryProvider implements HistoryProvider {
     needs: ReadonlyMap<string, TaskResources> = new Map(),
   ): void
   async resourcesFor(taskIds: readonly string[]): Promise<ReadonlyMap<string, TaskResources>>
+}
+== class RemoteHits (src/cache/remote-hits.ts)
+export class RemoteHits {
+  constructor(
+    private readonly db: Database,
+    private readonly write: boolean,
+  ) {}
+  get(hashes: readonly string[]): Map<string, RemoteHit>
+  record(asked: readonly string[], found: ReadonlyMap<string, RemoteHit>, now = Date.now()): void
+  forget(hash: string): void
 }
 == class TaskLogBuffer (src/orchestrator/task-log-buffer.ts)
 export class TaskLogBuffer {
@@ -559,6 +570,7 @@ export interface CacheLayer {
   readonly hasRemote?: boolean
   remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   localHasMany?(hashes: readonly string[]): Promise<Set<string>>
+  remoteKnown?(hashes: readonly string[]): Map<string, ArtifactInfo>
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
   probeFirst?(started: Promise<void>): void
@@ -1361,6 +1373,11 @@ export interface RemoteCacheLayer {
   hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+}
+== type RemoteHit (src/cache/remote-hits.ts)
+export interface RemoteHit {
+  readonly size?: number
+  readonly durationMs?: number
 }
 == type RemoteKeyTraffic (src/cache/cache.ts)
 export interface RemoteKeyTraffic {

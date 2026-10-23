@@ -229,20 +229,21 @@ export class RemoteLane {
   }
 
   /**
-   * The artifact's body, or null on a miss, a known absence (unless
-   * `fresh`: saved since the probe), a failure or a malformed answer.
+   * The artifact's body, null on a miss or a known absence (unless
+   * `fresh`: saved since the probe), undefined on a failure or a
+   * malformed answer: the key may still be there.
    */
   async get(
     hash: string,
     fresh = false,
-  ): Promise<{ body: Blob | Response; durationMs?: number } | null> {
+  ): Promise<{ body: Blob | Response; durationMs?: number } | null | undefined> {
     if (!fresh && this.absent.has(hash)) return null
     let result: unknown
     try {
       result = await this.remote.get(hash)
     } catch (err) {
       this.report('download', hash, err)
-      return null
+      return undefined
     }
     if (!result) return null
     if (typeof result !== 'object' || !isBody((result as { body?: unknown }).body)) {
@@ -257,7 +258,7 @@ export class RemoteLane {
           `get() resolved ${shape} (expected { body: Blob | Response, durationMs } or null)`,
         ),
       )
-      return null
+      return undefined
     }
     // It holds the key: a save of it after this restore uploads nothing.
     const got = result as { body: Blob | Response; durationMs?: number }
