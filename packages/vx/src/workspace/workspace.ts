@@ -228,6 +228,15 @@ export interface ConfigDir {
   readonly configPath: string
 }
 
+/** `vx lock`'s review copy of a project's resolved config, beside its `vx.config`. */
+export const REVIEW_FILE = 'vx.lock.json'
+
+export interface ProjectConfigs {
+  readonly configs: ConfigDir[]
+  /** Absolute: review copies in a directory with no config, which no `vx lock` rewrites. */
+  readonly strayReviews: string[]
+}
+
 /**
  * Every project directory under `root`, for `vx lock` (a run reads the
  * lock and never walks). In git: `git ls-files` over the config names,
@@ -238,7 +247,7 @@ export interface ConfigDir {
  * Where a directory holds several, `PROJECT_CONFIG_FILENAMES` order picks
  * the first that is a file.
  */
-export async function findProjectConfigs(root: string): Promise<ConfigDir[]> {
+export async function findProjectConfigs(root: string): Promise<ProjectConfigs> {
   const rels = (await gitTop(root)) === null ? await scanConfigs(root) : await gitConfigs(root)
   const nested: string[] = []
   for (const rel of rels) {
@@ -247,12 +256,14 @@ export async function findProjectConfigs(root: string): Promise<ConfigDir[]> {
       nested.push(rel.slice(0, at - 1))
   }
   const byDir = new Map<string, string[]>()
+  const reviewed: string[] = []
   for (const rel of rels) {
     const slash = rel.lastIndexOf('/')
     const base = rel.slice(slash + 1)
-    if (!CONFIG_RANK.has(base)) continue
     const dir = slash === -1 ? '' : rel.slice(0, slash)
     if (nested.some((n) => dir === n || dir.startsWith(`${n}/`))) continue
+    if (base === REVIEW_FILE) reviewed.push(dir)
+    if (!CONFIG_RANK.has(base)) continue
     const names = byDir.get(dir)
     if (names === undefined) byDir.set(dir, [base])
     else names.push(base)
@@ -270,9 +281,16 @@ export async function findProjectConfigs(root: string): Promise<ConfigDir[]> {
       return null
     }),
   )
-  return found
+  const configs = found
     .filter((f): f is ConfigDir => f !== null)
     .sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0))
+  const configured = new Set(configs.map((c) => c.dir))
+  const strayReviews = reviewed
+    .map((rel) => (rel === '' ? root : path.join(root, rel)))
+    .filter((dir) => !configured.has(dir))
+    .map((dir) => path.join(dir, REVIEW_FILE))
+    .sort()
+  return { configs, strayReviews }
 }
 
 async function isFile(p: string): Promise<boolean> {
@@ -302,6 +320,7 @@ async function gitConfigs(root: string): Promise<string[]> {
       '--',
       ':(glob)**/vx.config.*',
       ':(glob)**/.vx/workspace.*',
+      `:(glob)**/${REVIEW_FILE}`,
     ]),
     gitZ(root, ['ls-files', '-z', '--stage']),
     // An embedded repository is the one untracked entry git lists as `dir/`.
@@ -375,7 +394,7 @@ async function scanConfigs(root: string): Promise<string[]> {
     const below: string[] = []
     for (const e of entries) {
       const child = rel === '' ? e.name : `${rel}/${e.name}`
-      if (CONFIG_RANK.has(e.name)) out.push(child)
+      if (CONFIG_RANK.has(e.name) || e.name === REVIEW_FILE) out.push(child)
       else if (e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules')
         below.push(child)
     }
