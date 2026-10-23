@@ -29,12 +29,6 @@ const CLOSE_WAIT_MS = 2_000
 const UNANSWERED = 'the relay answered no frame'
 /** The close code of a socket whose participant the relay lost or let go (PROTOCOL.md § Sockets). */
 const GONE = 4404
-/**
- * A socket that brought no message this many heartbeats is dialed anew.
- * Not three: each dial is a request a free relay host counts, and an agent
- * on a long task dialed every 15 s, most of a CI run's requests (2026-10-23).
- */
-const QUIET_BEATS = 12
 /** How long `join` waits on the relay, before it says how long a heartbeat is. */
 const JOIN_DEADLINE_MS = 30_000
 /** How long `join` asks again through faults (a 500 while a host restarts the relay). */
@@ -292,33 +286,6 @@ export async function join(
         const s = await live(signal)
         // It may have closed, or brought something, since `live` returned it.
         if (s.open && inbox.length === 0) await idle(heartbeatMs, signal)
-        // Quiet for twelve heartbeats: a relay whose push to it failed may
-        // have let go of it while answering its pings (two CI runs hung
-        // 20 min, 2026-10-23). A new socket gets what queued.
-        // The quiet one serves until a new one opens: a dial that fails or
-        // hangs must not leave this participant without a socket, which
-        // the relay loses in three heartbeats (an agent busy on 3 tasks,
-        // CI 2026-10-23).
-        if (
-          inbox.length === 0 &&
-          s.open &&
-          socket === s &&
-          dialing === undefined &&
-          performance.now() - s.pushedAt >= QUIET_BEATS * heartbeatMs
-        ) {
-          dialing = dial()
-            .catch(() => undefined)
-            .then(async (fresh) => {
-              dialing = undefined
-              if (fresh?.open !== true) return
-              if (left || ended !== undefined || socket !== s) {
-                await fresh.close()
-                return
-              }
-              adopt(fresh)
-              await s.close()
-            })
-        }
       }
       if (inbox.length > 0) return inbox.splice(0)
       if (ended !== undefined) throw ended
@@ -374,8 +341,6 @@ interface Socket {
   readonly open: boolean
   /** What it brought before `onMessages` was set. */
   readonly inbox: RelayMessage[]
-  /** When the relay last pushed messages down it. */
-  readonly pushedAt: number
   /** The close code it closed with; 0 while open or with none. */
   readonly code: number
   onMessages?: (messages: RelayMessage[]) => void
@@ -417,7 +382,6 @@ async function connect(
   }
   let open = true
   const inbox: RelayMessage[] = []
-  let pushedAt = performance.now()
   let code = 0
   let n = 0
   type Answer = {
@@ -529,7 +493,6 @@ async function connect(
     if (e.data === 'pong') return
     const m = JSON.parse(String(e.data)) as Answer & { messages?: RelayMessage[]; n?: number }
     if (m.messages !== undefined) {
-      pushedAt = performance.now()
       if (me.onMessages === undefined) inbox.push(...m.messages)
       else me.onMessages(m.messages)
       return
@@ -541,9 +504,6 @@ async function connect(
   const me: Socket = {
     get open() {
       return open
-    },
-    get pushedAt() {
-      return pushedAt
     },
     get code() {
       return code

@@ -124,29 +124,6 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
   return { url: `http://127.0.0.1:${server.port}`, relay, open, closes, frames, pings, host }
 }
 
-it('dials anew once its socket goes quiet, and gets what the relay queued', async () => {
-  // A relay whose push failed queued and left the socket open, its pings
-  // answered: the agent heard nothing again (CI, 2026-10-23).
-  const { url, relay, open } = sockets(200)
-  const o = await join(url, R2, 'orchestrator', null, undefined)
-  const a = await join(url, R2, 'agent', null, undefined)
-  await o.poll()
-  const agentSockets = () => open.filter((w) => w.data.id === a.id)
-  const first = agentSockets()[0]!
-  relay.detach(first.data.key, a.id, first.data.socket!)
-  const asked = verbs()
-  await o.send(a.id, 'queued')
-  const got = []
-  for (let i = 0; i < 30 && got.length === 0; i++) got.push(...(await a.poll()))
-  expect(got).toEqual([{ from: 'orchestrator', body: 'queued' }])
-  expect(agentSockets()).toHaveLength(2)
-  await o.send(a.id, 'pushed')
-  expect(await a.poll()).toEqual([{ from: 'orchestrator', body: 'pushed' }])
-  expect(asked).toEqual([])
-  await a.leave()
-  await o.leave()
-}, 10_000)
-
 // Each ping is a message a relay host may bill: at two a heartbeat they
 // were nearly all of a run's (2026-10-23).
 it('pings once a heartbeat, and not in one it sent a frame in', async () => {
