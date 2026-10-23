@@ -94,6 +94,11 @@ export function loadCompiled(
   configPath: string,
   bytes: Uint8Array,
 ): { default?: unknown } | null | undefined {
+  // A repeat load in this process (the run after the CLI's selection pass,
+  // a `vx watch` cycle) of the same bytes: the loader already refused an
+  // import edited since the first, so the answer stands (principle 9).
+  const seen = answered.get(configPath)
+  if (seen !== undefined && Buffer.from(seen.bytes).equals(bytes)) return seen.ns
   const name = nameOf(configPath, bytes)
   const dir = compiledDir(root)
   let manifest: Manifest
@@ -103,11 +108,18 @@ export function loadCompiled(
     return undefined
   }
   if (manifest.version !== COMPILED_VERSION || !fresh(manifest)) return undefined
-  if (manifest.skip === true) return null
-  return createRequire(path.join(dir, 'index.js'))(path.join(dir, `${name}.js`)) as {
-    default?: unknown
-  }
+  const ns =
+    manifest.skip === true
+      ? null
+      : (createRequire(path.join(dir, 'index.js'))(path.join(dir, `${name}.js`)) as {
+          default?: unknown
+        })
+  answered.set(configPath, { bytes, ns })
+  return ns
 }
+
+/** What `loadCompiled` answered for each config, by the bytes it was asked with. */
+const answered = new Map<string, { bytes: Uint8Array; ns: { default?: unknown } | null }>()
 
 /**
  * The files this process has evaluated as modules. One the config imports
@@ -139,7 +151,10 @@ export async function buildCompiled(
   bytes: Uint8Array,
   /** `loadedModules()` before the config's source load. */
   loaded: ReadonlySet<string>,
+  /** What that load evaluated: a repeat load in this process gets it, not a bundle or a second build. */
+  ns: { default?: unknown },
 ): Promise<void> {
+  answered.set(configPath, { bytes, ns })
   const dir = compiledDir(root)
   if (!existsSync(path.dirname(dir))) return
   const name = nameOf(configPath, bytes)
