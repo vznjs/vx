@@ -129,7 +129,7 @@ const shardTasks = {
 
 // The unsafe suite (`tests/*.unsafe.test.ts`), dealt the same way: as one
 // process it was a DTE run's critical path (178 s of 216 s, 2026-10-22).
-export const UNSAFE_SHARD_COUNT = 4
+export const UNSAFE_SHARD_COUNT = 6
 const unsafeShardTask = (i: number, n: number, flags = '') => ({
   description: `bun test${flags} — the files a sandbox cannot host, shard ${i} of ${n}`,
   dependsOn: ['install'],

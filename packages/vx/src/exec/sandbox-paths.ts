@@ -12,7 +12,7 @@ import path from 'node:path'
  * own set), which also counts `{}`: `write: ['g/{a,b}.txt']` is a
  * LITERAL to the sandbox, gets a placeholder file, and is widened to its
  * directory like any other file-shaped grant — measured ok, and pinned in
- * `tests/sandbox-runtime.unsafe.test.ts`. Counting the brace here would
+ * `tests/sandbox-lifecycle.unsafe.test.ts`. Counting the brace here would
  * move that spelling into the scan, which finds nothing before the task has
  * written, and turn a working grant into `Read-only file system`. The two
  * predicates answer different questions: whether a declaration must be
