@@ -194,6 +194,31 @@ describe('startRemotePrefetch', () => {
   )
 
   it(
+    'tells held which stable tasks a store holds, once',
+    async () => {
+      // Demand settles on this answer: a held task restores, and an executor
+      // that sized for it started agents that ran nothing.
+      for (const name of ['a', 'b']) {
+        await addProject(root, name, {
+          files: { 'src/in.txt': name },
+          config: CACHED('echo built > out.txt', `{ files: ['out.txt'] }`),
+        })
+      }
+      const told = async (present: (h: readonly string[]) => Set<string>) => {
+        const calls: string[][] = []
+        await prefetchWith(4, present, (a) => ({
+          ...a,
+          held: (ids) => calls.push([...ids].sort()),
+        }))
+        return calls
+      }
+      expect(await told((h) => new Set(h))).toEqual([['a#build', 'b#build']])
+      expect(await told(() => new Set())).toEqual([[]])
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a key derivation that throws leaves the handle resolved',
     async () => {
       // run() awaits the handle before it closes the cache, outside any

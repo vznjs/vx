@@ -641,23 +641,47 @@ export function executorLabel(executor: TaskExecutor): string {
     : `plugin '${plugin}' (executor '${executor.name}')`
 }
 
+/** What `executorDemand` returns: the run's three calls into it. */
+export interface ExecutorDemand {
+  /** Whether any executor asked: with none, every call does nothing. */
+  readonly any: boolean
+  /** A task finished: dropped, and its executor told once demand settled. */
+  finished(id: string): void
+  /**
+   * The placed tasks the run's cache answers: dropped, and each executor
+   * told its demand for the first time. Before it a finish narrows
+   * silently, so an executor never sizes for what restores. The first
+   * call counts; the rest do nothing.
+   */
+  settle(hits: Iterable<string>): void
+  /** A task about to execute: back in if `settle` dropped it (its artifact was gone). */
+  executing(id: string): void
+}
+
+const NO_DEMAND: ExecutorDemand = {
+  any: false,
+  finished: () => {},
+  settle: () => {},
+  executing: () => {},
+}
+
 /**
  * Demand: what each executor still has left to run. An executor that
  * provisions per task (a container, an allocation, a pod) otherwise has to
  * guess from `capacity` alone and hold everything until teardown. Built
  * ONLY for executors that asked: with none declared there is no map, no
- * set, and the returned narrower does nothing.
+ * set, and every call does nothing.
  *
  * The SAME set is handed back every time, narrowed in place: a consumer
  * reading it later sees the truth rather than a stale snapshot. A hint,
  * as `admit` is: one that throws is named once and asked no more, where
  * it surfaced as a bare stack, or mid-run from the completion path
- * (item 1022). Returns the call that drops a finished task's id.
+ * (item 1022).
  */
 export function executorDemand(
   placed: ReadonlyMap<string, TaskExecutor>,
   warn: (message: string) => void,
-): (id: string) => void {
+): ExecutorDemand {
   const demandOf = new Map<TaskExecutor, Set<string>>()
   for (const [id, executor] of placed) {
     if (executor.demand === undefined) continue
@@ -665,7 +689,7 @@ export function executorDemand(
     if (remaining === undefined) demandOf.set(executor, (remaining = new Set()))
     remaining.add(id)
   }
-  if (demandOf.size === 0) return () => {}
+  if (demandOf.size === 0) return NO_DEMAND
   const tell = (executor: TaskExecutor, remaining: ReadonlySet<string>): void => {
     const failed = (err: unknown): void => {
       if (!demandOf.delete(executor)) return
@@ -682,11 +706,37 @@ export function executorDemand(
       failed(err)
     }
   }
-  for (const [executor, remaining] of demandOf) tell(executor, remaining)
-  return (id) => {
-    for (const [executor, remaining] of demandOf) {
-      if (remaining.delete(id)) tell(executor, remaining)
-    }
+  let settled = false
+  const done = new Set<string>()
+  const ran = new Set<string>()
+  const dropped = new Set<string>()
+  return {
+    any: true,
+    finished(id) {
+      done.add(id)
+      for (const [executor, remaining] of demandOf) {
+        if (remaining.delete(id) && settled) tell(executor, remaining)
+      }
+    },
+    settle(hits) {
+      if (settled) return
+      settled = true
+      for (const id of hits) {
+        if (ran.has(id) || done.has(id)) continue
+        const executor = placed.get(id)
+        if (executor !== undefined && demandOf.get(executor)?.delete(id)) dropped.add(id)
+      }
+      for (const [executor, remaining] of demandOf) tell(executor, remaining)
+    },
+    executing(id) {
+      ran.add(id)
+      if (!dropped.delete(id)) return
+      const executor = placed.get(id)!
+      const remaining = demandOf.get(executor)
+      if (remaining === undefined) return
+      remaining.add(id)
+      tell(executor, remaining)
+    },
   }
 }
 
