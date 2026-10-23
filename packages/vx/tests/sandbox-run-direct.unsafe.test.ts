@@ -525,6 +525,33 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     ])
   })
 
+  // A tool that stats before it opens never opens a path the wall hid:
+  // Ubuntu 26's cat (uutils) read nothing and fell back unreported.
+  // `test -e` is that stat, on any distro.
+  it('reports a refused stat probe, not a stat of a missing file', async () => {
+    const proj = path.join(dir, 'proj')
+    await mkdir(path.join(proj, 'src'), { recursive: true })
+    await writeFile(path.join(proj, 'src', 'x.txt'), 'x')
+    await writeFile(path.join(proj, 'package.json'), '{}')
+    const r = await runSandboxed(
+      args('test -e src/x.txt || test -e src/gone || echo fell back', {
+        cwd: proj,
+        baseAllowRead: [],
+        baseDenyRead: [dir],
+        reportWithin: proj,
+        config: resolveSandboxConfig({ allow: { read: ['package.json'] } }, proj),
+      }),
+    )
+    // `test -e` is `newfstatat` or `statx` by libc.
+    const call = (line: string): string =>
+      line.split('(')[0]!.replace(/^(newfstatat|statx)$/, 'stat')
+    expect([r.exitCode, r.stdout, r.violations.map((v) => `${call(v.line)} ${v.target}`)]).toEqual([
+      0,
+      'fell back\n',
+      [`stat ${path.join(proj, 'src', 'x.txt')}`],
+    ])
+  })
+
   it('a spawn that throws is exit 127 with the reason, not a rejection', async () => {
     const r = await runSandboxed(args('true', { cwd: path.join(dir, 'gone') }))
     // spawnFailed: no shell ran, so execute-task says nothing of a missing command (A-41).
@@ -654,7 +681,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
         '--seccomp-bpf',
         '-qq',
         '-e',
-        'trace=openat,execve,?access,faccessat,?faccessat2,chdir,fchdir,clone,?clone3,?fork,?vfork',
+        'trace=openat,execve,?access,faccessat,?faccessat2,statx,newfstatat,chdir,fchdir,clone,?clone3,?fork,?vfork',
         '-o',
         '/dev/fd/5',
         '--',
