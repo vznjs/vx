@@ -1,6 +1,6 @@
 {
   "index": {
-    "version": "v46",
+    "version": "v47",
     "layout": [
       "CREATE INDEX invocations_branch  ON invocations(branch)",
       "",
@@ -145,6 +145,13 @@
       "key   TEXT PRIMARY KEY,",
       "bytes BLOB NOT NULL,",
       "at    INTEGER NOT NULL",
+      ")",
+      "",
+      "CREATE TABLE remote_hits (",
+      "hash        TEXT PRIMARY KEY,",
+      "size        INTEGER,",
+      "duration_ms INTEGER,",
+      "seen_at     INTEGER NOT NULL",
       ")",
       "",
       "CREATE TABLE runs (",

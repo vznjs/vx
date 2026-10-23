@@ -148,6 +148,13 @@ is a hint, never the artifact: a key it says is held whose `get` returns
 `null` (the server dropped it since) is a plain miss, and the task runs
 (owner, 2026-10-23).
 
+What `hasMany` said is recorded in the index's `remote_hits`
+(`remote-hits.ts`), hits only, so another process trusts it
+(`remoteKnown`): a pull of a kept hit starts at once, waiting on no
+probe. A whole `hasMany` answer rewrites the rows it asked (new hits
+in, gone ones out), and a `get` every remote answers with `null` drops
+its row. A `get` that fails keeps it: the key may still be there.
+
 ## What a failure says
 
 A wire's own message names nothing: Bun's abort is "The operation timed

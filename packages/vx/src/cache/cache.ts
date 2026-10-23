@@ -117,6 +117,7 @@ import { LINK_MODE, OutputIndex } from './output-index.js'
 import { RunHistory } from './run-history.js'
 import { CACHE_VERSION, foldKey } from './key-fold.js'
 import { FoldMemo } from './fold-memo.js'
+import { RemoteHits } from './remote-hits.js'
 import { behindLink } from './linked-inputs.js'
 
 /**
@@ -335,7 +336,10 @@ function outOfFdsAtOpen(dbFile: string, err: unknown): UserError | undefined {
 //        The cache KEY is unchanged.
 //   v46: runs.keyless_by — the task with no inputs a key folded, so
 //        `vx why` names it. The cache KEY is unchanged.
-export const SCHEMA_VERSION = 'v46'
+//   v47: the store's remote_hits — what a remote's hasMany said it holds,
+//        hits only, so another process trusts it. The cache KEY is
+//        unchanged.
+export const SCHEMA_VERSION = 'v47'
 
 /**
  * An entry's key components as its one `entry_inputs` row (v34): JSON
@@ -366,6 +370,7 @@ const STORE_TABLES = [
   'task_outcomes',
   'blob_sizes',
   'plugin_blobs',
+  'remote_hits',
   'store_meta',
   'entries',
 ]
@@ -903,6 +908,8 @@ export class Cache implements CacheLayer {
   private readonly outputs: OutputIndex
   private readonly folds: FoldMemo
   private readonly history: RunHistory
+  /** What the remotes said they hold, across runs (remote-hits.ts). */
+  readonly remoteHits: RemoteHits
 
   /**
    * Local-layer read/write gates for the task ARTIFACT path only.
@@ -1123,7 +1130,7 @@ export class Cache implements CacheLayer {
             // keeps it so).
             if (found !== undefined) {
               this.db.exec(
-                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.plugin_blobs; DROP TABLE IF EXISTS main.task_outcomes; DROP TABLE IF EXISTS main.store_meta; DROP TABLE IF EXISTS main.fold_memo;',
+                'DROP TABLE IF EXISTS main.entries; DROP TABLE IF EXISTS main.runs; DROP TABLE IF EXISTS main.file_hashes; DROP TABLE IF EXISTS main.blob_sizes; DROP TABLE IF EXISTS main.blob_verdicts; DROP TABLE IF EXISTS main.output_files; DROP TABLE IF EXISTS main.output_stamps; DROP TABLE IF EXISTS main.invocations; DROP TABLE IF EXISTS main.run_task_inputs; DROP TABLE IF EXISTS main.entry_inputs; DROP TABLE IF EXISTS main.config_evals; DROP TABLE IF EXISTS main.config_closures; DROP TABLE IF EXISTS main.output_dirs; DROP TABLE IF EXISTS main.entry_stdout; DROP TABLE IF EXISTS main.task_durations; DROP TABLE IF EXISTS main.plugin_blobs; DROP TABLE IF EXISTS main.task_outcomes; DROP TABLE IF EXISTS main.store_meta; DROP TABLE IF EXISTS main.fold_memo; DROP TABLE IF EXISTS main.remote_hits;',
               )
             }
             // The tables land under the same write lock as the stamp: made
@@ -1287,6 +1294,7 @@ export class Cache implements CacheLayer {
     this.outputs = new OutputIndex(this.db)
     this.folds = new FoldMemo(this.db, this.write && !this.inspecting)
     this.history = new RunHistory(this.db, (v) => this.digestValue(v))
+    this.remoteHits = new RemoteHits(this.db, this.writeBlocked === null && !this.inspecting)
 
     // A CACHE_VERSION bump keeps the index but moves every key, so the run
     // after an upgrade misses everything. Roadmap 3.3: that is announced,

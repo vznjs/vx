@@ -160,7 +160,11 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   all is counted again. Its second argument, `missed`, holds the left
   tasks whose keys that probe found in no store, each store answering
   for every key: they will run, so a plan sizes on them rather than a
-  guess (`executor-demand.test.ts`).
+  guess (`executor-demand.test.ts`). Behind a remote whose hits the
+  index keeps, that first call comes from the index alone (a key with
+  no kept hit is missed), and the run's background `hasMany` revises
+  it: a kept hit it calls gone is demand and missed again, a miss it
+  finds held leaves demand.
 - An executor's `demand` is a hint: one that throws, or an `async`
   one that rejects, is warned once, naming the plugin, and that
   executor is asked no more that run (item 1022;

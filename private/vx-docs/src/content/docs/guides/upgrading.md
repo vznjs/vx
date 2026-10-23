@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: keep remote hits in the index and trust them at once
+
+index schema v46 -> v47; the local index is rebuilt.
+
 ## vx-dte: drop the agent names the relay still took
 
 the relay refuses a join with role `agent`; join as `worker`.

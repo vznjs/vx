@@ -217,6 +217,9 @@ export class LayeredCache implements CacheLayer {
    */
   private readonly probing = new Map<string, Promise<boolean>>()
 
+  /** Hashes the index says a remote holds (`remoteKnown`): their pulls wait on no probe. */
+  private readonly trusted = new Set<string>()
+
   /** Settles once the run's batch probe has started (`probeFirst`); a pull waits on it. */
   private probeStarted: Promise<void> | null = null
 
@@ -267,6 +270,16 @@ export class LayeredCache implements CacheLayer {
     return this.local.localHasMany(hashes)
   }
 
+  remoteKnown(hashes: readonly string[]): Map<string, ArtifactInfo> {
+    if (this.readable.length === 0) return new Map()
+    const known = this.local.remoteHits.get(hashes)
+    for (const [h, info] of known) {
+      this.trusted.add(h)
+      if (!this.infos.has(h)) this.infos.set(h, info)
+    }
+    return known
+  }
+
   /**
    * Batch existence probe over the readable remotes — the subset of
    * `hashes` some remote holds, one round-trip each, or `null` when any
@@ -281,10 +294,16 @@ export class LayeredCache implements CacheLayer {
   async remoteHasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
     if (this.readable.length === 0) return null
     const answer = this.probeMany(hashes).then((found) => {
-      if (found !== null) for (const [h, info] of found) this.infos.set(h, info)
+      if (found !== null) {
+        for (const [h, info] of found) this.infos.set(h, info)
+        // The whole answer, kept for the next run and the next process.
+        this.local.remoteHits.record(hashes, found)
+      }
       return found
     })
-    const waiting = hashes.filter((h) => !this.inflight.has(h) && !this.probing.has(h))
+    const waiting = hashes.filter(
+      (h) => !this.inflight.has(h) && !this.probing.has(h) && !this.trusted.has(h),
+    )
     for (const h of waiting) {
       this.probing.set(
         h,
@@ -451,6 +470,11 @@ export class LayeredCache implements CacheLayer {
   private pullFromRemote(hash: string, ctx?: CacheGetContext): Promise<boolean> {
     const existing = this.inflight.get(hash)
     if (existing) return existing
+    if (this.trusted.has(hash)) {
+      const p = this.doPullFromRemote(hash, ctx)
+      this.inflight.set(hash, p)
+      return p
+    }
     const probed = this.probing.get(hash)
     if (probed !== undefined)
       return probed.then((found) => (found ? this.pullFromRemote(hash, ctx) : false))
@@ -471,9 +495,14 @@ export class LayeredCache implements CacheLayer {
     // caller re-reads it, keeping whatever provenance it already had (local,
     // or remote if a concurrent prefetch set it).
     if ((await this.local.has(hash)) === 'local') return true
+    let absent = true
     for (const lane of this.readable) {
-      if (await this.pullFrom(lane, hash, ctx)) return true
+      const got = await this.pullFrom(lane, hash, ctx)
+      if (got === true) return true
+      if (got === false) absent = false
     }
+    // Every remote answered it holds none: a hit the index kept is gone.
+    if (absent) this.local.remoteHits.forget(hash)
     return false
   }
 
@@ -482,7 +511,7 @@ export class LayeredCache implements CacheLayer {
     hash: string,
     ctx?: CacheGetContext,
     fresh = false,
-  ): Promise<boolean> {
+  ): Promise<boolean | null> {
     const fetchStart = performance.now()
     // A stopped run waits on no read, as on no upload: a lookup or download
     // in flight held a Ctrl-C until its last byte (M, 2026-10-17). The
@@ -495,7 +524,9 @@ export class LayeredCache implements CacheLayer {
       void pending.then((r) => (r?.body instanceof Response ? r.body.body?.cancel() : undefined))
       return false
     }
-    if (remoteBody === null) return false
+    // The remote holds none: the one answer that says the key is gone.
+    if (remoteBody === null) return null
+    if (remoteBody === undefined) return false
 
     // Ingest the remote body into local using the caller-supplied
     // taskId/command plus the remote-reported durationMs, which `get`

@@ -24,7 +24,8 @@ export function lazyStatement(db: Database, sql: string): ReturnType<Database['p
  * Create every table. `store` names the schema holding the ENTRY tables
  * (`entries`, `entry_stdout`, `output_files`, `entry_inputs`, `store_meta`)
  * the task timings (`task_durations`), the flaky record (`task_outcomes`),
- * the blob sizes (`blob_sizes`) and the plugins' blobs (`plugin_blobs`):
+ * the blob sizes (`blob_sizes`), the plugins' blobs (`plugin_blobs`) and
+ * the remotes' hits (`remote_hits`):
  * `main` when one `cache.db` holds everything (a `cacheDir`), `store` when
  * they live in the shared store attached beside it (v32). The rest is the
  * workspace's own: its history, its memos, and what its disk looked like
@@ -330,6 +331,16 @@ export function createTables(db: Database, store: 'main' | 'store' = 'main'): vo
       key   TEXT PRIMARY KEY,
       bytes BLOB NOT NULL,
       at    INTEGER NOT NULL
+    );
+    -- What a remote's has-many said it holds (remote-hits.ts), shared by
+    -- every worktree: a key here is a hit until a has-many or a GET says it
+    -- is gone, and a key not here is a miss. Only hits are kept. Pruned by
+    -- \`seen_at\` with the run history.
+    CREATE TABLE IF NOT EXISTS ${store}.remote_hits (
+      hash        TEXT PRIMARY KEY,
+      size        INTEGER,
+      duration_ms INTEGER,
+      seen_at     INTEGER NOT NULL
     );
     ${artifactTables(store)}
   `)

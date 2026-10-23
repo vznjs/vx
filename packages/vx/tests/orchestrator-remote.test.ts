@@ -301,6 +301,135 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     TIMEOUT,
   )
 
+  // `vx dte plan` and `vx run` are separate processes on GitLab: what the
+  // plan's probe found must reach the run through the index, never memory.
+  // Only hits are kept, and the run's GETs wait on no probe (M, 2026-10-23).
+  it(
+    'plan then run: the run trusts the hits the plan kept and GETs them before its probe answers',
+    async () => {
+      const fixture = await makeFixture('vx-remote-kept-hits-')
+      const remote = startArtifactEndpoint()
+      const cacheDir = path.join(fixture.root, '.vx', 'cache')
+      try {
+        for (const name of ['a', 'b', 'c'])
+          await addProject(fixture.root, name, {
+            files: { 'src/in.txt': name },
+            config: BUILD_CONFIG,
+          })
+        const opts = { cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) }
+        expect((await run({ ...opts, remoteCache: remote.layer })).ok).toBe(true)
+        await rm(cacheDir, { recursive: true, force: true })
+        await Bun.write(path.join(fixture.root, 'packages', 'c', 'src', 'in.txt'), 'v2')
+        remote.getCounts.clear()
+        const batches = remote.batchCalls()
+
+        const planned = await planRun({ ...opts, remoteCache: remote.layer })
+        expect(planned.tasks.map((t) => `${t.node.id} ${t.cacheStatus}`).sort()).toEqual([
+          'a#build hit-remote',
+          'b#build hit-remote',
+          'c#build miss',
+        ])
+        const kept = (): string[] => {
+          const local = new Cache(cacheDir)
+          try {
+            return (
+              local.dbHandle().query('SELECT hash FROM remote_hits').all() as Array<{
+                hash: string
+              }>
+            )
+              .map((r) => r.hash)
+              .sort()
+          } finally {
+            local.close()
+          }
+        }
+        // Hits only: c's miss is no row.
+        expect(kept()).toEqual(
+          planned.tasks
+            .filter((t) => t.cacheStatus === 'hit-remote')
+            .map((t) => t.hash)
+            .sort(),
+        )
+
+        let answeredAt = Infinity
+        const gets: number[] = []
+        remote.probes.delayMs = 400
+        const timed: RemoteCacheLayer = {
+          ...remote.layer,
+          async hasMany(hashes) {
+            const found = await remote.layer.hasMany!(hashes)
+            answeredAt = performance.now()
+            return found
+          },
+          get(hash) {
+            gets.push(performance.now())
+            return remote.layer.get(hash)
+          },
+        }
+        const second = await run({ ...opts, remoteCache: timed })
+        expect(second.outcomes.map((o) => `${o.node.id} ${o.status}`).sort()).toEqual([
+          'a#build cache-hit-remote',
+          'b#build cache-hit-remote',
+          'c#build success',
+        ])
+        // One probe for the plan, one background refresh for the run, and
+        // no HEAD; each hit fetched once, before the refresh answered.
+        expect(remote.batchCalls() - batches).toBe(2)
+        expect(remote.headCounts.size).toBe(0)
+        expect([...remote.getCounts.values()]).toEqual([1, 1])
+        expect(gets.filter((t) => t < answeredAt)).toHaveLength(2)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a kept hit the server dropped runs as a miss and leaves the index',
+    async () => {
+      const fixture = await makeFixture('vx-remote-kept-gone-')
+      const remote = startArtifactEndpoint()
+      const cacheDir = path.join(fixture.root, '.vx', 'cache')
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const opts = { cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) }
+        expect((await run({ ...opts, remoteCache: remote.layer })).ok).toBe(true)
+        await rm(cacheDir, { recursive: true, force: true })
+        await rm(path.join(fixture.root, 'packages', 'app', 'out.txt'))
+        await planRun({ ...opts, remoteCache: remote.layer })
+        remote.store.clear()
+        // A probe that still says held: only the GET's 404 is the truth.
+        const stale: RemoteCacheLayer = {
+          ...remote.layer,
+          async hasMany(hashes) {
+            return new Map(hashes.map((h) => [h, {}]))
+          },
+        }
+        const second = await run({ ...opts, remoteCache: stale })
+        const local = new Cache(cacheDir)
+        let rows: unknown[]
+        try {
+          rows = local.dbHandle().query('SELECT hash FROM remote_hits').all()
+        } finally {
+          local.close()
+        }
+        expect([
+          second.ok,
+          second.outcomes[0]!.status,
+          await Bun.file(path.join(fixture.root, 'packages', 'app', 'out.txt')).text(),
+          rows,
+        ]).toEqual([true, 'success', 'built\n', []])
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   // A local save stores the masked command (L-11), but a remote hit's
   // ingest wrote the one the lookup carried, raw: the token a config
   // inlined sat in cache.db, where `vx why` reads it (L-27).

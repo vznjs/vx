@@ -596,6 +596,17 @@ Hard invariants of the remote prefetch:
   the outputs of a dependency the key does not fold) is not prefetched: its key would name the wrong
   artifact, and it resolves via the lazy read-through in `execute-task`. Instability propagates: a task that folds an
   unstable upstream is itself unstable. When in doubt, skip.
+- **Kept hits, trusted at once.** What a `hasMany` says a remote holds
+  is kept in the index's `remote_hits` table (shared by every worktree),
+  so a later process trusts it: `vx run --dry` (or `vx dte plan`)
+  followed by `vx run` probes once in each, and the run GETs the kept
+  hits before its own probe answers. Only hits are kept; a key with no
+  row is a miss. Each run still asks `hasMany` for every key the local
+  store lacks, in the background, and its whole answer rewrites the
+  rows it asked: new hits are added, gone ones dropped. A GET every
+  remote answers with nothing drops the row too, and the task runs
+  (`orchestrator-remote.test.ts` › "plan then run…", "a kept hit the
+  server dropped…").
 - **At most once.** The `LayeredCache` keeps an in-flight map keyed by
   hash; `prefetch` and `get` share it, and a settled `false` (remote
   miss) prevents a second lazy probe of the same dead key.
@@ -619,8 +630,8 @@ Hard invariants of the remote prefetch:
   answer 409). `ctx.cache.put` and a run's own entries send the `put`
   alone.
 - **`--dry` batches too.** The plan derives every key first, then asks
-  each remote with `hasMany` once; a remote without it is asked `has`
-  per key.
+  each remote with `hasMany` once, and keeps the hits for the run that
+  follows; a remote without it is asked `has` per key.
 - **Never fail.** Every remote path (get / put / ingest / prefetch)
   catches all errors and degrades to a cache miss. A remote 500, a
   network drop, a corrupt artifact, or a failed integrity check can
@@ -1285,7 +1296,7 @@ owner-only; vx closes one of yours that others can read (chmod 700), and one oth
 ~/.vx/<id>/cache/                           the shared store
 ├── store.db                                entries, entry_stdout, output_files,
 │                                           entry_inputs, task_durations,
-│                                           plugin_blobs, store_meta; artifacts
+│                                           plugin_blobs, remote_hits, store_meta; artifacts
 │                                           up to `cache.store.embeddings` (v33)
 └── <hash>.tree/                            the larger artifacts, as plain files (below)
 
@@ -1596,9 +1607,9 @@ keep). The artifacts stay: each is indexed again from its own bytes
 when its task next asks for its key (below).
 
 ```sql
--- src/cache/schema.ts (SCHEMA_VERSION = 'v46', in cache.ts)
+-- src/cache/schema.ts (SCHEMA_VERSION = 'v47', in cache.ts)
 -- With a shared store, entries, entry_stdout, output_files, entry_inputs,
--- store_meta, task_durations, task_outcomes, blob_sizes and plugin_blobs live in its store.db, attached as `store`; the rest is
+-- store_meta, task_durations, task_outcomes, blob_sizes, plugin_blobs and remote_hits live in its store.db, attached as `store`; the rest is
 -- the workspace's cache.db. A named cache dir holds all of them.
 
 CREATE TABLE schema_meta (
@@ -1880,6 +1891,17 @@ CREATE TABLE plugin_blobs (
   key   TEXT PRIMARY KEY,
   bytes BLOB NOT NULL,
   at    INTEGER NOT NULL
+);
+
+-- v47: what a remote's hasMany said it holds, hits only: a key with no
+-- row is a miss. A whole hasMany answer rewrites the rows it asked, a GET
+-- every remote answers with nothing drops one; pruned by seen_at with the
+-- run history.
+CREATE TABLE remote_hits (
+  hash        TEXT PRIMARY KEY,
+  size        INTEGER,
+  duration_ms INTEGER,
+  seen_at     INTEGER NOT NULL
 );
 
 -- v33: an artifact of at most 32 KiB compressed, its exact <hash>.tar.zst
