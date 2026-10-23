@@ -111,6 +111,8 @@ export interface ExecuteArgs {
   log: Logger
   /** The executor this task was PLACED on (run.ts, before scheduling). */
   executor: TaskExecutor
+  /** Told the task executes, so the executor's demand counts it again (`ExecutorDemand.executing`). */
+  executing?: ((id: string) => void) | undefined
   /**
    * `exec.remote: 'only'` with no remote executor to take it: succeed
    * WITHOUT executing, cleaning, restoring or saving anything on this
@@ -931,6 +933,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
         node.projectDir,
         commandWriteReach(node, args.workspaceRoot),
       ) ?? (() => {})
+    args.executing?.(node.id)
     try {
       running = Promise.resolve(args.executor.execute(req))
     } catch (thrown) {

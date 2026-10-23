@@ -1094,6 +1094,63 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
+  it('demand: a task the cache answers is never counted', async () => {
+    // DTE sized agents from the first report, and on a warm CI run 81 of
+    // 100 tasks restored: it asked 8 agents and 4 ran nothing. Core tells
+    // demand once the cache has said what it holds.
+    const { workspaceRoot, cleanup } = await writeFixture()
+    try {
+      const task = (name: string) =>
+        `${name}: { exec: { command: 'true' }, inputs: { files: ['${name}.txt'] }, cache: { outputs: { files: [] } } },`
+      await Bun.write(
+        path.join(workspaceRoot, 'pkg-a/vx.config.mjs'),
+        `export default { tasks: { ${task('a')} ${task('b')} ${task('c')} } }`,
+      )
+      for (const name of ['a', 'b', 'c'])
+        await Bun.write(path.join(workspaceRoot, `pkg-a/${name}.txt`), name)
+      await Bun.write(
+        path.join(workspaceRoot, '.vx/workspace.mjs'),
+        localWorkspaceSource([
+          pluginSource(
+            'org/demand',
+            `{ executor() {
+               return {
+                 name: 'demand-spy',
+                 remote: true,
+                 capacity: 1,
+                 demand(remaining) { globalThis.__vxDemand.push(remaining.size) },
+                 async execute() {
+                   return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+                 },
+               }
+             },
+           }`,
+          ),
+        ]),
+      )
+      await gitInit(workspaceRoot)
+      const g = globalThis as unknown as { __vxDemand: number[] }
+      const runAll = async (): Promise<number[]> => {
+        g.__vxDemand = []
+        const summary = await run({
+          cwd: workspaceRoot,
+          projects: ['pkg-a'],
+          tasks: ['a', 'b', 'c'],
+          log: makeSilentLogger(),
+          handleSignals: false,
+        })
+        expect(summary.ok).toBe(true)
+        return g.__vxDemand
+      }
+      // Control: a cold cache answers nothing, so all three are demand.
+      expect(await runAll()).toEqual([3, 2, 1, 0])
+      await Bun.write(path.join(workspaceRoot, 'pkg-a/a.txt'), 'a2')
+      expect(await runAll()).toEqual([1, 0])
+    } finally {
+      cleanup()
+    }
+  })
+
   it('placement: --dry names the executor each task would land on', async () => {
     // `exec.remote` is otherwise invisible — nothing in a run's output says
     // where a task went, so a mis-declared pin reads exactly like a correct

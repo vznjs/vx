@@ -46,6 +46,8 @@ export interface PrefetchArgs {
    * `probeBeforeUpload` instead, so a key a remote holds is not re-sent.
    */
   remoteWrite: boolean
+  /** Told once, after the probe, the stable tasks a store holds, local or remote. */
+  held?: ((ids: readonly string[]) => void) | undefined
 }
 
 /**
@@ -84,7 +86,12 @@ export function startRemotePrefetch(args: PrefetchArgs): Promise<void> {
 
 async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<void> {
   const stableKeys = await deriveStableKeys(args)
-  if (stableKeys.length === 0) return
+  const tell = (holds: (hash: string) => boolean): void =>
+    args.held?.(stableKeys.filter((k) => holds(k.hash)).map((k) => k.node.id))
+  if (stableKeys.length === 0) {
+    tell(() => false)
+    return
+  }
 
   // Batch existence probe FIRST (when the remote supports it): one round-trip
   // tells us which of the N stable hashes exist remotely, so we GET only the
@@ -96,12 +103,16 @@ async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<voi
   const held =
     (await args.cache.localHasMany?.([...new Set(stableKeys.map((k) => k.hash))])) ?? null
   let toPrefetch = held === null ? stableKeys : stableKeys.filter((k) => !held.has(k.hash))
-  if (toPrefetch.length === 0) return
+  if (toPrefetch.length === 0) {
+    tell(() => true)
+    return
+  }
   const uniqueHashes = [...new Set(toPrefetch.map((k) => k.hash))]
   const asked = args.cache.remoteHasMany?.(uniqueHashes)
   // Every lookup that waited on the probe now finds its hash in it.
   probing()
   const present = (await asked) ?? null
+  tell((h) => held?.has(h) === true || present?.has(h) === true)
   if (present !== null) {
     args.cache.markRemoteAbsent?.(uniqueHashes.filter((h) => !present.has(h)))
     // The pre-mark above already answers a pull for an absent hash from

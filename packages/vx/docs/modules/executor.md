@@ -146,6 +146,11 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   executor is the tail of the list and accepts everything, so the
   throw for "every executor declined" is unreachable from `run()`; it
   stays for a caller that builds its own list.
+- An executor's `demand` is first called once the cache has said which
+  placed tasks it holds, and leaves those out: a warm run's restores
+  are no one's demand (`plugin-capabilities.test.ts` › "a task the
+  cache answers is never counted"). A left-out task that executes after
+  all is counted again.
 - An executor's `demand` is a hint: one that throws, or an `async`
   one that rejects, is warned once, naming the plugin, and that
   executor is asked no more that run (item 1022;

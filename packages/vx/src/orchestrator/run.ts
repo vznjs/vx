@@ -578,8 +578,9 @@ async function runOnBus(
       warnOf(log)(`[vx] ${id}: exec.remote is 'only' and ${why} — nothing ran`)
     }
   }
-  // Demand: what each executor still has left to run (`executorDemand`).
-  const narrowDemand = executorDemand(placements.executors, warnOf(log))
+  // Demand: what each executor still has left to run (`executorDemand`),
+  // told once the cache has said what it answers.
+  const demand = executorDemand(placements.executors, warnOf(log))
 
   // `cache.download` (default `all`) decides ONCE per task, here, whether a
   // remote execution's outputs come home.
@@ -892,9 +893,13 @@ async function runOnBus(
     // local-only runs never reach here, so their behavior + perf is
     // unchanged (no upfront key pass, no local probing).
     let prefetchDone: Promise<void> = Promise.resolve()
+    // A remote that is read answers which tasks it holds: demand settles
+    // on that answer, a failed prefetch settling it on none.
+    const prefetchSettles = prepared.hasRemoteLayer && policy.remoteRead
     if (prepared.hasRemoteLayer) {
       prefetchDone = steps.background('vx:prefetch', () =>
         startRemotePrefetch({
+          ...(demand.any ? { held: (ids: readonly string[]) => demand.settle(ids) } : {}),
           nodes,
           cache,
           workspaceRoot,
@@ -959,6 +964,14 @@ async function runOnBus(
       // A confirmed miss runs too.
       if (!remote && sandboxed.some((n) => shortCircuit.preProbed.get(n.id)?.hit === null))
         prewarm()
+    }
+    if (demand.any) {
+      if (prefetchSettles) void prefetchDone.finally(() => demand.settle([]))
+      else {
+        const hits: string[] = []
+        for (const [id, probe] of shortCircuit.preProbed) if (probe.hit !== null) hits.push(id)
+        demand.settle(hits)
+      }
     }
 
     // Whether this task runs behind a failure (`continueMode: 'always'`
@@ -1026,6 +1039,7 @@ async function runOnBus(
     if (explainMiss !== undefined) scope.explainMiss = explainMiss
     if (keepRun !== undefined) scope.keepRun = keepRun
     if (sandboxArmer !== null) scope.armSandbox = () => sandboxArmer.arm()
+    if (demand.any) scope.executing = demand.executing
     const argsOf = executeArgsOf(scope, {
       log: (node) => (node.config.exec?.persistent !== undefined ? serverLog(node.id) : log),
       placements,
@@ -1147,7 +1161,7 @@ async function runOnBus(
         judgeFlaky(o)
         keeper?.taskDone(o)
         log.taskComplete(o.node, o)
-        narrowDemand(o.node.id)
+        demand.finished(o.node.id)
       },
       // A crash a hand-broken lock entry caused is named as that; asked
       // only here, so a run that does not crash pays nothing.

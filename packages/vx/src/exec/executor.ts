@@ -273,9 +273,10 @@ export interface TaskExecutor {
   /** Per-task opt-out at placement time. Absent = accepts every task it is offered. */
   accepts?(task: TaskPlacement): boolean
   /**
-   * The tasks placed here that have NOT finished yet — called once after
-   * placement with the whole set, then again after each completion (any
-   * outcome: a cache hit and a failure both remove one).
+   * The tasks placed here that will run and have NOT finished yet — called
+   * first once the run's cache has said which placed tasks it holds (those
+   * restore, so they are left out), then again after each completion (any
+   * outcome, a failure too) and when a task it left out executes after all.
    *
    * An executor that provisions something per task — a container, an
    * allocation, a pod — otherwise has to guess. `capacity` says how much it
