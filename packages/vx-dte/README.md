@@ -415,14 +415,17 @@ machine together:
   - `workers` names each `WorkerSize`, `{ cpu, memory, max? }`: its cores
     and memory (bytes, or `'8GB'`, `'512MiB'`), which the run counts on
     when it starts one, until the worker reports what its machine has, and
-    how many of it one run may start (absent, no cap). Workers start in
-    declared order for the cores the remaining tasks keep busy: laid out
-    as early as their dependencies allow, each for its usual duration
-    (1 s without history), their work spread over their critical path
-    (core-seconds over its length, rounded up), and at least the cores of
-    the tasks longer than half that path, which run at once wherever they
-    go in it. None stops before the
-    run ends. A task the history has not measured runs alone on a worker;
+    how many of it one run may start (absent, no cap). Only work counts:
+    a task that missed the cache, or waits on a cached one that did; groups
+    and hits need no worker. At each miss, finish and join the run plays
+    that work out on its workers and on N more (`src/planner.ts`), each new
+    one joining after the warm-up the first took (20 s before one has),
+    and takes the fewest N that end within 5% (5 s at least) of the best.
+    A worker the plan needs later starts when its warm-up nears. An idle
+    worker leaves when the plan still ends in that margin with one started
+    in its place: none is let go and started again. The same signal
+    changes nothing. The
+    run ends: a task the history has not measured runs alone on a worker;
     one that used all of its worker's cores or memory (90%) last time runs
     alone on the smallest bigger size, which the run starts for it. Each
     run's history keeps where every task ran and that machine's size, so

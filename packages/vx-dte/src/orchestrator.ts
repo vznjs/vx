@@ -33,6 +33,7 @@ import {
   type ToOrchestrator,
   type WiredResult,
 } from './messages.js'
+import type { PlanWorker } from './planner.js'
 import { Usage, type UsageStats } from './usage.js'
 import { RelayError, type Participant } from './wire.js'
 
@@ -60,6 +61,8 @@ interface Job {
   prefetched?: boolean
   /** Asked back from its worker's queue for one that is free. */
   withdrawing?: boolean
+  /** When its worker began it. */
+  startedAt?: number
 }
 
 interface Worker {
@@ -115,8 +118,10 @@ export interface OrchestratorOptions {
   readonly run: string
   /** A task's cache key, once the run computed it (a hit's too); undefined when it has none. */
   readonly keyOf: (taskId: string) => string | undefined
-  /** Worker `id` (its label) left the run, lost or let go: room for another. */
-  readonly left?: (id: string) => void
+  /** Worker `id` (its label) was lost, or never started: room for another. */
+  readonly lost?: (id: string) => void
+  /** A worker joined: the run plans again. */
+  readonly joined?: () => void
   /** How much of the run waits on a task (`tailsMs`): the queue places the most first. */
   readonly tail?: (taskId: string) => number
 }
@@ -172,7 +177,7 @@ export class Orchestrator {
   private endedAt = 0
   /** Workers that joined and left, for the footer. */
   private readonly gone: Worker[] = []
-  /** Of `gone`, those the run let go (`retire`), not lost. */
+  /** Of `gone`, those the run let go (`release`), not lost. */
   private readonly retired = new Set<Worker>()
   /** Workers asked for that never joined, with why. */
   private readonly unstarted = new Map<string, string>()
@@ -181,13 +186,13 @@ export class Orchestrator {
   private pumping = false
   private joined = 0
   private readonly startedAt = performance.now()
-  /** Each time the run asked for workers: when, for how many cores in all, how many. */
+  /** Each time the run asked for workers: when, how many, for which work, ending when. */
   private readonly asks: {
     at: number
-    cores: number
     workers: number
     tasks: number
     measured: number
+    endsInMs: number
   }[] = []
   private readonly stop = new AbortController()
   private readonly loop: Promise<void>
@@ -538,6 +543,7 @@ export class Orchestrator {
     const job = a.busy.get(task)
     if (job === undefined || a.started.has(task)) return
     a.started.add(task)
+    job.startedAt = performance.now()
     a.usage.book(job.held?.cores ?? 0)
   }
 
@@ -644,6 +650,7 @@ export class Orchestrator {
         sandboxes: false,
         faulty: false,
       })
+      this.o.joined?.()
     } else if (body.type === 'lost') {
       const a = this.workers.get(body.id!)
       if (a === undefined) return
@@ -666,7 +673,7 @@ export class Orchestrator {
       if (again !== undefined) back.push(again)
     }
     this.queue.unshift(...back)
-    this.o.left?.(a.label)
+    this.o.lost?.(a.label)
     // Workers that join on their own may yet join; ones this run starts
     // are all it gets.
     if (this.spawnedAt.size > 0) this.stranded(`${a.label} was lost and no worker is left`)
@@ -734,29 +741,14 @@ export class Orchestrator {
     return this.queue.some((j) => j.req.taskId === taskId) ? null : undefined
   }
 
-  /** The run asks for `workers` more, as `cores` is what its remaining work keeps busy. */
-  asked(cores: number, workers: number, tasks: number, measured: number): void {
-    this.asks.push({ at: performance.now() - this.startedAt, cores, workers, tasks, measured })
+  /** The run asks for `workers` more for `tasks` it knows miss, its plan ending in `endsInMs`. */
+  asked(workers: number, tasks: number, measured: number, endsInMs: number): void {
+    this.asks.push({ at: performance.now() - this.startedAt, workers, tasks, measured, endsInMs })
   }
 
   /** `demand` asked the adapter for worker `id` (`WorkerSpawn.id`). */
   spawned(id: string, declared: Declared): void {
     this.spawnedAt.set(id, { at: performance.now(), declared })
-  }
-
-  /**
-   * The cores the run's workers have: what each online reports, and what
-   * each still starting declares. `retire` counts the reported ones too;
-   * a start counted by the declared size beside it started a worker for
-   * every one that left (a local() worker reports its host).
-   */
-  cores(): number {
-    const joined = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
-    let n = 0
-    for (const a of this.workers.values()) if (!a.faulty) n += a.cores
-    for (const [id, { declared }] of this.spawnedAt)
-      if (!joined.has(id) && !this.unstarted.has(id)) n += declared.cpu
-    return n
   }
 
   /**
@@ -770,36 +762,55 @@ export class Orchestrator {
     return least
   }
 
-  /** The most cores a worker online has; 0 with none. */
-  biggestCores(): number {
-    let most = 0
-    for (const a of this.workers.values()) most = Math.max(most, a.cores)
-    return most
+  /**
+   * The workers the plan places on (`planner.ts`): each online, what it
+   * runs and how long that has left by `ms`, and each still starting,
+   * joining after `warmUpMs` from its ask. With them, the tasks they run.
+   */
+  planState(
+    ms: (taskId: string) => number | undefined,
+    warmUpMs: number,
+  ): { workers: PlanWorker[]; running: Set<string> } {
+    const now = performance.now()
+    const running = new Set<string>()
+    const workers: PlanWorker[] = []
+    for (const a of this.workers.values()) {
+      if (a.faulty) continue
+      const jobs = [...a.busy.values()].filter((j) => j.startedAt !== undefined)
+      for (const j of jobs) running.add(j.req.taskId)
+      workers.push({
+        id: a.id,
+        cores: a.cores,
+        memory: a.memory,
+        at: 0,
+        idle: a.busy.size === 0,
+        running: jobs.map((j) => ({
+          cores: j.held?.cores ?? 0,
+          memory: j.held?.memory ?? 0,
+          endsIn: Math.max(0, (ms(j.req.taskId) ?? 0) - (now - j.startedAt!)),
+        })),
+      })
+    }
+    const joined = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
+    for (const [id, { at, declared }] of this.spawnedAt)
+      if (!joined.has(id) && !this.unstarted.has(id))
+        workers.push({
+          id,
+          cores: declared.cpu,
+          memory: declared.memory,
+          at: Math.max(0, warmUpMs - (now - at)),
+          idle: false,
+          running: [],
+        })
+    return { workers, running }
   }
 
-  /**
-   * Idle workers the rest of the run does not need leave (`exit`): those
-   * holding no task, beyond the cores `wantCores` asks of workers, biggest
-   * kept first, unless `needed` says a remaining task wants one that big.
-   */
-  retire(wantCores: number, needed: (a: { cores: number; memory: number }) => boolean): void {
-    // One that faulted gets no more work: idle, it only holds its machine.
+  /** Workers `ids` leave (`exit`) if still idle, and each faulty idle one: none comes back. */
+  release(ids: Iterable<string>): void {
     for (const a of this.workers.values()) if (a.faulty && a.busy.size === 0) this.letGo(a)
-    const online = [...this.workers.values()].filter((a) => !a.faulty)
-    let cores = 0
-    for (const a of online) if (a.busy.size > 0) cores += a.cores
-    const idle = online.filter((a) => a.busy.size === 0).sort((x, y) => y.cores - x.cores)
-    // An idle one a waiting prefetched task can move to stays for it.
-    let movable = 0
-    for (const a of online)
-      for (const j of a.busy.values())
-        if (j.prefetched === true && !a.started.has(j.req.taskId)) movable++
-    for (const a of idle) {
-      if (cores < wantCores || needed(a) || movable-- > 0) {
-        cores += a.cores
-        continue
-      }
-      this.letGo(a)
+    for (const id of ids) {
+      const a = this.workers.get(id)
+      if (a !== undefined && a.busy.size === 0) this.letGo(a)
     }
   }
 
@@ -809,7 +820,6 @@ export class Orchestrator {
     this.gone.push(a)
     this.retired.add(a)
     this.post(a, { type: 'exit' })
-    this.o.left?.(a.label)
   }
 
   /**
@@ -832,7 +842,7 @@ export class Orchestrator {
     const joined = [...this.workers.values(), ...this.gone].some((a) => a.label === id)
     if (!joined && !this.restarted) {
       this.restarted = true
-      this.o.left?.(id)
+      this.o.lost?.(id)
     }
     this.stranded(`no worker could start: ${id} ${reason}`)
   }
@@ -870,8 +880,8 @@ export class Orchestrator {
    * Each machine that joined, and this one when it ran tasks, with what it
    * did: the run summary's `machines`. Core asks once its tasks are over,
    * before its teardown ends this run: then is its end, so one still here
-   * is `stopped`, online until now (small#2 read online 1ms, booked 433802
-   * of 4: main, 2026-10-23).
+   * was online until now (small#2 read online 1ms, booked 433802 of 4:
+   * main, 2026-10-23). Each is `ok`, or `failed` when lost or faulty.
    */
   machines(): MachineReport[] {
     const gone = new Set(this.gone)
@@ -902,9 +912,10 @@ export class Orchestrator {
       }
     }
     return [...this.workers.values(), ...this.gone].map((a) => ({
+      // Whether it failed or ran its part, not why it left (M, 2026-10-23).
       ...report(
         a.label,
-        this.retired.has(a) ? 'left' : gone.has(a) ? 'lost' : 'stopped',
+        (gone.has(a) && !this.retired.has(a)) || a.faulty ? 'failed' : 'ok',
         a.usage,
         a.reported.cores,
         a.reported.memory,
@@ -1005,7 +1016,7 @@ export class Orchestrator {
                 `${'asked'.padEnd(width)}  ${this.asks
                   .map(
                     (x) =>
-                      `${x.workers} at ${seconds(x.at)} for ${Math.ceil(x.cores)} cores, ${x.tasks} tasks (${x.measured} measured)`,
+                      `${x.workers} at ${seconds(x.at)} for ${x.tasks} tasks (${x.measured} measured), plan ${seconds(x.endsInMs)}`,
                   )
                   .join(' · ')}`,
               ),

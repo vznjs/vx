@@ -16,7 +16,7 @@ import {
 import { Orchestrator, runKey, type Need } from '../src/orchestrator.js'
 import { outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
-import { busyCores, endsInMs, tailsMs } from '../src/width.js'
+import { tailsMs } from '../src/planner.js'
 import { join } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
 import { shares, type RunOrder } from '../src/messages.js'
@@ -184,7 +184,7 @@ it('gives a failed worker start one more worker, then fails the run', async () =
       cacheFacts: async () => ({ refs: [], lent: {} }),
       run: R,
       keyOf: () => undefined,
-      left: (id) => {
+      lost: (id) => {
         freed.push(id)
         // As dte() does: the freed place starts the next worker.
         o.spawned(`small#${freed.length + 1}`, { size: 'small', cpu: 1, memory: 1 })
@@ -291,6 +291,7 @@ async function harness(
       orders,
       poll: () => me.poll(),
       leave: () => me.leave(),
+      id: me.id,
     }
   }
   const req = (taskId: string, cacheKey?: string) =>
@@ -376,8 +377,10 @@ it('packs tasks onto the worker with fewest cores free, and the idle one leaves'
     await Bun.sleep(50)
     for (const id of ['t1', 't2', 't3']) void h.o.execute(h.req(id))
     expect(await a.batches()).toEqual([['t1', 't2', 't3']])
-    h.o.retire(3, () => false)
+    // Only an idle one goes.
+    h.o.release([a.id, b.id])
     expect(await b.bodies()).toEqual([{ type: 'exit' }])
+    expect(h.o.planState(() => undefined, 0).workers.map((w) => w.id)).toEqual([a.id])
   } finally {
     await h.stop()
   }
@@ -433,7 +436,7 @@ it('a task’s tail is its duration and its longest chain of dependants', () => 
   const ms: Record<string, number> = { import: 1_000, build: 41_000, test: 4_000 }
   const tail = tailsMs(nodes, (id) => ms[id])
   expect(['import', 'build', 'test', 'shard', 'ci'].map(tail)).toEqual([
-    46_000, 45_000, 4_000, 1_000, 0,
+    46_000, 45_000, 4_000, 30_000, 0,
   ])
 })
 
@@ -449,8 +452,6 @@ it('a task waiting in a busy worker’s queue moves to a worker that is free', a
     await a.begin('t1')
     const b = await h.worker(1)
     expect(await a.bodies()).toEqual([{ type: 'withdraw', task: 't2' }])
-    // Idle while t2 comes back, b is not let go: t2 is on its way to it.
-    h.o.retire(0, () => false)
     await a.say({ type: 'withdrawn', task: 't2' })
     expect(await b.batches()).toEqual([['t2']])
     // Begun already, a task stays where it is.
@@ -473,7 +474,7 @@ it('an idle worker that faulted is let go', async () => {
     expect(await a.batches()).toEqual([['t1']])
     await a.say({ type: 'fault', task: 't1', reason: 'ENOSPC' })
     expect(await b.batches()).toEqual([['t1']])
-    h.o.retire(Infinity, () => true)
+    h.o.release([])
     expect(await a.bodies()).toEqual([{ type: 'exit' }])
   } finally {
     await h.stop()
@@ -520,20 +521,20 @@ it('a task waits until a worker begins it; the live rows leave out its machine',
 
 // A worker the rest of the run cannot keep busy leaves rather than idle
 // until the run ends; one a remaining task needs for its size stays.
-it('an idle worker the run no longer needs leaves; one a big task needs stays', async () => {
+it('a worker the plan lets go leaves, and the plan no longer places on it', async () => {
   const h = await harness(new Map([node('t1')]))
   try {
     const a = await h.worker(4)
     const b = await h.worker(2)
     await Bun.sleep(50)
-    h.o.retire(0, (x) => x.cores >= 4)
+    h.o.release([b.id])
     expect(await b.types()).toContain('exit')
-    expect(h.o.biggestCores()).toBe(4)
     const footer = JSON.stringify(h.o.footer())
     expect(footer).toContain('left')
-    h.o.retire(0, () => false)
+    expect(h.o.planState(() => undefined, 0).workers.map((w) => w.cores)).toEqual([4])
+    h.o.release([a.id])
     expect(await a.types()).toContain('exit')
-    expect(h.o.biggestCores()).toBe(0)
+    expect(h.o.planState(() => undefined, 0).workers).toEqual([])
   } finally {
     await h.stop()
   }
@@ -544,7 +545,7 @@ it('an idle worker the run no longer needs leaves; one a big task needs stays', 
 it('the final summary says how each worker ended, its size and machine under it', async () => {
   const h = await harness(new Map([node('t1')]))
   const small = { size: 'small', cpu: 2, memory: 4e9 }
-  h.o.asked(5.5, 2, 3, 1)
+  h.o.asked(2, 3, 1, 70_000)
   h.o.spawned('small#1', small)
   h.o.spawned('big#1', { size: 'big', cpu: 4, memory: 4e9 })
   const a = await h.worker(2, 'small#1')
@@ -553,7 +554,7 @@ it('the final summary says how each worker ended, its size and machine under it'
   await Bun.sleep(50)
   await c.leave()
   for (let i = 0; i < 40 && !JSON.stringify(h.o.footer()).includes('lost'); i++) await Bun.sleep(25)
-  h.o.retire(0, (x) => x.cores === 2)
+  h.o.release([b.id])
   expect(await b.types()).toContain('exit')
   await h.stop()
   const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
@@ -564,9 +565,9 @@ it('the final summary says how each worker ended, its size and machine under it'
   expect(rows[at('big#1')]).toMatch(/^big#1 +left/)
   expect(rows.some((r) => r.trimStart().startsWith('!'))).toBe(false)
   expect(rows.filter((r) => /^\S+ +online/.test(r))).toEqual([])
-  // When the run asked for workers, and for how many cores: why it had as many as it did.
+  // When the run asked for workers, for which work, and when its plan ended: why it had as many as it did.
   expect(rows.filter((r) => r.startsWith('asked'))).toEqual([
-    expect.stringMatching(/^asked +2 at 0\.\ds for 6 cores, 3 tasks \(1 measured\)$/),
+    expect.stringMatching(/^asked +2 at 0\.\ds for 3 tasks \(1 measured\), plan 70\.0s$/),
   ])
   // Tasks that reported no memory read `memory peak 0 B`.
   expect(rows.filter((r) => r.includes('memory peak'))).toEqual([])
@@ -584,7 +585,7 @@ it('lists the workers that left as one line while the run goes', async () => {
     const b = await h.worker(2)
     const c = await h.worker(2)
     await Bun.sleep(50)
-    h.o.retire(0, (x) => x.cores >= 4)
+    h.o.release([b.id, c.id])
     expect(await b.types()).toContain('exit')
     expect(await c.types()).toContain('exit')
     const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
@@ -647,8 +648,8 @@ it('a worker its adapter says exited is lost at once, its task run again', async
     await b.finish('t1')
     expect((await t1).exitCode).toBe(0)
     expect(h.o.machines().map((m) => [m.name, m.status])).toEqual([
-      ['worker#2', 'stopped'],
-      ['worker#1', 'lost'],
+      ['worker#2', 'ok'],
+      ['worker#1', 'failed'],
     ])
   } finally {
     await h.stop()
@@ -657,7 +658,7 @@ it('a worker its adapter says exited is lost at once, its task run again', async
 
 // Asked before the run's end, a worker still there read online 1 ms and
 // booked 433802 of 4 (main, 2026-10-23).
-it('reports a worker still there at the summary as stopped, online until then', async () => {
+it('reports a worker still there at the summary online until then', async () => {
   const h = await harness(new Map([node('t1')]))
   try {
     const a = await h.worker(1)
@@ -668,7 +669,7 @@ it('reports a worker still there at the summary as stopped, online until then', 
     await a.finish('t1')
     expect((await t1).exitCode).toBe(0)
     const [m] = h.o.machines()
-    expect(m!.status).toBe('stopped')
+    expect(m!.status).toBe('ok')
     expect(m!.onlineMs).toBeGreaterThanOrEqual(100)
     expect(m!.bookedAvg).toBeLessThanOrEqual(m!.cores)
   } finally {
@@ -1447,73 +1448,7 @@ it('counts a task the stop killed as aborted, a timeout as failed', () => {
   expect([u.done, u.failed, u.aborted]).toEqual([1, 2, 1])
 })
 
-it('starts the cores that fit the rest of the run in its critical path, not its peak', () => {
-  const graph = (entries: Array<[string, string[]]>) =>
-    new Map(
-      entries.map(([id, deps]) => [
-        id,
-        { id, deps, config: { exec: { command: 'true' } } } as unknown as TaskNode,
-      ]),
-    )
-  const one = () => 1
-  // Eight at once, all of the time.
-  const wide = graph(Array.from({ length: 8 }, (_, i): [string, string[]] => [`p#t${i}`, []]))
-  expect(busyCores(new Set(wide.keys()), wide, one, () => 1000)).toBe(8)
-  // Four at once for a third of it, between two lone tasks: six task-seconds in three.
-  const mid = graph([
-    ['p#a', []],
-    ...Array.from({ length: 4 }, (_, i): [string, string[]] => [`p#b${i}`, ['p#a']]),
-    ['p#c', ['p#b0', 'p#b1', 'p#b2', 'p#b3']],
-  ])
-  expect(busyCores(new Set(mid.keys()), mid, one, () => 1000)).toBe(2)
-  // Its peak, for workers that cannot come back once they leave: four.
-  expect(busyCores(new Set(mid.keys()), mid, one, () => 1000, true)).toBe(4)
-  // The same, the wide part long: four.
-  expect(busyCores(new Set(mid.keys()), mid, one, (id) => (id.includes('#b') ? 5000 : 1000))).toBe(
-    4,
-  )
-  // Done tasks are not laid out.
-  expect(busyCores(new Set(['p#c']), mid, one, () => 1000)).toBe(1)
-  // Eight short ones beside one four times as long, CI's shards beside its
-  // unsafe suite: three, where the level held for half the run was one and
-  // the eight queued behind it.
-  const tail = graph([
-    ...Array.from({ length: 8 }, (_, i): [string, string[]] => [`p#s${i}`, []]),
-    ['p#u', []],
-  ])
-  expect(busyCores(new Set(tail.keys()), tail, one, (id) => (id === 'p#u' ? 4000 : 1000))).toBe(3)
-  // Eight for 4 s, then one for 4 s: five now, but a worker that takes 5 s
-  // to join finds one.
-  const early = graph([
-    ...Array.from({ length: 8 }, (_, i): [string, string[]] => [`p#w${i}`, []]),
-    ['p#z', Array.from({ length: 8 }, (_, i) => `p#w${i}`)],
-  ])
-  expect([
-    busyCores(new Set(early.keys()), early, one, () => 4000),
-    busyCores(new Set(early.keys()), early, one, () => 4000, false, 5000),
-  ]).toEqual([5, 1])
-  // 36 shards of 40 to 75 s at 0.8 of a core: all at once, 29 cores, where
-  // their work over the slowest one's path was 23 and a second wave queued.
-  const shards = graph(Array.from({ length: 36 }, (_, i): [string, string[]] => [`p#h${i}`, []]))
-  const ms = (id: string): number => 40_000 + Number(id.slice(3)) * 1_000
-  expect(busyCores(new Set(shards.keys()), shards, () => 0.8, ms)).toBe(29)
-})
-
-it('knows how long the rest of the run takes at the least, and how long a worker took to join', async () => {
-  const graph = new Map(
-    [
-      ['p#a', []],
-      ['p#b', ['p#a']],
-      ['p#c', []],
-    ].map(([id, deps]) => [
-      id as string,
-      { id, deps, config: { exec: { command: 'true' } } } as unknown as TaskNode,
-    ]),
-  )
-  const ms = (id: string) => ({ 'p#a': 2000, 'p#b': 3000, 'p#c': 4000 })[id]
-  expect(endsInMs(new Set(graph.keys()), graph, ms)).toBe(5000)
-  expect(endsInMs(new Set(['p#b', 'p#c']), graph, ms)).toBe(4000)
-  expect(endsInMs(new Set(), graph, ms)).toBe(0)
+it('knows how long a worker took to join', async () => {
   const h = await harness(new Map([node('t1')]))
   try {
     expect(h.o.warmUpMs()).toBeUndefined()
