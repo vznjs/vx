@@ -30,8 +30,8 @@ stands for (`exit 137 (128 + SIGKILL)`, as the run's own frame and
 `vx last` say it), a timeout as `timed out, exit 143`, a persistent task
 that never became ready as `never ready (timed out)`, a sandboxed task's
 violation count, and the tasks each failure blocked. A server a
-distributed run carried to its dependants' workers reads `served its
-dependants`, with no duration of its own. When an executor
+distributed run carried to its dependants' workers reads `served`,
+with no duration of its own. When an executor
 ran the run on other machines (`@vzn/vx-dte`'s workers), a Workers table
 shows each one's status, warm-up, tasks, time online and idle, the cores
 its tasks were expected to use (their last run's) beside the cores it used, its peak RAM of its memory, and
