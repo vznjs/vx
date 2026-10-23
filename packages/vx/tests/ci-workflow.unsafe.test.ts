@@ -124,7 +124,6 @@ describe('ci.yml', () => {
     ).toEqual([
       'actions/checkout',
       'oven-sh/setup-bun',
-      'actions/cache/restore',
       'bun install --frozen-lockfile',
       'bun packages/vx/src/bin.ts lock --check',
       run,
@@ -133,20 +132,14 @@ describe('ci.yml', () => {
   })
 
   // The remote cache serves every hit (owner, 2026-10-23: "we dont need
-  // to carry any vx cache anymore"): a run keeps only Bun's packages, and a
-  // worker the sandbox runtime's too.
+  // to carry any vx cache anymore"), and Bun's packages restored took as
+  // long as a cold install (4-9 s against about 5 s, main 68b851d): only
+  // a worker's sandbox runtime is kept.
   it('carries no vx cache between runs', () => {
     const cached = [...Object.values(doc.jobs), worker].flatMap((j) =>
       j.steps!.filter((s) => s.uses?.startsWith('actions/cache')).map((s) => s.with?.['path']),
     )
-    expect(cached).toEqual([
-      '~/.bun/install/cache',
-      '~/.bun/install/cache',
-      '~/.bun/install/cache',
-      '~/.bun/install/cache',
-      '~/.cache/vx/setup-debs',
-      '~/.cache/vx/setup-debs',
-    ])
+    expect(cached).toEqual(['~/.cache/vx/setup-debs', '~/.cache/vx/setup-debs'])
   })
 
   // `vx setup github` saves under `vx-setup-debs-<RUNNER_OS>-<RUNNER_ARCH>-<image>`
@@ -228,9 +221,7 @@ describe('vx-worker.yml', () => {
     expect(worker.steps!.map((s) => s.uses?.split('@')[0] ?? s.run)).toEqual([
       'actions/checkout',
       'oven-sh/setup-bun',
-      'actions/cache/restore',
       'bun install --frozen-lockfile',
-      'actions/cache/save',
       'actions/cache/restore',
       'bun packages/vx/src/bin.ts setup github',
       'actions/cache/save',
