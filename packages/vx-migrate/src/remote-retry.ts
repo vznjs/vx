@@ -77,10 +77,10 @@ function retryable(status: number): boolean {
   return status >= 500 && status !== 501
 }
 
-/** A refused port or an unresolved host, as Bun's `fetch` codes them (measured on 1.4.2). */
+/** A refused port or an unresolved host, as Bun's `fetch` codes them (1.4.4 took errno names). */
 function neverConnected(err: unknown): boolean {
   const code = (err as { code?: unknown } | null)?.code
-  return code === 'ConnectionRefused' || code === 'ENOTFOUND'
+  return code === 'ECONNREFUSED' || code === 'ENOTFOUND'
 }
 
 /** `Retry-After` as seconds or an HTTP date, capped as Turbo caps it. */

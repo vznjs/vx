@@ -565,7 +565,7 @@ for (const wire of ['turboCache', 'nxCache'] as const) {
 
     it('a closed port: green, the task executes, and ONE warning names the request and the server', async () => {
       const { first } = await unreachable('http://127.0.0.1:1')
-      expect(first).toBe('Unable to connect. Is the computer able to access the url?')
+      expect(first).toBe('ECONNREFUSED: Unable to connect. Is the computer able to access the url?')
     })
 
     it('a host that does not resolve: green, the task executes, and ONE warning names the request and the server', async () => {

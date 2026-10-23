@@ -18,7 +18,7 @@ import { collectInfo } from '../src/orchestrator/index.js'
 describe('isUnsupportedBun', () => {
   it('compares major, minor and patch in that order', () => {
     const verdicts = Object.fromEntries(
-      ['0.9.9', '1.3.11', '1.3.99', '1.4.0', '1.4.2', '1.5.0', '2.0.0'].map((v) => [
+      ['0.9.9', '1.3.11', '1.3.99', '1.4.2', '1.4.4', '1.5.0', '2.0.0'].map((v) => [
         v,
         isUnsupportedBun(v),
       ]),
@@ -27,18 +27,18 @@ describe('isUnsupportedBun', () => {
       '0.9.9': true,
       '1.3.11': true,
       '1.3.99': true,
-      '1.4.0': false,
-      '1.4.2': false,
+      '1.4.2': true,
+      '1.4.4': false,
       '1.5.0': false,
       '2.0.0': false,
     })
   })
 
   it('reads a canary suffix as its release, and junk as 0', () => {
-    // `Bun.version` on a canary is `1.4.2-canary.20260919`; parseInt stops at
+    // `Bun.version` on a canary is `1.4.4-canary.20260919`; parseInt stops at
     // the dash, so the build is judged by its release. A string that parses to
     // nothing is treated as ancient rather than waved through.
-    expect(isUnsupportedBun('1.4.2-canary.20260919')).toBe(false)
+    expect(isUnsupportedBun('1.4.4-canary.20260919')).toBe(false)
     expect(isUnsupportedBun('1.3.11-canary.1')).toBe(true)
     expect(isUnsupportedBun('not-a-version')).toBe(true)
   })

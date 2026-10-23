@@ -76,6 +76,8 @@ export {
   wholeSubtreePrefixes,
   slashBraceExpansions,
   braceAlternatives,
+  braceRange,
+  BRACE_RANGE_LIMIT,
 } from './paths.js'
 export {
   claimExitForSignal,

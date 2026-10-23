@@ -224,8 +224,9 @@ export const BUN_GLOB_WILDCARDS = /[*?[\]{}]/
 
 /**
  * An extglob group: `!(…)`, `@(…)`, `+(…)`, `*(…)`, `?(…)`. npm, yarn,
- * Nx and Turbo read it; `Bun.Glob` has none, and reads the group as
- * literal text or as a plain wildcard. A task input `src/@(x|y).ts` keyed
+ * Nx and Turbo read it; `Bun.Glob` had none before 1.4.4, and vx's own
+ * matchers still read the group as literal text or as a plain wildcard.
+ * A task input `src/@(x|y).ts` keyed
  * no file, so an edit to `src/x.ts` replayed a stale hit, and a member
  * glob `packages/!(x)` took in x (turborepo#3766). Every glob vx hands
  * `Bun.Glob` from a config refuses it.
@@ -487,7 +488,7 @@ export function slashBraceExpansions(pattern: string): string[] {
   return expandBraces(pattern, true)
 }
 
-/** `pattern` with every brace group of two or more alternatives expanded. */
+/** `pattern` with every brace group of two or more alternatives, or a range, expanded. */
 export function braceAlternatives(pattern: string): string[] {
   return expandBraces(pattern, false)
 }
@@ -506,18 +507,51 @@ function expandBraces(pattern: string, slashOnly: boolean): string[] {
     }
     if (close === -1) return [pattern]
     const body = pattern.slice(open + 1, close)
-    if (cuts.length === 0 || (slashOnly && !body.includes('/'))) continue
+    if (slashOnly && !body.includes('/')) continue
+    const range = cuts.length === 0 ? braceRange(body) : null
+    if (cuts.length === 0 && range === null) continue
     const head = pattern.slice(0, open)
     const tail = pattern.slice(close + 1)
     const bounds = [open, ...cuts, close]
+    const alts = range ?? bounds.slice(1).map((end, k) => pattern.slice(bounds[k]! + 1, end))
     const out: string[] = []
-    for (let k = 0; k + 1 < bounds.length; k++) {
-      const alt = pattern.slice(bounds[k]! + 1, bounds[k + 1])
-      out.push(...expandBraces(head + alt + tail, slashOnly))
-    }
+    for (const alt of alts) out.push(...expandBraces(head + alt + tail, slashOnly))
     return [...new Set(out)]
   }
   return [pattern]
+}
+
+const NUMERIC_RANGE = /^(-?\d+)\.\.(-?\d+)(?:\.\.(-?\d+))?$/
+const LETTER_RANGE = /^(?:([a-z])\.\.([a-z])|([A-Z])\.\.([A-Z]))(?:\.\.(-?\d+))?$/
+/** The most names a brace range may name: each is a glob vx compiles. */
+export const BRACE_RANGE_LIMIT = 1024
+
+/**
+ * A brace range's names, as `Bun.Glob` reads them since 1.4.4 (bash's
+ * rule): `1..3`, `3..1`, `01..03` padded, `a..c`, `1..10..3` stepped; null
+ * for any other body, a mixed-case one (`A..c` spans `[`, `\` and `]`) and
+ * one past `BRACE_RANGE_LIMIT`. vx expands it like a comma brace, so every matcher
+ * names the files `Bun.Glob` does.
+ */
+export function braceRange(body: string): string[] | null {
+  const num = NUMERIC_RANGE.exec(body)
+  const letter = num === null ? LETTER_RANGE.exec(body) : null
+  const m =
+    num ?? (letter && [letter[0], letter[1] ?? letter[3], letter[2] ?? letter[4], letter[5]])
+  if (m === null) return null
+  const from = num ? Number(m[1]) : m[1]!.charCodeAt(0)
+  const to = num ? Number(m[2]) : m[2]!.charCodeAt(0)
+  const step = Math.abs(Number(m[3] ?? 1)) || 1
+  if (Math.abs(to - from) / step >= BRACE_RANGE_LIMIT) return null
+  const padded = num !== null && [m[1]!, m[2]!].some((n) => /^-?0\d/.test(n))
+  const width = padded ? Math.max(m[1]!.length, m[2]!.length) : 0
+  const out: string[] = []
+  for (let i = from; from <= to ? i <= to : i >= to; i += from <= to ? step : -step) {
+    if (!num) out.push(String.fromCharCode(i))
+    else if (i < 0) out.push(`-${String(-i).padStart(width - 1, '0')}`)
+    else out.push(String(i).padStart(width, '0'))
+  }
+  return out
 }
 
 /**

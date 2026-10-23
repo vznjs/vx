@@ -48,8 +48,11 @@ export const CHUNK_BYTES = 65535
  */
 export const SAFE_CHUNK_BYTES = 65535
 
-/** The oldest Bun whose http2 client survives a CHUNK_BYTES-sized message. */
-export const MIN_BUN = [1, 4, 0] as const
+/**
+ * The package's Bun floor (`engines.bun`). Its http2 client survives a
+ * CHUNK_BYTES-sized message from 1.4.0 on; the floor is core's, 1.4.4.
+ */
+export const MIN_BUN = [1, 4, 4] as const
 
 /**
  * Refuse to run on a Bun that would hang instead of uploading. A version this

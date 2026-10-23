@@ -484,11 +484,13 @@ export function execWord(command: string): string | undefined {
 
 /**
  * POSIX shells report signal death as 128 + signal number (SIGTERM →
- * 143, SIGKILL → 137). Bun gives us the signal NAME; `os.constants`
- * maps it to the platform-correct number. Unknown names fall back to
- * 130 (128 + SIGINT).
+ * 143, SIGKILL → 137). Bun gives the signal's NAME, or since 1.4.4 its
+ * number when the signal has no name; `os.constants` maps a name to
+ * the platform-correct number. Unknown names fall back to 130 (128 +
+ * SIGINT).
  */
-export function signalExitCode(signal: string): number {
+export function signalExitCode(signal: string | number): number {
+  if (typeof signal === 'number') return 128 + signal
   const num = (osConstants.signals as Partial<Record<string, number>>)[signal]
   return num === undefined ? 130 : 128 + num
 }
@@ -1040,7 +1042,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     durationMs: Date.now() - start,
     stdout,
     stderr,
-    ...(proc.signalCode ? { signal: proc.signalCode } : {}),
+    ...(typeof proc.signalCode === 'string' ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...(cut ? { leftRunning: true } : {}),
     ...resourceUsageToCpuRss(proc.resourceUsage(), rssFloorFor),

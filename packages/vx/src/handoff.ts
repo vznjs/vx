@@ -159,8 +159,11 @@ export async function handOff(bin: string, args: readonly string[]): Promise<nev
     })
   }
   const code = await child.exited
+  const signal = child.signalCode
+  if (signal === null) process.exit(code)
+  if (typeof signal === 'number') process.exit(128 + signal)
   const { constants } = await import('node:os')
-  process.exit(child.signalCode === null ? code : 128 + (constants.signals[child.signalCode] ?? 1))
+  process.exit(128 + (constants.signals[signal] ?? 1))
 }
 
 function inForeground(): boolean {
