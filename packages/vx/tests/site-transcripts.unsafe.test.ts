@@ -227,3 +227,50 @@ describe("the sandboxing guide's failures", () => {
     )
   })
 })
+
+// The quickstart's two terminal lines, from the run its steps make: a root
+// project, run twice, then a source edit.
+describe("the quickstart's output", () => {
+  it('the second run is up-to-date, and vx why names the edited file', async () => {
+    const page = readFileSync(path.resolve(GUIDES, '..', 'quickstart.mdx'), 'utf8')
+    // Each sits in a step, indented three spaces.
+    const hit = /```text frame="terminal" title="second run"\n {3}(.*)\n/.exec(page)![1]!
+    const verdict = /```text frame="terminal"\n {3}( +verdict .*)\n/.exec(page)![1]!
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-site-quickstart-'))
+    try {
+      await mkdir(path.join(dir, '.vx'))
+      await mkdir(path.join(dir, 'src'))
+      await writeFile(path.join(dir, '.vx/workspace.mjs'), 'export default { plugins: [] }\n')
+      await writeFile(
+        path.join(dir, 'vx.config.mjs'),
+        `export default {
+  tasks: {
+    build: {
+      exec: { command: 'mkdir -p dist && cp src/index.ts dist/' },
+      inputs: { files: ['src/**', 'tsconfig.json'] },
+      cache: { outputs: { files: ['dist/**'] } },
+    },
+  },
+}
+`,
+      )
+      await writeFile(path.join(dir, 'src/index.ts'), '1\n')
+      await writeFile(path.join(dir, 'tsconfig.json'), '{}\n')
+      const at = (...cmd: string[]) =>
+        Bun.spawnSync({ cmd, cwd: dir, env: ENV }).stdout.toString() as string
+      at('git', 'init', '-q', '-b', 'main')
+      at('git', 'add', '-A')
+      at('git', 'commit', '-qm', 'one')
+      const run = (...args: string[]) => at(process.execPath, BIN, ...args)
+      run('lock')
+      run('run', 'build')
+      const ms = (t: string) => t.replace(/\(\d+ms\)/g, '(<ms>)')
+      expect(ms(run('run', 'build')).split('\n')).toContain(ms(hit))
+      await writeFile(path.join(dir, 'src/index.ts'), '2\n')
+      run('run', 'build')
+      expect(run('why', 'build').split('\n')).toContain(verdict)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
