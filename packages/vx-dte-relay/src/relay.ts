@@ -486,6 +486,9 @@ export function createRelay(opts: RelayOptions): Relay {
         throw new HttpError(400, 'an orchestrator joins with key: its P-256 public key')
       }
     }
+    // Read again: another join may have made the run while this one's body
+    // came, and a second one made here would replace it and its agents.
+    run = runs.get(key)
     if (run?.closed === true) throw new HttpError(410, 'run closed')
     if (run === undefined) {
       run = { key, closed: false, byId: new Map(), openedAt: Date.now() }
