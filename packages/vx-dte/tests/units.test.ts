@@ -554,6 +554,31 @@ it('a task lost with two agents fails naming both; one not begun goes back free'
   }
 })
 
+// An adapter that saw its agent's process or job end says so: its tasks
+// went back when the relay stopped hearing it, 20 s later (2026-10-23).
+it('an agent its adapter says exited is lost at once, its task run again', async () => {
+  const h = await harness(new Map([node('t1')]), undefined, 60_000)
+  try {
+    const a = await h.agent(1)
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.begin('t1')
+    await Bun.sleep(50)
+    h.o.failed('agent#1', 'exited 137')
+    const b = await h.agent(1)
+    expect(await b.batches()).toEqual([['t1']])
+    await b.finish('t1')
+    expect((await t1).exitCode).toBe(0)
+    expect(h.o.machines().map((m) => [m.name, m.status])).toEqual([
+      ['agent#2', 'online'],
+      ['agent#1', 'lost'],
+    ])
+  } finally {
+    await h.stop()
+  }
+})
+
 it('an agent that could not run a task it began gets no more; two such fail it', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
   try {
