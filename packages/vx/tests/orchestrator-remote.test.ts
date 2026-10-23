@@ -254,6 +254,53 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     TIMEOUT,
   )
 
+  // A probe's hit is a hint, not the artifact: the server may have dropped
+  // it since, or a hit recorded by an earlier run may be stale. The GET's
+  // 404 is the truth, and the task runs (M, 2026-10-23).
+  it(
+    'a key hasMany reports held whose GET is 404 runs as a miss',
+    async () => {
+      const fixture = await makeFixture('vx-remote-stale-probe-')
+      const remote = startArtifactEndpoint()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: BUILD_CONFIG,
+        })
+        const opts = { cwd: fixture.root, tasks: ['build'], log: silentLogger(fixture) }
+        expect((await run({ ...opts, remoteCache: remote.layer })).ok).toBe(true)
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
+        await rm(path.join(fixture.root, 'packages', 'app', 'out.txt'))
+        const [hash] = [...remote.store.keys()]
+        remote.store.clear()
+        remote.getCounts.clear()
+        const asked: string[] = []
+        const stale: RemoteCacheLayer = {
+          ...remote.layer,
+          async has() {
+            return {}
+          },
+          async hasMany(hashes) {
+            asked.push(...hashes)
+            return new Map(hashes.map((h) => [h, {}]))
+          },
+        }
+        const second = await run({ ...opts, remoteCache: stale })
+        expect([
+          second.ok,
+          second.outcomes[0]!.status,
+          asked.includes(hash!),
+          remote.getCounts.get(hash!),
+          await Bun.file(path.join(fixture.root, 'packages', 'app', 'out.txt')).text(),
+          fixture.err.filter((l) => /remote|cache/i.test(l)),
+        ]).toEqual([true, 'success', true, 1, 'built\n', []])
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   // A local save stores the masked command (L-11), but a remote hit's
   // ingest wrote the one the lookup carried, raw: the token a config
   // inlined sat in cache.db, where `vx why` reads it (L-27).

@@ -143,6 +143,11 @@ result: get() resolved body is string (expected { body: Blob | Response,
 durationMs } or null) — a plugin bug, degraded to a miss") and degraded
 the same way, never reported as a corrupt artifact.
 
+A probe's answer (`has`, `hasMany`, or one recorded by an earlier run)
+is a hint, never the artifact: a key it says is held whose `get` returns
+`null` (the server dropped it since) is a plain miss, and the task runs
+(owner, 2026-10-23).
+
 ## What a failure says
 
 A wire's own message names nothing: Bun's abort is "The operation timed
