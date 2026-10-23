@@ -23,6 +23,8 @@ import {
   UserError,
   BUN_GLOB_WILDCARDS,
   EXTGLOB,
+  braceRange,
+  BRACE_RANGE_LIMIT,
   anyTaskGlob,
   asTrees,
   isLiteralPattern,
@@ -1262,6 +1264,23 @@ function assertNoForeignToken(glob: string, where: string): void {
         `files it names. Write ${rewrite} instead.`,
     )
   }
+  assertNoBraceRange(glob, where)
+}
+
+const BRACE_RANGE = /(?<!\\)\{(-?\d+|[a-zA-Z])\.\.(-?\d+|[a-zA-Z])(\.\.-?\d+)?\}/
+
+/**
+ * A range vx expands is any task glob's (`braceRange`). One it does not —
+ * mixed case, or past the limit — `Bun.Glob` would still read, so the
+ * readings would differ by engine: refused.
+ */
+function assertNoBraceRange(glob: string, where: string): void {
+  const m = BRACE_RANGE.exec(glob)
+  if (m === null || braceRange(m[0].slice(1, -1)) !== null) return
+  throw new UserError(
+    `${where}: "${glob}" holds the brace range ${m[0]}, which vx expands only within one case ` +
+      `and up to ${BRACE_RANGE_LIMIT} names. Write a smaller range or a comma brace.`,
+  )
 }
 
 /**
@@ -1347,7 +1366,7 @@ function assertPosixGlob(glob: string, where: string, base: string): void {
   )
 }
 
-const ONE_ALTERNATIVE_BRACE = /(?<!\\)\{[^{},]*\}/
+const ONE_ALTERNATIVE_BRACE = /(?<!\\)\{[^{},]*\}/g
 
 /**
  * What every run would refuse, or silently key nothing for, refused at
@@ -1357,8 +1376,11 @@ const ONE_ALTERNATIVE_BRACE = /(?<!\\)\{[^{},]*\}/
  * named. A path under `.git` is never listed by git, so it keyed nothing.
  */
 function assertInputGlob(glob: string, where: string): void {
-  const m = ONE_ALTERNATIVE_BRACE.exec(glob)
-  if (m !== null) {
+  // A range is a brace vx expands (`braceRange`), not one alternative.
+  const m = [...glob.matchAll(ONE_ALTERNATIVE_BRACE)].find(
+    (b) => braceRange(b[0].slice(1, -1)) === null,
+  )
+  if (m !== undefined) {
     const inner = m[0].slice(1, -1)
     throw new UserError(
       `${where}: "${glob}" holds a brace with one alternative, which matches ` +
