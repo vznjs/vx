@@ -31,7 +31,7 @@ it('talks over the socket the relay offers: sends, removes and leaves, polling n
   servers.push(s)
   const asked = verbs()
   const o = await join(s.url, R, 'orchestrator', null, undefined)
-  const a = await join(s.url, R, 'agent', { size: 'small' }, undefined)
+  const a = await join(s.url, R, 'worker', { size: 'small' }, undefined)
   expect(await o.poll()).toEqual([
     { from: 'relay', body: { type: 'joined', id: a.id, info: { size: 'small' } } },
   ])
@@ -41,7 +41,7 @@ it('talks over the socket the relay offers: sends, removes and leaves, polling n
   expect(await o.poll()).toEqual([{ from: a.id, body: 'done' }])
   await expect(a.send('nobody', 1)).rejects.toThrow('relay send: 404 unknown to')
   await expect(a.remove(o.id)).rejects.toThrow('relay send: 403 only the orchestrator removes')
-  const b = await join(s.url, R, 'agent', null, undefined)
+  const b = await join(s.url, R, 'worker', null, undefined)
   await o.poll()
   await o.remove(b.id)
   await a.leave()
@@ -55,7 +55,7 @@ it('learns from its socket’s close that the relay let it go, asking HTTP nothi
   const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
   servers.push(s)
   const o = await join(s.url, R, 'orchestrator', null, undefined)
-  const a = await join(s.url, R, 'agent', null, undefined)
+  const a = await join(s.url, R, 'worker', null, undefined)
   await o.poll()
   const asked = verbs()
   // Removed by the orchestrator, so the relay closes the worker's socket as gone.
@@ -129,7 +129,7 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
 it('pings once a heartbeat, and not in one it sent a frame in', async () => {
   const { url, pings } = sockets(100)
   const o = await join(url, R2, 'orchestrator', null, undefined)
-  const a = await join(url, R2, 'agent', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   pings.length = 0
   const t = performance.now()
@@ -151,7 +151,7 @@ it('joins again when its first socket does not open', async () => {
   const { url, host } = sockets()
   const o = await join(url, R2, 'orchestrator', null, undefined)
   host.forget = true
-  const a = await join(url, R2, 'agent', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
   expect(a.id).not.toBe(host.forgotten)
   const told = await o.poll()
   expect(told.map((m) => (m.body as { id: string }).id)).toContain(a.id)
@@ -167,7 +167,7 @@ it('keeps its quiet socket while a new one fails to open, so the relay keeps it'
   // its task again elsewhere (CI, 2026-10-23).
   const { url, open, host } = sockets(200)
   const o = await join(url, R2, 'orchestrator', null, undefined)
-  const a = await join(url, R2, 'agent', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   host.refusing = true
   const first = open.find((w) => w.data.id === a.id)!
@@ -184,7 +184,7 @@ it('keeps its quiet socket while a new one fails to open, so the relay keeps it'
 it('dials its socket again after it drops, and gets what queued meanwhile', async () => {
   const { url, open } = sockets()
   const o = await join(url, R2, 'orchestrator', null, undefined)
-  const a = await join(url, R2, 'agent', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   const workerSockets = () => open.filter((w) => w.data.id === a.id)
   const asked = verbs()
@@ -215,7 +215,7 @@ it('leaves only once its socket has closed, so exiting next cuts nothing', async
     const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
     servers.push(s)
     const o = await join(s.url, R2, 'orchestrator', null, undefined)
-    const a = await join(s.url, R2, 'agent', null, undefined)
+    const a = await join(s.url, R2, 'worker', null, undefined)
     await o.poll()
     await o.leave()
     expect(await a.poll()).toEqual([{ from: 'relay', body: { type: 'closed' } }])
@@ -231,7 +231,7 @@ it('leaves only once its socket has closed, so exiting next cuts nothing', async
 it('sends asked for together go as one frame, each answered', async () => {
   const { url, frames } = sockets()
   const o = await join(url, R2, 'orchestrator', null, undefined)
-  const a = await join(url, R2, 'agent', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   const sent = await Promise.allSettled([o.send(a.id, 1), o.send('nobody', 2), o.send(a.id, 3)])
   expect(sent.map((r) => (r.status === 'fulfilled' ? 'ok' : (r.reason as Error).message))).toEqual([
@@ -256,7 +256,7 @@ it('refuses a relay that offers no socket', async () => {
   })
   servers.push({ url: '', stop: () => server.stop(true) })
   await expect(
-    join(`http://127.0.0.1:${server.port}`, R, 'agent', null, undefined),
+    join(`http://127.0.0.1:${server.port}`, R, 'worker', null, undefined),
   ).rejects.toThrow('the relay offers no socket')
 })
 
@@ -266,7 +266,7 @@ it('asks for a new token a minute before the one it holds expires', async () => 
   const { url } = sockets(undefined, { verify: async () => ({ iss: 'i', run: ['1'] }) })
   const asked = async (inS: number): Promise<number> => {
     let n = 0
-    const me = await join(url, R, 'agent', null, async () => (n++, jwt(inS)))
+    const me = await join(url, R, 'worker', null, async () => (n++, jwt(inS)))
     await me.leave()
     return n
   }
@@ -283,7 +283,7 @@ it('waits out the relay’s rate limit and joins again', async () => {
       ? Promise.resolve(Response.json({ error: 'rate limited', retryAfterMs: 30 }, { status: 429 }))
       : realFetch(input, init)) as typeof fetch
   const at = Date.now()
-  const a = await join(s.url, R, 'agent', null, undefined)
+  const a = await join(s.url, R, 'worker', null, undefined)
   expect([limited, Date.now() - at >= 25]).toEqual([2, true])
   await a.leave()
 })
@@ -357,7 +357,7 @@ function dropping(): { url: string; drop(id: string, mode: 'all' | 'frames'): vo
 it('drops a socket the relay stopped answering, and carries on over a new one', async () => {
   const { url, drop } = dropping()
   const o = await join(url, R2, 'orchestrator', null, undefined)
-  const a = await join(url, R2, 'agent', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   drop(a.id, 'all')
   await a.send('orchestrator', 'held')
@@ -378,7 +378,7 @@ it('drops a socket the relay stopped answering, and carries on over a new one', 
 it('sends again on a new socket when one answers pings but not frames', async () => {
   const { url, drop } = dropping()
   const o = await join(url, R2, 'orchestrator', null, undefined)
-  const a = await join(url, R2, 'agent', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   drop(o.id, 'frames')
   await o.send(a.id, 'batch')
@@ -392,7 +392,7 @@ it('sends again on a new socket when one answers pings but not frames', async ()
 it('leaves when its socket answers pings but not frames: the run still closes', async () => {
   const { url, drop } = dropping()
   const o = await join(url, R2, 'orchestrator', null, undefined)
-  const a = await join(url, R2, 'agent', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   drop(o.id, 'frames')
   await o.leave()
@@ -467,7 +467,7 @@ it('dials again through a relay fault shorter than three heartbeats', async () =
   })
   const url = `http://127.0.0.1:${server.port}`
   const o = await join(url, R, 'orchestrator', null, undefined)
-  const a = await join(url, R, 'agent', null, undefined)
+  const a = await join(url, R, 'worker', null, undefined)
   await o.poll()
   fail = true
   held.get(a.id)!.close()
@@ -487,7 +487,7 @@ it('gives up on a relay down for three heartbeats', async () => {
       : realFetch(input, init)) as typeof fetch
   const Real = globalThis.WebSocket
   try {
-    const a = await join(url, R, 'agent', null, undefined)
+    const a = await join(url, R, 'worker', null, undefined)
     down = true
     // Its upgrades fail as the relay's host is down.
     globalThis.WebSocket = class extends Real {
@@ -513,7 +513,7 @@ it('sends asked for together that would pass the relay’s body limit go as seve
   const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
   servers.push(s)
   const o = await join(s.url, R, 'orchestrator', null, undefined)
-  const a = await join(s.url, R, 'agent', null, undefined)
+  const a = await join(s.url, R, 'worker', null, undefined)
   await o.poll()
   const big = 'x'.repeat(600_000)
   await Promise.all([o.send(a.id, big), o.send(a.id, big), o.send(a.id, 'small')])
@@ -557,7 +557,7 @@ it('does not join again after a 4xx, and names the relay that refused it', async
       Response.json({ error: "repository o/r is not in this relay's ALLOW" }, { status: 403 }),
     )
   }) as unknown as typeof fetch
-  await expect(join(s.url, R, 'agent', null, undefined)).rejects.toThrow(
+  await expect(join(s.url, R, 'worker', null, undefined)).rejects.toThrow(
     `cannot connect to the relay ${new URL(s.url).origin}: repository o/r is not in this relay's ALLOW`,
   )
   expect(asked).toBe(1)

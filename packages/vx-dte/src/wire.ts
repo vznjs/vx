@@ -79,7 +79,7 @@ export interface Participant {
 export async function join(
   relay: string,
   run: string,
-  role: 'orchestrator' | 'agent',
+  role: 'orchestrator' | 'worker',
   info: unknown,
   /** A function is asked again for a token about to expire: GitHub's last 5 minutes. */
   token: string | undefined | (() => Promise<string | undefined>),

@@ -59,7 +59,7 @@ async function pair(secret = 's', workerSecret = secret) {
     secretProof(secret),
   )
   const a = await sealWorker(
-    (info) => join(r.url, R, 'agent', info, undefined),
+    (info) => join(r.url, R, 'worker', info, undefined),
     R,
     secretProof(workerSecret),
     {
@@ -120,7 +120,7 @@ it('refuses a worker with another secret, and a worker refuses an orchestrator w
   const r = relay()
   const o2 = await join(r.url, R2, 'orchestrator', null, undefined)
   const a2 = await sealWorker(
-    (info) => join(r.url, R2, 'agent', info, undefined),
+    (info) => join(r.url, R2, 'worker', info, undefined),
     R2,
     secretProof('s'),
     {
@@ -204,7 +204,7 @@ it('on GitHub, admits by OIDC tokens of this repository whose audience is the ke
       githubProof(keys),
     )
     const a = await sealWorker(
-      (info) => join(r.url, R3, 'agent', info, undefined),
+      (info) => join(r.url, R3, 'worker', info, undefined),
       R3,
       githubProof(keys),
       { v: 1 },
@@ -221,7 +221,7 @@ it('on GitHub, admits by OIDC tokens of this repository whose audience is the ke
     // A token of another repository is refused.
     repo = '12'
     const b = await sealWorker(
-      (info) => join(r.url, R3, 'agent', info, undefined),
+      (info) => join(r.url, R3, 'worker', info, undefined),
       R3,
       githubProof(keys),
       { v: 1 },

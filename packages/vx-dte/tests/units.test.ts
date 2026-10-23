@@ -104,7 +104,7 @@ it('a worker with other tracked files than the run is refused', async () => {
     const worker = await join(
       url,
       R,
-      'agent',
+      'worker',
       { v: 1, cores: 1, memory: 1, tree: 'bbb' },
       undefined,
     )
@@ -243,7 +243,7 @@ async function harness(
     ...(tail === undefined ? {} : { tail }),
   })
   const worker = async (cores: number, id?: string) => {
-    const me = await join(url, R, 'agent', { v: 1, cores, memory: 100, tree: 'c', id }, undefined)
+    const me = await join(url, R, 'worker', { v: 1, cores, memory: 100, tree: 'c', id }, undefined)
     const orders: RunOrder[] = []
     const batches = async (): Promise<string[][]> => {
       for (let i = 0; i < 20; i++) {

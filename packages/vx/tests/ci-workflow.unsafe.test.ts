@@ -36,7 +36,7 @@ interface Workflow {
 const read = (file: string): Workflow =>
   Bun.YAML.parse(readFileSync(path.join(dir, file), 'utf8')) as Workflow
 const doc = read('ci.yml')
-const worker = read('vx-agent.yml').jobs['worker']!
+const worker = read('vx-worker.yml').jobs['worker']!
 const RUNS = ['linux', 'binary-linux-arm64', 'macos'] as const
 const checkout = (j: Job | undefined): Step | undefined =>
   j?.steps?.find((s) => String(s.uses).startsWith('actions/checkout@'))
@@ -208,7 +208,7 @@ describe('ci.yml', () => {
   })
 })
 
-describe('vx-agent.yml', () => {
+describe('vx-worker.yml', () => {
   it('runs each size on its runner', () => {
     expect(worker['runs-on']).toBe(
       `\${{ fromJSON('{"small":"ubuntu-latest","arm":"ubuntu-24.04-arm","mac":"macos-latest"}')[inputs.size] }}`,

@@ -388,8 +388,7 @@ export function createRelay(opts: RelayOptions): Relay {
     body: { role?: unknown; info?: unknown; key?: unknown },
     token: VerifiedToken | undefined,
   ): Response => {
-    // `agent` is what clients send until this relay is deployed (2026-10-23).
-    const role = body.role === 'agent' ? 'worker' : body.role
+    const role = body.role
     if (role !== 'orchestrator' && role !== 'worker') {
       throw new HttpError(400, 'role is orchestrator or worker')
     }

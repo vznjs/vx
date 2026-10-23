@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte: drop the agent names the relay still took
+
+the relay refuses a join with role `agent`; join as `worker`.
+
 ## vx-dte: call DTE agents workers
 
 `vx dte agent` is `vx dte worker`; dte({ agents }) is dte({ workers }); VX_DTE_AGENT is VX_DTE_WORKER; github()'s default workflow is vx-worker.yml with a `workers` input; GitLab's job template is .vx-worker and its bridge vx-workers; the run list's column header reads `· worker`.

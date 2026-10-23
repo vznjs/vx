@@ -17,7 +17,7 @@ export default defineWorkspace({
     // short-lived one; elsewhere the token comes from the OS keychain.
     turboCache({ teamSlug: 'exelord', oidc: true }),
     scheduleHistoryPlugin(),
-    // CI's three runs over workers (ci.yml `linux`, `binary-linux-arm64`, `macos`; vx-agent.yml);
+    // CI's three runs over workers (ci.yml `linux`, `binary-linux-arm64`, `macos`; vx-worker.yml);
     // a run with no VX_DTE_RUN, as on a laptop, is not distributed.
     dte({
       ...(relay ? { relay } : {}),
@@ -30,8 +30,7 @@ export default defineWorkspace({
         macOS: { mac: { max: 4, cpu: 3, memory: '7GB' } },
         'Linux-ARM64': { arm: { max: 1, cpu: 4, memory: '16GB' } },
       }[process.env['CI_WORKERS_OS'] ?? ''] ?? { small: { max: 12, cpu: 4, memory: '16GB' } },
-      // The relay admits this file's jobs until its ALLOW names vx-worker.yml.
-      adapter: githubWorkers({ workflow: 'vx-agent.yml' }),
+      adapter: githubWorkers(),
     }),
   ],
 })
