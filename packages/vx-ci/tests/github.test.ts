@@ -115,7 +115,8 @@ describe('renderJobSummary', () => {
         [
           task({ taskId: 'a#test', where: 'small#1' }),
           task({ taskId: 'b#test', where: 'small#1' }),
-          task({ taskId: 'c#services' }),
+          task({ taskId: 'c#services', carried: true }),
+          task({ taskId: 'e#gen' }),
           task({ taskId: 'd#lint', status: 'cache-hit' }),
         ],
         {
@@ -148,9 +149,10 @@ describe('renderJobSummary', () => {
       ),
     )
     expect(md).toContain('### Workers')
-    // Run on the orchestrator's own machine: the counts add up.
+    // A carried server ran in its dependants; a task that ran on the run's
+    // own machine is named, and the counts add up (owner, 2026-10-23).
     expect(md).toContain('| this machine | ok |  | 1 |  |  |  |  |  |  |')
-    expect(md).toContain('3 executed: 2 on workers, 1 on this machine.')
+    expect(md).toContain('3 executed: 2 on workers, 1 on this machine: e#gen.')
     expect(md).toContain(
       '| small#1 | left | 21.0s | 3 | 40.0s | 4.0s | 3.9 of 4 | 2.0 | 9.8 of 16.0 GB | 50% |',
     )
@@ -177,6 +179,7 @@ describe('renderJobSummary', () => {
       }),
     )
     expect(one).toContain('| small#1 | left |  | 13 ok, 1 failed |')
+    expect(one).not.toContain('this machine')
   })
 
   it('failures head the table and get a callout section', () => {

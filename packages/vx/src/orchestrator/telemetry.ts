@@ -114,6 +114,10 @@ export interface TaskTelemetry {
   /** Executor-reported placement (a worker id) — absent for local runs.
    *  Additive-optional, no schema bump (the `attempts` precedent). */
   where?: string
+  /** A persistent task each dependant's executor started where that ran:
+   *  part of those runs, never an execution of its own (owner, 2026-10-23:
+   *  nothing runs on a distributed run's orchestrator). Additive-optional. */
+  carried?: true
   /** `'deferred'` when the outputs stayed remote (`--cache-download=none`).
    *  Additive-optional, same no-bump precedent as `where`. */
   outputs?: 'deferred'
@@ -747,6 +751,7 @@ export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
   if (o.cpuMs !== undefined) t.cpuMs = o.cpuMs
   if (o.peakRssBytes !== undefined) t.peakRssBytes = o.peakRssBytes
   if (o.where !== undefined) t.where = o.where
+  if (o.carried === true) t.carried = true
   if (o.outputs !== undefined) t.outputs = o.outputs
   if (o.attempts !== undefined) t.attempts = o.attempts
   if (o.blockedBy !== undefined) t.blockedBy = o.blockedBy
