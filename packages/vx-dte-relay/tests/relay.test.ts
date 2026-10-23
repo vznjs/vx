@@ -603,6 +603,37 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(await c.poll(R, o)).toEqual([{ from: 'relay', body: { type: 'lost', id: a } }])
   })
 
+  // Main 32f73ed: the orchestrator waited 13 min on results the relay
+  // queued for it, its socket's pings answered all along (2026-10-23).
+  it('closes a participant’s earlier socket when another attaches, so none is left deaf', async () => {
+    const c = client()
+    const o = await c.join(R, 'orchestrator')
+    const a = await c.join(R, 'worker')
+    const closed: string[] = []
+    const live = { send() {}, close: () => void closed.push('live') }
+    const stale = {
+      send() {
+        throw new Error('socket closed')
+      },
+      close: () => void closed.push('stale'),
+    }
+    expect(c.relay.attach(K, o, live)).toBe(true)
+    expect(c.relay.attach(K, o, stale)).toBe(true)
+    expect(await c.send(R, a, 'orchestrator', 'result')).toEqual({
+      status: 204,
+      json: expect.anything(),
+    })
+    // Both closed: the live one's client dials again and gets the result.
+    expect(closed).toEqual(['live', 'stale'])
+    const pushed: unknown[] = []
+    const again = {
+      send: (t: string) => void pushed.push(...(JSON.parse(t) as { messages: unknown[] }).messages),
+      close() {},
+    }
+    expect(c.relay.attach(K, o, again)).toBe(true)
+    expect(pushed).toContainEqual({ from: a, body: 'result' })
+  })
+
   it('pushes messages down a socket and takes sends from it', async () => {
     const c = client()
     const joined = await c.call(R, 'join', { role: 'orchestrator' })

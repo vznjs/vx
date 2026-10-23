@@ -531,6 +531,17 @@ export function createRelay(opts: RelayOptions): Relay {
       const run = runs.get(key)
       const p = run?.closed === false ? run.byId.get(id) : undefined
       if (run === undefined || p === undefined) return false
+      // One socket a participant. A host restoring several (a wake, a
+      // redial whose old close it never ran) attached the last; a push
+      // failing on a stale one unplugged it, and the live one, its pings
+      // answered by the host, never heard again: main 32f73ed's
+      // orchestrator waited 13 min on results queued here (2026-10-23).
+      // Closed, the other's client dials again and gets what queued.
+      if (p.socket !== undefined && p.socket !== socket) {
+        try {
+          p.socket.close()
+        } catch {}
+      }
       p.socket = socket
       // A dead orchestrator's socket, restored at each wake, kept it alive
       // and its run's workers waited out their job's timeout (2026-10-23).
