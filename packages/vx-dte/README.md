@@ -276,14 +276,17 @@ stops, instead of waiting for the job's timeout.
 - A worker reports the cores and memory its machine has when it joins.
   One the run started is held to the size it was started as, so
   `local()` workers sharing a host split it rather than each take all of
-  it. Tasks go to it in batches that fill those by each task's recorded peak
-  (cores used, peak memory; a whole worker for a task with no history), plus a
-  quarter of its cores as a prefetch, so a successor is there when a task
-  ends. The worker starts a task while one of its cores is free and the
-  task's memory fits, so no core waits for a task's whole need; a task
-  asking a whole worker, or bigger than any, runs alone on an idle one. A prefetched task a worker has not begun moves to
-  a worker with nothing to do, so a short gate is never stuck behind a
-  long task while another machine idles.
+  it. Each frame it sends (a task begun, a command ended, a task saved,
+  its heartbeat) carries its machine's load: cores busy over the last
+  second and memory in use. A task goes to it only when it fits now: while
+  one of its cores is free and the task's memory fits, by that load and
+  what was sent since (by what the run booked from history before it
+  reports, or for a `local()` worker, whose load is its host's). A task
+  that uses less than history booked leaves room for the next at once,
+  and a command that ended frees its cores while its outputs save. Every
+  task sent begins at once; none waits in a worker's queue. A task asking
+  a whole worker, or bigger than any, runs alone on an idle one (a whole
+  worker for a task with no history).
 - Tasks waiting for room go out longest tail first: a task's recorded
   duration and its longest chain of dependants, so a long chain that got
   ready late does not queue behind many short tasks ready at once.
@@ -387,12 +390,12 @@ not:
 Under each worker, and `local`, the footer then spells out what it did:
 its time online, busy and idle; its CPU peak and average in cores and
 the cores the run booked for the tasks it was running, on average (a
-task waiting in its queue books none); its cpu utilization (the core-time its
+booked from a task's start to its command's end); its cpu utilization (the core-time its
 tasks used over the core-time it had); its memory peak and average, when its tasks reported any; and, for a worker, the messages and
 bytes the run sent it and received from it. The `asked` line says each
-time the run asked for workers: how many, when, the cores its remaining
-work kept busy then, and how many tasks remained, how many of them with
-a measured need (an unmeasured one books a whole worker). The first ask
+time the run asked for workers: how many, when, for how many tasks that
+missed, how many of them with a measured need (an unmeasured one books a
+whole worker), and when its plan ended then. The first ask
 waits for the needs another plugin fetches (`ctx.refining()`), such as
 `@vzn/vx-schedule-history`'s default-branch timings. The `total` line is the cpu utilization of every
 machine together:

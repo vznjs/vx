@@ -84,7 +84,7 @@ export interface ServerOrder {
 }
 
 export type ToWorker =
-  /** Tasks for its free capacity and a little more; `root` is swapped for the worker's in `env`. */
+  /** Tasks that fit what it has free, each begun at once; `root` is swapped for the worker's in `env`. */
   | {
       type: 'batch'
       root: string
@@ -95,8 +95,6 @@ export type ToWorker =
       sandboxes?: SandboxConfig[]
     }
   | { type: 'cancel'; task: string }
-  /** Give back a task still in its queue (`withdrawn`); one it began it keeps. */
-  | { type: 'withdraw'; task: string }
   /**
    * It was taken into the run, under the name the run's output gives it,
    * and reads the cache as the run does: its refs, and the access the
@@ -106,9 +104,6 @@ export type ToWorker =
       type: 'welcome'
       name: string
       cache: CacheFacts
-      /** What it may run at once: its machine, held to the size it was started as. */
-      cores: number
-      memory: number
     }
   /** The run's remotes lent again, before the last tokens end. */
   | { type: 'cache'; cache: CacheFacts }
@@ -116,17 +111,28 @@ export type ToWorker =
   /** The run needs it no more: it leaves. */
   | { type: 'exit' }
 
+/**
+ * What its machine uses now: cores busy over the last second and bytes of
+ * memory in use. Each frame a worker sends carries it, so the run places
+ * by what is free, not only by what history booked (M, 2026-10-23: "you
+ * watch instruments and play most efficient as they go").
+ */
+export interface Load {
+  readonly cpu: number
+  readonly memory: number
+}
+
 export type ToOrchestrator =
-  /** It began the task: until then the task waits in its queue. */
-  | { type: 'start'; task: string }
-  /** Each heartbeat while it holds any: what it runs and what waits in its queue, which renews its lease on each. */
-  | { type: 'held'; running: string[]; queued: string[] }
+  /** It began the task. */
+  | { type: 'start'; task: string; load?: Load }
+  /** Its command is done; its outputs save now, its cores are free. */
+  | { type: 'ran'; task: string; load?: Load }
+  /** Each heartbeat while it runs any: what it runs, which renews its lease on each. */
+  | { type: 'held'; running: string[]; load?: Load }
   /** It could not run a task it began, not a non-zero exit: a full disk, a failed unpack. */
   | { type: 'fault'; task: string; reason: string }
-  /** It gave back a task from its queue, unbegun: another worker runs it. */
-  | { type: 'withdrawn'; task: string }
   /** It ran the task and saved it under `key`; its output is in that entry. */
-  | { type: 'end'; task: string; key: string; result: WiredResult }
+  | { type: 'end'; task: string; key: string; result: WiredResult; load?: Load }
 
 /** A result as JSON carries it: its output stays in the cache entry, and a violation's time is a string. */
 export type WiredResult = Omit<ExecuteResult, 'violations' | 'outputs' | 'stdout' | 'stderr'> & {

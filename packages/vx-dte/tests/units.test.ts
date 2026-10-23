@@ -339,8 +339,6 @@ it('a worker reads the cache as the run does, and is lent its remotes’ access 
           lent: { '@vzn/vx-migrate': 't1' },
           expiresAt: expect.any(Number),
         },
-        cores: 2,
-        memory: 100,
       },
       { type: 'cache', cache: { refs: ['refs/heads/feat'], lent: { '@vzn/vx-migrate': 't2' } } },
     ])
@@ -352,16 +350,25 @@ it('a worker reads the cache as the run does, and is lent its remotes’ access 
 const node = (id: string, deps: string[] = []) =>
   [id, { id, deps, projectDir: '/ws', config: {} } as unknown as TaskNode] as const
 
-it('fills a worker’s cores and a prefetch in one batch', async () => {
-  const h = await harness(new Map([node('t1'), node('t2'), node('t3'), node('t4')]))
+// M, 2026-10-23: "we should not send tasks in batches unless we are 100%
+// sure ... they can fit"; and "we orchestrate ... you watch instruments".
+it('sends a worker what fits it, none beyond; one using less than booked gets more at once', async () => {
+  const h = await harness(new Map(['t1', 't2', 't3', 't4', 't5'].map((id) => node(id))))
   try {
     const a = await h.worker(2)
     await Bun.sleep(50)
-    for (const id of ['t1', 't2', 't3', 't4']) void h.o.execute(h.req(id))
-    // 2 cores and 1 of prefetch: t4 waits for one to finish.
-    expect(await a.batches()).toEqual([['t1', 't2', 't3']])
-    await a.finish('t1')
-    expect(await a.batches()).toEqual([['t4']])
+    for (const id of ['t1', 't2', 't3', 't4', 't5']) void h.o.execute(h.req(id))
+    // 2 cores, a core each: t3 waits.
+    expect(await a.batches()).toEqual([['t1', 't2']])
+    // Its machine says it uses 1.2 of them: one more begins while a core is free.
+    await a.say({ type: 'start', task: 't1', load: { cpu: 1.2, memory: 0 } })
+    expect(await a.batches()).toEqual([['t3']])
+    // Busy as it says, it gets none, though a command ended.
+    await a.say({ type: 'ran', task: 't2', load: { cpu: 2, memory: 0 } })
+    await Bun.sleep(50)
+    expect(h.o.where('t4')).toBeNull()
+    await a.say({ type: 'ran', task: 't3', load: { cpu: 0.5, memory: 0 } })
+    expect(await a.batches()).toEqual([['t4', 't5']])
   } finally {
     await h.stop()
   }
@@ -386,14 +393,17 @@ it('packs tasks onto the worker with fewest cores free, and the idle one leaves'
   }
 })
 
-// Main, 2026-10-23: workers read booked 4.6 of 4 cores, a prefetch
-// waiting in the queue counted as held: booked is what began.
-it('books a worker the cores of the tasks it began, not of its queue', async () => {
+// Main, 2026-10-23: workers read booked 4.2 of 4 cores, each task held
+// until its outputs saved: booked is from its start to its command's end.
+it('books a worker the cores of a task from its start to its command’s end', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
-  const a = await h.worker(1)
+  const a = await h.worker(2)
   await Bun.sleep(50)
   for (const id of ['t1', 't2']) void h.o.execute(h.req(id))
   expect(await a.batches()).toEqual([['t1', 't2']])
+  await a.begin('t1')
+  await a.say({ type: 'ran', task: 't1' })
+  await Bun.sleep(50)
   await h.stop()
   const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
   expect(rows.find((r) => r.includes('booked'))).toContain('booked 0.0 ·')
@@ -409,9 +419,9 @@ it('places the queued task the most of the run waits on first, not the first ask
     const a = await h.worker(1)
     await Bun.sleep(50)
     for (const id of ids) void h.o.execute(h.req(id))
-    expect(await a.batches()).toEqual([['build', 't1']])
+    expect(await a.batches()).toEqual([['build']])
     await a.finish('build')
-    expect(await a.batches()).toEqual([['s1']])
+    expect(await a.batches()).toEqual([['t1']])
   } finally {
     await h.stop()
   }
@@ -441,29 +451,23 @@ it('a task’s tail is its duration and its longest chain of dependants', () => 
 })
 
 // M, 2026-10-21: check.bun, ahead of 8 shards, sat in a busy worker's
-// queue as its prefetch while workers that joined later stood idle.
-it('a task waiting in a busy worker’s queue moves to a worker that is free', async () => {
+// queue as its prefetch while workers that joined later stood idle. None
+// waits in a worker's queue now: it waits here for the first that is free.
+it('a task no worker fits waits here, and goes to the first one free', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
   try {
     const a = await h.worker(1)
     await Bun.sleep(50)
     for (const id of ['t1', 't2']) void h.o.execute(h.req(id))
-    expect(await a.batches()).toEqual([['t1', 't2']])
+    expect(await a.batches()).toEqual([['t1']])
     await a.begin('t1')
     const b = await h.worker(1)
-    expect(await a.bodies()).toEqual([{ type: 'withdraw', task: 't2' }])
-    await a.say({ type: 'withdrawn', task: 't2' })
     expect(await b.batches()).toEqual([['t2']])
-    // Begun already, a task stays where it is.
-    await a.finish('t1')
-    expect(h.o.where('t2')).toBeNull()
   } finally {
     await h.stop()
   }
 })
 
-// A worker that faulted got no more work yet was never let go: it held
-// its CI runner idle until the run ended (2026-10-22).
 it('an idle worker that faulted is let go', async () => {
   const h = await harness(new Map([node('t1')]))
   try {
@@ -483,6 +487,7 @@ it('an idle worker that faulted is let go', async () => {
 
 // Growth, 2026-10-21: four local() workers of 1 core on a 4-core host each
 // reported the host and took 4 tasks plus a prefetch, 16 wide on 4 cores.
+// Its load is its host's, so the run counts what it booked.
 it('a worker of a declared size is sent work for that size, not its machine', async () => {
   const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
   try {
@@ -490,8 +495,8 @@ it('a worker of a declared size is sent work for that size, not its machine', as
     const a = await h.worker(4, 'small#1')
     await Bun.sleep(50)
     for (const id of ['t1', 't2', 't3']) void h.o.execute(h.req(id))
-    // 1 core and 1 of prefetch.
-    expect(await a.batches()).toEqual([['t1', 't2']])
+    // 1 core: one at a time.
+    expect(await a.batches()).toEqual([['t1']])
   } finally {
     await h.stop()
   }
@@ -505,7 +510,7 @@ it('a task waits until a worker begins it; the live rows leave out its machine',
     const a = await h.worker(2)
     await Bun.sleep(50)
     for (const id of ['t1', 't2', 't3', 't4']) void h.o.execute(h.req(id))
-    expect(await a.batches()).toEqual([['t1', 't2', 't3']])
+    expect(await a.batches()).toEqual([['t1', 't2']])
     expect(['t1', 't2', 't3', 't4'].map((t) => h.o.where(t))).toEqual([null, null, null, null])
     expect(h.o.where('other')).toBeUndefined()
     await a.begin('t1')
@@ -603,7 +608,7 @@ it('lists the workers that left as one line while the run goes', async () => {
 it('a task lost with two workers fails naming both; one not begun goes back free', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
   try {
-    const a = await h.worker(1)
+    const a = await h.worker(2)
     await Bun.sleep(50)
     // Its failure lands while b leaves, before the test awaits it.
     const t1 = h.o.execute(h.req('t1')).then(
@@ -615,7 +620,7 @@ it('a task lost with two workers fails naming both; one not begun goes back free
     await a.begin('t1')
     await Bun.sleep(50)
     await a.leave()
-    const b = await h.worker(1)
+    const b = await h.worker(2)
     expect(await b.batches()).toEqual([['t1', 't2']])
     await b.begin('t1')
     await b.begin('t2')
@@ -685,7 +690,7 @@ it('a worker that could not run a task it began gets no more; two such fail it',
     const t1 = h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
     await a.say({ type: 'fault', task: 't1', reason: 'ENOSPC' })
-    const b = await h.worker(1)
+    const b = await h.worker(2)
     expect(await b.batches()).toEqual([['t1']])
     void h.o.execute(h.req('t2'))
     expect(await b.batches()).toEqual([['t2']])
@@ -829,11 +834,9 @@ it('an order names every dependency, held by its worker or not', async () => {
     await Bun.sleep(50)
     const t1 = h.o.execute(h.req('t1'))
     void h.o.execute(h.req('x', 'k-x'))
-    expect(await a.batches()).toEqual([['t1', 'x']])
+    expect(await a.batches()).toEqual([['t1']])
     await a.begin('t1')
     const b = await h.worker(1)
-    expect(await a.bodies()).toEqual([{ type: 'withdraw', task: 'x' }])
-    await a.say({ type: 'withdrawn', task: 'x' })
     expect(await b.batches()).toEqual([['x']])
     await b.finish('x', 'k-x')
     void h.o.execute(h.req('w'))
@@ -985,6 +988,7 @@ it('a worker restores a dependency again after a task cleared its files', async 
         cores: 1,
         memory: 0,
       }) as RunOrder
+    const tasks = [order('t1', true), order('t2', false, dist), order('t3', true)]
     const ends: { task: string; exitCode: number }[] = []
     for (let i = 0; i < 100 && ends.length < 3; i++) {
       for (const { from, body } of await o.poll()) {
@@ -999,18 +1003,19 @@ it('a worker restores a dependency again after a task cleared its files', async 
             type: 'welcome',
             name: 'a',
             cache: { refs: [], lent: {} },
-            cores: 1,
-            memory: 1e9,
           })
-          await o.send(m.id!, {
-            type: 'batch',
-            root,
-            realRoot: root,
-            tasks: [order('t1', true), order('t2', false, dist), order('t3', true)],
-          })
+          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [tasks[0]!] })
         } else if (m.type === 'end') {
           ends.push({ task: m.task!, exitCode: m.result!.exitCode })
+          // One at a time, as the run sends a worker of 1 core.
           if (ends.length === 3) await o.send(from, { type: 'exit' })
+          else
+            await o.send(from, {
+              type: 'batch',
+              root,
+              realRoot: root,
+              tasks: [tasks[ends.length]!],
+            })
         }
       }
     }

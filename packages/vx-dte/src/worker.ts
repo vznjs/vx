@@ -1,12 +1,13 @@
 // `vx dte worker`: one CI job's share of a run. It joins the run's relay
 // with what its machine has, runs what the orchestrator sends in its own
-// checkout, as many at once as its cores and memory hold by each task's
-// recorded peak. A task's dependencies' files come from the workspace's
+// checkout, each at once: the orchestrator sends what fits the load each
+// frame of this worker reports. A task's dependencies' files come from the workspace's
 // cache by the keys its order names, and its own files and output go
 // there under its key; the relay carries only orders and status.
 
-import { realpathSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { lstat, rm } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import {
   answerRuntime,
@@ -22,7 +23,7 @@ import {
 } from '@vzn/vx'
 import {
   HELD_EVERY,
-  shares,
+  type Load,
   type WorkerInfo,
   type RunOrder,
   type ToWorker,
@@ -63,8 +64,6 @@ export async function runWorker(opts: {
     .trim()
   const cores = machineParallelism()
   const memory = machineMemoryBytes()
-  // What the run holds it to, once welcomed: a local() worker shares its host.
-  let share = { cores, memory }
   const info: WorkerInfo = {
     v: 1,
     ...(opts.id === undefined ? {} : { id: opts.id }),
@@ -89,16 +88,12 @@ export async function runWorker(opts: {
   let facts: CacheFacts | undefined
   const artifacts = opts.artifacts(() => facts)
   const running = new Map<string, AbortController>()
-  const queue: RunOrder[] = []
   const work = new Set<Promise<void>>()
   let root = opts.root
   let realRoot = opts.root
   const myReal = realpathSync(opts.root)
   let floor: LocalFloor | undefined
-  let usedCores = 0
-  let usedMemory = 0
-  /** Tasks whose cores are held: a task asking the whole worker begins at none. */
-  let holding = 0
+  const load = loadMeter()
   /**
    * Entries whose files are here, restored or run here, by key: tasks
    * started together wait on one restore, never run before it.
@@ -136,51 +131,29 @@ export async function runWorker(opts: {
       present.set(key, Promise.resolve())
       holds.set(key, names(m.project, m.outputs))
     }
-    await me.send('orchestrator', { type: 'end', task: m.task, key, result })
+    await me.send('orchestrator', { type: 'end', task: m.task, key, result, load: load.now() })
   }
 
-  /**
-   * Starts each queued task while a core is free and its memory fits; with
-   * none holding cores, the first one. A task asking a whole worker waits for
-   * an idle one.
-   */
-  const start = (): void => {
-    for (let i = 0; i < queue.length;) {
-      const m = queue[i]!
-      const fits = holding === 0 || shares({ cores: usedCores, memory: usedMemory }, m, share)
-      if (!fits) {
-        i++
-        continue
-      }
-      queue.splice(i, 1)
-      holding++
-      usedCores += m.cores
-      usedMemory += m.memory
-      let held = true
-      const free = (): void => {
-        if (!held) return
-        held = false
-        holding--
-        usedCores -= m.cores
-        usedMemory -= m.memory
-        start()
-      }
-      const p = runTask(m, free)
-        .catch(async (err: unknown) => {
-          const reason = err instanceof Error ? err.message : String(err)
-          ui.print('err', ui.status('error', m.task, `could not run: ${reason}`))
-          await me
-            .send('orchestrator', { type: 'fault', task: m.task, reason })
-            .catch(() => undefined)
-        })
-        .finally(() => {
-          work.delete(p)
-          // Freed already, it still ran: a task that waits for an idle worker starts now.
-          if (held) free()
-          else start()
-        })
-      work.add(p)
+  /** Runs a task the orchestrator sent: it fits what this worker has free. */
+  const start = (m: RunOrder): void => {
+    let ran = false
+    const done = (): void => {
+      if (ran) return
+      ran = true
+      void me
+        .send('orchestrator', { type: 'ran', task: m.task, load: load.now() })
+        .catch(() => undefined)
     }
+    const p = runTask(m, done)
+      .catch(async (err: unknown) => {
+        const reason = err instanceof Error ? err.message : String(err)
+        ui.print('err', ui.status('error', m.task, `could not run: ${reason}`))
+        await me
+          .send('orchestrator', { type: 'fault', task: m.task, reason })
+          .catch(() => undefined)
+      })
+      .finally(() => work.delete(p))
+    work.add(p)
   }
 
   // Each probe once per worker, as a run answers it once.
@@ -206,7 +179,9 @@ export async function runWorker(opts: {
     const stop = new AbortController()
     running.set(m.task, stop)
     // Not awaited: the task does not wait on the relay to say it began.
-    void me.send('orchestrator', { type: 'start', task: m.task }).catch(() => undefined)
+    void me
+      .send('orchestrator', { type: 'start', task: m.task, load: load.now() })
+      .catch(() => undefined)
     try {
       const differs = await runtimeDiffers(m)
       if (differs !== undefined) {
@@ -331,13 +306,9 @@ export async function runWorker(opts: {
 
   // What it holds, every `HELD_EVERY` heartbeats: the orchestrator's lease on each task.
   const held = setInterval(() => {
-    if (running.size === 0 && queue.length === 0) return
+    if (running.size === 0) return
     void me
-      .send('orchestrator', {
-        type: 'held',
-        running: [...running.keys()],
-        queued: queue.map((q) => q.task),
-      })
+      .send('orchestrator', { type: 'held', running: [...running.keys()], load: load.now() })
       .catch(() => undefined)
   }, HELD_EVERY * me.heartbeatMs)
   try {
@@ -372,7 +343,6 @@ export async function runWorker(opts: {
         if (m.type === 'cache') facts = m.cache
         else if (m.type === 'welcome') {
           facts = m.cache
-          share = { cores: m.cores, memory: m.memory }
           ui.print(
             'out',
             ui.report('vx dte worker', [
@@ -382,26 +352,8 @@ export async function runWorker(opts: {
               ['machine', `${cores} cores · ${gb(memory)}`],
             ]),
           )
-        } else if (m.type === 'withdraw') {
-          const at = queue.findIndex((q) => q.task === m.task)
-          if (at >= 0) {
-            queue.splice(at, 1)
-            await me.send('orchestrator', { type: 'withdrawn', task: m.task })
-          }
         } else if (m.type === 'cancel') {
-          const at = queue.findIndex((q) => q.task === m.task)
-          if (at < 0) running.get(m.task)?.abort()
-          else {
-            const order = queue.splice(at, 1)[0]!
-            await reply(order, order.runKey, {
-              exitCode: 130,
-              signal: 'SIGTERM',
-              durationMs: 0,
-              stdout: '',
-              stderr: '',
-              violations: [],
-            })
-          }
+          running.get(m.task)?.abort()
         } else if (m.type === 'batch') {
           // Every batch of a run names the same orchestrator root.
           root = m.root
@@ -410,8 +362,7 @@ export async function runWorker(opts: {
             if (floor === undefined) floor = localFloor(m.sandboxes)
             else await floor.rearm(m.sandboxes)
           }
-          queue.push(...m.tasks)
-          start()
+          for (const t of m.tasks) start(t)
         }
       }
     }
@@ -421,12 +372,53 @@ export async function runWorker(opts: {
     throw err
   } finally {
     clearInterval(held)
-    queue.length = 0
+    load.stop()
     for (const c of running.values()) c.abort()
     await Promise.all(work)
     await floor?.close()
     await me.leave()
   }
+}
+
+/**
+ * This machine's load, sampled each second: the cores busy over the last
+ * one, from the CPUs' times, and the memory in use.
+ */
+function loadMeter(): { now: () => Load; stop: () => void } {
+  const busy = (): [number, number] => {
+    let idle = 0
+    let total = 0
+    for (const c of os.cpus()) {
+      const t = c.times
+      idle += t.idle
+      total += t.user + t.nice + t.sys + t.irq + t.idle
+    }
+    return [total - idle, total]
+  }
+  let last = busy()
+  let cpu = 0
+  const timer = setInterval(() => {
+    const next = busy()
+    const total = next[1] - last[1]
+    if (total > 0) cpu = ((next[0] - last[0]) / total) * os.cpus().length
+    last = next
+  }, 1_000)
+  timer.unref?.()
+  return {
+    now: () => ({ cpu: Math.round(cpu * 100) / 100, memory: os.totalmem() - available() }),
+    stop: () => clearInterval(timer),
+  }
+}
+
+/** Memory a task can take: Linux's MemAvailable counts the page cache it may reclaim, free memory does not. */
+function available(): number {
+  try {
+    const m = /^MemAvailable:\s+(\d+) kB$/m.exec(readFileSync('/proc/meminfo', 'utf8'))
+    if (m !== null) return Number(m[1]) * 1024
+  } catch {
+    // Not Linux.
+  }
+  return os.freemem()
 }
 
 /**

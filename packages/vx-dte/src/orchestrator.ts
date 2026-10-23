@@ -1,9 +1,9 @@
 // The orchestrator's half of a distributed run: the `vx run` the user
 // started. It keeps a share of the tasks for this machine and hands the
 // rest to the workers online, critical path first (the order core asks in):
-// in batches that fill each worker's measured cores and memory by the tasks'
-// recorded peaks, plus a small prefetch, preferring the worker that already
-// holds a task's dependencies. No file travels through the relay: an
+// each task to a worker it fits now, by the load that worker last reported
+// and what was sent since, preferring the worker that already holds the
+// task's dependencies; none waits in a worker's queue. No file travels through the relay: an
 // worker restores a dependency's files from the cache by the key its order
 // names and saves its own under the task's key, and this machine restores
 // them by that key before the task ends, so the run saves and reports it
@@ -30,6 +30,7 @@ import {
   type RunOrder,
   type RuntimeOrder,
   type ToWorker,
+  type Load,
   type ToOrchestrator,
   type WiredResult,
 } from './messages.js'
@@ -57,10 +58,8 @@ interface Job {
   faults?: string[]
   /** Its worker's lease on it ends then unless the worker says it still holds it. */
   leaseUntil?: number
-  /** Sent beyond what its worker had free: it waits in that worker's queue. */
-  prefetched?: boolean
-  /** Asked back from its worker's queue for one that is free. */
-  withdrawing?: boolean
+  /** When it was sent to its worker. */
+  sentAt?: number
   /** When its worker began it. */
   startedAt?: number
 }
@@ -86,6 +85,8 @@ interface Worker {
   readonly started: Set<string>
   usedCores: number
   usedMemory: number
+  /** Its machine's use as its last frame said, and when this machine heard it. */
+  load?: { cpu: number; memory: number; at: number }
   /** Tasks whose outputs it holds: it ran them, or was sent them. */
   readonly has: Set<string>
   /** Sends to it go out in order: a run's parts before the run. */
@@ -160,9 +161,6 @@ function parts<T extends { order: unknown }>(orders: readonly T[], max: number):
 /** A task's end when its run stopped it before it began anywhere. */
 const stopped = (): ExecuteResult =>
   result({ exitCode: 130, signal: 'SIGTERM', durationMs: 0 }, { stdout: '', stderr: '' })
-
-/** Cores a worker is sent beyond its own, so a finished task's successor is already there. */
-const prefetch = (cores: number): number => Math.max(1, Math.ceil(cores / 4))
 
 export class Orchestrator {
   private readonly workers = new Map<string, Worker>()
@@ -298,8 +296,7 @@ export class Orchestrator {
         continue
       }
       job.worker = a.id
-      job.prefetched =
-        a.busy.size > 0 && !shares({ cores: a.usedCores, memory: a.usedMemory }, job.need, a)
+      job.sentAt = performance.now()
       a.busy.set(job.req.taskId, job)
       job.held = {
         cores: Math.min(job.need.cores, a.cores),
@@ -313,34 +310,54 @@ export class Orchestrator {
     }
     this.queue.push(...left)
     for (const [a, jobs] of batches) this.send(a, jobs)
-    if (left.length === 0) this.steal()
   }
 
   /**
-   * A worker with nothing to do takes back a task waiting in a busy one's
-   * queue as its prefetch: that task may be the one the rest of the run
-   * waits on (M, 2026-10-21: check.bun, ahead of 8 shards, sat behind a
-   * long suite while workers that joined later stood idle). One per idle
-   * worker, first sent first; the worker gives it back only if not begun.
+   * What worker `a` has in use: the load it last reported and what was
+   * sent it since; until it reports, or on a host it shares (local()),
+   * what the run booked. A task that uses less than history booked leaves
+   * room for the next at once (M, 2026-10-23).
    */
-  private steal(): void {
-    const online = [...this.workers.values()].filter((a) => !a.faulty)
-    let idle = online.filter((a) => a.busy.size === 0).length
-    for (const a of online) {
-      for (const j of a.busy.values()) {
-        if (idle === 0) return
-        if (j.prefetched !== true || j.withdrawing === true || a.started.has(j.req.taskId)) continue
-        j.withdrawing = true
-        idle--
-        this.post(a, { type: 'withdraw', task: j.req.taskId })
-      }
+  private used(a: Worker): { cores: number; memory: number } {
+    const l = a.load
+    if (l === undefined || a.cores !== a.reported.cores) {
+      return { cores: a.usedCores, memory: a.usedMemory }
     }
+    let cores = l.cpu
+    let memory = l.memory
+    for (const j of a.busy.values())
+      if (j.held !== undefined && (j.sentAt ?? 0) > l.at) {
+        cores += j.held.cores
+        memory += j.held.memory
+      }
+    return { cores, memory }
+  }
+
+  /** Whether a task of `a`'s holds its cores: its command still runs, or has yet to. */
+  private holding(a: Worker): boolean {
+    for (const j of a.busy.values()) if (j.held !== undefined) return true
+    return false
+  }
+
+  /** `job`'s cores and memory go back to its worker, once: its command ended, or it left. */
+  private unhold(a: Worker, job: Job): void {
+    if (job.held === undefined) return
+    a.usedCores -= job.held.cores
+    a.usedMemory -= job.held.memory
+    if (a.started.has(job.req.taskId)) a.usage.book(-job.held.cores)
+    delete job.held
+  }
+
+  /** What a frame of `a`'s says its machine uses now. */
+  private heard(a: Worker, load: Load | undefined): void {
+    if (load === undefined) return
+    a.load = { cpu: Number(load.cpu) || 0, memory: Number(load.memory) || 0, at: performance.now() }
   }
 
   /**
-   * The worker for `job`: one it fits on, else one with prefetch room left;
-   * among those, the one holding most of its dependencies' outputs, then
-   * the one with fewest cores free: spread one a piece, 12 workers of 4
+   * The worker for `job`: one it fits on now (`used`), none else; among
+   * those, the one holding most of its dependencies' outputs, then the one
+   * with fewest cores free: spread one a piece, 12 workers of 4
    * cores each ran about 1 at 25% (main, 2026-10-23); packed, the workers
    * the rest no longer needs fall idle and leave. A task bigger than
    * every worker goes to an idle one, alone.
@@ -369,12 +386,11 @@ export class Orchestrator {
     }
     const pool = workers.some(bigger) ? workers.filter(bigger) : workers
     for (const a of pool) {
-      const fits =
-        a.busy.size === 0 || shares({ cores: a.usedCores, memory: a.usedMemory }, job.need, a)
-      if (!fits && a.usedCores + job.need.cores > a.cores + prefetch(a.cores)) continue
+      const used = this.used(a)
+      if (this.holding(a) && !shares(used, job.need, a)) continue
       let held = 0
       for (const id of up) if (a.has.has(id)) held++
-      const score = [fits ? 1 : 0, held, a.usedCores - a.cores]
+      const score = [held, used.cores - a.cores]
       if (best === undefined || greater(score, bestScore)) {
         best = a
         bestScore = score
@@ -493,14 +509,10 @@ export class Orchestrator {
     a.busy.delete(job.req.taskId)
     // Its outputs are not there to place a dependant by.
     a.has.delete(job.req.taskId)
-    a.usedCores -= job.held?.cores ?? 0
-    a.usedMemory -= job.held?.memory ?? 0
-    if (a.started.has(job.req.taskId)) a.usage.book(-(job.held?.cores ?? 0))
+    this.unhold(a, job)
     delete job.worker
-    delete job.held
     delete job.leaseUntil
-    delete job.prefetched
-    delete job.withdrawing
+    delete job.sentAt
     const begun = a.started.delete(job.req.taskId)
     // Stopped, it runs nowhere again; the cancel sent its worker has no one to answer it.
     if (job.req.signal?.aborted === true) {
@@ -538,7 +550,7 @@ export class Orchestrator {
     a.chain = a.chain.then(() => this.o.me.send(a.id, m)).catch(() => undefined)
   }
 
-  /** Worker `a` began `task`: from now its cores are booked, where a prefetch waiting in its queue held none. */
+  /** Worker `a` began `task`: from now its cores are booked. */
   private begun(a: Worker, task: string): void {
     const job = a.busy.get(task)
     if (job === undefined || a.started.has(task)) return
@@ -552,9 +564,8 @@ export class Orchestrator {
     const job = a.busy.get(task)
     if (job === undefined) return
     a.busy.delete(task)
-    if (a.started.delete(task)) a.usage.book(-(job.held?.cores ?? 0))
-    a.usedCores -= job.held?.cores ?? 0
-    a.usedMemory -= job.held?.memory ?? 0
+    this.unhold(a, job)
+    a.started.delete(task)
     a.ran++
     a.usage.record(head)
     this.savedAs.set(task, key)
@@ -642,8 +653,6 @@ export class Orchestrator {
               type: 'welcome',
               name: label,
               cache,
-              cores,
-              memory,
             } satisfies ToWorker),
           )
           .catch(() => undefined),
@@ -702,18 +711,23 @@ export class Orchestrator {
         const a = this.workers.get(from)
         if (a === undefined) continue
         const m = body as ToOrchestrator
+        if ('load' in m) this.heard(a, m.load)
         if (m.type === 'start') {
           this.begun(a, m.task)
+          this.pumpSoon()
         } else if (m.type === 'held') {
-          for (const t of [...m.running, ...m.queued]) {
+          for (const t of m.running) {
             const j = a.busy.get(t)
             if (j?.leaseUntil !== undefined) this.lease(j)
+            this.begun(a, t)
           }
-          for (const t of m.running) this.begun(a, t)
-        } else if (m.type === 'withdrawn') {
+          this.pumpSoon()
+        } else if (m.type === 'ran') {
+          // Its command ended: its cores are the next task's while it saves.
           const j = a.busy.get(m.task)
-          if (j === undefined || a.started.has(m.task)) continue
-          if (this.retry(a, j, 'withdrawn') !== undefined) this.queue.unshift(j)
+          if (j === undefined) continue
+          this.begun(a, m.task)
+          this.unhold(a, j)
           this.pumpSoon()
         } else if (m.type === 'fault') {
           const j = a.busy.get(m.task)
