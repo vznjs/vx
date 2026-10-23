@@ -208,6 +208,21 @@ describe('a CI OIDC token', () => {
     expect(await refusal(verify(forged))).toEqual([401, 'bad signature'])
   })
 
+  // A worker test's unsigned token fetched gitlab.com's keys once jose
+  // checked tokens (main, 2026-10-22): anyone could make the relay fetch.
+  it('is refused before any key fetch when it carries no signature or another alg', async () => {
+    const fetched: string[] = []
+    const verify = verifier(fetched)
+    const [h, p] = (await sign(good)).split('.')
+    expect(await refusal(verify(`${h}.${p}.x`))).toEqual([401, 'not a JWT'])
+    expect(await refusal(verify(`${h}.${p}.`))).toEqual([401, 'not a JWT'])
+    expect(await refusal(verify(await sign(good, { alg: 'HS256' })))).toEqual([
+      401,
+      'alg is not RS256',
+    ])
+    expect(fetched).toEqual([])
+  })
+
   it('is refused unless its repository is one the relay names', async () => {
     const verify = verifier()
     expect(await verify(await sign({ ...good, project_path: 'group/other' }))).toEqual({

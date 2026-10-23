@@ -3,7 +3,14 @@
 // that started the run (PROTOCOL.md § Tokens). The JWT itself is jose's
 // to check: signature, algorithm, audience and times.
 
-import { createLocalJWKSet, decodeJwt, errors, jwtVerify, type JWTPayload } from 'jose'
+import {
+  createLocalJWKSet,
+  decodeJwt,
+  decodeProtectedHeader,
+  errors,
+  jwtVerify,
+  type JWTPayload,
+} from 'jose'
 
 /**
  * Who may take part: jobs of `workflow` in `repository`, by tokens of
@@ -124,6 +131,8 @@ const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCas
 
 /** Clock skew a token's `exp` / `nbf` may be off by. */
 const LEEWAY_S = 60
+/** An RS256 signature: at least a 2048-bit key's 256 bytes, base64url. */
+const SIGNATURE = /^[\w-]{342,}$/
 
 /** An unknown `kid` refetches an issuer's keys at most this often. */
 const REFETCH_MS = 60_000
@@ -160,9 +169,12 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
     let iss: unknown
     try {
       iss = decodeJwt(token).iss
+      // A token that cannot be signed costs no fetch of its issuer's keys.
+      if (!SIGNATURE.test(token.slice(token.lastIndexOf('.') + 1))) throw new Error()
     } catch {
       throw new TokenError('not a JWT', 401)
     }
+    if (decodeProtectedHeader(token).alg !== 'RS256') throw new TokenError('alg is not RS256', 401)
     const ofIssuer = opts.allow.filter((a) => a.issuer === iss)
     if (typeof iss !== 'string' || ofIssuer.length === 0) {
       throw new TokenError('untrusted issuer', 401)
