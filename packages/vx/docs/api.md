@@ -336,6 +336,10 @@ export interface CacheLayer {
   readonly local?: Cache | undefined
   readonly hasRemote?: boolean
   remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
+  remoteHasEach?(
+    hashes: readonly string[],
+    concurrency: number,
+  ): Promise<Map<string, ArtifactInfo> | null>
   localHasMany?(hashes: readonly string[]): Promise<Set<string>>
   remoteKnown?(hashes: readonly string[]): Map<string, ArtifactInfo>
   markRemoteAbsent?(hashes: Iterable<string>): void
