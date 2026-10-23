@@ -32,6 +32,8 @@ export interface SimOptions {
   readonly sizes: readonly Size[]
   /** How long the n-th worker started (1 first) takes to join. */
   readonly warmUpMs?: (n: number) => number
+  /** The tasks the forecast says miss (`likelyMisses`), before any does. */
+  readonly likely?: ReadonlySet<string>
 }
 
 export interface SimWorker {
@@ -197,7 +199,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   }
 
   const replan = (): void => {
-    if (executed.size === 0) return
+    const likely = options.likely ?? new Set<string>()
+    if (executed.size === 0 && likely.size === 0) return
     const warmUp = warmUpOf(1)
     const planWorkers: PlanWorker[] = []
     const running = new Set<string>()
@@ -232,9 +235,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     const p = decide({
       remaining,
       nodes,
-      executed: process.env.FORESIGHT
-        ? new Set(graph.filter((t) => t.ran && t.exec).map((t) => t.id))
-        : executed,
+      executed: likely.size === 0 ? executed : new Set([...likely, ...executed]),
       need,
       durationMs,
       workers: planWorkers,

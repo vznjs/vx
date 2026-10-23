@@ -345,13 +345,20 @@ export function plan(
     const idle = workers.filter((w) => w.idle).sort((a, b) => b.cores - a.cores)
     for (const w of idle) {
       const without = kept.filter((k) => k !== w)
-      // Its stand-in starts a warm-up after it goes at the soonest, or it
-      // is churn: one let go at 25 s, its stand-in started at 30 s
-      // (tests/sim.test.ts, a growing graph).
-      const instead = replaceable
-        ? [fresh({ cpu: w.cores, memory: w.memory }, w.id, 2 * warmUpMs + MARGIN_MS)]
-        : []
-      if (simulate(tasks, [...without, ...instead]) <= bound) {
+      if (simulate(tasks, without) <= bound) {
+        kept = without
+        release.push(w.id)
+        continue
+      }
+      // Needed again, it goes only when its next task is two warm-ups
+      // away: a stand-in then starts a warm-up after it left. Sooner, the
+      // next plan starts one at once: let go as 10 joined at 20 s, one was
+      // started again at 20.06 (tests/sim.test.ts, a09b987 forecast).
+      if (!replaceable) continue
+      const next = play(tasks, kept).first.get(w.id)
+      if (next !== undefined && next < 2 * warmUpMs + MARGIN_MS) continue
+      const instead = fresh({ cpu: w.cores, memory: w.memory }, w.id, next ?? Infinity)
+      if (simulate(tasks, [...without, instead]) <= bound) {
         kept = without
         release.push(w.id)
       }
