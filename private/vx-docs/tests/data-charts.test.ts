@@ -3,8 +3,13 @@
 // the Markdown a chart replaces staying one click away.
 
 import { describe, expect, it } from 'bun:test'
-import { groupsForTable, parseDuration, renderBars } from '../src/plugins/data-charts.ts'
-import remarkDataCharts from '../src/plugins/data-charts.ts'
+import {
+  dataCharts,
+  groupsForTable,
+  parseDuration,
+  renderBars,
+} from '../src/plugins/data-charts.ts'
+import { markdownToHtml } from 'satteri'
 
 describe('parseDuration', () => {
   it.each([
@@ -119,47 +124,29 @@ describe('renderBars', () => {
   })
 })
 
-describe('remarkDataCharts', () => {
-  interface Node {
-    type: string
-    name?: string
-    value?: string
-    children?: Node[]
-  }
-  const cell = (value: string): Node => ({ type: 'tableCell', children: [{ type: 'text', value }] })
-  const row = (...cells: string[]): Node => ({ type: 'tableRow', children: cells.map(cell) })
-  const table = (): Node => ({
-    type: 'table',
-    children: [row('Runner', 'Cold'), row('vx', '1 s'), row('nx', '4 s')],
-  })
+describe('dataCharts', () => {
+  const TABLE = '| Runner | Cold |\n| --- | --- |\n| vx | 1 s |\n| nx | 4 s |\n'
+  const html = (md: string): string =>
+    markdownToHtml(md, { mdastPlugins: [dataCharts], features: { directive: true } }).html
 
   it('puts the chart before the table and the table in a details', () => {
-    const t = table()
-    const tree: Node & { children: Node[] } = { type: 'root', children: [t] }
-    remarkDataCharts()(tree)
-    expect(tree.children.map((n) => n.type)).toEqual(['html', 'html', 'table', 'html'])
-    expect(tree.children[0]!.value).toContain('class="vx-charts"')
-    expect(tree.children[1]!.value).toStartWith('<details')
-    expect(tree.children[2]).toBe(t)
-    expect(tree.children[3]!.value).toBe('</details>')
+    const out = html(TABLE)
+    expect(out).toStartWith('<div class="vx-charts">')
+    expect(out).toContain(
+      '</div>\n<details class="vx-chart-table"><summary>The table</summary>\n<table>',
+    )
+    expect(out.trimEnd()).toEndWith('</table>\n</details>')
   })
 
   it('reads "(+0:09)", a text directive to the parser, as written', () => {
-    const t = table()
-    const vxCell = t.children![1]!.children![1]!
-    vxCell.children = [
-      { type: 'text', value: '1 s (+0' },
-      { type: 'textDirective', name: '09', children: [{ type: 'text', value: ')' }] },
-    ]
-    const tree: Node & { children: Node[] } = { type: 'root', children: [t] }
-    remarkDataCharts()(tree)
-    expect(tree.children[0]!.value).toContain('<span class="vx-bar-note">+0:09</span>')
+    expect(html(TABLE.replace('1 s', '1 s (+0:09)'))).toContain(
+      '<span class="vx-bar-note">+0:09</span>',
+    )
   })
 
   it('leaves a table quoted as sample output alone', () => {
-    const quote: Node & { children: Node[] } = { type: 'blockquote', children: [table()] }
-    const tree: Node = { type: 'root', children: [quote] }
-    remarkDataCharts()(tree)
-    expect(quote.children.map((n) => n.type)).toEqual(['table'])
+    const out = html(TABLE.replace(/^/gm, '> ').replace(/> $/, ''))
+    expect(out).not.toContain('vx-charts')
+    expect(out).toContain('<blockquote>')
   })
 })
