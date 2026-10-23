@@ -10,13 +10,14 @@ export const collections = {
   docs: defineCollection({
     loader: docsLoader(),
     schema: docsSchema({
-      extend: ({ image }) =>
+      extend: () =>
         z.object({
           date: z.date().optional(),
           authors: z.array(z.string()).optional(),
           tags: z.array(z.string()).optional(),
           excerpt: z.string().optional(),
-          cover: z.object({ image: image(), alt: z.string() }).optional(),
+          // A PNG under src/assets/blog/, resized by `build.images`.
+          cover: z.object({ image: z.string(), alt: z.string() }).optional(),
         }),
     }),
   }),

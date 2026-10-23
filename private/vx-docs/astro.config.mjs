@@ -1,9 +1,10 @@
+import { satteri } from '@astrojs/markdown-satteri'
 import starlight from '@astrojs/starlight'
 import { defineConfig } from 'astro/config'
 import { readdirSync } from 'node:fs'
 import { SIDEBAR } from './src/nav/sections.ts'
-import remarkDataCharts from './src/plugins/data-charts.ts'
-import remarkMermaid from './src/plugins/remark-mermaid.mjs'
+import { dataCharts } from './src/plugins/data-charts.ts'
+import { mermaid } from './src/plugins/mermaid.ts'
 
 // GitHub Pages project site: https://vznjs.github.io/vx/
 // `base` is overridable via env so a custom domain (base '/') still builds.
@@ -107,12 +108,15 @@ export default defineConfig({
         .map((f) => [`/blog/${f.slice(0, -3)}/`, `${root}releases/${f.slice(0, -3)}/`]),
     ),
   },
-  // `remarkPlugins` runs on the `unified()` processor from
-  // `@astrojs/markdown-remark`, an optional peer since Astro 7 that the
-  // site declares itself: without it the build refuses to start (CI,
-  // 2026-09-10), and a stale copy in the store hid that locally.
+  // Astro's native Markdown pipeline, MDX included. A remark plugin moves
+  // every page onto the JS `unified()` one: 10 s of a cold build's 17 s
+  // content sync (2026-10-23).
   markdown: {
-    remarkPlugins: [remarkMermaid, remarkDataCharts],
+    processor: satteri({
+      mdastPlugins: [mermaid, dataCharts],
+      // `--filter` stays two hyphens, never an en dash.
+      features: { smartPunctuation: { dashes: false } },
+    }),
   },
   integrations: [
     starlight({

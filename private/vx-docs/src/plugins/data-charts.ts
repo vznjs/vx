@@ -1,4 +1,4 @@
-import { visit } from 'unist-util-visit'
+import { defineMdastPlugin } from 'satteri'
 
 // Measurements drawn as bars, not read as digits (owner, 2026-10-04:
 // "present data visually not by text and numbers"). One renderer for the
@@ -134,32 +134,24 @@ export function groupsForTable(header: readonly string[], rows: readonly string[
 }
 
 /** Draw every timing table as bars, the table itself kept one click away. */
-export default function remarkDataCharts() {
-  return (tree: MdNode) => {
-    visit(
-      tree as never,
-      'table',
-      (node: MdNode, index: number | undefined, parent: MdNode | undefined) => {
-        // A table quoted in a blockquote is sample output (a job summary), not a measurement.
-        if (!parent?.children || index === undefined || parent.type === 'blockquote') return
-        const [head, ...body] = node.children ?? []
-        if (!head) return
-        const header = (head.children ?? []).map((c) => textOf(c).trim())
-        const rows = body
-          .filter((r) => !isContext(r))
-          .map((r) => (r.children ?? []).map((c) => textOf(c).trim()))
-        const groups = groupsForTable(header, rows)
-        if (groups.length === 0) return
-        parent.children.splice(
-          index,
-          1,
-          { type: 'html', value: renderBars(groups) },
-          { type: 'html', value: '<details class="vx-chart-table"><summary>The table</summary>' },
-          node,
-          { type: 'html', value: '</details>' },
-        )
-        return index + 4
-      },
-    )
-  }
-}
+export const dataCharts = defineMdastPlugin({
+  name: 'vx-data-charts',
+  table(node, ctx) {
+    // A table quoted in a blockquote is sample output (a job summary), not a measurement.
+    if (ctx.parent(node).type === 'blockquote') return
+    const [head, ...body] = node.children as MdNode[]
+    if (!head) return
+    const header = (head.children ?? []).map((c) => textOf(c).trim())
+    const rows = body
+      .filter((r) => !isContext(r))
+      .map((r) => (r.children ?? []).map((c) => textOf(c).trim()))
+    const groups = groupsForTable(header, rows)
+    if (groups.length === 0) return
+    ctx.replaceNode(node, [
+      { type: 'html', value: renderBars(groups) },
+      { type: 'html', value: '<details class="vx-chart-table"><summary>The table</summary>' },
+      node,
+      { type: 'html', value: '</details>' },
+    ])
+  },
+})

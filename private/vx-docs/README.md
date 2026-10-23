@@ -92,8 +92,10 @@ with a dark and a light theme, the one the docs store.
 
 - The data is `src/features/features.ts`: `CATEGORIES` and `FEATURES`,
   in the order the hub lists them. Images are in
-  `src/assets/features/` (1600×900 PNG, palette-quantized); pages get
-  them through astro:assets as resized WebP (`FeatureImage.astro`).
+  `src/assets/features/` (1600×900 PNG, palette-quantized); the
+  `build.images` task resizes them to WebP (`scripts/build-images.ts`),
+  and `FeatureImage.astro` writes the srcset. A new layout width goes in
+  that script's `SETS`.
 - To add one: an entry in `FEATURES` under its category, its image in
   `src/assets/features/`, and its links under the base (`guides/ci/`)
   or `https://`. Verify every command, flag and config key against
@@ -138,7 +140,7 @@ authors:
 tags:
   - dx
 excerpt: 'One paragraph shown on the index and in the feed.'
-# cover: { image: ../../../assets/post.png, alt: '…' }   # optional
+# cover: { image: ../../../assets/blog/post.png, alt: '…' }   # optional
 # draft: true                                              # optional: built only in dev
 ---
 
@@ -315,7 +317,7 @@ move it (e.g. to a custom domain at `/`).
 
 ## Diagrams
 
-Mermaid code fences are rendered client-side: `src/plugins/remark-mermaid.mjs`
+Mermaid code fences are rendered client-side: `src/plugins/mermaid.ts`
 turns them into `<pre class="mermaid">` nodes, and `src/components/Head.astro`
 lazy-loads mermaid (only on pages that have a diagram) and re-renders on
 theme toggle.
