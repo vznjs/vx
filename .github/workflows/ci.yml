@@ -280,12 +280,34 @@ jobs:
     timeout-minutes: 25
     env:
       CI_AGENTS_OS: macOS
+      VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
     permissions:
       contents: read
       id-token: write
       actions: write
       checks: write
     steps:
+      - name: A run id no one can guess
+        run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
+
+      # As the Linux run's: a Mac agent dispatched mid-run came online
+      # 85-90 s in, past half the run (2026-10-23).
+      - name: Start agents
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ids=$(seq -f 'mac#%g' 1 4 | paste -sd,)
+          agents=$(jq -nc --arg ids "$ids" '$ids | split(",")')
+          id=$(jq -n --arg ref "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" --arg run "$VX_DTE_RUN" \
+            --arg relay "$VX_DTE_RELAY" --arg sha "$GITHUB_SHA" --arg agents "$agents" \
+            '{ref: $ref, inputs: {run: $run, relay: $relay, sha: $sha, size: "mac", agents: $agents}}' |
+            gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/vx-agent.yml/dispatches" \
+              -H 'X-GitHub-Api-Version: 2026-03-10' --input - --jq .workflow_run_id) || exit 0
+          [ -n "$id" ] || exit 0
+          r="/repos/$GITHUB_REPOSITORY/actions/runs/$id"
+          echo "$r $ids" >> "$RUNNER_TEMP/vx-dte-started"
+          echo "$r" >> "$RUNNER_TEMP/vx-dte-runs"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -305,9 +327,6 @@ jobs:
           key: vx-macOS-${{ github.sha }}
           restore-keys: vx-macOS-
 
-      - name: A run id no one can guess
-        run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
-
       # The core suite, the host binary (darwin-arm64: it launches,
       # re-signed only if macOS refuses it), the cold cross-compile under
       # seatbelt, which matches the directory Bun extracts a downloaded
@@ -316,7 +335,6 @@ jobs:
       # under seatbelt with no cache. All on Mac agents.
       - name: vx run test.platform (core, darwin)
         env:
-          VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
           GITHUB_TOKEN: ${{ github.token }}
           VX_REQUIRE_SANDBOX: '1'
           VX_REQUIRE_WATCH_EVENTS: '1'
