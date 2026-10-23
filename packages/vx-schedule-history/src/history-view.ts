@@ -64,17 +64,19 @@ export function renderHistory(
   return `${lines.join('\n')}\n`
 }
 
+// Each unit is chosen by the rounded value: 59 999 ms printed `60.00s`,
+// 119.7 s `1m 60s`, and a byte under 1 MiB `1024 KB`.
 function fmtMs(ms: number | null): string {
   if (ms === null) return '—'
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  if (ms < 60_000) return `${(ms / 1000).toFixed(2)}s`
-  const m = Math.floor(ms / 60_000)
-  return `${m}m ${Math.round((ms - m * 60_000) / 1000)}s`
+  if (Math.round(ms) < 1000) return `${Math.round(ms)}ms`
+  if (Math.round(ms / 10) < 6000) return `${(ms / 1000).toFixed(2)}s`
+  const s = Math.round(ms / 1000)
+  return `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
 function fmtBytes(n: number | null): string {
   if (n === null) return '—'
-  if (n < MB) return `${Math.round(n / 1024)} KB`
-  if (n < 1024 * MB) return `${(n / MB).toFixed(0)} MB`
+  if (Math.round(n / 1024) < 1024) return `${Math.round(n / 1024)} KB`
+  if (Math.round(n / MB) < 1024) return `${(n / MB).toFixed(0)} MB`
   return `${(n / (1024 * MB)).toFixed(1)} GB`
 }
