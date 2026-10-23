@@ -32,7 +32,7 @@ the browser, not a consumer of its API, and
 | `private/vx-dte-relay-worker`  | vznjs's own relay deploy: `@vzn/vx-dte-relay`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                               |
 
 Core never imports a sibling package. The integrations reach core
-through two seams: the public API (47 runtime symbols, a deliberate
+through two seams: the public API (49 runtime symbols, a deliberate
 snapshot) and the plugin capabilities (below).
 
 ## Module map

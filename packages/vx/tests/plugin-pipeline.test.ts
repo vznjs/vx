@@ -610,7 +610,7 @@ describe('graph stage', () => {
       expect(said).toBe(
         `${LOCK_REFUSED}${path.join(root, 'packages/a/vx.config.mjs')} (after plugin 'org/typo'): ` +
           'tasks.build.exec has unknown field "comand" (allowed: command, env, interactive, ' +
-          'persistent, remote, retries, sandbox, timeout)\n\n  fix  command',
+          'persistent, platforms, remote, retries, sandbox, timeout)\n\n  fix  command',
       )
     },
     TIMEOUT,

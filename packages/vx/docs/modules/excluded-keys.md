@@ -3,7 +3,7 @@
 ## Purpose
 
 `--exclude-dependencies` changes what RUNS, never what a key is. The
-dependant's key folds its dependencies' keys (`caching.md` step 10),
+dependant's key folds its dependencies' keys (`caching.md` step 8),
 and before 2026-09-24 dropping the edge dropped the fold with it: the
 dependant keyed on nothing of the dependency, so it missed for no
 reason, and once the dependency changed it hit an entry built against

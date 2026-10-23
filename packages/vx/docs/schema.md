@@ -372,9 +372,15 @@ platforms?: readonly Platform[] // 'linux-x64' | 'linux-arm64' | 'darwin-x64' | 
 The machines this task can run on, any of them. Omitted, it runs anywhere.
 
 ```ts
-'ios:build': {
-  exec: { command: 'xcodebuild -scheme App', platforms: ['darwin-arm64', 'darwin-x64'] },
-}
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    'ios:build': {
+      exec: { command: 'xcodebuild -scheme App', platforms: ['darwin-arm64', 'darwin-x64'] },
+    },
+  },
+})
 ```
 
 - **Locally**, a task whose platforms leave this machine out is skipped,

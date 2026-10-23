@@ -473,7 +473,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   - `relay` is the relay's URL; absent, the adapter's own.
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`). It
     is asked again a minute before the token's `exp`, when it has one.
-  - `scheduler` picks each layer of how the run schedules; a layer left
+  - `scheduler` (a partial `Strategy`) picks each layer of how the run schedules; a layer left
     out is the default (first named):
     - `order`, which waiting task goes first: `critical-path` (the
       longest chain after it), `graphene` (the long and the wide first),
