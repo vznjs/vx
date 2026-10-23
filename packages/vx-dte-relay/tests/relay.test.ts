@@ -473,6 +473,37 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(await after.plug(R, o)).toBe(false)
   })
 
+  // Each write is a row of a free host's 100 000 a day: a write per
+  // participant per sweep spent them in about 40 CI runs (2026-10-23).
+  it('writes a participant on a socket once, not at each sweep', async () => {
+    const store = memory()
+    const writes: string[] = []
+    const put = store.put
+    store.put = (k, v) => {
+      writes.push(k)
+      put(k, v)
+    }
+    const c = client({ store, timer: false })
+    const o = await c.join(R, 'orchestrator')
+    const a = await c.join(R, 'agent')
+    await c.poll(R, o)
+    await c.poll(R, a)
+    writes.length = 0
+    for (let i = 1; i <= 50; i++) {
+      c.relay.seen(K, o, Date.now() + i)
+      c.relay.seen(K, a, Date.now() + i)
+      c.relay.sweep()
+    }
+    expect(writes).toEqual([])
+    // Off its socket, its silence is kept once: a restart counts it from there.
+    const s = { send: () => {}, close: () => {} }
+    c.relay.attach(K, a, s)
+    c.relay.detach(K, a, { send: () => {}, close: () => {} })
+    c.relay.detach(K, a, s)
+    c.relay.sweep()
+    expect(writes.length).toBe(1)
+  })
+
   it('sweeps when its host asks, and says when to ask next', async () => {
     const c = client({ heartbeatMs: 20, timer: false })
     const o = await c.join(R, 'orchestrator')

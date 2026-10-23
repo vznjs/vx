@@ -90,7 +90,7 @@ request of an `id` or run it does not know only to close it so: a failed
 upgrade tells a client nothing it can read. It closes a socket a push
 failed on without a code: left open, its pings answered, it would carry
 nothing again. vx-dte's client also dials anew when its socket brought
-no message for three heartbeats, which a relay that let go of a socket
+no message for twelve heartbeats, which a relay that let go of a socket
 without closing it would otherwise never send down again.
 
 Every frame and ping counts as a heartbeat. A participant with no socket

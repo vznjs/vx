@@ -51,6 +51,10 @@ it, and an alarm finds the participants that went silent. Issuers' keys
 are read once per isolate and held ten minutes in the data center's
 cache, so a run's object does not fetch them again; a token naming a key
 they lack is checked against a fresh read.
+It fits Workers' free plan: a CI run of 18 participants over two
+minutes makes about 40 requests, 90 Durable Object requests (its
+websocket messages counted 20 to 1) and 60 rows written, against
+100 000 of each a day, at well under 10 ms of CPU a request.
 `wrangler.jsonc` sets the rest; change a value there, in the repository
 the button made, or in the Worker's settings in the Cloudflare dashboard:
 
