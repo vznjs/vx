@@ -125,6 +125,14 @@ export function dte(options: DteOptions) {
     return { name, max: s.max ?? Infinity, cpu: s.cpu, memory }
   })
   const adapter = options.adapter
+  // A keyless adapter's run on GitHub Actions with a relay names its own
+  // run: ci.yml sets nothing (owner, 2026-10-23: "super simple" CI).
+  let made: string | undefined
+  const runOf = (): string | undefined =>
+    givenRun() ??
+    (adapter?.keyless === true && options.relay !== undefined && onGitHub()
+      ? (made ??= crypto.randomUUID())
+      : undefined)
   if (adapter !== undefined && typeof adapter.spawn !== 'function') {
     throw new UserError('dte(): adapter is an adapter, such as local()')
   }
@@ -663,8 +671,8 @@ export function bytes(v: unknown): number | undefined {
 /** A random (v4) UUID, as the relay takes: a run id no one can guess. */
 const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-/** `VX_DTE_RUN`, which turns distribution on; unset, none. */
-function runOf(): string | undefined {
+/** `VX_DTE_RUN`, which turns distribution on. */
+function givenRun(): string | undefined {
   const run = process.env['VX_DTE_RUN']
   if (run === undefined || run === '') return undefined
   if (!RUN_ID.test(run)) {

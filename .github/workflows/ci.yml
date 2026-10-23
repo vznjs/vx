@@ -42,357 +42,121 @@ concurrency:
 # merges them all: only it runs CI, so a stack costs one run, not one per
 # layer (owner, 2026-10-22). Off a stack both sides are null and it runs.
 jobs:
-  # Everything Linux runs, as one distributed run (@vzn/vx-dte): this job
-  # is the run and runs nothing itself (owner, 2026-10-22: "everything
-  # should run in DTE"); github() dispatches vx-agent.yml for the agents,
-  # which read the cache this job's token lends them. Core's `ci` task is
-  # a group fanning out to `lint` (→ lint.oxlint + lint.oxfmt), `test` and
-  # `check.binary` (the host binary, compiled the way release.yml does,
-  # must launch and report the manifest version); every package's `ci`
-  # runs its suite. The two cross-compiles run on an agent's cold Bun
-  # cache, in bwrap: each target's runtime downloads from npm inside the
-  # sandbox, as on a fresh laptop (2026-09-29).
-  #
-  # The job summary comes from `@vzn/vx-ci`, declared in .vx/workspace.ts;
-  # it writes the verdict and the per-task table, so a red run says WHICH
-  # task failed on the PR page. The env below travels with each task to
-  # the agent that runs it, through each task's exec.env.passThrough.
+  # Each job is one distributed run (@vzn/vx-dte, .vx/workspace.ts): it
+  # checks out, installs Bun and the deps, checks the lock and runs vx,
+  # as any repo would (owner, 2026-10-23: "super simple, same as devs
+  # would add it"). vx names the run, plans it, starts as many agents
+  # (vx-agent.yml) as the plan's width needs, cancels them at the end and
+  # reads the remote cache; @vzn/vx-ci writes the job summary.
   linux:
     name: linux-x64
     if: github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      CI_AGENTS_OS: Linux
-      VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
-    # A push to main deploys the docs site the run built (docs.yml until
-    # 2026-10-23: owner, "merge seprate workflows into vx tasks").
+    # A push to main deploys the docs site the run built.
     environment: ${{ github.event_name == 'push' && 'github-pages' || '' }}
     permissions:
       id-token: write
+      # Dispatching and cancelling the agents.
       actions: write
       pages: write
-      # A push to main gives each GitHub release its post's body
-      # (release.sync; release-notes.yml until 2026-10-23).
+      # release.sync gives each GitHub release its post's body.
       contents: write
+    env:
+      CI_AGENTS_OS: Linux
+      VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
+      GITHUB_TOKEN: ${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
+      # An unavailable OS sandbox, reftable, tag history, native watcher
+      # or non-root user fails its rows instead of skipping them.
+      VX_REQUIRE_SANDBOX: '1'
+      VX_REQUIRE_REFTABLE: '1'
+      VX_REQUIRE_TAGS: '1'
+      VX_REQUIRE_WATCH_EVENTS: '1'
+      VX_REQUIRE_NONROOT: '1'
+      # A PR's title and commits are held to Conventional Commits.
+      VX_PR_TITLE: ${{ github.event.pull_request.title }}
+      VX_PR_BASE: ${{ github.event.pull_request.base.sha }}
+      VX_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+      # The 2 MiB tmpfs each Linux agent mounts (vx-agent.yml).
+      VX_SMALL_DISK: /tmp/vx-small
+      # Cold reads nothing but still writes: agents hand outputs back
+      # through the remote.
+      VX_CACHE_POLICY: ${{ inputs.cold && 'local:w,remote:w' || '' }}
     steps:
-      - name: A run id no one can guess
-        run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
-
-      # All of small's max start while this job checks out and installs
-      # (about 19 s); github() adopts them from vx-dte-started. One the run
-      # asked for later took 82-90 s to come online, half the run
-      # (2026-10-23). A failed dispatch leaves the run to start its own.
-      - name: Start agents
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ids=$(seq -f 'small#%g' 1 12 | paste -sd,)
-          agents=$(jq -nc --arg ids "$ids" '$ids | split(",")')
-          id=$(jq -n --arg ref "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" --arg run "$VX_DTE_RUN" \
-            --arg relay "$VX_DTE_RELAY" --arg sha "$GITHUB_SHA" --arg agents "$agents" \
-            '{ref: $ref, inputs: {run: $run, relay: $relay, sha: $sha, size: "small", agents: $agents}}' |
-            gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/vx-agent.yml/dispatches" \
-              -H 'X-GitHub-Api-Version: 2026-03-10' --input - --jq .workflow_run_id) || exit 0
-          [ -n "$id" ] || exit 0
-          r="/repos/$GITHUB_REPOSITORY/actions/runs/$id"
-          echo "$r $ids" >> "$RUNNER_TEMP/vx-dte-started"
-          echo "$r" >> "$RUNNER_TEMP/vx-dte-runs"
-
-      # A merged PR's run kept its agents' runners 80 s past the merge
-      # before its `closed` run cancelled it, and this run's agents waited
-      # 65 s for them (2026-10-23). Every run still going on the merged
-      # head is cancelled now (a newer push to its branch is not); a
-      # cancelled CI run cancels its agents.
-      - if: github.event_name == 'push'
-        name: Cancel the merged PR's runs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '.[].head | "\(.ref) \(.sha)"' |
-            while read -r b sha; do
-              gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=$b&head_sha=$sha&per_page=50" \
-                --jq '.workflow_runs[] | select(.status != "completed") | .id'
-            done |
-            while read -r id; do
-              gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/cancel" > /dev/null 2>&1 || true
-            done || true
-
+      # The default branch's history: schedule-history reads the
+      # merge-base's timings to pack agents. Commits and trees only.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        # The default branch and its history: schedule-history finds the
-        # merge-base's timings, which carry each task's measured need, so
-        # agents pack tasks by it. Commits and trees only: the walk reads
-        # no old file, and a full clone took 5-7 s of every job.
         with:
           fetch-depth: 0
           filter: blob:none
-
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      # No vx-runner (about 55 s of apt): every sandboxed task runs on an
-      # agent, which enforces it there, so this job arms no sandbox.
-
-      # vx's own cache, carried between runs: a run restores the newest
-      # one main saved and replays every task whose key is unchanged, so a
-      # PR re-runs only what it touched (owner, 2026-10-04). Only a push
-      # to main saves, so a PR's code never writes an entry another run reads.
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            .vx/cache
-            ~/.vx
-          key: vx-${{ runner.os }}-${{ github.sha }}
-          restore-keys: vx-${{ runner.os }}-
-
-      # Every run reads configs from the committed lock and trusts it; this
-      # re-evaluates them and fails on drift.
-      - name: vx lock --check
-        run: bun packages/vx/src/bin.ts lock --check
-
-      - name: vx run ci
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GH_TOKEN: ${{ github.token }}
-          # An unavailable OS sandbox is a test FAILURE, not a skip: a
-          # `describe.skipIf` would delete the tests covering the isolation
-          # boundary under a green check.
-          VX_REQUIRE_SANDBOX: '1'
-          # The reftable rows need git 2.45; an older one fails them here
-          # instead of skipping.
-          VX_REQUIRE_REFTABLE: '1'
-          # The API-break law needs the last v* tag; agents check out the
-          # full history.
-          VX_REQUIRE_TAGS: '1'
-          # A PR's title and its commits are held to Conventional Commits
-          # (tests/conventional-commits.unsafe.test.ts); a push passes none.
-          VX_PR_TITLE: ${{ github.event.pull_request.title }}
-          VX_PR_BASE: ${{ github.event.pull_request.base.sha }}
-          VX_PR_HEAD: ${{ github.event.pull_request.head.sha }}
-          # The `armWatcher` rows prove the NATIVE watcher delivers; where it
-          # does not, `vx watch` silently polls. A runner that drops the
-          # events must fail, not skip.
-          VX_REQUIRE_WATCH_EVENTS: '1'
-          # Root bypasses every permission bit, so six rows asserting what
-          # one does would skip on a root container (item 481).
-          VX_REQUIRE_NONROOT: '1'
-          # The 2 MiB tmpfs each Linux agent mounts (vx-agent.yml) for
-          # `tests/disk-full.unsafe.test.ts`.
-          VX_SMALL_DISK: /tmp/vx-small
-          # Empty is unset: the workspace's own policy. Cold reads nothing
-          # but still writes: agents hand outputs back through the remote.
-          VX_CACHE_POLICY: ${{ inputs.cold && 'local:w,remote:w' || '' }}
-        run: |
-          # The summary is written by a PLUGIN, and a plugin that declines
-          # writes nothing under a green check, so assert it in this step
-          # (`$GITHUB_STEP_SUMMARY` is per step); vx's exit code stays the gate.
-          set +e
-          bun packages/vx/src/bin.ts run ci test.live check.vs-turbo build.bun.linux-arm64 build.bun.darwin-arm64 ${{ github.event_name == 'push' && 'release.sync' || '' }} --all
-          code=$?
-          set -e
-          test -s "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is empty — did @vzn/vx-ci decline?"; exit 1; }
-          grep -q 'vx run' "$GITHUB_STEP_SUMMARY" || { echo "::error::job summary is not the vx one"; exit 1; }
-          exit $code
-
-      # A killed vx never closes its run: cancel the agent runs it
-      # dispatched (github() lists them in RUNNER_TEMP), or queued ones
-      # hold runners the next run waits for. A second cancel answers 409.
-      - if: always()
-        name: Cancel the run's agents
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          f="$RUNNER_TEMP/vx-dte-runs"
-          [ -f "$f" ] || exit 0
-          while read -r r; do gh api -X POST "$r/cancel" > /dev/null 2>&1 || true; done < "$f"
-
+      - run: bun install --frozen-lockfile
+      - run: bun packages/vx/src/bin.ts lock --check
+      # Plans the affected graph, starts the agents its width needs, then
+      # orchestrates them.
+      - run: bun packages/vx/src/bin.ts run ci test.live check.vs-turbo build.bun.linux-arm64 build.bun.darwin-arm64 ${{ github.event_name == 'push' && 'release.sync' || '' }} --all
       - if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: private/vx-docs/dist
       - if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        name: Deploy the docs site
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
 
-      # Bounded, or each run carries every artifact before it: 1.4 GB after
-      # a day of DTE runs, 13 s to restore and 14 s to save (2026-10-22).
-      # Least recently used goes first; a hit it drops is the remote's.
-      - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        name: Bound the carried cache
-        run: bun packages/vx/src/bin.ts cache clean --max-size 300MB
-
-      - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            .vx/cache
-            ~/.vx
-          key: vx-${{ runner.os }}-${{ github.sha }}
-
   # The linux-arm64 release binary is cross-compiled and never run
-  # elsewhere: this proves it launches, on main only, so a pull request
-  # waits on no arm64 runner. Its own distributed run, as macOS (owner,
-  # 2026-10-22: "move ... compiled binaries into dte"): this job plans and
-  # dispatches one arm agent (.vx/workspace.ts picks the pool by
-  # CI_AGENTS_OS, which also keys the check apart from Linux x64's).
+  # elsewhere: this proves it launches on an arm agent, on main only.
   binary-linux-arm64:
     name: linux-arm64
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      CI_AGENTS_OS: Linux-ARM64
     permissions:
-      contents: read
       id-token: write
       actions: write
+      contents: read
+    env:
+      CI_AGENTS_OS: Linux-ARM64
+      VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           filter: blob:none
-
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2
-
       - run: bun install --frozen-lockfile
+      - run: bun packages/vx/src/bin.ts run check.binary --filter @vzn/vx
 
-      - name: A run id no one can guess
-        run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
-
-      - name: vx run check.binary (linux-arm64)
-        env:
-          VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
-          GITHUB_TOKEN: ${{ github.token }}
-        run: bun packages/vx/src/bin.ts run check.binary --filter @vzn/vx
-
-      # A killed vx never closes its run: cancel the agent runs it
-      # dispatched (github() lists them in RUNNER_TEMP).
-      - if: always()
-        name: Cancel the run's agents
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          f="$RUNNER_TEMP/vx-dte-runs"
-          [ -f "$f" ] || exit 0
-          while read -r r; do gh api -X POST "$r/cancel" > /dev/null 2>&1 || true; done < "$f"
-
-  # The macOS run exists because THREE macOS-only defects reached main
-  # unseen on an ubuntu-only matrix (2026-08-22: bsdtar refusing --format=gnu
-  # broke every cache save; the /tmp -> /private/tmp symlinked-base
-  # containment refusing every restore; close() leaking a handle on
-  # SQLITE_IOERR_VNODE). The platform-divergence classes it guards are tar
-  # formats, filesystem/symlink semantics and SQLite behaviour, plus the
-  # sandbox, signals and watching: `test.platform` runs only those files
-  # (owner, 2026-10-22: "shouldn't we have only some?").
-  #
-  # VX_REQUIRE_SANDBOX, as on Linux: the sandbox suites run here whenever
-  # seatbelt answers, so an unavailable one must fail, not skip quietly.
-  #
-  # Its own distributed run (owner, 2026-10-22: "yes 2x dte"): this job
-  # dispatches macOS agents (.vx/workspace.ts picks the pool by
-  # CI_AGENTS_OS) and keys the suites on it (#3861). Several processes, not
-  # one, is the point on macOS: `bun test` pins descriptors per imported
-  # module and the process cap is 10 240.
-  #
-  # On main only (owner, 2026-10-22: "run macos tests only on main"): a
-  # skipped job still satisfies the required check on a pull request.
+  # macOS-only defects reached main unseen on Linux (2026-08-22: tar
+  # formats, symlinked bases, SQLite): `test.platform` runs the files that
+  # guard tar, filesystem, SQLite, the sandbox, signals and watching, on
+  # Mac agents, on main only (owner, 2026-10-22).
   macos:
     name: darwin-arm64
     if: github.event_name != 'pull_request'
-    # The run only plans and dispatches: Linux boots sooner and keeps all
-    # five of the account's macOS runners for agents (owner, 2026-10-22).
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      id-token: write
+      actions: write
+      contents: read
     env:
       CI_AGENTS_OS: macOS
       VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
-    permissions:
-      contents: read
-      id-token: write
-      actions: write
+      GITHUB_TOKEN: ${{ github.token }}
+      VX_REQUIRE_SANDBOX: '1'
+      VX_REQUIRE_WATCH_EVENTS: '1'
     steps:
-      - name: A run id no one can guess
-        run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
-
-      # As the Linux run's: a Mac agent dispatched mid-run came online
-      # 85-90 s in, past half the run (2026-10-23).
-      - name: Start agents
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          ids=$(seq -f 'mac#%g' 1 4 | paste -sd,)
-          agents=$(jq -nc --arg ids "$ids" '$ids | split(",")')
-          id=$(jq -n --arg ref "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" --arg run "$VX_DTE_RUN" \
-            --arg relay "$VX_DTE_RELAY" --arg sha "$GITHUB_SHA" --arg agents "$agents" \
-            '{ref: $ref, inputs: {run: $run, relay: $relay, sha: $sha, size: "mac", agents: $agents}}' |
-            gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/vx-agent.yml/dispatches" \
-              -H 'X-GitHub-Api-Version: 2026-03-10' --input - --jq .workflow_run_id) || exit 0
-          [ -n "$id" ] || exit 0
-          r="/repos/$GITHUB_REPOSITORY/actions/runs/$id"
-          echo "$r $ids" >> "$RUNNER_TEMP/vx-dte-started"
-          echo "$r" >> "$RUNNER_TEMP/vx-dte-runs"
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           filter: blob:none
-
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.2
-
       - run: bun install --frozen-lockfile
-
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            .vx/cache
-            ~/.vx
-          key: vx-macOS-${{ github.sha }}
-          restore-keys: vx-macOS-
-
-      # The core suite, the host binary (darwin-arm64: it launches,
-      # re-signed only if macOS refuses it), the cold cross-compile under
-      # seatbelt, which matches the directory Bun extracts a downloaded
-      # runtime into by the grant's glob, the sandbox canary (a gate since
-      # 2026-08-25: a NOT_ENFORCED run reds it) and every package's build
-      # under seatbelt with no cache. All on Mac agents.
-      - name: vx run test.platform (core, darwin)
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          VX_REQUIRE_SANDBOX: '1'
-          VX_REQUIRE_WATCH_EVENTS: '1'
-        run: bun packages/vx/src/bin.ts run test.platform check.binary check.sandbox-canary check.build-cold build.bun.darwin-x64 build.bun.linux-x64 --filter @vzn/vx
-
-      # A killed vx never closes its run: cancel the agent runs it
-      # dispatched (github() lists them in RUNNER_TEMP), or queued ones
-      # hold runners the next run waits for. A second cancel answers 409.
-      - if: always()
-        name: Cancel the run's agents
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          f="$RUNNER_TEMP/vx-dte-runs"
-          [ -f "$f" ] || exit 0
-          while read -r r; do gh api -X POST "$r/cancel" > /dev/null 2>&1 || true; done < "$f"
-
-      # Bounded, or each run carries every artifact before it: 1.4 GB after
-      # a day of DTE runs, 13 s to restore and 14 s to save (2026-10-22).
-      # Least recently used goes first; a hit it drops is the remote's.
-      - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        name: Bound the carried cache
-        run: bun packages/vx/src/bin.ts cache clean --max-size 300MB
-
-      - if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            .vx/cache
-            ~/.vx
-          key: vx-macOS-${{ github.sha }}
+      - run: bun packages/vx/src/bin.ts run test.platform check.binary check.sandbox-canary check.build-cold build.bun.darwin-x64 build.bun.linux-x64 --filter @vzn/vx
