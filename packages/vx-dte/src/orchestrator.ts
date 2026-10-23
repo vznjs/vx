@@ -116,6 +116,8 @@ export interface OrchestratorOptions {
   readonly keyOf: (taskId: string) => string | undefined
   /** Agent `id` (its label) left the run, lost or let go: room for another. */
   readonly left?: (id: string) => void
+  /** How much of the run waits on a task (`tailsMs`): the queue places the most first. */
+  readonly tail?: (taskId: string) => number
 }
 
 /**
@@ -271,7 +273,13 @@ export class Orchestrator {
   private pump(): void {
     const batches = new Map<Agent, Job[]>()
     const left: Job[] = []
-    for (const job of this.queue.splice(0)) {
+    // Core asks in its critical-path order, but only as tasks get ready: a
+    // long chain ready a moment late queued behind 46 shards ready at once,
+    // and its 41 s build began 47 s in, the run's end (main, 2026-10-23).
+    const tail = this.o.tail
+    const queue = this.queue.splice(0)
+    if (tail !== undefined) queue.sort((x, y) => tail(y.req.taskId) - tail(x.req.taskId))
+    for (const job of queue) {
       const a = this.place(job)
       if (a === undefined) {
         left.push(job)

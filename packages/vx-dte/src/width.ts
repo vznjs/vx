@@ -42,6 +42,32 @@ function layout(
 }
 
 /**
+ * Each task's tail: its usual duration and its longest chain of
+ * dependants after it, the most of the run that waits on it starting.
+ */
+export function tailsMs(
+  nodes: ReadonlyMap<string, TaskNode>,
+  durationMs: (id: string) => number | undefined,
+): (id: string) => number {
+  const dependants = new Map<string, string[]>()
+  for (const [id, n] of nodes)
+    for (const d of n.deps) dependants.set(d, [...(dependants.get(d) ?? []), id])
+  const tail = new Map<string, number>()
+  const visit = (id: string): number => {
+    const known = tail.get(id)
+    if (known !== undefined) return known
+    tail.set(id, 0)
+    const runs = nodes.get(id)?.config.exec?.command !== undefined
+    let after = 0
+    for (const d of dependants.get(id) ?? []) after = Math.max(after, visit(d))
+    const t = after + (runs ? (durationMs(id) ?? UNKNOWN_MS) : 0)
+    tail.set(id, t)
+    return t
+  }
+  return visit
+}
+
+/**
  * How long the remaining tasks take at the least: their critical path,
  * each for its usual duration. An agent asked for now that warms up
  * longer than this joins a run with nothing left for it.

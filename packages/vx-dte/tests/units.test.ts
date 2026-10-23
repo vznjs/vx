@@ -16,7 +16,7 @@ import {
 import { Orchestrator, runKey, type Need } from '../src/orchestrator.js'
 import { outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
-import { busyCores, endsInMs } from '../src/width.js'
+import { busyCores, endsInMs, tailsMs } from '../src/width.js'
 import { join } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
 import type { RunOrder } from '../src/messages.js'
@@ -214,6 +214,7 @@ async function harness(
   need: (id: string) => Need = () => ({ cores: 1, memory: 10 }),
   heartbeatMs?: number,
   keyOf: (id: string) => string | undefined = () => undefined,
+  tail?: (id: string) => number,
 ) {
   const store = fakeArtifacts()
   const cache: { facts: CacheFacts } = { facts: { refs: [], lent: {} } }
@@ -229,6 +230,7 @@ async function harness(
     cacheFacts: async () => cache.facts,
     run: R,
     keyOf,
+    ...(tail === undefined ? {} : { tail }),
   })
   const agent = async (cores: number, id?: string) => {
     const me = await join(url, R, 'agent', { v: 1, cores, memory: 100, tree: 'c', id }, undefined)
@@ -352,6 +354,47 @@ it('fills an agent’s cores and a prefetch in one batch', async () => {
   } finally {
     await h.stop()
   }
+})
+
+// Main, 2026-10-23: vx-docs#build (41 s, then its test) got ready 3 s in,
+// behind 46 shards ready at once, and began 47 s in: the run's end.
+it('places the queued task the most of the run waits on first, not the first asked', async () => {
+  const ids = ['t1', 's1', 's2', 's3', 'build']
+  const tail = (id: string) => (id === 'build' ? 45_000 : 35_000)
+  const h = await harness(new Map(ids.map((id) => node(id))), undefined, undefined, undefined, tail)
+  try {
+    const a = await h.agent(1)
+    await Bun.sleep(50)
+    for (const id of ids) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['build', 't1']])
+    await a.finish('build')
+    expect(await a.batches()).toEqual([['s1']])
+  } finally {
+    await h.stop()
+  }
+})
+
+it('a task’s tail is its duration and its longest chain of dependants', () => {
+  const runs = (id: string, deps: string[] = []) =>
+    [
+      id,
+      { id, deps, projectDir: '/ws', config: { exec: { command: 'x' } } } as unknown as TaskNode,
+    ] as const
+  const nodes = new Map([
+    runs('import'),
+    runs('build', ['import']),
+    runs('test', ['build']),
+    runs('shard'),
+    [
+      'ci',
+      { id: 'ci', deps: ['test', 'shard'], projectDir: '/ws', config: {} } as unknown as TaskNode,
+    ] as const,
+  ])
+  const ms: Record<string, number> = { import: 1_000, build: 41_000, test: 4_000 }
+  const tail = tailsMs(nodes, (id) => ms[id])
+  expect(['import', 'build', 'test', 'shard', 'ci'].map(tail)).toEqual([
+    46_000, 45_000, 4_000, 1_000, 0,
+  ])
 })
 
 // M, 2026-10-21: check.bun, ahead of 8 shards, sat in a busy agent's
