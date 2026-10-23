@@ -199,4 +199,14 @@ describe.if(CHUNKING_SUPPORTED)('the cache layer, past the sweep', () => {
       ['first', undefined],
     ])
   })
+
+  // A kept entry whose blob CAS evicted missed every run, and each run's
+  // put kept it again: the key never hit on that server.
+  it('a put of a stored key whose blob is gone writes its own result', async () => {
+    entry('k-dangling', 'gone')
+    fake.blobs.delete(new Bun.CryptoHasher('sha256').update('gone').digest('hex'))
+    expect(await restored('k-dangling')).toBeNull()
+    await cache.put('k-dangling', new Blob([bytes('again')]), { durationMs: 1 })
+    expect(await restored('k-dangling')).toEqual(['again', 1])
+  })
 })
