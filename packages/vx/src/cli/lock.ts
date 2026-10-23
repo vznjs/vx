@@ -22,11 +22,13 @@ import {
   isUserError,
   relPosix,
   type RefusalParts,
+  type UserError,
   secretMask,
   ui,
   sayNotice,
 } from '../util/index.js'
 import {
+  ConfigsRefused,
   findProjectConfigs,
   findWorkspaceRoot,
   loadProjectConfigs,
@@ -107,7 +109,7 @@ export async function lockWorkspace(
 ): Promise<number> {
   const check = await audit(root, warn)
   if (check.broken !== null) {
-    notWritten(check.broken, check.brokenParts)
+    notWritten(check.broken, check.brokenParts, check.alsoBroken)
     return 1
   }
   return await writeLock(root, check, say)
@@ -199,7 +201,12 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
       })
   } catch (err) {
     if (isUserError(err))
-      return { ...out, broken: err.message, ...(err.parts ? { brokenParts: err.parts } : {}) }
+      return {
+        ...out,
+        broken: err.message,
+        ...(err.parts ? { brokenParts: err.parts } : {}),
+        ...(err instanceof ConfigsRefused ? { alsoBroken: err.all.slice(1) } : {}),
+      }
     throw err
   }
   return out
@@ -209,6 +216,8 @@ interface GraphCheck {
   /** A graph rule's refusal, or a config that does not load; null when sound. */
   broken: string | null
   brokenParts?: RefusalParts
+  /** The other configs that do not load, past `broken`. */
+  alsoBroken?: readonly UserError[]
   /** The lock the configs evaluate to here. */
   fresh: Lockfile
   /** Every project, as a run discovers them from `fresh`. */
@@ -237,14 +246,30 @@ export async function lockAfterMigration(root: string): Promise<{ code: number; 
     return { code, said }
   } catch (err) {
     if (!isUserError(err)) throw err
-    notWritten(err.message, err.parts)
+    notWritten(err.message, err.parts, err instanceof ConfigsRefused ? err.all.slice(1) : [])
     return { code: 1, said }
   }
 }
 
-/** The lock refused: the refusal's own parts, or its config line and frame, or its message. */
-function notWritten(message: string, parts: RefusalParts | undefined): void {
+/** Refusals shown in full past the first; the rest are counted. */
+const ALSO_SHOWN = 4
+
+/**
+ * The lock refused: the refusal's own parts, or its config line and frame,
+ * or its message; then each other config that does not load, so one run
+ * names what a repo must fix.
+ */
+function notWritten(
+  message: string,
+  parts: RefusalParts | undefined,
+  also: readonly UserError[] = [],
+): void {
   ui.print('err', refusalNotice('vx lock', message, parts, { headline: 'lock not written' }))
+  for (const e of also.slice(0, ALSO_SHOWN))
+    ui.print('err', refusalNotice('vx lock', e.message, e.parts, { headline: 'also refused' }))
+  const more = also.length - ALSO_SHOWN
+  if (more > 0)
+    sayNotice('error', 'vx lock', `${more} more configs refused; fix these, then run vx lock again`)
 }
 
 /** Names shown per note: a turbo() repo can have hundreds of bare projects. */

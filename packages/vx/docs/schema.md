@@ -701,7 +701,8 @@ Semantics:
   A `'^name'` that **no project in the whole workspace declares** is a
   hard error at graph-build time, since it can only be a typo: "app#test:
   dependsOn ^biuld but no project in the workspace declares
-  biuld". Until 2026-09-24 it resolved to no edges and the run went
+  biuld. Did you mean ^build?" (a same-project name that is not
+  declared names the project's nearest task the same way). Until 2026-09-24 it resolved to no edges and the run went
   green (Nx#32779 is the same bug). A scoped run (an anchored
   `app#test`, `--filter`, a project directory) loads only its projects
   and their dependency closure; when a `'^name'` there finds no holder
@@ -2362,7 +2363,9 @@ opens it on click), and the lines up to it with a caret under the field
 ```
 
 A field the file does not hold (a required one missing, or one a plugin
-set) prints without the frame. The table below lists the messages
+set) prints without the frame. Every config that does not load is
+named in one run: the first in full, then up to four more as `✗ vx lock
+also refused`, then a count of the rest. The table below lists the messages
 a user meets most:
 
 | Symptom                                                                                                                               | Cause                                                                                                                                                                                                                          |

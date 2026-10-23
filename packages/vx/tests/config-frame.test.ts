@@ -113,4 +113,39 @@ describe('vx lock prints a config refusal with its frame', () => {
       await rm(root, { recursive: true, force: true })
     }
   })
+
+  // A rename after an upgrade refuses every config at once; naming one a run
+  // made a large repo take a run per config.
+  it('names every config that does not load, not only the first', async () => {
+    const root = await realpath(await makeWorkspace({ prefix: 'vx-frame-all-' }))
+    try {
+      for (const name of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) {
+        const pkg = path.join(root, 'packages', name)
+        await mkdir(pkg, { recursive: true })
+        await writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name, version: '0.0.0' }))
+        await writeFile(
+          path.join(pkg, 'vx.config.mjs'),
+          `export default { tasks: { build: { exec: { command: 'x' }, outputs: ['dist'] } } }\n`,
+        )
+      }
+      const r = Bun.spawnSync(['bun', BIN, 'lock'], {
+        cwd: root,
+        env: { ...process.env, NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      expect(r.exitCode).toBe(1)
+      const err = r.stderr.toString()
+      expect(err).toStartWith(
+        '✗ vx lock  lock not written\n\n  packages/a/vx.config.mjs:1:60\n  tasks.build has unknown field "outputs"\n  allowed: cache, dependsOn, description, exec, inputs',
+      )
+      expect(err).toContain('  fix  use `cache.outputs.files`')
+      expect(err.match(/^✗ vx lock {2}also refused$/gm)).toHaveLength(4)
+      for (const name of ['b', 'c', 'd', 'e'])
+        expect(err).toContain(`packages/${name}/vx.config.mjs:1:60`)
+      expect(err).toContain('✗ vx lock  2 more configs refused; fix these, then run vx lock again')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })
