@@ -159,6 +159,7 @@ export function dte(options: DteOptions) {
     const platform = options.workers?.[size]?.platform
     return platform === undefined ? {} : { platform }
   }
+  const home = homeOf(sizes, hostPlatform())
   const adapter = options.adapter
   // A keyless adapter's run on GitHub Actions with a relay names its own
   // run: ci.yml sets nothing (owner, 2026-10-23: "super simple" CI).
@@ -381,6 +382,7 @@ export function dte(options: DteOptions) {
         tail: (id) =>
           (tails ??= tailsMs(nodes ?? new Map(), (x) => peaks.get(x)?.p50DurationMs))(id),
         how,
+        home,
         lost: (id) => {
           // A planned worker is not started again: its job is spent.
           const s = sizeOf.get(id)
@@ -486,6 +488,7 @@ export function dte(options: DteOptions) {
           limitMs: deadline === undefined ? undefined : deadline - performance.now(),
           known,
           how,
+          home,
         })
         deadline = performance.now() + p.boundMs
         for (const t of p.tasks) known.add(t.id)
@@ -699,6 +702,7 @@ async function firstWave(
     nodes,
     need,
     (id) => peaks.get(id)?.p50DurationMs ?? p50.get(id),
+    homeOf(sizes, hostPlatform()),
   )
   // All start at once: no warm-up between them.
   const { start } = plan(
@@ -824,4 +828,15 @@ async function changedSinceParent(workspaceRoot: string): Promise<string[]> {
   } catch {
     return []
   }
+}
+
+/**
+ * The platform a task naming none runs on: `host`, when the sizes run it
+ * and another. A worker of another platform then runs only the tasks that
+ * name it, so they never wait behind the rest, and leaves when they are
+ * done (owner, 2026-10-23). No size of `host`: anywhere, or nothing runs them.
+ */
+export function homeOf(sizes: readonly Size[], host: string): string | undefined {
+  const of = new Set(sizes.filter((s) => s.max > 0).map((s) => s.platform))
+  return of.has(host) && of.size > 1 ? host : undefined
 }
