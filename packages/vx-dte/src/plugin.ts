@@ -29,7 +29,7 @@ export interface WorkerSize {
   readonly cpu: number
   /** Its memory, in bytes or as `'8GB'`, `'512MiB'`: what starting one adds, until it reports what its machine has. */
   readonly memory: number | string
-  /** Its machines' platform; absent, this machine's. A task naming `exec.platforms` runs only on a worker of one of them. */
+  /** Its machines' platform, which a joining worker must report; absent, planned as this machine's and not checked. A task naming `exec.platforms` runs only on a worker of one of them. */
   readonly platform?: Platform
 }
 
@@ -153,6 +153,12 @@ export function dte(options: DteOptions) {
       platform: s.platform ?? hostPlatform(),
     }
   })
+  // Only a platform the size names refuses a worker reporting another: an
+  // unnamed one is planned as this machine's, and takes whatever joins.
+  const named = (size: string): { platform?: Platform } => {
+    const platform = options.workers?.[size]?.platform
+    return platform === undefined ? {} : { platform }
+  }
   const adapter = options.adapter
   // A keyless adapter's run on GitHub Actions with a relay names its own
   // run: ci.yml sets nothing (owner, 2026-10-23: "super simple" CI).
@@ -408,7 +414,7 @@ export function dte(options: DteOptions) {
           size: a.size,
           cpu: a.cpu,
           memory: a.memory,
-          platform: sizes.find((s) => s.name === a.size)?.platform ?? hostPlatform(),
+          ...named(a.size),
         })
         started.set(a.size, (started.get(a.size) ?? 0) + 1)
         index++
@@ -420,7 +426,7 @@ export function dte(options: DteOptions) {
           size: s.name,
           cpu: s.cpu,
           memory: s.memory,
-          ...(s.platform === undefined ? {} : { platform: s.platform }),
+          ...named(s.name),
         })
         sizeOf.set(id, s)
         return {

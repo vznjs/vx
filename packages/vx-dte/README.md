@@ -292,9 +292,9 @@ stops, instead of waiting for the job's timeout.
   is not passed over again and again.
 - A task naming `exec.platforms` runs only on a worker of the platform
   core placed it on: this machine's when a size has it, else the first of
-  the task's a size has. Each size's `platform` is this machine's unless
-  it says otherwise; a worker reports its own when it joins, and one
-  whose size says another is refused. The run starts a worker of each
+  the task's a size has. A worker reports its platform when it joins: a
+  size naming one refuses a worker of another; a size naming none is
+  planned as this machine's and takes any worker. The run starts a worker of each
   platform its work needs. A task none of whose platforms any size has
   refuses the run before a worker starts.
 - Tasks waiting for room go out longest tail first: a task's recorded
@@ -430,7 +430,7 @@ machine together:
     when it starts one, until the worker reports what its machine has,
     how many of it one run may start (absent, no cap), and its machines'
     platform (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`;
-    absent, this machine's). With no adapter, the sizes' platforms are
+    absent, planned as this machine's and not checked on join). With no adapter, the sizes' platforms are
     the ones joining workers may have. Only work counts:
     a task that missed the cache, or waits on a cached one that did; groups
     and hits need no worker. At each miss, finish and join the run plays
