@@ -354,7 +354,7 @@ state of each:
    GitHub's generated notes from merged PR titles are accurate since
    every merge is one titled PR.
 3. OWNER: the site's address — it deploys to
-   https://vznjs.github.io/vx/ on every push to main (`docs.yml`). A
+   https://vznjs.github.io/vx/ on every push to main (ci.yml's Linux run). A
    custom domain is a DNS record plus `SITE_URL` / `BASE_PATH` env in
    that workflow (`astro.config.mjs` reads both); every internal link is
    base-relative, so nothing else moves.

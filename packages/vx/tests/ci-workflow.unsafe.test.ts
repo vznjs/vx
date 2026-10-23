@@ -19,6 +19,7 @@ interface Step {
 }
 interface Job {
   name?: string
+  environment?: string
   if?: string
   needs?: string | string[]
   'runs-on'?: string
@@ -182,6 +183,23 @@ describe('ci.yml', () => {
         id,
         false,
       ])
+  })
+
+  // docs.yml was its own workflow, its own install and sandbox runtime, for
+  // a site the run already builds (owner, 2026-10-23: fold workflows into
+  // vx tasks on DTE). Only a green push to main deploys it.
+  it('deploys the docs site the Linux run built, on a push to main', () => {
+    const job = doc.jobs['linux']!
+    const main = "success() && github.event_name == 'push' && github.ref == 'refs/heads/main'"
+    const upload = job.steps!.find((s) => s.uses?.startsWith('actions/upload-pages-artifact@'))
+    const deploy = job.steps!.find((s) => s.uses?.startsWith('actions/deploy-pages@'))
+    expect([upload?.if, upload?.with, deploy?.if]).toEqual([
+      main,
+      { path: 'private/vx-docs/dist' },
+      main,
+    ])
+    expect(job.environment).toBe("${{ github.event_name == 'push' && 'github-pages' || '' }}")
+    expect(job.permissions?.['pages']).toBe('write')
   })
 
   it('filters no trigger by path', () => {
