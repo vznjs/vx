@@ -850,9 +850,12 @@ and `app/d`, never the route. An input brace of one alternative (`{b}.ts`) is re
 lock`: it would match `b.ts` and never a file named `{b}.ts`; write the
 one you mean, `\{b\}.ts` for the braces. So is an input under `.git`
 (`.git/config`): git never lists it, so it would key nothing. An extglob (`@(a|b)`, `!(x)`,
-`+(…)`, `*(…)`, `?(…)`) is refused too: `Bun.Glob` reads it as literal
-text or a plain wildcard, so the key would miss the files it names;
-write `{a,b}`. A leading `!` is still the negation, so `!(group)/**`
+`+(…)`, `*(…)`, `?(…)`) is refused too: vx's own matchers read it as
+literal text or a plain wildcard, so the key would miss the files it
+names; write `{a,b}`. A brace range is `Bun.Glob`'s (Bun 1.4.4):
+`{1..3}`, `{3..1}`, `{01..03}`, `{a..c}`, `{1..10..3}`; vx expands it as
+a comma brace. A mixed-case range (`{A..c}`) or one of more than 1024
+names is refused. A leading `!` is still the negation, so `!(group)/**`
 takes a route group back. This holds for every task glob — `inputs.files`,
 `inputs.workspaceFiles`, `outputs.files`, `outputs.workspaceFiles` — and
 for everything read from them (`--affected`, `vx watch`, the

@@ -49,12 +49,15 @@ export function isInstalledPath(rel: string): boolean
 // A brace whose alternatives hold `/` expanded (Bun.Glob's scan skips one):
 // workspace discovery and the output scan (A-10).
 export function slashBraceExpansions(pattern: string): string[]
-// Every brace group of two or more alternatives expanded: where a gitignored
+// Every brace group of two or more alternatives, or a range, expanded: where a gitignored
 // input a brace names can be (`ignoredReach`)
 export function braceAlternatives(pattern: string): string[]
+// A brace range's names as Bun.Glob (1.4.4) reads them (`1..3`, `01..03`, `a..c`, `1..10..3`), or null
+export function braceRange(body: string): string[] | null
+export const BRACE_RANGE_LIMIT: number // 1024 — the most names a range may name
 export const GLOB_WILDCARDS: RegExp // /[*?{}]/ — a task glob's wildcards
 export const BUN_GLOB_WILDCARDS: RegExp // /[*?[\]{}]/ — Bun.Glob's own
-// An extglob group, which Bun.Glob cannot read: refused in member and task globs (A-62).
+// An extglob group, which vx's matchers do not read: refused in member and task globs (A-62).
 export const EXTGLOB: RegExp // /[!@+*?]\(/
 // C0/C1 controls and DEL as `\xNN`, for a file name vx prints (L-31).
 export function printable(s: string): string
