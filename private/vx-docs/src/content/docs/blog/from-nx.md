@@ -123,11 +123,11 @@ so a shared input list is an import.
 ## What you drop, and what replaces it
 
 - **The daemon.** vx has [none](../no-daemon/). On the 9,603-task
-  benchmark, on native config, with nothing changed vx adds 757 ms to
-  Nx's 22.63 s, and the cold run burns 30.06 s of
-  runner CPU to Nx's 5 min 45 s.
+  benchmark, on native config, with nothing changed vx adds 720 ms to
+  Nx's 26.21 s, and the cold run burns 49.58 s of
+  runner CPU to Nx's 7 min 43 s.
   Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-  Run 2026-10-12 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.7, Nx 23.3.0, Vite Task (vite-plus) 1.1.0.
+  Run 2026-10-23 on linux x64, 4 cores, concurrency 10: vx at commit 0be036747, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.
 - **Nx Cloud's distributed execution.** `@vzn/vx-dte` (alpha, not on
   npm yet) spreads one run over workers your own CI starts, through a
   relay you host ([how it works](../one-run-on-your-own-runners/)), and

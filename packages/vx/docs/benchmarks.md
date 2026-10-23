@@ -409,7 +409,7 @@ No `turbo.json` key changes the order. vx ranks ready tasks by remaining
 critical path, Nx by how many tasks wait on each. On the 30-level shape
 above, Turborepo's cold overhead is 12% over vx's.
 
-## Head to head: 9,603 tasks, 30 levels (2026-10-20)
+## Head to head: 9,603 tasks, 30 levels (2026-10-23)
 
 The shape (owner's spec, 2026-10-09): 29 levels of 50 libraries and a
 last level of 100 apps; 50 more libraries at level 15 that nothing depends on;
@@ -428,8 +428,8 @@ restore from cache (owner, 2026-10-09: an edit needs Nx's daemon, which CI
 does not run, so no edit row compares fairly).
 
 Same repo, same hardware, same commands, every tool at concurrency 10, each in its own native
-config: Turborepo 2.11.9 (`turbo.json`), Nx 23.3.0 (`nx:run-commands` targets,
-`^` inputs, `.env` loading off), Vite Task (`vp run`, vite-plus 1.3.0, tasks in each `vite.config.ts`).
+config: Turborepo 2.11.10 (`turbo.json`), Nx 24.0.1 (`nx:run-commands` targets,
+`^` inputs, `.env` loading off), Vite Task (`vp run`, vite-plus 1.4.0, tasks in each `vite.config.ts`).
 vx runs from a `vx lock` snapshot, as every vx run does, and orders tasks with
 `scheduleHistoryPlugin({ file: 'vx-timings.json' })`, from timings an earlier
 run recorded; cache wipes keep that file, as CI caches it. This machine: linux x64, 4 cores.
@@ -438,12 +438,12 @@ run recorded; cache wipes keep that file, as CI caches it. This machine: linux x
 
 **Time each tool adds over the ideal run:**
 
-|                                       | vx         | Turborepo | Nx         | Vite Task |
-| ------------------------------------- | ---------- | --------- | ---------- | --------- |
-| **Nothing changed**                   | **757 ms** | 761 ms    | 22.63 s    | 12.26 s   |
-| **Nothing changed, outputs restored** | **1.27 s** | 1.76 s    | 22.16 s    | 11.66 s   |
-| **Cold build**                        | **6.13 s** | 8.87 s    | 3 min 20 s | 7.94 s    |
-| **Cold build: CPU the runner burns**  | 30.06 s    | 1 min 8 s | 5 min 45 s | 23.91 s   |
+|                                       | vx         | Turborepo  | Nx         | Vite Task |
+| ------------------------------------- | ---------- | ---------- | ---------- | --------- |
+| **Nothing changed**                   | **720 ms** | 1.05 s     | 26.21 s    | 12.89 s   |
+| **Nothing changed, outputs restored** | **1.72 s** | 2.45 s     | 29.40 s    | 13.48 s   |
+| **Cold build**                        | **9.27 s** | 11.05 s    | 5 min 1 s  | 9.89 s    |
+| **Cold build: CPU the runner burns**  | 49.58 s    | 1 min 30 s | 7 min 43 s | 29.74 s   |
 
 Time each tool adds over the ideal run; lower is better.
 
@@ -455,7 +455,7 @@ Cold: every task list-scheduled critical-path first (critical path
 9.15 s, work ÷ workers 1 min 53 s).
 **CPU** is user + system of the invocation and the children it waited for,
 less what the task commands themselves burn under `xargs -P 10`
-(25.64 s); a daemon that outlives the invocation (Turborepo's, Nx's)
+(33.82 s); a daemon that outlives the invocation (Turborepo's, Nx's)
 is not counted, so theirs is a floor.
 vx burns more CPU cold than Vite Task: it hashes every input and saves every task, its log and its outputs, into its local store.
 

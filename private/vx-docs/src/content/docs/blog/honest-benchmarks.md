@@ -16,9 +16,9 @@ One number first, because it is the one that decides whether a runner
 is worth having. Imagine your tasks take two minutes on their own.
 What does the tool add on top? On the 9,603-task workspace below the
 tasks alone take 1 min 53 s under an ideal schedule. On a cold build vx
-adds **6.13 s**, the least of the four: Vite Task **7.94 s**, Turborepo
-**8.87 s** and Nx **3 min 20 s**. With nothing changed, vx adds **757 ms**
-and Turborepo **761 ms**. No tool leads every row, and the table says
+adds **9.27 s**, the least of the four: Vite Task **9.89 s**, Turborepo
+**11.05 s** and Nx **5 min 1 s**. With nothing changed, vx adds **720 ms**
+and Turborepo **1.05 s**. No tool leads every row, and the table says
 where vx does not.
 
 ```mermaid
@@ -43,8 +43,8 @@ a quarter of the projects use, and six kinds of task (`build`, `lint`,
 vx, Turborepo, Nx and Vite Task cold, with nothing changed and with
 outputs restored. Edit runs are left out: Nx needs its daemon for them,
 and the harness runs every tool as CI does.
-The run below is Turborepo 2.11.7, Nx 23.3.0 and Vite Task (`vp run`,
-vite-plus 1.1.0) on Linux x64 with 4 cores, every runner pinned to
+The run below is Turborepo 2.11.10, Nx 24.0.1 and Vite Task (`vp run`,
+vite-plus 1.4.0) on Linux x64 with 4 cores, every runner pinned to
 concurrency 10, every Nx task an `nx:run-commands` target. Fairness is deliberate: vx runs as
 the compiled binary users install, from a `vx lock` snapshot as a CI
 pipeline runs it, Turbo and Nx run as they would in
@@ -60,15 +60,15 @@ build over its ideal schedule; with nothing changed the ideal is 0):
 
 | Runner    | Cold build overhead | Nothing changed | Cold build CPU |
 | --------- | ------------------- | --------------- | -------------- |
-| vx        | **6.13 s** | **757 ms** | 30.06 s |
-| Turborepo | 8.87 s | 761 ms | 1 min 8 s |
-| Nx        | 3 min 20 s | 22.63 s | 5 min 45 s |
-| Vite Task | 7.94 s | 12.26 s | 23.91 s |
+| vx        | **9.27 s** | **720 ms** | 49.58 s |
+| Turborepo | 11.05 s | 1.05 s | 1 min 30 s |
+| Nx        | 5 min 1 s | 26.21 s | 7 min 43 s |
+| Vite Task | 9.89 s | 12.89 s | 29.74 s |
 
 Time each tool adds over the ideal run; lower is better.
 
 Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-Run 2026-10-20 on linux x64, 4 cores, concurrency 10: vx from source, Turborepo 2.11.9, Nx 23.3.0, Vite Task (vite-plus) 1.3.0.
+Run 2026-10-23 on linux x64, 4 cores, concurrency 10: vx at commit 0be036747, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.
 
 The first two columns are wall clock; the third is CPU time (user plus
 system, of the invocation and every child it waited for, less what the
