@@ -57,13 +57,7 @@ describe('ci.yml', () => {
         "github.event_name != 'pull_request'",
         undefined,
       ],
-      [
-        'macos',
-        'macOS DTE',
-        'ubuntu-latest',
-        "github.event_name != 'pull_request'",
-        undefined,
-      ],
+      ['macos', 'macOS DTE', 'ubuntu-latest', "github.event_name != 'pull_request'", undefined],
     ])
   })
 
@@ -138,14 +132,14 @@ describe('ci.yml', () => {
       ])
   })
 
-  // A job whose env carries GITHUB_TOKEN turns vx-ci's check run on; without
-  // checks: write its POST answered 403 and warned (2026-10-22).
-  it('lets each job that hands vx a GITHUB_TOKEN post its check run', () => {
-    const withToken = Object.entries(doc.jobs).filter(([, j]) =>
-      JSON.stringify(j.steps ?? []).includes('GITHUB_TOKEN'),
-    )
-    expect(withToken.map(([id]) => id)).toEqual([...RUNS])
-    for (const [id, j] of withToken) expect([id, j.permissions?.['checks']]).toEqual([id, 'write'])
+  // The run's report is the job summary, not a check run of its own beside
+  // the jobs (owner, 2026-10-23), so no job grants checks: write.
+  it('posts no check run: the report is the job summary', () => {
+    const ws = readFileSync(path.join(dir, '..', '..', '.vx', 'workspace.ts'), 'utf8')
+    expect(ws).toContain('github({ checks: false })')
+    expect(
+      Object.entries(doc.jobs).filter(([, j]) => j.permissions?.['checks'] !== undefined),
+    ).toEqual([])
   })
 
   // Nothing runs on a distributed run's orchestrator (owner, 2026-10-22):

@@ -10,7 +10,9 @@ const relay = process.env['VX_DTE_RELAY']
 export default defineWorkspace({
   plugins: [
     bun(),
-    github(),
+    // The report is the job summary only, no check run beside the jobs
+    // (owner, 2026-10-23).
+    github({ checks: false }),
     // Vercel's Remote Cache. On GitHub Actions the job's OIDC token buys a
     // short-lived one; elsewhere the token comes from the OS keychain.
     turboCache({ teamSlug: 'exelord', oidc: true }),
