@@ -71,7 +71,11 @@ export function outputTakenBack(output: string, negatives: readonly string[]): b
 // The refusal of a `^name` no project in the workspace declares; thrown by
 // the builder, or by `prepareRun` once a scoped run's other configs agree.
 // `declared` (every task name) supplies the "did you mean".
-export function undeclaredDepsError(taskId: string, name: string, declared: Iterable<string>): UserError
+export function undeclaredDepsError(
+  taskId: string,
+  name: string,
+  declared: Iterable<string>,
+): UserError
 
 // Which `{project, task}` pairs a run's requested names resolve to, and
 // which resolve to nothing (`vx run`'s "every requested name must resolve").
