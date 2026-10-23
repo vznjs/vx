@@ -22,6 +22,7 @@ import {
 } from '@vzn/vx'
 import {
   HELD_EVERY,
+  shares,
   type AgentInfo,
   type RunOrder,
   type ToAgent,
@@ -96,6 +97,8 @@ export async function runAgent(opts: {
   let floor: LocalFloor | undefined
   let usedCores = 0
   let usedMemory = 0
+  /** Tasks whose cores are held: a task asking the whole agent begins at none. */
+  let holding = 0
   /**
    * Entries whose files are here, restored or run here, by key: tasks
    * started together wait on one restore, never run before it.
@@ -136,24 +139,28 @@ export async function runAgent(opts: {
     await me.send('orchestrator', { type: 'end', task: m.task, key, result })
   }
 
-  /** Starts each queued task that fits what is free; with nothing running, the first one. */
+  /**
+   * Starts each queued task while a core is free and its memory fits; with
+   * none holding cores, the first one. A task asking a whole agent waits for
+   * an idle one.
+   */
   const start = (): void => {
     for (let i = 0; i < queue.length;) {
       const m = queue[i]!
-      const fits =
-        running.size === 0 ||
-        (usedCores + m.cores <= share.cores && usedMemory + m.memory <= share.memory)
+      const fits = holding === 0 || shares({ cores: usedCores, memory: usedMemory }, m, share)
       if (!fits) {
         i++
         continue
       }
       queue.splice(i, 1)
+      holding++
       usedCores += m.cores
       usedMemory += m.memory
       let held = true
       const free = (): void => {
         if (!held) return
         held = false
+        holding--
         usedCores -= m.cores
         usedMemory -= m.memory
         start()
