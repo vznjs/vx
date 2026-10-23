@@ -43,6 +43,22 @@ function statusLabel(t: TaskTelemetry): string {
   return STATUS_LABEL[t.status] ?? t.status
 }
 
+/** Rows by status label, in this order; any other after them. */
+const ORDER = [
+  '❌ failed',
+  '🛑 aborted',
+  '✅ ran',
+  '🔗 served',
+  '⚡ restored',
+  '☁️ restored remote',
+  '✔️ up-to-date',
+  '⏭️ skipped',
+]
+const rank = (t: TaskTelemetry): number => {
+  const i = ORDER.indexOf(statusLabel(t))
+  return i === -1 ? ORDER.length : i
+}
+
 /** `(3 up-to-date, 2 restored)`, with the remote share when any came from there. */
 function hitSplit(s: RunSummaryRecord): string {
   const restored = s.restoredLocalCount + s.restoredRemoteCount
@@ -182,9 +198,13 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   const header = ['Task', 'Status', 'Duration']
   lines.push(`| ${header.join(' | ')} |`)
   lines.push(`|${header.map(() => ' --- ').join('|')}|`)
-  // Failures first (the eye lands on the table's top rows), then execution
-  // order as delivered.
-  const ordered = [...failed, ...summary.tasks.filter((t) => t.status !== 'failed')]
+  // By status, failures first (the eye lands on the table's top rows),
+  // then the longest first (M, 2026-10-23).
+  const ordered = [...summary.tasks].sort(
+    (a, b) =>
+      rank(a) - rank(b) ||
+      (b.carried === true ? 0 : b.durationMs) - (a.carried === true ? 0 : a.durationMs),
+  )
   for (const t of ordered) {
     const cells = [
       escapeMarkdownCell(escapeInline(t.taskId)),

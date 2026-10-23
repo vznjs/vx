@@ -99,6 +99,25 @@ describe('renderJobSummary', () => {
     expect(md).not.toContain('| Verify |')
   })
 
+  // M, 2026-10-23: "Sort summary by status and then time".
+  it('lists tasks by status, failures first, then the longest first', () => {
+    const md = renderJobSummary(
+      summary([
+        task({ taskId: 'a#short', durationMs: 1_000 }),
+        task({ taskId: 'a#hit', status: 'cache-hit', restored: true, durationMs: 9_000 }),
+        task({ taskId: 'a#long', durationMs: 5_000 }),
+        task({ taskId: 'a#bad', status: 'failed', exitCode: 1, durationMs: 10 }),
+        task({ taskId: 'a#same', status: 'cache-hit', restored: false, durationMs: 50 }),
+        task({ taskId: 'a#srv', status: 'success', carried: true, durationMs: 0 }),
+      ]),
+    )
+    const rows = md
+      .split('\n')
+      .filter((l) => l.startsWith('| a#'))
+      .map((l) => l.split(' | ')[0]!.slice(2))
+    expect(rows).toEqual(['a#bad', 'a#long', 'a#short', 'a#srv', 'a#hit', 'a#same'])
+  })
+
   // Owner, 2026-10-23: the page shows each DTE worker, expected beside used.
   it('names each worker the run used, expected beside used, its peak RAM, and the totals', () => {
     const m = {
