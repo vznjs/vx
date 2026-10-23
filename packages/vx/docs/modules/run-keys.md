@@ -35,6 +35,8 @@ export function writeRunKeys(
   at: { id: string; token: string },
   keys: RunKeys,
 ): void
+// The code that derives keys, as a stamp (graph-memo.md shares it).
+export function codeIdentity(): string
 ```
 
 - `runKeysToken` — the row's name is the hash of the selected task ids;
@@ -44,7 +46,10 @@ export function writeRunKeys(
   nested project dirs, the outputs git ignores, then per task its id,
   project, edges, `requested`, resolved config hash, plugin key parts,
   output adders and files token (`inputs.md`, the fold memo's), and the
-  declared env values. It answers undefined, and the run derives as
+  declared env values. When the nodes are a remembered graph no plugin
+  or flag edited (`hashCache.graph`, graph-memo.md), that graph's token
+  stands for each task's project, edges, config and adders, and a task
+  adds only its id, `requested` and files token. It answers undefined, and the run derives as
   before, when there is no fold memo, or any task is keyless, has an
   excluded upstream, declares `runtime`, `workspaceRuntime` or
   `workspaceFiles` inputs, or has no files token (an untrusted input, an

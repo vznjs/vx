@@ -19,6 +19,7 @@ export {
   LOCKFILE_NAME,
   LOCKFILE_VERSION,
   LOCK_INVALID,
+  lockDigest,
   lockEntryBroken,
   lockfilePath,
   lockKey,

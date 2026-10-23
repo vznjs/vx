@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
-import { relPosix, UserError, xxh3 } from '../util/index.js'
+import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import { VERSION } from '../version.js'
 import { validateProjectConfig } from './config-schema.js'
 import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
@@ -82,6 +82,14 @@ export const NO_LOCK = 'no lock: run `vx lock`'
  * user-editable file, so this is a system boundary: malformed content
  * throws a `UserError` instead of crashing deeper in the run.
  */
+/** Each read lock's bytes as a digest: every config a run loads from it is a function of them. */
+const digests = new WeakMap<Lockfile, string>()
+
+/** The digest of the bytes `lock` was read from; undefined for a lock no read made. */
+export function lockDigest(lock: Lockfile): string | undefined {
+  return digests.get(lock)
+}
+
 export async function readLockfile(root: string): Promise<Lockfile | null> {
   const file = Bun.file(lockfilePath(root))
   if (!(await file.exists())) return null
@@ -131,6 +139,7 @@ export async function readLockfile(root: string): Promise<Lockfile | null> {
       throw new UserError(`${LOCKFILE_NAME}: entry for "${dir}" is malformed — re-run \`vx lock\``)
     }
   }
+  digests.set(parsed as Lockfile, xxh3hex(text))
   return parsed as Lockfile
 }
 
