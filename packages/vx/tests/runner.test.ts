@@ -1,4 +1,3 @@
-import { randomFillSync } from 'node:crypto'
 import { fstatSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -1085,10 +1084,12 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
       // this hold stays after the allocation pin above (which sizes itself
       // from the mark either way).
       const MB = 1024 * 1024
-      // Random bytes: macOS compresses pages of one repeated byte, and a
-      // fill of 1s read 296 MB resident on a Mac worker (Bun 1.4.4).
-      const hold = randomFillSync(Buffer.allocUnsafe(300 * MB))
-      expect(ownRssHighWater()).toBeGreaterThanOrEqual(300 * MB)
+      const hold = Buffer.alloc(300 * MB, 1)
+      // Only Linux's floor is a high-water mark (`VmHWM`). macOS's is the
+      // current RSS, which a crowded Mac worker pages down: this hold read
+      // 296 MB, then 149 MB, of random bytes (Bun 1.4.4). The rows below
+      // size themselves from the floor either way.
+      if (process.platform === 'linux') expect(ownRssHighWater()).toBeGreaterThanOrEqual(300 * MB)
       const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-floor-'))
       try {
         const env = { PATH: process.env.PATH ?? '' }
