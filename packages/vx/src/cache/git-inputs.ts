@@ -1515,6 +1515,19 @@ function hasRacyEntry(index: Uint8Array, mtimeSec: number, oidBytes: number): bo
 /** A private copy a run older than this may still have handed to `status`. */
 const STALE_INDEX_MS = 60_000
 
+/** Whether `status` should read a refreshed copy of the index (`refreshedIndex`). */
+function racyIndex(
+  read: { bytes: Uint8Array; st: Stats },
+  objectFormat: 'sha1' | 'sha256',
+): boolean {
+  if (GIT_LOCATION_ENV.some((name) => process.env[name] !== undefined)) return false
+  return hasRacyEntry(
+    read.bytes,
+    Math.floor(read.st.mtimeMs / 1000),
+    objectFormat === 'sha256' ? 32 : 20,
+  )
+}
+
 /**
  * The index `status` reads when the real one holds a racily clean entry: a
  * copy refreshed once and kept beside it, named by the real index's bytes.
@@ -1527,18 +1540,13 @@ const STALE_INDEX_MS = 60_000
 async function refreshedIndex(
   indexFile: string,
   read: { bytes: Uint8Array; hash: string; st: Stats },
-  objectFormat: 'sha1' | 'sha256',
   spawnGit: (
     args: string[],
     stdin?: string,
     env?: Record<string, string>,
   ) => Promise<GitRun | null>,
 ): Promise<string | undefined> {
-  if (GIT_LOCATION_ENV.some((name) => process.env[name] !== undefined)) return undefined
   const { bytes, hash, st } = read
-  if (!hasRacyEntry(bytes, Math.floor(st.mtimeMs / 1000), objectFormat === 'sha256' ? 32 : 20)) {
-    return undefined
-  }
   const dir = path.dirname(indexFile)
   const name = `vx-index-${hash}`
   const copy = path.join(dir, name)
@@ -1683,15 +1691,18 @@ export async function startGitEnumeration(
     facts === null || facts.indexFile === ''
       ? undefined
       : path.resolve(workspaceRoot, facts.indexFile)
-  const readIndex = async (): Promise<
-    { bytes: Uint8Array; hash: string; st: Stats; key: string; stamp: string } | undefined
-  > => {
+  // Read synchronously: `status` spawns once the read is in, and an async
+  // read's answer waited for the main thread to yield, behind the workspace
+  // config and discovery (~5 ms of a 1,200-task warm run's wait for git).
+  const readIndex = ():
+    | { bytes: Uint8Array; hash: string; st: Stats; key: string; stamp: string }
+    | undefined => {
     if (indexFile === undefined) return undefined
     try {
       // Stat before the read: a write between them leaves an mtime older
       // than the bytes, which only makes more entries racy.
       const st = lstatSync(indexFile)
-      const bytes = await Bun.file(indexFile).bytes()
+      const bytes = readFileSync(indexFile)
       const hash = xxh3hex(bytes)
       return {
         bytes,
@@ -1704,38 +1715,33 @@ export async function startGitEnumeration(
       return undefined
     }
   }
-  const indexKeyRead = readIndex()
-  const statusIndex = indexKeyRead.then((read) =>
-    read === undefined || indexFile === undefined
-      ? undefined
-      : refreshedIndex(indexFile, read, facts!.objectFormat, spawnGit),
-  )
-  const running = Promise.all([
-    listing,
-    // `--ignored=matching` names an ignored path without descending into an
-    // ignored directory: git applies an ignored `.gitattributes` as it does
-    // any other, and the filter gate below must see it (A-19).
-    // `--no-renames`: a deletion paired as an unmerged path's rename source
-    // prints only as `UU <path>`, and the deleted file stayed trusted (A-59).
-    statusIndex.then((index) => {
-      const env = index === undefined ? undefined : { GIT_INDEX_FILE: index }
-      return spawnGit(
-        [
-          'status',
-          '--porcelain',
-          '-z',
-          '-uall',
-          '--ignored=matching',
-          '--no-renames',
-          '--',
-          ...pathspecs,
-        ],
-        undefined,
-        env,
-      )
-    }),
-    varsRun,
-  ])
+  const read = readIndex()
+  // `--ignored=matching` names an ignored path without descending into an
+  // ignored directory: git applies an ignored `.gitattributes` as it does
+  // any other, and the filter gate below must see it (A-19).
+  // `--no-renames`: a deletion paired as an unmerged path's rename source
+  // prints only as `UU <path>`, and the deleted file stayed trusted (A-59).
+  const spawnStatus = (index: string | undefined) =>
+    spawnGit(
+      [
+        'status',
+        '--porcelain',
+        '-z',
+        '-uall',
+        '--ignored=matching',
+        '--no-renames',
+        '--',
+        ...pathspecs,
+      ],
+      undefined,
+      index === undefined ? undefined : { GIT_INDEX_FILE: index },
+    )
+  // An index with no racy entry is read as it is: `status` spawns now.
+  const statusRun =
+    read === undefined || indexFile === undefined || !racyIndex(read, facts!.objectFormat)
+      ? spawnStatus(undefined)
+      : refreshedIndex(indexFile, read, spawnGit).then(spawnStatus)
+  const running = Promise.all([listing, statusRun, varsRun])
   const gitPrefix = facts?.prefix ?? ''
   const gitDir = facts?.commonDir ?? ''
   const ls = await listing
@@ -1755,7 +1761,6 @@ export async function startGitEnumeration(
   // the stamp moves with any write) and is still in place after it: a
   // `git add` between the listing and the read paired one index's verdict
   // with the other's entries. Otherwise this run asks for no verdict.
-  const read = await indexKeyRead
   let indexKey: string | undefined
   if (
     read !== undefined &&
