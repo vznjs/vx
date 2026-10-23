@@ -123,6 +123,8 @@ export interface OrchestratorOptions {
   readonly lost?: (id: string) => void
   /** A worker joined: the run plans again. */
   readonly joined?: () => void
+  /** A worker failed a task or its lease: the run plans again, now, so a replacement starts. */
+  readonly faulted?: () => void
   /** How much of the run waits on a task (`tailsMs`): the queue places the most first. */
   readonly tail?: (taskId: string) => number
 }
@@ -563,6 +565,7 @@ export class Orchestrator {
         }
     if (back.length === 0) return
     this.queue.unshift(...back)
+    this.o.faulted?.()
     if (this.spawnedAt.size > 0) this.stranded(`a task's lease ended and no worker is left`)
     this.pumpSoon()
   }
@@ -756,6 +759,7 @@ export class Orchestrator {
           // It began it whether or not its `start` came first.
           this.begun(a, m.task)
           if (this.retry(a, j, m.reason) !== undefined) this.queue.unshift(j)
+          if (a.faulty) this.o.faulted?.()
           if (a.faulty && this.spawnedAt.size > 0)
             this.stranded(`${a.label} could not run ${m.task} (${m.reason}) and no worker is left`)
           this.pumpSoon()

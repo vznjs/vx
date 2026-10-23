@@ -225,6 +225,7 @@ async function harness(
   heartbeatMs?: number,
   keyOf: (id: string) => string | undefined = () => undefined,
   tail?: (id: string) => number,
+  more: { faulted?: () => void } = {},
 ) {
   const store = fakeArtifacts()
   const cache: { facts: CacheFacts } = { facts: { refs: [], lent: {} } }
@@ -241,6 +242,7 @@ async function harness(
     run: R,
     keyOf,
     ...(tail === undefined ? {} : { tail }),
+    ...more,
   })
   const worker = async (cores: number, id?: string) => {
     const me = await join(url, R, 'worker', { v: 1, cores, memory: 100, tree: 'c', id }, undefined)
@@ -1124,6 +1126,29 @@ it('a task its only worker could not run fails when no worker is left', async ()
         (e: Error) => e.message,
       ),
     ).toBe('small#1 could not run t1 (ENOSPC) and no worker is left')
+  } finally {
+    await h.stop()
+  }
+}, 3_000)
+
+// Main's macOS run, 2026-10-23: mac#1 let unsafe.shard-1's lease end,
+// mac#2 had left, and the run failed rather than start another.
+it('a task its only worker failed waits for the worker the run starts for it then', async () => {
+  let h: Awaited<ReturnType<typeof harness>>
+  h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    faulted: () => h.o.spawned('small#2', { size: 'small', cpu: 1, memory: 100 }),
+  })
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
+    const a = await h.worker(1, 'small#1')
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.say({ type: 'fault', task: 't1', reason: 'ENOSPC' })
+    const b = await h.worker(1, 'small#2')
+    expect(await b.batches()).toEqual([['t1']])
+    await b.finish('t1')
+    expect((await t1).exitCode).toBe(0)
   } finally {
     await h.stop()
   }

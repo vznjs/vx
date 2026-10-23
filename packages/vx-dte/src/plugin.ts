@@ -353,6 +353,10 @@ export function dte(options: DteOptions) {
           onChange(true)
         },
         joined: () => onChange(),
+        // Before the run counts what is left to start: a worker that let a
+        // task's lease end failed main's macOS run with another to start
+        // (2026-10-23).
+        faulted: () => onChange(true),
       })
       orchestrator = o
       const started = new Map<string, number>()
