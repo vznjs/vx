@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { localEnv, runWorker, swapRoots } from '../src/worker.js'
+import { crowdShare, loadMeter, localEnv, runWorker, swapRoots } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes, homeOf, needOf } from '../src/plugin.js'
@@ -362,14 +362,13 @@ async function harness(
       }
       return []
     }
-    const finish = async (task: string, key = `k-${task}`): Promise<void> => {
+    const finish = async (
+      task: string,
+      key = `k-${task}`,
+      result: object = { exitCode: 0, durationMs: 1 },
+    ): Promise<void> => {
       store.saved.set(key, { stdout: `${task} out\n`, stderr: '' })
-      await me.send('orchestrator', {
-        type: 'end',
-        task,
-        key,
-        result: { exitCode: 0, durationMs: 1 },
-      })
+      await me.send('orchestrator', { type: 'end', task, key, result })
     }
     const begin = (task: string) => me.send('orchestrator', { type: 'start', task })
     const say = (body: object) => me.send('orchestrator', body)
@@ -1937,6 +1936,67 @@ it('counts a task the stop killed as aborted, a timeout as failed', () => {
   u.record({ exitCode: 130, signal: 'SIGTERM', durationMs: 1 })
   u.record({ exitCode: 143, signal: 'SIGTERM', timedOut: true, durationMs: 1 })
   expect([u.done, u.failed, u.aborted]).toEqual([1, 2, 1])
+})
+
+// The share a worker reports: its cores over the threads Linux has
+// runnable, less the one reading /proc/stat.
+it('reads how crowded the CPU is from the run queue', async () => {
+  const stat = (n: number) => `cpu  1 2 3\nprocs_running ${n}\nprocs_blocked 0\n`
+  expect(crowdShare(stat(13), 4)).toBeCloseTo(4 / 12, 5)
+  expect(crowdShare(stat(3), 4)).toBe(1)
+  expect(crowdShare('cpu 1 2 3\n', 4)).toBeUndefined()
+  let running = 3
+  const os = await import('node:os')
+  const cores = os.cpus().length
+  const meter = loadMeter(() => stat(running))
+  try {
+    const from = meter.mark()
+    await Bun.sleep(450)
+    running = cores * 3 + 1
+    const crowded = meter.mark()
+    await Bun.sleep(450)
+    expect(meter.shareSince(crowded)).toBeCloseTo(1 / 3, 2)
+    const both = meter.shareSince(from)!
+    expect(both).toBeGreaterThan(1 / 3)
+    expect(both).toBeLessThan(1)
+    // No look since: no correction.
+    expect(meter.shareSince(meter.mark())).toBeUndefined()
+  } finally {
+    meter.stop()
+  }
+  // No /proc/stat: no correction.
+  const none = loadMeter(() => undefined)
+  try {
+    const from = none.mark()
+    await Bun.sleep(250)
+    expect(none.shareSince(from)).toBeUndefined()
+  } finally {
+    none.stop()
+  }
+})
+
+// Main c27c238 (2026-10-23): on a crowded worker a task uses its share of
+// the CPU, not its need. Booking the next tasks by what it used packed
+// them tighter, which crowded the worker more: 9 shards on 4 cores.
+it('learns from what a crowded task would have used, and keeps its share for the history', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const w = await h.worker(4)
+    await Bun.sleep(50)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(await w.batches()).toEqual([['t1']])
+    await w.finish('t1', 'k-t1', {
+      exitCode: 0,
+      durationMs: 60_000,
+      cpuMs: 21_600,
+      cpuShare: 0.36,
+    })
+    expect(await t1).toMatchObject({ machine: { cores: 4, cpuShare: 0.36 } })
+    // It used 0.36 of a core, the share it got of 1: its whole need.
+    expect(h.o.booking({ cores: 1, memory: 10 }).cores).toBe(1)
+  } finally {
+    await h.stop()
+  }
 })
 
 it('knows how long a worker took to join', async () => {

@@ -283,7 +283,9 @@ export async function runWorker(opts: {
       }
       floor ??= localFloor()
       ui.print('out', ui.status('info', m.task, ui.dim('running')))
+      const crowd = load.mark()
       const { outputs: _, ...res } = await floor.execute(req)
+      const cpuShare = load.shareSince(crowd)
       // Its command is done: saving its outputs to the cache is the
       // network's time, and its cores are the next task's (main,
       // 2026-10-23: workers booked 3.7 cores and used 2.4).
@@ -316,6 +318,7 @@ export async function runWorker(opts: {
       await reply(m, key, {
         ...res,
         violations: back,
+        ...(cpuShare === undefined ? {} : { cpuShare }),
       })
     } finally {
       running.delete(m.task)
@@ -398,11 +401,32 @@ export async function runWorker(opts: {
   }
 }
 
+/** How often the run queue is read: a test shard's spawns come and go within a second. */
+const CROWD_EVERY_MS = 200
+
+/**
+ * The share of a core each runnable thread gets now: the machine's cores
+ * over the threads Linux has runnable (`procs_running`, less the one
+ * reading it), at most 1. Undefined where there is no /proc/stat.
+ */
+export function crowdShare(stat: string, cores: number): number | undefined {
+  const m = /^procs_running (\d+)$/m.exec(stat)
+  if (m === null) return undefined
+  return Math.min(1, cores / Math.max(1, Number(m[1]) - 1))
+}
+
 /**
  * This machine's load, sampled each second: the cores busy over the last
- * one, from the CPUs' times, and the memory in use.
+ * one, from the CPUs' times, and the memory in use. Also how crowded its
+ * CPU is, read every `CROWD_EVERY_MS`: a task on a crowded machine uses
+ * only its share, and the run learns its need from what it used.
  */
-function loadMeter(): { now: () => Load; stop: () => void } {
+export function loadMeter(read: () => string | undefined = procStat): {
+  now: () => Load
+  mark: () => { sum: number; n: number }
+  shareSince: (from: { sum: number; n: number }) => number | undefined
+  stop: () => void
+} {
   const busy = (): [number, number] => {
     let idle = 0
     let total = 0
@@ -422,9 +446,39 @@ function loadMeter(): { now: () => Load; stop: () => void } {
     last = next
   }, 1_000)
   timer.unref?.()
+  const cores = os.cpus().length
+  const crowd = { sum: 0, n: 0 }
+  const look = (): void => {
+    const stat = read()
+    const share = stat === undefined ? undefined : crowdShare(stat, cores)
+    if (share === undefined) return clearInterval(crowded)
+    crowd.sum += share
+    crowd.n++
+  }
+  const crowded = setInterval(look, CROWD_EVERY_MS)
+  crowded.unref?.()
   return {
     now: () => ({ cpu: Math.round(cpu * 100) / 100, memory: os.totalmem() - available() }),
-    stop: () => clearInterval(timer),
+    mark: () => ({ ...crowd }),
+    // Its mean share over the looks since `from`; none (a task shorter
+    // than a look, or no /proc) is no correction.
+    shareSince: (from) =>
+      crowd.n > from.n
+        ? Math.round(((crowd.sum - from.sum) / (crowd.n - from.n)) * 1000) / 1000
+        : undefined,
+    stop: () => {
+      clearInterval(timer)
+      clearInterval(crowded)
+    },
+  }
+}
+
+function procStat(): string | undefined {
+  try {
+    return readFileSync('/proc/stat', 'utf8')
+  } catch {
+    // quiet: not Linux: no run queue to read, so no correction
+    return undefined
   }
 }
 

@@ -804,7 +804,11 @@ export interface ExecuteResult extends RunResult {
   readonly violations: readonly SandboxViolation[]
   readonly outputs?: { kind: 'disk' } | { kind: 'deferred'; materialize: () => Promise<void> }
   readonly where?: string
-  readonly machine?: { readonly cores: number; readonly memoryBytes: number }
+  readonly machine?: {
+    readonly cores: number
+    readonly memoryBytes: number
+    readonly cpuShare?: number
+  }
 }
 == type ExecuteSandbox (src/exec/executor.ts)
 export interface ExecuteSandbox {
@@ -1590,6 +1594,7 @@ export interface RunRecord {
   def?: string
   placementCores?: number
   placementMemoryBytes?: number
+  cpuShare?: number
 }
 == type RunReport (src/orchestrator/plugin.ts)
 export interface RunReport {
@@ -1907,6 +1912,7 @@ export interface TaskOutcome {
   carried?: true
   whereCores?: number
   whereMemoryBytes?: number
+  cpuShare?: number
   outputs?: 'deferred'
   saved?: true
   wallclockStartNs?: bigint

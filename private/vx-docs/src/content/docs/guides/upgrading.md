@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte: learn a crowded task's need, not its share
+
+index schema v48 -> v49; the local index is rebuilt.
+
 ## history: key task timings by the task's definition
 
 No migration note.

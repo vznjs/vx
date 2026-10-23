@@ -219,7 +219,16 @@ export interface ExecuteResult extends RunResult {
    * them: the run history keeps them, so a task that used all of one
    * reads as wanting a bigger one (`TaskResources.saturated*`).
    */
-  readonly machine?: { readonly cores: number; readonly memoryBytes: number }
+  readonly machine?: {
+    readonly cores: number
+    readonly memoryBytes: number
+    /**
+     * The share of a core each runnable thread got there over the task's
+     * run (1 when a core was free). On a crowded machine the CPU a task
+     * used is its share, not its need: the run history divides by this.
+     */
+    readonly cpuShare?: number
+  }
 }
 
 /** What an executor sees when a task is PLACED — once per task, before scheduling. */

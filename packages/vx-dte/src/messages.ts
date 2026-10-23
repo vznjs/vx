@@ -141,6 +141,8 @@ export type ToOrchestrator =
 /** A result as JSON carries it: its output stays in the cache entry, and a violation's time is a string. */
 export type WiredResult = Omit<ExecuteResult, 'violations' | 'outputs' | 'stdout' | 'stderr'> & {
   violations?: (Omit<ExecuteResult['violations'][number], 'timestamp'> & { timestamp: string })[]
+  /** The share of a core each runnable thread got on the worker while it ran (`ExecuteResult.machine.cpuShare`). */
+  cpuShare?: number
 }
 
 /**
