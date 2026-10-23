@@ -7,11 +7,15 @@
 import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
 import { edgesSource, PLUGIN_IMPORT, pluginSource, writeEdges } from './helpers/plugin.js'
 import { noticed } from './helpers/notice.js'
 
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
+
+// Up to five CLI spawns a test, ~0.3 s each here; a loaded 4-core shard
+// ran three past the 5 s default (main, 2026-10-23).
+setDefaultTimeout(20_000)
 
 function git(cwd: string, ...args: string[]): void {
   const p = Bun.spawnSync({
