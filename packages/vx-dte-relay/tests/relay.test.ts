@@ -462,21 +462,31 @@ describe('a host that keeps runs and holds websockets', () => {
   }
 
   // An object kept a day per run held 100+ on one host (owner, 2026-10-22).
-  it('keeps nothing of a run its orchestrator signed off, once its workers heard', async () => {
+  it('keeps nothing of a run its orchestrator signed off, ten minutes on', async () => {
     const store = memory()
     const c = client({ store, timer: false })
     const o = await c.join(R, 'orchestrator')
     await c.join(R, 'worker')
     await c.frame(R, o, { leave: true })
-    // The worker has no socket: the run keeps it a minute to tell it, then nothing is kept.
     expect((await c.call(R, 'join', { role: 'worker' })).status).toBe(410)
-    expect(later(c, 61_000)).toBeUndefined()
+    expect(later(c, 10 * 60_000 + 2)).toBeUndefined()
     expect([...store.kv]).toEqual([])
-    const alone = client({ store, timer: false })
-    const o1 = await alone.join(R1, 'orchestrator')
-    await alone.frame(R1, o1, { leave: true })
+  })
+
+  // Forgotten once its workers went, the run of a cancelled PR was opened
+  // anew by a worker its CI started late, which held its runner ten minutes
+  // while main's workers queued 80 s behind it (main, 2026-10-23).
+  it('answers a worker late for a closed run 410 for ten minutes, not a new run', async () => {
+    const store = memory()
+    const c = client({ store, timer: false })
+    const o = await c.join(R, 'orchestrator')
+    await c.frame(R, o, { leave: true })
+    expect(later(c, 9 * 60_000)! - Date.now()).toBeLessThanOrEqual(10 * 60_000 + 1)
+    expect((await c.call(R, 'join', { role: 'worker' })).status).toBe(410)
+    const restarted = client({ store, timer: false })
+    expect((await restarted.call(R, 'join', { role: 'worker' })).status).toBe(410)
+    expect(later(c, 10 * 60_000 + 2)).toBeUndefined()
     expect([...store.kv]).toEqual([])
-    expect(alone.relay.sweep()).toBeUndefined()
   })
 
   it('forgets a run whose workers all went before an orchestrator joined', async () => {
@@ -531,10 +541,13 @@ describe('a host that keeps runs and holds websockets', () => {
     await before.poll(R, o)
     before.relay.sweep()
     const after = client({ store, timer: false }, before.provers)
-    // With no socket, participants are lost after three heartbeats of 5 s.
-    expect(later(after, 16_000)).toBeUndefined()
-    expect([...store.kv]).toEqual([])
+    // With no socket, participants are lost after three heartbeats of 5 s,
+    // and the run closes: kept, as closed, only to answer the late.
+    expect(later(after, 16_000)).toBeNumber()
+    expect([...store.kv.keys()]).toEqual([`r/${K}`])
     expect(await after.plug(R, o)).toBe(false)
+    expect(later(after, 17_000 + 10 * 60_000)).toBeUndefined()
+    expect([...store.kv]).toEqual([])
   })
 
   // A host restores its sockets at each wake: restored, a dead
