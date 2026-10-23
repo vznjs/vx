@@ -128,7 +128,11 @@ async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<voi
   // Trusted at once: a key the index says a remote holds is a hit, its pull
   // starts now, and every other key is a miss, before any remote answers
   // (M, 2026-10-23). The probe below still asks for all of them and revises.
-  const known = args.cache.remoteKnown?.(uniqueHashes)
+  // One that knows none of them says nothing: a fresh CI runner's empty
+  // index called every key a miss, and main asked 15 workers for 16 misses
+  // (75f58f9, 2026-10-23). The probe answers them.
+  const kept = args.cache.remoteKnown?.(uniqueHashes)
+  const known = kept === undefined || kept.size === 0 ? undefined : kept
   if (known !== undefined) {
     tell((h) => held?.has(h) === true || known.has(h), true)
     pool.push(toPrefetch.filter((k) => known.has(k.hash)))

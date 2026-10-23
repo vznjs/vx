@@ -218,6 +218,37 @@ describe('startRemotePrefetch', () => {
     TIMEOUT,
   )
 
+  // A fresh CI runner's index is empty: trusted, it called every task a
+  // miss before the probe answered, and main 75f58f9 asked 15 workers for
+  // 97 tasks, 16 of which ran (2026-10-23). An index that knows none of the
+  // keys says nothing; the probe does.
+  it(
+    'an index that knows none of the keys waits for the probe, not calling each a miss',
+    async () => {
+      for (const name of ['a', 'b']) {
+        await addProject(root, name, {
+          files: { 'src/in.txt': name },
+          config: CACHED('echo built > out.txt', `{ files: ['out.txt'] }`),
+        })
+      }
+      const calls: [string[], string[]][] = []
+      await prefetchWith(
+        4,
+        (h) => new Set(h),
+        (a) => ({
+          ...a,
+          cache: new Proxy(a.cache, {
+            get: (t, prop, r) =>
+              prop === 'remoteKnown' ? () => new Map() : (Reflect.get(t, prop, r) as unknown),
+          }),
+          held: (ids, missed) => calls.push([[...ids].sort(), [...missed]]),
+        }),
+      )
+      expect(calls).toEqual([[['a#build', 'b#build'], []]])
+    },
+    TIMEOUT,
+  )
+
   it(
     'a key derivation that throws leaves the handle resolved',
     async () => {

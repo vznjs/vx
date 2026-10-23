@@ -605,7 +605,9 @@ Hard invariants of the remote prefetch:
   so a later process trusts it: `vx run --dry` (or `vx dte plan`)
   followed by `vx run` probes once in each, and the run GETs the kept
   hits before its own probe answers. Only hits are kept; a key with no
-  row is a miss. Each run still asks `hasMany` for every key the local
+  row is a miss, unless the index holds none of the run's keys (a fresh
+  CI runner's): then the probe alone says what is held
+  (`remote-prefetch.test.ts` › "an index that knows none…"). Each run still asks `hasMany` for every key the local
   store lacks, in the background, and its whole answer rewrites the
   rows it asked: new hits are added, gone ones dropped. A GET every
   remote answers with nothing drops the row too, and the task runs
