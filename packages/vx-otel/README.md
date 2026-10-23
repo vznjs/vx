@@ -102,7 +102,9 @@ otel({
   status as `vx.task.status`, `vx.cache.source` (miss/local/remote, or none for a task that never ran),
   on a hit `vx.cache.restored` (`true` when it restored outputs, `false` when they were already up to date),
   `vx.task.hash`, duration, CPU ms, peak RSS, and on a skipped task its root
-  blocker (`vx.task.blocked_by`), on a timed-out one `vx.task.timed_out`, on
+  blocker (`vx.task.blocked_by`) or, skipped for its `exec.platforms`, what it
+  needs and this machine's (`vx.task.platforms_needed`, `vx.task.platform_host`),
+  on a server each dependant's worker ran `vx.task.carried`, on a timed-out one `vx.task.timed_out`, on
   a sandboxed one its violation count (`vx.task.sandbox_violations`), on a
   persistent one that never became ready why (`vx.task.not_ready`), its
   command (`vx.task.command`, secrets masked), on a flaky one its record

@@ -98,6 +98,8 @@ const TASK: Required<TaskTelemetry> = {
   attempts: 2,
   blockedBy: 'b#build',
   timedOut: true,
+  carried: true,
+  otherPlatform: { needs: ['darwin-arm64'], host: 'linux-x64' },
   sandboxViolations: 1,
   notReady: 'timeout',
   failedAttempts: [{ endedAt: 1030, exitCode: 1, timedOut: true }],
