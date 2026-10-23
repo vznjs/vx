@@ -49,13 +49,6 @@ wrong.
 Two workers. One task takes 60 seconds and nothing depends on it. Two
 chains each have a 29.75-second parent and a 0.25-second child.
 
-```mermaid
-flowchart LR
-  L[long · 60 s]
-  PL[parent · 29.75 s] --> CL[child · 0.25 s]
-  PR[parent · 29.75 s] --> CR[child · 0.25 s]
-```
-
 The best order starts the 60-second task at once and runs both chains
 on the other worker: 60 seconds in all. Counting dependents puts both
 parents ahead of the long task, because each has work behind it and the
@@ -79,7 +72,7 @@ Measured with vx, two workers:
 | Recorded time, run 1 (no history yet) | 90.0 s |
 | Recorded time, runs 2 and 3 | 60.2 s, 60.2 s |
 
-vx's default is 49% slower here. In a real repo this shape is a slow
+vx's default takes 30 s longer here. In a real repo this shape is a slow
 task that runs straight from source with nothing after it: a typecheck,
 a lint, or unit tests on a big package that need no build. It is ready
 from the first second, and the default can start it late. App builds
@@ -94,12 +87,6 @@ no way to know that; it only started the task that was ready first.
 Ten workers. 100 independent tasks and one chain of two, A then B.
 Every task takes 2 seconds.
 
-```mermaid
-flowchart LR
-  T[100 independent tasks · 2 s each]
-  A[A · 2 s] --> B[B · 2 s]
-```
-
 Counting dependents starts A first, so B runs beside the last wave of
 independent tasks. Ready order can leave A behind the other 100. Then B
 starts only after the last wave, and the run gets one task longer.
@@ -112,7 +99,7 @@ starts only after the last wave, and the run gets one task longer.
 | Critical path by step count | 22.4 s |
 | Recorded time, runs 1 to 3 | 22.3 s, 22.2 s, 22.3 s |
 
-Here ready order is 9% slower. Each loss in these two cases costs about
+Here ready order takes 2 s longer. Each loss in these two cases costs about
 one task's length.
 
 ## Case 3: a large graph with equal tasks
@@ -131,7 +118,7 @@ With every task the same length, the best possible run is 218 seconds:
 | Recorded time, runs 1 to 3 | 220.6 s, 220.5 s, 220.5 s |
 
 Every rule that looks at the graph lands within 3 seconds of the best
-possible run. Ready order takes 37% longer. Each layer's builds wait on
+possible run. Ready order takes 81 s longer. Each layer's builds wait on
 every build in the layer below, and under ready order a layer's last
 build finished about 3 seconds after the layer before it; under vx's
 default it was 2.2 seconds, the pace the work itself allows (22 seconds
@@ -244,3 +231,5 @@ independent task and A have one. That is why "most direct dependents"
 ties in both and falls back to ready order.
 Each history arm starts from an empty history in its own copy of the
 workspace.
+
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

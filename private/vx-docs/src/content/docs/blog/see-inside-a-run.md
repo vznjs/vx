@@ -13,15 +13,6 @@ The default run output stays short. When you want the facts behind it,
 each one is a command away, and each prints something a script or an agent
 can read.
 
-```mermaid
-flowchart LR
-  Q1[why does it run?] --> A[--affected --dry]
-  Q2[what did it do?] --> B[vx last --format json]
-  Q3[what depends on what?] --> C[--dry=json]
-  Q4[where did vx spend time?] --> D[VX_DEBUG_TIMING=1]
-  style A stroke:#c6f84e,stroke-width:2px
-```
-
 ## Why a task runs
 
 Edit one file in `@demo/ui` and ask what a pull request would run:
@@ -104,4 +95,5 @@ A fully cached run of four tasks, start to exit, in 126 ms. Each row is a
 stage of the pipeline, so a slow config or a slow probe stands out.
 
 Every flag is in the [CLI reference](../../cli/), and the run JSON's
-fields are in [Built for agents](../built-for-agents/).
+fields are in [Built for agents](../built-for-agents/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
