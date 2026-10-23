@@ -866,9 +866,16 @@ export class Orchestrator {
     return this.ended ? 'stopped' : 'online'
   }
 
-  /** Each machine that joined, and this one when it ran tasks, with what it did: the run summary's `machines`. */
+  /**
+   * Each machine that joined, and this one when it ran tasks, with what it
+   * did: the run summary's `machines`. Core asks once its tasks are over,
+   * before its teardown ends this run: then is its end, so one still here
+   * is `stopped`, online until now (small#2 read online 1ms, booked 433802
+   * of 4: main, 2026-10-23).
+   */
   machines(): MachineReport[] {
     const gone = new Set(this.gone)
+    const until = this.ended ? this.endedAt : performance.now()
     const report = (
       name: string,
       status: string,
@@ -876,7 +883,7 @@ export class Orchestrator {
       cores: number,
       memoryBytes: number,
     ): MachineReport => {
-      const st = u.stats(cores, this.endedAt)
+      const st = u.stats(cores, until)
       return {
         name,
         status,
@@ -895,7 +902,13 @@ export class Orchestrator {
       }
     }
     return [...this.workers.values(), ...this.gone].map((a) => ({
-      ...report(a.label, this.state(a, gone), a.usage, a.reported.cores, a.reported.memory),
+      ...report(
+        a.label,
+        this.retired.has(a) ? 'left' : gone.has(a) ? 'lost' : 'stopped',
+        a.usage,
+        a.reported.cores,
+        a.reported.memory,
+      ),
       ...(a.warmUpMs === undefined ? {} : { warmUpMs: a.warmUpMs }),
     }))
   }

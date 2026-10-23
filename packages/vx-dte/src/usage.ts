@@ -74,7 +74,8 @@ export class Usage {
   }
 
   stats(cores: number, until: number): UsageStats {
-    const end = this.to ?? until
+    // Never before it joined: a time from before would read it online 1 ms.
+    const end = Math.max(this.from, this.to ?? until)
     const onlineMs = Math.max(1, end - this.from)
     // Ends before starts at one instant: back to back is not at once.
     const events = this.spans

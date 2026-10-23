@@ -647,9 +647,30 @@ it('a worker its adapter says exited is lost at once, its task run again', async
     await b.finish('t1')
     expect((await t1).exitCode).toBe(0)
     expect(h.o.machines().map((m) => [m.name, m.status])).toEqual([
-      ['worker#2', 'online'],
+      ['worker#2', 'stopped'],
       ['worker#1', 'lost'],
     ])
+  } finally {
+    await h.stop()
+  }
+})
+
+// Asked before the run's end, a worker still there read online 1 ms and
+// booked 433802 of 4 (main, 2026-10-23).
+it('reports a worker still there at the summary as stopped, online until then', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.worker(1)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.begin('t1')
+    await Bun.sleep(100)
+    await a.finish('t1')
+    expect((await t1).exitCode).toBe(0)
+    const [m] = h.o.machines()
+    expect(m!.status).toBe('stopped')
+    expect(m!.onlineMs).toBeGreaterThanOrEqual(100)
+    expect(m!.bookedAvg).toBeLessThanOrEqual(m!.cores)
   } finally {
     await h.stop()
   }
