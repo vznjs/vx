@@ -9,49 +9,50 @@ tags:
 excerpt: 'vx run --dry prints the task graph, which tasks would hit the cache and which would run, their keys and how long they should take. Nothing executes.'
 ---
 
-Before a long run, you want to know what it will do. `--dry` answers
-without running anything: every task in the graph, whether the cache
-would answer it, its key, and how long it took last time.
+One edit in `packages/b`. `--dry` shows what the next run will do,
+without running anything:
 
 ```sh frame="terminal"
-$ vx run test --all --dry
+$ vx run build test --all --dry
 would run:
-  ▶  @demo/api#test    cache miss — would exec   62269624  ~213ms
-  ▶  @demo/api#build   cache miss — would exec   10361de3  ~326ms
-  ✓  @demo/docs#test   cache hit (local)         067839a7
-  ✓  @demo/docs#build  cache hit (local)         b5134b6e
-  ✓  @demo/ui#build    cache hit (local)         6a36fb4c
-  ✓  @demo/ui#test     cache hit (local)         d5097182
-  ✓  @demo/web#test    cache hit (local)         a5787dc7
-  ✓  @demo/web#build   cache hit (local)         731116aa
+  ✓  packages/a#build  cache hit (local)         4ab2bc0d
+  ▶  packages/b#build  cache miss — would exec   e8c0e9d5  ~19ms
+  ✓  packages/c#build  cache hit (local)         5e8ed98e
+  ✓  packages/d#build  cache hit (local)         9f1cef08
+  ✓  packages/a#test   cache hit (local)         9ea4543b
+  ▶  packages/b#test   cache miss — would exec   537a0bf3  ~19ms
+  ✓  packages/c#test   cache hit (local)         6c5e8b3a
+  ✓  packages/d#test   cache hit (local)         5b407891
 
 8 task(s) planned, 6 cache hits (6 local), 2 would run.
-predicted: ~539ms wall · ~539ms total execution
+predicted: ~19ms wall · ~38ms total execution
+
+$ vx run build test --all
+ ⏺︎    10ms success miss     packages/b#test
+ ⏺︎    17ms success miss     packages/b#build
 ```
 
-One edit to `api`: two tasks would run, six come from the cache.
+The plan said two misses; the run ran those two. Linux x64, vx at
+`69617eb`, 2026-10-23.
 
 ## Real keys, real predictions
 
-A dry run derives the same keys a real run would and asks the same
-cache. A "hit" in the plan is a hit in the run. The time next to each
-task is what it took the last time it ran. The wall prediction lays
-those times on the graph: `api#test` waits for `api#build`, so the two
-run one after the other, ~539 ms.
-
-```mermaid
-flowchart LR
-  C["configs"] --> G["task graph"] --> K["keys"] --> Q{"cache?"}
-  Q -->|hit| H["would restore"]
-  Q -->|miss| M["would exec"]
-  style Q stroke:#c6f84e,stroke-width:2px
-```
+- **Same keys.** A dry run derives the keys a real run would and asks
+  the same cache. A hit in the plan is a hit in the run.
+- **Last time's duration.** The time next to a task is its last run.
+- **Wall time on the graph.** The prediction lays those times on the
+  graph: a task waits for its dependencies, independent tasks overlap.
 
 ## For scripts and agents
 
-`--dry=json` prints the same plan as JSON: tasks, keys, hit or miss,
-predicted times. An agent can decide whether a run is worth starting,
-or show a reviewer what a change will rebuild.
+`--dry=json` is the same plan as JSON, one object per task:
+
+```json
+{"id":"packages/a#build","project":"packages/a","task":"build","hash":"4ab2bc0d55dd78a0","cacheStatus":"hit-local","deps":[],"p50Ms":22}
+```
+
+An agent can decide whether a run is worth starting, or show a
+reviewer what a change rebuilds:
 
 ```sh frame="terminal"
 vx run build --affected --dry=json
@@ -59,8 +60,7 @@ vx run build --affected --dry=json
 
 ## The graph itself
 
-Each task in `--dry=json` carries its `deps`, so the graph is one `jq`
-away from Graphviz DOT, or any other format a tool draws:
+Each task carries its `deps`, so Graphviz DOT is one `jq` away:
 
 ```sh frame="terminal"
 vx run build --all --dry=json \
@@ -68,5 +68,5 @@ vx run build --all --dry=json \
 dot -Tsvg graph.dot > graph.svg
 ```
 
-Learn more: [Plan before you run](https://vznjs.github.io/vx/features/dry-run/) and
-[the CLI reference](../../cli/).
+Reference: [the CLI](../../cli/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
