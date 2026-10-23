@@ -48,17 +48,17 @@ describe('ci.yml', () => {
     expect(
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
-      ['linux', 'linux-x64', 'ubuntu-latest', top, undefined],
+      ['linux', 'linux-x64', 'ubuntu-24.04', top, undefined],
       // Each run only plans and dispatches: Linux x64, so every macOS and
       // arm runner is an agent's.
       [
         'binary-linux-arm64',
         'linux-arm64',
-        'ubuntu-latest',
+        'ubuntu-24.04',
         "github.event_name != 'pull_request'",
         undefined,
       ],
-      ['macos', 'darwin-arm64', 'ubuntu-latest', "github.event_name != 'pull_request'", undefined],
+      ['macos', 'darwin-arm64', 'ubuntu-24.04', "github.event_name != 'pull_request'", undefined],
     ])
   })
 
@@ -194,7 +194,7 @@ describe('ci.yml', () => {
 describe('vx-agent.yml', () => {
   it('runs each size on its runner', () => {
     expect(agent['runs-on']).toBe(
-      `\${{ fromJSON('{"small":"ubuntu-latest","arm":"ubuntu-24.04-arm","mac":"macos-latest"}')[inputs.size] }}`,
+      `\${{ fromJSON('{"small":"ubuntu-24.04","arm":"ubuntu-24.04-arm","mac":"macos-latest"}')[inputs.size] }}`,
     )
   })
 
