@@ -146,10 +146,11 @@ describe.skipIf(process.platform !== 'linux')('the run lock on a procfs of its o
 
   it('a live holder whose name holds ") " is read by its real start time', async () => {
     // comm sits in parentheses and may hold both: the fields start after the LAST ')'.
+    // A script, not a copy of `sleep`: uutils (Ubuntu 26) is one binary
+    // that picks its tool by the name it runs as, and exited at once.
     const bin = path.join(dir, 's) 1 2 3')
-    await real.copyFile(Bun.which('sleep')!, bin)
-    await real.chmod(bin, 0o755)
-    const child = Bun.spawn([bin, '30'], { stdout: 'ignore', stderr: 'ignore' })
+    await real.writeFile(bin, '#!/bin/sh\nsleep 30\n', { mode: 0o755 })
+    const child = Bun.spawn([bin], { stdout: 'ignore', stderr: 'ignore' })
     try {
       const deadline = Date.now() + 4_000
       while (!realFs.readFileSync(`/proc/${child.pid}/stat`, 'utf8').includes('(s) 1 2 3)')) {
