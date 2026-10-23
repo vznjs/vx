@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## history: key task timings by the task's definition
+
+No migration note.
+
 ## vx-dte-relay: keep only live runs, retry 3 times
 
 No migration note.
