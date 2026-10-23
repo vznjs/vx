@@ -5,7 +5,7 @@ import { afterEach, expect, it } from 'bun:test'
 import { localEnv, runWorker, swapRoots } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
-import { bytes, homeOf, needOf } from '../src/plugin.js'
+import { bytes, freshNeed, homeOf, needOf } from '../src/plugin.js'
 import type { Platform } from '@vzn/vx'
 import {
   type CacheFacts,
@@ -1571,15 +1571,25 @@ it('books the cores a task keeps busy on average, unrounded, a quarter at least'
   expect(
     [0.7, 2.4, 0.01].map((c) => needOf({ p50DurationMs: 1, maxCpuParallelism: c }).cores),
   ).toEqual([0.7, 2.4, 0.25])
-  expect(needOf(undefined).cores).toBe(Infinity)
+  expect(needOf(undefined)).toEqual({ cores: 2, memory: 4e9 })
 })
 
 // Main cc5a276, 2026-10-23: check.bun, vx-docs#import and release.sync end
 // before the Linux sandbox's first look, so none has a CPU measure; each
-// booked a whole worker and small#1 ran at 13%.
-it('books one core for a task timed under a second with no CPU measured, a worker if longer', () => {
-  expect(needOf({ p50DurationMs: 143 })).toEqual({ cores: 1, memory: 0 })
-  expect(needOf({ p50DurationMs: 30_000 }).cores).toBe(Infinity)
+// booked a whole worker and small#1 ran at 13%. M: "we can't waste whole
+// worker for one task".
+it('books an unmeasured task the average of the run’s measured ones, else 2 cores and 4GB or what is set', () => {
+  const peaks = new Map([
+    ['a', { p50DurationMs: 1, maxCpuParallelism: 1, maxPeakRssBytes: 100 }],
+    ['b', { p50DurationMs: 1, maxCpuParallelism: 3, maxPeakRssBytes: 300 }],
+    ['new', { p50DurationMs: 143 }],
+  ])
+  expect(needOf(peaks.get('new'), freshNeed(peaks))).toEqual({ cores: 2, memory: 200 })
+  expect(freshNeed(new Map([['new', { p50DurationMs: 143 }]]))).toEqual({ cores: 2, memory: 4e9 })
+  expect(freshNeed(new Map(), { cores: 1, memory: 5 })).toEqual({ cores: 1, memory: 5 })
+  expect(
+    refusal(() => dte({ relay: 'https://r', unmeasured: { cpu: 0, memory: '1GB' } })),
+  ).toContain('unmeasured needs cpu > 0')
 })
 
 it('reads memory as bytes or with a unit', () => {

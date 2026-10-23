@@ -108,6 +108,12 @@ export interface DteOptions {
   readonly token?: () => string | undefined | Promise<string | undefined>
   /** How the run orders, places, books and scales (`Strategy`); each layer absent is the default's. */
   readonly scheduler?: Partial<Strategy>
+  /**
+   * What a task with no measure books when no task of the run has one
+   * either (default 2 cores, 4GB); with some measured, it books their
+   * average.
+   */
+  readonly unmeasured?: { readonly cpu: number; readonly memory: number | string }
 }
 
 const KEYS: PluginOptionKinds<DteOptions> = {
@@ -116,6 +122,7 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   relay: 'string',
   token: 'function',
   scheduler: 'object',
+  unmeasured: 'object',
 }
 
 export function dte(options: DteOptions) {
@@ -160,6 +167,7 @@ export function dte(options: DteOptions) {
     return platform === undefined ? {} : { platform }
   }
   const home = homeOf(sizes, hostPlatform())
+  const unmeasured = unmeasuredOf(options.unmeasured)
   const adapter = options.adapter
   // A keyless adapter's run on GitHub Actions with a relay names its own
   // run: ci.yml sets nothing (owner, 2026-10-23: "super simple" CI).
@@ -183,6 +191,8 @@ export function dte(options: DteOptions) {
 
   let nodes: ReadonlyMap<string, TaskNode> | undefined
   let peaks: ReadonlyMap<string, TaskResources> = new Map()
+  /** What an unmeasured task books, from `peaks` (`freshNeed`); made again when they change. */
+  let fresh: Need | undefined
   /** Each task's tail by `nodes` and `peaks`, made again when either changes. */
   let tails: ((id: string) => number) | undefined
   /** Settles once the needs other plugins fetch are in `peaks`: `ctx.refining()`, then the read. */
@@ -202,6 +212,7 @@ export function dte(options: DteOptions) {
     orchestrator = undefined
     nodes = undefined
     peaks = new Map()
+    fresh = undefined
     tails = undefined
     needsIn = undefined
     scheduled = undefined
@@ -225,7 +236,7 @@ export function dte(options: DteOptions) {
     if (options.relay === undefined) throw new UserError('vx dte plan needs dte({ relay })')
     const { runSecret } = await import('./seal.js')
     const live = adapter.live?.() === true
-    const workers = planned(sizes, live ? await firstWave(args, ctx, sizes) : undefined)
+    const workers = planned(sizes, live ? await firstWave(args, ctx, sizes, unmeasured) : undefined)
     const files: Record<string, string> = {
       ...adapter.render({ run, relay: options.relay, workspaceRoot: root, workers }),
     }
@@ -308,6 +319,7 @@ export function dte(options: DteOptions) {
             ctx.branch,
           ).resourcesFor(ids)
           tails = undefined
+          fresh = undefined
         } catch (err) {
           ctx.warn(
             `dte: tasks are packed one core each: ${err instanceof Error ? err.message : String(err)}`,
@@ -374,7 +386,8 @@ export function dte(options: DteOptions) {
       proof ??= seal.secretProof(secret!)
       const { tree } = await snapshot(ctx.workspaceRoot)
       if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
-      const need = (id: string): Need => booked(needOf(peaks.get(id)), how.book)
+      const need = (id: string): Need =>
+        booked(needOf(peaks.get(id), (fresh ??= freshNeed(peaks, unmeasured))), how.book)
       // The run plans again on it, now when `now`; set once the plan is.
       let onChange = (_now?: boolean): void => {}
       const o = new Orchestrator({
@@ -693,6 +706,7 @@ async function firstWave(
   args: readonly string[],
   ctx: CommandContext,
   sizes: readonly Size[],
+  unmeasured: Need,
 ): Promise<Map<string, number>> {
   const { VX_DTE_RUN: _, ...env } = process.env
   const dry = Bun.spawnSync([...ctx.vx, 'run', ...args, '--dry=json'], {
@@ -728,13 +742,14 @@ async function firstWave(
     try {
       peaks = await new LocalHistoryProvider(db).resourcesFor([...remaining])
     } catch {
-      // No history: every task a whole worker, as a run packs it.
+      // No history: every task books `unmeasured`, as a run packs it.
     } finally {
       db.close()
     }
   }
   const { candidates, plan, planTasks } = await import('./planner.js')
-  const need = (id: string): Need => needOf(peaks.get(id))
+  const fresh = freshNeed(peaks, unmeasured)
+  const need = (id: string): Need => needOf(peaks.get(id), fresh)
   const work = planTasks(
     remaining,
     nodes,
@@ -767,24 +782,45 @@ interface DryTask {
   readonly p50Ms?: number
 }
 
-/** A task timed under this with no CPU measured books one core, not a worker. */
-const SHORT_MS = 1_000
+/**
+ * What an unmeasured task books when no task of the run has a measure
+ * either (`dte({ unmeasured })`): fixed, since a plan cannot know which
+ * worker it lands on (M, 2026-10-23: "by default, 2 cores, 4 gigs").
+ */
+const FRESH: Need = { cores: 2, memory: 4e9 }
+
+function unmeasuredOf(u: DteOptions['unmeasured']): Need {
+  if (u === undefined) return FRESH
+  const memory = bytes(u.memory)
+  if (!(typeof u.cpu === 'number' && u.cpu > 0) || memory === undefined)
+    throw new UserError("dte(): unmeasured needs cpu > 0 and memory such as '4GB'")
+  return { cores: u.cpu, memory }
+}
+
+/** What an unmeasured task books: the average of the measured ones' needs, else `fallback`. */
+export function freshNeed(peaks: ReadonlyMap<string, TaskResources>, fallback: Need = FRESH): Need {
+  let cores = 0
+  let memory = 0
+  let n = 0
+  for (const r of peaks.values()) {
+    if (r.maxCpuParallelism === undefined) continue
+    const need = needOf(r)
+    if (need.cores === Infinity) continue
+    cores += need.cores
+    memory += need.memory
+    n++
+  }
+  return n === 0 ? fallback : { cores: cores / n, memory: memory / n }
+}
 
 /** What a task asks of a worker, from its history. */
-export function needOf(r: TaskResources | undefined): Need {
-  // Timed but never measured: on Linux the sandbox measures a task by
-  // looking at it while it runs, so one over before the first look has no
-  // CPU (core's watchTree). Short, it books a core: three of them booked a
-  // whole worker each and main's small#1 ran at 13% (2026-10-23).
-  if (
-    r?.maxCpuParallelism === undefined &&
-    r?.p50DurationMs !== undefined &&
-    r.p50DurationMs < SHORT_MS
-  )
-    return { cores: 1, memory: r.maxPeakRssBytes ?? 0 }
-  // Unmeasured: a whole worker, until its first run measures it. One that
+export function needOf(r: TaskResources | undefined, fresh: Need = FRESH): Need {
+  // Unmeasured (new, or over before the Linux sandbox's first look, which
+  // leaves no CPU): what the run's measured tasks book on average. A whole
+  // worker each left main's small#1 at 13% for three sub-second tasks (M,
+  // 2026-10-23: "we can't waste whole worker for one task"). One that
   // filled its worker: a whole bigger one.
-  if (r?.maxCpuParallelism === undefined) return { cores: Infinity, memory: Infinity }
+  if (r?.maxCpuParallelism === undefined) return fresh
   if (r.saturatedCores !== undefined || r.saturatedMemoryBytes !== undefined)
     return {
       cores: Infinity,

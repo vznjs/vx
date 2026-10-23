@@ -39,12 +39,12 @@ import { assign, ordered, type Need } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 import { RelayError, type Participant } from './wire.js'
 
-/** What a task is expected to hold while it runs, from its history; `Infinity` (unmeasured): a whole worker. */
+/** What a task is expected to hold while it runs, from its history; `Infinity`: a whole worker (one that filled its worker). */
 
 interface Job {
   readonly req: ExecuteRequest
   readonly need: Need
-  /** The cores and memory it holds on its worker: its need, or the whole worker for an unmeasured one. */
+  /** The cores and memory it holds on its worker: its need, or the whole worker for one that filled its worker. */
   held?: Need
   readonly resolve: (r: ExecuteResult) => void
   readonly reject: (err: unknown) => void
@@ -231,7 +231,7 @@ export class Orchestrator {
     endsInMs: number
   }[] = []
   /**
-   * The tasks the first ask had no measure of, each booking a whole worker:
+   * The tasks the first ask had no measure of, each booking a guess:
    * named, so a run that packed badly says which (main 68b851d, 2026-10-23:
    * 41 of 119, small#7 holding 3.9 cores for a task using 0.3).
    */
