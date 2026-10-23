@@ -3,7 +3,14 @@
 // does not get through.
 
 import { afterEach, expect, it } from 'bun:test'
-import { githubProof, SealError, sealWorker, sealOrchestrator, secretProof } from '../src/seal.js'
+import {
+  githubProof,
+  oidcToken,
+  SealError,
+  sealWorker,
+  sealOrchestrator,
+  secretProof,
+} from '../src/seal.js'
 import { join, type Participant, type RelayMessage } from '../src/wire.js'
 import { servedRelay } from './served-relay.js'
 
@@ -241,4 +248,34 @@ it('on GitHub, admits by OIDC tokens of this repository whose audience is the ke
     ])
       delete process.env[k]
   }
+})
+
+// PR #4146, 2026-10-23: one 503 from GitHub's token endpoint ended small#2
+// before it joined.
+it('asks GitHub for an OIDC token again after a 5xx, three tries at most, never after a 4xx', async () => {
+  let calls = 0
+  let fail = [503, 502]
+  const issuer = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch() {
+      calls++
+      const status = fail.shift()
+      return status === undefined ? Response.json({ value: 'tok' }) : new Response(null, { status })
+    },
+  })
+  stops.push(async () => {
+    await issuer.stop(true)
+  })
+  const url = `http://127.0.0.1:${issuer.port}/token?v=1`
+  expect(await oidcToken(url, 'b', 'aud')).toBe('tok')
+  expect(calls).toBe(3)
+  calls = 0
+  fail = [503, 503, 503, 503]
+  await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow("GitHub's OIDC token: 503")
+  expect(calls).toBe(3)
+  calls = 0
+  fail = [401]
+  await expect(oidcToken(url, 'b', 'aud')).rejects.toThrow("GitHub's OIDC token: 401")
+  expect(calls).toBe(1)
 })

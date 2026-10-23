@@ -422,8 +422,10 @@ time the run asked for workers: how many, when, for how many tasks that
 missed, how many of them with a measured need (an unmeasured one books a
 whole worker), and when its plan ended then. The first ask
 waits for the needs another plugin fetches (`ctx.refining()`), such as
-`@vzn/vx-schedule-history`'s default-branch timings. The `total` line is the cpu utilization of every
-machine together:
+`@vzn/vx-schedule-history`'s default-branch timings. The `unmeasured`
+line names the tasks the first ask had no measure of, and a worker that
+ran two tasks or fewer names them on its row. The `total` line is the cpu utilization of every
+machine together, and the share of their history the run's tasks used:
 
 ```
             small#1  stopped  5 done · warm-up 0.2s
@@ -462,8 +464,10 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     Each task core's up-front cache probe found in no store
     (`TaskExecutor.demand`'s `missed`) counts as work too, the moment the
     probe answers.
-    It scales each task's cores by what the workers use over what the run
-    booked, as placing by load packs them.
+    A measured task books its cores times the share of their history the
+    run's finished tasks used (once they used a minute of core-time; never
+    under two thirds), so a worker's bookings may reach 1.5 times its
+    cores when tasks use less than history says; plans book the same.
     A worker the plan needs later starts when its warm-up nears. An idle
     worker leaves when the plan still ends in that margin without it, or,
     when its next task is two warm-ups away, with one started in its place
@@ -515,7 +519,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   it needs it.
   `WorkerSpawn` is `{ run, relay, size, cpu, memory, index, id, workspaceRoot, env }`,
   with `memory` in bytes,
-  where `id` is the worker's name (`small#2`) and `env` holds the three
+  where `id` is the worker's name (`small#2`, numbered within its size) and `env` holds the three
   variables the worker reads.
 - `docker(options: DockerOptions)` starts workers as containers and a relay
   of its own on loopback. `DockerOptions` is `{ image, prepare? }`.

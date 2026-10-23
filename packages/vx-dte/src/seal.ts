@@ -38,6 +38,28 @@ export function secretProof(secret: string): Proof {
 const GITHUB = 'https://token.actions.githubusercontent.com'
 
 /**
+ * An OIDC token for `audience` from GitHub's token endpoint. A 5xx or a
+ * dropped connection is tried again, three tries in 10 s at most: one 503
+ * ended a worker before it joined (PR #4146, 2026-10-23).
+ */
+export async function oidcToken(url: string, bearer: string, audience: string): Promise<string> {
+  const until = performance.now() + 10_000
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(`${url}&audience=${encodeURIComponent(audience)}`, {
+      headers: { authorization: `bearer ${bearer}` },
+      signal: AbortSignal.timeout(Math.max(1, until - performance.now())),
+    }).catch((err: unknown) => (err instanceof Error ? err.message : String(err)))
+    if (typeof res !== 'string' && res.ok) return ((await res.json()) as { value: string }).value
+    const why = typeof res === 'string' ? res : String(res.status)
+    const again = typeof res === 'string' || res.status >= 500 || res.status === 429
+    const pause = 250 * 2 ** (attempt - 1)
+    if (!again || attempt >= 3 || performance.now() + pause >= until)
+      throw new Error(`GitHub's OIDC token: ${why}`)
+    await Bun.sleep(pause)
+  }
+}
+
+/**
  * Keyless on GitHub Actions: a side signs by an OIDC token whose audience
  * is the digest of what it signs, and checks one as GitHub's and of this
  * repository (`GITHUB_REPOSITORY_ID`). No secret is stored anywhere.
@@ -69,12 +91,7 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
   }
   return {
     async sign(parts) {
-      const res = await fetch(`${url}&audience=${encodeURIComponent(aud(parts))}`, {
-        headers: { authorization: `bearer ${bearer}` },
-        signal: AbortSignal.timeout(10_000),
-      })
-      if (!res.ok) throw new Error(`GitHub's OIDC token: ${res.status}`)
-      return ((await res.json()) as { value: string }).value
+      return oidcToken(url, bearer, aud(parts))
     },
     async check(token, parts) {
       const { createVerifier } = await import('@vzn/vx-dte-relay')

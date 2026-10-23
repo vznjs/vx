@@ -245,7 +245,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)} })] }
       0,
       expect.stringMatching(/└─ b#use · worker#1 ── .*success/),
     ])
-    expect(out).toMatch(/workers +worker#1  stopped  1 done\n +actual \d+c\/[\d.]+G$/m)
+    expect(out).toMatch(/workers +worker#1  stopped  1 done · b#use\n +actual \d+c\/[\d.]+G$/m)
     const { exited, out: own } = await worker
     expect(exited).toBe(0)
     expect(own).toMatch(/worker +worker#1/)

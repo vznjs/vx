@@ -80,6 +80,8 @@ interface Worker {
   readonly declared: Declared | undefined
   /** Tasks it finished. */
   ran: number
+  /** Their ids, for the summary of a worker that ran few: what held it. */
+  readonly done: string[]
   readonly usage: Usage
   /** Sent to it and not finished: running there or in its queue. */
   readonly busy: Map<string, Job>
@@ -154,6 +156,14 @@ const RELEND_MS = 4 * 60_000
  * 1 MiB at most, and sealing it grows it by a third.
  */
 const BATCH_BYTES = 512 * 1024
+/** A worker that ran this many tasks or fewer names them in the summary. */
+const FEW = 2
+/** The unmeasured tasks the summary names; the rest it counts. */
+const NAMED = 40
+/** Core-time of history the run's tasks finish before their use reshapes bookings: a few tasks' worth. */
+const LEARN_MS = 60_000
+/** The most a worker's bookings may add up to, in its cores, when tasks use less than their history. */
+const OVERBOOK = 1.5
 /** Failed starts the run replaces before it calls its setup broken. */
 const RESTARTS = 3
 
@@ -220,6 +230,20 @@ export class Orchestrator {
     measured: number
     endsInMs: number
   }[] = []
+  /**
+   * The tasks the first ask had no measure of, each booking a whole worker:
+   * named, so a run that packed badly says which (main 68b851d, 2026-10-23:
+   * 41 of 119, small#7 holding 3.9 cores for a task using 0.3).
+   */
+  private unmeasured: readonly string[] = []
+  /**
+   * Core-time measured tasks used here, and what their history said they
+   * would: tasks booked at their history used 82% of it on every Linux
+   * worker of cold run 3 (66% of the cores against the sim's 86%,
+   * 2026-10-23). A measured task books its need times what they used.
+   */
+  private usedMs = 0
+  private needMs = 0
   private readonly stop = new AbortController()
   private readonly loop: Promise<void>
   private readonly realRoot: string
@@ -353,7 +377,7 @@ export class Orchestrator {
     const to = assign(
       queue.map((job) => ({
         id: job.req.taskId,
-        need: job.need,
+        need: this.booking(job.need),
         up: upstream(nodes, job.req.taskId),
       })),
       bins,
@@ -370,7 +394,7 @@ export class Orchestrator {
       job.sentAt = performance.now()
       a.busy.set(job.req.taskId, job)
       job.held = {
-        cores: Math.min(job.need.cores, a.cores),
+        cores: Math.min(this.booking(job.need).cores, a.cores),
         memory: Math.min(job.need.memory, a.memory),
       }
       a.usedCores += job.held.cores
@@ -407,6 +431,17 @@ export class Orchestrator {
   private holding(a: Worker): boolean {
     for (const j of a.busy.values()) if (j.held !== undefined) return true
     return false
+  }
+
+  /**
+   * What a task books: a measured one its need times the share of their
+   * history the run's tasks used, once they used `LEARN_MS` of it, and
+   * never under `1 / OVERBOOK` of its need.
+   */
+  booking(need: Need): Need {
+    if (need.cores === Infinity || this.needMs < LEARN_MS) return need
+    const used = Math.min(1, Math.max(1 / OVERBOOK, this.usedMs / this.needMs))
+    return { ...need, cores: need.cores * used }
   }
 
   /** `job`'s cores and memory go back to its worker, once: its command ended, or it left. */
@@ -633,7 +668,13 @@ export class Orchestrator {
     this.unhold(a, job)
     a.started.delete(task)
     a.ran++
+    a.done.push(task)
     a.usage.record(head)
+    if (job.need.cores !== Infinity && head.cpuMs !== undefined && head.exitCode === 0) {
+      const ms = Math.max(1, head.durationMs)
+      this.usedMs += head.cpuMs
+      this.needMs += Math.min(job.need.cores, a.cores) * ms
+    }
     this.savedAs.set(task, key)
     this.pumpSoon()
     const node = this.o.nodes()?.get(task)
@@ -720,6 +761,7 @@ export class Orchestrator {
         warmUpMs,
         declared: spawn?.declared,
         ran: 0,
+        done: [],
         usage: new Usage(),
         cores,
         memory,
@@ -846,7 +888,14 @@ export class Orchestrator {
   }
 
   /** The run asks for `workers` more for `tasks` it knows miss, its plan ending in `endsInMs`. */
-  asked(workers: number, tasks: number, measured: number, endsInMs: number): void {
+  asked(
+    workers: number,
+    tasks: number,
+    measured: number,
+    endsInMs: number,
+    unmeasured: readonly string[] = [],
+  ): void {
+    if (this.asks.length === 0) this.unmeasured = unmeasured
     this.asks.push({ at: performance.now() - this.startedAt, workers, tasks, measured, endsInMs })
   }
 
@@ -1112,7 +1161,10 @@ export class Orchestrator {
         a.label,
         this.state(a, gone),
         count(a.usage, gone.has(a) ? 0 : a.started.size) +
-          (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : ''),
+          (this.ended && a.warmUpMs !== undefined ? ` · warm-up ${seconds(a.warmUpMs)}` : '') +
+          (this.ended && a.done.length > 0 && a.done.length <= FEW
+            ? ` · ${a.done.join(', ')}`
+            : ''),
       ])
     for (const id of this.spawnedAt.keys())
       if (!joined.has(id) && !this.cancelled.has(id)) {
@@ -1170,14 +1222,24 @@ export class Orchestrator {
                   .join(' · ')}`,
               ),
             ] as [string, ui.Inline],
+            ...(this.unmeasured.length === 0
+              ? []
+              : [
+                  [
+                    '',
+                    ui.dim(
+                      `${'unmeasured'.padEnd(width)}  ${this.unmeasured.slice(0, NAMED).join(', ')}${this.unmeasured.length > NAMED ? ` and ${this.unmeasured.length - NAMED} more` : ''}`,
+                    ),
+                  ] as [string, ui.Inline],
+                ]),
           ]
         : []),
       ...(coreMs > 0
         ? [
-            ['', `${'total'.padEnd(width)}  cpu utilization ${percent(cpuMs / coreMs)}`] as [
-              string,
-              ui.Inline,
-            ],
+            [
+              '',
+              `${'total'.padEnd(width)}  cpu utilization ${percent(cpuMs / coreMs)}${this.needMs < LEARN_MS ? '' : ` · tasks used ${percent(this.usedMs / this.needMs)} of their history`}`,
+            ] as [string, ui.Inline],
           ]
         : []),
     ]

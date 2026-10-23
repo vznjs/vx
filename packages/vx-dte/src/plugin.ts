@@ -41,9 +41,9 @@ export interface WorkerSpawn {
   /** Its size's cores and memory (bytes), for an adapter that sets a machine's limits. */
   readonly cpu: number
   readonly memory: number
-  /** 1 for the first worker this run starts, counting every size. */
+  /** 1 for the first worker this run starts, counting every size: unique where `id` is per size. */
   readonly index: number
-  /** Its name in the run's output and its own (`small#2`), which it reports back on joining. */
+  /** Its name in the run's output and its own (`small#2`, numbered within its size), which it reports back on joining. */
   readonly id: string
   readonly workspaceRoot: string
   /** What the worker's `vx dte worker` reads: `VX_DTE_RUN`, `VX_DTE_WORKER` (`id`), `VX_DTE_RELAY`, `VX_DTE_SECRET` (the run’s). */
@@ -418,6 +418,14 @@ export function dte(options: DteOptions) {
       const started = new Map<string, number>()
       const sizeOf = new Map<string, Size>()
       let index = 0
+      // Numbered within its size: one count across sizes left M asking
+      // where small#1 was (mac#1 had it, 2026-10-23).
+      const numbered = new Map<string, number>()
+      const nextId = (size: string): string => {
+        const n = (numbered.get(size) ?? 0) + 1
+        numbered.set(size, n)
+        return `${size}#${n}`
+      }
       // A planned run's first wave is on its way already; the rest, if
       // any, waits for the run to start it, by size.
       const later = new Map<string, string[]>()
@@ -435,6 +443,7 @@ export function dte(options: DteOptions) {
           ...named(a.size),
         })
         started.set(a.size, (started.get(a.size) ?? 0) + 1)
+        numbered.set(a.size, (numbered.get(a.size) ?? 0) + 1)
         index++
       }
       // A worker the run counts as started, against its size's max.
@@ -471,8 +480,8 @@ export function dte(options: DteOptions) {
         const n = Number(id.slice(id.lastIndexOf('#') + 1))
         if (s === undefined || !Number.isInteger(n) || n < 1)
           throw new UserError(`dte(): a started worker ${id} is no worker of a declared size`)
-        index = Math.max(index, n)
-        return spawnOf(s, id, n)
+        numbered.set(size, Math.max(numbered.get(size) ?? 0, n))
+        return spawnOf(s, id, ++index)
       })
       // Tasks core handed over: each missed the cache (`missedWork`).
       const executed = new Set<string>()
@@ -492,7 +501,8 @@ export function dte(options: DteOptions) {
           remaining,
           nodes: nodes ?? new Map(),
           executed: knownMisses(likely, sure, executed, remaining),
-          need,
+          // As the run books them: a plan of history alone asks for workers it then fills less.
+          need: (id) => o.booking(need(id)),
           durationMs: (id) => peaks.get(id)?.p50DurationMs,
           workers,
           running,
@@ -532,12 +542,12 @@ export function dte(options: DteOptions) {
           tasks.length,
           tasks.filter((t) => measured(t.id)).length,
           p.endsInMs,
+          tasks.filter((t) => !measured(t.id)).map((t) => t.id),
         )
         for (const s of p.start) {
           ++index
           // Counted against its size's max, so a planned one is left.
-          const id =
-            plannedWorkers === undefined ? `${s.name}#${index}` : later.get(s.name)!.shift()!
+          const id = plannedWorkers === undefined ? nextId(s.name) : later.get(s.name)!.shift()!
           const a = spawnOf(s, id, index)
           void Promise.resolve(adapter.spawn(a)).catch((err: unknown) =>
             o.failed(id, err instanceof Error ? err.message : String(err)),
@@ -775,8 +785,8 @@ export function needOf(r: TaskResources | undefined): Need {
 }
 
 /**
- * Each size's `max` workers, numbered across sizes as a run numbers those
- * it starts. With a `wave` (workers by size), only that many of each start
+ * Each size's `max` workers, numbered within their size as a run numbers
+ * those it starts. With a `wave` (workers by size), only that many of each start
  * with the run: the run starts the rest, `live`, as its work needs them.
  */
 function planned(
@@ -789,7 +799,7 @@ function planned(
       throw new UserError(`dte(): workers.${s.name} needs max: a plan writes that many`)
     for (let i = 0; i < s.max; i++)
       out.push({
-        id: `${s.name}#${out.length + 1}`,
+        id: `${s.name}#${i + 1}`,
         size: s.name,
         cpu: s.cpu,
         memory: s.memory,
