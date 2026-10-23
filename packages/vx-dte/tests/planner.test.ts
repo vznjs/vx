@@ -168,3 +168,23 @@ it('spends its margin once: a later plan of the same work keeps the first one’
   expect(p.release).toEqual([])
   expect(p.boundMs).toBe(42_000)
 })
+
+it('starts a worker of each platform its work needs, though that size is declared last', () => {
+  const linux: Size = { ...small, max: 8, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 2, cpu: 4, memory: 16e9, platform: 'darwin-arm64' }
+  const sizes = candidates([linux, mac], new Map(), [], 3, new Map([['darwin-arm64', 1]]))
+  expect(sizes.map((s) => s.name)).toContain('mac')
+  const task: PlanTask = {
+    id: 'ios',
+    cores: 1,
+    memory: 1e9,
+    ms: 1_000,
+    deps: [],
+    platform: 'darwin-arm64',
+  }
+  const workers: PlanWorker[] = [
+    { id: 'l', cores: 4, memory: 16e9, at: 0, running: [], idle: true, platform: 'linux-x64' },
+  ]
+  expect(simulate([task], workers)).toBe(Infinity)
+  expect(plan([task], workers, sizes, WARM).start.map((s) => s.name)).toEqual(['mac'])
+})

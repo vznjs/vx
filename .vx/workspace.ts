@@ -27,8 +27,10 @@ export default defineWorkspace({
       // x64 for all three. A full Linux run asks ~46 cores of work at
       // once: 8 workers ran it in 157-196 s at 50% CPU (2026-10-23).
       workers: {
-        macOS: { mac: { max: 4, cpu: 3, memory: '7GB' } },
-        'Linux-ARM64': { arm: { max: 1, cpu: 4, memory: '16GB' } },
+        macOS: { mac: { max: 4, cpu: 3, memory: '7GB', platform: 'darwin-arm64' as const } },
+        'Linux-ARM64': {
+          arm: { max: 1, cpu: 4, memory: '16GB', platform: 'linux-arm64' as const },
+        },
       }[process.env['CI_WORKERS_OS'] ?? ''] ?? { small: { max: 12, cpu: 4, memory: '16GB' } },
       adapter: githubWorkers(),
     }),

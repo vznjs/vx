@@ -26,6 +26,8 @@ export interface Size {
   readonly max: number
   readonly cpu: number
   readonly memory: number
+  /** Its machines' platform (`WorkerSize.platform`). */
+  readonly platform?: string | undefined
 }
 
 /** A task to place: what it asks of a worker, how long it takes, and the plan's tasks it waits on. */
@@ -37,6 +39,8 @@ export interface PlanTask {
   readonly above?: { readonly cores: number; readonly memory: number } | undefined
   readonly ms: number | undefined
   readonly deps: readonly string[]
+  /** The platform core placed it on (`TaskNode.platform`): only a worker of it runs it. */
+  readonly platform?: string | undefined
 }
 
 /** A worker the plan can place on: from `at` ms on, with what it runs until each ends. */
@@ -56,6 +60,7 @@ export interface PlanWorker {
   readonly idle: boolean
   /** Started and not joined yet: the run may cancel it. */
   readonly starting?: boolean
+  readonly platform?: string | undefined
 }
 
 export interface Plan {
@@ -129,6 +134,7 @@ export function planTasks(
       above: n.above,
       ms: durationMs(id),
       deps: depsOf(id),
+      platform: nodes.get(id)?.platform,
     }
   })
 }
@@ -218,6 +224,7 @@ function play(
     id: w.id,
     cores: w.cores,
     memory: w.memory,
+    platform: w.platform,
     at: w.at,
     used: { cores: 0, memory: 0 },
     running: 0,
@@ -317,10 +324,15 @@ export function plan(
   limitMs = Infinity,
   how: Strategy = DEFAULT_STRATEGY,
 ): Plan {
-  const fresh = (s: { cpu: number; memory: number }, id: string, at: number): PlanWorker => ({
+  const fresh = (
+    s: { cpu: number; memory: number; platform?: string | undefined },
+    id: string,
+    at: number,
+  ): PlanWorker => ({
     id,
     cores: s.cpu,
     memory: s.memory,
+    platform: s.platform,
     at,
     running: [],
     idle: false,
@@ -373,7 +385,11 @@ export function plan(
       if (!replaceable) continue
       const next = play(tasks, kept, how).first.get(w.id)
       if (next !== undefined && next < 2 * warmUpMs + MARGIN_MS) continue
-      const instead = fresh({ cpu: w.cores, memory: w.memory }, w.id, next ?? Infinity)
+      const instead = fresh(
+        { cpu: w.cores, memory: w.memory, platform: w.platform },
+        w.id,
+        next ?? Infinity,
+      )
       if (simulate(tasks, [...without, instead], how) <= bound) {
         kept = without
         release.push(w.id)
@@ -396,14 +412,16 @@ export function plan(
 /**
  * The sizes the run would start next, in order: for each task that
  * filled its worker last time (`above`), one of the smallest size bigger
- * than it while the run has none of that size; then sizes in declared
- * order up to each one's max.
+ * than it while the run has none of that size; for each platform tasks
+ * run on, its sizes in declared order, up to one per task of it; then
+ * sizes in declared order up to each one's max.
  */
 export function candidates(
   sizes: readonly Size[],
   started: ReadonlyMap<string, number>,
   above: Iterable<{ cores: number; memory: number }>,
   limit: number,
+  platforms: ReadonlyMap<string, number> = new Map(),
 ): Size[] {
   const count = new Map(started)
   const out: Size[] = []
@@ -415,6 +433,17 @@ export function candidates(
   for (const a of above) {
     const z = up.find((s) => s.cpu > a.cores || s.memory > a.memory)
     if (z !== undefined && (count.get(z.name) ?? 0) === 0 && z.max > 0) add(z)
+  }
+  // A platform the declared order reaches late gets its workers too.
+  for (const [platform, tasks] of platforms) {
+    let n = 0
+    for (const s of sizes) {
+      if (s.platform !== platform) continue
+      while (n < tasks && (count.get(s.name) ?? 0) < s.max) {
+        add(s)
+        n++
+      }
+    }
   }
   for (const s of sizes) while (out.length < limit && (count.get(s.name) ?? 0) < s.max) add(s)
   return out
@@ -455,6 +484,9 @@ export function decide(input: {
     input.need,
     input.durationMs,
   ).filter((t) => !input.running.has(t.id))
+  const platforms = new Map<string, number>()
+  for (const t of tasks)
+    if (t.platform !== undefined) platforms.set(t.platform, (platforms.get(t.platform) ?? 0) + 1)
   const sizes = input.final
     ? []
     : candidates(
@@ -462,20 +494,14 @@ export function decide(input: {
         input.started,
         tasks.flatMap((t) => t.above ?? []),
         tasks.length,
+        platforms,
       )
   if (how.scale === 'backlog')
     return { ...backlog(tasks, input.workers, sizes, input.warmUpMs, how), tasks }
   const p = plan(
     tasks,
     input.workers,
-    input.final
-      ? []
-      : candidates(
-          input.sizes,
-          input.started,
-          tasks.flatMap((t) => t.above ?? []),
-          tasks.length,
-        ),
+    sizes,
     input.warmUpMs,
     input.replaceable,
     // New work moves the deadline; work done or known already does not.
@@ -525,6 +551,7 @@ function backlog(
       id: `\0new${i}`,
       cores: c.cpu,
       memory: c.memory,
+      platform: c.platform,
       at: warmUpMs,
       running: [],
       idle: false,

@@ -393,7 +393,8 @@ The machines this task can run on, any of them. Omitted, it runs anywhere.
   fails: one whose platforms leave the machine out refuses the run before
   any task starts. Run a target that holds only this platform's tasks, or
   one distributed run with a worker of each platform.
-- **With an executor that routes by platform** (one declaring `platforms`), the task
+- **With an executor that routes by platform** (`@vzn/vx-dte`, whose
+  worker sizes each name a `platform`), the task
   runs on a worker of one of its platforms: this machine's if the
   executor has one, else the first it lists that the executor has. A task
   none of whose platforms the executor runs refuses the run before

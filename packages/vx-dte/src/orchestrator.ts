@@ -66,6 +66,8 @@ interface Worker {
   readonly memory: number
   /** What its machine has, as it reported on joining. */
   readonly reported: { readonly cores: number; readonly memory: number }
+  /** Its machine's platform, as it reported on joining. */
+  readonly platform: string | undefined
   readonly label: string
   /** From its start to its join, when this run started it. */
   readonly warmUpMs: number | undefined
@@ -97,6 +99,8 @@ export interface Declared {
   readonly size: string
   readonly cpu: number
   readonly memory: number
+  /** Its size's platform: a worker reporting another is refused. */
+  readonly platform?: string
 }
 
 export interface OrchestratorOptions {
@@ -216,7 +220,13 @@ export class Orchestrator {
     if (this.lost !== undefined) return Promise.reject(new Error(this.lost))
     for (const u of req.inputs?.upstream ?? []) this.upstreamKeys.set(u.taskId, u.hash)
     return new Promise((resolve, reject) => {
-      const job: Job = { req, need: this.o.need(req.taskId), resolve, reject }
+      const need = this.o.need(req.taskId)
+      const job: Job = {
+        req,
+        need: req.platform === undefined ? need : { ...need, platform: req.platform },
+        resolve,
+        reject,
+      }
       // A signal aborted already fires no `abort`.
       if (req.signal?.aborted === true) return resolve(stopped())
       req.signal?.addEventListener('abort', () => this.abort(job), { once: true })
@@ -312,6 +322,7 @@ export class Orchestrator {
         used: this.used(a),
         running,
         has: a.has,
+        platform: a.platform,
         a,
       }
     })
@@ -626,6 +637,13 @@ export class Orchestrator {
       if (info.tree !== this.o.tree) {
         return refuse(`checked out tree ${info.tree}, the run is on ${this.o.tree}`)
       }
+      const platform = typeof info.platform === 'string' ? info.platform : undefined
+      const sized = info.id === undefined ? undefined : this.spawnedAt.get(info.id)?.declared
+      if (sized?.platform !== undefined && platform !== sized.platform) {
+        return refuse(
+          `runs on ${platform ?? 'no platform it names'}, and its size ${sized.size} says ${sized.platform}`,
+        )
+      }
       if (info.id !== undefined && this.cancelled.has(info.id)) {
         void this.o.me.send(id, { type: 'exit' } satisfies ToWorker).catch(() => undefined)
         return
@@ -650,6 +668,7 @@ export class Orchestrator {
         cores,
         memory,
         reported: { cores: Number(info.cores), memory: Number(info.memory) },
+        platform,
         usedCores: 0,
         usedMemory: 0,
         label,
@@ -810,6 +829,7 @@ export class Orchestrator {
         id: a.id,
         cores: a.cores,
         memory: a.memory,
+        platform: a.platform,
         at: 0,
         idle: a.busy.size === 0,
         running: jobs.map((j) => ({
@@ -827,6 +847,7 @@ export class Orchestrator {
           id,
           cores: declared.cpu,
           memory: declared.memory,
+          platform: declared.platform,
           at: Math.max(0, warmUpMs - (now - at)),
           idle: false,
           running: [],

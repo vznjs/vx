@@ -43,8 +43,9 @@ export type {
   SandboxConfig,
   SandboxGrants,
   SandboxDenials,
+  Platform,
 } from './config.js'
-export { defineProject, defineWorkspace } from './config.js'
+export { defineProject, defineWorkspace, PLATFORMS } from './config.js'
 export { definePlugin, refuseUnknownOptions } from './orchestrator/index.js'
 export { branchCacheScope } from './workspace/index.js'
 
@@ -195,7 +196,7 @@ export type { RunStartInfo } from './report/index.js'
 // speaks a wire — and a seam with no consumer is a special case in waiting.)
 // A remote executor gives a task back to the local floor by rejecting with
 // this (B-100): core runs it here and says why once.
-export { executorFallback } from './exec/index.js'
+export { executorFallback, hostPlatform } from './exec/index.js'
 // How the local executor puts the args after `--` on a command, for an
 // executor that runs `ExecuteRequest.command` itself: `@vzn/vx-reapi` and
 // the `vx init --plugin executor` example each joined their own, and a

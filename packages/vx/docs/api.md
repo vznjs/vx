@@ -922,6 +922,16 @@ export interface HostContext {
 }
 ```
 
+## `hostPlatform`
+
+function · `src/exec/executor.ts`
+
+This machine as `exec.platforms` names it: `os-arch` as Bun reports them, `linux-x64`.
+
+```ts
+export function hostPlatform(): string
+```
+
 ## `InputsConfig`
 
 type · `src/config.ts`
@@ -1568,6 +1578,24 @@ existence check — no artifact download, no ingest, no accessed_at bump.
 
 ```ts
 export async function planRun(options: RunOptions): Promise<RunPlan>
+```
+
+## `Platform`
+
+type · `src/config.ts`
+
+```ts
+export type Platform = (typeof PLATFORMS)[number]
+```
+
+## `PLATFORMS`
+
+const · `src/config.ts`
+
+The machines a task can name in `exec.platforms`: `os-arch`, as Bun's compile targets name them.
+
+```ts
+export const PLATFORMS = ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'] as const
 ```
 
 ## `PLUGIN_HOOKS`
