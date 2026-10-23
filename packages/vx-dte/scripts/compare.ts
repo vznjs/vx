@@ -11,8 +11,9 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { simulate as pack, type PlanTask } from '../src/planner.js'
-import { DEFAULT_STRATEGY } from '../src/strategy.js'
+import { assign, ordered } from '../src/dispatch.js'
+import type { PlanTask } from '../src/planner.js'
+import { DEFAULT_STRATEGY, type Strategy } from '../src/strategy.js'
 import { simulate, type SimTask } from '../tests/sim.js'
 
 const W = 20_000
@@ -66,6 +67,23 @@ function appRepo(): SimTask[] {
   return t
 }
 
+/** A task on a lane, from its start to its end, `cores` high, `at` cores up. */
+export interface Bar {
+  readonly id: string
+  readonly start: number
+  readonly end: number
+  readonly cores: number
+  at: number
+}
+
+/** A job or worker: started at `from`, up at `up` (after its warm-up), gone at `to`. */
+export interface Lane {
+  readonly from: number
+  readonly up: number
+  readonly to: number
+  readonly bars: readonly Bar[]
+}
+
 export interface Outcome {
   readonly way: string
   readonly endMs: number
@@ -74,7 +92,7 @@ export interface Outcome {
    * start to its end, warm-up included; the orchestrator at its share.
    */
   readonly machineMs: number
-  readonly jobs: number
+  readonly lanes: readonly Lane[]
 }
 
 /** The tasks that run, each waiting only on others that run (a hit ends at once). */
@@ -101,27 +119,116 @@ function misses(graph: readonly SimTask[]): PlanTask[] {
   )
 }
 
-const machine = (id: string, at = 0) => ({
-  id,
-  cores: CORES,
-  memory: MEMORY,
-  at,
-  running: [],
-  idle: true,
-})
-
-/** How long one machine runs these tasks, from when it is up, packing their cores. */
-const span = (tasks: readonly PlanTask[]): number => {
-  const ids = new Set(tasks.map((t) => t.id))
-  return pack(
-    tasks.map((t) => ({ ...t, deps: t.deps.filter((d) => ids.has(d)) })),
-    [machine('m')],
-  )
+/** Stack each lane's bars so none overlaps another running beside it. */
+function stack(bars: Bar[]): Bar[] {
+  const placed: Bar[] = []
+  for (const b of bars.toSorted((x, y) => x.start - y.start)) {
+    const beside = placed.filter((p) => p.start < b.end && b.start < p.end)
+    let at = 0
+    for (const p of beside.toSorted((x, y) => x.at - y.at))
+      if (at + b.cores > p.at + 1e-9 && p.at + p.cores > at + 1e-9) at = p.at + p.cores
+    b.at = Math.min(at, CORES - b.cores)
+    placed.push(b)
+  }
+  return placed
 }
 
+/**
+ * The planner's ideal packer (`planner.ts` simulate), each task kept: the
+ * tasks on machines that are up at `ups`, from `t0`, as each fits.
+ */
+function lay(
+  tasks: readonly PlanTask[],
+  ups: readonly number[],
+  how: Strategy = DEFAULT_STRATEGY,
+): { end: number; bars: Bar[][] } {
+  const ids = new Set(tasks.map((t) => t.id))
+  const byId = new Map(tasks.map((t) => [t.id, { ...t, deps: t.deps.filter((d) => ids.has(d)) }]))
+  const dependants = new Map<string, string[]>()
+  const waits = new Map<string, number>()
+  for (const t of byId.values()) {
+    waits.set(t.id, t.deps.length)
+    for (const d of t.deps) dependants.set(d, [...(dependants.get(d) ?? []), t.id])
+  }
+  const tail = new Map<string, number>()
+  const tailOf = (id: string): number => {
+    let t = tail.get(id)
+    if (t !== undefined) return t
+    t = byId.get(id)!.ms!
+    for (const d of dependants.get(id) ?? []) t = Math.max(t, byId.get(id)!.ms! + tailOf(d))
+    tail.set(id, t)
+    return t
+  }
+  const bins = ups.map((at, i) => ({
+    id: String(i),
+    cores: CORES,
+    memory: MEMORY,
+    used: { cores: 0, memory: 0 },
+    running: 0,
+    at,
+  }))
+  const bars: Bar[][] = ups.map(() => [])
+  const ends: {
+    at: number
+    bin: (typeof bins)[number]
+    id: string
+    cores: number
+    memory: number
+  }[] = []
+  let ready = [...byId.values()].filter((t) => t.deps.length === 0).map((t) => t.id)
+  let now = 0
+  let end = 0
+  let left = byId.size
+  while (left > 0) {
+    ready = ordered(ready, how.order, tailOf, (id) => byId.get(id)!, CORES)
+    const to = assign(
+      ready.map((id) => ({ id, need: byId.get(id)! })),
+      bins.filter((b) => b.at <= now),
+      undefined,
+      how.place,
+    )
+    for (const [id, bin] of to) {
+      const t = byId.get(id)!
+      ready = ready.filter((r) => r !== id)
+      const cores = Math.min(t.cores, CORES)
+      const memory = Math.min(t.memory, MEMORY)
+      // assign already counted it on the bin.
+      ends.push({ at: now + t.ms!, bin, id, cores, memory })
+      bars[Number(bin.id)]!.push({ id, start: now, end: now + t.ms!, cores, at: 0 })
+    }
+    let next = Infinity
+    for (const e of ends) next = Math.min(next, e.at)
+    for (const b of bins) if (b.at > now) next = Math.min(next, b.at)
+    if (next === Infinity) throw new Error(`lay: stuck with ${ready.join(' ')}`)
+    now = next
+    for (const e of ends.filter((x) => x.at <= now)) {
+      ends.splice(ends.indexOf(e), 1)
+      e.bin.used.cores -= e.cores
+      e.bin.used.memory -= e.memory
+      e.bin.running--
+      left--
+      end = Math.max(end, e.at)
+      for (const d of dependants.get(e.id) ?? []) {
+        waits.set(d, waits.get(d)! - 1)
+        if (waits.get(d) === 0) ready.push(d)
+      }
+    }
+  }
+  return { end, bars }
+}
+
+/** One job, up after its warm-up from `from`, running these tasks. */
+function job(tasks: readonly PlanTask[], from = 0): Lane {
+  const { end, bars } = lay(tasks, [from + W])
+  return { from, up: from + W, to: Math.max(from + W, end), bars: bars[0]! }
+}
+
+const billed = (lanes: readonly Lane[]): number => lanes.reduce((s, l) => s + l.to - l.from, 0)
+const last = (lanes: readonly Lane[]): number => Math.max(...lanes.map((l) => l.to))
+
 function oneMachine(tasks: readonly PlanTask[]): Outcome {
-  const end = W + span(tasks)
-  return { way: 'One machine', endMs: end, machineMs: end, jobs: 1 }
+  const lanes = [job(tasks)]
+  return { way: 'One machine', endMs: last(lanes), machineMs: billed(lanes), lanes }
 }
 
 /**
@@ -141,15 +248,10 @@ function matrix(all: readonly string[], tasks: readonly PlanTask[], k: number): 
     for (const id of ids) walk(id)
     return [...seen].map((id) => byId.get(id)!)
   }
-  let end = 0
-  let machineMs = 0
-  for (let j = 0; j < k; j++) {
-    const share = all.filter((id, i) => i % k === j && byId.has(id))
-    const ms = W + span(closure(share))
-    end = Math.max(end, ms)
-    machineMs += ms
-  }
-  return { way: `Static matrix, ${k} jobs`, endMs: end, machineMs, jobs: k }
+  const lanes = Array.from({ length: k }, (_, j) =>
+    job(closure(all.filter((id, i) => i % k === j && byId.has(id)))),
+  )
+  return { way: `Static matrix, ${k} jobs`, endMs: last(lanes), machineMs: billed(lanes), lanes }
 }
 
 /**
@@ -158,35 +260,46 @@ function matrix(all: readonly string[], tasks: readonly PlanTask[], k: number): 
  */
 function stages(all: readonly string[], tasks: readonly PlanTask[], k: number): Outcome {
   const upstream = new Set(tasks.flatMap((t) => t.deps))
-  const build = W + span(tasks.filter((t) => upstream.has(t.id)))
-  const rest = tasks.filter((t) => !upstream.has(t.id))
-  const byId = new Map(rest.map((t) => [t.id, t]))
-  let slowest = 0
-  let machineMs = build
-  for (let j = 0; j < k; j++) {
-    const ms =
-      W + span(all.filter((id, i) => i % k === j && byId.has(id)).map((id) => byId.get(id)!))
-    slowest = Math.max(slowest, ms)
-    machineMs += ms
+  const build = job(tasks.filter((t) => upstream.has(t.id)))
+  const byId = new Map(tasks.filter((t) => !upstream.has(t.id)).map((t) => [t.id, t]))
+  const lanes = [
+    build,
+    ...Array.from({ length: k }, (_, j) =>
+      job(
+        all.filter((id, i) => i % k === j && byId.has(id)).map((id) => byId.get(id)!),
+        build.to,
+      ),
+    ),
+  ]
+  return {
+    way: `Build stage, then ${k} jobs`,
+    endMs: last(lanes),
+    machineMs: billed(lanes),
+    lanes,
   }
-  return { way: `Build stage, then ${k} jobs`, endMs: build + slowest, machineMs, jobs: k + 1 }
 }
 
 /** Distributed, carelessly: k workers up front, a task each, as they get ready, until the run ends. */
 function naive(tasks: readonly PlanTask[], k: number): Outcome {
   const whole = tasks.map((t) => ({ ...t, cores: CORES, memory: MEMORY }))
-  const workers = Array.from({ length: k }, (_, i) => machine(`w${i}`, W))
-  const end = pack(whole, workers, {
-    order: 'fifo',
-    place: 'first-fit',
-    book: 'whole',
-    scale: 'backlog',
-  })
+  const { end, bars } = lay(
+    whole,
+    Array.from({ length: k }, () => W),
+    { order: 'fifo', place: 'first-fit', book: 'whole', scale: 'backlog' },
+  )
+  // Each holds a whole worker, though it uses only its own cores.
+  const used = new Map(tasks.map((t) => [t.id, Math.min(t.cores, CORES)]))
+  const lanes = bars.map((b) => ({
+    from: 0,
+    up: W,
+    to: end,
+    bars: b.map((x) => ({ ...x, cores: used.get(x.id)! })),
+  }))
   return {
     way: `Naive DTE, ${k} workers`,
     endMs: end,
-    machineMs: end * (k + ORCHESTRATOR),
-    jobs: k + 1,
+    machineMs: billed(lanes) + end * ORCHESTRATOR,
+    lanes,
   }
 }
 
@@ -197,13 +310,24 @@ function vxDte(graph: readonly SimTask[]): Outcome {
     how: DEFAULT_STRATEGY,
     likely: new Set(graph.filter((t) => t.ran !== undefined && t.cache).map((t) => t.id)),
   })
-  let machineMs = r.endMs * ORCHESTRATOR
-  for (const w of r.workers) machineMs += (w.leftAt ?? w.cancelledAt ?? r.endMs) - w.spawnedAt
+  const byId = new Map(graph.map((t) => [t.id, t]))
+  const lanes = r.workers.map((w) => ({
+    from: w.spawnedAt,
+    up: w.joinedAt ?? w.cancelledAt!,
+    to: w.leftAt ?? w.cancelledAt ?? r.endMs,
+    bars: w.ran.map((id) => ({
+      id,
+      start: r.startedAt.get(id)!,
+      end: r.endedAt.get(id)!,
+      cores: Math.min(byId.get(id)!.ran!.cores, CORES),
+      at: 0,
+    })),
+  }))
   return {
     way: `vx DTE, ${r.workers.length} workers`,
     endMs: r.endMs,
-    machineMs,
-    jobs: r.workers.length + 1,
+    machineMs: billed(lanes) + r.endMs * ORCHESTRATOR,
+    lanes,
   }
 }
 
@@ -238,7 +362,7 @@ export function compare(): Case[] {
   ).map(([name, graph, full]) => {
     const tasks = misses(graph)
     // The matrix is sized once, for a full run, as YAML is.
-    const k = vxDte(full).jobs - 1
+    const k = vxDte(full).lanes.length
     const all = graph.filter((t) => t.exec).map((t) => t.id)
     return {
       name,
@@ -255,7 +379,55 @@ export function compare(): Case[] {
   })
 }
 
-if (import.meta.main)
+const LANE = 20
+const GAP = 4
+
+/**
+ * A case as the post draws it: each way's jobs and workers as lanes on
+ * one clock, each task a bar as tall as the cores it used, warm-up and
+ * idle time shaded. Plain HTML and SVG; charts.css animates `--vxg-t`
+ * from 0 to 1000 so every lane fills at once, and holds it at 1000 for
+ * a reader who asks for less motion.
+ */
+function gantt(c: Case, title: string): string {
+  const max = Math.max(...c.ways.map((o) => o.endMs))
+  const d = (n: number): number => Math.round(n * 10) / 10
+  const x = (ms: number): number => d((ms / max) * 1000)
+  const rect = (cls: string, from: number, to: number, y: number, h: number): string =>
+    to <= from
+      ? ''
+      : `<rect class="${cls}" x="${x(from)}" y="${d(y)}" width="${d(Math.max(0.5, x(to) - x(from)))}" height="${d(h)}" style="--s:${x(from)};--e:${x(to)}"/>`
+  const ways = c.ways.map((o, n) => {
+    const height = o.lanes.length * (LANE + GAP)
+    const lanes = o.lanes.map((l, i) => {
+      const y = i * (LANE + GAP)
+      const unit = LANE / CORES
+      return (
+        rect('w', l.from, l.up, y, LANE) +
+        rect('o', l.up, l.to, y, LANE) +
+        stack([...l.bars])
+          .map((b) => rect('t', b.start, b.end, y + LANE - (b.at + b.cores) * unit, b.cores * unit))
+          .join('')
+      )
+    })
+    const label = `${o.way}: ends ${(o.endMs / 1000).toFixed(1)} s, ${(o.machineMs / 60_000).toFixed(1)} machine-minutes`
+    return (
+      `<div class="vx-gantt-way${n === c.ways.length - 1 ? ' vx-gantt-lead' : ''}">` +
+      `<div class="vx-gantt-head"><span>${o.way}</span><span class="vx-gantt-end" style="--e:${x(o.endMs)}">${(o.endMs / 1000).toFixed(1)} s · ${(o.machineMs / 60_000).toFixed(1)} min</span></div>` +
+      `<svg viewBox="0 0 1000 ${height}" preserveAspectRatio="none" height="${height}" role="img" aria-label="${label}">` +
+      lanes.join('') +
+      `<rect class="vx-gantt-now" x="0" y="0" width="2" height="${height}"/></svg></div>`
+    )
+  })
+  return `<figure class="vx-gantt"><figcaption>${title}</figcaption>${ways.join('')}</figure>`
+}
+
+const html = process.argv.indexOf('--html')
+if (import.meta.main && html !== -1) {
+  // `--html N "title"`: case N drawn for the post.
+  const cases = compare()
+  console.log(gantt(cases[Number(process.argv[html + 1])]!, process.argv[html + 2] ?? ''))
+} else if (import.meta.main)
   for (const c of compare()) {
     console.log(
       `\n${c.name}: ${c.tasks} tasks run, ${(c.work / 60_000).toFixed(1)} core-minutes of work`,
