@@ -191,8 +191,22 @@ export function shouldShortCircuit(nodes: Map<string, TaskNode>, policy: CachePo
   return nodes.size > 0
 }
 
-function maskInvocation(command: string): string {
-  return secretMask([process.env])?.mask(command) ?? command
+/**
+ * The run's own secrets: vx's environment and every selected task's
+ * `define` and `exec.env.secret`, as each task's output masks them. With
+ * the environment's alone, a secret only a config names reached the stored
+ * line `vx last` prints in full.
+ */
+function invocationMask(nodes: Iterable<TaskNode>): (command: string) => string {
+  const sources: Array<Readonly<Record<string, string>>> = [process.env as Record<string, string>]
+  const named = new Set<string>()
+  for (const n of nodes) {
+    const env = n.config.exec?.env
+    if (env?.define !== undefined) sources.push(env.define)
+    for (const name of env?.secret ?? []) named.add(name)
+  }
+  const mask = secretMask(sources, [...named])
+  return (command) => mask?.mask(command) ?? command
 }
 
 /**
@@ -530,6 +544,7 @@ async function runOnBus(
     hashCache,
     workspaceProjectCount,
   } = prepared
+  const maskInvocation = invocationMask(nodes.values())
   const concurrency = options.concurrency ?? machineParallelism()
   // An earlier cycle's servers: the ones this graph starts again unchanged
   // stay up; the others go now, before anything binds their ports. A stop
