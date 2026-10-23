@@ -24,6 +24,13 @@ const FRAME_BYTES = 512 * 1024
 /** How long `leave` waits on its socket's close handshake. */
 const CLOSE_WAIT_MS = 2_000
 const UNANSWERED = 'the relay answered no frame'
+/**
+ * A socket that brought no message this many heartbeats is asked about
+ * over HTTP: a relay whose push to it failed queues for HTTP polls and
+ * leaves it open, its pings answered, so nothing arrives again (two CI
+ * runs hung 20 min, 2026-10-23).
+ */
+const QUIET_BEATS = 3
 /** How long `join` waits on the relay, before it says how long a heartbeat is. */
 const JOIN_DEADLINE_MS = 30_000
 /** How long `join` asks again through faults (a 500 while a host restarts the relay). */
@@ -134,6 +141,8 @@ export async function join(
     connect(base, id, await headers('GET', `${base}socket?id=${id}`, ''), heartbeatMs)
   let socket = offered ? await dial() : undefined
   let failures = 0
+  /** When a quiet socket's relay was last asked over HTTP what it queued. */
+  let askedAt = 0
   let redial: ReturnType<typeof setTimeout> | undefined
   /** A redial in flight, which `leave` waits out: its socket closes before the process exits. */
   let dialing: Promise<void> | undefined
@@ -196,6 +205,15 @@ export async function join(
     }
     await http()
   }
+  const polled = async (wait: number, signal?: AbortSignal): Promise<RelayMessage[]> => {
+    const r = await call('poll', undefined, `?id=${id}&wait=${wait}`, signal).catch(
+      (err: unknown) => {
+        if (err instanceof RelayError && (err.status === 404 || err.status === 410)) end()
+        throw err
+      },
+    )
+    return (r?.['messages'] ?? []) as RelayMessage[]
+  }
   return {
     id,
     heartbeatMs,
@@ -208,18 +226,29 @@ export async function join(
     async poll(signal) {
       again()
       if (socket?.inbox.length) return heard(socket.inbox.splice(0))
-      if (socket?.open === true) {
-        const messages = await socket.poll(signal)
+      const s = socket
+      if (s?.open === true) {
+        const messages = await s.poll(signal)
+        if (messages.length > 0 || signal?.aborted === true) return heard(messages)
+        if (s.open) {
+          if (performance.now() - Math.max(s.pushedAt, askedAt) < QUIET_BEATS * heartbeatMs)
+            return []
+          askedAt = performance.now()
+          const queued = await polled(0, signal)
+          // Queued for HTTP: the relay pushes down this socket no more. A
+          // new one is dialed; what this one still brings is kept.
+          if (queued.length > 0) {
+            socket = undefined
+            void s.close()
+            const late = s.inbox.splice(0)
+            again()
+            return heard([...late, ...queued])
+          }
+          return []
+        }
         // Closed while it waited: HTTP says why.
-        if (messages.length > 0 || socket.open || signal?.aborted === true) return heard(messages)
       }
-      const r = await call('poll', undefined, `?id=${id}&wait=${heartbeatMs}`, signal).catch(
-        (err: unknown) => {
-          if (err instanceof RelayError && (err.status === 404 || err.status === 410)) end()
-          throw err
-        },
-      )
-      return heard((r?.['messages'] ?? []) as RelayMessage[])
+      return heard(await polled(heartbeatMs, signal))
     },
     async remove(agent) {
       await over(
@@ -277,6 +306,8 @@ function expiry(token: string | undefined): number {
 interface Socket {
   readonly open: boolean
   readonly inbox: RelayMessage[]
+  /** When the relay last pushed messages down it. */
+  readonly pushedAt: number
   /** One frame, `{ leave: true }` or `{ remove }`; resolves on the relay's answer. */
   request(frame: Record<string, unknown>): Promise<void>
   /** A send; those asked for in one turn of the event loop go as one frame. */
@@ -306,6 +337,7 @@ async function connect(
   if (!opened) return undefined
   let open = true
   const inbox: RelayMessage[] = []
+  let pushedAt = performance.now()
   let wake: (() => void) | undefined
   let n = 0
   type Answer = {
@@ -409,6 +441,7 @@ async function connect(
     if (e.data === 'pong') return
     const m = JSON.parse(String(e.data)) as Answer & { messages?: RelayMessage[]; n?: number }
     if (m.messages !== undefined) {
+      pushedAt = performance.now()
       inbox.push(...m.messages)
       wake?.()
       return
@@ -420,6 +453,9 @@ async function connect(
   return {
     get open() {
       return open
+    },
+    get pushedAt() {
+      return pushedAt
     },
     inbox,
     request,

@@ -69,13 +69,14 @@ it('polls over HTTP once its socket is gone', async () => {
 })
 
 /** A relay on Bun.serve whose participants' sockets the test sees, and can drop as a network does. */
-function sockets() {
+function sockets(heartbeatMs?: number) {
   type Held = { key: string; id: string; socket?: { send(t: string): void; close(): void } }
   const open: Bun.ServerWebSocket<Held>[] = []
   const closes: { id: string; code: number }[] = []
   const frames: string[] = []
   let server: Bun.Server<Held> | undefined
   const relay = createRelay({
+    ...(heartbeatMs === undefined ? {} : { heartbeatMs }),
     upgrade: (key, id, req) => {
       server!.upgrade(req, { data: { key, id } })
       return new Response(null, { status: 101 })
@@ -111,8 +112,30 @@ function sockets() {
       await server!.stop(true)
     },
   })
-  return { url: `http://127.0.0.1:${server.port}`, open, closes, frames }
+  return { url: `http://127.0.0.1:${server.port}`, relay, open, closes, frames }
 }
+
+it('asks HTTP once its socket goes quiet, and dials anew if the relay queued there', async () => {
+  // A relay whose push failed queued for HTTP and left the socket open,
+  // its pings answered: the agent heard nothing again (CI, 2026-10-23).
+  const { url, relay, open } = sockets(200)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'agent', null, undefined)
+  await o.poll()
+  const agentSockets = () => open.filter((w) => w.data.id === a.id)
+  const first = agentSockets()[0]!
+  relay.detach(first.data.key, a.id, first.data.socket!)
+  await o.send(a.id, 'queued')
+  const got = []
+  for (let i = 0; i < 20 && got.length === 0; i++) got.push(...(await a.poll()))
+  expect(got).toEqual([{ from: 'orchestrator', body: 'queued' }])
+  for (let i = 0; i < 100 && agentSockets().length < 2; i++) await Bun.sleep(20)
+  expect(agentSockets()).toHaveLength(2)
+  await o.send(a.id, 'pushed')
+  expect(await a.poll()).toEqual([{ from: 'orchestrator', body: 'pushed' }])
+  await a.leave()
+  await o.leave()
+})
 
 it('dials its socket again after it drops, and is back off HTTP', async () => {
   const { url, open } = sockets()
