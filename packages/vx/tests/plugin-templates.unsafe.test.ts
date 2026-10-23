@@ -1,5 +1,5 @@
 // `vx init --plugin <seam>` writes the runnable example plugin and its test
-// from packages/vx-plugin-examples/plugins, where the gate runs them. Core
+// from private/vx-plugin-examples/plugins, where the gate runs them. Core
 // cannot import a sibling package (and a compiled binary carries no other
 // package's files), so src/cli/plugin-templates.ts holds a copy, generated
 // from those files. This law holds the copy to them, seam for seam and byte
@@ -12,7 +12,15 @@ import path from 'node:path'
 import { expect, it } from 'bun:test'
 import { PLUGIN_TEMPLATES } from '../src/cli/plugin-templates.js'
 
-const EXAMPLES = path.resolve(import.meta.dir, '..', '..', 'vx-plugin-examples', 'plugins')
+const EXAMPLES = path.resolve(
+  import.meta.dir,
+  '..',
+  '..',
+  '..',
+  'private',
+  'vx-plugin-examples',
+  'plugins',
+)
 const OUT = path.resolve(import.meta.dir, '..', 'src', 'cli', 'plugin-templates.ts')
 
 function fromExamples(): Record<string, { plugin: string; test: string }> {
@@ -37,7 +45,7 @@ it("core's plugin templates are the examples' files, every seam", () => {
     writeFileSync(
       OUT,
       [
-        '// Generated from packages/vx-plugin-examples/plugins by',
+        '// Generated from private/vx-plugin-examples/plugins by',
         '// tests/plugin-templates.unsafe.test.ts; edit the examples, then',
         '// VX_UPDATE_CONTRACT=1 that test. `vx init --plugin <seam>` writes these.',
         '',

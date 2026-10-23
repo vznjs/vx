@@ -217,7 +217,7 @@ test-types` cold 53.6 s vs 58.2 s, restore 80 ms vs 166 ms,
       no-op 59 ms vs 93 ms. Warm rows 1.6–2.1× in vx's favour; the
       cold rows are the toolchain, with a 4–5 s (9–12%) gap that is
       Turbo's per-task work around the same commands — observed, not
-      root-caused. `packages/vx-bench/real/turbo-repo.sh` reproduces
+      root-caused. `private/vx-bench/real/turbo-repo.sh` reproduces
       it on any Turbo repo; `docs/benchmarks.md` § A real Turbo repo.
       The mapper found nothing to fix on this repo: `pkg#task` keys,
       cross-package `dependsOn`, `**/dist/**` outputs all mapped; the
@@ -228,8 +228,8 @@ test-types` cold 53.6 s vs 58.2 s, restore 80 ms vs 166 ms,
       `/blog/rss.xml`, authors, tags, pagination) — `starlight-blog`
       0.29 on the same Starlight, reason recorded in
       `astro.config.mjs`; posts are tracked Markdown under
-      `packages/vx-docs/src/content/docs/blog/`, the how-to (frontmatter,
-      relative links, drafts) is in `packages/vx-docs/README.md`, and
+      `private/vx-docs/src/content/docs/blog/`, the how-to (frontmatter,
+      relative links, drafts) is in `private/vx-docs/README.md`, and
       `hello-vx.md` is the first post. One trap on the way: the
       plugin's Markdown engine (`satteri`) loads a native binding at
       runtime, and bundled into a prerender chunk under `dist/` it had
@@ -271,7 +271,7 @@ test-types` cold 53.6 s vs 58.2 s, restore 80 ms vs 166 ms,
 118.  DONE (2026-09-10, night — owner's ask: "20+ blog posts about
       technicals, what vx is, why it is fast, its methodologies and
       values, migration, no choice on the market, the mechanics"):
-      thirty posts under `packages/vx-docs/src/content/docs/blog/`,
+      thirty posts under `private/vx-docs/src/content/docs/blog/`,
       every claim taken from the docs and verified against source
       where the docs were silent (three drafts were corrected on the
       way: output overlap is refused only when provable, a clean-filter
@@ -738,7 +738,7 @@ equivalent — map it manually` on every run, for the value every
       key, the one per-package overlay (`@n8n/storybook`) and the
       `^build` chains map. The run itself needs the bench host (this
       container has Node 22, four cores); the recipe is at the top of
-      `packages/vx-bench/real/turbo-repo.sh` and in Next 15. Found on
+      `private/vx-bench/real/turbo-repo.sh` and in Next 15. Found on
       the way and fixed: the plugin warned once PER TASK that a task
       is persistent — n8n marks `dev` and `watch` persistent in most
       packages, a hundred identical lines before the first frame — and
@@ -868,7 +868,7 @@ equivalent — map it manually` on every run, for the value every
       arm at a time, full artifact cleanup before every cold and
       restore arm: `docs/benchmarks.md` § Five real Turbo repos; every
       revision, toolchain and bench-side adjustment in
-      `packages/vx-bench/real/REPOS.md`. What the profiles of the first
+      `private/vx-bench/real/REPOS.md`. What the profiles of the first
       tables exposed in vx, each fix with a pin that fails on the
       previous code: (a) `Bun.write` blocks the calling thread for a
       small buffer, so restores serialized — `writeFile` from

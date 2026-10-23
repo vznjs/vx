@@ -14,7 +14,7 @@ import { formatTaskBlock } from '../src/report/framed-output.js'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
 const SRC = path.resolve(import.meta.dir, '..', 'src')
-const GUIDES = path.resolve(import.meta.dir, '../../vx-docs/src/content/docs/guides')
+const GUIDES = path.resolve(import.meta.dir, '../../../private/vx-docs/src/content/docs/guides')
 // The pages show a developer's terminal: CI's own CI=true would pick the
 // CI output view.
 const { CI: _ci, GITHUB_ACTIONS: _gha, ...HOST_ENV } = process.env

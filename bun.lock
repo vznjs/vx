@@ -32,18 +32,6 @@
         "@types/bun": "^1.4.0",
       },
     },
-    "packages/vx-bench": {
-      "name": "@vzn/vx-bench",
-      "version": "0.0.0",
-      "devDependencies": {
-        "@types/bun": "^1.4.0",
-        "@types/picomatch": "^4.0.3",
-        "@vzn/vx": "workspace:*",
-        "@vzn/vx-schedule-history": "workspace:*",
-        "picomatch": "4.0.4",
-        "turbo": "2.11.7",
-      },
-    },
     "packages/vx-ci": {
       "name": "@vzn/vx-ci",
       "version": "0.0.0",
@@ -53,27 +41,6 @@
       },
       "peerDependencies": {
         "@vzn/vx": "*",
-      },
-    },
-    "packages/vx-docs": {
-      "name": "@vzn/vx-docs",
-      "version": "0.0.0",
-      "dependencies": {
-        "@astrojs/markdown-remark": "^7.3.0",
-        "@astrojs/starlight": "0.42.1",
-        "astro": "7.3.3",
-        "mermaid": "12.0.0",
-        "satteri": "0.10.5",
-        "sharp": "^0.35.2",
-        "unist-util-visit": "^5.1.0",
-      },
-      "devDependencies": {
-        "@vzn/vx": "workspace:*",
-        "@vzn/vx-ci": "workspace:*",
-        "@vzn/vx-lockfile": "workspace:*",
-        "@vzn/vx-otel": "workspace:*",
-        "@vzn/vx-reapi": "workspace:*",
-        "@vzn/vx-schedule-history": "workspace:*",
       },
     },
     "packages/vx-dte": {
@@ -97,7 +64,7 @@
         "vx-dte-relay": "./src/bun.ts",
       },
       "dependencies": {
-        "jose": "6",
+        "jose": "6.2.13",
       },
       "devDependencies": {
         "@types/bun": "^1.4.0",
@@ -144,14 +111,6 @@
         "@vzn/vx": "*",
       },
     },
-    "packages/vx-plugin-examples": {
-      "name": "@vzn/vx-plugin-examples",
-      "version": "0.0.0",
-      "devDependencies": {
-        "@types/bun": "^1.4.0",
-        "@vzn/vx": "workspace:*",
-      },
-    },
     "packages/vx-reapi": {
       "name": "@vzn/vx-reapi",
       "version": "0.0.0",
@@ -177,6 +136,47 @@
       },
       "peerDependencies": {
         "@vzn/vx": "*",
+      },
+    },
+    "private/vx-bench": {
+      "name": "@vzn/vx-bench",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@types/picomatch": "^4.0.3",
+        "@vzn/vx": "workspace:*",
+        "@vzn/vx-schedule-history": "workspace:*",
+        "picomatch": "4.0.4",
+        "turbo": "2.11.7",
+      },
+    },
+    "private/vx-docs": {
+      "name": "@vzn/vx-docs",
+      "version": "0.0.0",
+      "dependencies": {
+        "@astrojs/markdown-remark": "^7.3.0",
+        "@astrojs/starlight": "0.42.1",
+        "astro": "7.3.3",
+        "mermaid": "12.0.0",
+        "satteri": "0.10.5",
+        "sharp": "^0.35.2",
+        "unist-util-visit": "^5.1.0",
+      },
+      "devDependencies": {
+        "@vzn/vx": "workspace:*",
+        "@vzn/vx-ci": "workspace:*",
+        "@vzn/vx-lockfile": "workspace:*",
+        "@vzn/vx-otel": "workspace:*",
+        "@vzn/vx-reapi": "workspace:*",
+        "@vzn/vx-schedule-history": "workspace:*",
+      },
+    },
+    "private/vx-plugin-examples": {
+      "name": "@vzn/vx-plugin-examples",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
       },
     },
   },
@@ -729,11 +729,11 @@
 
     "@vzn/vx": ["@vzn/vx@workspace:packages/vx"],
 
-    "@vzn/vx-bench": ["@vzn/vx-bench@workspace:packages/vx-bench"],
+    "@vzn/vx-bench": ["@vzn/vx-bench@workspace:private/vx-bench"],
 
     "@vzn/vx-ci": ["@vzn/vx-ci@workspace:packages/vx-ci"],
 
-    "@vzn/vx-docs": ["@vzn/vx-docs@workspace:packages/vx-docs"],
+    "@vzn/vx-docs": ["@vzn/vx-docs@workspace:private/vx-docs"],
 
     "@vzn/vx-dte": ["@vzn/vx-dte@workspace:packages/vx-dte"],
 
@@ -745,7 +745,7 @@
 
     "@vzn/vx-otel": ["@vzn/vx-otel@workspace:packages/vx-otel"],
 
-    "@vzn/vx-plugin-examples": ["@vzn/vx-plugin-examples@workspace:packages/vx-plugin-examples"],
+    "@vzn/vx-plugin-examples": ["@vzn/vx-plugin-examples@workspace:private/vx-plugin-examples"],
 
     "@vzn/vx-reapi": ["@vzn/vx-reapi@workspace:packages/vx-reapi"],
 

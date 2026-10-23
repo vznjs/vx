@@ -164,7 +164,7 @@ utils#build.") and a line per task in words ("Missed: ui#test reruns
 under Bun: a probe planned one project under both and got
 `fbdcd63ba21636f0` both times. Configs are evaluated by
 `evaluateConfigInProcess`, as `Playground.astro` does. From
-`packages/vx-docs`, `ASTRO_TELEMETRY_DISABLED=1 node
+`private/vx-docs`, `ASTRO_TELEMETRY_DISABLED=1 node
 node_modules/.bin/astro build` exits 0, and the checkpoint rows pass
 against what it built.
 
@@ -429,7 +429,7 @@ The rows:
 | Per lab, every state its steps reach: `vx run <tasks> --all --dry=json` and the page's Run plan the same keys, statuses and deps            | `packages/vx/tests/playground-parity.unsafe.test.ts` |
 | Per step, the moved set equals the hand-written one, in both planners                                                                       | same                                                 |
 | Lab 3 as it opens: the CLI's stderr is `vx: <message>` and the page's error is the message, both equal to the hand-written refusal          | same                                                 |
-| Every state each lab's steps reach evaluates                                                                                                | `packages/vx-docs/tests/learn-labs.test.ts`          |
+| Every state each lab's steps reach evaluates                                                                                                | `private/vx-docs/tests/learn-labs.test.ts`           |
 | Each step through `runPlayground`: the live sentence and every moved cell equal hand-written truth, and the step's text on the page says it | same                                                 |
 | Each lab's static render: its file list (the added file by hand), its configs, the task table by hand, the task field, the env              | same                                                 |
 | The page holds the three playgrounds, in lab order                                                                                          | same                                                 |

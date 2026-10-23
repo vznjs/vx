@@ -173,7 +173,7 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   autocommit writes still cost the cold `load configs` stage 300 ms
   (item 615; 1,000 inserts: 180–240 ms autocommit, 2.5 in one
   transaction). Tally with a `bun --preload` that wraps `bun:sqlite`'s
-  statements (`packages/vx-bench/sqlite-tally.ts`), and wrap each statement
+  statements (`private/vx-bench/sqlite-tally.ts`), and wrap each statement
   object ONCE — `db.query()` returns a cached statement, and a wrapper
   that re-wrapped it per call counted 500,501 executions of one query
   (a WeakSet fixed it).

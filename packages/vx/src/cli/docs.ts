@@ -63,7 +63,7 @@ function anchor(heading: string): string {
     .replace(/ /g, '-')
 }
 
-/** A page's URL on the site, as packages/vx-docs/scripts/import-docs.ts serves it. */
+/** A page's URL on the site, as private/vx-docs/scripts/import-docs.ts serves it. */
 function pageUrl(page: string): string {
   const served: Record<string, string> = {
     README: 'overview',

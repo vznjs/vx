@@ -57,7 +57,7 @@ of a sandboxed task that declares `cache`.
 ## Cost
 
 A warm run of hits never calls it. Measured 2026-09-24 on `vx-bench`'s
-1,000-package workspace (`bun packages/vx-bench/generate.ts <dir> 1000`:
+1,000-package workspace (`bun private/vx-bench/generate.ts <dir> 1000`:
 3,000 nodes, 2,000 exec tasks), over the graph `prepareRun` builds,
 min / median of 30, 4-core Xeon container:
 

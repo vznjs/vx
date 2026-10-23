@@ -2054,7 +2054,7 @@ version — the decision log it once named was retired 2026-09-02),
 `docs/STATUS.md` (the entry that says why the bump was needed, or why it
 was not), the cache tests, `tests/contract/stored-format.json`
 (regenerated, above), and
-`packages/vx-docs/src/content/docs/guides/upgrading.md` (the bump's
+`private/vx-docs/src/content/docs/guides/upgrading.md` (the bump's
 breaking footer).
 
 ### History

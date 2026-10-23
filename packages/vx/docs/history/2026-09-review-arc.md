@@ -18,7 +18,7 @@ STATUS under the same numbering.
 ## Shipped in this arc
 
 A digest, newest last; the commits carry the detail. Numbers are the
-1000-project bench (`packages/vx-bench/run.ts`, warm, whole process, best of 5)
+1000-project bench (`private/vx-bench/run.ts`, warm, whole process, best of 5)
 unless a shape is named; "interleaved A/B" means arms alternated against
 an immutable `git worktree` of the previous commit.
 
@@ -126,9 +126,9 @@ in a fresh process); piped oxlint prints one line per finding.
 / 510 ms / 777 ms / 34.6 s; Turbo 2.10.12 5m 13s / 760 ms / 1.17 s /
 73 s; Nx 23.2.0 34m 44s / 3.59 s / 4.15 s / 114 min. Baseline is the
 theoretical best case (cold = critical-path-first list schedule of the
-exact DAG on 10 workers, 3m 38s, `packages/vx-bench/ideal.ts` with pins; the other
+exact DAG on 10 workers, 3m 38s, `private/vx-bench/ideal.ts` with pins; the other
 rows 0); bars are proportional with an outlier clipped past 10×.
-`packages/vx-bench/update-site.ts` generates rows, tiles, note and
+`private/vx-bench/update-site.ts` generates rows, tiles, note and
 `benchmarks.md` from `results.json`; `site-check` gates drift.
 `RUNNERS=vx` re-measures one runner in ~6 min; `BASELINE_ONLY=1` the
 floors. Re-measured after waves 6–7, 9 and 10: no regression.
@@ -177,7 +177,7 @@ sections marked for the verb so no second list drifts and no other
 verb's flag is ever suggested (`--older-tha`under`run`gets no hint;
 found by probing);`editDistance`lives in`util/`. And the plugins
 guide's promise that its code is real is pinned:
-`packages/vx-docs/tests/plugins-guide-snippets.test.ts`type-checks
+`private/vx-docs/tests/plugins-guide-snippets.test.ts`type-checks
 every block against the façade (the contract sketches are skipped by
 rule) — a pin that no task ran and that did not pass`--type-check`until 2026-09-09; see the review entry. The other six guides'`ts`
 blocks are prose excerpts by design — object fragments without a
@@ -421,7 +421,7 @@ one, with a single documented exception (below).
 
 **Every project under `packages/`, and every task sandboxed (2026-09-05).**
 `bench/`, `apps/docs/` and `docs/` were top-level trees that code lived in
-and no project owned; they are `packages/vx-bench`, `packages/vx-docs` and
+and no project owned; they are `private/vx-bench`, `private/vx-docs` and
 `packages/vx/docs` now, `scripts/build-npm.ts` moved under
 `packages/vx/scripts`, and `workspaces` is just `packages/*`. 33 exec
 tasks across 9 projects declare `exec.sandbox`; `@vzn/vx#test.bun.unsafe`
@@ -964,7 +964,7 @@ function`); the seam now checks the returned shape once and refuses
     `bun bin.ts` overstates the shipped wall time by about that much;
     the 1000-project figures are dominated by work the transpile does
     not touch. When a small-workspace number matters, time the
-    bytecode binary: `VX_BIN=<binary> bun packages/vx-bench/run.ts`
+    bytecode binary: `VX_BIN=<binary> bun private/vx-bench/run.ts`
     (added the same day; 20 projects, median of 3: warm 109 → 64 ms,
     restore 134 → 83, cold 203 → 143 through the binary). Inside the
     binary's 71 ms on two packages: startup 25–30 (the runtime's own),

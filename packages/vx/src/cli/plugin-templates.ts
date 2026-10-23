@@ -1,4 +1,4 @@
-// Generated from packages/vx-plugin-examples/plugins by
+// Generated from private/vx-plugin-examples/plugins by
 // tests/plugin-templates.unsafe.test.ts; edit the examples, then
 // VX_UPDATE_CONTRACT=1 that test. `vx init --plugin <seam>` writes these.
 

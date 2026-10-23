@@ -25,7 +25,7 @@ be rerun on the native config `bunx @vzn/vx-migrate` writes.
 ## Warm-run overhead (2026-09-02)
 
 The number that matters most to a developer is the warm no-op run: every
-task a cache hit, nothing to restore. `packages/vx-bench/generate.ts` workspaces,
+task a cache hit, nothing to restore. `private/vx-bench/generate.ts` workspaces,
 `vx run build --all`, this machine (macOS arm64, Bun 1.4.0), best of 5:
 
 | Projects | Before (2026-09-02 morning) | Wave 1 | Wave 2 | Wave 5 | Wave 6 | Wave 7 | What changed                                                                                               |
@@ -60,7 +60,7 @@ check), history recording 12 ms, cache open 9 ms, and ~50 ms of process
 start + module load + exit outside the table. The 1.7 s cold run is the
 1000 `cp` commands.
 
-Reproduce: `bun packages/vx-bench/run.ts 1000 5` (it prints the median
+Reproduce: `bun private/vx-bench/run.ts 1000 5` (it prints the median
 and every rep; the best is the min). Its last row, `one edited`, changes
 one package's source per rep: one miss, every other task a hit.
 
@@ -119,12 +119,12 @@ Two tools, and they answer different questions:
   time yielded to other tasks); compare them to each other, not to the
   stage total.
 - **`bun --cpu-prof --cpu-prof-dir=/tmp/prof packages/vx/src/bin.ts run …`**
-  then `bun packages/vx-bench/profile-summary.ts /tmp/prof/*.cpuprofile` gives self
+  then `bun private/vx-bench/profile-summary.ts /tmp/prof/*.cpuprofile` gives self
   time by function and by file. Good for finding a hot loop; unreliable
   about where an `await` waited (it attributes the wait to whatever frame
   was on the stack).
 - **`strace -f -o <file>`** around a run, then
-  `bun packages/vx-bench/strace-vx.ts <file> [<before-file>]`: the count of
+  `bun private/vx-bench/strace-vx.ts <file> [<before-file>]`: the count of
   vx's OWN syscalls (the tasks' shells are told apart by PID), as a diff
   against the same run on a `git worktree` of the base. A syscall count
   is deterministic where this container's wall time is not: the restore
@@ -133,7 +133,7 @@ Two tools, and they answer different questions:
   `newfstatat` −2,000 — and the save's two `mkdir`s of the cache
   directory (630) one row, before either was a number. A `write` per
   round trip is the thread pool's wake, so that row counts round trips.
-  `bun --preload ./packages/vx-bench/sqlite-tally.ts …` is the same idea
+  `bun --preload ./private/vx-bench/sqlite-tally.ts …` is the same idea
   for SQLite statements; `restore-bench.ts` and `save-bench.ts` in the
   same package restore or save every artifact sequentially, where a
   per-artifact change of tens of microseconds shows above the
@@ -141,7 +141,7 @@ Two tools, and they answer different questions:
 
 Three measurement lessons from this wave, recorded so they are not
 re-learned. A compiled Bun 1.4.0 binary resolves on-disk packages by
-`<pkg>/index.ts` only and ignores `exports`, so `packages/vx-bench/compare.ts`
+`<pkg>/index.ts` only and ignores `exports`, so `private/vx-bench/compare.ts`
 measured nothing ("vx skipped") until the packages gained root shims —
 if the vx row ever reads `n/a` again, read the skip line first. A micro-benchmark of a sync call in isolation (`statSync`
 2 µs vs `stat` 13 µs) does not predict the run — the async forms run in
@@ -153,7 +153,7 @@ repairs it, which the release workflow now does on a macOS runner.
 
 ### A/B two builds
 
-`packages/vx-bench/ab.ts` is the method the numbers here use: one
+`private/vx-bench/ab.ts` is the method the numbers here use: one
 workspace copy per arm, warmed by that arm, rounds that run every arm
 once in a rotated order, min and median per arm, and an A/A arm (the
 same vx twice) as the noise floor. Every arm after the first prints its
@@ -163,7 +163,7 @@ timed from a `vx lock` snapshot: each arm runs `vx lock` in its own
 copy with its own vx once, before the warm-up.
 
 ```bash
-bun packages/vx-bench/ab.ts 15 base=/tmp/vx-old@/tmp/w1 main=/tmp/vx-new@/tmp/w2 \
+bun private/vx-bench/ab.ts 15 base=/tmp/vx-old@/tmp/w1 main=/tmp/vx-new@/tmp/w2 \
   aa=/tmp/vx-new2@/tmp/w3 -- run build --all
 ```
 
@@ -173,11 +173,11 @@ measured with its own core.
 
 ### The per-PR guard
 
-`packages/vx-bench/perf-guard.ts` runs in every PR's gate as
+`private/vx-bench/perf-guard.ts` runs in every PR's gate as
 `@vzn/vx-bench#check.perf`. It builds a 25- and a 100-package workspace
 and drives core in-process through five phases, each from a `vx lock`
 taken first: cold run, up-to-date run, restore run, plan, one-edit run. Two kinds of number, against
-`packages/vx-bench/perf-baseline.json`:
+`private/vx-bench/perf-baseline.json`:
 
 - **Counts**: processes spawned, xxh3 calls, blob-hash updates, SQLite
   statements. The same code does the same work on any box, so a count
@@ -203,29 +203,29 @@ sandbox, as the check is.
 
 ### The per-PR bench against Turborepo
 
-`packages/vx-bench/pr-bench.ts` runs in every PR's CI as
+`private/vx-bench/pr-bench.ts` runs in every PR's CI as
 `@vzn/vx-bench#check.vs-turbo`, on a runner of its own (beside the
 suites, load moved the ratio from 0.83 to 1.29), in about 20 s. One 100-package
 workspace (build then test, copy-sized tasks), this checkout's vx
 compiled as released against Turborepo 2.11.7 (pinned in
-`packages/vx-bench/package.json`), both at concurrency 4: restore
+`private/vx-bench/package.json`), both at concurrency 4: restore
 and nothing-changed in 7 interleaved reps, min of each, and cold once.
 A shared
 runner moves both tools alike, so what is held is the ratio vx / turbo
 from the same job: a restore or nothing-changed ratio grown past 1.3×
-its value in `packages/vx-bench/pr-bench-baseline.json` (the CI
+its value in `private/vx-bench/pr-bench-baseline.json` (the CI
 runner's) fails, and a case vx loses prints `LOSS`. Cold is printed,
 not held, so a check runs it once (`--update` reps it): 200 spawns on 4 cores moved its ratio from 0.71 to 1.12
 between two CI runs of one commit. A 60 ms sleep added to vx's startup failed the
 nothing-changed case (0.83 → 1.24). Record a change meant to move it
 with `vx run @vzn/vx-bench#vs-turbo.update`.
 
-`packages/vx-bench/real/nightly.ts` re-runs the repos on
+`private/vx-bench/real/nightly.ts` re-runs the repos on
 [Real repos](#real-repos) each night against the tool they ship with,
 on this checkout's vx, and exits 1 with a `LOSS` line for any case vx
 loses.
 
-## Head-to-head, 2026-09-03 (46 packages, `packages/vx-bench/compare.ts 10 5 1`)
+## Head-to-head, 2026-09-03 (46 packages, `private/vx-bench/compare.ts 10 5 1`)
 
 Same workspace, identical commands, every runner pinned to concurrency
 10, Turbo with no daemon (it uses none for `turbo run` since 2.8.11), vx as
@@ -271,8 +271,8 @@ second to it and Nx about 12 s. Warm they are within a few milliseconds at this 
 under the old harness read Nx at 1m 2s of CPU cold.
 
 The same harness at **476 packages / 1,428 graph nodes**
-(`packages/vx-bench/compare.ts 20 25 1`, 2026-09-02, same machine; a mid-size data
-point — the committed `packages/vx-bench/RESULTS.md` is § Head to head):
+(`private/vx-bench/compare.ts 20 25 1`, 2026-09-02, same machine; a mid-size data
+point — the committed `private/vx-bench/RESULTS.md` is § Head to head):
 
 | Runner       | Warm (no restore) | Warm (restore) |
 | ------------ | ----------------- | -------------- |
@@ -404,7 +404,7 @@ the next layer's builds become ready together with that layer's tests,
 and in ready order the tests go first, so every build on the 100-layer
 critical path waits about a second. `listSchedule(nodes, 10, 'fifo')`
 replays that order on the benchmark's graph: 1m 20s over the ideal
-schedule, against Turborepo's measured 1m 21s and nothing ranked (`packages/vx-bench/tests/ideal.test.ts`).
+schedule, against Turborepo's measured 1m 21s and nothing ranked (`private/vx-bench/tests/ideal.test.ts`).
 No `turbo.json` key changes the order. vx ranks ready tasks by remaining
 critical path, Nx by how many tasks wait on each. On the 30-level shape
 above, Turborepo's cold overhead is 12% over vx's.
@@ -433,8 +433,8 @@ config: Turborepo 2.11.9 (`turbo.json`), Nx 23.3.0 (`nx:run-commands` targets,
 vx runs from a `vx lock` snapshot, as every vx run does, and orders tasks with
 `scheduleHistoryPlugin({ file: 'vx-timings.json' })`, from timings an earlier
 run recorded; cache wipes keep that file, as CI caches it. This machine: linux x64, 4 cores.
-`bun packages/vx-bench/compare.ts 3`; the committed
-`packages/vx-bench/RESULTS.md` / `packages/vx-bench/results.json` are this run.
+`bun private/vx-bench/compare.ts 3`; the committed
+`private/vx-bench/RESULTS.md` / `private/vx-bench/results.json` are this run.
 
 **Time each tool adds over the ideal run:**
 
@@ -468,8 +468,8 @@ vx burns more CPU cold than Vite Task: it hashes every input and saves every tas
 
 ## Reproducible head-to-head (vx vs Turborepo vs Nx vs Vite Task)
 
-`packages/vx-bench/compare.ts` scaffolds **one** shared monorepo, the shape in
-§ Head to head (`packages/vx-bench/shape.ts`), with the **identical** shell
+`private/vx-bench/compare.ts` scaffolds **one** shared monorepo, the shape in
+§ Head to head (`private/vx-bench/shape.ts`), with the **identical** shell
 commands, `src/**` inputs and `dist/**` outputs for every runner, then times
 each runner through the three states CI sees: cold, nothing changed and
 outputs restored. Fairness is deliberate: vx runs
@@ -481,13 +481,13 @@ measured **strictly one at a time**, daemons stopped between them, so they
 never fight for CPU.
 
 ```bash
-bun packages/vx-bench/compare.ts                 # the full matrix, 3 reps (slow)
-BENCH_BUILD_MS=0 bun packages/vx-bench/compare.ts 1   # zero-length tasks: each tool's own cost per task
-RUNNERS=vx,turbo bun packages/vx-bench/compare.ts     # a subset of runners
-bun packages/vx-bench/update-site.ts             # rewrite the landing page, README, compare pages and this doc's head-to-head section from results.json (--check to verify)
+bun private/vx-bench/compare.ts                 # the full matrix, 3 reps (slow)
+BENCH_BUILD_MS=0 bun private/vx-bench/compare.ts 1   # zero-length tasks: each tool's own cost per task
+RUNNERS=vx,turbo bun private/vx-bench/compare.ts     # a subset of runners
+bun private/vx-bench/update-site.ts             # rewrite the landing page, README, compare pages and this doc's head-to-head section from results.json (--check to verify)
 ```
 
-It writes [`packages/vx-bench/RESULTS.md`](https://github.com/vznjs/vx/blob/main/packages/vx-bench/RESULTS.md)
+It writes [`private/vx-bench/RESULTS.md`](https://github.com/vznjs/vx/blob/main/private/vx-bench/RESULTS.md)
 (committed, so the numbers can be referenced from a commit). On the same
 workspace shape as the committed run, it then prints every re-measured
 timing more than 10% slower than the committed one.
@@ -496,7 +496,7 @@ Since 2026-09-03 the table also carries **CPU** columns and a **baseline**
 row — the theoretical best case (an ideal schedule of the tasks, one git
 walk, a raw copy of the outputs, the commands under `xargs`), so each
 runner's row reads as overhead above it. The definitions live in the
-generated `packages/vx-bench/RESULTS.md`. The 46-package quick run is
+generated `private/vx-bench/RESULTS.md`. The 46-package quick run is
 the head-to-head table above (2026-09-03); an earlier run of that shape
 used to sit here with a different verdict on the warm row, and one page
 carrying both was a contradiction, so it is gone.
@@ -521,7 +521,7 @@ your repo: `vx lock`, then commit `.vx/projects.lock.json`.
 ## How the overhead scales with the workspace (2026-09-10)
 
 The per-package figure above is one size. This is vx alone at three
-sizes of the same synthetic shape (`packages/vx-bench/run.ts`, the
+sizes of the same synthetic shape (`private/vx-bench/run.ts`, the
 generator's workspace, one `build` per package whose command is a
 `mkdir` and a `cp`, so the clock is the runner and almost nothing else),
 the compiled Linux binary at commit 1a35ec3, median of 3 on a 4-core
@@ -608,7 +608,7 @@ of the cold run is unchanged. History: `docs/history/ws-x.md` X-212, X-216.
 
 A fresh runner with no run history, with the history plugin's `file`
 carried from the last run, and with this machine's full history.
-`bun packages/vx-bench/timings-file-bench.ts`: eight packages whose
+`bun private/vx-bench/timings-file-bench.ts`: eight packages whose
 `build`, `check` and `pack` chain (0.5 s each) unlocks more work, three
 10 s `e2e` tasks nothing depends on, 4 workers, every task an uncached
 `sleep`, min of 3, linux x64, 4 cores, Bun 1.4.2, vx from source at
@@ -652,7 +652,7 @@ Nx 23.3.0, warm (21 to 24 s, 9,603 of 9,603 hit), self time:
 
 Public repos, each moved to native vx config with `vx init --native`
 and timed against the tool it ships with, through
-`packages/vx-bench/real/nx-repo.sh` (Nx) or `turbo-repo.sh` (Turbo):
+`private/vx-bench/real/nx-repo.sh` (Nx) or `turbo-repo.sh` (Turbo):
 both tools run the same tasks with the same worker count, three
 interleaved reps per case, best of three. `cold` wipes the outputs and
 both caches; `restore` wipes the outputs and keeps both caches; `noop`

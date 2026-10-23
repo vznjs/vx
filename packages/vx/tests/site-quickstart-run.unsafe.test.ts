@@ -9,7 +9,10 @@ import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
 
 const BIN = path.resolve(import.meta.dir, '..', 'src', 'bin.ts')
-const PAGE = path.resolve(import.meta.dir, '../../vx-docs/src/content/docs/quickstart.mdx')
+const PAGE = path.resolve(
+  import.meta.dir,
+  '../../../private/vx-docs/src/content/docs/quickstart.mdx',
+)
 const GIT = {
   GIT_CONFIG_GLOBAL: '/dev/null',
   GIT_CONFIG_NOSYSTEM: '1',

@@ -5,7 +5,7 @@
 - **K-1** Root README rewritten from a study of 15 READMEs
   (`design/readme-site-2026-09.md`): logo, hero, badges, a dark/light
   benchmark chart `update-site.ts` renders from `results.json` into
-  `packages/vx-docs/public/bench-{light,dark}.svg` (`check.site` reads
+  `private/vx-docs/public/bench-{light,dark}.svg` (`check.site` reads
   both), one-line install, a quick start run end to end, Turbo/Nx
   adoption as parity, a plugin table. Wrong claims fixed on the way:
   "no Node needed" held for the release binary, not the npm install (its
@@ -150,7 +150,7 @@
 - **K-26** "vx on real Turbo and Nx repos" (`/benchmarks/real-repos/`): one
   row per repo with versions, setup, date and a link to its
   `benchmarks.md` section, plus why the other tool wins where it does.
-  `packages/vx-bench/real-repos.json` is the data; `update-site.ts` renders
+  `private/vx-bench/real-repos.json` is the data; `update-site.ts` renders
   the page and README's table from it (`check.site` holds both, a row
   naming a missing section fails). The README claimed "nothing rewritten"
   for every row: strapi and novu ran on `vx-migrate`-written configs,

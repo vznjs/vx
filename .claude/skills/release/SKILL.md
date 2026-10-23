@@ -25,8 +25,8 @@ always a patch: `v0.0.N` → `v0.0.N+1` (`scripts/release-notes.ts`,
 
 ## 2. Write the post
 
-Read `packages/vx-docs/README.md` § Release posts and the newest
-`packages/vx-docs/src/content/docs/releases/vx-0-0-*.md` (the model).
+Read `private/vx-docs/README.md` § Release posts and the newest
+`private/vx-docs/src/content/docs/releases/vx-0-0-*.md` (the model).
 
 The post is built from the change files, not from PR titles (owner,
 2026-10-15: "each PR should be like a real release doc. So later on docs
@@ -143,7 +143,7 @@ the card image, or the card shows no picture:
 
 ```sh
 cd /mnt/project-files/org/marketing/x-posts/_source
-NODE_USE_ENV_PROXY=1 node bsky-api.mjs post "<text>" https://vznjs.github.io/vx/releases/vx-0-0-<N+1>/ --title "vx <version>: <post title>" --desc "<excerpt>" --thumb <repo>/packages/vx-docs/src/assets/blog/vx-0-0-<N+1>.png --dry
+NODE_USE_ENV_PROXY=1 node bsky-api.mjs post "<text>" https://vznjs.github.io/vx/releases/vx-0-0-<N+1>/ --title "vx <version>: <post title>" --desc "<excerpt>" --thumb <repo>/private/vx-docs/src/assets/blog/vx-0-0-<N+1>.png --dry
 ```
 
 Read the `--dry` record, then run it again without `--dry`. It logs to

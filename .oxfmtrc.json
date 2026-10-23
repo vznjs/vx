@@ -8,7 +8,7 @@
   "sortPackageJson": false,
   "ignorePatterns": [
     "node_modules",
-    "packages/vx-docs",
+    "private/vx-docs",
     "dist",
     "coverage",
     "*.tsbuildinfo",

@@ -44,7 +44,7 @@ from the container, 403, so a stars-sorted search of repos created since
 
 - Root README (also the `@vzn/vx` npm page): centred logo, the site's
   hero line, four badges, a dark/light benchmark chart generated from
-  `packages/vx-bench/results.json` by `update-site.ts` (so it cannot
+  `private/vx-bench/results.json` by `update-site.ts` (so it cannot
   drift from the numbers; `check.site` holds it), install on one line,
   a quick start run end to end (init, a cache block, miss → up-to-date
   → restored), "Already on Turborepo or Nx?" as parity (`turbo()` /

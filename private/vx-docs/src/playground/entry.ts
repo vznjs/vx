@@ -1,0 +1,325 @@
+// vx's real planner over a virtual workspace: the entry point of the
+// playground bundle (scripts/build-playground.ts; spike item 676, promoted
+// in item 695).
+//
+// Everything below the shim is core's own source, bundled unchanged:
+// the config walk `vx lock` makes (`findProjectConfigs`), discovery with the
+// page's `discover` source in it (edges.ts), the project graph, the
+// config load from the lock that walk makes (`loadProjects`), config
+// validation, the task graph, the
+// git-enumeration partition, `plan()` with the real key fold (`foldKey`)
+// and the scheduler. What this
+// file supplies is what `prepareRun` gets from the machine: the git
+// enumeration (every VFS file tracked and clean, its OID a git blob SHA-1),
+// the evaluated configs (plain objects, as a `vx.config.mjs` default export
+// evaluates; `evaluateConfig` turns the reader's text into one), and a cache
+// layer whose store is a set of keys.
+
+import './shim/install.js'
+import { platformCalls, setEnv } from './shim/platform.js'
+import { useVfs, Vfs } from './shim/vfs.js'
+import type { ProjectConfig } from '../../../../packages/vx/src/config.js'
+import {
+  GitFilesCache,
+  applyGitEnumeration,
+  type CacheLayer,
+} from '../../../../packages/vx/src/cache/index.js'
+import { foldKey } from '../../../../packages/vx/src/cache/key-fold.js'
+import { relPosix } from '../../../../packages/vx/src/util/index.js'
+import {
+  buildPackageGraph,
+  computeNestedProjectDirs,
+  findProjectConfigs,
+  LOCKFILE_VERSION,
+  lockKey,
+  validateProjectConfig,
+  type Lockfile,
+} from '../../../../packages/vx/src/workspace/index.js'
+import {
+  buildTaskGraph,
+  expandRequested,
+  runGraph,
+  unresolvedRequests,
+  type TaskNode,
+} from '../../../../packages/vx/src/graph/index.js'
+import { computeReverseDepCount } from '../../../../packages/vx/src/graph/priorities.js'
+import {
+  discoverProjects,
+  loadProjects,
+} from '../../../../packages/vx/src/orchestrator/projects.js'
+import type { VxPlugin } from '../../../../packages/vx/src/orchestrator/plugin.js'
+import { plan } from '../../../../packages/vx/src/orchestrator/plan.js'
+import type { TaskInputComponent } from '../../../../packages/vx/src/cache/index.js'
+import { createHashCache } from '../../../../packages/vx/src/orchestrator/task-hash.js'
+import { manifestEdges } from './edges.js'
+
+export { evaluateConfig } from './config-eval.js'
+// The page names what moved a key by the rule `vx why` does (item 703).
+export {
+  diffKeyComponents,
+  type InputDiffEntry,
+} from '../../../../packages/vx/src/history/metrics.js'
+
+export interface PlaygroundInput {
+  /** Absolute posix path the workspace lives at inside the VFS. */
+  root: string
+  /** Root-relative path → contents. */
+  files: Record<string, string>
+  /** Root-relative config file → its evaluated `vx.config` default export. */
+  configs: Record<string, unknown>
+  /** The environment `inputs.env` reads. */
+  env: Record<string, string>
+  /** Task specs, as `vx run <tasks…>` takes them. */
+  tasks: string[]
+  /** Keys the simulated cache holds (a hit is a key found here). */
+  cached?: string[]
+  /** Workers for the simulated run's dispatch order. */
+  concurrency?: number
+}
+
+export interface PlaygroundTask {
+  id: string
+  project: string
+  task: string
+  hash: string
+  cacheStatus: string
+  deps: string[]
+  /** What the key folded, one row per component, as a `vx run` miss records
+   *  them (none for a group, whose key is not a fold). */
+  components: TaskInputComponent[]
+}
+
+export interface PlaygroundResult {
+  tasks: PlaygroundTask[]
+  unresolvedTasks: string[]
+  /** Core's structural priorities (`computeReverseDepCount`). */
+  priorities: Record<string, number>
+  /** Task ids in the order `runGraph` dispatched them. */
+  dispatchOrder: string[]
+  platformCalls: Record<string, number>
+  vfsReads: number
+}
+
+async function blobOid(bytes: Uint8Array): Promise<string> {
+  const header = new TextEncoder().encode(`blob ${bytes.byteLength}\0`)
+  const buf = new Uint8Array(header.byteLength + bytes.byteLength)
+  buf.set(header)
+  buf.set(bytes, header.byteLength)
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-1', buf))
+  return [...digest].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * A `CacheLayer` over a set of keys, whose `key()` is core's own fold
+ * (`foldKey`, which `Cache.key` delegates to; item 691). Every key it folds
+ * leaves its components in `captured`, under the key: what a real run's
+ * miss persists to `entry_inputs`, and what `vx why` diffs.
+ */
+function playgroundCache(
+  held: ReadonlySet<string>,
+  oidOf: (abs: string) => Promise<string>,
+  captured: Map<string, TaskInputComponent[]>,
+): CacheLayer {
+  const layer = {
+    key: async (input: Parameters<CacheLayer['key']>[0]) => {
+      const components: TaskInputComponent[] = []
+      const hash = await foldKey({ ...input, captureInto: components }, oidOf, (f) =>
+        relPosix(input.workspaceRoot, f),
+      )
+      captured.set(hash, components)
+      return hash
+    },
+    has: async (hash: string) => (held.has(hash) ? 'local' : null),
+    close: () => {},
+  }
+  return layer as unknown as CacheLayer
+}
+
+// The shim's file system and env are module state (`useVfs`, `setEnv`): the
+// bundle holds one workspace at a time, and every await in a plan is a point
+// where another plan could install its own. A page with several playgrounds
+// (the labs page had three, item 704) would then plan one workspace's tasks
+// over another's files. So each entry point that installs them runs after
+// the one before it has settled.
+let settled: Promise<unknown> = Promise.resolve()
+
+function oneAtATime<T>(run: () => Promise<T>): Promise<T> {
+  const next = settled.then(run)
+  settled = next.catch(() => {})
+  return next
+}
+
+export interface PlaygroundProject {
+  name: string
+  /** Root-relative path of the config file core loads for it, or null. */
+  configFile: string | null
+}
+
+/**
+ * The workspace's projects as core discovers them, so the page evaluates
+ * the config file core would load (its name precedence included). The name
+ * is the one discovery gives before any config is read: a config's own
+ * `name` wins over it.
+ */
+export function listPlaygroundProjects(
+  input: Pick<PlaygroundInput, 'root' | 'files'>,
+): Promise<PlaygroundProject[]> {
+  return oneAtATime(() => discover(input))
+}
+
+async function discover(
+  input: Pick<PlaygroundInput, 'root' | 'files'>,
+): Promise<PlaygroundProject[]> {
+  useVfs(new Vfs(input.root, input.files))
+  const found = await findProjectConfigs(input.root)
+  const lock: Lockfile = { version: LOCKFILE_VERSION, projects: {} }
+  for (const f of found)
+    lock.projects[lockKey(input.root, f.dir)] = { file: basename(f.configPath), config: {} }
+  const metas = await discoverMetas(input.root, lock)
+  return metas.map((m) => ({
+    name: m.name,
+    configFile: m.configPath === null ? null : m.configPath.slice(input.root.length + 1),
+  }))
+}
+
+const warn = (m: string): void => console.warn(m)
+const CACHE_DIR = (root: string): string => `${root}/.vx/cache`
+const basename = (p: string): string => p.slice(p.lastIndexOf('/') + 1)
+
+/** The page's one `discover` source (edges.ts), as the CLI declares it in the parity test. */
+const PAGE_PLUGIN = {
+  name: 'playground',
+  discover: (ctx: { projects: ReadonlyArray<{ dir: string }> }) => manifestEdges(ctx.projects),
+} as unknown as VxPlugin
+
+/** Core's discovery over `lock`: its projects, then the page's `discover` stage. */
+function discoverMetas(root: string, lock: Lockfile): ReturnType<typeof discoverProjects> {
+  return discoverProjects(root, async () => lock, [PAGE_PLUGIN], CACHE_DIR(root), warn)
+}
+
+export function planPlayground(input: PlaygroundInput): Promise<PlaygroundResult> {
+  return oneAtATime(() => planWorkspace(input))
+}
+
+async function planWorkspace(input: PlaygroundInput): Promise<PlaygroundResult> {
+  platformCalls.clear()
+  const vfs = new Vfs(input.root, input.files)
+  useVfs(vfs)
+  setEnv(input.env)
+  const root = input.root
+
+  const trusted = new Map<string, string>()
+  for (const [abs, bytes] of vfs.files)
+    trusted.set(abs.slice(root.length + 1), await blobOid(bytes))
+
+  // The lock `vx lock` would write: every config found, each one checked.
+  const lock: Lockfile = { version: LOCKFILE_VERSION, projects: {} }
+  for (const f of await findProjectConfigs(root)) {
+    const config = structuredClone(input.configs[relPosix(root, f.configPath)]) as ProjectConfig
+    validateProjectConfig(config, f.configPath)
+    lock.projects[lockKey(root, f.dir)] = { file: basename(f.configPath), config }
+  }
+  const metas = await discoverMetas(root, lock)
+  const packageGraph = buildPackageGraph(metas)
+  const { projects } = await loadProjects({
+    workspaceRoot: root,
+    cacheDir: CACHE_DIR(root),
+    plugins: [],
+    projectMetas: metas,
+    packageGraph,
+    seeds: 'all',
+    closure: true,
+    configs: async () => lock,
+    warn,
+  })
+  const nestedDirsByProject = computeNestedProjectDirs(metas)
+  const candidates = [...projects.keys()]
+  const requested = expandRequested(input.tasks, candidates, projects)
+  const unresolvedTasks = unresolvedRequests(input.tasks, candidates, projects)
+  const nodes: Map<string, TaskNode> = buildTaskGraph({
+    projects,
+    packageGraph,
+    requested,
+    workspaceRoot: root,
+  })
+
+  const gitFilesCache = new GitFilesCache()
+  const usesWorkspaceInputs = [...projects.values()].some((p) =>
+    Object.values(p.config.tasks ?? {}).some((t) => (t.inputs?.workspaceFiles?.length ?? 0) > 0),
+  )
+  // Every VFS blob IS its file's bytes: no index sizes to check.
+  await applyGitEnumeration(
+    {
+      all: [...trusted.keys()],
+      tracked: [...trusted.keys()],
+      scopes: ['.'],
+      trusted,
+      dirty: false,
+      vars: null,
+      changed: [],
+      untracked: [],
+      undecodable: [],
+      ignored: [],
+      startedAtMs: Date.now(),
+      blobCheck: {
+        key: undefined,
+        blobs: async () => ({ paths: [], oids: [], sizes: [] }),
+        rekey: async () => undefined,
+      },
+      catFile: async () => null,
+    },
+    root,
+    [...projects.values()].map((p) => p.dir),
+    gitFilesCache,
+    usesWorkspaceInputs,
+  )
+  const captured = new Map<string, TaskInputComponent[]>()
+  const cache = playgroundCache(
+    new Set(input.cached ?? []),
+    async (abs) => {
+      const bytes = vfs.read(abs)
+      if (bytes === undefined) throw new Error(`playground: no file ${abs}`)
+      return blobOid(bytes)
+    },
+    captured,
+  )
+
+  const planned = await plan({
+    nodes,
+    workspaceRoot: root,
+    cache,
+    forwardArgs: [],
+    nestedDirsByProject,
+    gitFilesCache,
+    hashCache: createHashCache(),
+  })
+
+  const priorities = computeReverseDepCount(nodes)
+  const dispatchOrder: string[] = []
+  await runGraph({
+    nodes,
+    concurrency: input.concurrency ?? 2,
+    priorities,
+    execute: async (node) => {
+      dispatchOrder.push(node.id)
+      return { node, status: 'success', exitCode: 0, durationMs: 0 }
+    },
+  })
+
+  return {
+    tasks: planned.tasks.map((t) => ({
+      id: t.node.id,
+      project: t.node.projectName,
+      task: t.node.taskName,
+      hash: t.hash,
+      cacheStatus: t.cacheStatus,
+      deps: [...t.deps],
+      components: captured.get(t.hash) ?? [],
+    })),
+    unresolvedTasks: [...unresolvedTasks],
+    priorities: Object.fromEntries(priorities),
+    dispatchOrder,
+    platformCalls: Object.fromEntries(platformCalls),
+    vfsReads: vfs.reads.length,
+  }
+}

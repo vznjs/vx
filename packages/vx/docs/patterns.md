@@ -180,7 +180,7 @@ cache meter carries the message.)
 
 Sharing the patterns doesn't mean sharing the overhead. On the
 476-package / 1,428-node synthetic workspace
-(`packages/vx-bench/compare.ts 20 25 1`, 2026-09-02):
+(`private/vx-bench/compare.ts 20 25 1`, 2026-09-02):
 
 | Runner | Warm (no restore) | Warm (restore) |
 | ------ | ----------------- | -------------- |

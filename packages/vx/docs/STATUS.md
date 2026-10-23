@@ -16,7 +16,7 @@ delete stale lines rather than appending corrections.
 Concretely:
 
 1. **Performance is the first decision driver.** Every change to the run
-   path is measured (`packages/vx-bench/`), and a slower core is a regression even if
+   path is measured (`private/vx-bench/`), and a slower core is a regression even if
    it is prettier. Targets: the fastest warm no-op run and the lowest
    scheduler/hash overhead of any JS-monorepo task runner.
 2. **Core is a pipeline with seams, not a product.** Core owns:
@@ -400,7 +400,7 @@ state of each:
    the product. CI wall time is the other number this duty carries
    (plan I2): 2:23–3:16 per push run on main over 2026-09-21's eleven,
    all three jobs; a run past six minutes is the signal to fold the
-   heaviest witness files onto a shared fixture. `bun packages/vx-bench/run.ts 100 5` and `1000 5`; an interleaved
+   heaviest witness files onto a shared fixture. `bun private/vx-bench/run.ts 100 5` and `1000 5`; an interleaved
    A/B against an immutable worktree settles any gap
    (`scratchpad/ab.ts`-style: alternate arms, min and median of N).
    The closing figures of 2026-09-03 → 09-10 and the refutations
@@ -434,7 +434,7 @@ state of each:
    the 13.2 ms "difference", so this box resolves nothing below about
    6 % even at min-of-7. Absolute figures here, for the record and not
    for the table: 1,000 projects warm 194–204 ms total
-   (`bun packages/vx-bench/run.ts 300 3`: no-cache 987 ms, warm
+   (`bun private/vx-bench/run.ts 300 3`: no-cache 987 ms, warm
    172 ms, warm-restore 329 ms). Any future claim on this container
    needs an A/A control beside it. 2026-09-22 (item 580), the sweep week
    (items 342–572, PRs #488–#681) as one arm: base 164.7 ms, head

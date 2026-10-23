@@ -8,13 +8,13 @@ item 8). Before any widget depends on it, the spike answers two questions:
    platform shim?
 2. Does the bundle produce the same task graph and cache keys as the CLI?
 
-The spike's code lived in `packages/vx-bench/playground-spike/`. Nothing
+The spike's code lived in `private/vx-bench/playground-spike/`. Nothing
 in `packages/vx/src` changed. Since item 695 the bundle's parts are the
 site's: the entry, the shim and the fixture are
-`packages/vx-docs/src/playground/`, `packages/vx-docs/scripts/build-playground.ts`
+`private/vx-docs/src/playground/`, `private/vx-docs/scripts/build-playground.ts`
 builds them, and the spike's comparisons are test rows (see
 [Shipped](#shipped-item-695)). The measurement tools stay in
-`packages/vx-bench/playground-spike/` and import the site's files.
+`private/vx-bench/playground-spike/` and import the site's files.
 
 ## Verdict: feasible, with changes
 
@@ -39,7 +39,7 @@ All numbers are from Bun 1.4.2 on Linux x64.
 ### The bundle
 
 The build (the spike's `build.ts`, now `buildPlayground()` in
-`packages/vx-docs/scripts/build-playground.ts`) calls
+`private/vx-docs/scripts/build-playground.ts`) calls
 `Bun.build({ target: 'browser', minify: true })`, the JS form of
 `bun build --target=browser`. The JS form is needed for the aliasing
 plugin.
@@ -118,7 +118,7 @@ Only the enumeration, the configs and the store come from the page.
 
 The spike's `compare.ts`, now the rows of
 `packages/vx/tests/playground-parity.unsafe.test.ts`, writes the fixture
-(`packages/vx-docs/src/playground/fixture.ts`) to a temporary git
+(`private/vx-docs/src/playground/fixture.ts`) to a temporary git
 repository. The fixture has five projects:
 
 - a `^build` chain and a `pkg#task` edge;
@@ -170,7 +170,7 @@ median):
 The spike's `xxh3-equiv.ts` compared each candidate with
 `Bun.hash.xxHash3` on the same inputs (since item 695 the pure-TS port's
 two columns and the control are the rows of
-`packages/vx-docs/tests/playground-xxh3.test.ts`, and hash-wasm, which no
+`private/vx-docs/tests/playground-xxh3.test.ts`, and hash-wasm, which no
 row needs, left the repo):
 
 - **(i)** 1,000 random inputs covering every length branch (0–16,
@@ -244,7 +244,7 @@ credits Devon Govett, glob-match's author, so the shared quirks are
 inheritance. The port walks UTF-8 bytes as the Rust does, and keeps the
 depth-10 brace stack and the 10,000-branch budget, which the rule-based
 shim lacked. It is 5.5 KB of the bundle, against the rules' 2.6 KB.
-`packages/vx-docs/tests/playground-glob.test.ts` (item 692's
+`private/vx-docs/tests/playground-glob.test.ts` (item 692's
 `tests/glob-port.test.ts` in vx-bench, moved with the shim in item 695)
 holds it at zero in all four domains at this seed and size, and pins hand
 rows for the shapes above. It needs no repository, so it runs in
@@ -293,7 +293,7 @@ rows for the shapes above. It needs no repository, so it runs in
 
 - **The bundle.** SHIPPED as item 695 ([Shipped](#shipped-item-695)).
   Promote the shim and the entry into
-  `packages/vx-docs/src/playground/`. A vx task
+  `private/vx-docs/src/playground/`. A vx task
   (`@vzn/vx-docs#build.playground`) builds it with `Bun.build`, with the
   same aliases and `define`, into the site's static assets. It is built
   with Bun, not with the site's Vite, so the tested artifact is the
@@ -312,7 +312,7 @@ rows for the shapes above. It needs no repository, so it runs in
   - `xxh3-equiv.ts` becomes a test;
   - `glob-equiv.ts` becomes a test: done as item 692,
     `tests/glob-port.test.ts`, at zero differences in every domain
-    (now `packages/vx-docs/tests/playground-glob.test.ts`).
+    (now `private/vx-docs/tests/playground-glob.test.ts`).
 
   The CLI half needs git, and a sandboxed shard has none, so these rows
   live in a task without `exec.sandbox`. A new such task would be the
@@ -342,7 +342,7 @@ work that follows.
   task. `test.bun.unsafe` already runs without a sandbox and with git,
   for the same reason the parity rows need them (the CLI half runs
   `vx run --dry=json` over a fixture repository). The rows build the
-  playground bundle from `packages/vx-docs/src/playground/` with
+  playground bundle from `private/vx-docs/src/playground/` with
   `Bun.build`, load it in Bun with the host APIs trapped, and compare it
   with the CLI. The unsafe task's inputs already cover the packages its
   laws read, so a playground edit re-keys it. The repo keeps exactly two
@@ -380,15 +380,15 @@ the UI. W10 and W11 build on the finished playground.
 
 The bundle, its task and the parity rows. No page loads the bundle yet.
 
-- **Where things are.** `packages/vx-docs/src/playground/` holds
+- **Where things are.** `private/vx-docs/src/playground/` holds
   `entry.ts` (`planPlayground`), the shim (`shim/`) and the parity
   fixture (`fixture.ts`), moved from the spike with their history.
-  `packages/vx-docs/scripts/build-playground.ts` exports
+  `private/vx-docs/scripts/build-playground.ts` exports
   `buildPlayground()`, the only copy of the build options, and writes
   `public/playground/planner.js` when run. The measurement tools
   (`bench.ts`, `bundle-report.ts`, which replaced the spike's reporting
   `build.ts`, `seed-probe.ts`, `glob-equiv.ts`, `glob-probe.ts`) stay in
-  `packages/vx-bench/playground-spike/` and import the site's files;
+  `private/vx-bench/playground-spike/` and import the site's files;
   vx-bench's `lint.oxlint` declares that read and keys on those files.
 - **The task.** `@vzn/vx-docs#build.playground` runs the script
   sandboxed, reads its own project and `../vx/src/**`, writes
@@ -421,9 +421,9 @@ The rows:
 | Per scenario: exactly the expected keys move, in both planners (0, 5, 6)                                  | same                                                                                      |
 | Negative control: the bundle under the wrong `API_URL` differs on exactly the five tasks it reaches       | same                                                                                      |
 | No host trap fires; the calls made are exactly `Bun.Glob`, `Bun.file`, `Bun.hash.xxHash3`; the traps fire | same                                                                                      |
-| The site ships exactly what `buildPlayground()` builds; no import and no free `Bun` / `process` in it     | `packages/vx-docs/tests/playground-bundle.test.ts` (sandboxed, reads `dist/`)             |
-| xxh3: 1,000 inputs and 200 chains equal Bun's; the 64-bit seed misses exactly the 200 high seeds          | `packages/vx-docs/tests/playground-xxh3.test.ts` (sandboxed, no git)                      |
-| Glob: four fuzz domains at zero, hand rows                                                                | `packages/vx-docs/tests/playground-glob.test.ts` (sandboxed, no git)                      |
+| The site ships exactly what `buildPlayground()` builds; no import and no free `Bun` / `process` in it     | `private/vx-docs/tests/playground-bundle.test.ts` (sandboxed, reads `dist/`)              |
+| xxh3: 1,000 inputs and 200 chains equal Bun's; the 64-bit seed misses exactly the 200 high seeds          | `private/vx-docs/tests/playground-xxh3.test.ts` (sandboxed, no git)                       |
+| Glob: four fuzz domains at zero, hand rows                                                                | `private/vx-docs/tests/playground-glob.test.ts` (sandboxed, no git)                       |
 
 The parity rows build the bundle with `buildPlayground()` and import it
 from a temporary file; the CLI runs over the fixture committed to a
@@ -449,7 +449,7 @@ Config editing: the page evaluates a `vx.config.mjs` text the way the
 CLI evaluates the file. No page loads the bundle yet.
 
 - **The rewrite.** `rewriteConfigImports(text, vxUrl)` in
-  `packages/vx-docs/src/playground/config-eval.ts` points each `@vzn/vx`
+  `private/vx-docs/src/playground/config-eval.ts` points each `@vzn/vx`
   specifier (an import, a re-export or a literal `import()`) at a
   Blob-URL module whose `defineProject` and `defineWorkspace` are the
   identity, as core's are. It refuses every other specifier by name:
@@ -534,8 +534,8 @@ The rows:
 | A function-valued `description`: `vx run --dry=json`, `evaluateConfigFresh` and the page give one refusal (item 701)                                | same                                                                                      |
 | `node:fs` and a relative import are refused by name; `while (true) {}` is terminated at a 200 ms deadline                                           | same                                                                                      |
 | The evaluations run with the host traps armed, and none fires                                                                                       | same                                                                                      |
-| The rewrite: 8 accepted forms rewritten exactly, 11 look-alikes left byte for byte, 13 refusals by name (one the pinned misreading)                 | `packages/vx-docs/tests/playground-config-eval.test.ts` (sandboxed)                       |
-| The bundle exports exactly `evaluateConfig` and `planPlayground`                                                                                    | `packages/vx-docs/tests/playground-bundle.test.ts`                                        |
+| The rewrite: 8 accepted forms rewritten exactly, 11 look-alikes left byte for byte, 13 refusals by name (one the pinned misreading)                 | `private/vx-docs/tests/playground-config-eval.test.ts` (sandboxed)                        |
+| The bundle exports exactly `evaluateConfig` and `planPlayground`                                                                                    | `private/vx-docs/tests/playground-bundle.test.ts`                                         |
 
 The bundle row's import check read the rewrite's own comparisons with
 the strings "from" and "import" in the minified text as two specifiers.
@@ -612,7 +612,7 @@ likely spends that whole budget.
 
 The rows run in the gate: `@vzn/vx#test.bun.unsafe` (parity) and
 `@vzn/vx-docs#test` (the shipped bundle, xxh3, glob). The tools, from
-`packages/vx-bench` after `bun install`:
+`private/vx-bench` after `bun install`:
 
 ```sh
 bun playground-spike/bundle-report.ts  # the bundle's sizes, specifiers and bytes per module

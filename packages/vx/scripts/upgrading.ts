@@ -12,7 +12,7 @@ import { commitsBetween, isBreaking, type Commit } from './release-notes.ts'
 
 export const PAGE = path.resolve(
   import.meta.dir,
-  '../../vx-docs/src/content/docs/guides/upgrading.md',
+  '../../../private/vx-docs/src/content/docs/guides/upgrading.md',
 )
 
 const HEADER = /^(\w+)(?:\(([^)]*)\))?!?: (.+?)(?: \(#\d+\))?$/

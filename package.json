@@ -10,7 +10,8 @@
     "bun": ">=1.4"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "private/*"
   ],
   "devDependencies": {
     "@types/bun": "1.4.2",

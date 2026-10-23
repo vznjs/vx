@@ -21,7 +21,7 @@
 - Bun 1.4.2, the latest release and CI's pin.
 - Rust 1.94.1 (release, `lto = true`, `codegen-units = 1`).
 - Workloads:
-  - `ws`: `packages/vx-bench/generate.ts` with 150 projects, one input
+  - `ws`: `private/vx-bench/generate.ts` with 150 projects, one input
     file each.
   - `ws2`: `ws` with 40 more ~2.7 KB files per project, 6,000 input
     files in all.
@@ -283,7 +283,7 @@ the startup gap a Rust rewrite would close, at a fraction of the cost.
 
 ## Reproduce
 
-- Generate the workspace: `bun packages/vx-bench/generate.ts <dir> 150`.
+- Generate the workspace: `bun private/vx-bench/generate.ts <dir> 150`.
 - Build the compiled binary with the release command from
   `vx.config.ts` (`bun build --compile --no-compile-autoload-dotenv --minify --bytecode src/bin.ts`).
 - Take the stage table with `VX_TIMING=1 <vx> run build --all`, warm.

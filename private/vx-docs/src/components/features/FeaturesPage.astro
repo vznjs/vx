@@ -1,0 +1,41 @@
+---
+// The frame of every feature page: the landing's look (landing.css) inside
+// the site's one Starlight shell (header, search, theme, phone menu), so a
+// feature page is found by search and reads as part of the docs.
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import Footer from '../landing/Footer.astro'
+import '../../styles/landing.css'
+import '../../styles/features.css'
+
+interface Props {
+  title: string
+  description: string
+  ogImage?: string
+}
+const { title, description, ogImage } = Astro.props
+const head = ogImage
+  ? [{ tag: 'meta' as const, attrs: { property: 'og:image', content: ogImage } }]
+  : []
+---
+
+<StarlightPage
+  frontmatter={{
+    title,
+    description,
+    template: 'splash',
+    head,
+  }}
+  hasSidebar={false}
+>
+  <div class="not-content vx-landing vx-features">
+    <slot />
+    <div class="fedit">
+      <p class="container">
+        <a href="https://github.com/vznjs/vx/edit/main/private/vx-docs/src/features/features.ts"
+          >Edit this page</a
+        >
+      </p>
+    </div>
+    <Footer />
+  </div>
+</StarlightPage>

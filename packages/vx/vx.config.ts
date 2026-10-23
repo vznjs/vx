@@ -57,34 +57,36 @@ const BUN_VERSION = ['bun --version']
 const SOURCES = ['**/*', '!dist/**', '!**/*.bun-build', '!**/.????????????????-????????.tmp/**']
 // The same for the other packages `test.bun.unsafe` reads: what
 // @vzn/vx-docs' `build`, `build.playground` and `import` write
-// (packages/vx-docs/vx.config.ts), all gitignored.
+// (private/vx-docs/vx.config.ts), all gitignored.
 const OTHER_OUTPUTS = [
-  'vx/dist/**',
-  'vx-docs/dist/**',
-  'vx-docs/public/playground/planner.js',
+  'packages/vx/dist/**',
   ...[
-    'all-features',
-    'api',
-    'architecture',
-    'benchmarks',
-    'caching',
-    'cli',
-    'compare/turbo-nx-support',
-    'comparison',
-    'execution',
-    'flows',
-    'optimizations',
-    'overview',
-    'parity',
-    'patterns',
-    'schema',
-    'security',
-    'upstream-ledger',
-  ].map((page) => `vx-docs/src/content/docs/${page}.md`),
-  'vx-docs/src/content/docs/modules/**',
-  'vx-docs/src/content/docs/design/**',
-  'vx-docs/src/content/docs/plugins/**',
-].map((g) => `!packages/${g}`)
+    'vx-docs/dist/**',
+    'vx-docs/public/playground/planner.js',
+    ...[
+      'all-features',
+      'api',
+      'architecture',
+      'benchmarks',
+      'caching',
+      'cli',
+      'compare/turbo-nx-support',
+      'comparison',
+      'execution',
+      'flows',
+      'optimizations',
+      'overview',
+      'parity',
+      'patterns',
+      'schema',
+      'security',
+      'upstream-ledger',
+    ].map((page) => `vx-docs/src/content/docs/${page}.md`),
+    'vx-docs/src/content/docs/modules/**',
+    'vx-docs/src/content/docs/design/**',
+    'vx-docs/src/content/docs/plugins/**',
+  ].map((g) => `private/${g}`),
+].map((g) => `!${g}`)
 // The macOS run's share: only the files whose outcome is the platform's
 // (`PLATFORM_TESTS` in scripts/test-shard.ts), a fifth of the suite's weight.
 export const PLATFORM_SHARD_COUNT = 6
@@ -168,6 +170,7 @@ const unsafeShardTask = (i: number, n: number, flags = '') => ({
     // cache replayed the suite over an edit to them.
     workspaceFiles: [
       'packages/*/**',
+      'private/*/**',
       'examples/**',
       '.github/**',
       'scripts/**',
@@ -380,7 +383,7 @@ const releaseTasks = {
       },
       sandbox: {
         allow: {
-          read: ['.', '../vx-docs/src/content/docs/releases'],
+          read: ['.', '../../private/vx-docs/src/content/docs/releases'],
           network: ['api.github.com'],
         },
       },

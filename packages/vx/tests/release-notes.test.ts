@@ -123,7 +123,7 @@ describe('postNotes', () => {
   })
 
   it('finds the post by version', () => {
-    expect(postPath('0.0.637')).toBe('packages/vx-docs/src/content/docs/releases/vx-0-0-637.md')
+    expect(postPath('0.0.637')).toBe('private/vx-docs/src/content/docs/releases/vx-0-0-637.md')
   })
 })
 

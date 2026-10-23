@@ -225,7 +225,7 @@ describe('the published plugin packages', async () => {
         .map((d) => path.join(REPO, 'packages', d, 'README.md'))
         .filter((f) => existsSync(f)),
       ...walkMd(path.join(CORE, 'docs')),
-      ...walkMd(path.join(REPO, 'packages', 'vx-docs', 'src', 'content', 'docs')),
+      ...walkMd(path.join(REPO, 'private', 'vx-docs', 'src', 'content', 'docs')),
     ]
     const COMMAND =
       /\b(?:bunx|npx|bun x|bun add|bun install|npm i|npm install|pnpm add|pnpm dlx|yarn add|yarn dlx)\b[^\n`]*/g

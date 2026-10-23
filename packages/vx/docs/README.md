@@ -87,7 +87,7 @@ the hooks are how it gets built.
 
 ## What that buys, measured
 
-Numbers come from `packages/vx-bench/` and are reproducible; the invariant behind
+Numbers come from `private/vx-bench/` and are reproducible; the invariant behind
 each is recorded in [optimizations.md](./optimizations.md).
 
 - A fully-cached run on a 100-project workspace completes in **74 ms**

@@ -1,6 +1,6 @@
 name: Deploy docs
 
-# Builds the Starlight docs site (packages/vx-docs) and publishes it to GitHub
+# Builds the Starlight docs site (private/vx-docs) and publishes it to GitHub
 # Pages. Enable once under Settings → Pages → Source: "GitHub Actions".
 on:
   push:
@@ -12,8 +12,8 @@ on:
     paths:
       - 'packages/vx/docs/**'
       - 'packages/vx/src/**'
-      - 'packages/vx-docs/**'
-      - 'packages/vx-bench/schedule-policy.ts'
+      - 'private/vx-docs/**'
+      - 'private/vx-bench/schedule-policy.ts'
       - 'packages/vx-schedule-history/src/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
@@ -47,13 +47,13 @@ jobs:
       # Dogfood: build the docs site through vx from the repo root, scoped
       # to the docs project. `build` depends on `import`, which regenerates
       # the Starlight collection from packages/vx/docs (a declared
-      # cross-project read), then `astro build` writes packages/vx-docs/dist.
+      # cross-project read), then `astro build` writes private/vx-docs/dist.
       - name: vx run build
         run: bun packages/vx/src/bin.ts run build --filter @vzn/vx-docs
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: packages/vx-docs/dist
+          path: private/vx-docs/dist
 
   deploy:
     name: deploy

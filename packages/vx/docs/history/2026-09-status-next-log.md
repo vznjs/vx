@@ -1300,7 +1300,7 @@ Methods that paid: the same three-pages-per-item cadence; deriving a
 list pin from the source's own regularity (`mark('…')`, `it('…')`,
 `export {…} from`) rather than from the page. Next: the trim (306–332
 to `docs/history/`, this handoff's summary in their place); then the
-site pages under `packages/vx-docs/src/content/docs/` by the same
+site pages under `private/vx-docs/src/content/docs/` by the same
 oldest-page queue, guides first (each already has sample pins from
 297–305, so the read is prose); then Next 6's re-measure only when
 warm-path code moves (none did today). Never end with "what next?".
@@ -1386,7 +1386,7 @@ tasks, with shard 9 intermittently making it eleven by dying on a
 SIGILL that names no test; the clean-tree control is what settles that,
 not the streak (388 called it deterministic on two sightings and 389's
 gate refuted that).
-Next: the blog's 31 posts under `packages/vx-docs/src/content/docs/blog/`
+Next: the blog's 31 posts under `private/vx-docs/src/content/docs/blog/`
 by last-touch order, three per item — they are the least-pinned prose
 left and they quote figures the contract pages own. Then
 `docs/modules/`'s "What it does NOT do" sections, which are negative
@@ -2548,7 +2548,7 @@ Milestone 1's agent work is done; 1.4 and 1.5 are the owner's.
 the workspace median.** Parity row N-M7 asked whether vx should run a
 task the history has never seen FIRST, as Nx does, instead of giving it
 the median p50. The benchmark behind the question was deleted on
-2026-09-09; `packages/vx-bench/schedule-policy.ts` is its replacement: a
+2026-09-09; `private/vx-bench/schedule-policy.ts` is its replacement: a
 discrete-event sim of `runGraph`'s exec tier ranked by the plugin's real
 `criticalPathPriorities` over core's `mergePriorities`, pinned on
 hand-computed schedules (Nx's fixture among them) and against the real
@@ -2559,7 +2559,7 @@ no plugin +3.51 %), but single graphs regress by up to +6.15 % there
 and +13.03 % at 75 %: an unknown that turns out short starts ahead of
 the known long chain. The adoption bar was a worst regression ≤ 1 % on
 any cell, so the plugin is unchanged; the table and the verdict are in
-`packages/vx-bench/schedule-policy.md`, and the parity audit's N-M7 row
+`private/vx-bench/schedule-policy.md`, and the parity audit's N-M7 row
 is struck.
 Coordinator's reading of the bar: "worst" is the worst single graph,
 not the worst cell mean (+0.23 %), because a user lives one run at a
@@ -2698,7 +2698,7 @@ W9 needs P1 (lift the key fold out of `Cache`), the exact glob port,
 in-page config evaluation, and an unsandboxed parity task. Estimate: six
 to eight agent days for W9 alone. Note:
 `design/playground-spike-2026-09.md`; code:
-`packages/vx-bench/playground-spike/`.
+`private/vx-bench/playground-spike/`.
 
 14by. **Handoff after item 677 (2026-09-23, near midnight).** Since 14bb
 the arc turned from sweeping to shipping toward 1.0: the roadmap
@@ -2975,7 +2975,7 @@ checkpoint number, the `define`, the element's name, the bench importing
 after restore. Direct dependents first survived every schedule row (on
 this graph they rank the same way), so the ranking row was added and
 now fails. The site's `build`, `test` and `dev` tasks grant
-`../vx-bench/schedule-policy.ts` and key on the three sim sources; a
+`../../private/vx-bench/schedule-policy.ts` and key on the three sim sources; a
 sandboxed `vx run @vzn/vx-docs#test` without the grant fails the build
 with `UNRESOLVED_IMPORT`. Also corrected: the glossary's vx line for
 critical path (core ranks by tasks waiting; the plugin by critical path)
@@ -3000,7 +3000,7 @@ Mermaid source is text until its script runs). With it: the links become
 toggle buttons (`aria-pressed`, Space and Enter, Escape shows all), one
 section at a time, the row marked, a live region; it opens on `config`.
 `learn/extending.mdx` has five worked plugins, each a real file under
-`packages/vx-docs/src/examples/` shown from the file beside the strip
+`private/vx-docs/src/examples/` shown from the file beside the strip
 with its stage lit (`PluginExample.astro`, the explorer's strip in
 static mode, so a hook added to core reaches every example's diagram): a
 one-line telemetry summary, a remote cache over a toy HTTP store, a
@@ -3098,7 +3098,7 @@ writes), a sentence per run, and the frame vx prints at step 4. The
 first draft's command had no `mkdir -p dist`; the real-vx row failed on
 it, because only the sandbox's write grant creates `dist/`.
 
-Proof, in `packages/vx-docs/tests/learn-correctness.test.ts` (19 rows):
+Proof, in `private/vx-docs/tests/learn-correctness.test.ts` (19 rows):
 the model against a hand-written truth per step and for the checkpoint;
 the page's config snippet evaluates to the config the model keys on;
 the model against vx, one workspace written from the model and run with
@@ -3277,7 +3277,7 @@ special case removed reddens two domains and two rows, and the trailing
 on `playground-spike/**/*.ts`, which it imports.
 
 14co. **Item 693 (2026-09-24): the site's code is format-checked.** No
-task checked `packages/vx-docs`: the root `.oxfmtrc.json` ignored the
+task checked `private/vx-docs`: the root `.oxfmtrc.json` ignored the
 whole package (item 50's choice, made for its Markdown, where oxfmt
 rewrites prose code fragments and moves spaces into inline code), and
 unlike every other package it had no `lint.oxfmt`. Six code files had
@@ -3318,8 +3318,8 @@ wrong and is corrected.
 
 14cq. **Item 695 (roadmap W9, 2026-09-24): the playground bundle is the
 site's, built by a vx task and held to the CLI.** The spike's entry, shim
-and fixture moved (`git mv`) to `packages/vx-docs/src/playground/`;
-`packages/vx-docs/scripts/build-playground.ts` exports `buildPlayground()`,
+and fixture moved (`git mv`) to `private/vx-docs/src/playground/`;
+`private/vx-docs/scripts/build-playground.ts` exports `buildPlayground()`,
 the only copy of the build options, and `@vzn/vx-docs#build.playground`
 runs it sandboxed (reads its project and `../vx/src/**`, writes
 `public/playground/**`, keys on the script and `src/playground/**`, core's
@@ -3435,7 +3435,7 @@ only Nx's daemon is outside the CPU column). `comparison.md` said
 "since 2.10" (from W7's reading) and now says 2.9.
 
 14cu. **Item 699 (roadmap W9, 2026-09-24): the playground evaluates
-the reader's `vx.config.mjs`.** `packages/vx-docs/src/playground/config-eval.ts`
+the reader's `vx.config.mjs`.** `private/vx-docs/src/playground/config-eval.ts`
 has `rewriteConfigImports`, a small tokenizer that points each `@vzn/vx`
 specifier at a Blob-URL module whose `defineProject` and
 `defineWorkspace` are the identity and refuses every other import by
@@ -3811,7 +3811,7 @@ four cards that did went (sandboxed, plugin at every stage, modular
 core, nothing applied by default), and `#plugins` is now "What fills
 the seams." Found: the two benchmark panels' links were quoted
 `{href(…)}` literals that never resolved. Rows:
-`packages/vx-docs/tests/landing.test.ts` holds the order, the hero's
+`private/vx-docs/tests/landing.test.ts` holds the order, the hero's
 actions, each idea's links, the guarantee's file and row title, the
 static figures, and every internal link of the page at f565ec5f. The
 differentials (bench first, a broken guarantee path, a dropped link)
@@ -3830,7 +3830,7 @@ The count is 455 PRs since v0.0.21, the first-parent commits through
 #798; it is recounted at the cut. Roadmap 1.3 reads DONE through 710.
 
 14dh. **Item 711 (2026-09-24): every internal link in the built site
-lands.** `packages/vx-docs/tests/site-links.test.ts` reads every page in
+lands.** `private/vx-docs/tests/site-links.test.ts` reads every page in
 `dist/` (239) and checks each `href` and `src` that points inside the
 site, relative, root-relative or absolute under `SITE_URL` and
 `BASE_PATH`: it must name a built file, and a `#fragment` must name an

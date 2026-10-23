@@ -32,7 +32,17 @@ import { gitIn, gitInit } from './helpers/workspace.js'
 const CORE = path.resolve(import.meta.dir, '..')
 const PACKAGES = path.dirname(CORE)
 const REPO = path.dirname(PACKAGES)
-const GUIDE = path.join(PACKAGES, 'vx-docs', 'src', 'content', 'docs', 'guides', 'migrate.mdx')
+const GUIDE = path.join(
+  PACKAGES,
+  '..',
+  'private',
+  'vx-docs',
+  'src',
+  'content',
+  'docs',
+  'guides',
+  'migrate.mdx',
+)
 
 /** The guide's `## <name>` section: its fences of `lang`, in order. */
 function guideFences(name: string, lang: string): string[] {
@@ -353,7 +363,7 @@ function endState(root: string, plugin: 'turbo' | 'nx', config: string): string[
 // The from-Turborepo and from-Nx posts show the file `vx init` writes: the
 // guide's, which the rows above hold to a run.
 describe('the migration posts show the file vx init writes', () => {
-  const blog = path.join(PACKAGES, 'vx-docs', 'src', 'content', 'docs', 'blog')
+  const blog = path.join(PACKAGES, '..', 'private', 'vx-docs', 'src', 'content', 'docs', 'blog')
   const firstTs = (name: string): string =>
     /```ts\n([\s\S]*?)```/.exec(readFileSync(path.join(blog, name), 'utf8'))?.[1] ?? ''
   it('from-turborepo', () => {

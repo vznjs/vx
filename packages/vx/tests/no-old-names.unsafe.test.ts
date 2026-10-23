@@ -46,14 +46,14 @@ const SKIP = [
   /(^|\/)tests\//,
   /^packages\/vx\/docs\/(history|design)\//,
   /^packages\/vx\/docs\/STATUS\.md$/,
-  /^packages\/vx-docs\/src\/content\/docs\/guides\/upgrading\.md$/,
+  /^private\/vx-docs\/src\/content\/docs\/guides\/upgrading\.md$/,
 ]
 
 // A post is kept current, with no note on what changed (owner,
 // 2026-10-16). The one exception shows a misspelled flag refused with
 // the right one as its fix.
 const NAMES_THE_RENAME: ReadonlyMap<string, string> = new Map([
-  ['packages/vx-docs/src/content/docs/blog/upgrade-you-can-trust.md', '--retries'],
+  ['private/vx-docs/src/content/docs/blog/upgrade-you-can-trust.md', '--retries'],
 ])
 
 const TEXT = /\.(md|mdx|ts|tsx|js|mjs|cjs|json|ya?ml|astro|sh)$/
