@@ -1,5 +1,6 @@
-// The relay client: `join` over HTTP, everything after over the websocket,
-// dialed again whenever it drops.
+// The relay client: joined on the websocket it opens (over HTTP only where
+// that socket does not open), everything after down it, dialed again
+// whenever it drops.
 
 import { afterEach, expect, it } from 'bun:test'
 import { createRelay, serveRelay, type RelayServer } from '@vzn/vx-dte-relay'
@@ -47,8 +48,8 @@ it('talks over the socket the relay offers: sends, removes and leaves, polling n
   await a.leave()
   expect(await o.poll()).toEqual([{ from: 'relay', body: { type: 'lost', id: a.id } }])
   await o.leave()
-  // Join opens the session; all else, leaving and removing too, goes down the socket.
-  expect(asked).toEqual(['join', 'join', 'join'])
+  // Each joins on the socket it opens: one request a participant, none of it HTTP.
+  expect(asked).toEqual([])
 })
 
 it('learns from its socket’s close that the relay let it go, asking HTTP nothing', async () => {
@@ -75,8 +76,10 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
   /**
    * While `refusing`, the host answers each new dial 503, as one overloaded.
    * Once `forget` is set, the next participant to dial is refused for good.
+   * `older`: a socket that would join is refused, as a relay before
+   * PROTOCOL.md's `socket?join` refuses it, so each joins over HTTP.
    */
-  const host = { refusing: false, forget: false, forgotten: '' }
+  const host = { refusing: false, forget: false, forgotten: '', older: false }
   let server: Bun.Server<Held> | undefined
   const relay = createRelay({
     ...options,
@@ -91,7 +94,10 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
   server = Bun.serve<Held>({
     hostname: '127.0.0.1',
     port: 0,
-    fetch: (r) => relay.fetch(r),
+    fetch: (r) =>
+      host.older && r.url.includes('socket?join=')
+        ? new Response(null, { status: 404 })
+        : relay.fetch(r),
     websocket: {
       open(ws) {
         open.push(ws)
@@ -265,20 +271,22 @@ it('refuses a relay that offers no socket', async () => {
 it('asks for a new token a minute before the one it holds expires', async () => {
   const b64 = (v: unknown): string => Buffer.from(JSON.stringify(v)).toString('base64url')
   const jwt = (inS: number): string => `${b64({})}.${b64({ exp: Date.now() / 1000 + inS })}.x`
-  const { url } = sockets(undefined, { verify: async () => ({ iss: 'i', run: ['1'] }) })
+  const { url, host } = sockets(undefined, { verify: async () => ({ iss: 'i', run: ['1'] }) })
+  // Several requests a participant, to tell one token from several.
+  host.older = true
   const asked = async (inS: number): Promise<number> => {
     let n = 0
     const me = await join(url, R, 'worker', null, async () => (n++, jwt(inS)))
     await me.leave()
     return n
   }
-  // Its join and its socket's upgrade: once, or each time.
-  expect([await asked(300), await asked(30)]).toEqual([1, 2])
+  // The socket that would join, its join and its socket's: once, or each time.
+  expect([await asked(300), await asked(30)]).toEqual([1, 3])
 })
 
 it('waits out the relay’s rate limit and joins again', async () => {
-  const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
-  servers.push(s)
+  const s = sockets()
+  s.host.older = true
   let limited = 0
   globalThis.fetch = ((input: string, init?: RequestInit) =>
     input.endsWith('/join') && limited++ === 0
@@ -442,7 +450,9 @@ it('gives up on a socket upgrade the relay holds past three heartbeats', async (
     fetch: (r) =>
       r.url.includes('/join')
         ? Response.json({ id: 'p1', heartbeatMs: 100, socket: true })
-        : new Promise<Response>(() => {}),
+        : r.url.includes('socket?join=')
+          ? new Response(null, { status: 404 })
+          : new Promise<Response>(() => {}),
   })
   servers.push({ url: '', stop: () => server.stop(true) })
   const at = performance.now()
@@ -558,8 +568,8 @@ it('sends asked for together that would pass the relay’s body limit go as seve
 // One 500 from the relay's host on join failed a whole CI run before any
 // task started (PR #3911, 2026-10-22): join asks again.
 it('joins again after the relay answers 5xx or the network drops', async () => {
-  const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
-  servers.push(s)
+  const s = sockets()
+  s.host.older = true
   let failures = 0
   globalThis.fetch = ((input: string, init?: RequestInit) => {
     if (input.endsWith('/join') && failures < 2) {
@@ -578,8 +588,8 @@ it('joins again after the relay answers 5xx or the network drops', async () => {
 // A run its relay did not admit fails at once, naming the relay (owner,
 // 2026-10-23); a refusal is never waited out as a fault is.
 it('does not join again after a 4xx, and names the relay that refused it', async () => {
-  const s = serveRelay({ hostname: '127.0.0.1', port: 0 })
-  servers.push(s)
+  const s = sockets()
+  s.host.older = true
   let asked = 0
   globalThis.fetch = (() => {
     asked++
