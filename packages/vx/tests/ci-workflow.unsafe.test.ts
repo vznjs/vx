@@ -131,6 +131,13 @@ describe('ci.yml', () => {
   })
 
   // A killed vx never closes its run, so its queued agents held macOS runners.
+  // A cold run that wrote no remote failed every task an agent ran: its
+  // outputs come back through the remote (2026-10-23).
+  it('runs cold reading no cache, still writing the remote agents hand outputs through', () => {
+    const run = doc.jobs['linux']!.steps!.find((s) => s.run?.includes('bin.ts run '))
+    expect(run?.env?.['VX_CACHE_POLICY']).toBe("${{ inputs.cold && 'local:w,remote:w' || '' }}")
+  })
+
   it('cancels the agent runs a run dispatched, on any outcome', () => {
     for (const id of RUNS) {
       const cancel = doc.jobs[id]!.steps!.find((s) => s.run?.includes('/cancel'))

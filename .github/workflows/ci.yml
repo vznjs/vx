@@ -157,8 +157,9 @@ jobs:
           # The 2 MiB tmpfs each Linux agent mounts (vx-agent.yml) for
           # `tests/disk-full.unsafe.test.ts`.
           VX_SMALL_DISK: /tmp/vx-small
-          # Empty is unset: the workspace's own policy.
-          VX_CACHE_POLICY: ${{ inputs.cold && 'local:,remote:' || '' }}
+          # Empty is unset: the workspace's own policy. Cold reads nothing
+          # but still writes: agents hand outputs back through the remote.
+          VX_CACHE_POLICY: ${{ inputs.cold && 'local:w,remote:w' || '' }}
         run: |
           # The summary is written by a PLUGIN, and a plugin that declines
           # writes nothing under a green check, so assert it in this step
