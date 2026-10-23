@@ -111,35 +111,46 @@ describe('renderJobSummary', () => {
       memoryAvgBytes: 5e8,
     }
     const md = renderJobSummary(
-      summary([task({})], {
-        machines: [
-          {
-            ...m,
-            name: 'small#1',
-            done: 3,
-            onlineMs: 40_000,
-            busyMs: 36_000,
-            cpuAvg: 2,
-            bookedAvg: 3.9,
-            memoryPeakBytes: 9.8e9,
-            utilization: 0.5,
-            warmUpMs: 21_000,
-          },
-          {
-            ...m,
-            name: 'small#2',
-            done: 0,
-            onlineMs: 10_000,
-            busyMs: 0,
-            cpuAvg: 0,
-            bookedAvg: 0,
-            utilization: 0,
-            warmUpMs: 90_000,
-          },
+      summary(
+        [
+          task({ taskId: 'a#test', where: 'small#1' }),
+          task({ taskId: 'b#test', where: 'small#1' }),
+          task({ taskId: 'c#services' }),
+          task({ taskId: 'd#lint', status: 'cache-hit' }),
         ],
-      }),
+        {
+          machines: [
+            {
+              ...m,
+              name: 'small#1',
+              done: 3,
+              onlineMs: 40_000,
+              busyMs: 36_000,
+              cpuAvg: 2,
+              bookedAvg: 3.9,
+              memoryPeakBytes: 9.8e9,
+              utilization: 0.5,
+              warmUpMs: 21_000,
+            },
+            {
+              ...m,
+              name: 'small#2',
+              done: 0,
+              onlineMs: 10_000,
+              busyMs: 0,
+              cpuAvg: 0,
+              bookedAvg: 0,
+              utilization: 0,
+              warmUpMs: 90_000,
+            },
+          ],
+        },
+      ),
     )
     expect(md).toContain('### Workers')
+    // Run on the orchestrator's own machine: the counts add up.
+    expect(md).toContain('| this machine | ok |  | 1 |  |  |  |  |  |  |')
+    expect(md).toContain('3 executed: 2 on workers, 1 on this machine.')
     expect(md).toContain(
       '| small#1 | left | 21.0s | 3 | 40.0s | 4.0s | 3.9 of 4 | 2.0 | 9.8 of 16.0 GB | 50% |',
     )

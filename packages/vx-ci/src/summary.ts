@@ -172,7 +172,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   }
 
   if (summary.machines !== undefined && summary.machines.length > 0) {
-    lines.push(...renderWorkers(summary.machines), '')
+    lines.push(...renderWorkers(summary.machines, summary.tasks), '')
   }
 
   const header = ['Task', 'Status', 'Duration']
@@ -206,7 +206,10 @@ const pct = (x: number): string => `${Math.round(x * 100)}%`
  * were expected to use, from their last run, beside what it used, so an
  * idle or overfilled one shows on the page (owner, 2026-10-23).
  */
-function renderWorkers(machines: NonNullable<RunSummaryRecord['machines']>): string[] {
+function renderWorkers(
+  machines: NonNullable<RunSummaryRecord['machines']>,
+  tasks: RunSummaryRecord['tasks'],
+): string[] {
   const lines = [
     '### Workers',
     '',
@@ -235,9 +238,23 @@ function renderWorkers(machines: NonNullable<RunSummaryRecord['machines']>): str
       ].join(' | ')} |`,
     )
   }
+  // Tasks the executor left to this machine (services, unsandboxed ones):
+  // without their row the workers' tasks fell short of the run's executed
+  // count, 13 of 17 on main (owner, 2026-10-23).
+  const ran = tasks.filter((t) => t.status === 'success' || t.status === 'failed')
+  const here = ran.filter((t) => t.where === undefined)
+  if (here.length > 0) {
+    const failed = here.filter((t) => t.status === 'failed').length
+    lines.push(
+      `| this machine | ok |  | ${here.length - failed}${failed > 0 ? ` (${failed} failed)` : ''} |  |  |  |  |  |  |`,
+    )
+  }
+  lines.push(
+    '',
+    `${ran.length} executed: ${ran.length - here.length} on workers, ${here.length} on this machine.`,
+  )
   if (coreMs > 0)
     lines.push(
-      '',
       `Expected ${pct(bookedMs / coreMs)} of the workers' core-time, used ${pct(cpuMs / coreMs)}.`,
     )
   return lines
