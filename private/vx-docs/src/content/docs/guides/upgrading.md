@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte: call DTE agents workers
+
+`vx dte agent` is `vx dte worker`; dte({ agents }) is dte({ workers }); VX_DTE_AGENT is VX_DTE_WORKER; github()'s default workflow is vx-worker.yml with a `workers` input; GitLab's job template is .vx-worker and its bridge vx-workers; the run list's column header reads `· worker`.
+
 ## vx-dte-relay: mark the relay's socket-only protocol breaking
 
 the relay answers only join and socket over HTTP; send, poll, leave and remove go down the socket. createRelay requires upgrade, and RelaySocket.close takes a code and reason.

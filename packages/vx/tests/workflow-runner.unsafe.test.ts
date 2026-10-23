@@ -44,7 +44,7 @@ function jobsOf(file: string): [string, Job][] {
 const runsVxTask = (s: Step) => typeof s.run === 'string' && /\bbin\.ts run\b/.test(s.run)
 
 // A distributed run's job only plans and dispatches: every task, sandboxed
-// or not, runs on an agent, which installs the runtime (ci-workflow law).
+// or not, runs on a worker, which installs the runtime (ci-workflow law).
 const distributed = (j: Job | Step) => j.env?.['VX_DTE_RELAY'] !== undefined
 
 const covered: string[] = []
@@ -231,11 +231,11 @@ describe('a VX_ var a workflow sets reaches the task that reads it', () => {
   })
 
   it('appears in some task’s passThrough, or `vx run` drops it on the way in', () => {
-    // vx itself reads these (a distributed run and its agents), never a task.
+    // vx itself reads these (a distributed run and its workers), never a task.
     const readByVx = new Set([
       'VX_DTE_RUN',
       'VX_DTE_RELAY',
-      'VX_DTE_AGENT',
+      'VX_DTE_WORKER',
       'VX_CACHE_DIR',
       'VX_CACHE_POLICY',
     ])

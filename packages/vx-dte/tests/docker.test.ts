@@ -6,12 +6,12 @@ import { afterAll, expect, it } from 'bun:test'
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import type { AgentSpawn } from '../src/index.js'
+import type { WorkerSpawn } from '../src/index.js'
 import { docker } from '../src/index.js'
 
 const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-docker-'))
 // docker() mounts ~/.vx: a home of its own, as a sandboxed suite may not
-// write the real one (a DTE agent keeps none, 2026-10-22).
+// write the real one (a DTE worker keeps none, 2026-10-22).
 const realHome = process.env['HOME']
 process.env['HOME'] = path.join(dir, 'home')
 afterAll(async () => {
@@ -27,7 +27,7 @@ const git = (cwd: string, ...args: string[]): void => {
   if (r.exitCode !== 0) throw new Error(r.stderr.toString())
 }
 
-it('an agent runs the tracked files as they are, uncommitted changes too', async () => {
+it('a worker runs the tracked files as they are, uncommitted changes too', async () => {
   const root = path.join(dir, 'ws')
   const bin = path.join(dir, 'bin')
   Bun.spawnSync(['mkdir', '-p', root, bin])
@@ -43,7 +43,7 @@ it('an agent runs the tracked files as they are, uncommitted changes too', async
     `#!/bin/sh
 for a; do last=$a; done
 src=$(printf '%s\\n' "$@" | sed -n 's#^\\(.*\\):/src:ro$#\\1#p')
-printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work#g; s#exec ./node_modules/.bin/vx dte agent#cat f > ${out}#" | sh
+printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work#g; s#exec ./node_modules/.bin/vx dte worker#cat f > ${out}#" | sh
 `,
   )
   await chmod(path.join(bin, 'docker'), 0o755)
@@ -63,7 +63,7 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work
       workspaceRoot: root,
       env: {},
       exited: (why) => exited.push(why),
-    } as AgentSpawn)
+    } as WorkerSpawn)
     let got = ''
     for (let i = 0; i < 100 && got === ''; i++) {
       await Bun.sleep(50)
@@ -75,7 +75,7 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work
   }
 }, 20_000)
 
-it('says why an agent’s container ended before it joined', async () => {
+it('says why a worker’s container ended before it joined', async () => {
   const root = path.join(dir, 'ws2')
   const bin = path.join(dir, 'bin2')
   Bun.spawnSync(['mkdir', '-p', root, bin])
@@ -101,7 +101,7 @@ it('says why an agent’s container ended before it joined', async () => {
       workspaceRoot: root,
       env: {},
       exited: exited.resolve,
-    } as AgentSpawn)
+    } as WorkerSpawn)
     const why = await Promise.race([exited.promise, Bun.sleep(5_000).then(() => 'never said')])
     expect(why).toMatch(/^exited 3: error: no bun in image \(log: .+\)$/)
     const log = why.match(/\(log: ([^)]+)\)/)![1]!
@@ -111,7 +111,7 @@ it('says why an agent’s container ended before it joined', async () => {
   }
 }, 20_000)
 
-it('an agent shares this machine’s store: the same home, the same repository identity', async () => {
+it('a worker shares this machine’s store: the same home, the same repository identity', async () => {
   const root = path.join(dir, 'ws3')
   const bin = path.join(dir, 'bin3')
   const home = path.join(dir, 'home')
@@ -127,7 +127,7 @@ it('an agent shares this machine’s store: the same home, the same repository i
 printf '%s\\n' "$@" > ${argv}
 for a; do last=$a; done
 src=$(printf '%s\\n' "$@" | sed -n 's#^\\(.*\\):/src:ro$#\\1#p')
-printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work3#g; s#exec ./node_modules/.bin/vx dte agent#git remote get-url origin > ${out}#" | sh
+printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work3#g; s#exec ./node_modules/.bin/vx dte worker#git remote get-url origin > ${out}#" | sh
 `,
   )
   await chmod(path.join(bin, 'docker'), 0o755)
@@ -149,7 +149,7 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work
       workspaceRoot: root,
       env: {},
       exited: () => {},
-    } as AgentSpawn)
+    } as WorkerSpawn)
     let got = ''
     for (let i = 0; i < 100 && got === ''; i++) {
       await Bun.sleep(50)
@@ -195,7 +195,7 @@ it('on Linux, a container runs as this user, so what it writes in the store is t
       workspaceRoot: root,
       env: {},
       exited: () => {},
-    } as AgentSpawn)
+    } as WorkerSpawn)
     for (let i = 0; i < 100 && !(await Bun.file(argv).exists()); i++) await Bun.sleep(20)
     const args = (await readFile(argv, 'utf8')).split('\n')
     const linux = process.platform === 'linux'

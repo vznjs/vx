@@ -1,5 +1,5 @@
 // End-to-end encryption over the relay (design dte-2026-10.md, "Relay
-// encryption"): each agent and the orchestrator run a Noise handshake
+// encryption"): each worker and the orchestrator run a Noise handshake
 // (`noise.ts`) through it. With the run's key, `Noise_NNpsk0`: the key is
 // the psk, so only a side that holds it completes. On GitHub keyless,
 // `Noise_NN`, each side's OIDC token binding what it said. Every body after
@@ -122,7 +122,7 @@ function padded(n: number): number {
 }
 
 /**
- * One agent and the orchestrator after their handshake. Each body is
+ * One worker and the orchestrator after their handshake. Each body is
  * Noise transport messages of at most 64 KiB, each naming its nonce, as
  * Noise allows for a transport that may reorder (§11.4); a nonce seen
  * before is a replay.
@@ -174,7 +174,7 @@ class Session {
   }
 }
 
-/** An agent's poll raises it when a body from the orchestrator does not open: the relay changed or replayed it. */
+/** A worker's poll raises it when a body from the orchestrator does not open: the relay changed or replayed it. */
 export class SealError extends Error {}
 
 /** A flat object's JSON with sorted keys. */
@@ -186,13 +186,13 @@ function canonical(info: Record<string, unknown>): string {
 
 /**
  * The orchestrator's side, the responder. Each relay `joined` carries an
- * agent's first handshake message, its info the payload; one this side
+ * worker's first handshake message, its info the payload; one this side
  * completes is answered with the second and passed on with that info, one
  * it cannot is refused here and never seen.
  */
 export function sealOrchestrator(me: Participant, run: string, proof: Proof): Participant {
   const sessions = new Map<string, Session>()
-  /** An agent's first message, read: its info, and this side's answer. */
+  /** A worker's first message, read: its info, and this side's answer. */
   const admit = async (
     info: Record<string, unknown>,
   ): Promise<{ info: Record<string, unknown>; hello: object; session: Session } | undefined> => {
@@ -253,8 +253,8 @@ export function sealOrchestrator(me: Participant, run: string, proof: Proof): Pa
           out.push(m)
           continue
         }
-        // One from an agent already gone is dropped; one that does not open
-        // loses its agent, whose tasks run again elsewhere.
+        // One from a worker already gone is dropped; one that does not open
+        // loses its worker, whose tasks run again elsewhere.
         const s = sessions.get(m.from)
         if (s === undefined) continue
         const body = await s.open(m.body)
@@ -268,17 +268,17 @@ export function sealOrchestrator(me: Participant, run: string, proof: Proof): Pa
       }
       return out
     },
-    remove: (agent) => me.remove(agent),
+    remove: (worker) => me.remove(worker),
     leave: () => me.leave(),
   }
 }
 
 /**
- * The agent's side, the initiator: `join` with its first handshake message
+ * The worker's side, the initiator: `join` with its first handshake message
  * (`info` the payload, sealed under the psk), then wait for the
  * orchestrator's. Before it, only a plain `refused` is passed on.
  */
-export async function sealAgent(
+export async function sealWorker(
   joinAs: (info: Record<string, unknown>) => Promise<Participant>,
   run: string,
   proof: Proof,
@@ -339,12 +339,12 @@ export async function sealAgent(
       }
       return out
     },
-    remove: (agent) => me.remove(agent),
+    remove: (worker) => me.remove(worker),
     leave: () => me.leave(),
   }
 }
 
-/** A secret for one run, for agents its adapter starts. */
+/** A secret for one run, for workers its adapter starts. */
 export function runSecret(): string {
   return Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url')
 }

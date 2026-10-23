@@ -3,7 +3,7 @@
 // does not get through.
 
 import { afterEach, expect, it } from 'bun:test'
-import { githubProof, SealError, sealAgent, sealOrchestrator, secretProof } from '../src/seal.js'
+import { githubProof, SealError, sealWorker, sealOrchestrator, secretProof } from '../src/seal.js'
 import { join, type Participant, type RelayMessage } from '../src/wire.js'
 import { servedRelay } from './served-relay.js'
 
@@ -51,17 +51,17 @@ async function until(p: Participant, n = 1): Promise<RelayMessage[]> {
   return got
 }
 
-async function pair(secret = 's', agentSecret = secret) {
+async function pair(secret = 's', workerSecret = secret) {
   const r = relay()
   const o = sealOrchestrator(
     await join(r.url, R, 'orchestrator', null, undefined),
     R,
     secretProof(secret),
   )
-  const a = await sealAgent(
+  const a = await sealWorker(
     (info) => join(r.url, R, 'agent', info, undefined),
     R,
-    secretProof(agentSecret),
+    secretProof(workerSecret),
     {
       v: 1,
       cores: 2,
@@ -70,14 +70,14 @@ async function pair(secret = 's', agentSecret = secret) {
   return { r, o, a }
 }
 
-it('admits an agent its secret signed, and the relay carries no body it can read', async () => {
+it('admits a worker its secret signed, and the relay carries no body it can read', async () => {
   const { r, o, a } = await pair()
   const [joined] = await until(o)
   expect(joined!.body).toEqual({ type: 'joined', id: a.id, info: { v: 1, cores: 2 } })
-  // The cache access the run lends its agents is end-to-end encrypted too.
+  // The cache access the run lends its workers is end-to-end encrypted too.
   const welcome = {
     type: 'welcome',
-    name: 'agent#1',
+    name: 'worker#1',
     cache: { refs: [], lent: { '@vzn/vx-migrate': 'lent-cache-token' } },
   }
   await o.send(a.id, welcome)
@@ -86,7 +86,7 @@ it('admits an agent its secret signed, and the relay carries no body it can read
   expect((await until(o)).map((m) => m.body)).toEqual([
     { type: 'start', task: 'app#build-secret-name' },
   ])
-  expect(r.bodies.join('\n')).not.toContain('agent#1')
+  expect(r.bodies.join('\n')).not.toContain('worker#1')
   expect(r.bodies.join('\n')).not.toContain('lent-cache-token')
   expect(r.bodies.join('\n')).not.toContain('build-secret-name')
 })
@@ -108,7 +108,7 @@ it('pads each body to its size class, so the relay learns no size within one', a
   expect((JSON.parse(r.bodies.at(-1)!) as { body: { seal: string[] } }).body.seal).toHaveLength(2)
 })
 
-it('refuses an agent with another secret, and an agent refuses an orchestrator with another', async () => {
+it('refuses a worker with another secret, and a worker refuses an orchestrator with another', async () => {
   const { o, a } = await pair('s', 'other')
   expect(await o.poll()).toEqual([])
   expect((await until(a)).map((m) => m.body)).toEqual([
@@ -119,7 +119,7 @@ it('refuses an agent with another secret, and an agent refuses an orchestrator w
 
   const r = relay()
   const o2 = await join(r.url, R2, 'orchestrator', null, undefined)
-  const a2 = await sealAgent(
+  const a2 = await sealWorker(
     (info) => join(r.url, R2, 'agent', info, undefined),
     R2,
     secretProof('s'),
@@ -132,10 +132,10 @@ it('refuses an agent with another secret, and an agent refuses an orchestrator w
   await expect(a2.poll()).rejects.toThrow(SealError)
 })
 
-it('loses an agent whose body the relay changed, and drops one it replays', async () => {
+it('loses a worker whose body the relay changed, and drops one it replays', async () => {
   const { r, o, a } = await pair()
   await until(o)
-  await o.send(a.id, { type: 'welcome', name: 'agent#1' })
+  await o.send(a.id, { type: 'welcome', name: 'worker#1' })
   await until(a)
   await a.send('orchestrator', { type: 'start', task: 't' })
   const sent = r.bodies.at(-1)!
@@ -203,7 +203,7 @@ it('on GitHub, admits by OIDC tokens of this repository whose audience is the ke
       R3,
       githubProof(keys),
     )
-    const a = await sealAgent(
+    const a = await sealWorker(
       (info) => join(r.url, R3, 'agent', info, undefined),
       R3,
       githubProof(keys),
@@ -212,15 +212,15 @@ it('on GitHub, admits by OIDC tokens of this repository whose audience is the ke
     expect((await until(o)).map((m) => m.body)).toEqual([
       { type: 'joined', id: a.id, info: { v: 1 } },
     ])
-    await o.send(a.id, { type: 'welcome', name: 'agent#1' })
-    expect((await until(a)).map((m) => m.body)).toEqual([{ type: 'welcome', name: 'agent#1' }])
+    await o.send(a.id, { type: 'welcome', name: 'worker#1' })
+    expect((await until(a)).map((m) => m.body)).toEqual([{ type: 'welcome', name: 'worker#1' }])
     // Each side reads GitHub's keys once, for every check it makes.
     const config = `${ISS}/.well-known/openid-configuration`
     expect(fetched.sort()).toEqual([config, config, `${ISS}/jwks`, `${ISS}/jwks`].sort())
 
     // A token of another repository is refused.
     repo = '12'
-    const b = await sealAgent(
+    const b = await sealWorker(
       (info) => join(r.url, R3, 'agent', info, undefined),
       R3,
       githubProof(keys),

@@ -5,10 +5,10 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
-  // Who may take part: this repo's CI and its agents. A plain var, never a
+  // Who may take part: this repo's CI and its workers. A plain var, never a
   // secret, hardcoded here so each deploy sets it (owner, 2026-10-23).
   "vars": {
-    "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml https://token.actions.githubusercontent.com:vznjs/vx:vx-agent.yml",
+    "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml https://token.actions.githubusercontent.com:vznjs/vx:vx-agent.yml https://token.actions.githubusercontent.com:vznjs/vx:vx-worker.yml",
   },
   "durable_objects": {
     "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }],

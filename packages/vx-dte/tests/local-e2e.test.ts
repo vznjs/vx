@@ -1,4 +1,4 @@
-// A distributed run end to end on `local()`: the agents are processes in
+// A distributed run end to end on `local()`: the workers are processes in
 // their own git worktrees, joined through the adapter's loopback relay.
 
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -8,7 +8,7 @@ import { afterEach, beforeEach, expect, it } from 'bun:test'
 
 const DTE = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
-// Relative, as this package's test task sets it: each agent's worktree
+// Relative, as this package's test task sets it: each worker's worktree
 // must still share the run's store.
 process.env['VX_CACHE_DIR'] = '.vx/cache'
 let root = ''
@@ -19,7 +19,7 @@ beforeEach(async () => {
     'package.json': JSON.stringify({ name: 'ws', private: true }),
     '.gitignore': 'out\n.vx/cache\n',
     '.vx/workspace.mjs': `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB' } }, adapter: local() })] }
+export default { plugins: [dte({ workers: { small: { max: 2, cpu: 1, memory: '1GB' } }, adapter: local() })] }
 `,
     'a/vx.config.mjs': `export default { name: 'a', tasks: { gen: {
   exec: { command: 'mkdir -p out && echo made > out/a.txt' },
@@ -27,7 +27,7 @@ export default { plugins: [dte({ agents: { small: { max: 2, cpu: 1, memory: '1GB
   cache: { outputs: { files: ['out/**'] } },
 } } }
 `,
-    // The marker lives outside every worktree, so the agent that runs the
+    // The marker lives outside every worktree, so the worker that runs the
     // task again sees the first one started it: in its own worktree it
     // slept the 60 s out (80 s of this file's 111 s).
     'b/vx.config.mjs': `const once = ${JSON.stringify(path.join(root, 'once'))}
@@ -56,7 +56,7 @@ export default { name: 's', tasks: {
 } }
 `,
     // Keys that fold a runtime probe: one every machine answers alike, one
-    // the agent's worktree answers otherwise.
+    // the worker's worktree answers otherwise.
     'r/vx.config.mjs': `const log = ${JSON.stringify(path.join(root, 'probed.log'))}
 const t = (probe) => ({
   exec: { command: 'echo "$PWD" >> ' + log },
@@ -102,8 +102,8 @@ function vx(args: string[], run?: string, extra: Record<string, string> = {}) {
   })
 }
 
-it('runs a task on an agent with its dependency’s outputs, and brings its outputs back', async () => {
-  // a#gen runs here, so its outputs must travel to the agent that runs b#use.
+it('runs a task on a worker with its dependency’s outputs, and brings its outputs back', async () => {
+  // a#gen runs here, so its outputs must travel to the worker that runs b#use.
   expect(vx(['run', 'a#gen']).exitCode).toBe(0)
   const first = vx(['run', 'b#use'], 'e2e-1')
   const out = first.stdout.toString() + first.stderr.toString()
@@ -116,31 +116,31 @@ it('runs a task on an agent with its dependency’s outputs, and brings its outp
   const second = vx(['run', 'b#use'], 'e2e-2')
   expect(second.exitCode).toBe(0)
   expect(second.stdout.toString()).toContain('local 2✓')
-  // Nothing to run: no agent starts.
-  expect(second.stdout.toString()).not.toContain('agents')
+  // Nothing to run: no worker starts.
+  expect(second.stdout.toString()).not.toMatch(/^ {2}workers /m)
 }, 60_000)
 
-// `--force` reads no hit, but an agent's entry is the run's own work: it
+// `--force` reads no hit, but a worker's entry is the run's own work: it
 // came back unreadable and every task failed.
-it('brings an agent’s outputs back under --force', async () => {
+it('brings a worker’s outputs back under --force', async () => {
   const run = vx(['run', 'b#use', '--force'], 'e2e-force')
   const out = run.stdout.toString() + run.stderr.toString()
   expect([run.exitCode, out]).toEqual([0, expect.stringContaining('used')])
   expect(await readFile(path.join(root, 'b/out/b.txt'), 'utf8')).toBe('made\n')
 }, 60_000)
 
-// An idle agent stays while the rest of the run will need it again: one
+// An idle worker stays while the rest of the run will need it again: one
 // left in the lull and another started for the wide part after it.
-it('keeps an idle agent the rest of the run needs again', () => {
+it('keeps an idle worker the rest of the run needs again', () => {
   const r = vx(['run', 'c#z1', 'c#z2'], 'e2e-lull')
   const out = r.stdout.toString() + r.stderr.toString()
   expect([r.exitCode, out]).toEqual([0, expect.stringContaining('small#2')])
   expect(out).not.toContain('small#3')
 }, 60_000)
 
-// The agent running a task is killed: the task runs again on one the run
+// The worker running a task is killed: the task runs again on one the run
 // starts in its place, where it once waited for it forever.
-it('runs a task again on a new agent when its agent is killed', async () => {
+it('runs a task again on a new worker when its worker is killed', async () => {
   const { VX_DTE_RUN: _, ...env } = process.env
   const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#once'], {
     cwd: root,
@@ -150,27 +150,27 @@ it('runs a task again on a new agent when its agent is killed', async () => {
   })
   const marker = (): Promise<boolean> => Bun.file(path.join(root, 'once')).exists()
   for (let i = 0; i < 200 && !(await marker()); i++) await Bun.sleep(100)
-  const agents = Bun.spawnSync(['pgrep', '-P', String(run.pid), '-f', 'dte agent'])
-  const pids = agents.stdout.toString().trim().split('\n').filter(Boolean)
+  const workers = Bun.spawnSync(['pgrep', '-P', String(run.pid), '-f', 'dte worker'])
+  const pids = workers.stdout.toString().trim().split('\n').filter(Boolean)
   expect(pids).toHaveLength(1)
   process.kill(Number(pids[0]), 'SIGKILL')
   const out = (await new Response(run.stdout).text()) + (await new Response(run.stderr).text())
   expect([await run.exited, out]).toEqual([0, expect.stringContaining('again')])
 }, 90_000)
 
-// The orchestrator sends each task its own resolved env, and an agent adds
+// The orchestrator sends each task its own resolved env, and a worker adds
 // only its host names and PATH: a name the task does not pass through
 // reaches it from neither machine's env.
-it('gives a task on an agent only the env it passes through', () => {
+it('gives a task on a worker only the env it passes through', () => {
   const r = vx(['run', 'b#env'], 'e2e-env', { VX_E2E_SHOWN: 'yes', VX_E2E_HIDDEN: 'leak' })
   const out = r.stdout.toString() + r.stderr.toString()
   expect([r.exitCode, out]).toEqual([0, expect.stringContaining('shown=yes hidden=none')])
-  expect(out).toContain('agents')
+  expect(out).toMatch(/^ {2}workers /m)
 }, 60_000)
 
-// Nothing runs on the orchestrator (owner, 2026-10-22): each agent that
+// Nothing runs on the orchestrator (owner, 2026-10-22): each worker that
 // runs a server's dependant starts the server itself, once, beside it.
-it('starts a task’s server on the agent that runs it, once per agent, never here', async () => {
+it('starts a task’s server on the worker that runs it, once per worker, never here', async () => {
   const r = vx(['run', 's#t1', 's#t2', 's#t3'], 'e2e-srv')
   const out = r.stdout.toString() + r.stderr.toString()
   expect([r.exitCode, out]).toEqual([0, expect.stringContaining('saw3')])
@@ -180,10 +180,10 @@ it('starts a task’s server on the agent that runs it, once per agent, never he
 }, 60_000)
 
 // Nothing runs on the orchestrator (owner, 2026-10-22), a task that keys
-// on `bun --version` included: its agent answers the probe, and one that
+// on `bun --version` included: its worker answers the probe, and one that
 // answers otherwise than this machine fails it, as its key holds this
 // machine's answer (C-2).
-it('runs a task whose key folds a runtime probe on an agent that answers it alike', async () => {
+it('runs a task whose key folds a runtime probe on a worker that answers it alike', async () => {
   const r = vx(['run', 'r#same'], 'e2e-probe')
   expect(r.exitCode).toBe(0)
   const ran = (await readFile(path.join(root, 'probed.log'), 'utf8')).trim().split('\n')
@@ -191,19 +191,19 @@ it('runs a task whose key folds a runtime probe on an agent that answers it alik
   expect(ran[0]).not.toBe(path.join(root, 'r'))
 }, 60_000)
 
-it('fails a task on an agent whose runtime probe answers otherwise', () => {
+it('fails a task on a worker whose runtime probe answers otherwise', () => {
   const r = vx(['run', 'r#here'], 'e2e-probe')
   const out = r.stdout.toString() + r.stderr.toString()
   expect([r.exitCode, out]).toEqual([1, expect.stringContaining('`pwd` answers')])
 }, 60_000)
 
-it('fails a task that fails on its agent, with its output', () => {
+it('fails a task that fails on its worker, with its output', () => {
   const r = vx(['run', 'b#fail'], 'e2e')
   expect(r.exitCode).not.toBe(0)
   expect(r.stdout.toString() + r.stderr.toString()).toContain('oops')
 }, 60_000)
 
-it('runs on an agent started by hand, with no adapter, under one name on both sides', async () => {
+it('runs on a worker started by hand, with no adapter, under one name on both sides', async () => {
   const { serveRelay } = await import('@vzn/vx-dte-relay')
   const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
   const url = relay.url
@@ -223,7 +223,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)} })] }
     expect(vx(['run', 'a#gen']).exitCode).toBe(0)
     const { VX_DTE_RUN: _, ...env } = process.env
     const hand = crypto.randomUUID()
-    const agent = Bun.spawn([process.execPath, CORE_BIN, 'dte', 'agent'], {
+    const worker = Bun.spawn([process.execPath, CORE_BIN, 'dte', 'worker'], {
       cwd: root,
       env: { ...env, VX_DTE_RUN: hand, VX_DTE_SECRET: 'hand-secret', NO_COLOR: '1' },
       stdout: 'pipe',
@@ -239,21 +239,21 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)} })] }
     const out = await new Response(run.stdout).text()
     expect([await run.exited, out]).toEqual([
       0,
-      expect.stringMatching(/└─ b#use · agent#1 ── .*success/),
+      expect.stringMatching(/└─ b#use · worker#1 ── .*success/),
     ])
-    expect(out).toMatch(/agents +agent#1  stopped  1 done\n +actual \d+c\/[\d.]+G$/m)
-    const own = await new Response(agent.stdout).text()
-    expect(await agent.exited).toBe(0)
-    expect(own).toMatch(/agent +agent#1/)
+    expect(out).toMatch(/workers +worker#1  stopped  1 done\n +actual \d+c\/[\d.]+G$/m)
+    const own = await new Response(worker.stdout).text()
+    expect(await worker.exited).toBe(0)
+    expect(own).toMatch(/worker +worker#1/)
     expect(own).toContain('✓ b#use')
   } finally {
     await relay.stop()
   }
 }, 60_000)
 
-// A CI step that started an agent before the run began (github()'s
+// A CI step that started a worker before the run began (github()'s
 // adopt): the run counts it against its size's max and starts no other.
-it('runs on an agent the adapter adopted, and starts none of its own', async () => {
+it('runs on a worker the adapter adopted, and starts none of its own', async () => {
   const { serveRelay } = await import('@vzn/vx-dte-relay')
   const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
   const url = relay.url
@@ -264,10 +264,10 @@ it('runs on an agent the adapter adopted, and starts none of its own', async () 
       `import { appendFileSync } from 'node:fs'
 import { dte } from ${JSON.stringify(DTE)}
 const adapter = {
-  adopt(agent) { agent('small#3', 'small') },
+  adopt(worker) { worker('small#3', 'small') },
   spawn(a) { appendFileSync(${JSON.stringify(spawns)}, a.id + '\\n') },
 }
-export default { plugins: [dte({ relay: ${JSON.stringify(url)}, agents: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter })] }
+export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter })] }
 `,
     )
     Bun.spawnSync(
@@ -278,9 +278,9 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, agents: { small:
     const { VX_DTE_RUN: _, ...env } = process.env
     const id = crypto.randomUUID()
     const shared = { ...env, VX_DTE_RUN: id, VX_DTE_SECRET: 'adopt-secret', NO_COLOR: '1' }
-    const agent = Bun.spawn([process.execPath, CORE_BIN, 'dte', 'agent'], {
+    const worker = Bun.spawn([process.execPath, CORE_BIN, 'dte', 'worker'], {
       cwd: root,
-      env: { ...shared, VX_DTE_AGENT: 'small#3' },
+      env: { ...shared, VX_DTE_WORKER: 'small#3' },
       stdout: 'pipe',
       stderr: 'pipe',
     })
@@ -295,7 +295,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, agents: { small:
       0,
       expect.stringMatching(/└─ b#use · small#3 ── .*success/),
     ])
-    expect(await agent.exited).toBe(0)
+    expect(await worker.exited).toBe(0)
     expect(await Bun.file(spawns).exists()).toBe(false)
   } finally {
     await relay.stop()
@@ -328,7 +328,7 @@ const alive = (pid: number): boolean => {
 }
 
 it.each(['SIGHUP', 'SIGINT'] as const)(
-  'a %s to the run stops its agents and removes their worktrees',
+  'a %s to the run stops its workers and removes their worktrees',
   async (sig) => {
     const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-sig-'))
     try {
@@ -339,7 +339,7 @@ it.each(['SIGHUP', 'SIGINT'] as const)(
         stdout: 'pipe',
         stderr: 'pipe',
       })
-      // The agent's worktree is `<tmp>/vx-dte-*/1`; the task touches `started` in it.
+      // The worker's worktree is `<tmp>/vx-dte-*/1`; the task touches `started` in it.
       const started = async (): Promise<boolean> => {
         for (const d of await readdir(tmp)) {
           if (await Bun.file(path.join(tmp, d, '1', 'b', 'started')).exists()) return true
@@ -389,7 +389,7 @@ it('a stopped run exits before its installed worktrees are removed', async () =>
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),
     `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'mkdir nm && touch nm/a' }) })] }
+export default { plugins: [dte({ workers: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'mkdir nm && touch nm/a' }) })] }
 `,
   )
   Bun.spawnSync(
@@ -452,11 +452,11 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB
   }
 }, 60_000)
 
-it('says why an agent never joined, and fails the run when none can', async () => {
+it('says why a worker never joined, and fails the run when none can', async () => {
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),
     `import { dte, local } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'echo no bun here >&2; exit 4' }) })] }
+export default { plugins: [dte({ workers: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'echo no bun here >&2; exit 4' }) })] }
 `,
   )
   Bun.spawnSync(
@@ -469,15 +469,15 @@ export default { plugins: [dte({ agents: { small: { max: 1, cpu: 1, memory: '1GB
   const out = r.stdout.toString() + r.stderr.toString()
   expect(r.exitCode).not.toBe(0)
   expect(out).toMatch(/small#1  failed  prepare exited 4: no bun here/)
-  expect(out).toContain('no agent could start')
+  expect(out).toContain('no worker could start')
   const log = out.match(/\(log: ([^)]+)\)/)?.[1]
   expect(log === undefined ? '' : await readFile(log, 'utf8')).toBe('no bun here\n')
   if (log !== undefined) await rm(path.dirname(log), { recursive: true, force: true })
 }, 60_000)
 
-it('agents run the tracked files as they are, uncommitted changes too', async () => {
+it('workers run the tracked files as they are, uncommitted changes too', async () => {
   // Committed without dte(), as a user trying it first: a worktree of HEAD
-  // alone had no `dte` verb, so every agent exited.
+  // alone had no `dte` verb, so every worker exited.
   const ws = path.join(root, '.vx/workspace.mjs')
   const withDte = await readFile(ws, 'utf8')
   await writeFile(ws, 'export default { plugins: [] }\n')

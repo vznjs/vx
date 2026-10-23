@@ -1,9 +1,9 @@
-# The agents of a distributed run (@vzn/vx-dte's github()): each of CI's
+# The workers of a distributed run (@vzn/vx-dte's github()): each of CI's
 # three jobs is a run, and dispatches this once per size with that size's
-# agents as the matrix: `small` for the Linux run, `arm` for the arm64
-# binary's, `mac` for the macOS one. Each agent proves itself to the relay and
+# workers as the matrix: `small` for the Linux run, `arm` for the arm64
+# binary's, `mac` for the macOS one. Each worker proves itself to the relay and
 # the run by its OIDC token; there is no secret.
-name: vx-agent
+name: vx-worker
 
 on:
   workflow_dispatch:
@@ -12,31 +12,31 @@ on:
       relay: { required: true }
       sha: { required: true }
       size: { required: true }
-      agents: { required: true }
+      workers: { required: true }
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
-  agent:
-    name: ${{ matrix.agent }}
+  worker:
+    name: ${{ matrix.worker }}
     runs-on: ${{ fromJSON('{"small":"ubuntu-latest","arm":"ubuntu-24.04-arm","mac":"macos-latest"}')[inputs.size] }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        agent: ${{ fromJSON(inputs.agents) }}
+        worker: ${{ fromJSON(inputs.workers) }}
     env:
       VX_DTE_RUN: ${{ inputs.run }}
       VX_DTE_RELAY: ${{ inputs.relay }}
-      VX_DTE_AGENT: ${{ matrix.agent }}
+      VX_DTE_WORKER: ${{ matrix.worker }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # The full history: the API-break law reads the last release's tag
         # and the commits after it; the PR-commit law walks base..head.
         # Without old blobs (fetched on demand, few differ from HEAD's): the
-        # full clone was 5-7 s of every agent's warm-up.
+        # full clone was 5-7 s of every worker's warm-up.
         with:
           ref: ${{ inputs.sha }}
           fetch-depth: 0
@@ -51,7 +51,7 @@ jobs:
 
       # The sandbox runtime, as @vzn/vx-ci sets it up. Its packages are
       # kept per runner image: a hit installs them with no index fetch
-      # (14 to 52 s of an agent's warm-up, 2026-10-22).
+      # (14 to 52 s of a worker's warm-up, 2026-10-22).
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/vx/setup-debs
@@ -65,9 +65,9 @@ jobs:
           path: ~/.cache/vx/setup-debs
           key: ${{ steps.setup.outputs.key }}
 
-      - name: vx dte agent
-        run: bun packages/vx/src/bin.ts dte agent
+      - name: vx dte worker
+        run: bun packages/vx/src/bin.ts dte worker
         env:
-          # The agent's own store, out of the home the tests' guard watches:
+          # The worker's own store, out of the home the tests' guard watches:
           # it saves there while a suite runs (tests/helpers/home-guard.ts).
           VX_CACHE_DIR: ${{ runner.temp }}/vx-cache

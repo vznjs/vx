@@ -114,7 +114,7 @@ async function open(
 
 it('offers sockets, pushes each message down one and takes sends from it', async () => {
   const o = await join('orchestrator')
-  const a = await join('agent')
+  const a = await join('worker')
   expect([o.socket, a.socket]).toEqual([true, true])
   const os = await open(o.id, true)
   const as = await open(a.id)
@@ -139,7 +139,7 @@ it('offers sockets, pushes each message down one and takes sends from it', async
 // A failed upgrade tells a client nothing it can read: one the relay does
 // not know is let in and closed as gone, so it stops dialing.
 it('closes a socket of a run or id it does not know as gone, and refuses one without a token', async () => {
-  const a = await join('agent', R3)
+  const a = await join('worker', R3)
   expect(a.socket).toBe(true)
   const closed = async (run: string, id: string): Promise<number> => {
     const path = `/v1/runs/${run}/socket?id=${id}`
@@ -156,7 +156,7 @@ it('closes a socket of a run or id it does not know as gone, and refuses one wit
 it('reads an issuer’s keys once for all the runs it carries', async () => {
   // Each run is its own object; keys read per object cost every join two
   // fetches of the issuer (2026-10-22).
-  await join('agent', '00000000-0000-4000-8000-000000000004')
-  await join('agent', '00000000-0000-4000-8000-000000000005')
+  await join('worker', '00000000-0000-4000-8000-000000000004')
+  await join('worker', '00000000-0000-4000-8000-000000000005')
   expect(fetched).toEqual([`${ISS}/.well-known/openid-configuration`, `${ISS}/jwks`])
 })

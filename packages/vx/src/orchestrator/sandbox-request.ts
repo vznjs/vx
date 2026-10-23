@@ -45,7 +45,7 @@ export interface SandboxArmer {
   readonly armed: boolean
 }
 
-/** What the run's sandbox union reads of a task: a `TaskNode`, or an agent's order. */
+/** What the run's sandbox union reads of a task: a `TaskNode`, or a worker's order. */
 export interface SandboxedNode {
   readonly config: { readonly exec?: { readonly sandbox?: ExecConfig['sandbox'] } }
 }

@@ -1,4 +1,4 @@
-// The files a task's declared outputs match in a checkout: what an agent
+// The files a task's declared outputs match in a checkout: what a worker
 // clears before it runs the task, so an earlier task's files under them
 // are not saved as this one's.
 

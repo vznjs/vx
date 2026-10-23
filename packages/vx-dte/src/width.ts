@@ -1,8 +1,8 @@
 // How many cores the rest of a run keeps busy: its remaining tasks laid
 // out as early as their dependencies allow, each for its usual duration,
-// on as many cores as they ask. The run starts agents for its work spread
+// on as many cores as they ask. The run starts workers for its work spread
 // over its critical path, so it ends near that path: not its peak, which
-// a moment fills and leaves agents idle, and not a level held for half its
+// a moment fills and leaves workers idle, and not a level held for half its
 // length, which one long task stretches until the wide part queues.
 
 import type { TaskNode } from '@vzn/vx'
@@ -69,7 +69,7 @@ export function tailsMs(
 
 /**
  * How long the remaining tasks take at the least: their critical path,
- * each for its usual duration. An agent asked for now that warms up
+ * each for its usual duration. A worker asked for now that warms up
  * longer than this joins a run with nothing left for it.
  */
 export function endsInMs(
@@ -85,9 +85,9 @@ export function busyCores(
   nodes: ReadonlyMap<string, TaskNode>,
   cores: (id: string) => number,
   durationMs: (id: string) => number | undefined,
-  // The most cores in use at once, for agents that cannot come back once they leave.
+  // The most cores in use at once, for workers that cannot come back once they leave.
   peak = false,
-  // Only the work from this far on: an agent asked for now joins after its
+  // Only the work from this far on: a worker asked for now joins after its
   // warm-up, so a wide part that ends sooner is not its to fill.
   fromMs = 0,
 ): number {
@@ -103,7 +103,7 @@ export function busyCores(
     // A task longer than half the path covers its middle wherever it runs
     // in it, so those all run at once: 36 shards of 40 to 75 s spread as
     // work over the slowest queued half of them for a second wave (main,
-    // 2026-10-22: 6 of 8 agents, 128 s).
+    // 2026-10-22: 6 of 8 workers, 128 s).
     const long = spans.reduce((n, s) => (2 * (s.end - s.start) > span ? n + s.cores : n), 0)
     return Math.max(1, Math.ceil(work / span), Math.ceil(long))
   }
@@ -119,7 +119,7 @@ export function busyCores(
   return most
 }
 
-/** One kind of agent, as `dte()` resolved it: memory in bytes, `max` Infinity when uncapped. */
+/** One kind of worker, as `dte()` resolved it: memory in bytes, `max` Infinity when uncapped. */
 export interface Size {
   readonly name: string
   readonly max: number
@@ -128,7 +128,7 @@ export interface Size {
 }
 
 /**
- * The agents to start next, in order: for each task that filled its agent
+ * The workers to start next, in order: for each task that filled its worker
  * last time (`above`), one of the smallest size bigger than it while the
  * run has none of that size; then sizes in declared order while the cores
  * started fall short of `wantCores`.

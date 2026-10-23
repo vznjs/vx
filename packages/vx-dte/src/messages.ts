@@ -1,30 +1,30 @@
-// What the orchestrator and its agents say to each other through the relay
+// What the orchestrator and its workers say to each other through the relay
 // (the relay never reads it): orders and status only. Every task's files
 // and output go through the workspace's cache, by the keys these name.
 
 import type { CacheFacts, ExecuteResult, SandboxConfig } from '@vzn/vx'
 
 /**
- * An agent says what it holds every this many heartbeats. Each says is a
+ * A worker says what it holds every this many heartbeats. Each says is a
  * relay message its host bills; at one per heartbeat they were most of a
  * run's traffic (2026-10-22), and the relay's own heartbeat finds a dead
- * agent sooner.
+ * worker sooner.
  */
 export const HELD_EVERY = 6
 
-/** An agent's `join` info. */
-export interface AgentInfo {
+/** A worker's `join` info. */
+export interface WorkerInfo {
   readonly v: 1
-  /** `AgentSpawn.id` (`VX_DTE_AGENT`), for an agent the run started. */
+  /** `WorkerSpawn.id` (`VX_DTE_WORKER`), for a worker the run started. */
   readonly id?: string
   /** What its machine has (core's `machineParallelism`, `machineMemoryBytes`), not what its size says. */
   readonly cores: number
   readonly memory: number
-  /** Its checkout's tree: an agent with other tracked files than the run is refused. */
+  /** Its checkout's tree: a worker with other tracked files than the run is refused. */
   readonly tree: string
 }
 
-/** A task whose files the agent restores before it runs one that needs them. */
+/** A task whose files the worker restores before it runs one that needs them. */
 export interface DepOrder {
   task: string
   /** Where its entry is: its cache key, or the run key it was saved under. */
@@ -34,14 +34,14 @@ export interface DepOrder {
   outputs: { files: string[]; workspaceFiles: string[] }
 }
 
-/** One task an agent is sent. */
+/** One task a worker is sent. */
 export interface RunOrder {
   task: string
   /** Its cache key, which a success with no violation is saved under; absent, uncached. */
   key?: string
   /** What anything else is saved under: no hit ever serves it. */
   runKey: string
-  /** The tasks it depends on, transitively, whose files the agent does not hold yet. */
+  /** The tasks it depends on, transitively, whose files the worker does not hold yet. */
   deps: DepOrder[]
   /** Workspace-relative projects inside `project`, whose files are not its outputs. */
   nested: string[]
@@ -52,18 +52,18 @@ export interface RunOrder {
   env: Record<string, string>
   timeoutMs?: number
   outputs: { files: string[]; workspaceFiles: string[] }
-  /** Its recorded peak: the agent starts it when that much is free. */
+  /** Its recorded peak: the worker starts it when that much is free. */
   cores: number
   memory: number
   /**
    * Its `exec.sandbox`, and for a cached task the projects its key answers
-   * for (workspace-relative): the agent builds the request on its own
+   * for (workspace-relative): the worker builds the request on its own
    * paths and OS (`sandboxRequestFor`), as its orchestrator may run another.
    */
   sandbox?: { config: SandboxConfig; keyed?: string[] }
-  /** Its persistent dependencies (`ServerSpec`), `cwd` workspace-relative: the agent starts each once. */
+  /** Its persistent dependencies (`ServerSpec`), `cwd` workspace-relative: the worker starts each once. */
   servers?: ServerOrder[]
-  /** The runtime probes its key folds, as the orchestrator answered them: the agent's must answer the same. */
+  /** The runtime probes its key folds, as the orchestrator answered them: the worker's must answer the same. */
   runtime?: RuntimeOrder[]
 }
 
@@ -83,15 +83,15 @@ export interface ServerOrder {
   timeoutMs?: number
 }
 
-export type ToAgent =
-  /** Tasks for its free capacity and a little more; `root` is swapped for the agent's in `env`. */
+export type ToWorker =
+  /** Tasks for its free capacity and a little more; `root` is swapped for the worker's in `env`. */
   | {
       type: 'batch'
       root: string
       /** `root`'s real path, as sandbox paths spell it. */
       realRoot: string
       tasks: RunOrder[]
-      /** The run's sandboxed tasks' `exec.sandbox`, in an agent's first batch that has a sandboxed task. */
+      /** The run's sandboxed tasks' `exec.sandbox`, in a worker's first batch that has a sandboxed task. */
       sandboxes?: SandboxConfig[]
     }
   | { type: 'cancel'; task: string }
@@ -123,7 +123,7 @@ export type ToOrchestrator =
   | { type: 'held'; running: string[]; queued: string[] }
   /** It could not run a task it began, not a non-zero exit: a full disk, a failed unpack. */
   | { type: 'fault'; task: string; reason: string }
-  /** It gave back a task from its queue, unbegun: another agent runs it. */
+  /** It gave back a task from its queue, unbegun: another worker runs it. */
   | { type: 'withdrawn'; task: string }
   /** It ran the task and saved it under `key`; its output is in that entry. */
   | { type: 'end'; task: string; key: string; result: WiredResult }
@@ -135,10 +135,10 @@ export type WiredResult = Omit<ExecuteResult, 'violations' | 'outputs' | 'stdout
 
 /**
  * Whether a task asking `need` begins beside the work holding `used` of
- * an agent's `of`: while a core is free and its memory fits. Packed only
- * to whole needs, an agent kept the cores no queued task fit: main's
+ * a worker's `of`: while a core is free and its memory fits. Packed only
+ * to whole needs, a worker kept the cores no queued task fit: main's
  * booked 3.2 of 4 and used 2.6 (2026-10-23). A task asking the whole
- * agent waits for an idle one.
+ * worker waits for an idle one.
  */
 export function shares(
   used: { readonly cores: number; readonly memory: number },

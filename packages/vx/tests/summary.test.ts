@@ -414,15 +414,15 @@ describe('formatRunSummary', () => {
       concurrency: 4,
       executorRows: () =>
         [
-          ['agents', '1 online'],
+          ['workers', '1 online'],
           ['', 'small#1  1 ran'],
         ] as const,
     }
     const lines = formatRunSummary([outcome('a#x', 'success')], 10, { enabled: false }, ctx)
-    const at = lines.findIndex((l) => l.startsWith('  agents'))
+    const at = lines.findIndex((l) => l.startsWith('  workers'))
     expect(lines.slice(at - 1, at + 4)).toEqual([
       '',
-      '  agents    1 online',
+      '  workers   1 online',
       '            small#1  1 ran',
       '',
       '  info      local cache',

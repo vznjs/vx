@@ -99,7 +99,7 @@ describe('renderJobSummary', () => {
     expect(md).not.toContain('| Verify |')
   })
 
-  // Owner, 2026-10-23: the page shows each DTE agent, booked beside used.
+  // Owner, 2026-10-23: the page shows each DTE worker, booked beside used.
   it('names each machine the run used, booked beside used, and the totals', () => {
     const m = {
       status: 'left',

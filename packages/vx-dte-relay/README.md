@@ -3,8 +3,8 @@
 Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 
 The reference relay for `@vzn/vx-dte`, which spreads one `vx run` over CI
-agents. CI runners take no inbound connection, so the run's orchestrator
-and its agents all dial out to a relay, which passes their messages on.
+workers. CI runners take no inbound connection, so the run's orchestrator
+and its workers all dial out to a relay, which passes their messages on.
 It admits only CI OIDC tokens of the repositories it names, and binds
 each run to the repository that started it.
 
@@ -26,7 +26,7 @@ in your copy's `wrangler.jsonc`, since each deploy sets vars from that file.
 jobs of `.github/workflows/ci.yml` in `vznjs/vx`;
 `https://gitlab.com:group/project:.gitlab-ci.yml` a GitLab project's.
 Repeat an entry for each repository and workflow, the orchestrator's and
-the agents'. Every other token is refused. The relay's URL is the worker's URL, such
+the workers'. Every other token is refused. The relay's URL is the Cloudflare Worker's URL, such
 as `https://vx-dte-relay.<you>.workers.dev`. Name it as `relay` in
 `dte()`.
 

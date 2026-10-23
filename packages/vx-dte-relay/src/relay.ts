@@ -1,8 +1,8 @@
 // The relay of PROTOCOL.md: per-run mailboxes between one orchestrator and
-// its agents, held in memory: a relay restart ends the runs it carried,
+// its workers, held in memory: a relay restart ends the runs it carried,
 // unless a `store` keeps them (a Durable Object's, across hibernation).
 // It knows as little as routing needs: a run is a hash, bodies and an
-// agent's info are its peers' ciphertext, and no body is ever stored.
+// worker's info are its peers' ciphertext, and no body is ever stored.
 
 import { TokenError, type VerifiedToken } from './oidc.js'
 import { importKey, PROOF_HEADER, proofText, verifyProof } from './proof.js'
@@ -68,8 +68,8 @@ interface Message {
 
 interface Participant {
   id: string
-  role: 'orchestrator' | 'agent'
-  /** An agent's, until the orchestrator is told it joined. */
+  role: 'orchestrator' | 'worker'
+  /** A worker's, until the orchestrator is told it joined. */
   info: unknown
   seen: number
   /** The `seen` its host's storage holds. */
@@ -107,7 +107,7 @@ const MAX_QUEUE = 10_000
 /** 10 000 bodies of 1 MiB would be 10 GiB held for one participant with no socket. */
 const MAX_QUEUE_BYTES = 64 << 20
 /**
- * A closed run with an agent that has no socket answers `join` `410`
+ * A closed run with a worker that has no socket answers `join` `410`
  * this many heartbeats (a minute); one on a socket is told at once, and
  * the run goes when none is left. Its storage goes with it: an object
  * kept a day per run held 100+ on one host (owner, 2026-10-22).
@@ -115,9 +115,9 @@ const MAX_QUEUE_BYTES = 64 << 20
 const CLOSED_BEATS = 12
 /**
  * A run no orchestrator joined closes after this many heartbeats (ten
- * minutes). Agents start after their orchestrator joins, so one alone is
+ * minutes). Workers start after their orchestrator joins, so one alone is
  * late for a run that ended, which nothing remembers; a CI that starts
- * agents beside it has this long to join.
+ * workers beside it has this long to join.
  */
 const ORPHAN_BEATS = 120
 /**
@@ -223,7 +223,7 @@ export function createRelay(opts: RelayOptions): Relay {
     run.closedAt = Date.now()
     saveRun(run)
     for (const p of [...run.byId.values()]) {
-      if (p.role !== 'agent') continue
+      if (p.role !== 'worker') continue
       deliver(run, p, { from: 'relay', body: { type: 'closed' } })
       // Down its socket: it has heard, and needs the run no more.
       if (p.queue.length === 0) drop(run, p, false)
@@ -231,7 +231,7 @@ export function createRelay(opts: RelayOptions): Relay {
     if (run.byId.size === 0) forget(run)
   }
 
-  /** `tell`: the orchestrator hears its agent was lost (not when it removed it). */
+  /** `tell`: the orchestrator hears its worker was lost (not when it removed it). */
   const drop = (run: Run, p: Participant, tell = true): void => {
     if (!run.byId.delete(p.id)) return
     const left = drain(run, p)
@@ -256,11 +256,11 @@ export function createRelay(opts: RelayOptions): Relay {
     }
   }
 
-  /** The orchestrator takes an agent it did not admit off the run. */
-  const removeAgent = (run: Run, p: Participant, agent: unknown): void => {
-    const a = typeof agent === 'string' ? run.byId.get(agent) : undefined
+  /** The orchestrator takes a worker it did not admit off the run. */
+  const removeWorker = (run: Run, p: Participant, worker: unknown): void => {
+    const a = typeof worker === 'string' ? run.byId.get(worker) : undefined
     if (p.role !== 'orchestrator') throw new HttpError(403, 'only the orchestrator removes')
-    if (a === undefined || a.role !== 'agent') throw new HttpError(404, 'unknown agent')
+    if (a === undefined || a.role !== 'worker') throw new HttpError(404, 'unknown worker')
     drop(run, a, false)
   }
 
@@ -384,17 +384,19 @@ export function createRelay(opts: RelayOptions): Relay {
     body: { role?: unknown; info?: unknown; key?: unknown },
     token: VerifiedToken | undefined,
   ): Response => {
-    if (body.role !== 'orchestrator' && body.role !== 'agent') {
-      throw new HttpError(400, 'role is orchestrator or agent')
+    // `agent` is what clients send until this relay is deployed (2026-10-23).
+    const role = body.role === 'agent' ? 'worker' : body.role
+    if (role !== 'orchestrator' && role !== 'worker') {
+      throw new HttpError(400, 'role is orchestrator or worker')
     }
-    if (body.role === 'orchestrator' && run.orchestrator !== undefined) {
+    if (role === 'orchestrator' && run.orchestrator !== undefined) {
       throw new HttpError(409, 'the run has an orchestrator')
     }
     const p: Participant = {
       id: crypto.randomUUID().replaceAll('-', ''),
-      role: body.role,
+      role,
       // No one reads the orchestrator's.
-      info: body.role === 'agent' ? (body.info ?? null) : null,
+      info: role === 'worker' ? (body.info ?? null) : null,
       seen: Date.now(),
       tokens: RATE_BURST,
       filled: Date.now(),
@@ -409,7 +411,7 @@ export function createRelay(opts: RelayOptions): Relay {
       saveRun(run)
       saveParticipant(run, p)
       for (const a of run.byId.values()) {
-        if (a.role === 'agent') {
+        if (a.role === 'worker') {
           deliver(run, p, joined(a))
           saveParticipant(run, a)
         }
@@ -431,7 +433,7 @@ export function createRelay(opts: RelayOptions): Relay {
     bytes: number,
   ): void => {
     const to =
-      from.role === 'agent'
+      from.role === 'worker'
         ? body.to === 'orchestrator'
           ? run.orchestrator
           : undefined
@@ -494,7 +496,7 @@ export function createRelay(opts: RelayOptions): Relay {
       }
     }
     // Read again: another join may have made the run while this one's body
-    // came, and a second one made here would replace it and its agents.
+    // came, and a second one made here would replace it and its workers.
     run = runs.get(key)
     if (run?.closed === true) throw new HttpError(410, 'run closed')
     if (run === undefined) {
@@ -569,7 +571,7 @@ export function createRelay(opts: RelayOptions): Relay {
         const run = live(key)
         const p = participant(run, id, 'socket')
         if (body.leave === true) drop(run, p)
-        else if (body.remove !== undefined) removeAgent(run, p, body.remove)
+        else if (body.remove !== undefined) removeWorker(run, p, body.remove)
         else if (Array.isArray(body.sends)) {
           // Several sends in one frame: one message the host bills, each answered.
           const results = body.sends.map((one: { to?: unknown; body?: unknown }) => {

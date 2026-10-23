@@ -27,7 +27,7 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   else (so it is never offered a `pinnedLocal` task); `sandbox: true`
   says a remote one enforces `req.sandbox` where it runs and returns the
   violations, so a sandboxed task and its dependants are not pinned for
-  it (`@vzn/vx-dte`'s agents run them through `localFloor`, which also stops
+  it (`@vzn/vx-dte`'s workers run them through `localFloor`, which also stops
   a request's children when its `signal` aborts and no run holds them);
   a cached task's `req.sandbox.keyed` lists the project directories its
   key answers for, so such an executor can build the request again on
@@ -204,7 +204,7 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   `docs/design/plugin-executor-reapi-2026-08.md` §4).
 - List the AMBIENT files a worker also needs (`tsconfig.json`, `.npmrc`,
   root manifests, `node_modules`): the key treats them as environment, not
-  input. Same-checkout agents get them from the checkout; an input-shipping
+  input. Same-checkout workers get them from the checkout; an input-shipping
   executor needs them declared or provided by the worker image / an install
   action.
 

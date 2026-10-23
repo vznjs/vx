@@ -36,7 +36,7 @@ interface Workflow {
 const read = (file: string): Workflow =>
   Bun.YAML.parse(readFileSync(path.join(dir, file), 'utf8')) as Workflow
 const doc = read('ci.yml')
-const agent = read('vx-agent.yml').jobs['agent']!
+const worker = read('vx-agent.yml').jobs['worker']!
 const RUNS = ['linux', 'binary-linux-arm64', 'macos'] as const
 const checkout = (j: Job | undefined): Step | undefined =>
   j?.steps?.find((s) => String(s.uses).startsWith('actions/checkout@'))
@@ -50,7 +50,7 @@ describe('ci.yml', () => {
     ).toEqual([
       ['linux', 'linux-x64', 'ubuntu-latest', top, undefined],
       // Each run only plans and dispatches: Linux x64, so every macOS and
-      // arm runner is an agent's.
+      // arm runner is a worker's.
       [
         'binary-linux-arm64',
         'linux-arm64',
@@ -62,9 +62,9 @@ describe('ci.yml', () => {
     ])
   })
 
-  // A merged PR's run held its agents' runners until it ended, and the next
-  // main run's agents queued 108-184 s behind them (2026-10-23).
-  it('cancels a PR’s run, and so its agents, once the PR closes', () => {
+  // A merged PR's run held its workers' runners until it ended, and the next
+  // main run's workers queued 108-184 s behind them (2026-10-23).
+  it('cancels a PR’s run, and so its workers, once the PR closes', () => {
     const on = (doc.on ?? doc.true)!
     expect(on['pull_request']).toEqual({ types: ['opened', 'synchronize', 'reopened', 'closed'] })
     expect(doc.concurrency).toEqual({
@@ -76,7 +76,7 @@ describe('ci.yml', () => {
   })
 
   // Shallow, a run found no merge-base and so no measured needs, and every
-  // shard booked a whole agent at ~25% CPU (2026-10-22).
+  // shard booked a whole worker at ~25% CPU (2026-10-22).
   it('checks each run out with the history its timings import walks', () => {
     for (const id of RUNS)
       expect([id, checkout(doc.jobs[id])?.with]).toEqual([
@@ -96,7 +96,7 @@ describe('ci.yml', () => {
   })
 
   // Nothing runs on a distributed run's orchestrator (owner, 2026-10-22):
-  // the macOS checks of this machine's sandbox are tasks a Mac agent runs.
+  // the macOS checks of this machine's sandbox are tasks a Mac worker runs.
   it('runs the macOS sandbox checks as tasks of the run', () => {
     const steps = doc.jobs['macos']!.steps!
     expect(steps.filter((s) => /sandbox-canary\.ts|--cache-policy/.test(s.run ?? ''))).toEqual([])
@@ -105,7 +105,7 @@ describe('ci.yml', () => {
     expect(run).toContain(' check.build-cold ')
   })
 
-  // Every sandboxed task runs on an agent, which enforces it there.
+  // Every sandboxed task runs on a worker, which enforces it there.
   it('installs no sandbox runtime on a run', () => {
     for (const id of RUNS)
       expect([id, doc.jobs[id]!.steps!.some((s) => s.run?.includes(' setup ') === true)]).toEqual([
@@ -132,7 +132,7 @@ describe('ci.yml', () => {
   })
 
   // A run is what a developer would write (owner, 2026-10-23: "super
-  // simple"); vx names the run, sizes, starts and cancels its agents.
+  // simple"); vx names the run, sizes, starts and cancels its workers.
   it('is checkout, Bun, install, lock check and vx run, nothing else', () => {
     const shape = (j: Job) =>
       j.steps!.filter((s) => s.if === undefined).map((s) => s.uses?.split('@')[0] ?? s.run)
@@ -159,10 +159,10 @@ describe('ci.yml', () => {
   })
 
   // The remote cache serves every hit (owner, 2026-10-23: "we dont need
-  // to carry any vx cache anymore"): an agent keeps only the sandbox
+  // to carry any vx cache anymore"): a worker keeps only the sandbox
   // runtime's packages.
   it('carries no vx cache between runs', () => {
-    const cached = [...Object.values(doc.jobs), agent].flatMap((j) =>
+    const cached = [...Object.values(doc.jobs), worker].flatMap((j) =>
       j.steps!.filter((s) => s.uses?.startsWith('actions/cache')).map((s) => s.with?.['path']),
     )
     expect(cached).toEqual(['~/.cache/vx/setup-debs', '~/.cache/vx/setup-debs'])
@@ -170,9 +170,9 @@ describe('ci.yml', () => {
 
   // `vx setup github` saves under `vx-setup-debs-<RUNNER_OS>-<RUNNER_ARCH>-<image>`
   // (vx-ci's debsKey): a key led by the image matched no restore, and
-  // every agent fetched again (2026-10-23).
+  // every worker fetched again (2026-10-23).
   it('restores the setup packages by the prefix setup saves them under', () => {
-    const restore = agent.steps!.find((s) => s.uses?.startsWith('actions/cache/restore'))!
+    const restore = worker.steps!.find((s) => s.uses?.startsWith('actions/cache/restore'))!
     expect(restore.with?.['restore-keys']).toBe(
       'vx-setup-debs-${{ runner.os }}-${{ runner.arch }}-',
     )
@@ -210,44 +210,44 @@ describe('ci.yml', () => {
 
 describe('vx-agent.yml', () => {
   it('runs each size on its runner', () => {
-    expect(agent['runs-on']).toBe(
+    expect(worker['runs-on']).toBe(
       `\${{ fromJSON('{"small":"ubuntu-latest","arm":"ubuntu-24.04-arm","mac":"macos-latest"}')[inputs.size] }}`,
     )
   })
 
   // The API-break law reads the last release's tag; the PR-commit law walks
-  // base..head. A task runs on whichever agent is free.
+  // base..head. A task runs on whichever worker is free.
   // Without old blobs: a full clone was 5-7 s of each warm-up (2026-10-23).
   it('checks out the full history, without old blobs', () => {
-    expect(checkout(agent)?.with).toEqual({
+    expect(checkout(worker)?.with).toEqual({
       ref: '${{ inputs.sha }}',
       'fetch-depth': 0,
       filter: 'blob:none',
     })
   })
 
-  // An agent saving to ~/.vx while a shard runs failed the shard's home
-  // guard (2026-10-22): the agent keeps its store out of home.
-  it("keeps the agent's store out of home", () => {
+  // A worker saving to ~/.vx while a shard runs failed the shard's home
+  // guard (2026-10-22): the worker keeps its store out of home.
+  it("keeps the worker's store out of home", () => {
     // `runner` is a step's context, not a job's: a job env naming it is a
     // workflow GitHub refuses to dispatch.
-    const step = agent.steps?.find((s) => s.run?.includes('dte agent') === true)
+    const step = worker.steps?.find((s) => s.run?.includes('dte worker') === true)
     expect(step?.env?.['VX_CACHE_DIR']).toBe('${{ runner.temp }}/vx-cache')
   })
 
-  // The agent is what a developer would write (owner, 2026-10-23: "why vx
+  // The worker is what a developer would write (owner, 2026-10-23: "why vx
   // runner runs twice?"): the runtime set up by the CI plugin before the
-  // agent starts (owner: "vx setup github", "we should do before"), its
+  // worker starts (owner: "vx setup github", "we should do before"), its
   // packages kept per runner image, and no mount of its own.
-  it('is checkout, Bun, install, the sandbox runtime and the agent', () => {
-    expect(agent.steps!.map((s) => s.uses?.split('@')[0] ?? s.run)).toEqual([
+  it('is checkout, Bun, install, the sandbox runtime and the worker', () => {
+    expect(worker.steps!.map((s) => s.uses?.split('@')[0] ?? s.run)).toEqual([
       'actions/checkout',
       'oven-sh/setup-bun',
       'bun install --frozen-lockfile',
       'actions/cache/restore',
       'bun packages/vx/src/bin.ts setup github',
       'actions/cache/save',
-      'bun packages/vx/src/bin.ts dte agent',
+      'bun packages/vx/src/bin.ts dte worker',
     ])
   })
 })

@@ -203,9 +203,9 @@ export { executorFallback } from './exec/index.js'
 // there while the local floor kept them (X-112).
 export { withForwardArgs } from './exec/index.js'
 // Core's local executor, sandbox included, for a plugin that runs tasks
-// itself: `@vzn/vx-dte`'s orchestrator and its agents.
+// itself: `@vzn/vx-dte`'s orchestrator and its workers.
 export { localFloor, type LocalFloor } from './orchestrator/index.js'
-// A task's sandbox request built where an agent runs it: the paths and the
+// A task's sandbox request built where a worker runs it: the paths and the
 // walls are that machine's (`@vzn/vx-dte`, an orchestrator of another OS).
 export { sandboxRequestFor, type SandboxRequest } from './orchestrator/index.js'
 // A runtime probe answered where a `runtime` executor runs the task.

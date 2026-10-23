@@ -367,10 +367,10 @@ export function formatTaskRow(
 
 /**
  * The dim header over a task list, on the row grid (M, 2026-10-21).
- * `agent` when an executor places tasks: the name after the id's dot.
+ * `worker` when an executor places tasks: the name after the id's dot.
  */
-export function formatListHeader(agent: boolean, colors: ColorSupport = NO_COLOR): string {
-  const head = `   ${'time'.padStart(TIME_COL)} ${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} task${agent ? ' \u00b7 agent' : ''}`
+export function formatListHeader(worker: boolean, colors: ColorSupport = NO_COLOR): string {
+  const head = `   ${'time'.padStart(TIME_COL)} ${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} task${worker ? ' \u00b7 worker' : ''}`
   return paint('', head, colors, { dim: true })
 }
 
@@ -433,7 +433,7 @@ export function whereNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): stri
 
 /**
  * ` · <where>` after the id: the dot dim, the place in its own hue. Last
- * on the row, as an agent's name has no width to pad to (M, 2026-10-21).
+ * on the row, as a worker's name has no width to pad to (M, 2026-10-21).
  */
 export function placeNote(where: string, colors: ColorSupport = NO_COLOR): string {
   return `${paint('', ' \u00b7', colors, { dim: true })} ${ui.inline(ui.place(where), colors)}`
