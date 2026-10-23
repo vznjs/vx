@@ -61,17 +61,17 @@ it in both places, as above, or the key varies on a value the command
 never reads. Change it, and the key changes:
 
 ```sh frame="terminal"
-$ NODE_ENV=production vx run @demo/api#bundle
+$ NODE_ENV=production vx run packages/api#bundle
 bundling for production
-└─ @demo/api#bundle ── (5ms) success
+└─ packages/api#bundle ── (6ms) success
 
-$ NODE_ENV=production vx run @demo/api#bundle
+$ NODE_ENV=production vx run packages/api#bundle
 bundling for production
-└─ @demo/api#bundle ── (4ms) up-to-date
+└─ packages/api#bundle ── (3ms) up-to-date
 
-$ NODE_ENV=development vx run @demo/api#bundle
+$ NODE_ENV=development vx run packages/api#bundle
 bundling for development
-└─ @demo/api#bundle ── (5ms) success
+└─ packages/api#bundle ── (5ms) success
 ```
 
 ## What comes back
@@ -80,11 +80,11 @@ A hit replays stdout and stderr in the order the task printed them, so a
 warning shows where it did the first time:
 
 ```sh frame="terminal"
-$ vx run @demo/api#bundle
-┌─ @demo/api#bundle > $ echo "bundling for $NODE_ENV"; echo "warn: large chunk" >&2; …
+$ vx run packages/api#bundle
+┌─ packages/api#bundle > $ echo "bundling for $NODE_ENV"; echo "warn: large chunk" >&2; …
 bundling for production
 warn: large chunk
-└─ @demo/api#bundle ── (4ms) up-to-date
+└─ packages/api#bundle ── (3ms) up-to-date
 ```
 
 When the outputs on disk already match, vx restores nothing. It compares
@@ -94,9 +94,9 @@ project's `dist` and only that one comes back from the store:
 ```sh frame="terminal"
 $ vx run build --all
   cache     local 4✓
-  time      14ms
+  time      10ms
 
-$ rm -rf packages/web/dist && vx run build --all
+$ rm -rf packages/c/dist && vx run build --all
   cache     local 3✓ 1↓
   time      21ms
 ```
@@ -122,5 +122,9 @@ in the background. Dependents start at once. Uploads drain before vx
 exits, so a short run still ships everything, and a failed upload is a
 warning, never a red build.
 
+Outputs above: a one-project workspace for `bundle` and the four-project
+demo for `build`, vx at `dbe4033`, 2026-10-23.
+
 The full rules are in [Caching](../../caching/) and the
-[schema](../../schema/).
+[schema](../../schema/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
