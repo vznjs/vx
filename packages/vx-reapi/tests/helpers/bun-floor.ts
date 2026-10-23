@@ -1,6 +1,6 @@
 // The plugin's own runtime floor, as a test gate.
 //
-// `ReapiClient` refuses to construct on Bun < 1.4.0 (`assertBunSupportsChunking`):
+// `ReapiClient` refuses to construct on Bun < 1.4.4 (`assertBunSupportsChunking`):
 // older Bun hangs on the chunked uploads this plugin makes, and a hang gives a
 // user nothing to act on, so the version check speaks instead. Every row that
 // builds a client therefore CANNOT run below that floor — and failing them
