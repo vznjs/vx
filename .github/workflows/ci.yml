@@ -101,6 +101,21 @@ jobs:
       # runs the files whose outcome is the platform's on Mac workers
       # (macOS-only defects reached main unseen on Linux, 2026-08-22).
       - run: bun packages/vx/src/bin.ts run ci test.live check.vs-turbo build.bun.linux-arm64 build.bun.darwin-arm64 ${{ github.event_name != 'pull_request' && 'build.bun.linux-x64 build.bun.darwin-x64 check.binary.linux-arm64 check.binary.darwin-arm64 test.platform check.sandbox-canary check.build-cold' || '' }} ${{ github.event_name == 'push' && 'release.sync' || '' }} ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
+      # The run in time (@vzn/vx-dte writes .vx/dte/trace.json): every
+      # worker's tasks, opened in https://ui.perfetto.dev; the job summary
+      # links it.
+      - if: always()
+        id: trace
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vx-dte-trace
+          path: .vx/dte/trace.json
+          include-hidden-files: true
+          if-no-files-found: ignore
+      - if: always() && steps.trace.outputs.artifact-url != ''
+        env:
+          URL: ${{ steps.trace.outputs.artifact-url }}
+        run: echo "[DTE trace]($URL), opened in https://ui.perfetto.dev" >> "$GITHUB_STEP_SUMMARY"
       - if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

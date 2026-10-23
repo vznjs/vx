@@ -72,6 +72,7 @@ export async function runWorker(opts: {
     memory,
     platform: hostPlatform(),
     tree,
+    booted: Math.round(performance.timeOrigin),
   }
   let me
   try {

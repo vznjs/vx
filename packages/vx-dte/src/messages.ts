@@ -24,6 +24,8 @@ export interface WorkerInfo {
   readonly platform?: string
   /** Its checkout's tree: a worker with other tracked files than the run is refused. */
   readonly tree: string
+  /** When its `vx` started, wall-clock ms: the run's trace splits its warm-up there. */
+  readonly booted?: number
 }
 
 /** A task whose files the worker restores before it runs one that needs them. */

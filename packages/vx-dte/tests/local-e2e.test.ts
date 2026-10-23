@@ -112,6 +112,17 @@ it('runs a task on a worker with its dependency’s outputs, and brings its outp
   const where = (await readFile(path.join(root, 'b/out/where.txt'), 'utf8')).trim()
   expect(where).not.toBe(path.join(root, 'b'))
   expect(where.endsWith(`${path.sep}b`)).toBe(true)
+  // The run in time: the worker ran b#use (owner, 2026-10-23).
+  expect(out).toMatch(/^ +trace +\.vx\/dte\/trace\.json · open in https:\/\/ui\.perfetto\.dev$/m)
+  const trace = JSON.parse(await readFile(path.join(root, '.vx/dte/trace.json'), 'utf8')) as {
+    traceEvents: { ph: string; name: string; cat?: string; args?: { name?: string } }[]
+  }
+  const names = trace.traceEvents.filter((e) => e.ph === 'M' && e.name === 'process_name')
+  expect(names.map((e) => e.args?.name)).toEqual(['orchestrator', 'small#1'])
+  expect(
+    trace.traceEvents.some((e) => e.ph === 'X' && e.cat === 'task' && e.name === 'b#use'),
+  ).toBe(true)
+  expect(trace.traceEvents.some((e) => e.ph === 'X' && e.name === 'warm-up')).toBe(true)
   // Saved here as the run's own: the next run is all hits.
   const second = vx(['run', 'b#use'], 'e2e-2')
   expect(second.exitCode).toBe(0)
