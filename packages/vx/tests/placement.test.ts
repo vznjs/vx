@@ -231,6 +231,33 @@ describe('placeTasks — a servers executor carries persistent dependencies', ()
     expect([...p.carried].sort()).toEqual(['s#api', 's#db'])
   })
 
+  it('the floor alone places what the general walk places', () => {
+    const nodes = graph(
+      node('s#db', { persistent: {} }),
+      node('a#test', {}, ['s#db']),
+      node('b#ship', { remote: 'only' }),
+      node('c#ui', { interactive: true }),
+      { ...node('g#all', {}, ['a#test']), config: {} } as TaskNode,
+    )
+    // A pass-through executor ahead of the floor forces the general walk.
+    const declines: TaskExecutor = { ...remote('none'), accepts: () => false }
+    const shape = (p: Placements) => [
+      [...p.executors].map(([id, e]) => [id, e.name]),
+      [...p.remoteOnlyNoop],
+      [...p.remoteOnly, ...p.servers.keys(), ...p.carried],
+    ]
+    expect(shape(placeTasks(nodes, [floor]))).toEqual(shape(placeTasks(nodes, [declines, floor])))
+    expect(shape(placeTasks(nodes, [floor]))).toEqual([
+      [
+        ['a#test', 'local'],
+        ['b#ship', 'local'],
+        ['c#ui', 'local'],
+      ],
+      ['b#ship'],
+      [],
+    ])
+  })
+
   it('pins them here for an executor that carries none (control)', () => {
     const p = placeTasks(graph(node('s#db', { persistent: {} }), node('a#test', {}, ['s#db'])), [
       remote('pool'),

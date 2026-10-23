@@ -217,7 +217,6 @@ export function placeTasks(
     }
     return set
   }
-  const pinned = pinsOf({})
   const placements: Placements = {
     executors: new Map(),
     remoteOnlyNoop: new Set(),
@@ -229,6 +228,17 @@ export function placeTasks(
   const heldHere = new Set<string>()
   // `resolveExecutors` puts it last in every list.
   const floor = executors.find(isLocalExecutor)!
+  // The floor alone takes every task and starts no server: nothing to pin or
+  // select. The walks below were 2.8 ms of a 1,200-task warm run.
+  if (executors.length === 1 && executors[0] === floor) {
+    for (const node of nodes.values()) {
+      if (isGroupTask(node) || node.config.exec?.persistent !== undefined) continue
+      placements.executors.set(node.id, floor)
+      if (node.config.exec?.remote === 'only') placements.remoteOnlyNoop.add(node.id)
+    }
+    return placements
+  }
+  const pinned = pinsOf({})
   for (const node of nodes.values()) {
     if (isGroupTask(node) || node.config.exec?.persistent !== undefined) continue
     if (node.config.exec?.interactive === true) {
