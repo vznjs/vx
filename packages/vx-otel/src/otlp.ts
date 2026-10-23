@@ -136,6 +136,9 @@ const VX_ATTR = {
   cpuMs: 'vx.cpu_ms',
   taskWhere: 'vx.task.where',
   taskBlockedBy: 'vx.task.blocked_by',
+  taskCarried: 'vx.task.carried',
+  taskPlatformsNeeded: 'vx.task.platforms_needed',
+  taskPlatformHost: 'vx.task.platform_host',
   taskTimedOut: 'vx.task.timed_out',
   taskSandboxViolations: 'vx.task.sandbox_violations',
   taskNotReady: 'vx.task.not_ready',
@@ -508,6 +511,15 @@ export function taskSpanAttributes(t: TaskTelemetry, run: TaskSpanRunContext): K
   if (t.where !== undefined) attrs.push(strAttr(VX_ATTR.taskWhere, t.where))
   // A skipped task's root blocker (a task id, as the record carries it).
   if (t.blockedBy !== undefined) attrs.push(strAttr(VX_ATTR.taskBlockedBy, t.blockedBy))
+  // A server run by each dependant's worker, not an execution of its own.
+  if (t.carried === true) attrs.push(boolAttr(VX_ATTR.taskCarried, true))
+  // A skip because the task's `exec.platforms` leave out this machine.
+  if (t.otherPlatform !== undefined) {
+    attrs.push(
+      strArrayAttr(VX_ATTR.taskPlatformsNeeded, t.otherPlatform.needs),
+      strAttr(VX_ATTR.taskPlatformHost, t.otherPlatform.host),
+    )
+  }
   // vx's own deadline killed the task: the 143 is a timeout, not a signal.
   if (t.timedOut === true) attrs.push(boolAttr(VX_ATTR.taskTimedOut, true))
   if (t.sandboxViolations !== undefined)

@@ -316,6 +316,7 @@ traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.peak_rss_bytes:
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.admission_held_ms: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.attempts: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.blocked_by: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.carried: boolValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.command: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.duration_ms: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.exit_code: intValue
@@ -325,6 +326,8 @@ traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.hash: stri
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.input_files: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.not_ready: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.outputs: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.platform_host: stringValue
+traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.platforms_needed: arrayValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.project: stringValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.queued_ms: intValue
 traces.resourceSpans[].scopeSpans[].spans[vx.task].attributes.vx.task.run_started_at: intValue

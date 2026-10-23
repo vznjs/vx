@@ -902,6 +902,8 @@ const FULL_TASK: Required<TaskTelemetry> = {
   attempts: 2,
   blockedBy: 'lib#build',
   timedOut: true,
+  carried: true,
+  otherPlatform: { needs: ['darwin-arm64'], host: 'linux-x64' },
   sandboxViolations: 2,
   notReady: 'timeout',
   // Rides as `vx.task.retry` span events ("links a task …" above).
@@ -997,6 +999,7 @@ describe('OTLP losslessness', () => {
       'attempts',
       'blockedBy',
       'cacheSource',
+      'carried',
       'cpuMs',
       'durationMs',
       'exitCode',
@@ -1007,6 +1010,7 @@ describe('OTLP losslessness', () => {
       'inputChanges',
       'inputFiles',
       'notReady',
+      'otherPlatform',
       'outputs',
       'peakRssBytes',
       'project',
@@ -1163,6 +1167,9 @@ describe('OTLP losslessness', () => {
     expect(a['vx.task.where']).toBe('worker-7')
     expect(a['vx.task.outputs']).toBe('deferred')
     expect(a['vx.task.blocked_by']).toBe('lib#build')
+    expect(a['vx.task.carried']).toBe(true)
+    expect(a['vx.task.platforms_needed']).toEqual({ values: [{ stringValue: 'darwin-arm64' }] })
+    expect(a['vx.task.platform_host']).toBe('linux-x64')
     expect(a['vx.task.timed_out']).toBe(true)
     expect(a['vx.task.sandbox_violations']).toBe('2')
     expect(a['vx.task.not_ready']).toBe('timeout')
