@@ -9,19 +9,37 @@ tags:
 excerpt: 'run.rules.dependencies tags the layers of a monorepo and says which may reach which. vx lock refuses a dependency that breaks a rule and names every broken edge. Runs never check it, so they pay nothing. nx() carries most Nx module-boundary constraints over.'
 ---
 
-A UI kit that imports a checkout flow, or an app that reaches into a
-helper it should not see, is easy to add and hard to remove. Tag the
-layers, write the rules once, and `vx lock` holds every change to them.
+`packages/c` is a UI package. It depends on `packages/a`, a utility
+the workspace says UI may not reach:
 
-```mermaid
-flowchart TD
-  web["@demo/web<br/>type:app"] --> checkout["@demo/checkout<br/>type:feature"]
-  web --> button["@demo/button<br/>type:ui"]
-  web -. not allowed .-> utils["@demo/utils<br/>type:util"]
-  button -. denied .-> checkout
-  style utils stroke:#ff5e9c,stroke-width:2px
-  style button stroke:#ff5e9c,stroke-width:2px
+```ts
+// .vx/workspace.ts
+import { defineWorkspace } from '@vzn/vx/config'
+
+export default defineWorkspace({
+  run: {
+    rules: {
+      dependencies: [{ from: 'tag:type:ui', deny: ['tag:type:util'] }],
+    },
+  },
+})
 ```
+
+```sh frame="terminal"
+$ vx lock
+✗ vx lock  lock not written
+
+  1 dependency breaks run.rules.dependencies
+  packages/c depends on packages/a, which run.rules.dependencies[0] (from 'tag:type:ui') denies
+
+  fix  drop the dependency, or change the project's tags or the rule
+$ echo $?
+1
+```
+
+The edge here is a task edge (`c#build` depends on `a#build`), not a
+`package.json` dependency. Both count. Demo workspace, vx at
+`69617eb`, 2026-10-23.
 
 ## Tags and rules
 
@@ -65,27 +83,16 @@ any allow. A project no rule selects is free.
 The rules are checked against each project's direct workspace
 dependencies: its `package.json` and its cross-project `dependsOn`.
 `vx lock` refuses a graph that breaks one, names every broken edge, and
-writes nothing:
+writes nothing, as above.
+
+Allow the edge, or drop it, and the lock is written:
 
 ```sh frame="terminal"
 $ vx lock
-✗ vx lock  lock not written
-
-  2 dependencies break run.rules.dependencies
-  @demo/button depends on @demo/checkout, which run.rules.dependencies[1] (from 'tag:type:ui') denies
-  @demo/web depends on @demo/utils, which run.rules.dependencies[0] (from 'tag:type:app') does not allow
-
-  fix  drop the dependency, or change the project's tags or the rule
-```
-
-Drop the two edges and the lock is written:
-
-```sh frame="terminal"
-$ vx lock
-✓ vx lock  4 project configs → .vx/projects.lock.json
+✓ vx lock  6 project configs → .vx/projects.lock.json
 
 $ vx lock --check
-✓ vx lock --check  up to date (4 projects)
+✓ vx lock --check  up to date (6 projects)
 ```
 
 `vx lock --check` in CI fails the same way, so a pull request that adds
@@ -124,4 +131,5 @@ declares. `allSourceTags`, `/regex/` tags and constraints that only ban external
 imports are left out; the
 [vx-migrate README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#module-boundaries)
 lists them. The schema is in the
-[configuration reference](../../schema/).
+[configuration reference](../../schema/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

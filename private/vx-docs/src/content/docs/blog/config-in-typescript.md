@@ -9,42 +9,49 @@ tags:
 excerpt: "A vx.config.ts is a module: it can import a preset, spread it, compute a command. That one choice removes Turborepo's globalDependencies and Nx's namedInputs from the schema, because a language that composes does not need a schema that does."
 ---
 
-Turborepo and Nx both grew the same features for the same reason.
-`globalDependencies`, `globalEnv`, `namedInputs`, `targetDefaults`,
-`extends`: every one of them is a way to say something once and reuse
-it, added because JSON cannot say anything once. vx's config is a
-TypeScript module, so the feature list is a language feature list, and
-it is already complete.
+Two `package.json` scripts, and what `bunx @vzn/vx-migrate` writes
+from them:
 
-## The shape
+```sh frame="terminal"
+$ cat packages/ui/package.json
+{"name":"ui","scripts":{"build":"tsc -b","test":"vitest run"}}
 
-```ts
-// packages/app/vx.config.ts
-import { defineProject } from '@vzn/vx/config'
+$ bunx @vzn/vx-migrate
+  from      package.json scripts
+  tasks     1 clean · 1 todo
+  files     packages/ui/vx.config.ts
+…
+$ cat packages/ui/vx.config.ts
+import type { ProjectConfig } from '@vzn/vx/config'
 
-export default defineProject({
+export default {
   tasks: {
+    // TODO(vx-migrate): cache: add `inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs — …
     build: {
-      exec: { command: 'tsc -b' },
-      inputs: { files: ['src/**', 'tsconfig.json'] },
-      cache: {
-        outputs: { files: ['dist/**'] },
+      // inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+      exec: {
+        command: 'tsc -b',
       },
+      dependsOn: ['^build'],
     },
     test: {
+      exec: {
+        command: 'vitest run',
+      },
       dependsOn: ['build'],
-      exec: { command: 'vitest run' },
-      inputs: { files: ['src/**', 'test/**'] }, cache: { outputs: { files: [] } },
     },
   },
-})
+} satisfies ProjectConfig
 ```
 
-`defineProject` is an identity function — it returns its argument —
-that exists for autocomplete and validation. The files `vx init` and
-`@vzn/vx-migrate` generate skip even that and write
-`satisfies ProjectConfig` with a type-only import: the same checking
-with no runtime import at all.
+Each script became a task with its command verbatim. Caching needs
+inputs and outputs you declare, so the tool proposes them in a comment
+and doesn't guess. vx-migrate at `69617eb`, 2026-10-23.
+
+The file is a TypeScript module. `satisfies ProjectConfig` with a
+type-only import gives autocomplete and checking with no runtime import.
+`defineProject` does the same as an identity function, if you prefer
+it.
 
 ## Composition is an import
 
@@ -73,11 +80,14 @@ an edit to `vx-preset.ts` re-keys every task that spread it once
 no list of global dependencies to maintain, because the dependency is
 the import, and the runtime already tracks imports.
 
-The same shape covers what `namedInputs` and `targetDefaults` do. A
-named input is a constant. A target default is a function that returns
-a task and takes the parts that vary. Nx's `extends` is `...spread`.
-All of them are features you already know from the language, checked
-by the compiler, refactorable by the editor.
+| JSON configs need         | In a TypeScript module      |
+| ------------------------- | --------------------------- |
+| `globalDependencies`      | the import                  |
+| `namedInputs`             | a constant                  |
+| `targetDefaults`          | a function returning a task |
+| `extends`                 | `...spread`                 |
+
+Checked by the compiler, refactored by the editor.
 
 ## What a config may not do
 
@@ -90,18 +100,11 @@ A config may read `process.env`, the clock or the network, but it reads
 them once, when `vx lock` evaluates it. That answer is frozen into the
 lock, and no run evaluates the config again.
 
-## Freezing it
+[`vx lock`](../lock-and-frozen/) freezes the evaluated configs; every
+run reads the lock and evaluates nothing.
 
-[`vx lock`](../lock-and-frozen/) evaluates every config and writes the
-resolved objects to `.vx/projects.lock.json`. Every `vx run` reads the
-lock with no evaluation at all, and `vx lock --check` re-evaluates the
-configs and reports drift a byte hash cannot see, such as an env value
-read at lock time.
-
-## The migration path
-
-`bunx @vzn/vx-migrate` writes these files from `package.json` scripts, a
-`turbo.json` or an Nx project graph, and when it meets a `globalDependencies` list it generates the
-preset file and the import for you, because that is what the list was
-trying to be. The schema reference is [Configuration
-schema](../../schema/).
+`bunx @vzn/vx-migrate` also reads a `turbo.json` or an Nx project
+graph. A `globalDependencies` list becomes a preset file and its import,
+because that is what the list was trying to be. Schema:
+[Configuration schema](../../schema/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
