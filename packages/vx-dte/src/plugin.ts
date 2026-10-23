@@ -391,6 +391,8 @@ export function dte(options: DteOptions) {
           onChange(true)
         },
         joined: () => onChange(),
+        // A worker given up on joining: its job, still queued or stuck, is stopped.
+        overdue: (id) => adapter?.cancel?.([id]),
         // Before the run counts what is left to start: a worker that let a
         // task's lease end failed main's macOS run with another to start
         // (2026-10-23).

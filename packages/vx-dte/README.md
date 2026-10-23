@@ -337,9 +337,11 @@ stops, instead of waiting for the job's timeout.
   A shorter fault (a `5xx` while the host restarts the relay, a dropped
   connection) is asked through, by the orchestrator and workers alike.
 - A worker that never joins says why on its row (`failed  exited 1:
-…`). The first such failure in a run starts another worker in its
-  place, as a checkout or install can fail on the network; a second
-  starts none. When none is online or starting and this machine has no
+…`). One not joined 3 minutes after it was started is given up
+  (`did not join within 180 s`) and its job stopped. The first three
+  such failures in a run each start another worker in its place, as a
+  checkout, install or join can fail on the network; a fourth starts
+  none. When none is online or starting and this machine has no
   share, the remaining tasks fail with `no worker could start`.
 
 ## What the run shows
