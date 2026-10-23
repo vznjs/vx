@@ -65,11 +65,7 @@ for (const file of files) {
 }
 describe('a Linux CI job that runs a vx task', () => {
   it('is every one of these — the pin is not vacuous', () => {
-    expect(covered).toEqual([
-      'auto-release.yml#release',
-      'npm.yml#publish',
-      'release.yml#assets',
-    ])
+    expect(covered).toEqual(['auto-release.yml#release', 'npm.yml#publish', 'release.yml#assets'])
   })
 
   it('leaves out only the distributed runs', () => {
@@ -177,6 +173,11 @@ describe('a suite that skips without an env var', () => {
       declared.add(m[1]!)
     }
   }
+  // Or by the suite itself, running itself again where the resource is
+  // (disk-full mounts its own small disk with bubblewrap).
+  for (const [name, file] of gates)
+    if (new RegExp(`env: \\{[^}]*\\b${name}:`).test(readFileSync(path.join(repo, file), 'utf8')))
+      declared.add(name)
 
   it('is found by the shape, not by a list — and there are some', () => {
     expect(testFiles.length).toBeGreaterThan(100)

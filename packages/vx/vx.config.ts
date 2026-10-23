@@ -149,7 +149,6 @@ const unsafeShardTask = (i: number, n: number, flags = '') => ({
         'VX_PR_TITLE',
         'VX_PR_BASE',
         'VX_PR_HEAD',
-        'VX_SMALL_DISK',
         // npm-pack's install fetches from the registry. Where TLS is
         // signed by a local CA, npm without it retried
         // SELF_SIGNED_CERT_IN_CHAIN to the row's 180 s timeout (local
