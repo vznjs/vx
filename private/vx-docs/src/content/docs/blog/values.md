@@ -6,109 +6,86 @@ authors:
 tags:
   - values
   - design
-excerpt: "Every design decision in vx is settled by three drivers in a fixed order, and nine principles that follow from them. This is the list, with what each one has already cost and what it has bought."
+excerpt: 'Three drivers in a fixed order settle every design choice in vx, and nine principles follow from them. The list, with what each one has cost and bought.'
 ---
 
-Most projects have values in the sense of a paragraph on the README.
-vx has them in the sense of a tie-breaker: when two designs are both
-reasonable, the one that scores higher on the earlier driver wins, and
-the decision is not reopened. The drivers, in order:
+When two designs are both reasonable, the one that wins on the earlier
+driver wins, and the choice is not reopened.
 
 1. **Performance.** Measured, not asserted.
-2. **Modularity.** Each module's `index.ts` is its contract; cross-module
-   imports go through it and a test enforces that.
-3. **Extensibility.** A seam for every stage; a plugin for everything
-   distributed.
+2. **Modularity.** Each module's `index.ts` is its contract. A test
+   fails any import that goes around it.
+3. **Extensibility.** A seam for every stage, a plugin for everything
+   remote.
 
-```mermaid
-flowchart LR
-  P[1. performance] -->|beats| M[2. modularity]
-  M -->|beats| E[3. extensibility]
-  style P stroke:#c6f84e,stroke-width:2px
-```
-
-The order matters because it says what loses. A seam that costs a
-millisecond on the warm path when no plugin fills it is not added; the
-zero-cost gate is added first. A module boundary that would force a
-copy of a hot loop is redrawn rather than crossed.
+The order says what loses. A seam that costs a millisecond on the warm
+path when no plugin fills it is not added until it costs nothing.
 
 ## The nine principles
 
-**Perf first.** Measure before and after. A/B arms interleaved,
-min-of-N, the "before" arm in an immutable git worktree, one workspace
-copy per arm pre-warmed by that arm. A change to the warm path without
-a number is not done. This has killed features that felt obviously
-good: lookahead scheduling was measured against the plain critical-path
-priority and lost, so it is on the rejected list.
+**Perf first.** Measure before and after: two arms interleaved, min of
+N, the "before" arm in its own git worktree. A warm-path change without
+a number is not done. Lookahead scheduling felt obviously good, was
+measured against plain critical-path priority, lost, and is rejected.
 
-**Explicit over magical.** Caching is opt-in; `inputs.files` is
-required; nothing is inferred. The sandbox is how a task proves what it
-touches. [The argument](../explicit-over-magical/) is that an
-under-declared input is the worst failure a cache can have, and
-inference produces exactly that kind.
+**Explicit over magical.** Caching is opt-in, `inputs.files` is
+required, nothing is inferred. The sandbox is how a task proves what it
+touches ([why](../explicit-over-magical/)).
 
-**One command per task; the shell is the API.** A plugin changes where
-a command runs, never what it is. There are no JavaScript-function
-tasks and no executors wrapping tools behind options objects. Your
-tools stay yours and their documentation stays correct.
+**One command per task; the shell is the API.** A plugin changes where a
+command runs, never what it is. No JavaScript-function tasks, no
+executors wrapping tools in options objects.
 
-**Resolved-config hashing.** The key sees the evaluated config object,
-so imports, presets and computed values participate. Named inputs and
-global inputs are rejected because a TypeScript config composes without
-them.
+**Resolved-config hashing.** The key sees the evaluated config object.
+Imports, presets and computed values all count.
 
 **Cascade through deps by folding upstream input keys, never outputs.**
-Every key is knowable before anything runs, which is what `--dry`,
-remote prefetch, the restore tier and remote execution all stand on.
-[Early cutoff was tried and reverted](../cascade-through-inputs/).
+Every key is known before anything runs. `--dry`, remote prefetch and
+remote execution all stand on that
+([early cutoff was tried and reverted](../cascade-through-inputs/)).
 
 **Project boundaries are hard.** A glob never crosses into another
-project. What a project needs from another arrives through the graph.
+project. What a project needs from another comes through the graph.
 
-**No defaults.** Core names no plugin. Only the local floor is
-implicit. A capability a plugin must supply is declared in
-`.vx/workspace.ts` or it does not exist. This is the principle that
-keeps vx from quietly becoming a product: there is no built-in remote
-anything to grow a business model around.
+**No defaults.** Core names no plugin. Only the local floor is implicit.
+A remote is declared in `.vx/workspace.ts` or it does not exist.
 
 **Seam over special case.** When core grows a branch for one consumer,
-the seam is too narrow. The Turbo and Nx mappers (`@vzn/vx-migrate`)
-and the history-based scheduler both left core for their own packages
-once the seam they needed existed.
+the seam is too narrow. The Turbo and Nx mappers and the history-based
+scheduler left core for their own packages once their seam existed.
 
-**Once per run.** Within a run, nothing outside vx changes the files it
-reads, so each fact is learned once: a file read once, a path looked up
-once, a process asked once. Only vx's own writes, or its tasks' runs,
-make it ask again. A test traces a run and fails on a repeat that has no
-written reason.
+**Once per run.** Within a run, each fact is learned once: a file read
+once, a path looked up once, a process asked once. A test traces a run
+and fails on any repeat with no written reason.
 
-## The rejected list
+## Rejected, and written down
 
-Some things are written down so they are not re-proposed by the next
-person with a good afternoon: named inputs and global env; auto-input
-inference via tracing; folding `NODE_OPTIONS` into the key; lookahead
-and idle-insertion scheduling; a first-party platform, dashboard, agents
-or cloud; Turbo's remote-cache wire in core; HTTP/3. Each was either
-measured and lost, or conflicts with a principle above. The list lives
-in the repository's own memory file, next to the principles, read
-before any code is written.
+Named inputs and global env. Input inference by tracing. Folding
+`NODE_OPTIONS` into the key. Lookahead scheduling. A first-party
+dashboard or cloud. Turbo's remote-cache wire in core. HTTP/3.
 
-## Rules learned the hard way
+Each one was measured and lost, or breaks a principle above. The list
+sits in the repository's memory file, read before any code is written.
 
-The values above are the design. These are the scars, kept as rules:
+## The rules hold in CI
 
-- Repro before fix, and record what a probe refutes too.
-- Every fix must fail without itself. A test that passes with the fix
-  reverted is not a test of the fix.
-- A skip is a silent pass. Gate on an env var CI sets.
-- Assert the exact expected set, not the absence of one string.
-- A comment claiming a guarantee the code lacks is a defect: de-claim
-  or implement.
-- A timed wait in a test is a claim about time; prove it with the
-  shortest window that still fails without the fix.
-- A feature is not done until its docs land in the same commit.
+vx builds and tests itself with vx. From this repository's
+`.vx/projects.lock.json` on 2026-10-23:
 
-None of that is unusual advice. What is unusual is that it is enforced
-in the repository the way a lint rule is, and that the tool's own test
-suite is run by the tool, almost all of it under its own sandbox, on
-every commit.
+| This repository                       | Count |
+| ------------------------------------- | ----- |
+| Tasks with a command                  | 148   |
+| Run under vx's sandbox                | 132   |
+| Not sandboxed, each with a reason     | 16    |
+| Core test files                       | 714   |
+
+The 16: nine shards of the suite a sandbox cannot host (the sandbox's
+own tests among them, since a sandbox cannot nest), the REAPI suites and
+their Docker services, one `npm` install for the Nx fixture, and two
+checks that drive the sandbox themselves.
+
+The rules learned the hard way are kept like lint rules: every fix must
+fail without itself, a skip is a silent pass, and a feature is not done
+until its docs land in the same commit.
+
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

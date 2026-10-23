@@ -66,7 +66,7 @@ Three rules hold everywhere:
 | Never in vx                     | Why                                                                 |
 | ------------------------------- | ------------------------------------------------------------------- |
 | A cloud, account or dashboard   | vx does not need to know your company exists.                       |
-| A daemon                        | A no-op run on 9,603 tasks already adds 757 ms (below).             |
+| A daemon                        | A second copy of the truth can go stale. Git is read fresh per run. |
 | Inferred or traced inputs       | A trace says what a task read once. A key is needed before it runs. |
 | JavaScript-function tasks       | The shell is the API. Your tools stay yours.                        |
 | Named, global inputs or env     | Configs are TypeScript. A shared preset is an import.               |
@@ -74,11 +74,6 @@ Three rules hold everywhere:
 Remote caches, remote execution, telemetry and CI summaries are plugins
 in their own packages. `@vzn/vx-reapi` (Bazel's Remote Execution API)
 proves the seams are wide enough.
-
-The 757 ms: time vx adds over the ideal run with nothing changed, on a
-synthetic monorepo of 1,601 projects and 9,603 tasks. Run 2026-10-20 on
-linux x64, 4 cores, vx at `a88652b0b`
-([Benchmarks](../../benchmarks/)).
 
 ## Why the boundary matters
 
