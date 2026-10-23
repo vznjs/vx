@@ -48,8 +48,12 @@ export const GONE = 4404
 
 export interface Relay {
   fetch(req: Request): Promise<Response>
-  /** Pushes the participant's messages down `socket`; false if it is gone. */
-  attach(key: string, id: string, socket: RelaySocket): boolean
+  /**
+   * Pushes the participant's messages down `socket`; false if it is gone.
+   * A socket its host restored passes when it was last heard (`heardAt`,
+   * its last ping, 0 for none): restoring it is no sign of life.
+   */
+  attach(key: string, id: string, socket: RelaySocket, heardAt?: number): boolean
   detach(key: string, id: string, socket: RelaySocket): void
   /** One frame a participant sent down its socket; returns the answer frame. */
   frame(key: string, id: string, text: string): string
@@ -522,12 +526,14 @@ export function createRelay(opts: RelayOptions): Relay {
         throw err
       }
     },
-    attach(key, id, socket) {
+    attach(key, id, socket, heardAt) {
       const run = runs.get(key)
       const p = run?.closed === false ? run.byId.get(id) : undefined
       if (run === undefined || p === undefined) return false
       p.socket = socket
-      p.seen = Date.now()
+      // A dead orchestrator's socket, restored at each wake, kept it alive
+      // and its run's workers waited out their job's timeout (2026-10-23).
+      p.seen = heardAt === undefined ? Date.now() : Math.max(p.seen, heardAt)
       if (p.queue.length > 0) {
         const messages = drain(run, p)
         try {

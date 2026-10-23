@@ -167,7 +167,7 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   }
 
   if (summary.machines !== undefined && summary.machines.length > 0) {
-    lines.push(...renderMachines(summary.machines), '')
+    lines.push(...renderWorkers(summary.machines), '')
   }
 
   const header = ['Task', 'Status', 'Duration']
@@ -197,15 +197,15 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
 const pct = (x: number): string => `${Math.round(x * 100)}%`
 
 /**
- * The machines an executor ran the run on (vx-dte's workers): what each
+ * The workers an executor ran the run on (vx-dte's): what each
  * was booked for beside what it used, so an idle or overbooked one shows
  * on the page (owner, 2026-10-23).
  */
-function renderMachines(machines: NonNullable<RunSummaryRecord['machines']>): string[] {
+function renderWorkers(machines: NonNullable<RunSummaryRecord['machines']>): string[] {
   const lines = [
-    '### Machines',
+    '### Workers',
     '',
-    '| Machine | Status | Warm-up | Tasks | Online | Idle | Booked | CPU avg | Utilization |',
+    '| Worker | Status | Warm-up | Tasks | Online | Idle | Booked | CPU avg | Utilization |',
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   ]
   let coreMs = 0
@@ -232,7 +232,7 @@ function renderMachines(machines: NonNullable<RunSummaryRecord['machines']>): st
   if (coreMs > 0)
     lines.push(
       '',
-      `Booked ${pct(bookedMs / coreMs)} of the machines' core-time, used ${pct(cpuMs / coreMs)}.`,
+      `Booked ${pct(bookedMs / coreMs)} of the workers' core-time, used ${pct(cpuMs / coreMs)}.`,
     )
   return lines
 }
