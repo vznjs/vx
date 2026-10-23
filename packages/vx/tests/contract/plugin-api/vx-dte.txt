@@ -31,6 +31,7 @@ export interface DteOptions {
   readonly adapter?: DteAdapter
   readonly relay?: string
   readonly token?: () => string | undefined | Promise<string | undefined>
+  readonly scheduler?: Partial<Strategy>
 }
 == type DtePlan (src/plugin.ts)
 export interface DtePlan {
@@ -57,6 +58,13 @@ export interface GitlabOptions {
 == type LocalOptions (src/local.ts)
 export interface LocalOptions {
   readonly prepare?: string
+}
+== type Strategy (src/strategy.ts)
+export interface Strategy {
+  readonly order: 'critical-path' | 'graphene' | 'fifo'
+  readonly place: 'best-fit' | 'tetris' | 'worst-fit' | 'first-fit'
+  readonly book: 'measured' | 'margin' | 'whole'
+  readonly scale: 'plan' | 'backlog'
 }
 == type WorkerSize (src/plugin.ts)
 export interface WorkerSize {

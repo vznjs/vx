@@ -417,7 +417,7 @@ machine together:
 ## API
 
 - `dte(options: DteOptions)` is the plugin. `DteOptions` is
-  `{ workers?, adapter?, relay?, local?, token? }`:
+  `{ workers?, adapter?, relay?, local?, token?, scheduler? }`:
   - `workers` names each `WorkerSize`, `{ cpu, memory, max? }`: its cores
     and memory (bytes, or `'8GB'`, `'512MiB'`), which the run counts on
     when it starts one, until the worker reports what its machine has, and
@@ -454,6 +454,19 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   - `relay` is the relay's URL; absent, the adapter's own.
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`). It
     is asked again a minute before the token's `exp`, when it has one.
+  - `scheduler` picks each layer of how the run schedules; a layer left
+    out is the default (first named):
+    - `order`, which waiting task goes first: `critical-path` (the
+      longest chain after it), `graphene` (the long and the wide first),
+      `fifo`;
+    - `place`, which worker takes it: `best-fit` (fewest cores left),
+      `tetris` (needs aligned with what is free), `worst-fit`,
+      `first-fit`;
+    - `book`, what a task holds: `measured` (its history), `margin`
+      (a fifth more), `whole` (a worker each);
+    - `scale`, how many workers: `plan` (above), `backlog` (cores for
+      what is ready or running, Spark's dynamic allocation).
+      `tests/sim.test.ts` plays main's runs with each.
 - `vx dte worker` is a worker. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else
   `relay`), `VX_DTE_SECRET` (the run's) and, when the run started it,
   `VX_DTE_WORKER` (its name). With no `VX_DTE_SECRET` it reads

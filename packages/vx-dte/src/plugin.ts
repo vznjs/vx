@@ -13,6 +13,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Need } from './dispatch.js'
+import { booked, DEFAULT_STRATEGY, STRATEGIES, type Strategy } from './strategy.js'
 import type { Orchestrator } from './orchestrator.js'
 import type { Proof } from './seal.js'
 import type { Size } from './planner.js'
@@ -100,6 +101,8 @@ export interface DteOptions {
   readonly relay?: string
   /** The bearer token for the relay (default `VX_DTE_TOKEN`, else on GitHub Actions an OIDC token for the relay's URL). */
   readonly token?: () => string | undefined | Promise<string | undefined>
+  /** How the run orders, places, books and scales (`Strategy`); each layer absent is the default's. */
+  readonly scheduler?: Partial<Strategy>
 }
 
 const KEYS: PluginOptionKinds<DteOptions> = {
@@ -107,10 +110,20 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   adapter: 'object',
   relay: 'string',
   token: 'function',
+  scheduler: 'object',
 }
 
 export function dte(options: DteOptions) {
   refuseUnknownOptions('dte()', options, KEYS)
+  const how: Strategy = { ...DEFAULT_STRATEGY }
+  for (const [layer, choice] of Object.entries(options.scheduler ?? {})) {
+    const choices = STRATEGIES[layer as keyof Strategy] as readonly string[] | undefined
+    if (choices === undefined || !choices.includes(choice as string))
+      throw new UserError(
+        `dte(): scheduler.${layer} ${choices === undefined ? `is no layer: the layers are ${Object.keys(STRATEGIES).join(', ')}` : `is one of ${choices.join(', ')}`}`,
+      )
+    ;(how as unknown as Record<string, unknown>)[layer] = choice
+  }
   const sizes = Object.entries(options.workers ?? {}).map(([name, s]) => {
     const memory = bytes(s?.memory)
     if (
@@ -329,7 +342,7 @@ export function dte(options: DteOptions) {
       proof ??= seal.secretProof(secret!)
       const { tree } = await snapshot(ctx.workspaceRoot)
       if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
-      const need = (id: string): Need => needOf(peaks.get(id))
+      const need = (id: string): Need => booked(needOf(peaks.get(id)), how.book)
       // The run plans again on it, now when `now`; set once the plan is.
       let onChange = (_now?: boolean): void => {}
       const o = new Orchestrator({
@@ -348,6 +361,7 @@ export function dte(options: DteOptions) {
         keyOf: (id) => keys.get(id),
         tail: (id) =>
           (tails ??= tailsMs(nodes ?? new Map(), (x) => peaks.get(x)?.p50DurationMs))(id),
+        how,
         lost: (id) => {
           // A planned worker is not started again: its job is spent.
           const s = sizeOf.get(id)
@@ -442,6 +456,7 @@ export function dte(options: DteOptions) {
           replaceable: adapter !== undefined,
           limitMs: deadline === undefined ? undefined : deadline - performance.now(),
           known,
+          how,
         })
         deadline = performance.now() + p.boundMs
         for (const t of p.tasks) known.add(t.id)

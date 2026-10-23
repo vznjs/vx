@@ -2,6 +2,29 @@
 // (`Orchestrator.pump`) and for the plan's play-out (`planner.ts`), so the
 // plan sizes the run the way the run packs it.
 
+import type { Strategy } from './strategy.js'
+
+/**
+ * `ids` (waiting, in the order they got ready) in the order `how` takes
+ * them. `tail`: each one's longest chain after it, its own ms included.
+ */
+export function ordered(
+  ids: readonly string[],
+  how: Strategy['order'],
+  tail: (id: string) => number,
+  need: (id: string) => Need,
+  cores: number,
+): string[] {
+  if (how === 'fifo') return [...ids]
+  const byTail = (x: string, y: string): number => tail(y) - tail(x)
+  if (how === 'critical-path') return [...ids].sort(byTail)
+  // Troublesome: within a quarter of the longest chain, or half a worker wide.
+  let longest = 0
+  for (const id of ids) longest = Math.max(longest, tail(id))
+  const hard = (id: string): boolean => tail(id) >= 0.75 * longest || need(id).cores >= cores / 2
+  return [...ids].sort((x, y) => Number(hard(y)) - Number(hard(x)) || byTail(x, y))
+}
+
 /** What a task asks of a worker: its history's cores and peak memory. */
 export interface Need {
   readonly cores: number
@@ -58,6 +81,7 @@ export function assign<B extends Bin>(
   asks: readonly Ask[],
   bins: readonly B[],
   waits: (above: NonNullable<Need['above']>) => boolean = () => false,
+  place: Strategy['place'] = 'best-fit',
 ): Map<string, B> {
   const out = new Map<string, B>()
   const held = new Set<B>()
@@ -75,7 +99,7 @@ export function assign<B extends Bin>(
       if (held.has(b) || !fits(b, need)) continue
       let has = 0
       for (const id of up) if (b.has?.has(id) === true) has++
-      const score: [number, number] = [has, b.used.cores - b.cores]
+      const score: [number, number] = [has, fit(b, need, place, pool.indexOf(b))]
       if (
         best === undefined ||
         score[0] > bestScore[0] ||
@@ -102,4 +126,25 @@ export function assign<B extends Bin>(
     best.running++
   }
   return out
+}
+
+/** How well `need` suits `b` by `place`: the higher, the better. */
+function fit(b: Bin, need: Need, place: Strategy['place'], index: number): number {
+  switch (place) {
+    case 'best-fit':
+      return b.used.cores - b.cores
+    case 'worst-fit':
+      return b.cores - b.used.cores
+    case 'first-fit':
+      return -index
+    case 'tetris': {
+      // The dot product of the need and what is free, each as a share of
+      // the worker: a task goes where its shape matches the hole.
+      const cores = Math.min(need.cores, b.cores) / b.cores
+      const memory = b.memory > 0 ? Math.min(need.memory, b.memory) / b.memory : 0
+      const freeCores = (b.cores - b.used.cores) / b.cores
+      const freeMemory = b.memory > 0 ? (b.memory - b.used.memory) / b.memory : 0
+      return cores * freeCores + memory * freeMemory
+    }
+  }
 }

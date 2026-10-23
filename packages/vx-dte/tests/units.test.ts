@@ -1369,6 +1369,12 @@ it('refuses options it does not read and workers it cannot start', () => {
   expect(
     refusal(() => dte({ workers: { s: { max: 1, cpu: 1, memory: '8 lots' } }, adapter })),
   ).toBe("dte(): workers.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any")
+  expect(refusal(() => dte({ workers: {}, adapter, scheduler: { order: 'lifo' } as never }))).toBe(
+    'dte(): scheduler.order is one of critical-path, graphene, fifo',
+  )
+  expect(refusal(() => dte({ workers: {}, adapter, scheduler: { pace: 'x' } as never }))).toBe(
+    'dte(): scheduler.pace is no layer: the layers are order, place, book, scale',
+  )
   expect(refusal(() => dte({}))).toBe(
     'dte(): with no adapter, set relay: the workers that join it run the tasks',
   )
@@ -1411,6 +1417,7 @@ console.log(JSON.stringify(seen.sort()))
     'vx-dte/src/index.ts',
     'vx-dte/src/local.ts',
     'vx-dte/src/plugin.ts',
+    'vx-dte/src/strategy.ts',
   ])
 })
 
