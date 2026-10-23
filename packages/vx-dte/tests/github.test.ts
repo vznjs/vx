@@ -223,7 +223,7 @@ it('lists each run it dispatched in RUNNER_TEMP for the job to cancel', async ()
 
 // A job that failed at its install told the run nothing: its worker stayed
 // `starting` and the run waited for the job's timeout (2026-10-22).
-it('says why for each worker whose job ended badly before it joined', async () => {
+it('says why for each worker whose job ended, a success too', async () => {
   const server = Bun.serve({
     port: 0,
     hostname: '127.0.0.1',
@@ -243,6 +243,8 @@ it('says why for each worker whose job ended badly before it joined', async () =
               ],
             },
             { name: 'small#2', status: 'in_progress', conclusion: null },
+            // Found no live run and left: the run must not wait on it.
+            { name: 'small#3', status: 'completed', conclusion: 'success', steps: [] },
           ],
         })
       return new Response(null, { status: 202 })
@@ -258,8 +260,12 @@ it('says why for each worker whose job ended badly before it joined', async () =
     const adapter = github()
     void adapter.spawn(spawn('small#1', 'small', (w) => why.push(`small#1: ${w}`)))
     void adapter.spawn(spawn('small#2', 'small', (w) => why.push(`small#2: ${w}`)))
-    for (let i = 0; i < 50 && why.length === 0; i++) await Bun.sleep(100)
-    expect(why).toEqual(['small#1: job failure at Install dependencies'])
+    void adapter.spawn(spawn('small#3', 'small', (w) => why.push(`small#3: ${w}`)))
+    for (let i = 0; i < 50 && why.length < 2; i++) await Bun.sleep(100)
+    expect(why.sort()).toEqual([
+      'small#1: job failure at Install dependencies',
+      'small#3: job success',
+    ])
     await adapter.close?.()
   } finally {
     await server.stop(true)

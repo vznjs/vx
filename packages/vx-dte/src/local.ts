@@ -102,7 +102,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
         }
         if (closed) return
         void run([...vx(), 'dte', 'worker'], dir, env, false).then(async (r) => {
-          if (r.code !== 0 && !closed) a.exited(await why(`exited ${r.code}`, a.id, r.err))
+          if (!closed) a.exited(await why(`exited ${r.code}`, a.id, r.err))
         })
       })()
       pending.add(work)

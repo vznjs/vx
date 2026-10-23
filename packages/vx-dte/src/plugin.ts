@@ -48,7 +48,7 @@ export interface WorkerSpawn {
   readonly workspaceRoot: string
   /** What the worker's `vx dte worker` reads: `VX_DTE_RUN`, `VX_DTE_WORKER` (`id`), `VX_DTE_RELAY`, `VX_DTE_SECRET` (the run’s). */
   readonly env: Readonly<Record<string, string>>
-  /** Says the worker ended before or without joining, and why (its exit, its last stderr line). */
+  /** Says the worker's job or process ended, a success too, and why (its exit, its last stderr line). */
   readonly exited: (reason: string) => void
 }
 

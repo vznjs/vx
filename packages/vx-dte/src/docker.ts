@@ -135,7 +135,7 @@ export function docker(options: DockerOptions): DteAdapter {
       void (async () => {
         const [err, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited])
         workers.delete(name)
-        if (code !== 0 && !closed) a.exited(await why(`exited ${code}`, a.id, err))
+        if (!closed) a.exited(await why(`exited ${code}`, a.id, err))
       })()
     },
 

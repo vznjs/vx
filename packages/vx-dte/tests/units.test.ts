@@ -205,13 +205,13 @@ it('gives failed worker starts three more workers, then fails the run', async ()
   }
 })
 
-// small#4's join timed out on the relay and its job's failure never
-// reached the run: it counted as starting for good, and main's run sat
-// 18 min (ee3fc6e, 2026-10-23).
-it('gives up a started worker that never joins, stops it and starts another', async () => {
+// small#4's join timed out on the relay and its job's end never reached
+// the run: it counted as starting for good, and main's run sat 18 min
+// (ee3fc6e, 2026-10-23). With no join deadline (owner, 2026-10-23: "no
+// timeouts at all"), a job that ends, a success too, is what says so.
+it('starts another for a worker whose job ended before it joined, a success too', async () => {
   const served = servedRelay()
   try {
-    const overdue: string[] = []
     const freed: string[] = []
     const o = new Orchestrator({
       me: await join(served.url, R, 'orchestrator', null, undefined),
@@ -223,16 +223,37 @@ it('gives up a started worker that never joins, stops it and starts another', as
       cacheFacts: async () => ({ refs: [], lent: {} }),
       run: R,
       keyOf: () => undefined,
-      joinDeadlineMs: 50,
-      overdue: (id) => overdue.push(id),
       lost: (id) => freed.push(id),
     })
     o.spawned('small#1', { size: 'small', cpu: 1, memory: 1 })
-    await Bun.sleep(150)
-    expect({ overdue, freed }).toEqual({ overdue: ['small#1'], freed: ['small#1'] })
+    await Bun.sleep(50)
+    expect(freed).toEqual([])
+    o.failed('small#1', 'job success')
+    expect(freed).toEqual(['small#1'])
     await o.close()
   } finally {
     await served.stop()
+  }
+})
+
+// Owner, 2026-10-23: "we learn that from fist we get, and double its time
+// as max wait time for other". Before, a fixed 3 min.
+it('gives up a started worker past twice the first of its size’s join, and stops it', async () => {
+  const overdue: string[] = []
+  const h = await harness(new Map([node('t1')]), undefined, 60_000, undefined, undefined, {
+    overdue: (id) => overdue.push(id),
+  })
+  try {
+    h.o.spawned('worker#1', { size: 'small', cpu: 1, memory: 1 })
+    h.o.spawned('worker#2', { size: 'small', cpu: 1, memory: 1 })
+    h.o.spawned('mac#1', { size: 'mac', cpu: 1, memory: 1 })
+    await Bun.sleep(100)
+    expect(overdue).toEqual([])
+    await h.worker(1, 'worker#1')
+    await Bun.sleep(400)
+    expect(overdue).toEqual(['worker#2'])
+  } finally {
+    await h.stop()
   }
 })
 
@@ -262,6 +283,7 @@ async function harness(
     home?: string
     stalled?: (waiting: string) => void
     stallMs?: number
+    overdue?: (id: string) => void
   } = {},
 ) {
   const store = fakeArtifacts()
@@ -559,7 +581,8 @@ it('a worker cancelled before it joined is told to exit when it joins, and never
   const h = await harness(new Map([node('t1')]))
   try {
     h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
-    h.o.spawned('small#2', { size: 'small', cpu: 1, memory: 100 })
+    // Another size: small#1's join, a few ms here, would give it up first.
+    h.o.spawned('small#2', { size: 'big', cpu: 1, memory: 100 })
     const a = await h.worker(1, 'small#1')
     await Bun.sleep(50)
     expect(h.o.release(['small#2'])).toEqual(['small#2'])
@@ -711,6 +734,22 @@ it('a worker the plan lets go leaves, and the plan no longer places on it', asyn
     h.o.release([a.id])
     expect(await a.types()).toContain('exit')
     expect(h.o.planState(() => undefined, 0).workers).toEqual([])
+  } finally {
+    await h.stop()
+  }
+})
+
+// Its job ending after it left (a success: adapters report every end now)
+// counted it as a start that failed, and could start another.
+it('a worker that left is not failed or replaced when its job then ends', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    h.o.release([a.id])
+    expect(await a.types()).toContain('exit')
+    h.o.failed('worker#1', 'job success')
+    expect(h.o.machines().map((m) => [m.name, m.status])).toEqual([['worker#1', 'ok']])
   } finally {
     await h.stop()
   }

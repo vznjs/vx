@@ -69,7 +69,7 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work
       await Bun.sleep(50)
       got = await readFile(out, 'utf8').catch(() => '')
     }
-    expect([got, exited]).toEqual(['uncommitted\n', []])
+    expect([got, exited.filter((w) => w !== 'exited 0')]).toEqual(['uncommitted\n', []])
   } finally {
     process.env['PATH'] = saved
   }
