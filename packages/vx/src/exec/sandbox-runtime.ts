@@ -1327,7 +1327,10 @@ async function wrapIn(
     process.platform === 'linux'
       ? ownGroupCommand(tag, inTmp, args.trace, args.tracePaths === true)
       : { command: taggedCommand, forwards: false, traced: false }
+  // The tag leads: SRT keys a record by the wrap's first 100 characters,
+  // and the proxy wait below is the same 190 for every networked task.
   const inner = [
+    process.platform === 'linux' ? `: 'vx-${tag}';` : '',
     ports.length > 0 ? portBridgeInner(ports, tag) : '',
     process.platform === 'linux' && args.config.network !== undefined ? PROXY_BRIDGE_WAIT : '',
     grouped.command,
