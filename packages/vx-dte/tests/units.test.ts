@@ -472,6 +472,7 @@ it('an idle agent the run no longer needs leaves; one a big task needs stays', a
 it('the final summary says how each agent ended, its size and machine under it', async () => {
   const h = await harness(new Map([node('t1')]))
   const small = { size: 'small', cpu: 2, memory: 4e9 }
+  h.o.asked(5.5, 2)
   h.o.spawned('small#1', small)
   h.o.spawned('big#1', { size: 'big', cpu: 4, memory: 4e9 })
   const a = await h.agent(2, 'small#1')
@@ -491,6 +492,10 @@ it('the final summary says how each agent ended, its size and machine under it',
   expect(rows[at('big#1')]).toMatch(/^big#1 +left/)
   expect(rows.some((r) => r.trimStart().startsWith('!'))).toBe(false)
   expect(rows.filter((r) => /^\S+ +online/.test(r))).toEqual([])
+  // When the run asked for agents, and for how many cores: why it had as many as it did.
+  expect(rows.filter((r) => r.startsWith('asked'))).toEqual([
+    expect.stringMatching(/^asked +2 at 0\.\ds for 6 cores$/),
+  ])
   // Tasks that reported no memory read `memory peak 0 B`.
   expect(rows.filter((r) => r.includes('memory peak'))).toEqual([])
   // A few hundred bytes read `0 KB`.

@@ -177,6 +177,9 @@ export class Orchestrator {
   private restarted = false
   private pumping = false
   private joined = 0
+  private readonly startedAt = performance.now()
+  /** Each time the run asked for agents: when, for how many cores in all, how many. */
+  private readonly asks: { at: number; cores: number; agents: number }[] = []
   private readonly stop = new AbortController()
   private readonly loop: Promise<void>
   private readonly realRoot: string
@@ -707,6 +710,11 @@ export class Orchestrator {
     return this.queue.some((j) => j.req.taskId === taskId) ? null : undefined
   }
 
+  /** The run asks for `agents` more, as `cores` is what its remaining work keeps busy. */
+  asked(cores: number, agents: number): void {
+    this.asks.push({ at: performance.now() - this.startedAt, cores, agents })
+  }
+
   /** `demand` asked the adapter for agent `id` (`AgentSpawn.id`). */
   spawned(id: string, declared: Declared): void {
     this.spawnedAt.set(id, { at: performance.now(), declared })
@@ -950,6 +958,18 @@ export class Orchestrator {
         ...(res.has(l) ? [['', res.get(l)!] as [string, ui.Inline]] : []),
         ...(usage.get(l) ?? []).map((d): [string, ui.Inline] => ['', ui.dim(`${indent}${d}`)]),
       ]),
+      ...(this.ended && this.asks.length > 0
+        ? [
+            [
+              '',
+              ui.dim(
+                `${'asked'.padEnd(width)}  ${this.asks
+                  .map((x) => `${x.agents} at ${seconds(x.at)} for ${Math.ceil(x.cores)} cores`)
+                  .join(' · ')}`,
+              ),
+            ] as [string, ui.Inline],
+          ]
+        : []),
       ...(coreMs > 0
         ? [
             ['', `${'total'.padEnd(width)}  cpu utilization ${percent(cpuMs / coreMs)}`] as [
