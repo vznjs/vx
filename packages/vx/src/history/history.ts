@@ -194,7 +194,7 @@ export class LocalHistoryProvider implements HistoryProvider {
         SUM(CASE WHEN r.status IN ${PASS_STATUSES} THEN 1 ELSE 0 END) AS successes,
         SUM(CASE WHEN r.cache_hit = 1 THEN 1 ELSE 0 END) AS hits,
         SUM(CASE WHEN r.status = 'failed' THEN 1 ELSE 0 END) AS failures,
-        SUM(CASE WHEN r.attempts > 1 THEN 1 ELSE 0 END) AS retried,
+        SUM(CASE WHEN r.status = 'success' AND r.attempts > 1 THEN 1 ELSE 0 END) AS retried,
         GROUP_CONCAT(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
                           THEN r.duration_ms END) AS ds,
         MAX(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
