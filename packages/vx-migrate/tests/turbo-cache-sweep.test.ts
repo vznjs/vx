@@ -163,6 +163,31 @@ describe('what a status means', () => {
     )
   })
 
+  // A 200 that was no JSON object threw a parser's line naming no query
+  // (`null`, a proxy page), or read as every hash absent (`[]`, `"x"`).
+  it('a batch answer that is no JSON object is a refusal that says what came', async () => {
+    const said: string[] = []
+    for (const body of ['null', '[]', '"x"', '<html> proxy </html>', '']) {
+      const { fetchImpl } = stub(() => new Response(body))
+      said.push(
+        await cacheWith(fetchImpl)
+          .hasMany(['aa'])
+          .then(
+            (m) => `answered ${m?.size}`,
+            (err: Error) => err.message,
+          ),
+      )
+    }
+    const no = 'batch query answered HTTP 200 with no JSON object'
+    expect(said).toEqual([
+      `${no}: null`,
+      `${no}: []`,
+      `${no}: "x"`,
+      `${no}: <html> proxy </html>`,
+      no,
+    ])
+  })
+
   it('a batch reply past its bound is a refusal that says so, read no further (L-9)', async () => {
     let pulled = 0
     const chunk = new Uint8Array(64 * 1024).fill(32)
