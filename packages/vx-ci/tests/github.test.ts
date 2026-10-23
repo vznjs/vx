@@ -138,11 +138,11 @@ describe('renderJobSummary', () => {
         ],
       }),
     )
-    expect(md).toContain('### Machines')
+    expect(md).toContain('### Workers')
     expect(md).toContain('| small#1 | left | 21.0s | 3 | 40.0s | 4.0s | 3.9 of 4 | 2.0 | 50% |')
     expect(md).toContain('| small#2 | left | 1m 30s | 0 | 10.0s | 10.0s | 0.0 of 4 | 0.0 | 0% |')
-    expect(md).toContain("Booked 78% of the machines' core-time, used 40%.")
-    expect(renderJobSummary(summary([task({})]))).not.toContain('### Machines')
+    expect(md).toContain("Booked 78% of the workers' core-time, used 40%.")
+    expect(renderJobSummary(summary([task({})]))).not.toContain('### Workers')
   })
 
   it('failures head the table and get a callout section', () => {
