@@ -745,6 +745,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     try {
       info = JSON.parse(text)
     } catch {
+      // quiet: refused below, with what came
       info = undefined
     }
     if (typeof info !== 'object' || info === null || Array.isArray(info)) {
