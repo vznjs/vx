@@ -446,6 +446,9 @@ const LEND_MARGIN_MS = 5 * 60_000
  * before core sees a byte, so a signed download lands in a temp under
  * `tempDir` first and is handed over only once it has.
  */
+/** Statuses of a server that has no batch query. */
+const NO_BATCH = new Set([404, 405, 501])
+
 export class TurboRemoteCache implements RemoteCacheLayer {
   private disabled = false
   private readonly breaker = new OutageBreaker()
@@ -699,7 +702,14 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       headers: { 'Content-Type': 'application/json', ...this.reads },
     })
     if (res === undefined) return new Map()
-    if (res.status !== 200) return null
+    if (res.status !== 200) {
+      const said = (await boundedText(res, 512).catch(() => null))?.trim()
+      // A server with no batch query (404, 405, 501) is asked per hash. Any
+      // other refusal was silent: main f71b377's probe gave no answer and no
+      // one could say why, and DTE sized the run as if every task ran.
+      if (NO_BATCH.has(res.status)) return null
+      throw new Error(`batch query answered HTTP ${res.status}${said ? `: ${said}` : ''}`)
+    }
     // An answer per hash is a few hundred bytes of ArtifactInfo; a reply
     // past this bound is no answer, read no further than the bound (L-9).
     const bound = hashes.length * 4096 + 64 * 1024
