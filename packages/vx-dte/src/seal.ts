@@ -96,15 +96,25 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
     },
     async check(token, parts) {
       const { createVerifier } = await import('@vzn/vx-dte-relay')
+      // A read of GitHub's keys that failed is no check: refused as one, a
+      // keys outage read "its key is not the run's" (2026-10-23).
+      let unread: unknown
       const verify = createVerifier({
         allow: [{ issuer: GITHUB }],
         audience: aud(parts),
         runClaims: { [GITHUB]: ['repository_id'] },
-        fetchJson: once,
+        fetchJson: (u) =>
+          once(u).catch((err: unknown) => {
+            unread = err
+            throw err
+          }),
       })
       return verify(token).then(
         (t) => t.run[0] === repo,
-        () => false,
+        () => {
+          if (unread !== undefined) throw unread
+          return false
+        },
       )
     },
     mismatch: 'run it in a job of this repository with id-token: write',
@@ -160,9 +170,10 @@ class Session {
     const bytes = new Uint8Array(padded(json.length)).fill(0x20)
     bytes.set(json)
     const out: string[] = []
+    const ad = bodyAd(this.sent, Math.ceil(bytes.length / MAX_PLAINTEXT))
     for (let at = 0; at === 0 || at < bytes.length; at += MAX_PLAINTEXT) {
       const n = this.sent++
-      const c = await this.tx.encrypt(n, new Uint8Array(0), bytes.subarray(at, at + MAX_PLAINTEXT))
+      const c = await this.tx.encrypt(n, ad, bytes.subarray(at, at + MAX_PLAINTEXT))
       out.push(`${n}.${b64(c)}`)
     }
     return { seal: out }
@@ -181,9 +192,12 @@ class Session {
       parts.push({ n: seq, c })
     }
     if (this.seen.has(parts[0]!.n)) return REPLAY
+    // Each part is sealed to its body's first nonce and part count: unbound,
+    // a relay spliced a fresh first part onto a delivered body's second.
+    const ad = bodyAd(parts[0]!.n, parts.length)
     try {
       const plain: Uint8Array[] = []
-      for (const p of parts) plain.push(await this.rx.decrypt(p.n, new Uint8Array(0), unb64(p.c)))
+      for (const p of parts) plain.push(await this.rx.decrypt(p.n, ad, unb64(p.c)))
       for (const p of parts) this.seen.add(p.n)
       return JSON.parse(Buffer.concat(plain).toString())
       // quiet: a body that does not open is the relay's tampering, which the caller says
@@ -191,6 +205,11 @@ class Session {
       return undefined
     }
   }
+}
+
+/** What each part of one body is sealed to: its first nonce and how many parts. */
+function bodyAd(first: number, parts: number): Uint8Array<ArrayBuffer> {
+  return text.encode(`${first}.${parts}`)
 }
 
 /** A worker's poll raises it when a body from the orchestrator does not open: the relay changed or replayed it. */

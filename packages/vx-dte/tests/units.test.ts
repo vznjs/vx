@@ -57,18 +57,23 @@ it('a worker runs the orchestrator’s env with its own root, host names and PAT
       localEnv(
         {
           HOME: '/orc/home',
-          PATH: '/orc/ws/node_modules/.bin:/opt/orc',
+          PATH: '/orc/ws/node_modules/.bin:/orc/ws2/bin:/orc/ws:/opt/orc',
           VX_RUN_WORKSPACE: '/orc/ws',
           X: '1',
+          // A path beside the root or holding it is not under it: a plain replace moved both.
+          SIBLING: '/orc/ws2/cache',
+          HOLDS: '/private/orc/ws/x',
         },
         '/orc/ws',
         '/worker/ws',
       ),
     ).toMatchObject({
       HOME: '/worker/home',
-      PATH: '/worker/ws/node_modules/.bin:/usr/bin',
+      PATH: '/worker/ws/node_modules/.bin:/worker/ws:/usr/bin',
       VX_RUN_WORKSPACE: '/worker/ws',
       X: '1',
+      SIBLING: '/orc/ws2/cache',
+      HOLDS: '/private/orc/ws/x',
     })
   } finally {
     Object.assign(process.env, saved)

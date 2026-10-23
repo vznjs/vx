@@ -47,6 +47,8 @@ const CLOSE_WAIT_MS = 2_000
 const UNANSWERED = 'the relay answered no frame'
 /** The close code of a socket whose participant the relay lost or let go (PROTOCOL.md § Sockets). */
 const GONE = 4404
+/** This side's close of a socket that carried a frame no relay sends (RFC 6455 protocol error). */
+const NOT_PROTOCOL = 1002
 /**
  * No answer from the relay this long, every try counted, and it is gone
  * (owner, 2026-10-23: "no reply for 10s no matter of attempts its over").
@@ -234,9 +236,10 @@ export async function join(
         end(new RelayError(410, 'relay: the run is closed'))
       nudge()
     }
-    s.onClose = (code) => {
+    s.onClose = (code, why) => {
       // The relay closes the socket of a participant it lost or let go.
       if (code === GONE) end(new RelayError(404, 'relay: unknown id'))
+      if (code === NOT_PROTOCOL) end(new RelayError(502, `relay: ${why}`))
       if (socket === s) socket = undefined
       again()
       nudge()
@@ -386,8 +389,8 @@ interface Socket {
   /** The close code it closed with; 0 while open or with none. */
   readonly code: number
   onMessages?: (messages: RelayMessage[]) => void
-  /** Its close, by the close code the relay gave (`GONE`) or none. */
-  onClose?: (code: number) => void
+  /** Its close, by the close code the relay gave (`GONE`), `NOT_PROTOCOL`, or none; `why` says it. */
+  onClose?: (code: number, why: string) => void
   /** One frame, `{ leave: true }` or `{ remove }`; resolves on the relay's answer. */
   request(frame: Record<string, unknown>): Promise<void>
   /** A send; those asked for in one turn of the event loop go as one frame. */
@@ -536,7 +539,7 @@ async function connect(
     for (const p of pending.values()) p.reject(new Error(why))
     pending.clear()
     said(undefined)
-    me.onClose?.(by)
+    me.onClose?.(by, why)
   }
   let shut: () => void = () => {}
   const done = new Promise<void>((resolve) => {
@@ -550,10 +553,15 @@ async function connect(
   ws.onmessage = (e) => {
     if (e.data === 'pong') return
     spoke = performance.now()
-    const m = JSON.parse(String(e.data)) as Answer & {
-      messages?: RelayMessage[]
-      n?: number
-      joined?: Joined
+    let m: Answer & { messages?: RelayMessage[]; n?: number; joined?: Joined }
+    try {
+      m = JSON.parse(String(e.data)) as typeof m
+      if (typeof m !== 'object' || m === null) throw new Error()
+    } catch {
+      // Thrown here it left the process on a bare SyntaxError: a relay is anyone's to host.
+      closed(`a frame that is not its protocol: ${String(e.data).slice(0, 200)}`, NOT_PROTOCOL)
+      ws.close(NOT_PROTOCOL)
+      return
     }
     if (m.joined !== undefined) {
       hb = m.joined.heartbeatMs

@@ -224,8 +224,10 @@ before or after its own join, and `remove`s one whose handshake fails.
 Message 1's payload is the worker's info (JSON), encrypted under the psk.
 After the handshake every body is Noise transport messages, base64, each
 at most 65535 bytes and naming its nonce `n` (Noise §11.4, since a relay
-may reorder); a nonce seen before is a replay and is dropped, one that
-does not open loses its sender. The plaintext is JSON padded with trailing
+may reorder); each is sealed with associated data `<first n>.<parts>`
+of its body, so no part opens in another body. A body whose first nonce
+was seen before is a replay and is dropped, one that does not open loses
+its sender. The plaintext is JSON padded with trailing
 spaces to its size class, a power of two from 256 bytes, then whole
 transport messages, so the relay learns no size within a class (after
 Tailscale's DERP).

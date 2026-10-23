@@ -504,17 +504,18 @@ export function localEnv(
   remoteRoot: string,
   root: string,
 ): Record<string, string | undefined> {
-  const out: Record<string, string | undefined> = {}
-  for (const [k, v] of Object.entries(env)) out[k] = v.replaceAll(remoteRoot, root)
+  // By path: a plain replace moved `/ws2` and `/private/ws` with `/ws`.
+  const out: Record<string, string | undefined> = swapRoots({ ...env }, [[remoteRoot, root]])
   for (const k of HOST_ENV) out[k] = process.env[k]
-  const bins = (out['PATH'] ?? '').split(':').filter((p) => p.startsWith(root))
+  const bins = (out['PATH'] ?? '').split(':').filter((p) => p === root || p.startsWith(`${root}/`))
   out['PATH'] = [...bins, process.env['PATH'] ?? ''].join(':')
   return out
 }
 
 /**
  * `value` with each path under a `from` root moved under its `to`, in one
- * pass: a root that holds another (`/ws`, `/ws2`) is not swapped twice.
+ * pass: a root that holds another (`/ws`, `/ws2`) is not swapped twice. A
+ * root ends at `/`, `:` (a PATH list) or the string's end.
  */
 export function swapRoots<T>(value: T, pairs: readonly (readonly [string, string])[]): T {
   // The first pair naming a root wins.
@@ -524,7 +525,7 @@ export function swapRoots<T>(value: T, pairs: readonly (readonly [string, string
     .map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     .join('|')
   const text = JSON.stringify(value).replace(
-    new RegExp(`(?<=^|[^\\w.-])(${alt})(?=[/"]|\\\\|$)`, 'g'),
+    new RegExp(`(?<=^|[^\\w.-])(${alt})(?=[/":]|\\\\|$)`, 'g'),
     (m) => to.get(m)!,
   )
   return JSON.parse(text) as T
