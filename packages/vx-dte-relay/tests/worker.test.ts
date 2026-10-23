@@ -118,6 +118,7 @@ it('names why the host refused a run', async () => {
           Promise.reject(new Error('Exceeded allowed duration in Durable Objects free tier.')),
       }),
     },
+    ALLOW: 'https://gitlab.com:o/r:.gitlab-ci.yml',
   }
   const res = await join(refused, A)
   expect([res.status, await res.json()]).toEqual([
@@ -127,6 +128,24 @@ it('names why the host refused a run', async () => {
         "the relay's host refused the run: Exceeded allowed duration in Durable Objects free tier.",
     },
   ])
+})
+
+// A run under an empty ALLOW got 503s, which a client waits out (2026-10-23).
+it('refuses every join with a 403 while ALLOW admits no one, waking no object', async () => {
+  for (const [allow, error] of [
+    [' ', "this relay's ALLOW is empty: it admits no run"],
+    ['o/r', "this relay's ALLOW: o/r is not issuer:owner/repo:workflow"],
+  ] as const) {
+    const env: Env = {
+      RELAY: {
+        idFromName: (n) => n,
+        get: () => ({ fetch: () => Promise.reject(new Error('woken')) }),
+      },
+      ALLOW: allow,
+    }
+    const res = await join(env, A)
+    expect([res.status, await res.json()]).toEqual([403, { error }])
+  }
 })
 
 it('will not start without ALLOW, or with an entry it cannot read', () => {

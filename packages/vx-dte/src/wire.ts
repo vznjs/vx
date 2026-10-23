@@ -123,7 +123,11 @@ export async function join(
       retryAfterMs?: number
     }
     if (!res.ok) {
-      const message = `relay ${verb}: ${res.status} ${json.error ?? ''}`
+      // Refused at the door is no fault to wait out: say so, and stop.
+      const message =
+        verb === 'join' && (res.status === 401 || res.status === 403)
+          ? `cannot connect to the relay ${new URL(base).origin}: ${json.error ?? res.status}`
+          : `relay ${verb}: ${res.status} ${json.error ?? ''}`
       throw new RelayError(res.status, message, json.retryAfterMs)
     }
     return json as Record<string, unknown>
