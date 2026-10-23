@@ -129,6 +129,7 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
+      - run: bun packages/vx/src/bin.ts lock --check
       - run: bun packages/vx/src/bin.ts run check.binary --filter @vzn/vx
 
   # macOS-only defects reached main unseen on Linux (2026-08-22: tar
@@ -159,4 +160,5 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
+      - run: bun packages/vx/src/bin.ts lock --check
       - run: bun packages/vx/src/bin.ts run test.platform check.binary check.sandbox-canary check.build-cold build.bun.darwin-x64 build.bun.linux-x64 --filter @vzn/vx
