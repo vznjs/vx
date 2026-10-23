@@ -35,7 +35,7 @@ the method and the scripts are on [Benchmarks](../../benchmarks/).
 
 ## A cold run is the tasks
 
-On a cold run both tools spend about 97% of the wall time waiting on
+On a cold run both tools spend almost all of the wall time waiting on
 the commands they started. What the tool adds per task is small. We
 timed the bare commands in a shell (build 312 ms, lint 78 ms) and the
 same commands under vx: 314 ms and 78.4 ms. Spawn, environment and
