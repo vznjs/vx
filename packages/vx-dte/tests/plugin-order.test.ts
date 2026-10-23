@@ -19,6 +19,7 @@ it('asks for no worker before schedule has read history', async () => {
   process.env['VX_DTE_RUN'] = crypto.randomUUID()
   process.env['VX_DTE_SECRET'] = 'order-secret'
   const spawned: string[] = []
+  let reads = 0
   const plugin = dte({
     relay: relay.url,
     workers: { small: { max: 2, cpu: 1, memory: '1GB' } },
@@ -64,6 +65,7 @@ it('asks for no worker before schedule has read history', async () => {
       branch: null,
       localCache: {
         dbHandle: () => {
+          reads++
           throw new Error('no history')
         },
       },
@@ -73,6 +75,9 @@ it('asks for no worker before schedule has read history', async () => {
     } as never)
     for (let i = 0; i < 40 && spawned.length === 0; i++) await Bun.sleep(25)
     expect(spawned.length).toBeGreaterThan(0)
+    // Read again once the refines promised landed: one that landed before
+    // `onRefine` listened left the first read's empty history (main 49adc41).
+    expect(reads).toBe(2)
   } finally {
     await plugin.teardown?.({} as never)
     await relay.stop()
