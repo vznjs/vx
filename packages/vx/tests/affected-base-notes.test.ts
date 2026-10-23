@@ -7,11 +7,15 @@
 import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
 import { edgesSource, PLUGIN_IMPORT, pluginSource, writeEdges } from './helpers/plugin.js'
 import { noticed } from './helpers/notice.js'
 
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
+
+// A test spawns vx up to seven times: past bun's 5 s default on a loaded
+// shard, bun killed the running vx and the next assertion read `exit 1: `.
+setDefaultTimeout(30_000)
 
 function git(cwd: string, ...args: string[]): void {
   const p = Bun.spawnSync({
