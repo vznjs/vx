@@ -188,6 +188,26 @@ it('loses a worker whose body the relay changed, and drops one it replays', asyn
   expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
 })
 
+it('loses a worker whose body the relay spliced from two, each part sealed', async () => {
+  const { r, o, a } = await pair()
+  await until(o)
+  await o.send(a.id, { type: 'welcome', name: 'worker#1' })
+  await until(a)
+  // Over 64 KiB: two parts each. Both strings, so a splice still parses.
+  await a.send('orchestrator', 'a'.repeat(70_000))
+  const first = (JSON.parse(r.bodies.at(-1)!) as { body: { seal: string[] } }).body.seal
+  expect(first).toHaveLength(2)
+  expect((await until(o)).map((m) => m.body)).toEqual(['a'.repeat(70_000)])
+  // A fresh first part, then the delivered body's second: only the first was checked.
+  r.tamperNext((b) => {
+    const send = JSON.parse(b) as { body: { seal: string[] } }
+    send.body.seal = [send.body.seal[0]!, first[1]!]
+    return JSON.stringify(send)
+  })
+  await a.send('orchestrator', 'b'.repeat(70_000))
+  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
+})
+
 it('on GitHub, admits by OIDC tokens of this repository whose audience is the key, with no secret', async () => {
   const pairKey = (await crypto.subtle.generateKey(
     {
