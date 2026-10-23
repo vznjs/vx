@@ -149,6 +149,8 @@ describe('renderJobSummary', () => {
       ),
     )
     expect(md).toContain('### Workers')
+    // Not a 0 ms run: its time is its dependants' (M, 2026-10-23).
+    expect(md).toContain('| c#services | 🔗 ran with its dependants |  |')
     // A carried server ran in its dependants; a task that ran on the run's
     // own machine is named, and the counts add up (owner, 2026-10-23).
     expect(md).toContain('| this machine | ok |  | 1 |  |  |  |  |  |  |')
