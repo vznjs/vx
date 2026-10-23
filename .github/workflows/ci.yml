@@ -51,7 +51,7 @@ jobs:
   linux:
     name: linux-x64
     if: github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     # A push to main deploys the docs site the run built.
     environment: ${{ github.event_name == 'push' && 'github-pages' || '' }}
@@ -109,7 +109,7 @@ jobs:
   binary-linux-arm64:
     name: linux-arm64
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       id-token: write
@@ -138,7 +138,7 @@ jobs:
   macos:
     name: darwin-arm64
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
       id-token: write
