@@ -14,7 +14,7 @@ import {
 } from './config-eval.js'
 import { configImports, hasEsmExport, unprovidedBareImports } from './config-imports.js'
 import { readOnce, unreadable } from './load-reads.js'
-import { buildCompiled, loadCompiled } from './config-bytecode.js'
+import { buildCompiled, loadCompiled, loadedModules } from './config-bytecode.js'
 
 // The validator lives in config-schema.ts; re-exported so a reader that
 // reaches the loader for it (the tests do) keeps working.
@@ -170,6 +170,7 @@ async function loadDefaultExport(
   }
   let ns: { default?: unknown }
   let compiled: { default?: unknown } | null | undefined
+  let loaded: Set<string> | undefined
   const unguard = guardExit()
   let deadline: ReturnType<typeof setTimeout> | undefined
   try {
@@ -178,6 +179,7 @@ async function loadDefaultExport(
     compiled =
       literal || compiledRoot === undefined ? null : tryCompiled(compiledRoot, configPath, bytes)
     if (compiled) return defaultOf(compiled, kind, configPath)
+    if (compiled === undefined) loaded = loadedModules(compiledRoot!)
     // The worker's budget, here too: a top-level await that never settled
     // while a timer kept the loop alive hung `vx run` for good, silently
     // (D-66).
@@ -208,8 +210,8 @@ async function loadDefaultExport(
     if (source !== null) releaseSource(hash)
   }
   const mod = defaultOf(ns, kind, configPath)
-  if (compiledRoot !== undefined && compiled === undefined) {
-    await buildCompiled(compiledRoot, configPath, bytes)
+  if (compiledRoot !== undefined && loaded !== undefined) {
+    await buildCompiled(compiledRoot, configPath, bytes, loaded)
   }
   return mod
 }

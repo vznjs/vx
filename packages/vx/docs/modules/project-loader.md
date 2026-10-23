@@ -263,9 +263,7 @@ gets a `skip` manifest and loads from source while its inputs stay the
 same: an `import.meta` field other than `dir dirname path filename file
 url main`, a computed `require`/`import()` or `require.resolve`, a
 `.cjs`/`.cts` file or a CommonJS config, top-level await (no bytecode
-is produced), an input no loader hook saw (JSON), a file outside the
-running core's own source, imported by path (run from source, a bundled
-copy would be a second core state). The require needs
+is produced), an input no loader hook saw (JSON), a file this process had already evaluated (a bundled copy would be a second state: run from source, core's own `src/index.ts` imported by path). The require needs
 the core alias (`cli/core-alias.ts`, synchronous for that reason);
 without it `@vzn/vx` resolves only for `import` and the source loads.
 

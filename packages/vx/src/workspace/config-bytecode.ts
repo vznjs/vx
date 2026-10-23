@@ -13,8 +13,9 @@
 // before and builds again. A graph the bundle could run differently is
 // never built: an `import.meta` field beyond its location, a `require` or
 // `import()` of a computed specifier (relative to the bundle, not the
-// file), top-level await, a CommonJS config, a file of the running core's
-// own source (a bundled copy would be a second core state). The bundle goes
+// file), top-level await, a CommonJS config, a file this process already
+// evaluated (a bundled copy would be a second state; run from source, core
+// itself). The bundle goes
 // into `.vx/cache` only once a run made it, so a reading verb on a fresh
 // workspace writes nothing (item 900). `.vx/cache` is trusted as the rest
 // of the cache is: what it holds is restored into the tree too.
@@ -31,7 +32,6 @@ import {
 import { writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { xxh3hex } from '../util/index.js'
 
 /** Bumped when what a bundle holds, or how it is checked, changes. */
@@ -41,12 +41,6 @@ const COMPILED_VERSION = 1
 const META = '__vxImportMeta'
 const META_FIELDS = new Set(['dir', 'dirname', 'path', 'filename', 'file', 'url', 'main'])
 const META_USE = new RegExp(`\\b${META}\\b(\\.[\\w$]+)?`, 'g')
-/**
- * Run from source (`bun src/bin.ts`, the tests), core is these files: a
- * config importing one by path shares this process's instance, which a
- * bundle would copy. Compiled, this is the binary's own root.
- */
-const CORE_SRC = path.dirname(import.meta.dir) + path.sep
 const COMPUTED_LOAD = /\b(?:require|import)\(\s*(?![\s'"])|\brequire\.resolve\b/
 
 interface Manifest {
@@ -115,6 +109,16 @@ export function loadCompiled(
   }
 }
 
+/**
+ * The files this process has evaluated as modules. One the config imports
+ * by path (run from source, core's own `src/index.ts`) is shared with the
+ * process, and a bundle would run a second copy of its state.
+ */
+export function loadedModules(root: string): Set<string> {
+  // Not `import.meta`: core's planner also runs as a browser script (the playground).
+  return new Set(Object.keys(createRequire(path.join(root, 'index.js')).cache))
+}
+
 /** The loader Bun reads `file` with, or null for a file the bundle must not hold. */
 function loaderOf(file: string): 'ts' | 'tsx' | 'js' | 'jsx' | null {
   const ext = path.extname(file)
@@ -133,6 +137,8 @@ export async function buildCompiled(
   root: string,
   configPath: string,
   bytes: Uint8Array,
+  /** `loadedModules()` before the config's source load. */
+  loaded: ReadonlySet<string>,
 ): Promise<void> {
   const dir = compiledDir(root)
   if (!existsSync(path.dirname(dir))) return
@@ -160,7 +166,7 @@ export async function buildCompiled(
           setup(build) {
             build.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, async (args) => {
               const file = realpathSync(args.path)
-              if (file.startsWith(CORE_SRC)) {
+              if (loaded.has(file)) {
                 faithful = false
                 inputs[file] = xxh3hex(await Bun.file(file).bytes())
                 return { contents: '', loader: 'js' }
@@ -196,7 +202,7 @@ export async function buildCompiled(
                 path: file,
                 filename: file,
                 file: path.basename(file),
-                url: pathToFileURL(file).href,
+                url: Bun.pathToFileURL(file).href,
                 main: false,
               }
               return { contents: `const ${META} = ${JSON.stringify(meta)};\n${js}`, loader: 'js' }
