@@ -83,18 +83,15 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
     if (input.withTelemetry) telemetryTasks.push(taskTelemetryOf(o))
     const blockedBy = o.blockedBy ?? input.tainted?.get(o.node.id)
     const remoteError = remoteErrorOf(input.remoteTraffic, o.hash)
-    runs.push({
-      ...(o.hash !== undefined ? { hash: o.hash } : {}),
+    // Built field by field: a spread per optional field was ~2 µs of each
+    // of a 1,200-hit warm run's rows.
+    const hit = isCacheHit(o.status)
+    const r: RunRecord = {
       project: o.node.projectName,
       task: o.node.taskName,
       status: o.status,
       exitCode: o.exitCode,
       durationMs: o.durationMs,
-      // A run forwards its args to the tasks it was asked for, never to a
-      // dependency: the row says which ran with them.
-      ...(input.forwardArgs !== undefined && input.forwardArgs.length > 0 && o.node.requested
-        ? { forwardArgs: input.forwardArgs }
-        : {}),
       // Anchor to the REAL per-task wall-clock window: run-start wall time +
       // the task's ns offset (captured for hits and executed tasks alike).
       // The `end - duration` fallback applies to outcomes without an offset —
@@ -111,28 +108,34 @@ export function assembleRunRecords(input: RunRecordsInput): RunRecords {
           ? startedAtMs + Math.round(Number(o.wallclockEndNs) / 1e6)
           : endedAtMs,
       runId,
-      ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
-      ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
-      ...(o.peakCores !== undefined ? { peakCores: o.peakCores } : {}),
-      ...(o.avgRssBytes !== undefined ? { avgRssBytes: o.avgRssBytes } : {}),
-      ...(o.where !== undefined ? { placement: o.where } : {}),
-      ...(o.whereCores !== undefined ? { placementCores: o.whereCores } : {}),
-      ...(o.whereMemoryBytes !== undefined ? { placementMemoryBytes: o.whereMemoryBytes } : {}),
-      ...(o.wallclockStartNs !== undefined ? { wallclockStartNs: o.wallclockStartNs } : {}),
-      ...(o.wallclockEndNs !== undefined ? { wallclockEndNs: o.wallclockEndNs } : {}),
-      cacheHit: isCacheHit(o.status),
-      ...(isCacheHit(o.status) ? { restored: o.restored === true } : {}),
-      ...(o.attempts !== undefined ? { attempts: o.attempts } : {}),
+      cacheHit: hit,
       cached: o.node.config.cache !== undefined,
-      // A task that ran behind a failure names it too, so the flakiness
-      // projection counts its outcome on no key (failure-mode.ts).
-      ...(blockedBy !== undefined ? { blockedBy } : {}),
-      ...(o.timedOut === true ? { timedOut: true as const } : {}),
-      ...(o.sandboxViolations !== undefined ? { sandboxViolations: o.sandboxViolations } : {}),
-      ...(o.notReady !== undefined ? { notReady: o.notReady } : {}),
-      ...(remoteError !== undefined ? { remoteError } : {}),
-      ...(o.keylessBy !== undefined ? { keylessBy: o.keylessBy } : {}),
-    })
+    }
+    if (o.hash !== undefined) r.hash = o.hash
+    // A run forwards its args to the tasks it was asked for, never to a
+    // dependency: the row says which ran with them.
+    if (input.forwardArgs !== undefined && input.forwardArgs.length > 0 && o.node.requested)
+      r.forwardArgs = input.forwardArgs
+    if (o.cpuMs !== undefined) r.cpuMs = o.cpuMs
+    if (o.peakRssBytes !== undefined) r.peakRssBytes = o.peakRssBytes
+    if (o.peakCores !== undefined) r.peakCores = o.peakCores
+    if (o.avgRssBytes !== undefined) r.avgRssBytes = o.avgRssBytes
+    if (o.where !== undefined) r.placement = o.where
+    if (o.whereCores !== undefined) r.placementCores = o.whereCores
+    if (o.whereMemoryBytes !== undefined) r.placementMemoryBytes = o.whereMemoryBytes
+    if (o.wallclockStartNs !== undefined) r.wallclockStartNs = o.wallclockStartNs
+    if (o.wallclockEndNs !== undefined) r.wallclockEndNs = o.wallclockEndNs
+    if (hit) r.restored = o.restored === true
+    if (o.attempts !== undefined) r.attempts = o.attempts
+    // A task that ran behind a failure names it too, so the flakiness
+    // projection counts its outcome on no key (failure-mode.ts).
+    if (blockedBy !== undefined) r.blockedBy = blockedBy
+    if (o.timedOut === true) r.timedOut = true
+    if (o.sandboxViolations !== undefined) r.sandboxViolations = o.sandboxViolations
+    if (o.notReady !== undefined) r.notReady = o.notReady
+    if (remoteError !== undefined) r.remoteError = remoteError
+    if (o.keylessBy !== undefined) r.keylessBy = o.keylessBy
+    runs.push(r)
     if (o.status === 'failed') failedCount++
     if (o.status === 'cache-hit') hitLocalCount++
     if (o.status === 'cache-hit-remote') hitRemoteCount++

@@ -171,7 +171,7 @@ export class RunHistory {
     for (let i = 0; i < runs.length; i += RUNS_PER_INSERT) {
       const block = runs.slice(i, i + RUNS_PER_INSERT)
       const params: SQLQueryBindings[] = []
-      for (const r of block) params.push(...bindRun(r, digest))
+      for (const r of block) for (const v of bindRun(r, digest)) params.push(v)
       // `query` caches by text: one statement for every full block.
       this.db.query(insertRunsSql(block.length)).run(...params)
     }
