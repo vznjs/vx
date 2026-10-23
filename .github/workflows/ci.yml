@@ -3,7 +3,12 @@ name: CI
 on:
   push:
     branches: [main]
+  # `closed`: a merged or closed PR's own run joins its concurrency group
+  # and cancels the one still running, so its agents free their runners
+  # (2026-10-23: agents queued 108-184 s behind merged PRs' runs). Its jobs
+  # are skipped.
   pull_request:
+    types: [opened, synchronize, reopened, closed]
   # The merge queue tests each group's merge before main moves.
   merge_group:
   # Manual re-run without a push — for distinguishing runner-infra flakes
@@ -48,7 +53,7 @@ jobs:
   # the agent that runs it, through each task's exec.env.passThrough.
   linux:
     name: lint · format · test
-    if: github.event.pull_request.stack.position == github.event.pull_request.stack.size
+    if: github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:

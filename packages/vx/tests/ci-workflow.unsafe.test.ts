@@ -41,7 +41,8 @@ const checkout = (j: Job | undefined): Step | undefined =>
 
 describe('ci.yml', () => {
   it('is the Linux run, plus macOS and the arm64 binary on main', () => {
-    const top = 'github.event.pull_request.stack.position == github.event.pull_request.stack.size'
+    const top =
+      "github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size"
     expect(
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
     ).toEqual([
@@ -63,6 +64,19 @@ describe('ci.yml', () => {
         undefined,
       ],
     ])
+  })
+
+  // A merged PR's run held its agents' runners until it ended, and the next
+  // main run's agents queued 108-184 s behind them (2026-10-23).
+  it('cancels a PR’s run, and so its agents, once the PR closes', () => {
+    const on = (doc.on ?? doc.true)!
+    expect(on['pull_request']).toEqual({ types: ['opened', 'synchronize', 'reopened', 'closed'] })
+    expect(doc.concurrency).toEqual({
+      group: '${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
+      'cancel-in-progress': "${{ github.event_name == 'pull_request' }}",
+    })
+    for (const j of Object.values(doc.jobs))
+      expect(j.if).toMatch(/github\.event\.action != 'closed'|github\.event_name != 'pull_request'/)
   })
 
   it('makes each run distributed, over its relay', () => {
