@@ -9,41 +9,33 @@ tags:
 excerpt: "A daemon answers 'what changed' quickly by keeping a second copy of the truth. vx keeps no copy. Every run pays its own discovery and still wins the warm benchmarks, because the discovery was made cheap instead of being hidden."
 ---
 
+With nothing changed, on 9,603 tasks:
+
+| Runner    | Time added | Daemon                     |
+| --------- | ---------- | -------------------------- |
+| vx        | 720 ms     | none                       |
+| Turborepo | 1.05 s     | not for `turbo run`        |
+| Nx        | 26.21 s    | off, as in CI              |
+
+Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
+Run 2026-10-23 on linux x64, 4 cores, concurrency 10: vx at commit 0be036747, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.
+
 Nx runs a daemon by default. Turborepo shipped one and, since 2.8.11,
-no longer uses it for `turbo run`. Both exist for the same reason: a warm run needs to
-know what changed since the last one, and walking the filesystem to
-find out is slow. So a background process watches the tree and keeps
-the answer ready.
-
-vx has no daemon and will not grow one. Here is the reasoning, and
-what replaced it.
-
-```mermaid
-flowchart LR
-  subgraph daemon
-    W[file watcher] --> M[model of the tree] --> A1[answer]
-  end
-  subgraph vx
-    Q[ask git once per run] --> A2[answer]
-  end
-  style A2 stroke:#c6f84e,stroke-width:2px
-```
+no longer uses it for `turbo run`. A daemon watches the tree so a warm
+run knows what changed without walking it. vx has none and won't grow
+one.
 
 ## What a daemon costs
 
-A daemon is a second copy of the truth. It holds a model of the tree
-that is correct exactly as long as every change went through a
-filesystem event it received and processed. The failure modes are
-familiar to anyone who has typed `nx reset`: a socket left behind by a
-crashed process, a stale graph after a branch switch, an event dropped
-on a busy machine, a watcher that started after the edit. Each one
-turns a fast answer into a wrong one, and "wrong" for a build cache
-means a stale hit under a green check.
+A daemon is a second copy of the truth. Its model of the tree is right
+only while every change arrived as a filesystem event it processed. A
+socket left by a crashed process, a branch switch, an event dropped on
+a busy machine, a watcher that started after the edit: each turns a
+fast answer into a wrong one. For a build cache, wrong means a stale
+hit under a green check.
 
-It also costs the thing it is meant to save. A daemon must be started,
-must warm up, must be restarted after an upgrade, and holds memory for
-the whole session. The first run of the day pays a cold start either
-way.
+It also has to start, warm up, restart after an upgrade and hold memory
+all session. The first run of the day pays a cold start either way.
 
 ## What replaced it
 
@@ -63,11 +55,7 @@ stopped mattering:
   [strict output ownership](../strict-output-ownership/) means vx knows
   what the tree should contain.
 
-The result: with nothing changed, vx adds 720 ms to a run of 9,603
-tasks with no process left behind, against Turborepo's 1.05 s and Nx's 26.21 s. vx has no daemon to turn on.
-
-Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-Run 2026-10-23 on linux x64, 4 cores, concurrency 10: vx at commit 0be036747, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.
+That is the 720 ms in the table, with no process left behind.
 
 ## The invariant, stated plainly
 
@@ -78,5 +66,4 @@ staleness window because there is no second copy that could be stale.
 watcher limits are exhausted, all take the same path and give the same
 answer.
 
-That is worth more than a daemon's best case, and it costs less than a
-daemon's average case.
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -9,32 +9,103 @@ tags:
 excerpt: "Moving a Turborepo workspace to vx: `vx init` writes the native TypeScript configs beside turbo.json, and `--keep` checks the mapping first if you want it."
 ---
 
-vx is shaped like Turborepo on purpose. Same per-package model, same
-`dependsOn` micro-syntax (`'build'`, `'^build'`, `'pkg#build'`), same
-`--filter` DSL, same `--affected`. The migration is easy because
-almost nothing has to change in how you think about the graph; what
-changes is where the config lives and what it can say.
+A three-package Turborepo, one command:
+
+```sh frame="terminal"
+$ cat turbo.json
+{
+  "tasks": {
+    "build": { "dependsOn": ["^build"], "inputs": ["src/**"], "outputs": ["dist/**"] },
+    "test": { "dependsOn": ["build"], "inputs": ["src/**", "test/**"] },
+    "dev": { "cache": false, "persistent": true }
+  }
+}
+
+$ bunx @vzn/vx-migrate
+  from      turbo.json
+  ran       bun add -d @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history
+  tasks     5 clean
+  files     packages/types/vx.config.ts
+            packages/ui/vx.config.ts
+            packages/web/vx.config.ts
+            .vx/workspace.ts
+            .vx/.gitignore
+  lock      3 project configs → .vx/projects.lock.json
+
+  next      vx run build --all
+
+$ vx run build test --all
+ ⏺︎    10ms success miss     ui#build
+ ⏺︎     7ms success miss     ui#test
+ ⏺︎     6ms success miss     web#build
+$ vx run build test --all
+  cache     local 3✓
+  time      28ms
+```
+
+Five tasks mapped, nothing to fix by hand. vx-migrate at `69617eb`,
+2026-10-23. What it wrote for `web`:
+
+```ts title="packages/web/vx.config.ts"
+import type { ProjectConfig } from '@vzn/vx/config'
+
+export default {
+  tasks: {
+    build: {
+      exec: {
+        command: 'bun build src/index.ts --outdir dist',
+      },
+      dependsOn: ['^build'],
+      inputs: {
+        files: ['src/**'],
+      },
+      cache: {
+        outputs: {
+          files: ['dist/**'],
+        },
+      },
+    },
+    test: {
+      dependsOn: ['build'],
+    },
+    dev: {
+      exec: {
+        command: 'bun --watch src/index.ts',
+        persistent: {},
+      },
+      inputs: {
+        files: ['**/*', '!dist/**'],
+      },
+    },
+  },
+} satisfies ProjectConfig
+```
+
+The script became `exec.command`. `web` has no `test` script, so its
+`test` is a group that only waits for `build`. `types` has no scripts at
+all, and still keys `ui#build`: an edit there re-runs `ui` and `web`.
 
 ## One command
 
-`bunx @vzn/vx init` beside `turbo.json` is the whole adoption. It reads
-the root pipeline and any per-package `extends`, inlines the matching
-`package.json` script as the task's command, and writes one
-`vx.config.ts` per package, a `.vx/workspace.ts` declaring your
-lockfile's plugin, and `.vx/projects.lock.json`. It installs vx with
-your own package manager and never overwrites a file without `--force`:
+vx is shaped like Turborepo on purpose: the same per-package model,
+`dependsOn` micro-syntax (`'build'`, `'^build'`, `'pkg#build'`),
+`--filter` DSL and `--affected`. What changes is where the config lives
+and what it can say.
 
-```bash
-bunx @vzn/vx init              # native vx.config.ts files, .vx/workspace.ts, the lock
-vx run build --all   # what turbo run build did, under vx's cache
-```
+`bunx @vzn/vx init` beside `turbo.json` hands the repo to
+`@vzn/vx-migrate`. It reads the root pipeline and any per-package
+`extends`, inlines the matching `package.json` script as the task's
+command, and writes one `vx.config.ts` per package, a `.vx/workspace.ts`
+declaring your lockfile's plugin, and `.vx/projects.lock.json`. It
+installs vx with your own package manager and never overwrites a file
+without `--force`.
 
 A task goes where the script exists, and to a package without it that
-another package's `^` task reaches: a cached `true` with no outputs,
+another package's `^` task reaches: a key-only group with no outputs,
 Turbo's no-op node, so an edit there still re-keys its dependants.
-Anything it cannot infer becomes a `TODO(vx-migrate)` comment, never a
-silently wrong value. Review those, and once `vx run build --all` does
-what `turbo run build` did, delete `turbo.json`.
+Anything it can't infer becomes a `TODO(vx-migrate)` comment, never a
+silently wrong value. Once `vx run build --all` does what `turbo run
+build` did, delete `turbo.json`.
 
 ## Check the mapping first
 
@@ -120,3 +191,4 @@ Every other Turbo behaviour a user would reach for is pinned by a
 parity case that runs vx's real CLI against the Turbo contract it
 stands in for. The full guide, with before/after
 configs, is [Migrate from Turborepo](../../guides/migrate/#turborepo).
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

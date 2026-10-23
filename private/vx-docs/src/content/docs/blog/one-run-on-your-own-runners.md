@@ -20,13 +20,13 @@ change.
 
 **$12,192 a year** is what this repository's CI would cost on Nx
 Cloud's Team plan with Nx's agents, at the 108 runs a day it really
-had last week; on vx DTE it costs $0. The math and its assumptions are in
+had in the week to 2026-10-23; on vx DTE it costs $0. The math and its assumptions are in
 [What it costs](#what-it-costs-next-to-nx-cloud): Nx's public prices
 read 2026-10-23, Mac work and concurrent connections not counted.
 
-Until today vx's CI had three jobs: Linux, the arm64 binary and macOS.
-[#4119](https://github.com/vznjs/vx/pull/4119) made them one
-distributed run. Tasks bound to a platform say so
+vx's CI is one distributed run
+([#4119](https://github.com/vznjs/vx/pull/4119)), where it was three
+jobs: Linux, the arm64 binary and macOS. Tasks bound to a platform say so
 (`exec.platforms`), and the run starts a Mac or arm worker only when
 the graph has such a task.
 
@@ -442,7 +442,7 @@ cache answers what did not change. So the agent minutes come from the
 [#4150](https://github.com/vznjs/vx/pull/4150) (2026-10-23, 19:51 to
 21:39 UTC), each worker's time online in its `vx dte worker` step. A
 PR run kept Linux workers online 4.2 minutes on average (0 to 18.9), a
-main run 2.1 (0.7 to 12.9). Weighted by last week's mix, a run is 67
+main run 2.1 (0.7 to 12.9). Weighted by that week's mix, a run is 67
 agent credits and, with the 500 per execution, 567. That is 1,846,529
 credits a month: $1,016, with one contributor. The Hobby plan's 50,000
 credits cover 88 runs, under one day. [The per-run numbers](https://github.com/vznjs/vx/pull/4167) are
