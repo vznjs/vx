@@ -910,6 +910,8 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(remote.store.size).toBe(1)
         await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
         remote.getCounts.clear()
+        remote.headCounts.clear()
+        const batches = remote.batchCalls()
         absent.mockClear()
         prefetch.mockClear()
 
@@ -931,6 +933,10 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         expect(prefetch.mock.calls.map((c) => c[0]).filter((h) => h !== aHash)).toEqual([])
         expect(remote.getCounts.get(aHash)).toBe(1)
         expect(remote.getCounts.get(bHash) ?? 0).toBeLessThanOrEqual(1)
+        // One existence probe a run: no task's lookup asks the remote again
+        // whether it holds a key (M, 2026-10-23).
+        expect(remote.batchCalls() - batches).toBe(1)
+        expect(remote.headCounts.size).toBe(0)
       } finally {
         absent.mockRestore()
         prefetch.mockRestore()

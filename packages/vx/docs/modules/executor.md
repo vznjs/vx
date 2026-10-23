@@ -11,7 +11,7 @@ sandbox violations). Core's own executor, `localExecutor`, is the same
 
 ## Public surface
 
-- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining); footer?(); machines?(); running?(id); execute(req) }`
+- `TaskExecutor { name; remote?; sandbox?; capacity?; accepts?(task); demand?(remaining, missed); footer?(); machines?(); running?(id); execute(req) }`
   — `machines()` returns a `MachineReport` per machine it ran tasks on
   (`{ name; status; cores; memoryBytes; done; failed; onlineMs; busyMs;
 cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
@@ -157,7 +157,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   placed tasks it holds, and leaves those out: a warm run's restores
   are no one's demand (`plugin-capabilities.test.ts` › "a task the
   cache answers is never counted"). A left-out task that executes after
-  all is counted again.
+  all is counted again. Its second argument, `missed`, holds the left
+  tasks whose keys that probe found in no store, each store answering
+  for every key: they will run, so a plan sizes on them rather than a
+  guess (`executor-demand.test.ts`).
 - An executor's `demand` is a hint: one that throws, or an `async`
   one that rejects, is warned once, naming the plugin, and that
   executor is asked no more that run (item 1022;

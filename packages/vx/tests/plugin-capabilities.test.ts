@@ -1118,7 +1118,7 @@ describe('executor capability — end-to-end via run()', () => {
                  name: 'demand-spy',
                  remote: true,
                  capacity: 1,
-                 demand(remaining) { globalThis.__vxDemand.push(remaining.size) },
+                 demand(remaining, missed) { globalThis.__vxDemand.push([remaining.size, missed.size]) },
                  async execute() {
                    return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
                  },
@@ -1129,8 +1129,8 @@ describe('executor capability — end-to-end via run()', () => {
         ]),
       )
       await gitInit(workspaceRoot)
-      const g = globalThis as unknown as { __vxDemand: number[] }
-      const runAll = async (): Promise<number[]> => {
+      const g = globalThis as unknown as { __vxDemand: [number, number][] }
+      const runAll = async (): Promise<[number, number][]> => {
         g.__vxDemand = []
         const summary = await run({
           cwd: workspaceRoot,
@@ -1142,10 +1142,19 @@ describe('executor capability — end-to-end via run()', () => {
         expect(summary.ok).toBe(true)
         return g.__vxDemand
       }
-      // Control: a cold cache answers nothing, so all three are demand.
-      expect(await runAll()).toEqual([3, 2, 1, 0])
+      // Control: a cold cache answers nothing, so all three are demand,
+      // and each is a sure miss: the probe asked for every key.
+      expect(await runAll()).toEqual([
+        [3, 3],
+        [2, 2],
+        [1, 1],
+        [0, 0],
+      ])
       await Bun.write(path.join(workspaceRoot, 'pkg-a/a.txt'), 'a2')
-      expect(await runAll()).toEqual([1, 0])
+      expect(await runAll()).toEqual([
+        [1, 1],
+        [0, 0],
+      ])
     } finally {
       cleanup()
     }

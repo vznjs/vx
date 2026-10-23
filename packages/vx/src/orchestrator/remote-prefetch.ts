@@ -46,8 +46,11 @@ export interface PrefetchArgs {
    * `probeBeforeUpload` instead, so a key a remote holds is not re-sent.
    */
   remoteWrite: boolean
-  /** Told once, after the probe, the stable tasks a store holds, local or remote. */
-  held?: ((ids: readonly string[]) => void) | undefined
+  /**
+   * Told once, after the probe, the stable tasks a store holds, local or
+   * remote, and those every store answered it does not: they run.
+   */
+  held?: ((ids: readonly string[], missed: readonly string[]) => void) | undefined
 }
 
 /**
@@ -86,10 +89,15 @@ export function startRemotePrefetch(args: PrefetchArgs): Promise<void> {
 
 async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<void> {
   const stableKeys = await deriveStableKeys(args)
-  const tell = (holds: (hash: string) => boolean): void =>
-    args.held?.(stableKeys.filter((k) => holds(k.hash)).map((k) => k.node.id))
+  // `complete`: every store asked answered for every key, so one it does
+  // not hold is a miss; else only its hits are known.
+  const tell = (holds: (hash: string) => boolean, complete: boolean): void =>
+    args.held?.(
+      stableKeys.filter((k) => holds(k.hash)).map((k) => k.node.id),
+      complete ? stableKeys.filter((k) => !holds(k.hash)).map((k) => k.node.id) : [],
+    )
   if (stableKeys.length === 0) {
-    tell(() => false)
+    tell(() => false, true)
     return
   }
 
@@ -104,7 +112,7 @@ async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<voi
     (await args.cache.localHasMany?.([...new Set(stableKeys.map((k) => k.hash))])) ?? null
   let toPrefetch = held === null ? stableKeys : stableKeys.filter((k) => !held.has(k.hash))
   if (toPrefetch.length === 0) {
-    tell(() => true)
+    tell(() => true, true)
     return
   }
   const uniqueHashes = [...new Set(toPrefetch.map((k) => k.hash))]
@@ -112,7 +120,7 @@ async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<voi
   // Every lookup that waited on the probe now finds its hash in it.
   probing()
   const present = (await asked) ?? null
-  tell((h) => held?.has(h) === true || present?.has(h) === true)
+  tell((h) => held?.has(h) === true || present?.has(h) === true, present !== null)
   if (present !== null) {
     args.cache.markRemoteAbsent?.(uniqueHashes.filter((h) => !present.has(h)))
     // The pre-mark above already answers a pull for an absent hash from

@@ -297,8 +297,14 @@ export interface TaskExecutor {
    * moment the run can no longer use it, rather than holding it until
    * teardown. Absent = the executor does not care and nothing is computed
    * for it.
+   *
+   * `missed`: of `remaining`, those whose keys the run's up-front probe
+   * found in no store (each store asked answered for every key): they
+   * will run. The rest may still restore, or were not probed (a key an
+   * upstream's outputs can change). The same set each call, narrowed in
+   * place.
    */
-  demand?(remaining: ReadonlySet<string>): void
+  demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
   /**
    * Rows the run's footer shows for this executor, `[label, text]`, the
    * text plain or a `ui` inline (a tone colors it): what only it knows, such as the machines it ran tasks on. Asked on every

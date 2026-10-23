@@ -58,8 +58,9 @@ nothing runs and caches here.
   local floor. A throwing `accepts` or `demand` is named by it.
 - `executorDemand(placed, warn)` → `ExecutorDemand` — tells each
   executor with a `demand` hook the task ids it still has left: first at
-  `settle(hits)`, once the cache has said what it holds (the local
-  probe, or the remote prefetch's answer), without those; then as each
+  `settle(hits, missed)`, once the cache has said what it holds (the local
+  probe, or the remote prefetch's answer), without those, and which it
+  surely lacks (`missed`, passed narrowed alongside); then as each
   `finished`, and when a left-out task is `executing` after all. A
   throwing `demand` is warned once and not asked again. With no such
   executor every call does nothing.

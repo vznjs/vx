@@ -674,7 +674,7 @@ export interface ExecutorDemand {
    * silently, so an executor never sizes for what restores. The first
    * call counts; the rest do nothing.
    */
-  settle(hits: Iterable<string>): void
+  settle(hits: Iterable<string>, missed?: Iterable<string>): void
   /** A task about to execute: back in if `settle` dropped it (its artifact was gone). */
   executing(id: string): void
 }
@@ -711,6 +711,8 @@ export function executorDemand(
     remaining.add(id)
   }
   if (demandOf.size === 0) return NO_DEMAND
+  // Of the placed tasks, those the cache was asked and holds nowhere.
+  const missed = new Set<string>()
   const tell = (executor: TaskExecutor, remaining: ReadonlySet<string>): void => {
     const failed = (err: unknown): void => {
       if (!demandOf.delete(executor)) return
@@ -721,7 +723,7 @@ export function executorDemand(
       // An `async demand` that rejects did so where no one listened: an
       // unhandled rejection, a stack, the run killed. Its rejection is a
       // throw like any other.
-      const ret: unknown = executor.demand!(remaining)
+      const ret: unknown = executor.demand!(remaining, missed)
       if (ret instanceof Promise) ret.catch(failed)
     } catch (err) {
       failed(err)
@@ -735,13 +737,15 @@ export function executorDemand(
     any: true,
     finished(id) {
       done.add(id)
+      missed.delete(id)
       for (const [executor, remaining] of demandOf) {
         if (remaining.delete(id) && settled) tell(executor, remaining)
       }
     },
-    settle(hits) {
+    settle(hits, misses = []) {
       if (settled) return
       settled = true
+      for (const id of misses) if (placed.has(id) && !done.has(id)) missed.add(id)
       for (const id of hits) {
         if (ran.has(id) || done.has(id)) continue
         const executor = placed.get(id)

@@ -1772,7 +1772,7 @@ export interface TaskExecutor {
   readonly platforms?: readonly string[]
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
-  demand?(remaining: ReadonlySet<string>): void
+  demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
   footer?(): readonly (readonly [label: string, text: ui.Inline])[]
   machines?(): readonly MachineReport[]
   running?(taskId: string): string | null | undefined
