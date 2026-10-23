@@ -271,7 +271,8 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   turned required, a method's arguments) is a break too: mark the commit
   `type(scope)!:` with a `BREAKING CHANGE:` footer, and run
   `api-break.unsafe.test.ts` before merging. #4026 and #4029 were not,
-  and main went red until a later commit said so.
+  and main went red until a later commit said so. The footer also goes
+  into guides/upgrading.md (scripts/upgrading.ts) in the same commit.
 - In a `--minify` compiled binary `import.meta.dir` and `import.meta.path`
   are the build machine's source paths, not `/$bunfs/…`: detect the
   binary with `Bun.main`. The run key memo walked a `src/` an installed
