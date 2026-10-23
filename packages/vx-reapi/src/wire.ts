@@ -503,7 +503,8 @@ export class ReapiClient {
     // Derived, not required: raising `callTimeoutMs` for a big upload must
     // not silently lengthen every metadata probe too.
     this.metaTimeoutMs = opts.metaTimeoutMs ?? Math.min(this.callTimeoutMs, META_TIMEOUT_CAP_MS)
-    this.onWarn = opts.onWarn ?? (() => undefined)
+    // No listener is no reason to say nothing.
+    this.onWarn = opts.onWarn ?? ((m) => void process.stderr.write(`[vx] ${m}\n`))
     // A zero, negative or non-number deadline ended every call as it began.
     for (const [name, ms] of [
       ['callTimeoutMs', this.callTimeoutMs],

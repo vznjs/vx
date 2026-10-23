@@ -177,6 +177,27 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
     expect(await readFile(path.join(root, 'pkg', 'out.txt'), 'utf8')).toBe('built')
   })
 
+  // 2026-10-23: a probe or upload of the stdout that failed was not said.
+  it('a stdout it probes or uploads in vain is said', async () => {
+    // Armed once the inputs are up: the next call of `method` fails.
+    const failingNext = (method: string, out: string) => () => {
+      fake.fail(method, grpc.status.DATA_LOSS)
+      return { response: { result: { exit_code: 0, stdout_raw: bytes(out.repeat(100_000)) } } }
+    }
+    await withExecutor(async (run, warns) => {
+      fake.onExecute = failingNext('FindMissingBlobs', 'y')
+      await run(request({ cacheKey: 'k-probe-out' }))
+      fake.onExecute = failingNext('Write', 'z')
+      await run(request({ cacheKey: 'k-write-out' }))
+      expect(warns).toEqual([
+        expect.stringMatching(/^vx\/reapi: pkg#gen's stdout probe failed \(.*\) — uploading it$/),
+        expect.stringMatching(
+          /^vx\/reapi: pkg#gen's stdout upload failed \(.*\) — recorded without it$/,
+        ),
+      ])
+    })
+  })
+
   it('a record whose blobs exist is replayed: no Execute, stdout and outputs restored', async () => {
     const out = put('from the record')
     const stdout = put('recorded stdout')
@@ -228,12 +249,24 @@ describe.if(CHUNKING_SUPPORTED)('the execution record', () => {
       await run(request({ cacheKey: 'k-gone' }))
       fake.fail('GetActionResult', 7) // PERMISSION_DENIED
       await run(request({ cacheKey: 'k-unreadable' }))
+      // A record whose blobs cannot be checked executes, and says why.
+      fake.actions.set(execDigestFor('k-unchecked').hash, {
+        exit_code: 0,
+        output_files: [{ path: 'pkg/out.txt', digest: put('kept'), is_executable: false }],
+      })
+      fake.fail('FindMissingBlobs', grpc.status.DATA_LOSS)
+      await run(request({ cacheKey: 'k-unchecked' }))
       fake.actions.set(execDigestFor('k-forced').hash, { exit_code: 0 })
       await run(request({ cacheKey: 'k-forced', refresh: true }))
-      expect(executes()).toBe(before + 3)
+      expect(executes()).toBe(before + 4)
       expect(
         warns.some((w) => w.startsWith('vx/reapi: pkg#gen could not read its execution record (')),
       ).toBe(true)
+      expect(
+        warns.filter((w) =>
+          w.startsWith("vx/reapi: pkg#gen could not check its execution record's blobs ("),
+        ),
+      ).toHaveLength(1)
     })
   })
 
@@ -466,10 +499,31 @@ describe.if(CHUNKING_SUPPORTED)('what the response means', () => {
       { exit_code: 137, stderr_digest: gone },
     ]) {
       fake.onExecute = () => ({ response: { status: { code: 4, message: 'timed out' }, result } })
-      await withExecutor(async (run) => {
+      await withExecutor(async (run, warns) => {
         expect(await refusal(run(request()))).toBe('vx/reapi: pkg#gen execution failed: timed out')
+        // Read in vain, and said (2026-10-23: no fault is silent).
+        expect(warns).toEqual([
+          expect.stringMatching(/^vx\/reapi: pkg#gen's std(out|err) could not be read \(/),
+        ])
       })
     }
+  })
+
+  it('a server log that cannot be read is said, and the failure still refuses', async () => {
+    const lie = put('the real log')
+    fake.blobs.set(lie.hash, bytes('a forged log!'))
+    fake.onExecute = () => ({
+      response: {
+        status: { code: 13, message: 'boom' },
+        server_logs: { worker: { digest: D(lie), human_readable: true } },
+      },
+    })
+    await withExecutor(async (run, warns) => {
+      expect(await refusal(run(request()))).toBe('vx/reapi: pkg#gen execution failed: boom')
+      expect(warns).toEqual([
+        expect.stringMatching(/^vx\/reapi: the server log worker could not be read \(/),
+      ])
+    })
   })
 
   it('stdout and stderr are delivered even when capture keeps no copy; the worker is reported', async () => {
