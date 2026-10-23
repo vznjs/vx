@@ -278,3 +278,8 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   binary with `Bun.main`. The run key memo walked a `src/` an installed
   binary does not have, threw, and every warm run lost its short
   circuit; a test only sees it with the source tree gone (#3915 follow-up).
+- A task you add or whose inputs you change needs `vx lock` in the same
+  commit: CI's `vx lock --check` refuses the run otherwise (#4097 → #4098).
+- A task must never remove the root of its own write grant: the Linux
+  sandbox mounts that path, so `rm -rf` of it fails with EROFS. Empty it
+  in place. A box with no bwrap cannot show this; CI does (#4097 → #4099).
