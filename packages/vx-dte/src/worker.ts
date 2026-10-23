@@ -419,9 +419,17 @@ export function crowdShare(stat: string, cores: number): number | undefined {
  * This machine's load, sampled each second: the cores busy over the last
  * one, from the CPUs' times, and the memory in use. Also how crowded its
  * CPU is, read every `CROWD_EVERY_MS`: a task on a crowded machine uses
- * only its share, and the run learns its need from what it used.
+ * only its share, and the run learns its need from what it used. With no
+ * /proc/stat (macOS), the load average says it: six test shards on a
+ * 3-core Mac reported no share, so the run learned their crowded use as
+ * their need and packed them as tight again: 66-78 s each (main 1e19c00,
+ * 2026-10-23). Lagging a minute, it fits the long tasks a
+ * crowd stretches. A load average of 0 (Windows) is none.
  */
-export function loadMeter(read: () => string | undefined = procStat): {
+export function loadMeter(
+  read: () => string | undefined = procStat,
+  average: () => number = () => os.loadavg()[0] ?? 0,
+): {
   now: () => Load
   mark: () => { sum: number; n: number }
   shareSince: (from: { sum: number; n: number }) => number | undefined
@@ -450,7 +458,9 @@ export function loadMeter(read: () => string | undefined = procStat): {
   const crowd = { sum: 0, n: 0 }
   const look = (): void => {
     const stat = read()
-    const share = stat === undefined ? undefined : crowdShare(stat, cores)
+    const avg = stat === undefined ? average() : 0
+    const share =
+      stat !== undefined ? crowdShare(stat, cores) : avg > 0 ? Math.min(1, cores / avg) : undefined
     if (share === undefined) return clearInterval(crowded)
     crowd.sum += share
     crowd.n++
