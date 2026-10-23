@@ -5,7 +5,13 @@
 import { chmod, mkdir, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { BoundedCapture, droppedOutputLine } from '../src/exec/runner.js'
+import {
+  BoundedCapture,
+  CAPTURE_HEAD_CHARS,
+  droppedOutputLine,
+  maskCaptured,
+} from '../src/exec/runner.js'
+import { MASKED, secretMask } from '../src/util/index.js'
 import { decodeOutputLog, failedOutputLog } from '../src/orchestrator/output-log.js'
 import { fileLocations } from '../src/report/path-links.js'
 import { skipAsRoot } from './helpers/nonroot-gate.js'
@@ -15,6 +21,22 @@ const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
 const TIMEOUT = 30_000
 
 describe('BoundedCapture bounds', () => {
+  // The cut is found by its line's words: a line in other units than the
+  // finder reads was masked whole, and the halves of a value the cut split
+  // were stored and replayed.
+  it('masks the halves of a secret the dropped line cut, in every unit it prints', () => {
+    const mask = secretMask([{ API_TOKEN: 'hunter2-sekret-value' }])!
+    for (const dropped of [2, 30 * 1024, 22 * 1024 * 1024]) {
+      const head = `${'x'.repeat(CAPTURE_HEAD_CHARS - 'hunter2-'.length)}hunter2-`
+      const masked = maskCaptured(`${head}${droppedOutputLine(dropped)}sekret-value tail`, mask)
+      expect([dropped, masked.includes('hunter2-'), masked.endsWith(`${MASKED} tail`)]).toEqual([
+        dropped,
+        false,
+        true,
+      ])
+    }
+  })
+
   it('keeps the head and tail it was given and names them in the dropped line', () => {
     const c = new BoundedCapture(4, 6)
     c.push('abcdefghijkl')
@@ -24,8 +46,10 @@ describe('BoundedCapture bounds', () => {
       { text: 'ghijkl', err: false },
     ])
     expect(droppedOutputLine(2, 8 * 1024, 56 * 1024)).toBe(
-      "\n[vx] 0.0 MiB of output not kept — vx keeps the first 8 KiB and the last 56 KiB of a task's output\n",
+      "\n[vx] 2 B of output not kept — vx keeps the first 8.0 KB and the last 56 KB of a task's output\n",
     )
+    // A few KiB past the bound printed `0.0 MiB`.
+    expect(droppedOutputLine(30 * 1024)).toStartWith('\n[vx] 30 KB of output not kept')
   })
 
   it("re-bounds an entry's capture to a failure's 8 KiB head and 56 KiB tail", () => {
