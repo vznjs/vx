@@ -92,7 +92,10 @@ describe('ci.yml', () => {
   // shard booked a whole agent at ~25% CPU (2026-10-22).
   it('checks each run out with the history its timings import walks', () => {
     for (const id of RUNS)
-      expect([id, checkout(doc.jobs[id])?.with?.['fetch-depth']]).toEqual([id, 0])
+      expect([id, checkout(doc.jobs[id])?.with]).toEqual([
+        id,
+        { 'fetch-depth': 0, filter: 'blob:none' },
+      ])
   })
 
   // A job whose env carries GITHUB_TOKEN turns vx-ci's check run on; without
@@ -153,8 +156,13 @@ describe('vx-agent.yml', () => {
 
   // The API-break law reads the last release's tag; the PR-commit law walks
   // base..head. A task runs on whichever agent is free.
-  it('checks out the full history', () => {
-    expect(checkout(agent)?.with?.['fetch-depth']).toBe(0)
+  // Without old blobs: a full clone was 5-7 s of each warm-up (2026-10-23).
+  it('checks out the full history, without old blobs', () => {
+    expect(checkout(agent)?.with).toEqual({
+      ref: '${{ inputs.sha }}',
+      'fetch-depth': 0,
+      filter: 'blob:none',
+    })
   })
 
   // An agent saving to ~/.vx while a shard runs failed the shard's home
