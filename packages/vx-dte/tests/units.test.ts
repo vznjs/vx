@@ -500,6 +500,31 @@ it('sends a worker what its booking fits, though its load reads low; busier than
   }
 })
 
+// Cold main bcc84f1: an unmeasured task counted 2 cores waiting and the
+// one it holds running, so each start freed room the plan found spare and
+// it cancelled 11 of the 25 workers it asked.
+it('plans a running unmeasured task as it planned it waiting', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]), () => ({
+    cores: 1,
+    memory: 0,
+    ask: { cores: 2, memory: 4e9 },
+  }))
+  try {
+    const a = await h.worker(4)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    void h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t1', 't2']])
+    for (const id of ['t1', 't2'])
+      await a.say({ type: 'start', task: id, load: { cpu: 0.1, memory: 0 } })
+    await Bun.sleep(50)
+    const running = h.o.planState(() => undefined, 0).workers.find((w) => w.id === a.id)!.running
+    expect(running.map((r) => r.cores)).toEqual([2, 2])
+  } finally {
+    await h.stop()
+  }
+})
+
 // Cold run 3, 2026-10-23: tasks booked at their history used 82% of it,
 // and every Linux worker ran at 63-73% CPU against the sim's 86%.
 it('books measured tasks at the share of their history the run’s tasks used, at most half again more', async () => {
@@ -2006,10 +2031,13 @@ it('reads how crowded the CPU is from the run queue', async () => {
   } finally {
     meter.stop()
   }
-  // No /proc/stat (macOS): the load average says it.
+  // No /proc/stat (macOS): the load average says it, while every core is busy.
+  let ticks = 0
+  const full = (): [number, number] => [(ticks += 100), ticks]
   const mac = loadMeter(
     () => undefined,
     () => cores * 2,
+    full,
   )
   try {
     const from = mac.mark()
@@ -2017,6 +2045,22 @@ it('reads how crowded the CPU is from the run queue', async () => {
     expect(mac.shareSince(from)).toBeCloseTo(1 / 2, 2)
   } finally {
     mac.stop()
+  }
+  // Main 8fa3c98: a macOS runner's load average read 49 with a core idle,
+  // and each shard was learned to need the whole machine. Not crowded.
+  let spare = 0
+  const idle = (): [number, number] => [(spare += 50), spare * 2]
+  const roomy = loadMeter(
+    () => undefined,
+    () => cores * 16,
+    idle,
+  )
+  try {
+    const from = roomy.mark()
+    await Bun.sleep(450)
+    expect(roomy.shareSince(from)).toBe(1)
+  } finally {
+    roomy.stop()
   }
   // Neither (Windows): no correction.
   const none = loadMeter(

@@ -27,8 +27,8 @@ export interface SimTask {
   readonly cache: boolean
   /** It missed: how long it ran, the cores it kept busy, its peak memory (bytes). */
   readonly ran?: { readonly ms: number; readonly cores: number; readonly memory: number }
-  /** What history said of it before the run, when that differs from how it ran; null: never measured. */
-  readonly known?: { readonly ms: number; readonly cores: number; readonly memory: number } | null
+  /** What history said of it before the run, when that differs from how it ran; null: never measured; no cores: its time alone. */
+  readonly known?: { readonly ms: number; readonly cores?: number; readonly memory: number } | null
   /** The platform core placed it on (`TaskNode.platform`). */
   readonly platform?: string
 }
@@ -136,7 +136,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   const need = (id: string): Need => {
     const k = known(id)
     const b = booked(
-      k === undefined
+      k?.cores === undefined
         ? needOf(undefined, options.unmeasured)
         : { cores: Math.max(0.25, k.cores), memory: k.memory },
       how.book,
@@ -292,8 +292,11 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         idle: jobs.length === 0,
         running: jobs.map((r) => ({
           id: r.id,
-          cores: Math.min(w.cores, Math.min(r.booked.cores, w.cores) * over),
-          memory: Math.min(r.booked.memory, w.memory),
+          cores: Math.min(
+            w.cores,
+            Math.max(Math.min(r.booked.cores, w.cores) * over, r.booked.ask?.cores ?? 0),
+          ),
+          memory: Math.min(Math.max(r.booked.memory, r.booked.ask?.memory ?? 0), w.memory),
           endsIn: Math.max(0, (r.knownMs ?? 0) * slow - (now - r.startedAt)),
         })),
       })

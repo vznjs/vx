@@ -1131,10 +1131,14 @@ export class Orchestrator {
         ...(a.declared === undefined ? {} : { size: a.declared.size }),
         at: 0,
         idle: a.busy.size === 0,
+        // An unmeasured one counts as it did waiting (`ask`), not as the
+        // one core it holds: started, it freed a core the plan then found
+        // spare, and the worker asked for it was cancelled (cold main
+        // bcc84f1: 11 of 25, 2026-10-23).
         running: jobs.map((j) => ({
           id: j.req.taskId,
-          cores: Math.min(a.cores, (j.held?.cores ?? 0) * over),
-          memory: j.held?.memory ?? 0,
+          cores: Math.min(a.cores, Math.max((j.held?.cores ?? 0) * over, j.need.ask?.cores ?? 0)),
+          memory: Math.max(j.held?.memory ?? 0, Math.min(a.memory, j.need.ask?.memory ?? 0)),
           endsIn: Math.max(0, (ms(j.req.taskId) ?? 0) - (now - j.startedAt!)),
         })),
       })
