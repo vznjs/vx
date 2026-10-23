@@ -200,11 +200,13 @@ export class LocalHistoryProvider implements HistoryProvider {
         MAX(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
                  THEN r.peak_rss_bytes
                  WHEN r.cache_hit = 1 THEN e.peak_rss_bytes END) AS rss,
-        MAX(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
-                      AND r.cpu_ms IS NOT NULL AND r.duration_ms > 0
-                 THEN ${NEED_SQL}
-                 WHEN r.cache_hit = 1 AND e.cpu_ms IS NOT NULL AND e.duration_ms > 0
-                 THEN e.cpu_ms * 1.0 / e.duration_ms END) AS cpu
+        -- A hit's producer use only where no run here measured it (resourcesFor).
+        COALESCE(
+          MAX(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
+                        AND r.cpu_ms IS NOT NULL AND r.duration_ms > 0
+                   THEN ${NEED_SQL} END),
+          MAX(CASE WHEN r.cache_hit = 1 AND e.cpu_ms IS NOT NULL AND e.duration_ms > 0
+                   THEN e.cpu_ms * 1.0 / e.duration_ms END)) AS cpu
       FROM runs r
       -- A hit executed nothing here, but its entry carries what the
       -- PRODUCING execution used (the artifact's sidecar, indexed at save
@@ -462,17 +464,23 @@ export class LocalHistoryProvider implements HistoryProvider {
          GROUP BY r.project, r.task${this.byDef}`,
       )
       .all(floor) as Hit[]
+    // A hit's CPU is its producer's use, not need: the entry keeps no
+    // share, so a crowded producer's reads low. Only a task with no need
+    // from a run here or the default branch's import takes it: main's
+    // blob carried each hit shard's crowded use forward, and the next run
+    // packed them as tight (main 357d3aa, 2026-10-23).
+    const hitCpu = new Map<string, number>()
     for (const row of hits) {
       const key = `${row.project}#${row.task}`
       if (!wanted.has(key) || !this.current(key, row.def) || (row.rss === null && row.cpu === null))
         continue
+      if (row.cpu !== null) hitCpu.set(key, row.cpu)
       const had = out.get(key)
       const rss = Math.max(had?.maxPeakRssBytes ?? -Infinity, row.rss ?? -Infinity)
-      const cpu = Math.max(had?.maxCpuParallelism ?? -Infinity, row.cpu ?? -Infinity)
       out.set(key, {
+        ...had,
         p50DurationMs: p50s.get(key),
         ...(rss !== -Infinity ? { maxPeakRssBytes: rss } : {}),
-        ...(cpu !== -Infinity ? { maxCpuParallelism: cpu } : {}),
       })
     }
     // A failure counts: a task killed for memory filled its machine too.
@@ -513,6 +521,10 @@ export class LocalHistoryProvider implements HistoryProvider {
     // A forecast reads past the window: a task with none in it still has one.
     for (const [key, p50] of p50s) if (!out.has(key)) out.set(key, { p50DurationMs: p50 })
     this.remoteNeeds(wanted, out)
+    for (const [key, cpu] of hitCpu) {
+      const had = out.get(key)!
+      if (had.maxCpuParallelism === undefined) out.set(key, { ...had, maxCpuParallelism: cpu })
+    }
     return out
   }
 

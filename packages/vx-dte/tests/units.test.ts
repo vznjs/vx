@@ -2002,8 +2002,23 @@ it('reads how crowded the CPU is from the run queue', async () => {
   } finally {
     meter.stop()
   }
-  // No /proc/stat: no correction.
-  const none = loadMeter(() => undefined)
+  // No /proc/stat (macOS): the load average says it.
+  const mac = loadMeter(
+    () => undefined,
+    () => cores * 2,
+  )
+  try {
+    const from = mac.mark()
+    await Bun.sleep(450)
+    expect(mac.shareSince(from)).toBeCloseTo(1 / 2, 2)
+  } finally {
+    mac.stop()
+  }
+  // Neither (Windows): no correction.
+  const none = loadMeter(
+    () => undefined,
+    () => 0,
+  )
   try {
     const from = none.mark()
     await Bun.sleep(250)
