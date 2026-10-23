@@ -2,9 +2,8 @@
 
 A relay carries messages between one run's orchestrator and its agents.
 CI runners take no inbound connection, so every participant dials out to
-the relay: `join` over HTTP, then a websocket. vx-dte's client speaks
-only those two; the HTTP `send`, `poll`, `leave` and `remove` remain for
-other clients. Any server that speaks this protocol can stand in
+the relay: `join` over HTTP, then a websocket that carries the rest.
+Any server that speaks this protocol can stand in
 for `@vzn/vx-dte-relay`; `@vzn/vx-dte` knows only the relay's URL.
 
 The relay never reads a message body. What the orchestrator and agents say
@@ -12,43 +11,28 @@ to each other is `@vzn/vx-dte`'s business, versioned on its own.
 
 ## Requests
 
-Every request is HTTP with a JSON body or none, under
-`<relay>/v1/runs/<run>/`, where `<run>` is the run id, a random (v4)
-UUID, so no one can guess it; any other answers `400`. Every request carries
-`Authorization: Bearer <CI OIDC token>`.
+Two requests are HTTP, under `<relay>/v1/runs/<run>/`, where `<run>` is
+the run id, a random (v4) UUID, so no one can guess it; any other answers
+`400`. Each carries `Authorization: Bearer <CI OIDC token>`.
 
-| Request                      | Body                                                          | Answer                                     |
-| ---------------------------- | ------------------------------------------------------------- | ------------------------------------------ |
-| `POST join`                  | `{ "role": "orchestrator" \| "agent", "info"?: any, "key"? }` | `200 { "id", "heartbeatMs", "socket"? }`   |
-| `POST send`                  | `{ "id", "to", "body": any }`                                 | `204`                                      |
-| `GET poll?id=<id>&wait=<ms>` | none                                                          | `200 { "messages": [{ "from", "body" }] }` |
-| `POST leave`                 | `{ "id" }`                                                    | `204`                                      |
-| `POST remove`                | `{ "id", "agent" }`                                           | `204`                                      |
-| `GET socket?id=<id>`         | none, a websocket upgrade                                     | `101`                                      |
+| Request              | Body                                                          | Answer                                  |
+| -------------------- | ------------------------------------------------------------- | --------------------------------------- |
+| `POST join`          | `{ "role": "orchestrator" \| "agent", "info"?: any, "key"? }` | `200 { "id", "heartbeatMs", "socket" }` |
+| `GET socket?id=<id>` | none, a websocket upgrade                                     | `101`                                   |
 
 - `join` makes a participant and returns its `id`, a secret the relay
   picked: whoever holds it, with a token of this run, acts as it. A run
   has one orchestrator; a second `orchestrator` join answers `409`. Agents
-  may join before the orchestrator does.
-- `send` queues `body` for `to`. The orchestrator sends to any agent; an
-  agent sends only to `"orchestrator"`. An unknown or gone `to` answers
-  `404`.
-- `poll` returns the messages queued for `id`, oldest first, and empties
-  the queue. With none queued it holds the request until one arrives or
-  `wait` ms pass (at most 25 000), then answers with what it has.
-- `leave` removes the participant. The orchestrator leaving closes the run.
-- `remove`, by the orchestrator only (`403` otherwise), takes `agent` off
-  the run: one it did not admit (§ Bodies). The agent's next poll gets
-  what was queued for it, its `refused` with the reason; after that its
-  `id` answers `404`. The orchestrator is not told it was lost.
+  may join before the orchestrator does. `"socket": true` says the relay
+  speaks this version.
+- `socket` opens the participant's websocket (§ Sockets).
 
 ## The orchestrator's key
 
 A run id is a channel: agents join it before or after the orchestrator
 does, and the orchestrator claims it. Its `join` names `key`, a P-256
 public key (raw, base64url), and the relay keeps it for the run; a join
-without one answers `400`. Every request as the orchestrator after that,
-its join included, carries `vx-proof: <ms>.<nonce>.<signature>`: an
+without one answers `400`. Its join and each `socket` upgrade carry `vx-proof: <ms>.<nonce>.<signature>`: an
 ECDSA SHA-256 signature by that key of
 
 ```
@@ -65,19 +49,25 @@ proof: its upgrade did.
 
 ## Sockets
 
-A relay whose `join` answers `"socket": true` takes `socket`, a websocket
-for the participant (`426` without the upgrade). Frames are text:
+`socket` is the participant's websocket (`426` without the upgrade).
+Frames are text:
 
 - the relay pushes `{ "messages": [{ "from", "body" }] }` as messages
   arrive, starting with any queued before the socket opened;
-- the participant sends `{ "n", "sends": [{ "to", "body" }] }`, each as
-  `send`, answered `{ "n" }` when all were taken, else `{ "n", "results" }`
-  with `null` or `{ "status", "error" }` for each; `{ "n", "remove":
-"<agent>" }`, as `remove`; and `{ "n", "leave": true }`, as `leave`, whose
-  answer is the socket's close. A frame that fails is answered
-  `{ "n", "status", "error" }`, any other frame `400`. With such a socket open, `join` and its upgrade
-  are the only requests a participant makes. A frame is held to `send`'s 1 MiB
-  body limit whole; one over it is answered `413` by its `n` when the
+- the participant sends `{ "n", "sends": [{ "to", "body" }] }`, answered
+  `{ "n" }` when all were taken, else `{ "n", "results" }` with `null` or
+  `{ "status", "error" }` for each. The orchestrator sends to any agent;
+  an agent sends only to `"orchestrator"`; an unknown or gone `to` is
+  `404`;
+- `{ "n", "leave": true }` removes the participant, and its answer is the
+  socket's close. The orchestrator leaving closes the run;
+- `{ "n", "remove": "<agent>" }`, by the orchestrator only (`403`
+  otherwise), takes the agent off the run: one it did not admit
+  (§ Bodies). The agent's socket is pushed what queued for it, its
+  `refused` with the reason, and closed. The orchestrator is not told it
+  was lost;
+- a frame that fails is answered `{ "n", "status", "error" }`, any other
+  frame `400`. A frame is held to 1 MiB whole; one over it is answered `413` by its `n` when the
   frame starts `{"n":`. vx-dte's client keeps a frame of several sends
   under 512 KiB;
 - the participant sends `ping` at least each `heartbeatMs`; the relay
@@ -103,11 +93,10 @@ nothing again. vx-dte's client also dials anew when its socket brought
 no message for three heartbeats, which a relay that let go of a socket
 without closing it would otherwise never send down again.
 
-Every request naming an `id` counts as a heartbeat. A participant silent
-for three `heartbeatMs` is lost, as if it had left; one with an open
-socket, for twelve, so a host that bills its wake-ups sleeps between
-them. Polling with a `wait` below `heartbeatMs`, or a socket's `ping`,
-keeps a participant alive.
+Every frame and ping counts as a heartbeat. A participant with no socket
+is lost after three `heartbeatMs`, as if it had left; one with an open
+socket, after twelve, so a host that bills its wake-ups sleeps between
+them.
 vx-dte's client asks `join` again through a `5xx` or a dropped
 connection (a host restarting the relay) for 15 s.
 
@@ -115,7 +104,7 @@ connection (a host restarting the relay) for 15 s.
 
 Leases are `@vzn/vx-dte`'s messages, so the relay stays body-blind. The
 orchestrator leases each task to one agent with an expiry, and every
-request that agent makes renews its leases. A lease that expires sends
+frame that agent sends renews its leases. A lease that expires sends
 its task back to ready. The orchestrator accepts a result only from the
 task's current lease holder and drops any late one. The design is in
 `packages/vx/docs/design/dte-2026-10.md`.
@@ -130,8 +119,9 @@ The relay itself sends with `"from": "relay"`:
   is lost;
 - to every agent, `{ "type": "closed" }` when the orchestrator leaves or is
   lost. The run is then closed: an agent on a socket is told and let go
-  at once, one over HTTP reads `410` for a minute, and then the relay
-  keeps nothing of the run. A run no orchestrator joined in ten minutes
+  at once, one with no socket gets `4404` when it opens one, a `join`
+  answers `410` for a minute, and then the relay keeps nothing of the
+  run. A run no orchestrator joined in ten minutes
   closes the same way: agents start after their orchestrator joins, so
   one alone is late for a run that ended.
 

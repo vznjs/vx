@@ -10,7 +10,7 @@ export const PROOF_HEADER = 'vx-proof'
 == function createProver (src/proof.ts)
 export async function createProver(): Promise<Prover>
 == function createRelay (src/relay.ts)
-export function createRelay(opts: RelayOptions = {}): Relay
+export function createRelay(opts: RelayOptions): Relay
 == function createVerifier (src/oidc.ts)
 export function createVerifier(opts: OidcOptions): (token: string) => Promise<VerifiedToken>
 == function parseAllow (src/oidc.ts)
@@ -57,7 +57,7 @@ export interface RelayOptions {
   verify?: ((token: string, req: Request) => Promise<VerifiedToken>) | undefined
   heartbeatMs?: number
   store?: RelayStore | undefined
-  upgrade?: ((key: string, id: string, req: Request) => Response) | undefined
+  upgrade: (key: string, id: string, req: Request) => Response
   timer?: boolean
 }
 == type RelayServer (src/serve.ts)

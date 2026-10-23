@@ -58,18 +58,14 @@ it('learns from its socket’s close that the relay let it go, asking HTTP nothi
   const a = await join(s.url, R, 'agent', null, undefined)
   await o.poll()
   const asked = verbs()
-  // Left by HTTP alone, so the relay closes the agent's socket as gone.
-  await realFetch(`${s.url}/v1/runs/${R}/leave`, {
-    method: 'POST',
-    body: JSON.stringify({ id: a.id }),
-  })
-  expect(await o.poll()).toEqual([{ from: 'relay', body: { type: 'lost', id: a.id } }])
+  // Removed by the orchestrator, so the relay closes the agent's socket as gone.
+  await o.remove(a.id)
   await expect(a.poll()).rejects.toThrow('relay: unknown id')
   expect(asked).toEqual([])
 })
 
 /** A relay on Bun.serve whose participants' sockets the test sees, and can drop as a network does. */
-function sockets(heartbeatMs?: number, options: Parameters<typeof createRelay>[0] = {}) {
+function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof createRelay>[0]> = {}) {
   type Held = { key: string; id: string; socket?: { send(t: string): void; close(): void } }
   const open: Bun.ServerWebSocket<Held>[] = []
   const closes: { id: string; code: number }[] = []
@@ -205,15 +201,12 @@ it('sends asked for together go as one frame, each answered', async () => {
 })
 
 it('refuses a relay that offers no socket', async () => {
-  const relay = createRelay()
-  const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: (r) => relay.fetch(r) })
-  servers.push({
-    url: '',
-    async stop() {
-      relay.close()
-      await server.stop(true)
-    },
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: () => Response.json({ id: 'p1', heartbeatMs: 100 }),
   })
+  servers.push({ url: '', stop: () => server.stop(true) })
   await expect(
     join(`http://127.0.0.1:${server.port}`, R, 'agent', null, undefined),
   ).rejects.toThrow('the relay offers no socket')
