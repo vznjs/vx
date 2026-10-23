@@ -172,6 +172,23 @@ export function missedWork(
   return planTasks([...remaining].filter(missed), nodes, need, durationMs, home)
 }
 
+/**
+ * The tasks a plan counts as missed: those handed over to run, the
+ * misses core's probe found, and of the commit's forecast (`likely`) only
+ * those still `remaining`. One the probe found held left `remaining`, and
+ * kept in the forecast its dependants counted as work: main e3c76a2 asked
+ * workers for 121 tasks, and 16 ran (2026-10-23).
+ */
+export function knownMisses(
+  likely: ReadonlySet<string>,
+  sure: ReadonlySet<string>,
+  executed: ReadonlySet<string>,
+  remaining: ReadonlySet<string>,
+): ReadonlySet<string> {
+  if (likely.size === 0 && sure.size === 0) return executed
+  return new Set([...[...likely].filter((id) => remaining.has(id)), ...sure, ...executed])
+}
+
 interface Slot extends Bin {
   readonly at: number
   /** When it is first given a task. */

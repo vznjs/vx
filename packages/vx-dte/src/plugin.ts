@@ -340,14 +340,19 @@ export function dte(options: DteOptions) {
       const relay = options.relay ?? (await adapter?.relay?.())
       if (relay === undefined)
         throw new UserError('dte(): no relay: set relay, or use an adapter that has one')
-      const [{ Orchestrator }, { join }, { decide, tailsMs, WARM_UP_MS }, { snapshot }, seal] =
-        await Promise.all([
-          import('./orchestrator.js'),
-          import('./wire.js'),
-          import('./planner.js'),
-          import('./tree.js'),
-          import('./seal.js'),
-        ])
+      const [
+        { Orchestrator },
+        { join },
+        { decide, knownMisses, tailsMs, WARM_UP_MS },
+        { snapshot },
+        seal,
+      ] = await Promise.all([
+        import('./orchestrator.js'),
+        import('./wire.js'),
+        import('./planner.js'),
+        import('./tree.js'),
+        import('./seal.js'),
+      ])
       // VX_DTE_SECRET or the plan's wins. On GitHub, workers that join on
       // their own or an adapter's keyless ones prove themselves by OIDC;
       // the workers another adapter starts get a secret made for this run.
@@ -486,10 +491,7 @@ export function dte(options: DteOptions) {
         const p = decide({
           remaining,
           nodes: nodes ?? new Map(),
-          executed:
-            likely.size === 0 && sure.size === 0
-              ? executed
-              : new Set([...likely, ...sure, ...executed]),
+          executed: knownMisses(likely, sure, executed, remaining),
           need,
           durationMs: (id) => peaks.get(id)?.p50DurationMs,
           workers,

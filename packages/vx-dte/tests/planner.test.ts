@@ -2,6 +2,7 @@ import { expect, it } from 'bun:test'
 import type { TaskNode } from '@vzn/vx'
 import {
   candidates,
+  knownMisses,
   missedWork,
   plan,
   simulate,
@@ -187,4 +188,27 @@ it('starts a worker of each platform its work needs, though that size is declare
   ]
   expect(simulate([task], workers)).toBe(Infinity)
   expect(plan([task], workers, sizes, WARM).start.map((s) => s.name)).toEqual(['mac'])
+})
+
+// Main e3c76a2: the commit's forecast kept a build the probe found held,
+// and every test after it counted as work: 121 tasks asked for, 16 ran.
+it('counts no work after a forecast miss the probe found held', () => {
+  const nodes = new Map(
+    [
+      ['b', []],
+      ['t', ['b']],
+    ].map(([id, deps]) => [
+      id as string,
+      { id, deps, config: { exec: { command: 'x' }, cache: {} } } as unknown as TaskNode,
+    ]),
+  )
+  const one = () => ({ cores: 1, memory: 1e9 })
+  // `b` was held, so it left `remaining`; `t`'s key, unknown until `b` ends, was not asked.
+  const remaining = new Set(['t'])
+  const known = knownMisses(new Set(['b']), new Set(), new Set(), remaining)
+  expect(missedWork(remaining, nodes, known, one, () => 1000)).toEqual([])
+  // Still remaining, the forecast stands.
+  const both = new Set(['b', 't'])
+  const still = knownMisses(new Set(['b']), new Set(), new Set(), both)
+  expect(missedWork(both, nodes, still, one, () => 1000).map((t) => t.id)).toEqual(['b', 't'])
 })
