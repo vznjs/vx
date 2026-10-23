@@ -132,7 +132,10 @@ describe('a run whose collector fails', () => {
       expect(
         r.said
           .filter((l) => /vx-otel|telemetry/.test(l))
-          .map((l) => l.replace(/127\.0\.0\.1:\d+/, '127.0.0.1:PORT'))
+          // Bun 1.4.4 leads its refused-connection message with the code.
+          .map((l) =>
+            l.replace(/127\.0\.0\.1:\d+/, '127.0.0.1:PORT').replace(': ECONNREFUSED: ', ': '),
+          )
           .toSorted(byText),
       ).toEqual(c.said.toSorted(byText))
       expect(r.ms).toBeLessThan(5_000)

@@ -104,17 +104,19 @@ const nonJsonPaths = ${nonJsonPaths.toString()}
   }
 }
 // Bun's resolver reads \\ as a separator and ? as a query, so a config under a\\b or a?b is served
-// from the path as written (project-loader.ts's LITERAL_QUERY), read now.
+// from the path as written (project-loader.ts's LITERAL_QUERY), read now. By the request's id:
+// Bun 1.4.4 hands onLoad the path with \\ made /, and a\\b's config was read from a/b.
 let literal = false
+const literals = new Map()
 const serveLiteral = () => {
   if (literal) return
   literal = true
   globalThis.Bun.plugin({
     name: 'vx-config-literal',
     setup(build) {
-      build.onResolve({ filter: /\\?vx-literal$/ }, (args) => ({ path: args.path, namespace: 'file' }))
-      build.onLoad({ filter: /\\?vx-literal$/ }, async (args) => {
-        const file = args.path.slice(0, -'?vx-literal'.length)
+      build.onResolve({ filter: /\\?vx-literal=\\d+$/ }, (args) => ({ path: args.path, namespace: 'file' }))
+      build.onLoad({ filter: /\\?vx-literal=\\d+$/ }, async (args) => {
+        const file = literals.get(/=(\\d+)$/.exec(args.path)[1])
         return { contents: await globalThis.Bun.file(file).text(), loader: /\\.[cm]?ts$/.test(file) ? 'ts' : 'js' }
       })
     },
@@ -173,8 +175,11 @@ self.onmessage = async (e) => {
   }
   try {
     const literalPath = /[\\\\?]/.test(path)
-    if (literalPath) serveLiteral()
-    const ns = await import(literalPath ? path + '?vx-literal' : path)
+    if (literalPath) {
+      serveLiteral()
+      literals.set(String(id), path)
+    }
+    const ns = await import(literalPath ? path + '?vx-literal=' + id : path)
     // Awaited as the in-process load's async return flattens it: a Promise
     // default loaded on a run and was refused as "an instance of Promise"
     // on every later evaluation in the process (D-5).

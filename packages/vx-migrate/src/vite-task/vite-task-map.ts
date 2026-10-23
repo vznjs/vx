@@ -70,9 +70,11 @@ function viteConfigFile(dir: string): string | null {
 
 // Bun's resolver reads `\` as a separator, even in a file: URL, so a config
 // under `a\b` was looked for under `a/b`. Resolved here, the path stays as
-// written; the file is read from it.
-const LITERAL_QUERY = /\?vx-literal$/
+// written; the file is read from it, found by its number: Bun 1.4.4 hands
+// onLoad the path with `\` made `/`.
+const LITERAL_QUERY = /\?vx-literal=(\d+)$/
 let servingLiteral = false
+const literals: string[] = []
 
 function importAsWritten(file: string): Promise<{ default?: unknown }> {
   if (!file.includes('\\')) return import(file)
@@ -86,7 +88,7 @@ function importAsWritten(file: string): Promise<{ default?: unknown }> {
           namespace: 'file',
         }))
         build.onLoad({ filter: LITERAL_QUERY }, async (args) => {
-          const at = args.path.replace(LITERAL_QUERY, '')
+          const at = literals[Number(LITERAL_QUERY.exec(args.path)![1])]!
           return {
             contents: await Bun.file(at).text(),
             loader: /\.[cm]?ts$/.test(at) ? 'ts' : 'js',
@@ -95,7 +97,7 @@ function importAsWritten(file: string): Promise<{ default?: unknown }> {
       },
     })
   }
-  return import(`${file}?vx-literal`)
+  return import(`${file}?vx-literal=${literals.push(file) - 1}`)
 }
 
 /**
