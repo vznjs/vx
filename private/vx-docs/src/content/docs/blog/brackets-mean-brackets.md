@@ -1,53 +1,66 @@
 ---
-title: 'We took back a glob shortcut'
+title: 'Brackets in a glob mean brackets'
 date: 2026-10-20T18:20:00Z
 authors:
   - vzn
 tags:
   - dx
   - config
-excerpt: 'vx once read [...] in a task glob literally, so a Next.js route like app/[id] needed no escape. It also meant src/*.[jt]s matched nothing, unlike Turbo, Nx and most glob tools. Why vx now reads brackets the standard way, and why that changed every cache key.'
+excerpt: 'In a vx task glob, [jt] is a character class, as in Turbo, Nx and most glob tools. A literal route directory like app/[id] is escaped. One rule, and the cache key follows it.'
 ---
 
-A Next.js app keeps its routes in directories named like `app/[id]`. In
-almost every glob tool, `[id]` is a character class: one character, `i`
-or `d`. So a glob written for that route matches nothing until you
-escape it as `app/\[id\]`.
-
-vx once took a shortcut: a `[...]` in a task glob was literal. A route
-directory needed no escape. It looked friendly, and it was a mistake.
-
-## A glob should mean the same thing everywhere
-
-The shortcut broke the other half. `src/*.[jt]s` is an ordinary way to
-say "the `.js` and `.ts` files", and in vx it matched nothing. A glob
-copied from `turbo.json`, an Nx project or a shell meant something else
-once it reached a `vx.config.ts`. A config you cannot read the same way
-in two tools is a config you have to test twice.
-
-So brackets are a character class again, everywhere a task glob is read:
+`[jt]` is a character class. A literal `[id]` is escaped:
 
 ```ts
-inputs: { files: ['src/**/*.[jt]s', 'app/\\[id\\]/**'] }
+route: {
+  exec: { command: 'ls src app/*' },
+  inputs: { files: ['src/*.[jt]s', 'app/\\[id\\]/**'] },
+  cache: { outputs: { files: [] } },
+}
 ```
 
-`src/**/*.[jt]s` matches `.js` and `.ts`. A literal route directory is
-escaped, as it is in Turbo, Nx and most glob tools (the double backslash
-is the TypeScript string's escape). `@vzn/vx-migrate` passes Turbo's and
-Nx's classes through unchanged, and escapes the brackets in any path it
+```sh frame="terminal"
+$ echo "// e" >> app/i/x.ts          # not an input
+$ vx run packages/c#route
+  cache     local 1✓
+
+$ echo "// e" >> 'app/[id]/page.ts'  # the escaped route
+$ vx run packages/c#route
+  cache     local 1↑
+
+$ echo "// e" >> src/j.js            # matched by [jt]
+$ vx run packages/c#route
+  cache     local 1↑
+```
+
+Linux x64, vx at `69617eb`, 2026-10-23. (The double backslash is the
+TypeScript string's escape.)
+
+## One meaning everywhere
+
+A Next.js app keeps routes in directories like `app/[id]`. In almost
+every glob tool, `[id]` means one character, `i` or `d`, so the route
+needs `app/\[id\]`. vx reads it the same way:
+
+| Glob               | Matches                        |
+| ------------------ | ------------------------------ |
+| `src/*.[jt]s`      | `.js` and `.ts` files in `src` |
+| `app/[id]/**`      | `app/i/**`, `app/d/**`         |
+| `app/\[id\]/**`    | the `app/[id]/` directory      |
+
+A glob copied from `turbo.json`, an Nx project or a shell means the
+same thing in a `vx.config.ts`. `@vzn/vx-migrate` passes Turbo's and
+Nx's classes through unchanged, and escapes brackets in any path it
 writes.
 
-## Why every key changed
+## Why the cache version moved
 
-A glob is part of what a task's key folds in. After the change, the
-same glob string can select different files: `app/[id]/**` used to mean
-the route and now means `app/i/**` or `app/d/**`. A key that stayed the
-same over different inputs could replay outputs built from the wrong
-files. That is the one failure a cache must never have, so 0.0.644
-moved the cache version to `vx-cache-v48`, and every cached task misses
-once after the upgrade.
+A glob is part of a task's key. Reading brackets as a class made the
+same glob string select different files, and a key that stays the same
+over different inputs can replay outputs built from the wrong files.
+So 0.0.644 moved the cache version to `vx-cache-v48`, and every cached
+task missed once after that upgrade. Pre-1.0, a breaking change ships
+with no setting to keep the old reading.
 
-vx is pre-1.0, and a breaking change ships as one: no alias, no setting
-to keep the old reading. The glob rules are in
-[Caching](../../caching/). More on vx at
+Glob rules: [Caching](../../caching/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).
