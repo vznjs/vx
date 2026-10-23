@@ -367,31 +367,33 @@ Why each loses:
 
 ## What is still slow
 
-Fixed since the first runs: real runs now match the simulator (c5d8353
-above), a task with no history takes one free core instead of a whole
-worker ([#4148](https://github.com/vznjs/vx/pull/4148)), the first ask
-waits for history ([#4132](https://github.com/vznjs/vx/pull/4132)), and
-workers no longer restore a Bun package cache
-([#4147](https://github.com/vznjs/vx/pull/4147)).
+Fixed since the first runs: real runs match the simulator (c5d8353
+above); a task with no history takes one free core
+([#4148](https://github.com/vznjs/vx/pull/4148)); the run asks only
+the workers it uses: 4 or 5 asked and at most 1 cancelled, against 22
+asked and 14 cancelled on c27c238
+([#4160](https://github.com/vznjs/vx/pull/4160)); history keeps what a
+task needs, not the share it got on a crowded worker
+([#4156](https://github.com/vznjs/vx/pull/4156)); and the plan uses
+learned warm-ups and uncrowded durations
+([#4168](https://github.com/vznjs/vx/pull/4168)).
 
-What is left, measured on main's last full run,
-[c27c238](https://github.com/vznjs/vx/actions/runs/40021500639/attempts/1):
-129 tasks, 73 known misses.
+What is left, on main's three runs after #4168:
 
-- **It asks for more workers than it uses.** 22 asked in three rounds
-  (13 at 1.0 s, 8 at 17.8 s, 1 at 42.5 s); 8 ran tasks and 14 were
-  cancelled before they joined. The plan said 114.5 s; `vx run` took
-  164.1 s.
-- **Crowded workers.** small#16 peaked at 6.3 busy cores on 4. A task
-  that ran beside others is recorded with the share of CPU it got, so
-  the next run books it lower and packs more beside it.
-  [#4156](https://github.com/vznjs/vx/pull/4156) records what it needs
-  instead.
-- **CPU used is 72%** across the run's machines. The simulator's bound
-  is 90%; `sim.test.ts` marks it not yet met on 7 of its 15 cases.
-- **Mac workers warm up longer**: 20.9 to 26.6 s on main's last two
-  runs, against 14.8 to 22.1 s on Linux. The difference is the macOS
-  runner's own boot.
+| Run | Tasks run | Workers | Plan | Real | CPU used |
+| --- | --- | --- | --- | --- | --- |
+| [ef42557](https://github.com/vznjs/vx/actions/runs/40032885630) | 25 | 3 | 106.7 s | 147.0 s | 64% |
+| [417328e](https://github.com/vznjs/vx/actions/runs/40032902248) | 27 | 4 | 109.4 s | 116.7 s | 56% |
+| [b910453](https://github.com/vznjs/vx/actions/runs/40033392306) | 9 | 3 | 49.5 s | 86.5 s | 40% |
+
+- **Runs end after the plan**: 7 to 40 s later. On b910453 the last
+  worker was asked at 51.3 s, after the plan's own end.
+- **CPU used is 40% to 64%.** The simulator's bound is 90%. Bookings
+  still miss use both ways: on 417328e small#1 booked 3.0 cores and
+  used 1.9; on ef42557 mac#2 booked 2.1 and used 3.1.
+- **Every worker pays a warm-up** of 15 to 29 s, Linux and Mac alike,
+  before its first task. On a run of a minute or two that is a large
+  share of what CI bills.
 
 ## What it costs, next to Nx Cloud
 
