@@ -87,7 +87,8 @@ it('src/a{1..3}.ts keys a1 and a2, and not a4', async () => {
 it('a mixed-case range is refused: it spans [, \\ and ]', async () => {
   await project('src/a{A..c}.ts')
   await expect(run({ cwd: root!, tasks: ['build'], log: quiet })).rejects.toThrow(
-    'holds the brace range {A..c}',
+    '"src/a{A..c}.ts" holds the brace range {A..c}, which vx expands only within one case ' +
+      'and up to 1024 names. Write a smaller range or a comma brace.',
   )
 }, 30_000)
 

@@ -110,16 +110,15 @@ describe('a project under a directory holding * or ?', () => {
     )
   })
 
-  // The fact the backslash rows lean on: when it stops holding, they can go.
-  it.skipIf(!linux)(
-    "Bun's realpath refuses a path holding a backslash that stat finds",
-    async () => {
-      const dir = path.join(root, 'back\\slash')
-      await mkdir(dir)
-      expect(statSync(dir).isDirectory()).toBe(true)
-      expect(() => realpathSync(dir)).toThrow('ENOENT')
-    },
-  )
+  // The fact the backslash rows leaned on stopped holding in Bun 1.4.4:
+  // realpath now finds the path. The refusal below and the workarounds for
+  // it (util/real-path.ts) can go once the sandbox is shown to mount it.
+  it.skipIf(!linux)("Bun's realpath finds a path holding a backslash (1.4.4)", async () => {
+    const dir = path.join(root, 'back\\slash')
+    await mkdir(dir)
+    expect(statSync(dir).isDirectory()).toBe(true)
+    expect(realpathSync(dir)).toBe(dir)
+  })
 
   it.skipIf(!linux)('a backslash is refused with the directory named', async () => {
     const dir = path.join(root, 'back\\slash', 'proj')
