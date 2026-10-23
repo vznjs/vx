@@ -34,6 +34,32 @@ import { names, outputFiles } from './outputs.js'
 import { sealWorker, type Proof } from './seal.js'
 import { join, RelayError } from './wire.js'
 
+/**
+ * A save past this is given up: the task faults and runs elsewhere. Main
+ * 32f73ed sat 13 min twice: a worker's save never settled, its `held`
+ * kept the task's lease, and no `end` came (2026-10-23). Above a remote's
+ * own upload deadlines (`turboCache()`: 60 s a request, one resend).
+ */
+const SAVE_DEADLINE_MS = 5 * 60_000
+
+/** `save`, or a throw once `ms` passes. */
+async function saved(save: Promise<void>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      save,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`its outputs did not save within ${ms / 1000} s`)),
+          ms,
+        )
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /** Names whose value is this machine's, never the orchestrator's. */
 const HOST_ENV = [
   'HOME',
@@ -59,6 +85,8 @@ export async function runWorker(opts: {
   proof: Proof
   /** The workspace's cache read under the facts it is handed (`CommandContext.artifactsFor`). */
   artifacts: (facts: () => CacheFacts | undefined) => TaskArtifacts
+  /** How long a task's save may take before the worker gives the task up; default `SAVE_DEADLINE_MS`. */
+  saveDeadlineMs?: number
 }): Promise<number> {
   const tree = Bun.spawnSync(['git', 'rev-parse', 'HEAD^{tree}'], { cwd: opts.root })
     .stdout.toString()
@@ -111,23 +139,26 @@ export async function runWorker(opts: {
     res: WiredResult & { stdout: string; stderr: string },
   ): Promise<void> => {
     const { stdout, stderr, ...result } = res
-    await artifacts.save(
-      key,
-      {
-        id: m.task,
-        projectDir: path.join(opts.root, m.project),
-        command: m.command,
-        outputs: m.outputs,
-        nestedProjectDirs: m.nested.map((n) => path.join(opts.root, n)),
-      },
-      {
-        stdout,
-        stderr,
-        durationMs: res.durationMs,
-        ...(res.cpuMs === undefined ? {} : { cpuMs: res.cpuMs }),
-        ...(res.peakRssBytes === undefined ? {} : { peakRssBytes: res.peakRssBytes }),
-        env: m.env,
-      },
+    await saved(
+      artifacts.save(
+        key,
+        {
+          id: m.task,
+          projectDir: path.join(opts.root, m.project),
+          command: m.command,
+          outputs: m.outputs,
+          nestedProjectDirs: m.nested.map((n) => path.join(opts.root, n)),
+        },
+        {
+          stdout,
+          stderr,
+          durationMs: res.durationMs,
+          ...(res.cpuMs === undefined ? {} : { cpuMs: res.cpuMs }),
+          ...(res.peakRssBytes === undefined ? {} : { peakRssBytes: res.peakRssBytes }),
+          env: m.env,
+        },
+      ),
+      opts.saveDeadlineMs ?? SAVE_DEADLINE_MS,
     )
     if (res.exitCode === 0) {
       present.set(key, Promise.resolve())

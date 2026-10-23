@@ -347,6 +347,9 @@ stops, instead of waiting for the job's timeout.
   checkout, install or join can fail on the network; a fourth starts
   none. When none is online or starting and this machine has no
   share, the remaining tasks fail with `no worker could start`.
+- A task whose outputs a worker has not saved 5 minutes after its
+  command ended is given up there (`its outputs did not save within
+  300 s`) and runs on another worker, as any fault does.
 
 ## What the run shows
 
