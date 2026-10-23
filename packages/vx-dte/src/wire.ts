@@ -29,8 +29,12 @@ const CLOSE_WAIT_MS = 2_000
 const UNANSWERED = 'the relay answered no frame'
 /** The close code of a socket whose participant the relay lost or let go (PROTOCOL.md § Sockets). */
 const GONE = 4404
-/** A socket that brought no message this many heartbeats is dialed anew. */
-const QUIET_BEATS = 3
+/**
+ * A socket that brought no message this many heartbeats is dialed anew.
+ * Not three: each dial is a request a free relay host counts, and an agent
+ * on a long task dialed every 15 s, most of a CI run's requests (2026-10-23).
+ */
+const QUIET_BEATS = 12
 /** How long `join` waits on the relay, before it says how long a heartbeat is. */
 const JOIN_DEADLINE_MS = 30_000
 /** How long `join` asks again through faults (a 500 while a host restarts the relay). */
@@ -288,7 +292,7 @@ export async function join(
         const s = await live(signal)
         // It may have closed, or brought something, since `live` returned it.
         if (s.open && inbox.length === 0) await idle(heartbeatMs, signal)
-        // Quiet for three heartbeats: a relay whose push to it failed may
+        // Quiet for twelve heartbeats: a relay whose push to it failed may
         // have let go of it while answering its pings (two CI runs hung
         // 20 min, 2026-10-23). A new socket gets what queued.
         // The quiet one serves until a new one opens: a dial that fails or

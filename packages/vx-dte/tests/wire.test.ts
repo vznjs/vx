@@ -97,8 +97,10 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
         relay.attach(ws.data.key, ws.data.id, ws.data.socket)
       },
       message(ws, m) {
-        if (m === 'ping') ws.send('pong')
-        else {
+        if (m === 'ping') {
+          relay.seen(ws.data.key, ws.data.id, Date.now())
+          ws.send('pong')
+        } else {
           frames.push(String(m))
           ws.send(relay.frame(ws.data.key, ws.data.id, String(m)))
         }
@@ -132,7 +134,7 @@ it('dials anew once its socket goes quiet, and gets what the relay queued', asyn
   const asked = verbs()
   await o.send(a.id, 'queued')
   const got = []
-  for (let i = 0; i < 20 && got.length === 0; i++) got.push(...(await a.poll()))
+  for (let i = 0; i < 30 && got.length === 0; i++) got.push(...(await a.poll()))
   expect(got).toEqual([{ from: 'orchestrator', body: 'queued' }])
   expect(agentSockets()).toHaveLength(2)
   await o.send(a.id, 'pushed')
@@ -140,7 +142,7 @@ it('dials anew once its socket goes quiet, and gets what the relay queued', asyn
   expect(asked).toEqual([])
   await a.leave()
   await o.leave()
-})
+}, 10_000)
 
 it('joins again when its first socket does not open', async () => {
   // A relay that made a run twice for two joins at once forgot the first
@@ -168,8 +170,8 @@ it('keeps its quiet socket while a new one fails to open, so the relay keeps it'
   await o.poll()
   host.refusing = true
   const first = open.find((w) => w.data.id === a.id)!
-  // Quiet well past three heartbeats, every dial refused.
-  for (let i = 0; i < 10; i++) expect(await a.poll()).toEqual([])
+  // Quiet well past twelve heartbeats, every dial refused.
+  for (let i = 0; i < 16; i++) expect(await a.poll()).toEqual([])
   expect(first.readyState).toBe(1)
   await o.send(a.id, 'still here')
   expect(await a.poll()).toEqual([{ from: 'orchestrator', body: 'still here' }])
