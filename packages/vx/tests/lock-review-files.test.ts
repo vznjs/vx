@@ -104,7 +104,15 @@ it('vx lock --check names a review copy left where no project is', async () => {
   expect(vx(r, 'lock').code).toBe(0)
   expect(await text(path.join(gone, 'vx.lock.json'))).not.toBeNull()
   await rm(path.join(gone, 'vx.config.mjs'))
-  expect(vx(r, 'lock').code).toBe(0)
+  // `vx lock` names it too: it wrote clean, and the `--check` after it failed.
+  const lock = vx(r, 'lock')
+  expect([lock.code, lock.err]).toEqual([
+    0,
+    noticed(
+      `vx lock: packages/a/old/vx.lock.json has no vx.config beside it — delete it\n`,
+      'warn',
+    ),
+  ])
   const stray = vx(r, 'lock', '--check')
   expect([stray.code, stray.err]).toEqual([
     1,
