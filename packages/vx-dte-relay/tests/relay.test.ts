@@ -418,6 +418,40 @@ describe('the relay carries one run between its orchestrator and workers', () =>
     expect((await c.poll(R, o)).at(-1)).toEqual({ from: 'relay', body: { type: 'lost', id: b } })
   })
 
+  // A push that failed queued each message again as new: its bytes were
+  // forgotten, and past 10 000 (the relay's own notices go over it) the
+  // re-queue threw a 429 out of the socket's attach, losing the rest.
+  it('queues again what a failed push took, as it was', async () => {
+    const c = client()
+    const o = await c.join(R, 'orchestrator')
+    const a = await c.join(R, 'worker')
+    for (let i = 0; i < 5; i++)
+      await c.frame(R, a, { sends: Array(2000).fill({ to: 'orchestrator', body: i }) })
+    await c.join(R, 'worker')
+    const failing = {
+      send() {
+        throw new Error('dropped')
+      },
+      close() {},
+    }
+    expect(c.relay.attach(K, o, failing)).toBe(true)
+    const got: unknown[] = []
+    const socket = {
+      send: (t: string) => void got.push(...(JSON.parse(t) as { messages: unknown[] }).messages),
+      close() {},
+    }
+    expect(c.relay.attach(K, o, socket)).toBe(true)
+    expect(got).toHaveLength(10_001)
+
+    const b = await c.join(R, 'worker')
+    const big = 'x'.repeat((1 << 20) - 100)
+    for (let i = 0; i < 63; i++) expect((await c.send(R, o, b, big)).status).toBe(204)
+    expect(c.relay.attach(K, b, failing)).toBe(true)
+    // 64 MiB: the cap counts what the failed push queued again.
+    expect((await c.send(R, o, b, big)).status).toBe(204)
+    expect((await c.send(R, o, b, big)).status).toBe(429)
+  })
+
   it('wants a bearer token when it verifies', async () => {
     const c = client({ verify: async () => ({ iss: 'i', run: ['1'] }) })
     expect((await c.call(R, 'join', { role: 'worker' })).status).toBe(401)
