@@ -34,7 +34,14 @@ export default defineProject({
       },
       dependsOn: ['install'],
       inputs: {
-        files: ['src/**', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+        files: [
+          'src/**',
+          'tests/**',
+          'scripts/**',
+          'package.json',
+          '.oxlintrc.json',
+          'tsconfig.json',
+        ],
       },
       cache: {
         outputs: { files: [] },
