@@ -100,5 +100,5 @@ you declare into a wall the task can't cross.
 [agent skill](../../guides/agents/) teaches a coding agent the command,
 so "why is CI rebuilding everything" is a question it can answer.
 
-Guide: [Configure › Why did it re-run?](../../guides/configure/#why-did-it-re-run).
+Guide: [Caching › Why did it re-run?](../../docs/caching/#why-did-it-re-run).
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

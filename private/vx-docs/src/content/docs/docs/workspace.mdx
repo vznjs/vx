@@ -1,0 +1,104 @@
+---
+title: Workspace
+description: "The .vx/workspace.ts file: the workspace root, its plugins and its settings."
+---
+
+import { Aside, FileTree } from '@astrojs/starlight/components'
+
+A workspace is a git repository with a `.vx/workspace.ts` at its root and a
+`vx.config.ts` in each project.
+
+<FileTree>
+- .vx/
+  - workspace.ts the workspace: plugins and settings
+  - projects.lock.json written by `vx lock`, read by every run
+- packages/
+  - app/
+    - vx.config.ts one per project: its tasks
+    - src/
+  - ui/
+    - vx.config.ts
+</FileTree>
+
+---
+
+## Projects
+
+A project is any directory with a `vx.config.ts`, in any language. Its
+name is the config's `name`, else a plugin's (`@vzn/vx-lockfile` gives
+the `package.json` name), else its path (`apps/web`; `//` for the root).
+
+---
+
+## The lock
+
+Runs read configs from `.vx/projects.lock.json`, never from the files.
+After you add or edit a `vx.config.ts`, run `vx lock` and commit the lock.
+
+```sh
+vx lock
+```
+
+```text
+✓ vx lock  2 project configs → .vx/projects.lock.json
+```
+
+<Aside type="tip">
+  On CI, `vx lock --check` fails a change that skipped it ([guide](../../guides/ci/check-the-lock/)).
+</Aside>
+
+---
+
+## `.vx/workspace.ts`
+
+`.vx/workspace.ts` is required: the nearest one up from where you run,
+within your git checkout, marks the workspace root (`vx init` writes it).
+With no plugins in it, vx runs and caches on this machine.
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+import { reapi } from '@vzn/vx-reapi'
+
+export default defineWorkspace({
+  plugins: [reapi({ endpoint: 'grpcs://cache.internal:443' })],
+  run: {
+    concurrency: 8, // default: usable cores
+    timeout: '10m', // default: none
+  },
+  cache: {
+    dir: 'build/.vx', // unset: entries shared by this repo's checkouts in ~/.vx/<id>/cache
+  },
+})
+```
+
+Each setting has one path, and its variable and flag come from it:
+`run.timeout` is `VX_RUN_TIMEOUT` and `vx run --timeout`. A flag beats the
+variable, which beats this file. Durations and sizes carry a unit
+(`'30s'`, `'10m'`, `'32KiB'`). All of them: [the settings table](../../schema/#settings).
+
+---
+
+<details>
+<summary>The fields you will reach for</summary>
+
+| Field            | Sets                                                                  |
+| ---------------- | --------------------------------------------------------------------- |
+| `plugins`        | asked in order; this machine runs what they decline, and its cache is asked first ([Plugins](../../guides/plugins/)) |
+| `run.concurrency` | tasks at once, a number or a share of the cores (`'50%'`) |
+| `run.timeout`, `run.retries` | a task's time limit and re-runs, for tasks without their own `exec.timeout` / `exec.retries` |
+| `baseBranch` | the default branch, by name; default `origin/HEAD`'s branch, then `main`, then `master`. A bare `--affected` compares with its merge base off it, and on it has no default unless `VX_AFFECTED_BASE` names one |
+| `run.schedule` | which ready task starts first: `'most-work'` (default, most tasks waiting behind it), `'critical-path'` (longest chain), `'direct-dependents'`, `'ready-order'`; a `schedule` plugin's weights come first ([Blog](../../blog/scheduling-strategies/#pick-the-guess)) |
+| `run.rules` | graph checks: `exclusiveOutputs` (on unless `false`) refuses two tasks on one output path even when one depends on the other; `vx lock` and `vx lock --check` check it, never a run. A task whose inputs can match another task's outputs is always refused, unless it is a dependency the key leaves out of `inputs.tasks`, so every key is known before anything runs ([Schema](../../schema/#workspace-config-vxworkspacets)) |
+| `cache.dir`      | keep the whole cache here, shared with no other workspace; unset, entries live in `~/.vx/<id>/cache` and every checkout of the repo hits them |
+| `cache.policy` | which layers read and write (`'local:rw,remote:r'`) |
+| `cache.inputStability` | every task's `cache.inputStability` default, `{ strategy, severity }`: `'immutable'` / `'warn'` unless set; a task's own field wins, the `VX_CACHE_INPUT_STABILITY_*` variables win over both ([Schema](../../schema/#cache-optional)) |
+| `lock.reviewFiles` | `false` stops `vx lock` writing a pretty `vx.lock.json` (the project's resolved config, for review) beside each `vx.config` |
+| `watch.poll` | `vx watch` polls instead of using the OS watcher |
+
+For a timeout, the first one set wins: a task's `exec.timeout`, then
+`--timeout`, then `VX_RUN_TIMEOUT`, then `run.timeout`. Only `exec.timeout`
+is in the cache key. There is no `globalInputs`: import a shared array instead.
+
+</details>
+
+See [the settings table](../../schema/#settings) for every field.

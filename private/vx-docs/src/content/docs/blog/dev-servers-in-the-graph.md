@@ -87,4 +87,4 @@ to the server re-runs the tests. And a server only its cache hits need is
 never started: when every dependant is a confirmed hit, the run does not
 boot it.
 
-The guide is [Configure › Dev tasks](../../guides/configure/#dev-tasks).
+The guide is [Configure › Dev tasks](../../docs/dev-servers/).

@@ -23,7 +23,7 @@ export const TOOL_NAME: Record<Tool, string> = {
 
 export interface Source {
   label: string
-  /** A full URL, or for vx a site path relative to the base (`guides/configure/`). */
+  /** A full URL, or for vx a site path relative to the base (`docs/workspace/`). */
   href: string
   /** For a link to a vx test: the title of the row that holds the claim. */
   row?: string
@@ -74,7 +74,7 @@ export const CHOICES: readonly Choice[] = [
         costs:
           'Writing and maintaining the lists is your work. A file a task reads but the list leaves out is a stale hit waiting to happen, unless the sandbox catches it.',
         sources: [
-          { label: 'Caching tasks', href: 'guides/configure/#caching' },
+          { label: 'Caching tasks', href: 'docs/caching/' },
           {
             label: 'tests/config.test.ts',
             href: `${GH}packages/vx/tests/config.test.ts`,

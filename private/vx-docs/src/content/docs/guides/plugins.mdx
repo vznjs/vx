@@ -164,7 +164,7 @@ export function toolVersions(): VxPlugin {
 }
 ```
 
-[`@vzn/vx-lockfile`](../configure/#lockfiles) claims a lockfile this way.
+[`@vzn/vx-lockfile`](../../docs/lockfiles/) claims a lockfile this way.
 
 ## Keys and order
 
@@ -518,7 +518,7 @@ run with one warning. A verb that throws fails in one line.
 | --------------------------- | ------------------------------------------ |
 | [`@vzn/vx-reapi`](../../plugins/vx-reapi/)             | `cache`, `executor` ([CI and remote](../ci/#remote-cache)) |
 | [`@vzn/vx-migrate`](../../plugins/vx-migrate/)           | `config`, `discover`, `project`, `fingerprint` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) ([Migrate](../migrate/)) |
-| [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/)          | `discover`, `project`, `fingerprint`, `key` ([Lockfiles](../configure/#lockfiles)) |
+| [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/)          | `discover`, `project`, `fingerprint`, `key` ([Lockfiles](../../docs/lockfiles/)) |
 | [`@vzn/vx-schedule-history`](../../plugins/vx-schedule-history/)  | `schedule`, `admit`, `commands`            |
 | [`@vzn/vx-otel`](../../plugins/vx-otel/)              | `telemetry` ([below](#opentelemetry))      |
 | [`@vzn/vx-ci`](../../plugins/vx-ci/)            | `config`, `telemetry`, `commands` ([GitHub Actions](../ci/#github-actions), [GitLab CI](../ci/#gitlab-ci)) |

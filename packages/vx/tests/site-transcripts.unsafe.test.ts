@@ -133,6 +133,7 @@ describe('the guides show what vx prints', () => {
 // vx prints for it.
 describe('the one-task guides show what vx prints', () => {
   let two = ''
+  let locked = ''
   const run = (...args: string[]) => {
     const r = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: two, env: ENV })
     return { code: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() }
@@ -179,7 +180,9 @@ describe('the one-task guides show what vx prints', () => {
       await writeFile(path.join(two, `packages/${name}/src/index.ts`), '1\n')
     }
     sh('git', 'init', '-q', '-b', 'main')
-    expect(run('lock').code).toBe(0)
+    const lock = run('lock')
+    expect(lock.code).toBe(0)
+    locked = (lock.stdout + lock.stderr).trim()
     sh('git', 'add', '-A')
     sh('git', 'commit', '-qm', 'one')
     expect(run('run', 'build', '--all').code).toBe(0)
@@ -189,6 +192,11 @@ describe('the one-task guides show what vx prints', () => {
 
   afterAll(async () => {
     if (two !== '') await rm(two, { recursive: true, force: true })
+  })
+
+  it("the workspace page's vx lock line", () => {
+    const page = readFileSync(path.join(GUIDES, '..', 'docs', 'workspace.mdx'), 'utf8')
+    expect(printed(page, 'vx lock')).toBe(locked)
   })
 
   it('run-what-changed: the --affected plan', () => {
@@ -229,9 +237,9 @@ describe('the one-task guides show what vx prints', () => {
   })
 })
 
-describe("configure's verdict table", () => {
+describe("the caching page's verdict table", () => {
   it('every row is a verdict vx why can print', async () => {
-    const page = readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8')
+    const page = readFileSync(path.join(GUIDES, '..', 'docs', 'caching.mdx'), 'utf8')
     const at = page.indexOf('Every verdict')
     const table = page.slice(at, page.indexOf('</details>', at))
     const rows = [...table.matchAll(/^\| `+ ?(.+?) ?`+ \|/gm)].map((m) => m[1]!)

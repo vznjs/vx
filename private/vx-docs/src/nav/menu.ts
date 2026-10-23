@@ -14,7 +14,8 @@ export const MENU: Partial<Record<SectionId, MenuLink[]>> = {
   ],
   docs: [
     { label: 'Quickstart', href: 'quickstart/', line: 'Install, configure, cached in a minute.' },
-    { label: 'Configure', href: 'guides/configure/', line: 'Tasks, inputs, outputs, env.' },
+    { label: 'Tasks', href: 'docs/tasks/', line: 'What runs, and in what order.' },
+    { label: 'Caching', href: 'docs/caching/', line: 'Inputs, outputs, and what the key holds.' },
     {
       label: 'Sandboxing',
       href: 'guides/sandboxing/',

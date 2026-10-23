@@ -1,0 +1,81 @@
+---
+title: Lockfiles
+description: Key each package on its own dependencies with your package manager's plugin.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components'
+
+Add the plugin for your package manager. Without one, no lockfile or
+`package.json` is in any key, so an install re-keys nothing, and `^build`
+has no package edges (vx refuses a `^` and names the plugin to add).
+
+<Tabs syncKey="pm">
+  <TabItem label="Bun">
+    ```ts title=".vx/workspace.ts"
+    import { defineWorkspace } from '@vzn/vx/config'
+    import { bun } from '@vzn/vx-lockfile'
+
+    export default defineWorkspace({ plugins: [bun()] })
+    ```
+  </TabItem>
+  <TabItem label="pnpm">
+    ```ts title=".vx/workspace.ts"
+    import { defineWorkspace } from '@vzn/vx/config'
+    import { pnpm } from '@vzn/vx-lockfile'
+
+    export default defineWorkspace({ plugins: [pnpm()] })
+    ```
+  </TabItem>
+  <TabItem label="npm">
+    ```ts title=".vx/workspace.ts"
+    import { defineWorkspace } from '@vzn/vx/config'
+    import { npm } from '@vzn/vx-lockfile'
+
+    export default defineWorkspace({ plugins: [npm()] })
+    ```
+  </TabItem>
+  <TabItem label="Yarn">
+    ```ts title=".vx/workspace.ts"
+    import { defineWorkspace } from '@vzn/vx/config'
+    import { yarn } from '@vzn/vx-lockfile'
+
+    export default defineWorkspace({ plugins: [yarn()] })
+    ```
+  </TabItem>
+</Tabs>
+
+Then each package is keyed on its own dependencies, `^build` follows what
+the manager installed, and `--affected` follows both. `pnpm({ scope:
+'workspace' })` keys the whole file instead.
+
+---
+
+<details>
+<summary>What each plugin folds</summary>
+
+| Plugin   | A package's key folds                                                                 | Install-wide, for every package |
+| -------- | ------------------------------------------------------------------------------------- | ------------------------------- |
+| `pnpm()` | every package it reaches, by name, version and resolved peers, with integrity and any patch | every top-level field but `importers`, `packages`, `snapshots`, `patchedDependencies`, `catalogs` and `overrides` (`settings`, `onlyBuiltDependencies`, …) |
+| `bun()`  | the same, through Bun's hoisted layout                                                | every top-level field but `workspaces`, `packages`, `catalog`, `catalogs`, `overrides` and `patchedDependencies` (`trustedDependencies`, …) |
+| `npm()`  | the same, from `npm-shrinkwrap.json` or `package-lock.json` versions 2 and 3                                | the `lockfileVersion`; root `overrides` reach a package through the entries they force |
+| `yarn()` | the same, from a berry lockfile, each entry with every field but its dependency lists; a yarn 1 lockfile records no workspaces, so every package folds the whole file | `__metadata`'s `version` and `cacheKey`, and the root workspace's entry (its `dependenciesMeta`) through the root's closure |
+
+Every package's key also folds the root package's own dependencies: their
+bins run from the root `node_modules/.bin`, which is on every task's PATH.
+So bumping a root devDependency re-runs every package.
+
+Each plugin also folds its manager's install settings into every task
+(`pnpm()`: `pnpm-workspace.yaml` but its `patchedDependencies` and
+`overrides`, whose effect the lockfile records per package, and `.npmrc`;
+`bun()`: `bunfig.toml`, `.npmrc`; `npm()`: `.npmrc`; `yarn()`:
+`.yarnrc.yml`), and adds a package's `package.json` to its tasks' inputs.
+A yarn 1 lockfile records no workspaces, so `yarn()` takes its edges from
+the workspaces' `package.json` files, as Yarn 1 links them.
+
+`vx why` names the part `plugin @vzn/vx-lockfile/pnpm`. An unreadable
+lockfile stops the run and names the install to re-run. An import you
+never declared is in no package's key.
+
+</details>
+
+See [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/).
