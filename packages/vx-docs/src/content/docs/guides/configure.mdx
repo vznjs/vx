@@ -4,6 +4,7 @@ description: Tell vx what each task runs, reads and writes, so it can run them i
 ---
 
 import { Steps, Tabs, TabItem, Aside, CardGrid, LinkCard, FileTree } from '@astrojs/starlight/components'
+import GraphExplorer from '../../../components/demos/GraphExplorer.astro'
 
 Tell vx what each task runs, what it reads and what it writes. vx does the
 rest: it runs tasks in order, in parallel, and skips any task whose inputs
@@ -81,6 +82,18 @@ flowchart LR
 A task-name pattern is allowed: `dependsOn: ['build.*']`, or `'^build.*'`.
 Bare wildcards and negation (`*`, `!task`) are not.
 A cycle or a missing `'pkg#task'` is an error.
+
+### Explore your graph
+
+See what each task waits on and what waits on it, in your own repo:
+
+```sh
+vx run build --all --dry=json > plan.json
+```
+
+Drop `plan.json` below, or paste it, then type a task. Nothing is uploaded.
+
+<GraphExplorer />
 
 <Aside title="A package with no build">
   A package that declares no `build` gets a default one: a group behind
@@ -192,13 +205,13 @@ vx why app#build
 ```
 
 ```console
-app#build — run 019f5a02-…
-  this run   2026-07-13T05:39:20.590Z · success · executed · key f7ee661520…
-  previous   2026-07-13T05:37:29.550Z · success · key 8b2e9bb2e8…
+app#build — run 01a1660e-824d-77ed-a045-d5a178ffd67b
+  this run   2026-10-22T23:59:49.365Z · success · executed · key d0c31c5d5d1f9f67
+  previous   2026-10-22T23:59:49.110Z · success · key 5b1057fc68216f54
   verdict    cache key changed: file packages/app/src/index.ts
 
-  what changed (1 component, 41 unchanged):
-    changed file  packages/app/src/index.ts  a1b2c3… → d4e5f6…
+  what changed (1 component, 2 unchanged):
+    changed file  packages/app/src/index.ts  41715495f45f651e6cf7d38f58a3d512abcfa440 → a853d874fb63b83b04ebb3ce1a2f516c4c41eee8
 
   what to do:
     file  an edit re-runs by design; a file the task does not read belongs out of inputs.files
@@ -213,6 +226,7 @@ A hit after you changed something means that something is not declared.
 | --- | --- |
 | `cache key changed: env MODE, file packages/app/src/index.ts` | those inputs moved (three named, then a count); the lines below show each |
 | `cache key changed between the previous run and this one (inputs differ)` | the key moved and neither entry kept its components (pruned, or a failed run saved none) |
+| `` never cached: its key folds //#stamp, which declares no `inputs`, so each run derives a new key; declare inputs on //#stamp `` | a task this key folds declares no `inputs`, so the key is new every run; declare them on that task |
 | `cache key unchanged — this run was served from cache, nothing re-ran` | a hit |
 | `cache key unchanged — the previous run on this key failed and saved nothing, so there was nothing to hit` | a failure saves no entry |
 | `cache key unchanged — re-executed because this run did not read the cache (--force, or a --cache-policy without read)` | the run's policy read no cache |
