@@ -414,7 +414,7 @@ it('books a worker the cores of a task from its start to its command’s end', a
   await Bun.sleep(50)
   await h.stop()
   const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
-  expect(rows.find((r) => r.includes('booked'))).toContain('booked 0.0 ·')
+  expect(rows.find((r) => r.includes('expected'))).toContain('expected 0.0 ·')
 })
 
 // Main, 2026-10-23: vx-docs#build (41 s, then its test) got ready 3 s in,
@@ -708,13 +708,13 @@ it('reports a worker still there at the summary online until then', async () => 
     expect((await t1).exitCode).toBe(0)
     const [m] = h.o.machines()
     expect(m!.status).toBe('ok')
-    // small#3 read ok with 28 of its tasks failed (main bf77a58, 2026-10-23).
+    // A failed task is the task's, not its worker's (M, 2026-10-23).
     const t2 = h.o.execute(h.req('t2'))
     expect(await a.batches()).toEqual([['t2']])
     h.store.saved.set('k-t2', { stdout: '', stderr: '' })
     await a.say({ type: 'end', task: 't2', key: 'k-t2', result: { exitCode: 1, durationMs: 1 } })
     expect((await t2).exitCode).toBe(1)
-    expect(h.o.machines()[0]!.status).toBe('failed')
+    expect(h.o.machines()[0]!.status).toBe('ok')
     expect(m!.onlineMs).toBeGreaterThanOrEqual(100)
     expect(m!.bookedAvg).toBeLessThanOrEqual(m!.cores)
   } finally {

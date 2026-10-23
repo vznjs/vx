@@ -407,7 +407,7 @@ machine together:
             small#1  stopped  5 done · warm-up 0.2s
                      declared 4c/14G · actual 4c/14G
                      online 12.1s · busy 9.8s · idle 2.3s
-                     cpu peak 3.6 · avg 2.4 cores · booked 3.8 · cpu utilization 61%
+                     cpu peak 3.6 · avg 2.4 cores · expected 3.8 · cpu utilization 61%
                      memory peak 1.2 GB · avg 640.0 MB
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
             asked    1 at 0.0s for 4 cores, 5 tasks (5 measured)
