@@ -8,7 +8,7 @@
 // floor takes what nothing claimed.
 
 import { machineParallelism, UserError } from '../util/index.js'
-import { isLocalExecutor, selectExecutor, type TaskExecutor } from '../exec/index.js'
+import { hostPlatform, isLocalExecutor, selectExecutor, type TaskExecutor } from '../exec/index.js'
 import { isGroupTask, type TaskNode } from '../graph/index.js'
 import { resolveDownloadModes } from './download-policy.js'
 import { type Logger, warnOf } from '../report/index.js'
@@ -181,6 +181,16 @@ export interface Placements {
   servers: Map<string, TaskNode[]>
   /** Persistent tasks every dependant of which carries them: never started here. */
   carried: Set<string>
+  /**
+   * Tasks whose `exec.platforms` leave out this machine, placed here: the
+   * run skips them and their dependants. Each → its platforms.
+   */
+  otherPlatform: Map<string, readonly string[]>
+  /**
+   * Of those, the ones an executor that routes by platform could not take:
+   * none of its `platforms` is theirs. Each → the platforms on offer.
+   */
+  unroutable: Map<string, readonly string[]>
 }
 
 /**
@@ -223,6 +233,16 @@ export function placeTasks(
     remoteOnly: new Set(),
     servers: new Map(),
     carried: new Set(),
+    otherPlatform: new Map(),
+    unroutable: new Map(),
+  }
+  const host = hostPlatform()
+  /** Runs `node` here: on this machine's platform, or skipped if it is not one of its. */
+  const here = (node: TaskNode): void => {
+    const wants: readonly string[] | undefined = node.config.exec?.platforms
+    if (wants === undefined) return
+    if (wants.includes(host)) node.platform = host
+    else placements.otherPlatform.set(node.id, wants)
   }
   /** Persistent tasks a dependant placed off a `servers` executor needs here. */
   const heldHere = new Set<string>()
@@ -232,19 +252,28 @@ export function placeTasks(
   // select. The walks below were 2.8 ms of a 1,200-task warm run.
   if (executors.length === 1 && executors[0] === floor) {
     for (const node of nodes.values()) {
-      if (isGroupTask(node) || node.config.exec?.persistent !== undefined) continue
+      delete node.platform
+      if (isGroupTask(node)) continue
+      here(node)
+      if (node.config.exec?.persistent !== undefined) continue
       placements.executors.set(node.id, floor)
       if (node.config.exec?.remote === 'only') placements.remoteOnlyNoop.add(node.id)
     }
     return placements
   }
   const pinned = pinsOf({})
+  const routers = executors.filter((e) => e.platforms !== undefined)
   for (const node of nodes.values()) {
+    delete node.platform
     if (isGroupTask(node) || node.config.exec?.persistent !== undefined) continue
     if (node.config.exec?.interactive === true) {
       placements.executors.set(node.id, floor)
+      here(node)
       continue
     }
+    const wants: readonly string[] | undefined = node.config.exec?.platforms
+    const routes = (e: TaskExecutor): boolean =>
+      wants === undefined || e.platforms?.some((p) => wants.includes(p)) === true
     const executor = selectExecutor(
       executors,
       {
@@ -256,9 +285,23 @@ export function placeTasks(
         cacheable: node.config.cache !== undefined,
       },
       executorLabel,
-      (e) => pinsOf(e).has(node.id),
+      (e) => pinsOf(e).has(node.id) || !routes(e),
     )
     placements.executors.set(node.id, executor)
+    if (wants !== undefined) {
+      const offered = executor.platforms
+      if (offered !== undefined && routes(executor)) {
+        node.platform =
+          wants.includes(host) && offered.includes(host)
+            ? host
+            : wants.find((p) => offered.includes(p))!
+      } else {
+        here(node)
+        if (placements.otherPlatform.has(node.id) && routers.length > 0) {
+          placements.unroutable.set(node.id, [...new Set(routers.flatMap((e) => e.platforms!))])
+        }
+      }
+    }
     const servers = serversBehind(nodes, node)
     if (servers.length > 0) {
       if (executor.servers === true) placements.servers.set(node.id, servers)
@@ -273,6 +316,9 @@ export function placeTasks(
   }
   for (const servers of placements.servers.values())
     for (const s of servers) if (!heldHere.has(s.id)) placements.carried.add(s.id)
+  for (const node of nodes.values()) {
+    if (node.config.exec?.persistent !== undefined && !placements.carried.has(node.id)) here(node)
+  }
   return placements
 }
 
@@ -388,5 +434,42 @@ export function poolOfPlacement(
   return (id) => {
     const executor = placements.executors.get(id)
     return executor === undefined ? undefined : pools.get(executor)
+  }
+}
+
+/**
+ * What a run says of its `otherPlatform` tasks: a refusal when an executor
+ * that routes by platform could not take one, or the run is on CI (each
+ * task runs there or the run fails, owner 2026-10-23), else the warning a
+ * local run prints as it skips them and what depends on them.
+ */
+export function platformVerdict(
+  placements: Placements,
+  ci: boolean,
+): { refuse: string } | { warn: string } | undefined {
+  const skipped = placements.otherPlatform
+  if (skipped.size === 0) return undefined
+  const host = hostPlatform()
+  const needs = (id: string): string => `${id} needs ${skipped.get(id)!.join(' or ')}`
+  if (placements.unroutable.size > 0) {
+    const offered = [...new Set([...placements.unroutable.values()].flat())]
+    return {
+      refuse:
+        `no executor runs ${placements.unroutable.size === 1 ? 'this task' : 'these tasks'} on a platform ${placements.unroutable.size === 1 ? 'it lists' : 'they list'} ` +
+        `(this machine is ${host}; executors run ${offered.join(', ')}):\n` +
+        [...placements.unroutable.keys()].map((id) => `  ${needs(id)}`).join('\n') +
+        `\ngive the executor a worker of each platform listed`,
+    }
+  }
+  if (ci) {
+    return {
+      refuse:
+        `on CI every task runs or the run fails, and ${skipped.size === 1 ? 'this task' : 'these tasks'} cannot run on ${host}:\n` +
+        [...skipped.keys()].map((id) => `  ${needs(id)}`).join('\n') +
+        `\nrun a target that holds only ${host} tasks, or one distributed run with a worker of each platform`,
+    }
+  }
+  return {
+    warn: `[vx] skipped on ${host}, with what depends on them: ${[...skipped.keys()].map(needs).join('; ')}`,
   }
 }

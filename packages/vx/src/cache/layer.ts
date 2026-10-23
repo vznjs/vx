@@ -90,6 +90,12 @@ export interface CacheKeyInput {
    */
   pluginParts?: ReadonlyArray<readonly [name: string, value: string]>
   /**
+   * The platform a task that declares `exec.platforms` runs on: its
+   * outputs are that platform's. Folded only when set, so a task that
+   * declares none derives the key it always did.
+   */
+  platform?: string
+  /**
    * When set, `key()` pushes each component (kind, name, hash) it folds
    * — at the same fold sites, in fold order. Pure SIDE-CHANNEL: it does
    * not change the returned digest in any way. On a cache MISS the

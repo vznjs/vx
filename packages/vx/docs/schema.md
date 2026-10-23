@@ -170,6 +170,7 @@ test: {
 interface ExecConfig {
   command: string // shell command, run from the project's dir
   remote?: boolean | 'only' // placement: pin here, or remote-only (see below)
+  platforms?: readonly Platform[] // the machines it can run on, any of them (see below)
   env?: ExecEnv // optional per-task env layering
   timeout?: Duration // '30s', '2m': before vx SIGTERMs the child (see below)
   retries?: number // max additional attempts after a failure (see below)
@@ -361,6 +362,47 @@ daemon, a Docker socket, a device, a VPN-only host.
   is that the same command over the same inputs produces the same outputs,
   so a key that moved with placement would split a laptop from a worker pool
   over nothing.
+
+#### `platforms` (optional)
+
+```ts
+platforms?: readonly Platform[] // 'linux-x64' | 'linux-arm64' | 'darwin-x64' | 'darwin-arm64'
+```
+
+The machines this task can run on, any of them. Omitted, it runs anywhere.
+
+```ts
+'ios:build': {
+  exec: { command: 'xcodebuild -scheme App', platforms: ['darwin-arm64', 'darwin-x64'] },
+}
+```
+
+- **Locally**, a task whose platforms leave this machine out is skipped,
+  never failed, and so is everything that depends on it. The run stays
+  green and says why, once and on the task's row:
+
+  ```
+  [vx] skipped on linux-x64, with what depends on them: app#ios:build needs darwin-arm64 or darwin-x64
+  ⊘ skipped  app#ios:build • needs darwin-arm64 or darwin-x64, this is linux-x64
+  ```
+
+  `--json` and telemetry carry it as `otherPlatform: { needs, host }`; a
+  dependant's `blockedBy` names the task.
+
+- **On CI** (`CI` or a provider's variable set) every task runs or the run
+  fails: one whose platforms leave the machine out refuses the run before
+  any task starts. Run a target that holds only this platform's tasks, or
+  one distributed run with a worker of each platform.
+- **With an executor that routes by platform** (one declaring `platforms`), the task
+  runs on a worker of one of its platforms: this machine's if the
+  executor has one, else the first it lists that the executor has. A task
+  none of whose platforms the executor runs refuses the run before
+  anything starts. Other remote executors are never offered it.
+- **In the key:** the list is config, and the platform the task runs on is
+  folded too, so each platform keeps its own entry. A task that names no
+  platforms keys as before.
+- Names are fixed (`os-arch`, as Bun's compile targets); any other
+  refuses the config at lock.
 
 #### `persistent` (optional)
 

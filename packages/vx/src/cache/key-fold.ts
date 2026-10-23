@@ -321,5 +321,9 @@ export function foldHead(
       for (const [n, v] of pluginParts) cap.push({ kind: 'plugin', name: n, hash: digestValue(v) })
     }
   }
+  if (input.platform !== undefined) {
+    h = xxh3(`platform:${input.platform}`, h)
+    if (cap) cap.push({ kind: 'platform', name: 'platform', hash: input.platform })
+  }
   return h
 }

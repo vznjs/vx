@@ -41,7 +41,10 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   says a remote one answers a task's `inputs.runtime` / `workspaceRuntime`
   probes where it runs the task (`answerRuntime`) and fails it when one
   answers otherwise than `req.inputs` says this machine did, so a task
-  whose key folds a probe is not pinned for it; `capacity` is how
+  whose key folds a probe is not pinned for it; `platforms` (a non-empty
+  list of `PLATFORMS`, else the run is refused) are the machines it runs
+  tasks on: a task naming `exec.platforms` is offered only to it when one
+  is shared, and to no other remote executor; `capacity` is how
   many tasks it runs at once (a positive integer, else the run is
   refused), which makes its tasks a POOL of that size instead of local
   worker slots.
@@ -70,6 +73,8 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   heredoc's terminator. On `@vzn/vx` for an executor that runs
   `ExecuteRequest.command` itself: the example's own join lost the args to
   a trailing comment and split `'a b'` (X-112).
+- `hostPlatform()` — this machine as `exec.platforms` names it,
+  `${process.platform}-${process.arch}` (`linux-x64`). Placement reads it.
 - `isLocalExecutor(executor)` — whether it is core's own, by identity (a
   plugin may name its executor 'local'): core bounds a plugin's
   `execute` after the request's abort, never the local one's (H-14).
@@ -91,7 +96,9 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   `inputs?: TaskInputs`, `cacheKey?` (a cacheable task's key, the address
   an executor's own remote record uses), `refresh?` (cache reads are off:
   do not answer from that record), `remoteOnly?` (`exec.remote: 'only'`:
-  leave outputs off this disk), `download?: 'eager' | 'deferred'`.
+  leave outputs off this disk), `platform?` (one of the task's
+  `exec.platforms` the executor's `platforms` lists: run it there; its key
+  folds it), `download?: 'eager' | 'deferred'`.
   `outputs` is the DECLARED output globs (`files` project-relative,
   `workspaceFiles` root-relative) — what an executor running elsewhere has
   to bring back.
@@ -186,6 +193,14 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   executor declares `runtime`: the probe is this machine's answer, and a
   worker's output under it is a stale hit (C-2). `placement.ts`
   computes the set once per run (`tests/placement.test.ts`).
+- A task naming `exec.platforms` goes to an executor whose `platforms`
+  share one, on the host's platform if both list it, else the first of the
+  task's the executor runs (`node.platform`, folded into its key). Placed
+  anywhere else it runs here when this machine is one of its platforms;
+  if not, it is `otherPlatform`: a local run skips it and its dependants,
+  green, while CI, or a routing executor that runs none of its platforms
+  (`unroutable`), refuses the run before any task starts
+  (`platformVerdict`, `tests/task-platforms.test.ts`).
 - The executor list is resolved ONCE per run (`plugin-host.resolveExecutors`)
   and each task is PLACED once, before scheduling — every attempt of a task,
   including retries, runs on the executor it was placed on. Placement must

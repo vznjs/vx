@@ -21,6 +21,7 @@ export interface TaskNode {
   requested: boolean // user-requested vs dep-pulled
   surfaced?: boolean // display-only: a task a requested group stands for (markSurfacedDeps)
   keyParts?: ReadonlyArray<readonly [name: string, value: string]> // the `key` stage's material, sorted
+  platform?: string // the platform this run runs it on, when it names `exec.platforms`: set by placement, keyed
   addsToOutputsOf?: string[] // upstream ids whose output trees this task adds to (item 588)
   outputsAddedToBy?: string[] // dependants' output globs that add into this task's tree
   excludedUpstream?: TaskOutcome[] // dependencies --exclude-dependencies dropped, with their keys

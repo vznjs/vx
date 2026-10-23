@@ -48,6 +48,7 @@ export const WHAT_TO_DO: Readonly<Record<string, string>> = {
     "the task's evaluated config changed (its vx.config or a file it imports); `vx show <that task>` prints it as it is now",
   upstream: "a dependency's key moved; `vx why <that task>` says why",
   plugin: "a key plugin's material changed; that plugin decides what it folds",
+  platform: 'it ran on another platform; each of its `exec.platforms` keeps its own entry',
   format:
     'vx keys tasks differently since an upgrade; every cached task misses once, nothing to fix',
 }

@@ -292,6 +292,8 @@ export interface OutcomeView {
   /** A skipped task: the failed (or aborted) task at the root of the block
    *  (see `TaskOutcome`); absent for fail-fast's skip, which nothing blocked. */
   blockedBy?: string
+  /** A skipped task whose `exec.platforms` leave out this machine (see `TaskOutcome`). */
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   /** How long an `admit` policy held the task with a worker free (see `TaskOutcome`). */
   admissionHeldMs?: number
   /** How long the task waited ready for a worker (see `TaskOutcome`). */
@@ -344,26 +346,32 @@ export function outcomeLabel(
     | 'notReady'
     | 'inputMoved'
     | 'blockedBy'
+    | 'otherPlatform'
   >,
 ): string {
   if (o.status === 'failed')
     return failedLabel(o.exitCode, o.timedOut, o.sandboxViolations, o.notReady, o.inputMoved)
-  if (o.status === 'skipped') return skippedLabel(o.blockedBy)
+  if (o.status === 'skipped') return skippedLabel(o)
   return outcomeWord(o)
 }
 
 /**
- * Why a task was skipped, one copy for every surface: `blocked by lib#build`
- * (the failed or aborted task at the root of the block), or '' for fail-fast's skip — the run stopped,
+ * Why a task was skipped, one copy for every surface: `needs darwin-arm64,
+ * this is linux-x64` (its `exec.platforms`), `blocked by lib#build` (the
+ * task at the root of the block), or '' for fail-fast's skip — the run stopped,
  * nothing blocked it, and a label claiming an upstream failure would lie.
  */
-export function skippedReason(blockedBy: string | undefined): string {
-  return blockedBy === undefined ? '' : `blocked by ${blockedBy}`
+export function skippedReason(o: SkipView = {}): string {
+  if (o.otherPlatform !== undefined)
+    return `needs ${o.otherPlatform.needs.join(' or ')}, this is ${o.otherPlatform.host}`
+  return o.blockedBy === undefined ? '' : `blocked by ${o.blockedBy}`
 }
 
+type SkipView = Pick<OutcomeView, 'blockedBy' | 'otherPlatform'>
+
 /** `skipped (blocked by lib#build)`, or a bare `skipped` for fail-fast's. */
-function skippedLabel(blockedBy: string | undefined): string {
-  const why = skippedReason(blockedBy)
+function skippedLabel(o: SkipView): string {
+  const why = skippedReason(o)
   return why === '' ? 'skipped' : `skipped (${why})`
 }
 
@@ -448,6 +456,7 @@ export function projectOutcome(outcome: TaskOutcome): OutcomeView {
   if (outcome.notReady !== undefined) view.notReady = outcome.notReady
   if (outcome.inputMoved !== undefined) view.inputMoved = outcome.inputMoved
   if (outcome.blockedBy !== undefined) view.blockedBy = outcome.blockedBy
+  if (outcome.otherPlatform !== undefined) view.otherPlatform = outcome.otherPlatform
   if (outcome.restored !== undefined) view.restored = outcome.restored
   if (outcome.sandboxViolations !== undefined) view.sandboxViolations = outcome.sandboxViolations
   if (outcome.sandboxViolationLines !== undefined)

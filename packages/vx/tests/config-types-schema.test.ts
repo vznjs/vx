@@ -70,6 +70,7 @@ const EXEC = [
   'env',
   'interactive',
   'persistent',
+  'platforms',
   'remote',
   'retries',
   'sandbox',

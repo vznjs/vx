@@ -1,0 +1,192 @@
+// `exec.platforms`: a task runs on a machine it lists. Off one, a local run
+// skips it and what depends on it, green; CI and an executor that routes by
+// platform refuse the run before any task starts (owner, 2026-10-23).
+import { rm } from 'node:fs/promises'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { Cache } from '../src/cache/index.js'
+import { hostPlatform } from '../src/exec/index.js'
+import { type Logger } from '../src/report/index.js'
+import { localWorkspaceSource } from './helpers/local-workspace.js'
+import { lock, run } from './helpers/orchestrator.js'
+import { pluginSource } from './helpers/plugin.js'
+import { addProject, makeWorkspace } from './helpers/workspace.js'
+
+const HOST = hostPlatform()
+const OTHER = HOST === 'linux-x64' ? 'darwin-arm64' : 'linux-x64'
+const CI_VARS = ['CI', 'GITHUB_ACTIONS', 'GITLAB_CI', 'BUILDKITE', 'CIRCLECI']
+
+const CONFIG = `export default {
+  tasks: {
+    other: { exec: { command: 'touch other.txt', platforms: ['${OTHER}'] } },
+    after: { dependsOn: ['other'], exec: { command: 'touch after.txt' } },
+    here: { exec: { command: 'touch here.txt', platforms: ['${OTHER}', '${HOST}'] } },
+  },
+}
+`
+
+let root: string
+let saved: Record<string, string | undefined>
+beforeEach(async () => {
+  root = await makeWorkspace({ prefix: 'vx-platforms-' })
+  saved = Object.fromEntries(CI_VARS.map((k) => [k, process.env[k]]))
+  for (const k of CI_VARS) delete process.env[k]
+})
+afterEach(async () => {
+  for (const [k, v] of Object.entries(saved)) {
+    if (v === undefined) delete process.env[k]
+    else process.env[k] = v
+  }
+  await rm(root, { recursive: true, force: true })
+})
+
+function logger(lines: string[]): Logger {
+  return {
+    status: (m) => void lines.push(m),
+    taskStdout() {},
+    taskStderr: (_n, t) => void lines.push(t),
+    taskComplete() {},
+  }
+}
+
+describe('exec.platforms', () => {
+  it('skips a task off its platforms, and its dependants, without failing the run', async () => {
+    const dir = await addProject(root, 'app', CONFIG)
+    const lines: string[] = []
+    const r = await run({ cwd: dir, tasks: ['after', 'here'], log: logger(lines) })
+    const by = new Map(r.outcomes.map((o) => [o.node.id, o]))
+    expect(r.ok).toBe(true)
+    expect(by.get('app#other')?.status).toBe('skipped')
+    expect(by.get('app#other')?.otherPlatform).toEqual({ needs: [OTHER], host: HOST })
+    expect([by.get('app#after')?.status, by.get('app#after')?.blockedBy]).toEqual([
+      'skipped',
+      'app#other',
+    ])
+    expect(by.get('app#here')?.status).toBe('success')
+    expect(await Bun.file(path.join(dir, 'other.txt')).exists()).toBe(false)
+    expect(await Bun.file(path.join(dir, 'after.txt')).exists()).toBe(false)
+    expect(lines.filter((l) => l.includes('skipped on'))).toEqual([
+      `[vx] skipped on ${HOST}, with what depends on them: app#other needs ${OTHER}`,
+    ])
+  })
+
+  it('refuses the run on CI before any task starts', async () => {
+    const dir = await addProject(root, 'app', CONFIG)
+    process.env['CI'] = 'true'
+    const said = await run({ cwd: dir, tasks: ['after', 'here'], log: logger([]) }).then(
+      () => 'ran',
+      (e: Error) => e.message,
+    )
+    expect(said).toBe(
+      `on CI every task runs or the run fails, and this task cannot run on ${HOST}:\n` +
+        `  app#other needs ${OTHER}\n` +
+        `run a target that holds only ${HOST} tasks, or one distributed run with a worker of each platform`,
+    )
+    expect(await Bun.file(path.join(dir, 'here.txt')).exists()).toBe(false)
+  })
+
+  it('routes a task to an executor that runs one of its platforms, on that platform', async () => {
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/router',
+          `{ executor() { return { name: 'router', remote: true, platforms: ['${OTHER}'],
+            accepts: (t) => t.taskId === 'app#other',
+            execute(req) {
+              require('node:fs').writeFileSync(require('node:path').join(req.cwd, 'routed.txt'), req.platform)
+              return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+            } } } }`,
+        ),
+      ]),
+    )
+    const dir = await addProject(root, 'app', CONFIG)
+    const r = await run({ cwd: dir, tasks: ['after'], log: logger([]), handleSignals: false })
+    expect(r.outcomes.map((o) => `${o.node.id} ${o.status}`).sort()).toEqual([
+      'app#after success',
+      'app#other success',
+    ])
+    expect(await Bun.file(path.join(dir, 'routed.txt')).text()).toBe(OTHER)
+  })
+
+  it('refuses a task no executor runs on a platform it lists', async () => {
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/router',
+          `{ executor() { return { name: 'router', remote: true, platforms: ['${HOST}'],
+            execute() { return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] } } } } }`,
+        ),
+      ]),
+    )
+    const dir = await addProject(root, 'app', CONFIG)
+    const said = await run({ cwd: dir, tasks: ['other'], log: logger([]) }).then(
+      () => 'ran',
+      (e: Error) => e.message,
+    )
+    expect(said).toBe(
+      `no executor runs this task on a platform it lists (this machine is ${HOST}; executors run ${HOST}):\n` +
+        `  app#other needs ${OTHER}\n` +
+        `give the executor a worker of each platform listed`,
+    )
+  })
+
+  it('refuses an executor whose platforms are not platforms', async () => {
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      localWorkspaceSource([
+        pluginSource(
+          'org/router',
+          `{ executor() { return { name: 'router', platforms: ['win32-x64'], execute() {} } } }`,
+        ),
+      ]),
+    )
+    const dir = await addProject(root, 'app', CONFIG)
+    const said = await run({ cwd: dir, tasks: ['here'], log: logger([]) }).then(
+      () => 'ran',
+      (e: Error) => e.message,
+    )
+    expect(said).toBe(
+      `plugin 'org/router' returned executor 'router' with platforms ["win32-x64"]: it must be a non-empty array of linux-x64, linux-arm64, darwin-x64, darwin-arm64`,
+    )
+  })
+
+  it('refuses a platform vx does not know at lock time', async () => {
+    await addProject(
+      root,
+      'app',
+      `export default { tasks: { t: { exec: { command: 'true', platforms: ['win32-x64'] } } } }`,
+    )
+    const said = await lock(root).then(
+      () => 'locked',
+      (e: Error) => e.message,
+    )
+    expect(said).toContain(
+      'tasks.t.exec.platforms must be a non-empty array of distinct platforms, each one of linux-x64, linux-arm64, darwin-x64, darwin-arm64',
+    )
+  })
+})
+
+describe('the platform in the key', () => {
+  it('folds the platform a task runs on, and nothing for a task that names none', async () => {
+    const cache = new Cache(path.join(root, 'cache'))
+    try {
+      const base = {
+        taskId: 'a#b',
+        taskConfigHash: 'c',
+        envValues: [],
+        inputFiles: [],
+        workspaceRoot: root,
+        upstreamHashes: [],
+      }
+      const none = await cache.key(base)
+      const host = await cache.key({ ...base, platform: HOST })
+      const other = await cache.key({ ...base, platform: OTHER })
+      expect(new Set([none, host, other]).size).toBe(3)
+      expect(await cache.key(base)).toBe(none)
+    } finally {
+      cache.close()
+    }
+  })
+})

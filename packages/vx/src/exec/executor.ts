@@ -124,6 +124,11 @@ export interface ExecuteRequest {
    */
   readonly remoteOnly?: boolean
   /**
+   * The platform to run it on, one of the task's `exec.platforms` and the
+   * executor's `platforms`: its key folds it. Absent when the task names none.
+   */
+  readonly platform?: string
+  /**
    * Whether this task's outputs must land on the submitter's disk now.
    * 'eager' (or absent) = materialise as today. 'deferred' = leave them
    * in the remote store and return `outputs: {kind:'deferred'}` with a
@@ -263,6 +268,13 @@ export interface TaskExecutor {
    * here: their key holds this machine's answer (C-2).
    */
   readonly runtime?: boolean
+  /**
+   * The platforms this executor runs tasks on (`exec.platforms`' names). It
+   * is offered a task that declares `exec.platforms` only when one of them
+   * is listed, and runs it on `ExecuteRequest.platform`; an executor that
+   * declares none is never offered such a task off this machine.
+   */
+  readonly platforms?: readonly string[]
   /**
    * How many tasks this executor runs at once. Its tasks then occupy a pool
    * of this size instead of the local worker slots, so a remote pool is not
@@ -437,4 +449,9 @@ export function selectExecutor(
   throw new Error(
     `no executor accepted ${task.taskId} (declared: ${executors.map((e) => e.name).join(', ')}). Core's local executor accepts every task, so this means it is missing from the list.`,
   )
+}
+
+/** This machine as `exec.platforms` names it: `os-arch` as Bun reports them, `linux-x64`. */
+export function hostPlatform(): string {
+  return `${process.platform}-${process.arch}`
 }

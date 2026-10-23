@@ -53,6 +53,7 @@ export { sampleTrees } from './proc-sample.js'
 export {
   assertExecuteResult,
   executorFallback,
+  hostPlatform,
   isExecutorFallback,
   selectExecutor,
   type ExecuteRequest,
