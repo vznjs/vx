@@ -1,3 +1,4 @@
+import { randomFillSync } from 'node:crypto'
 import { fstatSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
@@ -1084,7 +1085,9 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
       // this hold stays after the allocation pin above (which sizes itself
       // from the mark either way).
       const MB = 1024 * 1024
-      const hold = Buffer.alloc(300 * MB, 1)
+      // Random bytes: macOS compresses pages of one repeated byte, and a
+      // fill of 1s read 296 MB resident on a Mac worker (Bun 1.4.4).
+      const hold = randomFillSync(Buffer.allocUnsafe(300 * MB))
       expect(ownRssHighWater()).toBeGreaterThanOrEqual(300 * MB)
       const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-floor-'))
       try {
