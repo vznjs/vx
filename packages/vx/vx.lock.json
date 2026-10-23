@@ -1,12 +1,12 @@
 {
   "tasks": {
     "test.bun.shard-1": {
-      "description": "bun test, shard 1 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 1 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 1 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 1 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -60,12 +60,12 @@
       }
     },
     "test.bun.shard-2": {
-      "description": "bun test, shard 2 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 2 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 2 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 2 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -119,12 +119,12 @@
       }
     },
     "test.bun.shard-3": {
-      "description": "bun test, shard 3 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 3 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 3 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 3 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -178,12 +178,12 @@
       }
     },
     "test.bun.shard-4": {
-      "description": "bun test, shard 4 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 4 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 4 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 4 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -237,12 +237,12 @@
       }
     },
     "test.bun.shard-5": {
-      "description": "bun test, shard 5 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 5 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 5 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 5 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -296,12 +296,12 @@
       }
     },
     "test.bun.shard-6": {
-      "description": "bun test, shard 6 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 6 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 6 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 6 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -355,12 +355,12 @@
       }
     },
     "test.bun.shard-7": {
-      "description": "bun test, shard 7 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 7 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 7 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 7 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -414,12 +414,12 @@
       }
     },
     "test.bun.shard-8": {
-      "description": "bun test, shard 8 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 8 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 8 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 8 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -473,12 +473,12 @@
       }
     },
     "test.bun.shard-9": {
-      "description": "bun test, shard 9 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 9 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 9 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 9 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -532,12 +532,12 @@
       }
     },
     "test.bun.shard-10": {
-      "description": "bun test, shard 10 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 10 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 10 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 10 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -591,12 +591,12 @@
       }
     },
     "test.bun.shard-11": {
-      "description": "bun test, shard 11 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 11 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 11 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 11 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -650,12 +650,12 @@
       }
     },
     "test.bun.shard-12": {
-      "description": "bun test, shard 12 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 12 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 12 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 12 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -709,12 +709,12 @@
       }
     },
     "test.bun.shard-13": {
-      "description": "bun test, shard 13 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 13 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 13 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 13 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -768,12 +768,12 @@
       }
     },
     "test.bun.shard-14": {
-      "description": "bun test, shard 14 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 14 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 14 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 14 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -827,12 +827,12 @@
       }
     },
     "test.bun.shard-15": {
-      "description": "bun test, shard 15 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 15 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 15 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 15 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -886,12 +886,12 @@
       }
     },
     "test.bun.shard-16": {
-      "description": "bun test, shard 16 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 16 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 16 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 16 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -945,12 +945,12 @@
       }
     },
     "test.bun.shard-17": {
-      "description": "bun test, shard 17 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 17 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 17 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 17 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1004,12 +1004,12 @@
       }
     },
     "test.bun.shard-18": {
-      "description": "bun test, shard 18 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 18 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 18 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 18 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1063,12 +1063,12 @@
       }
     },
     "test.bun.shard-19": {
-      "description": "bun test, shard 19 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 19 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 19 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 19 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1122,12 +1122,12 @@
       }
     },
     "test.bun.shard-20": {
-      "description": "bun test, shard 20 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 20 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 20 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 20 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1181,12 +1181,12 @@
       }
     },
     "test.bun.shard-21": {
-      "description": "bun test, shard 21 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 21 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 21 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 21 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1240,12 +1240,12 @@
       }
     },
     "test.bun.shard-22": {
-      "description": "bun test, shard 22 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 22 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 22 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 22 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1299,12 +1299,12 @@
       }
     },
     "test.bun.shard-23": {
-      "description": "bun test, shard 23 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 23 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 23 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 23 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1358,12 +1358,12 @@
       }
     },
     "test.bun.shard-24": {
-      "description": "bun test, shard 24 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 24 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 24 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 24 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1417,12 +1417,12 @@
       }
     },
     "test.bun.shard-25": {
-      "description": "bun test, shard 25 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 25 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 25 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 25 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1476,12 +1476,12 @@
       }
     },
     "test.bun.shard-26": {
-      "description": "bun test, shard 26 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 26 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 26 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 26 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1535,12 +1535,12 @@
       }
     },
     "test.bun.shard-27": {
-      "description": "bun test, shard 27 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 27 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 27 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 27 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1594,12 +1594,12 @@
       }
     },
     "test.bun.shard-28": {
-      "description": "bun test, shard 28 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 28 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 28 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 28 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1653,12 +1653,12 @@
       }
     },
     "test.bun.shard-29": {
-      "description": "bun test, shard 29 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 29 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 29 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 29 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1712,12 +1712,12 @@
       }
     },
     "test.bun.shard-30": {
-      "description": "bun test, shard 30 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 30 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 30 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 30 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1771,12 +1771,12 @@
       }
     },
     "test.bun.shard-31": {
-      "description": "bun test, shard 31 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 31 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 31 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 31 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1830,12 +1830,12 @@
       }
     },
     "test.bun.shard-32": {
-      "description": "bun test, shard 32 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 32 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 32 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 32 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1889,12 +1889,12 @@
       }
     },
     "test.bun.shard-33": {
-      "description": "bun test, shard 33 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 33 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 33 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 33 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -1948,12 +1948,12 @@
       }
     },
     "test.bun.shard-34": {
-      "description": "bun test, shard 34 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 34 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 34 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 34 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2007,12 +2007,12 @@
       }
     },
     "test.bun.shard-35": {
-      "description": "bun test, shard 35 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 35 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 35 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 35 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2066,12 +2066,602 @@
       }
     },
     "test.bun.shard-36": {
-      "description": "bun test, shard 36 of 36 (dealt by scripts/test-shard.ts)",
+      "description": "bun test, shard 36 of 46 (dealt by scripts/test-shard.ts)",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures $(bun scripts/test-shard.ts 36 36)",
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 36 46)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-37": {
+      "description": "bun test, shard 37 of 46 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 37 46)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-38": {
+      "description": "bun test, shard 38 of 46 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 38 46)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-39": {
+      "description": "bun test, shard 39 of 46 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 39 46)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-40": {
+      "description": "bun test, shard 40 of 46 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 40 46)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-41": {
+      "description": "bun test, shard 41 of 46 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 41 46)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-42": {
+      "description": "bun test, shard 42 of 46 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 42 46)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-43": {
+      "description": "bun test, shard 43 of 46 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 43 46)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-44": {
+      "description": "bun test, shard 44 of 46 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 44 46)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-45": {
+      "description": "bun test, shard 45 of 46 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 45 46)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../../README.md",
+              "../../skills/"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ],
+            "machLookup": [
+              "com.apple.FSEvents"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "README.md",
+          "skills/**"
+        ],
+        "env": [
+          "CI_AGENTS_OS"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.shard-46": {
+      "description": "bun test, shard 46 of 46 (dealt by scripts/test-shard.ts)",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures $(bun scripts/test-shard.ts 46 46)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",

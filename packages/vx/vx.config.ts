@@ -4,12 +4,13 @@ import { defineProject } from '@vzn/vx'
 // dealt by recorded weight (scripts/test-shard.ts). Many processes is not
 // only speed: `bun test` pins ~2 descriptors per imported module and macOS
 // caps a process at 10 240, so the whole suite in one process does not
-// clear the cap. Thirty-six, not the four cores of the smallest box it
+// clear the cap. Forty-six, not the four cores of the smallest box it
 // runs on: a distributed run spreads the shards over agents, and the
 // slowest shard is its critical path. On 4 cores, 24 shards finished in
 // the same wall time as 12 (393 s), each 58 to 72 s against 131 s; on
-// CI's agents 24 took 47 to 110 s, the run's critical path (2026-10-22).
-export const SHARD_COUNT = 36
+// CI's agents 36 took 60 to 80 s, still the critical path (2026-10-23).
+// The heaviest file (34 s) caps it: a shard cannot hold less than one file.
+export const SHARD_COUNT = 46
 // The suite's git fixtures assume git's defaults. A machine's global config
 // can change what `git status` vouches for (`core.trustctime=false`,
 // `core.checkStat=minimal`, which vx then declines to trust, A-6) or sign
