@@ -9,28 +9,37 @@ tags:
 excerpt: "An AI agent working in a monorepo asks the same questions you do: what can I run here, why did that re-run, which tasks flake. vx answers them as JSON from the CLI, read from the cache database it already keeps, and a skill teaches the agent which command to ask."
 ---
 
-A coding agent dropped into a large monorepo spends a surprising share
-of its tokens working out how the build works: reading `turbo.json` or
-a hundred `project.json` files, guessing which task to run, re-running
-things to see whether they are cached. The runner already knows all of
-that. vx hands it over as JSON, and the vx skill tells the agent which
-command answers which question.
+An agent asks why a task re-ran. vx answers in one JSON line:
+
+```sh frame="terminal"
+$ vx why packages/a#build --format json | jq -c '.diff.entries[0]'
+{"kind":"file","name":"packages/a/src/index.ts","change":"changed","before":"d64be65d2e8131eabf0e284282b457be62aebe14","after":"e9de63a046c5c557ab363dd935aa4cf14a3db016"}
+```
+
+No reading configs, no re-running to see what is cached. The runner
+already knows, so it says.
+
+On this repository, `vx show --format json` lists all 13 projects and
+201 tasks in 5,807 bytes, in 106 ms (min of 7). The 12 `vx.config.ts`
+files it read are 71,915 bytes. Linux x64, vx at `69617eb`, 2026-10-23.
+
+Install the skill that tells the agent which command answers which
+question:
 
 ```sh frame="terminal"
 $ bunx skills add vznjs/vx
 ```
 
-The skill is one `SKILL.md`. To match the vx a workspace has installed,
-copy it from the package instead:
+To match the vx a workspace has installed, copy it from the package
+instead:
 
 ```sh frame="terminal"
 $ mkdir -p .claude/skills/vx
 $ cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
 ```
 
-Run the agent from inside the workspace and every verb finds the
-workspace and its cache from the current directory, exactly as
-`vx run` does.
+Every verb finds the workspace and its cache from the current
+directory, as `vx run` does.
 
 ## What it answers
 
@@ -49,38 +58,34 @@ workspace and its cache from the current directory, exactly as
 | What would adopting vx write here?                    | `vx init --dry --format json`                   |
 | Where is this documented?                             | `vx docs <words> --format json`                 |
 
-Each prints one JSON document to stdout, and every notice goes to
-stderr, so stdout always parses. Each shape is a JSON Schema shipped in
-the package, under `node_modules/@vzn/vx/schemas/`.
-
-The history answers read the same local `cache.db` tables that a person
-reads with `vx why`, `vx last` and `vx info`. `vx last --stats` calls a
-task flaky only on a real nondeterminism signal, a within-run retry or
-one key that both failed and succeeded, so an agent does not learn to
-shrug at repeated failures on changing inputs.
-
-A refusal is data too. Under `--format json` it is one line on stdout
-with a stable code and a link to what to do, so the agent can read it
-and correct its call instead of guessing:
-[A refusal an agent can read](../error-codes/).
+- **stdout always parses.** One JSON document; every notice goes to
+  stderr. Each shape ships as a JSON Schema under
+  `node_modules/@vzn/vx/schemas/`.
+- **Same answers a person gets.** History reads the local `cache.db`
+  that `vx why`, `vx last` and `vx info` read.
+- **Flaky means flaky.** `vx last --stats` flags a task only on a
+  within-run retry or one key that both failed and succeeded, not on
+  failures across changing inputs.
+- **A refusal is data.** Under `--format json` it is one line with a
+  stable code and a link to the fix:
+  [A refusal an agent can read](../error-codes/).
 
 ## Why the CLI and not a server
 
-There is nothing to install beside vx, no process to keep alive and no
-port to open. The agent already runs shell commands, and the CLI it
-calls is the one a person calls, so the selection, the refusals and the
-sandbox are the same for both. Core knows nothing about agents.
+Nothing to install beside vx, no process to keep alive, no port. The
+agent already runs shell commands, and it calls the same CLI a person
+does: same selection, same refusals, same sandbox. Core knows nothing
+about agents.
 
 ## The other half
 
-The JSON is how an agent *reads* the build. The other half of
-working with agents is letting one *run* the build safely, and that is
-what the rest of vx already is: explicit inputs, [strict
+JSON is how an agent *reads* the build. Letting it *run* the build
+safely is the rest of vx: explicit inputs, [strict
 outputs](../strict-output-ownership/), a [sandbox](../the-sandbox/) that
-denies undeclared reads and any domain no task of the run lists, and a
-[teardown](../ctrl-c/) that leaves nothing running when the agent's
-session is cancelled. An agent that can only run declared commands
-against declared paths is an agent you can leave alone with the
-repository.
+denies undeclared reads and unlisted domains, and a
+[teardown](../ctrl-c/) that leaves nothing running when the session is
+cancelled. An agent that can run only declared commands on declared
+paths is one you can leave alone with the repository.
 
-The guide is [AI agents](../../guides/agents/).
+Guide: [AI agents](../../guides/agents/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
