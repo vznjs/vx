@@ -2274,6 +2274,15 @@ describe('nearest', () => {
     expect(nearest('buidl', ['build'])).toBe('build')
     expect(nearest('bxyzl', ['build'])).toBeUndefined()
   })
+
+  // `--filter=x9` offered `fix  //`: two edits rewrite any two letters.
+  it('a candidate the edits rewrite whole is no near miss', () => {
+    expect(nearest('x9', ['//', 'packages/p1'])).toBeUndefined()
+    expect(nearest('b', ['a'])).toBeUndefined()
+    // CONTROL: a real typo of a short name still hints.
+    expect(nearest('p1', ['p2'])).toBe('p2')
+    expect(nearest('b', ['ab'])).toBe('ab')
+  })
 })
 
 // turborepo#9277, #11428: run from a directory inside a project nested in
