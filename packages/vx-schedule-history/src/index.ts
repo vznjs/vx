@@ -297,6 +297,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
       // and the run never waits on it: the order from local history stands
       // until the fetched timings re-rank what has not started.
       if (provider.lackedBranchHistory) {
+        const stopped = new Promise<void>((resolve) => (stopImport = resolve))
         const weights = (async () => {
           const imported = await (
             await import('./shared-timings.js')
@@ -308,6 +309,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
             ids,
             triedFile: path.join(ctx.cacheDir, 'schedule-history-base'),
             branch: ctx.branch !== null && ctx.branch !== (options.defaultBranch ?? DEFAULT_BRANCH),
+            stopped,
           })
           return imported ? order(await provider.resourcesFor(ids)) : undefined
         })().catch(() => {
@@ -321,10 +323,11 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
       return order(table)
     },
   }
-  // The run's merge-base import, still going; teardown lets it land
-  // before the cache closes (it is deadline-bound), so the next run need
-  // not fetch it again.
+  // The run's merge-base import, still going; teardown stops it, so no
+  // run waits for history it did not need, and no row lands after the
+  // cache closes.
   let importing: Promise<void> | undefined
+  let stopImport: (() => void) | undefined
   // The timings file is written for a run only: `schedule` also orders a
   // `--dry` plan, which has no `setup` and records nothing.
   let scheduled:
@@ -362,8 +365,10 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
   }
   // After the run's history is recorded and before its cache closes.
   hooks.teardown = async () => {
+    stopImport?.()
     await importing
     importing = undefined
+    stopImport = undefined
     const run = shared
     const out = exporting
     shared = undefined

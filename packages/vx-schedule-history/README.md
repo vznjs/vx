@@ -48,8 +48,9 @@ configure:
   On a branch it then reads HEAD's parent's timings from the branch's
   scope, once per commit: a task there overrides the default branch's,
   and a task missing there keeps it. The run never waits for them: it starts in the order local history
-  gives, and when the timings land (within 500 ms) the tasks not yet
-  started re-rank. A run whose tasks all have timings on its branch
+  gives, and when the timings land (within 5 s) the tasks not yet
+  started re-rank; a run that ends first stops the import. Only a plugin
+  that sizes the run by them (`@vzn/vx-dte`) waits for them. A run whose tasks all have timings on its branch
   spawns no git and asks no cache.
 - **Order.** A forecast reads this branch's last five timings first,
   then the newest imported one, then any branch's, then

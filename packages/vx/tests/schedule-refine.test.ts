@@ -178,3 +178,26 @@ export default { plugins: [${pluginSource(
   },
   TIMEOUT,
 )
+
+// Owner, 2026-10-23: "without dte we should not wait for history". Only a
+// plugin that sizes the run by fetched data awaits `refining()`; a run
+// with none starts and ends while a promised refine is still out.
+it(
+  'a run waits on no promised refine: only refining() does',
+  async () => {
+    await addProject(fixture.root, 'p', {
+      config: `export default { name: 'p', tasks: { a: { exec: { command: 'true' } } } }\n`,
+    })
+    await Bun.write(
+      path.join(fixture.root, '.vx/workspace.mjs'),
+      `${PLUGIN_IMPORT}export default { plugins: [${pluginSource(
+        'org/late',
+        `{ schedule(nodes, ctx) { ctx.refine(Bun.sleep(5000).then(() => new Map([['p#a', 5]]))) } }`,
+      )}] }\n`,
+    )
+    const t0 = performance.now()
+    const result = await run({ cwd: fixture.root, tasks: ['a'], log: silentLogger(fixture) })
+    expect([result.ok, performance.now() - t0 < 4000]).toEqual([true, true])
+  },
+  TIMEOUT,
+)
