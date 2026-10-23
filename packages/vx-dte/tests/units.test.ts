@@ -5,7 +5,8 @@ import { afterEach, expect, it } from 'bun:test'
 import { localEnv, runWorker, swapRoots } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
-import { bytes, needOf } from '../src/plugin.js'
+import { bytes, homeOf, needOf } from '../src/plugin.js'
+import type { Platform } from '@vzn/vx'
 import {
   type CacheFacts,
   type ExecuteRequest,
@@ -226,7 +227,7 @@ async function harness(
   heartbeatMs?: number,
   keyOf: (id: string) => string | undefined = () => undefined,
   tail?: (id: string) => number,
-  more: { faulted?: () => void } = {},
+  more: { faulted?: () => void; home?: string } = {},
 ) {
   const store = fakeArtifacts()
   const cache: { facts: CacheFacts } = { facts: { refs: [], lent: {} } }
@@ -551,6 +552,36 @@ it('a task on a platform goes only to a worker of it', async () => {
   } finally {
     await h.stop()
   }
+})
+
+it('a task naming no platform goes only to a worker of the run’s home platform', async () => {
+  const h = await harness(new Map([node('t1')]), undefined, undefined, undefined, undefined, {
+    home: 'linux-x64',
+  })
+  try {
+    const mac = await h.worker(4, undefined, 'darwin-arm64')
+    const linux = await h.worker(4, undefined, 'linux-x64')
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    expect(await linux.batches()).toEqual([['t1']])
+    expect(h.o.planState(() => undefined, 0).workers.find((w) => w.id === mac.id)?.idle).toBe(true)
+  } finally {
+    await h.stop()
+  }
+})
+
+it('a run’s home platform is this machine’s only beside another it can start', () => {
+  const size = (platform: Platform, max = 1) => ({
+    name: platform,
+    max,
+    cpu: 1,
+    memory: 1,
+    platform,
+  })
+  expect(homeOf([size('linux-x64'), size('darwin-arm64')], 'linux-x64')).toBe('linux-x64')
+  expect(homeOf([size('linux-x64')], 'linux-x64')).toBeUndefined()
+  expect(homeOf([size('darwin-arm64'), size('linux-arm64')], 'linux-x64')).toBeUndefined()
+  expect(homeOf([size('linux-x64', 0), size('darwin-arm64')], 'linux-x64')).toBeUndefined()
 })
 
 it('a worker whose machine is not its size’s platform is refused', async () => {

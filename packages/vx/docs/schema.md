@@ -399,6 +399,9 @@ The machines this task can run on, any of them. Omitted, it runs anywhere.
   executor has one, else the first it lists that the executor has. A task
   none of whose platforms the executor runs refuses the run before
   anything starts. Other remote executors are never offered it.
+  `@vzn/vx-dte` runs a task naming none on this machine's platform when
+  it has workers of it, so a worker of another platform runs only the
+  tasks that name it and leaves once they are done.
 - **In the key:** the list is config, and the platform the task runs on is
   folded too, so each platform keeps its own entry. A task that names no
   platforms keys as before.

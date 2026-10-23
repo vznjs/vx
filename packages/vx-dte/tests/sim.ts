@@ -39,6 +39,8 @@ export interface SimOptions {
   readonly likely?: ReadonlySet<string>
   /** How it orders, places, books and scales; default `DEFAULT_STRATEGY`. */
   readonly how?: Strategy
+  /** The platform a task naming none runs on (`homeOf`). */
+  readonly home?: string
 }
 
 export interface SimWorker {
@@ -74,6 +76,10 @@ export interface SimResult {
   readonly utilization: number
   /** Tasks sent to a worker whose running tasks already used all its cores. */
   readonly overSent: number
+  /** Each executed task's ms from ready to started. */
+  readonly waitedMs: ReadonlyMap<string, number>
+  /** Each executed task's end. */
+  readonly endedAt: ReadonlyMap<string, number>
 }
 
 const UNMEASURED: Need = { cores: Infinity, memory: Infinity }
@@ -121,7 +127,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       k === undefined ? UNMEASURED : { cores: Math.max(0.25, k.cores), memory: k.memory },
       how.book,
     )
-    const platform = byId.get(id)!.platform
+    const platform = byId.get(id)!.platform ?? options.home
     return platform === undefined ? b : { ...b, platform }
   }
   const durationMs = (id: string): number | undefined => known(id)?.ms
@@ -155,9 +161,13 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       if (n === 0) ready(d)
     }
   }
+  const readyAt = new Map<string, number>()
+  const waitedMs = new Map<string, number>()
+  const endedAt = new Map<string, number>()
   const ready = (id: string): void => {
     const t = byId.get(id)!
     if (t.exec && t.ran !== undefined) {
+      readyAt.set(id, now)
       executed.add(id)
       queue.push(id)
     } else end(id)
@@ -219,6 +229,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       })
       w.tasks++
       w.ran.push(id)
+      waitedMs.set(id, now - readyAt.get(id)!)
       let booked = 0
       let memory = 0
       for (const r of w.running.values()) {
@@ -289,6 +300,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       limitMs: deadline === undefined ? undefined : deadline - now,
       known: planned,
       how,
+      home: options.home,
     })
     deadline = now + p.boundMs
     for (const t of p.tasks) planned.add(t.id)
@@ -377,6 +389,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         if (r.left <= 1e-6) {
           w.running.delete(r.id)
           w.has.add(r.id)
+          endedAt.set(r.id, now)
           end(r.id)
         }
     step()
@@ -394,6 +407,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     churn,
     executed: executed.size,
     overSent,
+    waitedMs,
+    endedAt,
     utilization: had === 0 ? 0 : cpu / had,
   }
 }
