@@ -1,23 +1,17 @@
 ---
-title: 'Every task has a key now'
+title: 'Every task has a key'
 date: 2026-10-21T18:00:00Z
 authors:
   - vzn
 tags:
   - caching
   - design
-excerpt: 'A cached build behind an uncached code generator could replay a stale result when the generator''s env changed. Why vx moved inputs out of the cache block and onto the task, so every task is keyed whether it caches or not, and how a gitignored file can now be an input.'
+excerpt: 'Inputs sit on the task, not in the cache block, so a task is keyed whether it caches or not. A cached build behind an uncached code generator misses when the generator''s env changes, and a gitignored file can be an input.'
 ---
 
-A cache key is only as good as what it can see. Until 0.0.640, vx put a
-task's `inputs` inside its `cache` block. A task that did not cache had
-nowhere to say what it read, so vx keyed it on its whole project and its
-env names, never their values.
+A code generator you don't cache, and a build you do:
 
-That left a hole one task downstream. Take a code generator you do not
-cache, because it is fast, and a build you do:
-
-```ts title="app/vx.config.ts"
+```ts title="packages/e/vx.config.ts"
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -39,66 +33,63 @@ export default defineProject({
 })
 ```
 
-The build folds its dependency's key. When that key held only env names,
-changing `API_URL` changed nothing the build could see, and the next run
-replayed a `dist/` built against the old URL. A green run, wrong bytes.
+```sh frame="terminal"
+$ API_URL=https://a.example vx run packages/e#build
+  cache     local 1✓ 1∅
+
+$ API_URL=https://b.example vx run packages/e#build
+  cache     local 1∅ 1↑
+$ cat packages/e/dist/app.js
+export const api = https://b.example
+
+$ vx why packages/e#build
+  verdict    cache key changed: upstream packages/e#codegen
+  what changed (1 component, 3 unchanged):
+    changed upstream  packages/e#codegen  35dfe1115aedc6d6 → a7a53dc4d9e0bde9
+```
+
+`codegen` never caches (`∅`), yet it has a key, and `build` folds it.
+A new `API_URL` re-runs the build instead of replaying a `dist/` built
+for the old one. Demo workspace, vx at `69617eb`, 2026-10-23.
 
 ## Inputs belong to the task
 
-`inputs` now sits on the task, beside `exec`, and keys the task whether
-it caches or not. Turbo and Nx hash every task too. `cache` holds only
-what caching adds: `outputs` and `inputStability`.
+`inputs` sits on the task, beside `exec`, and keys it whether it caches
+or not. Turbo and Nx hash every task too. `cache` holds only what
+caching adds: `outputs` and `inputStability`.
 
-Change `API_URL` and the build misses, and `vx why` names the reason:
-
-```sh frame="terminal"
-$ vx why app#build
-  verdict    cache key changed: upstream app#codegen
-
-  what changed (1 component, 3 unchanged):
-    changed upstream  app#codegen  4b7de2010949e4d2 → 7236b1cdcdf0fb7d
-
-  what to do:
-    upstream  a dependency's key moved; `vx why app#codegen` says why
-```
-
-A task with a command and no `inputs` has no key at all. vx does not
-guess one. Every task that depends on it misses and saves nothing, so a
-missing declaration costs a re-run, never a stale hit:
+A task with a command and no `inputs` has no key. vx doesn't guess
+one. Every task that depends on it misses and saves nothing:
 
 ```sh frame="terminal"
-$ vx run build --all
- ⏺︎     6ms success no-cache app#codegen
- ⏺︎     5ms success miss     app#build
-  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            local 1∅ · 1 not saved
+$ vx run packages/e#build      # codegen without inputs
+  cache     local 1∅ · 1 not saved
+$ vx run packages/e#build
+  cache     local 1∅ · 1 not saved
 ```
 
-A group with `inputs` and no `exec` is keyed too, and the
-configure guide's [Caching](../../guides/configure/#caching) section has every rule.
+A missing declaration costs a re-run, never a stale hit. A group with
+`inputs` and no `exec` is keyed too; the configure guide's
+[Caching](../../guides/configure/#caching) section has every rule.
 
 ## A gitignored file can be an input
 
-The generator above reads `.env.local`, which git ignores. vx keys
-tracked files from git's own index, so an ignored file used to be
-invisible, and a task could not name it at all.
+`.env.local` above is gitignored, and editing it still moves the key:
 
-Now a path named outright (`.env.local`), or a glob whose fixed part git
-ignores (`gen/**`), is read from disk and hashed. A broad glob like
-`src/**` still skips what git ignores, and `node_modules` is never
-walked. Edit `.env.local` and the generator's key moves, and the build's
-with it.
+```sh frame="terminal"
+$ echo "TOKEN=2" > packages/e/.env.local
+$ vx run packages/e#build
+  cache     local 1∅ 1↑
+```
 
-`--affected` still follows only what git sees, as Nx does: an ignored
-input never selects a task on its own, but its key still moves when the
-task runs.
+vx keys tracked files from git's index. A path named outright
+(`.env.local`), or a glob whose fixed part git ignores (`gen/**`), is
+read from disk and hashed. A broad glob like `src/**` still skips what
+git ignores, and `node_modules` is never walked.
 
-## The upgrade
+`--affected` follows only what git sees, as Nx does: an ignored input
+never selects a task on its own, but its key still moves when the task
+runs.
 
-Both changes were breaking. `tasks.<name>.cache.inputs` became
-`tasks.<name>.inputs`, a `cache` block needs an `exec`, and the lock
-went to version 4. vx is pre-1.0, so there is no alias: move the field
-and run `vx lock`.
-
-The full key, part by part, is in [Caching](../../caching/). More on vx
-at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
+The full key, part by part: [Caching](../../caching/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
