@@ -24,7 +24,8 @@ export interface PrefetchArgs {
   concurrency: number // the GET pump's width
   remoteRead: boolean // the policy's remote-read axis; false returns at once
   remoteWrite: boolean // with reads off: hand the keys to probeBeforeUpload
-  held?: (ids: readonly string[]) => void // once: the stable tasks a store holds
+  held?: (ids: readonly string[], missed: readonly string[]) => void // once: the stable tasks a store holds, and those none does
+  revised?: (hits: readonly string[], missed: readonly string[]) => void // after the probe, when `held` came from kept hits
 }
 
 export function startRemotePrefetch(args: PrefetchArgs): Promise<void>
@@ -42,13 +43,18 @@ export function getContext(node: TaskNode, command: string): CacheGetContext
    (`stable-keys.md`); none, nothing to do.
 2. The keys the local store already holds (`localHasMany`) are dropped:
    a run the local cache answers makes no remote call.
-3. One batched existence probe when the layer offers it
+3. The hits the index kept from an earlier probe (`remoteKnown`, maybe
+   another process's: `vx dte plan`, then `vx run`) are trusted now:
+   `held` hears them as held and every other key as missed, and their
+   pulls start at once, waiting on no probe.
+4. One batched existence probe when the layer offers it
    (`remoteHasMany`): the hashes it reports absent are marked
    (`markRemoteAbsent`, so the lazy read-through skips them too) and
    only the present ones are fetched. Until the probe starts
    (`probeFirst`) and while it is out, a task's own lookup waits for it,
-   so a key the probe calls absent costs no GET.
-4. `concurrency` pumps drain the list through the layer's `prefetch`
+   so a key the probe calls absent costs no GET. Its whole answer is
+   kept for the next run, and `revised` hears what changed from step 3.
+5. `concurrency` pumps drain the list through the layer's `prefetch`
    (the hash, the task id and its command); a rejected fetch is
    swallowed.
 

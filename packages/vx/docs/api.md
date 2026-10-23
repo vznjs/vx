@@ -181,6 +181,7 @@ export class Cache implements CacheLayer {
   readonly uploads: UploadTally
   readonly downloads: { count: number; bytes: number }
   readonly traffic: RemoteTraffic
+  readonly remoteHits: RemoteHits
   readonly storeDir: string | undefined
   readonly schemaReset: SchemaReset | null
   readonly formatChange: SchemaReset | null
@@ -336,6 +337,7 @@ export interface CacheLayer {
   readonly hasRemote?: boolean
   remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   localHasMany?(hashes: readonly string[]): Promise<Set<string>>
+  remoteKnown?(hashes: readonly string[]): Map<string, ArtifactInfo>
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
   probeFirst?(started: Promise<void>): void

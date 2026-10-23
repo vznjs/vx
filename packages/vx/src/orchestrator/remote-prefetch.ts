@@ -24,7 +24,7 @@ import type { TaskNode } from '../graph/index.js'
 import { maskedCommand } from '../util/index.js'
 import type { CacheLayer, GitFilesCache } from '../cache/index.js'
 import type { HashCache } from './task-hash.js'
-import { deriveStableKeys } from './stable-keys.js'
+import { deriveStableKeys, type StableKey } from './stable-keys.js'
 
 export interface PrefetchArgs {
   nodes: Map<string, TaskNode>
@@ -51,6 +51,12 @@ export interface PrefetchArgs {
    * remote, and those every store answered it does not: they run.
    */
   held?: ((ids: readonly string[], missed: readonly string[]) => void) | undefined
+  /**
+   * Told after the probe when `held` was told before it, from the hits the
+   * index kept (`remoteKnown`): the tasks it now holds that `held` called
+   * missed, and those `held` called held that it no longer holds.
+   */
+  revised?: ((hits: readonly string[], missed: readonly string[]) => void) | undefined
 }
 
 /**
@@ -116,11 +122,36 @@ async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<voi
     return
   }
   const uniqueHashes = [...new Set(toPrefetch.map((k) => k.hash))]
+  const pool = fetchPool(args.concurrency, (k) =>
+    args.cache.prefetch(k.hash, getContext(k.node, k.node.config.exec?.command ?? '')),
+  )
+  // Trusted at once: a key the index says a remote holds is a hit, its pull
+  // starts now, and every other key is a miss, before any remote answers
+  // (M, 2026-10-23). The probe below still asks for all of them and revises.
+  const known = args.cache.remoteKnown?.(uniqueHashes)
+  if (known !== undefined) {
+    tell((h) => held?.has(h) === true || known.has(h), true)
+    pool.push(toPrefetch.filter((k) => known.has(k.hash)))
+  }
+
+  // Batch existence probe (when the remote supports it): one round-trip
+  // tells us which of the N stable hashes exist remotely, so we GET only the
+  // hits and pre-mark the misses — their lazy `get` then short-circuits with
+  // no network. This collapses N probe waves into 1 and skips every GET that
+  // would 404. When the remote can't batch (`null` — an older remote, reads
+  // disabled, or a layer that doesn't implement the hook at all), fall back to
+  // prefetching every stable key, exactly as before.
   const asked = args.cache.remoteHasMany?.(uniqueHashes)
   // Every lookup that waited on the probe now finds its hash in it.
   probing()
   const present = (await asked) ?? null
-  tell((h) => held?.has(h) === true || present?.has(h) === true, present !== null)
+  if (known === undefined)
+    tell((h) => held?.has(h) === true || present?.has(h) === true, present !== null)
+  else if (present !== null)
+    args.revised?.(
+      toPrefetch.filter((k) => present.has(k.hash) && !known.has(k.hash)).map((k) => k.node.id),
+      toPrefetch.filter((k) => known.has(k.hash) && !present.has(k.hash)).map((k) => k.node.id),
+    )
   if (present !== null) {
     args.cache.markRemoteAbsent?.(uniqueHashes.filter((h) => !present.has(h)))
     // The pre-mark above already answers a pull for an absent hash from
@@ -129,24 +160,42 @@ async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<voi
     // every absent key. What it decides is which hashes the pump asks
     // the layer for, and that is what the row pins (item 643, 645).
     toPrefetch = toPrefetch.filter((k) => present.has(k.hash))
-    if (toPrefetch.length === 0) return
   }
+  pool.push(known === undefined ? toPrefetch : toPrefetch.filter((k) => !known.has(k.hash)))
+  await pool.settled()
+}
 
-  // Bounded worker pool over the keys to fetch. Each prefetch is
-  // self-contained (LayeredCache owns the in-flight map + ingest); we
-  // cap concurrency so a 1000-task run doesn't open 1000 sockets at
-  // once. The pumps race alongside execution.
+/**
+ * Bounded worker pool over the keys to fetch, fed as they are known. Each
+ * prefetch is self-contained (LayeredCache owns the in-flight map +
+ * ingest); the cap keeps a 1000-task run from opening 1000 sockets at
+ * once. The pumps race alongside execution.
+ */
+function fetchPool(
+  concurrency: number,
+  fetch: (k: StableKey) => Promise<boolean>,
+): { push(keys: readonly StableKey[]): void; settled(): Promise<unknown> } {
+  const cap = Math.max(1, concurrency)
+  const queue: StableKey[] = []
+  const pumps: Promise<void>[] = []
   let next = 0
-  const workers = Math.max(1, Math.min(args.concurrency, toPrefetch.length))
+  let active = 0
   const pump = async (): Promise<void> => {
-    while (next < toPrefetch.length) {
-      const { hash, node } = toPrefetch[next++]!
-      await args.cache
-        .prefetch(hash, getContext(node, node.config.exec?.command ?? ''))
-        .catch(() => false)
+    active++
+    try {
+      while (next < queue.length) await fetch(queue[next++]!).catch(() => false)
+    } finally {
+      active--
     }
   }
-  await Promise.all(Array.from({ length: workers }, () => pump()))
+  return {
+    push(keys) {
+      queue.push(...keys)
+      const room = Math.min(cap - active, queue.length - next)
+      for (let i = 0; i < room; i++) pumps.push(pump())
+    },
+    settled: () => Promise.all(pumps),
+  }
 }
 
 /**

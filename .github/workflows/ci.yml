@@ -42,8 +42,9 @@ concurrency:
 # merges them all: only it runs CI, so a stack costs one run, not one per
 # layer (owner, 2026-10-22). Off a stack both sides are null and it runs.
 jobs:
-  # Each job is one distributed run (@vzn/vx-dte, .vx/workspace.ts): it
-  # checks out, installs Bun and the deps, checks the lock and runs vx,
+  # One distributed run (@vzn/vx-dte, .vx/workspace.ts) for every platform
+  # (owner, 2026-10-23): a task bound to one (exec.platforms) runs on a
+  # worker of it, started only when the graph has one. It checks out, installs Bun and the deps, checks the lock and runs vx,
   # as any repo would (owner, 2026-10-23: "super simple, same as devs
   # would add it"). vx names the run, plans it, starts as many workers
   # (vx-worker.yml) as the plan's width needs, cancels them at the end and
@@ -52,7 +53,7 @@ jobs:
     name: linux-x64
     if: github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     # A push to main deploys the docs site the run built.
     environment: ${{ github.event_name == 'push' && 'github-pages' || '' }}
     permissions:
@@ -63,7 +64,6 @@ jobs:
       # release.sync gives each GitHub release its post's body.
       contents: write
     env:
-      CI_WORKERS_OS: Linux
       VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
       GITHUB_TOKEN: ${{ github.token }}
       GH_TOKEN: ${{ github.token }}
@@ -97,68 +97,13 @@ jobs:
       # Plans the graph, starts the workers its width needs, then
       # orchestrates them. A PR runs what its diff affects, inputs outside
       # a project included (owner, 2026-10-23); main runs everything.
-      - run: bun packages/vx/src/bin.ts run ci test.live check.vs-turbo build.bun.linux-arm64 build.bun.darwin-arm64 ${{ github.event_name == 'push' && 'release.sync' || '' }} ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
+      # Main also proves each release binary launches on its platform and
+      # runs the files whose outcome is the platform's on Mac workers
+      # (macOS-only defects reached main unseen on Linux, 2026-08-22).
+      - run: bun packages/vx/src/bin.ts run ci test.live check.vs-turbo build.bun.linux-arm64 build.bun.darwin-arm64 ${{ github.event_name != 'pull_request' && 'build.bun.linux-x64 build.bun.darwin-x64 check.binary.linux-arm64 check.binary.darwin-arm64 test.platform check.sandbox-canary check.build-cold' || '' }} ${{ github.event_name == 'push' && 'release.sync' || '' }} ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
       - if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: private/vx-docs/dist
       - if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
-
-  # The linux-arm64 release binary is cross-compiled and never run
-  # elsewhere: this proves it launches on an arm worker, on main only.
-  binary-linux-arm64:
-    name: linux-arm64
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      id-token: write
-      actions: write
-      contents: read
-    env:
-      CI_WORKERS_OS: Linux-ARM64
-      VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
-      GITHUB_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          filter: blob:none
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.4.2
-      - run: bun install --frozen-lockfile
-      - run: bun packages/vx/src/bin.ts lock --check
-      - run: bun packages/vx/src/bin.ts run check.binary --filter @vzn/vx
-
-  # macOS-only defects reached main unseen on Linux (2026-08-22: tar
-  # formats, symlinked bases, SQLite): `test.platform` runs the files that
-  # guard tar, filesystem, SQLite, the sandbox, signals and watching, on
-  # Mac workers, on main only (owner, 2026-10-22).
-  macos:
-    name: darwin-arm64
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    permissions:
-      id-token: write
-      actions: write
-      contents: read
-    env:
-      CI_WORKERS_OS: macOS
-      VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
-      GITHUB_TOKEN: ${{ github.token }}
-      VX_REQUIRE_SANDBOX: '1'
-      VX_REQUIRE_WATCH_EVENTS: '1'
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          filter: blob:none
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.4.2
-      - run: bun install --frozen-lockfile
-      - run: bun packages/vx/src/bin.ts lock --check
-      - run: bun packages/vx/src/bin.ts run test.platform check.binary check.sandbox-canary check.build-cold build.bun.darwin-x64 build.bun.linux-x64 --filter @vzn/vx

@@ -60,3 +60,31 @@ it('tells the tasks the probe found in no store, narrowed as they finish', () =>
   d.finished('a')
   expect(missed).toEqual([['a', 'b'], ['b']])
 })
+
+// The index's kept hits answer first, the run's background probe after
+// (M, 2026-10-23): a kept hit the probe calls gone is demand and missed
+// again, and a miss it finds held leaves demand.
+it('a later probe answer moves a dropped hit back in and a found miss out', () => {
+  const heard: [string[], string[]][] = []
+  const executor = {
+    name: 'spy',
+    demand: (r: ReadonlySet<string>, m: ReadonlySet<string>) =>
+      heard.push([[...r].sort(), [...m].sort()]),
+    execute: () => Promise.reject(new Error('not run')),
+  } as unknown as TaskExecutor
+  const d = executorDemand(new Map(['a', 'b', 'c', 'd'].map((id) => [id, executor])), () => {})
+  d.revise(['a'], ['b'])
+  d.settle(['a', 'd'], ['b', 'c'])
+  d.executing('c')
+  d.revise(['b', 'c'], ['a'])
+  expect(heard).toEqual([
+    [
+      ['b', 'c'],
+      ['b', 'c'],
+    ],
+    [
+      ['a', 'c'],
+      ['a', 'c'],
+    ],
+  ])
+})

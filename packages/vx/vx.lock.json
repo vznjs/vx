@@ -48,9 +48,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -107,9 +104,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -166,9 +160,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -225,9 +216,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -284,9 +272,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -343,9 +328,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -402,9 +384,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -461,9 +440,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -520,9 +496,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -579,9 +552,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -638,9 +608,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -697,9 +664,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -756,9 +720,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -815,9 +776,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -874,9 +832,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -933,9 +888,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -992,9 +944,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1051,9 +1000,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1110,9 +1056,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1169,9 +1112,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1228,9 +1168,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1287,9 +1224,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1346,9 +1280,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1405,9 +1336,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1464,9 +1392,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1523,9 +1448,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1582,9 +1504,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1641,9 +1560,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1700,9 +1616,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1759,9 +1672,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1818,9 +1728,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1877,9 +1784,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1936,9 +1840,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -1995,9 +1896,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2054,9 +1952,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2113,9 +2008,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2172,9 +2064,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2231,9 +2120,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2290,9 +2176,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2349,9 +2232,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2408,9 +2288,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2467,9 +2344,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2526,9 +2400,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2585,9 +2456,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2644,9 +2512,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2703,9 +2568,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2721,6 +2583,9 @@
       ],
       "exec": {
         "command": "bun test --only-failures $(bun scripts/test-shard.ts 1 6 --platform)",
+        "platforms": [
+          "darwin-arm64"
+        ],
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2762,9 +2627,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2780,6 +2642,9 @@
       ],
       "exec": {
         "command": "bun test --only-failures $(bun scripts/test-shard.ts 2 6 --platform)",
+        "platforms": [
+          "darwin-arm64"
+        ],
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2821,9 +2686,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2839,6 +2701,9 @@
       ],
       "exec": {
         "command": "bun test --only-failures $(bun scripts/test-shard.ts 3 6 --platform)",
+        "platforms": [
+          "darwin-arm64"
+        ],
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2880,9 +2745,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2898,6 +2760,9 @@
       ],
       "exec": {
         "command": "bun test --only-failures $(bun scripts/test-shard.ts 4 6 --platform)",
+        "platforms": [
+          "darwin-arm64"
+        ],
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2939,9 +2804,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -2957,6 +2819,9 @@
       ],
       "exec": {
         "command": "bun test --only-failures $(bun scripts/test-shard.ts 5 6 --platform)",
+        "platforms": [
+          "darwin-arm64"
+        ],
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -2998,9 +2863,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -3016,6 +2878,9 @@
       ],
       "exec": {
         "command": "bun test --only-failures $(bun scripts/test-shard.ts 6 6 --platform)",
+        "platforms": [
+          "darwin-arm64"
+        ],
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -3057,9 +2922,6 @@
         "workspaceFiles": [
           "README.md",
           "skills/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -3140,9 +3002,6 @@
           "!private/vx-docs/src/content/docs/modules/**",
           "!private/vx-docs/src/content/docs/design/**",
           "!private/vx-docs/src/content/docs/plugins/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -3223,9 +3082,6 @@
           "!private/vx-docs/src/content/docs/modules/**",
           "!private/vx-docs/src/content/docs/design/**",
           "!private/vx-docs/src/content/docs/plugins/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -3306,9 +3162,6 @@
           "!private/vx-docs/src/content/docs/modules/**",
           "!private/vx-docs/src/content/docs/design/**",
           "!private/vx-docs/src/content/docs/plugins/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -3389,9 +3242,6 @@
           "!private/vx-docs/src/content/docs/modules/**",
           "!private/vx-docs/src/content/docs/design/**",
           "!private/vx-docs/src/content/docs/plugins/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -3472,9 +3322,6 @@
           "!private/vx-docs/src/content/docs/modules/**",
           "!private/vx-docs/src/content/docs/design/**",
           "!private/vx-docs/src/content/docs/plugins/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -3555,9 +3402,6 @@
           "!private/vx-docs/src/content/docs/modules/**",
           "!private/vx-docs/src/content/docs/design/**",
           "!private/vx-docs/src/content/docs/plugins/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -3573,6 +3417,9 @@
       ],
       "exec": {
         "command": "bun test --only-failures $(bun scripts/test-shard.ts 1 3 --unsafe --platform)",
+        "platforms": [
+          "darwin-arm64"
+        ],
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -3638,9 +3485,6 @@
           "!private/vx-docs/src/content/docs/modules/**",
           "!private/vx-docs/src/content/docs/design/**",
           "!private/vx-docs/src/content/docs/plugins/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -3656,6 +3500,9 @@
       ],
       "exec": {
         "command": "bun test --only-failures $(bun scripts/test-shard.ts 2 3 --unsafe --platform)",
+        "platforms": [
+          "darwin-arm64"
+        ],
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -3721,9 +3568,6 @@
           "!private/vx-docs/src/content/docs/modules/**",
           "!private/vx-docs/src/content/docs/design/**",
           "!private/vx-docs/src/content/docs/plugins/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -3739,6 +3583,9 @@
       ],
       "exec": {
         "command": "bun test --only-failures $(bun scripts/test-shard.ts 3 3 --unsafe --platform)",
+        "platforms": [
+          "darwin-arm64"
+        ],
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -3804,9 +3651,6 @@
           "!private/vx-docs/src/content/docs/modules/**",
           "!private/vx-docs/src/content/docs/design/**",
           "!private/vx-docs/src/content/docs/plugins/**"
-        ],
-        "env": [
-          "CI_WORKERS_OS"
         ]
       },
       "cache": {
@@ -4265,7 +4109,10 @@
         "install"
       ],
       "exec": {
-        "command": "bun tests/helpers/sandbox-canary.ts 20"
+        "command": "bun tests/helpers/sandbox-canary.ts 20",
+        "platforms": [
+          "darwin-arm64"
+        ]
       }
     },
     "check.build-cold": {
@@ -4274,7 +4121,10 @@
         "install"
       ],
       "exec": {
-        "command": "bun scripts/build-cold.ts"
+        "command": "bun scripts/build-cold.ts",
+        "platforms": [
+          "darwin-arm64"
+        ]
       }
     },
     "check.binary": {
@@ -4322,9 +4172,118 @@
         ],
         "runtime": [
           "bun --version"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "check.binary.linux-arm64": {
+      "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun scripts/check-binary.ts",
+        "platforms": [
+          "linux-arm64"
         ],
-        "env": [
-          "CI_WORKERS_OS"
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../vx-schedule-history/**"
+            ],
+            "write": [
+              "dist/**",
+              "~/.bun/install/cache/",
+              ".*.tmp/**"
+            ],
+            "network": [
+              "registry.npmjs.org"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          },
+          "ignore": {
+            "write": [
+              "*.bun-build"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "src/**",
+          "index.ts",
+          "package.json",
+          "scripts/check-binary.ts",
+          "scripts/binary-launch.ts"
+        ],
+        "workspaceFiles": [
+          "packages/vx-schedule-history/**"
+        ],
+        "runtime": [
+          "bun --version"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "check.binary.darwin-arm64": {
+      "description": "compile the host binary the way release.yml does; it must launch and report the manifest version",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun scripts/check-binary.ts",
+        "platforms": [
+          "darwin-arm64"
+        ],
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*",
+              "../vx-schedule-history/**"
+            ],
+            "write": [
+              "dist/**",
+              "~/.bun/install/cache/",
+              ".*.tmp/**"
+            ],
+            "network": [
+              "registry.npmjs.org"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          },
+          "ignore": {
+            "write": [
+              "*.bun-build"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "src/**",
+          "index.ts",
+          "package.json",
+          "scripts/check-binary.ts",
+          "scripts/binary-launch.ts"
+        ],
+        "workspaceFiles": [
+          "packages/vx-schedule-history/**"
+        ],
+        "runtime": [
+          "bun --version"
         ]
       },
       "cache": {

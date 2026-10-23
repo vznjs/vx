@@ -71,7 +71,8 @@ export interface CacheLayer {
   readonly local?: Cache | undefined // the local handle this layer wraps (LayeredCache)
   readonly hasRemote?: boolean
   localHasMany?(hashes: readonly string[]): Promise<Set<string>> // the keys the local store holds; the prefetch probes the remote for the rest
-  remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> // one hasMany per readable remote; null = a remote cannot batch or did not answer
+  remoteKnown?(hashes: readonly string[]): Map<string, ArtifactInfo> // the keys the index says a remote holds (remote_hits); their pulls wait on no probe
+  remoteHasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> // one hasMany per readable remote; null = a remote cannot batch or did not answer; a whole answer rewrites remote_hits
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeFirst?(started: Promise<void>): void // a pull waits until the run's batch probe starts, then for its answer
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void // `--force`: one batch probe per remote written but not read; a key it holds is not uploaded
@@ -377,7 +378,7 @@ export class FoldMemo {
   set(taskId: string, probe: string, key: string): void
   flush(cutoff: number, now?: number): void // at close: this run's folds; rows unwritten since `cutoff` go
 }
-export const SCHEMA_VERSION = 'v46'
+export const SCHEMA_VERSION = 'v47'
 // What vx wrote in a cache dir (index, artifacts, run history, its `*`
 // ignore): all a clear of a dir the user named may delete (item 968).
 export function vxCacheEntries(cacheDir: string): string[]
@@ -720,7 +721,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
 `CACHE_VERSION` is currently `'vx-cache-v48'`; `SCHEMA_VERSION` is
-`'v46'`. Bump `CACHE_VERSION` when:
+`'v47'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside
   `key()`).
