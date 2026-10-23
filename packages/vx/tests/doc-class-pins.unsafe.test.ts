@@ -611,9 +611,10 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     let checked = 0
     // vx-on-real-repos quotes its own run (wall times on seven outside
     // repos, 2026-10-15), not benchmarks.md; its method section says where.
-    for (const file of readdirSync(BLOG).filter(
-      (f) => /\.mdx?$/.test(f) && f !== 'vx-on-real-repos.md',
-    )) {
+    // one-run-on-your-own-runners quotes one CI run and the DTE simulator,
+    // each linked beside its table.
+    const OWN_RUNS = new Set(['vx-on-real-repos.md', 'one-run-on-your-own-runners.md'])
+    for (const file of readdirSync(BLOG).filter((f) => /\.mdx?$/.test(f) && !OWN_RUNS.has(f))) {
       for (const line of readFileSync(path.join(BLOG, file), 'utf8').split('\n')) {
         if (!line.startsWith('|') || /^\|\s*-/.test(line)) continue
         // Strip the emphasis and a trailing `(+0:08)` / `(1.9×)` aside;
