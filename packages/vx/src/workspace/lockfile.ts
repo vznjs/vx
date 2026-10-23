@@ -76,12 +76,6 @@ export function lockEntryBroken(root: string): boolean {
 /** What a run says when there is no lock to read. */
 export const NO_LOCK = 'no lock: run `vx lock`'
 
-/**
- * Read and shape-validate `.vx/projects.lock.json`. Returns `null` when no lock
- * exists (the common case — the feature is opt-in). The lock is a
- * user-editable file, so this is a system boundary: malformed content
- * throws a `UserError` instead of crashing deeper in the run.
- */
 /** Each read lock's bytes as a digest: every config a run loads from it is a function of them. */
 const digests = new WeakMap<Lockfile, string>()
 
@@ -90,6 +84,12 @@ export function lockDigest(lock: Lockfile): string | undefined {
   return digests.get(lock)
 }
 
+/**
+ * Read and shape-validate `.vx/projects.lock.json`. Returns `null` when no lock
+ * exists (the common case — the feature is opt-in). The lock is a
+ * user-editable file, so this is a system boundary: malformed content
+ * throws a `UserError` instead of crashing deeper in the run.
+ */
 export async function readLockfile(root: string): Promise<Lockfile | null> {
   const file = Bun.file(lockfilePath(root))
   if (!(await file.exists())) return null
