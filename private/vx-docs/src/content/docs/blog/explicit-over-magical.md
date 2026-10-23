@@ -6,83 +6,78 @@ authors:
 tags:
   - design
   - values
-excerpt: "Auto-inferred inputs are the most requested feature vx will not build. A traced read set describes what a task read once, on one machine, after it ran. A cache key has to be right before the task runs, everywhere."
+excerpt: "Inferred inputs are the most requested feature vx will not build. A traced read set says what a task read once, on one machine, after it ran. A cache key has to be right before the task runs, everywhere."
 ---
 
-The most common first reaction to a `vx.config.ts` is: why do I have to
-write `inputs: { files: ['src/**'] }`? Nx has `namedInputs` with a
-default of everything. Turborepo defaults to every file in the package.
-vite-task traces the filesystem and infers the set. Surely the tool
-could work it out.
+Here is the worst thing a build cache can do. This task copies
+`notes.md`, but its inputs name only `src/**`:
 
-It could work *something* out. It could not work out the right thing,
-and the difference is the whole reliability of the cache.
+```ts
+notes: {
+  exec: { command: 'mkdir -p out && cp notes.md out/notes.md' },
+  inputs: { files: ['src/**'] },
+  cache: { outputs: { files: ['out/**'] } },
+}
+```
 
-## What inference actually produces
+```sh frame="terminal"
+$ vx run packages/a#notes
+            local 1↑
+$ cat packages/a/out/notes.md
+version 1
 
-A traced input set is the list of files a task opened *that time*, on
-*that machine*, with *that* environment. It is a description of one
-execution, gathered after the fact. Three things are wrong with using
-it as a key:
+$ echo "version 2" > packages/a/notes.md
+$ vx run packages/a#notes
+            local 1✓
+$ cat packages/a/out/notes.md
+version 1
+```
 
-1. **It arrives too late.** The key is needed before the task runs, to
-   decide whether to run it. An inferred set can only key the *next*
-   run, which means the first run on every new key is untraceable, and
-   a remote cache cannot be consulted with a key that does not exist
-   yet. vite-task, which does this well, has no remote cache for exactly
-   this reason.
-2. **It describes a path, not a dependency.** A build that reads
-   `config/prod.json` when `NODE_ENV=production` and `config/dev.json`
-   otherwise has two traces and one dependency set. A key from either
-   trace is wrong for the other environment.
-3. **It over-approximates in the direction that hurts.** `**` as a
-   default input turns a README edit into a rebuild of every task in the
-   package. Both Turbo's default and Nx's default do this.
+A green run, a cache hit, and the wrong file. Nothing downstream can
+tell. That is a **stale hit**, and it comes from one missing input.
 
-The explicit declaration is a statement about what the task *depends
-on*, which is the thing a key must capture. Only the author of the
-task can make that statement.
+## Why not infer the inputs?
 
-## The cost, honestly
+Some tools trace the files a task opens and use that list. A trace has
+three problems as a key:
 
-The cost of a wrong declaration is asymmetric, and the asymmetry is
-the argument:
+1. **It arrives too late.** The key is needed *before* the task runs,
+   to decide whether to run it and to ask a remote cache. A trace exists
+   only after.
+2. **It describes one path.** A build that reads `config/prod.json` in
+   production and `config/dev.json` otherwise has two traces and one
+   real dependency set.
+3. **Defaults widen it.** `**` as the default input turns a README edit
+   into a rebuild of every task in the package.
 
-- An **over-declared** input (a file listed that the task never reads)
-  costs a spurious miss. The task re-runs. Annoying, visible, cheap.
-- An **under-declared** input (a file read but not listed) costs a
-  stale hit. The task does not run, the old output is restored, the
-  check is green, and nothing downstream can tell. This is the worst
-  failure a build cache can have.
+Only the task's author knows what it depends on.
 
-Inference systematically produces the second kind, because a trace is
-always of one execution and dependency sets are larger than any one
-execution. Declaration lets you err toward the first kind, and it gives
-you two tools to find the second: [`vx why`](../why-did-this-rerun/)
-tells you when a task re-executed on an unchanged key, and the
-[sandbox](../the-sandbox/) makes an undeclared read a hard failure that
-names the path.
+## The two mistakes are not equal
 
-## Explicit everywhere else too
+| Mistake                         | What happens                  | Cost                               |
+| ------------------------------- | ----------------------------- | ---------------------------------- |
+| Over-declared (extra file)      | the task re-runs              | a spurious miss: visible, cheap    |
+| Under-declared (missing file)   | the old output is restored    | a stale hit: green, silent, wrong  |
 
-The same principle sets most of the schema:
+Inference makes the second kind, because a dependency set is larger than
+any one run. Declaring lets you err toward the first, and vx gives you
+two tools for the second: [`vx why`](../why-did-this-rerun/) for a
+re-run on an unchanged key, and the [sandbox](../the-sandbox/): grant reads no wider than the
+inputs and the `notes.md` read above fails the run and names the path.
 
-- `cache` is opt-in. No block, no cache, and no default globs.
-- `dependsOn` is explicit. There is no `--parallel` escape hatch because
-  nobody has to over-declare edges to be safe; and there is sparse
-  `^task` bridging, so a package that lacks `build` does not need a
-  filler task for its dependents' `^build` to walk through it.
+## Explicit everywhere
+
+- `cache` is opt-in. No block, no cache, no default globs.
+- `dependsOn` is explicit. `^task` skips a package that lacks the task,
+  so no filler tasks.
 - Past the essential allowlist every task gets (`PATH`, `HOME`, `CI`,
   `NODE_OPTIONS` and a few more), env reaches a task only through
-  `exec.env`. A variable that merely
-  has to be present goes under `passThrough` and stays out of the key.
-  One that changes the output goes under `passThrough` and
-  `inputs.env`: the first passes it to the task, the second puts
-  it in the key.
+  `exec.env`. A variable that only has to be present goes under
+  `passThrough`. One that changes the output also goes under
+  `inputs.env`, which puts it in the key.
 - The sandbox derives nothing from `cache`. What a task may *touch* and
-  what *invalidates* it are two declarations, because when one was
-  derived from the other, a path added for caching silently widened the
-  sandbox.
+  what *invalidates* it are two separate declarations.
 
-Magic is a debt whose interest is paid by the person debugging the
-stale hit. vx would rather you write one glob.
+The demo ran on vx `0be0367`, 2026-10-23. Write one glob; skip the
+afternoon of debugging a stale hit. More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

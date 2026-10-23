@@ -9,12 +9,39 @@ tags:
 excerpt: 'vx is built like Vite: a core pipeline with a named hook at every stage, and plugins that fill exactly the stage they need. A remote cache is one hook. A lockfile parser is one hook. Reading turbo.json as a start toward native config is one hook.'
 ---
 
-The word "plugin" usually means one of two things. Either a plugin is a
-whole subsystem with its own configuration language (Nx executors), or
-it is a callback bolted to one event the tool happened to expose. vx
-uses the word the way Vite does: the core is a pipeline, every stage
-has a named hook, and a plugin is an object that implements the hooks
-it needs.
+vx is built like Vite: a core pipeline with a named hook at every
+stage. A plugin fills only the hooks it needs. This one decides which
+ready task starts first:
+
+```ts
+import { definePlugin, type VxPlugin } from '@vzn/vx'
+
+export function prioritize(ids: readonly string[]): VxPlugin {
+  return definePlugin(import.meta, {
+    schedule(nodes) {
+      const weights = new Map<string, number>()
+      for (const [i, id] of ids.entries()) if (nodes.has(id)) weights.set(id, 1e6 - i)
+      return weights
+    },
+  })
+}
+```
+
+That is the whole plugin. List `prioritize(['app#build'])` under
+`plugins` in `.vx/workspace.ts` and it runs. Every stage has an example like it in
+`private/vx-plugin-examples`, each with a test:
+
+| Example plugin | Hook        | Lines |
+| -------------- | ----------- | ----- |
+| `key.ts`       | `key`       | 12    |
+| `admit.ts`     | `admit`     | 13    |
+| `schedule.ts`  | `schedule`  | 13    |
+| `graph.ts`     | `graph`     | 17    |
+| `commands.ts`  | `commands`  | 21    |
+| `project.ts`   | `project`   | 22    |
+| `telemetry.ts` | `telemetry` | 23    |
+| `cache.ts`     | `cache`     | 41    |
+| `executor.ts`  | `executor`  | 61    |
 
 ## The stages
 
@@ -48,10 +75,10 @@ in `.vx/workspace.ts` is the order everywhere: executors are consulted in
 order, remote caches are asked in order after the local cache,
 telemetry sinks receive in order.
 
-## What fits in one hook
+## What ships on the seams
 
-The proof that the seams are the right width is what has been built on
-them without a special case in core:
+Each first-party plugin uses only these hooks, with no special case in
+core:
 
 - **`turbo()` from `@vzn/vx-migrate`** turns a `turbo.json` and each package's scripts
   into vx tasks through the `project` stage, a start toward native config.
@@ -80,11 +107,9 @@ widen by accident.
 ## The rule that keeps the seams honest
 
 **Seam over special case.** When core grows a branch for one consumer,
-the seam is too narrow, and the fix is to widen the seam, not to keep
-the branch. Twice in this repository's history a capability shipped
-inside core and was moved out once the hook it needed existed: `vx
-migrate` became `@vzn/vx-migrate`, and the run-history scheduler became
-`@vzn/vx-schedule-history` on `schedule`. Core got smaller both times.
+the seam is too narrow: widen the seam, drop the branch. Migration left
+core for `@vzn/vx-migrate`, and the run-history scheduler became
+`@vzn/vx-schedule-history` on `schedule`, once their hooks existed.
 
 The second rule is the one that keeps the floor under your feet: core
 applies **no** plugin by default and names none. A capability a plugin
@@ -92,4 +117,5 @@ must supply, a remote, a wire format, is declared in `.vx/workspace.ts`
 or it does not exist. The one thing that is implicit is the
 [local floor](../the-local-floor/): running here and caching here.
 
-Writing one is a short guide: [Writing a vx plugin](../../guides/plugins/).
+Guide: [Writing a vx plugin](../../guides/plugins/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
