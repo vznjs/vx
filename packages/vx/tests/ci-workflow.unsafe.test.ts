@@ -179,6 +179,13 @@ describe('ci.yml', () => {
     ])
   })
 
+  // A PR runs what its diff affects (owner, 2026-10-23: "PR should run on
+  // affected and DTE"); main runs everything, which seeds the cache.
+  it('runs a PR affected, main all', () => {
+    const run = doc.jobs['linux']!.steps!.find((s) => s.run?.includes('bin.ts run '))!.run!
+    expect(run).toEndWith(" ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}")
+  })
+
   it('filters no trigger by path', () => {
     expect(JSON.stringify(doc.on ?? doc.true)).not.toMatch(/paths/)
   })
