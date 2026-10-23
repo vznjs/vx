@@ -282,15 +282,29 @@ export async function join(
         // Quiet for three heartbeats: a relay whose push to it failed may
         // have let go of it while answering its pings (two CI runs hung
         // 20 min, 2026-10-23). A new socket gets what queued.
+        // The quiet one serves until a new one opens: a dial that fails or
+        // hangs must not leave this participant without a socket, which
+        // the relay loses in three heartbeats (an agent busy on 3 tasks,
+        // CI 2026-10-23).
         if (
           inbox.length === 0 &&
           s.open &&
           socket === s &&
+          dialing === undefined &&
           performance.now() - s.pushedAt >= QUIET_BEATS * heartbeatMs
         ) {
-          socket = undefined
-          void s.close()
-          again()
+          dialing = dial()
+            .catch(() => undefined)
+            .then(async (fresh) => {
+              dialing = undefined
+              if (fresh?.open !== true) return
+              if (left || ended !== undefined || socket !== s) {
+                await fresh.close()
+                return
+              }
+              adopt(fresh)
+              await s.close()
+            })
         }
       }
       if (inbox.length > 0) return inbox.splice(0)

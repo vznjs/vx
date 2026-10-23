@@ -70,11 +70,14 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
   const open: Bun.ServerWebSocket<Held>[] = []
   const closes: { id: string; code: number }[] = []
   const frames: string[] = []
+  /** While set, the host answers each new dial 503, as one overloaded. */
+  const host = { refusing: false }
   let server: Bun.Server<Held> | undefined
   const relay = createRelay({
     ...options,
     ...(heartbeatMs === undefined ? {} : { heartbeatMs }),
     upgrade: (key, id, req) => {
+      if (host.refusing) return new Response(null, { status: 503 })
       server!.upgrade(req, { data: { key, id } })
       return new Response(null, { status: 101 })
     },
@@ -109,7 +112,7 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
       await server!.stop(true)
     },
   })
-  return { url: `http://127.0.0.1:${server.port}`, relay, open, closes, frames }
+  return { url: `http://127.0.0.1:${server.port}`, relay, open, closes, frames, host }
 }
 
 it('dials anew once its socket goes quiet, and gets what the relay queued', async () => {
@@ -131,6 +134,26 @@ it('dials anew once its socket goes quiet, and gets what the relay queued', asyn
   await o.send(a.id, 'pushed')
   expect(await a.poll()).toEqual([{ from: 'orchestrator', body: 'pushed' }])
   expect(asked).toEqual([])
+  await a.leave()
+  await o.leave()
+})
+
+it('keeps its quiet socket while a new one fails to open, so the relay keeps it', async () => {
+  // An agent busy on long tasks heard nothing for three heartbeats, closed
+  // its socket, and its next dial failed: the relay lost it and the run ran
+  // its task again elsewhere (CI, 2026-10-23).
+  const { url, open, host } = sockets(200)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'agent', null, undefined)
+  await o.poll()
+  host.refusing = true
+  const first = open.find((w) => w.data.id === a.id)!
+  // Quiet well past three heartbeats, every dial refused.
+  for (let i = 0; i < 10; i++) expect(await a.poll()).toEqual([])
+  expect(first.readyState).toBe(1)
+  await o.send(a.id, 'still here')
+  expect(await a.poll()).toEqual([{ from: 'orchestrator', body: 'still here' }])
+  host.refusing = false
   await a.leave()
   await o.leave()
 })
