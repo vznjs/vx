@@ -8,106 +8,97 @@ tags:
 excerpt: 'A build cache only grows unless something takes entries out. How vx evicts by age and by size, what it does with files no index knows, and why it refuses a bound of zero.'
 ---
 
-Every cache miss in a monorepo adds an entry: the outputs of one task,
-packed and stored under its key. Nothing in that loop ever takes one out.
-Left alone, a busy repository's cache grows until the disk is full. vx
-gives you two ways to bound it.
+A store of 1,000 entries, 94 MB, capped at 50 MB:
+
+```sh frame="terminal"
+$ vx cache clean --max-size 50M --dry-run
+› vx cache clean  would free 44 MB (dry run)
+
+  467 entries
+
+$ vx cache clean --max-size 50M
+✓ vx cache clean  freed 44 MB
+
+  467 entries
+```
+
+The dry run names the victims and stops. The real clean with the same
+flags removes exactly those. Demo workspace of 1,000 projects, vx at
+`22f6eb7`, 2026-10-23.
 
 ## Two policies: age, then size
 
-```sh frame="terminal"
-$ vx cache clean --older-than 30d
-✓ vx cache clean  freed 1.3 GB
+| Flag            | Evicts                                                     |
+| --------------- | ---------------------------------------------------------- |
+| `--older-than`  | entries nobody used for that long; a hit counts as a use   |
+| `--max-size`    | least recently used entries, until the store fits          |
 
-  42 entries
-
-$ vx cache clean --older-than 7d --max-size 500M
-✓ vx cache clean  freed 320 MB
-
-  18 entries
-```
-
-`--older-than` drops entries nobody has used for that long. A hit
-counts as a use, so an entry your builds keep restoring stays however
-old it is. `--max-size` is a cap: once the age rule has run, vx evicts
-the least recently used entries until the store is under the size you
-gave. Use either or both. Age goes first because it is the cheap,
-obvious win: whatever nobody asked for in a month is unlikely to be
-asked for tomorrow.
+Use either or both. Age goes first: whatever nobody asked for in a month
+is unlikely to be asked for tomorrow.
 
 Durations take `s`, `m`, `h` and `d` (`30d`, `24h`). Sizes take `K`,
 `M`, `G` and `T` in powers of 1024, with an optional `B` or `iB` (`500M`,
 `1gb`, `32KiB`).
 
+A size cap below what one full build saves evicts that build's own
+entries. Set it above. `vx info` shows where you stand:
+
+```sh frame="terminal"
+$ vx info
+  cache entries     1000 (94 MB)
+```
+
 ## Run it on a schedule
 
-No run evicts anything: cleanup at the end of every run made every run
-pay for it. Put the clean where it runs on its own, in a cron job or a
-scheduled CI workflow:
+No run evicts anything. Put the clean where it runs on its own, in a
+cron job or a scheduled CI workflow:
 
 ```sh frame="terminal"
 vx cache clean --older-than 30d --max-size 10G
 ```
 
-One thing to know about the size cap: it is least recently used first,
-so a `--max-size` smaller than one run's outputs evicts that run's own
-entries. Set it above what a full build saves.
-
-`vx info` shows where you stand: the entry count and their size.
-
-## Files no index knows
-
-The cache is two things: an index (rows in SQLite) and the artifacts
-beside it (`<hash>.tar.zst`). They can drift apart. A cache format
-change resets the index and leaves the artifacts. A save that crashed
-leaves a temp file it never renamed. vx calls these orphans.
-
-Every clean also sweeps for them. An orphan is judged like an entry, by
-its file time, because another vx version sharing the store may still
-read it. A run that asks for an orphan's key indexes it again from its
-bytes and gets a hit; one no task asks for again is only reclaimed by
-the sweep. Nothing younger than an hour is taken, and only names vx
-writes are touched: a `release.tar.zst` you keep in a shared cache
-directory is never deleted.
-
-The reverse drift is handled too. If you delete an artifact by hand,
-its index row goes with the next clean, and its bytes count toward
-neither the size cap nor the freed total, because they are on no disk.
-
 ## A bound of zero is refused
 
 ```sh frame="terminal"
 $ vx cache clean --max-size 0
+✗ vx cache clean  --max-size 0 would evict every entry — `vx cache clean` with no bound clears the whole cache
+
+$ vx cache clean --max-size 10
+✗ vx cache clean  --max-size 10 would read as 10 bytes and evict nearly everything — give a unit (e.g. 10M, 10G)
 ```
 
-That would evict every entry, and a zero is far more often a value
-computed by mistake than an intent. The same goes for a bare number:
-`--max-size 10` would mean ten bytes, so vx asks you to write `10G`, or
-`10B` if bytes really are the unit. When you really want the cache
-gone, run `vx cache clean` with no bound: it clears this repository's
-store and the workspace's run history, and `--global` clears every
-repository's store.
+A zero, or a bare number, is far more often a value computed by mistake
+than an intent. To clear everything, run `vx cache clean` with no bound:
+it clears this repository's store and the workspace's run history, and
+`--global` clears every repository's store.
 
-## Try it before it deletes anything
+## Files no index knows
+
+The cache is an index (rows in SQLite) and the entries beside it. They
+can drift apart: a cache format change resets the index and leaves the
+entries, and a save that crashed leaves a temp file. vx calls these
+orphans, and every clean sweeps for them.
+
+An orphan is judged by its file time, because another vx version
+sharing the store may still read it. Nothing younger than an hour is
+taken, and only names vx writes are touched: a `release.tar.zst` you
+keep in a shared cache directory is never deleted. An entry deleted by
+hand loses its index row at the next clean, and its bytes count toward
+neither the cap nor the freed total.
+
+## For scripts and agents
 
 ```sh frame="terminal"
-$ vx cache clean --older-than 30d --dry-run
-› vx cache clean  would free 1.3 GB (dry run)
-
-  42 entries · 3 orphaned artifacts
+$ vx cache clean --max-size 50M --dry-run --format json
+{"dryRun":true,"evicted":467,"bytesFreed":45907968,"orphans":0,"orphanBytes":0}
 ```
 
-`--dry-run` picks the victims under the same policy and stops there.
-The real clean with the same flags removes exactly what it named. Add
-`--format json` for a script or an agent; it prints
-`{ dryRun, evicted, bytesFreed, orphans, orphanBytes }`.
-
-A clean that deletes also waits for a `vx run` on the same workspace to
+A clean that deletes waits for a `vx run` on the same workspace to
 finish, so it never evicts an entry that run is restoring. A run it
 cannot see, such as another workspace sharing the cache directory, is
-still safe: an artifact that disappears before its restore is a miss,
-and the task runs.
+still safe: an entry that disappears before its restore is a miss, and
+the task runs.
 
-The full reference is in the
-[CLI docs](https://vznjs.github.io/vx/cli/#vx-cache-clean) and the
-[workspace schema](https://vznjs.github.io/vx/schema/).
+Reference: [`vx cache clean`](../../cli/#vx-cache-clean) and the
+[schema](../../schema/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -616,7 +616,7 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     // VX_DEBUG_TIMING, waiting-on-the-network against a delayed stub
     // cache, a-hit-is-a-file-copy its two store formats and
     // when-running-beats-downloading a throttled stub, each setup line under
-    // its table (2026-10-23).
+    // its table, and one-binary the release binary against source (2026-10-23).
     const OWN_RUNS = new Set([
       'vx-on-real-repos.md',
       'one-run-on-your-own-runners.md',
@@ -624,6 +624,7 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
       'waiting-on-the-network.md',
       'a-hit-is-a-file-copy.md',
       'when-running-beats-downloading.md',
+      'one-binary.md',
     ])
     for (const file of readdirSync(BLOG).filter((f) => /\.mdx?$/.test(f) && !OWN_RUNS.has(f))) {
       for (const line of readFileSync(path.join(BLOG, file), 'utf8').split('\n')) {
