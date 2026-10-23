@@ -1,5 +1,5 @@
 ---
-title: '$11k a year saved with vx vs Nx Cloud'
+title: '$14k a year saved with vx vs Nx Cloud'
 date: 2026-10-23T17:30:00Z
 authors:
   - vzn
@@ -7,7 +7,7 @@ tags:
   - execution
   - plugins
   - ci
-excerpt: "vx's CI is one distributed run over its own Linux and Mac runners, through a relay on the Cloudflare Workers free plan. On Nx Cloud's Team plan with Nx's agents, the same CI would cost about $11,088 a year; on vx it costs $0. How it works, end to end, the math, and what is still slow."
+excerpt: "vx's CI is one distributed run over its own Linux and Mac runners, through a relay on the Cloudflare Workers free plan. On Nx Cloud's Team plan with Nx's agents, the same CI would cost about $14,304 a year; on vx it costs $0. How it works, end to end, the math, and what is still slow."
 ---
 
 :::caution[Alpha, not released]
@@ -18,9 +18,9 @@ and vx's own CI runs on them every push. Names and options may still
 change.
 :::
 
-**$11,088 a year** is what this repository's CI would cost on Nx
-Cloud's Team plan with Nx's agents, at about 100 pipeline runs a day;
-on vx DTE it costs $0. The math and its assumptions are in
+**$14,304 a year** is what this repository's CI would cost on Nx
+Cloud's Team plan with Nx's agents, at the 108 runs a day it really
+had last week; on vx DTE it costs $0. The math and its assumptions are in
 [What it costs](#what-it-costs-next-to-nx-cloud): Nx's public prices
 read 2026-10-23, Mac work and concurrent connections not counted.
 
@@ -306,23 +306,30 @@ agent per worker, resource-usage reports off, concurrent connections,
 the Mac work and taxes not counted. The Team plan's $29 fee buys $29 of
 usage, so the bill is the usage alone once it passes $29.
 
-**This repository.** 49 commits landed on main in the 24 hours before
-16:30 UTC on 2026-10-23 (`git log`). Counting one PR run and one main
-run for each: about 100 pipeline executions a day, 3,000 a month. On
-49adc41 the four Linux workers were online 178.8 s together: about 3
-agent minutes, 60 credits. Each execution is then 560 credits:
-1,680,000 a month, $924, with one contributor. That run was mostly
-cache hits; a run that misses more uses more agent minutes. The Hobby
-plan's 50,000 credits cover 89 such executions, under one day.
+**This repository.** CI ran to an end 760 times in the 7 days before
+18:00 UTC on 2026-10-23: 451 PR runs, 304 main runs, 5 manual
+(GitHub's API; cancelled runs not counted). That is 108 a day, 3,257
+a month.
 
-**A 20-person team** with 200 executions per working day, 21 working
+No two runs do the same work: a PR runs only what it affects, and the
+cache answers what did not change. So the agent minutes come from the
+38 runs that finished since #4119, each worker's time online in its
+`vx dte worker` step. A PR run kept Linux workers online 5.2 minutes
+on average (1.8 to 11.5), a main run 12.9 (0 to 34.9). Weighted by
+last week's mix, a run is 165 agent credits and, with the 500 per
+execution, 665. That is 2,167,312 credits a month: $1,192, with one
+contributor. The Hobby plan's 50,000 credits cover 75 runs, under one
+day. [The per-run numbers](https://github.com/vznjs/vx/pull/4138) are
+in the PR.
+
+**A 20-person team**, a made-up case, with 200 executions per working day, 21 working
 days a month, and 10 agent minutes per execution: 4,200 executions of
 700 credits, 2,940,000 credits, $1,617, plus 15 contributors beyond the
 first 5 at $19, $285. $1,902 a month.
 
 | Scenario            | Nx Cloud Team, Nx's agents      | vx DTE |
 | ------------------- | ------------------------------: | -----: |
-| this repository     | $924 a month, $11,088 a year    |     $0 |
+| this repository     | $1,192 a month, $14,304 a year  |     $0 |
 | a 20-person team    | $1,902 a month, $22,824 a year  |     $0 |
 
 vx DTE costs $0 for both: no plan, no credits, no seats. Its compute is
