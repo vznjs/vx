@@ -477,6 +477,7 @@ async function connect(
         for (const one of batch) one.reject(err)
       },
     })
+    framed = true
     ws.send(JSON.stringify({ n: k, sends: batch.map(({ to, body }) => ({ to, body })) }))
   }
   const request = (frame: Record<string, unknown>): Promise<void> =>
@@ -486,18 +487,24 @@ async function connect(
         settle: (a) => (a.status === undefined ? resolve() : reject(refused(a))),
         reject,
       })
+      framed = true
       ws.send(JSON.stringify({ n: k, ...frame }))
     })
-  // A socket a network stops carrying sends no close: one silent for a
-  // heartbeat and a half is dead, before the relay's three-heartbeat sweep
-  // drops this participant. Pinged each half heartbeat, so a live one is not.
+  // A socket a network stops carrying sends no close: one silent for two
+  // heartbeats and a half is dead, long before the relay's twelve-heartbeat
+  // sweep drops this participant. Pinged each heartbeat, unless a frame
+  // went since, which the relay hears as one: each ping is a message a
+  // relay host may bill, and at two a heartbeat they were nearly all of
+  // a run's (2026-10-23).
   let heard = performance.now()
+  let framed = false
   const ping = setInterval(() => {
-    if (performance.now() - heard > 1.5 * heartbeatMs) {
+    if (performance.now() - heard > 2.5 * heartbeatMs) {
       closed()
       ws.close()
-    } else ws.send('ping')
-  }, heartbeatMs / 2)
+    } else if (framed) framed = false
+    else ws.send('ping')
+  }, heartbeatMs)
   ping.unref()
   const closed = (why = 'socket closed', by = 0): void => {
     if (!open) return
