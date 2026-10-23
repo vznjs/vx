@@ -1458,10 +1458,11 @@ Both bounds may be combined: age-based eviction runs first, then LRU eviction if
 total is still over the size cap. No run evicts anything: to bound the
 cache, run this from a schedule or CI.
 
-After eviction, prune sweeps the cache directory for **orphans**: a
-`<hash>.tar.zst` the index has no row for (a `SCHEMA_VERSION` bump
-drops every table and leaves the artifacts behind, as a deleted
-`cache.db` does) and a `<hash>.tar.zst.tmp-*` a save that crashed never
+After eviction, prune sweeps the cache directory for **orphans**: an
+artifact (a `<hash>.tree` directory, or a `<hash>.tar.zst`) the index
+has no row for (a `SCHEMA_VERSION` bump drops every table and leaves
+the artifacts behind, as a deleted `cache.db` does) and a
+`<hash>.tree.tmp-*` or `<hash>.tar.zst.tmp-*` a save that crashed never
 renamed. A run that asks for an orphan's key indexes it again from its
 bytes and hits; one no task asks for again is only reclaimed here. The
 policy judges a row-less artifact as it judges an entry, by its file
