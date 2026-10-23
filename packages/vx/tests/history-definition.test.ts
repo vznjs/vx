@@ -131,3 +131,16 @@ it('a definition is the command and env.define, in any key order', () => {
   expect(taskDefinition(BEFORE)).toBe(taskDefinition(INPUTS_EDITED)!)
   expect(taskDefinition(BEFORE)).not.toBe(taskDefinition(COMMAND_CHANGED)!)
 })
+
+// PR #4150's first run: main's shared timings carried no definitions, and
+// every task read as unmeasured.
+it('a timing of no definition is read, whatever the task is now', async () => {
+  const h = read(COMMAND_CHANGED)
+  h.importTimings(
+    'old',
+    new Map([['p#t', 7_000]]),
+    new Map([['p#t', { p50DurationMs: 7_000, maxCpuParallelism: 3 }]]),
+  )
+  expect([...(await h.p50sFor(['p#t']))]).toEqual([['p#t', 7_000]])
+  expect((await h.resourcesFor(['p#t'])).get('p#t')?.maxCpuParallelism).toBe(3)
+})

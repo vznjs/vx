@@ -124,8 +124,9 @@ carries the task's definition: an xxh3 of its id, command and
 changed under the same name starts over (M, 2026-10-23); editing its
 inputs, outputs, cache, sandbox grants, timeout, description or
 dependencies keeps its history. An imported timing carries the
-definition it was taken of (the blob's `defs`), and one without is
-read by no such reader. `tests/history-definition.test.ts`.
+definition it was taken of (the blob's `defs`); a row of none (a blob
+shared before definitions were kept) is read by every reader, or a PR's
+first run would have read every task unmeasured. `tests/history-definition.test.ts`.
 
 ## Who reads it
 

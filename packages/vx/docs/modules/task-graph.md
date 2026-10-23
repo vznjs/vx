@@ -44,6 +44,9 @@ export interface BuildGraphOptions {
 export type GraphRules = WorkspaceRules & { readonly locked?: boolean }
 
 export function taskId(project: string, task: string): string
+// graph/definition.ts: what history keys a task by (## Definitions)
+export function taskDefinition(node: TaskNode): string | undefined
+export function taskDefinitions(nodes: Iterable<TaskNode>): Map<string, string>
 export function buildTaskGraph(options: BuildGraphOptions): Map<string, TaskNode>
 // Removes the unscheduled tasks from `nodes` (returned, deps intact, as
 // `keyOnly`) and trims each scheduled task's `deps` (the ids it lost in

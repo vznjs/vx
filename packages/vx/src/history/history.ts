@@ -112,7 +112,9 @@ export class LocalHistoryProvider implements HistoryProvider {
     private readonly branch?: string | null,
     /**
      * Each task's definition (`taskDefinitions`): given, a task reads only
-     * the rows of it as it is now, and a task not in it reads none.
+     * the rows of it as it is now, and a task not in it reads none. A row
+     * of no definition (timings shared before definitions were kept) is
+     * read: dropping them left a PR's run with no task measured (#4150).
      */
     private readonly defs?: ReadonlyMap<string, string>,
   ) {}
@@ -124,7 +126,7 @@ export class LocalHistoryProvider implements HistoryProvider {
 
   /** Whether a row of `id` under `def` is the task as it is now. */
   private current(id: string, def: string | null | undefined): boolean {
-    return this.defs === undefined || (def != null && this.defs.get(id) === def)
+    return this.defs === undefined || def == null || this.defs.get(id) === def
   }
 
   /** A task id's `[project, task, def?]`, the JSON a statement matches rows by. */
@@ -136,7 +138,7 @@ export class LocalHistoryProvider implements HistoryProvider {
 
   /** The condition on a `task_durations` row's `def`, against `j.value ->> 2`. */
   private get durationDef(): string {
-    return this.defs === undefined ? '' : 'AND def = j.value ->> 2'
+    return this.defs === undefined ? '' : 'AND (def IS NULL OR def = j.value ->> 2)'
   }
 
   /**
