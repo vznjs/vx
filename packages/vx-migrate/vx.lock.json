@@ -111,10 +111,7 @@
     },
     "test": {
       "dependsOn": [
-        "test.shard-1",
-        "test.shard-2",
-        "test.shard-3",
-        "test.shard-4"
+        "test.shard-*"
       ]
     },
     "test.shard-1": {
