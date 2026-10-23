@@ -235,8 +235,8 @@ warm-up. The best possible end on unlimited workers is 120.5 s:
 | default           |       120.5 s |      10 |         86% |    13.1 min |
 | order: graphene   |       120.5 s |      10 |         89% |    12.7 min |
 | order: fifo       |       120.5 s |      10 |         76% |    14.8 min |
-| place: tetris     |       120.5 s |      10 |         77% |    14.5 min |
-| place: worst-fit  |       120.5 s |      10 |         77% |    14.5 min |
+| place: tetris     |       120.5 s |      10 |         77% |    14.6 min |
+| place: worst-fit  |       120.5 s |      10 |         77% |    14.6 min |
 | place: first-fit  |       120.5 s |      10 |         86% |    13.1 min |
 | book: margin      |       120.5 s |      12 |         69% |    16.2 min |
 | book: whole       |       348.9 s |      11 |         19% |    58.9 min |
@@ -248,6 +248,109 @@ yourself from a checkout:
 ```sh
 bun test packages/vx-dte/tests/sim.test.ts
 ```
+
+The simulator matches real runs. Main's run at
+[c5d8353](https://github.com/vznjs/vx/actions/runs/40014645919), played
+on its own graph with each task's measured time, CPU and memory:
+
+| c5d8353           | Real    | Simulated |
+| ----------------- | ------: | --------: |
+| run end           | 113.8 s |   112.7 s |
+| CPU used          |     53% |       56% |
+| workers           |       4 |         4 |
+| cancelled workers |       0 |         0 |
+
+## Why not split it another way
+
+The same graphs, played five ways on 4 vCPU machines that each take
+20 s to start (checkout and install):
+
+- **One machine.** Every task on one CI job, packed onto its 4 cores.
+- **Static matrix.** N jobs written in YAML, each a fixed share of the
+  tasks by count, the way test sharding is done, with N set for a full
+  run. A job runs again the misses its share depends on. A job whose
+  share all hit still starts.
+- **Build stage, then a matrix.** One job runs every task another waits
+  on; then N jobs split the rest.
+- **Naive DTE.** N workers start up front, each takes one task at a
+  time in the order tasks got ready, and all stay until the run ends.
+- **vx DTE.** The default above: critical path first, tasks booked by
+  measured CPU, workers started as the plan needs them.
+
+N is the number of workers vx DTE starts for the full run. Machine time
+is what CI bills: every job and worker from its start to its end,
+warm-up and vx DTE's orchestrator job included. CPU used is the work's
+core-minutes over the cores of that machine time. Every way but vx DTE
+is played by the planner's ideal packer, where no task slows another;
+vx DTE is played by the full simulator. Run it yourself:
+
+```sh
+bun packages/vx-dte/scripts/compare.ts
+```
+
+**vx's main run, a09b987.** 65 tasks run, 45.0 core-minutes of work.
+The graph is flat: 52 test shards and a few short tasks.
+
+| Way                       |    Ends | Machine time | CPU used |
+| ------------------------- | ------: | -----------: | -------: |
+| One machine               | 751.0 s |     12.5 min |      90% |
+| Static matrix, 10 jobs    | 126.0 s |     18.3 min |      62% |
+| Build stage, then 10 jobs | 190.0 s |     18.6 min |      60% |
+| Naive DTE, 10 workers     | 392.8 s |     72.0 min |      16% |
+| vx DTE, 10 workers        | 120.5 s |     18.4 min |      61% |
+
+**A vx PR.** The same graph; only lint and 6 test shards miss. 16 tasks
+run, 9.2 core-minutes of work.
+
+| Way                       |    Ends | Machine time | CPU used |
+| ------------------------- | ------: | -----------: | -------: |
+| One machine               | 189.9 s |      3.2 min |      73% |
+| Static matrix, 10 jobs    |  90.1 s |     13.2 min |      17% |
+| Build stage, then 10 jobs | 110.1 s |     13.6 min |      17% |
+| Naive DTE, 10 workers     | 120.2 s |     22.0 min |      10% |
+| vx DTE, 3 workers         |  90.1 s |      5.5 min |      42% |
+
+**An app monorepo after a change to its base library.** Not ours: 24
+libraries, each built on the one before it and one further down, each
+with a test and a lint, and 4 apps on six libraries each, built, tested
+and run end to end. 84 tasks run, 71.0 core-minutes of work.
+
+| Way                      |     Ends | Machine time | CPU used |
+| ------------------------ | -------: | -----------: | -------: |
+| One machine              | 1205.0 s |     20.1 min |      88% |
+| Static matrix, 6 jobs    |  810.0 s |     73.1 min |      24% |
+| Build stage, then 6 jobs | 1060.0 s |     27.3 min |      65% |
+| Naive DTE, 6 workers     |  765.0 s |     89.3 min |      20% |
+| vx DTE, 6 workers        |  720.0 s |     43.7 min |      41% |
+
+**The same monorepo, one app changed.** 3 tasks run, 9.3 core-minutes
+of work.
+
+| Way                      |    Ends | Machine time | CPU used |
+| ------------------------ | ------: | -----------: | -------: |
+| One machine              | 260.0 s |      4.3 min |      53% |
+| Static matrix, 6 jobs    | 260.0 s |     10.0 min |      23% |
+| Build stage, then 6 jobs | 280.0 s |      7.3 min |      32% |
+| Naive DTE, 6 workers     | 260.0 s |     30.3 min |       8% |
+| vx DTE, 1 worker         | 260.0 s |      8.7 min |      27% |
+
+Why each loses:
+
+- **One machine** bills the least in every case and ends last whenever
+  there is work to spread: 751.0 s on our main run.
+- **A static matrix** is sized once, for the full run. On our flat main
+  run it comes close to vx DTE, because its shards were split for that
+  graph. On a PR all 10 jobs still start: 13.2 machine-minutes for 9.2
+  core-minutes of work. On a deep graph each job builds again the
+  libraries its share needs: 73.1 machine-minutes.
+- **A build stage** makes every test wait for the slowest build, and
+  each stage pays its own warm-up: 1060.0 s on the monorepo.
+- **Naive DTE** gives each task a whole worker and keeps every worker
+  until the end: 72.0 machine-minutes on our main run, at 16% CPU.
+- **vx DTE** ends first, or level with the best, in all four. Of the
+  ways that end as early, it bills the least in three. With one app
+  changed, one machine ends as early and bills 4.3 machine-minutes
+  against 8.7: vx DTE's orchestrator job runs no task itself.
 
 ## What is still slow
 
