@@ -6,7 +6,7 @@ authors:
 tags:
   - dx
   - caching
-excerpt: "vx names a task flaky only when its exact cache key failed after it had passed, or it needed a retry this run. A failure on inputs that never passed is a break, not a flake. No service, no upload: the local run history is enough."
+excerpt: "vx names a task flaky only when its exact cache key failed after it had passed, or it passed only on a retry this run. A failure on inputs that never passed is a break, not a flake. No service, no upload: the local run history is enough."
 ---
 
 Flaky-test detection is one of the features that usually lives behind
