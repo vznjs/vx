@@ -1,6 +1,6 @@
-// ci.yml is two distributed runs (owner, 2026-10-22: "everything should run
-// in DTE", "yes 2x dte"): one for Linux, one for macOS, each the required
-// check of its platform, with no `changes` job skipping either.
+// ci.yml is one distributed run for every platform (owner, 2026-10-23:
+// "merge all 3 workflows into 1 dte"): a task bound to one platform runs
+// on a worker of it, with no `changes` job skipping the run.
 //
 // `.unsafe`: the workflows live at the repo root, which a sandboxed project
 // task may not read.
@@ -37,29 +37,18 @@ const read = (file: string): Workflow =>
   Bun.YAML.parse(readFileSync(path.join(dir, file), 'utf8')) as Workflow
 const doc = read('ci.yml')
 const worker = read('vx-worker.yml').jobs['worker']!
-const RUNS = ['linux', 'binary-linux-arm64', 'macos'] as const
 const checkout = (j: Job | undefined): Step | undefined =>
   j?.steps?.find((s) => String(s.uses).startsWith('actions/checkout@'))
 
 describe('ci.yml', () => {
-  it('is the Linux run, plus macOS and the arm64 binary on main', () => {
+  // The run only plans and dispatches: Linux x64, so every macOS and arm
+  // runner is a worker's.
+  it('is one run', () => {
     const top =
       "github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size"
     expect(
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
-    ).toEqual([
-      ['linux', 'linux-x64', 'ubuntu-latest', top, undefined],
-      // Each run only plans and dispatches: Linux x64, so every macOS and
-      // arm runner is a worker's.
-      [
-        'binary-linux-arm64',
-        'linux-arm64',
-        'ubuntu-latest',
-        "github.event_name != 'pull_request'",
-        undefined,
-      ],
-      ['macos', 'darwin-arm64', 'ubuntu-latest', "github.event_name != 'pull_request'", undefined],
-    ])
+    ).toEqual([['linux', 'linux-x64', 'ubuntu-latest', top, undefined]])
   })
 
   // A merged PR's run held its workers' runners until it ended, and the next
@@ -71,18 +60,13 @@ describe('ci.yml', () => {
       group: '${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}',
       'cancel-in-progress': "${{ github.event_name == 'pull_request' }}",
     })
-    for (const j of Object.values(doc.jobs))
-      expect(j.if).toMatch(/github\.event\.action != 'closed'|github\.event_name != 'pull_request'/)
+    expect(doc.jobs['linux']!.if).toStartWith("github.event.action != 'closed' && ")
   })
 
   // Shallow, a run found no merge-base and so no measured needs, and every
   // shard booked a whole worker at ~25% CPU (2026-10-22).
-  it('checks each run out with the history its timings import walks', () => {
-    for (const id of RUNS)
-      expect([id, checkout(doc.jobs[id])?.with]).toEqual([
-        id,
-        { 'fetch-depth': 0, filter: 'blob:none' },
-      ])
+  it('checks the run out with the history its timings import walks', () => {
+    expect(checkout(doc.jobs['linux'])?.with).toEqual({ 'fetch-depth': 0, filter: 'blob:none' })
   })
 
   // The run's report is the job summary, not a check run of its own beside
@@ -96,22 +80,19 @@ describe('ci.yml', () => {
   })
 
   // Nothing runs on a distributed run's orchestrator (owner, 2026-10-22):
-  // the macOS checks of this machine's sandbox are tasks a Mac worker runs.
-  it('runs the macOS sandbox checks as tasks of the run', () => {
-    const steps = doc.jobs['macos']!.steps!
+  // each platform's checks are tasks a worker of it runs, on main.
+  it('runs every platform’s checks as tasks of the run, on main', () => {
+    const steps = doc.jobs['linux']!.steps!
     expect(steps.filter((s) => /sandbox-canary\.ts|--cache-policy/.test(s.run ?? ''))).toEqual([])
     const run = steps.find((s) => s.run?.includes('bin.ts run '))!.run!
-    expect(run).toContain(' check.sandbox-canary ')
-    expect(run).toContain(' check.build-cold ')
+    expect(run).toContain(
+      "${{ github.event_name != 'pull_request' && 'build.bun.linux-x64 build.bun.darwin-x64 check.binary.linux-arm64 check.binary.darwin-arm64 test.platform check.sandbox-canary check.build-cold' || '' }}",
+    )
   })
 
   // Every sandboxed task runs on a worker, which enforces it there.
-  it('installs no sandbox runtime on a run', () => {
-    for (const id of RUNS)
-      expect([id, doc.jobs[id]!.steps!.some((s) => s.run?.includes(' setup ') === true)]).toEqual([
-        id,
-        false,
-      ])
+  it('installs no sandbox runtime on the run', () => {
+    expect(doc.jobs['linux']!.steps!.some((s) => s.run?.includes(' setup ') === true)).toBe(false)
   })
 
   // docs.yml was its own workflow, its own install and sandbox runtime, for
@@ -134,28 +115,20 @@ describe('ci.yml', () => {
   // A run is what a developer would write (owner, 2026-10-23: "super
   // simple"); vx names the run, sizes, starts and cancels its workers.
   it('is checkout, Bun, install, lock check and vx run, nothing else', () => {
-    const shape = (j: Job) =>
-      j.steps!.filter((s) => s.if === undefined).map((s) => s.uses?.split('@')[0] ?? s.run)
-    const run = (id: string) =>
-      doc.jobs[id]!.steps!.find((s) => s.run?.includes('bin.ts run '))!.run!
-    // The lock check is in every run (owner, 2026-10-23: "lock is the most
+    const job = doc.jobs['linux']!
+    const run = job.steps!.find((s) => s.run?.includes('bin.ts run '))!.run!
+    // The lock check is in the run (owner, 2026-10-23: "lock is the most
     // critical step on CI to run").
-    for (const id of RUNS)
-      expect([id, shape(doc.jobs[id]!)]).toEqual([
-        id,
-        [
-          'actions/checkout',
-          'oven-sh/setup-bun',
-          'bun install --frozen-lockfile',
-          'bun packages/vx/src/bin.ts lock --check',
-          run(id),
-        ],
-      ])
-    for (const id of RUNS)
-      expect([id, doc.jobs[id]!.env?.['VX_DTE_RELAY']]).toEqual([
-        id,
-        expect.stringMatching(/^https:\/\//),
-      ])
+    expect(
+      job.steps!.filter((s) => s.if === undefined).map((s) => s.uses?.split('@')[0] ?? s.run),
+    ).toEqual([
+      'actions/checkout',
+      'oven-sh/setup-bun',
+      'bun install --frozen-lockfile',
+      'bun packages/vx/src/bin.ts lock --check',
+      run,
+    ])
+    expect(job.env?.['VX_DTE_RELAY']).toMatch(/^https:\/\//)
   })
 
   // The remote cache serves every hit (owner, 2026-10-23: "we dont need

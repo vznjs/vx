@@ -23,13 +23,11 @@ const GIT_HERMETIC = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' 
 // default shares entries through the user's store, and one fixture would hit
 // what another saved.
 // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
-// CI's macOS jobs share the remote cache with Linux; a key that named no
-// platform replayed Linux's pass as the macOS result (#3854). The workers'
-// OS, which ci.yml names: the run's own job is Linux for both runs (owner,
-// 2026-10-22), so its RUNNER_OS says nothing of where a suite ran. An env
-// read when the key is taken: a value the config computes is frozen into
-// the lock.
-const PLATFORM = ['CI_WORKERS_OS']
+// The platform-bound tasks: CI runs them on Mac workers (darwin-arm64) or
+// the arm worker (linux-arm64) of its one distributed run, and their key
+// folds the platform (exec.platforms), so a Linux pass never replays as
+// the macOS result (#3854).
+const MAC = ['darwin-arm64'] as const
 const SUITE_ENV = {
   ...GIT_HERMETIC,
   BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0',
@@ -96,6 +94,7 @@ const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
   dependsOn: ['install'],
   exec: {
     command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${n}${flags})`,
+    ...(flags === '' ? {} : { platforms: MAC }),
     env: {
       passThrough: ['VX_REQUIRE_SANDBOX', 'VX_REQUIRE_WATCH_EVENTS', 'VX_REQUIRE_NONROOT'],
       define: SUITE_ENV,
@@ -115,10 +114,47 @@ const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
   inputs: {
     files: SOURCES,
     workspaceFiles: ['README.md', 'skills/**'],
-    env: PLATFORM,
   },
   cache: {
     outputs: { files: [] as string[] },
+  },
+})
+// The release binary of each platform CI has a worker of must launch there:
+// linux-arm64 is cross-compiled and runs nowhere else (the arm worker),
+// darwin-arm64 on a Mac worker; plain check.binary on the run's own Linux.
+const checkBinary = (platforms?: readonly ('linux-arm64' | 'darwin-arm64')[]) => ({
+  description:
+    'compile the host binary the way release.yml does; it must launch and report the manifest version',
+  dependsOn: ['install'],
+  exec: {
+    command: 'bun scripts/check-binary.ts',
+    ...(platforms === undefined ? {} : { platforms }),
+    sandbox: {
+      allow: {
+        // The bare-specifier workspace links the schedule plugin.
+        read: ['**/*', '../vx-schedule-history/**'],
+        write: ['dist/**', ...BUN_RUNTIME_WRITES],
+        network: BUN_RUNTIME_NETWORK,
+        systemInfo: ['vfs.disk-space'],
+      },
+      ignore: {
+        write: ['*.bun-build'],
+      },
+    },
+  },
+  inputs: {
+    files: [
+      'src/**',
+      'index.ts',
+      'package.json',
+      'scripts/check-binary.ts',
+      'scripts/binary-launch.ts',
+    ],
+    workspaceFiles: ['packages/vx-schedule-history/**'],
+    runtime: BUN_VERSION,
+  },
+  cache: {
+    outputs: { files: [] },
   },
 })
 const shards = <T>(name: string, n: number, task: (i: number, n: number) => T): Record<string, T> =>
@@ -138,6 +174,7 @@ const unsafeShardTask = (i: number, n: number, flags = '') => ({
   dependsOn: ['install'],
   exec: {
     command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${n} --unsafe${flags})`,
+    ...(flags === '' ? {} : { platforms: MAC }),
     env: {
       passThrough: [
         'VX_REQUIRE_SANDBOX',
@@ -182,7 +219,6 @@ const unsafeShardTask = (i: number, n: number, flags = '') => ({
       '.vx/workspace.ts',
       ...OTHER_OUTPUTS,
     ],
-    env: PLATFORM,
   },
   cache: {
     outputs: { files: [] as string[] },
@@ -466,7 +502,7 @@ export default defineProject({
       description:
         'drive 20 leaky sandboxed runs through run() under this machine’s sandbox; one it did not enforce fails',
       dependsOn: ['install'],
-      exec: { command: 'bun tests/helpers/sandbox-canary.ts 20' },
+      exec: { command: 'bun tests/helpers/sandbox-canary.ts 20', platforms: MAC },
     },
     // A grant bwrap honoured by its mounts failed `@vzn/vx-docs#import` on
     // every Mac for a week (2026-10-17). No cache read: a hit would skip the
@@ -475,44 +511,12 @@ export default defineProject({
       description:
         'every package’s build under this machine’s sandbox, no cache, as a developer runs it',
       dependsOn: ['install'],
-      exec: { command: 'bun scripts/build-cold.ts' },
+      exec: { command: 'bun scripts/build-cold.ts', platforms: MAC },
     },
 
-    'check.binary': {
-      description:
-        'compile the host binary the way release.yml does; it must launch and report the manifest version',
-      dependsOn: ['install'],
-      exec: {
-        command: 'bun scripts/check-binary.ts',
-        sandbox: {
-          allow: {
-            // The bare-specifier workspace links the schedule plugin.
-            read: ['**/*', '../vx-schedule-history/**'],
-            write: ['dist/**', ...BUN_RUNTIME_WRITES],
-            network: BUN_RUNTIME_NETWORK,
-            systemInfo: ['vfs.disk-space'],
-          },
-          ignore: {
-            write: ['*.bun-build'],
-          },
-        },
-      },
-      inputs: {
-        files: [
-          'src/**',
-          'index.ts',
-          'package.json',
-          'scripts/check-binary.ts',
-          'scripts/binary-launch.ts',
-        ],
-        workspaceFiles: ['packages/vx-schedule-history/**'],
-        runtime: BUN_VERSION,
-        env: PLATFORM,
-      },
-      cache: {
-        outputs: { files: [] },
-      },
-    },
+    'check.binary': checkBinary(),
+    'check.binary.linux-arm64': checkBinary(['linux-arm64']),
+    'check.binary.darwin-arm64': checkBinary(MAC),
 
     lint: {
       dependsOn: ['lint.oxlint', 'lint.oxfmt'],
