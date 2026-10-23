@@ -323,6 +323,14 @@ const releaseTasks = {
       ],
     ]),
   ),
+  'release.served': {
+    description: 'wait until npm serves every published tarball (HTTP 200), up to 10 min',
+    exec: {
+      command: 'bun scripts/release.ts served',
+      env: RELEASE_VERSION,
+      sandbox: { allow: { read: ['.'], network: ['registry.npmjs.org'] } },
+    },
+  },
   ...Object.fromEntries(
     (['linux', 'darwin'] as const).map((os) => [
       `release.upload.${os}`,

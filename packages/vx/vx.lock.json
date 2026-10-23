@@ -3297,6 +3297,27 @@
         }
       }
     },
+    "release.served": {
+      "description": "wait until npm serves every published tarball (HTTP 200), up to 10 min",
+      "exec": {
+        "command": "bun scripts/release.ts served",
+        "env": {
+          "passThrough": [
+            "VX_RELEASE_VERSION"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "."
+            ],
+            "network": [
+              "registry.npmjs.org"
+            ]
+          }
+        }
+      }
+    },
     "release.upload.linux": {
       "description": "attach the linux binaries to the draft release (scripts/release-assets.ts)",
       "exec": {

@@ -9,6 +9,7 @@
 //   bun scripts/release.ts prove <linux|darwin>
 //   bun scripts/release.ts assemble <linux|darwin>
 //   bun scripts/release.ts publish <linux|darwin>
+//   bun scripts/release.ts served
 
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -84,6 +85,32 @@ export function publishAll(
       registry.publish(dir)
     }
     log('::endgroup::')
+  }
+}
+
+/** Where npm serves `name@version`'s tarball. */
+export const tarballUrl = (name: string, version: string): string =>
+  `https://registry.npmjs.org/${name}/-/${name.split('/').pop()}-${version}.tgz`
+
+/**
+ * Wait until every url answers 200. npm's CDN can 404 a just-published
+ * tarball for minutes (v0.0.646's linux-x64: ~4 min), and an install in that
+ * window fails, so a release is done only when each one downloads.
+ */
+export async function awaitServed(
+  urls: readonly string[],
+  status: (url: string) => Promise<number>,
+  wait: { tries: number; sleep: () => Promise<void> },
+  log: (line: string) => void,
+): Promise<void> {
+  let left = [...urls]
+  for (let i = 0; ; i++) {
+    const codes = await Promise.all(left.map(status))
+    left = left.filter((_, j) => codes[j] !== 200)
+    if (left.length === 0) return
+    if (i + 1 >= wait.tries) throw new Error(`npm does not serve:\n  ${left.join('\n  ')}`)
+    log(`waiting for npm to serve ${left.length}: ${left.join(' ')}`)
+    await wait.sleep()
   }
 }
 
@@ -247,11 +274,37 @@ function publish(os: Os, version: string): void {
   )
 }
 
+// Every package both publish jobs sent: the linux job runs last, so
+// the darwin packages are already published.
+async function served(version: string): Promise<void> {
+  const pluginsDir = path.join(TREE, 'plugins')
+  const plugins = existsSync(pluginsDir) ? readdirSync(pluginsDir) : []
+  const names = [
+    ...publishOrder('darwin', []),
+    ...publishOrder('linux', plugins).map(
+      (rel) =>
+        (JSON.parse(readFileSync(path.join(TREE, rel, 'package.json'), 'utf8')) as { name: string })
+          .name,
+    ),
+  ]
+  await awaitServed(
+    names.map((n) => tarballUrl(n, version)),
+    async (url) => {
+      const res = await fetch(url, { method: 'HEAD' }).catch(() => undefined)
+      return res?.status ?? 0
+    },
+    { tries: 60, sleep: () => Bun.sleep(10_000) },
+    (line) => console.log(line),
+  )
+  console.log(`npm serves all ${names.length} tarballs at ${version}`)
+}
+
 async function main(argv: readonly string[]): Promise<void> {
   const [step, os] = argv
   if (step === 'npm') return ensureNpm()
   const version = releaseVersion(process.env['VX_RELEASE_VERSION'])
   if (step === 'stamp') return stamp(version)
+  if (step === 'served') return served(version)
   if (os !== 'linux' && os !== 'darwin') throw new Error(`usage: release.ts ${step} <linux|darwin>`)
   if (step === 'prove') return prove(os, version)
   if (step === 'assemble') return assemble(os, version)

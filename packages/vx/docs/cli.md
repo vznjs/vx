@@ -1741,6 +1741,7 @@ holds it. The tasks are `@vzn/vx`'s `release.*`, all uncached and in no
 | `release.prove.<os>`    | launches the host's binary (re-signed only if macOS refuses it) and asserts `vx <version>`; on darwin, launches both (x64 under Rosetta) |
 | `release.assemble.<os>` | emits the platform packages under `dist/npm` (linux: also `@vzn/vx` and the plugins)                                                     |
 | `release.publish.<os>`  | `npm publish --provenance` each in order, skipping one the registry holds                                                                |
+| `release.served`        | waits (up to 10 min) until npm's CDN answers 200 for every published tarball: it 404ed v0.0.646's for minutes, failing installs          |
 | `release.upload.<os>`   | attaches `dist/vx-<os>-*` the draft release lacks; darwin's then publishes it                                                            |
 | `release.auto`          | decides the version, creates the draft release with its notes, dispatches the two workflows                                              |
 
