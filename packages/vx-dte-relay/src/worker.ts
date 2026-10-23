@@ -2,7 +2,7 @@
 // run's mailboxes live in one place and its held polls answer there.
 // Participants hold websockets the object hibernates between messages: its
 // state is in its storage, and an alarm, not a timer, finds the silent.
-// `wrangler.jsonc` deploys it; ALLOW is a secret the deployer sets.
+// `wrangler.jsonc` deploys it; ALLOW is a var in it.
 
 import { claimedRun, createVerifier, parseAllow } from './oidc.js'
 import { createRelay, GONE, runKey, type Relay, type RelayStore } from './relay.js'

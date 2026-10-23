@@ -13,7 +13,6 @@ it('installs alone with npm and deploys with wrangler by wrangler.jsonc', async 
   ) as {
     main: string
     vars?: object
-    secrets?: object
     durable_objects: unknown
     migrations: unknown
   }
@@ -21,22 +20,18 @@ it('installs alone with npm and deploys with wrangler by wrangler.jsonc', async 
     workspace: Object.entries(deps).filter(([, spec]) => String(spec).startsWith('workspace:')),
     deploy: pkg.scripts.deploy,
     main: await Bun.file(path.join(import.meta.dir, '..', config.main)).exists(),
-    // A deploy replaces every var with this file's and keeps secrets, so
-    // ALLOW is a secret the button asks for, and no deployer's ALLOW is here.
+    // ALLOW is a plain var each deploy sets from this file (owner,
+    // 2026-10-23); no deployer's value is here.
     vars: config.vars,
-    // A deploy to a Worker that lost ALLOW shipped a relay refusing every
-    // run (2026-10-23); now it fails and the live one stays.
-    required: config.secrets,
-    secrets: await Bun.file(path.join(import.meta.dir, '..', '.dev.vars.example')).text(),
+    devVars: await Bun.file(path.join(import.meta.dir, '..', '.dev.vars.example')).text(),
     objects: config.durable_objects,
     migrations: config.migrations,
   }).toEqual({
     workspace: [],
     deploy: 'wrangler deploy',
     main: true,
-    vars: undefined,
-    required: { required: ['ALLOW'] },
-    secrets: 'ALLOW=https://token.actions.githubusercontent.com:owner/repo:ci.yml\n',
+    vars: { ALLOW: '' },
+    devVars: 'ALLOW=https://token.actions.githubusercontent.com:owner/repo:ci.yml\n',
     objects: { bindings: [{ name: 'RELAY', class_name: 'RelayRun' }] },
     migrations: [{ tag: 'v1', new_sqlite_classes: ['RelayRun'] }],
   })

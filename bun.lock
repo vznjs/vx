@@ -171,6 +171,16 @@
         "@vzn/vx-schedule-history": "workspace:*",
       },
     },
+    "private/vx-dte-relay-deploy": {
+      "name": "@vzn/vx-dte-relay-deploy",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vzn/vx-dte-relay": "workspace:*",
+      },
+      "devDependencies": {
+        "wrangler": "4.149.0",
+      },
+    },
     "private/vx-plugin-examples": {
       "name": "@vzn/vx-plugin-examples",
       "version": "0.0.0",
@@ -738,6 +748,8 @@
     "@vzn/vx-dte": ["@vzn/vx-dte@workspace:packages/vx-dte"],
 
     "@vzn/vx-dte-relay": ["@vzn/vx-dte-relay@workspace:packages/vx-dte-relay"],
+
+    "@vzn/vx-dte-relay-deploy": ["@vzn/vx-dte-relay-deploy@workspace:private/vx-dte-relay-deploy"],
 
     "@vzn/vx-lockfile": ["@vzn/vx-lockfile@workspace:packages/vx-lockfile"],
 
