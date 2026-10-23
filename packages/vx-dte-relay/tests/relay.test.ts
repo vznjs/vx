@@ -372,6 +372,40 @@ describe('the relay carries one run between its orchestrator and workers', () =>
     expect((await c.send(R, o, a, body)).status).toBe(204)
   })
 
+  // A worker's queue full when its run closed threw out of the close: the
+  // workers after it never heard, and the run was never forgotten, so its
+  // id refused the next orchestrator for good.
+  it('closes a run whose worker’s queue is full: every worker hears, the run is gone', async () => {
+    const c = client()
+    const o = await c.join(R, 'orchestrator')
+    const a = await c.join(R, 'worker')
+    const b = await c.join(R, 'worker')
+    await c.poll(R, o)
+    // 10 000 messages, the most it holds.
+    for (let i = 0; i < 5; i++) await c.frame(R, o, { sends: Array(2000).fill({ to: a, body: i }) })
+    expect((await c.send(R, o, a, 'one more')).status).toBe(429)
+    await c.plug(R, b)
+    const left = await c.frame(R, o, { leave: true })
+    expect(left.status).toBeUndefined()
+    expect(await c.poll(R, b)).toEqual([{ from: 'relay', body: { type: 'closed' } }])
+    expect([c.closes.get(o), c.closes.get(b)]).toEqual([[GONE], [GONE]])
+    expect((await c.call(R, 'join', { role: 'orchestrator' })).status).toBe(200)
+  })
+
+  it('tells an orchestrator whose queue is full of a lost worker, and sweeps on', async () => {
+    const c = client({ heartbeatMs: 20, timer: false })
+    const o = await c.join(R, 'orchestrator')
+    const a = await c.join(R, 'worker')
+    const b = await c.join(R, 'worker')
+    for (let i = 0; i < 4; i++)
+      await c.frame(R, a, { sends: Array(2500).fill({ to: 'orchestrator', body: i }) })
+    expect((await c.send(R, a, 'orchestrator', 'one more')).status).toBe(429)
+    await Bun.sleep(60)
+    for (const id of [o, a]) c.relay.seen(K, id, Date.now())
+    expect(c.relay.sweep()).toBeNumber()
+    expect((await c.poll(R, o)).at(-1)).toEqual({ from: 'relay', body: { type: 'lost', id: b } })
+  })
+
   it('wants a bearer token when it verifies', async () => {
     const c = client({ verify: async () => ({ iss: 'i', run: ['1'] }) })
     expect((await c.call(R, 'join', { role: 'worker' })).status).toBe(401)

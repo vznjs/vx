@@ -170,7 +170,13 @@ export function createRelay(opts: RelayOptions): Relay {
     p.saved = p.seen
   }
 
-  const deliver = (run: Run, p: Participant, m: Message, bytes = 0): void => {
+  /**
+   * `capped` false: the relay's own notice (joined, lost, closed), queued
+   * past a full queue. Refused, it threw out of a close or a sweep: the
+   * workers after it never heard, the run was never forgotten, and the Bun
+   * host's timer threw it out of the process (2026-10-23).
+   */
+  const deliver = (run: Run, p: Participant, m: Message, bytes = 0, capped = true): void => {
     if (p.socket !== undefined && p.queue.length === 0) {
       try {
         p.socket.send(JSON.stringify({ messages: [m] }))
@@ -179,7 +185,7 @@ export function createRelay(opts: RelayOptions): Relay {
         unplug(p)
       }
     }
-    if (p.queue.length >= MAX_QUEUE || p.bytes + bytes > MAX_QUEUE_BYTES) {
+    if (capped && (p.queue.length >= MAX_QUEUE || p.bytes + bytes > MAX_QUEUE_BYTES)) {
       throw new HttpError(429, 'queue full')
     }
     if (p.queue.length === 0) store?.put(qAt(run, p.id), true)
@@ -236,7 +242,7 @@ export function createRelay(opts: RelayOptions): Relay {
     saveRun(run)
     for (const p of [...run.byId.values()]) {
       if (p.role !== 'worker') continue
-      deliver(run, p, { from: 'relay', body: { type: 'closed' } })
+      deliver(run, p, { from: 'relay', body: { type: 'closed' } }, 0, false)
       drop(run, p, false)
     }
     // A run is live while its orchestrator is, and only a live one is kept:
@@ -267,7 +273,7 @@ export function createRelay(opts: RelayOptions): Relay {
       return
     }
     if (tell && run.orchestrator !== undefined && !run.closed) {
-      deliver(run, run.orchestrator, { from: 'relay', body: { type: 'lost', id: p.id } })
+      deliver(run, run.orchestrator, { from: 'relay', body: { type: 'lost', id: p.id } }, 0, false)
     }
   }
 
@@ -414,12 +420,12 @@ export function createRelay(opts: RelayOptions): Relay {
       saveParticipant(run, p)
       for (const a of run.byId.values()) {
         if (a.role === 'worker') {
-          deliver(run, p, joined(a))
+          deliver(run, p, joined(a), 0, false)
           saveParticipant(run, a)
         }
       }
     } else if (run.orchestrator !== undefined) {
-      deliver(run, run.orchestrator, joined(p))
+      deliver(run, run.orchestrator, joined(p), 0, false)
       saveParticipant(run, p)
     } else {
       // Held until an orchestrator joins to read it.
