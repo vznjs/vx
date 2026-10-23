@@ -1,5 +1,5 @@
 {
-  "name": "@vzn/vx-dte-relay-deploy",
+  "name": "@vzn/vx-dte-relay-worker",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
