@@ -72,6 +72,8 @@ interface Participant {
   /** An agent's, until the orchestrator is told it joined. */
   info: unknown
   seen: number
+  /** The `seen` its host's storage holds. */
+  saved?: number
   /** Requests it may still make now, and when that was counted (a token bucket). */
   tokens: number
   filled: number
@@ -173,8 +175,10 @@ export function createRelay(opts: RelayOptions): Relay {
     })
   // `seen` too: restored as heard just now, a gone participant kept its
   // object waking every sweep, forever (2026-10-22).
-  const saveParticipant = (run: Run, p: Participant): void =>
+  const saveParticipant = (run: Run, p: Participant): void => {
     store?.put(pAt(run, p.id), { role: p.role, info: p.info, seen: p.seen })
+    p.saved = p.seen
+  }
 
   const deliver = (run: Run, p: Participant, m: Message, bytes = 0): void => {
     if (p.socket !== undefined && p.queue.length === 0) {
@@ -308,7 +312,10 @@ export function createRelay(opts: RelayOptions): Relay {
       } else if (run.byId.size === 0) forget(run)
       else {
         for (const p of run.byId.values()) {
-          saveParticipant(run, p)
+          // One on a socket is heard anew when its host restores the socket;
+          // a write per participant per sweep spent a free host's 100 000
+          // rows a day in about 40 CI runs (2026-10-23).
+          if (p.socket === undefined && p.saved !== p.seen) saveParticipant(run, p)
           at(p.seen + lostAfter(p) + 1)
         }
         if (run.orchestrator === undefined) at(run.openedAt + orphanTtl + 1)
@@ -531,8 +538,12 @@ export function createRelay(opts: RelayOptions): Relay {
       return true
     },
     detach(key, id, socket) {
-      const p = runs.get(key)?.byId.get(id)
-      if (p?.socket === socket) p.socket = undefined
+      const run = runs.get(key)
+      const p = run?.byId.get(id)
+      if (p === undefined || p.socket !== socket) return
+      p.socket = undefined
+      // Its silence counts from now, though its host evicts this before the next sweep.
+      saveParticipant(run!, p)
     },
     frame(key, id, text) {
       let n: unknown = null
@@ -632,6 +643,7 @@ function restore(store: RelayStore, runs: Map<string, Run>): [Run, Participant][
       role,
       info,
       seen: seen ?? now,
+      saved: seen ?? now,
       tokens: RATE_BURST,
       filled: now,
       queue: [],
