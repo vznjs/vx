@@ -75,54 +75,6 @@ describe('ci.yml', () => {
       expect(j.if).toMatch(/github\.event\.action != 'closed'|github\.event_name != 'pull_request'/)
   })
 
-  // A merged PR's run held its 12 agents' runners 80 s past the merge, and
-  // main's agents waited 65 s for them (2026-10-23).
-  it("cancels the merged PR's runs once main's agents are asked for", () => {
-    const steps = doc.jobs['linux']!.steps!
-    const i = steps.findIndex((s) => s.run?.includes('/commits/$GITHUB_SHA/pulls'))
-    expect(steps[i]?.if).toBe("github.event_name == 'push'")
-    expect(steps[i]!.run).toContain('/cancel')
-    expect(i).toBeGreaterThan(steps.findIndex((s) => s.run?.includes('vx-dte-started')))
-    expect(i).toBeLessThan(steps.findIndex((s) => s.uses?.startsWith('actions/checkout')))
-  })
-
-  it('makes each run distributed, over its relay', () => {
-    for (const id of RUNS) {
-      const steps = doc.jobs[id]!.steps!
-      expect([id, steps.some((s) => s.run?.includes('VX_DTE_RUN=$(uuidgen)'))]).toEqual([id, true])
-      const run = steps.find((s) => s.run?.includes('bin.ts run '))
-      const relay = run?.env?.['VX_DTE_RELAY'] ?? doc.jobs[id]!.env?.['VX_DTE_RELAY']
-      expect([id, relay]).toEqual([id, expect.stringMatching(/^https:\/\//)])
-    }
-  })
-
-  // Checkout and install took ~19 s before vx asked for agents; agents a
-  // step starts first are adopted (github() reads vx-dte-started).
-  it("starts the Linux run's agents before checkout, for the run to adopt", () => {
-    const steps = doc.jobs['linux']!.steps!
-    const start = steps.findIndex((s) => s.run?.includes('vx-dte-started'))
-    expect(start).toBeGreaterThan(steps.findIndex((s) => s.run?.includes('VX_DTE_RUN=$(uuidgen)')))
-    expect(start).toBeLessThan(steps.findIndex((s) => s.uses?.startsWith('actions/checkout')))
-    expect(steps[start]!.run).toContain('vx-dte-runs')
-  })
-
-  // An agent the run asks for later came online 82-90 s in (2026-10-23).
-  it("starts all of each run's agent size before checkout, so none comes late", () => {
-    const workspace = readFileSync(path.join(dir, '..', '..', '.vx', 'workspace.ts'), 'utf8')
-    for (const [id, size] of [
-      ['linux', 'small'],
-      ['macos', 'mac'],
-    ] as const) {
-      const steps = doc.jobs[id]!.steps!
-      const start = steps.findIndex((s) => s.run?.includes('vx-dte-started'))
-      expect(start).toBeLessThan(steps.findIndex((s) => s.uses?.startsWith('actions/checkout')))
-      expect([
-        id,
-        new RegExp(`seq -f '${size}#%g' 1 (\\d+)`).exec(steps[start]!.run!)?.[1],
-      ]).toEqual([id, new RegExp(`${size}: \\{ max: (\\d+)`).exec(workspace)?.[1]])
-    }
-  })
-
   // Shallow, a run found no merge-base and so no measured needs, and every
   // shard booked a whole agent at ~25% CPU (2026-10-22).
   it('checks each run out with the history its timings import walks', () => {
@@ -153,23 +105,6 @@ describe('ci.yml', () => {
     expect(run).toContain(' check.build-cold ')
   })
 
-  // A killed vx never closes its run, so its queued agents held macOS runners.
-  // A cold run that wrote no remote failed every task an agent ran: its
-  // outputs come back through the remote (2026-10-23).
-  it('runs cold reading no cache, still writing the remote agents hand outputs through', () => {
-    const run = doc.jobs['linux']!.steps!.find((s) => s.run?.includes('bin.ts run '))
-    expect(run?.env?.['VX_CACHE_POLICY']).toBe("${{ inputs.cold && 'local:w,remote:w' || '' }}")
-  })
-
-  it('cancels the agent runs a run dispatched, on any outcome', () => {
-    for (const id of RUNS) {
-      const cancel = doc.jobs[id]!.steps!.find(
-        (s) => s.run?.includes('vx-dte-runs') && s.run.includes('/cancel'),
-      )
-      expect([id, cancel?.if]).toEqual([id, 'always()'])
-    }
-  })
-
   // Every sandboxed task runs on an agent, which enforces it there.
   it('installs no sandbox runtime on a run', () => {
     for (const id of RUNS)
@@ -196,13 +131,48 @@ describe('ci.yml', () => {
     expect(job.permissions?.['pages']).toBe('write')
   })
 
-  // release-notes.yml was a workflow of its own for one task (owner,
-  // 2026-10-23: fold workflows into vx tasks on DTE).
+  // A run is what a developer would write (owner, 2026-10-23: "super
+  // simple"); vx names the run, sizes, starts and cancels its agents.
+  it('is checkout, Bun, install, lock check and vx run, nothing else', () => {
+    const shape = (j: Job) =>
+      j.steps!.filter((s) => s.if === undefined).map((s) => s.uses?.split('@')[0] ?? s.run)
+    const run = (id: string) =>
+      doc.jobs[id]!.steps!.find((s) => s.run?.includes('bin.ts run '))!.run!
+    expect(shape(doc.jobs['linux']!)).toEqual([
+      'actions/checkout',
+      'oven-sh/setup-bun',
+      'bun install --frozen-lockfile',
+      'bun packages/vx/src/bin.ts lock --check',
+      run('linux'),
+    ])
+    for (const id of ['binary-linux-arm64', 'macos'])
+      expect([id, shape(doc.jobs[id]!)]).toEqual([
+        id,
+        ['actions/checkout', 'oven-sh/setup-bun', 'bun install --frozen-lockfile', run(id)],
+      ])
+    for (const id of RUNS)
+      expect([id, doc.jobs[id]!.env?.['VX_DTE_RELAY']]).toEqual([
+        id,
+        expect.stringMatching(/^https:\/\//),
+      ])
+  })
+
+  // The remote cache serves every hit (owner, 2026-10-23: "we dont need
+  // to carry any vx cache anymore").
+  it('carries no vx cache between runs', () => {
+    for (const file of ['ci.yml', 'vx-agent.yml'])
+      expect([file, readFileSync(path.join(dir, file), 'utf8').includes('actions/cache')]).toEqual([
+        file,
+        false,
+      ])
+  })
+
+  // release-notes.yml was a workflow of its own for one task.
   it('syncs the release notes as a task of the Linux run, on a push', () => {
     const job = doc.jobs['linux']!
     const run = job.steps!.find((s) => s.run?.includes('bin.ts run '))!
     expect(run.run).toContain("${{ github.event_name == 'push' && 'release.sync' || '' }}")
-    expect([run.env?.['GH_TOKEN'], job.permissions?.['contents']]).toEqual([
+    expect([job.env?.['GH_TOKEN'], job.permissions?.['contents']]).toEqual([
       '${{ github.token }}',
       'write',
     ])
@@ -265,8 +235,6 @@ describe('vx-agent.yml', () => {
     const mount = agent.steps!.find((s) => s.run?.includes('tmpfs'))
     expect(mount?.if).toBe("runner.os == 'Linux'")
     expect(mount?.run).toContain('/tmp/vx-small')
-    expect(
-      doc.jobs['linux']!.steps!.some((s) => s.env?.['VX_SMALL_DISK'] === '/tmp/vx-small'),
-    ).toBe(true)
+    expect(doc.jobs['linux']!.env?.['VX_SMALL_DISK']).toBe('/tmp/vx-small')
   })
 })
