@@ -845,6 +845,8 @@ it('a worker that left is not failed or replaced when its job then ends', async 
 it('the final summary says how each worker ended, its size and machine under it', async () => {
   const h = await harness(new Map([node('t1')]))
   const small = { size: 'small', cpu: 2, memory: 4e9 }
+  h.o.probed(3, 1)
+  h.o.probed(9, 9)
   h.o.asked(2, 3, 1, 70_000, ['p#a', 'p#b'])
   h.o.spawned('small#1', small)
   h.o.spawned('big#1', { size: 'big', cpu: 4, memory: 4e9 })
@@ -865,6 +867,10 @@ it('the final summary says how each worker ended, its size and machine under it'
   expect(rows[at('big#1')]).toMatch(/^big#1 +left/)
   expect(rows.some((r) => r.trimStart().startsWith('!'))).toBe(false)
   expect(rows.filter((r) => /^\S+ +online/.test(r))).toEqual([])
+  // What the cache probe left to run, the first answer only: why the asks counted what they did.
+  expect(rows.filter((r) => r.startsWith('probe'))).toEqual([
+    expect.stringMatching(/^probe +at 0\.\ds: 3 tasks left to run, 1 known misses$/),
+  ])
   // When the run asked for workers, for which work, and when its plan ended: why it had as many as it did.
   expect(rows.filter((r) => r.startsWith('asked'))).toEqual([
     expect.stringMatching(/^asked +2 at 0\.\ds for 3 tasks \(1 measured\), plan 70\.0s$/),

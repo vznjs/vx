@@ -417,7 +417,9 @@ its time online, busy and idle; its CPU peak and average in cores and
 the cores the run booked for the tasks it was running, on average (a
 booked from a task's start to its command's end); its cpu utilization (the core-time its
 tasks used over the core-time it had); its memory peak and average, when its tasks reported any; and, for a worker, the messages and
-bytes the run sent it and received from it. The `asked` line says each
+bytes the run sent it and received from it. The `probe` line says when
+core's cache probe answered, how many tasks it left to run (held in no
+cache, or not answered for) and how many of them it found in none. The `asked` line says each
 time the run asked for workers: how many, when, for how many tasks that
 missed, how many of them with a measured need (an unmeasured one counts
 as `unmeasured`), and when its plan ended then. The first ask
@@ -434,7 +436,8 @@ machine together, and the share of their history the run's tasks used:
                      cpu peak 3.6 · used avg 2.4 cores · booked avg 3.8 · cpu utilization 61%
                      memory peak 1.2 GB · avg 640.0 MB
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
-            asked    1 at 0.0s for 4 cores, 5 tasks (5 measured)
+            probe    at 0.4s: 5 tasks left to run, 5 known misses
+            asked    1 at 0.5s for 5 tasks (5 measured), plan 12.0s
             total    cpu utilization 58%
 ```
 
