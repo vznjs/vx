@@ -842,6 +842,11 @@ describe('every output the vx-ci sweep found unheld', () => {
     )
     const one = renderJobSummary(summary([task({})]))
     expect(one.split('\n')[2]).toBe('**1** task · **1** executed · **0** cache hits · 4.3s')
+    // M, 2026-10-23: the time a distributed run's plan said, beside the real one.
+    const planned = renderJobSummary(summary([task({})], { plannedMs: 3_000 }))
+    expect(planned.split('\n')[2]).toBe(
+      '**1** task · **1** executed · **0** cache hits · 4.3s (planned 3.0s)',
+    )
   })
 
   it('a persistent task that failed to spawn reads so', () => {

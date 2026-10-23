@@ -286,6 +286,11 @@ export interface RunSummaryRecord {
    * executor reports any. Additive.
    */
   machines?: readonly MachineReport[]
+  /**
+   * How long an executor's plan said the run would take
+   * (`TaskExecutor.plannedMs`), beside `totalDurationMs`. Additive.
+   */
+  plannedMs?: number
 }
 
 /** One stage of a run, a wall window in epoch ms. */
@@ -318,6 +323,7 @@ export function assembleRunSummary(
     stages?: readonly RunStage[]
     uploads?: { count: number; bytes: number; ms: number; failed: number }
     machines?: readonly MachineReport[]
+    plannedMs?: number | undefined
   },
 ): RunSummaryRecord {
   let failedCount = 0
@@ -359,6 +365,7 @@ export function assembleRunSummary(
     ...(timing.machines !== undefined && timing.machines.length > 0
       ? { machines: timing.machines }
       : {}),
+    ...(timing.plannedMs !== undefined ? { plannedMs: timing.plannedMs } : {}),
   }
 }
 

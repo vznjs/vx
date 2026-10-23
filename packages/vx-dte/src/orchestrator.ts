@@ -1216,6 +1216,12 @@ export class Orchestrator {
    * was online until now (small#2 read online 1ms, booked 433802 of 4:
    * main, 2026-10-23). Each is `ok`, or `failed` when lost or faulty.
    */
+  /** When the run's first plan said it would end, from the orchestrator's start: the sim real time is held to. */
+  plannedMs(): number | undefined {
+    const first = this.asks[0]
+    return first === undefined ? undefined : first.at + first.endsInMs
+  }
+
   machines(): MachineReport[] {
     const gone = new Set(this.gone)
     const until = this.ended ? this.endedAt : performance.now()

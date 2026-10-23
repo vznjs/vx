@@ -2356,6 +2356,7 @@ export interface RunSummaryRecord {
   stages?: readonly RunStage[]
   uploads?: { count: number; bytes: number; ms: number; failed: number }
   machines?: readonly MachineReport[]
+  plannedMs?: number
 }
 ```
 
@@ -2638,6 +2639,7 @@ export interface TaskExecutor {
   demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
   footer?(): readonly (readonly [label: string, text: ui.Inline])[]
   machines?(): readonly MachineReport[]
+  plannedMs?(): number | undefined
   profile?(): readonly Record<string, unknown>[]
   running?(taskId: string): string | null | undefined
   execute(req: ExecuteRequest): Promise<ExecuteResult>

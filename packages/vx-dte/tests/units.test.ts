@@ -880,6 +880,19 @@ it('a worker that left is not failed or replaced when its job then ends', async 
   }
 })
 
+// M, 2026-10-23: the job summary lost the sim's time beside the real one.
+it("plans the run's end by its first ask, not a later one", async () => {
+  const h = await harness(new Map([node('t1')]))
+  expect(h.o.plannedMs()).toBeUndefined()
+  h.o.asked(2, 3, 1, 70_000)
+  const first = h.o.plannedMs()!
+  expect(first).toBeGreaterThanOrEqual(70_000)
+  expect(first).toBeLessThan(75_000)
+  h.o.asked(1, 1, 1, 5_000)
+  expect(h.o.plannedMs()).toBe(first)
+  await h.stop()
+})
+
 // M, 2026-10-21: a worker the run's end stopped still read `online`, and
 // a size's machines were a `!` line apart from its workers.
 it('the final summary says how each worker ended, its size and machine under it', async () => {
