@@ -1498,6 +1498,9 @@ it('a task its only worker could not run fails when no worker is left', async ()
   const h = await harness(new Map([node('t1')]))
   try {
     h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
+    // Its join sets the size's join limit at twice its warm-up: joined at
+    // once, small#2 had 0 s on a busy CI machine (PR #4162).
+    await Bun.sleep(500)
     const a = await h.worker(1, 'small#1')
     await Bun.sleep(50)
     const t1 = h.o.execute(h.req('t1'))
