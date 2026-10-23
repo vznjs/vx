@@ -46,7 +46,7 @@ Durable Object, so its mailboxes live in one place. Participants hold
 websockets, which the object hibernates between messages: the run is kept
 in the object's storage, the runtime answers heartbeats without waking
 it, and an alarm finds the participants that went silent. Since the
-runtime's answer proves only the edge, a client quiet three heartbeats
+runtime's answer proves only the edge, a client that heard nothing for a heartbeat
 sends an empty frame the object itself answers, on the socket it then
 pushes to. Issuers' keys
 are read once per isolate and held ten minutes in the data center's

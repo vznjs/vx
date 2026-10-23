@@ -335,7 +335,7 @@ stops, instead of waiting for the job's timeout.
   another. A task two such workers had begun fails, naming both; one an
   worker had not begun yet does not count. With no worker of the run left
   to take it and none starting, it fails at once.
-- A relay unreachable for three heartbeats fails every task not done
+- A relay that answers nothing for 10 s, every try counted, fails every task not done
   (`the relay is unreachable`); none runs here, which may be far smaller
   than the workers. What finished is saved, so a rerun resumes from it.
   A shorter fault (a `5xx` while the host restarts the relay, a dropped
@@ -350,9 +350,10 @@ stops, instead of waiting for the job's timeout.
   or starting and this machine has no share, the remaining tasks fail
   with `no worker could start`.
 - A socket the relay stopped pushing to, though its pings are answered,
-  is found within three heartbeats (15 s on the relay's default): quiet
-  that long, the client's beat is a frame the relay must answer, which
-  also makes it push down that socket again.
+  is found within 15 s on the relay's default: quiet a heartbeat, the
+  client's beat is a frame the relay must answer within two (10 s at
+  most), which also makes it push down that socket again. A participant
+  the relay hears nothing from for two heartbeats is lost.
 - A run where no task began or ended for a minute warns what it waits
   on, a line a task: which worker, and whether it runs or saves.
 

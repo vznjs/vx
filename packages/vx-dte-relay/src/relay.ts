@@ -116,14 +116,11 @@ const MAX_QUEUE = 10_000
 /** 10 000 bodies of 1 MiB would be 10 GiB held for one participant with no socket. */
 const MAX_QUEUE_BYTES = 64 << 20
 /**
- * A participant on a socket is lost after this many heartbeats of silence,
- * not three: its pings cost a host nothing, but each sweep wakes it, and a
- * Durable Object woken every 12 s stayed awake, billed, the whole run
- * (2026-10-22). A socket that closes is still noticed at once; this bounds
- * only one a network stopped carrying, which the orchestrator's lease
- * catches first anyway.
+ * A participant silent this many heartbeats is lost, on a socket or not:
+ * no reply for 10 s and it is dead (owner, 2026-10-23). A client pings or
+ * frames each heartbeat, so only a dead one goes quiet that long.
  */
-const SOCKET_LOST_BEATS = 12
+const LOST_BEATS = 2
 /** How far a proof's time may be from the relay's: a CI runner's clock drifts. */
 const PROOF_SKEW_MS = 2 * 60_000
 
@@ -304,8 +301,7 @@ export function createRelay(opts: RelayOptions): Relay {
     store?.delete(runAt(run.key))
   }
 
-  const lostAfter = (p: Participant): number =>
-    (p.socket === undefined ? 3 : SOCKET_LOST_BEATS) * heartbeatMs
+  const lostAfter = LOST_BEATS * heartbeatMs
   const sweep = (): number | undefined => {
     const now = Date.now()
     let next: number | undefined
@@ -314,7 +310,7 @@ export function createRelay(opts: RelayOptions): Relay {
     }
     for (const run of [...runs.values()]) {
       for (const p of [...run.byId.values()]) {
-        if (now - p.seen > lostAfter(p)) drop(run, p)
+        if (now - p.seen > lostAfter) drop(run, p)
       }
       if (!runs.has(run.key)) continue
       if (run.orchestrator === undefined) close(run)
@@ -324,7 +320,7 @@ export function createRelay(opts: RelayOptions): Relay {
           // a write per participant per sweep spent a free host's 100 000
           // rows a day in about 40 CI runs (2026-10-23).
           if (p.socket === undefined && p.saved !== p.seen) saveParticipant(run, p)
-          at(p.seen + lostAfter(p) + 1)
+          at(p.seen + lostAfter + 1)
         }
       }
     }

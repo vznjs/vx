@@ -29,7 +29,7 @@ const STARTED_FILE = 'vx-dte-started'
 
 /** A dispatched run's jobs are first read this soon, then twice as late each time, up to `WATCH_MAX_MS`. */
 const WATCH_FIRST_MS = 2_000
-const WATCH_MAX_MS = 60_000
+const WATCH_MAX_MS = 10_000
 
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
@@ -94,7 +94,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
         // The version whose dispatch answers with the workflow run's id.
         'x-github-api-version': '2026-03-10',
       },
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(10_000),
     })
   }
   const dispatch = async (size: string, workers: WorkerSpawn[]): Promise<void> => {

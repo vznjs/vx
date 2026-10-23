@@ -79,16 +79,13 @@ Frames are text:
   frame starts `{"n":`. vx-dte's client keeps a frame of several sends
   under 512 KiB;
 - the participant sends a frame or `ping` at least each `heartbeatMs`;
-  the relay answers `pong`. vx-dte's client pings each heartbeat it sent
-  no frame in and treats a socket it heard nothing on for two heartbeats
-  and a half as closed: a
-  network that stops carrying a socket sends no close. A host may answer
-  pings without the relay (Cloudflare's auto-response), so the client also
-  treats a socket that leaves a frame unanswered for two heartbeats as
-  closed, and sends again down a new one; an upgrade it gives three
-  heartbeats. Pongs are no word from the relay: after three heartbeats
-  with neither a push nor an answer, its beat is `{ "n", "sends": [] }`,
-  which the relay itself answers;
+  the relay answers `pong`. A host may answer pings without the relay
+  (Cloudflare's auto-response), so pongs are no word from the relay:
+  vx-dte's client, having heard no push or answer for a heartbeat, sends
+  `{ "n", "sends": [] }`, which the relay itself answers, and treats a
+  socket that leaves a frame or an upgrade unanswered for two heartbeats
+  (10 s at most) as closed: a network that stops carrying a socket sends
+  no close;
 - the socket a frame comes down is its participant's from then on, and
   what queued for it is pushed down it: a host that let the socket go
   while answering its pings left the participant deaf.
@@ -97,7 +94,7 @@ A socket's close does not lose its participant: it opens another, and
 the relay pushes what queued meanwhile. vx-dte's client dials again
 after a backoff with full jitter (up to 250 ms, doubling per failed dial
 to half a heartbeat), and gives the participant up after 3 failed
-dials. The relay closes with code
+dials or 10 s without a socket, whichever comes first. The relay closes with code
 `4404` the socket of a participant that left or was lost, after pushing
 what queued for it (a removed worker's `refused`), and lets in a `socket`
 request of an `id` or run it does not know only to close it so: a failed
@@ -105,12 +102,11 @@ upgrade tells a client nothing it can read. It closes a socket a push
 failed on without a code: left open, its pings answered, it would carry
 nothing again.
 
-Every frame and ping counts as a heartbeat. A participant with no socket
-is lost after three `heartbeatMs`, as if it had left; one with an open
-socket, after twelve, so a host that bills its wake-ups sleeps between
-them. The orchestrator's socket closing closes the run at once.
+Every frame and ping counts as a heartbeat. A participant silent two
+`heartbeatMs` (10 s on the default) is lost, as if it had left, on a
+socket or not. The orchestrator's socket closing closes the run at once.
 vx-dte's client asks again through a `5xx`, a dropped connection or a
-`429`, 3 times at most.
+`429`, 3 times at most and within 10 s of the first try.
 
 ## Leases (planned, above the relay)
 
