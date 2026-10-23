@@ -218,5 +218,5 @@ and `feature-b, main` on a laptop.
 - `VX_CACHE_SCOPE`, `github({ cacheScope })` and `gitlab({ cacheScope })`
   scope only what plugins store themselves (`ctx.cache`, run records).
 
-The CI guide's [cache scopes and tokens](../../guides/ci/#cache-scopes-and-tokens) has the setup.
+The remote cache page's [cache scopes and tokens](../../docs/remote-cache/#cache-scopes-and-tokens) has the setup.
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

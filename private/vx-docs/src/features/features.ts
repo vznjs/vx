@@ -1,7 +1,7 @@
 // Every feature the site gives a page of its own (`/features/<slug>/`), in
 // the order the hub lists them. The copy is the 38-day campaign's, rewritten
 // as page copy and checked against core's source and docs (cli.md,
-// schema.md), then the rest of features.md (more.ts). Links are under the site's base (`guides/ci/`) or absolute
+// schema.md), then the rest of features.md (more.ts). Links are under the site's base (`docs/ci/`) or absolute
 // (`https://…`). `image` names a file in src/assets/features/; the four
 // small things one post showed share its image.
 //
@@ -594,7 +594,7 @@ export default defineProject({
     example: { lang: 'sh', code: 'vx run test --affected\nvx run test --affected=origin/main' },
     image: 'affected.png',
     imageAlt: 'Only the tasks a change reaches through dependsOn run.',
-    docs: { label: 'CI and remote', href: 'guides/ci/' },
+    docs: { label: 'CI and remote', href: 'docs/ci/' },
   },
   {
     slug: 'vx-lock',
@@ -642,7 +642,7 @@ export default defineProject({
     example: { lang: 'ts', code: workspace('@vzn/vx-ci', 'github()') },
     image: 'github-ci.png',
     imageAlt: 'A GitHub Actions job summary written by vx.',
-    docs: { label: 'GitHub Actions', href: 'guides/ci/#github-actions' },
+    docs: { label: 'GitHub Actions', href: 'docs/ci/#github-actions' },
     deepDive: {
       label: '@vzn/vx-ci',
       href: 'https://github.com/vznjs/vx/tree/main/packages/vx-ci',
@@ -739,7 +739,7 @@ export default defineWorkspace({
     },
     image: 'remote-execution.png',
     imageAlt: 'vx sending tasks to a REAPI server.',
-    docs: { label: 'Remote execution', href: 'guides/ci/#remote-execution' },
+    docs: { label: 'Remote execution', href: 'docs/remote-execution/' },
     deepDive: { label: 'Remote execution', href: 'blog/remote-execution/' },
   },
   {

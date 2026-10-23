@@ -32,8 +32,11 @@ const DOCS_PAGES: [string, string][] = [
   ['Environment variables', 'docs/environment-variables/'],
   ['Dev servers', 'docs/dev-servers/'],
   ['Lockfiles', 'docs/lockfiles/'],
+  ['Running tasks', 'docs/running-tasks/'],
   ['Sandboxing', 'guides/sandboxing/'],
-  ['CI and remote', 'guides/ci/'],
+  ['CI', 'docs/ci/'],
+  ['Remote cache', 'docs/remote-cache/'],
+  ['Remote execution', 'docs/remote-execution/'],
   ['Plugins', 'guides/plugins/'],
   ['AI agents', 'guides/agents/'],
 ]

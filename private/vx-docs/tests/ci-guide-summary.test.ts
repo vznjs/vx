@@ -9,7 +9,7 @@ import { expect, it } from 'bun:test'
 import { renderJobSummary } from '@vzn/vx-ci'
 import type { RunSummaryRecord, TaskTelemetry } from '@vzn/vx'
 
-const GUIDE = path.resolve(import.meta.dir, '../src/content/docs/guides/ci.mdx')
+const GUIDE = path.resolve(import.meta.dir, '../src/content/docs/docs/ci.mdx')
 
 function task(
   taskId: string,

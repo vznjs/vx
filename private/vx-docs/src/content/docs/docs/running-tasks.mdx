@@ -1,0 +1,44 @@
+---
+title: Running tasks
+description: Run tasks with vx run, pick which projects, and preview a run with --dry.
+---
+
+`vx run build` runs `build` in the package you are in, and what it
+depends on. From the root, say which packages:
+
+```bash
+vx run build --all                     # every package that has build
+vx run build --filter "@app/*"         # packages whose name matches
+vx run build --filter "...@app/ui"     # a package and everything that depends on it
+vx run test --affected                 # changed since the base branch, and dependents
+vx run test --affected=origin/main     # changed since that ref
+vx run app#build api#test              # exact tasks, from anywhere
+vx run lint test build --all           # several tasks, one graph
+vx run test --all -- --bail            # the child runs: bun test --bail; the key sees it
+vx run build --all --dry               # the plan, nothing runs
+vx watch test --all                    # re-run whenever its files change
+```
+
+`--dry` prints what would run and where each result would come from:
+
+```text
+would run:
+  ✓  @acme/api#build  cache hit (local)         8625b603
+  ✓  @acme/ui#build   cache hit (local)         71e5d9a0
+  ✓  @acme/web#build  cache hit (local)         42e9b39d
+
+3 task(s) planned, 3 cache hits (3 local).
+```
+
+| Flag                | Does                                                        |
+| ------------------- | ----------------------------------------------------------- |
+| `--no-cache`        | ignore the cache: no reads, no writes                       |
+| `--force`           | run everything; save only what the cache lacks              |
+| `--concurrency <n>` | at most n tasks at once (default: the cores you may use)    |
+| `--continue`        | keep going after a failure ([modes](../tasks/#when-a-task-fails)) |
+| `--output-logs <m>` | `full`, `errors-only`, `hash-only` or `none`                |
+
+A bare `--affected` compares with the merge base off your base branch;
+`VX_AFFECTED_BASE` names another commit. Every flag: [CLI](../../cli/).
+
+See [`vx run`](../../cli/#vx-run) for every flag, and [Guides](../../guides/) for common runs.

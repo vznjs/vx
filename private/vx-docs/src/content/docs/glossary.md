@@ -140,7 +140,7 @@ yesterday's result, which makes it the worst failure a cache can have.
 **A cache shared between machines**, so CI and every developer reuse each
 other's results. It makes the cost of a stale hit shared too.
 
-- vx: a remote `CacheLayer` from a plugin, such as `@vzn/vx-reapi` or `turboCache()` ([remote caching](../guides/ci/#remote-cache))
+- vx: a remote `CacheLayer` from a plugin, such as `@vzn/vx-reapi` or `turboCache()` ([remote caching](../docs/remote-cache/))
 - Turborepo: Remote Caching ([remote caching](https://turborepo.com/docs/core-concepts/remote-caching))
 - Nx: remote cache ([glossary](https://nx.dev/docs/reference/glossary#remote-cache)), offered as Nx Replay
 - Bazel: remote caching, with a local [disk cache](https://bazel.build/reference/glossary#disk-cache)
@@ -164,7 +164,7 @@ trusting it.
 laptop can use a build farm. It needs every input declared, because the
 other machine sees nothing else.
 
-- vx: `exec.remote`, through the `@vzn/vx-reapi` plugin ([remote execution](../guides/ci/#remote-execution))
+- vx: `exec.remote`, through the `@vzn/vx-reapi` plugin ([remote execution](../docs/remote-execution/))
 - Turborepo: —
 - Nx: distributed task execution, which spreads tasks across CI agents ([glossary](https://nx.dev/docs/reference/glossary#distributed-task-execution))
 - Bazel: remote execution, whose protocol (REAPI) the vx plugin speaks

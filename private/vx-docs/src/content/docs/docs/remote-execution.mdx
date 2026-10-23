@@ -1,0 +1,36 @@
+---
+title: Remote execution
+description: Send tasks to a Bazel REAPI worker pool while the graph stays on your machine.
+---
+
+`reapi()` can also send tasks to a worker pool; the graph and the
+scheduling stay here:
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+import { reapi } from '@vzn/vx-reapi'
+
+export default defineWorkspace({
+  plugins: [
+    reapi({
+      endpoint: 'grpcs://cache.example.com:443',
+      execute: true, // or VX_REAPI_EXECUTE=1
+      platform: { OSFamily: 'Linux', 'container-image': 'docker://node:22' },
+      capacity: 64, // remote tasks at once, apart from your cores
+    }),
+  ],
+})
+```
+
+`--dry` says where each task runs (`@vx/reapi` or `@local`).
+
+- `exec.remote: false`, sandboxed and persistent tasks, and what depends
+  on them, stay here, as do tasks with no `cache` block.
+- Workers have no `node_modules`: make the install a `remote: 'only'` task
+  the others depend on. The image needs `/bin/sh` and your toolchain.
+- A worker gets only what `inputs` declares.
+- Uploads chunk at 65535 bytes (`SAFE_CHUNK_BYTES`), the size no Bun http2
+  stall has been seen at. A larger `chunkBytes` that stalls retries once at
+  that size before the task fails.
+
+See [`@vzn/vx-reapi`](../../plugins/vx-reapi/) for every option.

@@ -437,7 +437,7 @@ export const CHOICES: readonly Choice[] = [
         costs:
           'No first-party hosted cache: you run or rent someone else’s server. The plugins are 0.0.x builds, like core.',
         sources: [
-          { label: 'Remote caching', href: 'guides/ci/#remote-cache' },
+          { label: 'Remote caching', href: 'docs/remote-cache/' },
           {
             label: 'tests/layered-cache.test.ts',
             href: `${GH}packages/vx/tests/layered-cache.test.ts`,
@@ -493,7 +493,7 @@ export const CHOICES: readonly Choice[] = [
         costs:
           'Every input must be declared, since the worker sees nothing else. vx ships no workers, service or dashboard: you run a pool or rent one.',
         sources: [
-          { label: 'Remote execution', href: 'guides/ci/#remote-execution' },
+          { label: 'Remote execution', href: 'docs/remote-execution/' },
           {
             label: 'packages/vx-reapi/tests/exec-e2e.test.ts',
             href: `${GH}packages/vx-reapi/tests/exec-e2e.test.ts`,

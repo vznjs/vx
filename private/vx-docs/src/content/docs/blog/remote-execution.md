@@ -115,5 +115,5 @@ None of this is in core. Core has the two seams and the placement
 stage; `@vzn/vx-reapi` is the proof they are wide enough. The guide,
 including worker image requirements and how output globs travel over a
 wire that has no globs, is [Remote
-execution](../../guides/ci/#remote-execution). More at
+execution](../../docs/remote-execution/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

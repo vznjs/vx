@@ -278,7 +278,7 @@ describe('examples/ci', () => {
 
   it('the CI guide shows the workflow and the workspace as they are here', () => {
     const guide = readFileSync(
-      path.join(PACKAGES, '..', 'private', 'vx-docs', 'src', 'content', 'docs', 'guides', 'ci.mdx'),
+      path.join(PACKAGES, '..', 'private', 'vx-docs', 'src', 'content', 'docs', 'docs', 'ci.mdx'),
       'utf8',
     )
     expect(guide).toContain('```yaml\n' + workflow + '```')

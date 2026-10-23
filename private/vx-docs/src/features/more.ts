@@ -238,7 +238,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Remote tasks admitted against the pool’s own capacity.',
     docs: {
       label: 'Remote execution',
-      href: 'guides/ci/',
+      href: 'docs/ci/',
     },
     deepDive: {
       label: 'Remote execution without moving the scheduler',
@@ -430,7 +430,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'GitHub Actions log groups, one per task.',
     docs: {
       label: 'CI and remote',
-      href: 'guides/ci/',
+      href: 'docs/ci/',
     },
     deepDive: {
       label: 'The basics, done carefully',
@@ -911,7 +911,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'CI writing the remote cache, a laptop only reading.',
     docs: {
       label: 'Cache scopes',
-      href: 'guides/ci/#cache-scopes-and-tokens',
+      href: 'docs/remote-cache/#cache-scopes-and-tokens',
     },
     deepDive: {
       label: 'Branch caches a server enforces',
@@ -1103,7 +1103,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Remote uploads finishing after the run, errors as warnings.',
     docs: {
       label: 'CI and remote',
-      href: 'guides/ci/',
+      href: 'docs/ci/',
     },
     deepDive: {
       label: 'What goes into a key, and what comes back',
@@ -1560,7 +1560,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A vx check run on a pull request.',
     docs: {
       label: 'CI and remote',
-      href: 'guides/ci/',
+      href: 'docs/ci/',
     },
     deepDive: {
       label: 'Your run, on the pull request',
@@ -1584,7 +1584,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Cache scope taken from the branch on Actions.',
     docs: {
       label: 'CI and remote',
-      href: 'guides/ci/',
+      href: 'docs/ci/',
     },
     deepDive: {
       label: 'The cache on your terms',
@@ -1800,7 +1800,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A REAPI plugin connected to a hosted server.',
     docs: {
       label: 'Remote execution',
-      href: 'guides/ci/',
+      href: 'docs/ci/',
     },
     deepDive: {
       label: 'A remote server you can trust in production',
@@ -1824,7 +1824,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A repeat remote action served from the action cache.',
     docs: {
       label: 'Remote execution',
-      href: 'guides/ci/',
+      href: 'docs/ci/',
     },
     deepDive: {
       label: 'A remote server you can trust in production',
@@ -1848,7 +1848,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Corrupt blobs and slow calls degrading to a miss.',
     docs: {
       label: 'Remote execution',
-      href: 'guides/ci/',
+      href: 'docs/ci/',
     },
     deepDive: {
       label: 'A remote server you can trust in production',
@@ -1872,7 +1872,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'An install task run as a remote action.',
     docs: {
       label: 'Remote execution',
-      href: 'guides/ci/',
+      href: 'docs/ci/',
     },
     deepDive: {
       label: 'Remote execution without moving the scheduler',
@@ -1896,7 +1896,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Spans streaming to a dashboard during a run.',
     docs: {
       label: 'OpenTelemetry',
-      href: 'guides/ci/',
+      href: 'docs/ci/',
     },
     deepDive: {
       label: 'Watch a CI run while it runs',

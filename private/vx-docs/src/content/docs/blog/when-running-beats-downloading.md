@@ -67,5 +67,5 @@ the `--dry` figure, and one that can also say a duration gets the
 slow-download check. [Your own cache](../../guides/plugins/#your-own-cache)
 shows a whole remote.
 
-Setup: [Remote cache](../../guides/ci/#remote-cache). More at
+Setup: [Remote cache](../../docs/remote-cache/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

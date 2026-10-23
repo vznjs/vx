@@ -79,7 +79,7 @@ stale lock before any task runs.
 
 Starters: [`examples/basic`](examples/basic), and
 [`examples/ci`](examples/ci) with a GitHub Actions workflow; CI runs both
-on every commit. The [CI guide](https://vznjs.github.io/vx/guides/ci/)
+on every commit. The [CI guide](https://vznjs.github.io/vx/docs/ci/)
 explains the workflow.
 More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 [Configure](https://vznjs.github.io/vx/docs/workspace/) ·

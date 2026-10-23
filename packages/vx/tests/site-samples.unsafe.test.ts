@@ -87,7 +87,7 @@ function fencedBlock(page: string, lang: string, firstLine: string): string {
 // The running-tasks guide merged into the CI page (the short site).
 describe('the CI guide shows what --dry prints', () => {
   it('its `would run:` block is formatPlanText on three local hits', () => {
-    const page = readFileSync(path.join(GUIDES, 'ci.mdx'), 'utf8')
+    const page = readFileSync(path.join(DOCS, 'docs', 'running-tasks.mdx'), 'utf8')
     const task = (id: string, hash: string) => ({
       node: {
         id,
@@ -206,7 +206,7 @@ describe('the CI guide states the wire chunk sizes', () => {
     const safe = /export const SAFE_CHUNK_BYTES = (\d+)$/m.exec(wire)
     expect(chunk).not.toBeNull()
     expect(safe).not.toBeNull()
-    const page = section(readFileSync(path.join(GUIDES, 'ci.mdx'), 'utf8'), 'Remote execution')
+    const page = readFileSync(path.join(DOCS, 'docs', 'remote-execution.mdx'), 'utf8')
     const m = /- Uploads chunk at (\d+) bytes \(`SAFE_CHUNK_BYTES`\)/.exec(page)
     expect(m).not.toBeNull()
     expect([m![1], chunk![1]]).toEqual([safe![1], safe![1]])
@@ -376,7 +376,7 @@ describe('the flaky-tasks post shows the rows a run prints', () => {
   })
 
   it("the CI guide's copy is the same row", () => {
-    const page = readFileSync(path.join(GUIDES, 'ci.mdx'), 'utf8')
+    const page = readFileSync(path.join(DOCS, 'docs', 'ci.mdx'), 'utf8')
     const sample = fencedBlock(page, '', ' ◼\uFE0E').replace(/\n$/, '')
     expect(sample.split('\n')).toEqual([row('web#test', 'failed', 4210, 3, 1)])
   })
@@ -1104,7 +1104,7 @@ describe('the CI guide quotes only run figures benchmarks.md measured', () => {
     // measurement read the row as a tie (item 346, 2026-09-19), and every run
     // now reads the lock (2026-10-14).
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    const ci = section(readFileSync(path.join(GUIDES, 'ci.mdx'), 'utf8'), 'GitHub Actions')
+    const ci = section(readFileSync(path.join(DOCS, 'docs', 'ci.mdx'), 'utf8'), 'GitHub Actions')
     expect(ci).toContain('`vx lock --check`')
     for (const m of ci.matchAll(/(\d+(?:[–-]\d+)?)\s?(%|ms)\b/g)) {
       expect(m[0]).toBe(bench.includes(m[1]!) ? m[0] : `${m[0]} — not on benchmarks.md`)
@@ -1678,7 +1678,7 @@ describe("a post's link into a guide section names the section", () => {
     const headingOf = (guide: string, anchor: string): string | undefined => {
       if (!headings.has(guide)) {
         const map = new Map<string, string>()
-        for (const m of readFileSync(path.join(GUIDES, `${guide}.mdx`), 'utf8').matchAll(
+        for (const m of readFileSync(path.join(DOCS, `${guide}.mdx`), 'utf8').matchAll(
           /^#{2,6}\s+(.*?)\s*$/gm,
         ))
           map.set(slug(m[1]!), m[1]!)
@@ -1694,7 +1694,7 @@ describe("a post's link into a guide section names the section", () => {
     for (const page of posts) {
       const text = readFileSync(page, 'utf8')
       for (const m of text.matchAll(
-        /\[([^\]]+)\]\((?:\.\.\/)+guides\/([a-z-]+)\/#([a-z0-9-]+)\)/g,
+        /\[([^\]]+)\]\((?:\.\.\/)+((?:guides|docs)\/[a-z-]+)\/#([a-z0-9-]+)\)/g,
       )) {
         const heading = headingOf(m[2]!, m[3]!)
         checked++
@@ -1702,7 +1702,8 @@ describe("a post's link into a guide section names the section", () => {
           wrong.push(`${path.relative(DOCS, page)}: [${m[1]}] → ${m[2]}#${m[3]}`)
       }
     }
-    expect(checked).toBeGreaterThan(5)
+    // Most sections became pages of their own (docs/), linked whole.
+    expect(checked).toBeGreaterThan(3)
     expect(wrong).toEqual([])
     const post = readFileSync(path.join(DOCS, 'blog', 'dev-servers-in-the-graph.md'), 'utf8')
     expect(post).not.toContain('readiness patterns for the common servers')
