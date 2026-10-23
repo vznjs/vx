@@ -21,6 +21,11 @@ const STATUS_LABEL: Record<string, string> = {
 // Rounded once, then split: rounding the remainder after flooring the
 // minutes printed 119.7 s as `1m 60s`. The tier is chosen by the rounded
 // value: 59.96 s printed `60.0s` and 999.6 ms `1000ms` (F-51).
+/** Bytes as gigabytes, one decimal. */
+function gb(bytes: number): string {
+  return (bytes / 1e9).toFixed(1)
+}
+
 function fmtMs(ms: number): string {
   if (Math.round(ms) < 1000) return `${Math.round(ms)}ms`
   if (Math.round(ms / 100) < 600) return `${(ms / 1000).toFixed(1)}s`
@@ -205,8 +210,8 @@ function renderWorkers(machines: NonNullable<RunSummaryRecord['machines']>): str
   const lines = [
     '### Workers',
     '',
-    '| Worker | Status | Warm-up | Tasks | Online | Idle | Booked | CPU avg | Utilization |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| Worker | Status | Warm-up | Tasks | Online | Idle | Booked | CPU avg | Peak RAM | Utilization |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   ]
   let coreMs = 0
   let cpuMs = 0
@@ -225,6 +230,7 @@ function renderWorkers(machines: NonNullable<RunSummaryRecord['machines']>): str
         fmtMs(Math.max(0, m.onlineMs - m.busyMs)),
         m.bookedAvg === undefined ? '' : `${m.bookedAvg.toFixed(1)} of ${m.cores}`,
         m.cpuAvg.toFixed(1),
+        `${gb(m.memoryPeakBytes)} of ${gb(m.memoryBytes)} GB`,
         pct(m.utilization),
       ].join(' | ')} |`,
     )
