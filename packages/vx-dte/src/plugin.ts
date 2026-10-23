@@ -187,6 +187,8 @@ export function dte(options: DteOptions) {
   let tails: ((id: string) => number) | undefined
   /** Settles once the needs other plugins fetch are in `peaks`: `ctx.refining()`, then the read. */
   let needsIn: (() => Promise<void>) | undefined
+  /** Called when `schedule` has read history; set by the executor, which core makes first. */
+  let scheduled: (() => void) | undefined
   /** The cached tasks the last commit's changes make miss (`forecast.ts`): work before any worker can say. */
   let likely: ReadonlySet<string> = new Set()
   // Each finished task's cache key, a hit's too: what a worker restores a
@@ -202,6 +204,7 @@ export function dte(options: DteOptions) {
     peaks = new Map()
     tails = undefined
     needsIn = undefined
+    scheduled = undefined
     likely = new Set()
     keys.clear()
     await o?.close()
@@ -323,6 +326,7 @@ export function dte(options: DteOptions) {
       ctx.onRefine(() => void (reading = read()))
       // Asked at the first ask, when every plugin's schedule has promised its own.
       needsIn = () => ctx.refining().then(() => reading)
+      scheduled?.()
       return undefined
     },
 
@@ -558,9 +562,15 @@ export function dte(options: DteOptions) {
       // moment into the run. Asked before them, every task books a whole
       // worker: main asked 12 workers for 13 misses and 5 ran nothing
       // (2026-10-23). The first ask waits for them.
+      // Core makes the executor and settles its demand before `schedule`
+      // reads history: asked then, main's first ask booked a whole worker
+      // for each of 122 tasks, 0 measured, and cancelled 13 of 14
+      // (2026-10-23). A run that never reaches `schedule` (every task a
+      // restore) waits for its first miss.
       let waited: boolean | undefined
       const ready = (): boolean => {
-        if (waited === true || needsIn === undefined) return true
+        if (waited === true) return true
+        if (needsIn === undefined) return executed.size > 0
         if (waited === undefined) {
           waited = false
           void needsIn().then(() => {
@@ -572,10 +582,12 @@ export function dte(options: DteOptions) {
       }
       onChange = replan
       // Work the last commit's changes make: planned before any task misses.
-      if (likely.size > 0) {
-        missed = true
+      const forecast = (): void => {
+        if (likely.size > 0) missed = true
         replan()
       }
+      if (needsIn === undefined) scheduled = forecast
+      else forecast()
       return {
         name: 'dte',
         remote: true,
