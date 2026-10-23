@@ -926,6 +926,11 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         queued.signal,
         ...(req.signal === undefined ? [] : [req.signal]),
       ])
+      // A cancel the server refused leaves the action running on its worker.
+      const cancelFailed = (err: unknown): void =>
+        warn(
+          `vx/reapi: cancelling ${req.taskId}'s operation failed (${errText(err)}) — it may still run on its worker`,
+        )
       let op: Operation
       try {
         if (req.signal?.aborted === true) throw new Error('aborted before Execute')
@@ -951,7 +956,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
           // closed stream left the action running on its worker. The action
           // is cancelled and the task ends as a killed local one does: 143,
           // which core reports timed out when its timer fired.
-          if (operation !== '') await client.cancelOperation(operation).catch(() => undefined)
+          if (operation !== '') await client.cancelOperation(operation).catch(cancelFailed)
           return {
             exitCode: 143,
             durationMs: Math.round((Bun.nanoseconds() - started) / 1e6),
@@ -964,7 +969,7 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
         if (queued.signal.aborted) {
           // Best effort: a server without the service, or one that has lost
           // the operation, still has the task given back.
-          if (operation !== '') await client.cancelOperation(operation).catch(() => undefined)
+          if (operation !== '') await client.cancelOperation(operation).catch(cancelFailed)
           throw executorFallback(
             `vx/reapi: no worker started the action within queueTimeoutMs (${opts.queueTimeoutMs}ms); its operation was cancelled`,
           )
@@ -1048,7 +1053,9 @@ export function reapiExecutor(client: ReapiClient, opts: ReapiExecutorOptions = 
       ])
       // Settled below with the outputs; a log that cannot be read still
       // fails the task, after the outputs have landed or failed.
+      // quiet: settled below, where its error fails the task
       logs.catch(() => undefined)
+      // quiet: settled below, where its error fails the task
       materialised.catch(() => undefined)
       const [stdout, stderr] = await logs.catch(async (err: unknown) => {
         await materialised.catch(() => undefined)
@@ -1584,6 +1591,7 @@ class Fence {
    * containment checks passed). The landing must itself be declared.
    */
   async landing(abs: string): Promise<void> {
+    // quiet: a local realpath; the root as given stands
     this.realRoot ??= await realpath(this.root).catch(() => this.root)
     const dir = path.dirname(abs)
     let real = this.realDirs.get(dir)
@@ -1616,9 +1624,11 @@ class Fence {
   /** `dir`, or its deepest existing ancestor, resolves inside the root. */
   async dir(dir: string): Promise<void> {
     if (this.checked.has(dir)) return
+    // quiet: a local realpath; the root as given stands
     this.realRoot ??= await realpath(this.root).catch(() => this.root)
     let probe = dir
     for (;;) {
+      // quiet: a local path not there yet: its parent is checked
       const real = await realpath(probe).catch(() => null)
       if (real !== null) {
         if (real !== this.realRoot && !real.startsWith(this.realRoot + path.sep)) {
@@ -1650,6 +1660,7 @@ class Fence {
    * escaping link is removed before the refusal.
    */
   async verifyLinks(): Promise<void> {
+    // quiet: a local realpath; the root as given stands
     this.realRoot ??= await realpath(this.root).catch(() => this.root)
     for (const { abs, target } of this.links) {
       const to = await resolveThrough(
@@ -1725,6 +1736,7 @@ async function resolveThrough(p: string): Promise<string> {
       continue
     }
     const next = path.join(at, c)
+    // quiet: a local path that is no link
     const target = await readlink(next).catch(() => null)
     if (target === null || ++hops > 40) {
       at = next

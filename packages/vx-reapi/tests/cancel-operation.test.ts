@@ -56,12 +56,14 @@ const request = (): ExecuteRequest =>
   }) as unknown as ExecuteRequest
 
 /** The rejection's name, and the operations CancelOperation named. */
-async function queueOut(): Promise<{ name: string; cancelled: string[]; executed: string[] }> {
+async function queueOut(
+  said: string[] = [],
+): Promise<{ name: string; cancelled: string[]; executed: string[] }> {
   const client = new ReapiClient({ endpoint: fake.endpoint })
   const from = fake.calls.length
   try {
     const name = await Promise.race([
-      reapiExecutor(client, { queueTimeoutMs: 200 })
+      reapiExecutor(client, { queueTimeoutMs: 200, warn: (m) => said.push(m) })
         .execute(request())
         .then(
           () => 'resolved',
@@ -87,9 +89,15 @@ describe('a queue timeout cancels the operation', () => {
     expect(r.cancelled[0]).toMatch(/^operations\/\d+$/)
   })
 
-  it('gives the task back when the server refuses the cancel', async () => {
+  // M, 2026-10-23: a remote fault is at least a warning. A refused cancel
+  // leaves the action running on its worker, said by nothing.
+  it('gives the task back when the server refuses the cancel, and says the action may still run', async () => {
     fake.fail('CancelOperation', grpc.status.UNIMPLEMENTED)
-    const r = await queueOut()
+    const said: string[] = []
+    const r = await queueOut(said)
     expect([r.name, r.cancelled.length]).toEqual(['ExecutorFallback', 1])
+    expect(said).toHaveLength(1)
+    expect(said[0]).toStartWith("vx/reapi: cancelling pkg#gen's operation failed (")
+    expect(said[0]).toEndWith(') — it may still run on its worker')
   })
 })

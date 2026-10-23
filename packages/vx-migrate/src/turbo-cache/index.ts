@@ -197,6 +197,7 @@ function trackTemp(file: string): void {
     for (const f of liveTemps) {
       try {
         unlinkSync(f)
+        // quiet: a temp file already gone at exit
       } catch {
         // never written, or gone
       }
@@ -207,6 +208,7 @@ function trackTemp(file: string): void {
 async function removeTemp(file: string): Promise<void> {
   // Listed until the unlink lands: an exit in between would otherwise find
   // nothing to remove and leave the temp (item 868).
+  // quiet: a temp file already gone
   await unlink(file).catch(() => undefined)
   liveTemps.delete(file)
 }
@@ -857,6 +859,7 @@ function localConfigOf(root: string): TurboLocalConfig {
   let raw: unknown
   try {
     raw = JSON.parse(readFileSync(path.join(root, '.turbo', 'config.json'), 'utf8'))
+    // quiet: a local config file: none read is none linked
   } catch {
     return {}
   }
@@ -876,12 +879,14 @@ function remoteCacheOf(root: string): TurboJsonRemoteCache {
     let text: string
     try {
       text = readFileSync(path.join(root, name), 'utf8')
+      // quiet: a local config file: none read is none declared
     } catch {
       continue
     }
     try {
       const rc = (Bun.JSONC.parse(text) as { remoteCache?: unknown } | null)?.remoteCache
       return typeof rc === 'object' && rc !== null ? (rc as TurboJsonRemoteCache) : {}
+      // quiet: a local config file: none read is none declared
     } catch {
       return {}
     }

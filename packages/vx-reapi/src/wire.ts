@@ -1098,6 +1098,7 @@ export class ReapiClient {
                 this.bounded(),
               )
               return
+              // quiet: a resume that fails starts afresh; its last failure throws
             } catch {
               // fall through to a fresh attempt
             }
@@ -1156,6 +1157,7 @@ export class ReapiClient {
     })
     // Raced against every drain wait and awaited at the end; a failure that
     // lands between the two is not an unhandled rejection.
+    // quiet: raced and awaited below, where its error throws
     done.catch(() => undefined)
     let offset = startOffset
     let first = true

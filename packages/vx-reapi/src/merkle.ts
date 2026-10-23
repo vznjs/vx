@@ -533,6 +533,7 @@ export function canDigest(fn: DigestFunctionName): boolean {
   try {
     createHash(algo)
     return true
+    // quiet: a hash this runtime lacks is answered by false
   } catch {
     return false
   }

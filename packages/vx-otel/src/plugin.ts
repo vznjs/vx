@@ -71,6 +71,7 @@ export function parseOtlpHeaders(raw: string | undefined): Record<string, string
   const decode = (s: string): string => {
     try {
       return decodeURIComponent(s)
+      // quiet: a value that is not percent-encoded is taken as written
     } catch {
       return s
     }

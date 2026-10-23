@@ -1,3 +1,6 @@
+/** How long the body's first chunk is waited for: a refusal is not held on a body that never comes. */
+const BODY_WAIT_MS = 1_000
+
 /**
  * A remote's refusal, named by its status and its own words: "HTTP 500"
  * alone said nothing, and a batch query Vercel refused with 400 "Too many
@@ -10,9 +13,16 @@ export async function refusal(res: Response, what = ''): Promise<Error> {
   try {
     const reader = res.body?.getReader()
     if (reader !== undefined) {
-      const { value } = await reader.read()
-      await reader.cancel()
-      said = new TextDecoder().decode(value?.subarray(0, 512)).replace(/\s+/g, ' ').trim()
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const first = await Promise.race([
+        reader.read(),
+        new Promise<undefined>((r) => {
+          timer = setTimeout(() => r(undefined), BODY_WAIT_MS)
+        }),
+      ]).finally(() => clearTimeout(timer))
+      // quiet: read no further; a cancel that fails has nothing left to free
+      void reader.cancel().catch(() => undefined)
+      said = new TextDecoder().decode(first?.value?.subarray(0, 512)).replace(/\s+/g, ' ').trim()
     }
   } catch {
     // quiet: the status alone still names the refusal

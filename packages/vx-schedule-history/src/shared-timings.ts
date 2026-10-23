@@ -73,6 +73,7 @@ function parseBlob(
   let parsed: unknown
   try {
     parsed = JSON.parse(new TextDecoder().decode(bytes))
+    // quiet: not JSON: keep() says the blob is unreadable
   } catch {
     return null
   }
@@ -237,6 +238,7 @@ async function importBase(args: ImportArgs, late: () => boolean): Promise<boolea
   if (shas === null) return false
   const blob = await newestBlob(args.cache, shas, args.ids)
   if (late()) return false
+  // quiet: a local marker; unwritten, the next run asks again
   await Bun.write(args.triedFile, base).catch(() => {})
   return keep(args, base, blob)
 }
@@ -255,6 +257,7 @@ async function importParent(args: ImportArgs, late: () => boolean): Promise<bool
   let blob: Uint8Array | null = null
   for (const key of keysOf(parent, args.ids)) if ((blob = await args.cache.get(key)) !== null) break
   if (late()) return false
+  // quiet: a local marker; unwritten, the next run asks again
   await Bun.write(tried, parent).catch(() => {})
   return keep(args, parent, blob)
 }
@@ -262,6 +265,7 @@ async function importParent(args: ImportArgs, late: () => boolean): Promise<bool
 const readTried = (file: string): Promise<string> =>
   Bun.file(file)
     .text()
+    // quiet: a local marker; none read is none tried
     .catch(() => '')
 
 /** Keep `blob`'s timings as `sha`'s rows; true when any were added. */
