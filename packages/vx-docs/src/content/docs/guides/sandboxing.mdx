@@ -96,10 +96,20 @@ build: {
     ```sh frame="terminal"
     $ vx run build --all
     ┌─ @demo/app#build > failed (exit 1, 1 sandbox violation)
+
+    $ mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js
+
+    ├─ OUTPUT ──────────────────────────────────────────────────
+
     mkdir: cannot create directory 'dist': Read-only file system
+
     ├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
-    mkdir(/repo/packages/app/dist) = a write no grant covers
+
+    mkdir(/repo/packages/app/dist) = a write no grant covers  [/repo/packages/app/dist]
+
     fix: exec.sandbox.allow: { write: ['dist/'] }
+
+    └─ @demo/app#build ── (12ms) failed (exit 1, 1 sandbox violation)
     ```
   </TabItem>
   <TabItem label="2. The read">
@@ -109,11 +119,21 @@ build: {
     ```sh frame="terminal"
     $ vx run build --all
     ┌─ @demo/app#build > failed (exit 1, 1 sandbox violation)
+
+    $ mkdir -p dist && cat tsconfig.json src/a.ts > dist/out.js
+
+    ├─ OUTPUT ──────────────────────────────────────────────────
+
     cat: tsconfig.json: No such file or directory
+
     ├─ SANDBOX VIOLATIONS (1) ──────────────────────────────────
+
     openat(tsconfig.json) = -1 ENOENT  [/repo/packages/app/tsconfig.json]
+
     fix: exec.sandbox.allow: { read: ['tsconfig.json'] }
     and, if the output depends on them, inputs.files: ['tsconfig.json']
+
+    └─ @demo/app#build ── (12ms) failed (exit 1, 1 sandbox violation)
     ```
   </TabItem>
   <TabItem label="3. Fixed">
