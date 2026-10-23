@@ -15,17 +15,23 @@ Two requests are HTTP, under `<relay>/v1/runs/<run>/`, where `<run>` is
 the run id, a random (v4) UUID, so no one can guess it; any other answers
 `400`. Each carries `Authorization: Bearer <CI OIDC token>`.
 
-| Request              | Body                                                           | Answer                                  |
-| -------------------- | -------------------------------------------------------------- | --------------------------------------- |
-| `POST join`          | `{ "role": "orchestrator" \| "worker", "info"?: any, "key"? }` | `200 { "id", "heartbeatMs", "socket" }` |
-| `GET socket?id=<id>` | none, a websocket upgrade                                      | `101`                                   |
+| Request               | Body                                                           | Answer                                  |
+| --------------------- | -------------------------------------------------------------- | --------------------------------------- |
+| `POST join`           | `{ "role": "orchestrator" \| "worker", "info"?: any, "key"? }` | `200 { "id", "heartbeatMs", "socket" }` |
+| `GET socket?id=<id>`  | none, a websocket upgrade                                      | `101`                                   |
+| `GET socket?join=<j>` | none, a websocket upgrade; `<j>` is `join`'s body, as JSON     | `101`                                   |
 
 - `join` makes a participant and returns its `id`, a secret the relay
   picked: whoever holds it, with a token of this run, acts as it. A run
   has one orchestrator; a second `orchestrator` join answers `409`. Workers
   may join before the orchestrator does. `"socket": true` says the relay
   speaks this version.
-- `socket` opens the participant's websocket (§ Sockets).
+- `socket` opens the participant's websocket (§ Sockets). With `join`
+  in place of `id` it joins too, as `join` would, and the socket's first
+  frame is `{ "joined": { "id", "heartbeatMs" } }`: one request a
+  participant, not two, on a host that bills each. A socket dialed again
+  names its `id`. An orchestrator signs it like any `socket`, the body
+  in its query.
 
 ## The orchestrator's key
 

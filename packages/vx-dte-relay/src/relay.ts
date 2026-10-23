@@ -88,6 +88,8 @@ interface Participant {
   /** The queue's size, in bytes of the bodies that filled it. */
   bytes: number
   socket?: RelaySocket | undefined
+  /** A participant that joined on its socket: what that socket says first. */
+  hello?: string
 }
 
 interface Run {
@@ -220,6 +222,15 @@ export function createRelay(opts: RelayOptions): Relay {
   /** `socket` reaches the participant: what queued for it goes down it. */
   const plug = (run: Run, p: Participant, socket: RelaySocket): void => {
     p.socket = socket
+    if (p.hello !== undefined) {
+      try {
+        socket.send(p.hello)
+        delete p.hello
+      } catch {
+        unplug(p)
+        return
+      }
+    }
     if (p.queue.length === 0) return
     const messages = drain(run, p)
     try {
@@ -403,7 +414,7 @@ export function createRelay(opts: RelayOptions): Relay {
     run: Run,
     body: { role?: unknown; info?: unknown; key?: unknown },
     token: VerifiedToken | undefined,
-  ): Response => {
+  ): Participant => {
     const role = body.role
     if (role !== 'orchestrator' && role !== 'worker') {
       throw new HttpError(400, 'role is orchestrator or worker')
@@ -442,7 +453,7 @@ export function createRelay(opts: RelayOptions): Relay {
       // Held until an orchestrator joins to read it.
       saveParticipant(run, p)
     }
-    return Response.json({ id: p.id, heartbeatMs, socket: true })
+    return p
   }
 
   const send = (
@@ -488,10 +499,16 @@ export function createRelay(opts: RelayOptions): Relay {
     // A run is its id within its repository, so another tenant that learns
     // an id cannot open it first.
     const key = await runKey(runId, token)
-    let run = runs.get(key)
+    const run = runs.get(key)
     if (verb === 'socket') {
       if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
         throw new HttpError(426, 'not a websocket')
+      }
+      const asked = url.searchParams.get('join')
+      if (asked !== null) {
+        const p = await enter(key, req, url, parse(asked), asked, token)
+        p.hello = JSON.stringify({ joined: { id: p.id, heartbeatMs } })
+        return opts.upgrade(key, p.id, req)
       }
       const id = url.searchParams.get('id') ?? ''
       // One the relay lost or let go learns it from the close code (GONE)
@@ -503,6 +520,23 @@ export function createRelay(opts: RelayOptions): Relay {
       return opts.upgrade(key, p.id, req)
     }
     const [body, text] = await readBody(req)
+    const p = await enter(key, req, url, body, text, token)
+    return Response.json({ id: p.id, heartbeatMs, socket: true })
+  }
+
+  /**
+   * Joins `body` to the run `key`: by a `join` request, or by the socket
+   * that carries it (`text` signed in its query), one request fewer a
+   * participant on a host that bills each.
+   */
+  const enter = async (
+    key: string,
+    req: Request,
+    url: URL,
+    body: Record<string, unknown>,
+    text: string,
+    token: VerifiedToken | undefined,
+  ): Promise<Participant> => {
     if (body['role'] === 'orchestrator') {
       if (
         typeof body['key'] !== 'string' ||
@@ -516,7 +550,7 @@ export function createRelay(opts: RelayOptions): Relay {
     }
     // Read again: another join may have made the run while this one's body
     // came, and a second one made here would replace it and its workers.
-    run = runs.get(key)
+    let run = runs.get(key)
     if (run?.closed === true) throw new HttpError(410, 'run closed')
     if (run === undefined) {
       run = { key, closed: false, byId: new Map(), openedAt: Date.now() }
@@ -525,7 +559,7 @@ export function createRelay(opts: RelayOptions): Relay {
     }
     if (body['role'] === 'orchestrator') {
       if (run.orchestrator !== undefined) throw new HttpError(409, 'the run has an orchestrator')
-      await prove(run, req, url, text, body['key'] as string)
+      await prove(run, req, url, req.method === 'GET' ? '' : text, body['key'] as string)
       // It may have closed while the key was checked; a socket's attach refuses a closed run itself.
       if (run.closed || runs.get(key) !== run) throw new HttpError(410, 'run closed')
     }
@@ -725,11 +759,14 @@ async function readBody(req: Request): Promise<[Record<string, unknown>, string]
   if (length > MAX_BODY) throw new HttpError(413, 'body over 1 MiB')
   const text = await req.text()
   if (text.length > MAX_BODY) throw new HttpError(413, 'body over 1 MiB')
+  return [parse(text), text]
+}
+
+function parse(text: string): Record<string, unknown> {
   try {
     const v: unknown = JSON.parse(text)
-    if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
-      return [v as Record<string, unknown>, text]
-    }
+    if (typeof v === 'object' && v !== null && !Array.isArray(v))
+      return v as Record<string, unknown>
   } catch {}
   throw new HttpError(400, 'body is not a JSON object')
 }
