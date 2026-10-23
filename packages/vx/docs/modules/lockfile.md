@@ -36,6 +36,8 @@ export const LOCK_INVALID = '.vx/projects.lock.json is invalid, run `vx lock`'
 // not have written? A run validates no entry, so it pays nothing for this.
 export function lockEntryBroken(root: string): boolean
 export async function readLockfile(root: string): Promise<Lockfile | null>
+// The digest of the bytes a read lock came from: what its configs are a function of.
+export function lockDigest(lock: Lockfile): string | undefined
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
 export function frozenProjectConfigs(
   lock: Lockfile,

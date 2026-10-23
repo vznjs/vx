@@ -860,6 +860,7 @@ export interface HashCache {
   workspaceFiles: WorkspaceFilesCache
   projectFiles: ProjectFilesCache
   folds?: FoldMemo | undefined
+  graph?: string | undefined
 }
 == type HeldPersistent (src/orchestrator/options.ts)
 export interface HeldPersistent {

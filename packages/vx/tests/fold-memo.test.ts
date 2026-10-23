@@ -49,10 +49,13 @@ const build = (): void => {
 }
 const runs = async (): Promise<number> =>
   (await readFile(path.join(root, 'runs.log'), 'utf8').catch(() => '')).split('\n').length - 1
+// A task's rows: the run's graph and keys are remembered under `\0` names.
 const memoRows = (): Array<{ task_id: string; probe: string; key: string }> => {
   const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'))
   try {
-    return db.query('SELECT task_id, probe, key FROM fold_memo').all() as never
+    return db
+      .query("SELECT task_id, probe, key FROM fold_memo WHERE task_id NOT LIKE char(0) || '%'")
+      .all() as never
   } finally {
     db.close()
   }

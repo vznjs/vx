@@ -29,6 +29,7 @@ export interface HashCache {
   workspaceFiles: WorkspaceFilesCache // `inputs.workspaceFiles` resolution, by declaration
   projectFiles: ProjectFilesCache // `inputs.files` resolution, by projectDir + declaration
   folds?: FoldMemo | undefined // each task's last key by its probe, across runs (cache.md, fold-memo.ts)
+  graph?: string | undefined // the remembered graph's token while nothing edited the nodes (graph-memo.md)
 }
 export function createHashCache(folds?: FoldMemo): HashCache
 

@@ -52,6 +52,11 @@ export function runKeysToken(args: RunKeysArgs): { id: string; token: string } |
     // Which outputs git ignores decides which a reader may see (`readableOutputs`).
     [...args.gitFilesCache.ignoredOutputs].sort().join('\0'),
   ]
+  // A remembered graph's token names every node's edges and config, so
+  // each node adds only what may differ under it (4 of 8 ms at 1,206
+  // tasks, 2026-10-23).
+  const graph = args.hashCache.graph
+  parts.push(graph ?? '')
   const ids: string[] = []
   const envNames = new Set<string>()
   // Tasks of one project mostly declare the same files and outputs, and the
@@ -89,6 +94,10 @@ export function runKeysToken(args: RunKeysArgs): { id: string; token: string } |
       for (const name of inputs.env ?? []) envNames.add(name)
     }
     ids.push(node.id)
+    if (graph !== undefined) {
+      parts.push(node.id, node.requested ? '1' : '0', files)
+      continue
+    }
     parts.push(
       node.id,
       node.projectName,
@@ -154,7 +163,7 @@ let identity: string | undefined
  * checkout is every module under `src/`, so an edit to the derivation from
  * source never reads back a key the old code made.
  */
-function codeIdentity(): string {
+export function codeIdentity(): string {
   if (identity !== undefined) return identity
   // `Bun.main`, not `import.meta.dir`: `--minify` inlines the build
   // machine's source path, so an installed binary walked a `src/` that is

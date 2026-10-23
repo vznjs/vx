@@ -46,6 +46,11 @@ export interface HashCache {
   projectFiles: ProjectFilesCache
   /** Each task's last key by its probe, across runs (the local cache's `FoldMemo`). */
   folds?: FoldMemo | undefined
+  /**
+   * The token of the remembered graph the run's nodes are (graph-memo.ts),
+   * while no plugin or flag has edited them since.
+   */
+  graph?: string | undefined
 }
 
 export function createHashCache(folds?: FoldMemo): HashCache {

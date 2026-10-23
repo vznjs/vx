@@ -40,6 +40,7 @@ import {
   findWorkspaceRoot,
   configuredBaseBranch,
   type LoadReads,
+  lockDigest,
   PROJECT_CONFIG_FILENAMES,
   readClaimedFiles,
   resolveCacheDir,
@@ -47,7 +48,6 @@ import {
   type ProjectEntry,
 } from '../workspace/index.js'
 import {
-  buildTaskGraph,
   excludeDependencies,
   expandRequested,
   type GraphRules,
@@ -82,6 +82,7 @@ import { applyGraphStage } from './graph-stage.js'
 import { keyExcludedDependencies } from './excluded-keys.js'
 import { FingerprintWatch } from './fingerprint-watch.js'
 import type { VxPlugin } from './plugin.js'
+import { memoGraph, type GraphMemo } from './graph-memo.js'
 import { askIgnoredOutputs, gatedOutputs } from './stable-keys.js'
 import { cacheRefs, currentBranch, resolveCacheScope } from './run-context.js'
 import { createHashCache, type HashCache } from './task-hash.js'
@@ -594,17 +595,34 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     // for its addition marks.
     const graphRules: GraphRules = { ...runRules(workspaceConfig), locked: true }
     const unproven: Array<[taskId: string, name: string]> = []
-    const graphOf = (req: typeof requested) =>
-      buildTaskGraph({
-        projects,
-        packageGraph,
-        requested: req,
-        workspaceRoot,
-        rules: graphRules,
-        ...(partialLoad
-          ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
-          : {}),
-      })
+    // Every config is the lock's only when it was read and no `project`
+    // plugin edited one (graph-memo.ts).
+    const lock =
+      hashCache.folds !== undefined &&
+      options.staged === undefined &&
+      !allStaged &&
+      !hasHook(plugins, 'project')
+        ? lockDigest(await readLock())
+        : undefined
+    const graphMemo: GraphMemo | undefined =
+      lock === undefined ? undefined : { folds: hashCache.folds!, lock, metas: projectMetas }
+    const graphOf = (req: typeof requested) => {
+      const built = memoGraph(
+        {
+          projects,
+          packageGraph,
+          requested: req,
+          workspaceRoot,
+          rules: graphRules,
+          ...(partialLoad
+            ? { undeclaredDeps: (id: string, name: string) => void unproven.push([id, name]) }
+            : {}),
+        },
+        graphMemo,
+      )
+      hashCache.graph = built.token
+      return built.nodes
+    }
     let nodes = graphOf(requested)
     const hasGraphHook = hasHook(plugins, 'graph')
     const graphStage = (): Promise<void> =>
@@ -747,6 +765,13 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     }
     refuseFiltersThroughGroups(nodes)
     const exclude = options.excludeDependencies
+    // The nodes are what the graph token names only while nothing edited them.
+    if (
+      hasGraphHook ||
+      hasHook(plugins, 'key') ||
+      (exclude !== undefined && (exclude === 'all' || exclude.length > 0))
+    )
+      hashCache.graph = undefined
     let keyOnly: ReadonlyMap<string, TaskNode> = new Map()
     if (exclude !== undefined && (exclude === 'all' || exclude.length > 0)) {
       const split = excludeDependencies(nodes, exclude)
