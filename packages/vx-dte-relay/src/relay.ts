@@ -183,7 +183,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
         p.socket.send(JSON.stringify({ messages: [m] }))
         return
       } catch {
-        p.socket = undefined
+        unplug(p)
       }
     }
     if (p.queue.length >= MAX_QUEUE || p.bytes + bytes > MAX_QUEUE_BYTES) {
@@ -193,6 +193,19 @@ export function createRelay(opts: RelayOptions = {}): Relay {
     p.queue.push(m)
     p.bytes += bytes
     p.waiter?.()
+  }
+
+  /**
+   * A socket a push failed on is closed, not only let go: left open, its
+   * pings answered, its participant never polled for what queued (two CI
+   * runs hung 20 min, 2026-10-23).
+   */
+  const unplug = (p: Participant): void => {
+    const s = p.socket
+    p.socket = undefined
+    try {
+      s?.close()
+    } catch {}
   }
 
   const drain = (run: Run, p: Participant): Message[] => {
@@ -561,7 +574,7 @@ export function createRelay(opts: RelayOptions = {}): Relay {
         try {
           socket.send(JSON.stringify({ messages }))
         } catch {
-          p.socket = undefined
+          unplug(p)
           for (const m of messages) deliver(run, p, m)
         }
       }
