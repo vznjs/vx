@@ -199,6 +199,10 @@ export function renderJobSummary(summary: RunSummaryRecord, title = 'vx run'): s
   return lines.join('\n')
 }
 
+// "13 (1 failed)" read as 13 run in all, of 14 (owner, 2026-10-23).
+const tasksCell = (ok: number, failed: number): string =>
+  failed > 0 ? `${ok} ok, ${failed} failed` : `${ok}`
+
 const pct = (x: number): string => `${Math.round(x * 100)}%`
 
 /**
@@ -228,7 +232,7 @@ function renderWorkers(
         escapeMarkdownCell(escapeInline(m.name)),
         escapeMarkdownCell(m.status),
         m.warmUpMs === undefined ? '' : fmtMs(m.warmUpMs),
-        `${m.done}${m.failed > 0 ? ` (${m.failed} failed)` : ''}`,
+        tasksCell(m.done, m.failed),
         fmtMs(m.onlineMs),
         fmtMs(Math.max(0, m.onlineMs - m.busyMs)),
         m.bookedAvg === undefined ? '' : `${m.bookedAvg.toFixed(1)} of ${m.cores}`,
@@ -246,7 +250,7 @@ function renderWorkers(
   if (here.length > 0) {
     const failed = here.filter((t) => t.status === 'failed').length
     lines.push(
-      `| this machine | ok |  | ${here.length - failed}${failed > 0 ? ` (${failed} failed)` : ''} |  |  |  |  |  |  |`,
+      `| this machine | ok |  | ${tasksCell(here.length - failed, failed)} |  |  |  |  |  |  |`,
     )
   }
   lines.push(

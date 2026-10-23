@@ -159,6 +159,24 @@ describe('renderJobSummary', () => {
     )
     expect(md).toContain("Expected 78% of the workers' core-time, used 40%.")
     expect(renderJobSummary(summary([task({})]))).not.toContain('### Workers')
+    // "13 (1 failed)" read as 13 in all (owner, 2026-10-23).
+    const one = renderJobSummary(
+      summary([task({ where: 'small#1' })], {
+        machines: [
+          {
+            ...m,
+            name: 'small#1',
+            done: 13,
+            failed: 1,
+            onlineMs: 1,
+            busyMs: 1,
+            cpuAvg: 0,
+            utilization: 0,
+          },
+        ],
+      }),
+    )
+    expect(one).toContain('| small#1 | left |  | 13 ok, 1 failed |')
   })
 
   it('failures head the table and get a callout section', () => {
