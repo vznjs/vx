@@ -4,6 +4,8 @@
 // these subjects (release-notes.ts), so one that does not parse is a change
 // the notes miss. tests/conventional-commits.unsafe.test.ts applies it in CI.
 
+import { isBreaking, type Commit } from './release-notes.ts'
+
 const TYPES = [
   'feat',
   'fix',
@@ -31,4 +33,21 @@ export function conventionalError(line: string): string | null {
   }
   if (line.length >= MAX_LENGTH) return `${line.length} chars (under ${MAX_LENGTH})`
   return null
+}
+
+/**
+ * Why a PR's squash would land a different number of breaking commits on
+ * main than its branch holds, or null. Main gets one commit, subject the
+ * title, body each branch commit's message; the PR's CI reads the branch.
+ * The upgrading page and the version read breaking commits, so a PR whose
+ * title alone said `!` passed and main failed (#4150, 2026-10-23).
+ */
+export function squashBreakingError(title: string, commits: readonly Commit[]): string | null {
+  const branch = commits.filter(isBreaking).length
+  const body = commits.map((c) => `* ${c.subject}\n\n${c.body}`).join('\n\n')
+  const main = isBreaking({ subject: title, body }) ? 1 : 0
+  if (branch === main) return null
+  if (branch === 0)
+    return 'the title is breaking and no commit is: mark one commit `!` (or a `BREAKING CHANGE:` footer)'
+  return `${branch} commits are breaking and the squash makes ${main}: ${main === 0 ? 'mark the title `!`' : 'keep one breaking commit'}`
 }
