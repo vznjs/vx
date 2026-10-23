@@ -4,7 +4,7 @@
 // answers instead. So this row runs in the unsafe suite, unsandboxed, the
 // one place the parse is what decides.
 
-import { mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
@@ -21,17 +21,28 @@ describe('untilGroupsGone reading /proc', () => {
       // comm is whatever the executable is called. Named `a) Z 9 9`, a
       // parse from the FIRST ')' reads state Z and calls a TERM-ignoring
       // member dead, so it would never get the SIGKILL.
-      const link = path.join(dir, 'a) Z 9 9')
-      symlinkSync(Bun.which('sleep')!, link)
-      const child = Bun.spawn(['sh', '-c', 'trap "" TERM; exec "$0" 30', link], {
+      // A script, not a link to `sleep`: uutils (Ubuntu 26) is one binary
+      // that picks its tool by the name it runs as, and exited at once.
+      // A script's process takes the script's name as its comm.
+      const script = path.join(dir, 'a) Z 9 9')
+      writeFileSync(script, '#!/bin/sh\ntrap "" TERM\nsleep 30\n', { mode: 0o755 })
+      const child = Bun.spawn([script], {
         detached: true,
         stdio: ['ignore', 'ignore', 'ignore'],
       })
       try {
-        const comm = `/proc/${child.pid}/comm`
+        // The name is there at exec; the TERM is ignored once the script's
+        // trap ran (bit 15 of SigIgn), and only then may it be sent.
+        expect(readFileSync(`/proc/${child.pid}/comm`, 'utf8').trim()).toBe('a) Z 9 9')
+        const ignoresTerm = (): boolean => {
+          const m = /^SigIgn:\s*([0-9a-f]+)$/m.exec(
+            readFileSync(`/proc/${child.pid}/status`, 'utf8'),
+          )
+          return m !== null && (BigInt(`0x${m[1]}`) & (1n << 14n)) !== 0n
+        }
         const deadline = Date.now() + 5_000
-        while (readFileSync(comm, 'utf8').trim() !== 'a) Z 9 9') {
-          if (Date.now() > deadline) throw new Error('the member never exec’d')
+        while (!ignoresTerm()) {
+          if (Date.now() > deadline) throw new Error('the member never ignored TERM')
           await Bun.sleep(5)
         }
         killTree(child, 'SIGTERM')
