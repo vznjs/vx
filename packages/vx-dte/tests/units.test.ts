@@ -351,24 +351,32 @@ const node = (id: string, deps: string[] = []) =>
   [id, { id, deps, projectDir: '/ws', config: {} } as unknown as TaskNode] as const
 
 // M, 2026-10-23: "we should not send tasks in batches unless we are 100%
-// sure ... they can fit"; and "we orchestrate ... you watch instruments".
-it('sends a worker what fits it, none beyond; one using less than booked gets more at once', async () => {
-  const h = await harness(new Map(['t1', 't2', 't3', 't4', 't5'].map((id) => node(id))))
+// sure ... they can fit". Main bf77a58: small#3's load read low while 38
+// test shards began, so it took them all on 4 cores, 28 failed, and the 5
+// workers started for them got none. Load only ever adds to the booking.
+it('sends a worker what its booking fits, though its load reads low; busier than booked, less', async () => {
+  const ids = Array.from({ length: 8 }, (_, i) => `t${i + 1}`)
+  const h = await harness(new Map(ids.map((id) => node(id))))
   try {
-    const a = await h.worker(2)
+    const a = await h.worker(4)
     await Bun.sleep(50)
-    for (const id of ['t1', 't2', 't3', 't4', 't5']) void h.o.execute(h.req(id))
-    // 2 cores, a core each: t3 waits.
-    expect(await a.batches()).toEqual([['t1', 't2']])
-    // Its machine says it uses 1.2 of them: one more begins while a core is free.
-    await a.say({ type: 'start', task: 't1', load: { cpu: 1.2, memory: 0 } })
-    expect(await a.batches()).toEqual([['t3']])
-    // Busy as it says, it gets none, though a command ended.
-    await a.say({ type: 'ran', task: 't2', load: { cpu: 2, memory: 0 } })
+    for (const id of ids) void h.o.execute(h.req(id))
+    expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
+    for (const id of ['t1', 't2', 't3', 't4'])
+      await a.say({ type: 'start', task: id, load: { cpu: 0.1, memory: 0 } })
     await Bun.sleep(50)
-    expect(h.o.where('t4')).toBeNull()
-    await a.say({ type: 'ran', task: 't3', load: { cpu: 0.5, memory: 0 } })
-    expect(await a.batches()).toEqual([['t4', 't5']])
+    expect(h.o.where('t5')).toBeNull()
+    // The worker started for them gets them.
+    const b = await h.worker(4)
+    expect(await b.batches()).toEqual([['t5', 't6', 't7', 't8']])
+    // Its machine busier than booked: the core a task freed stays taken.
+    await b.say({ type: 'start', task: 't5', load: { cpu: 4, memory: 0 } })
+    const t9 = h.o.execute(h.req('t9'))
+    await b.finish('t5')
+    await b.say({ type: 'held', running: ['t6', 't7', 't8'], load: { cpu: 4, memory: 0 } })
+    await Bun.sleep(50)
+    expect(h.o.where('t9')).toBeNull()
+    void t9
   } finally {
     await h.stop()
   }
@@ -463,6 +471,31 @@ it('a task no worker fits waits here, and goes to the first one free', async () 
     await a.begin('t1')
     const b = await h.worker(1)
     expect(await b.batches()).toEqual([['t2']])
+  } finally {
+    await h.stop()
+  }
+})
+
+// Main 871ffba, 2026-10-23: check.bun, unmeasured so alone on a worker,
+// waited 50 s while tasks behind it filled that worker again and again.
+it('a task that runs alone holds the worker it waits for; none after it takes it', async () => {
+  const h = await harness(
+    new Map([node('t1'), node('alone'), node('t3')]),
+    (id) => (id === 'alone' ? { cores: Infinity, memory: Infinity } : { cores: 1, memory: 10 }),
+    undefined,
+    undefined,
+    (id) => (id === 'alone' ? 100 : 1),
+  )
+  try {
+    const a = await h.worker(2)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.begin('t1')
+    for (const id of ['alone', 't3']) void h.o.execute(h.req(id))
+    await Bun.sleep(50)
+    await a.finish('t1')
+    expect(await a.batches()).toEqual([['alone']])
   } finally {
     await h.stop()
   }
@@ -664,7 +697,7 @@ it('a worker its adapter says exited is lost at once, its task run again', async
 // Asked before the run's end, a worker still there read online 1 ms and
 // booked 433802 of 4 (main, 2026-10-23).
 it('reports a worker still there at the summary online until then', async () => {
-  const h = await harness(new Map([node('t1')]))
+  const h = await harness(new Map([node('t1'), node('t2')]))
   try {
     const a = await h.worker(1)
     const t1 = h.o.execute(h.req('t1'))
@@ -675,6 +708,13 @@ it('reports a worker still there at the summary online until then', async () => 
     expect((await t1).exitCode).toBe(0)
     const [m] = h.o.machines()
     expect(m!.status).toBe('ok')
+    // small#3 read ok with 28 of its tasks failed (main bf77a58, 2026-10-23).
+    const t2 = h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t2']])
+    h.store.saved.set('k-t2', { stdout: '', stderr: '' })
+    await a.say({ type: 'end', task: 't2', key: 'k-t2', result: { exitCode: 1, durationMs: 1 } })
+    expect((await t2).exitCode).toBe(1)
+    expect(h.o.machines()[0]!.status).toBe('failed')
     expect(m!.onlineMs).toBeGreaterThanOrEqual(100)
     expect(m!.bookedAvg).toBeLessThanOrEqual(m!.cores)
   } finally {

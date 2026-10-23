@@ -279,14 +279,17 @@ stops, instead of waiting for the job's timeout.
   it. Each frame it sends (a task begun, a command ended, a task saved,
   its heartbeat) carries its machine's load: cores busy over the last
   second and memory in use. A task goes to it only when it fits now: while
-  one of its cores is free and the task's memory fits, by that load and
-  what was sent since (by what the run booked from history before it
-  reports, or for a `local()` worker, whose load is its host's). A task
-  that uses less than history booked leaves room for the next at once,
-  and a command that ended frees its cores while its outputs save. Every
+  one of its cores is free and the task's memory fits. What a worker has
+  in use is what its running tasks used on their last run (history's
+  measured CPU and peak RAM), or its live load plus what was sent since
+  when that is more. Never less: load lags a task's start, and a test
+  shard idle for a second then uses all its cores. A command that ended
+  frees its cores while its outputs save. Every
   task sent begins at once; none waits in a worker's queue. A task asking
   a whole worker, or bigger than any, runs alone on an idle one (a whole
-  worker for a task with no history).
+  worker for a task with no history). The first such task waiting holds
+  the worker that empties soonest: no task after it is sent there, so it
+  is not passed over again and again.
 - Tasks waiting for room go out longest tail first: a task's recorded
   duration and its longest chain of dependants, so a long chain that got
   ready late does not queue behind many short tasks ready at once.
@@ -424,6 +427,8 @@ machine together:
     that work out on its workers and on N more (`src/planner.ts`), each new
     one joining after the warm-up the first took (20 s before one has),
     and takes the fewest N that end within 5% (5 s at least) of the best.
+    It scales each task's cores by what the workers use over what the run
+    booked, as placing by load packs them.
     A worker the plan needs later starts when its warm-up nears. An idle
     worker leaves when the plan still ends in that margin with one started
     in its place: none is let go and started again. The same signal

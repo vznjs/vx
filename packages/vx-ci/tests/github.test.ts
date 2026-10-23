@@ -99,8 +99,8 @@ describe('renderJobSummary', () => {
     expect(md).not.toContain('| Verify |')
   })
 
-  // Owner, 2026-10-23: the page shows each DTE worker, booked beside used.
-  it('names each worker the run used, booked beside used, its peak RAM, and the totals', () => {
+  // Owner, 2026-10-23: the page shows each DTE worker, expected beside used.
+  it('names each worker the run used, expected beside used, its peak RAM, and the totals', () => {
     const m = {
       status: 'left',
       cores: 4,
@@ -146,7 +146,7 @@ describe('renderJobSummary', () => {
     expect(md).toContain(
       '| small#2 | left | 1m 30s | 0 | 10.0s | 10.0s | 0.0 of 4 | 0.0 | 1.0 of 16.0 GB | 0% |',
     )
-    expect(md).toContain("Booked 78% of the workers' core-time, used 40%.")
+    expect(md).toContain("Expected 78% of the workers' core-time, used 40%.")
     expect(renderJobSummary(summary([task({})]))).not.toContain('### Workers')
   })
 
