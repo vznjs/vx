@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte-relay: mark the relay's socket-only protocol breaking
+
+the relay answers only join and socket over HTTP; send, poll, leave and remove go down the socket. createRelay requires upgrade, and RelaySocket.close takes a code and reason.
+
 ## cli: drop Turbo, Nx and Vite Task flags and verbs
 
 Turbo, Nx and Vite Task flag aliases on vx run and vx watch → removed; vx run-many, affected, graph, query, ls, reset, daemon, login, logout, link and unlink hints → removed
