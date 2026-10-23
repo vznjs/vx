@@ -777,7 +777,7 @@ export class Orchestrator {
     while (!this.stop.signal.aborted) {
       let messages
       try {
-        // The client asks again through faults shorter than three heartbeats.
+        // The client asks again through faults shorter than 10 s.
         messages = await this.o.me.poll(this.stop.signal)
       } catch (err) {
         if (this.stop.signal.aborted) return

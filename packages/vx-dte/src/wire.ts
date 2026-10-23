@@ -24,15 +24,16 @@ export class RelayError extends Error {
 const FIRST_REDIAL_MS = 250
 /** A frame of several sends stays under this, half the relay's 1 MiB body limit. */
 const FRAME_BYTES = 512 * 1024
-/** Heartbeats without a word from the relay itself before a beat it must answer. */
-const QUIET_BEATS = 3
 /** How long `leave` waits on its socket's close handshake. */
 const CLOSE_WAIT_MS = 2_000
 const UNANSWERED = 'the relay answered no frame'
 /** The close code of a socket whose participant the relay lost or let go (PROTOCOL.md § Sockets). */
 const GONE = 4404
-/** How long `join` waits on the relay, before it says how long a heartbeat is. */
-const JOIN_DEADLINE_MS = 30_000
+/**
+ * No answer from the relay this long, every try counted, and it is gone
+ * (owner, 2026-10-23: "no reply for 10s no matter of attempts its over").
+ */
+const REPLY_MS = 10_000
 /**
  * How many times a request or a socket is tried again, after a fault (a
  * 5xx, a dropped connection) or a rate limit, before the participant gives
@@ -42,9 +43,23 @@ const JOIN_DEADLINE_MS = 30_000
 const RETRIES = 3
 /** The least either wait is: a loaded machine's loopback, under a test's short heartbeat. */
 const MIN_WAIT_MS = 1_000
+/**
+ * How long a request or a dial waits on its answer: two heartbeats, a
+ * relay's longest poll being one, at most `REPLY_MS`.
+ */
+const replyMs = (heartbeatMs: number): number =>
+  Math.min(Math.max(2 * heartbeatMs, MIN_WAIT_MS), REPLY_MS)
+/**
+ * How long a frame waits on its answer: a heartbeat, so a quiet relay asked
+ * after one is dead after two, `REPLY_MS` on the default, and this side
+ * dials again before the relay, losing it after two silent, does.
+ */
+const answerMs = (heartbeatMs: number): number =>
+  Math.min(Math.max(heartbeatMs, MIN_WAIT_MS), REPLY_MS)
 
 /** Runs `f` again, at most `RETRIES` times, after a rate-limit answer or (`faults`) a fault. */
 async function paced<T>(f: () => Promise<T>, signal?: AbortSignal, faults = true): Promise<T> {
+  const by = performance.now() + REPLY_MS
   for (let tries = 0; ; tries++) {
     try {
       return await f()
@@ -54,12 +69,13 @@ async function paced<T>(f: () => Promise<T>, signal?: AbortSignal, faults = true
         err instanceof RelayError
           ? err.retryAfterMs !== undefined || (faults && err.status >= 500)
           : faults && (err as Error).name !== 'TimeoutError'
-      if (!fault || tries >= RETRIES || signal?.aborted === true) throw err
-      await Bun.sleep(
+      const wait =
         err instanceof RelayError && err.retryAfterMs !== undefined
           ? err.retryAfterMs
-          : Math.random() * FIRST_REDIAL_MS * 2 ** tries,
-      )
+          : Math.random() * FIRST_REDIAL_MS * 2 ** tries
+      if (!fault || tries >= RETRIES || signal?.aborted === true) throw err
+      if (performance.now() + wait >= by) throw err
+      await Bun.sleep(wait)
     }
   }
 }
@@ -100,8 +116,8 @@ export async function join(
     paced(() => once(verb, body, query, signal), signal)
   // A relay that holds a request past its longest poll is stuck: Bun's
   // own limit let one poll wait five minutes before the run failed (CI,
-  // 2026-10-22). Three heartbeats, once `join` says what one is.
-  let deadlineMs = JOIN_DEADLINE_MS
+  // 2026-10-22). Two heartbeats, once `join` says what one is, 10 s at most.
+  let deadlineMs = REPLY_MS
   const once = async (verb: string, body?: unknown, query = '', signal?: AbortSignal) => {
     const method = body === undefined ? 'GET' : 'POST'
     const text = body === undefined ? '' : JSON.stringify(body)
@@ -165,8 +181,10 @@ export async function join(
       socket = await dial()
     }
   }
-  deadlineMs = Math.max(3 * heartbeatMs, MIN_WAIT_MS)
+  deadlineMs = replyMs(heartbeatMs)
   let failures = 0
+  /** When the socket was last open: dials past `REPLY_MS` from it give up. */
+  let lostAt: number | undefined
   let redial: ReturnType<typeof setTimeout> | undefined
   /** A redial in flight, which `leave` waits out: its socket closes before the process exits. */
   let dialing: Promise<void> | undefined
@@ -209,6 +227,7 @@ export async function join(
   /** A socket that failed or dropped is dialed again after a jittered backoff. */
   const again = (): void => {
     if (left || ended !== undefined || redial !== undefined || socket?.open === true) return
+    lostAt ??= performance.now()
     const ms = Math.random() * Math.min(heartbeatMs / 2, FIRST_REDIAL_MS * 2 ** failures)
     redial = setTimeout(() => {
       dialing = dial()
@@ -226,9 +245,12 @@ export async function join(
   const took = (s: Socket | undefined): void => {
     if (s?.open === true) {
       failures = 0
+      lostAt = undefined
       adopt(s)
     } else if (s?.code === GONE) end(new RelayError(404, 'relay: unknown id'))
     else if (++failures > RETRIES) end(new RelayError(404, `relay: no socket in ${RETRIES} dials`))
+    else if (performance.now() - lostAt! >= REPLY_MS)
+      end(new RelayError(404, `relay: no socket in ${REPLY_MS / 1000} s`))
     else again()
   }
   const first = socket
@@ -370,8 +392,8 @@ async function connect(
   heartbeatMs?: number,
 ): Promise<(Socket & { joined?: Joined }) | undefined> {
   const ws = new WebSocket(`${base.replace(/^http/, 'ws')}socket?${query}`, { headers })
-  // An upgrade the relay holds is a dial that failed, as a request past three heartbeats.
-  const wait = heartbeatMs === undefined ? JOIN_DEADLINE_MS : Math.max(3 * heartbeatMs, MIN_WAIT_MS)
+  // An upgrade the relay holds is a dial that failed, as a request past two heartbeats.
+  const wait = heartbeatMs === undefined ? REPLY_MS : replyMs(heartbeatMs)
   const opened = await new Promise<boolean>((resolve) => {
     const timer = setTimeout(() => resolve(false), wait)
     const settle = (ok: boolean) => () => {
@@ -390,7 +412,7 @@ async function connect(
   const inbox: RelayMessage[] = []
   let code = 0
   let n = 0
-  let hb = heartbeatMs ?? JOIN_DEADLINE_MS
+  let hb = heartbeatMs ?? REPLY_MS
   type Answer = {
     status?: number
     error?: string
@@ -403,14 +425,11 @@ async function connect(
   // alive: one that leaves a frame unanswered for two heartbeats is dead.
   const answer = (k: number, p: { settle(a: Answer): void; reject(err: Error): void }): void => {
     pending.set(k, p)
-    setTimeout(
-      () => {
-        if (!pending.has(k)) return
-        closed(UNANSWERED)
-        ws.close()
-      },
-      Math.max(2 * hb, MIN_WAIT_MS),
-    ).unref()
+    setTimeout(() => {
+      if (!pending.has(k)) return
+      closed(UNANSWERED)
+      ws.close()
+    }, answerMs(hb)).unref()
   }
   const refused = (a: Answer): RelayError =>
     new RelayError(a.status!, `relay send: ${a.status} ${a.error ?? ''}`, a.retryAfterMs)
@@ -461,31 +480,24 @@ async function connect(
       framed = true
       ws.send(JSON.stringify({ n: k, ...frame }))
     })
-  // A socket a network stops carrying sends no close: one silent for two
-  // heartbeats and a half is dead, long before the relay's twelve-heartbeat
-  // sweep drops this participant. Pinged each heartbeat, unless a frame
-  // went since, which the relay hears as one: each ping is a message a
-  // relay host may bill, and at two a heartbeat they were nearly all of
-  // a run's (2026-10-23).
-  let heard = performance.now()
+  // Alive while open; quiet, it is asked (owner, 2026-10-23: "check from
+  // time to time if it sends sth, or if not ask to send. if it does not
+  // reply for 10s its dead"). The ask is an empty frame the relay itself
+  // answers: the host answers a ping without the relay behind it, and
+  // 13baaf6's orchestrator heard nothing for 8 min. A frame unanswered past
+  // `answerMs` closes the socket (`answer`). Each half heartbeat with no
+  // frame sent pings, which the host answers free, so the relay, losing a
+  // participant silent two heartbeats, hears this side four times a loss
+  // window: one late timer is no loss.
   let framed = false
-  // The host answers a ping without the relay behind it, so a socket the
-  // relay no longer pushes to still pongs: 13baaf6's orchestrator heard
-  // nothing for 8 min (2026-10-23). Quiet this long, the beat is an empty
-  // frame the relay itself answers, which also makes this socket the one
-  // it pushes to; traffic that already flows proves the relay for free.
   let spoke = performance.now()
   let ping: ReturnType<typeof setInterval> | undefined
   const beat = (): void => {
     ping = setInterval(() => {
-      const now = performance.now()
-      if (now - heard > 2.5 * hb) {
-        closed()
-        ws.close()
-      } else if (framed) framed = false
-      else if (now - spoke >= QUIET_BEATS * hb) frame([])
+      if (framed) framed = false
+      else if (performance.now() - spoke >= hb) frame([])
       else ws.send('ping')
-    }, hb)
+    }, hb / 2)
     ping.unref()
   }
   if (heartbeatMs !== undefined) beat()
@@ -513,9 +525,8 @@ async function connect(
   }
   ws.onerror = () => closed()
   ws.onmessage = (e) => {
-    heard = performance.now()
     if (e.data === 'pong') return
-    spoke = heard
+    spoke = performance.now()
     const m = JSON.parse(String(e.data)) as Answer & {
       messages?: RelayMessage[]
       n?: number

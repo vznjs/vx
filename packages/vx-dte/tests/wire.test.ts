@@ -131,24 +131,28 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
 }
 
 // Each ping is a message a relay host may bill: at two a heartbeat they
-// were nearly all of a run's (2026-10-23). Frames go every 50 ms, a tenth
-// of the heartbeat: at a heartbeat twice the cadence a loaded runner's
-// one late frame let a tick through (CI, 2026-10-23).
-it('pings once a heartbeat, and not in one it sent a frame in', async () => {
-  const { url, pings } = sockets(500)
+// were nearly all of a run's (2026-10-23), so none goes in a half
+// heartbeat a frame went in. Quiet, the relay is asked: a frame it must
+// answer each heartbeat (owner, 2026-10-23: "if not ask to send"). Frames
+// go every 50 ms, a tenth of the heartbeat.
+it('asks a quiet relay each heartbeat, and pings only while it hears, not while it frames', async () => {
+  const { url, pings, frames } = sockets(500)
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   pings.length = 0
+  frames.length = 0
   await Bun.sleep(2_600)
+  // Quiet, most half heartbeats are a frame or the one after it.
   const quiet = pings.filter((id) => id === a.id).length
+  const asked = frames.filter((f) => f.includes('"sends":[]')).length
   pings.length = 0
   const t = performance.now()
   for (let i = 0; performance.now() - t < 2_000; i++) {
     await a.send('orchestrator', i)
     await Bun.sleep(50)
   }
-  expect([quiet >= 3 && quiet <= 6, pings.filter((id) => id === a.id)]).toEqual([true, []])
+  expect([quiet <= 3, asked >= 4, pings.filter((id) => id === a.id)]).toEqual([true, true, []])
   await a.leave()
   await o.leave()
 }, 15_000)
@@ -318,7 +322,9 @@ function dropping(): {
   const open = new Set<Bun.ServerWebSocket<Held>>()
   let server: Bun.Server<Held> | undefined
   const relay = createRelay({
-    heartbeatMs: 100,
+    // A frame waits a heartbeat on its answer, at least 1 s (MIN_WAIT_MS),
+    // and the relay loses a participant silent two.
+    heartbeatMs: 1_000,
     upgrade: (key, id, req) => {
       server!.upgrade(req, { data: { key, id } })
       return new Response(null, { status: 101 })
@@ -408,8 +414,8 @@ it('hears again within a few heartbeats when the relay lets its socket go', asyn
   const got = []
   for (let i = 0; i < 10 && got.length === 0; i++) got.push(...(await a.poll()))
   expect(got).toEqual([{ from: 'orchestrator', body: 'task' }])
-  // Three quiet heartbeats of 100 ms, then the beat the relay answers.
-  expect(performance.now() - at).toBeLessThan(600)
+  // A quiet heartbeat, then the beat the relay answers.
+  expect(performance.now() - at).toBeLessThan(2_500)
   await a.leave()
   await o.leave()
 }, 5_000)

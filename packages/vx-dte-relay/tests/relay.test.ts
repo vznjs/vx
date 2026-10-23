@@ -574,9 +574,9 @@ describe('a host that keeps runs and holds websockets', () => {
     const o = await c.join(R, 'orchestrator')
     const a = await c.join(R, 'worker')
     const next = c.relay.sweep()!
-    expect(next - Date.now()).toBeGreaterThan(40)
-    expect(next - Date.now()).toBeLessThanOrEqual(61)
-    await Bun.sleep(70)
+    expect(next - Date.now()).toBeGreaterThan(20)
+    expect(next - Date.now()).toBeLessThanOrEqual(41)
+    await Bun.sleep(50)
     c.relay.seen(K, o, Date.now())
     c.relay.sweep()
     expect(await c.poll(R, o)).toEqual([
@@ -585,29 +585,34 @@ describe('a host that keeps runs and holds websockets', () => {
     ])
   })
 
-  // Each sweep wakes a Durable Object; at three heartbeats it woke every
-  // 12 s and stayed billed the whole run (2026-10-22).
-  it('gives a participant on a socket twelve heartbeats, one with none three', async () => {
-    const c = client({ heartbeatMs: 20, timer: false })
+  // Owner, 2026-10-23: "if it does not reply for 10s its dead". Before, a
+  // participant on a socket had twelve heartbeats, one with none three.
+  it('loses a participant silent two heartbeats, on a socket or not', async () => {
+    const c = client({ heartbeatMs: 50, timer: false })
     const o = await c.join(R, 'orchestrator')
     const a = await c.join(R, 'worker')
     const b = await c.join(R, 'worker')
     expect(await c.plug(R, a)).toBe(true)
     expect(await c.plug(R, o)).toBe(true)
-    await Bun.sleep(70)
+    await Bun.sleep(60)
     c.relay.seen(K, o, Date.now())
-    const next = c.relay.sweep()!
+    c.relay.seen(K, a, Date.now())
+    c.relay.seen(K, b, Date.now())
+    c.relay.sweep()
+    await Bun.sleep(60)
+    c.relay.seen(K, o, Date.now())
+    c.relay.sweep()
     expect(await c.poll(R, o)).toEqual([
       { from: 'relay', body: { type: 'joined', id: a, info: null } },
       { from: 'relay', body: { type: 'joined', id: b, info: null } },
-      { from: 'relay', body: { type: 'lost', id: b } },
     ])
-    // The socket's silence is what the next sweep waits for: o pings.
-    expect(next - Date.now()).toBeGreaterThan(40)
-    await Bun.sleep(200)
+    await Bun.sleep(60)
     c.relay.seen(K, o, Date.now())
     c.relay.sweep()
-    expect(await c.poll(R, o)).toEqual([{ from: 'relay', body: { type: 'lost', id: a } }])
+    expect(await c.poll(R, o)).toEqual([
+      { from: 'relay', body: { type: 'lost', id: a } },
+      { from: 'relay', body: { type: 'lost', id: b } },
+    ])
   })
 
   // Main 32f73ed: the orchestrator waited 13 min on results the relay

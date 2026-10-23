@@ -134,12 +134,12 @@ const json = (s: string): string => JSON.stringify(s)
 
 /** A played job is first read this soon, then twice as late each time, up to `WATCH_MAX_MS`. */
 const WATCH_FIRST_MS = 2_000
-const WATCH_MAX_MS = 60_000
+const WATCH_MAX_MS = 10_000
 /** A job status no job leaves. */
 const ENDED = new Set(['success', 'failed', 'canceled', 'skipped'])
 
-/** How long the run waits for the vx-workers child pipeline to exist: a minute. */
-const BRIDGE_TRIES = 30
+/** How long the run waits for the vx-workers child pipeline to exist: 10 s (owner, 2026-10-23). */
+const BRIDGE_TRIES = 5
 const BRIDGE_WAIT_MS = 2_000
 
 /** A GitLab REST call for this job's project. */
@@ -150,7 +150,7 @@ async function api(token: string, method: string, route: string): Promise<unknow
   const res = await fetch(`${base}/projects/${project}/${route}`, {
     method,
     headers: { 'PRIVATE-TOKEN': token },
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(10_000),
   })
   if (!res.ok)
     throw new Error(
