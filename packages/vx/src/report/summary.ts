@@ -500,7 +500,7 @@ function formatEta(ms: number): string {
 
 /**
  * The `--verbosity 1` per-task table (`RunOptions.summaryTable`). Groups are
- * left out as the footer and `--report` leave them: a group ran no command.
+ * left out as the footer leaves them: a group ran no command.
  */
 export function formatOutcomeTable(outcomes: readonly TaskOutcome[]): string[] {
   const rows = outcomes

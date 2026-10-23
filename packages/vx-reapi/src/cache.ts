@@ -92,7 +92,7 @@ export class ReapiRemoteCache {
    * ActionResult's referenced blobs and hides a dangling entry, NativeLink
    * serves it. Without the second call, `has` on a NativeLink-style server
    * promises a hit that `get` then cannot honour — and the only consumer of
-   * `has` is the `--dry` / `--graph` plan, whose entire job is predicting
+   * `has` is the `--dry` plan, whose entire job is predicting
    * hit vs miss. Costs one extra round trip, and only for a PREDICTED HIT:
    * a miss still answers in one call.
    */
