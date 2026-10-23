@@ -171,7 +171,7 @@ it('a worker the relay lost exits 0', async () => {
   }
 })
 
-it('gives a failed worker start one more worker, then fails the run', async () => {
+it('gives failed worker starts three more workers, then fails the run', async () => {
   const served = servedRelay()
   const url = served.url
   try {
@@ -193,13 +193,43 @@ it('gives a failed worker start one more worker, then fails the run', async () =
       },
     })
     o.spawned('small#1', { size: 'small', cpu: 1, memory: 1 })
-    o.failed('small#1', 'install exited 1: ECONNRESET')
-    o.failed('small#2', 'install exited 1: ECONNRESET')
+    for (let i = 1; i <= 4; i++) o.failed(`small#${i}`, 'install exited 1: ECONNRESET')
     const run = o.execute({ taskId: 'p#t' } as Parameters<typeof o.execute>[0])
     expect([freed, await run.catch((e: Error) => e.message)]).toEqual([
-      ['small#1'],
-      'no worker could start: small#2 install exited 1: ECONNRESET',
+      ['small#1', 'small#2', 'small#3'],
+      'no worker could start: small#4 install exited 1: ECONNRESET',
     ])
+    await o.close()
+  } finally {
+    await served.stop()
+  }
+})
+
+// small#4's join timed out on the relay and its job's failure never
+// reached the run: it counted as starting for good, and main's run sat
+// 18 min (ee3fc6e, 2026-10-23).
+it('gives up a started worker that never joins, stops it and starts another', async () => {
+  const served = servedRelay()
+  try {
+    const overdue: string[] = []
+    const freed: string[] = []
+    const o = new Orchestrator({
+      me: await join(served.url, R, 'orchestrator', null, undefined),
+      root: '/ws',
+      tree: 'aaa',
+      nodes: () => undefined,
+      need: () => ({ cores: 1, memory: 0 }),
+      artifacts: fakeArtifacts().artifacts,
+      cacheFacts: async () => ({ refs: [], lent: {} }),
+      run: R,
+      keyOf: () => undefined,
+      joinDeadlineMs: 50,
+      overdue: (id) => overdue.push(id),
+      lost: (id) => freed.push(id),
+    })
+    o.spawned('small#1', { size: 'small', cpu: 1, memory: 1 })
+    await Bun.sleep(150)
+    expect({ overdue, freed }).toEqual({ overdue: ['small#1'], freed: ['small#1'] })
     await o.close()
   } finally {
     await served.stop()
