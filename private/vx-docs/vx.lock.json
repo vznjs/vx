@@ -99,6 +99,7 @@
           "!src/content/docs/design/**",
           "!src/content/docs/plugins/**",
           "!public/playground/planner.js",
+          "!public/_img/**",
           "!dist/**",
           "package.json"
         ]
@@ -248,6 +249,7 @@
           "!src/content/docs/design/**",
           "!src/content/docs/plugins/**",
           "!public/playground/planner.js",
+          "!public/_img/**",
           "!dist/**"
         ],
         "workspaceFiles": [
@@ -308,12 +310,50 @@
         }
       }
     },
+    "build.images": {
+      "description": "resize src/assets/{blog,features} → public/_img/",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun scripts/build-images.ts",
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "write": [
+              "public/_img/**"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "scripts/build-images.ts",
+          "src/assets/blog/**",
+          "src/assets/features/**",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": [
+            "public/_img/**"
+          ]
+        }
+      }
+    },
     "build": {
       "description": "astro build → dist/",
       "dependsOn": [
         "install",
         "import",
-        "build.playground"
+        "build.playground",
+        "build.images"
       ],
       "exec": {
         "command": "mkdir -p .astro/bin && ln -sf \"$(command -v bun)\" .astro/bin/node && PATH=\"$PWD/.astro/bin:$PATH\" bun --bun astro build",
@@ -365,6 +405,7 @@
           "!src/content/docs/design/**",
           "!src/content/docs/plugins/**",
           "!public/playground/planner.js",
+          "!public/_img/**",
           "!dist/**",
           "package.json"
         ]
@@ -381,7 +422,8 @@
       "description": "astro dev server (persistent)",
       "dependsOn": [
         "install",
-        "build.playground"
+        "build.playground",
+        "build.images"
       ],
       "exec": {
         "command": "bun --bun astro dev",
