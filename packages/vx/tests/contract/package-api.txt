@@ -195,6 +195,8 @@ export const PERSISTENT_TODO =
   'dependents unblock on readiness, and consider exec.timeout to bound the wait'
 == const place (src/util/ui.ts)
 export const place = (text: string): Inline => (text === 'local' ? text : id(text))
+== const PLATFORMS (src/config.ts)
+export const PLATFORMS = ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'] as const
 == const PLUGIN_HOOKS (src/config.ts)
 export const PLUGIN_HOOKS = [
   'config',
@@ -300,6 +302,8 @@ export function foldScriptHooks(
   body: string,
   post: string | undefined,
 ): string
+== function hostPlatform (src/exec/executor.ts)
+export function hostPlatform(): string
 == function inline (src/util/ui.ts)
 export function inline(x: Inline, c: ColorSupport): string
 == function isCacheHit (src/graph/task-status.ts)
@@ -2118,6 +2122,7 @@ export interface WorkspaceRules {
 == runtime values
 LOG_WIRE_VERSION = 1
 PERSISTENT_TODO = "persistent task — set persistent.readyWhen (regex matched against output) so dependents unblock on readiness, and consider exec.timeout to bound the wait"
+PLATFORMS = ["linux-x64","linux-arm64","darwin-x64","darwin-arm64"]
 PLUGIN_HOOKS = ["config","discover","project","graph","key","fingerprint","schedule","admit","executor","cache","telemetry","output","setup","commands","teardown"]
 PROJECT_CONFIG_FILENAMES = ["vx.config.ts","vx.config.mts","vx.config.js","vx.config.mjs","vx.config.cts","vx.config.cjs"]
 TELEMETRY_SCHEMA_VERSION = 4

@@ -71,6 +71,7 @@ export interface WorkerSize {
   readonly max?: number
   readonly cpu: number
   readonly memory: number | string
+  readonly platform?: Platform
 }
 == type WorkerSpawn (src/plugin.ts)
 export interface WorkerSpawn {

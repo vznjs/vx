@@ -1,9 +1,12 @@
 import {
   definePlugin,
+  hostPlatform,
   LocalHistoryProvider,
+  PLATFORMS,
   refuseUnknownOptions,
   UserError,
   type CommandContext,
+  type Platform,
   type PluginOptionKinds,
   type TaskNode,
   type TaskResources,
@@ -26,6 +29,8 @@ export interface WorkerSize {
   readonly cpu: number
   /** Its memory, in bytes or as `'8GB'`, `'512MiB'`: what starting one adds, until it reports what its machine has. */
   readonly memory: number | string
+  /** Its machines' platform; absent, this machine's. A task naming `exec.platforms` runs only on a worker of one of them. */
+  readonly platform?: Platform
 }
 
 /** What an adapter is asked to start: one worker of `size`. */
@@ -138,7 +143,15 @@ export function dte(options: DteOptions) {
         `dte(): workers.${name} needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any`,
       )
     }
-    return { name, max: s.max ?? Infinity, cpu: s.cpu, memory }
+    if (s.platform !== undefined && !PLATFORMS.includes(s.platform))
+      throw new UserError(`dte(): workers.${name}.platform is one of ${PLATFORMS.join(', ')}`)
+    return {
+      name,
+      max: s.max ?? Infinity,
+      cpu: s.cpu,
+      memory,
+      platform: s.platform ?? hostPlatform(),
+    }
   })
   const adapter = options.adapter
   // A keyless adapter's run on GitHub Actions with a relay names its own
@@ -379,7 +392,7 @@ export function dte(options: DteOptions) {
       })
       orchestrator = o
       const started = new Map<string, number>()
-      const sizeOf = new Map<string, (typeof sizes)[number]>()
+      const sizeOf = new Map<string, Size>()
       let index = 0
       // A planned run's first wave is on its way already; the rest, if
       // any, waits for the run to start it, by size.
@@ -391,14 +404,24 @@ export function dte(options: DteOptions) {
           later.set(a.size, [...(later.get(a.size) ?? []), a.id])
           continue
         }
-        o.spawned(a.id, { size: a.size, cpu: a.cpu, memory: a.memory })
+        o.spawned(a.id, {
+          size: a.size,
+          cpu: a.cpu,
+          memory: a.memory,
+          platform: sizes.find((s) => s.name === a.size)?.platform ?? hostPlatform(),
+        })
         started.set(a.size, (started.get(a.size) ?? 0) + 1)
         index++
       }
       // A worker the run counts as started, against its size's max.
-      const spawnOf = (s: (typeof sizes)[number], id: string, n: number): WorkerSpawn => {
+      const spawnOf = (s: Size, id: string, n: number): WorkerSpawn => {
         started.set(s.name, (started.get(s.name) ?? 0) + 1)
-        o.spawned(id, { size: s.name, cpu: s.cpu, memory: s.memory })
+        o.spawned(id, {
+          size: s.name,
+          cpu: s.cpu,
+          memory: s.memory,
+          ...(s.platform === undefined ? {} : { platform: s.platform }),
+        })
         sizeOf.set(id, s)
         return {
           run,
@@ -543,6 +566,9 @@ export function dte(options: DteOptions) {
         servers: true,
         // A worker answers a task's runtime probes before it runs it.
         runtime: true,
+        // Its sizes' platforms; workers that join on their own, this machine's.
+        platforms:
+          sizes.length === 0 ? [hostPlatform()] : [...new Set(sizes.map((s) => s.platform))],
         // Room for the workers' cores and their prefetch; the orchestrator
         // queues the rest. Workers that join on their own are as many as join.
         capacity:

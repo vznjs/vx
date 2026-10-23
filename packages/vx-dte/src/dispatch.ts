@@ -31,6 +31,8 @@ export interface Need {
   readonly memory: number
   /** It filled a machine this big last time: only a bigger one takes it, if any worker is. */
   readonly above?: { readonly cores: number; readonly memory: number } | undefined
+  /** The platform it runs on (`ExecuteRequest.platform`): only a worker of it takes it. */
+  readonly platform?: string | undefined
 }
 
 /** A worker as dispatch sees it: its size and what is in use on it now. */
@@ -44,6 +46,8 @@ export interface Bin {
   running: number
   /** Tasks whose outputs it holds. */
   readonly has?: ReadonlySet<string>
+  /** Its machine's platform (`linux-x64`), as it reported or its size declares. */
+  readonly platform?: string | undefined
 }
 
 export interface Ask {
@@ -59,6 +63,7 @@ export interface Ask {
  * free core alone, main's workers booked 4.3 of 4 (2026-10-23).
  */
 export function fits(bin: Bin, need: Need): boolean {
+  if (need.platform !== undefined && bin.platform !== need.platform) return false
   if (bin.running === 0) return true
   return (
     need.cores < bin.cores &&
@@ -89,9 +94,10 @@ export function assign<B extends Bin>(
     const { need } = ask
     const bigger = (b: B): boolean =>
       need.above === undefined || b.cores > need.above.cores || b.memory > need.above.memory
-    const anyBigger = bins.some(bigger)
+    const of = need.platform === undefined ? bins : bins.filter((b) => b.platform === need.platform)
+    const anyBigger = of.some(bigger)
     if (!anyBigger && need.above !== undefined && waits(need.above)) continue
-    const pool = anyBigger ? bins.filter(bigger) : bins
+    const pool = anyBigger ? of.filter(bigger) : of
     const up = ask.up === undefined ? [] : [...ask.up]
     let best: B | undefined
     let bestScore: [number, number] = [0, 0]

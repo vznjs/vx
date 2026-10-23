@@ -290,6 +290,13 @@ stops, instead of waiting for the job's timeout.
   worker for a task with no history). The first such task waiting holds
   the worker that empties soonest: no task after it is sent there, so it
   is not passed over again and again.
+- A task naming `exec.platforms` runs only on a worker of the platform
+  core placed it on: this machine's when a size has it, else the first of
+  the task's a size has. Each size's `platform` is this machine's unless
+  it says otherwise; a worker reports its own when it joins, and one
+  whose size says another is refused. The run starts a worker of each
+  platform its work needs. A task none of whose platforms any size has
+  refuses the run before a worker starts.
 - Tasks waiting for room go out longest tail first: a task's recorded
   duration and its longest chain of dependants, so a long chain that got
   ready late does not queue behind many short tasks ready at once.
@@ -418,10 +425,13 @@ machine together:
 
 - `dte(options: DteOptions)` is the plugin. `DteOptions` is
   `{ workers?, adapter?, relay?, local?, token?, scheduler? }`:
-  - `workers` names each `WorkerSize`, `{ cpu, memory, max? }`: its cores
+  - `workers` names each `WorkerSize`, `{ cpu, memory, max?, platform? }`: its cores
     and memory (bytes, or `'8GB'`, `'512MiB'`), which the run counts on
-    when it starts one, until the worker reports what its machine has, and
-    how many of it one run may start (absent, no cap). Only work counts:
+    when it starts one, until the worker reports what its machine has,
+    how many of it one run may start (absent, no cap), and its machines'
+    platform (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`;
+    absent, this machine's). With no adapter, the sizes' platforms are
+    the ones joining workers may have. Only work counts:
     a task that missed the cache, or waits on a cached one that did; groups
     and hits need no worker. At each miss, finish and join the run plays
     that work out on its workers and on N more (`src/planner.ts`), each new

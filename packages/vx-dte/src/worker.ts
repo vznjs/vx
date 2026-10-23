@@ -11,6 +11,7 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   answerRuntime,
+  hostPlatform,
   localFloor,
   machineMemoryBytes,
   ui,
@@ -69,6 +70,7 @@ export async function runWorker(opts: {
     ...(opts.id === undefined ? {} : { id: opts.id }),
     cores,
     memory,
+    platform: hostPlatform(),
     tree,
   }
   let me

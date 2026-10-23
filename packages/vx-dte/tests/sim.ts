@@ -27,6 +27,8 @@ export interface SimTask {
   readonly ran?: { readonly ms: number; readonly cores: number; readonly memory: number }
   /** What history said of it before the run, when that differs from how it ran; null: never measured. */
   readonly known?: { readonly ms: number; readonly cores: number; readonly memory: number } | null
+  /** The platform core placed it on (`TaskNode.platform`). */
+  readonly platform?: string
 }
 
 export interface SimOptions {
@@ -55,6 +57,9 @@ export interface SimWorker {
   onlineMs: number
   readonly cores: number
   readonly memory: number
+  readonly platform: string | undefined
+  /** The tasks it ran. */
+  readonly ran: string[]
   /** The most it was booked at once, cores and memory. */
   peakBooked: number
   peakMemory: number
@@ -96,6 +101,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       {
         id: t.id,
         deps: [...t.deps],
+        ...(t.platform === undefined ? {} : { platform: t.platform }),
         config: {
           ...(t.exec ? { exec: { command: 'x' } } : {}),
           ...(t.cache ? { cache: {} } : {}),
@@ -109,10 +115,12 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   }
   const need = (id: string): Need => {
     const k = known(id)
-    return booked(
+    const b = booked(
       k === undefined ? UNMEASURED : { cores: Math.max(0.25, k.cores), memory: k.memory },
       how.book,
     )
+    const platform = byId.get(id)!.platform
+    return platform === undefined ? b : { ...b, platform }
   }
   const durationMs = (id: string): number | undefined => known(id)?.ms
   const tail = tailsMs(nodes, durationMs)
@@ -175,6 +183,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         used: { cores, memory },
         running: w.running.size,
         has: w.has,
+        platform: w.platform,
         w,
       }
     })
@@ -197,6 +206,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         knownMs: durationMs(id),
       })
       w.tasks++
+      w.ran.push(id)
       let booked = 0
       let memory = 0
       for (const r of w.running.values()) {
@@ -221,6 +231,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         id: w.id,
         cores: w.cores,
         memory: w.memory,
+        platform: w.platform,
         at: 0,
         idle: jobs.length === 0,
         running: jobs.map((r) => ({
@@ -236,6 +247,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         id: w.id,
         cores: w.cores,
         memory: w.memory,
+        platform: w.platform,
         at: Math.max(0, warmUp - (now - w.spawnedAt)),
         idle: false,
         running: [],
@@ -289,6 +301,8 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         onlineMs: 0,
         cores: s.cpu,
         memory: s.memory,
+        platform: s.platform,
+        ran: [],
         peakBooked: 0,
         peakMemory: 0,
         running: new Map(),

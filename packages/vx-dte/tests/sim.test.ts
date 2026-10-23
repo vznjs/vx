@@ -145,6 +145,30 @@ for (const c of cases) {
   })
 }
 
+// Tasks core placed on a platform (`exec.platforms`) go only to workers of
+// it, and the run starts a worker of each platform its work needs, though
+// that size is declared after another the work fills.
+describe('a graph over two platforms', () => {
+  const linux: Size = { ...small, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 4, cpu: 4, memory: 16e9, platform: 'darwin-arm64' }
+  const graph = growing().map((t, i) => (i % 3 === 0 ? { ...t, platform: 'darwin-arm64' } : t))
+  const byId = new Map(graph.map((t) => [t.id, t]))
+  const r = simulate(graph, { sizes: [linux, mac] })
+  it('no task runs on a worker outside its platform', () => {
+    const off = r.workers.flatMap((w) =>
+      w.ran.filter((id) => {
+        const p = byId.get(id)!.platform
+        return p !== undefined && p !== w.platform
+      }),
+    )
+    expect(off).toEqual([])
+    expect(r.workers.some((w) => w.platform === 'darwin-arm64' && w.tasks > 0)).toBe(true)
+  })
+  it('every miss runs on a worker, once', () => {
+    expect(r.workers.reduce((n, w) => n + w.tasks, 0)).toBe(r.executed)
+  })
+})
+
 // Each choice of each layer (`dte({ scheduler })`), the rest the default's:
 // whatever a workspace picks, no worker is booked past its cores and every
 // miss runs once.
