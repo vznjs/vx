@@ -10,7 +10,7 @@ name: Release assets
 # fire only once the release can no longer take assets.
 # A manual release's body is the maintainer's; an auto-release's is its
 # release post (packages/vx/scripts/release-notes.ts), kept current by
-# release-notes.yml.
+# release.sync in ci.yml's Linux run on main.
 
 on:
   workflow_dispatch:

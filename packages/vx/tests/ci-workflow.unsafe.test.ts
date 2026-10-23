@@ -202,6 +202,18 @@ describe('ci.yml', () => {
     expect(job.permissions?.['pages']).toBe('write')
   })
 
+  // release-notes.yml was a workflow of its own for one task (owner,
+  // 2026-10-23: fold workflows into vx tasks on DTE).
+  it('syncs the release notes as a task of the Linux run, on a push', () => {
+    const job = doc.jobs['linux']!
+    const run = job.steps!.find((s) => s.run?.includes('bin.ts run '))!
+    expect(run.run).toContain("${{ github.event_name == 'push' && 'release.sync' || '' }}")
+    expect([run.env?.['GH_TOKEN'], job.permissions?.['contents']]).toEqual([
+      '${{ github.token }}',
+      'write',
+    ])
+  })
+
   it('filters no trigger by path', () => {
     expect(JSON.stringify(doc.on ?? doc.true)).not.toMatch(/paths/)
   })
