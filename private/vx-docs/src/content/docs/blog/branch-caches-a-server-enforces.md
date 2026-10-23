@@ -9,17 +9,19 @@ tags:
 excerpt: 'A pull request should read what main built and never write where main reads. vx keeps task keys plain and lets the cache server decide: the CI token picks where a write lands, a header names which branches a read may see. How it works, and how a cache server builds its half.'
 ---
 
-A shared remote cache has two jobs that pull against each other. A
-pull request should reuse everything `main` built, or CI is slow. And
-nothing a pull request builds should ever be replayed on `main`, or one
-non-hermetic build (or one hostile one) poisons every run after it.
+A pull request should reuse everything `main` built. And nothing a pull
+request builds should ever be replayed on `main`: one non-hermetic
+build, or one hostile one, would poison every run after it.
 
-Until now vx solved this on the client: a branch's run derived a second
-key per task from its branch scope and asked for either the plain key or
-the scoped one. It worked, but it put the decision in the wrong place.
-The client chose where to write, so only the client's honesty kept a
-branch out of `main`'s entries. vx now keeps task keys plain and leaves
-both decisions to the server.
+vx keeps task keys plain and lets the cache server enforce both rules:
+
+| Decision                    | Who makes it | From what                                   |
+| --------------------------- | ------------ | ------------------------------------------- |
+| Where a write lands         | the server   | the CI's signed OIDC token                  |
+| Which branches a read sees  | the client   | one header, own branch first, then `main`   |
+
+The client can steer reads, never writes. So no client, honest or not,
+can write into `main`'s cache.
 
 ## The token decides writes, always
 
@@ -37,7 +39,7 @@ not have to trust the client at all.
 
 ## The header steers reads
 
-What the client still knows best is which branches a read should see.
+What the client knows best is which branches a read should see.
 A pull request from `feat-x` wants its own earlier results first, then
 `main`'s. `turboCache()` names those refs on every read, own branch
 first, in one header:
@@ -208,14 +210,13 @@ build:
 A stacked PR (feature-b→feature) reads `feature-b, feature, main` in CI
 and `feature-b, main` on a laptop.
 
-## What changed in vx
+## What the client sends
 
-- Task keys reach every remote plain; the old scoped task keys are gone.
-- `turboCache()` gains `scope: 'header' | 'key'` and sends
-  `x-artifact-read-scopes` on every read. A `PUT` names no scope.
-- `nxCache()` and `turboCache()` no longer send `x-vx-cache-scope`.
+- Task keys reach every remote plain.
+- `turboCache()` sends `x-artifact-read-scopes` on every read; a `PUT`
+  names no scope.
 - `VX_CACHE_SCOPE`, `github({ cacheScope })` and `gitlab({ cacheScope })`
-  now scope only what
-  plugins store themselves (`ctx.cache`, run records).
+  scope only what plugins store themselves (`ctx.cache`, run records).
 
 The CI guide's [cache scopes and tokens](../../guides/ci/#cache-scopes-and-tokens) has the setup.
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
