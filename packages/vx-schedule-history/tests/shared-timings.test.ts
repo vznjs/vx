@@ -562,6 +562,56 @@ describe('shared timings', () => {
     expect([...(await provider.p50sFor(['p#x', 'p#y']))]).toEqual([['p#y', 50]])
   })
 
+  // PR #4150: main's blob, shared before definitions were kept, carried
+  // every need; the branch's own blob had definitions and no needs, and
+  // the run packed every task unmeasured.
+  it('a need shared before definitions is read beside a branch blob that has them', async () => {
+    const a = commit()
+    git('checkout', '-q', '-b', 'feature')
+    const b = commit()
+    commit()
+    const shared = spyCache()
+    const put = (sha: string, body: object): void => {
+      shared.store.set(key(sha), new TextEncoder().encode(JSON.stringify({ version: 1, ...body })))
+    }
+    put(a, { tasks: { 'p#x': 100 }, needs: { 'p#x': { cpu: 3 } } })
+    put(b, { tasks: { 'p#x': 120 }, defs: defsOf(['p#x']) })
+    const provider = new LocalHistoryProvider(
+      cache.dbHandle(),
+      undefined,
+      'feature',
+      taskDefinitions([node('p#x')]),
+    )
+    await importTimings({
+      root,
+      defaultBranch: 'main',
+      cache: shared,
+      provider,
+      ids: ['p#x'],
+      triedFile: triedFile(),
+      branch: true,
+    })
+    expect((await provider.resourcesFor(['p#x'])).get('p#x')?.maxCpuParallelism).toBe(3)
+  })
+
+  // PR #4150: a need of no definition (a blob shared before they were
+  // kept) was dropped on the write, so main's next blob carried none.
+  it('CI on main carries on a need shared before definitions were kept', async () => {
+    const a = commit()
+    const b = commit()
+    const shared = spyCache()
+    shared.store.set(
+      key(a),
+      new TextEncoder().encode(
+        JSON.stringify({ version: 1, tasks: { 'p#x': 100 }, needs: { 'p#x': { cpu: 3 } } }),
+      ),
+    )
+    await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#x'] })
+    expect((read(shared.store.get(key(b))) as { needs: unknown }).needs).toEqual({
+      'p#x': { cpu: 3 },
+    })
+  })
+
   it('drops oversized, malformed, out-of-range and non-graph entries', () => {
     const graph = new Set(['p#a', 'p#b', 'p#c', 'p#d', 'p#e', 'p#f'])
     expect(
