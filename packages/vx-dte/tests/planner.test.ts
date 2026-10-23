@@ -148,3 +148,23 @@ it('cancels a worker still starting that the plan ends as well without', () => {
   const wide = Array.from({ length: 8 }, (_, i) => task(`w${i}`, 30_000))
   expect(plan(wide, [online, starting], [], WARM).release).toEqual([])
 })
+
+it('waits a task on the running task it depends on', () => {
+  const busy = worker('busy', {
+    idle: false,
+    running: [{ id: 'build', cores: 1, memory: 1e8, endsIn: 10_000 }],
+  })
+  // Taken as ready, a growing graph's checks asked a worker that joined to nothing.
+  expect(simulate([task('check', 1_000, ['build'])], [busy])).toBe(11_000)
+})
+
+it('spends its margin once: a later plan of the same work keeps the first one’s deadline', () => {
+  // Two workers end it in 40 s, one in 44: within 5 s, the first plan keeps one.
+  const work = [task('a', 40_000, [], 4), task('b', 4_000, [], 4)]
+  const two = [worker('x'), worker('y')]
+  expect(plan(work, two, [], WARM).release).toEqual(['x'])
+  // A deadline 2 s past the best keeps both.
+  const p = plan(work, two, [], WARM, true, 42_000)
+  expect(p.release).toEqual([])
+  expect(p.boundMs).toBe(42_000)
+})

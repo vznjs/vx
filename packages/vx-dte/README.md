@@ -427,11 +427,13 @@ machine together:
     that work out on its workers and on N more (`src/planner.ts`), each new
     one joining after the warm-up the first took (20 s before one has),
     and takes the fewest N that end within 5% (5 s at least) of the best.
+    That margin is spent once: later plans keep its deadline until new
+    work is known. A task waiting on one that runs waits until it ends.
     It scales each task's cores by what the workers use over what the run
     booked, as placing by load packs them.
     A worker the plan needs later starts when its warm-up nears. An idle
     worker leaves when the plan still ends in that margin with one started
-    in its place: none is let go and started again. A worker still
+    in its place a warm-up later: none is let go and started again. A worker still
     starting that the plan ends as well without is cancelled: the adapter
     stops it before its setup if it can (`github()` cancels its workflow
     run once no worker in it is needed), and one that joins anyway is told

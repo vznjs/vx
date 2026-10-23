@@ -117,6 +117,9 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   const goneAt: { size: string; at: number }[] = []
   let churn = 0
   let again: number | undefined
+  // The run's deadline (`Plan.boundMs`), and the work its plans knew.
+  let deadline: number | undefined
+  const planned = new Set<string>()
   let index = 0
   const sizeOf = new Map<string, Size>()
 
@@ -208,6 +211,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         at: 0,
         idle: jobs.length === 0,
         running: jobs.map((r) => ({
+          id: r.id,
           cores: Math.min(r.booked.cores, w.cores),
           memory: Math.min(r.booked.memory, w.memory),
           endsIn: Math.max(0, (r.knownMs ?? 0) - (now - r.startedAt)),
@@ -228,7 +232,9 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     const p = decide({
       remaining,
       nodes,
-      executed,
+      executed: process.env.FORESIGHT
+        ? new Set(graph.filter((t) => t.ran && t.exec).map((t) => t.id))
+        : executed,
       need,
       durationMs,
       workers: planWorkers,
@@ -238,7 +244,11 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       final: false,
       warmUpMs: warmUp,
       replaceable: true,
+      limitMs: deadline === undefined ? undefined : deadline - now,
+      known: planned,
     })
+    deadline = now + p.boundMs
+    for (const t of p.tasks) planned.add(t.id)
     if (p.release.length > 0 && remaining.length > 0)
       for (const id of p.release) {
         const w = workers.find((x) => x.id === id)!
