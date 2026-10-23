@@ -6,6 +6,11 @@
  */
 export type Duration = `${number}${'ms' | 's' | 'm' | 'h' | 'd'}`
 
+/** The machines a task can name in `exec.platforms`: `os-arch`, as Bun's compile targets name them. */
+export const PLATFORMS = ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'] as const
+
+export type Platform = (typeof PLATFORMS)[number]
+
 /**
  * The workspace: settings in groups (`run`, `cache`, `lock`, `watch`) and the
  * plugins. Each setting's environment variable and flag derive from its
@@ -464,6 +469,13 @@ export interface ExecConfig {
    * state the machine has, exactly as they did before the field existed.
    */
   remote?: boolean | 'only'
+  /**
+   * The machines this task can run on, any of them. On one that is not
+   * listed the task is skipped, never failed, and so are its dependants;
+   * an executor that routes by platform (`TaskExecutor.platforms`) runs
+   * it on a worker that is. Omitted → anywhere.
+   */
+  platforms?: readonly Platform[]
   /** Environment exposed to the child process. */
   env?: ExecEnv
   /**

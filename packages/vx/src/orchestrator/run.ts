@@ -17,6 +17,7 @@ import {
 } from '../cache/index.js'
 import { VERSION } from '../version.js'
 import {
+  hostPlatform,
   resetSandbox,
   signalExitCode,
   VX_RUN_TASK_ENV,
@@ -98,6 +99,7 @@ import {
   hasPooledExecutor,
   placeTasks,
   planExecutorOf,
+  platformVerdict,
   poolOfPlacement,
   terminalHolders,
   locallyPlaced,
@@ -577,6 +579,26 @@ async function runOnBus(
           : 'no remote executor accepted it'
       warnOf(log)(`[vx] ${id}: exec.remote is 'only' and ${why} — nothing ran`)
     }
+  }
+  const platforms = platformVerdict(placements, ciContext.ci)
+  if (platforms !== undefined && 'refuse' in platforms) {
+    await abandoning(() => {
+      throw new UserError(platforms.refuse)
+    })
+  }
+  if (platforms !== undefined && 'warn' in platforms) warnOf(log)(platforms.warn)
+  /** A task its `exec.platforms` skip here: it never starts, and nor does what depends on it. */
+  const platformSkip = (node: TaskNode): TaskOutcome | undefined => {
+    const needs = placements.otherPlatform.get(node.id)
+    return needs === undefined
+      ? undefined
+      : {
+          node,
+          status: 'skipped',
+          exitCode: 0,
+          durationMs: 0,
+          otherPlatform: { needs, host: hostPlatform() },
+        }
   }
   // Demand: what each executor still has left to run (`executorDemand`),
   // told once the cache has said what it answers.
@@ -1183,6 +1205,8 @@ async function runOnBus(
             : line,
         ),
       execute: (node, upstream) => {
+        const skip = platformSkip(node)
+        if (skip !== undefined) return Promise.resolve(skip)
         const kept = keepServer(node)
         return kept !== undefined
           ? Promise.resolve(kept)
@@ -1194,6 +1218,8 @@ async function runOnBus(
       ...(options.continueMode !== 'always' && taintSeeds.size === 0
         ? {
             settleNow: (node: TaskNode, upstream: TaskOutcome[]) => {
+              const skip = platformSkip(node)
+              if (skip !== undefined) return () => skip
               if (isGroupTask(node) && node.config.inputs === undefined)
                 return () =>
                   unkeyedGroupOutcome(
@@ -1260,7 +1286,14 @@ async function runOnBus(
     // Clear the status line for good before the summary prints.
     log.runEnd?.()
     const list = [...outcomes.values()]
-    const ok = list.every((o) => isPassStatus(o.status))
+    // A platform skip, and a skip it blocked, is no failure: the task is not this machine's.
+    const ok = list.every(
+      (o) =>
+        isPassStatus(o.status) ||
+        (o.status === 'skipped' &&
+          (o.otherPlatform !== undefined ||
+            (o.blockedBy !== undefined && placements.otherPlatform.has(o.blockedBy)))),
+    )
 
     // The summary + artifact writers + recordRun pass all exclude group
     // tasks via the shared tallyOutcomes helper. We pass the full

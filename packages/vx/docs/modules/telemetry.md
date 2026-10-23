@@ -99,6 +99,7 @@ interface TaskTelemetry {
   outputs?: 'deferred' // the outputs stayed remote (`--cache-download=none`)
   attempts?: number // more than one: the task retried
   blockedBy?: string // on a skipped task, the failure at the root of it
+  otherPlatform?: { needs: readonly string[]; host: string } // on a skipped task, its `exec.platforms` leave the machine out
   timedOut?: true // on a failed task, vx's own timeout killed it
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn' // a persistent task never ready

@@ -123,6 +123,9 @@ describe('package boundaries', () => {
       // LayeredCache left (0.0.637): core builds every layer; a plugin returns the remote.
       'LocalHistoryProvider',
       'PERSISTENT_TODO',
+      // Widened 2026-10-23: `@vzn/vx-dte` checks a worker size's platform
+      // and defaults it to the host (exec.platforms).
+      'PLATFORMS',
       'PLUGIN_HOOKS',
       // Widened 2026-10-14: package discovery left core for `@vzn/vx-migrate`,
       // which names each member's existing config by the loader's names.
@@ -143,6 +146,7 @@ describe('package boundaries', () => {
       'exitSignal',
       'findWorkspaceRoot',
       'foldScriptHooks',
+      'hostPlatform',
       'isCacheHit',
       // Widened 2026-09-23 (item 667): `@vzn/vx-reapi` maps declared output
       // globs to literal REAPI paths, and its own wildcard class read the

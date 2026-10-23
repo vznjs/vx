@@ -131,6 +131,8 @@ export interface TaskTelemetry {
    * fail-fast skip and on every other status. Additive (schema stays 2).
    */
   blockedBy?: string
+  /** On a `skipped` task: its `exec.platforms` leave out the machine that ran the run. Additive. */
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   /** On a `failed` task: vx's own `timeout` killed it (exit 143 is the deadline, not a signal). Additive. */
   timedOut?: true
   /** On a sandboxed task: how many declared-boundary violations the sandbox recorded (a failure on its own). Additive. */
@@ -755,6 +757,7 @@ export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
   if (o.outputs !== undefined) t.outputs = o.outputs
   if (o.attempts !== undefined) t.attempts = o.attempts
   if (o.blockedBy !== undefined) t.blockedBy = o.blockedBy
+  if (o.otherPlatform !== undefined) t.otherPlatform = o.otherPlatform
   if (o.timedOut === true) t.timedOut = true
   if (o.sandboxViolations !== undefined) t.sandboxViolations = o.sandboxViolations
   if (o.notReady !== undefined) t.notReady = o.notReady

@@ -465,9 +465,9 @@ export function flakyNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): stri
 export function formatTaskSkippedLine(
   node: TaskNode,
   colors: ColorSupport = NO_COLOR,
-  blockedBy?: string,
+  skip?: Parameters<typeof skippedReason>[0],
 ): string {
-  const why = skippedReason(blockedBy)
+  const why = skippedReason(skip)
   const suffix = why === '' ? '' : ` ${paint('', `• ${why}`, colors, { dim: true })}`
   return (
     formatTaskRow(

@@ -71,6 +71,11 @@ export interface TaskNode {
    */
   keyParts?: ReadonlyArray<readonly [name: string, value: string]>
   /**
+   * The platform this run runs it on, when it declares `exec.platforms`:
+   * set by placement, folded into its key.
+   */
+  platform?: string
+  /**
    * Ids of upstream tasks whose declared outputs this task's outputs
    * overlap: this task ADDS to their trees (twenty's `build:individual`
    * into `build`'s `dist`; item 588). Its own output set is what its run

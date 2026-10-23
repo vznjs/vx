@@ -1110,7 +1110,7 @@ export function defaultLogger(
         }
         case 'errors-only':
           if (outcome.status === 'skipped') {
-            emitRow(formatTaskSkippedLine(node, colors, outcome.blockedBy))
+            emitRow(formatTaskSkippedLine(node, colors, outcome))
             return
           }
           if (outcome.status !== 'failed') return
@@ -1149,7 +1149,7 @@ export function defaultLogger(
           } else if (outcome.status === 'success') {
             emitRow(formatTaskExecutedLine(node, outcome, colors, onPath.has(node.id)))
           } else if (outcome.status === 'skipped') {
-            emitRow(formatTaskSkippedLine(node, colors, outcome.blockedBy))
+            emitRow(formatTaskSkippedLine(node, colors, outcome))
           }
           return
         case 'focused':
@@ -1158,7 +1158,7 @@ export function defaultLogger(
             // stopped), so no frame-open fired — and a skip has no output,
             // so a one-liner carries everything a frame would.
             if (outcome.status === 'skipped') {
-              emitRow(formatTaskSkippedLine(node, colors, outcome.blockedBy))
+              emitRow(formatTaskSkippedLine(node, colors, outcome))
               return
             }
             if (streamsLive(node)) {
@@ -1211,7 +1211,7 @@ export function defaultLogger(
           // Dependency-pulled nodes: silent on success; a skip gets its
           // row, failures the ◼ row now and their frame replayed at runEnd.
           if (outcome.status === 'skipped') {
-            emitRow(formatTaskSkippedLine(node, colors, outcome.blockedBy))
+            emitRow(formatTaskSkippedLine(node, colors, outcome))
           } else if (outcome.status === 'failed') {
             emitRow(failureRow(node, outcome))
             deferredFailures.push(
@@ -1239,7 +1239,7 @@ export function defaultLogger(
             return
           }
           if (outcome.status === 'skipped') {
-            emitRow(formatTaskSkippedLine(node, colors, outcome.blockedBy))
+            emitRow(formatTaskSkippedLine(node, colors, outcome))
             return
           }
           const block = formatTaskBlock(

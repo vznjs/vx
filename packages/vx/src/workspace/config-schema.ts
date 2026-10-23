@@ -7,6 +7,7 @@
 
 import path from 'node:path'
 import {
+  PLATFORMS,
   PLUGIN_FUNCTION_HOOKS,
   PLUGIN_HOOKS,
   PLUGIN_PACKAGE,
@@ -545,6 +546,20 @@ export function validateProjectConfig(
             `and its key is the address of its remote record`,
         )
       }
+      const platforms = (exec as { platforms?: unknown }).platforms
+      if (platforms !== undefined) {
+        const known = PLATFORMS as readonly unknown[]
+        if (
+          !Array.isArray(platforms) ||
+          platforms.length === 0 ||
+          !platforms.every((p) => known.includes(p)) ||
+          new Set(platforms).size !== platforms.length
+        ) {
+          throw new UserError(
+            `${where}.exec.platforms must be a non-empty array of distinct platforms, each one of ${PLATFORMS.join(', ')}`,
+          )
+        }
+      }
       const env = (exec as { env?: unknown }).env
       if (env !== undefined) {
         if (typeof env !== 'object' || env === null) {
@@ -958,6 +973,7 @@ const EXEC_FIELDS = new Set([
   'interactive',
   'remote',
   'sandbox',
+  'platforms',
 ])
 const PERSISTENT_FIELDS = new Set(['readyWhen'])
 const ENV_FIELDS = new Set(['passThrough', 'define', 'secret'])

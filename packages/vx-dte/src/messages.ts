@@ -20,6 +20,8 @@ export interface WorkerInfo {
   /** What its machine has (core's `machineParallelism`, `machineMemoryBytes`), not what its size says. */
   readonly cores: number
   readonly memory: number
+  /** Its machine's platform, `os-arch` (`linux-x64`): a task naming `exec.platforms` goes only to a worker of its platform. */
+  readonly platform?: string
   /** Its checkout's tree: a worker with other tracked files than the run is refused. */
   readonly tree: string
 }

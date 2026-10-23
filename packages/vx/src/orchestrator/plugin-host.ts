@@ -19,7 +19,7 @@ import {
 } from '../cache/index.js'
 import { localExecutor, type TaskExecutor } from '../exec/index.js'
 import { maskedLine, settleWithin, teardownTimeoutMs, UserError } from '../util/index.js'
-import type { ProjectConfig, WorkspaceConfig } from '../config.js'
+import { PLATFORMS, type ProjectConfig, type WorkspaceConfig } from '../config.js'
 import { checkGraph, type GraphRules, type TaskNode } from '../graph/index.js'
 import type {
   CacheContext,
@@ -789,6 +789,19 @@ export async function resolveExecutors(
     if (capacity !== undefined && !(Number.isInteger(capacity) && (capacity as number) > 0)) {
       throw new UserError(
         `plugin '${plugin.name}' returned executor '${executor.name}' with capacity ${typeof capacity === 'number' ? String(capacity) : JSON.stringify(capacity)}: it must be a positive integer`,
+      )
+    }
+    const platforms: unknown = executor.platforms
+    if (
+      platforms !== undefined &&
+      !(
+        Array.isArray(platforms) &&
+        platforms.length > 0 &&
+        platforms.every((p) => (PLATFORMS as readonly unknown[]).includes(p))
+      )
+    ) {
+      throw new UserError(
+        `plugin '${plugin.name}' returned executor '${executor.name}' with platforms ${JSON.stringify(platforms)}: it must be a non-empty array of ${PLATFORMS.join(', ')}`,
       )
     }
     executorPlugin.set(executor, plugin.name)

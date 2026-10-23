@@ -245,8 +245,14 @@ async function harness(
     ...(tail === undefined ? {} : { tail }),
     ...more,
   })
-  const worker = async (cores: number, id?: string) => {
-    const me = await join(url, R, 'worker', { v: 1, cores, memory: 100, tree: 'c', id }, undefined)
+  const worker = async (cores: number, id?: string, platform?: string) => {
+    const me = await join(
+      url,
+      R,
+      'worker',
+      { v: 1, cores, memory: 100, tree: 'c', id, ...(platform === undefined ? {} : { platform }) },
+      undefined,
+    )
     const orders: RunOrder[] = []
     const batches = async (): Promise<string[][]> => {
       for (let i = 0; i < 20; i++) {
@@ -526,6 +532,42 @@ it('a worker cancelled before it joined is told to exit when it joins, and never
     expect(await b.types()).toEqual(['exit'])
     h.o.failed('small#2', 'job cancelled')
     expect(h.o.machines().map((m) => m.name)).toEqual(['small#1'])
+  } finally {
+    await h.stop()
+  }
+})
+
+// exec.platforms (M, 2026-10-23): a task core placed on a platform goes
+// only to a worker of it, and a worker whose size says another is refused.
+it('a task on a platform goes only to a worker of it', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.worker(4, undefined, 'linux-x64')
+    const b = await h.worker(4, undefined, 'darwin-arm64')
+    await Bun.sleep(50)
+    void h.o.execute({ ...h.req('t1'), platform: 'darwin-arm64' })
+    expect(await b.batches()).toEqual([['t1']])
+    expect(h.o.planState(() => undefined, 0).workers.find((w) => w.id === a.id)?.idle).toBe(true)
+  } finally {
+    await h.stop()
+  }
+})
+
+it('a worker whose machine is not its size’s platform is refused', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    h.o.spawned('mac#1', { size: 'mac', cpu: 4, memory: 100, platform: 'darwin-arm64' })
+    const a = await h.worker(4, 'mac#1', 'linux-x64')
+    const got: unknown[] = []
+    for (let i = 0; i < 10 && got.length === 0; i++)
+      got.push(
+        ...(await a.poll())
+          .map((m) => m.body)
+          .filter((b) => (b as { type: string }).type === 'refused'),
+      )
+    expect(got).toEqual([
+      { type: 'refused', reason: 'runs on linux-x64, and its size mac says darwin-arm64' },
+    ])
   } finally {
     await h.stop()
   }
@@ -1375,6 +1417,11 @@ it('refuses options it does not read and workers it cannot start', () => {
   expect(
     refusal(() => dte({ workers: { s: { max: 1, cpu: 1, memory: '8 lots' } }, adapter })),
   ).toBe("dte(): workers.s needs cpu ≥ 1, memory such as '8GB', and a whole max ≥ 0 if any")
+  expect(
+    refusal(() =>
+      dte({ workers: { s: { cpu: 1, memory: '1GB', platform: 'win32-x64' as never } }, adapter }),
+    ),
+  ).toBe('dte(): workers.s.platform is one of linux-x64, linux-arm64, darwin-x64, darwin-arm64')
   expect(refusal(() => dte({ workers: {}, adapter, scheduler: { order: 'lifo' } as never }))).toBe(
     'dte(): scheduler.order is one of critical-path, graphene, fifo',
   )

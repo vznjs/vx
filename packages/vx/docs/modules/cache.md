@@ -240,6 +240,7 @@ export interface CacheKeyInput {
   forwardArgs?: readonly string[] // CLI args after `--`
   fileHashes?: ReadonlyMap<string, string> // (v20) abs path → git blob OID; mapped paths skip hashFile
   pluginParts?: ReadonlyArray<readonly [name: string, value: string]> // `key` stage parts; folded as `plugin:<n>`
+  platform?: string // the platform a task naming `exec.platforms` runs on; folded only when set
   // (Tier 3) Pure side-channel: when set, key() pushes each component
   // (kind,name,hash) it folds, at the same fold sites. Does NOT change
   // the digest — used (on a cache MISS only) to persist entry_inputs

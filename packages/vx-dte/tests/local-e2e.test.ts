@@ -302,6 +302,62 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { small
   }
 }, 60_000)
 
+// ci.yml's mac and arm sizes name no platform and join a run on Linux: a
+// size that names none takes whatever worker joins it.
+it('runs on a worker of another platform when its size names none', async () => {
+  const { serveRelay } = await import('@vzn/vx-dte-relay')
+  const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
+  const url = relay.url
+  try {
+    await writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { dte } from ${JSON.stringify(DTE)}
+const adapter = { adopt(worker) { worker('mac#1', 'mac') }, spawn() {} }
+export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { mac: { max: 1, cpu: 1, memory: '1GB' } }, adapter })] }
+`,
+    )
+    // The worker says it runs elsewhere: its own `process.platform`.
+    const other = process.platform === 'darwin' ? 'linux' : 'darwin'
+    const preload = path.join(root, '.vx/other-platform.mjs')
+    await writeFile(
+      preload,
+      `Object.defineProperty(process, 'platform', { value: ${JSON.stringify(other)} })\n`,
+    )
+    Bun.spawnSync(
+      ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'r'],
+      { cwd: root },
+    )
+    expect(vx(['run', 'a#gen']).exitCode).toBe(0)
+    const { VX_DTE_RUN: _, ...env } = process.env
+    const shared = {
+      ...env,
+      VX_DTE_RUN: crypto.randomUUID(),
+      VX_DTE_SECRET: 'other-secret',
+      NO_COLOR: '1',
+    }
+    const worker = Bun.spawn([process.execPath, '--preload', preload, CORE_BIN, 'dte', 'worker'], {
+      cwd: root,
+      env: { ...shared, VX_DTE_WORKER: 'mac#1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#use'], {
+      cwd: root,
+      env: shared,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const out = await new Response(run.stdout).text()
+    expect([await run.exited, out]).toEqual([
+      0,
+      expect.stringMatching(/└─ b#use · mac#1 ── .*success/),
+    ])
+    expect(await worker.exited).toBe(0)
+  } finally {
+    await relay.stop()
+  }
+}, 60_000)
+
 /**
  * The pids under `pid`, by `pgrep -P`: macOS's `ps` is setuid, which the
  * sandbox will not spawn (EPERM on M's Mac, 2026-10-21).

@@ -195,6 +195,8 @@ export const PERSISTENT_TODO =
   'dependents unblock on readiness, and consider exec.timeout to bound the wait'
 == const place (src/util/ui.ts)
 export const place = (text: string): Inline => (text === 'local' ? text : id(text))
+== const PLATFORMS (src/config.ts)
+export const PLATFORMS = ['linux-x64', 'linux-arm64', 'darwin-x64', 'darwin-arm64'] as const
 == const PLUGIN_HOOKS (src/config.ts)
 export const PLUGIN_HOOKS = [
   'config',
@@ -300,6 +302,8 @@ export function foldScriptHooks(
   body: string,
   post: string | undefined,
 ): string
+== function hostPlatform (src/exec/executor.ts)
+export function hostPlatform(): string
 == function inline (src/util/ui.ts)
 export function inline(x: Inline, c: ColorSupport): string
 == function isCacheHit (src/graph/task-status.ts)
@@ -546,6 +550,7 @@ export interface CacheKeyInput {
   forwardArgs?: readonly string[]
   fileHashes?: ReadonlyMap<string, string>
   pluginParts?: ReadonlyArray<readonly [name: string, value: string]>
+  platform?: string
   captureInto?: Array<{ kind: string; name: string; hash: string }>
 }
 == type CacheLayer (src/cache/layer.ts)
@@ -730,6 +735,7 @@ export interface EventBus {
 export interface ExecConfig {
   command: string
   remote?: boolean | 'only'
+  platforms?: readonly Platform[]
   env?: ExecEnv
   timeout?: Duration
   retries?: number
@@ -751,6 +757,7 @@ export interface ExecuteRequest {
   readonly cacheKey?: string
   readonly refresh?: boolean
   readonly remoteOnly?: boolean
+  readonly platform?: string
   readonly download?: 'eager' | 'deferred'
   readonly outputs: {
     readonly files: readonly string[]
@@ -1108,6 +1115,7 @@ export interface OutcomeView {
   notReady?: 'timeout' | 'exited' | 'spawn'
   inputMoved?: string
   blockedBy?: string
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   admissionHeldMs?: number
   queuedMs?: number
   inputFiles?: number
@@ -1174,6 +1182,8 @@ export interface PlanPrediction {
   unknownCount: number
   criticalPath: string[]
 }
+== type Platform (src/config.ts)
+export type Platform = (typeof PLATFORMS)[number]
 == type Plugin (src/config.ts)
 export interface Plugin {
   readonly name: string
@@ -1759,6 +1769,7 @@ export interface TaskExecutor {
   readonly sandbox?: boolean
   readonly servers?: boolean
   readonly runtime?: boolean
+  readonly platforms?: readonly string[]
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean
   demand?(remaining: ReadonlySet<string>, missed: ReadonlySet<string>): void
@@ -1828,6 +1839,7 @@ export interface TaskNode {
   requested: boolean
   surfaced?: boolean
   keyParts?: ReadonlyArray<readonly [name: string, value: string]>
+  platform?: string
   addsToOutputsOf?: string[]
   outputsAddedToBy?: string[]
   excludedUpstream?: TaskOutcome[]
@@ -1858,6 +1870,7 @@ export interface TaskOutcome {
   keylessBy?: string
   cacheOff?: true
   blockedBy?: string
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   timedOut?: true
   failedOutput?: string
   runLog?: string
@@ -1928,6 +1941,7 @@ export interface TaskTelemetry {
   outputs?: 'deferred'
   attempts?: number
   blockedBy?: string
+  otherPlatform?: { readonly needs: readonly string[]; readonly host: string }
   timedOut?: true
   sandboxViolations?: number
   notReady?: 'timeout' | 'exited' | 'spawn'
@@ -2108,6 +2122,7 @@ export interface WorkspaceRules {
 == runtime values
 LOG_WIRE_VERSION = 1
 PERSISTENT_TODO = "persistent task — set persistent.readyWhen (regex matched against output) so dependents unblock on readiness, and consider exec.timeout to bound the wait"
+PLATFORMS = ["linux-x64","linux-arm64","darwin-x64","darwin-arm64"]
 PLUGIN_HOOKS = ["config","discover","project","graph","key","fingerprint","schedule","admit","executor","cache","telemetry","output","setup","commands","teardown"]
 PROJECT_CONFIG_FILENAMES = ["vx.config.ts","vx.config.mts","vx.config.js","vx.config.mjs","vx.config.cts","vx.config.cjs"]
 TELEMETRY_SCHEMA_VERSION = 4

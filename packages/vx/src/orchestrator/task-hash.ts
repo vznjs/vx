@@ -408,6 +408,7 @@ async function resolveKeyInput(
     forwardArgs: effectiveForwardArgs,
     ...(fileHashes !== undefined ? { fileHashes } : {}),
     ...(args.node.keyParts !== undefined ? { pluginParts: args.node.keyParts } : {}),
+    ...(args.node.platform !== undefined ? { platform: args.node.platform } : {}),
     ...(args.captureInto !== undefined ? { captureInto: args.captureInto } : {}),
   }
   return { input, listings: resolved.listings }
