@@ -4,23 +4,25 @@
 // bitmap from scripts/cover-backgrounds.ts; then the mark, a label, the title; or, as a post's banner under its own
 // headline, the label set large). Text sizes are container units, so
 // the drawn cover scales like an image at every card width.
-import { Image } from 'astro:assets'
+import { srcset } from '../../images.js'
 import { label, tone, type Post } from '../../blog/posts.js'
 
 type Props = { post: Post; sizes: string; eager?: boolean; title?: boolean }
 const { post, sizes, eager = false, title = true } = Astro.props
 const cover = post.entry.data.cover
 const base = import.meta.env.BASE_URL
+// The frontmatter names the PNG under src/assets/blog/ by its relative path.
+const img = cover && srcset(`blog/${cover.image.replace(/^.*\//, '').replace(/\.png$/, '')}`, [480, 800, 1200])
 ---
 
 {
   cover ? (
-    <Image
+    <img
       class="vx-cover"
-      src={cover.image}
+      {...img}
       alt={cover.alt}
-      widths={[480, 800, 1200]}
       sizes={sizes}
+      decoding="async"
       loading={eager ? 'eager' : 'lazy'}
       fetchpriority={eager ? 'high' : undefined}
     />

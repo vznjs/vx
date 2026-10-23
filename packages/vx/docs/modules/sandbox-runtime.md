@@ -877,7 +877,7 @@ skipped (2026-10-02).
 ## Loopback
 
 A runtime that opens a dual-stack socket reaches 127.0.0.1 as
-::ffff:127.0.0.1, and seatbelt's only host tokens are `localhost` and
+`::ffff:127.0.0.1`, and seatbelt's only host tokens are `localhost` and
 `*` — no rule can name that form. The first loopback connect is therefore
 denied, the runtime retries on AF_INET and succeeds, leaving one
 addressless `deny(1) network-outbound` record behind. It happens for a
