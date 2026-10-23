@@ -1,5 +1,5 @@
 ---
-title: '$14k a year saved with vx vs Nx Cloud'
+title: '$12k a year saved with vx vs Nx Cloud'
 date: 2026-10-23T17:30:00Z
 authors:
   - vzn
@@ -7,7 +7,7 @@ tags:
   - execution
   - plugins
   - ci
-excerpt: "vx's CI is one distributed run over its own Linux and Mac runners, through a relay on the Cloudflare Workers free plan. On Nx Cloud's Team plan with Nx's agents, the same CI would cost about $14,304 a year; on vx it costs $0. How it works, end to end, the math, and what is still slow."
+excerpt: "vx's CI is one distributed run over its own Linux and Mac runners, through a relay on the Cloudflare Workers free plan. On Nx Cloud's Team plan with Nx's agents, the same CI would cost about $12,192 a year; on vx it costs $0. How it works, end to end, the math, and what is still slow."
 ---
 
 :::caution[Alpha, not released]
@@ -18,7 +18,7 @@ and vx's own CI runs on them every push. Names and options may still
 change.
 :::
 
-**$14,304 a year** is what this repository's CI would cost on Nx
+**$12,192 a year** is what this repository's CI would cost on Nx
 Cloud's Team plan with Nx's agents, at the 108 runs a day it really
 had last week; on vx DTE it costs $0. The math and its assumptions are in
 [What it costs](#what-it-costs-next-to-nx-cloud): Nx's public prices
@@ -436,13 +436,14 @@ a month.
 
 No two runs do the same work: a PR runs only what it affects, and the
 cache answers what did not change. So the agent minutes come from the
-38 runs that finished since #4119, each worker's time online in its
-`vx dte worker` step. A PR run kept Linux workers online 5.2 minutes
-on average (1.8 to 11.5), a main run 12.9 (0 to 34.9). Weighted by
-last week's mix, a run is 165 agent credits and, with the 500 per
-execution, 665. That is 2,167,312 credits a month: $1,192, with one
-contributor. The Hobby plan's 50,000 credits cover 75 runs, under one
-day. [The per-run numbers](https://github.com/vznjs/vx/pull/4138) are
+54 runs that finished after
+[#4150](https://github.com/vznjs/vx/pull/4150) (2026-10-23, 19:51 to
+21:39 UTC), each worker's time online in its `vx dte worker` step. A
+PR run kept Linux workers online 4.2 minutes on average (0 to 18.9), a
+main run 2.1 (0.7 to 12.9). Weighted by last week's mix, a run is 67
+agent credits and, with the 500 per execution, 567. That is 1,846,529
+credits a month: $1,016, with one contributor. The Hobby plan's 50,000
+credits cover 88 runs, under one day. [The per-run numbers](https://github.com/vznjs/vx/pull/4138) are
 in the PR.
 
 **A 20-person team**, a made-up case, with 200 executions per working day, 21 working
@@ -452,7 +453,7 @@ first 5 at $19, $285. $1,902 a month.
 
 | Scenario            | Nx Cloud Team, Nx's agents      | vx DTE |
 | ------------------- | ------------------------------: | -----: |
-| this repository     | $1,192 a month, $14,304 a year  |     $0 |
+| this repository     | $1,016 a month, $12,192 a year  |     $0 |
 | a 20-person team    | $1,902 a month, $22,824 a year  |     $0 |
 
 vx DTE costs $0 for both: no plan, no credits, no seats. Its compute is
