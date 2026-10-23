@@ -553,7 +553,7 @@ async function connect(
   ws.onmessage = (e) => {
     if (e.data === 'pong') return
     spoke = performance.now()
-    let m: Answer & { messages?: RelayMessage[]; n?: number; joined?: Joined }
+    let m: Answer & { messages?: RelayMessage[]; n?: number; joined?: Joined; close?: number }
     try {
       m = JSON.parse(String(e.data)) as typeof m
       if (typeof m !== 'object' || m === null) throw new Error()
@@ -561,6 +561,13 @@ async function connect(
       // Thrown here it left the process on a bare SyntaxError: a relay is anyone's to host.
       closed(`a frame that is not its protocol: ${String(e.data).slice(0, 200)}`, NOT_PROTOCOL)
       ws.close(NOT_PROTOCOL)
+      return
+    }
+    // The relay says its close first: Bun 1.4.4 reports the close itself
+    // only once the host ends TCP, which workerd never did (10 s late).
+    if (m.close !== undefined) {
+      closed('socket closed', typeof m.close === 'number' ? m.close : 0)
+      ws.close()
       return
     }
     if (m.joined !== undefined) {
