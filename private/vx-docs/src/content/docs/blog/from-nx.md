@@ -9,28 +9,73 @@ tags:
 excerpt: "Moving an Nx repo to vx: `vx init` writes native config from the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as an `nx-exec` line for you to rewrite as its command."
 ---
 
-Leaving Nx is a bigger step than leaving Turborepo, and the honest
-version of this post says why before it says how. You keep the things
-you relied on: the task graph, caching, `affected`. You shed the
-daemon, the executor plugins and the generators. If you were using
-the generators as a scaffolding system, that is a real loss and vx
-does not replace it. If you were using Nx as a task runner, everything
-below is a simplification.
+Two Nx projects with `nx:run-commands` targets, one command:
 
-## One command
+```sh frame="terminal"
+$ bunx @vzn/vx-migrate
+  from      nx graph
+  ran       bun add -d @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history
+  tasks     2 clean
+  files     libs/ui/vx.config.ts
+            apps/web/vx.config.ts
+            .vx/workspace.ts
+            .vx/.gitignore
+  lock      2 project configs → .vx/projects.lock.json
 
-`bunx @vzn/vx init` beside `nx.json` is the whole adoption. It writes
-one `vx.config.ts` per project, a `.vx/workspace.ts` declaring your
-lockfile's plugin, and `.vx/projects.lock.json`, and installs vx with
-your own package manager:
+  next      vx run build --all
 
-```bash
-bunx @vzn/vx init              # native vx.config.ts files, .vx/workspace.ts, the lock
-vx run build --all   # what nx run-many -t build did, under vx's cache
+$ vx run build --all
+ ⏺︎     9ms success miss     ui#build
+ ⏺︎     7ms success miss     web#build
+$ rm -rf apps/web/dist && vx run build --all
+  cache     local 1✓ 1↓
 ```
 
-Executor targets keep running as executors at first. Each becomes an `nx-exec`
-line that runs the executor in its own Node process through Nx's public
+It read the graph from the installed Nx (24.0.1), not from `nx.json`
+alone. `targetDefaults` came along as each task's `dependsOn`, inputs
+and outputs:
+
+```ts
+// apps/web/vx.config.ts
+import type { ProjectConfig } from '@vzn/vx/config'
+
+export default {
+  tasks: {
+    build: {
+      exec: {
+        command: 'bun build src/index.ts --outdir dist',
+      },
+      dependsOn: ['^build'],
+      inputs: {
+        files: ['src/**/*'],
+      },
+      cache: {
+        outputs: {
+          files: ['dist'],
+        },
+      },
+    },
+  },
+} satisfies ProjectConfig
+```
+
+vx-migrate at `69617eb`, 2026-10-23.
+
+## What you keep, what you drop
+
+| Keep                          | Drop                              |
+| ----------------------------- | --------------------------------- |
+| the task graph                | the daemon                        |
+| caching                       | executor plugins (over time)      |
+| `affected`                    | generators                        |
+
+If you use Nx generators to scaffold code, vx doesn't replace them.
+
+`bunx @vzn/vx init` beside `nx.json` hands the repo to
+`@vzn/vx-migrate`, as above. An `nx:run-commands` target becomes its
+shell line. Executor targets keep running as executors at first.
+Each becomes an `nx-exec` line that runs the executor in its own Node
+process through Nx's public
 `runExecutor`, with the executor and its options on the command line,
 so vx's key sees them and `vx show` prints what runs.
 
@@ -145,3 +190,5 @@ so a shared input list is an import.
 
 The full guide, with the trade-offs spelled out one by one, is
 [Migrate from Nx](../../guides/migrate/#nx).
+
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
