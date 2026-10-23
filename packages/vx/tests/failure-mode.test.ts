@@ -609,13 +609,21 @@ describe('detectFlaky', () => {
     })
   })
 
-  it('a within-run retry is flaky with no history at all, either way it ended', async () => {
+  it('a within-run retry that passed is flaky with no history at all', async () => {
     await withRuns([], (db) => {
       expect(detectFlaky(db, [cand('K', 'success', 2)])).toEqual([
         { ...cand('K', 'success', 2), taskId: 'pkg#test', passes: 1, failures: 0 },
       ])
+    })
+  })
+
+  it('a retry that never passed is a break; one on a key that passed is a flake', async () => {
+    await withRuns([], (db) => {
+      expect(detectFlaky(db, [cand('K', 'failed', 3)])).toEqual([])
+    })
+    await withRuns([mkRun({ hash: 'K', project: 'pkg', task: 'test' })], (db) => {
       expect(detectFlaky(db, [cand('K', 'failed', 3)])).toEqual([
-        { ...cand('K', 'failed', 3), taskId: 'pkg#test', passes: 0, failures: 1 },
+        { ...cand('K', 'failed', 3), taskId: 'pkg#test', passes: 1, failures: 1 },
       ])
     })
   })

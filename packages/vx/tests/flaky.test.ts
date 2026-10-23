@@ -28,6 +28,17 @@ const APP_CONFIG = `
 
 // The retries fixture from retries.test.ts: the first attempt plants a
 // flag and fails, the retry sees it and passes.
+const BREAK_CONFIG = `
+  export default {
+    tasks: {
+      build: {
+        exec: { command: 'exit 3', retries: 2 },
+        inputs: { files: ['package.json'] }, cache: { outputs: { files: [] } },
+      },
+    },
+  }
+`
+
 const RETRY_CONFIG = `
   export default {
     tasks: {
@@ -158,6 +169,22 @@ describe('flaky-task detection (e2e)', () => {
       expect(info.text).toMatch(
         /^  flaky tasks .*\bretry#build \(1 of 2 runs failed( on unchanged inputs)?\)/m,
       )
+    },
+    TIMEOUT,
+  )
+
+  // Every attempt failing on a key that never passed is a break: its row
+  // said "flaky - 3 attempts", and a CI summary with it, where `vx info`
+  // listed nothing (2026-10-23).
+  it(
+    'a retry that never passes is a break, not a flake',
+    async () => {
+      await addProject(root, 'broken', BREAK_CONFIG)
+      const r = await vx(root, ['run', 'build', '--filter', 'broken'])
+      expect(r.code).toBe(1)
+      expect(r.text).toContain('broken#build')
+      expect(r.text).not.toContain('flaky')
+      expect((await vx(root, ['info'])).text).not.toContain('broken#build')
     },
     TIMEOUT,
   )

@@ -776,6 +776,33 @@ describe('LocalHistoryProvider', () => {
     }
   })
 
+  // `vx last --stats` called a task that timed out on every retry, and
+  // never passed, flaky-fatal: the retried count took failed rows too,
+  // where `vx info` and the run's row count only a retry that passed
+  // (2026-10-23).
+  it('a retry that never passed is no flaky signal', async () => {
+    const cache = makeCache()
+    try {
+      cache.recordRuns(
+        [1, 2].map((i) => ({
+          ...mkRun({
+            hash: 'stuck',
+            project: 'pkg',
+            task: 'slow',
+            status: 'failed',
+            durationMs: 10,
+            startedAt: 1000 + i,
+          }),
+          attempts: 3,
+        })),
+      )
+      const table = await new LocalHistoryProvider(cache.dbHandle()).loadFor(['pkg#slow'])
+      expect(table.get('pkg#slow')?.failureMode).toBe('stable')
+    } finally {
+      cache.close()
+    }
+  })
+
   it('a row that never said whether it hit is an execution', async () => {
     // `RunRecord.cacheHit` is optional and the column stores NULL for it.
     const cache = makeCache()
@@ -891,7 +918,9 @@ describe('LocalHistoryProvider', () => {
       })
       cache.recordRuns([
         run('green', 'success', 1),
-        run('retried', 'failed', 2),
+        // Failed once, then passed on a retry: the retry already proves it.
+        run('retried', 'failed', 1),
+        run('retried', 'success', 2),
         run('broke', 'failed', 1),
       ])
       const db = cache.dbHandle()
