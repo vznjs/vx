@@ -405,7 +405,9 @@ export function dte(options: DteOptions) {
           endsInMs(remaining, nodes ?? new Map(), (id) => peaks.get(id)?.p50DurationMs) <= warmUp
         )
           return
-        for (const s of toStart(sizes, started, o.cores(), wantCores, above)) start(s)
+        const more = toStart(sizes, started, o.cores(), wantCores, above)
+        if (more.length > 0) o.asked(wantCores, more.length)
+        for (const s of more) start(s)
       }
       // Until a task misses, demand waits: a run all hits starts no agent.
       let missed = false
