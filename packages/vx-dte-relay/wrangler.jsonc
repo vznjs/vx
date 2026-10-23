@@ -9,6 +9,9 @@
   "workers_dev": true,
   // ALLOW, who may take part, is a secret (`.dev.vars.example`), never a
   // var: a deploy replaces every var with this file's and leaves secrets.
+  // A deploy to a Worker without it fails, keeping the live one, instead of
+  // shipping a relay that refuses every run (2026-10-23).
+  "secrets": { "required": ["ALLOW"] },
   "durable_objects": {
     "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }],
   },

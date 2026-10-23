@@ -21,7 +21,8 @@ server that speaks [PROTOCOL.md](./PROTOCOL.md) can take its place.
 The button copies this directory into a new repository of yours and
 deploys it. It asks for one secret, `ALLOW`: who may take part, space
 separated, each `issuer:owner/repo:workflow`. A secret, not a var, since
-a deploy replaces vars with `wrangler.jsonc`'s and leaves secrets.
+a deploy replaces vars with `wrangler.jsonc`'s and leaves secrets. A deploy
+to a Worker without `ALLOW` fails and leaves the live one.
 `https://token.actions.githubusercontent.com:vznjs/vx:ci.yml` admits the
 jobs of `.github/workflows/ci.yml` in `vznjs/vx`;
 `https://gitlab.com:group/project:.gitlab-ci.yml` a GitLab project's.
