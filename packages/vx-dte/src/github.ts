@@ -4,6 +4,7 @@
 // workflow runs as a matrix on the runners it names for the size. Agents
 // prove themselves by their OIDC identity: the run makes no secret.
 
+import { readFileSync } from 'node:fs'
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
 import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
@@ -18,6 +19,13 @@ const KEYS: PluginOptionKinds<GithubOptions> = { workflow: 'string' }
 
 /** In `RUNNER_TEMP`: one dispatched workflow run's API path per line. */
 const RUNS_FILE = 'vx-dte-runs'
+
+/**
+ * In `RUNNER_TEMP`: the agent runs a step dispatched before the run began,
+ * one per line, `<API path> <agent>,<agent>`: they start while the job
+ * checks out and installs (`adopt`).
+ */
+const STARTED_FILE = 'vx-dte-started'
 
 /** A dispatched run's jobs are first read this soon, then twice as late each time, up to `WATCH_MAX_MS`. */
 const WATCH_FIRST_MS = 2_000
@@ -134,6 +142,25 @@ export function github(options: GithubOptions = {}): DteAdapter {
   }
   return {
     keyless: true,
+    adopt(agent) {
+      const temp = process.env['RUNNER_TEMP']
+      if (!temp) return
+      let text: string
+      try {
+        text = readFileSync(path.join(temp, STARTED_FILE), 'utf8')
+      } catch {
+        return
+      }
+      for (const line of text.split('\n')) {
+        const [run, ids] = line.trim().split(/\s+/)
+        if (!run || !ids) continue
+        const agents = new Map<string, AgentSpawn>()
+        for (const id of ids.split(',')) agents.set(id, agent(id, id.slice(0, id.lastIndexOf('#'))))
+        runs.push(run)
+        watched.set(run, agents)
+      }
+      if (watched.size > 0 && watch === undefined) look(WATCH_FIRST_MS)
+    },
     spawn(a) {
       const wave = waves.get(a.size)
       if (wave !== undefined) {

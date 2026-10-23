@@ -80,6 +80,12 @@ export interface DteAdapter {
   readonly keyless?: boolean
   /** The run id `vx dte plan` names when `VX_DTE_RUN` is unset. */
   runId?(): string | undefined
+  /**
+   * Agents the CI started for this run before it began (`size#n`): each
+   * is handed to `agent`, which counts it against its size's `max` and
+   * returns its spawn, for the adapter to watch and stop as its own.
+   */
+  adopt?(agent: (id: string, size: string) => AgentSpawn): void
 }
 
 export interface DteOptions {
@@ -334,6 +340,38 @@ export function dte(options: DteOptions) {
         started.set(a.size, (started.get(a.size) ?? 0) + 1)
         index++
       }
+      // An agent the run counts as started, against its size's max.
+      const spawnOf = (s: (typeof sizes)[number], id: string, n: number): AgentSpawn => {
+        started.set(s.name, (started.get(s.name) ?? 0) + 1)
+        o.spawned(id, { size: s.name, cpu: s.cpu, memory: s.memory })
+        sizeOf.set(id, s)
+        return {
+          run,
+          relay,
+          size: s.name,
+          cpu: s.cpu,
+          memory: s.memory,
+          index: n,
+          id,
+          workspaceRoot: ctx.workspaceRoot,
+          env: {
+            VX_DTE_RUN: run,
+            VX_DTE_AGENT: id,
+            VX_DTE_RELAY: relay,
+            ...(secret === undefined ? {} : { VX_DTE_SECRET: secret }),
+          },
+          exited: (reason) => o.failed(id, reason),
+        }
+      }
+      // Agents the CI started before the run did (`DteAdapter.adopt`).
+      adapter?.adopt?.((id, size) => {
+        const s = sizes.find((x) => x.name === size)
+        const n = Number(id.slice(id.lastIndexOf('#') + 1))
+        if (s === undefined || !Number.isInteger(n) || n < 1)
+          throw new UserError(`dte(): a started agent ${id} is no agent of a declared size`)
+        index = Math.max(index, n)
+        return spawnOf(s, id, n)
+      })
       // Agents in declared order for the cores the remaining tasks keep
       // busy (`busyCores`); idle ones beyond it leave.
       const demand = (remaining: ReadonlySet<string>): void => {
@@ -370,32 +408,14 @@ export function dte(options: DteOptions) {
           o.retire(width(true), (a) => above.some((x) => a.cores > x.cores || a.memory > x.memory))
         if (final) return
         const start = (s: (typeof sizes)[number]): void => {
-          started.set(s.name, (started.get(s.name) ?? 0) + 1)
           ++index
           // Counted against its size's max, so a planned one is left.
           const id =
             plannedAgents === undefined ? `${s.name}#${index}` : later.get(s.name)!.shift()!
-          o.spawned(id, { size: s.name, cpu: s.cpu, memory: s.memory })
-          sizeOf.set(id, s)
-          void Promise.resolve(
-            adapter.spawn({
-              run,
-              relay,
-              size: s.name,
-              cpu: s.cpu,
-              memory: s.memory,
-              index,
-              id,
-              workspaceRoot: ctx.workspaceRoot,
-              env: {
-                VX_DTE_RUN: run,
-                VX_DTE_AGENT: id,
-                VX_DTE_RELAY: relay,
-                ...(secret === undefined ? {} : { VX_DTE_SECRET: secret }),
-              },
-              exited: (reason) => o.failed(id, reason),
-            }),
-          ).catch((err: unknown) => o.failed(id, err instanceof Error ? err.message : String(err)))
+          const a = spawnOf(s, id, index)
+          void Promise.resolve(adapter.spawn(a)).catch((err: unknown) =>
+            o.failed(id, err instanceof Error ? err.message : String(err)),
+          )
         }
         // An agent asked for now joins after the warm-up the first ones
         // took: work that ends sooner is for the agents here or starting.
