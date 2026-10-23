@@ -38,4 +38,8 @@ plugin or `--exclude-dependencies` edits the nodes.
 
 Tests: `tests/graph-memo.test.ts` (a read-back graph is the built one,
 addition marks included; a hit reads no config; another lock, edge or
-project builds afresh; a scoped load is not remembered).
+project builds afresh; a scoped load is not remembered) and
+`tests/graph-memo-run.test.ts` (a planted wrong graph is read when nothing
+moved, and a task config edit, an env value a config reads, a workspace
+file edit, a `project` or `graph` plugin and another selection each plan
+the real one).
