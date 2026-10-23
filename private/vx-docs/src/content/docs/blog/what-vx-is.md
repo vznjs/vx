@@ -14,6 +14,17 @@ sentence is a design. Here is what it commits us to.
 
 ## A run is a pipeline
 
+```mermaid
+flowchart LR
+  L[read the lock] --> G[build the graph]
+  G --> K[derive keys]
+  K --> S[schedule]
+  S --> X[executor: where it runs]
+  S --> C[cache: where artifacts live]
+  S --> T[telemetry: who watches]
+  style K stroke:#c6f84e,stroke-width:2px
+```
+
 1. **Lock.** `vx lock` finds every project, evaluates each
    `vx.config.ts` and writes `.vx/projects.lock.json`. A run reads only
    the lock.

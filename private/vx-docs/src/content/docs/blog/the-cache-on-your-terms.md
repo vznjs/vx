@@ -86,6 +86,16 @@ it. Two settings decide it. The policy says whether a run writes at
 all: off CI the default reads the remote and writes nothing. The cache
 server says where a write lands:
 
+```mermaid
+flowchart LR
+  M[main CI] -->|reads + writes| T[(trusted)]
+  P[PR CI · feat-x] -->|reads| T
+  P -->|reads + writes| S[(feat-x)]
+  L[laptop on feat-x] -->|reads| S
+  L -->|reads| T
+  style T stroke:#c6f84e,stroke-width:2px
+```
+
 - The CI OIDC token, checked against the server's trust policy, decides
   where a write lands: trusted, the token's own branch, or nowhere.
 - `turboCache()` names the branches a read may see, own first, and the

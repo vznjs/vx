@@ -35,6 +35,16 @@ orders tasks by the shape of the graph: a task that many others wait on
 goes first. That is a good guess with no data. After a few runs there
 is data, and the plugin uses it.
 
+```mermaid
+flowchart LR
+  R[7 runs of b#test] --> H[(history: p50 635 ms, peak 587 MB)]
+  H --> O[order: longest remaining chain first]
+  H --> A[admit: reserve 768 MB for b#test]
+  O --> S[the next run]
+  A --> S
+  style O stroke:#c6f84e,stroke-width:2px
+```
+
 ## Turn it on
 
 ```ts

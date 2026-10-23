@@ -12,6 +12,15 @@ excerpt: 'vx runs and caches a task graph, correctly, and stops there. One pictu
 task runner and a content-addressed cache for JavaScript monorepos,
 built on Bun. Nothing sits behind a paid cloud.
 
+```mermaid
+flowchart LR
+  D[find projects] --> G[one task graph]
+  G --> K[a key per task]
+  K --> R[run here]
+  K --> X[or restore from the cache]
+  style K stroke:#c6f84e,stroke-width:2px
+```
+
 ## Run it twice
 
 Four packages, each with a `build` (`bun build`) and a `test`
