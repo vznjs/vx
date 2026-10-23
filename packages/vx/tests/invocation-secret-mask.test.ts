@@ -27,7 +27,14 @@ async function walk(dir: string): Promise<string[]> {
   return out
 }
 
-async function lastLine(secret: string): Promise<{ line: string[]; holding: string[] }> {
+async function lastLine(
+  secret: string,
+  // Where the secret lives: vx's own environment, or only the task's config.
+  from: { exec: string; env: Record<string, string> } = {
+    exec: `{ command: 'echo deploying' }`,
+    env: { NPM_TOKEN: secret },
+  },
+): Promise<{ line: string[]; holding: string[] }> {
   if (root !== undefined) await rm(root, { recursive: true, force: true })
   root = await mkdtemp(path.join(os.tmpdir(), 'vx-inv-mask-'))
   await writeFile(
@@ -40,10 +47,10 @@ async function lastLine(secret: string): Promise<{ line: string[]; holding: stri
   await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a' }))
   await writeFile(
     path.join(dir, 'vx.config.mjs'),
-    `export default { tasks: { deploy: { exec: { command: 'echo deploying' } } } }\n`,
+    `export default { tasks: { deploy: { exec: ${from.exec} } } }\n`,
   )
   expect(Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root }).exitCode).toBe(0)
-  const env = { ...process.env, NPM_TOKEN: secret }
+  const env = { ...process.env, ...from.env }
   const run = Bun.spawnSync({
     cmd: [process.execPath, BIN, 'run', 'a#deploy', '--', `--token=${secret}`],
     cwd: root,
@@ -81,5 +88,23 @@ describe('a secret forwarded after -- in the invocation line', () => {
       line: ["  $ vx run a#deploy -- '--token=***'"],
       holding: [],
     })
+  })
+
+  // The task's own output masked a secret its config names, the line did
+  // not: `vx last` printed it, and cache.db held it.
+  it("is masked when only the task's config names it: a define, or exec.env.secret", async () => {
+    const config = (env: string) => `{ command: 'echo deploying', env: ${env} }`
+    expect(
+      await lastLine(SECRET, {
+        exec: config(`{ define: { DEPLOY_TOKEN: '${SECRET}' } }`),
+        env: {},
+      }),
+    ).toEqual({ line: ['  $ vx run a#deploy -- --token=***'], holding: [] })
+    expect(
+      await lastLine(SECRET, {
+        exec: config(`{ passThrough: ['GH_PAT'], secret: ['GH_PAT'] }`),
+        env: { GH_PAT: SECRET },
+      }),
+    ).toEqual({ line: ['  $ vx run a#deploy -- --token=***'], holding: [] })
   })
 })
