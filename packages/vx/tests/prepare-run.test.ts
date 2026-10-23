@@ -352,13 +352,13 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
       await pkg('web', cfg(task('build')))
 
       await expect(lock(root)).rejects.toThrow(
-        '✗ vx lock  lock not written\n\n  app#typo: dependsOn ^biuld but no project in the workspace declares biuld',
+        '✗ vx lock  lock not written\n\n  app#typo: dependsOn ^biuld but no project in the workspace declares biuld\n\n  fix  ^build',
       )
       await typoLocked()
       const err = await refusal({ tasks: ['app#typo'], locked: true })
       expect(err).toBeInstanceOf(UserError)
       expect((err as Error).message).toBe(
-        'app#typo: dependsOn ^biuld but no project in the workspace declares biuld',
+        'app#typo: dependsOn ^biuld but no project in the workspace declares biuld. Did you mean ^build?',
       )
     },
     TIMEOUT,
@@ -388,7 +388,9 @@ describe('a ^name no project declares is refused in a scoped run too', () => {
         }
       }
       expect(messages).toEqual(
-        Array(6).fill('app#typo: dependsOn ^biuld but no project in the workspace declares biuld'),
+        Array(6).fill(
+          'app#typo: dependsOn ^biuld but no project in the workspace declares biuld. Did you mean ^build?',
+        ),
       )
     },
     TIMEOUT,

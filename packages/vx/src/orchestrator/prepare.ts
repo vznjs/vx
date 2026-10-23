@@ -897,7 +897,7 @@ async function refuseUndeclaredDeps(
     for (const t of Object.keys(p.config.tasks ?? {})) declared.add(t)
   }
   for (const [id, name] of unproven) {
-    if (!declared.has(name)) throw undeclaredDepsError(id, name)
+    if (!declared.has(name)) throw undeclaredDepsError(id, name, declared)
   }
 }
 
