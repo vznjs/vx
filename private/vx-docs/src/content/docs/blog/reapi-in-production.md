@@ -15,17 +15,6 @@ it takes to run that in production: getting connected, keeping repeat
 runs cheap, and making sure a bad server costs you a miss, never a wrong
 build.
 
-```mermaid
-flowchart LR
-  T[task] --> K{execution record for this key?}
-  K -->|yes| R[replay outputs + stdout]
-  K -->|no| E[Execute on the pool]
-  E --> V[download, re-hash every blob]
-  V -->|digest matches| W[write to the workspace]
-  V -->|mismatch| M[miss: run it again]
-  style R stroke:#c6f84e,stroke-width:2px
-```
-
 ## Connect the way Bazel does
 
 TLS is on unless you turn it off. A hosted server's API key goes in

@@ -21,15 +21,6 @@ read + xxh3 every tracked file yourself      min 154.1 ms (10 runs)
 This repository: 2,527 tracked files, 48 MB. Linux x64, 4 cores, warm
 page cache, 2026-10-23.
 
-```mermaid
-flowchart LR
-  I[git ls-files: blob ids from the index] --> K[task key]
-  S[git status: dirty and untracked files] --> H[hash only those] --> K
-  C[evaluated config] --> K
-  U[upstream keys] --> K
-  style K stroke:#c6f84e,stroke-width:2px
-```
-
 ## What goes into a key
 
 A vx cache key is an xxh3 hash, seed-chained across eleven parts:

@@ -13,14 +13,6 @@ The [Turbo](../from-turborepo/) and [Nx](../from-nx/) paths have their
 own posts. Two more starting points convert just as directly: plain
 `package.json` scripts and Vite Task.
 
-```mermaid
-flowchart LR
-  S[package.json scripts] --> M[bunx @vzn/vx-migrate]
-  V[vite-plus run.tasks] --> M
-  M --> C[vx.config.ts per package]
-  style C stroke:#c6f84e,stroke-width:2px
-```
-
 ## npm scripts, hooks included
 
 npm runs `prebuild` before `build` and `postbuild` after it, without
