@@ -70,6 +70,8 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
   const open: Bun.ServerWebSocket<Held>[] = []
   const closes: { id: string; code: number }[] = []
   const frames: string[] = []
+  /** Whose ping each was. */
+  const pings: string[] = []
   /**
    * While `refusing`, the host answers each new dial 503, as one overloaded.
    * Once `forget` is set, the next participant to dial is refused for good.
@@ -98,6 +100,7 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
       },
       message(ws, m) {
         if (m === 'ping') {
+          pings.push(ws.data.id)
           relay.seen(ws.data.key, ws.data.id, Date.now())
           ws.send('pong')
         } else {
@@ -118,7 +121,7 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
       await server!.stop(true)
     },
   })
-  return { url: `http://127.0.0.1:${server.port}`, relay, open, closes, frames, host }
+  return { url: `http://127.0.0.1:${server.port}`, relay, open, closes, frames, pings, host }
 }
 
 it('dials anew once its socket goes quiet, and gets what the relay queued', async () => {
@@ -143,6 +146,27 @@ it('dials anew once its socket goes quiet, and gets what the relay queued', asyn
   await a.leave()
   await o.leave()
 }, 10_000)
+
+// Each ping is a message a relay host may bill: at two a heartbeat they
+// were nearly all of a run's (2026-10-23).
+it('pings once a heartbeat, and not in one it sent a frame in', async () => {
+  const { url, pings } = sockets(100)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'agent', null, undefined)
+  await o.poll()
+  pings.length = 0
+  const t = performance.now()
+  while (performance.now() - t < 1_000) await Bun.sleep(50)
+  const quiet = pings.filter((id) => id === a.id).length
+  pings.length = 0
+  for (let i = 0; i < 20; i++) {
+    await a.send('orchestrator', i)
+    await Bun.sleep(50)
+  }
+  expect([quiet >= 4 && quiet <= 11, pings.filter((id) => id === a.id)]).toEqual([true, []])
+  await a.leave()
+  await o.leave()
+})
 
 it('joins again when its first socket does not open', async () => {
   // A relay that made a run twice for two joins at once forgot the first

@@ -70,9 +70,10 @@ Frames are text:
   frame `400`. A frame is held to 1 MiB whole; one over it is answered `413` by its `n` when the
   frame starts `{"n":`. vx-dte's client keeps a frame of several sends
   under 512 KiB;
-- the participant sends `ping` at least each `heartbeatMs`; the relay
-  answers `pong`. vx-dte's client pings each half heartbeat and treats a
-  socket it heard nothing on for a heartbeat and a half as closed: a
+- the participant sends a frame or `ping` at least each `heartbeatMs`;
+  the relay answers `pong`. vx-dte's client pings each heartbeat it sent
+  no frame in and treats a socket it heard nothing on for two heartbeats
+  and a half as closed: a
   network that stops carrying a socket sends no close. A host may answer
   pings without the relay (Cloudflare's auto-response), so the client also
   treats a socket that leaves a frame unanswered for two heartbeats as
