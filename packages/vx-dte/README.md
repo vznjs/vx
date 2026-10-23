@@ -69,7 +69,8 @@ VX_DTE_RUN=$(uuidgen) vx run build --all
 ```
 
 `VX_DTE_RUN` names the run and turns distribution on; without it, `vx run`
-runs here as always. It is a random UUID, so no one can guess a run to
+runs here as always (on GitHub Actions, `github()` with a relay names one
+itself). It is a random UUID, so no one can guess a run to
 open it first or join it; vx and the relay refuse any other. `local()` starts each agent as a process in its own
 git worktree of the tracked files as they are, uncommitted changes
 included (untracked files are not). When an agent fails, its row names
@@ -139,14 +140,8 @@ size as a matrix, each job named for its agent (`name: ${{ matrix.agent }}`):
 a job that ends badly before its agent joins marks that agent `failed`
 with the step it failed at, and the run starts another in its place. When the run ends it cancels each agent run it
 dispatched, so one still queued does not hold a runner the next run
-waits for. A vx that is killed never gets to: it also lists each run in
-`$RUNNER_TEMP/vx-dte-runs`, one API path per line, for an `if: always()`
-step to cancel (this repo's `ci.yml` does). Agents can start before the
-run does, while the job checks out and installs: a step dispatches the
-workflow itself with the run's `VX_DTE_RUN` and appends
-`<API run path> <id>,<id>` (ids `size#n`) to `$RUNNER_TEMP/vx-dte-started`;
-the run adopts them, counts them against each size's `max` and starts
-only past them (this repo's `ci.yml` starts four). No secret: each side proves its key with the job's OIDC
+waits for. On GitHub Actions with a relay, the run names itself: no
+`VX_DTE_RUN` to set. No secret: each side proves its key with the job's OIDC
 token, and the relay's token is an OIDC token for the relay's URL. Such a
 token lasts 5 minutes, so each side asks for a new one a minute before
 its token expires.
@@ -170,7 +165,6 @@ permissions: { id-token: write, contents: read, actions: write }
 steps:
   - uses: actions/checkout@v4
   - run: bun install --frozen-lockfile
-  - run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
   - run: bunx @vzn/vx run build test --all
     env: { GITHUB_TOKEN: '${{ github.token }}' }
 ```
