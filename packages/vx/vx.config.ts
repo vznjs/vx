@@ -54,13 +54,12 @@ const BUN_VERSION = ['bun --version']
 // hash a file being written, so every `**/*` leaves Bun's temps out too.
 const SOURCES = ['**/*', '!dist/**', '!**/*.bun-build', '!**/.????????????????-????????.tmp/**']
 // The same for the other packages `test.bun.unsafe` reads: what
-// @vzn/vx-docs' `build`, `build.playground` and `import` write
+// @vzn/vx-docs' `build` and `import` write
 // (private/vx-docs/vx.config.ts), all gitignored.
 const OTHER_OUTPUTS = [
   'packages/vx/dist/**',
   ...[
     'vx-docs/dist/**',
-    'vx-docs/public/playground/planner.js',
     ...[
       'all-features',
       'api',

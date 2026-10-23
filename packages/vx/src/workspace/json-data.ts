@@ -9,8 +9,7 @@
 // the value, it was silently outside the key on both. So every path
 // refuses it, before schema validation, by this one rule: the first load
 // on the live object (`validateProjectConfig`), the worker before its
-// `JSON.stringify` (config-eval.ts), and the site's playground in its own
-// Worker. The two workers embed `nonJsonPaths` by its source text, so
+// `JSON.stringify` (config-eval.ts). The worker embeds `nonJsonPaths` by its source text, so
 // the function must stay self-contained: no import, no module-scope name.
 //
 // An `undefined` PROPERTY is allowed: JSON drops it, the validator reads
@@ -91,7 +90,7 @@ export function nonJsonPaths(value: unknown): NonJsonValue[] {
   return out
 }
 
-/** The refusal every path gives, the CLI's and the playground's. */
+/** The refusal every path gives. */
 export function nonJsonMessage(configPath: string, found: NonJsonValue): string {
   return `${configPath}: ${found.path} is ${found.is} — a config must be JSON data, because the cache key folds its JSON`
 }

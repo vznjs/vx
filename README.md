@@ -83,8 +83,7 @@ on every commit. The [CI guide](https://vznjs.github.io/vx/guides/ci/)
 explains the workflow.
 More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 [Configure](https://vznjs.github.io/vx/guides/configure/) ·
-[CLI](packages/vx/docs/cli.md) · [every config field](packages/vx/docs/schema.md) ·
-[playground](https://vznjs.github.io/vx/playground/) (the planner, in your browser).
+[CLI](packages/vx/docs/cli.md) · [every config field](packages/vx/docs/schema.md).
 
 ## A foundation you own
 

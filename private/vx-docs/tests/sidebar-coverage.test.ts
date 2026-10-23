@@ -93,7 +93,7 @@ describe('docs site sidebar coverage', () => {
   // The control for the row above: each kind it excuses exists, so the
   // excuse is not true of an empty set; the two pages the Reference took
   // from the old Learn section are listed; and no Learn or Guide page is
-  // left, the playground the Guide hosted being a Docs page now.
+  // left.
   it('excuses only kinds of page that exist, and lists the glossary and the comparison', () => {
     const pages = collectionPages().map((p) => `/${p}`)
     expect(INTERNALS.filter((u) => !pages.includes(u))).toEqual([])
@@ -102,7 +102,6 @@ describe('docs site sidebar coverage', () => {
     }
     expect(listed).toContain('/glossary/')
     expect(listed).toContain('/compare/')
-    expect(listed).toContain('/playground/')
     expect(pages.filter((u) => /^\/(?:learn|guide)\//.test(u))).toEqual([])
   })
 

@@ -16,7 +16,7 @@
     "lint.oxlint": {
       "description": "oxlint with tsgolint-backed type-aware checks",
       "exec": {
-        "command": "oxlint --type-aware --type-check astro.config.mjs scripts src/components src/features src/nav src/pages src/playground src/plugins tests",
+        "command": "oxlint --type-aware --type-check astro.config.mjs scripts src/components src/features src/nav src/pages src/plugins tests",
         "sandbox": {
           "allow": {
             "read": [
@@ -43,7 +43,6 @@
           "src/llms/**",
           "src/nav/**",
           "src/pages/**",
-          "src/playground/**",
           "src/plugins/**",
           "tests/**",
           "package.json",
@@ -98,7 +97,6 @@
           "!src/content/docs/modules/**",
           "!src/content/docs/design/**",
           "!src/content/docs/plugins/**",
-          "!public/playground/planner.js",
           "!public/_img/**",
           "!dist/**",
           "package.json"
@@ -173,7 +171,7 @@
       }
     },
     "test": {
-      "description": "bun test — the landing, sidebar, redirect, diagram, playground, compare and site-link pins (needs the imported content and dist/)",
+      "description": "bun test — the landing, sidebar, redirect, diagram, compare and site-link pins (needs the imported content and dist/)",
       "dependsOn": [
         "install",
         "import",
@@ -213,7 +211,6 @@
           "tests/**",
           "src/content/docs/**",
           "src/components/demos/model/**",
-          "src/components/demos/playground.ts",
           "src/nav/**",
           "src/features/**",
           "src/assets/features/**",
@@ -221,10 +218,7 @@
           "src/components/landing/**",
           "src/components/Demo.astro",
           "src/components/demos/widget.css",
-          "src/components/demos/Playground.astro",
           "src/styles/theme.css",
-          "src/playground/**",
-          "scripts/build-playground.ts",
           "astro.config.*",
           ".gitignore",
           "package.json",
@@ -248,7 +242,6 @@
           "!src/content/docs/modules/**",
           "!src/content/docs/design/**",
           "!src/content/docs/plugins/**",
-          "!public/playground/planner.js",
           "!public/_img/**",
           "!dist/**"
         ],
@@ -272,43 +265,6 @@
       "dependsOn": [
         "^build"
       ]
-    },
-    "build.playground": {
-      "description": "bundle the playground planner → public/playground/planner.js",
-      "dependsOn": [
-        "install"
-      ],
-      "exec": {
-        "command": "bun scripts/build-playground.ts",
-        "sandbox": {
-          "allow": {
-            "read": [
-              "**/*",
-              "../../packages/vx/src/**"
-            ],
-            "write": [
-              "public/playground/**"
-            ],
-            "systemInfo": [
-              "vfs.disk-space"
-            ]
-          }
-        }
-      },
-      "inputs": {
-        "files": [
-          "scripts/build-playground.ts",
-          "src/playground/**",
-          "package.json"
-        ]
-      },
-      "cache": {
-        "outputs": {
-          "files": [
-            "public/playground/planner.js"
-          ]
-        }
-      }
     },
     "build.images": {
       "description": "resize src/assets/{blog,features} → public/_img/",
@@ -352,7 +308,6 @@
       "dependsOn": [
         "install",
         "import",
-        "build.playground",
         "build.images"
       ],
       "exec": {
@@ -404,7 +359,6 @@
           "!src/content/docs/modules/**",
           "!src/content/docs/design/**",
           "!src/content/docs/plugins/**",
-          "!public/playground/planner.js",
           "!public/_img/**",
           "!dist/**",
           "package.json"
@@ -422,7 +376,6 @@
       "description": "astro dev server (persistent)",
       "dependsOn": [
         "install",
-        "build.playground",
         "build.images"
       ],
       "exec": {

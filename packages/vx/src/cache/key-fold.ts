@@ -1,9 +1,7 @@
 // The cache key, derived: `foldKey` is the whole of what `Cache.key` computes,
 // with the two things it read off the class (the file hasher and the
 // workspace-relative path) passed in. Nothing here touches a store, so the
-// fold runs wherever xxh3 does: the CLI, a remote layer, and the site's
-// playground, which bundles this file to derive the keys the CLI would
-// (design/playground-spike-2026-09.md, P1; item 691).
+// fold runs wherever xxh3 does: the CLI and a remote layer (item 691).
 
 import { xxh3, xxh3hex } from '../util/index.js'
 import type { CacheKeyInput } from './layer.js'

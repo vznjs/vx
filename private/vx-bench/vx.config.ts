@@ -1,14 +1,5 @@
 import { defineProject } from '@vzn/vx'
 
-// The site's playground files the research tools in playground-spike/
-// import (item 695), granted by name and keyed as inputs.
-const PLAYGROUND = [
-  'private/vx-docs/scripts/build-playground.ts',
-  'private/vx-docs/src/playground/**',
-  'private/vx-docs/tests/glob-fuzz.ts',
-  'private/vx-docs/tests/helpers/rng.ts',
-]
-
 // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
 const NO_TRANSPILER_CACHE = { define: { BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0' } }
 
@@ -127,30 +118,20 @@ export default defineProject({
       dependsOn: ['lint.oxlint', 'lint.oxfmt'],
     },
 
-    // The type-check follows playground-spike/'s imports into the site's
-    // playground, so it declares that read and keys on those files.
     'lint.oxlint': {
       description: 'oxlint with tsgolint-backed type-aware checks',
       exec: {
         command: 'oxlint --type-aware --type-check',
         sandbox: {
           allow: {
-            read: ['**/*', ...PLAYGROUND.map((p) => p.replace('private/', '../'))],
+            read: ['**/*'],
             systemInfo: ['vfs.disk-space'],
           },
         },
       },
       dependsOn: ['install'],
       inputs: {
-        files: [
-          '*.ts',
-          'tests/**',
-          'playground-spike/**/*.ts',
-          'package.json',
-          '.oxlintrc.json',
-          'tsconfig.json',
-        ],
-        workspaceFiles: PLAYGROUND,
+        files: ['*.ts', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
       },
       cache: {
         outputs: { files: [] },

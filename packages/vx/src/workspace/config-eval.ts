@@ -129,8 +129,6 @@ self.onmessage = async (e) => {
   // env var set in-process evaluated with it on the first load and without
   // it on every later one, and an embedder's second run() derived a
   // different key (D-61). Each request carries the parent's env now.
-  // Through globalThis: the playground bundles this source as a string, and
-  // its free-global scan reads a bare process after a paren as code.
   const live = globalThis.process.env
   for (const k of Object.keys(live)) if (!(k in env)) delete live[k]
   Object.assign(live, env)

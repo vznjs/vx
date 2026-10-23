@@ -535,7 +535,7 @@ describe('cacheKeyDiff', () => {
     })
   })
 
-  // The join alone (item 703), as the playground runs it on components the
+  // The join alone (item 703), on components the
   // key fold captured in fold order, not sorted. Code-unit order (item 707):
   // `Z` before `a`, and `f` before `é`, which `localeCompare` reverses in
   // every locale, so either the old collation or no sort at all goes red.

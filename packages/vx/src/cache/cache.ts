@@ -3385,11 +3385,7 @@ export class Cache implements CacheLayer {
   }
 }
 
-/**
- * SQLite's file-control opcode (sqlite3.h). Spelled here, not imported from
- * `bun:sqlite`'s `constants`: the playground bundles this file against a
- * shim that exports only `Database`.
- */
+/** SQLite's file-control opcode (sqlite3.h). */
 const SQLITE_FCNTL_PERSIST_WAL = 10
 
 /**

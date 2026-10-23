@@ -15,8 +15,7 @@ and key derivation logic live here.
   No implementation.
 - `key-fold.ts` — `foldKey`, the whole key derivation as a function of
   `CacheKeyInput`, a file hasher and a relativizer, and `CACHE_VERSION`,
-  its first part. It touches no store, so the site's playground bundles
-  it to derive the keys the CLI would; `Cache.key` delegates to it
+  its first part. It touches no store; `Cache.key` delegates to it
   (item 691).
   `foldHead` is the same fold up to the input files, which come last.
 - `fold-memo.ts` — `FoldMemo`: each task's last key over `fold_memo`, by

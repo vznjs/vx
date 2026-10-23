@@ -24,7 +24,7 @@ export { validateProjectConfig }
 import { WORKSPACE_CONFIG_FILENAMES, workspaceFile, workspaceRootOf } from '../handoff.js'
 export { WORKSPACE_CONFIG_FILENAMES }
 
-/** What a function default export is told; the playground says the same. */
+/** What a function default export is told. */
 const EXPORTED_A_FUNCTION =
   'it exports a function, and vx reads the object itself — export what the function returns'
 
@@ -562,8 +562,7 @@ let undoRedirect = (): void => {}
 /**
  * Bun's own console, taken at load: the console a round finds may be a
  * constructed one (a plugin's verb may install its own), which has no
- * `Console`. The global's, not `node:console`'s: the playground bundles
- * this module for the browser, where that specifier is a stub.
+ * `Console`.
  */
 const bunConsole = globalThis.console as typeof console & { Console?: typeof console.Console }
 let stderrConsole: typeof console | undefined
@@ -653,9 +652,7 @@ function installRedirect(): () => void {
  */
 // `Bun` and `Bun.hash` are what vx itself runs on: `Bun.hash.xxHash3 = ()
 // => 7n` gave every task the key 00000000, and a changed command replayed
-// the old output (D-75). `Bun` is read by its identifier, not through
-// globalThis: the docs playground bundles this file with the identifier
-// rewritten to its shim, and a browser has no global `Bun`.
+// the old output (D-75).
 const WATCHED_BUILTINS: ReadonlyArray<readonly [string, object]> = WATCHED_BUILTIN_NAMES.map(
   (name) =>
     [
@@ -921,8 +918,6 @@ function restoreEnv(before: Readonly<Record<string, string | undefined>>): strin
  * choice (D-120). Put back, and named as the change.
  */
 function restoreCwd(before: string): string[] {
-  // Through globalThis: the playground bundles this module, and its
-  // browser shim carries no free process global.
   const proc = globalThis.process
   if (before === '' || proc.cwd() === before) return []
   proc.chdir(before)
@@ -935,7 +930,6 @@ function restoreCwd(before: string): string[] {
  * a user other than root could not read back (D-125). Put back, and named.
  */
 function currentUmask(): number {
-  // Through globalThis, as restoreCwd: the playground's shim has no umask.
   const proc = globalThis.process as { umask?: (mask?: number) => number }
   if (typeof proc.umask !== 'function') return -1
   // Bun reads it by setting 0 and putting it back (probed on 1.4.2: four

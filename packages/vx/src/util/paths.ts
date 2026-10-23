@@ -245,8 +245,8 @@ export function taskGlob(pattern: string): Bun.Glob {
  * list across two thousand tasks, and the graph's overlap checks compiled
  * each entry per task pair, 3.3 s of an astro plan (2026-10-09). A pattern
  * comes from a config, so the set is bounded by what the configs say. Kept
- * per `Bun.Glob` in force: the playground and a test swap it, and a glob
- * built by one is not the other's.
+ * per `Bun.Glob` in force: a test swaps it, and a glob built by one is not
+ * the other's.
  */
 const taskGlobs = new WeakMap<object, Map<string, Bun.Glob>>()
 const anyTaskGlobs = new WeakMap<object, Map<string, (rel: string) => boolean>>()
@@ -272,7 +272,7 @@ function compileTaskGlob(pattern: string): Bun.Glob {
   // A path with a slash on the end names no file vx lists; `Bun.Glob` reads
   // it by rules of its own (`src/**` takes `src/`, never `src`). `scan`
   // stays `Bun.Glob`'s. Set on the instance, not by a subclass, so the glob
-  // is built by whatever `Bun.Glob` is at the call (the playground's port).
+  // is built by whatever `Bun.Glob` is at the call.
   glob.match = (rel: string): boolean =>
     rel.endsWith('/') ? native.match.call(glob, rel) : compiled.test(rel)
   return glob

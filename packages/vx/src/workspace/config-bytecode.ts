@@ -127,7 +127,6 @@ const answered = new Map<string, { bytes: Uint8Array; ns: { default?: unknown } 
  * process, and a bundle would run a second copy of its state.
  */
 export function loadedModules(root: string): Set<string> {
-  // Not `import.meta`: core's planner also runs as a browser script (the playground).
   return new Set(Object.keys(createRequire(path.join(root, 'index.js')).cache))
 }
 

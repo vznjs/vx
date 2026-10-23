@@ -134,7 +134,7 @@ const REMOVED: Record<string, string> = {
   'guide/many-machines/': CHAPTER,
   'guide/tasks/': CHAPTER,
   'guide/trust/': CHAPTER,
-  'guide/try-it/': 'the playground moved to playground/, which the footer links',
+  'guide/try-it/': 'the playground was removed; quickstart, which the footer links, took its place',
   'guide/why/': CHAPTER,
   'guides/caching/': 'the Docs became six pages; the footer links them',
   'guides/mcp/': 'the Docs became six pages; the footer links them',
