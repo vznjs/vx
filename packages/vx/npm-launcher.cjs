@@ -133,7 +133,7 @@ if (bin !== undefined) {
     `${base}: no prebuilt binary for ${key}${noGlibc ? ' without glibc (musl)' : ''}.\n` +
       `  Supported platforms: ${supported}.\n` +
       `  If your platform should be supported, reinstall so npm fetches the\n` +
-      `  matching ${name}-${key} optionalDependency, or install Bun (>=1.4) to\n` +
+      `  matching ${name}-${key} optionalDependency, or install Bun (>=1.4.4) to\n` +
       `  run ${base} from source.\n`,
   )
   process.exit(1)

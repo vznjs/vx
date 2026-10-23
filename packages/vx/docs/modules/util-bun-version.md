@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`package.json` states `"engines": { "bun": ">=1.4" }`. An install may print
+`package.json` states `"engines": { "bun": ">=1.4.4" }`. An install may print
 that; a RUN never reads it. `bun src/bin.ts` on an older Bun starts fine and
 then answers wrongly, which is this repo's worst failure class — a green exit
 over a wrong answer.
@@ -53,7 +53,7 @@ a machine surface that a test holds to `Bun.version` exactly. The prose
 appears only in the rendered row:
 
 ```
-  bun               1.3.11 — unsupported, vx needs >= 1.4.0; answers may be wrong
+  bun               1.3.11 — unsupported, vx needs >= 1.4.4; answers may be wrong
 ```
 
 Two designs were tried and measured against the repo before this one.

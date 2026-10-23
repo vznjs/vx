@@ -28,7 +28,7 @@
     "README.md"
   ],
   "engines": {
-    "bun": ">=1.4"
+    "bun": ">=1.4.4"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.12.0",
