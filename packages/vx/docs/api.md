@@ -216,7 +216,7 @@ export class Cache implements CacheLayer {
   async localHasMany(hashes: readonly string[]): Promise<Set<string>>
   async prefetch(_hash: string, _ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   outputsPath(hash: string): string
   artifactSize(hash: string): number | undefined
   async recordOutputDirs(
@@ -227,7 +227,7 @@ export class Cache implements CacheLayer {
   ): Promise<void>
   recordOutputStamps(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
+  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean
   async restoreOutputs(
     hash: string,
     projectDir: string,
@@ -351,7 +351,7 @@ export interface CacheLayer {
   has(hash: string): Promise<'local' | 'remote' | null>
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   recordOutputDirs?(
     hash: string,
     projectDir: string,
@@ -360,7 +360,7 @@ export interface CacheLayer {
   ): Promise<void>
   recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
+  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
   restoreOutputs(
     hash: string,
     projectDir: string,

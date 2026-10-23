@@ -58,7 +58,7 @@ import { isDefaultBuild } from './projects.js'
 import { commandWriteReach, prepareSandbox } from './sandbox-request.js'
 import { recordOutputDirSnapshots, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
-import { unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'
+import { settleProbedHit, unkeyedGroupOutcome, type ExecuteArgs } from './execute-task.js'
 import { executeArgsOf, type RunScope } from './execute-args.js'
 import { excludedTaint } from './excluded-keys.js'
 import { keyUpstream } from './upstream.js'
@@ -1178,19 +1178,24 @@ async function runOnBus(
           ? Promise.resolve(kept)
           : executeWithDedup(node, keyUpstream(node, upstream))
       },
-      // An unkeyed group runs nothing: settled in place, unless a taint
-      // may ride it, which `buildExecuteArgs` records on dispatch.
+      // An unkeyed group runs nothing, and a restore-tier hit whose tree is
+      // current restores nothing: settled in place, unless a taint may ride
+      // it, which `buildExecuteArgs` records on dispatch.
       ...(options.continueMode !== 'always' && taintSeeds.size === 0
         ? {
-            settleNow: (node: TaskNode, upstream: TaskOutcome[]) =>
-              isGroupTask(node) && node.config.inputs === undefined
-                ? unkeyedGroupOutcome(
+            settleNow: (node: TaskNode, upstream: TaskOutcome[]) => {
+              if (isGroupTask(node) && node.config.inputs === undefined)
+                return () =>
+                  unkeyedGroupOutcome(
                     node,
                     keyUpstream(node, upstream),
                     shortCircuit.groupKeys.get(node.id),
                     runStartHrTimeNs,
                   )
-                : undefined,
+              if (!shortCircuit.restoreTier.has(node.id) || heldBefore.kept.has(node.id))
+                return undefined
+              return settleProbedHit(buildExecuteArgs(node, keyUpstream(node, upstream)))
+            },
           }
         : {}),
       // A `schedule` plugin's weights; the scheduler keeps its structural

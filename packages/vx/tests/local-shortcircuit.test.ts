@@ -178,6 +178,67 @@ describe('local cache short-circuit', () => {
   )
 
   it(
+    'a warm hit settled in place replays between its start and its end; an edited output still restores',
+    async () => {
+      const dir = await addProject(fixture.root, 'solo', {
+        files: { 'src/a.txt': 'a', '.gitignore': 'dist/\n' },
+        config: `
+          export default {
+            tasks: {
+              say: {
+                exec: { command: 'echo hi' },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+              },
+              keep: {
+                exec: { command: 'mkdir -p dist/k && echo kept > dist/k/out.txt' },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/k/**'] } },
+              },
+              edit: {
+                exec: { command: 'mkdir -p dist/e && echo built > dist/e/out.txt' },
+                inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/e/**'] } },
+              },
+            },
+          }
+        `,
+      })
+      const tasks = ['solo#say', 'solo#keep', 'solo#edit']
+      expect((await run({ cwd: fixture.root, tasks, log: silentLogger(fixture) })).ok).toBe(true)
+      // The second run records the output directories the third trusts.
+      expect((await run({ cwd: fixture.root, tasks, log: silentLogger(fixture) })).ok).toBe(true)
+      await Bun.write(path.join(dir, 'dist/e/out.txt'), 'edited\n')
+      const events: string[] = []
+      const warm = await run({
+        cwd: fixture.root,
+        tasks,
+        log: {
+          status() {},
+          taskStart: (n) => void events.push(`start ${n.id}`),
+          taskStdout: (n, c) => void events.push(`out ${n.id} ${c.trim()}`),
+          taskStderr() {},
+          taskComplete: (n) => void events.push(`end ${n.id}`),
+        },
+      })
+      expect(
+        warm.outcomes
+          .map((o) => [o.node.id, o.status, o.restored])
+          .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+      ).toEqual([
+        ['solo#edit', 'cache-hit', true],
+        ['solo#keep', 'cache-hit', false],
+        ['solo#say', 'cache-hit', false],
+      ])
+      expect(events.filter((e) => e.endsWith('say') || e.includes('say '))).toEqual([
+        'start solo#say',
+        'out solo#say hi',
+        'end solo#say',
+      ])
+      expect(await readFile(path.join(dir, 'dist/e/out.txt'), 'utf8')).toBe('built\n')
+      expect(await readFile(path.join(dir, 'dist/k/out.txt'), 'utf8')).toBe('kept\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'codegen-into-shared-project dependent is NOT restore-tier (stays exec-tier)',
     async () => {
       // codegen writes generated.txt INTO its own project dir; consumer

@@ -632,7 +632,7 @@ export class LayeredCache implements CacheLayer {
     return this.local.loadOutputFilesBatch(hashes)
   }
 
-  async isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean> {
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean {
     return this.local.isOutputsCurrent(projectDir, expected)
   }
 
@@ -652,7 +652,7 @@ export class LayeredCache implements CacheLayer {
     return this.local.loadOutputDirsBatch(hashes)
   }
 
-  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean> {
+  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean {
     return this.local.outputDirsCurrent(projectDir, rows)
   }
 

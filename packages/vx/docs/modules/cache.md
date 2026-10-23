@@ -87,7 +87,7 @@ export interface CacheLayer {
   has(hash: string): Promise<'local' | 'remote' | null>
   prefetch(hash: string, ctx?: CacheGetContext): Promise<boolean>
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]>
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean>
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean
   // The output-directory short-circuit (A-2): record, load, and judge the
   // stamps of a hit's output dirs, so a current tree is not re-walked.
   recordOutputDirs?(
@@ -98,7 +98,7 @@ export interface CacheLayer {
   ): Promise<void>
   recordOutputStamps?(hash: string, projectDir: string, workspaceRoot: string): void
   loadOutputDirsBatch?(hashes: readonly string[]): Map<string, OutputDirRow[]>
-  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean>
+  outputDirsCurrent?(projectDir: string, rows: readonly OutputDirRow[]): boolean
   // workspaceRoot anchors the artifact's `workspace-outputs/` entries
   // (cache.outputs.workspaceFiles); omitted → only `outputs/` restores.
   // outputs: the task's declared globs; an entry outside them fails the

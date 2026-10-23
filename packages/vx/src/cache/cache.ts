@@ -1879,7 +1879,7 @@ export class Cache implements CacheLayer {
   loadOutputFilesBatch(hashes: readonly string[]): Map<string, OutputFileRow[]> {
     return this.guard(() => this.outputs.loadOutputFilesBatch(hashes))
   }
-  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): Promise<boolean> {
+  isOutputsCurrent(projectDir: string, expected: readonly OutputFileRow[]): boolean {
     return this.outputs.isOutputsCurrent(projectDir, expected)
   }
   outputsPath(hash: string): string {
@@ -1910,7 +1910,7 @@ export class Cache implements CacheLayer {
   loadOutputDirsBatch(hashes: readonly string[]): Map<string, OutputDirRow[]> {
     return this.guard(() => this.outputs.loadOutputDirsBatch(hashes))
   }
-  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): Promise<boolean> {
+  outputDirsCurrent(projectDir: string, rows: readonly OutputDirRow[]): boolean {
     return this.outputs.outputDirsCurrent(projectDir, rows)
   }
   async restoreOutputs(
