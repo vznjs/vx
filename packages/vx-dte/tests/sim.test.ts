@@ -183,3 +183,24 @@ describe('each scheduler choice, on main a09b987', () => {
         expect(r.workers.reduce((n, w) => n + w.tasks, 0)).toBe(r.executed)
       })
 })
+
+// M, 2026-10-23: history is an estimate; a suite given more workers (a
+// Playwright config from 3 to 10) uses far more than it says. Four shards
+// that used 0.75 cores now fill a worker: none is sent work while its
+// tasks use all its cores.
+it('sends no task to a worker its tasks use whole, whatever history said', () => {
+  const heavy = new Set([
+    '@vzn/vx#test.bun.shard-1',
+    '@vzn/vx#test.bun.shard-2',
+    '@vzn/vx#test.bun.shard-3',
+    '@vzn/vx#test.bun.shard-4',
+  ])
+  const graph = load(a09).map((t) =>
+    heavy.has(t.id) && t.ran !== undefined
+      ? { ...t, known: t.ran, ran: { ...t.ran, cores: 4 } }
+      : t,
+  )
+  const r = simulate(graph, { sizes: [small], likely: misses(graph) })
+  expect(r.overSent).toBe(0)
+  expect(r.workers.reduce((n, w) => n + w.tasks, 0)).toBe(r.executed)
+})

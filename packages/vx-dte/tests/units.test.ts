@@ -385,6 +385,12 @@ it('sends a worker what its booking fits, though its load reads low; busier than
     await b.say({ type: 'held', running: ['t6', 't7', 't8'], load: { cpu: 4, memory: 0 } })
     await Bun.sleep(50)
     expect(h.o.where('t9')).toBeNull()
+    // The plan holds its tasks at what its load says, not their history.
+    const held = h.o
+      .planState(() => undefined, 0)
+      .workers.find((w) => w.id === b.id)!
+      .running.reduce((n, r) => n + r.cores, 0)
+    expect(held).toBeCloseTo(4)
     void t9
   } finally {
     await h.stop()

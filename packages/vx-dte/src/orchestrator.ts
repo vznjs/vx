@@ -822,6 +822,9 @@ export class Orchestrator {
       if (a.faulty) continue
       const jobs = [...a.busy.values()].filter((j) => j.startedAt !== undefined)
       for (const j of jobs) running.add(j.req.taskId)
+      // Its tasks use more than their history said (a suite given more
+      // workers): the plan holds them at what the load says, this run.
+      const over = a.usedCores > 0 ? Math.max(1, this.used(a).cores / a.usedCores) : 1
       workers.push({
         id: a.id,
         cores: a.cores,
@@ -831,7 +834,7 @@ export class Orchestrator {
         idle: a.busy.size === 0,
         running: jobs.map((j) => ({
           id: j.req.taskId,
-          cores: j.held?.cores ?? 0,
+          cores: Math.min(a.cores, (j.held?.cores ?? 0) * over),
           memory: j.held?.memory ?? 0,
           endsIn: Math.max(0, (ms(j.req.taskId) ?? 0) - (now - j.startedAt!)),
         })),
