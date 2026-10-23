@@ -130,8 +130,9 @@ The relay itself sends with `"from": "relay"`:
 - to every worker, `{ "type": "closed" }` when the orchestrator leaves or is
   lost. The run is then closed: a worker on a socket is told and let go
   at once, one with no socket gets `4404` when it opens one, a `join`
-  answers `410` for a minute, and then the relay keeps nothing of the
-  run. A run no orchestrator joined in ten minutes
+  answers `410` for ten minutes, so a worker its CI started late leaves
+  rather than opening the run anew, and then the relay keeps nothing of
+  the run. A run no orchestrator joined in ten minutes
   closes the same way: workers start after their orchestrator joins, so
   one alone is late for a run that ended.
 
@@ -196,7 +197,7 @@ Only what routing needs, and no longer:
 - A message waits in memory, never in storage, until it is delivered. A
   relay restart loses a participant whose queue was not empty, as if it
   went silent.
-- A closed run is gone within a minute; while open, each participant's
+- A closed run is gone within ten minutes; while open, each participant's
   role and when it was last heard from are kept, so a restart still
   loses the silent.
 - It logs nothing. It still sees each message's size, time and recipient.

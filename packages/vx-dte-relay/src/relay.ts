@@ -116,12 +116,15 @@ const MAX_QUEUE = 10_000
 /** 10 000 bodies of 1 MiB would be 10 GiB held for one participant with no socket. */
 const MAX_QUEUE_BYTES = 64 << 20
 /**
- * A closed run with a worker that has no socket answers `join` `410`
- * this many heartbeats (a minute); one on a socket is told at once, and
- * the run goes when none is left. Its storage goes with it: an object
- * kept a day per run held 100+ on one host (owner, 2026-10-22).
+ * A closed run answers `join` `410` this many heartbeats (ten minutes, as
+ * long as one no orchestrator joined waits); one on a socket is told at
+ * once. Forgotten when its last worker went, a worker whose CI queued it
+ * past its run's end opened the run anew and held its runner ten minutes,
+ * while the next run's workers queued behind it (main, 2026-10-23). Its
+ * storage goes after: an object kept a day per run held 100+ on one host
+ * (owner, 2026-10-22).
  */
-const CLOSED_BEATS = 12
+const CLOSED_BEATS = 120
 /**
  * A run no orchestrator joined closes after this many heartbeats (ten
  * minutes). Workers start after their orchestrator joins, so one alone is
@@ -259,7 +262,6 @@ export function createRelay(opts: RelayOptions): Relay {
       // Down its socket: it has heard, and needs the run no more.
       if (p.queue.length === 0) drop(run, p, false)
     }
-    if (run.byId.size === 0) forget(run)
   }
 
   /** `tell`: the orchestrator hears its worker was lost (not when it removed it). */
@@ -330,17 +332,15 @@ export function createRelay(opts: RelayOptions): Relay {
         close(run)
       }
       if (run.closed) {
-        if (run.byId.size === 0 || now - run.closedAt! > closedTtl) forget(run)
+        if (now - run.closedAt! > closedTtl) forget(run)
         else at(run.closedAt! + closedTtl + 1)
         continue
       }
       for (const p of [...run.byId.values()]) {
         if (now - p.seen > lostAfter(p)) drop(run, p)
       }
-      if (run.closed) {
-        if (run.byId.size === 0) forget(run)
-        else if (runs.has(run.key)) at(run.closedAt! + closedTtl + 1)
-      } else if (run.byId.size === 0) forget(run)
+      if (run.closed) at(run.closedAt! + closedTtl + 1)
+      else if (run.byId.size === 0) forget(run)
       else {
         for (const p of run.byId.values()) {
           // One on a socket is heard anew when its host restores the socket;
