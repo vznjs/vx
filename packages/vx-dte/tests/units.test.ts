@@ -13,13 +13,14 @@ import {
   type TaskNode,
   ui,
 } from '@vzn/vx'
-import { Orchestrator, runKey, type Need } from '../src/orchestrator.js'
+import { Orchestrator, runKey } from '../src/orchestrator.js'
+import { fits, type Need } from '../src/dispatch.js'
 import { outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
 import { tailsMs } from '../src/planner.js'
 import { join } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
-import { shares, type RunOrder } from '../src/messages.js'
+import type { RunOrder } from '../src/messages.js'
 import { servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
@@ -1603,16 +1604,20 @@ it('a worker’s reason is its error line, not the hint after it', () => {
   ])
 })
 
-// Main's workers booked 3.2 of 4 cores and used 2.6 (2026-10-23): a task
-// waited for its whole need while a core stood free. It begins while one
-// is; memory still has to fit, and one asking the whole worker waits.
-it('a task begins beside others while a core is free, its memory fitting', () => {
-  const worker = { cores: 4, memory: 16e9 }
-  expect(shares({ cores: 3.2, memory: 1e9 }, { cores: 1.5, memory: 1e9 }, worker)).toBe(true)
-  expect(shares({ cores: 4, memory: 1e9 }, { cores: 0.25, memory: 0 }, worker)).toBe(false)
-  expect(shares({ cores: 1, memory: 15e9 }, { cores: 1, memory: 2e9 }, worker)).toBe(false)
-  expect(shares({ cores: 0.5, memory: 0 }, { cores: 4, memory: 0 }, worker)).toBe(false)
-  expect(shares({ cores: 0.5, memory: 0 }, { cores: Infinity, memory: Infinity }, worker)).toBe(
-    false,
-  )
+// Main's workers booked 4.3 of 4 cores (2026-10-23): a task began on a
+// free core whatever it asked. Beside others it fits in full or waits;
+// an empty worker takes anything, alone.
+it('a task begins beside others only when its cores and memory fit in full', () => {
+  const bin = (cores: number, memory: number, running = 1) => ({
+    id: 'w',
+    cores: 4,
+    memory: 16e9,
+    used: { cores, memory },
+    running,
+  })
+  expect(fits(bin(2.5, 1e9), { cores: 1.5, memory: 1e9 })).toBe(true)
+  expect(fits(bin(3.2, 1e9), { cores: 1.5, memory: 1e9 })).toBe(false)
+  expect(fits(bin(1, 15e9), { cores: 1, memory: 2e9 })).toBe(false)
+  expect(fits(bin(0.5, 0), { cores: 4, memory: 0 })).toBe(false)
+  expect(fits(bin(0, 0, 0), { cores: Infinity, memory: Infinity })).toBe(true)
 })

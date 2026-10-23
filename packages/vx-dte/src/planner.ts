@@ -6,7 +6,7 @@
 // a TETRIS game. every time we get new data we refine next step").
 
 import type { TaskNode } from '@vzn/vx'
-import { shares } from './messages.js'
+import { assign, type Bin } from './dispatch.js'
 
 /**
  * A task's duration when history has none: a test suite's, so a run with
@@ -156,14 +156,8 @@ export function missedWork(
   return planTasks([...remaining].filter(missed), nodes, need, durationMs)
 }
 
-interface Slot {
-  readonly id: string
-  readonly cores: number
-  readonly memory: number
+interface Slot extends Bin {
   readonly at: number
-  usedCores: number
-  usedMemory: number
-  running: number
   /** When it is first given a task. */
   first?: number
 }
@@ -171,7 +165,7 @@ interface Slot {
 /**
  * When `tasks` end on `workers`, each placed as soon as its dependencies
  * end, longest tail first, on the worker it fits with fewest cores free:
- * the orchestrator's own rule (`shares`). Infinity when one never fits.
+ * the orchestrator's own rule (`assign`). Infinity when one never fits.
  */
 export function simulate(tasks: readonly PlanTask[], workers: readonly PlanWorker[]): number {
   return play(tasks, workers).end
@@ -209,8 +203,7 @@ function play(
     cores: w.cores,
     memory: w.memory,
     at: w.at,
-    usedCores: 0,
-    usedMemory: 0,
+    used: { cores: 0, memory: 0 },
     running: 0,
   }))
   // Ends to come: [at, slot, cores, memory, task or undefined].
@@ -218,8 +211,8 @@ function play(
   workers.forEach((w, i) => {
     const s = slots[i]!
     for (const r of w.running) {
-      s.usedCores += r.cores
-      s.usedMemory += r.memory
+      s.used.cores += r.cores
+      s.used.memory += r.memory
       s.running++
       ends.push([Math.max(0, r.endsIn), s, r.cores, r.memory, undefined])
     }
@@ -228,34 +221,23 @@ function play(
   let left = tasks.length
   let now = 0
   let last = Math.max(0, ...ends.map((e) => e[0]))
-  const bigger = (s: Slot, t: PlanTask): boolean =>
-    t.above === undefined || s.cores > t.above.cores || s.memory > t.above.memory
-  const anyBigger = (t: PlanTask): boolean => slots.some((s) => bigger(s, t))
   for (;;) {
     ready.sort((a, b) => tailOf(b.id) - tailOf(a.id))
-    for (let i = 0; i < ready.length;) {
-      const t = ready[i]!
-      const pool = anyBigger(t) ? slots.filter((s) => bigger(s, t)) : slots
-      let best: Slot | undefined
-      for (const s of pool) {
-        if (s.at > now) continue
-        const fits = s.running === 0 || shares({ cores: s.usedCores, memory: s.usedMemory }, t, s)
-        if (!fits) continue
-        if (best === undefined || s.cores - s.usedCores < best.cores - best.usedCores) best = s
-      }
-      if (best === undefined) {
-        i++
-        continue
-      }
-      ready.splice(i, 1)
-      const cores = Math.min(t.cores, best.cores)
-      const memory = Math.min(t.memory, best.memory)
-      best.usedCores += cores
-      best.usedMemory += memory
-      best.running++
+    const joined = slots.filter((s) => s.at <= now)
+    // A task that filled a size waits for a bigger one still to join.
+    const later = (above: { cores: number; memory: number }): boolean =>
+      slots.some((s) => s.at > now && (s.cores > above.cores || s.memory > above.memory))
+    const to = assign(
+      ready.map((t) => ({ id: t.id, need: t })),
+      joined,
+      later,
+    )
+    for (const [id, best] of to) {
+      const t = byId.get(id)!
+      ready.splice(ready.indexOf(t), 1)
       best.first ??= now
       const end = now + (t.ms ?? UNKNOWN_MS)
-      ends.push([end, best, cores, memory, t.id])
+      ends.push([end, best, Math.min(t.cores, best.cores), Math.min(t.memory, best.memory), t.id])
       last = Math.max(last, end)
     }
     const first = (): Map<string, number> =>
@@ -274,8 +256,8 @@ function play(
         continue
       }
       ends.splice(i, 1)
-      s.usedCores -= cores
-      s.usedMemory -= memory
+      s.used.cores -= cores
+      s.used.memory -= memory
       s.running--
       if (id === undefined) continue
       left--
@@ -392,4 +374,49 @@ export function candidates(
   }
   for (const s of sizes) while (out.length < limit && (count.get(s.name) ?? 0) < s.max) add(s)
   return out
+}
+
+/**
+ * What the run does now, from all it knows: its known work (`missedWork`)
+ * less what runs already, played on its workers and on the candidates it
+ * may start (`plan`). The live run (`plugin.ts`) and the simulation that
+ * holds it to its invariants (tests/sim.ts) both decide here.
+ */
+export function decide(input: {
+  readonly remaining: Iterable<string>
+  readonly nodes: ReadonlyMap<string, TaskNode>
+  readonly executed: ReadonlySet<string>
+  readonly need: (id: string) => { cores: number; memory: number; above?: PlanTask['above'] }
+  readonly durationMs: (id: string) => number | undefined
+  readonly workers: readonly PlanWorker[]
+  readonly running: ReadonlySet<string>
+  readonly sizes: readonly Size[]
+  readonly started: ReadonlyMap<string, number>
+  /** No worker may be started: a planned run's last, or one without an adapter. */
+  readonly final: boolean
+  readonly warmUpMs: number
+  readonly replaceable: boolean
+}): Plan & { readonly tasks: readonly PlanTask[] } {
+  const tasks = missedWork(
+    input.remaining,
+    input.nodes,
+    input.executed,
+    input.need,
+    input.durationMs,
+  ).filter((t) => !input.running.has(t.id))
+  const p = plan(
+    tasks,
+    input.workers,
+    input.final
+      ? []
+      : candidates(
+          input.sizes,
+          input.started,
+          tasks.flatMap((t) => t.above ?? []),
+          tasks.length,
+        ),
+    input.warmUpMs,
+    input.replaceable,
+  )
+  return { ...p, tasks }
 }
