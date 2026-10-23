@@ -141,7 +141,12 @@ with the step it failed at, and the run starts another in its place. When the ru
 dispatched, so one still queued does not hold a runner the next run
 waits for. A vx that is killed never gets to: it also lists each run in
 `$RUNNER_TEMP/vx-dte-runs`, one API path per line, for an `if: always()`
-step to cancel (this repo's `ci.yml` does). No secret: each side proves its key with the job's OIDC
+step to cancel (this repo's `ci.yml` does). Agents can start before the
+run does, while the job checks out and installs: a step dispatches the
+workflow itself with the run's `VX_DTE_RUN` and appends
+`<API run path> <id>,<id>` (ids `size#n`) to `$RUNNER_TEMP/vx-dte-started`;
+the run adopts them, counts them against each size's `max` and starts
+only past them (this repo's `ci.yml` starts four). No secret: each side proves its key with the job's OIDC
 token, and the relay's token is an OIDC token for the relay's URL. Such a
 token lasts 5 minutes, so each side asks for a new one a minute before
 its token expires.
@@ -437,7 +442,7 @@ machine together:
   them. It names the run (`VX_DTE_RUN`, else the adapter's `runId()`),
   writes the agents for the orchestrator to `.vx/dte/plan.json` and,
   unless `VX_DTE_SECRET` is set, a secret to `.vx/dte/secret`.
-- `DteAdapter` is `{ spawn(agent: AgentSpawn), relay?(), close?(), render?(plan: DtePlan), live?(), runId?() }`.
+- `DteAdapter` is `{ spawn(agent: AgentSpawn), relay?(), close?(), render?(plan: DtePlan), live?(), runId?(), adopt?(agent) }`; `adopt` hands each agent the CI started before the run to `agent(id, size)`, which counts it and returns its spawn.
   `DtePlan` is `{ run, relay, workspaceRoot, agents }`, each agent
   `{ id, size, cpu, memory, live }`: a `live` one the run `spawn`s when
   it needs it.

@@ -64,6 +64,7 @@ jobs:
     timeout-minutes: 20
     env:
       CI_AGENTS_OS: Linux
+      VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
     permissions:
       contents: read
       id-token: write
@@ -71,6 +72,27 @@ jobs:
       # GITHUB_TOKEN dispatches the agents, so vx-ci posts the run's check too.
       checks: write
     steps:
+      - name: A run id no one can guess
+        run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
+
+      # Four agents start while this job checks out and installs (about
+      # 19 s); github() adopts them from vx-dte-started and asks for more
+      # only past them. A failed dispatch leaves the run to start its own.
+      - name: Start agents
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          agents='["small#1","small#2","small#3","small#4"]'
+          id=$(jq -n --arg ref "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" --arg run "$VX_DTE_RUN" \
+            --arg relay "$VX_DTE_RELAY" --arg sha "$GITHUB_SHA" --arg agents "$agents" \
+            '{ref: $ref, inputs: {run: $run, relay: $relay, sha: $sha, size: "small", agents: $agents}}' |
+            gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/vx-agent.yml/dispatches" \
+              -H 'X-GitHub-Api-Version: 2026-03-10' --input - --jq .workflow_run_id) || exit 0
+          [ -n "$id" ] || exit 0
+          r="/repos/$GITHUB_REPOSITORY/actions/runs/$id"
+          echo "$r small#1,small#2,small#3,small#4" >> "$RUNNER_TEMP/vx-dte-started"
+          echo "$r" >> "$RUNNER_TEMP/vx-dte-runs"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # The default branch and its history: schedule-history finds the
         # merge-base's timings, which carry each task's measured need, so
@@ -107,12 +129,8 @@ jobs:
       - name: vx lock --check
         run: bun packages/vx/src/bin.ts lock --check
 
-      - name: A run id no one can guess
-        run: echo "VX_DTE_RUN=$(uuidgen)" >> "$GITHUB_ENV"
-
       - name: vx run ci
         env:
-          VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
           GITHUB_TOKEN: ${{ github.token }}
           # An unavailable OS sandbox is a test FAILURE, not a skip: a
           # `describe.skipIf` would delete the tests covering the isolation

@@ -253,6 +253,59 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)} })] }
   }
 }, 60_000)
 
+// A CI step that started an agent before the run began (github()'s
+// adopt): the run counts it against its size's max and starts no other.
+it('runs on an agent the adapter adopted, and starts none of its own', async () => {
+  const { createRelay } = await import('@vzn/vx-dte-relay')
+  const relay = createRelay()
+  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (r) => relay.fetch(r) })
+  const url = `http://127.0.0.1:${server.port}`
+  const spawns = path.join(root, 'spawns.log')
+  try {
+    await writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { appendFileSync } from 'node:fs'
+import { dte } from ${JSON.stringify(DTE)}
+const adapter = {
+  adopt(agent) { agent('small#3', 'small') },
+  spawn(a) { appendFileSync(${JSON.stringify(spawns)}, a.id + '\\n') },
+}
+export default { plugins: [dte({ relay: ${JSON.stringify(url)}, agents: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter })] }
+`,
+    )
+    Bun.spawnSync(
+      ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'r'],
+      { cwd: root },
+    )
+    expect(vx(['run', 'a#gen']).exitCode).toBe(0)
+    const { VX_DTE_RUN: _, ...env } = process.env
+    const id = crypto.randomUUID()
+    const shared = { ...env, VX_DTE_RUN: id, VX_DTE_SECRET: 'adopt-secret', NO_COLOR: '1' }
+    const agent = Bun.spawn([process.execPath, CORE_BIN, 'dte', 'agent'], {
+      cwd: root,
+      env: { ...shared, VX_DTE_AGENT: 'small#3' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#use'], {
+      cwd: root,
+      env: shared,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const out = await new Response(run.stdout).text()
+    expect([await run.exited, out]).toEqual([
+      0,
+      expect.stringMatching(/└─ b#use · small#3 ── .*success/),
+    ])
+    expect(await agent.exited).toBe(0)
+    expect(await Bun.file(spawns).exists()).toBe(false)
+  } finally {
+    relay.close()
+    await server.stop(true)
+  }
+}, 60_000)
+
 /**
  * The pids under `pid`, by `pgrep -P`: macOS's `ps` is setuid, which the
  * sandbox will not spawn (EPERM on M's Mac, 2026-10-21).

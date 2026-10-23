@@ -245,3 +245,56 @@ it("dispatches on the base branch once a merged PR's branch is gone", async () =
     await server.stop(true)
   }
 })
+
+// A step before checkout dispatches agents, so they start while the job
+// installs (~20 s on CI); the run adopts them as its own: it watches their
+// jobs and cancels their run when it closes.
+it('adopts the agents a step started, watching and stopping them as its own', async () => {
+  const calls: string[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(req) {
+      const path = new URL(req.url).pathname
+      calls.push(`${req.method} ${path}`)
+      if (path === '/repos/o/r/actions/runs/9/jobs')
+        return Response.json({
+          jobs: [{ name: 'small#2', status: 'completed', conclusion: 'failure', steps: [] }],
+        })
+      return new Response(null, { status: 202 })
+    },
+  })
+  const temp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-gh-'))
+  await Bun.write(path.join(temp, 'vx-dte-started'), '/repos/o/r/actions/runs/9 small#1,small#2\n')
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+    RUNNER_TEMP: temp,
+  })
+  try {
+    const adopted: string[] = []
+    const why: string[] = []
+    const adapter = github()
+    adapter.adopt?.((id, size) => {
+      adopted.push(`${id} ${size}`)
+      return spawn(id, size, (w) => why.push(`${id}: ${w}`))
+    })
+    expect(adopted).toEqual(['small#1 small', 'small#2 small'])
+    for (let i = 0; i < 50 && why.length === 0; i++) await Bun.sleep(100)
+    expect(why).toEqual(['small#2: job failure'])
+    await adapter.close?.()
+    expect(calls).toContain('POST /repos/o/r/actions/runs/9/cancel')
+    // Control: with no file there is nothing to adopt.
+    await rm(path.join(temp, 'vx-dte-started'))
+    const none: string[] = []
+    github().adopt?.((id, size) => {
+      none.push(id)
+      return spawn(id, size)
+    })
+    expect(none).toEqual([])
+  } finally {
+    await server.stop(true)
+    await rm(temp, { recursive: true, force: true })
+  }
+}, 10_000)

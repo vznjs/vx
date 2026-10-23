@@ -23,6 +23,7 @@ interface Job {
   needs?: string | string[]
   'runs-on'?: string
   permissions?: Record<string, string>
+  env?: Record<string, string>
   steps?: Step[]
 }
 interface Workflow {
@@ -83,9 +84,20 @@ describe('ci.yml', () => {
     for (const id of RUNS) {
       const steps = doc.jobs[id]!.steps!
       expect([id, steps.some((s) => s.run?.includes('VX_DTE_RUN=$(uuidgen)'))]).toEqual([id, true])
-      const run = steps.find((s) => s.env?.['VX_DTE_RELAY'] !== undefined)
-      expect([id, run?.run]).toEqual([id, expect.stringContaining('bin.ts run ')])
+      const run = steps.find((s) => s.run?.includes('bin.ts run '))
+      const relay = run?.env?.['VX_DTE_RELAY'] ?? doc.jobs[id]!.env?.['VX_DTE_RELAY']
+      expect([id, relay]).toEqual([id, expect.stringMatching(/^https:\/\//)])
     }
+  })
+
+  // Checkout and install took ~19 s before vx asked for agents; agents a
+  // step starts first are adopted (github() reads vx-dte-started).
+  it("starts the Linux run's agents before checkout, for the run to adopt", () => {
+    const steps = doc.jobs['linux']!.steps!
+    const start = steps.findIndex((s) => s.run?.includes('vx-dte-started'))
+    expect(start).toBeGreaterThan(steps.findIndex((s) => s.run?.includes('VX_DTE_RUN=$(uuidgen)')))
+    expect(start).toBeLessThan(steps.findIndex((s) => s.uses?.startsWith('actions/checkout')))
+    expect(steps[start]!.run).toContain('vx-dte-runs')
   })
 
   // Shallow, a run found no merge-base and so no measured needs, and every
@@ -121,7 +133,7 @@ describe('ci.yml', () => {
   // A killed vx never closes its run, so its queued agents held macOS runners.
   it('cancels the agent runs a run dispatched, on any outcome', () => {
     for (const id of RUNS) {
-      const cancel = doc.jobs[id]!.steps!.find((s) => s.run?.includes('vx-dte-runs'))
+      const cancel = doc.jobs[id]!.steps!.find((s) => s.run?.includes('/cancel'))
       expect([id, cancel?.if]).toEqual([id, 'always()'])
     }
   })
