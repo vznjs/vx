@@ -287,7 +287,9 @@ stops, instead of waiting for the job's timeout.
   duration and its longest chain of dependants, so a long chain that got
   ready late does not queue behind many short tasks ready at once.
 - A task goes to the agent that holds most of its dependencies' outputs,
-  so a chain stays on one machine.
+  so a chain stays on one machine; then to the one with fewest cores
+  free that it fits, so agents fill before the next takes work and the
+  ones the rest no longer needs fall idle and leave.
 - A sandboxed task runs on an agent inside the agent's own sandbox, with
   the same `exec.sandbox`, built there (`sandboxRequestFor`): its paths,
   walls and credential stores are the agent's, so an orchestrator on
