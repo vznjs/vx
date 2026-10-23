@@ -68,6 +68,7 @@
         "files": [
           "src/**",
           "tests/**",
+          "scripts/**",
           "package.json",
           ".oxlintrc.json",
           "tsconfig.json"
