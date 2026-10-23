@@ -738,13 +738,28 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     const bound = hashes.length * 4096 + 64 * 1024
     const text = await boundedText(res, bound)
     if (text === null) throw new Error(`batch query answered past ${bound} bytes; read no further`)
-    const info = JSON.parse(text) as Record<string, unknown>
+    // A 200 that is no JSON object (a proxy's page, `null`, `[]`) threw a
+    // parser's line that named no query, or read as every hash absent:
+    // DTE sized the run as if every task ran.
+    let info: unknown
+    try {
+      info = JSON.parse(text)
+    } catch {
+      // quiet: refused below, with what came
+      info = undefined
+    }
+    if (typeof info !== 'object' || info === null || Array.isArray(info)) {
+      const said = text.replace(/\s+/g, ' ').trim().slice(0, 200)
+      throw new Error(
+        `batch query answered HTTP 200 with no JSON object${said === '' ? '' : `: ${said}`}`,
+      )
+    }
     // Each hash answers ArtifactInfo, null, or `{ error: { message } }`; an
     // error entry is not a stored artifact, and it was counted as one (a GET
     // spent on a 404, item 929).
     const held = new Map<string, ArtifactInfo>()
     for (const h of hashes) {
-      const v = info[h]
+      const v = (info as Record<string, unknown>)[h]
       if (typeof v !== 'object' || v === null || 'error' in v) this.absent.add(h)
       else {
         const { size, taskDurationMs } = v as { size?: unknown; taskDurationMs?: unknown }
