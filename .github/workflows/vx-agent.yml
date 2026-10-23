@@ -21,7 +21,10 @@ permissions:
 jobs:
   agent:
     name: ${{ matrix.agent }}
-    runs-on: ${{ fromJSON('{"small":"ubuntu-latest","arm":"ubuntu-24.04-arm","mac":"macos-latest"}')[inputs.size] }}
+    # Ubuntu 24.04, not ubuntu-latest: on Ubuntu 26 a sandboxed task's
+    # trace reports no denied read and /proc reads differ (2026-10-23),
+    # until the suite passes there.
+    runs-on: ${{ fromJSON('{"small":"ubuntu-24.04","arm":"ubuntu-24.04-arm","mac":"macos-latest"}')[inputs.size] }}
     timeout-minutes: 25
     strategy:
       fail-fast: false
