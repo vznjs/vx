@@ -18,6 +18,7 @@ export interface DteAdapter {
   relay?(): Promise<string>
   spawn(worker: WorkerSpawn): void | Promise<void>
   close?(): void | Promise<void>
+  cancel?(ids: readonly string[]): void
   render?(plan: DtePlan): Readonly<Record<string, string>>
   live?(): boolean
   readonly keyless?: boolean
