@@ -67,6 +67,8 @@ export interface SimResult {
   readonly churn: number
   readonly executed: number
   readonly utilization: number
+  /** Tasks sent to a worker whose running tasks already used all its cores. */
+  readonly overSent: number
 }
 
 const UNMEASURED: Need = { cores: Infinity, memory: Infinity }
@@ -158,16 +160,25 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
   const starting = (): Live[] =>
     workers.filter((w) => w.joinedAt === undefined && w.cancelledAt === undefined)
 
+  // Workers whose tasks use all their cores now, and tasks sent to one.
+  const overloaded = new Set<string>()
+  let overSent = 0
   const dispatch = (): void => {
     const widest = Math.max(1, ...joined().map((w) => w.cores))
     queue.splice(0, queue.length, ...ordered(queue, how.order, tail, need, widest))
     const bins = joined().map((w) => {
       let cores = 0
       let memory = 0
+      let load = 0
       for (const r of w.running.values()) {
         cores += Math.min(r.booked.cores, w.cores)
         memory += Math.min(r.booked.memory, w.memory)
+        load += r.cores
       }
+      // As the orchestrator's `used`: booked, or its load when that is more.
+      cores = Math.max(cores, Math.min(load, w.cores))
+      if (load >= w.cores - 1e-9) overloaded.add(w.id)
+      else overloaded.delete(w.id)
       return {
         id: w.id,
         cores: w.cores,
@@ -186,6 +197,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     )
     for (const [id, bin] of to) {
       const w = bin.w
+      if (overloaded.has(w.id)) overSent++
       queue.splice(queue.indexOf(id), 1)
       const ran = byId.get(id)!.ran!
       w.running.set(id, {
@@ -217,6 +229,13 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     for (const w of joined()) {
       const jobs = [...w.running.values()]
       for (const r of jobs) running.add(r.id)
+      let held = 0
+      let load = 0
+      for (const r of jobs) {
+        held += Math.min(r.booked.cores, w.cores)
+        load += r.cores
+      }
+      const over = held > 0 ? Math.max(1, Math.min(load, w.cores) / held) : 1
       planWorkers.push({
         id: w.id,
         cores: w.cores,
@@ -225,7 +244,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         idle: jobs.length === 0,
         running: jobs.map((r) => ({
           id: r.id,
-          cores: Math.min(r.booked.cores, w.cores),
+          cores: Math.min(w.cores, Math.min(r.booked.cores, w.cores) * over),
           memory: Math.min(r.booked.memory, w.memory),
           endsIn: Math.max(0, (r.knownMs ?? 0) - (now - r.startedAt)),
         })),
@@ -360,6 +379,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     workers,
     churn,
     executed: executed.size,
+    overSent,
     utilization: had === 0 ? 0 : cpu / had,
   }
 }
