@@ -8,10 +8,18 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
 import type { AgentSpawn } from '../src/index.js'
-import { github } from '../src/index.js'
+import { github as make } from '../src/index.js'
 
 const saved = { ...process.env }
-afterEach(() => {
+/** Each test's adapters: one left open watches its jobs past the test (CI, 2026-10-23). */
+const adapters: ReturnType<typeof make>[] = []
+const github = (...args: Parameters<typeof make>): ReturnType<typeof make> => {
+  const a = make(...args)
+  adapters.push(a)
+  return a
+}
+afterEach(async () => {
+  await Promise.all(adapters.splice(0).map((a) => a.close?.()))
   process.env = { ...saved }
 })
 
