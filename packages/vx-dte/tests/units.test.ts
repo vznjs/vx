@@ -503,6 +503,27 @@ it('a task that runs alone holds the worker it waits for; none after it takes it
   }
 })
 
+// M, 2026-10-23: "If workers joined and nothing is queued anymore orch
+// should ... close them": one started and not needed is cancelled, and
+// told to exit should it join anyway.
+it('a worker cancelled before it joined is told to exit when it joins, and never counted', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 100 })
+    h.o.spawned('small#2', { size: 'small', cpu: 1, memory: 100 })
+    const a = await h.worker(1, 'small#1')
+    await Bun.sleep(50)
+    expect(h.o.release(['small#2'])).toEqual(['small#2'])
+    expect(h.o.planState(() => undefined, 0).workers.map((w) => w.id)).toEqual([a.id])
+    const b = await h.worker(1, 'small#2')
+    expect(await b.types()).toEqual(['exit'])
+    h.o.failed('small#2', 'job cancelled')
+    expect(h.o.machines().map((m) => m.name)).toEqual(['small#1'])
+  } finally {
+    await h.stop()
+  }
+})
+
 it('an idle worker that faulted is let go', async () => {
   const h = await harness(new Map([node('t1')]))
   try {

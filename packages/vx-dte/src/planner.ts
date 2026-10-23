@@ -51,6 +51,8 @@ export interface PlanWorker {
   }[]
   /** Holding no task: the run may let it go. */
   readonly idle: boolean
+  /** Started and not joined yet: the run may cancel it. */
+  readonly starting?: boolean
 }
 
 export interface Plan {
@@ -329,6 +331,16 @@ export function plan(
   let kept = [...workers, ...added.slice(0, n)]
   const release: string[] = []
   if (best < Infinity) {
+    // One starting that the plan ends as well without is cancelled before
+    // it joins, last to join first; none is started in its place.
+    const starting = workers.filter((w) => w.starting === true).sort((a, b) => b.at - a.at)
+    for (const w of starting) {
+      const without = kept.filter((k) => k !== w)
+      if (simulate(tasks, without) <= bound) {
+        kept = without
+        release.push(w.id)
+      }
+    }
     // Biggest first: a big idle one costs the most to keep.
     const idle = workers.filter((w) => w.idle).sort((a, b) => b.cores - a.cores)
     for (const w of idle) {

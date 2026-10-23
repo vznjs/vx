@@ -431,8 +431,11 @@ machine together:
     booked, as placing by load packs them.
     A worker the plan needs later starts when its warm-up nears. An idle
     worker leaves when the plan still ends in that margin with one started
-    in its place: none is let go and started again. The same signal
-    changes nothing. The
+    in its place: none is let go and started again. A worker still
+    starting that the plan ends as well without is cancelled: the adapter
+    stops it before its setup if it can (`github()` cancels its workflow
+    run once no worker in it is needed), and one that joins anyway is told
+    to exit. The same signal changes nothing. The
     run ends: a task the history has not measured runs alone on a worker;
     one that used all of its worker's cores or memory (90%) last time runs
     alone on the smallest bigger size, which the run starts for it. Each
@@ -457,7 +460,7 @@ machine together:
   them. It names the run (`VX_DTE_RUN`, else the adapter's `runId()`),
   writes the workers for the orchestrator to `.vx/dte/plan.json` and,
   unless `VX_DTE_SECRET` is set, a secret to `.vx/dte/secret`.
-- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), render?(plan: DtePlan), live?(), runId?(), adopt?(worker) }`; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn.
+- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), render?(plan: DtePlan), live?(), runId?(), adopt?(worker) }`; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined.
   `DtePlan` is `{ run, relay, workspaceRoot, workers }`, each worker
   `{ id, size, cpu, memory, live }`: a `live` one the run `spawn`s when
   it needs it.
