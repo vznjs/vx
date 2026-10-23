@@ -14,46 +14,70 @@ export interface ProfileArgs {
   executors?: readonly (readonly Record<string, unknown>[])[]
 }
 
+// ns → us; bigint arithmetic to avoid precision loss before converting to
+// a JSON-safe number.
+function spanUs(o: TaskOutcome): { startUs: number; durUs: number } {
+  return {
+    startUs: Number(o.wallclockStartNs! / 1000n),
+    durUs: Number((o.wallclockEndNs! - o.wallclockStartNs!) / 1000n),
+  }
+}
+
+/**
+ * Each task's `tid`: its project's lane, or the project's next lane when it
+ * overlaps a task already there. Slices on one thread must nest, and two
+ * tasks of one project running side by side do not: Perfetto drops one.
+ */
+function lanes(timed: readonly TaskOutcome[]): Map<TaskOutcome, number> {
+  const ends = new Map<string, { tid: number; endUs: number }[]>()
+  const tidOf = new Map<TaskOutcome, number>()
+  let tids = 0
+  const byStart = timed.map((o) => ({ o, ...spanUs(o) })).sort((a, b) => a.startUs - b.startUs)
+  for (const { o, startUs, durUs } of byStart) {
+    let own = ends.get(o.node.projectName)
+    if (own === undefined) ends.set(o.node.projectName, (own = []))
+    let lane = own.find((l) => l.endUs <= startUs)
+    if (lane === undefined) own.push((lane = { tid: ++tids, endUs: 0 }))
+    lane.endUs = startUs + durUs
+    tidOf.set(o, lane.tid)
+  }
+  return tidOf
+}
+
 /**
  * Chrome trace JSON. Spec:
  *   https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU
  *
  * One complete event (`ph: 'X'`) per task with `ts` and `dur` in
  * microseconds (Chrome's unit; we have ns from hrtime, divide by 1000).
- * Each project gets its own `tid` so concurrent tasks render on
- * distinct rows in chrome://tracing or perfetto.
+ * Each project gets its own `tid`, and one more for each task it runs
+ * beside another, so concurrent tasks render on distinct rows.
  */
 export async function writeRunProfile(args: ProfileArgs): Promise<string> {
   const outPath = path.resolve(args.cwd, args.target)
-  const tidByProject = new Map<string, number>()
-  const traceEvents = args.outcomes
-    .filter((o) => o.wallclockStartNs !== undefined && o.wallclockEndNs !== undefined)
-    .map((o) => {
-      let tid = tidByProject.get(o.node.projectName)
-      if (tid === undefined) {
-        tid = tidByProject.size + 1
-        tidByProject.set(o.node.projectName, tid)
-      }
-      // ns → us; bigint arithmetic to avoid precision loss before
-      // converting to a JSON-safe number.
-      const startUs = Number((o.wallclockStartNs ?? 0n) / 1000n)
-      const durUs = Number(((o.wallclockEndNs ?? 0n) - (o.wallclockStartNs ?? 0n)) / 1000n)
-      return {
-        name: o.node.id,
-        cat: o.status,
-        ph: 'X',
-        ts: startUs,
-        dur: durUs,
-        pid: 1,
-        tid,
-        args: {
-          exitCode: o.exitCode,
-          hash: o.hash ?? null,
-          ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
-          ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
-        },
-      }
-    })
+  const timed = args.outcomes.filter(
+    (o) => o.wallclockStartNs !== undefined && o.wallclockEndNs !== undefined,
+  )
+  const tidOf = lanes(timed)
+  const traceEvents = timed.map((o) => {
+    const tid = tidOf.get(o)!
+    const { startUs, durUs } = spanUs(o)
+    return {
+      name: o.node.id,
+      cat: o.status,
+      ph: 'X',
+      ts: startUs,
+      dur: durUs,
+      pid: 1,
+      tid,
+      args: {
+        exitCode: o.exitCode,
+        hash: o.hash ?? null,
+        ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
+        ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
+      },
+    }
+  })
   // An executor's processes follow the run's own, each executor's after
   // the last; its times move onto the runner's hrtime clock.
   const shiftUs = Number(process.hrtime.bigint() / 1000n) - performance.now() * 1000

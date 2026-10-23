@@ -1084,8 +1084,8 @@ Writes a Chrome-trace JSON of every task's wallclock span. Open in
 }
 ```
 
-Each project gets a distinct `tid` so concurrent tasks across packages
-render on separate lanes. `ts` and `dur` are microseconds derived
+Each project gets a distinct `tid`, and one more for each task it runs
+beside another of its own, so concurrent tasks render on separate lanes. `ts` and `dur` are microseconds derived
 from the per-task `hrtime.bigint()` spans the runner captures.
 `cat` carries the task's final status (`success`, `cache-hit`,
 `cache-hit-remote`, `failed`).
