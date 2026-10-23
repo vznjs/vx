@@ -26,10 +26,8 @@ and names the path.
 
 2. **Grant the package**
 
-   `allow: { read: ['.'] }`. Its `node_modules` is readable already.
-   Another package of yours, linked there, is readable when the task
-   depends on one of that package's command tasks; an uncached task reads
-   every linked package.
+   `allow: { read: ['.'] }`. Its `node_modules` is readable already, and
+   so is a linked sibling the task depends on through a command task.
 
 3. **Grant outputs and hosts**
 
@@ -38,26 +36,21 @@ and names the path.
 
 4. **Run it**
 
-   An undeclared read or write fails it and names the path. The failure
-   ends with a `fix:` line, the grants that would have allowed it
-   (`fix: exec.sandbox.allow: { read: ['tsconfig.json'], write: ['dist/'] }`).
-   `vx last --format json` carries the same grants as `sandboxFix`.
+   An undeclared read or write fails it, names the path, and prints a
+   `fix:` line with the grants that would have allowed it
+   (`sandboxFix` in `vx last --format json`).
 
 5. **Declare the path**
 
-   A cached task's read that no `inputs.files` glob matches is named once
-   more (`and, if the output depends on them, inputs.files: ['tsconfig.json']`;
-   `sandboxFix.inputs` in JSON): a grant alone lets the task read it, but
-   only an input re-keys the task when it changes. Silence a noisy tool's
-   path with `ignore`.
+   A read no `inputs.files` glob matches is named again as an input: a
+   grant lets the task read it, but only an input re-keys the task when
+   it changes. Silence a noisy tool's path with `ignore`.
 
 </Steps>
 
-Outside the workspace root (`~/.cache`, `/etc`) reads are open and fold
-into no key: declare what the output depends on as a key input. The
-credential stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc` and the like)
-are the exception: denied unless `allow.read` names one, and named apart
-in a failure, never in the `fix:` line.
+Reads outside the workspace (`~/.cache`, `/etc`) are open and fold into
+no key. Credential stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc`) are
+denied unless `allow.read` names one.
 
 ```ts title="packages/app/vx.config.ts"
 import { defineProject } from '@vzn/vx/config'
@@ -132,10 +125,9 @@ build: {
 
 ## What you can grant
 
-`allow` takes every key below. `deny` takes only `network`. Domain lists
-are one union per run, which every sandboxed task reaches; `deny.network`
-is refused to every sandboxed task. `ignore` takes `read`, `write`,
-`systemInfo` and `network`, as patterns, and refuses the rest.
+`allow` takes every key below; `deny` takes only `network`; `ignore`
+takes `read`, `write`, `systemInfo` and `network`. Domain lists are one
+union per run.
 
 | Key            | Grants                                                            |
 | -------------- | ----------------------------------------------------------------- |
@@ -151,13 +143,11 @@ is refused to every sandboxed task. `ignore` takes `read`, `write`,
 
 ## The boundary is the project
 
-A task never reaches another package or a root file you did not grant,
-bar the linked packages of step 2. That wall is silent. An undeclared
-touch of the task's own files fails the task, and a failed task is never
-cached. A write refused past the wall (a tool filling its cache in your
-home) is named beside a failed task, with the directory to grant; under
-the host's temp directory it names `$TMPDIR` instead, the empty temp
-directory the task has of its own.
+A task never reaches another package or a root file you did not grant;
+that wall is silent. An undeclared touch of its own files fails the task,
+and a failed task is never cached. A write refused past the wall is named
+with the directory to grant; under the host's temp directory it names
+`$TMPDIR` instead, the task's own empty temp directory.
 
 ## Requirements & platform support
 
@@ -179,10 +169,8 @@ What can't be sandboxed: a group task (it has no command), and on macOS a
 task that itself sandboxes (a sandbox cannot nest).
 
 A persistent task (a dev server) runs inside the same walls, but nothing
-traces it: a read outside its grants is refused as missing (`ENOENT`) and
-named nowhere. One that exits failing before it is ready says so beside
-its failure; run its command as a one-shot sandboxed task to see what it
-was refused.
+traces it: a refused read is `ENOENT`, named nowhere. Run its command as
+a one-shot sandboxed task to see what it was refused.
 
 ## Common problems
 
