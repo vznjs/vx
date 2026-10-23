@@ -39,6 +39,14 @@ export interface ConfigDir {
   readonly configPath: string
 }
 
+// `vx lock`'s review copy of a project's resolved config: 'vx.lock.json'.
+export const REVIEW_FILE: string
+// The configs, and the review copies in a directory with no config.
+export interface ProjectConfigs {
+  readonly configs: ConfigDir[]
+  readonly strayReviews: string[]
+}
+
 // A project's config file names, in the order discovery prefers them.
 export const PROJECT_CONFIG_FILENAMES: string[]
 // The root project's name when nothing names it (Turbo's spelling).
@@ -50,7 +58,7 @@ export function findWorkspaceRoot(start: string, uid?: number): Promise<string>
 // A project's name when nothing names it: its root-relative POSIX path, `//` for the root
 export function pathName(root: string, dir: string): string
 // Every directory holding a vx config, for `vx lock`; sorted by directory
-export function findProjectConfigs(root: string): Promise<ConfigDir[]>
+export function findProjectConfigs(root: string): Promise<ProjectConfigs>
 // The projects a lock records, named by the config's `name`, else by path
 export function lockedProjects(
   root: string,
@@ -132,7 +140,11 @@ dot-directories and `node_modules`. A config at or under a nested
 `.vx/workspace.*` is that workspace's and is left out. Where a directory
 holds several, `PROJECT_CONFIG_FILENAMES` order picks the first that is a
 file (a directory may carry a config's name; git lists a tracked config
-deleted from the worktree).
+deleted from the worktree). The same listing names each `vx.lock.json`
+(`REVIEW_FILE`): one in a directory with no config is `strayReviews`,
+which `vx lock --check` names. Left where a project's config was
+deleted, it is a source of the project around it, and a `**` reader
+there was keyed on a copy no `vx lock` rewrites (2026-10-23).
 
 ### Names
 

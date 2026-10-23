@@ -93,6 +93,29 @@ it('vx lock --check fails on a review copy whose config is gone', async () => {
   expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0, err: '' })
 })
 
+// A directory nothing discovers once its config is gone (no package.json,
+// no plugin) kept its copy too, and the audit passed: the copy then keyed
+// the `**` of the project around it (2026-10-23).
+it('vx lock --check names a review copy left where no project is', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-stray-' }))
+  await addProject(r, 'a', { config: CONFIG })
+  const gone = path.join(r, 'packages', 'a', 'old')
+  await Bun.write(path.join(gone, 'vx.config.mjs'), CONFIG)
+  expect(vx(r, 'lock').code).toBe(0)
+  expect(await text(path.join(gone, 'vx.lock.json'))).not.toBeNull()
+  await rm(path.join(gone, 'vx.config.mjs'))
+  expect(vx(r, 'lock').code).toBe(0)
+  const stray = vx(r, 'lock', '--check')
+  expect([stray.code, stray.err]).toEqual([
+    1,
+    noticed(
+      `vx lock --check: packages/a/old/vx.lock.json has no vx.config beside it — delete it\n`,
+    ),
+  ])
+  await rm(path.join(gone, 'vx.lock.json'))
+  expect(vx(r, 'lock', '--check')).toMatchObject({ code: 0, err: '' })
+})
+
 it('lock.reviewFiles: false writes none and checks none; an existing .gitattributes stays', async () => {
   const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-off-' }))
   const dir = await addProject(r, 'a', { config: CONFIG })

@@ -41,13 +41,15 @@ function fixture(files: Record<string, string>): string {
 const pkg = (name: string, extra: object = {}): string => JSON.stringify({ name, ...extra })
 
 async function projects(root: string): Promise<string[]> {
-  const found = await findProjectConfigs(root)
+  const { configs: found } = await findProjectConfigs(root)
   return found.map((p) => relPosix(root, p.configPath)).sort()
 }
 
 /** The first config file `findProjectConfigs` picks in `root`, by basename. */
 async function firstConfig(root: string): Promise<string | null> {
-  const [found] = await findProjectConfigs(root)
+  const {
+    configs: [found],
+  } = await findProjectConfigs(root)
   return found === undefined ? null : path.basename(found.configPath)
 }
 

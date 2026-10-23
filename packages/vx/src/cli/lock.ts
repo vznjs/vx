@@ -31,6 +31,7 @@ import {
   ConfigsRefused,
   findProjectConfigs,
   findWorkspaceRoot,
+  REVIEW_FILE,
   loadProjectConfigs,
   LOCKFILE_NAME,
   LOCKFILE_VERSION,
@@ -133,11 +134,13 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     tasked,
     resolved,
     reviewFiles: true,
+    strayReviews: [],
   }
   try {
     const { workspaceConfig, plugins, cacheDir } = await loadCliWorkspace(root)
     out.reviewFiles = resolveSetting('lock.reviewFiles', workspaceConfig).value !== false
-    const found = await findProjectConfigs(root)
+    const { configs: found, strayReviews } = await findProjectConfigs(root)
+    out.strayReviews = strayReviews
     // The one load that evaluates: every reader reads the lock this writes.
     const configs = await loadProjectConfigs(found.map((f) => f.configPath))
     // In the lock's form: a field left `undefined` is a key the stored JSON
@@ -228,6 +231,8 @@ interface GraphCheck {
   resolved: Map<string, ProjectConfig>
   /** `lock.reviewFiles`. */
   reviewFiles: boolean
+  /** Review copies in a directory no config is in (`findProjectConfigs`). */
+  strayReviews: string[]
 }
 
 function configured(all: readonly ProjectMeta[]): ConfiguredMeta[] {
@@ -283,9 +288,6 @@ function bareNames(bare: readonly string[]): string {
 function bareNote(bare: readonly string[]): string {
   return bare.length === 0 ? '' : ` (no vx.config, so not locked: ${bareNames(bare)})`
 }
-
-/** The name `vx lock` writes each project's review copy under. */
-const REVIEW_FILE = 'vx.lock.json'
 
 interface Review {
   name: string
@@ -468,18 +470,21 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     )
     for (const f of stale) if (f !== null) failures.push(f)
     // A copy left beside a config since deleted shows reviewers tasks
-    // nothing runs. vx never deletes a committed file; it names it.
-    const orphans = await Promise.all(
+    // nothing runs, and keys the `**` of a project around it. vx never
+    // deletes a committed file; it names it. A project kept without a
+    // config (a plugin's) is checked on disk; any other directory is
+    // what discovery listed.
+    const kept = await Promise.all(
       check.all
         .filter((m) => m.configPath === null)
         .map(async (m) => {
           const file = path.join(m.dir, REVIEW_FILE)
-          return (await Bun.file(file).exists())
-            ? `${relPosix(root, file)} has no vx.config beside it — delete it`
-            : null
+          return (await Bun.file(file).exists()) ? file : null
         }),
     )
-    for (const f of orphans) if (f !== null) failures.push(f)
+    const orphans = new Set([...kept.filter((f) => f !== null), ...check.strayReviews])
+    for (const file of [...orphans].sort())
+      failures.push(`${relPosix(root, file)} has no vx.config beside it — delete it`)
   }
   for (const dir of Object.keys(lock.projects)) {
     if (!Object.hasOwn(check.fresh.projects, dir)) {

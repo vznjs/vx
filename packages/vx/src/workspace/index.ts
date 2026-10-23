@@ -52,6 +52,7 @@ export {
   checkProjectNames,
   findWorkspaceRoot,
   findProjectConfigs,
+  REVIEW_FILE,
   discoveredProject,
   linkDiscoveredEdges,
   lockedProjects,
@@ -61,6 +62,7 @@ export {
   resolveStoreRoot,
   ROOT_NAME,
   type ConfigDir,
+  type ProjectConfigs,
   type ProjectEntry,
   type ProjectMeta,
 } from './workspace.js'
