@@ -46,7 +46,7 @@ jobs:
   # checks out, installs Bun and the deps, checks the lock and runs vx,
   # as any repo would (owner, 2026-10-23: "super simple, same as devs
   # would add it"). vx names the run, plans it, starts as many workers
-  # (vx-agent.yml) as the plan's width needs, cancels them at the end and
+  # (vx-worker.yml) as the plan's width needs, cancels them at the end and
   # reads the remote cache; @vzn/vx-ci writes the job summary.
   linux:
     name: linux-x64
@@ -78,7 +78,7 @@ jobs:
       VX_PR_TITLE: ${{ github.event.pull_request.title }}
       VX_PR_BASE: ${{ github.event.pull_request.base.sha }}
       VX_PR_HEAD: ${{ github.event.pull_request.head.sha }}
-      # The 2 MiB tmpfs each Linux worker mounts (vx-agent.yml).
+      # The 2 MiB tmpfs each Linux worker mounts (vx-worker.yml).
       # Cold reads nothing but still writes: workers hand outputs back
       # through the remote.
       VX_CACHE_POLICY: ${{ inputs.cold && 'local:w,remote:w' || '' }}

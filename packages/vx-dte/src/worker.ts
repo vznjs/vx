@@ -75,7 +75,7 @@ export async function runWorker(opts: {
   let me
   try {
     me = await sealWorker(
-      (signed) => join(opts.relay, opts.run, 'agent', signed, opts.token),
+      (signed) => join(opts.relay, opts.run, 'worker', signed, opts.token),
       opts.run,
       opts.proof,
       { ...info },

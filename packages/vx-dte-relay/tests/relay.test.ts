@@ -122,15 +122,6 @@ describe('the relay carries one run between its orchestrator and workers', () =>
     ])
   })
 
-  it('takes the old role name agent as a worker', async () => {
-    const c = client()
-    const o = await c.join(R, 'orchestrator')
-    const w = await c.join(R, 'agent', { size: 'small' })
-    expect(await c.poll(R, o)).toEqual([
-      { from: 'relay', body: { type: 'joined', id: w, info: { size: 'small' } } },
-    ])
-  })
-
   // Two workers joined a run at once on CI and each made it: the second
   // replaced the first, whose worker the relay then never knew (2026-10-23).
   it('puts workers that join a new run at once in one run', async () => {

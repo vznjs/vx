@@ -108,7 +108,7 @@ it('takes only its own CI and --debs', async () => {
     )
 })
 
-// vx-agent.yml restores by `vx-setup-debs-<runner.os>-<runner.arch>-`
+// vx-worker.yml restores by `vx-setup-debs-<runner.os>-<runner.arch>-`
 // (ci-workflow.unsafe.test.ts): a key led by the image matched none.
 it('saves packages under the runner OS and arch, then the image', () => {
   expect(
