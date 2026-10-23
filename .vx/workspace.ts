@@ -22,11 +22,12 @@ export default defineWorkspace({
       // A run's agents are the OS ci.yml names (2026-10-22): ubuntu-latest
       // on a public repo; macos-latest, whose account cap is 5;
       // ubuntu-24.04-arm for the arm64 binary. The run's own job is Linux
-      // x64 for all three.
+      // x64 for all three. A full Linux run asks ~46 cores of work at
+      // once: 8 agents ran it in 157-196 s at 50% CPU (2026-10-23).
       agents: {
         macOS: { mac: { max: 4, cpu: 3, memory: '7GB' } },
         'Linux-ARM64': { arm: { max: 1, cpu: 4, memory: '16GB' } },
-      }[process.env['CI_AGENTS_OS'] ?? ''] ?? { small: { max: 8, cpu: 4, memory: '16GB' } },
+      }[process.env['CI_AGENTS_OS'] ?? ''] ?? { small: { max: 12, cpu: 4, memory: '16GB' } },
       adapter: githubAgents(),
     }),
   ],
