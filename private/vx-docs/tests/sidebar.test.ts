@@ -22,16 +22,22 @@ const PLACES: [string, string][] = [
   ['Blog', 'blog/'],
   ['Releases', 'releases/'],
 ]
-// The Docs are seven pages, no groups.
+// The Docs are one page per feature, in groups by area.
 const DOCS_PAGES: [string, string][] = [
   ['Quickstart', 'quickstart/'],
-  ['Configure', 'guides/configure/'],
+  ['Upgrading to 1.0', 'guides/upgrading/'],
+  ['Workspace', 'docs/workspace/'],
+  ['Tasks', 'docs/tasks/'],
+  ['Caching', 'docs/caching/'],
+  ['Environment variables', 'docs/environment-variables/'],
+  ['Dev servers', 'docs/dev-servers/'],
+  ['Lockfiles', 'docs/lockfiles/'],
   ['Sandboxing', 'guides/sandboxing/'],
   ['CI and remote', 'guides/ci/'],
   ['Plugins', 'guides/plugins/'],
   ['AI agents', 'guides/agents/'],
-  ['Upgrading to 1.0', 'guides/upgrading/'],
 ]
+const DOCS_GROUPS = ['Get started', 'Configure', 'Run', 'Extend']
 const GUIDES_GROUPS = ['Get started', 'Caching', 'Running', 'CI', 'Debugging']
 const REFERENCE_GROUPS = ['CLI', 'Config', 'Benchmarks', 'Compare', 'Plugins']
 const INTERNALS_TOP = ['overview/', 'architecture/', 'optimizations/', 'patterns/', 'flows/']
@@ -113,8 +119,8 @@ describe('the sidebars', () => {
   const guides = sidebarList(html('guides/'))!
   const reference = sidebarList(html('cli/'))!
 
-  it('the Docs are their pages', () => {
-    expect(groupLabels(docs)).toEqual([])
+  it('the Docs are their pages, in groups', () => {
+    expect(groupLabels(docs)).toEqual(DOCS_GROUPS)
     expect(sidebarLinks(docs)).toEqual(DOCS_PAGES)
   })
 
@@ -173,7 +179,7 @@ describe('the sidebars', () => {
   })
 
   it('puts a Docs page, a guide, a Reference page and a post each in its own section', () => {
-    expect(places(html('guides/configure/')).current).toEqual(['Docs'])
+    expect(places(html('docs/tasks/')).current).toEqual(['Docs'])
     expect(places(html('guides/migrate/')).current).toEqual(['Guides'])
     expect(places(html('guides/caching/why-a-task-missed/')).current).toEqual(['Guides'])
     expect(places(html('caching/')).current).toEqual(['Reference'])

@@ -19,7 +19,7 @@ other way.
 relationships, and the settings that apply to all of them.** A workspace
 is what a single command operates over.
 
-- vx: the workspace, configured by `.vx/workspace.ts` ([workspace config](../guides/configure/#workspace-config))
+- vx: the workspace, configured by `.vx/workspace.ts` ([workspace config](../docs/workspace/))
 - Turborepo: the Workspace ([package and task graphs](https://turborepo.com/docs/core-concepts/package-and-task-graph))
 - Nx: the workspace ([glossary](https://nx.dev/docs/reference/glossary#workspace))
 - Bazel: the workspace, organised into [repositories](https://bazel.build/reference/glossary#repository)
@@ -130,7 +130,7 @@ whose stored outputs are wrong for today's inputs, because something the
 task read was never part of the key. It reports success and serves
 yesterday's result, which makes it the worst failure a cache can have.
 
-- vx: hit, miss and stale hit ([caching](../guides/configure/#caching))
+- vx: hit, miss and stale hit ([caching](../docs/caching/))
 - Turborepo: cache hit and cache miss ([caching](https://turborepo.com/docs/crafting-your-repository/caching))
 - Nx: cache hit and cache miss ([glossary](https://nx.dev/docs/reference/glossary#cache-hit)); a stale result is called a "false cache hit" in its [sandboxing](https://nx.dev/docs/features/ci-features/sandboxing) docs
 - Bazel: served from the [action cache](https://bazel.build/reference/glossary#action-cache); a wrong one breaks [correctness](https://bazel.build/reference/glossary#correctness)
@@ -175,7 +175,7 @@ other machine sees nothing else.
 cannot wait for it to finish before starting what depends on it, and it
 must never be cached.
 
-- vx: `exec.persistent`, ready when its output matches `readyWhen` ([dev tasks](../guides/configure/#dev-tasks))
+- vx: `exec.persistent`, ready when its output matches `readyWhen` ([dev tasks](../docs/dev-servers/))
 - Turborepo: `persistent: true` ([configuration](https://turborepo.com/docs/reference/configuration#persistent))
 - Nx: a continuous task, `continuous: true`
 - Bazel: —

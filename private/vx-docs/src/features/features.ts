@@ -296,7 +296,7 @@ export default defineProject({
     },
     image: 'typescript-config.png',
     imageAlt: 'A preset imported by several configs; the key sees the evaluated task.',
-    docs: { label: 'Configure', href: 'guides/configure/' },
+    docs: { label: 'Configure', href: 'docs/workspace/' },
     deepDive: { label: 'Resolved-config hashing', href: 'blog/resolved-config-hashing/' },
   },
   {
@@ -318,7 +318,7 @@ export default defineProject({
     },
     image: 'lockfile-keys.png',
     imageAlt: 'A lockfile change re-keys only the projects whose dependencies moved.',
-    docs: { label: 'Lockfiles', href: 'guides/configure/#lockfiles' },
+    docs: { label: 'Lockfiles', href: 'docs/lockfiles/' },
     deepDive: { label: 'Lockfile-aware keys', href: 'blog/lockfile-aware-keys/' },
   },
 
@@ -496,7 +496,7 @@ export default defineProject({
     },
     image: 'dev-servers.png',
     imageAlt: 'e2e tests start when the dev server prints its ready line.',
-    docs: { label: 'Dev tasks', href: 'guides/configure/#dev-tasks' },
+    docs: { label: 'Dev tasks', href: 'docs/dev-servers/' },
     deepDive: { label: 'Dev servers in the graph', href: 'blog/dev-servers-in-the-graph/' },
   },
   {

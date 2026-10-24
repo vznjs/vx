@@ -326,7 +326,7 @@ The field-by-field mapping is in the `@vzn/vx-migrate` README.
 
 - **A project is missing.** A project is a directory holding a `vx.config.ts`; `bunx @vzn/vx-migrate` writes one for every project and prints any directory to add to your workspace globs.
 - **A task always runs.** vx caches only a task with a `cache` block. `vx-migrate` fills it from `turbo.json` or the Nx graph; a Turbo task with `cache: false` has none.
-- **An env var is missing in the command.** vx isolates the environment: list it in `exec.env.passThrough` ([Environment variables](../configure/#environment-variables)).
+- **An env var is missing in the command.** vx isolates the environment: list it in `exec.env.passThrough` ([Environment variables](../../docs/environment-variables/)).
 - **`vx run build` ran one package.** Without `--all`, vx runs the package you are in.
 
 ## Next

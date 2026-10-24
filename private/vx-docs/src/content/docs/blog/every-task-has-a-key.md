@@ -69,8 +69,8 @@ $ vx run packages/e#build
 ```
 
 A missing declaration costs a re-run, never a stale hit. A group with
-`inputs` and no `exec` is keyed too; the configure guide's
-[Caching](../../guides/configure/#caching) section has every rule.
+`inputs` and no `exec` is keyed too; the
+[Caching](../../docs/caching/) page has every rule.
 
 ## A gitignored file can be an input
 

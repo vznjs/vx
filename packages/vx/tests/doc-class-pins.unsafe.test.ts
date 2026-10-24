@@ -422,11 +422,10 @@ describe('every page listing the env allowlist lists all of it', () => {
     expect(ESSENTIAL_ENV.length).toBe(19)
     const pages = handAuthoredDocs().filter((p) => readFileSync(p, 'utf8').includes('`LOGNAME`'))
     // schema.md (pinned separately), execution.md, modules/env.md, and the
-    // configure guide (the environment-variables guide until the short
-    // site). A fifth copy lands here unpinned no more.
+    // environment-variables page. A fifth copy lands here unpinned no more.
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
-      'configure.mdx',
       'env.md',
+      'environment-variables.mdx',
       'execution.md',
       'schema.md',
     ])
@@ -462,14 +461,13 @@ describe('every page stating the timeout ladder states all four rungs', () => {
       (p) =>
         path.basename(p) !== 'upgrading.md' && readFileSync(p, 'utf8').includes('VX_RUN_TIMEOUT'),
     )
-    // cli.md, schema.md, the configure guide's workspace section (the
-    // workspace-config guide until the short site) and the feature
-    // inventory. A fifth copy lands here unpinned no more.
+    // cli.md, schema.md, the workspace page and the feature inventory. A
+    // fifth copy lands here unpinned no more.
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
       'cli.md',
-      'configure.mdx',
       'features.md',
       'schema.md',
+      'workspace.mdx',
     ])
     for (const page of pages) {
       const text = readFileSync(page, 'utf8')

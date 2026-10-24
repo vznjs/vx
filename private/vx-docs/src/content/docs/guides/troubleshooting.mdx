@@ -88,7 +88,7 @@ $ vx run build --filter @demo/ap
 - **A variable is empty inside the command.** Past a small essential
   allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what
   you list: add it to `exec.env.passThrough`
-  ([Environment variables](../configure/#environment-variables)).
+  ([Environment variables](../../docs/environment-variables/)).
 - **`dist/` is empty after `tsc -b`.** With `rootDir: "src"`, tsc writes
   `tsconfig.tsbuildinfo` beside `tsconfig.json`, outside `dist/`. vx
   empties `dist/` before a miss, tsc sees the buildinfo, thinks it is

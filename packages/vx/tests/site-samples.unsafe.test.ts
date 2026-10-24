@@ -148,7 +148,7 @@ describe('the plugins guide states the CacheLayer method count', () => {
 // only through `exec.env`: `CI` is essential and reaches every task.
 describe('no page says a task sees only what it declares, past the allowlist', () => {
   it("the guide's passThrough examples are no essentials, and both pages name the allowlist", () => {
-    const guide = readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8')
+    const guide = readFileSync(path.join(DOCS, 'docs', 'environment-variables.mdx'), 'utf8')
     const row = guide.split('\n').find((l) => l.startsWith('| `exec.env.passThrough`'))!
     expect(row).toBeDefined()
     const examples = [...row.matchAll(/`([A-Z][A-Z0-9_]+)`/g)].map((m) => m[1]!)
@@ -174,10 +174,7 @@ describe('no page says a task sees only what it declares, past the allowlist', (
 
 describe('the configure guide names the essential allowlist', () => {
   it('its "always gets a small essential allowlist" sentence names every name in ESSENTIAL_ENV', () => {
-    const page = section(
-      readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8'),
-      'Environment variables',
-    )
+    const page = readFileSync(path.join(DOCS, 'docs', 'environment-variables.mdx'), 'utf8')
     const m = /essential allowlist so normal CLI tools\s+work:([\s\S]*?)\. vx sets/.exec(page)
     expect(m).not.toBeNull()
     const named = new Set([...m![1]!.matchAll(/`([A-Z_]+)`/g)].map((x) => x[1]!))
@@ -249,10 +246,7 @@ describe('the configure guide states the concurrency default `vx help` states', 
   it("its `concurrency` comment is the help line's default clause", () => {
     const help = /--concurrency <n>\s+Max parallel tasks \(default: ([^)]+)\)/.exec(HELP)
     expect(help).not.toBeNull()
-    const page = section(
-      readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8'),
-      'Workspace config',
-    )
+    const page = readFileSync(path.join(DOCS, 'docs', 'workspace.mdx'), 'utf8')
     const m = /^\s+concurrency: 8,\s+\/\/ default: (.*)$/m.exec(page)
     expect(m).not.toBeNull()
     expect(m![1]).toBe(help![1])
@@ -275,8 +269,8 @@ describe("comparison.md's Nx flag cells", () => {
   })
 })
 
-describe('the configure guide quotes what vx why says', () => {
-  const guide = section(readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8'), 'Caching')
+describe('the caching page quotes what vx why says', () => {
+  const guide = readFileSync(path.join(DOCS, 'docs', 'caching.mdx'), 'utf8')
   const post = readFileSync(path.join(DOCS, 'blog', 'why-did-this-rerun.md'), 'utf8')
   it("every verdict sentence metrics.ts can print is a row of its table, and of the post's", () => {
     const src = readFileSync(
@@ -299,16 +293,6 @@ describe('the configure guide quotes what vx why says', () => {
       expect(guide).toContain(note)
       expect(post).toContain(note)
     }
-  })
-  it('its console sample carries the labels why.ts prints, and a row in its shape', () => {
-    const why = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'why.ts'), 'utf8')
-    const sample = fencedBlock(guide, 'console', 'app#build — run ')
-    for (const label of ['  this run   ', '  previous   ', '  verdict    ', '  what changed (']) {
-      expect(why).toContain(label)
-      expect(sample).toContain(label)
-    }
-    // `${change.padEnd(7)} ${kind.padEnd(4)}  ${name}  ${before} → ${after}`
-    expect(sample).toMatch(/^    changed file  \S+  \S+ → \S+$/m)
   })
 })
 
@@ -1077,10 +1061,7 @@ describe('the workspace-config guide documents every WorkspaceConfig field', () 
     expect(decl).not.toBeNull()
     const fields = [...decl![1]!.matchAll(/^  (\w+)\?:/gm)].map((m) => m[1]!)
     expect(fields.length).toBe(6)
-    const page = section(
-      readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8'),
-      'Workspace config',
-    )
+    const page = readFileSync(path.join(DOCS, 'docs', 'workspace.mdx'), 'utf8')
     expect(page).toContain('plugins: [')
     // A row names a setting by its path (`run.timeout`); its group is the field.
     const rows = new Set([...page.matchAll(/^\| `(\w+)[.`]/gm)].map((m) => m[1]!))
@@ -1135,7 +1116,7 @@ describe('the CI guide quotes only run figures benchmarks.md measured', () => {
 // The caching guide is the configure page's section (the short site); its
 // always-excluded sentence became a row of the key's table.
 describe('the caching guide lists what the cache never reads', () => {
-  const page = section(readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8'), 'Caching')
+  const page = readFileSync(path.join(DOCS, 'docs', 'caching.mdx'), 'utf8')
   it('its always-excluded list is ALWAYS_IGNORE', () => {
     const src = readFileSync(
       path.resolve(import.meta.dir, '..', 'src', 'cache', 'inputs.ts'),
@@ -1164,10 +1145,7 @@ describe('the tasks guide names every exec field a task can declare', () => {
     expect(decl).not.toBeNull()
     const fields = [...decl![1]!.matchAll(/^  (\w+)\??:/gm)].map((m) => m[1]!)
     expect(fields).toContain('command')
-    const page = section(
-      readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8'),
-      'Tasks and dependencies',
-    )
+    const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8')
     for (const field of fields.filter((f) => f !== 'command')) {
       expect(page).toContain('`exec.' + field + '`')
     }
@@ -1182,10 +1160,7 @@ describe('the tasks guide names every exec field a task can declare', () => {
       'utf8',
     )
     expect(hash).toContain('const { remote: _remote, ...execRest } = cfg.exec')
-    const page = section(
-      readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8'),
-      'Tasks and dependencies',
-    ).replace(/\s+/g, ' ')
+    const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8').replace(/\s+/g, ' ')
     expect(page).toContain('the one `exec` field stripped from the key')
   })
 
@@ -1201,10 +1176,7 @@ describe('the tasks guide names every exec field a task can declare', () => {
       'utf8',
     ).replace(/\s+/g, ' ')
     expect(contract).toContain('Editing a description therefore costs one re-run')
-    const page = section(
-      readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8'),
-      'Tasks and dependencies',
-    ).replace(/\s+/g, ' ')
+    const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8').replace(/\s+/g, ' ')
     expect(page).toContain('editing a description costs one re-run')
   })
 })
@@ -1241,10 +1213,10 @@ describe('the dev-tasks guide bounds the teardown the way signals.ts does', () =
     const m = /export const SIGNAL_SHUTDOWN_GRACE_MS = (\d+)/.exec(src)
     expect(m).not.toBeNull()
     expect(src).toContain("killTree(child, 'SIGKILL')")
-    const page = section(
-      readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8'),
-      'Dev tasks',
-    ).replace(/\s+/g, ' ')
+    const page = readFileSync(path.join(DOCS, 'docs', 'dev-servers.mdx'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
     expect(page).toContain(`${Number(m![1]) / 1000}-second grace`)
     expect(page).toContain('`SIGKILL`ed')
   })
@@ -1259,10 +1231,7 @@ describe('the tasks guide uses the status words the scheduler sets', () => {
     )
     // Both words are statuses of TaskOutcome, and they are not the same one.
     for (const status of ["'skipped'", "'aborted'"]) expect(src).toContain(status)
-    const page = section(
-      readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8'),
-      'Tasks and dependencies',
-    ).replace(/\s+/g, ' ')
+    const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8').replace(/\s+/g, ' ')
     expect(page).toContain('skips its transitive dependents')
     expect(page).not.toContain('aborts its transitive dependents')
     for (const mode of ['deps-ok', 'never', 'always']) {
@@ -1290,7 +1259,7 @@ describe.each(['pnpm', 'bun'])(
       expect(set).not.toBeNull()
       const keys = [...set![1]!.matchAll(/'(\w+)'/g)].map((m) => m[1]!)
       expect(keys.length).toBe(6)
-      const page = section(readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8'), 'Lockfiles')
+      const page = readFileSync(path.join(DOCS, 'docs', 'lockfiles.mdx'), 'utf8')
       // That manager's OWN row, not the page: a whole-page search lets one
       // row cover for the other's omission — which is how the bun list lost
       // two keys while the pnpm list carried them.
@@ -1383,10 +1352,7 @@ describe('the tasks guide states which wildcards dependsOn takes', () => {
     }
     // The legal case: a self pattern expands over the project's task names.
     expect(src).toContain('if (isTaskPattern(spec.task))')
-    const page = section(
-      readFileSync(path.join(GUIDES, 'configure.mdx'), 'utf8'),
-      'Tasks and dependencies',
-    ).replace(/\s+/g, ' ')
+    const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8').replace(/\s+/g, ' ')
     expect(page).toContain('A task-name pattern is allowed')
     expect(page).toContain("`dependsOn: ['build.*']`")
     expect(page).toContain('Bare wildcards and negation')

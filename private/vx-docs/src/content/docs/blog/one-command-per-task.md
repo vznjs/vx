@@ -90,5 +90,5 @@ Tool knowledge belongs in presets, in TypeScript, on top of a runner
 that only knows what a command is.
 
 Reference: [CI and remote › Run and filter](../../guides/ci/#run-and-filter) and
-[Configure › Environment variables](../../guides/configure/#environment-variables).
+[Environment variables](../../docs/environment-variables/).
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

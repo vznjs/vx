@@ -94,7 +94,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A check task that runs lint and test.',
     docs: {
       label: 'Configure',
-      href: 'guides/configure/',
+      href: 'docs/workspace/',
     },
     deepDive: {
       label: 'Say exactly which tasks to run',
@@ -1392,7 +1392,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A task: a command, its edges and its cache block.',
     docs: {
       label: 'Configure',
-      href: 'guides/configure/',
+      href: 'docs/workspace/',
     },
     deepDive: {
       label: 'One command per task',
@@ -1488,7 +1488,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A typed vx.config.ts with completion.',
     docs: {
       label: 'Configure',
-      href: 'guides/configure/',
+      href: 'docs/workspace/',
     },
     deepDive: {
       label: 'Config in TypeScript',
@@ -1512,7 +1512,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A preset function shared across configs.',
     docs: {
       label: 'Configure',
-      href: 'guides/configure/',
+      href: 'docs/workspace/',
     },
     deepDive: {
       label: 'Config in TypeScript',

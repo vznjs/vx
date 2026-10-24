@@ -97,5 +97,5 @@ to the server re-runs the tests. And a server only its cache hits need is
 never started: when every dependant is a confirmed hit, the run does not
 boot it.
 
-Guide: [Configure › Dev tasks](../../guides/configure/#dev-tasks). More at
+Guide: [Dev servers](../../docs/dev-servers/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

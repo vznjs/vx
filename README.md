@@ -82,7 +82,7 @@ Starters: [`examples/basic`](examples/basic), and
 on every commit. The [CI guide](https://vznjs.github.io/vx/guides/ci/)
 explains the workflow.
 More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
-[Configure](https://vznjs.github.io/vx/guides/configure/) ·
+[Configure](https://vznjs.github.io/vx/docs/workspace/) ·
 [CLI](packages/vx/docs/cli.md) · [every config field](packages/vx/docs/schema.md).
 
 ## A foundation you own

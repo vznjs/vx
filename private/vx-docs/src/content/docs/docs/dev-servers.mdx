@@ -1,0 +1,42 @@
+---
+title: Dev servers
+description: Run a server or watcher in the graph, and start its dependents once it is ready.
+---
+
+A `persistent` task is a server or watcher. Its dependents start once it
+prints a line matching `readyWhen`; if none comes, `exec.timeout` fails it.
+
+```ts title="packages/web/vx.config.ts"
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    dev: {
+      exec: { command: 'vite', persistent: { readyWhen: 'Local:' }, timeout: '30s' },
+    },
+    e2e: {
+      dependsOn: ['dev'],
+      exec: { command: 'playwright test' },
+      inputs: { files: ['e2e/**'], tasks: [] }, // dev is for order, not the key
+      cache: { outputs: { files: ['playwright-report/**'] } },
+    },
+  },
+})
+```
+
+```sh
+vx run e2e
+```
+
+`vx run e2e` starts `vite`, waits for `Local:`, runs `playwright test`,
+then stops the server.
+
+---
+
+## Stopping
+
+When the run ends, vx sends the server `SIGTERM`; one still alive after a
+2-second grace is `SIGKILL`ed. A persistent task has no `cache` block. A sandboxed server
+on Linux lists its port in `sandbox.allow.localBinding`.
+
+To re-run tasks as files change, see [`vx watch`](../../cli/#vx-watch).
