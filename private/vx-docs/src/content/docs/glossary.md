@@ -51,7 +51,7 @@ second reads what the first produced. The common case is "build my
 dependencies first", written as the same task in every project this one
 depends on.
 
-- vx: `dependsOn: ['^build']`, where `^` means the dependency projects ([`dependsOn`](../schema/#dependson-optional))
+- vx: `dependsOn: ['^build']`, where `^` means the dependency projects ([`dependsOn`](../schema/depends-on/))
 - Turborepo: `dependsOn: ["^build"]` ([configuration](https://turborepo.com/docs/reference/configuration#dependson))
 - Nx: `dependsOn`, the [task pipeline](https://nx.dev/docs/reference/glossary#task-pipeline)
 - Bazel: a [dependency](https://bazel.build/reference/glossary#dependency) between targets, declared in `BUILD` files

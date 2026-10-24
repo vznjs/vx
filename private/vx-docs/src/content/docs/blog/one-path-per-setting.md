@@ -81,5 +81,5 @@ before the file loads, so only a variable or flag sets them.
 
 <small>Demo workspace · vx 22f6eb7 · 2026-10-23</small>
 
-Every setting: [settings table](../../schema/#settings). More at
+Every setting: [settings table](../../schema/workspace/#settings). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -39,4 +39,4 @@ vx run test --filter '...@demo/ui'
 vx run lint --all --filter '!@demo/docs'
 ```
 
-See [`--filter`](../../../cli/#filter-dsl---filter).
+See [`--filter`](../../../cli/run/#filter-dsl---filter).

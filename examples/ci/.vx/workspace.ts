@@ -11,7 +11,8 @@ export default defineWorkspace({
     bun(),
     // On Actions: the job summary, the PR check, and the PR's base for --affected.
     github(),
-    // The shared cache. With no VX_REAPI_ENDPOINT it declines and vx
+    // The shared cache, here a Bazel REAPI server; turboCache() or nxCache()
+    // fit the same slot. With no VX_REAPI_ENDPOINT it declines and vx
     // caches on this machine alone.
     reapi({ headers: token ? { authorization: `Bearer ${token}` } : {} }),
   ],

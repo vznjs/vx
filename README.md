@@ -110,7 +110,10 @@ What vx can do, not what it is limited to. Declared in `.vx/workspace.ts`; witho
 | [`@vzn/vx-ci`](packages/vx-ci)                             | GitHub Actions job summary and Checks API                                     |
 | [`@vzn/vx-schedule-history`](packages/vx-schedule-history) | Schedule by the critical path learned from past runs                          |
 
-Write your own: [plugin guide](https://vznjs.github.io/vx/docs/plugins/) ·
+Distributed runs: [`@vzn/vx-dte`](packages/vx-dte) spreads one run over workers your own CI
+starts, through a relay you host (not on npm yet).
+
+Write your own: [plugin guide](https://vznjs.github.io/vx/docs/writing-plugins/) ·
 [architecture](packages/vx/docs/architecture.md).
 
 ## Coming from Turbo or Nx

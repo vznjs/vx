@@ -69,5 +69,5 @@ filters. `vx show --affected` lists the projects without running.
 Edit a README and its project joins the set, but every task there is a
 cache hit.
 
-Reference: [the CLI](../../cli/#--affectedbase). More at
+Reference: [the CLI](../../cli/run/#--affectedbase). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

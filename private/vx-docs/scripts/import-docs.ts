@@ -203,8 +203,14 @@ export function deriveDescription(lines: string[]): string {
   return ''
 }
 
-export function transformFile(srcRel: string, content: string, linkMap: LinkMap): string {
-  const cleanUrl = cleanUrlFor(srcRel)
+/** `url` serves the page somewhere other than srcRel's own URL (a CLI command's page). */
+export function transformFile(
+  srcRel: string,
+  content: string,
+  linkMap: LinkMap,
+  url = cleanUrlFor(srcRel),
+): string {
+  const cleanUrl = url
   const depth = cleanUrl.replace(/\/$/, '').split('/').length
   const prefix = '../'.repeat(depth)
   const sourceDir = srcRel.includes('/') ? srcRel.slice(0, srcRel.lastIndexOf('/')) : ''
@@ -257,6 +263,227 @@ export function transformFile(srcRel: string, content: string, linkMap: LinkMap)
   fm.push('---', '')
   return `${fm.join('\n')}${body.join('\n').replace(/^\n+/, '')}`
 }
+
+// ---- the references: one page per command or field, as Bun's are ----
+
+/** A page split out of a reference source: the headings it takes, at any level, in page order. */
+type SplitPage = { page: string; title?: string; headings: readonly string[] }
+
+/**
+ * The sections of cli.md that leave cli/ for a page of their own; the
+ * first heading names the page. The rest stay on cli/, which lists the
+ * pages. cli.md stays one file: the contract tests read it whole.
+ */
+const CLI_PAGES: readonly SplitPage[] = [
+  {
+    page: 'run',
+    headings: ['`vx run`', 'Planning mode (`--dry`)', 'Run artifacts (`--profile`)', 'Sandbox'],
+  },
+  { page: 'watch', headings: ['`vx watch`'] },
+  { page: 'show', headings: ['`vx show`'] },
+  { page: 'why', headings: ['`vx why`'] },
+  { page: 'last', headings: ['`vx last`'] },
+  { page: 'info', headings: ['`vx info`'] },
+  { page: 'lock', headings: ['`vx lock`', 'Runs read the lock'] },
+  { page: 'cache', headings: ['`vx cache clean`'] },
+  { page: 'init', headings: ['`vx init`', '`bunx @vzn/vx-migrate`'] },
+  { page: 'upgrade', headings: ['`vx upgrade`'] },
+  { page: 'docs', headings: ['`vx docs`'] },
+  { page: 'completions', headings: ['`vx completions`'] },
+  { page: 'plugin-commands', headings: ['Plugin commands'] },
+  { page: 'environment-variables', headings: ['Environment variables vx reads'] },
+  // Machine-readable output stays: a JSON refusal's `docs` links
+  // cli/#vx_e_<code> (src/util/errors.ts), in binaries already released.
+  { page: 'output', headings: ['Output format'] },
+]
+
+/** The fields of schema.md with a page each; the file layout, examples and errors stay on schema/. */
+const SCHEMA_PAGES: readonly SplitPage[] = [
+  { page: 'exec', title: 'exec', headings: ['`exec` (optional — required for non-group tasks)'] },
+  { page: 'sandbox', title: 'exec.sandbox', headings: ['`exec.sandbox` (optional)'] },
+  { page: 'depends-on', title: 'dependsOn', headings: ['`dependsOn` (optional)'] },
+  { page: 'inputs', title: 'inputs', headings: ['`inputs` (optional)'] },
+  { page: 'cache', title: 'cache', headings: ['`cache` (optional)'] },
+  {
+    page: 'workspace',
+    title: '.vx/workspace.ts',
+    headings: ['Workspace config (`.vx/workspace.ts`)'],
+  },
+]
+
+/** A heading's id as the site's build writes it (github-slugger), before dedupe. */
+function headingSlug(text: string): string {
+  return text
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[`*]/g, '')
+    .replace(/\\(.)/g, '$1')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M} _-]/gu, '')
+    .replace(/ /g, '-')
+}
+
+/** Each heading (`##` to `######`) outside a fence: its line, level and text. */
+function headingsOf(lines: readonly string[]): { at: number; level: number; text: string }[] {
+  const out: { at: number; level: number; text: string }[] = []
+  let fenced = false
+  lines.forEach((line, at) => {
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced
+    const m = fenced ? null : /^(#{2,6})\s+(.+?)\s*$/.exec(line)
+    if (m) out.push({ at, level: m[1]!.length, text: m[2]! })
+  })
+  return out
+}
+
+/** Every heading id in `lines`, in order, deduped as the build dedupes one page's. */
+function headingIds(lines: readonly string[]): string[] {
+  const seen = new Map<string, number>()
+  return headingsOf(lines).map(({ text }) => {
+    const base = headingSlug(text)
+    const n = seen.get(base) ?? 0
+    seen.set(base, n + 1)
+    return n === 0 ? base : `${base}-${n}`
+  })
+}
+
+/** Where an id of a one-page reference lives now: a page ('' is the reference's own), and its id there. */
+export type Anchors = ReadonlyMap<string, { page: string; id?: string }>
+
+export type SplitReference = {
+  /** The reference's own page: what stays, and the list of pages. */
+  index: string
+  pages: { page: string; markdown: string }[]
+  anchors: Anchors
+  /** The reference page's script that sends an old #id to its page. */
+  forward: string
+}
+
+/**
+ * Split one reference source into pages. A section is its heading through
+ * the next heading at its level or above; it moves whole, its headings
+ * raised so the page's own sections are `##`. `listHeading` titles the
+ * table of pages the reference page gains.
+ */
+export function splitReference(
+  source: string,
+  specs: readonly SplitPage[],
+  listHeading: string,
+): SplitReference {
+  const lines = source.replace(/\r\n/g, '\n').split('\n')
+  const all = headingsOf(lines)
+  const oldIds = headingIds(lines)
+  const idAt = new Map(all.map((h, i) => [h.at, oldIds[i]!]))
+  const section = (text: string) => {
+    const i = all.findIndex((h) => h.text === text)
+    if (i === -1) throw new Error(`import-docs: no heading "${text}" to split out`)
+    const h = all[i]!
+    const next = all.slice(i + 1).find((n) => n.level <= h.level)
+    return { ...h, end: next?.at ?? lines.length }
+  }
+  const moved = new Set<number>()
+  const anchors = new Map<string, { page: string; id?: string }>()
+  const pages = specs.map(({ page, title, headings }) => {
+    const sections = headings.map(section)
+    const body: string[] = []
+    const origin: number[] = []
+    sections.forEach((s, k) => {
+      // The first section's heading is the page's H1, so its subsections
+      // become H2; each later section's heading is an H2 beside them.
+      const raise = k === 0 ? s.level - 1 : s.level - 2
+      for (let at = k === 0 ? s.at + 1 : s.at; at < s.end; at++) {
+        if (moved.has(at)) throw new Error(`import-docs: line ${at + 1} is split out twice`)
+        const h = idAt.has(at) ? /^(#+)(\s.*)$/.exec(lines[at]!) : null
+        body.push(h ? `${'#'.repeat(h[1]!.length - raise)}${h[2]}` : lines[at]!)
+        origin.push(at)
+      }
+      for (let at = s.at; at < s.end; at++) moved.add(at)
+    })
+    const first = sections[0]!
+    anchors.set(idAt.get(first.at)!, { page })
+    const ids = headingIds(body)
+    let i = 0
+    for (const h of headingsOf(body)) anchors.set(idAt.get(origin[h.at]!)!, { page, id: ids[i++]! })
+    const name = title ?? first.text.replace(/`/g, '')
+    return { page, name, markdown: [`# ${name}`, ...body].join('\n') }
+  })
+  const firstHeading = all[0]?.at ?? lines.length
+  const head = lines.slice(0, firstHeading)
+  const rest: string[] = []
+  const origin: number[] = []
+  for (let at = firstHeading; at < lines.length; at++) {
+    if (moved.has(at)) continue
+    rest.push(lines[at]!)
+    origin.push(at)
+  }
+  const ids = headingIds(rest)
+  let i = 0
+  for (const h of headingsOf(rest))
+    anchors.set(idAt.get(origin[h.at]!)!, { page: '', id: ids[i++]! })
+  const list = [
+    `## ${listHeading}`,
+    '',
+    '| Page | Covers |',
+    '| --- | --- |',
+    ...specs.map(({ page, headings }, k) => {
+      const covers = headings.map((h) => h.replace(/`/g, '').replace(/ \(.*\)$/, ''))
+      return `| [${pages[k]!.name}](./${page}/) | ${covers.join(', ')} |`
+    }),
+    '',
+  ]
+  const forwarded = Object.fromEntries(
+    [...anchors]
+      .filter(([, a]) => a.page !== '')
+      .map(([o, a]) => [o, `${a.page}/${a.id === undefined ? '' : `#${a.id}`}`]),
+  )
+  // Added after the markdown transform, which escapes a tag as prose. A link
+  // from outside the site (an old post, a released binary's help) still names
+  // the one page's #id: send it to the page the id moved to.
+  const forward = `<script>{const m=${JSON.stringify(forwarded)};const t=m[decodeURIComponent(location.hash.slice(1))];if(t)location.replace(new URL(t,location.href.split("#")[0]))}</script>`
+  return {
+    index: [...head, ...list, ...rest].join('\n'),
+    pages: pages.map(({ page, markdown }) => ({ page, markdown })),
+    anchors,
+    forward,
+  }
+}
+
+/**
+ * Point every link into a one-page reference (`<base>#id`, and on one of
+ * its pages a bare `#id`) at the page that holds that id now. `url` is the
+ * page the text is served at; `base` is the reference's URL (`cli/`).
+ */
+function relink(text: string, url: string, base: string, anchors: Anchors): string {
+  const prefix = '../'.repeat(url.replace(/\/$/, '').split('/').length)
+  const here = url === base ? '' : url.startsWith(base) ? url.slice(base.length, -1) : undefined
+  const to = (id: string, whole: string): string => {
+    const a = anchors.get(id)
+    if (!a) return whole
+    const page = a.page === '' ? base : `${base}${a.page}/`
+    return `](${prefix}${page}${a.id === undefined ? '' : `#${a.id}`})`
+  }
+  const into = new RegExp(`\\]\\((?:\\.\\./)*${base.replace(/\//g, '\\/')}#([^)\\s]+)\\)`, 'g')
+  let fenced = false
+  return text
+    .split('\n')
+    .map((line) => {
+      if (/^\s*(```|~~~)/.test(line)) fenced = !fenced
+      if (fenced) return line
+      let out = line.replace(into, (whole, id: string) => to(id, whole))
+      if (here !== undefined) {
+        out = out.replace(/\]\(#([^)\s]+)\)/g, (whole, id: string) => {
+          const a = anchors.get(id)
+          return a && a.page !== here ? to(id, whole) : whole
+        })
+      }
+      return out
+    })
+    .join('\n')
+}
+
+/** The references served as one page per part: source, URL, the pages, the list's heading. */
+export const SPLIT_REFERENCES = [
+  { src: 'cli.md', base: 'cli/', specs: CLI_PAGES, list: 'Commands' },
+  { src: 'schema.md', base: 'schema/', specs: SCHEMA_PAGES, list: 'Fields' },
+] as const
 
 // ---- plugin pages: each published plugin's README ----
 
@@ -393,15 +620,41 @@ export async function importDocs(
     const head = (await Bun.file(path.join(outDir, f)).text()).slice(0, 400)
     if (head.includes(GENERATED_MARK)) await rm(path.join(outDir, f), { force: true })
   }
-  for (const entry of ['modules', 'design', 'plugins']) {
+  for (const entry of ['modules', 'design', 'plugins', 'cli', 'schema']) {
     await rm(path.join(outDir, entry), { recursive: true, force: true })
   }
 
   const designFiles: { url: string; title: string; description?: string }[] = []
 
+  const splits = new Map<string, SplitReference & { base: string }>()
+  for (const { src, base, specs, list } of SPLIT_REFERENCES) {
+    const file = Bun.file(path.join(docsDir, src))
+    if (!(await file.exists())) continue
+    splits.set(src, { ...splitReference(await file.text(), specs, list), base })
+  }
+  // Every split is known before any page is written: a CLI page links schema/ ids too.
+  function relinkAll(text: string, url: string): string {
+    let out = text
+    for (const s of splits.values()) out = relink(out, url, s.base, s.anchors)
+    return out
+  }
+  for (const [src, { base, pages }] of splits) {
+    await mkdir(path.join(outDir, base), { recursive: true })
+    for (const { page, markdown } of pages) {
+      const url = `${base}${page}/`
+      await Bun.write(
+        path.join(outDir, base, `${page}.md`),
+        relinkAll(transformFile(src, markdown, linkMap, url), url),
+      )
+    }
+  }
+
   for (const srcRel of sources) {
-    const content = await Bun.file(path.join(docsDir, srcRel)).text()
-    const transformed = transformFile(srcRel, content, linkMap)
+    const split = splits.get(srcRel)
+    const content = split?.index ?? (await Bun.file(path.join(docsDir, srcRel)).text())
+    const transformed =
+      relinkAll(transformFile(srcRel, content, linkMap), cleanUrlFor(srcRel)) +
+      (split ? `\n${split.forward}\n` : '')
     const outRel = outRelFor(srcRel)
     const outPath = path.join(outDir, outRel)
     await mkdir(path.dirname(outPath), { recursive: true })

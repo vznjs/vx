@@ -38,6 +38,8 @@ const IMPORTED = [
   'src/content/docs/modules/**',
   'src/content/docs/design/**',
   'src/content/docs/plugins/**',
+  'src/content/docs/cli/**',
+  'src/content/docs/schema/**',
 ]
 // A key reads no other task's outputs (`vx lock`, X-54): each
 // arrives through that task's key and `dependsOn`. All three are gitignored,
@@ -189,6 +191,9 @@ export default defineProject({
               '../../packages/vx-ci/src/**',
               '../../packages/vx-schedule-history/src/**',
               ...PROOFS.map((p) => `../../${p}`),
+              // reference-pages.test.ts maps the one-page references' ids to their pages.
+              '../../packages/vx/docs/cli.md',
+              '../../packages/vx/docs/schema.md',
             ],
             systemInfo: ['vfs.disk-space'],
           },
@@ -217,9 +222,10 @@ export default defineProject({
           'astro.config.*',
           '.gitignore',
           'package.json',
+          'scripts/**',
           ...NOT_GENERATED,
         ],
-        workspaceFiles: PROOFS,
+        workspaceFiles: [...PROOFS, 'packages/vx/docs/cli.md', 'packages/vx/docs/schema.md'],
       },
       cache: {
         outputs: { files: [] },

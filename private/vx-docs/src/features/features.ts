@@ -205,7 +205,7 @@ const FIRST: readonly Feature[] = [
     example: { lang: 'sh', code: 'vx run build --all --concurrency 50%' },
     image: 'small-things.png',
     imageAlt: 'Four small vx conveniences, among them --concurrency 50%.',
-    docs: { label: 'vx run flags', href: 'cli/#flags' },
+    docs: { label: 'vx run flags', href: 'cli/run/#flags' },
   },
 
   // ---- Cache you can trust ----
@@ -335,7 +335,7 @@ export default defineProject({
     example: { lang: 'sh', code: 'vx why app#build' },
     image: 'vx-why.png',
     imageAlt: 'vx why app#build naming the one input that changed.',
-    docs: { label: 'vx why', href: 'cli/#vx-why' },
+    docs: { label: 'vx why', href: 'cli/why/' },
     deepDive: { label: 'Why did this re-run?', href: 'blog/why-did-this-rerun/' },
   },
   {
@@ -358,7 +358,7 @@ would run:
     },
     image: 'dry-run.png',
     imageAlt: 'vx run --dry listing predicted hits and misses.',
-    docs: { label: 'Planning mode', href: 'cli/#planning-mode---dry' },
+    docs: { label: 'Planning mode', href: 'cli/run/#planning-mode---dry' },
     deepDive: { label: 'Cascade through inputs', href: 'blog/cascade-through-inputs/' },
   },
   {
@@ -373,7 +373,7 @@ would run:
     example: { lang: 'sh', code: 'vx show web#build\nvx show --affected --format json' },
     image: 'vx-show.png',
     imageAlt: 'vx show printing a resolved task.',
-    docs: { label: 'vx show', href: 'cli/#vx-show' },
+    docs: { label: 'vx show', href: 'cli/show/' },
   },
   {
     slug: 'vx-last',
@@ -390,7 +390,7 @@ would run:
     },
     image: 'vx-last.png',
     imageAlt: 'vx last replaying a run with peak memory and CPU per task.',
-    docs: { label: 'vx last', href: 'cli/#vx-last' },
+    docs: { label: 'vx last', href: 'cli/last/' },
   },
   {
     slug: 'profile',
@@ -404,7 +404,7 @@ would run:
     example: { lang: 'sh', code: 'vx run build --all --profile=build.json' },
     image: 'profile.png',
     imageAlt: 'A vx run as a timeline of tasks on worker lanes.',
-    docs: { label: '--profile', href: 'cli/#run-artifacts---profile' },
+    docs: { label: '--profile', href: 'cli/run/#run-artifacts---profile' },
   },
 
   // ---- Everyday use ----
@@ -420,7 +420,7 @@ would run:
     example: { lang: 'sh', code: 'vx run' },
     image: 'task-picker.png',
     imageAlt: 'A numbered menu of the workspace’s tasks with descriptions.',
-    docs: { label: 'vx run', href: 'cli/#vx-run' },
+    docs: { label: 'vx run', href: 'cli/run/' },
   },
   {
     slug: 'framed-output',
@@ -434,7 +434,7 @@ would run:
     example: { lang: 'sh', code: 'vx run test --all' },
     image: 'framed-output.png',
     imageAlt: 'Parallel task output printed in separate frames.',
-    docs: { label: 'Output format', href: 'cli/#output-format' },
+    docs: { label: 'Output format', href: 'cli/output/' },
   },
   {
     slug: 'run-summary',
@@ -448,7 +448,7 @@ would run:
     example: { lang: 'text', code: 'time      40ms · max 31ms · min 9ms' },
     image: 'run-summary.png',
     imageAlt: 'The run footer with meters for projects, tasks and cache.',
-    docs: { label: 'Output format', href: 'cli/#output-format' },
+    docs: { label: 'Output format', href: 'cli/output/' },
   },
   {
     slug: 'skipped-blockers',
@@ -466,7 +466,7 @@ would run:
     },
     image: 'skipped-blockers.png',
     imageAlt: 'Skipped tasks, each naming the failed task that blocked it.',
-    docs: { label: 'Output format', href: 'cli/#output-format' },
+    docs: { label: 'Output format', href: 'cli/output/' },
   },
   {
     slug: 'dev-servers',
@@ -529,7 +529,7 @@ export default defineProject({
     example: { lang: 'sh', code: 'vx watch test --all' },
     image: 'watch.png',
     imageAlt: 'vx watch re-running only the tasks whose keys changed.',
-    docs: { label: 'vx watch', href: 'cli/#vx-watch' },
+    docs: { label: 'vx watch', href: 'cli/watch/' },
     deepDive: { label: 'Watch mode', href: 'blog/watch-mode/' },
   },
   {
@@ -547,7 +547,7 @@ export default defineProject({
     },
     image: 'small-things.png',
     imageAlt: 'Four small vx conveniences, among them vx completions.',
-    docs: { label: 'vx completions', href: 'cli/#vx-completions' },
+    docs: { label: 'vx completions', href: 'cli/completions/' },
   },
   {
     slug: 'filter-hints',
@@ -564,7 +564,7 @@ export default defineProject({
     },
     image: 'small-things.png',
     imageAlt: 'Four small vx conveniences, among them typo hints.',
-    docs: { label: 'Filters', href: 'cli/#filter-dsl---filter' },
+    docs: { label: 'Filters', href: 'cli/run/#filter-dsl---filter' },
   },
   {
     slug: 'upgrade',
@@ -578,7 +578,7 @@ export default defineProject({
     example: { lang: 'sh', code: 'vx upgrade' },
     image: 'small-things.png',
     imageAlt: 'Four small vx conveniences, among them vx upgrade.',
-    docs: { label: 'vx upgrade', href: 'cli/#vx-upgrade' },
+    docs: { label: 'vx upgrade', href: 'cli/upgrade/' },
   },
 
   // ---- CI ----
@@ -609,7 +609,7 @@ export default defineProject({
     example: { lang: 'sh', code: 'vx lock\nvx lock --check\nvx run ci --all' },
     image: 'vx-lock.png',
     imageAlt: 'vx lock writing .vx/projects.lock.json.',
-    docs: { label: 'vx lock', href: 'cli/#vx-lock' },
+    docs: { label: 'vx lock', href: 'cli/lock/' },
     deepDive: { label: 'Lock and frozen', href: 'blog/lock-and-frozen/' },
   },
   {
@@ -627,7 +627,7 @@ export default defineProject({
     },
     image: 'flaky-detection.png',
     imageAlt: 'A failed task row marked flaky, with its history.',
-    docs: { label: 'vx info', href: 'cli/#vx-info' },
+    docs: { label: 'vx info', href: 'cli/info/' },
     deepDive: { label: 'Flaky tasks', href: 'blog/flaky-tasks/' },
   },
   {
@@ -728,10 +728,11 @@ export default defineWorkspace({
     slug: 'remote-execution',
     title: 'Remote cache and execution',
     category: 'extend',
-    hook: 'Distributed builds over Bazel’s open Remote Execution API.',
+    hook: 'Spread one run over your own CI’s machines.',
     body: [
       'Distributed builds usually arrive as a platform: a service, agents, a dashboard, a bill. In vx they are a plugin.',
-      '`@vzn/vx-reapi` speaks Bazel’s Remote Execution API, so it works with servers you host: NativeLink, BuildBuddy, Buildbarn, bazel-remote. It caches by default; set `execute: true` and tasks run there too.',
+      '`@vzn/vx-dte` hands one run’s tasks to workers your own CI starts, through a relay you host, and reports them as one run.',
+      'Already run a Bazel worker pool? `@vzn/vx-reapi` speaks Bazel’s Remote Execution API instead, to servers such as NativeLink, BuildBuddy, Buildbarn or bazel-remote. It caches by default; set `execute: true` and tasks run there too.',
     ],
     example: {
       lang: 'ts',
@@ -739,7 +740,7 @@ export default defineWorkspace({
     },
     image: 'remote-execution.png',
     imageAlt: 'vx sending tasks to a REAPI server.',
-    docs: { label: 'Remote execution', href: 'docs/remote-execution/' },
+    docs: { label: 'Distributed runs', href: 'docs/distributed-runs/' },
     deepDive: { label: 'Remote execution', href: 'blog/remote-execution/' },
   },
   {

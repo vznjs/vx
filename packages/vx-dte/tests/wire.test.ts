@@ -96,7 +96,17 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
    * `deaf`: the relay's closes never reach the client, as workerd's under
    * Bun 1.4.4 (it ends no TCP, and the client waits 10 s for it).
    */
-  const host = { refusing: false, forget: false, forgotten: '', older: false, deaf: false }
+  const host = {
+    refusing: false,
+    forget: false,
+    forgotten: '',
+    older: false,
+    deaf: false,
+    /** Frames of sends the relay takes and loses, as a relay with no queue does. */
+    lose: 0,
+    /** Each frame of sends reaches the relay twice. */
+    twice: false,
+  }
   let server: Bun.Server<Held> | undefined
   const relay = createRelay({
     ...options,
@@ -131,6 +141,14 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
           ws.send('pong')
         } else {
           frames.push(String(m))
+          const f = JSON.parse(String(m)) as { n: number; sends?: unknown[] }
+          if (f.sends !== undefined && f.sends.length > 0 && host.lose > 0) {
+            host.lose--
+            ws.send(relay.frame(ws.data.key, ws.data.id, JSON.stringify({ n: f.n, sends: [] })))
+            return
+          }
+          if (f.sends !== undefined && f.sends.length > 0 && host.twice)
+            relay.frame(ws.data.key, ws.data.id, String(m))
           ws.send(relay.frame(ws.data.key, ws.data.id, String(m)))
         }
       },
@@ -697,3 +715,44 @@ it('a send the relay would not take is said; one to a participant it lost is not
     'dte: sending ran to the orchestrator failed: socket closed',
   ])
 })
+
+// The relay may lose what it took (one with no queue, a socket that drops
+// under a push): a send not acknowledged by its receiver within a
+// heartbeat goes again, and is taken once.
+it('sends again what its receiver did not acknowledge, and the receiver takes it once', async () => {
+  const { url, host } = sockets(500)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
+  await o.poll()
+  host.lose = 1
+  await o.send(a.id, 'lost once')
+  const got: unknown[] = []
+  const t0 = performance.now()
+  while (got.length === 0) got.push(...(await a.poll()).map((m) => m.body))
+  expect(got).toEqual(['lost once'])
+  expect(performance.now() - t0).toBeGreaterThan(400)
+  // Acknowledged: never sent again.
+  await Bun.sleep(1_200)
+  expect(await a.poll()).toEqual([])
+  await a.leave()
+  await o.leave()
+}, 5_000)
+
+it('takes each send once and in order, however often it arrives', async () => {
+  const { url, host } = sockets(500)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
+  await o.poll()
+  host.twice = true
+  await o.send(a.id, 1)
+  host.lose = 1
+  await o.send(a.id, 2)
+  await o.send(a.id, 3)
+  const got: unknown[] = []
+  while (got.length < 3) got.push(...(await a.poll()).map((m) => m.body))
+  await Bun.sleep(800)
+  got.push(...(await a.poll()).map((m) => m.body))
+  expect(got).toEqual([1, 2, 3])
+  await a.leave()
+  await o.leave()
+}, 5_000)

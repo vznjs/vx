@@ -154,7 +154,8 @@ describe('the documented configs load under the current schema', () => {
     const rel = s.named ?? `${i}.${s.workspace ? '.vx/workspace' : 'vx.config'}.ts`
     const file = path.join(d, rel)
     mkdirSync(path.dirname(file), { recursive: true })
-    writeFileSync(file, s.source)
+    // A page imports an unpublished package from a checkout: this one.
+    writeFileSync(file, s.source.replaceAll('/path/to/vx/packages/', `${PACKAGES}/`))
     return file
   })
   for (const [i, s] of samples.entries()) {

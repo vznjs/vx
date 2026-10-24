@@ -22,7 +22,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A run of one test task with its build dependencies skipped.',
     docs: {
       label: 'Run flags',
-      href: 'cli/#vx-run',
+      href: 'cli/run/',
     },
     deepDive: {
       label: 'Say exactly which tasks to run',
@@ -70,7 +70,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Arguments after -- reaching the task’s command.',
     docs: {
       label: 'Run flags',
-      href: 'cli/#vx-run',
+      href: 'cli/run/',
     },
     deepDive: {
       label: 'When a task misbehaves',
@@ -166,7 +166,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A misspelled task refused before the run.',
     docs: {
       label: 'Run flags',
-      href: 'cli/#vx-run',
+      href: 'cli/run/',
     },
     deepDive: {
       label: 'Say exactly which tasks to run',
@@ -190,7 +190,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Projects selected by their tags.',
     docs: {
       label: 'Filters',
-      href: 'cli/#filter-dsl---filter',
+      href: 'cli/run/#filter-dsl---filter',
     },
     deepDive: {
       label: 'Say exactly which tasks to run',
@@ -214,7 +214,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Projects selected by their folder.',
     docs: {
       label: 'Filters',
-      href: 'cli/#filter-dsl---filter',
+      href: 'cli/run/#filter-dsl---filter',
     },
     deepDive: {
       label: 'Say exactly which tasks to run',
@@ -286,7 +286,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Output modes: full, errors only, hashes only, none.',
     docs: {
       label: '--output-logs',
-      href: 'cli/#vx-run',
+      href: 'cli/run/',
     },
     deepDive: {
       label: 'Output that fits the run',
@@ -310,7 +310,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A per-task table after a run.',
     docs: {
       label: '--verbosity',
-      href: 'cli/#vx-run',
+      href: 'cli/run/',
     },
     deepDive: {
       label: 'One failure, and what it takes down',
@@ -334,7 +334,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A failed task’s saved output read back as JSON.',
     docs: {
       label: 'vx last',
-      href: 'cli/#vx-last',
+      href: 'cli/last/',
     },
     deepDive: {
       label: 'Built for the agent at the keyboard',
@@ -382,7 +382,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Three output flows: focused, broad and CI.',
     docs: {
       label: 'Output',
-      href: 'cli/#vx-run',
+      href: 'cli/run/',
     },
     deepDive: {
       label: 'Output that fits the run',
@@ -406,7 +406,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'The task glyphs: ran, fresh, restored, failed, skipped.',
     docs: {
       label: 'Output',
-      href: 'cli/#vx-run',
+      href: 'cli/run/',
     },
     deepDive: {
       label: 'Output that fits the run',
@@ -454,7 +454,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'The same run with and without color.',
     docs: {
       label: 'Output',
-      href: 'cli/#vx-run',
+      href: 'cli/run/',
     },
     deepDive: {
       label: 'The basics, done carefully',
@@ -502,7 +502,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A run in a pipe listing tasks instead of opening a picker.',
     docs: {
       label: 'Output',
-      href: 'cli/#vx-run',
+      href: 'cli/run/',
     },
     deepDive: {
       label: 'The basics, done carefully',
@@ -526,7 +526,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'vx info listing the workspace’s facts.',
     docs: {
       label: 'vx info',
-      href: 'cli/#vx-info',
+      href: 'cli/info/',
     },
     deepDive: {
       label: 'One command to know your workspace',
@@ -670,7 +670,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'vx docs printing a reference section.',
     docs: {
       label: 'vx docs',
-      href: 'cli/#vx-docs',
+      href: 'cli/docs/',
     },
     deepDive: {
       label: 'The reference at your version',
@@ -694,7 +694,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Affected tasks with the file that brought each in.',
     docs: {
       label: '--affected',
-      href: 'cli/#vx-run',
+      href: 'cli/run/',
     },
     deepDive: {
       label: 'See inside a run',
@@ -863,7 +863,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Cache flags: force, no-cache, per-layer.',
     docs: {
       label: 'Cache flags',
-      href: 'cli/#vx-run',
+      href: 'cli/run/',
     },
     deepDive: {
       label: 'The cache on your terms',
@@ -887,7 +887,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'The cache directory set by flag or env.',
     docs: {
       label: '--cache-dir',
-      href: 'cli/#vx-run',
+      href: 'cli/run/',
     },
     deepDive: {
       label: 'The cache on your terms',
@@ -935,7 +935,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Cache pruning by age and size.',
     docs: {
       label: 'vx cache clean',
-      href: 'cli/#vx-cache-clean',
+      href: 'cli/cache/',
     },
     deepDive: {
       label: 'One command to know your workspace',
@@ -959,7 +959,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Remote outputs downloaded selectively.',
     docs: {
       label: '--cache-download',
-      href: 'cli/#vx-run',
+      href: 'cli/run/',
     },
     deepDive: {
       label: 'A remote server you can trust in production',
@@ -1248,7 +1248,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A numeric flag in exponent form refused.',
     docs: {
       label: 'Run flags',
-      href: 'cli/#vx-run',
+      href: 'cli/run/',
     },
     deepDive: {
       label: 'An upgrade you can trust',

@@ -90,6 +90,6 @@ A clean waits for a running `vx run` on the same workspace. If another
 workspace shares the cache, a deleted entry just becomes a miss and the
 task runs.
 
-Reference: [`vx cache clean`](../../cli/#vx-cache-clean) and the
+Reference: [`vx cache clean`](../../cli/cache/) and the
 [schema](../../schema/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

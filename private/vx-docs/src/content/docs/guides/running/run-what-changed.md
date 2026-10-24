@@ -42,4 +42,4 @@ passed, or set `VX_AFFECTED_BASE`. On CI the default one-commit checkout
 is enough: vx fetches the base commit and the history down to where the
 branch started, without file contents.
 
-See [`--affected`](../../../cli/#--affectedbase).
+See [`--affected`](../../../cli/run/#--affectedbase).

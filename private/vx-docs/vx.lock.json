@@ -97,6 +97,8 @@
           "!src/content/docs/modules/**",
           "!src/content/docs/design/**",
           "!src/content/docs/plugins/**",
+          "!src/content/docs/cli/**",
+          "!src/content/docs/schema/**",
           "!public/_img/**",
           "!dist/**",
           "package.json"
@@ -165,7 +167,9 @@
             "src/content/docs/upstream-ledger.md",
             "src/content/docs/modules/**",
             "src/content/docs/design/**",
-            "src/content/docs/plugins/**"
+            "src/content/docs/plugins/**",
+            "src/content/docs/cli/**",
+            "src/content/docs/schema/**"
           ]
         }
       }
@@ -198,7 +202,9 @@
               "../../packages/vx/tests/plugin-pipeline.test.ts",
               "../../packages/vx/tests/layered-cache.test.ts",
               "../../packages/vx-reapi/tests/exec-e2e.test.ts",
-              "../../packages/vx-migrate/tests/turbo.test.ts"
+              "../../packages/vx-migrate/tests/turbo.test.ts",
+              "../../packages/vx/docs/cli.md",
+              "../../packages/vx/docs/schema.md"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -222,6 +228,7 @@
           "astro.config.*",
           ".gitignore",
           "package.json",
+          "scripts/**",
           "!src/content/docs/all-features.md",
           "!src/content/docs/api.md",
           "!src/content/docs/architecture.md",
@@ -242,6 +249,8 @@
           "!src/content/docs/modules/**",
           "!src/content/docs/design/**",
           "!src/content/docs/plugins/**",
+          "!src/content/docs/cli/**",
+          "!src/content/docs/schema/**",
           "!public/_img/**",
           "!dist/**"
         ],
@@ -252,7 +261,9 @@
           "packages/vx/tests/plugin-pipeline.test.ts",
           "packages/vx/tests/layered-cache.test.ts",
           "packages/vx-reapi/tests/exec-e2e.test.ts",
-          "packages/vx-migrate/tests/turbo.test.ts"
+          "packages/vx-migrate/tests/turbo.test.ts",
+          "packages/vx/docs/cli.md",
+          "packages/vx/docs/schema.md"
         ]
       },
       "cache": {
@@ -359,6 +370,8 @@
           "!src/content/docs/modules/**",
           "!src/content/docs/design/**",
           "!src/content/docs/plugins/**",
+          "!src/content/docs/cli/**",
+          "!src/content/docs/schema/**",
           "!public/_img/**",
           "!dist/**",
           "package.json"

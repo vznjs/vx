@@ -28,4 +28,4 @@ vx cache clean --max-size 5GB
 Add `--dry-run` to see what would go without deleting anything. No run
 evicts entries on its own, so run a bound from a schedule or CI.
 
-See [`vx cache clean`](../../../cli/#vx-cache-clean).
+See [`vx cache clean`](../../../cli/cache/).
