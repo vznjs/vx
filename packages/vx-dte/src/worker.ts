@@ -24,6 +24,7 @@ import {
   type TaskArtifacts,
   type TreeUsage,
 } from '@vzn/vx'
+import { childrenCpuMs, describeCpu, readPs, topBetween } from './cpu-account.js'
 import {
   HELD_EVERY,
   type Load,
@@ -99,6 +100,13 @@ export async function runWorker(opts: {
   const myReal = realpathSync(opts.root)
   let floor: LocalFloor | undefined
   const load = loadMeter()
+  const started = {
+    at: performance.now(),
+    self: process.cpuUsage(),
+    children: childrenCpuMs(),
+    ps: readPs(),
+  }
+  let tasksCpuMs = 0
   const trees = treeMeter()
   const frame = (): Load => ({ ...load.now(), tasks: trees.now() })
   /**
@@ -290,6 +298,7 @@ export async function runWorker(opts: {
       ui.print('out', ui.status('info', m.task, ui.dim('running')))
       const crowd = load.mark()
       const { outputs: _, ...res } = await floor.execute(req).finally(() => trees.drop(m.task))
+      tasksCpuMs += res.cpuMs ?? 0
       const cpuShare = load.shareSince(
         crowd,
         res.cpuMs === undefined || !(res.durationMs > 0) ? undefined : res.cpuMs / res.durationMs,
@@ -401,10 +410,34 @@ export async function runWorker(opts: {
     throw err
   } finally {
     clearInterval(held)
-    load.stop()
     trees.stop()
     for (const c of running.values()) c.abort()
     await Promise.all(work)
+    const onlineMs = performance.now() - started.at
+    const self = process.cpuUsage(started.self)
+    const children = childrenCpuMs()
+    const ps = readPs()
+    ui.print(
+      'out',
+      ui.status(
+        'info',
+        'vx dte worker',
+        describeCpu({
+          onlineMs,
+          machineMs: (load.now().avg ?? 0) * onlineMs,
+          tasksMs: tasksCpuMs,
+          selfMs: (self.user + self.system) / 1000,
+          ...(children === undefined || started.children === undefined
+            ? {}
+            : { childrenMs: Math.max(0, children - started.children - tasksCpuMs) }),
+          top:
+            started.ps === undefined || ps === undefined
+              ? []
+              : topBetween(started.ps.table, ps, process.pid),
+        }),
+      ),
+    )
+    load.stop()
     await floor?.close()
     await me.leave()
   }
