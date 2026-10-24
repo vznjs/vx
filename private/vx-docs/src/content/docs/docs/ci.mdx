@@ -31,11 +31,11 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       # A lock that no longer matches the configs fails here, before any task.
-      - run: bunx vx lock --check
+      - run: bunx @vzn/vx lock --check
       # main runs everything and fills the cache every pull request
       # reads; a pull request runs only what it changed, and what depends on it.
       - run: >
-          bunx vx run ci
+          bunx @vzn/vx run ci
           ${{ github.event_name == 'pull_request'
             && '--affected'
             || '--all' }}
