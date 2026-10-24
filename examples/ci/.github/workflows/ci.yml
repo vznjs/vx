@@ -11,9 +11,7 @@ jobs:
       contents: read # checkout; naming any permission drops the rest
       checks: write # the PR check github() posts
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # --affected needs the history
+      - uses: actions/checkout@v4 # one commit: --affected fetches its base
       - uses: oven-sh/setup-bun@v2
       - run: bun add -g @vzn/vx # hands off to the repo's own vx
       - run: bun install --frozen-lockfile

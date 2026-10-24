@@ -1290,13 +1290,13 @@ describe('defaultAffectedBase', () => {
     return root
   }
 
-  it('with no base branch anywhere, says "shallow clone" in CI terms', async () => {
-    // A CI checkout at fetch-depth 1 has no origin/HEAD and no trunk; the
-    // old answer named a `HEAD~1` the user never typed (CI persona, 2026-09-16).
+  it('with no base branch anywhere, names what to set', async () => {
+    // The old answer named a `HEAD~1` the user never typed (CI persona,
+    // 2026-09-16); a shallow clone fetches its base (affected-shallow.test.ts).
     const root = await repo('vx-affected-default-', 'feat')
     try {
       await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
-        /--affected has no base here: no origin\/HEAD, main or master .* a shallow clone\? .*fetch-depth: 0.*--affected=origin\/main/,
+        '--affected has no base here: no origin/HEAD, main or master to compare with: set `baseBranch`, or name the base: --affected=origin/main',
       )
       await expect(defaultAffectedBase(root, 'develop')).rejects.toThrow(
         /no develop or origin\/develop to compare with/,

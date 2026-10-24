@@ -38,7 +38,8 @@ vx run test --affected=HEAD~1
 ```
 
 On the base branch itself there is no default: name the last commit that
-passed, or set `VX_AFFECTED_BASE`. On CI, fetch the history
-(`fetch-depth: 0`) so the base commit is there.
+passed, or set `VX_AFFECTED_BASE`. On CI the default one-commit checkout
+is enough: vx fetches the base commit and the history down to where the
+branch started, without file contents.
 
 See [`--affected`](../../../cli/#--affectedbase).

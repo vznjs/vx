@@ -254,9 +254,13 @@ Run the task only in projects whose files changed since `<base>`.
   `VX_AFFECTED_BASE` or pass one): vx refuses
   (`--affected has no default on the base branch (main): name the last
 good commit, --affected=<sha>`), since `HEAD~1` saw one commit of a
-  multi-commit push. A clone with no base branch at all, a CI checkout
-  at `fetch-depth: 1`, says so (`--affected has no base here … a shallow
-clone?`). And when an explicit base IS the commit you are on, the
+  multi-commit push. A shallow clone (CI's one-commit checkout) needs no
+  more history: vx fetches from origin what the merge base needs, the
+  base's tip at depth 1, then both tips deepened 1, 2, 4… commits until
+  git finds it, commits and trees only (no blobs). A pull request's merge
+  checkout has its base as HEAD's parent, so that is one fetch. With no
+  base branch and no origin to fetch it from, vx says so (`--affected has
+no base here`). And when an explicit base IS the commit you are on, the
   `nothing affected since <ref>` note says the ref is HEAD itself and
   names the two bases you probably meant (`--affected=origin/main`,
   `--affected=HEAD~1`).
@@ -265,7 +269,7 @@ failed to spawn 'git' … Install git and re-run` — the same the input
   enumeration prints; a minimal image met a stack here before
   (2026-09-16). Outside a git work tree every shape says `vx requires
 git: <root> is not inside a git work tree`, as a plain run does, and a
-  repository with no commit yet says so, not "a shallow clone?" (X-52).
+  repository with no commit yet says so, not "no base branch" (X-52).
 - `--affected=<ref>` uses the given git ref. A value that is empty or
   starts with `-` is refused before git sees it: the ref is an argument,
   never a shell command, and an option-like one (`--output=<path>`)
@@ -277,9 +281,9 @@ git: <root> is not inside a git work tree`, as a plain run does, and a
   base to a working tree that holds HEAD (D-117). Its two-dot `<base>..HEAD` diffs from
   `<base>` itself, not the merge base. An exclusion (`^main`) is refused
   the same way, naming `main`. A ref that does
-  not exist is `git ref "<ref>" did not resolve`; in a shallow clone (CI's
-  one-commit checkout) it adds that the clone is shallow and how to fetch
-  the history (`git fetch --unshallow`, `fetch-depth: 0`). A ref naming
+  not exist is `git ref "<ref>" did not resolve`; in a shallow clone whose
+  origin did not give it, it adds that the clone is shallow and how to
+  fetch the base (`git fetch --depth=1 origin <base>`). A ref naming
   a path inside a commit (`main:packages`) is refused, naming the commit
   to pass: its paths lack the prefix, so the diff would select the wrong
   projects. A root tree (`main^{tree}`) is still a base.
@@ -2192,8 +2196,8 @@ tasks at once (`--concurrency`), then re-run.
 ref does not resolve, is a range (`A..B`) or an exclusion (`^A`), names
 a path inside a commit, or the repository has no history to compare
 with. Pass a branch or commit you have locally, alone:
-`--affected=origin/main`. On CI, fetch the history the base needs
-(`fetch-depth: 0` on actions/checkout, or `git fetch --unshallow`).
+`--affected=origin/main`. A shallow clone fetches its base from origin
+itself; with no origin, fetch it (`git fetch --depth=1 origin <base>`).
 
 #### `VX_E_GIT`
 

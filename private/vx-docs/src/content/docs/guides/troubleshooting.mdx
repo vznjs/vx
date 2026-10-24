@@ -25,7 +25,7 @@ prints names its own fix too.
 | `… locks …, but its … is gone` | A project's `vx.config.ts` was deleted or renamed since `vx lock`: run `vx lock`. A new config waits for it too. |
 | `vx requires git: … is not inside a git work tree` | Run `git init` at the workspace root.                                   |
 | `vx requires git: failed to spawn 'git'`           | Install git.                                                            |
-| `--affected has no base here`                      | Fetch the history (`fetch-depth: 0` in CI), or pass `--affected=<ref>`. |
+| `--affected has no base here`                      | Set `baseBranch`, or pass `--affected=<ref>`.                           |
 | `--affected has no default on the base branch`     | On `main` itself, name the last commit that passed: `--affected=<sha>`. |
 | `… has unknown field "<key>"`                      | A typo, or a Turbo or Nx key: the message lists the fields vx allows.  |
 | `dependsOn cycle`                     | Remove one `dependsOn` edge of the loop it prints.                      |

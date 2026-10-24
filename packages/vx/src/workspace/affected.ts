@@ -38,7 +38,9 @@ function spawnGitSync(
   try {
     return Bun.spawnSync({
       cmd: [executablePath('git'), ...args],
-      env: gitEnv(),
+      // A probe never fetches: in a partial clone, `rev-parse` of a commit
+      // it lacks fetched that commit and all its history (50k objects).
+      env: { ...gitEnv(), GIT_NO_LAZY_FETCH: '1' },
       cwd,
       stdout: 'pipe',
       stderr,
@@ -223,6 +225,8 @@ export async function affectedChanges(
   // when there is none (unrelated histories, a detached probe) the ref
   // itself is the base, as before. Turbo's two-dot range `A..HEAD` is the
   // one form that diffs from A itself.
+  // Asked beside the base, not after it: the diff's shape waits on it.
+  const partial = isPartialClone(args.workspaceRoot).catch(() => false)
   const base = fromMergeBase
     ? await mergeBase(args.workspaceRoot, since)
     : (await verifyRef(args.workspaceRoot, since), since)
@@ -255,7 +259,7 @@ export async function affectedChanges(
     //
     // `--raw` for each path's mode: a gitlink (160000) is a nested
     // repository, one path standing for every file in it (`nested` below).
-    gitDiffPaths(args.workspaceRoot, base),
+    gitDiffPaths(args.workspaceRoot, base, partial),
     // `git diff` never reports untracked-but-not-ignored files, but input
     // enumeration does (`git ls-files --cached --others --exclude-standard`),
     // so a brand-new source file changes a task's cache key. Union it in or
@@ -670,26 +674,53 @@ async function gitPaths(workspaceRoot: string, cmd: string[]): Promise<string[]>
 async function gitDiffPaths(
   workspaceRoot: string,
   base: string,
+  partial: Promise<boolean>,
 ): Promise<{ paths: string[]; gitlinks: string[] }> {
-  const fields = await gitPaths(workspaceRoot, [
-    'diff',
-    '--no-renames',
-    '--ignore-submodules=none',
-    '--relative',
-    '--raw',
-    '-z',
-    '--end-of-options',
-    base,
-  ])
+  const diff = (...revs: string[]) =>
+    gitPaths(workspaceRoot, [
+      'diff',
+      '--no-renames',
+      '--ignore-submodules=none',
+      '--relative',
+      '--raw',
+      '-z',
+      '--end-of-options',
+      ...revs,
+    ])
+  // A partial clone lacks the base's blobs, and a stat-dirty file made
+  // `git diff <base>` read them to drop it: one fetch per file, and git
+  // 2.43 crashed (exit 139) on the batch. The base's tree against HEAD's
+  // reads no blob, HEAD's against the working tree reads only blobs a
+  // checkout has; their union over-selects only a file the working tree
+  // put back as the base had it.
+  const lists =
+    (await partial) || fetchedInto.has(workspaceRoot)
+      ? await Promise.all([diff(base, 'HEAD'), diff('HEAD')])
+      : [await diff(base)]
   const paths: string[] = []
   const gitlinks: string[] = []
-  for (let i = 0; i + 1 < fields.length; i += 2) {
-    const rel = fields[i + 1]!
-    paths.push(rel)
-    const head = fields[i]!
-    if (head.startsWith('160000 ', 1) || head.startsWith('160000 ', 8)) gitlinks.push(rel)
+  const seen = new Set<string>()
+  for (const fields of lists) {
+    for (let i = 0; i + 1 < fields.length; i += 2) {
+      const rel = fields[i + 1]!
+      if (seen.has(rel)) continue
+      seen.add(rel)
+      paths.push(rel)
+      const head = fields[i]!
+      if (head.startsWith('160000 ', 1) || head.startsWith('160000 ', 8)) gitlinks.push(rel)
+    }
   }
   return { paths, gitlinks }
+}
+
+/** A remote that serves missing objects on demand: `--filter` on a clone or a fetch. */
+async function isPartialClone(workspaceRoot: string): Promise<boolean> {
+  const proc = spawnGit(
+    ['config', '--get-regexp', String.raw`^(remote\..*\.promisor|extensions\.partialclone)$`],
+    workspaceRoot,
+  )
+  const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  return out.split('\n').some((l) => l.startsWith('extensions.') || l.endsWith(' true'))
 }
 
 /**
@@ -704,14 +735,15 @@ export async function defaultAffectedBase(
   workspaceRoot: string,
   baseBranch: string | undefined,
 ): Promise<string> {
-  const found = await baseBranchRef(workspaceRoot, baseBranch)
+  const found =
+    (await baseBranchRef(workspaceRoot, baseBranch)) ??
+    (await fetchBaseBranch(workspaceRoot, baseBranch))
   if (found === undefined) {
     const noHistory = noHistoryRefusal(workspaceRoot)
     if (noHistory !== undefined) throw noHistory
     throw new UserError(
       `--affected has no base here: ${baseBranch === undefined ? 'no origin/HEAD, main or master' : `no ${baseBranch} or origin/${baseBranch}`} ` +
-        'to compare with — a shallow clone? Fetch history (actions/checkout: fetch-depth: 0), ' +
-        'set `baseBranch`, or name the base: --affected=origin/main',
+        'to compare with: set `baseBranch`, or name the base: --affected=origin/main',
       'VX_E_AFFECTED_BASE',
     )
   }
@@ -831,10 +863,10 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
   // which the default base's search already resolved (`HEAD~1`).
   const known = HEAD_ANCESTOR.test(ref) ? resolvedRefs.get(`${workspaceRoot}\0${ref}`) : undefined
   if (known !== undefined) return known
-  const proc = spawnGit(['merge-base', '--end-of-options', ref, 'HEAD'], workspaceRoot)
-  const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-  const sha = out.trim()
-  if (exit === 0 && sha.length > 0) return sha
+  const sha = await gitMergeBase(workspaceRoot, ref)
+  if (sha !== undefined) return sha
+  const reached = await reachMergeBase(workspaceRoot, ref)
+  if (reached !== undefined) return reached
   await verifyRef(workspaceRoot, ref)
   // `<rev>:<path>` names the tree (or blob) at <path>: diffed against the
   // working tree, its paths miss the <path>/ prefix, and `develop:pkgs`
@@ -849,6 +881,151 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
     )
   }
   return ref
+}
+
+async function gitMergeBase(workspaceRoot: string, ref: string): Promise<string | undefined> {
+  const proc = spawnGit(['merge-base', '--end-of-options', ref, 'HEAD'], workspaceRoot)
+  const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  const sha = out.trim()
+  return exit === 0 && sha.length > 0 ? sha : undefined
+}
+
+/**
+ * A shallow clone (CI's checkout fetches one commit) lacks the base, or
+ * the history between it and HEAD: this fetches from origin what the
+ * merge base needs and nothing more (owner, 2026-10-24: "we only need
+ * current commit and branch out commit"). The base's tip at depth 1, then
+ * both tips deepened 1, 2, 4… commits until git finds the merge base;
+ * commits and trees only, as `--name-only` reads no blob. A pull request's
+ * merge checkout has its base as HEAD's parent, so it needs one fetch.
+ * Undefined when the clone is whole, has no origin, or the fetch failed.
+ */
+async function reachMergeBase(workspaceRoot: string, ref: string): Promise<string | undefined> {
+  if (!isShallow(workspaceRoot)) return undefined
+  const head = revParse(workspaceRoot, 'HEAD')
+  if (head === undefined) return undefined
+  const ancestor = HEAD_ANCESTOR.test(ref)
+  let tip = ancestor ? undefined : revParse(workspaceRoot, ref)
+  if (tip === undefined && !ancestor) {
+    const spec = originSpec(ref)
+    if (spec === undefined || !(await fetchOrigin(workspaceRoot, ['--depth=1', spec]))) {
+      return undefined
+    }
+    tip = revParse(workspaceRoot, ref)
+    if (tip === undefined) return undefined
+  }
+  if (tip !== undefined && parentsOf(workspaceRoot, head).includes(tip)) return tip
+  for (let depth = 1; depth <= MAX_DEEPEN; depth *= 2) {
+    const tips = tip === undefined ? [head] : [head, tip]
+    if (!(await fetchOrigin(workspaceRoot, [`--deepen=${depth}`, ...tips]))) return undefined
+    // `HEAD~2` is its own merge base with HEAD, once the history has it.
+    if (ancestor) {
+      const at = revParse(workspaceRoot, ref)
+      if (at !== undefined) return at
+    } else {
+      const found = await gitMergeBase(workspaceRoot, tip!)
+      if (found !== undefined) return found
+    }
+    if (!isShallow(workspaceRoot)) return undefined
+  }
+  return undefined
+}
+
+/** The clones `fetchOrigin` fetched into, so made partial: `isPartialClone` may have answered first. */
+const fetchedInto = new Set<string>()
+
+/** Deepening stops here (2,047 commits on each side): past it, the base is the user's to fetch. */
+const MAX_DEEPEN = 1024
+
+function isShallow(workspaceRoot: string): boolean {
+  const proc = spawnGitSync(['rev-parse', '--is-shallow-repository'], workspaceRoot, 'ignore')
+  return new TextDecoder().decode(proc.stdout).trim() === 'true'
+}
+
+/** The parents a commit names, even where a shallow clone cut them off. */
+function parentsOf(workspaceRoot: string, sha: string): string[] {
+  const proc = spawnGitSync(
+    ['cat-file', '--end-of-options', 'commit', sha],
+    workspaceRoot,
+    'ignore',
+  )
+  const out: string[] = []
+  for (const line of new TextDecoder().decode(proc.stdout).split('\n')) {
+    if (line === '') break
+    if (line.startsWith('parent ')) out.push(line.slice('parent '.length))
+  }
+  return out
+}
+
+/**
+ * What to ask origin for a base: a commit id as it is (GitHub serves any
+ * commit a ref reaches), `origin/<branch>` as that branch into its
+ * remote-tracking ref. Anything else is a name only this clone knows.
+ */
+function originSpec(ref: string): string | undefined {
+  if (/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(ref)) return ref
+  const branch = /^(?:refs\/remotes\/)?origin\/(.+)$/s.exec(ref)?.[1]
+  if (branch === undefined || branch === 'HEAD') return undefined
+  return `+refs/heads/${branch}:refs/remotes/origin/${branch}`
+}
+
+/**
+ * A shallow clone with no base branch at all (a CI checkout of one
+ * commit): fetch it from origin at depth 1, the configured one or
+ * origin's default.
+ */
+async function fetchBaseBranch(
+  workspaceRoot: string,
+  configured: string | undefined,
+): Promise<{ ref: string; branch: string; onIt: boolean } | undefined> {
+  if (!isShallow(workspaceRoot)) return undefined
+  const branch = configured ?? (await originDefaultBranch(workspaceRoot))
+  if (branch === undefined) return undefined
+  const spec = `+refs/heads/${branch}:refs/remotes/origin/${branch}`
+  if (!(await fetchOrigin(workspaceRoot, ['--depth=1', spec]))) return undefined
+  const proc = spawnGitSync(['symbolic-ref', '--short', '-q', 'HEAD'], workspaceRoot, 'ignore')
+  const head = new TextDecoder().decode(proc.stdout).trim()
+  return { ref: `origin/${branch}`, branch, onIt: head === branch }
+}
+
+/** The branch origin's HEAD names, asked of origin (a one-commit checkout has no `origin/HEAD`). */
+async function originDefaultBranch(workspaceRoot: string): Promise<string | undefined> {
+  const proc = spawnGit(['ls-remote', '--symref', 'origin', 'HEAD'], workspaceRoot)
+  const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  if (exit !== 0) return undefined
+  return /^ref: refs\/heads\/(\S+)\tHEAD$/m.exec(out)?.[1]
+}
+
+/**
+ * `git fetch` from origin into a shallow clone, without blobs: the diff
+ * names paths, and the lockfile a claim reads at the base is fetched on
+ * demand. Never prompts for credentials; false when it failed.
+ */
+async function fetchOrigin(workspaceRoot: string, args: string[]): Promise<boolean> {
+  try {
+    const proc = Bun.spawn({
+      cmd: [
+        executablePath('git'),
+        'fetch',
+        '--quiet',
+        '--no-tags',
+        '--no-recurse-submodules',
+        '--filter=blob:none',
+        'origin',
+        ...args,
+      ],
+      env: { ...gitEnv(), GIT_TERMINAL_PROMPT: '0' },
+      cwd: workspaceRoot,
+      stdin: 'ignore',
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    fetchedInto.add(workspaceRoot)
+    return (await proc.exited) === 0
+  } catch (err) {
+    if (isExecutableMissing(err)) throw gitSpawnRefusal(workspaceRoot)
+    throw err
+  }
 }
 
 async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
@@ -874,14 +1051,12 @@ async function verifyRef(workspaceRoot: string, ref: string): Promise<void> {
       'VX_E_GIT',
     )
   }
-  // A shallow clone (CI's checkout fetches one commit by default) has no
-  // HEAD~1 and no base branch: the ref exists, the history does not.
-  const shallow = spawnGitSync(['rev-parse', '--is-shallow-repository'], workspaceRoot, 'pipe')
-  const isShallow = new TextDecoder().decode(shallow.stdout).trim() === 'true'
+  // A shallow clone whose base origin could not give (`reachMergeBase`):
+  // no origin, no network, a name only another clone has.
   throw new UserError(
     `git ref "${ref}" did not resolve. Pass a branch or commit you have locally.` +
-      (isShallow
-        ? ' This clone is shallow: fetch the history the base needs (`git fetch --unshallow`, or `fetch-depth: 0` on actions/checkout).'
+      (isShallow(workspaceRoot)
+        ? ' This clone is shallow and origin did not give it: fetch the base (`git fetch --depth=1 origin <base>`).'
         : ''),
     'VX_E_AFFECTED_BASE',
   )
