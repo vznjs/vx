@@ -473,6 +473,20 @@ describe('task refusals the sweep found unheld (item 653)', () => {
     expect(where({ dependOn: [] })).toBe('did you mean dependsOn?')
   })
 
+  // `retries` or `timeout` beside `exec` was refused with the task's own
+  // fields alone, none of which is it.
+  it('a field of exec, inputs or cache written on the task names its level', () => {
+    const where = (task: Record<string, unknown>): string | undefined =>
+      taskRefusal({ exec: { command: 'x' }, ...task })?.split(' — ')[1]
+    expect(where({ retries: 2 })).toBe('vx spells it `exec.retries`')
+    expect(where({ timeout: '5m' })).toBe('vx spells it `exec.timeout`')
+    expect(where({ sandbox: {} })).toBe('vx spells it `exec.sandbox`')
+    expect(where({ files: ['src/**'] })).toBe('vx spells it `inputs.files`')
+    expect(where({ inputStability: {} })).toBe('vx spells it `cache.inputStability`')
+    // Another runner's spelling keeps its own word.
+    expect(where({ env: ['A'] })).toStartWith('vx spells it `inputs.env` (to key')
+  })
+
   it("names where vx keeps an Nx target's keys and Turbo's outputLogs (D-49)", () => {
     const where = (task: Record<string, unknown>): string | undefined =>
       taskRefusal({ exec: { command: 'x' }, ...task })?.split(' — ')[1]
