@@ -895,6 +895,15 @@ describe('every output the vx-ci sweep found unheld', () => {
     expect(md).toContain('- **a#\\*x\\*** — exit 1')
   })
 
+  // GitHub reads `~x~` as strikethrough and `&lt;` as `<`: a task named so
+  // rendered struck through, or as another name.
+  it('an id escapes the strikethrough tilde and an entity', () => {
+    const md = renderJobSummary(
+      summary([task({ taskId: 'a#~x~&lt;', status: 'failed', exitCode: 1 })]),
+    )
+    expect(md).toContain('- **a#\\~x\\~\\&lt;** — exit 1')
+  })
+
   it('the check-run payload: its times, its title in both numbers, its summary clamped', async () => {
     const { buildCheckRunPayload } = await import('../src/checks.js')
     const s = summary([task({})], { startedAt: 1_000, endedAt: 61_000 })
