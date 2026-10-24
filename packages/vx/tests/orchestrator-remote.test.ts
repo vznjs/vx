@@ -301,7 +301,7 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
     TIMEOUT,
   )
 
-  // `vx dte plan` and `vx run` are separate processes on GitLab: what the
+  // `vx run --dry` and `vx run` are separate processes: what the
   // plan's probe found must reach the run through the index, never memory.
   // Only hits are kept, and the run's GETs wait on no probe (M, 2026-10-23).
   it(

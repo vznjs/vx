@@ -74,7 +74,7 @@ flowchart LR
 | Adapter    | Starts each worker as                                                  |
 | ---------- | ---------------------------------------------------------------------- |
 | `github()` | a job of `.github/workflows/vx-worker.yml`, dispatched by the run      |
-| `gitlab()` | a job of a child pipeline the run's plan writes                        |
+| `gitlab()` | a pipeline of `.gitlab-ci.yml`, triggered by the run                   |
 | `local()`  | a process in its own git worktree on this machine                      |
 | `docker()` | a container held to the size's `cpu` and `memory`                      |
 | none       | nothing: the run uses whichever workers join its relay                 |
