@@ -140,7 +140,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   the shard around them three times on CI, item 925). The
   shards exclude them in the dealer itself — `testFiles()` in
   `scripts/test-shard.ts` drops the name, so the shard command never
-  sees the file; `test.bun.unsafe`'s `UNSAFE_SHARD_COUNT` (6) shards
+  sees the file; `test.bun.unsafe`'s `UNSAFE_SHARD_COUNT` (10) shards
   run them, dealt by `--unsafe` from `tests/unsafe-shard-weights.json`.
   Mac workers take only the platform's files (`test.platform`, dealt
   by `--platform`). The unsafe shards of both, `@vzn/vx-reapi#test` and

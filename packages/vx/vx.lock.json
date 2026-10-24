@@ -2931,12 +2931,12 @@
       }
     },
     "test.bun.unsafe.shard-1": {
-      "description": "bun test — the files a sandbox cannot host, shard 1 of 6",
+      "description": "bun test — the files a sandbox cannot host, shard 1 of 10",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 1 6 --unsafe)",
+        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 1 10 --unsafe)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -3010,12 +3010,12 @@
       }
     },
     "test.bun.unsafe.shard-2": {
-      "description": "bun test — the files a sandbox cannot host, shard 2 of 6",
+      "description": "bun test — the files a sandbox cannot host, shard 2 of 10",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 2 6 --unsafe)",
+        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 2 10 --unsafe)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -3089,12 +3089,12 @@
       }
     },
     "test.bun.unsafe.shard-3": {
-      "description": "bun test — the files a sandbox cannot host, shard 3 of 6",
+      "description": "bun test — the files a sandbox cannot host, shard 3 of 10",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 3 6 --unsafe)",
+        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 3 10 --unsafe)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -3168,12 +3168,12 @@
       }
     },
     "test.bun.unsafe.shard-4": {
-      "description": "bun test — the files a sandbox cannot host, shard 4 of 6",
+      "description": "bun test — the files a sandbox cannot host, shard 4 of 10",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 4 6 --unsafe)",
+        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 4 10 --unsafe)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -3247,12 +3247,12 @@
       }
     },
     "test.bun.unsafe.shard-5": {
-      "description": "bun test — the files a sandbox cannot host, shard 5 of 6",
+      "description": "bun test — the files a sandbox cannot host, shard 5 of 10",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 5 6 --unsafe)",
+        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 5 10 --unsafe)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
@@ -3326,12 +3326,328 @@
       }
     },
     "test.bun.unsafe.shard-6": {
-      "description": "bun test — the files a sandbox cannot host, shard 6 of 6",
+      "description": "bun test — the files a sandbox cannot host, shard 6 of 10",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 6 6 --unsafe)",
+        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 6 10 --unsafe)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_TAGS",
+            "VX_REQUIRE_REFTABLE",
+            "VX_PR_TITLE",
+            "VX_PR_BASE",
+            "VX_PR_HEAD",
+            "NODE_EXTRA_CA_CERTS"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/*/**",
+          "private/*/**",
+          "examples/**",
+          ".github/**",
+          "scripts/**",
+          "CLAUDE.md",
+          "README.md",
+          "LICENSE",
+          ".claude/skills/**",
+          "skills/**",
+          "vx.config.ts",
+          ".vx/workspace.ts",
+          "!packages/vx/dist/**",
+          "!private/vx-docs/dist/**",
+          "!private/vx-docs/src/content/docs/all-features.md",
+          "!private/vx-docs/src/content/docs/api.md",
+          "!private/vx-docs/src/content/docs/architecture.md",
+          "!private/vx-docs/src/content/docs/benchmarks.md",
+          "!private/vx-docs/src/content/docs/caching.md",
+          "!private/vx-docs/src/content/docs/cli.md",
+          "!private/vx-docs/src/content/docs/compare/turbo-nx-support.md",
+          "!private/vx-docs/src/content/docs/comparison.md",
+          "!private/vx-docs/src/content/docs/execution.md",
+          "!private/vx-docs/src/content/docs/flows.md",
+          "!private/vx-docs/src/content/docs/optimizations.md",
+          "!private/vx-docs/src/content/docs/overview.md",
+          "!private/vx-docs/src/content/docs/parity.md",
+          "!private/vx-docs/src/content/docs/patterns.md",
+          "!private/vx-docs/src/content/docs/schema.md",
+          "!private/vx-docs/src/content/docs/security.md",
+          "!private/vx-docs/src/content/docs/upstream-ledger.md",
+          "!private/vx-docs/src/content/docs/modules/**",
+          "!private/vx-docs/src/content/docs/design/**",
+          "!private/vx-docs/src/content/docs/plugins/**"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.unsafe.shard-7": {
+      "description": "bun test — the files a sandbox cannot host, shard 7 of 10",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 7 10 --unsafe)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_TAGS",
+            "VX_REQUIRE_REFTABLE",
+            "VX_PR_TITLE",
+            "VX_PR_BASE",
+            "VX_PR_HEAD",
+            "NODE_EXTRA_CA_CERTS"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/*/**",
+          "private/*/**",
+          "examples/**",
+          ".github/**",
+          "scripts/**",
+          "CLAUDE.md",
+          "README.md",
+          "LICENSE",
+          ".claude/skills/**",
+          "skills/**",
+          "vx.config.ts",
+          ".vx/workspace.ts",
+          "!packages/vx/dist/**",
+          "!private/vx-docs/dist/**",
+          "!private/vx-docs/src/content/docs/all-features.md",
+          "!private/vx-docs/src/content/docs/api.md",
+          "!private/vx-docs/src/content/docs/architecture.md",
+          "!private/vx-docs/src/content/docs/benchmarks.md",
+          "!private/vx-docs/src/content/docs/caching.md",
+          "!private/vx-docs/src/content/docs/cli.md",
+          "!private/vx-docs/src/content/docs/compare/turbo-nx-support.md",
+          "!private/vx-docs/src/content/docs/comparison.md",
+          "!private/vx-docs/src/content/docs/execution.md",
+          "!private/vx-docs/src/content/docs/flows.md",
+          "!private/vx-docs/src/content/docs/optimizations.md",
+          "!private/vx-docs/src/content/docs/overview.md",
+          "!private/vx-docs/src/content/docs/parity.md",
+          "!private/vx-docs/src/content/docs/patterns.md",
+          "!private/vx-docs/src/content/docs/schema.md",
+          "!private/vx-docs/src/content/docs/security.md",
+          "!private/vx-docs/src/content/docs/upstream-ledger.md",
+          "!private/vx-docs/src/content/docs/modules/**",
+          "!private/vx-docs/src/content/docs/design/**",
+          "!private/vx-docs/src/content/docs/plugins/**"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.unsafe.shard-8": {
+      "description": "bun test — the files a sandbox cannot host, shard 8 of 10",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 8 10 --unsafe)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_TAGS",
+            "VX_REQUIRE_REFTABLE",
+            "VX_PR_TITLE",
+            "VX_PR_BASE",
+            "VX_PR_HEAD",
+            "NODE_EXTRA_CA_CERTS"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/*/**",
+          "private/*/**",
+          "examples/**",
+          ".github/**",
+          "scripts/**",
+          "CLAUDE.md",
+          "README.md",
+          "LICENSE",
+          ".claude/skills/**",
+          "skills/**",
+          "vx.config.ts",
+          ".vx/workspace.ts",
+          "!packages/vx/dist/**",
+          "!private/vx-docs/dist/**",
+          "!private/vx-docs/src/content/docs/all-features.md",
+          "!private/vx-docs/src/content/docs/api.md",
+          "!private/vx-docs/src/content/docs/architecture.md",
+          "!private/vx-docs/src/content/docs/benchmarks.md",
+          "!private/vx-docs/src/content/docs/caching.md",
+          "!private/vx-docs/src/content/docs/cli.md",
+          "!private/vx-docs/src/content/docs/compare/turbo-nx-support.md",
+          "!private/vx-docs/src/content/docs/comparison.md",
+          "!private/vx-docs/src/content/docs/execution.md",
+          "!private/vx-docs/src/content/docs/flows.md",
+          "!private/vx-docs/src/content/docs/optimizations.md",
+          "!private/vx-docs/src/content/docs/overview.md",
+          "!private/vx-docs/src/content/docs/parity.md",
+          "!private/vx-docs/src/content/docs/patterns.md",
+          "!private/vx-docs/src/content/docs/schema.md",
+          "!private/vx-docs/src/content/docs/security.md",
+          "!private/vx-docs/src/content/docs/upstream-ledger.md",
+          "!private/vx-docs/src/content/docs/modules/**",
+          "!private/vx-docs/src/content/docs/design/**",
+          "!private/vx-docs/src/content/docs/plugins/**"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.unsafe.shard-9": {
+      "description": "bun test — the files a sandbox cannot host, shard 9 of 10",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 9 10 --unsafe)",
+        "env": {
+          "passThrough": [
+            "VX_REQUIRE_SANDBOX",
+            "VX_REQUIRE_WATCH_EVENTS",
+            "VX_REQUIRE_NONROOT",
+            "VX_REQUIRE_TAGS",
+            "VX_REQUIRE_REFTABLE",
+            "VX_PR_TITLE",
+            "VX_PR_BASE",
+            "VX_PR_HEAD",
+            "NODE_EXTRA_CA_CERTS"
+          ],
+          "define": {
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "FORCE_COLOR": "0",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        }
+      },
+      "inputs": {
+        "files": [
+          "**/*",
+          "!dist/**",
+          "!**/*.bun-build",
+          "!**/.????????????????-????????.tmp/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/*/**",
+          "private/*/**",
+          "examples/**",
+          ".github/**",
+          "scripts/**",
+          "CLAUDE.md",
+          "README.md",
+          "LICENSE",
+          ".claude/skills/**",
+          "skills/**",
+          "vx.config.ts",
+          ".vx/workspace.ts",
+          "!packages/vx/dist/**",
+          "!private/vx-docs/dist/**",
+          "!private/vx-docs/src/content/docs/all-features.md",
+          "!private/vx-docs/src/content/docs/api.md",
+          "!private/vx-docs/src/content/docs/architecture.md",
+          "!private/vx-docs/src/content/docs/benchmarks.md",
+          "!private/vx-docs/src/content/docs/caching.md",
+          "!private/vx-docs/src/content/docs/cli.md",
+          "!private/vx-docs/src/content/docs/compare/turbo-nx-support.md",
+          "!private/vx-docs/src/content/docs/comparison.md",
+          "!private/vx-docs/src/content/docs/execution.md",
+          "!private/vx-docs/src/content/docs/flows.md",
+          "!private/vx-docs/src/content/docs/optimizations.md",
+          "!private/vx-docs/src/content/docs/overview.md",
+          "!private/vx-docs/src/content/docs/parity.md",
+          "!private/vx-docs/src/content/docs/patterns.md",
+          "!private/vx-docs/src/content/docs/schema.md",
+          "!private/vx-docs/src/content/docs/security.md",
+          "!private/vx-docs/src/content/docs/upstream-ledger.md",
+          "!private/vx-docs/src/content/docs/modules/**",
+          "!private/vx-docs/src/content/docs/design/**",
+          "!private/vx-docs/src/content/docs/plugins/**"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.bun.unsafe.shard-10": {
+      "description": "bun test — the files a sandbox cannot host, shard 10 of 10",
+      "dependsOn": [
+        "install"
+      ],
+      "exec": {
+        "command": "bun test --only-failures --timeout=30000 $(bun scripts/test-shard.ts 10 10 --unsafe)",
         "env": {
           "passThrough": [
             "VX_REQUIRE_SANDBOX",
