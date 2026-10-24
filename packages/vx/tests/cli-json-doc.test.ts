@@ -90,7 +90,7 @@ function shapes(text: string): string[] {
 /** The `--format json` bullet's names outside parentheses: the object's top level. */
 function infoFields(): string[] {
   const text = jsonText('vx info')
-  const bullet = /- `--format json` prints[\s\S]*?(?= - `|$)/.exec(text)![0]
+  const bullet = /`--format json` prints the same facts[\s\S]*?(?= - `|$)/.exec(text)![0]
   let flat = bullet
   for (let prev = ''; prev !== flat;) {
     prev = flat
