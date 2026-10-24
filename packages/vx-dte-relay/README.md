@@ -51,10 +51,8 @@ are read once per isolate and held ten minutes in the data center's
 cache, so a run's object does not fetch them again; a token naming a key
 they lack is checked against a fresh read.
 It fits Workers' free plan: each participant joins on the socket it
-opens, one request, so a CI run of 18 participants over two minutes
-makes about 20 requests, 65 Durable Object requests (its websocket
-messages counted 20 to 1) and 60 rows written, against 100 000 of each
-a day, at well under 10 ms of CPU a request.
+opens, one request, and its websocket messages count 20 to one Durable
+Object request, against 100 000 a day; it writes no row.
 `wrangler.jsonc` sets the rest; change a value there, in the repository
 the button made, or in the Worker's settings in the Cloudflare dashboard:
 
@@ -110,7 +108,7 @@ The same relay as a `fetch` handler, to mount in a server of your own
   `RelaySocket` (`{ send, close }`), and `frame`, which returns the
   answer to send down the socket, or `undefined` for none. `attach`
   returns the `Kept` its host keeps with the socket (a Durable Object's
-  attachment: run, id, role, and the orchestrator's key and job), or
+  attachment: run, id, role, and the orchestrator's key), or
   `false`. A host closes a socket `attach` refuses
   with `closeSocket(socket, GONE)` (`GONE` is 4404), which says the close in a frame first
   (PROTOCOL.md § Sockets).
@@ -130,8 +128,7 @@ The same relay as a `fetch` handler, to mount in a server of your own
   any; a token's `repositoryClaimOf(iss)` and `workflowClaimOf(iss)` up to
   its `@` are matched without case), the `aud` a token must name, run claims per issuer (default
   `runClaimsOf(iss)`), and a key reader and clock for tests. It
-  resolves a `VerifiedToken`, `{ iss, run, job? }` (`job`, the CI job it
-  is from, pins a run's orchestrator), or rejects with a
+  resolves a `VerifiedToken`, `{ iss, run }`, or rejects with a
   `TokenError` carrying the `status` (401 or 403) the relay answers.
 - `parseAllow(list)` reads `ALLOW`'s entries into `Allowed`s, each
   `issuer:owner/repo:workflow` read from the right (an issuer holds `:`s),
