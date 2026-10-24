@@ -124,7 +124,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   pipe a check through `tail`/`grep` — it masks the exit.
 - The core suite runs as `SHARD_COUNT` (46, `vx.config.ts`) parallel
   shard tasks, generated from one template; `scripts/test-shard.ts <i>
-  <n>` deals the files by recorded weight (`tests/shard-weights.json`,
+<n>` deals the files by recorded weight (`tests/shard-weights.json`,
   refreshed with `--weigh <junit-dir>`), so the wall time is the
   average shard, not the alphabet's heaviest. Many processes is not
   only speed: `bun test` pins ~2 descriptors per imported module and

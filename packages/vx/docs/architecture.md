@@ -397,7 +397,7 @@ never branches on layering.
       restore tier: restores take no weight. A plugin's later weights
       (`ctx.refine`) re-rank the ready queues while the graph runs.
    6. `runGraph({ nodes, concurrency, execute, priorities,
-      restoreTier, … })` runs the DAG two-tier. Each ready node invokes
+restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       `executeTask({ node, upstream, preProbed?, … })`.
    7. After the graph drains, dependency-only persistent subprocesses
       are `SIGTERM`ed (SIGKILL after the kill grace); persistent tasks
