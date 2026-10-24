@@ -76,6 +76,63 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work
   }
 }, 20_000)
 
+// `vx watch` runs again in one process: the next run's containers checked
+// out the first run's tree (2026-10-24).
+it('a worker of the next run checks out the tree as it is then', async () => {
+  const root = path.join(dir, 'ws-again')
+  const bin = path.join(dir, 'bin-again')
+  Bun.spawnSync(['mkdir', '-p', root, bin])
+  git(root, 'init', '-q')
+  await writeFile(path.join(root, 'f'), 'first\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'i')
+  const out = path.join(dir, 'out-again')
+  await writeFile(
+    path.join(bin, 'docker'),
+    `#!/bin/sh
+for a; do last=$a; done
+src=$(printf '%s\\n' "$@" | sed -n 's#^\\(.*\\):/src:ro$#\\1#p')
+printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work-again#g; s#exec ./node_modules/.bin/vx dte worker#cat f > ${out}#" | sh
+`,
+  )
+  await chmod(path.join(bin, 'docker'), 0o755)
+  const saved = process.env['PATH']
+  process.env['PATH'] = `${bin}:${saved}`
+  const adapter = docker({ image: 'x' })
+  const ran = async (run: string): Promise<string> => {
+    await rm(out, { force: true })
+    await rm(path.join(dir, 'work-again'), { recursive: true, force: true })
+    await adapter.relay!()
+    await adapter.spawn({
+      id: 'small#1',
+      size: 'small',
+      max: 1,
+      cpu: 1,
+      memory: 1 << 30,
+      index: 1,
+      run,
+      relay: 'http://127.0.0.1:1',
+      workspaceRoot: root,
+      env: {},
+      exited: () => {},
+    } as WorkerSpawn)
+    let got = ''
+    for (let i = 0; i < 100 && got === ''; i++) {
+      await Bun.sleep(50)
+      got = await readFile(out, 'utf8').catch(() => '')
+    }
+    await adapter.close!()
+    return got
+  }
+  try {
+    expect(await ran('r1')).toBe('first\n')
+    await writeFile(path.join(root, 'f'), 'second\n')
+    expect(await ran('r2')).toBe('second\n')
+  } finally {
+    process.env['PATH'] = saved
+  }
+}, 20_000)
+
 it('says why a worker’s container ended before it joined', async () => {
   const root = path.join(dir, 'ws2')
   const bin = path.join(dir, 'bin2')
