@@ -8,7 +8,7 @@ export class TokenError extends Error {
 == const GONE (src/relay.ts)
 export const GONE = refusedWith(404)
 == const PROOF_HEADER (src/proof.ts)
-export const PROOF_HEADER = 'vx-proof'
+export const PROOF_HEADER = 'relay-proof'
 == function closeSocket (src/relay.ts)
 export function closeSocket(socket: RelaySocket, code?: number, reason?: string): void
 == function createProver (src/proof.ts)
@@ -37,7 +37,7 @@ export interface Allowed {
 export interface Kept {
   key: string
   id: string
-  role: 'orchestrator' | 'worker'
+  role: 'host' | 'peer'
   cert?: string
 }
 == type OidcOptions (src/oidc.ts)
@@ -65,7 +65,7 @@ export interface RelayOptions {
   verify?: ((token: string, req: Request) => Promise<VerifiedToken>) | undefined
   heartbeatMs?: number
   sockets?: Iterable<readonly [Kept, RelaySocket]> | undefined
-  upgrade: (key: string, id: string, req: Request) => Response
+  upgrade: (key: string, id: string, req: Request, protocol?: string) => Response
 }
 == type RelayServer (src/serve.ts)
 export interface RelayServer {
