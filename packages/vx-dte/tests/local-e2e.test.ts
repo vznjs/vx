@@ -49,6 +49,11 @@ export default { name: 'b', tasks: {
     cache: { outputs: { files: ['t.txt'] } },
   },
   far: { dependsOn: ['a#ro'], exec: { command: 'cat ../a/out/ro.txt' } },
+  away: {
+    exec: { command: 'rm -f away && ln -s / away' },
+    inputs: { files: ['vx.config.mjs'] },
+    cache: { outputs: { files: ['away/**'] } },
+  },
   bg: {
     exec: { command: 'echo a > bg.txt && (sleep 1; echo late > late.txt) &' },
     inputs: { files: ['vx.config.mjs'] },
@@ -726,6 +731,19 @@ it('saves no entry for a task that left a process running', async () => {
     const r = vx(['run', 'b#bg'], run)
     expect([run, r.exitCode, r.stdout.toString().includes('small#')]).toEqual([run, 0, true])
   }
+}, 60_000)
+
+// Outputs through a link out of the project are refused, as core refuses
+// them: the worker took the refusal as its own fault, and two such faults
+// failed the run (2026-10-24).
+it('fails a task whose outputs link out of its project, not its worker', async () => {
+  const r = vx(['run', 'b#away', 'a#gen', '--continue'], 'away')
+  const out = r.stdout.toString()
+  expect(r.exitCode).toBe(1)
+  // Its worker's result, not a fault: the line names the worker that ran it.
+  expect(out).toMatch(/└─ b#away · small#\d ── \(\d+ms\) failed \(exit 1\)/)
+  expect(out).toContain('leaves the project')
+  expect(await readFile(path.join(root, 'a/out/a.txt'), 'utf8')).toBe('made\n')
 }, 60_000)
 
 it('leaves a tracked file under a task’s outputs in place on its worker', async () => {
