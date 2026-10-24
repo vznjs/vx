@@ -118,10 +118,11 @@ function escapeMarkdownCell(value: string): string {
 
 /**
  * A task id as inline markdown: `a#*x*` rendered as `a#` and an italic
- * `x` (item 1058). Table cells escape their pipes on top of this.
+ * `x` (item 1058), `a#~x~` struck through and `&lt;` as `<`. Table cells
+ * escape their pipes on top of this.
  */
 function escapeInline(s: string): string {
-  return s.replace(/[\\`*_[\]<>]/g, '\\$&')
+  return s.replace(/[\\`*_[\]<>~&]/g, '\\$&')
 }
 
 /**
