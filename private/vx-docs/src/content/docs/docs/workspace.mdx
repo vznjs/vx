@@ -83,7 +83,7 @@ variable, which beats this file. Durations and sizes carry a unit
 
 | Field            | Sets                                                                  |
 | ---------------- | --------------------------------------------------------------------- |
-| `plugins`        | asked in order; this machine runs what they decline, and its cache is asked first ([Plugins](../../guides/plugins/)) |
+| `plugins`        | asked in order; this machine runs what they decline, and its cache is asked first ([Plugins](../../docs/plugins/)) |
 | `run.concurrency` | tasks at once, a number or a share of the cores (`'50%'`) |
 | `run.timeout`, `run.retries` | a task's time limit and re-runs, for tasks without their own `exec.timeout` / `exec.retries` |
 | `baseBranch` | the default branch, by name; default `origin/HEAD`'s branch, then `main`, then `master`. A bare `--affected` compares with its merge base off it, and on it has no default unless `VX_AFFECTED_BASE` names one |

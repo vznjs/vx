@@ -64,8 +64,8 @@ A remote's `has` answers what it knows of an entry: `{ size, durationMs }`,
 either one, `{}`, or `null` for a key it lacks. `hasMany` answers a
 `Map` of the held keys to the same. Any backend that can say a size gets
 the `--dry` figure, and one that can also say a duration gets the
-slow-download check. [Your own cache](../../guides/plugins/#your-own-cache)
+slow-download check. [Your own cache](../../docs/writing-plugins/#your-own-cache)
 shows a whole remote.
 
-Setup: [Remote cache](../../guides/ci/#remote-cache). More at
+Setup: [Remote cache](../../docs/remote-cache/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -104,7 +104,7 @@ describe('the guides show what vx prints', () => {
   })
 
   it("the agents page's diff entry is vx why --format json's", () => {
-    const page = readFileSync(path.join(GUIDES, 'agents.mdx'), 'utf8')
+    const page = readFileSync(path.join(GUIDES, '..', 'docs', 'agents.mdx'), 'utf8')
     const line = /^\{"kind":"file".*\}$/m.exec(page)![0]
     const why = JSON.parse(vx('why', '@demo/app#build', '--format', 'json').stdout) as {
       diff: { entries: unknown[] }
@@ -113,7 +113,7 @@ describe('the guides show what vx prints', () => {
   })
 
   it("the agents page's refusal line is what --dry=json prints", () => {
-    const page = readFileSync(path.join(GUIDES, 'agents.mdx'), 'utf8')
+    const page = readFileSync(path.join(GUIDES, '..', 'docs', 'agents.mdx'), 'utf8')
     const line = /^\{"ok":false.*\}$/m.exec(page)![0]
     const run = vx('run', 'biuld', '--all', '--dry=json')
     expect(run.code).toBe(1)
@@ -311,7 +311,7 @@ describe("the sandboxing guide's failures", () => {
       } as TaskOutcome,
       { output: [{ text: `${stderr}\n`, err: true }] },
     ).trimEnd()
-  const page = readFileSync(path.join(GUIDES, 'sandboxing.mdx'), 'utf8')
+  const page = readFileSync(path.join(GUIDES, '..', 'docs', 'sandboxing.mdx'), 'utf8')
   const tab = (label: string): string =>
     sample(page.slice(page.indexOf(label)), '$ vx run build --all')
 

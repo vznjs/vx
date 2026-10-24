@@ -9,8 +9,8 @@ Find what vx printed, read what it means, apply the fix. Every message vx
 prints names its own fix too.
 
 <CardGrid>
-  <LinkCard title="Sandboxing problems" href="../sandboxing/#common-problems" />
-  <LinkCard title="CI problems" href="../ci/#common-problems" />
+  <LinkCard title="Sandboxing problems" href="../../docs/sandboxing/#common-problems" />
+  <LinkCard title="CI problems" href="../../docs/ci/#common-problems" />
   <LinkCard title="Migration problems" href="../migrate/#common-problems" />
 </CardGrid>
 
@@ -58,7 +58,7 @@ $ vx run build --filter @demo/ap
   `inputs`.
 - **A task hit after you changed a file.** The file is not in
   `inputs.files`. `vx why <project#task>` shows what the key saw;
-  [`exec.sandbox`](../sandboxing/), with reads granted no wider than
+  [`exec.sandbox`](../../docs/sandboxing/), with reads granted no wider than
   the inputs, refuses that read and names it.
 - **`inputs matched no files`.** The globs name nothing in the
   project, so the key ignores its source. Fix the paths; they are
@@ -116,7 +116,7 @@ release binary needs neither Node nor Bun.
     glibc, not Alpine's musl. The sandbox needs `bubblewrap`, `socat` and
     `ripgrep`, and no root in a container, or set
     `exec.sandbox.weakerWhenNested: true` on each sandboxed task
-    ([Sandboxing](../sandboxing/#requirements--platform-support)).
+    ([Sandboxing](../../docs/sandboxing/#requirements--platform-support)).
   </TabItem>
   <TabItem label="macOS">
     The sandbox is the system's own; nothing to install.

@@ -180,7 +180,7 @@ A task with `exec.sandbox` runs where only what it declares exists:
   (`tests/sandbox-parent-env.unsafe.test.ts`).
 
 An undeclared touch of the task's own files fails the task, and a failed
-task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/guides/sandboxing/).
+task is never cached. See [Sandboxing tasks](https://vznjs.github.io/vx/docs/sandboxing/).
 
 The sandbox costs each task it runs; a cache hit runs nothing and costs
 nothing. `tests/sandbox-parent-env.unsafe.test.ts` prints the cost of one

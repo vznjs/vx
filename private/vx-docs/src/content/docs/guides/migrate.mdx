@@ -205,7 +205,7 @@ The command itself comes from your `package.json` script, with its
 | `turbo run build --filter=@app/*` | `vx run build --filter "@app/*"`                       |
 | `turbo run build --affected`      | `vx run build --affected` (`turbo()` takes `TURBO_SCM_BASE`, or GitHub Actions' base, as Turbo does) |
 | `turbo run build --continue`      | `vx run build --continue` (`always`, as Turbo's; without it, vx skips only a failure's dependents where Turbo stops) |
-| `TURBO_TOKEN` remote cache        | [`turboCache()`](../ci/#remote-cache) reads the same variables |
+| `TURBO_TOKEN` remote cache        | [`turboCache()`](../../docs/remote-cache/) reads the same variables |
 
 ## Nx
 
@@ -307,7 +307,7 @@ test: { exec: { command: `nx-exec @nx/jest:jest --project a --target test --opti
 | `nx affected -t test`                | `vx run test --affected` (`nx()` takes `NX_BASE` or `defaultBase` as its base) |
 | `nx graph`                           | `vx run build --all --dry=json` (tasks and their deps), and the [graph explorer](../graph-explorer/) |
 | `nx reset`                           | `vx cache clean` clears it all; `--older-than <age>` trims it; there is no daemon |
-| Nx Cloud cache                       | [`nxCache()`](../ci/#remote-cache) for a self-hosted Nx cache |
+| Nx Cloud cache                       | [`nxCache()`](../../docs/remote-cache/) for a self-hosted Nx cache |
 
 Generators, Nx Console and module-boundary rules have no vx equivalent;
 keep Nx for those.
@@ -333,5 +333,5 @@ The field-by-field mapping is in the `@vzn/vx-migrate` README.
 
 <CardGrid>
   <LinkCard title="Parity map" description="Every Turborepo and Nx behaviour, spelled in vx and pinned by a test." href="../../parity/" />
-  <LinkCard title="CI and remote" description="Keep your Turborepo or Nx remote cache." href="../ci/#remote-cache" />
+  <LinkCard title="CI and remote" description="Keep your Turborepo or Nx remote cache." href="../../docs/remote-cache/" />
 </CardGrid>

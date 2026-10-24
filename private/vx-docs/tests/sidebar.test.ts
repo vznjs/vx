@@ -32,10 +32,14 @@ const DOCS_PAGES: [string, string][] = [
   ['Environment variables', 'docs/environment-variables/'],
   ['Dev servers', 'docs/dev-servers/'],
   ['Lockfiles', 'docs/lockfiles/'],
-  ['Sandboxing', 'guides/sandboxing/'],
-  ['CI and remote', 'guides/ci/'],
-  ['Plugins', 'guides/plugins/'],
-  ['AI agents', 'guides/agents/'],
+  ['Running tasks', 'docs/running-tasks/'],
+  ['Sandboxing', 'docs/sandboxing/'],
+  ['CI', 'docs/ci/'],
+  ['Remote cache', 'docs/remote-cache/'],
+  ['Remote execution', 'docs/remote-execution/'],
+  ['Plugins', 'docs/plugins/'],
+  ['Write a plugin', 'docs/writing-plugins/'],
+  ['AI agents', 'docs/agents/'],
 ]
 const DOCS_GROUPS = ['Get started', 'Configure', 'Run', 'Extend']
 const GUIDES_GROUPS = ['Get started', 'Caching', 'Running', 'CI', 'Debugging']

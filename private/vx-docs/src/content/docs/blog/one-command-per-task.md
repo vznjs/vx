@@ -89,6 +89,6 @@ vx needs no plugin for a tool. There is no `@vzn/vx-vite` or
 Tool knowledge belongs in presets, in TypeScript, on top of a runner
 that only knows what a command is.
 
-Reference: [CI and remote › Run and filter](../../guides/ci/#run-and-filter) and
+Reference: [Running tasks](../../docs/running-tasks/) and
 [Environment variables](../../docs/environment-variables/).
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

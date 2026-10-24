@@ -237,7 +237,7 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
           `vx: '${command}' is not a vx core command.\n` +
             `  vx core runs tasks in-process. A dashboard, remote cache, and\n` +
             `  distributed execution come from plugins — not core. See the plugin\n` +
-            `  guide: https://vznjs.github.io/vx/guides/plugins/\n`,
+            `  guide: https://vznjs.github.io/vx/docs/plugins/\n`,
         )
       }
       // One line, as a verb's own unknown flag or subcommand gets; the full

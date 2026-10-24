@@ -1,0 +1,146 @@
+---
+title: CI
+description: Run vx on GitHub Actions or GitLab CI, test only what a change affects, and report results.
+# The job summary sample below carries its own headings; a table of contents
+# would list them as this page's sections.
+tableOfContents: false
+---
+
+On CI, `main` runs every task and fills a shared cache. A pull request runs
+only what it changed, and reuses the rest.
+
+## GitHub Actions
+
+### 1. Add the workflow
+
+```yaml
+# .github/workflows/ci.yml
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout; naming any permission drops the rest
+      checks: write # the PR check github() posts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # --affected needs the history
+      - uses: oven-sh/setup-bun@v2
+      - run: bun add -g @vzn/vx # hands off to the repo's own vx
+      - run: bun install --frozen-lockfile
+      # A lock that no longer matches the configs fails here, before any task.
+      - run: vx lock --check
+      # main runs everything and fills the cache every pull request
+      # reads; a pull request runs only what it changed, and what depends on it.
+      - run: >
+          vx run ci
+          ${{ github.event_name == 'pull_request'
+            && format('--affected=origin/{0}', github.base_ref)
+            || '--all' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # the PR check
+          VX_REAPI_ENDPOINT: ${{ vars.VX_REAPI_ENDPOINT }}
+          VX_CACHE_TOKEN: ${{ secrets.VX_CACHE_TOKEN }} # read-write
+```
+
+A task that declares `exec.sandbox` needs the OS sandbox on the runner:
+add `- run: vx setup github` after the install
+([vx-ci](../../plugins/vx-ci/#the-sandbox-runtime-vx-setup)).
+
+### 2. Declare the plugins
+
+```ts
+// .vx/workspace.ts
+import { defineWorkspace } from '@vzn/vx/config'
+import { github } from '@vzn/vx-ci'
+import { bun } from '@vzn/vx-lockfile'
+import { reapi } from '@vzn/vx-reapi'
+
+const token = process.env.VX_CACHE_TOKEN
+
+export default defineWorkspace({
+  plugins: [
+    // The package edges `^build` follows, from bun.lock.
+    bun(),
+    // On Actions: the job summary, the PR check, and the PR's base for --affected.
+    github(),
+    // The shared cache. With no VX_REAPI_ENDPOINT it declines and vx
+    // caches on this machine alone.
+    reapi({ headers: token ? { authorization: `Bearer ${token}` } : {} }),
+  ],
+})
+```
+
+### 3. Push
+
+`main` runs `--all` and fills the cache; a pull request runs what it
+changed and what depends on that. Both files are
+[`examples/ci`](https://github.com/vznjs/vx/tree/main/examples/ci), and
+vx's own CI runs them on every commit.
+
+`github()` writes this job summary and a PR check (the check needs
+`GITHUB_TOKEN`). Off Actions it declines.
+
+> ## ❌ vx run
+>
+> **5** tasks · **2** executed · **2** cache hits (1 up-to-date, 1 restored, 1 from remote) · **1** failed · 21.4s
+>
+> ### Failures
+>
+> - **@acme/web#build** — exit 2
+>
+> | Task | Status | Duration |
+> | --- | --- | --- |
+> | @acme/web#build | ❌ failed | 3.1s |
+> | @acme/web#test | ✅ ran | 4.2s |
+> | @acme/api#build | ☁️ restored remote | 0ms |
+> | @acme/ui#build | ✔️ up-to-date | 0ms |
+> | @acme/ui#lint | ⏭️ skipped | 0ms |
+>
+> <sub>vx 0.0.21 · `vx run ci --all` · 3/5 passed · 1 up-to-date · 1 restored</sub>
+
+A failure on inputs that passed before is marked flaky:
+
+```
+ ◼︎   4.21s failed  miss     web#test flaky - passed 3× before
+```
+
+### When to run vx lock
+
+Runs read configs from `.vx/projects.lock.json`, not from your files.
+Run `vx lock` and commit the lock after you edit a `vx.config.ts` or
+`.vx/workspace.ts`, a file a config imports, or your dependencies.
+`vx lock --check` fails on any difference, naming the project, so it is
+the workflow's first step.
+
+### Common problems
+
+- **`--affected has no base here … a shallow clone?`** Set `fetch-depth: 0`.
+- **`nothing affected since <ref>` on every push.** `origin/main` on a push to `main` is the commit itself. Use `github.event.before`.
+- **The whole log lands in the job summary.** Don't redirect vx's output there; declare `github()` from `@vzn/vx-ci`, which writes the summary.
+
+---
+
+## GitLab CI
+
+`gitlab()` from `@vzn/vx-ci` gives a merge request its diff base for
+`--affected` and scopes plugin cache entries by branch:
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+import { gitlab } from '@vzn/vx-ci'
+
+export default defineWorkspace({ plugins: [gitlab()] })
+```
+
+`gitlab({ cacheScope: false })` turns the scoping off. It writes no merge
+request comments yet. `vx setup gitlab`, a `script` line before vx runs,
+installs the OS sandbox for tasks that declare `exec.sandbox`
+([vx-ci](../../plugins/vx-ci/#the-sandbox-runtime-vx-setup)).
+
+See [Remote cache](../remote-cache/) to share results between machines.

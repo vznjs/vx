@@ -60,7 +60,7 @@ links each claim to its source.
   and a restore removes what its entry does not hold, so a file from last
   week's build cannot ride along on a hit.
 - **Tasks can prove their reads.** Opt a task into the
-  [sandbox](../../guides/sandboxing/), and a workspace file it did not
+  [sandbox](../../docs/sandboxing/), and a workspace file it did not
   declare is out of its reach. A violation fails the task, and a failed
   task is never cached.
 - **Pull requests keep to their own branch.** `turboCache()` names the

@@ -79,7 +79,7 @@ stale lock before any task runs.
 
 Starters: [`examples/basic`](examples/basic), and
 [`examples/ci`](examples/ci) with a GitHub Actions workflow; CI runs both
-on every commit. The [CI guide](https://vznjs.github.io/vx/guides/ci/)
+on every commit. The [CI guide](https://vznjs.github.io/vx/docs/ci/)
 explains the workflow.
 More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 [Configure](https://vznjs.github.io/vx/docs/workspace/) ·
@@ -110,7 +110,7 @@ What vx can do, not what it is limited to. Declared in `.vx/workspace.ts`; witho
 | [`@vzn/vx-ci`](packages/vx-ci)                             | GitHub Actions job summary and Checks API                                     |
 | [`@vzn/vx-schedule-history`](packages/vx-schedule-history) | Schedule by the critical path learned from past runs                          |
 
-Write your own: [plugin guide](https://vznjs.github.io/vx/guides/plugins/) ·
+Write your own: [plugin guide](https://vznjs.github.io/vx/docs/plugins/) ·
 [architecture](packages/vx/docs/architecture.md).
 
 ## Coming from Turbo or Nx

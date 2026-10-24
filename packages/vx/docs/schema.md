@@ -1396,7 +1396,7 @@ inside it too — enforced, but with no violation report, since the report
 reads the trace after the child exits and a server exits only at
 teardown. **Opt-in per task — omit it and the command runs
 unsandboxed.** Full walkthrough in the
-[sandboxing guide](https://vznjs.github.io/vx/guides/sandboxing/).
+[sandboxing guide](https://vznjs.github.io/vx/docs/sandboxing/).
 
 ```ts
 interface SandboxConfig {

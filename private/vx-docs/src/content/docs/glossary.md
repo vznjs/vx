@@ -140,7 +140,7 @@ yesterday's result, which makes it the worst failure a cache can have.
 **A cache shared between machines**, so CI and every developer reuse each
 other's results. It makes the cost of a stale hit shared too.
 
-- vx: a remote `CacheLayer` from a plugin, such as `@vzn/vx-reapi` or `turboCache()` ([remote caching](../guides/ci/#remote-cache))
+- vx: a remote `CacheLayer` from a plugin, such as `@vzn/vx-reapi` or `turboCache()` ([remote caching](../docs/remote-cache/))
 - Turborepo: Remote Caching ([remote caching](https://turborepo.com/docs/core-concepts/remote-caching))
 - Nx: remote cache ([glossary](https://nx.dev/docs/reference/glossary#remote-cache)), offered as Nx Replay
 - Bazel: remote caching, with a local [disk cache](https://bazel.build/reference/glossary#disk-cache)
@@ -153,7 +153,7 @@ where undeclared files cannot be reached, and reporting what it tried.
 A sandbox is how a runner proves the key is complete, rather than
 trusting it.
 
-- vx: `exec.sandbox`, run locally on Linux and macOS ([sandboxing](../guides/sandboxing/))
+- vx: `exec.sandbox`, run locally on Linux and macOS ([sandboxing](../docs/sandboxing/))
 - Turborepo: —
 - Nx: task sandboxing, an Nx Cloud add-on run on a dedicated compute cluster ([task sandboxing](https://nx.dev/docs/features/ci-features/sandboxing))
 - Bazel: [hermeticity](https://bazel.build/reference/glossary#hermeticity), enforced by [sandboxing](https://bazel.build/reference/glossary#sandboxing)
@@ -164,7 +164,7 @@ trusting it.
 laptop can use a build farm. It needs every input declared, because the
 other machine sees nothing else.
 
-- vx: `exec.remote`, through the `@vzn/vx-reapi` plugin ([remote execution](../guides/ci/#remote-execution))
+- vx: `exec.remote`, through the `@vzn/vx-reapi` plugin ([remote execution](../docs/remote-execution/))
 - Turborepo: —
 - Nx: distributed task execution, which spreads tasks across CI agents ([glossary](https://nx.dev/docs/reference/glossary#distributed-task-execution))
 - Bazel: remote execution, whose protocol (REAPI) the vx plugin speaks
@@ -198,7 +198,7 @@ are where a task runs, where artifacts live, who observes the run, and how
 the graph is shaped. A plugin fills one or more seams. The width of the
 seams decides what can be built on a tool without forking it.
 
-- vx: plugin stages from `config` to `telemetry` ([plugins](../guides/plugins/))
+- vx: plugin stages from `config` to `telemetry` ([plugins](../docs/plugins/))
 - Turborepo: —
 - Nx: a [plugin](https://nx.dev/docs/reference/glossary#plugin), which can infer tasks and supply [executors](https://nx.dev/docs/reference/glossary#executor)
 - Bazel: [rules](https://bazel.build/reference/glossary#rule) written in [Starlark](https://bazel.build/reference/glossary#starlark)

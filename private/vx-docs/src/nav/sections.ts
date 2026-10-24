@@ -62,15 +62,19 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
     {
       label: 'Run',
       items: [
-        { label: 'Sandboxing', link: '/guides/sandboxing/' },
-        { label: 'CI and remote', link: '/guides/ci/' },
+        { label: 'Running tasks', link: '/docs/running-tasks/' },
+        { label: 'Sandboxing', link: '/docs/sandboxing/' },
+        { label: 'CI', link: '/docs/ci/' },
+        { label: 'Remote cache', link: '/docs/remote-cache/' },
+        { label: 'Remote execution', link: '/docs/remote-execution/' },
       ],
     },
     {
       label: 'Extend',
       items: [
-        { label: 'Plugins', link: '/guides/plugins/' },
-        { label: 'AI agents', link: '/guides/agents/' },
+        { label: 'Plugins', link: '/docs/plugins/' },
+        { label: 'Write a plugin', link: '/docs/writing-plugins/' },
+        { label: 'AI agents', link: '/docs/agents/' },
       ],
     },
   ],

@@ -53,14 +53,12 @@ const CLASS_PAGES = {
     'patterns.md',
     'plugin-host.md',
     'plugin.md',
-    // docs/modules/plugins.md; the guide is plugins.mdx.
+    // docs/modules/plugins.md; the site's page is writing-plugins.mdx.
     'plugins.md',
-    // The remote-caching guide merged into ci.md (the short site), which
-    // links plugins.md for the seam rather than naming it.
-    'plugins.mdx',
     'remote-lane.md',
     'scoped-cache.md',
     'upgrading.md',
+    'writing-plugins.mdx',
   ],
   retryLine: ['execute-task.md', 'schema.md'],
   outputFingerprint: [

@@ -76,5 +76,5 @@ The summary is written by a telemetry sink. vx isolates sinks and bounds
 their flush, so a slow or failing GitHub write can never fail or stall
 the run.
 
-Guide: [CI and remote](../../guides/ci/). More at
+Guide: [CI](../../docs/ci/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

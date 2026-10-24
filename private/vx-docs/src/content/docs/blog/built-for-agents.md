@@ -109,7 +109,7 @@ $ cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
 ```
 
 `bunx skills add vznjs/vx` installs the same skill. The
-[agents guide](../../guides/agents/) and
+[agents guide](../../docs/agents/) and
 [machine-readable output](../../cli/#machine-readable-output) have the
 details. Outputs above: a one-project workspace, vx at `dbe4033`,
 2026-10-23. More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
