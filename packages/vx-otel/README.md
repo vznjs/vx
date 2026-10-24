@@ -70,7 +70,7 @@ handed each request's URL, body, headers, abort signal and `OtlpTls`). The
 OTLP builders are internal (the wire they send is the contract,
 `tests/contract/otlp.txt`).
 
-Options override env:
+Options override env, the `endpoint` option included over a signal's own variable:
 
 ```ts
 otel({
