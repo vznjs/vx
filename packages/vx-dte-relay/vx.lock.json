@@ -149,6 +149,30 @@
           "files": []
         }
       }
+    },
+    "test.live": {
+      "description": "docker build, then one run through the container",
+      "exec": {
+        "command": "sh tests/docker/smoke.sh"
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "Dockerfile",
+          "index.ts",
+          "package.json",
+          "PROTOCOL.md",
+          "src/**",
+          "tests/docker/**"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
     }
   }
 }

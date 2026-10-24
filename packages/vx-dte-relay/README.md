@@ -88,6 +88,8 @@ docker run -p 8080:8080 vx-dte-relay --allow https://gitlab.com:group/app:.gitla
 - `--no-auth` admits every request. Use it only to try `@vzn/vx-dte`
   locally: it listens on loopback only.
 
+CI builds this image and carries one run through it (`test.live`).
+
 Runs live in memory. Restarting the relay ends the runs it was carrying.
 Participants hold websockets here too, so a message reaches its receiver
 the moment it is sent.
