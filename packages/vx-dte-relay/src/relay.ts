@@ -370,12 +370,13 @@ export function createRelay(opts: RelayOptions): Relay {
     if (Math.abs(now - Number(ts)) > PROOF_SKEW_MS || nonces.has(nonce)) {
       throw new HttpError(403, 'not signed by the run’s orchestrator key')
     }
+    // Taken before the await, so a replay sent alongside finds it taken.
+    nonces.set(nonce, now)
     const key = cert === run.cert ? (run.certKey ??= importKey(cert)) : importKey(cert)
     const signed = proofText(req.method, url.pathname + url.search, Number(ts), nonce, body)
     if (!(await verifyProof(await key, sig, signed))) {
       throw new HttpError(403, 'not signed by the run’s orchestrator key')
     }
-    nonces.set(nonce, now)
   }
 
   /** `token` 'socket': the frame came down a socket its upgrade already checked. */
