@@ -15,7 +15,10 @@ export interface RelayOptions {
    * the request too, for a relay whose audience is the URL it is reached at.
    */
   verify?: ((token: string, req: Request) => Promise<VerifiedToken>) | undefined
-  /** How often a participant must be heard from; lost after three. */
+  /**
+   * How often its participants hear from each other, said in each join's
+   * answer: a peer quiet one is asked, and lost after two (vx-dte).
+   */
   heartbeatMs?: number
   /**
    * Keeps runs and participants across a restart, never a message: a
@@ -27,8 +30,6 @@ export interface RelayOptions {
    * websocket and `attach`es it. A participant speaks only over it.
    */
   upgrade: (key: string, id: string, req: Request) => Response
-  /** `false`: the host calls `sweep()` itself (a timer keeps a Durable Object from hibernating). */
-  timer?: boolean
 }
 
 /** A Durable Object's synchronous `storage.kv`. */
@@ -63,24 +64,17 @@ export function closeSocket(socket: RelaySocket, code?: number, reason?: string)
 
 export interface Relay {
   fetch(req: Request): Promise<Response>
-  /**
-   * Pushes the participant's messages down `socket`; false if it is gone.
-   * A socket its host restored passes when it was last heard (`heardAt`,
-   * its last ping, 0 for none): restoring it is no sign of life.
-   */
-  attach(key: string, id: string, socket: RelaySocket, heardAt?: number): boolean
+  /** Pushes the participant's messages down `socket`; false if it is gone. */
+  attach(key: string, id: string, socket: RelaySocket): boolean
+  /** The participant's socket closed: it is gone, and its peers are told. */
   detach(key: string, id: string, socket: RelaySocket): void
   /**
    * One frame a participant sent down `socket`, which becomes its socket;
    * returns the answer frame.
    */
   frame(key: string, id: string, text: string, socket?: RelaySocket): string
-  /** The participant was heard from at `at` (a websocket ping the host answered). */
-  seen(key: string, id: string, at: number): void
-  /** Loses the silent and forgets old runs; returns when to sweep next, if any run is left. */
-  sweep(): number | undefined
-  /** Stops the sweep. */
-  close(): void
+  /** Whether any run is open: a host with none may forget everything. */
+  open(): boolean
 }
 
 interface Message {
@@ -93,9 +87,6 @@ interface Participant {
   role: 'orchestrator' | 'worker'
   /** A worker's, until the orchestrator is told it joined. */
   info: unknown
-  seen: number
-  /** The `seen` its host's storage holds. */
-  saved?: number
   /** Requests it may still make now, and when that was counted (a token bucket). */
   tokens: number
   filled: number
@@ -126,12 +117,6 @@ interface Run {
 /** A random (v4) UUID: no one can guess a run id to open it first or join it. */
 const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_BODY = 1 << 20
-/**
- * A participant silent this many heartbeats is lost, on a socket or not:
- * no reply for 10 s and it is dead (owner, 2026-10-23). A client pings or
- * frames each heartbeat, so only a dead one goes quiet that long.
- */
-const LOST_BEATS = 2
 /** How far a proof's time may be from the relay's: a CI runner's clock drifts. */
 const PROOF_SKEW_MS = 2 * 60_000
 
@@ -174,12 +159,8 @@ export function createRelay(opts: RelayOptions): Relay {
       pin: run.pin ?? null,
       cert: run.cert ?? null,
     })
-  // `seen` too: restored as heard just now, a gone participant kept its
-  // object waking every sweep, forever (2026-10-22).
-  const saveParticipant = (run: Run, p: Participant): void => {
-    store?.put(pAt(run, p.id), { role: p.role, info: p.info, seen: p.seen })
-    p.saved = p.seen
-  }
+  const saveParticipant = (run: Run, p: Participant): void =>
+    store?.put(pAt(run, p.id), { role: p.role, info: p.info })
 
   /**
    * Down the participant's socket, or nowhere: a participant's message the
@@ -316,34 +297,6 @@ export function createRelay(opts: RelayOptions): Relay {
     store?.delete(runAt(run.key))
   }
 
-  const lostAfter = LOST_BEATS * heartbeatMs
-  const sweep = (): number | undefined => {
-    const now = Date.now()
-    let next: number | undefined
-    const at = (t: number): void => {
-      next = Math.min(next ?? t, t)
-    }
-    for (const run of [...runs.values()]) {
-      for (const p of [...run.byId.values()]) {
-        if (now - p.seen > lostAfter) drop(run, p)
-      }
-      if (!runs.has(run.key)) continue
-      if (run.orchestrator === undefined) close(run)
-      else {
-        for (const p of run.byId.values()) {
-          // One on a socket is heard anew when its host restores the socket;
-          // a write per participant per sweep spent a free host's 100 000
-          // rows a day in about 40 CI runs (2026-10-23).
-          if (p.socket === undefined && p.saved !== p.seen) saveParticipant(run, p)
-          at(p.seen + lostAfter + 1)
-        }
-      }
-    }
-    return next
-  }
-  const timer = opts.timer === false ? undefined : setInterval(sweep, heartbeatMs)
-  ;(timer as { unref?: () => void } | undefined)?.unref?.()
-
   // A participant whose queued messages the restart lost: as if it went silent.
   if (store !== undefined) for (const [run, p] of restore(store, runs)) drop(run, p)
 
@@ -394,7 +347,6 @@ export function createRelay(opts: RelayOptions): Relay {
       throw new HttpError(429, 'rate limited', wait)
     }
     p.tokens -= 1
-    p.seen = Date.now()
     return p
   }
 
@@ -415,7 +367,6 @@ export function createRelay(opts: RelayOptions): Relay {
       role,
       // No one reads the orchestrator's.
       info: role === 'worker' ? (body.info ?? null) : null,
-      seen: Date.now(),
       tokens: RATE_BURST,
       filled: Date.now(),
       queue: [],
@@ -557,7 +508,7 @@ export function createRelay(opts: RelayOptions): Relay {
         throw err
       }
     },
-    attach(key, id, socket, heardAt) {
+    attach(key, id, socket) {
       const run = runs.get(key)
       const p = run?.closed === false ? run.byId.get(id) : undefined
       if (run === undefined || p === undefined) return false
@@ -573,9 +524,6 @@ export function createRelay(opts: RelayOptions): Relay {
         } catch {}
       }
       plug(run, p, socket)
-      // A dead orchestrator's socket, restored at each wake, kept it alive
-      // and its run's workers waited out their job's timeout (2026-10-23).
-      p.seen = heardAt === undefined ? Date.now() : Math.max(p.seen, heardAt)
       return true
     },
     detach(key, id, socket) {
@@ -583,11 +531,11 @@ export function createRelay(opts: RelayOptions): Relay {
       const p = run?.byId.get(id)
       if (p === undefined || p.socket !== socket) return
       p.socket = undefined
-      // Its workers go with it at once (owner, 2026-10-23: "if the
-      // orchestrator is disconnected we close all agents").
-      if (p.role === 'orchestrator') return drop(run!, p)
-      // Its silence counts from now, though its host evicts this before the next sweep.
-      saveParticipant(run!, p)
+      // Liveness is the connection (owner, 2026-10-23): its socket closed,
+      // it is gone, and the orchestrator's workers go with it at once. A
+      // peer quiet on a socket that never closed (no TCP end, no close) is
+      // its peers' to lose (vx-dte probes it): the relay keeps no timer.
+      drop(run!, p)
     },
     frame(key, id, text, socket) {
       let n: unknown = null
@@ -644,14 +592,7 @@ export function createRelay(opts: RelayOptions): Relay {
         return JSON.stringify({ n, status: err.status, ...errorBody(err) })
       }
     },
-    seen(key, id, at) {
-      const p = runs.get(key)?.byId.get(id)
-      if (p !== undefined && at > p.seen) p.seen = at
-    },
-    sweep,
-    close() {
-      clearInterval(timer)
-    },
+    open: () => runs.size > 0,
   }
 }
 
@@ -663,8 +604,8 @@ const joined = (a: Participant): Message => {
 }
 
 /**
- * Runs as `store` kept them; each participant counts as heard from now.
- * Returns the participants whose queued messages are gone.
+ * Runs as `store` kept them. Returns the participants whose queued
+ * messages are gone.
  */
 function restore(store: RelayStore, runs: Map<string, Run>): [Run, Participant][] {
   const now = Date.now()
@@ -692,13 +633,11 @@ function restore(store: RelayStore, runs: Map<string, Run>): [Run, Participant][
     const [, key, id] = parts(k) as [string, string, string]
     const run = runs.get(key)
     if (run === undefined) continue
-    const { role, info, seen } = v as Pick<Participant, 'role' | 'info'> & { seen?: number }
+    const { role, info } = v as Pick<Participant, 'role' | 'info'>
     const p: Participant = {
       id,
       role,
       info,
-      seen: seen ?? now,
-      saved: seen ?? now,
       tokens: RATE_BURST,
       filled: now,
       queue: [],

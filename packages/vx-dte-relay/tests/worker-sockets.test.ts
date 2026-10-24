@@ -98,7 +98,7 @@ async function open(
   const frames: unknown[] = []
   let wake: (() => void) | undefined
   ws.onmessage = (e) => {
-    frames.push(e.data === 'pong' ? 'pong' : JSON.parse(String(e.data)))
+    frames.push(JSON.parse(String(e.data)))
     wake?.()
   }
   await new Promise((resolve, reject) => {
@@ -127,11 +127,17 @@ it('offers sockets, pushes each message down one and takes sends from it', async
     { messages: [{ from: 'orchestrator', body: 'build' }] },
   ])
   as.ws.send(JSON.stringify({ n: 1, sends: [{ to: 'nobody' }] }))
-  as.ws.send('ping')
-  expect([await as.next(), await as.next()]).toEqual([
-    { n: 1, results: [{ status: 404, error: 'unknown to' }] },
-    'pong',
-  ])
+  expect(await as.next()).toEqual({ n: 1, results: [{ status: 404, error: 'unknown to' }] })
+  // Liveness is the connection: a worker's socket closing loses it at once.
+  const b = await join('worker')
+  const bs = await open(b.id)
+  expect(await os.next()).toEqual({
+    messages: [{ from: 'relay', body: { type: 'joined', id: b.id, info: null } }],
+  })
+  bs.ws.close()
+  expect(await os.next()).toEqual({
+    messages: [{ from: 'relay', body: { type: 'lost', id: b.id } }],
+  })
   os.ws.send(JSON.stringify({ n: 2, leave: true }))
   expect(await as.next()).toEqual({ messages: [{ from: 'relay', body: { type: 'closed' } }] })
 })

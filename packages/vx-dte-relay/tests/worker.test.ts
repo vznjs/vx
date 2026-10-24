@@ -20,14 +20,12 @@ const R = '00000000-0000-4000-8000-000000000006'
 
 // Only the runtime has these: the tests make no websocket, and the cache holds nothing.
 Object.assign(globalThis, {
-  WebSocketRequestResponsePair: class {},
   caches: { default: { match: async () => undefined, put: async () => {} } },
 })
 
 /** An object's state with no websocket, its storage in memory. */
 function state(): DurableObjectState {
   const kv = new Map<string, unknown>()
-  let alarm: number | null = null
   return {
     storage: {
       kv: {
@@ -35,22 +33,12 @@ function state(): DurableObjectState {
         delete: (k) => kv.delete(k),
         list: ({ prefix }) => [...kv].filter(([k]) => k.startsWith(prefix)),
       },
-      getAlarm: async () => alarm,
-      setAlarm: async (at) => {
-        alarm = at
-      },
-      deleteAlarm: async () => {
-        alarm = null
-      },
       deleteAll: async () => {
         kv.clear()
-        alarm = null
       },
     },
     acceptWebSocket: () => {},
     getWebSockets: () => [],
-    setWebSocketAutoResponse: () => {},
-    getWebSocketAutoResponseTimestamp: () => null,
   }
 }
 

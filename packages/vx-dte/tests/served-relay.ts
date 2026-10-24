@@ -42,10 +42,7 @@ export function servedRelay(
           closeSocket(ws.data.socket, GONE, 'gone')
       },
       message(ws, m) {
-        if (m === 'ping') {
-          relay.seen(ws.data.key, ws.data.id, Date.now())
-          ws.send('pong')
-        } else ws.send(relay.frame(ws.data.key, ws.data.id, tap?.(String(m)) ?? String(m)))
+        ws.send(relay.frame(ws.data.key, ws.data.id, tap?.(String(m)) ?? String(m)))
       },
       close(ws) {
         open.delete(ws)
@@ -59,12 +56,10 @@ export function servedRelay(
     },
     url: `http://127.0.0.1:${server.port}`,
     restart() {
-      relay.close()
       relay = make()
       for (const ws of open) ws.close()
     },
     async stop() {
-      relay.close()
       await server!.stop(true)
     },
   }

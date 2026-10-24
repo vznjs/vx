@@ -354,11 +354,17 @@ stops, instead of waiting for the job's timeout.
   join can fail on the network; a fourth starts none. When none is online
   or starting and this machine has no share, the remaining tasks fail
   with `no worker could start`.
-- A socket the relay stopped pushing to, though its pings are answered,
-  is found within 15 s on the relay's default: quiet a heartbeat, the
-  client's beat is a frame the relay must answer within two (10 s at
-  most), which also makes it push down that socket again. A participant
-  the relay hears nothing from for two heartbeats is lost.
+- Liveness is the connection: a socket's close loses its participant at
+  once, and the relay says so. A peer quiet on a socket that never
+  closed is lost within two heartbeats (10 s on the default): the
+  orchestrator sends each worker something at least each heartbeat and
+  a half, an empty numbered probe when it has nothing else, which the
+  worker acks at once; either side hearing nothing from the other for
+  1.9 heartbeats loses it, a worker by ending. A quiet pair trades one
+  probe and its ack each heartbeat and a half, and nobody pings. An orchestrator
+  with no worker yet asks the relay an empty frame instead; a frame the
+  relay leaves unanswered a heartbeat closes the socket, which is dialed
+  again.
 - Each send is numbered for its receiver and held until the receiver
   acknowledges it, so one a socket or the relay dropped goes again after
   a heartbeat, or at once on a new socket; the receiver takes each once,
@@ -387,9 +393,9 @@ An idle worker the rest of the run cannot keep busy leaves (`left`): one
 beyond the peak of the cores the remaining tasks keep busy, so a lull
 between two wide parts keeps it. One a remaining task needs for its size
 stays. A lost worker's begun tasks run again on
-another, and the run starts one in its place. A worker is lost when the
-relay stops hearing it, or at once when its adapter sees its process or
-job end. Workers start at the first
+another, and the run starts one in its place. A worker is lost when its
+socket closes, when it stops answering the orchestrator's probes, or at
+once when its adapter sees its process or job end. Workers start at the first
 task the cache does not answer, so a warm run starts none. Once one has
 joined, its warm-up is what the next of its size takes at the least: work
 that ends sooner starts no worker while others are online or starting, and

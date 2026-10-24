@@ -1,7 +1,7 @@
 // The relay on Cloudflare Workers: each run is one Durable Object, so one
-// run's mailboxes live in one place and its held polls answer there.
-// Participants hold websockets the object hibernates between messages: its
-// state is in its storage, and an alarm, not a timer, finds the silent.
+// run's sockets meet in one place. Participants hold websockets the object
+// hibernates between messages: its state is in its storage. It keeps no
+// alarm: a socket's close loses its participant.
 // `wrangler.jsonc` deploys it; ALLOW is a var in it.
 
 import { claimedRun, createVerifier, parseAllow } from './oidc.js'
@@ -29,15 +29,10 @@ interface Attachment {
 export interface DurableObjectState {
   readonly storage: {
     readonly kv: RelayStore
-    getAlarm(): Promise<number | null>
-    setAlarm(at: number): Promise<void>
-    deleteAlarm(): Promise<void>
     deleteAll(): Promise<void>
   }
   acceptWebSocket(ws: Socket): void
   getWebSockets(): Socket[]
-  setWebSocketAutoResponse(pair: unknown): void
-  getWebSocketAutoResponseTimestamp(ws: Socket): Date | null
 }
 declare const caches: {
   default: {
@@ -46,7 +41,6 @@ declare const caches: {
   }
 }
 declare const WebSocketPair: new () => { 0: Socket; 1: Socket }
-declare const WebSocketRequestResponsePair: new (request: string, response: string) => unknown
 
 export interface Env {
   readonly RELAY: DurableObjectNamespace
@@ -125,8 +119,6 @@ export default {
 /** One run's relay. */
 export class RelayRun {
   private readonly relay: Relay
-  /** The alarm set; `undefined` until read from storage. */
-  private alarmAt: number | null | undefined
 
   constructor(
     private readonly state: DurableObjectState,
@@ -153,7 +145,6 @@ export class RelayRun {
     this.relay = createRelay({
       verify: (token, req) => verifierOf(env.AUDIENCE || new URL(req.url).origin)(token),
       store: state.storage.kv,
-      timer: false,
       upgrade: (key, id) => {
         const pair = new WebSocketPair()
         state.acceptWebSocket(pair[1])
@@ -162,12 +153,9 @@ export class RelayRun {
         return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit)
       },
     })
-    // The runtime answers a participant's heartbeat without waking the object.
-    state.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'))
     for (const ws of state.getWebSockets()) {
       const { key, id } = ws.deserializeAttachment()
-      const heard = state.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? 0
-      if (!this.relay.attach(key, id, ws, heard)) closeSocket(ws, GONE, 'gone')
+      if (!this.relay.attach(key, id, ws)) closeSocket(ws, GONE, 'gone')
     }
   }
 
@@ -175,14 +163,7 @@ export class RelayRun {
     try {
       return await this.relay.fetch(req)
     } finally {
-      this.alarmAt ??= await this.state.storage.getAlarm()
-      // A run its orchestrator signed off goes now, not at the next alarm.
-      this.heard()
-      if (this.relay.sweep() === undefined) await this.end()
-      else if (this.alarmAt === null) {
-        this.alarmAt = Date.now()
-        await this.state.storage.setAlarm(this.alarmAt)
-      }
+      await this.end()
     }
   }
 
@@ -194,38 +175,21 @@ export class RelayRun {
     try {
       ws.send(answer)
     } catch {}
+    void this.end()
   }
 
   webSocketClose(ws: Socket): void {
     const { key, id } = ws.deserializeAttachment()
     this.relay.detach(key, id, ws)
+    void this.end()
   }
 
   webSocketError(ws: Socket): void {
     this.webSocketClose(ws)
   }
 
-  async alarm(): Promise<void> {
-    this.heard()
-    const next = this.relay.sweep()
-    if (next === undefined) return this.end()
-    this.alarmAt = next
-    await this.state.storage.setAlarm(next)
-  }
-
-  /** Each socket's last ping, which the runtime answered without waking it. */
-  private heard(): void {
-    for (const ws of this.state.getWebSockets()) {
-      const at = this.state.getWebSocketAutoResponseTimestamp(ws)
-      const { key, id } = ws.deserializeAttachment()
-      if (at !== null) this.relay.seen(key, id, at.getTime())
-    }
-  }
-
   /** No run is left: the object keeps nothing, so its host can drop it. */
   private async end(): Promise<void> {
-    if (this.alarmAt !== null) await this.state.storage.deleteAlarm()
-    this.alarmAt = null
-    await this.state.storage.deleteAll()
+    if (!this.relay.open()) await this.state.storage.deleteAll()
   }
 }
