@@ -2628,7 +2628,8 @@ The component-level rows come from the `entry_inputs` input
 fingerprints persisted with each cache entry; when either side's entry
 is gone (pruned, or the run failed and never saved one) the verb still
 names the hash change and says the component diff is unavailable. When
-only the previous run failed, the diff is taken against the last run
+only the previous run failed, or passed beside a failed task
+(`--continue`, never saved), the diff is taken against the last run
 that saved an entry instead, and the detail line names that run. A
 task with `inputs` and no `cache` block derives a key too — it is what
 dependents fold — but saves no entry, so for it the verb can only report
