@@ -161,7 +161,7 @@ Each streaming record carries `v` and `kind`, and:
 
 | `kind`        | Fields                                                             |
 | ------------- | ------------------------------------------------------------------ |
-| `run.start`   | `run`, `total`, `ts`, `startedAt`                                  |
+| `run.start`   | `run`, `total`, `ts`, `startedAt`, `originAt` (the stages' start)  |
 | `task.start`  | `runId`, `taskId`, `project`, `task`, `command`, `dependsOn`, `ts` |
 | `task.log`    | `runId`, `taskId`, `stream`, `chunk`, `ts` (opt-in)                |
 | `task.sample` | `runId`, `taskId`, `ts`, `cpuMs`, `rssBytes` (opt-in)              |

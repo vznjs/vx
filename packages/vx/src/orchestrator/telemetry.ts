@@ -27,7 +27,7 @@ import {
   type TaskOutcome,
   type TaskStatus,
 } from '../graph/index.js'
-import { maskedCommand, settleWithin, teardownTimeoutMs } from '../util/index.js'
+import { maskedCommand, settleWithin, stageTimes, teardownTimeoutMs } from '../util/index.js'
 import type { RunEvent, RunEventSubscriber } from '../report/index.js'
 
 /** Bumped when the record shape changes. Readers MUST check `v`. */
@@ -194,6 +194,10 @@ export type TelemetryRecord =
       /** The run's canonical start (epoch ms) — equals the summary's
        *  `startedAt`; a sink derives per-task timing from it during the run. */
       startedAt: number
+      /** Where the run's stage table begins (epoch ms), the first stage's
+       *  start: at or before `startedAt`. A sink that draws the stages
+       *  starts the run here. Additive. */
+      originAt?: number
     }
   | {
       v: number
@@ -612,6 +616,7 @@ export function createTelemetrySource(args: {
           total: event.info.total,
           ts,
           startedAt: event.info.startedAtMs ?? ts,
+          ...originOf(),
         })
         return
       case 'task:start': {
@@ -787,4 +792,10 @@ export function taskTelemetryOf(o: TaskOutcome): TaskTelemetry {
   if (o.wallclockStartNs !== undefined) t.wallclockStartNs = o.wallclockStartNs.toString()
   if (o.wallclockEndNs !== undefined) t.wallclockEndNs = o.wallclockEndNs.toString()
   return t
+}
+
+/** The stage table's start, when a stage was marked. */
+function originOf(): { originAt?: number } {
+  const first = stageTimes()[0]
+  return first === undefined ? {} : { originAt: first.startedAt }
 }

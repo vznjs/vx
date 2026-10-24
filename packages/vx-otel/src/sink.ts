@@ -350,10 +350,12 @@ export class OtelSink implements TelemetrySink {
         this.rootSpanId = genId(8)
         this.run = record.run
         this.runId = record.run.runId
-        // The run's OWN canonical start, not when this record was projected —
-        // it is what the summary reports and what a receiver stores.
-        this.rootStartNano = nanos(record.startedAt)
-        this.runStartedAt = record.startedAt
+        // Where the run's stages begin, else its canonical start: never when
+        // this record was projected. The root span covers its stages from
+        // here, and every task carries it, so a receiver derives one key
+        // whichever span it reads.
+        this.runStartedAt = record.originAt ?? record.startedAt
+        this.rootStartNano = nanos(this.runStartedAt)
         this.resource = { ...runResource(record.run), ...this.cfg.resource }
         this.liveEvent({
           name: 'vx.run.start',
@@ -581,13 +583,19 @@ export class OtelSink implements TelemetrySink {
     }
     // Finalize the root span now that the run is over (run.end set the end).
     if (this.run !== undefined && this.traceId) {
-      // Prefer the summary's own start/end: they are the run's canonical
-      // timing, and a receiver rebuilding the invocation header must agree
-      // with the native ingest path to the millisecond.
-      const start = this.summary !== undefined ? nanos(this.summary.startedAt) : this.rootStartNano
-      const end =
+      // The root covers its stages: they start at the run's origin, before
+      // the run lock and the summary's `startedAt`, and the last ends after
+      // its `endedAt`. Drawn from those two, each stage sat outside its
+      // parent. The attributes name the same window.
+      const marked = this.summary?.stages ?? []
+      const startMs = Math.min(this.runStartedAt, this.summary?.startedAt ?? Infinity)
+      const endMs =
         this.summary !== undefined
-          ? nanos(this.summary.endedAt)
+          ? Math.max(this.summary.endedAt, Math.ceil(marked.at(-1)?.endedAt ?? 0))
+          : undefined
+      const end =
+        endMs !== undefined
+          ? nanos(endMs)
           : this.rootEndNano !== '0'
             ? this.rootEndNano
             : this.rootStartNano
@@ -596,12 +604,17 @@ export class OtelSink implements TelemetrySink {
         spanId: this.rootSpanId,
         name: 'vx.run',
         kind: SPAN_KIND_INTERNAL,
-        startTimeUnixNano: start,
+        startTimeUnixNano: nanos(startMs),
         endTimeUnixNano: end,
-        attributes: runSpanAttributes(this.run, this.summary),
+        attributes: runSpanAttributes(
+          this.run,
+          this.summary === undefined
+            ? undefined
+            : { ...this.summary, startedAt: startMs, endedAt: endMs! },
+        ),
         status: { code: runStatusCode(this.summary) },
       })
-      const stages = (this.summary?.stages ?? []).map((stage) =>
+      const stages = marked.map((stage) =>
         stageSpan(this.traceId, this.rootSpanId, stage, genId(8)),
       )
       this.spans.splice(1, 0, ...stages)
