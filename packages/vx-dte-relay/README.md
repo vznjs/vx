@@ -92,6 +92,13 @@ Runs live in memory. Restarting the relay ends the runs it was carrying.
 Participants hold websockets here too, so a message reaches its receiver
 the moment it is sent.
 
+Each participant is one socket and one file descriptor. Bun raises the
+open-file limit to the container's hard limit (Docker's is 524288 or
+more), so it never needs a `--ulimit`. Measured on 4 cores (2026-10-24):
+10,000 sockets over 100 runs take 41 MB over an idle relay (about 4 KB
+each) and 6% of a core idle; with each worker sending one message a
+second (10,000 a second) 43% of a core, every message delivered.
+
 ## API
 
 The same relay as a `fetch` handler, to mount in a server of your own
