@@ -6,11 +6,20 @@ authors:
 tags:
   - config
   - nx
-excerpt: 'run.rules.dependencies tags the layers of a monorepo and says which may reach which. vx lock refuses a dependency that breaks a rule and names every broken edge. Runs never check it, so they pay nothing. nx() carries most Nx module-boundary constraints over.'
+excerpt: 'Tag your projects by layer and say which may depend on which. vx lock refuses a dependency that breaks a rule, and runs pay nothing.'
 ---
 
-`packages/c` is a UI package. It depends on `packages/a`, a utility
-the workspace says UI may not reach:
+Tag your projects by layer and say which layers may depend on which.
+`vx lock` refuses a dependency that breaks a rule. Here UI may not
+depend on a utility, and `packages/c` (UI) depends on `packages/a`:
+
+```mermaid
+flowchart LR
+  APP["tag type:app"] -->|allowed| FEAT["tag type:feature"]
+  APP -->|allowed| UI["tag type:ui"]
+  UI -.-x|denied| FEAT
+  UI -.-x|denied| UTIL["tag type:util"]
+```
 
 ```ts
 // .vx/workspace.ts
@@ -38,8 +47,9 @@ $ echo $?
 ```
 
 The edge here is a task edge (`c#build` depends on `a#build`), not a
-`package.json` dependency. Both count. Demo workspace, vx at
-`69617eb`, 2026-10-23.
+`package.json` dependency. Both count.
+
+<small>Demo workspace · vx 69617eb · 2026-10-23</small>
 
 ## Tags and rules
 
@@ -74,18 +84,14 @@ export default defineWorkspace({
 })
 ```
 
-A dependency must match one of `allow`, when it is given, and none of
-`deny`. Every rule that selects a project applies, so a deny wins over
-any allow. A project no rule selects is free.
+A dependency must match one of `allow` (if given) and none of `deny`.
+A deny beats any allow. A project no rule selects is free.
 
-## vx lock holds them
+## vx lock checks them, runs don't
 
-The rules are checked against each project's direct workspace
-dependencies: its `package.json` and its cross-project `dependsOn`.
-`vx lock` refuses a graph that breaks one, names every broken edge, and
-writes nothing, as above.
-
-Allow the edge, or drop it, and the lock is written:
+`vx lock` checks each project's direct dependencies: `package.json` and
+cross-project `dependsOn`. It names every broken edge and writes
+nothing. Fix the edge and the lock is written:
 
 ```sh frame="terminal"
 $ vx lock
@@ -95,17 +101,16 @@ $ vx lock --check
 ✓ vx lock --check  up to date (6 projects)
 ```
 
-`vx lock --check` in CI fails the same way, so a pull request that adds
-a forbidden dependency goes red. Runs never check these rules: under CI
-they load configs from the lock, which already passed them
-([Lock once, run frozen](../lock-and-frozen/)).
+`vx lock --check` in CI fails the same way, so a pull request with a
+forbidden dependency goes red. Runs read the lock, which already passed
+the rules, so they pay nothing ([vx lock](../lock-and-frozen/)).
 
 ## From Nx
 
 `nx()` from `@vzn/vx-migrate` reads the `depConstraints` of
-`@nx/enforce-module-boundaries` in the root ESLint config and fills
-`run.rules.dependencies` when the workspace sets none. It reads the file
-and never runs it, so ESLint's plugins do not load on a vx run.
+`@nx/enforce-module-boundaries` from your ESLint config and fills
+`run.rules.dependencies`. It reads the file without running it, so
+ESLint never loads on a vx run.
 
 ```js
 // eslint.config.mjs (Nx)
@@ -124,11 +129,10 @@ dependencies: [
 ]
 ```
 
-One difference: Nx's `@nx/enforce-module-boundaries`
+One difference: Nx's
 [lint rule](https://github.com/nrwl/nx/blob/master/packages/eslint-plugin/src/rules/enforce-module-boundaries.ts)
-checks source imports, while vx checks the dependencies a project
-declares. `allSourceTags`, `/regex/` tags and constraints that only ban external
-imports are left out; the
+checks source imports. vx checks declared dependencies. `allSourceTags`,
+`/regex/` tags and external-import bans are left out. The
 [vx-migrate README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#module-boundaries)
 lists them. The schema is in the
 [configuration reference](../../schema/). More at

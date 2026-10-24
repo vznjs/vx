@@ -1,15 +1,16 @@
 ---
-title: 'Moving to vx from Nx: keep the graph, drop the platform'
+title: 'From Nx to vx: keep the graph, drop the daemon'
 date: 2026-09-10T23:31:00Z
 authors:
   - vzn
 tags:
   - migration
   - nx
-excerpt: "Moving an Nx repo to vx: `vx init` writes native config from the resolved project graph Nx itself uses, so plugin-inferred targets come along, and an executor target migrates as an `nx-exec` line for you to rewrite as its command."
+excerpt: "One command writes native vx config from the project graph your installed Nx resolves, plugin-inferred targets included."
 ---
 
-Two Nx projects with `nx:run-commands` targets, one command:
+One command writes native vx config from the graph your installed Nx
+resolves. Targets that Nx plugins infer come along.
 
 ```sh frame="terminal"
 $ bunx @vzn/vx-migrate
@@ -31,9 +32,17 @@ $ rm -rf apps/web/dist && vx run build --all
   cache     local 1✓ 1↓
 ```
 
-It read the graph from the installed Nx (24.0.1), not from `nx.json`
-alone. `targetDefaults` came along as each task's `dependsOn`, inputs
-and outputs:
+<small>Two Nx projects, Nx 24.0.1 · vx-migrate `69617eb` · 2026-10-23</small>
+
+## It reads the graph, not nx.json
+
+```mermaid
+flowchart LR
+  N[nx.json + Nx plugins] --> G[nx graph: resolved targets]
+  G --> M[bunx @vzn/vx-migrate]
+  M --> C[vx.config.ts per project]
+  M --> W[.vx/workspace.ts]
+```
 
 ```ts title="apps/web/vx.config.ts"
 import type { ProjectConfig } from '@vzn/vx/config'
@@ -58,39 +67,10 @@ export default {
 } satisfies ProjectConfig
 ```
 
-vx-migrate at `69617eb`, 2026-10-23.
+`targetDefaults` and `namedInputs` are already applied in the graph, so
+each task gets its own values. In vx a shared list is an import.
 
-## What you keep, what you drop
-
-| Keep                          | Drop                              |
-| ----------------------------- | --------------------------------- |
-| the task graph                | the daemon                        |
-| caching                       | executor plugins (over time)      |
-| `affected`                    | generators                        |
-
-If you use Nx generators to scaffold code, vx doesn't replace them.
-
-`bunx @vzn/vx init` beside `nx.json` hands the repo to
-`@vzn/vx-migrate`, as above. An `nx:run-commands` target becomes its
-shell line. Executor targets keep running as executors at first.
-Each becomes an `nx-exec` line that runs the executor in its own Node
-process through Nx's public
-`runExecutor`, with the executor and its options on the command line,
-so vx's key sees them and `vx show` prints what runs.
-
-## Read the graph Nx actually uses
-
-Nx's real configuration is not `nx.json`; it is the resolved project
-graph, after every plugin has inferred its targets. `vx init` reads
-that: it asks your installed `nx` for the graph (`nx graph`) rather
-than guessing at plugin-inferred targets from `nx.json`, so those
-targets come along. The files it writes freeze that snapshot as static
-config: review them and fill the TODOs.
-
-To check the mapping before any config exists, `bunx @vzn/vx init --keep`
-writes only a `.vx/workspace.ts` that runs the graph through `nx()` from
-`@vzn/vx-migrate`, installs what it imports, and its `next:` line builds
-once:
+To check first, `bunx @vzn/vx init --keep` writes only this:
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
@@ -107,24 +87,16 @@ export default {
 } satisfies WorkspaceConfig
 ```
 
-It is a check, not a way to keep Nx's config: vx's benchmarks measure
-only native config. `bunx @vzn/vx-migrate --dry` then previews the
-files, and `bunx @vzn/vx-migrate` writes them and drops `nx()`.
-
-## The one real shift: executors become commands
-
-An Nx target runs through an executor, a plugin that wraps a tool
-behind a JSON options object:
+## Executors become commands, at your pace
 
 ```jsonc
 { "build": { "executor": "@nx/js:tsc", "options": { "main": "src/index.ts", "tsConfig": "tsconfig.lib.json" } } }
 ```
 
-vx has no executors. A task is a shell command. When you migrate, an
-executor target is written as its `nx-exec` line, which still runs the
-executor through Nx; the migrator translates none of them. Rewriting
-each as the command the executor was wrapping is yours, and it is the
-step that lets you remove Nx:
+Each becomes an `nx-exec` line that runs the executor through Nx's
+public `runExecutor`, so nothing breaks on day one. An executor target
+is written as its `nx-exec` line, and you rewrite it as the real
+command when you want Nx gone:
 
 ```ts
 build: {
@@ -133,15 +105,11 @@ build: {
 }
 ```
 
-More explicit, more portable, and one less layer between you and the
-tool's own documentation. `nx:run-commands` targets are the shell they already
-were, and the server executors — `@nx/vite:dev-server`,
+Server executors come through as persistent tasks: `@nx/vite:dev-server`,
 `@nx/vite:preview-server`, `@nx/webpack:dev-server`, `@nx/next:server`,
-`@nx/storybook:storybook`, `@nx/js:node`, `@nx/js:verdaccio`, `@nx/web:file-server` and
-`@angular-devkit/build-angular:dev-server`
-— come through as persistent tasks, whatever the target is called, as
-does any target Nx itself marks `continuous`.
-Nothing is silently wrong.
+`@nx/storybook:storybook`, `@nx/js:node`, `@nx/js:verdaccio`,
+`@nx/web:file-server`, `@angular-devkit/build-angular:dev-server`, and
+any target Nx marks `continuous`.
 
 ## What maps
 
@@ -158,36 +126,23 @@ Nothing is silently wrong.
 | `nx watch`                            | `vx watch`                                    |
 | `targetDefaults`                      | already applied in the graph; share them as a preset you import |
 
-`namedInputs` and `targetDefaults` never reach the migration as
-themselves: the resolved graph has already applied them, so what gets
-written is each task's own `inputs.files` and its own values.
-Neither exists in vx and neither will — a TypeScript config composes,
-so a shared input list is an import.
+## What replaces the rest
 
-## What you drop, and what replaces it
+| 9,603 tasks, native config | vx | Nx 24.0.1 |
+| --- | --- | --- |
+| Nothing changed | 720 ms | 26.21 s |
+| Cold build: CPU the runner burns | 49.58 s | 7 min 43 s |
 
-- **The daemon.** vx has [none](../no-daemon/). On the 9,603-task
-  benchmark, on native config, with nothing changed vx adds 720 ms to
-  Nx's 26.21 s, and the cold run burns 49.58 s of
-  runner CPU to Nx's 7 min 43 s.
-  Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-  Run 2026-10-23 on linux x64, 4 cores, concurrency 10: vx at commit 0be036747, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.
-- **Nx Cloud's distributed execution.** `@vzn/vx-dte` (alpha, not on
-  npm yet) spreads one run over workers your own CI starts, through a
-  relay you host ([how it works](../one-run-on-your-own-runners/)), and
-  `@vzn/vx-reapi` runs tasks on any Bazel Remote Execution API pool.
-  There is no first-party service and there will not be one.
-- **Nx Cloud's remote cache.** `nxCache()` from `@vzn/vx-migrate` speaks the
-  self-hosted `/v1/cache` wire, so an existing self-hosted server keeps
-  working. Any other wire is a `cache` plugin.
-- **Nx Cloud's flaky-test detection.** vx [detects flaky
-  tasks](../flaky-tasks/) from the local run history: a key that has
-  both passed and failed on record, no service involved.
-- **The graph visualiser.** `vx run build --all --dry=json` lists each
-  task with its deps, ready for any tool that draws a graph; `vx show`
-  prints what a run would see.
+<small>Synthetic monorepo, 1,601 projects · linux x64, 4 cores, concurrency 10 · vx `0be036747` · 2026-10-23 · [benchmarks](../../benchmarks/)</small>
 
-The full guide, with the trade-offs spelled out one by one, is
-[Migrate from Nx](../../guides/migrate/#nx).
+- **The daemon:** vx has [none](../no-daemon/).
+- **Distributed runs:** `@vzn/vx-dte` (alpha) on your own CI
+  ([how](../one-run-on-your-own-runners/)), or `@vzn/vx-reapi` on a
+  Bazel pool.
+- **Remote cache:** `nxCache()` speaks the self-hosted `/v1/cache` wire.
+- **Flaky tests:** [from local run history](../flaky-tasks/).
+- **Graph view:** `vx run build --all --dry=json` or `vx show`.
 
-More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
+Generators have no vx replacement. Guide: [Migrate from
+Nx](../../guides/migrate/#nx). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

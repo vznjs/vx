@@ -151,7 +151,11 @@ is a hint, never the artifact: a key it says is held whose `get` returns
 What `hasMany` said is recorded in the index's `remote_hits`
 (`remote-hits.ts`), hits only, so another process trusts it
 (`remoteKnown`): a pull of a kept hit starts at once, waiting on no
-probe. A whole `hasMany` answer rewrites the rows it asked (new hits
+probe. A task's own lookup waits on no probe either: it GETs at once.
+Waiting made every remote hit two round-trips, the probe then the GET
+(~300 ms an up-to-date task on CI, 2026-10-24); a miss's GET answers as
+fast as the probe would, so the cost is one GET for each task that asks
+before the probe answers. A whole `hasMany` answer rewrites the rows it asked (new hits
 in, gone ones out), and a `get` every remote answers with `null` drops
 its row. A `get` that fails keeps it: the key may still be there.
 A remote whose batch gives no answer is asked `has` per key when a run

@@ -6,11 +6,11 @@ authors:
 tags:
   - ci
   - plugins
-excerpt: 'One plugin line puts every vx run on GitHub: a job summary with the failure first, a check run on the commit, and a cache scope that keeps pull requests from writing what main reads.'
+excerpt: 'Add one plugin line and every vx run shows up on GitHub: a job summary with failures first, and a check on the commit.'
 ---
 
-A red CI job should not mean scrolling a log. `@vzn/vx-ci` writes each
-`vx run` where you already look on GitHub.
+Add one line and every `vx run` shows up on GitHub, failures first. No
+more scrolling a red log.
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
@@ -21,14 +21,19 @@ export default defineWorkspace({
 })
 ```
 
-That is the whole setup. Off GitHub Actions the plugin declines and
-costs nothing, so the line stays on for laptops too.
+Off GitHub Actions the plugin does nothing, so keep it on for laptops
+too.
+
+```mermaid
+flowchart LR
+  R[vx run on Actions] --> S[job summary]
+  R -->|GITHUB_TOKEN| C[check on the commit]
+  R --> B[PR base commit for --affected]
+```
 
 ## The job summary
 
-Every run appends a block to the workflow's summary page: the verdict,
-the counts, the failures first, then every task. The plugin wrote this
-for a run where one task failed:
+This is what the plugin wrote for a run where one task failed:
 
 ````md frame="code" title="$GITHUB_STEP_SUMMARY"
 ## ❌ vx run
@@ -47,34 +52,31 @@ for a run where one task failed:
 <sub>vx 0.0.0 · `vx run bundle typecheck --all` · 1/2 passed · 1 up-to-date · 0 restored</sub>
 ````
 
-One-project workspace, vx at `c1ad075`, 2026-10-23.
+<small>One-project workspace · vx c1ad075 · 2026-10-23</small>
 
-A task killed by a signal reads `exit 137 (128 + SIGKILL)`, a timeout
-reads `timed out, exit 143`, and each failure names the tasks it
-blocked.
+A killed task reads `exit 137 (128 + SIGKILL)`. A timeout reads
+`timed out, exit 143`. Each failure names the tasks it blocked.
 
 ## A check on the commit
 
-With `GITHUB_TOKEN` in the job, the plugin also posts a check run
-(named `vx` unless you pass `checkName`) whose output is that same
-summary, so the result sits next to the commit and the pull request.
+With `GITHUB_TOKEN` in the job, the plugin also posts a check run with
+the same summary, next to the commit and the pull request. It is named
+`vx` unless you pass `checkName`.
 
 ## A cache a pull request cannot poison
 
-Where a pull request may write is the cache server's call: the CI OIDC
-token, checked against its trust policy, sends main's writes to the
-trusted cache and a branch's to its own. On Actions the plugin names the
-pull request's base commit, so a bare `--affected` needs no history, and
-a scope for what plugins store themselves (`acme/app:feat-x`). Set
-`github({ cacheScope: false })` to opt out, or `VX_CACHE_SCOPE` to name
-one yourself. [Branch caches a server enforces](../branch-caches-a-server-enforces/)
-has the rest.
+The cache server decides where a pull request may write. It checks the
+CI token: main writes to the trusted cache, a branch to its own. The
+plugin also gives the PR's base commit, so a bare `--affected` works,
+and a scope name like `acme/app:feat-x`. Opt out with
+`github({ cacheScope: false })`, or set `VX_CACHE_SCOPE` yourself. More
+in [Branch caches a server enforces](../branch-caches-a-server-enforces/).
 
 ## It never breaks the build
 
-The summary is written by a telemetry sink. vx isolates sinks and bounds
-their flush, so a slow or failing GitHub write can never fail or stall
-the run.
+The summary is written by a telemetry sink. vx runs sinks apart from the
+run with a time limit. A slow or failing GitHub write never fails or
+stalls your run.
 
 Guide: [CI](../../docs/ci/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -284,7 +284,8 @@ stops, instead of waiting for the job's timeout.
   measured CPU and peak RAM), or its live load plus what was sent since
   when that is more. Never less: load lags a task's start, and a test
   shard idle for a second then uses all its cores. A command that ended
-  frees its cores while its outputs save. Every
+  frees its cores while its outputs save, and its worker's load until the
+  next frame: that load counted the task. Every
   task sent begins at once; none waits in a worker's queue. A task asking
   a whole worker, or bigger than any, runs alone on an idle one (one that
   filled its worker last time). The first such task waiting holds
@@ -358,6 +359,12 @@ stops, instead of waiting for the job's timeout.
   client's beat is a frame the relay must answer within two (10 s at
   most), which also makes it push down that socket again. A participant
   the relay hears nothing from for two heartbeats is lost.
+- Each send is numbered for its receiver and held until the receiver
+  acknowledges it, so one a socket or the relay dropped goes again after
+  a heartbeat, or at once on a new socket; the receiver takes each once,
+  in order. An ack rides the next send back, and those with none to ride
+  go together in one frame per half heartbeat: no message of its own on
+  a busy run.
 - A run where no task began or ended for a minute warns what it waits
   on, a line a task: which worker, and whether it runs or saves.
 - A message the relay would not take is a warning naming it, its
@@ -458,8 +465,11 @@ machine together, and the share of their history the run's tasks used:
 writes (open it in https://ui.perfetto.dev or `chrome://tracing`).
 Each worker is a process: its first row holds its warm-up (split, when it
 says when its `vx` started, into its machine's start and vx's boot), its
-idle stretches, how it ended and a `cores` counter of the cores booked
-and used at once; each task takes the first lane free over its time
+idle stretches, how it ended, a `cores` counter of the cores booked
+and used at once, and a `machine` counter of the cores its machine
+reported busy, its tasks' or not (placement never fills a worker past
+it), beside the cores its running tasks' process trees used, read each
+second as core's `task.sample` reads them; each task takes the first lane free over its time
 there, from its send through restoring its dependencies, its command
 and its save, with its exit code, duration, CPU time and booked cores.
 The `orchestrator` process holds the cache probe, each ask for workers, each

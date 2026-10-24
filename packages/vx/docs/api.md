@@ -344,7 +344,6 @@ export interface CacheLayer {
   remoteKnown?(hashes: readonly string[]): Map<string, ArtifactInfo>
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
-  probeFirst?(started: Promise<void>): void
   drainUploads?(): Promise<void>
   stopUploads?(): void
   key(input: CacheKeyInput): Promise<string>
@@ -1341,6 +1340,7 @@ export interface MachineReport {
   utilization: number
   bookedAvg?: number
   warmUpMs?: number
+  startMs?: number
 }
 ```
 
@@ -2360,6 +2360,19 @@ export interface RunSummaryRecord {
 }
 ```
 
+## `sampleTrees`
+
+function · `src/exec/proc-sample.ts`
+
+Each root's tree usage; a root no longer alive has no entry.
+
+```ts
+export async function sampleTrees(
+  roots: readonly number[],
+  skip?: ReadonlySet<string>,
+): Promise<Map<number, TreeUsage>>
+```
+
 ## `SandboxConfig`
 
 type · `src/config.ts`
@@ -3015,6 +3028,17 @@ export interface TelemetrySink {
   onRecord?(record: TelemetryRecord): void
   onRunSummary?(summary: RunSummaryRecord): void
   flush?(signal: AbortSignal): Promise<void>
+}
+```
+
+## `TreeUsage`
+
+type · `src/exec/proc-sample.ts`
+
+```ts
+export interface TreeUsage {
+  cpuMs: number
+  rssBytes: number
 }
 ```
 

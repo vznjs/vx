@@ -6,10 +6,12 @@ authors:
 tags:
   - design
   - execution
-excerpt: "A vx task is one shell command. Not a JavaScript function, not an executor with an options object, not a list of steps. The constraint is what makes remote execution, sandboxing, replay and migration all fall out for free."
+excerpt: 'A vx task is one shell command. That one rule is why remote runs, the sandbox and cache replay all work without special cases.'
 ---
 
-A task is one string:
+A vx task is one shell command. That one rule is why remote runs,
+the sandbox and cache replay work without special cases. A task is one
+string:
 
 ```ts
 color: {
@@ -30,64 +32,54 @@ $ vx run packages/d#color | sed -n 3p | od -c     # hit: replayed
 0000020   n   e  \n
 ```
 
-Same bytes, carriage returns included. A hit looks like the run. Demo
-workspace, vx at `69617eb`, 2026-10-23.
+Same bytes, carriage returns included. A hit looks like the run.
 
-`exec.command` runs under `sh -c`, in the project's directory, with the
-project's and the workspace root's `node_modules/.bin` on `PATH` and
-the environment you declared. That is the whole execution model.
+<small>Demo workspace · vx 69617eb · 2026-10-23</small>
+
+`exec.command` runs under `sh -c` in the project's folder, with
+`node_modules/.bin` on `PATH` and the env you declared. That's all.
 
 ## What it rules out
 
 | Not in vx                    | Why                                                                 |
 | ---------------------------- | ------------------------------------------------------------------- |
-| JavaScript-function tasks    | can't ship to a worker, be sandboxed or replayed; inputs are a closure |
+| JavaScript-function tasks    | can't go to a worker, be sandboxed or replayed                      |
 | executor plugins             | a wrapper between you and the tool's own flags and docs             |
-| step lists                   | three behaviours under one key: use `&&`, or split with `dependsOn` |
+| step lists                   | many steps under one key: use `&&`, or split with `dependsOn`       |
 
 A plugin changes *where* a command runs, never what it is.
 
 ## What it makes possible
 
-Every capability is a transformation of one triple: command, declared
-inputs, declared outputs.
+```mermaid
+flowchart LR
+  T["command + inputs + outputs"] --> R[remote: one REAPI action]
+  T --> S["sandbox: one process in bwrap or seatbelt"]
+  T --> P[replay: same bytes on a hit]
+  T --> M[migration from Turbo or Nx]
+  T --> D["vx show, --dry: what you'd type"]
+```
 
-- **Remote execution** ships it as one REAPI action.
-- **The sandbox** wraps one process in `bwrap` or seatbelt with the
-  declared paths.
-- **Replay** stores the captured stdout in the cache index and prints it
-  byte-identical on a hit, NUL bytes, carriage returns and raw ANSI
-  included.
-- **Migration** from Turborepo or Nx is mostly rendering: both run a
-  command in the end.
-- **`vx show` and `--dry`** print what a person would type.
+Every feature works on the same three things. Replay stores the captured stdout in the cache index and prints it byte for byte on a hit,
+carriage returns and colours included.
 
 ## The environment is declared too
 
-A command's environment is part of what it does, so it is not
-inherited wholesale. Each task gets an isolated environment: a small
-essential allowlist (`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few
-more), then what `exec.env` says: values you set (part of the config, so in the key) and
-variables you `passThrough` from the parent (not in the key).
-`inputs.env` puts a variable in the key but does not pass it to
-the task, so a variable that changes the output and must reach the
-task goes in both. `PATH` is prepended
-with the project's `node_modules/.bin`, then the workspace root's, so
-`tsc` resolves by name. A variable that changes the output and
-is missing from `inputs.env` is the most common
-under-declaration, and it shows up as a stale hit: the key did not
-change, so vx replays the old output.
+Each task gets an isolated environment: a small essential allowlist
+(`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few more), then what
+`exec.env` says. Values you `define` are in the key. Variables you
+`passThrough` are not. `inputs.env` puts a variable in the key without
+passing it, so a variable that changes the output goes in both.
 
-Two variables are always set: the workspace vx is running and the task
-id, so a command that runs `vx` itself against the same workspace is
-refused instead of recursing into the same cache.
+The most common mistake is a variable that changes the output but is
+missing from `inputs.env`. The key doesn't change, so vx restores the
+old output. More in [the env post](../env-isolation/).
 
 ## The API is the one you already have
 
-vx needs no plugin for a tool. There is no `@vzn/vx-vite` or
-`@vzn/vx-jest`, because `vite build` and `jest` are already the API.
-Tool knowledge belongs in presets, in TypeScript, on top of a runner
-that only knows what a command is.
+vx needs no plugin per tool. There is no `@vzn/vx-vite` or
+`@vzn/vx-jest`, because `vite build` and `jest` already are the API.
+Tool settings belong in TypeScript presets.
 
 Reference: [Running tasks](../../docs/running-tasks/) and
 [Environment variables](../../docs/environment-variables/).

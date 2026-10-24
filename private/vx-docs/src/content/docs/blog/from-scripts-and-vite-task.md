@@ -6,19 +6,26 @@ authors:
 tags:
   - migration
   - dx
-excerpt: 'bunx @vzn/vx-migrate turns package.json scripts into tasks, with npm pre and post hooks folded in the order npm runs them. A vite-plus repo converts the same way from its run.tasks.'
+excerpt: 'One command turns package.json scripts or Vite Task config into vx tasks. npm pre and post hooks keep their order.'
 ---
 
-The [Turbo](../from-turborepo/) and [Nx](../from-nx/) paths have their
-own posts. Two more starting points convert just as directly: plain
-`package.json` scripts and Vite Task.
+`bunx @vzn/vx-migrate` turns your `package.json` scripts or Vite Task
+config into vx tasks. (Coming from [Turbo](../from-turborepo/) or
+[Nx](../from-nx/)? They have their own posts.)
 
-## npm scripts, hooks included
+```mermaid
+flowchart LR
+  P[package.json scripts] --> M[bunx @vzn/vx-migrate]
+  V["vite.config.* run.tasks"] --> M
+  M --> C[vx.config.ts per package]
+  M --> T[TODO list: inputs and outputs to fill in]
+```
 
-npm runs `prebuild` before `build` and `postbuild` after it, without
-being asked. Copying the scripts one to one would lose that. So
-`bunx @vzn/vx-migrate` folds the hooks into the task's command, in npm's order, and
-says so:
+## npm hooks keep their order
+
+npm runs `prebuild` before `build` and `postbuild` after it. The
+migrator puts the hooks into the task's command, in that order, and
+tells you:
 
 ```sh frame="terminal"
 $ cat packages/app/package.json
@@ -34,25 +41,23 @@ $ bunx @vzn/vx-migrate --dry
             app#build: cache: add `inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } }` with this package's real inputs and outputs …
 ```
 
-Each part runs in its own subshell, so the chain stops at the first
-that fails, and arguments after `--` reach `build` alone, as npm passes
-them. Where the package manager runs no such hooks (Yarn 2 and later, or
-npm with `ignore-scripts`), each hook stays a task of its own. Lifecycle
-hooks like `prepack` never become tasks.
+The chain stops at the first part that fails. Arguments after `--`
+reach `build` only, as with npm. If your package manager skips these
+hooks (Yarn 2+, or npm with `ignore-scripts`), each hook stays its own
+task. Hooks like `prepack` never become tasks.
 
 ## Vite Task
 
-A repo on vite-plus keeps its tasks in each package's `vite.config.*`
-under `run`. The migrator reads them the way `vp run` does:
+A vite-plus repo keeps tasks in each package's `vite.config.*` under
+`run`. The migrator reads them the way `vp run` does:
 
 ```sh frame="terminal"
 $ bunx @vzn/vx-migrate --from vite-task
 ```
 
-`command`, `cwd`, `dependsOn` and the cache settings map to their vx
-spellings. A command that starts with `vp run x` becomes a `dependsOn`
-edge, the way Vite Task inlines it. Anything that does not map cleanly
-stays in the command with a TODO, so nothing is dropped without a word.
+`command`, `cwd`, `dependsOn` and cache settings map across. A command
+starting with `vp run x` becomes a `dependsOn` edge. Anything that does
+not map stays in the command with a TODO, so nothing gets lost.
 
 The full mapping table is in the
 [vx-migrate README](https://github.com/vznjs/vx/tree/main/packages/vx-migrate#readme).

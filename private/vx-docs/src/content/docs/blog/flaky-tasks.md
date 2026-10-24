@@ -6,10 +6,12 @@ authors:
 tags:
   - dx
   - caching
-excerpt: "vx names a task flaky only when its exact cache key failed after it had passed, or it passed only on a retry this run. A failure on inputs that never passed is a break, not a flake. No service, no upload: the local run history is enough."
+excerpt: 'vx calls a task flaky only when the same inputs both passed and failed. Your local run history is enough, no service needed.'
 ---
 
-This task fails, then passes, then fails, on the same inputs:
+vx calls a task flaky only when the same inputs both passed and failed.
+No service needed: your local run history is enough. This task fails,
+passes, then fails, on the same inputs:
 
 ```ts
 flip: {
@@ -30,19 +32,20 @@ $ vx run packages/a#flip --force
 └─ packages/a#flip ── (11ms) success flaky - failed 2× before
 ```
 
-The first failure is not flaky: that key had never passed. The second
-failure is, because the same key passed before it. Linux x64, vx at
-`69617eb`, 2026-10-23, local run history only.
+The first failure isn't flaky: that key had never passed. The second
+is, because the same key passed before.
 
-## The definition
+<small>Linux x64 · vx 69617eb · 2026-10-23 · local history only</small>
 
-A task is **flaky** when one of two things is on record:
+## When vx says flaky
 
-- its exact cache key **failed after it had passed**, this run
-  included (a key's first cache hit counts as a pass; later hits replay
-  it), or
-- it needed a **retry** this run (`exec.retries` or `--retries`) and then
-  passed.
+```mermaid
+flowchart LR
+  F[task fails] --> Q{same key passed before?}
+  Q -->|no| B[a break: fix it]
+  Q -->|yes| FL[flaky]
+  R[passed only on a retry] --> FL
+```
 
 | Record                              | Verdict          |
 | ----------------------------------- | ---------------- |
@@ -52,8 +55,8 @@ A task is **flaky** when one of two things is on record:
 | passed on a retry                   | flaky            |
 | task has no `cache` block           | not judged       |
 
-Without declared inputs, two runs are not the same inputs, so the claim
-can't be made.
+Without declared inputs, vx can't tell two runs had the same inputs, so
+it doesn't judge.
 
 A retry shows the same way:
 
@@ -67,15 +70,15 @@ pass
 
 ## What you see
 
-In the run's task list the note rides the task's row:
+The note sits on the task's row:
 
 ```
  ◼︎   4.21s failed  miss     app#test flaky - passed 3× before
  ⏺︎  12.84s success miss     api#e2e flaky - failed 1× before · 2 attempts
 ```
 
-`vx info` keeps the standing list. `vx last --stats --format json`
-gives each task a `failureMode`:
+`vx info` lists flaky tasks. `vx last --stats --format json` gives each
+a `failureMode`:
 
 ```json
 {"taskId":"packages/a#flip","runs":4,"successRate":0.5,"failureMode":"flaky-fatal"}
@@ -84,20 +87,19 @@ gives each task a `failureMode`:
 
 ## Why it is free
 
-Every cache entry already records its key, outcome and run. "Has this
-key had the other outcome?" is one index probe on a green miss, and
-nothing on a run that executed nothing. No upload: the history is the
-local `cache.db` that `vx why` and `vx last` read.
+Every cache entry already records its key and outcome. "Did this key
+ever end the other way?" is one lookup. Nothing is uploaded: it reads
+the same local `cache.db` as `vx why` and `vx last`.
 
-It works on the second run of a key on your machine, not after a fleet
-of runs. The record lives under `~/.vx`, so every worktree of the repo
-reads what the others saw.
+It works from the second run of a key on your machine. The record lives
+under `~/.vx`, so every worktree of the repo shares it.
 
 ## What it is not
 
-- **Not a retry policy.** `exec.retries` is separate and explicit. A
-  pass on retry is *reported*, not quietly made green.
-- **Not a quarantine.** Nothing is skipped: a skip is a silent pass.
+- **Not a retry policy.** `exec.retries` is separate. A pass on retry
+  is *reported*, not quietly made green.
+- **Not a quarantine.** Nothing is skipped, because a skip hides a
+  failure.
 
-It is a label on a fact. What to do about it is yours. More at
+It is a label. What you do about it is up to you. More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

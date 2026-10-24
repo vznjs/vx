@@ -210,7 +210,8 @@ describe('shared timings', () => {
     })
     expect(read(shared.store.get(key(b)))).toEqual({
       version: 4,
-      tasks: { 'p#gone': 5, 'p#x': 100, 'p#y': 300 },
+      // y's run averaged with its carried 50: one run's time is one sample.
+      tasks: { 'p#gone': 5, 'p#x': 100, 'p#y': 175 },
     })
     // Each timing says which task it is of, a carried one's carried.
     expect(defsIn(shared.store.get(key(b)))).toEqual(defsOf(['p#gone', 'p#x', 'p#y']))
@@ -338,7 +339,8 @@ describe('shared timings', () => {
     git('checkout', '-q', '-b', 'feature')
     commit()
     expect(await imported(shared, ['p#x', 'p#y'])).toEqual({ 'p#x': 110, 'p#y': 60 })
-    expect(await imported(shared, ['p#y', 'p#z'])).toEqual({ 'p#y': 70, 'p#z': 80 })
+    // y's second run averaged with the first's.
+    expect(await imported(shared, ['p#y', 'p#z'])).toEqual({ 'p#y': 65, 'p#z': 80 })
   })
 
   it('a job whose task set changed still reads every task', async () => {
@@ -351,7 +353,7 @@ describe('shared timings', () => {
     git('checkout', '-q', '-b', 'feature')
     commit()
     // No job ran {x, z}: the commit's plain blob, which carries z.
-    expect(await imported(shared, ['p#x', 'p#z'])).toEqual({ 'p#x': 110, 'p#z': 30 })
+    expect(await imported(shared, ['p#x', 'p#z'])).toEqual({ 'p#x': 105, 'p#z': 30 })
   })
 
   it("a branch with no history orders from local history at once, then re-ranks by its merge-base's blob", async () => {
@@ -685,6 +687,43 @@ describe('shared timings', () => {
   // Main b5b83bb: one crowded run read 2.84 cores for a build that uses
   // 1.3 to 1.9, CI wrote it as the need, and the next run booked it a whole
   // 3-core Mac; the tasks beside it waited 45 s.
+  // Main ef68f31 planned check.build-cold at 14 s, the last run's; it took
+  // 17 s to 62 s on one Mac size, and this run 33 s over a 14 s plan.
+  it("writes a run's time averaged with the carried one, unless the task changed", async () => {
+    const a = commit()
+    const b = commit()
+    const shared = spyCache()
+    shared.store.set(
+      key(a),
+      new TextEncoder().encode(
+        JSON.stringify({
+          version: 4,
+          tasks: { 'p#cold': 14_000, 'p#new': 1_000 },
+          defs: { ...defsOf(['p#cold']), 'p#new': 'old' },
+        }),
+      ),
+    )
+    const provider = {
+      p50sFor: async () =>
+        new Map([
+          ['p#cold', 50_000],
+          ['p#new', 30_000],
+        ]),
+      resourcesFor: async () => new Map(),
+    } as unknown as LocalHistoryProvider
+    await exportTimings({
+      root,
+      cache: shared,
+      provider,
+      ids: ['p#cold', 'p#new'],
+      defs: new Map(Object.entries(defsOf(['p#cold', 'p#new']))),
+    })
+    expect((read(shared.store.get(key(b))) as { tasks: unknown }).tasks).toEqual({
+      'p#cold': 32_000,
+      'p#new': 30_000,
+    })
+  })
+
   it("writes a run's need averaged with the carried one, filling its machine only on average", async () => {
     const a = commit()
     const b = commit()

@@ -481,8 +481,14 @@ export class Orchestrator {
     return { ...need, cores: need.cores * used }
   }
 
-  /** `job`'s cores and memory go back to its worker, once: its command ended, or it left. */
+  /**
+   * `job`'s cores and memory go back to its worker, once: its command
+   * ended, or it left. Its worker's last load counted it busy, and its
+   * save: kept, a Mac read 2.9 cores busy with one 1.1-core task left and
+   * the next task waited for the next frame (main 2975e38, 2026-10-24).
+   */
   private unhold(a: Worker, job: Job): void {
+    delete a.load
     if (job.held === undefined) return
     a.usedCores -= job.held.cores
     a.usedMemory -= job.held.memory
@@ -494,6 +500,8 @@ export class Orchestrator {
   private heard(a: Worker, load: Load | undefined): void {
     if (load === undefined) return
     a.load = { cpu: Number(load.cpu) || 0, memory: Number(load.memory) || 0, at: performance.now() }
+    const tasks = Number(load.tasks)
+    this.trace.load(a.label, a.load.cpu, a.load.at, Number.isFinite(tasks) ? tasks : undefined)
   }
 
   /** Whether a worker bigger than `above` is starting: a task that filled that size waits for it. */
@@ -723,7 +731,7 @@ export class Orchestrator {
     a.started.delete(task)
     a.ran++
     a.done.push(task)
-    a.usage.record(head)
+    a.usage.record(head, job.sentAt)
     const share = shareOf(head.cpuShare)
     const held = Math.max(1, job.startedAt === undefined ? head.durationMs : endAt - job.startedAt)
     this.took.set(task, {
@@ -1406,6 +1414,7 @@ export class Orchestrator {
         a.reported.memory,
       ),
       ...(a.warmUpMs === undefined ? {} : { warmUpMs: a.warmUpMs }),
+      startMs: Math.max(0, a.usage.from - (a.warmUpMs ?? 0) - this.startedAt),
     }))
   }
 

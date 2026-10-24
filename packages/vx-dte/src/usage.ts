@@ -43,21 +43,29 @@ export class Usage {
 
   constructor(readonly from: number = performance.now()) {}
 
-  /** A task it finished, as it ends: its CPU time spread over its duration. */
-  record(r: {
-    readonly exitCode: number
-    readonly signal?: string | undefined
-    readonly timedOut?: boolean | undefined
-    readonly durationMs: number
-    readonly cpuMs?: number | undefined
-    readonly peakRssBytes?: number | undefined
-  }): void {
+  /**
+   * A task it finished, as it ends: on it `from` its send (else its
+   * command's duration), its CPU time spread over that. Its command alone
+   * left the restore of its dependencies and its save idle: a worker
+   * busy all along read 10 s idle (M, 2026-10-24).
+   */
+  record(
+    r: {
+      readonly exitCode: number
+      readonly signal?: string | undefined
+      readonly timedOut?: boolean | undefined
+      readonly durationMs: number
+      readonly cpuMs?: number | undefined
+      readonly peakRssBytes?: number | undefined
+    },
+    from?: number,
+  ): void {
     if (r.exitCode === 0) this.done++
     else if ((r.signal === 'SIGINT' || r.signal === 'SIGTERM') && r.timedOut !== true)
       this.aborted++
     else this.failed++
     const end = performance.now()
-    const ms = Math.max(1, r.durationMs)
+    const ms = Math.max(1, from === undefined ? r.durationMs : end - from)
     this.spans.push({
       start: end - ms,
       end,

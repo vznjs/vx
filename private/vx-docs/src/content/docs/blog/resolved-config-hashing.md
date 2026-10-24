@@ -1,5 +1,5 @@
 ---
-title: 'Configs are programs. Hash what they evaluate to.'
+title: 'Hash what the config turns into'
 date: 2026-09-10T23:54:00Z
 authors:
   - vzn
@@ -7,10 +7,12 @@ tags:
   - internals
   - caching
   - config
-excerpt: "A vx.config.ts can import a preset, compute a command, read a constant from another file. The cache key sees the evaluated object, so all of that participates in the key. Static JSON tools cannot see it at all."
+excerpt: 'vx hashes your config after it runs. Change a preset you import and every task that uses it gets a new key, with no list to maintain.'
 ---
 
-A `vx.config.ts` is a program. This one spreads a preset:
+vx hashes your config after it runs, not the file's text. So when a
+preset you import changes, every task using it gets a new key. This
+config spreads a preset:
 
 ```ts
 // packages/b/vx.config.ts
@@ -41,56 +43,48 @@ $ vx why packages/b#build
 ```
 
 `packages/b/vx.config.ts` didn't change a byte. Its task did, so its
-key did. Demo workspace, vx at `69617eb`, 2026-10-23.
+key did.
+
+<small>Demo workspace · vx 69617eb · 2026-10-23</small>
 
 ## The key sees the object
 
-vx evaluates the config and hashes the **resolved task object**, the
-thing the scheduler is about to act on. Part three of the
-[key derivation](../keys-from-git/) is
-`xxh3(JSON.stringify(hashableConfig(node.config)))` after the plugin
-`project` stage has run — one field wide, dropping `exec.remote`,
-which says where a task runs rather than what it does. Whatever a preset returned,
-whatever a template literal expanded to, whatever a plugin added or
-removed: all of it is in the key, because all of it is in the object.
+```mermaid
+flowchart LR
+  P[vx-preset.ts] -->|import| C[vx.config.ts]
+  PL[plugins] --> O
+  C -->|vx lock runs it| O[the task object]
+  O -->|"drop exec.remote, hash"| K[config part of the key]
+```
 
-Two properties fall out:
+The key hashes the **task object**, the thing the scheduler will run.
+What a preset returned, what a template string became, what a plugin
+added: all of it is in the object, so all of it is in the key. Part
+three of the [key](../keys-from-git/) is
+`xxh3(JSON.stringify(hashableConfig(node.config)))`.
 
-- **Presets are safe to share.** Edit `vx-preset.ts`, run `vx lock`,
-  and every task that spread it re-keys, with no `globalDependencies`
-  list to keep in sync.
-- **Plugins are in the key.** `turbo()` from `@vzn/vx-migrate` fills the `project` stage
-  from a `turbo.json`; the resolved tasks it produces are what gets
-  hashed. A plugin cannot change a task's behaviour behind the key's
-  back.
+- **Presets are safe to share.** No `globalDependencies` list to keep in
+  sync.
+- **Plugins are in the key.** `turbo()` builds tasks from `turbo.json`,
+  and those tasks get hashed. A plugin can't change a task behind the
+  key's back.
 
-Placement is stripped before hashing. `exec.remote` says where a task
-runs, which is not what it produces. `timeout`, `retries` and `description` are
-folded, because a task that was allowed to run longer may have finished
-where the shorter one was killed.
+`exec.remote` is dropped: it says where a task runs, not what it makes.
+`timeout`, `retries` and `description` count, because a task given
+longer may finish where a shorter one was killed.
 
 ## Evaluate once: `vx lock`
 
-Evaluating a program can give a different answer on another machine
-or another day. So no run evaluates a config. `vx lock` evaluates every
-config and writes the resolved objects to `.vx/projects.lock.json`, and
-every `vx run` reads them from there with no evaluation at all. The key
-hashes the object the lock holds, so the key a reviewer's run computed
-is the key CI computes.
-
-`vx lock --check` re-evaluates everything against the lock and exits
-non-zero on drift, including drift a byte hash cannot see: an env value
-read at eval time, an import that changed. The CI recipe is
-`vx lock --check && vx run …`. That gets
-[its own post](../lock-and-frozen/).
+A program can give a different answer on another machine. So no run
+runs a config. `vx lock` runs them once and saves the objects. Every
+`vx run` reads that file, so CI computes the same keys you did.
+`vx lock --check` catches drift ([more](../lock-and-frozen/)).
 
 ## Why not named inputs
 
-A JSON config is data: a tool hashes the file and calls that the
-config's part of the key. Turborepo's `globalDependencies` and Nx's
-`namedInputs` exist because JSON can't compose. A `vx.config.ts` can: a shared input list is a
-constant in a file you import, and the resolved-config hash sees the
-result. Named inputs, global inputs and global env are on the
-repository's rejected list for that reason, and they will stay there.
+Turborepo's `globalDependencies` and Nx's `namedInputs` exist because
+JSON can't import. A `vx.config.ts` can, so a shared input list is a
+constant you import. That's why vx has no named inputs, global inputs
+or global env, and won't.
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

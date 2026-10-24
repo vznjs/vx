@@ -25,6 +25,7 @@ export interface PrefetchArgs {
   remoteRead: boolean // the policy's remote-read axis; false returns at once
   remoteWrite: boolean // with reads off: hand the keys to probeBeforeUpload
   held?: (ids: readonly string[], missed: readonly string[]) => void // once: the stable tasks a store holds, and those none does
+  spans?: Record<string, unknown>[] // --profile: the keys' derivation and the batch probe
 }
 
 export function startRemotePrefetch(args: PrefetchArgs): Promise<void>
@@ -49,9 +50,13 @@ export function getContext(node: TaskNode, command: string): CacheGetContext
 4. One batched existence probe when the layer offers it
    (`remoteHasMany`): the hashes it reports absent are marked
    (`markRemoteAbsent`, so the lazy read-through skips them too) and
-   only the present ones are fetched. Until the probe starts
-   (`probeFirst`) and while it is out, a task's own lookup waits for it,
-   so a key the probe calls absent costs no GET. Its whole answer is
+   only the present ones are fetched, except the first `concurrency`
+   keys in graph order: those are pulled as the probe is sent, since on
+   CI it answers after a GET does (~490 ms against ~250 ms), and their
+   dependants then find their entries local. At most that many can 404.
+   A task's own lookup waits on no probe: it GETs at once, since waiting
+   made a hit two round-trips.
+   Its whole answer is
    kept for the next run, and `held` hears it: a key the index lacked
    was often stored since (a PR's CI stores its merged tree), and
    calling it missed sized a run for work that restored. When the

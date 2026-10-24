@@ -80,13 +80,15 @@ describe('ci.yml', () => {
   })
 
   // Nothing runs on a distributed run's orchestrator (owner, 2026-10-22):
-  // each platform's checks are tasks a worker of it runs, on main.
-  it('runs every platform’s checks as tasks of the run, on main', () => {
+  // each platform's checks are tasks a worker of it runs, on main. The
+  // platform's test files run on a PR too: a Mac-only test merged green
+  // and turned main red (#4293).
+  it('runs every platform’s checks as tasks of the run, its tests on a PR too', () => {
     const steps = doc.jobs['linux']!.steps!
     expect(steps.filter((s) => /sandbox-canary\.ts|--cache-policy/.test(s.run ?? ''))).toEqual([])
     const run = steps.find((s) => s.run?.includes('bin.ts run '))!.run!
     expect(run).toContain(
-      "${{ github.event_name != 'pull_request' && 'build.bun.linux-x64 build.bun.darwin-x64 check.binary.linux-arm64 check.binary.darwin-arm64 test.platform check.sandbox-canary check.build-cold' || '' }}",
+      "build.bun.darwin-arm64 test.platform ${{ github.event_name != 'pull_request' && 'build.bun.linux-x64 build.bun.darwin-x64 check.binary.linux-arm64 check.binary.darwin-arm64 check.sandbox-canary check.build-cold' || '' }}",
     )
   })
 

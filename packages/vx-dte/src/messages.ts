@@ -124,6 +124,8 @@ export type ToWorker =
 export interface Load {
   readonly cpu: number
   readonly memory: number
+  /** Cores its running tasks' process trees used over the last look: the rest of `cpu` is no task's. */
+  readonly tasks?: number
 }
 
 export type ToOrchestrator =

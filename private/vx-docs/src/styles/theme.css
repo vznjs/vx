@@ -149,10 +149,66 @@ pre.mermaid svg {
   height: auto;
 }
 
-/* Tighten wide reference tables so the comparison pages stay readable. */
-.sl-markdown-content table {
-  display: block;
+/* Tables (owner, 2026-10-24: "ugly and unreadable"): a tinted header, row
+   rules and a faint zebra, figures right-aligned on tabular digits
+   (data-charts.ts marks figure columns). No outer frame, and a wide table
+   scrolls in its .vx-table-scroll wrapper (data-charts.ts) while the table
+   itself spans the whole scrolled width, so header and rows run edge to edge
+   (owner, 2026-10-24). */
+.sl-markdown-content .vx-table-scroll {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.sl-markdown-content table {
+  display: table;
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+.sl-markdown-content :is(th, td) {
+  padding: 0.55rem 0.9rem;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--vx-border) 70%, transparent);
+  vertical-align: top;
+  text-align: left;
+}
+.sl-markdown-content th {
+  background: var(--vx-surface);
+  color: var(--vx-fg);
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--vx-border);
+}
+.sl-markdown-content tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--vx-surface) 45%, transparent);
+}
+.sl-markdown-content tbody tr:last-child td {
+  border-bottom: 0;
+}
+.sl-markdown-content tbody tr:hover td {
+  background: color-mix(in srgb, var(--vx-accent) 7%, transparent);
+}
+.sl-markdown-content td {
+  color: var(--vx-text);
+}
+.sl-markdown-content td:first-child {
+  color: var(--vx-fg);
+}
+.sl-markdown-content :is(th, td):is([align='right'], [style*='right']) {
+  text-align: right;
+  white-space: nowrap;
+}
+.sl-markdown-content :is(th, td) code {
+  font-size: 0.82em;
+  white-space: nowrap;
 }
 
 /* Drop the per-heading anchor ("copy link") icons. */

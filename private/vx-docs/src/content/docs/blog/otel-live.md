@@ -6,13 +6,11 @@ authors:
 tags:
   - telemetry
   - ci
-excerpt: 'With @vzn/vx-otel, each task sends its span, metrics and output tail the moment it ends. Your dashboard follows the build live, for the same CPU as one send at the end.'
+excerpt: '@vzn/vx-otel sends each task''s span the moment it ends, so your dashboard follows the build live, for the same CPU as one send at the end.'
 ---
 
-A trace that arrives after the build is a report. A trace that arrives
-while the build runs is a window. `@vzn/vx-otel` sends as it goes, so the
-slow task shows up in Grafana or Honeycomb while you can still do
-something about it.
+`@vzn/vx-otel` sends each task's trace as soon as it ends. You see the
+slow task in Grafana or Honeycomb while the build still runs.
 
 ```mermaid
 flowchart LR
@@ -26,8 +24,7 @@ flowchart LR
 
 ## Turn it on
 
-Declare the plugin and point the standard OTel variables at a collector.
-Live export is the default.
+Add the plugin and point the standard OTel variable at a collector.
 
 ```ts
 // .vx/workspace.ts
@@ -41,41 +38,35 @@ export default defineWorkspace({ plugins: [otel()] })
 $ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 vx run build test --all
 ```
 
-With no endpoint set, the plugin exports nothing, so it is safe to declare
-everywhere.
+With no endpoint set it sends nothing, so keep it on everywhere.
 
 ## What arrives, and when
 
-- When the run starts, and when each task starts, a log record
-  (`vx.run.start`, `vx.task.start`) linked to the trace.
-- When a task ends, its span, its metrics and the tail of its output.
-- While a task runs, its process samples as they are taken.
-- When the run ends, the `vx.run` span, the stage spans and the run's
-  metrics.
+| When           | What arrives                                      |
+| -------------- | ------------------------------------------------- |
+| run, task start | a log record (`vx.run.start`, `vx.task.start`)   |
+| task running   | process samples                                   |
+| task ends      | its span, metrics and output tail                 |
+| run ends       | the `vx.run` span, stage spans, run metrics       |
 
-Every record names the run, the host, the commit, the repository and, on
-CI, the pipeline and the pull request. A chart opens the trace, and a
-span opens its output.
+Each record names the run, host, commit and repo, and on CI the
+pipeline and pull request.
 
 ## It never holds a task
 
-A task's end only queues its records. Sends are batched: at most one per
-second, one in flight at a time, each taking everything that ended
-meanwhile. A refused send warns once per signal, and the build goes on.
-Live export costs no more than one send at the end:
+A finished task only queues its records. Sends go at most once a
+second, one at a time. A refused send warns once and the build goes on.
+Sending live costs no more than one send at the end:
 
 | Export                     | Requests | CPU    | Wall   |
 | -------------------------- | -------- | ------ | ------ |
 | live (default)             | 4        | 535 ms | 274 ms |
 | at the end (`live: false`) | 2        | 575 ms | 291 ms |
 
-Median of 10 interleaved runs per arm. `private/vx-bench/generate.ts`
-with 60 projects, `build --all --no-cache`, a local OTLP stub that
-answers at once. CPU is the vx process's user plus system time. Linux
-x64, 4 cores, vx at `4c308fb`, 2026-10-23.
+<small>Median of 10 interleaved runs · `private/vx-bench/generate.ts`, 60 projects, `build --all --no-cache` · local OTLP stub · CPU is vx's user + system time · Linux x64, 4 cores · vx 4c308fb · 2026-10-23</small>
 
-To send everything at the end instead, use `otel({ live: false })`. Why
-telemetry can never fail a build is its own story:
+`otel({ live: false })` sends everything at the end instead. Why
+telemetry can never fail a build:
 [Observability that cannot break a run](../telemetry-never-breaks-a-run/).
 The full attribute list is in the
 [vx-otel README](https://github.com/vznjs/vx/tree/main/packages/vx-otel#live-export).

@@ -9,40 +9,21 @@ tags:
 excerpt: 'Seven open-source monorepos that already run on Turborepo or Nx, timed under their own runner and under vx: cold, cache restore, one-file edit and a clean clone. Raw seconds, min of three, slower rows included.'
 ---
 
-The [synthetic benchmark](../honest-benchmarks/) runs one generated
-graph. This post times repos someone else wrote: open-source monorepos
-that already use Turborepo or Nx, each moved to native vx config, then
-run under both tools on the same machine.
+Seven open-source monorepos that already use Turborepo or Nx, each moved
+to native vx config and timed under both on one machine. Slower rows
+included.
 
-Both tools build the same outputs; that is the assumption behind every
-row.
+```mermaid
+flowchart LR
+  C[cold: no cache, no outputs] --> R[restore: cache kept, outputs wiped]
+  R --> E[edit: one file changed]
+  E --> K[clone: fresh checkout, shared cache]
+```
 
-## Method
+<small>4 vCPU Xeon 2.10GHz, 15 GB, Linux · Bun 1.4.2, Node 22.22.0 · vx 522c23b (create-t3-turbo, react-email, trpc, typescript-eslint), 731cf92 (vercel/ai, medusa, TanStack query), 1ee058c (react-email clone) · configs from `bunx @vzn/vx-migrate --native --no-install` · concurrency 10 for all · local cache only, no daemon · 3 reps alternating, min shown, every run exit 0</small>
 
-- One cloud container: 4 vCPU (Intel Xeon @ 2.10GHz), 15 GB RAM, Linux,
-  nothing else running. Bun 1.4.2, Node 22.22.0.
-- vx built from `main` with `bun build --compile`: 522c23b for
-  create-t3-turbo, react-email, trpc and typescript-eslint; 731cf92 for
-  vercel/ai, medusa and TanStack query; 1ee058c for the react-email clone
-  row.
-- Configs written by `bunx @vzn/vx-migrate --native --no-install`, then
-  `vx lock`.
-- Concurrency 10 for every tool: Turborepo `--concurrency=10`, Nx
-  `--parallel=10`, vx `--concurrency 10`.
-- Local cache only: no remote cache, no daemon, no telemetry.
-- Four arms, each tool wiping only its own cache:
-  - **cold**: cache and every build output wiped.
-  - **restore**: outputs wiped, cache kept.
-  - **edit**: one source file gets a new line (new content each rep),
-    outputs kept.
-  - **clone**: a fresh `git clone` at another path, `node_modules`
-    copied, sharing the first checkout's cache, with no outputs.
-- Three reps, the order alternating between tools. Each cell is the
-  minimum of the three, in seconds. Every run exited 0.
-
-## Results
-
-Seconds, min of 3. Shorter bars are less time; each chart keeps its table one click away.
+Seconds, min of 3. Shorter bars are less time; each table is one click
+away.
 
 ### create-t3-turbo vs Turborepo 2.5.8
 
@@ -56,11 +37,10 @@ Seconds, min of 3. Shorter bars are less time; each chart keeps its table one cl
 | edit, clean: false | 4.61 s | 3.83 s |
 | clone | 0.28 s | 0.11 s |
 
-Both edit rows are a rerun on vx 5b2b0a1 (same machine shape, min of
-3). The second sets `cache.outputs.clean: false` on the three tsc build
-tasks: by default vx deletes a task's declared outputs before it runs on
-a miss, tsc's `.cache/tsbuildinfo.json` included, so tsc rebuilds `api`
-from scratch.
+Both edit rows: vx 5b2b0a1, same machine, min of 3. By default vx
+deletes a task's outputs before a miss, tsc's `tsbuildinfo` too, so tsc
+rebuilds from scratch. `cache.outputs.clean: false` on the three tsc
+tasks keeps it.
 
 ### react-email vs Turborepo 2.9.14
 
@@ -140,9 +120,9 @@ minimum.
 | clone | 4.15 s | 5.37 s |
 
 :::note[Restore and clone rows]
-vx hits 16 of 18, Nx 17. `ast-spec#build` stays a miss by design: its
-inputs include committed snapshots its own test may rewrite, and vx never
-keys a task on files another task in the run can write.
+vx hits 16 of 18, Nx 17. `ast-spec#build` stays a miss: its own test
+may rewrite its committed snapshots, and vx never trusts a key on files
+another task can write.
 
 Nx's first clone rep missed its cache (56.82 s), as with TanStack query.
 :::

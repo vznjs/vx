@@ -1,5 +1,5 @@
 ---
-title: 'Remote execution without moving the scheduler'
+title: 'Run tasks on a remote worker pool, keep the scheduler local'
 date: 2026-09-10T23:38:00Z
 authors:
   - vzn
@@ -9,11 +9,22 @@ tags:
 excerpt: "@vzn/vx-reapi runs tasks on any Bazel Remote Execution API worker pool. The graph, the placement decision, retries, timeouts and the cache all stay on your machine; what moves is one self-contained action per task."
 ---
 
-Distributed builds usually arrive as a platform: a service that owns
-the graph, agents that run it, a dashboard that shows it. vx's version
-is a plugin that fills two seams, `executor` and `cache`, against a
-wire that already exists: Bazel's Remote Execution API, spoken by
-NativeLink, BuildBuddy, Buildbarn and bazel-remote.
+`@vzn/vx-reapi` sends tasks to any Bazel Remote Execution worker pool
+(NativeLink, BuildBuddy, Buildbarn). The graph, retries, timeouts and
+cache stay on your machine.
+
+```mermaid
+sequenceDiagram
+  participant vx as vx (your machine)
+  participant CAS as remote store
+  participant W as worker
+  vx->>vx: plan graph, pick placement
+  vx->>CAS: upload inputs the store lacks
+  vx->>W: run one action
+  W->>CAS: write outputs
+  W-->>vx: result digest
+  vx->>CAS: fetch outputs when needed
+```
 
 ```ts
 // .vx/workspace.ts
@@ -32,51 +43,29 @@ export default defineWorkspace({
 })
 ```
 
-Execution is off unless `execute: true` is set, even with the plugin
-declared for caching. Changing where a build runs is not something a
-plugin should do by being present.
-
-## The scheduler never leaves
-
-vx owns the task graph and decides placement once per task, before
-scheduling. Telemetry, retries, timeouts, the cache and the logger
-behave exactly as they do locally, because none of them moved. The
-executor's job is one function: run this command with these inputs and
-give me the outputs. `capacity` gives it its own scheduler pool, so a
-64-wide fleet is not throttled by a laptop's core count and remote
-tasks reserve none of the local CPU budget.
-
-`vx run --dry` prints the decision per line: `@vx/reapi`, `@local` or
+Nothing runs remotely until you set `execute: true`. `capacity` gives the
+pool its own slots, so 64 workers are not held to your laptop's cores.
+`vx run --dry` shows where each task goes: `@vx/reapi`, `@local` or
 `@noop`.
 
-## What goes remote
+## What stays local
 
-- **Only cacheable tasks.** A task with no `cache` block ships no
-  inputs to a worker, so it would run against an empty tree.
+- **Only cacheable tasks go.** A task with no `cache` block has no
+  declared inputs to ship.
 - **Not persistent tasks, or anything depending on one.** A worker
-  cannot reach a port on your machine; the placement stage knows.
+  cannot reach a port on your machine.
 - **Not sandboxed tasks, or anything depending on one.** The sandbox
-  is local machinery a worker does not have, and a boundary verified
-  remotely would pass vacuously.
-- **Not `exec.remote: false`, or anything depending on it.** A task
-  that talks to Docker, a device or a local daemon is pinned by one
-  field.
+  runs only here.
+- **Not `exec.remote: false`, or anything depending on it.** Use it for
+  Docker, a device or a local daemon.
 - **Not a task whose key folds a runtime probe** (`inputs.runtime`,
-  `workspaceRuntime`): the key holds this machine's `node -v`, which a
-  worker cannot prove it shares. Its dependants may still go.
+  `workspaceRuntime`). A worker cannot prove it has your `node -v`.
 
-A task's inputs on the worker are exactly what its cache key declares:
-`inputs.files`, resolved env values, upstream outputs. Ambient
-state such as an undeclared `tsconfig.json`, `.npmrc` or
-`node_modules` is not in the key and therefore not on the worker. The
-[sandbox](../the-sandbox/) is how you find the gap before you mark a
-task remote-eligible: a task that passes locally with the declared
-paths as its only reads will pass on a worker.
+A worker gets exactly what the cache key declares. Run the task in the
+[sandbox](../the-sandbox/) first: if it passes there, it passes on a
+worker.
 
-## `node_modules`: install as an action
-
-Workers are stateless and `node_modules` is ambient. The answer is an
-explicit install task pinned to the pool with `exec.remote: 'only'`:
+## Install `node_modules` on the pool
 
 ```ts
 install: {
@@ -93,27 +82,15 @@ build: {
 },
 ```
 
-Verified end to end against a live NativeLink pool: `install` runs on a
-worker, once per lockfile change, and its outputs never touch your
-disk. A dependent's input tree references the install outputs in the
-remote content-addressed store, so the bytes flow worker to store to
-worker without transiting your machine. With no remote executor
-declared, `install` is a local no-op and dependents use whatever your
-machine has, so a laptop run behaves as it did before the field
-existed.
+With `remote: 'only'`, `install` runs on a worker once per lockfile
+change. Its outputs go worker to store to worker and never touch your
+disk. Tested against a live NativeLink pool. With no remote executor,
+`install` does nothing locally.
 
-## One artifact format, both directions
+## A remote error is a local run
 
-The same `tar.zst` bytes serve the local cache and the remote's
-action cache. Nothing is repacked at the boundary. A remote error, a
-timeout, an unreachable endpoint all degrade to a miss on that layer
-and the run continues locally; a cache-only server that advertises no
-execution capability declines the executor with a warning and keeps
-serving the cache.
+The same `tar.zst` bytes serve both caches. An error or timeout is a miss,
+and the task runs here. A cache-only server keeps serving the cache.
 
-None of this is in core. Core has the two seams and the placement
-stage; `@vzn/vx-reapi` is the proof they are wide enough. The guide,
-including worker image requirements and how output globs travel over a
-wire that has no globs, is [Remote
-execution](../../docs/remote-execution/). More at
+Guide: [Remote execution](../../docs/remote-execution/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

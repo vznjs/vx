@@ -373,11 +373,12 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
           'c#build success',
         ])
         // One probe for the plan, one background refresh for the run, and
-        // no HEAD; each hit fetched once, before the refresh answered.
+        // no HEAD; each key fetched once, before the refresh answered: c's
+        // lookup waits on no probe, so its miss is one GET.
         expect(remote.batchCalls() - batches).toBe(2)
         expect(remote.headCounts.size).toBe(0)
-        expect([...remote.getCounts.values()]).toEqual([1, 1])
-        expect(gets.filter((t) => t < answeredAt)).toHaveLength(2)
+        expect([...remote.getCounts.values()]).toEqual([1, 1, 1])
+        expect(gets.filter((t) => t < answeredAt)).toHaveLength(3)
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }
@@ -1058,8 +1059,9 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         const bHash = byId.get('b#build')!.hash!
         expect(absent.mock.calls.map((c) => [...c[0]])).toEqual([[bHash]])
         // a's lazy pull may land before the pass asks the local store,
-        // which then drops a too; the miss never enters either way.
-        expect(prefetch.mock.calls.map((c) => c[0]).filter((h) => h !== aHash)).toEqual([])
+        // which then drops a too. The miss enters once at most: as the
+        // first pool's worth, pulled before the probe answers.
+        expect(prefetch.mock.calls.filter((c) => c[0] === bHash).length).toBeLessThanOrEqual(1)
         expect(remote.getCounts.get(aHash)).toBe(1)
         expect(remote.getCounts.get(bHash) ?? 0).toBeLessThanOrEqual(1)
         // One existence probe a run: no task's lookup asks the remote again

@@ -6,11 +6,11 @@ authors:
 tags:
   - announcement
   - design
-excerpt: 'vx is task orchestration you own: it runs and caches a task graph, correctly, and nothing else. The stages, the seams, and what will never be inside.'
+excerpt: 'vx runs and caches your task graph, correctly, and nothing else. How a run works, and what will never be inside.'
 ---
 
-**vx runs and caches a task graph, correctly, and stops there.** That
-sentence is a design. Here is what it commits us to.
+**vx runs and caches your task graph, correctly, and stops there.**
+Here is what that means in practice.
 
 ## A run is a pipeline
 
@@ -25,22 +25,20 @@ flowchart LR
   style K stroke:#c6f84e,stroke-width:2px
 ```
 
-1. **Lock.** `vx lock` finds every project, evaluates each
-   `vx.config.ts` and writes `.vx/projects.lock.json`. A run reads only
-   the lock.
-2. **Graph.** One task graph for the whole workspace, from `dependsOn`
-   and the package graph.
-3. **Key.** Each task gets a content hash of its declared inputs, its
-   evaluated config and the keys of everything upstream.
-4. **Schedule.** Look each key up. Restore hits. Run misses. Save.
+1. **Lock.** `vx lock` runs each `vx.config.ts` once and saves the
+   result. A run reads only that.
+2. **Graph.** One task graph for the whole repo.
+3. **Key.** Each task gets a hash of its inputs, its config and the
+   keys of everything before it.
+4. **Schedule.** Restore hits. Run misses. Save.
 
 In plugin terms the stages are named `config` → `discover` →
 `project` → `graph` → `key` → `fingerprint` → `schedule` → `admit`, then
 `executor`, `cache`, `telemetry`, `output`, `setup`, `teardown` and
 `commands`. Each is a seam a plugin can fill.
 
-Core applies **no** plugin by default. Running here and
-caching here are the floor, so a workspace with no plugins still works.
+Core turns on **no** plugin by default. With none, vx still runs and
+caches on your machine.
 
 ## A task is one command
 
@@ -52,14 +50,12 @@ build: {
 }
 ```
 
-Three rules hold everywhere:
-
 - **Caching is opt-in.** No `cache` block, no cache. vx never guesses
   what a task reads.
 - **One command per task.** A plugin may change *where* it runs, never
   *what* it is.
-- **Project boundaries are hard.** A glob never reaches into another
-  project. What one project needs from another comes through the graph.
+- **A project reads only its own folder.** What it needs from another
+  project comes through the graph.
 
 ## What is not inside
 
@@ -73,13 +69,10 @@ Three rules hold everywhere:
 
 Remote caches, remote execution, telemetry and CI summaries are plugins
 in their own packages. `@vzn/vx-reapi` (Bazel's Remote Execution API)
-proves the seams are wide enough.
+shows the plugin points are wide enough.
 
-## Why the boundary matters
-
-A tool that sells a cloud has a reason to keep the local path merely
-fine. A tool that owns only the graph has one job: be correct and fast
-on the machine in front of you.
+With no cloud to sell, vx has one job: be correct and fast on the
+machine in front of you.
 
 Next: [Why vx is fast](../why-vx-is-fast/). Reference:
 [Architecture](../../architecture/). More at

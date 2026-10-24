@@ -188,7 +188,8 @@ describe('startRemotePrefetch', () => {
       })
       const one = await prefetchWith(4, () => new Set())
       expect(one.rec.probed.map((b) => b.length)).toEqual([1])
-      expect(one.rec.prefetched).toEqual([])
+      // Pulled before the probe answered, as the first pool's worth is.
+      expect(one.rec.prefetched).toHaveLength(1)
     },
     TIMEOUT,
   )
@@ -214,6 +215,30 @@ describe('startRemotePrefetch', () => {
       }
       expect(await told((h) => new Set(h))).toEqual([['a#build', 'b#build']])
       expect(await told(() => new Set())).toEqual([[]])
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "puts the keys' derivation and the batch probe in --profile's spans",
+    async () => {
+      // A CI run's probe answered ~1.6 s after its first task started, and
+      // no trace said where that went (2026-10-24).
+      await addProject(root, 'a', {
+        files: { 'src/in.txt': 'a' },
+        config: CACHED('echo built > out.txt', `{ files: ['out.txt'] }`),
+      })
+      const spans: Record<string, unknown>[] = []
+      await prefetchWith(
+        4,
+        (h) => new Set(h),
+        (a) => ({ ...a, spans }),
+      )
+      expect(spans.map((e) => [e['name'], e['args']])).toEqual([
+        ['stable keys', { keys: 1 }],
+        ['remote probe', { keys: 1, held: 1 }],
+      ])
+      for (const e of spans) expect(e['dur']).toBeGreaterThanOrEqual(0)
     },
     TIMEOUT,
   )
@@ -324,6 +349,28 @@ describe('startRemotePrefetch', () => {
     TIMEOUT,
   )
 
+  // CI's probe answered ~490 ms in, a GET ~250 ms: a hit's dependant then
+  // waited on its own GET once its upstream hit landed (2026-10-24).
+  it(
+    'pulls the first pool of keys before the probe answers, and no more',
+    async () => {
+      for (const name of ['a', 'b', 'c', 'd', 'e']) {
+        await addProject(root, name, {
+          files: { 'src/in.txt': name },
+          config: CACHED('echo built > out.txt', `{ files: ['out.txt'] }`),
+        })
+      }
+      const { rec } = await prefetchWith(2, () => new Set())
+      // Every key a miss: one pool's worth of GETs is all it cost.
+      expect(rec.probed.map((b) => b.length)).toEqual([5])
+      expect(rec.prefetched).toHaveLength(2)
+      const all = await prefetchWith(2, (h) => new Set(h))
+      expect(new Set(all.rec.prefetched.map(([h]) => h)).size).toBe(5)
+      expect(all.rec.prefetched).toHaveLength(5)
+    },
+    TIMEOUT,
+  )
+
   // M, 2026-10-23: "We wait for remote before we plan. We need data to
   // plan. We don't wait for remote without dte". The kept hit's pull starts
   // before the probe answers either way; only demand (an executor that
@@ -365,10 +412,11 @@ describe('startRemotePrefetch', () => {
             ...(plans ? { held: () => void seen.push('held') } : {}),
           }),
         )
-        return seen.slice(0, 3)
+        return seen
       }
-      expect(await order(false)).toEqual(['pull', 'answer', 'pull'])
-      expect(await order(true)).toEqual(['pull', 'answer', 'held'])
+      // The kept hit, then the first pool's worth, all before the answer.
+      expect(await order(false)).toEqual(['pull', 'pull', 'answer'])
+      expect(await order(true)).toEqual(['pull', 'pull', 'answer', 'held'])
     },
     TIMEOUT,
   )

@@ -49,7 +49,7 @@ export {
 export { bindableWrites, punchWalls } from './sandbox-binds.js'
 export { isLocalExecutor, localExecutor } from './local-executor.js'
 export { holdGroups, killTree, untilGroupsGone } from './kill-tree.js'
-export { sampleTrees } from './proc-sample.js'
+export { sampleTrees, type TreeUsage } from './proc-sample.js'
 export {
   assertExecuteResult,
   executorFallback,

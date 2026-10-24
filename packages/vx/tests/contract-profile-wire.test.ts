@@ -70,9 +70,13 @@ async function profileJson(): Promise<unknown> {
   // Every field the profile reads, and the unkeyed, unmeasured task
   // beside it (`hash: null`, no `cpuMs`).
   const file = await writeRunProfile({
+    runStartNs: 0n,
     target: 'profile.json',
     cwd: dir,
-    outcomes: [outcome('a#build', { hash: 'h1', cpuMs: 5, peakRssBytes: 4 }), outcome('b#gen', {})],
+    outcomes: [
+      outcome('a#build', { hash: 'h1', cpuMs: 5, peakRssBytes: 4, fetchMs: 3 }),
+      outcome('b#gen', {}),
+    ],
   })
   return JSON.parse(readFileSync(file, 'utf8'))
 }

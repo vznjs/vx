@@ -5,12 +5,11 @@ authors:
   - vzn
 tags:
   - announcement
-excerpt: 'vx runs and caches a task graph, correctly, and stops there. One picture, one measured run, and where to go next.'
+excerpt: 'vx runs your monorepo''s tasks and caches them, on Bun, with nothing behind a paid cloud. Here it is in one picture and one run.'
 ---
 
-**vx runs and caches a task graph, correctly, and stops there.** It is a
-task runner and a content-addressed cache for JavaScript monorepos,
-built on Bun. Nothing sits behind a paid cloud.
+vx runs your monorepo's tasks and caches the results. It is built on
+Bun, and nothing sits behind a paid cloud.
 
 ```mermaid
 flowchart LR
@@ -37,18 +36,19 @@ $ vx run build test --all
   time      21ms
 ```
 
-The second run finds every key in the cache and every output already on
-disk, so nothing runs. Timed from outside, start-up included:
+The second run finds every result in the cache, so nothing runs.
+Timed from outside, start-up included:
 
-```
-cold  vx run build test --all --force   min 158.1 ms · median 170.9 ms   (20 runs)
-warm  vx run build test --all           min 115.0 ms · median 138.8 ms   (20 runs)
-```
+| Run  | Command                          | Fastest  |
+| ---- | -------------------------------- | -------- |
+| cold | `vx run build test --all --force` | 158.1 ms |
+| warm | `vx run build test --all`         | 115.0 ms |
 
-Linux x64, 4 cores, Bun 1.4.4, vx from source at `0be0367`, 2026-10-23.
-Most of the warm 115 ms is Bun loading vx; the run itself reports 21 ms.
+<small>Min of 20 runs (median 170.9 ms cold, 138.8 ms warm) · Linux x64, 4 cores, Bun 1.4.4 · vx 0be0367 · 2026-10-23</small>
 
-## What is in the box
+Most of the warm 115 ms is Bun loading vx. The run itself reports 21 ms.
+
+## What you get, what you don't
 
 | Where       | What                                                                     |
 | ----------- | ------------------------------------------------------------------------ |
@@ -56,8 +56,8 @@ Most of the warm 115 ms is Bun loading vx; the run itself reports 21 ms.
 | Plugins     | remote caches, remote execution, telemetry, CI summaries, lockfile keys |
 | Never       | a hosted dashboard, a daemon, a cloud you must buy into                  |
 
-A workspace with no plugins still runs and caches. Each plugin sits on a
-documented seam and is declared in `.vx/workspace.ts`.
+With no plugins, vx still runs and caches. You add a plugin by naming
+it in `.vx/workspace.ts`.
 
 ## Next
 

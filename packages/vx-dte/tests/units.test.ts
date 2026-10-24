@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { crowdShare, loadMeter, localEnv, runWorker, swapRoots } from '../src/worker.js'
+import { crowdShare, loadMeter, localEnv, runWorker, swapRoots, treeMeter } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes, homeOf, needOf } from '../src/plugin.js'
@@ -506,9 +506,9 @@ it('sends a worker what its booking fits, though its load reads low; busier than
     expect(await b.batches()).toEqual([['t5', 't6', 't7', 't8']])
     // Its machine busier than booked: the core a task freed stays taken.
     await b.say({ type: 'start', task: 't5', load: { cpu: 4, memory: 0 } })
-    const t9 = h.o.execute(h.req('t9'))
     await b.finish('t5')
     await b.say({ type: 'held', running: ['t6', 't7', 't8'], load: { cpu: 4, memory: 0 } })
+    const t9 = h.o.execute(h.req('t9'))
     await Bun.sleep(50)
     expect(h.o.where('t9')).toBeNull()
     // The plan holds its tasks at what its load says, not their history.
@@ -518,6 +518,29 @@ it('sends a worker what its booking fits, though its load reads low; busier than
       .running.reduce((n, r) => n + r.cores, 0)
     expect(held).toBeCloseTo(4)
     void t9
+  } finally {
+    await h.stop()
+  }
+})
+
+// Main 2975e38: a Mac's frame as a task ended read 2.9 of 3 cores busy,
+// that task and its save among them, and held the next task for the next
+// frame, up to 30 s on.
+it('places on a worker by its booking once a task ends: the load it reported counted that task', async () => {
+  const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
+  try {
+    const a = await h.worker(2)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    void h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t1', 't2']])
+    for (const id of ['t1', 't2'])
+      await a.say({ type: 'start', task: id, load: { cpu: 2, memory: 0 } })
+    void h.o.execute(h.req('t3'))
+    await Bun.sleep(50)
+    expect(h.o.where('t3')).toBeNull()
+    await a.say({ type: 'ran', task: 't1', load: { cpu: 2, memory: 0 } })
+    expect(await a.batches()).toEqual([['t3']])
   } finally {
     await h.stop()
   }
@@ -625,6 +648,7 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
   const done = ['t1', 't2'].map((id) => h.o.execute(h.req(id)))
   expect(await a.batches()).toEqual([['t1', 't2']])
   for (const t of ['t1', 't2']) await a.begin(t)
+  await a.say({ type: 'held', running: ['t1', 't2'], load: { cpu: 1.5, memory: 0, tasks: 1.2 } })
   // PR #4214's run asked 7 workers and cancelled each a second later: what each plan saw.
   h.o.planned({
     start: ['small'],
@@ -692,6 +716,12 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
   ).toEqual(['t1', 't2'])
   expect(ev.some((e) => e.ph === 'i' && e.pid === w && e.name === 'stopped')).toBe(true)
   expect(ev.some((e) => e.ph === 'C' && e.pid === w && e.name === 'cores')).toBe(true)
+  // What its machine had busy, its tasks' or not: what a full Mac queued on.
+  expect(
+    ev
+      .filter((e) => e.ph === 'C' && e.pid === w && e.name === 'machine')
+      .map((e) => e.args as unknown),
+  ).toContainEqual({ busy: 1.5, tasks: 1.2 })
   const plan = ev.find((e) => e.ph === 'i' && e.pid === 1 && e.name === 'plan') as
     | { args: Record<string, unknown> }
     | undefined
@@ -2063,6 +2093,25 @@ it('a machine’s usage: peaks of tasks at once, averages over its time online',
   })
 })
 
+// A worker restoring and saving between commands read 10 s idle on main
+// (M, 2026-10-24): a task holds it from its send to its result.
+it('a machine’s busy time: each task from its send, restore and save included', () => {
+  const u = new Usage(0)
+  const now = performance.now
+  try {
+    performance.now = () => 5000
+    // Sent at 1000, its command 1 s of it: the rest restored and saved.
+    u.record({ exitCode: 0, durationMs: 1000, cpuMs: 2000 }, 1000)
+    performance.now = () => 9000
+    u.record({ exitCode: 0, durationMs: 1000, cpuMs: 2000 }, 5000)
+  } finally {
+    performance.now = now
+  }
+  const st = u.stats(4, 10_000)
+  expect(st.busyMs).toBe(8000)
+  expect(st.cpuMs).toBe(4000)
+})
+
 // Main ran 12 workers at 25% with each busy all its time online: what the
 // run held on each says whether packing or the tasks left the cores idle.
 it('a machine’s booked cores: what the run held for its tasks, averaged over its time online', () => {
@@ -2280,4 +2329,25 @@ it('a task begins beside others only when its cores and memory fit in full', () 
   expect(fits(bin(1, 15e9), { cores: 1, memory: 2e9 })).toBe(false)
   expect(fits(bin(0.5, 0), { cores: 4, memory: 0 })).toBe(false)
   expect(fits(bin(0, 0, 0), { cores: Infinity, memory: Infinity })).toBe(true)
+})
+
+// Main fd9afe0: a Mac's tasks' exits said 1.8 cores and they ran at half
+// their share; the machine's busy cores beside its tasks' trees say where.
+it('reads each running task’s process tree every look: the cores its tree used since the last', async () => {
+  let cpu = 0
+  const trees = treeMeter(async (roots) => {
+    cpu += 30
+    return new Map(roots.map((r) => [r, { cpuMs: r === 7 ? cpu : 0, rssBytes: 0 }]))
+  }, 20)
+  try {
+    trees.watch('t1', 7)
+    trees.watch('t2', 8)
+    await Bun.sleep(130)
+    // 30 ms of CPU each 20 ms look: about one and a half cores, all t1's.
+    expect(trees.now()).toBeGreaterThan(0.5)
+    trees.drop('t1')
+    expect(trees.now()).toBe(0)
+  } finally {
+    trees.stop()
+  }
 })

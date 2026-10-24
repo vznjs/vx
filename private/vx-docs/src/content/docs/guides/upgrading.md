@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache: GET a looked-up key at once, not after the batch probe
+
+CacheLayer.probeFirst is removed, with the probe gate behind it.
+
 ## orchestrator: name the setting that asked for a missing remote
 
 RunOptions.remoteRequested is the name of the setting that asked (`'--cache-policy'`), not a boolean.

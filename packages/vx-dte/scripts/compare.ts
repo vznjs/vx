@@ -385,9 +385,8 @@ const GAP = 4
 /**
  * A case as the post draws it: each way's jobs and workers as lanes on
  * one clock, each task a bar as tall as the cores it used, warm-up and
- * idle time shaded. Plain HTML and SVG; charts.css animates `--vxg-t`
- * from 0 to 1000 so every lane fills at once, and holds it at 1000 for
- * a reader who asks for less motion.
+ * idle time shaded. Plain HTML and SVG, drawn whole: an endless fill
+ * animation recomputed every bar each frame and crashed iOS Safari.
  */
 function gantt(c: Case, title: string): string {
   const max = Math.max(...c.ways.map((o) => o.endMs))
@@ -396,7 +395,7 @@ function gantt(c: Case, title: string): string {
   const rect = (cls: string, from: number, to: number, y: number, h: number): string =>
     to <= from
       ? ''
-      : `<rect class="${cls}" x="${x(from)}" y="${d(y)}" width="${d(Math.max(0.5, x(to) - x(from)))}" height="${d(h)}" style="--s:${x(from)};--e:${x(to)}"/>`
+      : `<rect class="${cls}" x="${x(from)}" y="${d(y)}" width="${d(Math.max(0.5, x(to) - x(from)))}" height="${d(h)}"/>`
   const ways = c.ways.map((o, n) => {
     const height = o.lanes.length * (LANE + GAP)
     const lanes = o.lanes.map((l, i) => {
@@ -413,10 +412,10 @@ function gantt(c: Case, title: string): string {
     const label = `${o.way}: ends ${(o.endMs / 1000).toFixed(1)} s, ${(o.machineMs / 60_000).toFixed(1)} machine-minutes`
     return (
       `<div class="vx-gantt-way${n === c.ways.length - 1 ? ' vx-gantt-lead' : ''}">` +
-      `<div class="vx-gantt-head"><span>${o.way}</span><span class="vx-gantt-end" style="--e:${x(o.endMs)}">${(o.endMs / 1000).toFixed(1)} s · ${(o.machineMs / 60_000).toFixed(1)} min</span></div>` +
+      `<div class="vx-gantt-head"><span>${o.way}</span><span class="vx-gantt-end">${(o.endMs / 1000).toFixed(1)} s · ${(o.machineMs / 60_000).toFixed(1)} min</span></div>` +
       `<svg viewBox="0 0 1000 ${height}" preserveAspectRatio="none" height="${height}" role="img" aria-label="${label}">` +
       lanes.join('') +
-      `<rect class="vx-gantt-now" x="0" y="0" width="2" height="${height}"/></svg></div>`
+      `</svg></div>`
     )
   })
   return `<figure class="vx-gantt"><figcaption>${title}</figcaption>${ways.join('')}</figure>`

@@ -16,11 +16,13 @@ import {
   machineMemoryBytes,
   ui,
   machineParallelism,
+  sampleTrees,
   sandboxRequestFor,
   type CacheFacts,
   type ExecuteRequest,
   type LocalFloor,
   type TaskArtifacts,
+  type TreeUsage,
 } from '@vzn/vx'
 import {
   HELD_EVERY,
@@ -97,6 +99,8 @@ export async function runWorker(opts: {
   const myReal = realpathSync(opts.root)
   let floor: LocalFloor | undefined
   const load = loadMeter()
+  const trees = treeMeter()
+  const frame = (): Load => ({ ...load.now(), tasks: trees.now() })
   /**
    * Entries whose files are here, restored or run here, by key: tasks
    * started together wait on one restore, never run before it.
@@ -134,7 +138,7 @@ export async function runWorker(opts: {
       present.set(key, Promise.resolve())
       holds.set(key, names(m.project, m.outputs))
     }
-    await me.send('orchestrator', { type: 'end', task: m.task, key, result, load: load.now() })
+    await me.send('orchestrator', { type: 'end', task: m.task, key, result, load: frame() })
   }
 
   // A message the relay would not take is said, each kind once (2026-10-23):
@@ -157,7 +161,7 @@ export async function runWorker(opts: {
       if (ran) return
       ran = true
       void me
-        .send('orchestrator', { type: 'ran', task: m.task, load: load.now() })
+        .send('orchestrator', { type: 'ran', task: m.task, load: frame() })
         .catch(unsent('ran'))
     }
     const p = runTask(m, done)
@@ -196,7 +200,7 @@ export async function runWorker(opts: {
     running.set(m.task, stop)
     // Not awaited: the task does not wait on the relay to say it began.
     void me
-      .send('orchestrator', { type: 'start', task: m.task, load: load.now() })
+      .send('orchestrator', { type: 'start', task: m.task, load: frame() })
       .catch(unsent('start'))
     try {
       const differs = await runtimeDiffers(m)
@@ -265,6 +269,7 @@ export async function runWorker(opts: {
         onStdout: () => {},
         onStderr: () => {},
         signal: stop.signal,
+        onSpawn: (pid) => trees.watch(m.task, pid),
         outputs: m.outputs,
         ...(m.timeoutMs === undefined ? {} : { timeoutMs: m.timeoutMs }),
         ...(sb === undefined ? {} : { sandbox: sb.sandbox }),
@@ -284,7 +289,7 @@ export async function runWorker(opts: {
       floor ??= localFloor()
       ui.print('out', ui.status('info', m.task, ui.dim('running')))
       const crowd = load.mark()
-      const { outputs: _, ...res } = await floor.execute(req)
+      const { outputs: _, ...res } = await floor.execute(req).finally(() => trees.drop(m.task))
       const cpuShare = load.shareSince(
         crowd,
         res.cpuMs === undefined || !(res.durationMs > 0) ? undefined : res.cpuMs / res.durationMs,
@@ -332,7 +337,7 @@ export async function runWorker(opts: {
   const held = setInterval(() => {
     if (running.size === 0) return
     void me
-      .send('orchestrator', { type: 'held', running: [...running.keys()], load: load.now() })
+      .send('orchestrator', { type: 'held', running: [...running.keys()], load: frame() })
       .catch(unsent('held'))
   }, HELD_EVERY * me.heartbeatMs)
   try {
@@ -397,6 +402,7 @@ export async function runWorker(opts: {
   } finally {
     clearInterval(held)
     load.stop()
+    trees.stop()
     for (const c of running.values()) c.abort()
     await Promise.all(work)
     await floor?.close()
@@ -522,6 +528,74 @@ export function loadMeter(
       clearInterval(timer)
       clearInterval(crowded)
     },
+  }
+}
+
+/** How often each running task's process tree is read: core's own `task.sample` cadence. */
+const TREE_EVERY_MS = 1_000
+
+/**
+ * The cores each running task's whole process tree uses, read every
+ * second, summed: beside the machine's busy cores, the rest is no task's
+ * (the worker's own restores and saves, the OS). A Mac whose tasks'
+ * exits said 1.8 cores ran them at half their share (main fd9afe0,
+ * 2026-10-24), and nothing said where the rest went.
+ */
+export function treeMeter(
+  sample: (roots: readonly number[]) => Promise<ReadonlyMap<number, TreeUsage>> = sampleTrees,
+  every = TREE_EVERY_MS,
+): {
+  watch: (task: string, pid: number) => void
+  drop: (task: string) => void
+  now: () => number
+  stop: () => void
+} {
+  const watched = new Map<string, { pid: number; at: number; cpuMs: number; cores: number }>()
+  let timer: ReturnType<typeof setInterval> | undefined
+  let looking = false
+  const look = async (): Promise<void> => {
+    if (looking) return
+    looking = true
+    try {
+      const entries = [...watched]
+      const usage = await sample(entries.map(([, w]) => w.pid))
+      const at = performance.now()
+      for (const [task, w] of entries) {
+        const u = usage.get(w.pid)
+        if (u === undefined || watched.get(task) !== w) continue
+        // A child that exited takes its CPU out of the live sum.
+        if (at > w.at) w.cores = Math.max(0, (u.cpuMs - w.cpuMs) / (at - w.at))
+        w.at = at
+        w.cpuMs = u.cpuMs
+      }
+    } catch {
+      // quiet: a failed look is a missing point; the last one stands
+    } finally {
+      looking = false
+    }
+  }
+  const stop = (): void => {
+    if (timer !== undefined) clearInterval(timer)
+    timer = undefined
+  }
+  return {
+    watch: (task, pid) => {
+      watched.set(task, { pid, at: performance.now(), cpuMs: 0, cores: 0 })
+      if (timer === undefined) {
+        timer = setInterval(() => void look(), every)
+        timer.unref?.()
+      }
+    },
+    drop: (task) => {
+      watched.delete(task)
+      if (watched.size === 0) stop()
+    },
+    now: () => {
+      let cores = 0
+      for (const w of watched.values()) cores += w.cores
+      return Math.round(cores * 100) / 100
+    },
+    stop,
   }
 }
 

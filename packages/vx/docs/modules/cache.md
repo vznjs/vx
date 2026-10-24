@@ -77,7 +77,6 @@ export interface CacheLayer {
     concurrency: number,
   ): Promise<Map<string, ArtifactInfo> | null> // `has` per key per readable remote, for a remote whose batch did not answer; null = one failed
   markRemoteAbsent?(hashes: Iterable<string>): void
-  probeFirst?(started: Promise<void>): void // a pull waits until the run's batch probe starts, then for its answer
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void // `--force`: one batch probe per remote written but not read; a key it holds is not uploaded
   drainUploads?(): Promise<void> // await the background write-through uploads
   stopUploads?(): void // a stopped run: start no more uploads, and let drainUploads resolve now

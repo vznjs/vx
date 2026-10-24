@@ -13,7 +13,9 @@ export interface ProfileArgs {
   target: string // 'profile.json' default chosen by CLI parser
   cwd: string
   outcomes: readonly TaskOutcome[]
+  runStartNs: bigint // hrtime at the run's start: every event is shifted onto the tasks' clock
   executors?: readonly (readonly Record<string, unknown>[])[] // TaskExecutor.profile(), each
+  spans?: readonly Record<string, unknown>[] // the run's own events (the cache probe)
 }
 
 export function writeRunProfile(args: ProfileArgs): Promise<string> // returns final path

@@ -10,6 +10,47 @@
   // its own chunk), and re-renders when Starlight toggles the theme.
   const sources = new WeakMap<Element, string>()
 
+  // Setting any xyChart variable drops the theme's text colours, so all
+  // are given, from the site's tokens.
+  function chartColors(): Record<string, string> {
+    const css = getComputedStyle(document.documentElement)
+    const token = (name: string): string => css.getPropertyValue(name).trim()
+    const text = token('--vx-text')
+    const muted = token('--vx-muted')
+    return {
+      backgroundColor: 'transparent',
+      plotColorPalette: token('--vx-accent'),
+      titleColor: text,
+      xAxisLabelColor: text,
+      yAxisLabelColor: muted,
+      xAxisTitleColor: muted,
+      yAxisTitleColor: muted,
+      xAxisLineColor: muted,
+      yAxisLineColor: muted,
+      xAxisTickColor: muted,
+      yAxisTickColor: muted,
+    }
+  }
+
+  // Pie slices: the accent first, then quieter tones, readable in both
+  // themes (the dark theme's defaults are near-black on the page).
+  function pieColors(): Record<string, string> {
+    const css = getComputedStyle(document.documentElement)
+    const token = (name: string): string => css.getPropertyValue(name).trim()
+    const text = token('--vx-text')
+    return {
+      pie1: token('--vx-accent'),
+      pie2: token('--vx-muted'),
+      pie3: token('--vx-border'),
+      pie4: token('--vx-warn'),
+      pieStrokeColor: token('--vx-bg'),
+      pieOuterStrokeColor: token('--vx-border'),
+      pieSectionTextColor: token('--vx-bg'),
+      pieTitleTextColor: text,
+      pieLegendTextColor: text,
+    }
+  }
+
   async function renderMermaid() {
     const blocks = Array.from(
       document.querySelectorAll<HTMLElement>('pre.mermaid'),
@@ -24,6 +65,9 @@
       securityLevel: 'loose',
       theme: dark ? 'dark' : 'neutral',
       fontFamily: 'inherit',
+      // Charts in the site's accent on the page's own background, not
+      // Mermaid's blue on a grey card.
+      themeVariables: { xyChart: chartColors(), ...pieColors() },
     })
 
     for (const el of blocks) {

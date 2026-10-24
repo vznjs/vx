@@ -97,10 +97,11 @@ jobs:
       # Plans the graph, starts the workers its width needs, then
       # orchestrates them. A PR runs what its diff affects, inputs outside
       # a project included (owner, 2026-10-23); main runs everything.
-      # Main also proves each release binary launches on its platform and
-      # runs the files whose outcome is the platform's on Mac workers
-      # (macOS-only defects reached main unseen on Linux, 2026-08-22).
-      - run: bun packages/vx/src/bin.ts run --profile=profile.json ci test.live check.vs-turbo build.bun.linux-arm64 build.bun.darwin-arm64 ${{ github.event_name != 'pull_request' && 'build.bun.linux-x64 build.bun.darwin-x64 check.binary.linux-arm64 check.binary.darwin-arm64 test.platform check.sandbox-canary check.build-cold' || '' }} ${{ github.event_name == 'push' && 'release.sync' || '' }} ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
+      # Both run the files whose outcome is the platform's on Mac workers
+      # when affected (macOS-only defects reached main unseen on Linux,
+      # 2026-08-22; a PR's Mac-only test turned main red, #4293). Main also
+      # proves each release binary launches on its platform.
+      - run: bun packages/vx/src/bin.ts run --profile=profile.json ci test.live check.vs-turbo build.bun.linux-arm64 build.bun.darwin-arm64 test.platform ${{ github.event_name != 'pull_request' && 'build.bun.linux-x64 build.bun.darwin-x64 check.binary.linux-arm64 check.binary.darwin-arm64 check.sandbox-canary check.build-cold' || '' }} ${{ github.event_name == 'push' && 'release.sync' || '' }} ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
       # The run in time (--profile): every worker's tasks on their own
       # lanes (@vzn/vx-dte), opened in https://ui.perfetto.dev; the job
       # summary links it.

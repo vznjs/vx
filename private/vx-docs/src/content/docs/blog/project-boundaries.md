@@ -1,15 +1,16 @@
 ---
-title: 'A glob that stops at the fence'
+title: 'A glob stops at the next project'
 date: 2026-10-12T17:00:00Z
 authors:
   - vzn
 tags:
   - caching
   - correctness
-excerpt: 'In a monorepo, projects nest. A root package that globs **/* would otherwise hash, and clean, every member under it. vx draws a fence at every nested project, so a key sees only its own project, and a change elsewhere reaches it only through a declared edge.'
+excerpt: 'A project''s globs stop at the next project''s folder. A change elsewhere reaches a task only through a declared dependency.'
 ---
 
-The workspace root is a project here, and its task globs `**/*.ts`:
+A project's globs stop at the next project's folder. A root task that
+globs `**/*.ts` won't rebuild when you edit a package under it:
 
 ```ts
 // vx.config.ts (workspace root)
@@ -34,11 +35,18 @@ $ vx why //#count
     changed file  scripts/x.ts  fdfb0708… → b549282e…
 ```
 
-An edit inside `packages/a` doesn't move the root's key, even though
-`**/*.ts` matches it. A root file does. Demo workspace, vx at
-`69617eb`, 2026-10-23.
+An edit in `packages/a` doesn't change the root's key, though `**/*.ts`
+matches it. A root file does.
 
-A project's globs never reach into another project's directory.
+<small>Demo workspace · vx 69617eb · 2026-10-23</small>
+
+```mermaid
+flowchart TB
+  R["root: inputs **/*.ts"] --> S["scripts/x.ts ✓ counted"]
+  R -.-x A["packages/a/** fenced off"]
+  R -.-x B["packages/b/** fenced off"]
+  A -->|"only through dependsOn"| R
+```
 
 ## Why the fence
 
@@ -48,45 +56,34 @@ A project's globs never reach into another project's directory.
 | root depends on members, no edge says so | `--affected` and the graph disagree with the cache |
 | root outputs `**/*.js`                   | the pre-run wipe deletes members' files            |
 
-vx wipes a task's declared outputs before every run and restore, so an
-unfenced output glob is a delete across projects.
+vx clears a task's outputs before every run and restore, so an output
+glob without a fence would delete other projects' files.
 
 ## How it works
 
-Once per run, vx computes, for each project, the directories of the
-projects nested under it (`workspace/nested-dirs.ts`). Every glob pass
-drops a path under one of them, for inputs and for the output clean
-alike. A workspace package counts as a project whether or not it has a
-`vx.config.ts`, because `--affected` hands it its own files and its
-default `build` keys them.
+Once per run, vx lists the projects nested under each project. Every
+glob skips paths under them, for inputs and for output cleaning. A
+workspace package counts as a project even without a `vx.config.ts`.
 
-The nesting check is a sort and one scan, with a trap worth naming.
-Sorted as strings, `foo`, `foo-utils` and `foo/nested` come out in that
-order, because `-` sorts below `/`. A scan that stopped at the first
-non-descendant would stop at `foo-utils` and never see `foo/nested`, so
-the fence would silently have a hole. vx skips names that merely share
-the prefix and stops only when it leaves the `foo` block.
+One trap: sorted as strings, `foo`, `foo-utils`, `foo/nested` come in
+that order, because `-` sorts before `/`. A scan that stopped at
+`foo-utils` would miss `foo/nested` and leave a hole. vx keeps scanning
+until it leaves the `foo` block.
 
 ## The one way across
 
-If project A needs B's state, it says so with an edge: `dependsOn` B's
-task. B's input key is then folded into A's, so an edit in B re-runs A,
-and the graph, `--affected` and the cache all agree. That is the only
-way one project's key moves when another project's files change.
+If A needs B, A says `dependsOn` B's task. B's key goes into A's, so an
+edit in B runs A again, and the graph, `--affected` and the cache agree.
 
-With the sandbox on, the fence is enforced at run time too. A workspace
-package reached through a `node_modules` link is visible to the task
-only when its key folds a task of that package. Import a sibling the
-key never sees and the read fails and is reported, instead of caching a
-result an edit there would not re-run.
+With the sandbox on, the fence holds at run time too. Import a sibling
+your key never sees and the read fails with a report, instead of
+caching a result that wouldn't rerun.
 
 ## The escape hatch
 
-`inputs.workspaceFiles` and `cache.outputs.workspaceFiles` are
-anchored at the workspace root and apply no fence. They exist for files
-that genuinely belong to the root, like a shared `tsconfig.base.json`.
-Reaching into another project's directory through them works, but it is
-the side door again, so prefer an edge.
+`inputs.workspaceFiles` and `cache.outputs.workspaceFiles` start at the
+workspace root and have no fence. Use them for root files like a shared
+`tsconfig.base.json`. For another project's files, prefer an edge.
 
 Details: [Caching, cross-project
 boundaries](../../caching/#cross-project-boundaries). More at

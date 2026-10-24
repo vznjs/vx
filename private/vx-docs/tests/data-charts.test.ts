@@ -5,11 +5,23 @@
 import { describe, expect, it } from 'bun:test'
 import {
   dataCharts,
+  figureColumns,
   groupsForTable,
   parseDuration,
   renderBars,
 } from '../src/plugins/data-charts.ts'
 import { markdownToHtml } from 'satteri'
+
+describe('figureColumns', () => {
+  it('marks a column right only when every filled cell is a figure', () => {
+    expect(
+      figureColumns([
+        ['default', '120.5 s', '86%', '$1,016', 'best-fit'],
+        ['fifo', '348.9 s', '', '~2 min (warm)', '10'],
+      ]),
+    ).toEqual([false, true, true, true, false])
+  })
+})
 
 describe('parseDuration', () => {
   it.each([
@@ -133,9 +145,9 @@ describe('dataCharts', () => {
     const out = html(TABLE)
     expect(out).toStartWith('<div class="vx-charts">')
     expect(out).toContain(
-      '</div>\n<details class="vx-chart-table"><summary>The table</summary>\n<table>',
+      '</div>\n<details class="vx-chart-table"><summary>The table</summary>\n<div class="vx-table-scroll">\n<table>',
     )
-    expect(out.trimEnd()).toEndWith('</table>\n</details>')
+    expect(out.trimEnd()).toEndWith('</table>\n</div>\n</details>')
   })
 
   it('reads "(+0:09)", a text directive to the parser, as written', () => {
@@ -148,5 +160,12 @@ describe('dataCharts', () => {
     const out = html(TABLE.replace(/^/gm, '> ').replace(/> $/, ''))
     expect(out).not.toContain('vx-charts')
     expect(out).toContain('<blockquote>')
+  })
+
+  it('wraps a table that draws no chart in the scroller too', () => {
+    const out = html('| Kind | What |\n| --- | --- |\n| file | a path |\n')
+    expect(out).not.toContain('vx-charts')
+    expect(out.trimEnd()).toStartWith('<div class="vx-table-scroll">\n<table>')
+    expect(out.trimEnd()).toEndWith('</table>\n</div>')
   })
 })

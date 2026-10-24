@@ -51,6 +51,22 @@ export interface PrefetchArgs {
    * remote, and those every store answered it does not: they run.
    */
   held?: ((ids: readonly string[], missed: readonly string[]) => void) | undefined
+  /** `--profile`'s run events: the keys' derivation and the batch probe, `ts` on `performance.now()`. */
+  spans?: Record<string, unknown>[] | undefined
+}
+
+function span(spans: PrefetchArgs['spans'], name: string, start: number, args: object): void {
+  const end = performance.now()
+  spans?.push({
+    name,
+    cat: 'cache',
+    ph: 'X',
+    ts: start * 1000,
+    dur: (end - start) * 1000,
+    pid: 1,
+    tid: 0,
+    args,
+  })
 }
 
 /**
@@ -80,15 +96,13 @@ export function startRemotePrefetch(args: PrefetchArgs): Promise<void> {
   // a still-in-flight prefetch can never ingest into a closed DB. Errors
   // degrade inside LayeredCache.prefetch; the catch keeps the handle
   // from ever rejecting.
-  const started = Promise.withResolvers<void>()
-  args.cache.probeFirst?.(started.promise)
-  return runPrefetch(args, started.resolve)
-    .catch(() => {})
-    .finally(started.resolve)
+  return runPrefetch(args).catch(() => {})
 }
 
-async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<void> {
+async function runPrefetch(args: PrefetchArgs): Promise<void> {
+  const keysAt = performance.now()
   const stableKeys = await deriveStableKeys(args)
+  span(args.spans, 'stable keys', keysAt, { keys: stableKeys.length })
   // `complete`: every store asked answered for every key, so one it does
   // not hold is a miss; else only its hits are known.
   const tell = (holds: (hash: string) => boolean, complete: boolean): void =>
@@ -128,7 +142,14 @@ async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<voi
   const kept = args.cache.remoteKnown?.(uniqueHashes)
   const known = kept === undefined || kept.size === 0 ? undefined : kept
   if (known !== undefined) pool.push(toPrefetch.filter((k) => known.has(k.hash)))
+  const probeAt = performance.now()
   const asked = args.cache.remoteHasMany?.(uniqueHashes)
+  // The first keys in graph order are pulled now too, the probe unanswered:
+  // on CI it answered ~490 ms in, after a GET did (~250 ms), and a hit's
+  // dependant waited on its own GET once its upstream hit landed
+  // (2026-10-24). At most one pool's worth of these can 404.
+  const eager = toPrefetch.filter((k) => known?.has(k.hash) !== true).slice(0, args.concurrency)
+  if (asked !== undefined) pool.push(eager)
   // Demand hears the index only when no probe will answer: a key the
   // index lacks may still be held (a PR's CI stored main's next tree), and
   // calling it a miss asked 14 workers for 71 tasks, 17 of which ran
@@ -143,13 +164,16 @@ async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<voi
   // would 404. When the remote can't batch (`null` — an older remote, reads
   // disabled, or a layer that doesn't implement the hook at all), fall back to
   // prefetching every stable key, exactly as before.
-  // Every lookup that waited on the probe now finds its hash in it.
-  probing()
   // A remote that answered no batch query is asked key by key when demand
   // plans on the answer: main f71b377 asked 15 workers for 116 tasks, 107
   // restored, and small#1 joined to nothing (2026-10-23). A run that plans
   // nothing pulls instead, as before.
   let present = (await asked) ?? null
+  if (asked !== undefined)
+    span(args.spans, 'remote probe', probeAt, {
+      keys: uniqueHashes.length,
+      held: present?.size ?? null,
+    })
   if (present === null && args.held !== undefined && asked !== undefined)
     present = (await args.cache.remoteHasEach?.(uniqueHashes, args.concurrency)) ?? null
   if (!early) tell((h) => held?.has(h) === true || present?.has(h) === true, present !== null)
@@ -162,7 +186,8 @@ async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<voi
     // the layer for, and that is what the row pins (item 643, 645).
     toPrefetch = toPrefetch.filter((k) => present.has(k.hash))
   }
-  pool.push(known === undefined ? toPrefetch : toPrefetch.filter((k) => !known.has(k.hash)))
+  const pulled = new Set(asked === undefined ? [] : eager)
+  pool.push(toPrefetch.filter((k) => known?.has(k.hash) !== true && !pulled.has(k)))
   await pool.settled()
 }
 

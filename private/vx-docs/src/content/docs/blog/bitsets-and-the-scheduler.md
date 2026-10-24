@@ -1,19 +1,16 @@
 ---
-title: 'Bitsets, popcount, and a scheduler tick that re-scans nothing'
+title: 'Task priority in milliseconds, not 8.5 seconds'
 date: 2026-09-10T23:50:00Z
 authors:
   - vzn
 tags:
   - internals
   - performance
-excerpt: "On a 3,270-task graph, computing scheduling priority with set unions took 8.5 seconds. Packed bitsets with popcount take single-digit milliseconds. This post is the scheduler: what it computes, how it picks the next task, and the two-tier trick that keeps restores off the critical path."
+excerpt: "On a 3,270-task graph, task priority took 8.5 seconds with set unions. Bitsets do it in single-digit milliseconds, and cache restores never take a slot from a build."
 ---
 
-A monorepo task graph is small by graph-algorithm standards: a few
-thousand nodes, a few tens of thousands of edges. It is large enough
-that the naive algorithm shows up in the profile of every warm run,
-because the graph is rebuilt every run and there is no daemon to hide
-it in.
+vx ranks 3,270 tasks in single-digit milliseconds. Done with set unions,
+the same work took 8.5 seconds, on every run, since no daemon keeps it.
 
 ```mermaid
 flowchart LR
@@ -24,88 +21,34 @@ flowchart LR
   style E stroke:#c6f84e,stroke-width:2px
 ```
 
-## Closures as bitsets
+## Each closure is one row of bits
 
-Two questions come up constantly: which tasks are downstream of this
-one (to prioritise the ones that unblock the most work) and which
-packages are reachable from this one (for `--filter 'app...'` and
-`--affected`). The textbook answer is a depth-first search with a set
-per node, unioning children's sets into the parent's. On 3,270 tasks,
-the priority computation done that way took **8.5 seconds**.
+vx needs to know how much work sits below each task. Each task gets a
+row of bits, one per task, all in one `Uint32Array` (1.3 MB at 3,270
+tasks). A union is a bitwise OR and a count is a popcount.
+`--filter '...app'` and `--affected` use the same rows. A filter seeded
+by one or two packages (`app...`) searches from them instead, since
+that is cheaper.
 
-vx represents each closure as a packed bitset over a topological
-numbering: one bit per node, one row of 32-bit words per node, every
-row in a single `Uint32Array` (N² bits, so N² / 8 bytes — 1.3 MB at
-3,270 tasks). A union is a loop of bitwise ORs over those words; a
-size is a popcount. The same computation is **single-digit
-milliseconds**. The package graph uses the same representation for
-dependents (`--filter '...app'`, `--affected`) and once a run asks for
-many closures. A filter seeded by one or two packages (`app...`)
-searches from them instead: building every row cost more than the one
-answer it needed.
+## A finished task touches only its neighbours
 
-## The tick
+Ready tasks sit in a binary max-heap, most work below first. When a task
+finishes, vx counts down its direct dependents and pushes the ones that
+hit zero. Nothing rescans the graph. `@vzn/vx-schedule-history` swaps
+the count for durations learned from past runs.
 
-Priority in vx is "most blocked first": the task with the most
-transitive dependents goes to the worker pool first, because finishing
-it releases the most work. The scheduler keeps ready tasks in an exact
-binary max-heap, ordered by that count and breaking ties in
-graph-insertion order, and on every completion decrements the pending
-dependency count of the completed task's direct dependents and pushes
-the ones that reached zero. No re-scan of the graph: each edge is
-touched once, for O(E) over the run, plus one O(log N) heap operation
-per task that becomes ready and one per dispatch.
+## Restores never take a build's slot
 
-That is also why lookahead and idle-insertion scheduling are on the
-repository's rejected list: they were measured, and the critical-path
-priority already ties or wins. The one refinement worth having is
-learning the real durations, which is what `@vzn/vx-schedule-history`
-does on the `schedule` seam: order by the critical path measured in
-previous runs instead of by edge count.
+vx checks the local cache for every stable task before the run. Misses
+own the workers. Hits go to their own lane, capped at twice the worker
+count, since a restore is disk work. `--concurrency 1` stays serial. A
+task whose key must wait for an upstream joins neither tier.
 
-## Two tiers: misses own the pool, hits backfill
+## Memory limits come from a plugin
 
-A cache hit costs a restore, and a restore should never take a worker
-slot away from a miss that is on the critical path. On local-only runs,
-before scheduling, vx classifies every stable, cacheable task by
-probing the local cache once, up front:
+Core limits only the worker count. The `admit` stage can hold a ready
+task. `@vzn/vx-schedule-history` learns each task's peak memory and
+packs tasks against the machine's RAM.
 
-- Confirmed **hits** form the restore tier. They are made ready
-  immediately, with no dependency gate — their key does not depend on
-  any upstream's success — but in a lane of their own: a second heap
-  the tick drains only after the exec tier, under its own cap of twice
-  the worker count (a restore is disk I/O, not CPU; `--concurrency 1`
-  stays serial). So a restore can never take a slot from a miss.
-- **Misses** own the worker pool from the first tick.
-
-The up-front probe is not extra work: the execution path consumes the
-same result instead of probing again.
-
-A task whose key is only *preliminary*, because an upstream may write
-a file it reads before it runs (a same-project upstream with no
-`cache` block, or one with root-anchored `outputs.workspaceFiles`),
-stays in neither tier: it waits for its dependencies like any other task and is not probed early,
-because reusing a preliminary probe would be a stale-hit path. The rule
-that decides stability is shared with the remote prefetch so the two
-cannot disagree.
-
-## Admission is part of the tick
-
-Core's only gate is the worker count. Anything finer is a plugin's:
-the `admit` stage is asked at every local dispatch, with the tasks
-running here right now, and a `false` holds the ready task until
-something finishes. Core keeps no notion of what a task needs — a
-developer cannot know a linker's peak RSS, and it changes with every
-dependency bump — so `@vzn/vx-schedule-history` learns it: the runner
-records every execution's CPU time and peak RSS (none for a sandboxed
-task on Linux), and the plugin packs
-the largest seen, with headroom, against the machine's memory. It is
-admission control, not enforcement; nothing is cgroup-limited or
-reniced, and a task that exceeds its reservation is the job of
-`exec.timeout` and the OS. A remote executor with `capacity` gets its
-own pool and is never asked, so a 64-wide worker fleet is not throttled
-by a laptop's core count.
-
-Reference: the scheduler module notes under
-[Architecture](../../architecture/). More at
+Reference: [Architecture](../../architecture/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

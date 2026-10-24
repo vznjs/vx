@@ -10,8 +10,12 @@ export interface ProfileArgs {
   target: string
   cwd: string
   outcomes: readonly TaskOutcome[]
+  /** `process.hrtime.bigint()` at the run's start: a task's span is taken from it. */
+  runStartNs: bigint
   /** Each executor's own events (`TaskExecutor.profile`), `ts` on `performance.now()`. */
   executors?: readonly (readonly Record<string, unknown>[])[]
+  /** The run's own events beside its tasks (the cache probe), `ts` on `performance.now()`. */
+  spans?: readonly Record<string, unknown>[]
 }
 
 // ns → us; bigint arithmetic to avoid precision loss before converting to
@@ -75,12 +79,16 @@ export async function writeRunProfile(args: ProfileArgs): Promise<string> {
         hash: o.hash ?? null,
         ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
         ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
+        // A remote hit's download and ingest: the rest of its span is vx's.
+        ...(o.fetchMs !== undefined ? { fetchMs: o.fetchMs } : {}),
       },
     }
   })
   // An executor's processes follow the run's own, each executor's after
-  // the last; its times move onto the runner's hrtime clock.
-  const shiftUs = Number(process.hrtime.bigint() / 1000n) - performance.now() * 1000
+  // the last; its times move onto the tasks' clock, the run's start on
+  // hrtime. Without the start, a DTE mark sat ~the run's setup late.
+  const shiftUs =
+    Number((process.hrtime.bigint() - args.runStartNs) / 1000n) - performance.now() * 1000
   let next = 2
   const theirs: Record<string, unknown>[] = []
   for (const events of args.executors ?? []) {
@@ -96,13 +104,17 @@ export async function writeRunProfile(args: ProfileArgs): Promise<string> {
     }
     next += top
   }
+  const own = (args.spans ?? []).map((e) => ({
+    ...e,
+    ...(typeof e['ts'] === 'number' ? { ts: Math.round(e['ts'] + shiftUs) } : {}),
+  }))
   const named =
     theirs.length === 0
       ? []
       : [{ ph: 'M', name: 'process_name', pid: 1, tid: 0, args: { name: 'run' } }]
   await Bun.write(
     outPath,
-    JSON.stringify({ traceEvents: [...named, ...traceEvents, ...theirs] }, null, 2),
+    JSON.stringify({ traceEvents: [...named, ...traceEvents, ...own, ...theirs] }, null, 2),
   )
   return outPath
 }

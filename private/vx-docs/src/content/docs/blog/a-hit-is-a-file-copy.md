@@ -6,10 +6,11 @@ authors:
 tags:
   - caching
   - performance
-excerpt: 'The local cache keeps each entry as plain files, unpacked once, so a hit is a copy the kernel does. 1,000 hits of 96 KiB restore in 411 ms. Why the archive stays only on the wire, why a hit checks nothing, and why vx never hard-links.'
+excerpt: 'A local cache hit is a file copy the kernel does. 1,000 hits of 96 KiB restore in 411 ms, and vx never hard-links.'
 ---
 
-1,000 tasks, each with a 96 KiB output, `dist` deleted, then one run:
+A local cache hit is a file copy the kernel does. 1,000 hits of 96 KiB
+restore in 411 ms. With `dist` deleted:
 
 ```sh frame="terminal"
 $ rm -rf packages/*/dist && time vx run build --all
@@ -30,10 +31,7 @@ Same entries, two ways to keep them on disk:
 | plain files (`true`, default)    | 411 ms            | 111 MB        |
 | one `tar.zst` each (`false`)     | 686 ms            | 99 MB         |
 
-Min of 5 restores per arm, 3 interleaved arms each, a fresh store per
-arm. `private/vx-bench/generate.ts` with 1,000 projects, each build
-writing 96 KiB of random bytes. Linux x64, 4 cores, vx at `a1786b3`,
-2026-10-23.
+<small>Min of 5 restores, 3 interleaved arms, fresh store per arm · `private/vx-bench/generate.ts`, 1,000 projects, 96 KiB random output each · Linux x64, 4 cores · vx a1786b3 · 2026-10-23</small>
 
 ```mermaid
 flowchart LR
@@ -46,26 +44,22 @@ flowchart LR
 
 ## The kernel does the copy
 
-The archive exists only on the wire. The local cache keeps each entry
-as its plain files, unpacked once when it is saved or downloaded, and
-a hit copies them out.
+Archives exist only on the network. Locally, each entry is stored as
+plain files, unpacked once.
 
 A hit hands each file to the kernel: `copy_file_range` on Linux, or a
-clone where the filesystem supports one (APFS on macOS, Btrfs or XFS on
-Linux). A clone shares the file's blocks until one side writes, so a
-large output can restore without copying its bytes.
+clone on APFS, Btrfs or XFS. A clone shares blocks until one side
+writes, so a big output restores without copying bytes.
 
-vx never hard-links an output to the store. A hard link would be faster
-still, but the restored file and the cached one would be the same inode.
-A build that later edits `dist/index.js` in place would then edit the
-cache, and the next hit would replay the edit. A copy or a clone keeps
-the cache's version as it was.
+vx never hard-links. A hard link would be faster, but then editing
+`dist/index.js` in place would edit the cache too, and the next hit
+would restore your edit. A copy or clone keeps the cache safe.
 
 ## Small entries stay in the index
 
-A thousand tiny outputs as a thousand directories is more file system
-work than the bytes are worth. So an entry of up to 32 KiB stays inside
-the cache index (SQLite) as one compressed row. The bound is a setting:
+A thousand tiny outputs as a thousand folders is more work than the
+bytes are worth. So an entry up to 32 KiB stays in the SQLite index as
+one compressed row. You can change the limit:
 
 ```ts
 // .vx/workspace.ts
@@ -76,28 +70,21 @@ export default defineWorkspace({
 })
 ```
 
-If disk matters more than speed, `decompress: false` keeps each larger
-entry as one `tar.zst`, as in the table: smaller on disk for output that
-compresses, and every restore decompresses it.
+If disk matters more than speed, `decompress: false` keeps each entry
+as one `tar.zst`, as in the table.
 
 ## A local hit checks nothing
 
-The local store is vx's own directory: nothing else writes there. A
-check of each file's size or bytes before a hit would guard against
-nothing, and every save would have to read its outputs back to record
-what the check compares. A local hit copies the stored files as they
-are.
-
-Anything that crosses a network is checked. A remote entry is a
-`tar.zst` that ends with a CRC-32 over everything before it, checked
-before the entry is used. A wrong sum is a miss, and the task runs.
+Only vx writes to its local store, so checking each file on a hit
+would guard against nothing and slow every save. Anything from the
+network is checked: a remote entry ends with a CRC-32, and a wrong sum
+is a miss.
 
 ## A download is decompressed once
 
-A download of up to 4 MiB is fetched whole, decompressed once and
-written straight into the store, where it is checked before anything
-points at it. A larger one goes through a temp file, still decompressed
-once.
+Up to 4 MiB is fetched whole, decompressed once and written into the
+store, then checked. Larger ones go through a temp file, still
+decompressed once.
 
 Storage layout and settings: [Caching](../../caching/) and the
 [schema](../../schema/). More at

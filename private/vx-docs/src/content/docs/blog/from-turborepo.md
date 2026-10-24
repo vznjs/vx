@@ -1,15 +1,16 @@
 ---
-title: 'Moving to vx from Turborepo: one command to native config'
+title: 'From Turborepo to vx in one command'
 date: 2026-09-10T23:32:00Z
 authors:
   - vzn
 tags:
   - migration
   - turborepo
-excerpt: "Moving a Turborepo workspace to vx: `vx init` writes the native TypeScript configs beside turbo.json, and `--keep` checks the mapping first if you want it."
+excerpt: "One command turns a Turborepo workspace into native vx config. Same dependsOn syntax, same --filter, and nothing dropped silently."
 ---
 
-A three-package Turborepo, one command:
+One command turns a Turborepo workspace into native vx config. Five
+tasks mapped here, nothing to fix by hand.
 
 ```sh frame="terminal"
 $ cat turbo.json
@@ -43,8 +44,18 @@ $ vx run build test --all
   time      28ms
 ```
 
-Five tasks mapped, nothing to fix by hand. vx-migrate at `69617eb`,
-2026-10-23. What it wrote for `web`:
+<small>Three-package Turborepo · vx-migrate `69617eb` · 2026-10-23</small>
+
+## What it writes
+
+```mermaid
+flowchart LR
+  T[turbo.json] --> M[bunx @vzn/vx-migrate]
+  P[package.json scripts] --> M
+  M --> C[vx.config.ts per package]
+  M --> W[.vx/workspace.ts]
+  M --> L[.vx/projects.lock.json]
+```
 
 ```ts title="packages/web/vx.config.ts"
 import type { ProjectConfig } from '@vzn/vx/config'
@@ -81,37 +92,16 @@ export default {
 } satisfies ProjectConfig
 ```
 
-The script became `exec.command`. `web` has no `test` script, so its
-`test` is a group that only waits for `build`. `types` has no scripts at
-all, and still keys `ui#build`: an edit there re-runs `ui` and `web`.
-
-## One command
-
-vx is shaped like Turborepo on purpose: the same per-package model,
-`dependsOn` micro-syntax (`'build'`, `'^build'`, `'pkg#build'`),
-`--filter` DSL and `--affected`. What changes is where the config lives
-and what it can say.
-
-`bunx @vzn/vx init` beside `turbo.json` hands the repo to
-`@vzn/vx-migrate`. It reads the root pipeline and any per-package
-`extends`, inlines the matching `package.json` script as the task's
-command, and writes one `vx.config.ts` per package, a `.vx/workspace.ts`
-declaring your lockfile's plugin, and `.vx/projects.lock.json`. It
-installs vx with your own package manager and never overwrites a file
-without `--force`.
-
-A task goes where the script exists, and to a package without it that
-another package's `^` task reaches: a key-only group with no outputs,
-Turbo's no-op node, so an edit there still re-keys its dependants.
-Anything it can't infer becomes a `TODO(vx-migrate)` comment, never a
-silently wrong value. Once `vx run build --all` does what `turbo run
-build` did, delete `turbo.json`.
+Each script becomes `exec.command`. A task goes where the script exists,
+and to a package without it that another package's `^` task reaches:
+a key-only group with no outputs. So an edit there still reruns its
+dependants. Anything it cannot map becomes a `TODO(vx-migrate)` comment.
+It never overwrites a file without `--force`.
 
 ## Check the mapping first
 
-`bunx @vzn/vx init --keep` writes only a `.vx/workspace.ts` that maps
-`turbo.json` through `turbo()` from `@vzn/vx-migrate`,
-installs what it imports, and prints a `next:` line that builds once:
+`bunx @vzn/vx init --keep` writes only a `.vx/workspace.ts` that reads
+`turbo.json` through `turbo()`:
 
 ```ts
 import type { WorkspaceConfig } from '@vzn/vx/config'
@@ -128,13 +118,10 @@ export default {
 } satisfies WorkspaceConfig
 ```
 
-It is a check, not a way to keep `turbo.json`: vx's benchmarks measure
-only native config. `bunx @vzn/vx-migrate --dry` then previews the
-files, and `bunx @vzn/vx-migrate` writes them and drops `turbo()`. It
-renders from the same mapper `turbo()` runs, so the files say exactly
-what the plugin was already doing.
+When the build matches, `bunx @vzn/vx-migrate` writes the native files.
+Both use the same mapper.
 
-## What maps, and what is better
+## Every key it knows
 
 | `turbo.json`                                   | `vx.config.ts`                                          |
 | ---------------------------------------------- | ------------------------------------------------------- |
@@ -162,33 +149,20 @@ a TODO naming it, so nothing is dropped silently.
 
 Three things you get that the JSON could not give you:
 
-- **The command is in the config.** Turborepo runs the script with the
-  task's name; vx makes `exec.command` explicit. A task is one shell
-  command, and you can read it where it is declared.
-- **Inputs are required and explicit.** The migration writes Turbo's
-  default, every file in the package, as `**/*`, where you can see and
-  narrow it; the [sandbox](../the-sandbox/) can then prove them.
-- **Presets are imports.** `globalDependencies` becomes a constant in a
-  file every config imports, and the resolved-config hash sees it. No
-  list to keep in sync.
+- **The command is in the config**, where you can read it.
+- **Inputs are explicit.** Turbo's default becomes `**/*`, which you can
+  narrow and the [sandbox](../the-sandbox/) can check.
+- **Presets are imports**, and the key sees them.
 
-## The deliberate divergences
+## Where vx differs
 
-- A bare task name never widens an anchored task's scope. In Turbo,
-  `turbo run web#lint build` also runs `web#build`; in vx, `build`
-  takes the filter scope and `web#lint` stays anchored.
-- No `--parallel`. It exists in Turbo as an escape hatch for
-  over-declared edges. `dependsOn` in vx is explicit; `--concurrency 1`
-  serialises, and `--exclude-dependencies[=<names>]` drops edges.
-- Failure propagation starts one notch further along. Turbo stops the
-  run at the first failure; a vx run with no flag is `deps-ok` — a
-  task runs when its own dependencies succeeded, and only its
-  dependents are skipped. `--continue=never` is Turbo's default
-  behaviour, and bare `--continue` is `always`, which is what bare
-  `--continue` means in Turbo too.
+- `turbo run web#lint build` also runs `web#build` in Turbo. In vx,
+  `build` follows the filter and `web#lint` stays put.
+- No `--parallel`. Use `--concurrency 1` or
+  `--exclude-dependencies[=<names>]`.
+- On failure, a vx run with no flag is `deps-ok`: only the failed task's
+  dependents skip. `--continue=never` is Turbo's default, and bare
+`--continue` is `always`, as in Turbo.
 
-Every other Turbo behaviour a user would reach for is pinned by a
-parity case that runs vx's real CLI against the Turbo contract it
-stands in for. The full guide, with before/after
-configs, is [Migrate from Turborepo](../../guides/migrate/#turborepo).
-More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
+Guide: [Migrate from Turborepo](../../guides/migrate/#turborepo). More
+at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

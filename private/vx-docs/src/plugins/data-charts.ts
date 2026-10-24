@@ -133,24 +133,44 @@ export function groupsForTable(header: readonly string[], rows: readonly string[
   return out
 }
 
+const FIGURE_CELL = /^[~≈$+-]?\d[\d,. ]*(?:\s?[a-zA-Z%×]{1,8})?(?:\s\(.*\))?$/
+
+/** The columns whose every filled body cell is a figure ("120.5 s", "86%", "$1,016"), to right-align. */
+export function figureColumns(rows: readonly string[][]): boolean[] {
+  const width = Math.max(0, ...rows.map((r) => r.length))
+  return Array.from({ length: width }, (_, c) => {
+    const cells = rows.map((r) => r[c] ?? '').filter((t) => !isBlank(t))
+    return cells.length > 0 && cells.every((t) => FIGURE_CELL.test(t))
+  })
+}
+
 /** Draw every timing table as bars, the table itself kept one click away. */
 export const dataCharts = defineMdastPlugin({
   name: 'vx-data-charts',
   table(node, ctx) {
-    // A table quoted in a blockquote is sample output (a job summary), not a measurement.
-    if (ctx.parent(node).type === 'blockquote') return
     const [head, ...body] = node.children as MdNode[]
     if (!head) return
     const header = (head.children ?? []).map((c) => textOf(c).trim())
     const rows = body
       .filter((r) => !isContext(r))
       .map((r) => (r.children ?? []).map((c) => textOf(c).trim()))
-    const groups = groupsForTable(header, rows)
-    if (groups.length === 0) return
+    // Figures line up on their last digit; a column the author aligned keeps it.
+    const table = node as MdNode & { align?: Array<string | null> }
+    const figures = figureColumns(rows)
+    table.align = header.map((_, c) => table.align?.[c] ?? (c > 0 && figures[c] ? 'right' : null))
+    // A wide table scrolls in this wrapper, so the table itself can span the full scrolled width.
+    const scroller = [
+      { type: 'html', value: '<div class="vx-table-scroll">' },
+      node,
+      { type: 'html', value: '</div>' },
+    ]
+    // A table quoted in a blockquote is sample output (a job summary), not a measurement.
+    const groups = ctx.parent(node).type === 'blockquote' ? [] : groupsForTable(header, rows)
+    if (groups.length === 0) return ctx.replaceNode(node, scroller)
     ctx.replaceNode(node, [
       { type: 'html', value: renderBars(groups) },
       { type: 'html', value: '<details class="vx-chart-table"><summary>The table</summary>' },
-      node,
+      ...scroller,
       { type: 'html', value: '</details>' },
     ])
   },

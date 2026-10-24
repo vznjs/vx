@@ -1089,9 +1089,12 @@ Each project gets a distinct `tid`, and one more for each task it runs
 beside another of its own, so concurrent tasks render on separate lanes. `ts` and `dur` are microseconds derived
 from the per-task `hrtime.bigint()` spans the runner captures.
 `cat` carries the task's final status (`success`, `cache-hit`,
-`cache-hit-remote`, `failed`).
+`cache-hit-remote`, `failed`). A remote hit this run downloaded also
+carries `fetchMs`, its download and ingest; the rest of its `dur` is vx's.
 
-An executor adds its own events after the run's process
+With a remote cache, the run's lane 0 holds two `cache` spans: `stable
+keys` (the up-front keys, `args.keys`) and `remote probe` (the batch
+check, `args.keys` asked, `args.held` found). An executor adds its own events after the run's process
 (`TaskExecutor.profile`): `@vzn/vx-dte` adds one process per worker,
 each task on a lane of its own, and the orchestrator's waits
 ([its README](https://github.com/vznjs/vx/tree/main/packages/vx-dte#readme)).
@@ -3014,8 +3017,8 @@ the workspace, `tasks` is failed / success / skipped, `cache` has a
 segment per legend state (a skipped task rides it too, so the two bars
 fill alike; its count is on the tasks legend only). Its legend reads
 per layer: `local 1✓ 1∅ 2↓ 1↑ · remote 3↓ 4↑ 2✗ 1⇡`. `✓` is a fresh
-hit (outputs already on disk, whichever layer answered, so it counts
-under local), `∅` a task with no cache, `↓` is restored from that
+hit (the local cache answered and its outputs were already on disk; a
+remote hit is never fresh, outputs or none: it is `↓` from the remote), `∅` a task with no cache, `↓` is restored from that
 layer and `↑` saved to it, `✗` a task a remote read or write failed
 for, and `⇡` an upload still running (live only, always last). The
 region stays through vx's closing steps, worker rows gone, and the
