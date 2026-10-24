@@ -25,6 +25,7 @@ export interface PrefetchArgs {
   remoteRead: boolean // the policy's remote-read axis; false returns at once
   remoteWrite: boolean // with reads off: hand the keys to probeBeforeUpload
   held?: (ids: readonly string[], missed: readonly string[]) => void // once: the stable tasks a store holds, and those none does
+  spans?: Record<string, unknown>[] // --profile: the keys' derivation and the batch probe
 }
 
 export function startRemotePrefetch(args: PrefetchArgs): Promise<void>

@@ -1092,7 +1092,9 @@ from the per-task `hrtime.bigint()` spans the runner captures.
 `cache-hit-remote`, `failed`). A remote hit this run downloaded also
 carries `fetchMs`, its download and ingest; the rest of its `dur` is vx's.
 
-An executor adds its own events after the run's process
+With a remote cache, the run's lane 0 holds two `cache` spans: `stable
+keys` (the up-front keys, `args.keys`) and `remote probe` (the batch
+check, `args.keys` asked, `args.held` found). An executor adds its own events after the run's process
 (`TaskExecutor.profile`): `@vzn/vx-dte` adds one process per worker,
 each task on a lane of its own, and the orchestrator's waits
 ([its README](https://github.com/vznjs/vx/tree/main/packages/vx-dte#readme)).

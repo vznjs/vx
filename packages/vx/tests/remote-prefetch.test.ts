@@ -218,6 +218,30 @@ describe('startRemotePrefetch', () => {
     TIMEOUT,
   )
 
+  it(
+    "puts the keys' derivation and the batch probe in --profile's spans",
+    async () => {
+      // A CI run's probe answered ~1.6 s after its first task started, and
+      // no trace said where that went (2026-10-24).
+      await addProject(root, 'a', {
+        files: { 'src/in.txt': 'a' },
+        config: CACHED('echo built > out.txt', `{ files: ['out.txt'] }`),
+      })
+      const spans: Record<string, unknown>[] = []
+      await prefetchWith(
+        4,
+        (h) => new Set(h),
+        (a) => ({ ...a, spans }),
+      )
+      expect(spans.map((e) => [e['name'], e['args']])).toEqual([
+        ['stable keys', { keys: 1 }],
+        ['remote probe', { keys: 1, held: 1 }],
+      ])
+      for (const e of spans) expect(e['dur']).toBeGreaterThanOrEqual(0)
+    },
+    TIMEOUT,
+  )
+
   // A fresh CI runner's index is empty: trusted, it called every task a
   // miss before the probe answered, and main 75f58f9 asked 15 workers for
   // 97 tasks, 16 of which ran (2026-10-23). An index that knows none of the
