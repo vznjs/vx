@@ -184,14 +184,21 @@ it('waits a task on the running task it depends on', () => {
 })
 
 it('spends its margin once: a later plan of the same work keeps the first one’s deadline', () => {
-  // Two workers end it in 40 s, one in 44: within 5 s, the first plan keeps one.
+  // Two workers end it in 40 s: the run may end 5 s past that.
   const work = [task('a', 40_000, [], 4), task('b', 4_000, [], 4)]
   const two = [worker('x'), worker('y')]
-  expect(plan(work, two, [], WARM).release).toEqual(['x'])
-  // A deadline 2 s past the best keeps both.
-  const p = plan(work, two, [], WARM, true, 42_000)
-  expect(p.release).toEqual([])
-  expect(p.boundMs).toBe(42_000)
+  expect(plan(work, two, [], WARM).boundMs).toBe(45_000)
+  // A deadline 2 s past the best is kept.
+  expect(plan(work, two, [], WARM, true, 42_000).boundMs).toBe(42_000)
+})
+
+// Main e05bd71: mac#2 joined at 18.4 s and was let go, the run ending
+// within its margin without it; a mac asked 4 s later joined at 44 s.
+it('keeps an idle worker the plan gives a task, though the run ends within its margin without it', () => {
+  const work = [task('a', 40_000, [], 4), task('b', 4_000, [], 4)]
+  const two = [worker('x'), worker('y')]
+  expect(simulate(work, [two[0]!])).toBeLessThanOrEqual(simulate(work, two) + 5_000)
+  expect(plan(work, two, [], WARM).release).toEqual([])
 })
 
 it('starts a worker of each platform its work needs, though that size is declared last', () => {

@@ -157,9 +157,7 @@ const cases: Case[] = [
     likely: forecastAll(),
     probe: false,
     restoreMs: 1_000,
-    // A worker the plan gave a forecast task stays asked; the task a hit,
-    // it joins to none. Cancelling it instead cancelled main 005e8f2's mac.
-    failing: ['utilization', 'every worker that joins runs a task'],
+    failing: ['utilization'],
   },
   // The forecast knows some keys: half its misses.
   {
