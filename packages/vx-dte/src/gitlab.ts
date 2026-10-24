@@ -6,6 +6,7 @@
 // plays the others, manual jobs, as its work needs them.
 
 import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
+import { installLines, vxCommand, type DteInit, type DteSetup } from './init.js'
 import type { WorkerSpawn, DteAdapter } from './plugin.js'
 
 export interface GitlabOptions {
@@ -19,6 +20,54 @@ const KEYS: PluginOptionKinds<GitlabOptions> = { include: 'string', tags: 'objec
 
 /** What the child pipeline is written to, workspace-relative. */
 const WORKERS_FILE = 'vx-workers.yml'
+
+/** The job templates `include` holds, and the three jobs the user's pipeline adds. */
+function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
+  if (setup.relay === undefined)
+    throw new UserError(
+      'vx dte init: gitlab() needs dte({ relay }): each job asks its ID token for the relay',
+    )
+  const relay = setup.relay
+  const vx = vxCommand(setup.manager)
+  const text = `# Written by vx dte init from dte() in .vx/workspace.ts: the jobs of a
+# distributed run extend these. The image needs Bun and git.
+.vx:
+  image: oven/bun:1.4
+  before_script:
+${installLines(setup.manager)
+  .map((l) => `    - ${l}`)
+  .join('\n')}
+
+.vx-worker:
+  extends: .vx
+  id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }
+`
+  return {
+    files: { [options.include]: text },
+    next: [
+      "Add to .gitlab-ci.yml, with the run's tasks in both jobs:",
+      `include: [{ local: ${options.include} }]`,
+      'vx-plan:',
+      '  extends: .vx',
+      `  script: [${vx} dte plan build test --all]`,
+      '  artifacts:',
+      '    paths: [vx-workers.yml, .vx/dte/]',
+      '    reports: { dotenv: vx-dte.env }',
+      '    access: none',
+      '    expire_in: 1 hour',
+      'vx-workers:',
+      '  needs: [vx-plan]',
+      '  variables: { PARENT_PIPELINE_ID: $CI_PIPELINE_ID }',
+      '  trigger:',
+      '    include: [{ artifact: vx-workers.yml, job: vx-plan }]',
+      'vx:',
+      '  extends: .vx',
+      '  needs: [vx-plan]',
+      `  id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }`,
+      `  script: [${vx} run build test --all]`,
+    ],
+  }
+}
 
 export function gitlab(options: GitlabOptions): DteAdapter {
   refuseUnknownOptions('gitlab()', options, KEYS)
@@ -69,6 +118,7 @@ export function gitlab(options: GitlabOptions): DteAdapter {
     watch.unref()
   }
   return {
+    init: (setup) => gitlabInit(options, setup),
     live: () => token() !== undefined,
     report(w) {
       warn = w

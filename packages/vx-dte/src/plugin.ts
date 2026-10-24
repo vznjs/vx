@@ -17,6 +17,7 @@ import { Database } from 'bun:sqlite'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import type { DteInit, DteSetup } from './init.js'
 import type { Need } from './dispatch.js'
 import { booked, DEFAULT_STRATEGY, STRATEGIES, type Strategy } from './strategy.js'
 import type { Orchestrator } from './orchestrator.js'
@@ -85,6 +86,8 @@ export interface DteAdapter {
    * by its `id`, when the run needs it.
    */
   render?(plan: DtePlan): Readonly<Record<string, string>>
+  /** The CI files that start its workers, which `vx dte init` writes; none for an adapter that starts them on this machine. */
+  init?(setup: DteSetup): DteInit
   /** Whether a plan's workers beyond the first wait for the run to start them. */
   live?(): boolean
   /** Where it says a fault it works around (a status poll or a cancel that failed); called as the run starts. */
@@ -270,15 +273,50 @@ export function dte(options: DteOptions) {
     return 0
   }
 
+  /** `vx dte init [--dry] [--force]`: the CI files the adapter starts workers with, from these sizes. */
+  const init = async (args: readonly string[], ctx: CommandContext): Promise<number> => {
+    const extra = args.find((a) => a !== '--dry' && a !== '--force')
+    if (extra !== undefined)
+      throw new UserError(`vx dte init: unknown argument ${extra}; it takes --dry and --force`)
+    const root = ctx.workspaceRoot
+    if (adapter === undefined)
+      throw new UserError(
+        'vx dte init: dte() names no adapter, so vx starts no workers and needs no CI files',
+      )
+    if (adapter.init === undefined) {
+      process.stdout.write(
+        'vx dte init: this adapter starts workers on this machine; no CI files to write\n',
+      )
+      return 0
+    }
+    const { managerOf, writeInit } = await import('./init.js')
+    const files = adapter.init({
+      workspaceRoot: root,
+      ...(options.relay !== undefined ? { relay: options.relay } : {}),
+      sizes: sizes.map((s) => ({ name: s.name, ...named(s.name) })),
+      manager: managerOf(root),
+    })
+    const out = (line: string): void => void process.stdout.write(`${line}\n`)
+    if (args.includes('--dry')) {
+      for (const [rel, text] of Object.entries(files.files)) out(`# ${rel}\n${text}`)
+      for (const line of files.next) out(line)
+      return 0
+    }
+    return writeInit(root, files, args.includes('--force'), out)
+  }
+
   return definePlugin(import.meta, {
     commands: {
       dte: {
         description:
-          'dte plan: write the CI jobs of a run’s workers; dte worker: run tasks for a distributed run',
+          'dte init: write the CI files that start the workers; dte plan: write the CI jobs of a run’s workers; dte worker: run tasks for a distributed run',
         async run(argv, ctx) {
           if (argv[0] === 'plan') return plan(argv.slice(1), ctx)
+          if (argv[0] === 'init') return init(argv.slice(1), ctx)
           if (argv[0] !== 'worker' || argv.length > 1) {
-            throw new UserError('Usage: vx dte plan [<tasks> <run flags>] | vx dte worker')
+            throw new UserError(
+              'Usage: vx dte plan [<tasks> <run flags>] | vx dte worker | vx dte init [--dry] [--force]',
+            )
           }
           const run = runOf()
           const relay = process.env['VX_DTE_RELAY'] ?? options.relay

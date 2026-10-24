@@ -7,15 +7,94 @@
 import { readFileSync } from 'node:fs'
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
-import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
+import { refuseUnknownOptions, UserError, type Platform, type PluginOptionKinds } from '@vzn/vx'
+import { installLines, vxCommand, type DteInit, type DteSetup } from './init.js'
 import type { WorkerSpawn, DteAdapter } from './plugin.js'
 
 export interface GithubOptions {
   /** The workers' workflow file in `.github/workflows` (default `vx-worker.yml`). */
   readonly workflow?: string
+  /** The runner label of each size, by size name, which `vx dte init` writes; absent, its platform's GitHub-hosted runner. */
+  readonly runsOn?: Readonly<Record<string, string>>
 }
 
-const KEYS: PluginOptionKinds<GithubOptions> = { workflow: 'string' }
+const KEYS: PluginOptionKinds<GithubOptions> = { workflow: 'string', runsOn: 'object' }
+
+/** GitHub's hosted runner of each platform; a size naming none runs on Linux x64. */
+const RUNNERS: Record<Platform, string> = {
+  'linux-x64': 'ubuntu-latest',
+  'linux-arm64': 'ubuntu-24.04-arm',
+  'darwin-x64': 'macos-15-intel',
+  'darwin-arm64': 'macos-latest',
+}
+
+/** The workers' workflow: what `dispatch` sends, as `vx dte worker` reads it. */
+function workerWorkflow(options: GithubOptions, setup: DteSetup): DteInit {
+  const workflow = options.workflow ?? 'vx-worker.yml'
+  const runners = Object.fromEntries(
+    setup.sizes.map((s) => [
+      s.name,
+      options.runsOn?.[s.name] ?? RUNNERS[s.platform ?? 'linux-x64'],
+    ]),
+  )
+  const install = [
+    ...(setup.manager === 'pnpm'
+      ? ['      - uses: pnpm/action-setup@v4']
+      : [
+          '      # Every project: only pnpm selects by a git diff, as',
+          '      # `pnpm install --frozen-lockfile --filter "...[origin/main]"`',
+          '      # (fetch origin/main first: the checkout is one commit).',
+        ]),
+    ...installLines(setup.manager).map((l) => `      - run: ${l}`),
+  ]
+  const text = `# Written by vx dte init from dte() in .vx/workspace.ts: the workers of a
+# distributed run, which github() dispatches once per size. Run vx dte init
+# again after changing the sizes.
+name: vx-worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      run: { required: true }
+      relay: { required: true }
+      sha: { required: true }
+      size: { required: true }
+      workers: { required: true }
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  worker:
+    # The run reads a job that failed before its worker joined by this name.
+    name: \${{ matrix.worker }}
+    runs-on: \${{ fromJSON('${JSON.stringify(runners)}')[inputs.size] }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: \${{ fromJSON(inputs.workers) }}
+    env:
+      VX_DTE_RUN: \${{ inputs.run }}
+      VX_DTE_RELAY: \${{ inputs.relay }}
+      VX_DTE_WORKER: \${{ matrix.worker }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '\${{ inputs.sha }}' }
+      - uses: oven-sh/setup-bun@v2
+${install.join('\n')}
+      - run: ${vxCommand(setup.manager)} dte worker
+`
+  return {
+    files: { [`.github/workflows/${workflow}`]: text },
+    next: [
+      'The job that runs vx run needs:',
+      '  permissions: { contents: read, id-token: write, actions: write }',
+      '  env: { GITHUB_TOKEN: ${{ github.token }} }',
+    ],
+  }
+}
 
 /** In `RUNNER_TEMP`: one dispatched workflow run's API path per line. */
 const RUNS_FILE = 'vx-dte-runs'
@@ -184,6 +263,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
     }
   }
   return {
+    init: (setup) => workerWorkflow(options, setup),
     keyless: true,
     report(w) {
       warn = w

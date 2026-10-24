@@ -172,38 +172,56 @@ steps:
     env: { GITHUB_TOKEN: '${{ github.token }}' }
 ```
 
+`vx dte init` writes the workers' workflow from `dte()`: each size runs on
+its platform's GitHub-hosted runner (`ubuntu-latest` for none named,
+`ubuntu-24.04-arm`, `macos-latest`, `macos-15-intel`), or on the label
+`github({ runsOn: { small: 'ubuntu-latest-16-cores' } })` names, as
+`gitlab({ tags })` does. It installs with the package manager your lockfile
+names and runs vx as `bun vx`, which runs the repo's own and never
+downloads one, as `pnpm exec` does. `--dry` prints it; a file you changed
+is kept unless `--force`. For the sizes above:
+
 ```yaml
 # .github/workflows/vx-worker.yml
+# Written by vx dte init from dte() in .vx/workspace.ts: the workers of a
+# distributed run, which github() dispatches once per size. Run vx dte init
+# again after changing the sizes.
 name: vx-worker
+
 on:
   workflow_dispatch:
     inputs:
-      {
-        run: { required: true },
-        relay: { required: true },
-        sha: { required: true },
-        size: { required: true },
-        workers: { required: true },
-      }
-permissions: { id-token: write, contents: read }
+      run: { required: true }
+      relay: { required: true }
+      sha: { required: true }
+      size: { required: true }
+      workers: { required: true }
+
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   worker:
+    # The run reads a job that failed before its worker joined by this name.
+    name: ${{ matrix.worker }}
     runs-on: ${{ fromJSON('{"small":"ubuntu-latest"}')[inputs.size] }}
-    strategy: { matrix: { worker: '${{ fromJSON(inputs.workers) }}' } }
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: ${{ fromJSON(inputs.workers) }}
     env:
-      {
-        VX_DTE_RUN: '${{ inputs.run }}',
-        VX_DTE_RELAY: '${{ inputs.relay }}',
-        VX_DTE_WORKER: '${{ matrix.worker }}',
-      }
+      VX_DTE_RUN: ${{ inputs.run }}
+      VX_DTE_RELAY: ${{ inputs.relay }}
+      VX_DTE_WORKER: ${{ matrix.worker }}
     steps:
       - uses: actions/checkout@v4
         with: { ref: '${{ inputs.sha }}' }
       - uses: oven-sh/setup-bun@v2
-      # Every project: bun's --filter selects by name or path, not by a
-      # git diff. With pnpm, `pnpm install --frozen-lockfile --filter
-      # "...[origin/main]"` installs only what a PR changed and its
-      # dependents (fetch origin/main first: the checkout is one commit).
+      # Every project: only pnpm selects by a git diff, as
+      # `pnpm install --frozen-lockfile --filter "...[origin/main]"`
+      # (fetch origin/main first: the checkout is one commit).
       - run: bun install --frozen-lockfile
       - run: bun vx dte worker
 ```
@@ -264,6 +282,9 @@ vx:
   extends: .vx
   id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
 ```
+
+`vx dte init` writes `.gitlab/vx.yml` (the `include`) from `dte()`, in
+the package manager your lockfile names, and prints the three jobs.
 
 The run's secret is an artifact no one can download (`access: none`);
 the orchestrator and the workers get it through `needs`. Set
