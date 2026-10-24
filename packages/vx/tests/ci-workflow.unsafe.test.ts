@@ -105,9 +105,7 @@ describe('ci.yml', () => {
     const steps = doc.jobs['linux']!.steps!
     expect(steps.filter((s) => /sandbox-canary\.ts|--cache-policy/.test(s.run ?? ''))).toEqual([])
     const run = steps.find((s) => s.run?.includes('bin.ts run '))!.run!
-    expect(run).toContain(
-      "build.bun.darwin-arm64 test.platform ${{ github.event_name != 'pull_request' && 'build.bun.linux-x64 build.bun.darwin-x64 check.binary.linux-arm64 check.binary.darwin-arm64 check.sandbox-canary check.build-cold' || '' }}",
-    )
+    expect(run).toContain("ci ${{ github.event_name == 'push' && 'release' || '' }}")
   })
 
   // Every sandboxed task runs on a worker, which enforces it there.
@@ -123,7 +121,9 @@ describe('ci.yml', () => {
     const job = doc.jobs['linux']!
     const main = "github.event_name == 'push' && github.ref == 'refs/heads/main'"
     const run = job.steps!.find((s) => s.run?.includes('bin.ts run '))!.run!
-    expect(run).toContain(`\${{ ${main} && 'deploy.pages' || '' }}`)
+    // Push runs only on main (`on.push.branches`), so `release` is main's.
+    expect(run).toContain("${{ github.event_name == 'push' && 'release' || '' }}")
+    expect((doc.on ?? doc.true)!['push']).toEqual({ branches: ['main'] })
     const token = job.steps!.find((s) => s.uses?.startsWith('actions/github-script@'))!
     expect(token.if).toBe(main)
     expect(token.with?.['script']).toContain("core.exportVariable('ACTIONS_RUNTIME_TOKEN'")
@@ -197,7 +197,7 @@ describe('ci.yml', () => {
   it('syncs the release notes as a task of the Linux run, on a push', () => {
     const job = doc.jobs['linux']!
     const run = job.steps!.find((s) => s.run?.includes('bin.ts run '))!
-    expect(run.run).toContain("${{ github.event_name == 'push' && 'release.sync' || '' }}")
+    expect(run.run).toContain("${{ github.event_name == 'push' && 'release' || '' }}")
     expect([job.env?.['GH_TOKEN'], job.permissions?.['contents']]).toEqual([
       '${{ github.token }}',
       'write',

@@ -385,6 +385,11 @@
         }
       }
     },
+    "release": {
+      "dependsOn": [
+        "deploy.pages"
+      ]
+    },
     "deploy.pages": {
       "description": "deploy dist/ to GitHub Pages (GitHub Actions only)",
       "dependsOn": [

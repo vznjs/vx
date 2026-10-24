@@ -317,6 +317,8 @@ export default defineProject({
       },
     },
 
+    // The site's part of main's `release`.
+    release: { dependsOn: ['deploy.pages'] },
     // Main's deploy, a task of the run (owner, 2026-10-24): once the site's
     // own checks pass it goes live beside the rest of the run. The Pages
     // actions ran after the whole run, 33 s of main's workflow. The job's

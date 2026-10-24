@@ -19,7 +19,7 @@ export default defineProject({
     },
 
     ci: {
-      dependsOn: ['lint', 'test'],
+      dependsOn: ['lint', 'test', 'test.live'],
     },
 
     lint: {
