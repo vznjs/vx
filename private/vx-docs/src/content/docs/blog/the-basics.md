@@ -6,8 +6,11 @@ authors:
 tags:
   - dx
   - ci
-excerpt: 'vx run picks the project you stand in. Off a terminal it never waits on a picker. On GitHub Actions every task folds into its own log group. Plus colors that respect FORCE_COLOR=0, and a build edge for packages that ship as source.'
+excerpt: 'vx run picks the project you are in, never waits on a picker in a pipe, and gives each task its own fold on GitHub Actions.'
 ---
+
+`vx run` picks the project you are in, never hangs in a pipe, and folds
+each task on GitHub Actions. Small things, done carefully.
 
 ```sh frame="terminal"
 $ cd packages/a && vx run build     # the project you stand in
@@ -20,9 +23,7 @@ $ vx run | cat                      # a pipe: no picker
   see vx run --help
 ```
 
-Demo workspace, vx at `69617eb`, 2026-10-23. What a bare command does,
-what happens in a pipe, how the CI log reads: small things, done
-carefully.
+<small>Demo workspace · vx 69617eb · 2026-10-23</small>
 
 ## Run what you mean
 
@@ -35,15 +36,14 @@ $ vx run build test lint --all      # several at once, one graph
 
 ## No picker in a pipe
 
-On a terminal, a bare `vx run` opens a picker. In a pipe, a script or an
-agent's shell there is nobody to pick, so vx lists the tasks and exits
-1, as above. Off a terminal the live progress region is gone too. The log gets plain
-lines that read the same in a file.
+In a terminal, a bare `vx run` opens a picker. In a pipe or a script
+nobody can pick, so vx lists the tasks and exits 1. The live progress
+area is off too, and the log gets plain lines.
 
 ## One fold per task on GitHub Actions
 
-On Actions, each task's block is wrapped in a log group with its outcome
-and time, so a long run collapses to one line per task:
+On Actions, each task gets its own log group with its result and time.
+A long run collapses to one line per task:
 
 ```sh frame="terminal"
 $ GITHUB_ACTIONS=true CI=true vx run build --filter packages/c --force
@@ -59,24 +59,26 @@ Bundled 1 module in 3ms
 ::endgroup::
 ```
 
-A failed task stays open and adds an error annotation instead, such as
-`failed (exit 137, 128 + SIGKILL)`. The `stop-commands` token fences
-the task's own output, so a line it prints can never be read as a
-workflow command.
+A failed task stays open with an error note like
+`failed (exit 137, 128 + SIGKILL)`. The `stop-commands` token stops a
+task's output from being read as a workflow command.
 
 ## Colors that listen
 
-Output is truecolor on a terminal and plain elsewhere. `NO_COLOR` turns
-it off. `FORCE_COLOR` turns it on, except `FORCE_COLOR=0` and
-`FORCE_COLOR=false`, which mean off, the way chalk and Node read them.
+Color on a terminal, plain elsewhere. `NO_COLOR` turns it off.
+`FORCE_COLOR` turns it on, but `FORCE_COLOR=0` or `false` mean off, as
+in chalk and Node.
 
 ## Packages shipped as source
 
-A package with no build step still matters to the packages that use it.
-So a project that declares no `build` gets one: a group with
-`dependsOn: ['^build']`, keyed on the project's files, that runs nothing.
-Edit that package, and its dependents' keys change, so `--affected`
-reaches them.
+```mermaid
+flowchart LR
+  U["ui (source only, no build)"] -->|"build: a group with<br/>dependsOn ^build, keyed on its files"| W[web#build]
+```
+
+A package with no build step still matters to its users. vx gives it a
+`build` that runs nothing but is keyed on its files. Edit it, and the
+packages that use it build again, and `--affected` finds them.
 
 Every flag is in the [CLI reference](../../cli/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).
