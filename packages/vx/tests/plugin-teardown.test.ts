@@ -45,6 +45,22 @@ afterEach(() => {
 
 const never = (): Promise<void> => new Promise<void>(() => {})
 
+// Main 7bdbf01: turboCache() revoked its token in its teardown, and the
+// schedule's timings, put in a later plugin's teardown, were refused.
+it('tears a plugin that supplies a remote cache down after every other', async () => {
+  const order: string[] = []
+  const plugin = (name: string, cache: boolean) =>
+    testPlugin(name, {
+      ...(cache ? { cache: () => undefined } : {}),
+      teardown: () => void order.push(name),
+    })
+  await teardownPlugins(
+    [plugin('org/remote', true), plugin('org/a', false), plugin('org/b', false)],
+    () => {},
+  )
+  expect(order).toEqual(['org/a', 'org/b', 'org/remote'])
+})
+
 describe('teardownPlugins — a dropped result is reported', () => {
   it('a teardown that never settles is named, not silently dropped', async () => {
     const warnings: string[] = []
