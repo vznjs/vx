@@ -1,0 +1,49 @@
+// A task's persistent dependencies on a worker (`localFloor`): two shards
+// that land on one machine share its server, started once; each other
+// machine starts its own (vx-dte's local-e2e test).
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, expect, it } from 'bun:test'
+import type { ExecuteRequest } from '../src/exec/executor.js'
+import { localFloor } from '../src/orchestrator/local-floor.js'
+
+let dir = ''
+afterEach(async () => {
+  await rm(dir, { recursive: true, force: true })
+})
+
+it('starts a server two shards on one machine depend on once, for both', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
+  const log = path.join(dir, 'starts.log')
+  const floor = localFloor()
+  const shard = (n: number): ExecuteRequest => ({
+    taskId: `s#shard${n}`,
+    workspaceRoot: dir,
+    outputs: { files: [], workspaceFiles: [] },
+    command: 'test -e up && sleep 0.2',
+    forwardArgs: [],
+    cwd: dir,
+    env: { PATH: process.env['PATH'] },
+    envDefine: {},
+    capture: { stdout: true, stderr: true },
+    onStdout: () => {},
+    onStderr: () => {},
+    servers: [
+      {
+        taskId: 's#srv',
+        command: `echo x >> ${log} && touch up && echo up && exec sleep 60`,
+        cwd: dir,
+        env: { PATH: process.env['PATH'] },
+        readyWhen: 'up',
+      },
+    ],
+  })
+  try {
+    const [a, b] = await Promise.all([floor.execute(shard(1)), floor.execute(shard(2))])
+    expect([a.exitCode, b.exitCode]).toEqual([0, 0])
+    expect((await readFile(log, 'utf8')).trim().split('\n')).toHaveLength(1)
+  } finally {
+    await floor.close()
+  }
+}, 20_000)

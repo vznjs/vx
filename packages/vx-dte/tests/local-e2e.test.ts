@@ -50,9 +50,11 @@ export default { name: 'b', tasks: {
     // A server its tests need where they run: each start says where.
     's/vx.config.mjs': `const log = ${JSON.stringify(path.join(root, 'servers.log'))}
 const t = (n) => ({ dependsOn: ['srv'], exec: { command: 'test -e up && echo saw' + n } })
+// Two shards long enough to run at once, so on two machines.
+const shard = (n) => ({ dependsOn: ['srv'], exec: { command: 'test -e up && sleep 3 && echo shard' + n } })
 export default { name: 's', tasks: {
   srv: { exec: { command: 'echo "$PWD" >> ' + log + ' && touch up && echo up && exec sleep 60', persistent: { readyWhen: 'up' } } },
-  t1: t(1), t2: t(2), t3: t(3),
+  t1: t(1), t2: t(2), t3: t(3), shard1: shard(1), shard2: shard(2),
 } }
 `,
     // Keys that fold a runtime probe: one every machine answers alike, one
@@ -194,6 +196,18 @@ it('starts a task’s server on the worker that runs it, once per worker, never 
   const starts = (await readFile(path.join(root, 'servers.log'), 'utf8')).trim().split('\n')
   expect(starts).not.toContain(path.join(root, 's'))
   expect(new Set(starts).size).toBe(starts.length)
+}, 60_000)
+
+// Two shards of one suite on two machines each need the server where they
+// run: it starts on both, never once for both (owner, 2026-10-24).
+it('starts a server on each machine its shards run on', async () => {
+  const r = vx(['run', 's#shard1', 's#shard2'], 'e2e-shards')
+  const out = r.stdout.toString() + r.stderr.toString()
+  expect([r.exitCode, out]).toEqual([0, expect.stringContaining('shard2')])
+  const starts = (await readFile(path.join(root, 'servers.log'), 'utf8')).trim().split('\n')
+  expect(starts).toHaveLength(2)
+  expect(new Set(starts).size).toBe(2)
+  expect(starts).not.toContain(path.join(root, 's'))
 }, 60_000)
 
 // Nothing runs on the orchestrator (owner, 2026-10-22), a task that keys
