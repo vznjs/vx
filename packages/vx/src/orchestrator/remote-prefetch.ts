@@ -144,6 +144,12 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
   if (known !== undefined) pool.push(toPrefetch.filter((k) => known.has(k.hash)))
   const probeAt = performance.now()
   const asked = args.cache.remoteHasMany?.(uniqueHashes)
+  // The first keys in graph order are pulled now too, the probe unanswered:
+  // on CI it answered ~490 ms in, after a GET did (~250 ms), and a hit's
+  // dependant waited on its own GET once its upstream hit landed
+  // (2026-10-24). At most one pool's worth of these can 404.
+  const eager = toPrefetch.filter((k) => known?.has(k.hash) !== true).slice(0, args.concurrency)
+  if (asked !== undefined) pool.push(eager)
   // Demand hears the index only when no probe will answer: a key the
   // index lacks may still be held (a PR's CI stored main's next tree), and
   // calling it a miss asked 14 workers for 71 tasks, 17 of which ran
@@ -180,7 +186,8 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
     // the layer for, and that is what the row pins (item 643, 645).
     toPrefetch = toPrefetch.filter((k) => present.has(k.hash))
   }
-  pool.push(known === undefined ? toPrefetch : toPrefetch.filter((k) => !known.has(k.hash)))
+  const pulled = new Set(asked === undefined ? [] : eager)
+  pool.push(toPrefetch.filter((k) => known?.has(k.hash) !== true && !pulled.has(k)))
   await pool.settled()
 }
 

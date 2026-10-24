@@ -1059,8 +1059,9 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
         const bHash = byId.get('b#build')!.hash!
         expect(absent.mock.calls.map((c) => [...c[0]])).toEqual([[bHash]])
         // a's lazy pull may land before the pass asks the local store,
-        // which then drops a too; the miss never enters either way.
-        expect(prefetch.mock.calls.map((c) => c[0]).filter((h) => h !== aHash)).toEqual([])
+        // which then drops a too. The miss enters once at most: as the
+        // first pool's worth, pulled before the probe answers.
+        expect(prefetch.mock.calls.filter((c) => c[0] === bHash).length).toBeLessThanOrEqual(1)
         expect(remote.getCounts.get(aHash)).toBe(1)
         expect(remote.getCounts.get(bHash) ?? 0).toBeLessThanOrEqual(1)
         // One existence probe a run: no task's lookup asks the remote again
