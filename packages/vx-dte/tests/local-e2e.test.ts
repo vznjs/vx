@@ -742,6 +742,15 @@ it('leaves a remote-only task’s files on the workers', async () => {
   expect(await Bun.file(path.join(root, 'a/out/ro.txt')).exists()).toBe(false)
 }, 60_000)
 
+// `--cache-download` holds for a worker's task: under `none` every file of
+// the run came home anyway (2026-10-24).
+it('brings home only the asked task’s files under --cache-download=toplevel', async () => {
+  const r = vx(['run', 'b#use', '--cache-download=toplevel'], 'toplevel')
+  expect([r.exitCode, r.stdout.toString().includes('used')]).toEqual([0, true])
+  expect(await Bun.file(path.join(root, 'b/out/b.txt')).exists()).toBe(true)
+  expect(await Bun.file(path.join(root, 'a/out/a.txt')).exists()).toBe(false)
+}, 60_000)
+
 // A worker cleared every file under a task's output globs, its upstream's
 // too: an additive task (outputs over its upstream's tree) found the files
 // it builds on gone (2026-10-24).
