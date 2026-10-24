@@ -497,6 +497,8 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
           'vx last',
           `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
         )
+      } else if (log.output === '') {
+        sayNotice('info', 'vx last', `${log.taskId} ended ${log.status} and printed nothing`)
       }
       process.stdout.write(log.output)
       return 0

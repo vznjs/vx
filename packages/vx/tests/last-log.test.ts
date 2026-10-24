@@ -29,6 +29,8 @@ export default { tasks: {
   build: { exec: { command: 'echo built-ok' }, inputs, cache },
   plain: { exec: { command: 'echo plain' } },
   bad: { exec: { command: 'echo boom; exit 3' } },
+  quiet: { exec: { command: 'true' }, inputs, cache },
+  mute: { exec: { command: 'exit 4' } },
 } }
 `,
   )
@@ -38,6 +40,8 @@ export default { tasks: {
   expect(vx('run', 'a#plain').code).toBe(0)
   expect(vx('run', 'a#bad').code).toBe(1)
   runIds['bad'] = lastRunId()
+  expect(vx('run', 'a#quiet').code).toBe(0)
+  expect(vx('run', 'a#mute').code).toBe(1)
 }, 60_000)
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
@@ -74,6 +78,20 @@ it('an uncached pass kept none, and says so on stderr', () => {
       'info',
     ),
   })
+})
+
+it('a cached or failed task that printed nothing says so, not that its output was not kept', () => {
+  for (const [task, status, source] of [
+    ['a#quiet', 'success', 'cache'],
+    ['a#mute', 'failed', 'failure'],
+  ] as const) {
+    expect(vx('last', '--log', task)).toEqual({
+      code: 0,
+      out: '',
+      err: noticed(`vx last: ${task} ended ${status} and printed nothing\n`, 'info'),
+    })
+    expect(JSON.parse(vx('last', '--log', task, '--format', 'json').out).source).toBe(source)
+  }
 })
 
 it('a task no run recorded, or one outside the run named, is refused', () => {
