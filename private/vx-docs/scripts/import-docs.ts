@@ -274,7 +274,7 @@ type SplitPage = { page: string; title?: string; headings: readonly string[] }
  * first heading names the page. The rest stay on cli/, which lists the
  * pages. cli.md stays one file: the contract tests read it whole.
  */
-export const CLI_PAGES: readonly SplitPage[] = [
+const CLI_PAGES: readonly SplitPage[] = [
   {
     page: 'run',
     headings: ['`vx run`', 'Planning mode (`--dry`)', 'Run artifacts (`--profile`)', 'Sandbox'],
@@ -298,7 +298,7 @@ export const CLI_PAGES: readonly SplitPage[] = [
 ]
 
 /** The fields of schema.md with a page each; the file layout, examples and errors stay on schema/. */
-export const SCHEMA_PAGES: readonly SplitPage[] = [
+const SCHEMA_PAGES: readonly SplitPage[] = [
   { page: 'exec', title: 'exec', headings: ['`exec` (optional — required for non-group tasks)'] },
   { page: 'sandbox', title: 'exec.sandbox', headings: ['`exec.sandbox` (optional)'] },
   { page: 'depends-on', title: 'dependsOn', headings: ['`dependsOn` (optional)'] },
@@ -312,7 +312,7 @@ export const SCHEMA_PAGES: readonly SplitPage[] = [
 ]
 
 /** A heading's id as the site's build writes it (github-slugger), before dedupe. */
-export function headingSlug(text: string): string {
+function headingSlug(text: string): string {
   return text
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/[`*]/g, '')
@@ -451,7 +451,7 @@ export function splitReference(
  * its pages a bare `#id`) at the page that holds that id now. `url` is the
  * page the text is served at; `base` is the reference's URL (`cli/`).
  */
-export function relink(text: string, url: string, base: string, anchors: Anchors): string {
+function relink(text: string, url: string, base: string, anchors: Anchors): string {
   const prefix = '../'.repeat(url.replace(/\/$/, '').split('/').length)
   const here = url === base ? '' : url.startsWith(base) ? url.slice(base.length, -1) : undefined
   const to = (id: string, whole: string): string => {
