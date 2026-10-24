@@ -55,6 +55,14 @@ export default { name: 'b', tasks: {
     cache: { outputs: { files: ['bg.txt', 'late.txt'] } },
   },
   timed: { exec: { command: 'sleep 0.5 && echo timed-ok', timeout: '2s' } },
+  halt: {
+    exec: {
+      command: "trap 'exit 0' TERM; echo > h.txt; if [ x$VX_E2E_HALT = x1 ]; then touch halt.started; sleep 30 & wait; fi",
+      env: { passThrough: ['VX_E2E_HALT'] },
+    },
+    inputs: { files: ['vx.config.mjs'] },
+    cache: { outputs: { files: ['h.txt'] } },
+  },
   slow: { exec: { command: 'touch started && sleep 60' } },
   once: { exec: { command: 'if [ -e ' + once + ' ]; then echo again; else touch ' + once + ' && sleep 60; fi' } },
   env: { exec: {
@@ -559,6 +567,40 @@ it.each(['SIGHUP', 'SIGINT'] as const)(
 // install filled took seconds, all of them before vx exited. An `rm` that
 // takes 3 s stands in for that install's 300k files, which took 45 s to
 // make on a CI-sized machine.
+// A task the stopped run cancelled exited 0 from a trapped SIGTERM, and its
+// worker saved it under its key: the next run hit it (2026-10-24).
+it('saves no entry for a task a stopped run cancelled, even on a 0 exit', async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-halt-'))
+  try {
+    const { VX_DTE_RUN: _, ...env } = process.env
+    const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#halt'], {
+      cwd: root,
+      env: {
+        ...env,
+        VX_DTE_RUN: crypto.randomUUID(),
+        NO_COLOR: '1',
+        TMPDIR: tmp,
+        VX_E2E_HALT: '1',
+      },
+      stdout: 'ignore',
+      stderr: 'ignore',
+    })
+    const started = async (): Promise<boolean> => {
+      for (const d of await readdir(tmp))
+        if (await Bun.file(path.join(tmp, d, '1', 'b', 'halt.started')).exists()) return true
+      return false
+    }
+    for (let i = 0; i < 1200 && !(await started()); i++) await Bun.sleep(50)
+    expect(await started()).toBe(true)
+    run.kill('SIGINT')
+    await run.exited
+  } finally {
+    await rm(tmp, { recursive: true, force: true })
+  }
+  const again = vx(['run', 'b#halt'], 'halt-2')
+  expect([again.exitCode, again.stdout.toString().includes('small#')]).toEqual([0, true])
+}, 60_000)
+
 it('a stopped run exits before its installed worktrees are removed', async () => {
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),

@@ -358,7 +358,9 @@ export async function runWorker(opts: {
       // entry; anything else is kept where no lookup finds it. A 0 past the
       // timeout (a trapped SIGTERM) failed, and saved under the key the
       // next run hit it green (2026-10-24). A process it left running may
-      // still write its outputs: core saves no entry, nor does this.
+      // still write its outputs: core saves no entry, nor does this. Nor for
+      // one the run cancelled: a trapped SIGTERM's 0 was a stopped run's
+      // half-done task, and the next run hit it (2026-10-24).
       // A tracked file it changed under its project (a formatter's input)
       // is one the orchestrator's disk never shows: its key read the file
       // as checked out, and the entry built from the rewrite was the next
@@ -369,6 +371,7 @@ export async function runWorker(opts: {
         res.exitCode === 0 &&
         res.timedOut !== true &&
         res.leftRunning !== true &&
+        !stop.signal.aborted &&
         res.violations.length === 0 &&
         changed.length === 0 &&
         m.key !== undefined
