@@ -124,16 +124,7 @@ export function runFailures(cacheDir: string, db: Database, runId?: string): Run
         .get() as { run_id: string } | null
     )?.run_id
   if (id === undefined) return null
-  const kept = new Map<string, StoredFailure>()
-  try {
-    const stored = JSON.parse(
-      readFileSync(path.join(dirOf(cacheDir), `${id}.json`), 'utf8'),
-    ) as RunFailures & { tasks: StoredFailure[] }
-    for (const t of stored.tasks) kept.set(t.taskId, t)
-  } catch (err) {
-    // No file: the run kept no output.
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
-  }
+  const kept = storedFailures(cacheDir, id)
   const rows = db
     .query(
       `SELECT r.project, r.task, r.exit_code AS exitCode, r.timed_out AS timedOut,
@@ -166,6 +157,21 @@ export function runFailures(cacheDir: string, db: Database, runId?: string): Run
       }
     }),
   }
+}
+
+/** What `runId`'s failures file holds, by task id; empty when the run kept none. */
+function storedFailures(cacheDir: string, runId: string): Map<string, StoredFailure> {
+  const kept = new Map<string, StoredFailure>()
+  try {
+    const stored = JSON.parse(
+      readFileSync(path.join(dirOf(cacheDir), `${runId}.json`), 'utf8'),
+    ) as RunFailures & { tasks: StoredFailure[] }
+    for (const t of stored.tasks) kept.set(t.taskId, t)
+  } catch (err) {
+    // No file: the run kept no output.
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+  }
+  return kept
 }
 
 /** One task's output in a recorded run, as `vx last --log` and getTaskLog read it. */
@@ -209,7 +215,9 @@ export function taskLog(
   if (row === null) return null
   const base = { runId: row.runId, taskId, status: row.status }
   if (row.status === 'failed') {
-    const kept = runFailures(cacheDir, db, row.runId)?.tasks.find((t) => t.taskId === taskId)
+    // Only the file: runFailures reads `output: ''` for a task it lacks, as
+    // if the task printed nothing, when the run is past the newest 50.
+    const kept = storedFailures(cacheDir, row.runId).get(taskId)
     if (kept !== undefined) return { ...base, source: 'failure', output: kept.output }
   } else if (row.hash !== '') {
     const stored = db.query('SELECT stdout FROM entry_stdout WHERE hash = ?').get(row.hash) as {
