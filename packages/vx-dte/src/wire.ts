@@ -42,14 +42,15 @@ export function unsent(
 const FIRST_REDIAL_MS = 250
 /**
  * The orchestrator probes a worker quiet this many heartbeats: each probe
- * and its ack are two frames a relay host bills, as a client's empty ask
- * each heartbeat was, while pings it answers free.
+ * and its ack are two frames, so a peer heard from is never asked.
  */
 const PROBE_BEATS = 1.5
+/** A worker probes its orchestrator quiet this long: after the orchestrator would have. */
+const WORKER_PROBE_BEATS = 1.6
 /**
- * A peer quiet this many is lost: a live worker, acking at once, is heard
- * within a round trip; a worker hears its orchestrator's probes each 1.6
- * at most. Checked each tenth, loss lands by two (10 s on the default).
+ * A peer quiet this many is lost: a live one, acking a probe at once, is
+ * heard within a round trip of it. Checked each tenth, loss lands by two
+ * (10 s on the default).
  */
 const LOST_BEATS = 1.9
 /** What a probe delivers: nothing. */
@@ -281,12 +282,9 @@ export async function join(
    * never closed: the relay loses one whose socket closed and says so.
    */
   const heard = new Map<string, number>()
-  /** When this side last sent each peer anything. */
-  const sentAt = new Map<string, number>()
-  const put = (to: string, frame: object): Promise<void> => {
-    sentAt.set(to, performance.now())
-    return over((s) => s.send(to, frame))
-  }
+  /** `quiet`: an ack, a probe or a resend, which waits on no answer: the relay says only a failure. */
+  const put = (to: string, frame: object, quiet = true): Promise<void> =>
+    over((s) => s.send(to, frame, quiet))
   const settle = (from: string, acked: number): void => {
     const o = outbox.get(from)
     if (o !== undefined) for (const seq of o.unacked.keys()) if (seq <= acked) o.unacked.delete(seq)
@@ -334,15 +332,14 @@ export async function join(
   }
   const forget = (peer: string): void => {
     heard.delete(peer)
-    sentAt.delete(peer)
     outbox.delete(peer)
     taken.delete(peer)
   }
   /**
-   * The orchestrator probes each worker quiet `PROBE_BEATS`; a worker
-   * only listens, its orchestrator's probes coming as often while it is
-   * quiet, so a quiet pair trades one probe and its ack. Either loses a
-   * peer quiet `LOST_BEATS`.
+   * Only a quiet peer is probed: the orchestrator a worker quiet
+   * `PROBE_BEATS`, a worker its orchestrator quiet a tenth longer, so in a
+   * quiet pair the orchestrator's probe comes first and the pair trades
+   * one probe and its ack. Either loses a peer quiet `LOST_BEATS`.
    */
   const listen = (): void => {
     resend(heartbeatMs)
@@ -360,30 +357,23 @@ export async function join(
         }
         inbox.push({ from: 'relay', body: { type: 'lost', id: peer } })
         nudge()
-      } else if (role === 'orchestrator') {
-        // Said nothing to it that long: what it did not ack goes again,
-        // else a probe, so a worker hears its orchestrator that often. Not
-        // heard from it that long: a probe, unless one is out.
+      } else if (
+        quiet >= (role === 'orchestrator' ? PROBE_BEATS : WORKER_PROBE_BEATS) * heartbeatMs &&
+        (outbox.get(peer)?.unacked.size ?? 0) === 0
+      ) {
         let o = outbox.get(peer)
         if (o === undefined) outbox.set(peer, (o = { next: 0, unacked: new Map() }))
-        const said = now - (sentAt.get(peer) ?? 0) >= PROBE_BEATS * heartbeatMs
-        const asked = quiet >= PROBE_BEATS * heartbeatMs && o.unacked.size === 0
-        if (!said && !asked) continue
-        if (o.unacked.size > 0) resend(0, peer)
-        else {
-          const seq = ++o.next
-          o.unacked.set(seq, { body: PROBED, at: now })
-          // quiet: unacknowledged, it goes again
-          put(peer, { seq, ...owed(peer) } satisfies Probe).catch(() => undefined)
-        }
+        const seq = ++o.next
+        o.unacked.set(seq, { body: PROBED, at: now })
+        // quiet: unacknowledged, it goes again
+        put(peer, { seq, ...owed(peer) } satisfies Probe).catch(() => undefined)
       }
     }
   }
-  /** Sends again what waited `ms` unacknowledged (to `only`, if given); all of it, at 0. */
-  const resend = (ms: number, only?: string): void => {
+  /** Sends again what waited `ms` unacknowledged; all of it, at 0. */
+  const resend = (ms: number): void => {
     const now = performance.now()
     for (const [to, o] of outbox) {
-      if (only !== undefined && to !== only) continue
       for (const [seq, u] of o.unacked) {
         if (now - u.at < ms) continue
         u.at = now
@@ -571,7 +561,7 @@ export async function join(
       const seq = ++o.next
       o.unacked.set(seq, { body, at: performance.now() })
       try {
-        await put(to, { seq, body, ...owed(to) } satisfies Numbered)
+        await put(to, { seq, body, ...owed(to) } satisfies Numbered, false)
       } catch (err) {
         // Refused: the caller hears it; nothing waits on an ack.
         o.unacked.delete(seq)
@@ -652,11 +642,15 @@ interface Socket {
   onClose?: (code: number, why: string) => void
   /** One frame, `{ leave: true }` or `{ remove }`; resolves on the relay's answer. */
   request(frame: Record<string, unknown>): Promise<void>
-  /** A send; those asked for in one turn of the event loop go as one frame. */
-  send(to: string, body: unknown): Promise<void>
+  /**
+   * A send; those asked for in one turn of the event loop go as one frame.
+   * A `quiet` one resolves once written: its frame, if all quiet, goes
+   * unnumbered, which the relay answers only when a send in it fails.
+   */
+  send(to: string, body: unknown, quiet?: boolean): Promise<void>
   /** When the relay last said anything down it. */
   readonly heardAt: number
-  /** An empty frame, which the relay itself answers. */
+  /** An empty numbered frame, which the relay itself answers. */
   ask(): void
   close(): Promise<void>
 }
@@ -723,7 +717,13 @@ async function connect(
   const refused = (a: Answer): RelayError =>
     new RelayError(a.status!, `relay send: ${a.status} ${a.error ?? ''}`, a.retryAfterMs)
   /** Sends asked for in this turn of the event loop, which go as one frame. */
-  let sends: { to: string; body: unknown; resolve(): void; reject(err: Error): void }[] = []
+  let sends: {
+    to: string
+    body: unknown
+    quiet: boolean
+    resolve(): void
+    reject(err: Error): void
+  }[] = []
   const flush = (): void => {
     const all = sends
     sends = []
@@ -742,7 +742,13 @@ async function connect(
     }
     frame(batch)
   }
-  const frame = (batch: typeof sends): void => {
+  const frame = (batch: typeof sends, asked = false): void => {
+    const out = batch.map(({ to, body }) => ({ to, body }))
+    if (!asked && batch.every((one) => one.quiet)) {
+      ws.send(JSON.stringify({ sends: out }))
+      for (const one of batch) one.resolve()
+      return
+    }
     const k = ++n
     answer(k, {
       settle(a) {
@@ -756,7 +762,8 @@ async function connect(
         for (const one of batch) one.reject(err)
       },
     })
-    ws.send(JSON.stringify({ n: k, sends: batch.map(({ to, body }) => ({ to, body })) }))
+    ws.send(JSON.stringify({ n: k, sends: out }))
+    for (const one of batch) if (one.quiet) one.resolve()
   }
   const request = (frame: Record<string, unknown>): Promise<void> =>
     new Promise((resolve, reject) => {
@@ -794,7 +801,12 @@ async function connect(
   ws.onerror = () => closed()
   ws.onmessage = (e) => {
     spoke = performance.now()
-    let m: Answer & { messages?: RelayMessage[]; n?: number; joined?: Joined; close?: number }
+    let m: Answer & {
+      messages?: RelayMessage[]
+      n?: number | null
+      joined?: Joined
+      close?: number
+    }
     try {
       m = JSON.parse(String(e.data)) as typeof m
       if (typeof m !== 'object' || m === null) throw new Error()
@@ -822,8 +834,17 @@ async function connect(
       else me.onMessages(m.messages)
       return
     }
-    const p = pending.get(m.n!)
-    pending.delete(m.n!)
+    if (m.n === undefined || m.n === null) {
+      // An unnumbered frame's failure: an ack or probe to one the relay no
+      // longer knows (404) is not one, its loss reaching this side apart.
+      const failed = [m, ...(m.results ?? [])].filter(
+        (a): a is Answer => a?.status !== undefined && a.status !== 404,
+      )
+      for (const a of failed) process.stderr.write(`[vx] dte: ${refused(a).message}\n`)
+      return
+    }
+    const p = pending.get(m.n)
+    pending.delete(m.n)
     p?.settle(m)
   }
   const me: Socket & { joined?: Joined } = {
@@ -838,12 +859,12 @@ async function connect(
     get heardAt() {
       return spoke
     },
-    ask: () => frame([]),
-    send(to, body) {
+    ask: () => frame([], true),
+    send(to, body, quiet = false) {
       if (!open) return Promise.reject(new Error('socket closed'))
       return new Promise((resolve, reject) => {
         if (sends.length === 0) queueMicrotask(flush)
-        sends.push({ to, body, resolve, reject })
+        sends.push({ to, body, quiet, resolve, reject })
       })
     },
     async close() {

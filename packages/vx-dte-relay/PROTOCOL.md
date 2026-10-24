@@ -68,7 +68,9 @@ Frames are text:
   (§ Messages from the relay) wait for the next socket;
 - the participant sends `{ "n", "sends": [{ "to", "body" }] }`, answered
   `{ "n" }` when all were taken, else `{ "n", "results" }` with `null` or
-  `{ "status", "error" }` for each. The orchestrator sends to any worker;
+  `{ "status", "error" }` for each. A frame of sends with no `n`, whose
+  sender waits on no answer (vx-dte's acks, probes and resends), is
+  answered only when a send in it fails, `n` then `null`. The orchestrator sends to any worker;
   a worker sends only to `"orchestrator"`; an unknown or gone `to` is
   `404`;
 - `{ "n", "leave": true }` removes the participant, and its answer is the
@@ -113,10 +115,11 @@ closing loses it at once, as if it had left: a worker's, and the
 orchestrator hears `lost`; the orchestrator's, and the run closes. The
 relay keeps no timer. A peer quiet on a socket that never closed is its
 peers' to lose, within two `heartbeatMs` (10 s on the default): vx-dte's
-orchestrator sends each worker something at least each 1.5, an empty
-numbered send when it has nothing else, which the worker acknowledges at
-once; either side quiet 1.9 to the other is lost, a worker by ending. A frame the
-relay leaves unanswered a heartbeat closes the client's socket.
+orchestrator probes a worker it has heard nothing from for 1.5 (an empty
+numbered send), which the worker acknowledges at once; a worker probes
+its orchestrator quiet 1.6; either side quiet 1.9 to the other is lost,
+a worker by ending. A peer that talks is never probed. A numbered frame
+the relay leaves unanswered a heartbeat closes the client's socket.
 vx-dte's client asks again through a `5xx`, a dropped connection or a
 `429`, 3 times at most and within 10 s of the first try.
 

@@ -108,7 +108,7 @@ The same relay as a `fetch` handler, to mount in a server of your own
   and `upgrade`, which answers a `socket` request; and the methods
   `attach` and `detach` (its socket closed: the participant is gone),
   which hand the relay a participant's `RelaySocket` (`{ send, close }`),
-  and `frame`. `open()` says whether any run is left. A host closes a socket `attach` refuses
+  and `frame`, which returns the answer to send down the socket, or `undefined` for none. `open()` says whether any run is left. A host closes a socket `attach` refuses
   with `closeSocket(socket, GONE)` (`GONE` is 4404), which says the close in a frame first
   (PROTOCOL.md § Sockets).
 - `serveRelay(options: ServeOptions): RelayServer` serves the relay on

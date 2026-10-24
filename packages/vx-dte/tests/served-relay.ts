@@ -10,6 +10,11 @@ type Held = {
   socket?: { send(t: string): void; close(code?: number, reason?: string): void }
 }
 
+/** Down `ws`, the relay's answer to a frame, if it gave one. */
+export function answer(ws: { send(text: string): unknown }, text: string | undefined): void {
+  if (text !== undefined) ws.send(text)
+}
+
 export function servedRelay(
   opts: Omit<RelayOptions, 'upgrade'> = {},
   tap?: (frame: string) => string,
@@ -42,7 +47,7 @@ export function servedRelay(
           closeSocket(ws.data.socket, GONE, 'gone')
       },
       message(ws, m) {
-        ws.send(relay.frame(ws.data.key, ws.data.id, tap?.(String(m)) ?? String(m)))
+        answer(ws, relay.frame(ws.data.key, ws.data.id, tap?.(String(m)) ?? String(m)))
       },
       close(ws) {
         open.delete(ws)

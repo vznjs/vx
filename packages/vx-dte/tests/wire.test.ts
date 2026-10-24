@@ -5,6 +5,7 @@
 import { afterEach, expect, it } from 'bun:test'
 import { closeSocket, createRelay, GONE, serveRelay, type RelayServer } from '@vzn/vx-dte-relay'
 import { join, RelayError, unsent } from '../src/wire.js'
+import { answer } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
@@ -86,6 +87,12 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
   const open: Bun.ServerWebSocket<Held>[] = []
   const closes: { id: string; code: number }[] = []
   const frames: string[] = []
+  /** What the relay answered, as frames down the sockets. */
+  const answers: string[] = []
+  const reply = (ws: { send(t: string): unknown }, t: string | undefined): void => {
+    if (t !== undefined) answers.push(t)
+    answer(ws, t)
+  }
   /** Whose ping each was. */
   const pings: string[] = []
   /**
@@ -144,12 +151,12 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
           const f = JSON.parse(String(m)) as { n: number; sends?: unknown[] }
           if (f.sends !== undefined && f.sends.length > 0 && host.lose > 0) {
             host.lose--
-            ws.send(relay.frame(ws.data.key, ws.data.id, JSON.stringify({ n: f.n, sends: [] })))
+            reply(ws, relay.frame(ws.data.key, ws.data.id, JSON.stringify({ n: f.n, sends: [] })))
             return
           }
           if (f.sends !== undefined && f.sends.length > 0 && host.twice)
             relay.frame(ws.data.key, ws.data.id, String(m))
-          ws.send(relay.frame(ws.data.key, ws.data.id, String(m)))
+          reply(ws, relay.frame(ws.data.key, ws.data.id, String(m)))
         }
       },
       close(ws, code) {
@@ -164,7 +171,16 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
       await server!.stop(true)
     },
   })
-  return { url: `http://127.0.0.1:${server.port}`, relay, open, closes, frames, pings, host }
+  return {
+    url: `http://127.0.0.1:${server.port}`,
+    relay,
+    open,
+    closes,
+    frames,
+    answers,
+    pings,
+    host,
+  }
 }
 
 // Each frame is a message a relay host may bill: pings at two a heartbeat
@@ -172,11 +188,12 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
 // and its ack each heartbeat and a half (owner, 2026-10-23: "if not ask
 // to send") and pings nothing; talking, it is asked nothing.
 it('a quiet pair trades one probe and its ack, a talking one none, and none pings', async () => {
-  const { url, pings, frames } = sockets(500)
+  const { url, pings, frames, answers } = sockets(500)
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   frames.length = 0
+  answers.length = 0
   await Bun.sleep(2_600)
   const probe = /"sends":\[\{"to":"[^"]+","body":\{"seq":\d+(,"acked":\d+)?\}\}\]/
   const quiet = frames.splice(0)
@@ -185,6 +202,8 @@ it('a quiet pair trades one probe and its ack, a talking one none, and none ping
   // pinged it twice.
   expect([quiet.length >= 4, quiet.length <= 8]).toEqual([true, true])
   expect(quiet.filter((f) => probe.test(f)).length).toBeLessThanOrEqual(4)
+  // Neither waits on the relay's answer to either, so it sends none.
+  expect(answers).toEqual([])
   const t = performance.now()
   for (let i = 0; performance.now() - t < 2_000; i++) {
     await a.send('orchestrator', i)
@@ -411,7 +430,7 @@ function dropping(): {
       message(ws, m) {
         const drop = drops.get(ws)
         if (drop === undefined)
-          ws.send(relay.frame(ws.data.key, ws.data.id, String(m), ws.data.socket))
+          answer(ws, relay.frame(ws.data.key, ws.data.id, String(m), ws.data.socket))
       },
       close(ws) {
         open.delete(ws)
@@ -563,7 +582,7 @@ it('dials again through a relay fault shorter than three heartbeats', async () =
         relay.attach(ws.data.key, ws.data.id, ws)
       },
       message(ws, m) {
-        ws.send(relay.frame(ws.data.key, ws.data.id, String(m)))
+        answer(ws, relay.frame(ws.data.key, ws.data.id, String(m)))
       },
       close(ws) {
         // The network dropped it: the relay never hears its close.

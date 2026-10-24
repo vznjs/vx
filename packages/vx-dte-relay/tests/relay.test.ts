@@ -91,7 +91,7 @@ function client(opts: Partial<RelayOptions> = {}, provers = new Map<string, Prov
   let n = 0
   const frame = async (run: string, id: string, body: object, token?: string): Promise<any> => {
     const answer = JSON.parse(
-      relay.frame(await keyOf(run, token), id, JSON.stringify({ n, ...body })),
+      relay.frame(await keyOf(run, token), id, JSON.stringify({ n, ...body }))!,
     )
     expect(answer.n).toBe(n++)
     return answer
@@ -574,7 +574,7 @@ describe('a host that keeps runs and holds websockets', () => {
     await c.send(R, o, a, 'task')
     expect(live).toEqual([])
     // Its next frame, an empty beat, comes down the first.
-    expect(JSON.parse(c.relay.frame(K, a, JSON.stringify({ n: 7, sends: [] }), socket))).toEqual({
+    expect(JSON.parse(c.relay.frame(K, a, JSON.stringify({ n: 7, sends: [] }), socket)!)).toEqual({
       n: 7,
     })
     await c.send(R, o, a, 'next')
@@ -623,7 +623,7 @@ describe('a host that keeps runs and holds websockets', () => {
       error: 'frame is sends, remove or leave',
     })
     // JSON that is no object, or a send that is none: a 400, never a throw out of the relay.
-    expect(JSON.parse(c.relay.frame(K, a, 'null'))).toEqual({
+    expect(JSON.parse(c.relay.frame(K, a, 'null')!)).toEqual({
       n: null,
       status: 400,
       error: 'frame is not a JSON object',
@@ -637,13 +637,23 @@ describe('a host that keeps runs and holds websockets', () => {
       n: 99,
       sends: [{ to: 'orchestrator', body: 'x'.repeat(1 << 20) }],
     })
-    expect(JSON.parse(c.relay.frame(K, a, huge))).toEqual({
+    expect(JSON.parse(c.relay.frame(K, a, huge)!)).toEqual({
       n: 99,
       status: 413,
       error: 'body over 1 MiB',
     })
+    // Unnumbered, its sender waits on no answer: it gets one only if a send fails.
+    const unnumbered = (sends: unknown[]) => c.relay.frame(K, a, JSON.stringify({ sends }), socket)
+    expect(unnumbered([{ to: 'orchestrator', body: 4 }])).toBeUndefined()
+    expect(JSON.parse(unnumbered([{ to: 'nobody' }])!)).toEqual({
+      n: null,
+      results: [{ status: 404, error: 'unknown to' }],
+    })
     expect(frames).toEqual([{ messages: [{ from: 'orchestrator', body: 'pushed' }] }])
-    expect((await c.poll(R, o)).at(-1)).toEqual({ from: a, body: 3 })
+    expect((await c.poll(R, o)).slice(-2)).toEqual([
+      { from: a, body: 3 },
+      { from: a, body: 4 },
+    ])
     c.relay.detach(K, a, socket)
     await c.send(R, o, a, 'after')
     expect(await c.poll(R, a)).toEqual([])

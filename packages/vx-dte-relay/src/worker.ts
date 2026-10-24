@@ -173,7 +173,7 @@ export class RelayRun {
     const answer = this.relay.frame(key, id, text, ws)
     // A `leave` closed the socket it came down: its close is the answer.
     try {
-      ws.send(answer)
+      if (answer !== undefined) ws.send(answer)
     } catch {}
     void this.end()
   }

@@ -70,9 +70,9 @@ export interface Relay {
   detach(key: string, id: string, socket: RelaySocket): void
   /**
    * One frame a participant sent down `socket`, which becomes its socket;
-   * returns the answer frame.
+   * returns the answer frame, if it gets one.
    */
-  frame(key: string, id: string, text: string, socket?: RelaySocket): string
+  frame(key: string, id: string, text: string, socket?: RelaySocket): string | undefined
   /** Whether any run is open: a host with none may forget everything. */
   open(): boolean
 }
@@ -586,7 +586,9 @@ export function createRelay(opts: RelayOptions): Relay {
           })
           if (results.some((r) => r !== null)) return JSON.stringify({ n, results })
         } else throw new HttpError(400, 'frame is sends, remove or leave')
-        return JSON.stringify({ n })
+        // Unnumbered: its sender waits on no answer (an ack, a probe), so
+        // only a failure is one.
+        return n === null ? undefined : JSON.stringify({ n })
       } catch (err) {
         if (!(err instanceof HttpError)) throw err
         return JSON.stringify({ n, status: err.status, ...errorBody(err) })

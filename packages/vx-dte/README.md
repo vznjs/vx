@@ -356,12 +356,12 @@ stops, instead of waiting for the job's timeout.
   with `no worker could start`.
 - Liveness is the connection: a socket's close loses its participant at
   once, and the relay says so. A peer quiet on a socket that never
-  closed is lost within two heartbeats (10 s on the default): the
-  orchestrator sends each worker something at least each heartbeat and
-  a half, an empty numbered probe when it has nothing else, which the
-  worker acks at once; either side hearing nothing from the other for
-  1.9 heartbeats loses it, a worker by ending. A quiet pair trades one
-  probe and its ack each heartbeat and a half, and nobody pings. An orchestrator
+  closed is lost within two heartbeats (10 s on the default): only a
+  peer heard from for none of a heartbeat and a half is probed (an
+  empty numbered send), which it acks at once; either side hearing
+  nothing from the other for 1.9 heartbeats loses it, a worker by
+  ending. A quiet pair trades one probe and its ack each heartbeat and a
+  half, the relay answers neither, and nobody pings. An orchestrator
   with no worker yet asks the relay an empty frame instead; a frame the
   relay leaves unanswered a heartbeat closes the socket, which is dialed
   again.

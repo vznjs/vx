@@ -39,8 +39,8 @@ export function serveRelay(opts: ServeOptions): RelayServer {
     fetch: (req) => relay.fetch(req),
     websocket: {
       // A socket with no frame in three heartbeats has no peer listening
-      // either (each probes a quiet one each heartbeat): closed, it loses
-      // its participant, as a half-open one on no other host would be.
+      // either (each probes a quiet one within two): closed, it loses its
+      // participant, as a half-open one on no other host would be.
       idleTimeout: Math.max(1, Math.ceil((3 * (opts.heartbeatMs ?? 5_000)) / 1000)),
       open(ws: ServerWebSocket<Held>) {
         const { key, id } = ws.data
@@ -55,7 +55,8 @@ export function serveRelay(opts: ServeOptions): RelayServer {
       },
       message(ws: ServerWebSocket<Held>, message) {
         const { key, id } = ws.data
-        ws.send(relay.frame(key, id, String(message), ws.data.socket))
+        const answer = relay.frame(key, id, String(message), ws.data.socket)
+        if (answer !== undefined) ws.send(answer)
       },
       close(ws: ServerWebSocket<Held>) {
         const { key, id, socket } = ws.data
