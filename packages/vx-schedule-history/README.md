@@ -65,8 +65,9 @@ configure:
   run, never change what runs. The first write of a commit's blob stays,
   so the cache's write credential is the boundary: give PR jobs a
   read-only token.
-- **Averaged needs.** A CI run measures each task once, so the need it
-  writes is the mean of its own and the carried one, and a task fills its
+- **Averaged times and needs.** A CI run measures each task once, so the
+  time and need it writes are each the mean of its own and the carried
+  one (a task whose definition changed carries none), and a task fills its
   machine only while that mean does (or both did).
 
 ## Timings between CI runners, without a remote cache

@@ -323,10 +323,15 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
   const resources = new Map(carried?.needs)
   const defs = new Map(carried?.defs)
   for (const [id, ms] of p50s) {
-    timings.set(id, ms)
     const def = args.defs.get(id)
+    const same = defs.get(id) === def
+    const was = same ? timings.get(id) : undefined
+    // A run's time, averaged with the carried one: a CI run times a task
+    // once, and check.build-cold took 17 s to 62 s on one Mac size; main
+    // ef68f31 planned it at 14 s, the last run's, and ran 23 s over.
+    timings.set(id, was === undefined ? ms : Math.round((was + ms) / 2))
     // A carried need of the task as it was is not this task's.
-    if (defs.get(id) !== def) resources.delete(id)
+    if (!same) resources.delete(id)
     if (def === undefined) defs.delete(id)
     else defs.set(id, def)
     const r = measured.get(id)
