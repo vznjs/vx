@@ -99,14 +99,65 @@ owns its own arguments, `--help` included.
 
 ## `vx run`
 
+`vx run` runs the named task(s) in dependency order and skips any whose
+inputs did not change. By default only the project containing the
+current working directory is selected — `dependsOn` still expands so
+the project's upstream workspace deps run too. Override with `--all`,
+`--filter`, `--affected`, or an explicit `pkg#task`.
+
+### Usage
+
 ```
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 ```
 
-Run the named task(s). By default only the project containing the
-current working directory is selected — `dependsOn` still expands so
-the project's upstream workspace deps run too. Override with `--all`,
-`--filter`, `--affected`, or an explicit `pkg#task`.
+### Examples
+
+```sh
+vx run build                  # the cwd project's build, and what it depends on
+vx run build --all            # every project that declares build
+vx run test --affected        # only what this branch changed, and its dependents
+vx run app#build lint         # one project's build, and lint in scope
+vx run test -- --watch=false  # forward arguments to the task
+```
+
+The first run executes and saves; the next finds nothing changed:
+
+```
+$ vx run build --all
+ ⏺︎    17ms success miss     lib#build
+ ⏺︎     6ms success miss     app#build
+
+─ vx 0.0.0 ───────────────────────────────────────────────────
+  projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
+            2 affected · 2 total
+  tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
+            2 success · 2 total
+  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
+            local 2↑
+
+  info      4 workers · local cache · run 01a16e03-afb0-76ee-9cea-18a61c9d1e91
+  time      101ms · max 17ms · avg 12ms · min 6ms
+```
+
+```
+$ vx run build --all
+
+─ vx 0.0.0 ───────────────────────────────────────────────────
+  projects  ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
+            2 affected · 2 total
+  tasks     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
+            2 success · 2 total
+  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
+            local 2✓
+
+  info      4 workers · local cache · run 01a16e03-b0b1-77f6-a758-f7aa680822ab
+  time      16ms
+```
+
+The [Flags](#flags) table lists every option.
+
+### No task: the picker
 
 If no task name is given:
 
@@ -125,36 +176,6 @@ If no task name is given:
 - **Under `--dry=json`**, on a terminal too — the
   same refusal (`a JSON answer opens no picker; …`), with the
   `VX_E_USAGE` error document on stdout: a program cannot pick.
-
-Exit codes:
-
-| Code                  | When                                                                                                                                                                                                                                                                                                                                                                           |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `0`                   | Every task finished `success` or `cache-hit` (local or remote); or `--affected` left no project that declares the task.                                                                                                                                                                                                                                                        |
-| `1`                   | At least one task ended `failed` or `skipped`; a persistent task exited non-zero after it was ready; a task name no project declares; or parse/setup error.                                                                                                                                                                                                                    |
-| `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), a 2 s grace to go, then SIGKILL; a second signal skips the grace. vx then dies of the signal, so a shell script running it stops too (a run that handed a task the terminal exits with the code, so the terminal is restored). |
-
-A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
-and each task hears it once: from vx, as SIGINT. A stop starts no more remote
-cache uploads and does not wait on one in flight, nor on a remote lookup or
-download: what was half-read is dropped and fetched again next run.
-
-Installed from npm, `vx` is a sh launcher that execs the platform
-binary, so every signal reaches vx directly and no Node starts first
-(a `vx --version` through npm: 14 ms, was 56 ms with the Node launcher, 2026-10-12). Where it
-finds no binary beside it (musl, Yarn PnP, a platform with none) it
-hands off to a Node launcher. On Node 22.15 or later that one
-replaces itself with the binary (`process.execve`) too. On older Node it runs the binary and waits for it:
-a signal sent to the launcher alone (`kill`, a process manager) is
-passed to the binary, and a terminal's Ctrl-C already reaches both, so
-the launcher does not send it twice.
-
-A reader that leaves does not change the code. `vx run build | head -1`
-closes the pipe after one line; the run still finishes, saves what it
-built and releases its lock, and exits with its own verdict — the
-output after that point goes nowhere (`EPIPE`, on stdout or stderr, is
-not an error vx reports). Before 2026-09-16 the same pipeline died with
-a stack and exit 1 after its task had succeeded.
 
 ### Selection
 
@@ -947,6 +968,36 @@ not read a deferred output (the same reason vx refuses to infer inputs
 by tracing). When bytes are fetched later, vx saves an ordinary
 cache entry for them, so the next run is a plain local hit.
 
+### Exit codes
+
+| Code                  | When                                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `0`                   | Every task finished `success` or `cache-hit` (local or remote); or `--affected` left no project that declares the task.                                                                                                                                                                                                                                                        |
+| `1`                   | At least one task ended `failed` or `skipped`; a persistent task exited non-zero after it was ready; a task name no project declares; or parse/setup error.                                                                                                                                                                                                                    |
+| `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), a 2 s grace to go, then SIGKILL; a second signal skips the grace. vx then dies of the signal, so a shell script running it stops too (a run that handed a task the terminal exits with the code, so the terminal is restored). |
+
+A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
+and each task hears it once: from vx, as SIGINT. A stop starts no more remote
+cache uploads and does not wait on one in flight, nor on a remote lookup or
+download: what was half-read is dropped and fetched again next run.
+
+Installed from npm, `vx` is a sh launcher that execs the platform
+binary, so every signal reaches vx directly and no Node starts first
+(a `vx --version` through npm: 14 ms, was 56 ms with the Node launcher, 2026-10-12). Where it
+finds no binary beside it (musl, Yarn PnP, a platform with none) it
+hands off to a Node launcher. On Node 22.15 or later that one
+replaces itself with the binary (`process.execve`) too. On older Node it runs the binary and waits for it:
+a signal sent to the launcher alone (`kill`, a process manager) is
+passed to the binary, and a terminal's Ctrl-C already reaches both, so
+the launcher does not send it twice.
+
+A reader that leaves does not change the code. `vx run build | head -1`
+closes the pipe after one line; the run still finishes, saves what it
+built and releases its lock, and exits with its own verdict — the
+output after that point goes nowhere (`EPIPE`, on stdout or stderr, is
+not an error vx reports). Before 2026-09-16 the same pipeline died with
+a stack and exit 1 after its task had succeeded.
+
 ## Planning mode (`--dry`)
 
 `--dry` short-circuits execution. It builds the full task graph,
@@ -1179,12 +1230,18 @@ orchestrator needs no sandbox runtime.
 
 ## `vx watch`
 
+`vx watch` runs the named task, then re-runs it on every filesystem
+change in the projects in scope. Press `Ctrl+C` to stop.
+
+### Usage
+
 ```
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
 ```
 
-Run the named task, then re-run it on every filesystem change in the
-projects in scope. Press `Ctrl+C` to stop.
+`OPTIONS` are `vx run`'s, less the ones [Constraints](#constraints) names.
+
+### Examples
 
 ```sh
 vx watch test                       # cwd project; re-test on changes
