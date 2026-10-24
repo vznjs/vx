@@ -26,13 +26,15 @@ export function gitlab(options: GitlabOptions = {}): DteAdapter {
 
     spawn(a) {
       let wave = waves.get(a.size)
-      if (wave === undefined) {
+      // Two workers in one slot would be one job: the second starts a wave of its own.
+      if (wave === undefined || wave.workers.some((w) => slotOf(w) === slotOf(a))) {
         const workers: WorkerSpawn[] = []
         const sent = Promise.resolve().then(() => {
-          waves.delete(a.size)
+          if (waves.get(a.size) === mine) waves.delete(a.size)
           return trigger(workers)
         })
-        wave = { workers, sent }
+        const mine = { workers, sent }
+        wave = mine
         waves.set(a.size, wave)
       }
       wave.workers.push(a)
@@ -68,14 +70,7 @@ async function trigger(workers: readonly WorkerSpawn[]): Promise<void> {
   if (!base || !project || !token || !sha)
     throw new Error('gitlab(): not in a GitLab job (CI_API_V4_URL, CI_JOB_TOKEN)')
   const first = workers[0]!
-  // A worker's slot is its number within its size, wrapped at `max`: a
-  // wave asks at most `max` workers, numbered one after another, so its
-  // slots differ though a lost worker's number is never reused.
-  const max = first.max
-  const slots = workers.map((w) => {
-    const n = Number(w.id.slice(w.id.lastIndexOf('#') + 1))
-    return [((n - 1) % max) + 1, w.id] as const
-  })
+  const slots = workers.map((w) => [slotOf(w), w.id] as const)
   // A merge request's pipeline is of its source branch; any other, of its ref.
   const ref =
     process.env['CI_MERGE_REQUEST_SOURCE_BRANCH_NAME'] || process.env['CI_COMMIT_REF_NAME']!
@@ -100,4 +95,14 @@ async function trigger(workers: readonly WorkerSpawn[]): Promise<void> {
     throw new Error(
       `gitlab(): triggering ${workers.map((w) => w.id).join(', ')}: ${res.status} ${(await res.text()).slice(0, 200)}`,
     )
+}
+
+/**
+ * A worker's matrix slot: its number within its size, wrapped at `max`.
+ * A lost worker's number is never reused, so numbers pass `max`; a wave's
+ * are consecutive and at most `max`, so its slots differ.
+ */
+function slotOf(w: WorkerSpawn): number {
+  const n = Number(w.id.slice(w.id.lastIndexOf('#') + 1))
+  return ((n - 1) % w.max) + 1
 }
