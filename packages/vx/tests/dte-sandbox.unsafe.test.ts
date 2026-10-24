@@ -21,7 +21,7 @@ describe.skipIf(!available)('a sandboxed task on a worker', () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-sb-'))
     const files: Record<string, string> = {
       'package.json': JSON.stringify({ name: 'ws', private: true }),
-      '.gitignore': 'out\n.vx/cache\n',
+      '.gitignore': 'out\nstamp\n.vx/cache\n',
       '.vx/workspace.mjs': `import { dte, local } from ${JSON.stringify(DTE)}
 export default { plugins: [dte({ workers: { small: { max: 1, cpu: 2, memory: '1GB' } }, adapter: local() })] }
 `,
@@ -44,6 +44,11 @@ export default { plugins: [dte({ workers: { small: { max: 1, cpu: 2, memory: '1G
     exec: { command: 'mkdir -p out && pwd > out/where.txt', sandbox: { allow: { read: ['.'], write: ['out/'] } } },
     inputs: { files: ['vx.config.mjs'] },
     cache: { outputs: { files: ['out/**'] } },
+  },
+  stamp: {
+    exec: { command: 'sleep 0.1; : > stamp', sandbox: { allow: { read: ['.'], write: ['stamp'] } } },
+    inputs: { files: ['vx.config.mjs'] },
+    cache: { outputs: { files: ['stamp'] } },
   },
   peek: {
     exec: { command: 'cat ../secret/s.txt', sandbox: { allow: { read: ['.'] } } },
@@ -84,6 +89,14 @@ export default { plugins: [dte({ workers: { small: { max: 1, cpu: 2, memory: '1G
     const where = (await readFile(path.join(root, 'a/out/where.txt'), 'utf8')).trim()
     expect(where).not.toBe(path.join(root, 'a'))
     expect(where.endsWith(`${path.sep}a`)).toBe(true)
+  }, 60_000)
+
+  // The worker took back every empty bind after the task, an empty stamp
+  // the task wrote too: saved as no file, every hit restored none (2026-10-24).
+  it('keeps an empty file the task wrote over its write grant', async () => {
+    const r = vx(['run', 'a#stamp'], crypto.randomUUID())
+    expect([r.exitCode, r.stdout.toString() + r.stderr.toString()]).toEqual([0, expect.any(String)])
+    expect(await Bun.file(path.join(root, 'a/stamp')).exists()).toBe(true)
   }, 60_000)
 
   it('starts a sandboxed server it needs inside that sandbox', async () => {

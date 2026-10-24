@@ -105,7 +105,8 @@ export function mayWriteFingerprint(
   calls it after every attempt of a one-shot task, and when a
   persistent task's child exits (or fails to become ready); a failed
   task with nothing else reported gets one line per untouched
-  placeholder (`untouchedPlaceholderLine`).
+  placeholder (`untouchedPlaceholderLine`). A `@vzn/vx-dte` worker
+  calls it after each task too, from the package.
 - `reachedWithheld` names the withheld packages a reported denial lies
   under; execute-task appends `withheldLinkLine` for each, beside the
   denial (so never on a pass): the package, the link the task went

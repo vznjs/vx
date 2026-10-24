@@ -6,7 +6,7 @@
 // there under its key; the relay carries only orders and status.
 
 import { readFileSync, realpathSync } from 'node:fs'
-import { lstat, rm } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import {
@@ -18,6 +18,7 @@ import {
   machineParallelism,
   sampleTrees,
   sandboxRequestFor,
+  sweepPlaceholders,
   type CacheFacts,
   type ExecuteRequest,
   type LocalFloor,
@@ -335,11 +336,10 @@ export async function runWorker(opts: {
           ? ui.status('ok', m.task, took)
           : ui.status('error', m.task, [`exit ${res.exitCode} `, took]),
       )
-      // A bind the task never wrote is not its output.
-      for (const p of sb?.placeholders ?? [])
-        // quiet: a local stat; a missing bind is not an output
-        if ((await lstat(p.path).catch(() => undefined))?.size === 0)
-          await rm(p.path, { force: true })
+      // A bind the task never wrote is not its output. By size alone, an
+      // empty stamp the task wrote was taken too and saved as no file
+      // (2026-10-24).
+      if (sb !== undefined) await sweepPlaceholders(sb.placeholders)
       // Its violations name the orchestrator's paths. As JSON first: the swap
       // round-trips them through JSON, which leaves a Date a string.
       const back = swapRoots(

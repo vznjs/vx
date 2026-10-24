@@ -210,7 +210,8 @@ export { withForwardArgs } from './exec/index.js'
 export { localFloor, type LocalFloor } from './orchestrator/index.js'
 // A task's sandbox request built where a worker runs it: the paths and the
 // walls are that machine's (`@vzn/vx-dte`, an orchestrator of another OS).
-export { sandboxRequestFor, type SandboxRequest } from './orchestrator/index.js'
+// Its sweep takes back each placeholder the task never wrote, as core does.
+export { sandboxRequestFor, sweepPlaceholders, type SandboxRequest } from './orchestrator/index.js'
 // A runtime probe answered where a `runtime` executor runs the task.
 export { answerRuntime } from './cache/index.js'
 export type {
