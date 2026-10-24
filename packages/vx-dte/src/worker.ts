@@ -28,6 +28,7 @@ import {
 import { childrenCpuMs, describeCpu, readPs, topBetween } from './cpu-account.js'
 import {
   HELD_EVERY,
+  HOST_ENV,
   type Load,
   type WorkerInfo,
   type RunOrder,
@@ -37,20 +38,6 @@ import {
 import { names, outputFiles } from './outputs.js'
 import { sealWorker, type Proof } from './seal.js'
 import { join, RelayError, unsent as unsentBy } from './wire.js'
-
-/** Names whose value is this machine's, never the orchestrator's. */
-const HOST_ENV = [
-  'HOME',
-  'SHELL',
-  'USER',
-  'LOGNAME',
-  'TMPDIR',
-  'TEMP',
-  'TMP',
-  'npm_execpath',
-  'PNPM_HOME',
-  'COREPACK_HOME',
-]
 
 export async function runWorker(opts: {
   relay: string
@@ -799,7 +786,8 @@ export function localEnv(
 ): Record<string, string | undefined> {
   // By path: a plain replace moved `/ws2` and `/private/ws` with `/ws`.
   const out: Record<string, string | undefined> = swapRoots({ ...env }, [[remoteRoot, root]])
-  for (const k of HOST_ENV) out[k] = process.env[k]
+  // Sent only when the task's `env.define` names it: its value, as keyed.
+  for (const k of HOST_ENV) if (!(k in out)) out[k] = process.env[k]
   const bins = (out['PATH'] ?? '').split(':').filter((p) => p === root || p.startsWith(`${root}/`))
   out['PATH'] = [...bins, process.env['PATH'] ?? ''].join(':')
   return out

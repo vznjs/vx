@@ -404,6 +404,9 @@ use your own instead.
   restores its output, never its files. Under `--cache-download=toplevel`
   or `none`, a task's files it defers land here only if a task here needs
   them.
+- A task runs with the orchestrator's environment under the worker's
+  root. `HOME`, `TMPDIR`, `USER` and the like are the worker's own, unless
+  the task's `env.define` sets them.
 - A worker restores, by key, the declared outputs of every task the one
   it runs depends on, unless it ran or restored them before. Files a task
   writes without declaring them stay on the worker. Before a task runs, its

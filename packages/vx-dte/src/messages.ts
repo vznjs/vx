@@ -169,3 +169,20 @@ export function shares(
 ): boolean {
   return need.cores < of.cores && used.cores < of.cores && used.memory + need.memory <= of.memory
 }
+
+/**
+ * Names whose value is the worker's own: the orchestrator sends one only
+ * when a task's `env.define` sets it, a value its key folds.
+ */
+export const HOST_ENV = [
+  'HOME',
+  'SHELL',
+  'USER',
+  'LOGNAME',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'npm_execpath',
+  'PNPM_HOME',
+  'COREPACK_HOME',
+]
