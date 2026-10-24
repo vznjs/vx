@@ -6,13 +6,13 @@ authors:
 tags:
   - caching
   - migration
-excerpt: 'A group task can carry inputs. A task that depends on it re-runs when those files change, and nothing spawns for the group itself.'
+excerpt: 'A task can have inputs and no command. Tests that depend on it run again when those files change, and nothing extra spawns.'
 ---
 
-`fixtures` runs nothing. It only holds a key:
+Test fixtures change, but no command builds them. Give them a task with
+`inputs` and no command, and `test` runs again when a fixture changes.
 
-```ts
-// packages/b/vx.config.ts
+```ts title="packages/b/vx.config.ts"
 import { defineProject } from '@vzn/vx/config'
 
 export default defineProject({
@@ -44,26 +44,30 @@ $ vx run packages/b#test
   cache     local 1✓
 ```
 
-A fixture edit re-runs `test` (`1↑`: ran and saved). A README edit
-hits. The count is `1 total`: `fixtures` spawned no process and wrote
-no cache entry. Linux x64, vx at `69617eb`, 2026-10-23.
+A fixture edit runs `test` again (`1↑`: ran and saved). A README edit
+is a cache hit. It says `1 total` because `fixtures` started no process.
 
-## When to use one
+<small>Linux x64 · vx 69617eb · 2026-10-23</small>
 
-Some inputs belong to no command: test fixtures, a shared config, the
-source of a dependency that needs no build. A task should re-run when
-they change, but nothing has to run for them.
+## How the key flows
 
-- A keyed group is `inputs` with no `exec`.
-- It takes no `cache`: a group writes nothing.
-- `--affected` follows it like any other edge.
+```mermaid
+flowchart LR
+  F["fixtures/**"] --> G["fixtures<br/>inputs, no command"]
+  G -->|its key| T["test"]
+  S["src/**"] --> T
+  R["README.md"] -.->|not an input| T
+```
 
-## Where migrations need it
+We call this a keyed group: `inputs` with no `exec`. It takes no
+`cache`, because it writes nothing. `--affected` follows it like any
+other dependency.
 
-Nx keys a task on its dependencies' `production` files even when no
-task edge joins them, and Turbo hashes a transit node per package.
-`@vzn/vx-migrate` writes each as a keyed group: the same keys, no
-processes. On TanStack/query, `vx run build` counts 25 tasks, as Nx
-does.
+## Migrations use it too
+
+Nx keys a task on its dependencies' `production` files even with no
+task edge between them. Turbo hashes a transit node per package.
+`@vzn/vx-migrate` writes each as a keyed group, with no processes. On
+TanStack/query, `vx run build` counts 25 tasks, as Nx does.
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -6,10 +6,20 @@ authors:
 tags:
   - performance
   - caching
-excerpt: 'On an empty cache every lookup would miss, so vx skips them. On a 1,000-project workspace the first task starts 136 ms after `vx run`.'
+excerpt: 'With an empty cache, vx skips the lookups that would all miss. On 1,000 projects the first task starts 136 ms after vx run.'
 ---
 
-A 1,000-project workspace, an empty cache, and vx's own stage timer:
+On a cold cache, your first task starts 136 ms after you type `vx run`,
+on a 1,000-project workspace.
+
+| Cache before the run | First task starts |
+| -------------------- | ----------------- |
+| empty                | 136 ms            |
+| holds all 1,000 keys | 162 ms            |
+
+<small>Min of 7 runs · `private/vx-bench/generate.ts`, 1,000 projects, `build --all` · Linux x64, 4 cores · vx 13f6908 · 2026-10-23</small>
+
+## Where the wait goes
 
 ```sh frame="terminal"
 $ VX_DEBUG_TIMING=1 vx run build --all
@@ -22,34 +32,25 @@ $ VX_DEBUG_TIMING=1 vx run build --all
              run graph             1855.1ms    2023.5ms
 ```
 
-`schedule` ends when the first task starts. Everything above it is the
-wait before anything happens.
+`schedule` ends when the first task starts. Everything above it is time
+you wait. The lookup step, `classify + probe`, takes 8.8 ms on an empty
+cache and 47.3 ms on a full one.
 
-| Cache before the run | `classify + probe` | First task starts |
-| -------------------- | ------------------ | ----------------- |
-| empty                | 8.8 ms             | 136 ms            |
-| holds all 1,000 keys | 47.3 ms            | 162 ms            |
+## Why empty is cheaper
 
-Min of 7 runs each, `private/vx-bench/generate.ts` with 1,000 projects,
-`build --all`, Linux x64, 4 cores, vx at `13f6908`, 2026-10-23.
+```mermaid
+flowchart TB
+  S[vx run] --> Q{local cache empty?}
+  Q -->|no| P[look up every key first] --> R[start tasks]
+  Q -->|yes| R2[start tasks now<br/>each works out its key as it starts]
+```
 
-## Why the empty cache is cheaper
-
-Before a run, vx works out each task's key and looks it up, so it knows
-which tasks restore and which run. With a full cache that pass is what
-makes a cached run fast.
-
-With an empty cache every lookup would miss. So vx checks once whether
-the local cache holds anything. If not, it skips the pass, and each task
-works out its own key as it starts. The keys are the same either way;
-only when they are computed moves.
-
-The whole cold build takes as long as before. The saving is at the
-start, where you sit and wait.
+With a full cache, looking up every key first is what makes a cached run
+fast. With an empty cache every lookup would miss, so vx skips them. The
+keys come out the same. The whole build takes as long as before. You
+only wait less at the start.
 
 ## Nothing to turn on
-
-Every cold run works this way. Try it in your repo:
 
 ```sh
 bunx @vzn/vx init

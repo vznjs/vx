@@ -6,11 +6,11 @@ authors:
 tags:
   - dx
   - caching
-excerpt: 'vx run --dry prints the task graph, which tasks would hit the cache and which would run, their keys and how long they should take. Nothing executes.'
+excerpt: 'vx run --dry shows which tasks would come from the cache and which would run, with keys and expected times. Nothing runs.'
 ---
 
-One edit in `packages/b`. `--dry` shows what the next run will do,
-without running anything:
+`--dry` shows what the next run will do, without running anything. One
+file changed in `packages/b`:
 
 ```sh frame="terminal"
 $ vx run build test --all --dry
@@ -32,35 +32,40 @@ $ vx run build test --all
  ⏺︎    17ms success miss     packages/b#build
 ```
 
-The plan said two misses; the run ran those two. Linux x64, vx at
-`69617eb`, 2026-10-23.
+The plan said two tasks would run. The run ran those two.
 
-## Real keys, real predictions
+<small>Linux x64 · vx 69617eb · 2026-10-23</small>
 
-- **Same keys.** A dry run derives the keys a real run would and asks
-  the same cache. A hit in the plan is a hit in the run.
-- **Last time's duration.** The time next to a task is its last run.
-- **Wall time on the graph.** The prediction lays those times on the
-  graph: a task waits for its dependencies, independent tasks overlap.
+## The plan uses the real keys
 
-## For scripts and agents
+```mermaid
+flowchart LR
+  K[same keys as a real run] --> C{same cache}
+  C -->|hit| H[✓ would restore]
+  C -->|miss| R[▶ would run]
+  D[last run's time per task] --> P[predicted wall time on the graph]
+```
 
-`--dry=json` is the same plan as JSON, one object per task:
+A hit in the plan is a hit in the run. The time next to a task is its
+last run. The prediction lays those times on the graph, so parallel
+tasks overlap.
+
+## JSON for scripts and agents
 
 ```json
 {"id":"packages/a#build","project":"packages/a","task":"build","hash":"4ab2bc0d55dd78a0","cacheStatus":"hit-local","deps":[],"p50Ms":22}
 ```
 
-An agent can decide whether a run is worth starting, or show a
-reviewer what a change rebuilds:
+`--dry=json` gives one object per task. An agent can check if a run is
+worth starting, or show a reviewer what a change rebuilds:
 
 ```sh frame="terminal"
 vx run build --affected --dry=json
 ```
 
-## The graph itself
+## Draw the graph
 
-Each task carries its `deps`, so Graphviz DOT is one `jq` away:
+Each task lists its `deps`, so Graphviz is one `jq` away:
 
 ```sh frame="terminal"
 vx run build --all --dry=json \

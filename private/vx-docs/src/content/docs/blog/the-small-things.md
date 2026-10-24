@@ -5,12 +5,13 @@ authors:
   - vzn
 tags:
   - dx
-excerpt: 'A typo gets the right spelling. A task typed as a command gets the command. No task opens a picker. Tab completes every verb and flag. The parts of a tool you meet a hundred times a day.'
+excerpt: 'Mistype a flag or a task and vx prints the fix. Forget the task and you get a picker. Tab completes the rest.'
 ---
 
-The small things are what you meet a hundred times a day. Every answer
-below is real output from a demo workspace, vx at `69617eb`,
-2026-10-23.
+Mistype a flag or a task and vx tells you the fix. These are the
+answers you see a hundred times a day.
+
+<small>Real output · demo workspace · vx 69617eb · 2026-10-23</small>
 
 ## A typo gets the right spelling
 
@@ -42,11 +43,11 @@ $ vx biuld
   fix  vx run build
 ```
 
-## No task, a picker
+## No task? You get a picker
 
-In a terminal, `vx run` with no task lists the tasks of the project you
-are in, to pick one. Off a terminal, for a script or an
-agent, it never waits on a prompt. It names the tasks instead:
+In a terminal, `vx run` with no task lets you pick one from the project
+you are in. In a script or an agent it never waits on a prompt. It
+lists the tasks instead:
 
 ```sh frame="terminal"
 $ vx run < /dev/null
@@ -55,10 +56,10 @@ $ vx run < /dev/null
   see vx run --help
 ```
 
-## Tab completes it all
+## Tab completes every verb and flag
 
-`vx completions` prints a script for bash, zsh or fish. It completes
-every verb, the plugin verbs your workspace adds, and every flag:
+`vx completions` prints a script for bash, zsh or fish. It includes the
+verbs your plugins add.
 
 ```sh frame="terminal"
 eval "$(vx completions bash)"                          # this shell
