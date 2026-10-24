@@ -75,6 +75,8 @@ export async function writeRunProfile(args: ProfileArgs): Promise<string> {
         hash: o.hash ?? null,
         ...(o.cpuMs !== undefined ? { cpuMs: o.cpuMs } : {}),
         ...(o.peakRssBytes !== undefined ? { peakRssBytes: o.peakRssBytes } : {}),
+        // A remote hit's download and ingest: the rest of its span is vx's.
+        ...(o.fetchMs !== undefined ? { fetchMs: o.fetchMs } : {}),
       },
     }
   })

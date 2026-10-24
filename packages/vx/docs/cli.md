@@ -1089,7 +1089,8 @@ Each project gets a distinct `tid`, and one more for each task it runs
 beside another of its own, so concurrent tasks render on separate lanes. `ts` and `dur` are microseconds derived
 from the per-task `hrtime.bigint()` spans the runner captures.
 `cat` carries the task's final status (`success`, `cache-hit`,
-`cache-hit-remote`, `failed`).
+`cache-hit-remote`, `failed`). A remote hit this run downloaded also
+carries `fetchMs`, its download and ingest; the rest of its `dur` is vx's.
 
 An executor adds its own events after the run's process
 (`TaskExecutor.profile`): `@vzn/vx-dte` adds one process per worker,
