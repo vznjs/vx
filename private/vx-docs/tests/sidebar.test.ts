@@ -46,7 +46,7 @@ const DOCS_PAGES: [string, string][] = [
 ]
 const DOCS_GROUPS = ['Get started', 'Configure', 'Run', 'Extend']
 const GUIDES_GROUPS = ['Get started', 'Caching', 'Running', 'CI', 'Debugging']
-const REFERENCE_GROUPS = ['CLI', 'Config', 'Benchmarks', 'Compare', 'Plugins']
+const REFERENCE_GROUPS = ['CLI', 'Config', 'Benchmarks', 'Compare', 'Plugins', 'Protocols']
 const INTERNALS_TOP = ['overview/', 'architecture/', 'optimizations/', 'patterns/', 'flows/']
 const INTERNALS_DIRS = ['modules/', 'design/']
 
