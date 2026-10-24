@@ -27,7 +27,7 @@ export interface RunArgs {
   settings: Record<string, unknown> // each setting flag by path, parsed by its kind (`run.timeout` → ms)
   cache: CachePolicy // resolved from --cache-policy / VX_CACHE_POLICY / --no-cache / --force (default all-on)
   cacheFlags?: CacheFlags // no spec named: --no-cache / --force, applied over the workspace's cache.policy
-  remoteRequested?: boolean // a --cache-policy spec named a remote axis
+  remoteRequested?: '--cache-policy' | 'VX_CACHE_POLICY' // which spec named a remote axis
   cacheDir: string | undefined // --cache-dir
   poll?: true // vx watch --poll (watch.poll)
   forwardArgs: string[] // everything after `--`

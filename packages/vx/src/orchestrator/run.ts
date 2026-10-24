@@ -92,7 +92,7 @@ import { isPassStatus } from '../graph/index.js'
 import type { RunContextRecord } from './telemetry.js'
 import { plan, type RunPlan } from './plan.js'
 import type { AffectedReason } from './affected-tasks.js'
-import { openRemotes, prepareRun, type PreparedRun } from './prepare.js'
+import { namesRemote, openRemotes, prepareRun, type PreparedRun } from './prepare.js'
 import { acquireRunLock } from './run-lock.js'
 import { terminateChildren } from './signals.js'
 import { runStop } from './run-stop.js'
@@ -705,9 +705,17 @@ async function runOnBus(
     // clean their outputs before every exec for a save that never
     // happened.
     const policy: CachePolicy = effectiveCachePolicy(prepared.cachePolicy, remoteCacheEnabled)
-    if (options.remoteRequested === true && !prepared.hasRemoteLayer) {
+    // The workspace's `cache.policy` asks as a flag does: it was the one source never told.
+    const remoteNamed =
+      options.remoteRequested ??
+      (options.cache === undefined &&
+      options.cacheFlags?.noCache !== true &&
+      namesRemote(prepared.workspaceConfig?.cache?.policy)
+        ? 'cache.policy'
+        : undefined)
+    if (remoteNamed !== undefined && !prepared.hasRemoteLayer) {
       warnOf(log)(
-        'vx: --cache-policy named the remote cache, but no cache plugin in .vx/workspace.* supplies one — the remote axes are off for this run',
+        `vx: ${remoteNamed} named the remote cache, but no cache plugin in .vx/workspace.* supplies one — the remote axes are off for this run`,
       )
     }
     const deferredOutputs = new DeferredOutputs({

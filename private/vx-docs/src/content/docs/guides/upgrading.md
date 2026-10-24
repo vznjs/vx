@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## orchestrator: name the setting that asked for a missing remote
+
+RunOptions.remoteRequested is the name of the setting that asked (`'--cache-policy'`), not a boolean.
+
 ## vx-dte: learn a crowded task's need, not its share
 
 index schema v48 -> v49; the local index is rebuilt.

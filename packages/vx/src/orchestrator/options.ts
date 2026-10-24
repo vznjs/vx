@@ -84,12 +84,12 @@ export interface RunOptions {
    */
   cacheFlags?: CacheFlags
   /**
-   * The caller asked for a remote axis by name (`--cache-policy=remote:rw`). With
-   * no cache plugin supplying a remote layer the axes are inert, and a CI
-   * job that believes it is filling a shared cache deserves one line
-   * saying it is not.
+   * The setting that asked for a remote axis by name (`'--cache-policy'` for
+   * `--cache-policy=remote:rw`), named in the warning. With no cache plugin
+   * supplying a remote layer the axes are inert, and a CI job that believes
+   * it is filling a shared cache deserves one line saying it is not.
    */
-  remoteRequested?: boolean
+  remoteRequested?: string
   /** This run's cache scope, above `VX_CACHE_SCOPE`, a plugin's and the branch's (an embedder's). */
   cacheScope?: string
   /**

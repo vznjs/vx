@@ -589,7 +589,8 @@ them in this precedence order:
 
 A spec that names a remote axis (`remote:r`, `remote:w`, `remote:rw`)
 in a workspace whose plugins supply no remote layer gets one status
-line saying so — the axes are inert without a layer to serve them, and
+line saying so, naming where the spec came from (`--cache-policy`,
+`VX_CACHE_POLICY` or `cache.policy`) — the axes are inert without a layer to serve them, and
 a CI job that believes it is filling a shared cache should be told.
 
 Whatever the axes, a lookup asks the local cache first, then each
