@@ -437,11 +437,15 @@ export function plan(
         if (twin === undefined) release.push(w.id)
       }
     }
-    // Biggest first: a big idle one costs the most to keep.
+    // Biggest first: a big idle one costs the most to keep. Joined, its
+    // warm-up is spent: it goes when the plan gives it no task, not when
+    // the run ends within the margin without it (main e05bd71 let a mac go
+    // that way and asked another 4 s later).
     const idle = workers.filter((w) => w.idle).sort((a, b) => b.cores - a.cores)
     for (const w of idle) {
       const without = kept.filter((k) => k !== w)
-      if (simulate(tasks, without, how) <= bound) {
+      const next = play(tasks, kept, how).first.get(w.id)
+      if (next === undefined) {
         kept = without
         release.push(w.id)
         continue
@@ -451,12 +455,11 @@ export function plan(
       // next plan starts one at once: let go as 10 joined at 20 s, one was
       // started again at 20.06 (tests/sim.test.ts, a09b987 forecast).
       if (!replaceable) continue
-      const next = play(tasks, kept, how).first.get(w.id)
-      if (next !== undefined && next < 2 * warm(w.size) + MARGIN_MS) continue
+      if (next < 2 * warm(w.size) + MARGIN_MS) continue
       const instead = fresh(
         { cpu: w.cores, memory: w.memory, platform: w.platform, size: w.size },
         w.id,
-        next ?? Infinity,
+        next,
       )
       if (simulate(tasks, [...without, instead], how) <= bound) {
         kept = without

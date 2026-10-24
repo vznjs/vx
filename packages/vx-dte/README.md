@@ -518,7 +518,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     machine's cores: learning the share packed the next run tighter, nine
     1.1-core test shards on one 4-core worker.
     A worker the plan needs later starts when its warm-up nears. An idle
-    worker leaves when the plan still ends in that margin without it, or,
+    worker leaves when the plan gives it no task (its warm-up is spent), or,
     when its next task is two warm-ups away, with one started in its place
     a warm-up after it left: none is let go and started again. A worker still
     starting that the plan gives no task (asked, a worker stays while the
