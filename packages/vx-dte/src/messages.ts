@@ -153,6 +153,8 @@ export type WiredResult = Omit<ExecuteResult, 'violations' | 'outputs' | 'stdout
   violations?: (Omit<ExecuteResult['violations'][number], 'timestamp'> & { timestamp: string })[]
   /** The share of a core each runnable thread got on the worker while it ran (`ExecuteResult.machine.cpuShare`). */
   cpuShare?: number
+  /** Workspace-relative upstream outputs the task removed: this machine removes them too. */
+  removed?: string[]
 }
 
 /**
