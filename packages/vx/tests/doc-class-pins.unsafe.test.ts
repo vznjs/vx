@@ -666,8 +666,8 @@ describe('every benchmark figure a blog table quotes is a measured one', () => {
     // The eleven are scheduling-strategies' rows (2026-10-09), the three
     // more ci-timings-file's; seven more where-a-run-spends-its-time's
     // (2026-10-14); four more why-vx-is-fast's head-to-head and three
-    // no-choice-on-the-market's (2026-10-23).
-    expect(checked).toBe(28)
+    // no-choice-on-the-market's (2026-10-23); two more from-nx's (2026-10-24).
+    expect(checked).toBe(30)
     expect(wrong).toEqual([])
   })
 
