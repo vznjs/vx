@@ -784,6 +784,50 @@ export default { name: 'ad', tasks: {
   expect(await readFile(path.join(root, 'ad/dist/ind/b.txt'), 'utf8')).toBe('up\n')
 }, 60_000)
 
+// A worker saved an additive task's upstream files in its entry: a hit
+// whose key did not fold the upstream's replayed its old bytes over the
+// new ones (2026-10-24). `none` keeps this machine's save from replacing
+// the worker's entry.
+it('saves only the files an additive task wrote on its worker', async () => {
+  const ws = path.join(root, '.vx/workspace.mjs')
+  await writeFile(
+    ws,
+    (await readFile(ws, 'utf8')).replace(
+      'export default {',
+      'export default { run: { rules: { exclusiveOutputs: false } },',
+    ),
+  )
+  await mkdir(path.join(root, 'ad'))
+  await writeFile(path.join(root, 'ad/v.txt'), '1\n')
+  await writeFile(
+    path.join(root, 'ad/vx.config.mjs'),
+    `const outputs = { files: ['dist/**'] }
+export default { name: 'ad', tasks: {
+  up: { exec: { command: 'mkdir -p dist && cp v.txt dist/a.txt' }, inputs: { files: ['v.txt'] }, cache: { outputs } },
+  add: { dependsOn: ['up'], exec: { command: 'echo b > dist/b.txt' }, inputs: { files: ['vx.config.mjs'], tasks: [] }, cache: { outputs } },
+} }
+`,
+  )
+  await writeFile(path.join(root, 'ad/.gitignore'), 'dist\n')
+  expect(vx(['lock']).exitCode).toBe(0)
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: root })
+  git('add', '-A')
+  git('commit', '-qm', 'ad')
+  const first = vx(['run', 'ad#add', '--cache-download=none'], 'add-1')
+  expect([first.exitCode, first.stdout.toString() + first.stderr.toString()]).toEqual([
+    0,
+    expect.any(String),
+  ])
+  await writeFile(path.join(root, 'ad/v.txt'), '2\n')
+  git('commit', '-qam', 'v2')
+  const again = vx(['run', 'ad#add'], 'add-2')
+  expect([again.exitCode, await readFile(path.join(root, 'ad/dist/a.txt'), 'utf8')]).toEqual([
+    0,
+    '2\n',
+  ])
+}, 60_000)
+
 // A worker saved a task that rewrote its own input under its key: this
 // machine never saw the rewrite, and the next run hit it (2026-10-24).
 it('saves no entry under its key for a task that changed its input on its worker', async () => {
