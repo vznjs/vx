@@ -662,6 +662,24 @@ it('does not join again after a 4xx, and names the relay that refused it', async
   expect(asked).toBe(1)
 })
 
+// PR #4225's run (2026-10-24): a relay that held the socket and then the
+// request took 10 s each, and the run failed after 21 s on a bare "The
+// operation timed out".
+it('gives up on a relay that answers nothing in 10 s in all, and names it', async () => {
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: () => new Promise<Response>(() => {}),
+  })
+  servers.push({ url: '', stop: () => server.stop(true) })
+  const url = `http://127.0.0.1:${server.port}`
+  const at = performance.now()
+  await expect(join(url, R, 'worker', null, undefined)).rejects.toThrow(
+    `cannot connect to the relay ${url}: no answer in 10 s`,
+  )
+  expect(performance.now() - at).toBeLessThan(11_000)
+}, 25_000)
+
 // M, 2026-10-23: a remote fault is at least a warning. Every send the
 // orchestrator and a worker make unawaited dropped its error.
 it('a send the relay would not take is said; one to a participant it lost is not', () => {
