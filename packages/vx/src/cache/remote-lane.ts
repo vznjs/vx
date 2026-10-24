@@ -128,6 +128,8 @@ export class RemoteLane {
   private readonly absent = new Set<string>()
   /** What a `hasMany` said this remote holds, as `absent` records the rest. */
   private readonly held = new Map<string, ArtifactInfo>()
+  /** Keys whose bytes here did not read back (`distrust`). */
+  private readonly distrusted = new Set<string>()
 
   /**
    * A remote the run writes but does not read (`--force`): which of the
@@ -314,6 +316,11 @@ export class RemoteLane {
     return got
   }
 
+  /** `hash`'s bytes here are unreadable: a save of it uploads, held or not. */
+  distrust(hash: string): void {
+    this.distrusted.add(hash)
+  }
+
   /**
    * Start the batch probe `presence` reads. A lane that reads, never
    * writes, or cannot batch (no `hasMany`) ignores it: each upload then
@@ -356,8 +363,11 @@ export class RemoteLane {
       let release: (() => Promise<void>) | undefined
       try {
         if (this.stopped) return
-        if (this.held.has(hash)) return
-        if (!this.read && (await this.holds(hash))) return
+        // A key whose bytes here did not read back is sent over them.
+        if (!this.distrusted.has(hash)) {
+          if (this.held.has(hash)) return
+          if (!this.read && (await this.holds(hash))) return
+        }
         if (this.stopped) return
         const start = performance.now()
         const got = await body()

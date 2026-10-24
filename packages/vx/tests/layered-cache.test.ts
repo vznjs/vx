@@ -278,6 +278,9 @@ describe('LayeredCache', () => {
     expect(await local.get('h-corrupt')).toBeNull()
     await saveSample(layered, 'h-corrupt')
     expect(await local.get('h-corrupt')).not.toBeNull()
+    // And the re-run's save replaces the bad bytes there: held as fetched,
+    // the key was never sent again and every machine rebuilt it (2026-10-24).
+    expect(remote.puts).toBe(1)
   })
 
   // A plugin's shape is a boundary (item 252): the line names the call

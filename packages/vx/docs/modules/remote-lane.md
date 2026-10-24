@@ -30,6 +30,7 @@ export class RemoteLane {
   hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> // records the rest absent
   get(hash: string): Promise<{ body: Blob | Response; durationMs?: number } | null>
   upload(hash, durationMs, body: () => { body: Blob; release? }, tally): void
+  distrust(hash: string): void // its bytes here did not read back: uploaded again, held or not
   drain(): Promise<void>
   stop(): void // no upload starts; drain and reads stop waiting
   get whenStopped(): Promise<void> // settles at stop()
@@ -49,7 +50,9 @@ export class RemoteLane {
   never marks this remote.
 - **Uploads**: at most `cache.concurrency.upload` at once per remote, FIFO; `body()` is asked
   when the job starts, so a queued job holds no bytes; each landed or
-  failed upload is tallied on the local cache's `uploads`.
+  failed upload is tallied on the local cache's `uploads`. A key it holds
+  is not sent again, unless its download here was a corrupt artifact
+  (`distrust`): the re-run's save sends good bytes over the bad ones.
 - `ResolvedRemote` is also what a plugin's `ctx.cache` and the run store
   walk (`plugin-cache.md`), so all three gate a remote the same way.
 
