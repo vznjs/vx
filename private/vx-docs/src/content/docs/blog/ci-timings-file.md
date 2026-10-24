@@ -6,17 +6,27 @@ authors:
 tags:
   - performance
   - ci
-excerpt: 'A fresh CI runner has no run history, so the history scheduler guessed. Now one JSON file carries the learned times from runner to runner.'
+excerpt: 'A fresh CI runner has no run history, so it can''t know which tasks are slow. One JSON file carries the learned times from runner to runner.'
 ---
 
-`@vzn/vx-schedule-history` starts the longest chain first, using task
-times from past runs. A fresh CI runner has no past runs, so the first
-run on every runner fell back to a guess.
+A fresh CI runner doesn't know which tasks are slow, so it can start
+them last. One small file carries task times from runner to runner, and
+the slow tasks start first.
 
-## One file
+| Runner | Wall time (min of 3) |
+| --- | --- |
+| Cold, no file | 12.09 s |
+| Cold, with the file | 10.68 s |
+| Full local history | 10.64 s |
 
-```ts
-// .vx/workspace.ts
+<small>8 packages with a `build` → `check` → `pack` chain (0.5 s each) and 3 slow `e2e` tasks (10 s each) · `sleep` tasks · linux x64, 4 cores, 4 workers · vx 0.0.634 · `bun private/vx-bench/timings-file-bench.ts`</small>
+
+Every task runs in all three. Only the order changes. The file saves
+1.4 s and matches a machine with its full history. The floor is 10.5 s.
+
+## Turn it on
+
+```ts title=".vx/workspace.ts"
 import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
 
 export default {
@@ -24,8 +34,8 @@ export default {
 }
 ```
 
-vx reads the file before it orders the run and rewrites it after, with
-each task's median time:
+`@vzn/vx-schedule-history` starts the longest chain first. vx reads the
+file before it orders the run, and writes each task's median time after:
 
 ```json
 {
@@ -38,8 +48,7 @@ each task's median time:
 }
 ```
 
-Cache that one file in CI and the next runner starts with the times the
-last one learned:
+## Carry it between runners
 
 ```yaml
 - uses: actions/cache@v4
@@ -49,42 +58,19 @@ last one learned:
     restore-keys: vx-timings-
 ```
 
-Add the file to `.gitignore`. A task whose inputs cover it, like a root
-project's `**`, would otherwise get a new key each time the file
-changes. vx warns when git does not ignore it.
+Add the file to `.gitignore`, or a task with `**` inputs gets a new key
+each time it changes. vx warns if git doesn't ignore it.
 
-| Source of a task's time | Wins over |
-| --- | --- |
-| Runs on this machine | the file and `assume` |
-| The file | `assume` |
-| `assume` | nothing |
+```mermaid
+flowchart LR
+  L[runs on this machine] -->|beats| F[.vx-timings.json] -->|beats| A[assume]
+```
 
-## What it saves
+## When it can't help
 
-A graph where order matters: eight packages whose `build`, `check` and
-`pack` chain unlocks more work (0.5 s each), and three slow `e2e` tasks
-(10 s each) that nothing depends on. Every task runs; only the order
-changes.
+If one task is the whole wall time, order doesn't matter. vx's own CI
+had one 194 s test suite: 194.07 s with the file, 194.60 s without.
 
-| Runner | Wall time (min of 3) |
-| --- | --- |
-| Cold, no file | 12.09 s |
-| Cold, with the file | 10.68 s |
-| Full local history | 10.64 s |
-
-With no times, the slow tasks start last. The file starts them first,
-cutting 1.4 s off the wall time and matching a machine with its full
-history. The lower bound here is 10.5 s.
-
-Setup: linux x64, 4 cores, 4 workers, `sleep` tasks, vx 0.0.634. Run it
-yourself with `bun private/vx-bench/timings-file-bench.ts`.
-
-When one task is the whole wall time, order cannot help. vx's own CI job
-is like that: one 194 s test suite set its time with and without the
-file (194.07 s and 194.60 s).
-
-A run that executed nothing and restored only tasks the file already
-times leaves the file alone, so an all-cached CI run pays no extra history
-read. Runs that use no history plugin do no extra work.
+A fully cached run doesn't rewrite the file, so it pays nothing extra.
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

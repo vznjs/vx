@@ -6,10 +6,11 @@ authors:
 tags:
   - caching
   - design
-excerpt: 'Inputs sit on the task, not in the cache block, so a task is keyed whether it caches or not. A cached build behind an uncached code generator misses when the generator''s env changes, and a gitignored file can be an input.'
+excerpt: 'A task you never cache still has a key. Change its inputs and every cached task after it runs again, so you never get a build made for old inputs.'
 ---
 
-A code generator you don't cache, and a build you do:
+A task you don't cache still has a key. Change a code generator's env,
+and the cached build after it runs again.
 
 ```ts title="packages/e/vx.config.ts"
 import { defineProject } from '@vzn/vx/config'
@@ -48,18 +49,30 @@ $ vx why packages/e#build
     changed upstream  packages/e#codegen  35dfe1115aedc6d6 → a7a53dc4d9e0bde9
 ```
 
-`codegen` never caches (`∅`), yet it has a key, and `build` folds it.
-A new `API_URL` re-runs the build instead of replaying a `dist/` built
-for the old one. Demo workspace, vx at `69617eb`, 2026-10-23.
+`codegen` never caches (`∅`), but its key goes into `build`'s key. A
+new `API_URL` builds again instead of restoring a `dist/` made for the
+old one.
 
-## Inputs belong to the task
+<small>Demo workspace · vx 69617eb · 2026-10-23</small>
 
-`inputs` sits on the task, beside `exec`, and keys it whether it caches
-or not. Turbo and Nx hash every task too. `cache` holds only what
-caching adds: `outputs` and `inputStability`.
+```mermaid
+flowchart LR
+  E["API_URL, schema.json, .env.local"] --> C["codegen key<br/>never cached"]
+  C --> B["build key"]
+  S["src/**"] --> B
+  B --> H{in cache?}
+  H -->|yes| R[restore dist/]
+  H -->|no| X[run build]
+```
 
-A task with a command and no `inputs` has no key. vx doesn't guess
-one. Every task that depends on it misses and saves nothing:
+## Inputs live on the task
+
+`inputs` sits on the task, next to `exec`. It sets the key whether the
+task caches or not, as in Turbo and Nx. `cache` holds only `outputs`
+and `inputStability`.
+
+A task with a command and no `inputs` has no key. vx won't guess one.
+Every task after it runs again and saves nothing:
 
 ```sh frame="terminal"
 $ vx run packages/e#build      # codegen without inputs
@@ -68,13 +81,12 @@ $ vx run packages/e#build
   cache     local 1∅ · 1 not saved
 ```
 
-A missing declaration costs a re-run, never a stale hit. A group with
-`inputs` and no `exec` is keyed too; the
-[Caching](../../docs/caching/) page has every rule.
+A missing input costs a re-run, never a wrong cache hit. Every rule is
+on the [Caching](../../docs/caching/) page.
 
-## A gitignored file can be an input
+## A gitignored file can still be an input
 
-`.env.local` above is gitignored, and editing it still moves the key:
+`.env.local` is gitignored. Editing it still changes the key:
 
 ```sh frame="terminal"
 $ echo "TOKEN=2" > packages/e/.env.local
@@ -82,14 +94,13 @@ $ vx run packages/e#build
   cache     local 1∅ 1↑
 ```
 
-vx keys tracked files from git's index. A path named outright
+vx reads tracked files' hashes from git. A path you name outright
 (`.env.local`), or a glob whose fixed part git ignores (`gen/**`), is
-read from disk and hashed. A broad glob like `src/**` still skips what
-git ignores, and `node_modules` is never walked.
+read from disk. A broad glob like `src/**` still skips ignored files,
+and `node_modules` is never walked.
 
-`--affected` follows only what git sees, as Nx does: an ignored input
-never selects a task on its own, but its key still moves when the task
-runs.
+`--affected` sees only what git sees, as in Nx. An ignored file never
+picks a task by itself, but the key still changes when the task runs.
 
 The full key, part by part: [Caching](../../caching/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

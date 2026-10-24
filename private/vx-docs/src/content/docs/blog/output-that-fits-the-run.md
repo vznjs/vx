@@ -6,10 +6,11 @@ authors:
 tags:
   - dx
   - ci
-excerpt: 'One task shows everything. Fifty tasks show a line for each one that ran. CI shows every frame. Then pick a mode yourself, report to the PR through a plugin, or open the run as a Chrome trace.'
+excerpt: 'One task shows all its output. Many tasks show one line each for what ran. CI shows everything. You can always pick.'
 ---
 
-Ten tasks, one edit:
+vx prints as much as the run needs. Ten tasks, one edit, and you see
+three lines:
 
 ```sh frame="terminal"
 $ vx run build test --all
@@ -24,8 +25,9 @@ $ vx run build test --all
   time      61ms · max 15ms · avg 13ms · min 9ms
 ```
 
-Three lines for the three tasks that ran. The seven hits print
-nothing. Demo workspace, vx at `69617eb`, 2026-10-23.
+The seven cache hits print nothing.
+
+<small>Demo workspace · vx 69617eb · 2026-10-23</small>
 
 | You ask         | vx prints                                          |
 | --------------- | -------------------------------------------------- |
@@ -35,8 +37,8 @@ nothing. Demo workspace, vx at `69617eb`, 2026-10-23.
 
 ## Pick a mode yourself
 
-`--output-logs` overrides the flow: `full`, `errors-only`, `hash-only` or
-`none`. `hash-only` is handy when a script wants each task's cache key:
+`--output-logs` sets it: `full`, `errors-only`, `hash-only` or `none`.
+`hash-only` gives a script each task's cache key:
 
 ```sh frame="terminal"
 $ vx run build --all --force --output-logs=hash-only
@@ -47,8 +49,7 @@ success packages/b#build e8c0e9d5b1f5d0c9
 …
 ```
 
-Each task line also starts with a glyph that says where its result came
-from:
+The glyph at the start of a line says where the result came from:
 
 ```text
 ⏺  ran (cache miss)
@@ -62,15 +63,14 @@ from:
 
 ## A report for the pull request
 
-Declare `github()` from [@vzn/vx-ci](../results-on-github/) in
-`.vx/workspace.ts`, and each run on GitHub Actions writes its job
-summary, with a check run on the commit.
+Add `github()` from [@vzn/vx-ci](../results-on-github/) to
+`.vx/workspace.ts`. Each run on GitHub Actions then writes a job summary
+and a check on the commit.
 
 ## The run as a timeline
 
-`--profile` writes the run's wall clock spans as Chrome-trace JSON. Open
-it in `chrome://tracing` or [Perfetto](https://ui.perfetto.dev) to see
-which task held up the rest.
+`--profile` writes the run as a Chrome trace. Open it in
+[Perfetto](https://ui.perfetto.dev) to see which task held up the rest.
 
 ```sh frame="terminal"
 $ vx run build --all --force --profile=prof.json
