@@ -172,12 +172,10 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
     expect(topLevel.has('vx') && topLevel.has('sandbox')).toBe(true)
 
     const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
-    const start = doc.indexOf('- `--format json` prints the same facts')
+    // The paragraph under the section's `### JSON`.
+    const start = doc.indexOf('`--format json` prints the same facts')
     expect(start).toBeGreaterThan(-1)
-    // The bullet ends at the next bullet or, when it is the section's
-    // last, at the next heading.
-    const ends = ['\n- ', '\n## '].map((s) => doc.indexOf(s, start + 1)).filter((i) => i >= 0)
-    const bullet = doc.slice(start, Math.min(...ends))
+    const bullet = doc.slice(start, doc.indexOf('\n\n', start))
     const named = new Set(Array.from(bullet.matchAll(/`(\w+)`/g), (m) => m[1] as string))
     for (const shape of bullet.matchAll(/`[[{][^`]*`/g)) {
       for (const k of shape[0].matchAll(/\w+/g)) named.add(k[0])
@@ -219,8 +217,8 @@ describe('docs/cli.md — the `vx info --format json` list is the InfoFacts obje
       return keysOf(body)
     }
     const doc = await Bun.file(new URL('../docs/cli.md', import.meta.url)).text()
-    const start = doc.indexOf('- `--format json` prints the same facts')
-    const bullet = doc.slice(start, doc.indexOf('\n- ', start + 1)).replace(/\s+/g, ' ')
+    const start = doc.indexOf('`--format json` prints the same facts')
+    const bullet = doc.slice(start, doc.indexOf('\n\n', start)).replace(/\s+/g, ' ')
     const shapes = Array.from(bullet.matchAll(/`(\w+)` \(`\[?\{([^`}]*)\}/g), (m) => [
       m[1]!,
       m[2]!

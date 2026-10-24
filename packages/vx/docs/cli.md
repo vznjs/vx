@@ -2265,13 +2265,15 @@ product verb to it under a notice.
 
 ## `vx show`
 
-Introspect the workspace's **resolved configs** — what a run would see
-right now. Configs load through the same path a run uses: from
+`vx show` prints the workspace's **resolved configs**: what a run would
+see right now. Configs load through the same path a run uses: from
 `.vx/projects.lock.json`, plugin `config` and `project` stages applied,
 so a package a plugin gives tasks to (`turbo()` or `nx()` from
 `@vzn/vx-migrate`, a temporary start toward native config) shows them.
 `vx show` evaluates no config: an edit shows after `vx lock`, and with
 no lock it refuses as a run does (`no lock: run \`vx lock\``).
+
+### Usage
 
 ```
 vx show                          # list every project
@@ -2284,30 +2286,7 @@ vx show --affected               # the run's candidates: the changed projects an
 vx show ... --format json        # machine-readable (default: pretty)
 ```
 
-`--filter` and `--affected[=<ref>]` narrow the list, or a task's
-projects, as `vx run` selects: `turbo ls --affected` is
-`vx show --affected`, and `nx show projects --affected --with-target t`
-is `vx show t --affected`. Beside a task, `--affected` lists the
-projects whose task the run keeps: a change reaches another project
-only along a task edge, so a dependent whose `test` has no `^test` is
-not listed (X-147). A task's list the selection leaves empty says so on
-stderr (`no affected project's test runs`); `--format json` prints `[]`.
-With no task there is no edge to follow, and the
-list is the run's candidates, `--filter "...[<base>]"`'s: the changed
-projects and their package dependents. Beside one project or
-`<pkg>#<task>` they are refused.
-
-Nx's spellings name these: `vx show projects` (when no project or task
-has that name) and `vx show project <name>` say `vx show` and
-`vx show <name>`.
-
-No target: a table, one row per project — name, root-relative dir,
-task count, and `no vx config` for config-less packages; one whose
-tasks all come from plugins reads `N tasks from plugins (no vx
-config)`, and one a configured project depends on reads `1 task,
-default build (no vx config)`: a run loads it for that dependant's
-`^build` (X-48). A `tags` column appears when any project has tags. With `--format json`
-it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
+### Examples
 
 ```
 $ vx show
@@ -2316,7 +2295,38 @@ $ vx show
   bare     packages/bare  no vx config
 ```
 
-A report naming the project opens it: its `dir`, its `tags`, and
+```
+$ vx show app#build
+
+─ app#build ──────────────────────────────────────────────────
+  dir            packages/app
+  description    compile the app
+  command        tsc -b
+  dependsOn      ^build
+  inputs.files   src/**
+  inputs.env     NODE_ENV
+  outputs.files  dist/**
+```
+
+### Options
+
+| Option                  | Meaning                                           |
+| ----------------------- | ------------------------------------------------- |
+| `--filter <p>`          | only the projects `vx run --filter <p>` selects   |
+| `--affected[=<ref>]`    | only what `vx run --affected` would select, below |
+| `--format pretty\|json` | `json` for scripts                                |
+
+### Understanding the output
+
+**The project list.** No target: a table, one row per project — name, root-relative dir,
+task count, and `no vx config` for config-less packages; one whose
+tasks all come from plugins reads `N tasks from plugins (no vx
+config)`, and one a configured project depends on reads `1 task,
+default build (no vx config)`: a run loads it for that dependant's
+`^build` (X-48). A `tags` column appears when any project has tags. With `--format json`
+it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
+
+**A project or task.** A report naming the project opens it: its `dir`, its `tags`, and
 `config  none` for a package with no config file. Then
 `vx show <project>` prints a block per task, headed by its
 `project#task`, with every field the run reads: description, command (`(group)` for group tasks), `dependsOn`,
@@ -2335,18 +2345,26 @@ in JSON). The default `build` is declared by none: it counts in the
 list and `vx show <project>`, but `vx show build`, like
 `vx run build --all`, does not name it (X-145).
 
-```
-$ vx show app#build
+### `--filter` and `--affected`
 
-─ app#build ──────────────────────────────────────────────────
-  dir            packages/app
-  description    compile the app
-  command        tsc -b
-  dependsOn      ^build
-  inputs.files   src/**
-  inputs.env     NODE_ENV
-  outputs.files  dist/**
-```
+`--filter` and `--affected[=<ref>]` narrow the list, or a task's
+projects, as `vx run` selects: `turbo ls --affected` is
+`vx show --affected`, and `nx show projects --affected --with-target t`
+is `vx show t --affected`. Beside a task, `--affected` lists the
+projects whose task the run keeps: a change reaches another project
+only along a task edge, so a dependent whose `test` has no `^test` is
+not listed (X-147). A task's list the selection leaves empty says so on
+stderr (`no affected project's test runs`); `--format json` prints `[]`.
+With no task there is no edge to follow, and the
+list is the run's candidates, `--filter "...[<base>]"`'s: the changed
+projects and their package dependents. Beside one project or
+`<pkg>#<task>` they are refused.
+
+Nx's spellings name these: `vx show projects` (when no project or task
+has that name) and `vx show project <name>` say `vx show` and
+`vx show <name>`.
+
+### Unknown names
 
 Unknown project / task names exit `1` with the same near-miss hint
 every verb gives (two edits, or a partial name); a bare name that is
@@ -2361,33 +2379,29 @@ An empty target (`vx show ''`) is refused: omit it to list every project.
 In a workspace with no project, the list is empty and `vx show` says so
 on stderr (`no projects`) and names `vx init`.
 
-Exit codes: `0` success; `1` parse error or unknown target.
+### Exit codes
 
-Two runs on one workspace take turns: the second waits for the first's
-run lock and, after a second, says `[vx] waiting for another vx run
-(pid N) on this workspace to finish…` (see caching.md § Concurrent
-runs). The lock lives in this user's own directory in the temp
-directory, so two runs take turns only when they are one user's and
-share `TMPDIR`: a `nix develop` shell sets its own.
-
-Every verb: a path vx must write that this user cannot (`EACCES`,
-`EPERM`, `EROFS` — a read-only checkout, another user's files) or that
-the disk has no room for (`ENOSPC`, `EDQUOT`) exits 1 with one line
-naming the path, `vx: EACCES: permission denied, open '…/.vx/projects.lock.json'
-— a path vx must write is not writable by this user` (or `— the disk
-that path is on is full`), never a stack. Inside a run the task's line
-says the same. A process out of file descriptors (`EMFILE`, `ENFILE`;
-macOS starts a shell at 256) exits 1 with the error and `— the process
-is out of file descriptors; raise the limit (ulimit -n 4096) and re-run`.
+| Code | When                          |
+| ---- | ----------------------------- |
+| `0`  | success                       |
+| `1`  | parse error or unknown target |
 
 ## `vx info`
 
-Workspace doctor — one screen of facts for bug reports and sanity
-checks. The task count and the sandbox row's declared count come from
-the same load a run uses: the lock, plugin stages included. `vx info`
-evaluates no config; with no lock, or one a run would refuse, both
-counts are zero and `projects lock` says `no` — a broken config is
-`vx lock`'s to report:
+`vx info` prints one screen of facts about the workspace and this
+machine, for bug reports and sanity checks. The task count and the
+sandbox row's declared count come from the same load a run uses: the
+lock, plugin stages included. `vx info` evaluates no config; with no
+lock, or one a run would refuse, both counts are zero and
+`projects lock` says `no` — a broken config is `vx lock`'s to report.
+
+### Usage
+
+```
+vx info [--format pretty|json] [--cache-dir <path>]
+```
+
+### Example
 
 ```
 $ vx info
@@ -2412,6 +2426,15 @@ $ vx info
   sandbox           available (9 tasks declare exec.sandbox)
   projects lock     yes
 ```
+
+### Options
+
+| Option                  | Meaning                                                 |
+| ----------------------- | ------------------------------------------------------- |
+| `--format pretty\|json` | `json` prints the same facts as one typed object, below |
+| `--cache-dir <path>`    | read the cache a run with the same flag uses            |
+
+### Understanding the output
 
 - `git` shows `(not found)` when the binary is missing.
 - `git status cache`: vx runs ONE `git status` per run to find dirty
@@ -2483,35 +2506,40 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   `SCHEMA_VERSION` reset leaves behind; a fresh one is a save in
   flight). A task that asks for one's key again indexes it and hits;
   the rest only `vx cache clean` reclaims, so the doctor says so.
-- `--format json` prints the same facts as one typed object, for a
-  script or a bug-report template: `vx`, `vxPath` (the file that ran),
-  `handedOffFrom` (the vx that handed the call to the project's own, else
-  null), `bun`, `bunSupported` (false
-  below Bun 1.4.4), `git` (null when not
-  found), `gitStatusCache` (`{ fsmonitor, untrackedCache }`, null when
-  git could not answer), `workspaceRoot`, `projects`, `tasks`,
-  `plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
-cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
-  `cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
-cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheDirBytes`
-  (on disk: the index and run history), `cacheStore` (null when the cache
-  dir holds the entries), `cacheStoreBytes` (on disk, null with no store), `cacheVersion`,
-  `schemaVersion`, `cacheEntries`, `cacheBytes`, `settings` (every
-  setting by path, `{ value, source }`, `source` one of `env` /
-  `workspace` / `default`, `value` null for the default),
-  `orphans` (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
-  runs, as the row), `restored24h` (of those hits, the ones that restored
-  outputs; the rest found them up to date), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
-  empty when none), `lockfile`, `sandbox` (`{ available, reason,
-declared, untraced }`, `declared` the count of tasks with `exec.sandbox`,
-  `untraced` the reason denied reads go unreported or null). The
-  pretty rows render this object;
-  there is no second source.
-- `--cache-dir <path>` reads the cache a run with the same flag uses, as
-  `vx why`, `vx last` and `vx cache clean` do.
 
-Exit codes: `0` the facts printed, with no lock included; `1` no
-workspace here or above, or a parse error.
+### JSON
+
+`--format json` prints the same facts as one typed object, for a
+script or a bug-report template: `vx`, `vxPath` (the file that ran),
+`handedOffFrom` (the vx that handed the call to the project's own, else
+null), `bun`, `bunSupported` (false
+below Bun 1.4.4), `git` (null when not
+found), `gitStatusCache` (`{ fsmonitor, untrackedCache }`, null when
+git could not answer), `workspaceRoot`, `projects`, `tasks`,
+`plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
+cpuQuota }`, the source one of `workspace` / `cgroup` / `cores`,
+`cpuQuota` in cores or null), `memory` (`{ usableBytes, totalBytes,
+cgroupLimitBytes }`, the limit null when none binds), `cacheDir`, `cacheDirBytes`
+(on disk: the index and run history), `cacheStore` (null when the cache
+dir holds the entries), `cacheStoreBytes` (on disk, null with no store), `cacheVersion`,
+`schemaVersion`, `cacheEntries`, `cacheBytes`, `settings` (every
+setting by path, `{ value, source }`, `source` one of `env` /
+`workspace` / `default`, `value` null for the default),
+`orphans` (`{ artifacts, bytes }`, always present), `runs24h`, `hits24h` (task
+runs, as the row), `restored24h` (of those hits, the ones that restored
+outputs; the rest found them up to date), `flakyTasks` (`[{ taskId, project, task, keys, passes, failures }]`,
+empty when none), `lockfile`, `sandbox` (`{ available, reason,
+declared, untraced }`, `declared` the count of tasks with `exec.sandbox`,
+`untraced` the reason denied reads go unreported or null). The
+pretty rows render this object;
+there is no second source.
+
+### Exit codes
+
+| Code | When                                         |
+| ---- | -------------------------------------------- |
+| `0`  | the facts printed, with no lock included     |
+| `1`  | no workspace here or above, or a parse error |
 
 ## `vx why`
 
@@ -3266,6 +3294,25 @@ in cyan; `NO_COLOR` or `FORCE_COLOR=0` turns it off
 terminal, prints plain text whatever `FORCE_COLOR` says, so a script
 that forces colour for a run's log still parses them
 (`tests/cli-colors-e2e.test.ts`).
+
+### Shared by every verb
+
+Two runs on one workspace take turns: the second waits for the first's
+run lock and, after a second, says `[vx] waiting for another vx run
+(pid N) on this workspace to finish…` (see caching.md § Concurrent
+runs). The lock lives in this user's own directory in the temp
+directory, so two runs take turns only when they are one user's and
+share `TMPDIR`: a `nix develop` shell sets its own.
+
+Every verb: a path vx must write that this user cannot (`EACCES`,
+`EPERM`, `EROFS` — a read-only checkout, another user's files) or that
+the disk has no room for (`ENOSPC`, `EDQUOT`) exits 1 with one line
+naming the path, `vx: EACCES: permission denied, open '…/.vx/projects.lock.json'
+— a path vx must write is not writable by this user` (or `— the disk
+that path is on is full`), never a stack. Inside a run the task's line
+says the same. A process out of file descriptors (`EMFILE`, `ENFILE`;
+macOS starts a shell at 256) exits 1 with the error and `— the process
+is out of file descriptors; raise the limit (ulimit -n 4096) and re-run`.
 
 ## Remote cache (plugin-driven)
 
