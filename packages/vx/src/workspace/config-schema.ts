@@ -948,6 +948,7 @@ export function validateProjectConfig(
         }
       }
       assertOutputsNotNegationOnly(outFiles as string[], `${where}.cache.outputs.files`)
+      assertNoLiteralTakenBack(outFiles as string[], `${where}.cache.outputs.files`, OUTPUT_LOST)
       const wsOutputs = (outputs as { workspaceFiles?: unknown }).workspaceFiles
       if (wsOutputs !== undefined) {
         validateWorkspaceGlobs(wsOutputs, `${where}.cache.outputs.workspaceFiles`, false)
@@ -1604,7 +1605,12 @@ function assertNotNegationOnly(globs: readonly string[], where: string): void {
  * entered the key, and an edit to it replayed the old output. Refusing is
  * free: the literal already selected nothing.
  */
-function assertNoLiteralTakenBack(globs: readonly string[], where: string): void {
+function assertNoLiteralTakenBack(
+  globs: readonly string[],
+  where: string,
+  // An output's literal is never saved: a hit left it missing and said up-to-date.
+  lost = 'the file never enters the key',
+): void {
   const negative = globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
   if (negative.length === 0) return
   const taken = anyTaskGlob(asTrees(negative))
@@ -1615,7 +1621,7 @@ function assertNoLiteralTakenBack(globs: readonly string[], where: string): void
     const by = negative.find((n) => anyTaskGlob(asTrees([n]))(lit))
     throw new UserError(
       `${where}: "${g}" is taken back by "!${by}" — a \`!\` entry subtracts wherever it sits in ` +
-        `the list, so the file never enters the key. Narrow the negation so it leaves "${g}".`,
+        `the list, so ${lost}. Narrow the negation so it leaves "${g}".`,
     )
   }
 }
@@ -1657,13 +1663,18 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
   if (negation) {
     assertNotNegationOnly(v as string[], where)
     assertNoLiteralTakenBack(v as string[], where)
-  } else assertOutputsNotNegationOnly(v as string[], where)
+  } else {
+    assertOutputsNotNegationOnly(v as string[], where)
+    assertNoLiteralTakenBack(v as string[], where, OUTPUT_LOST)
+  }
 }
 
 /**
  * An output list of only `!` entries selects nothing: the task saves and
  * restores nothing while it reads as if it declared outputs (A-44).
  */
+const OUTPUT_LOST = 'the file is never saved or restored'
+
 function assertOutputsNotNegationOnly(globs: readonly string[], where: string): void {
   if (globs.length === 0 || globs.some((g) => !g.startsWith('!'))) return
   throw new UserError(

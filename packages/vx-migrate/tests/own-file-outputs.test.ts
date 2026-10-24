@@ -115,7 +115,7 @@ describe('an output that covers the project’s own package.json', () => {
       'build',
       { files: ['**/*'] },
       {
-        outputs: { files: ['package.json', 'dist/**', '!package.json'] },
+        outputs: { files: ['dist/**', '!package.json'] },
         inputStability: { strategy: 'mutable' },
       },
       [],
@@ -149,7 +149,7 @@ describe('an output that covers the project’s own package.json', () => {
     )
     const t = m.projects[0]!.tasks.find((x) => x.name === 'build')!
     const cache = t.task?.['cache'] as { outputs: { files: string[] } }
-    expect(cache.outputs.files).toEqual(['package.json', 'dist', '!package.json'])
+    expect(cache.outputs.files).toEqual(['dist', '!package.json'])
     expect(t.todos).not.toContain(TODO)
     // The loader takes it.
     const file = path.join(a.dir, 'vx.config.mjs')

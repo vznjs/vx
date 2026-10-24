@@ -422,6 +422,15 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
         },
       }),
   ],
+  [
+    'cache.outputs.files: "<file>" is taken back by "!<glob>"',
+    () =>
+      validated({
+        tasks: {
+          b: { ...ok, inputs: { files: [] }, cache: { outputs: { files: ['out/f', '!out/**'] } } },
+        },
+      }),
+  ],
   ['description must be a string', () => validated({ tasks: { b: { ...ok, description: 42 } } })],
   [
     'tag "<tag>" <why> — --filter tag:<name> could not name it',
