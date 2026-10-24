@@ -196,7 +196,7 @@ export type { RunStartInfo } from './report/index.js'
 // speaks a wire — and a seam with no consumer is a special case in waiting.)
 // A remote executor gives a task back to the local floor by rejecting with
 // this (B-100): core runs it here and says why once.
-export { executorFallback, hostPlatform } from './exec/index.js'
+export { executorFallback, hostPlatform, sampleTrees, type TreeUsage } from './exec/index.js'
 // How the local executor puts the args after `--` on a command, for an
 // executor that runs `ExecuteRequest.command` itself: `@vzn/vx-reapi` and
 // the `vx init --plugin executor` example each joined their own, and a

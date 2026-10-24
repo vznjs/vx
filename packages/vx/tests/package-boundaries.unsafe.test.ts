@@ -180,6 +180,9 @@ describe('package boundaries', () => {
       // through core's restore gate, so both refuse the same names.
       'restorableOutput',
       'run',
+      // Widened 2026-10-24: a DTE worker reads its running tasks' trees
+      // with core's own sampler, where no telemetry plugin asks for it.
+      'sampleTrees',
       // Widened 2026-10-22: a DTE worker builds a task's sandbox on its own OS.
       'sandboxRequestFor',
       'splitTaskId',

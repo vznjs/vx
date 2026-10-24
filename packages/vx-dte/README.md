@@ -462,7 +462,8 @@ says when its `vx` started, into its machine's start and vx's boot), its
 idle stretches, how it ended, a `cores` counter of the cores booked
 and used at once, and a `machine` counter of the cores its machine
 reported busy, its tasks' or not (placement never fills a worker past
-it); each task takes the first lane free over its time
+it), beside the cores its running tasks' process trees used, read each
+second as core's `task.sample` reads them; each task takes the first lane free over its time
 there, from its send through restoring its dependencies, its command
 and its save, with its exit code, duration, CPU time and booked cores.
 The `orchestrator` process holds the cache probe, each ask for workers, each
