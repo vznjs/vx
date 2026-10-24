@@ -87,7 +87,7 @@ export interface DteAdapter {
    */
   render?(plan: DtePlan): Readonly<Record<string, string>>
   /** The CI files that start its workers, which `vx dte init` writes; none for an adapter that starts them on this machine. */
-  init?(setup: DteSetup): DteInit
+  init?(setup: DteSetup): Promise<DteInit>
   /** Whether a plan's workers beyond the first wait for the run to start them. */
   live?(): boolean
   /** Where it says a fault it works around (a status poll or a cancel that failed); called as the run starts. */
@@ -291,7 +291,7 @@ export function dte(options: DteOptions) {
     }
     const { askTasks, managerOf, repositoryOf, writeInit } = await import('./init.js')
     const repository = repositoryOf(root)
-    const files = adapter.init({
+    const files = await adapter.init({
       workspaceRoot: root,
       ...(options.relay !== undefined ? { relay: options.relay } : {}),
       sizes: sizes.map((s) => ({ name: s.name, ...named(s.name) })),

@@ -7,6 +7,8 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { UserError, type Platform } from '@vzn/vx'
+import type { GithubOptions } from './github.js'
+import type { GitlabOptions } from './gitlab.js'
 
 export type PackageManager = 'bun' | 'pnpm' | 'yarn' | 'npm'
 
@@ -43,7 +45,7 @@ const SITE = 'https://vznjs.github.io/vx/docs'
 const RELAY_DOCS = 'https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay#run-it'
 
 /** What is left after the files: a relay that admits them, a shared cache, a commit. */
-export function nextSteps(
+function nextSteps(
   relay: string | undefined,
   allow: string,
   files: readonly string[],
@@ -99,7 +101,7 @@ export function managerOf(root: string): PackageManager {
 }
 
 /** The frozen install a fresh runner does, as shell lines. */
-export function installLines(manager: PackageManager): readonly string[] {
+function installLines(manager: PackageManager): readonly string[] {
   if (manager === 'bun') return ['bun install --frozen-lockfile']
   if (manager === 'pnpm') return ['pnpm install --frozen-lockfile']
   if (manager === 'yarn') return ['corepack enable', 'yarn install --immutable']
@@ -107,7 +109,7 @@ export function installLines(manager: PackageManager): readonly string[] {
 }
 
 /** How a runner calls the workspace's own vx: Yarn's PnP has no `node_modules/.bin`. */
-export function vxCommand(manager: PackageManager): string {
+function vxCommand(manager: PackageManager): string {
   return manager === 'yarn' ? 'yarn vx' : 'bun vx'
 }
 
@@ -124,6 +126,7 @@ export async function writeInit(
   const kept: string[] = []
   for (const [rel, text] of Object.entries(init.files)) {
     const at = path.join(root, rel)
+    // quiet: a file that cannot be read is one to write
     const had = await readFile(at, 'utf8').catch(() => undefined)
     if (had === text) {
       out(`vx dte init: ${rel} is up to date`)
@@ -144,4 +147,213 @@ export async function writeInit(
   }
   for (const line of init.next) out(line)
   return 0
+}
+
+/** GitHub's hosted runner of each platform; a size naming none runs on Linux x64. */
+const RUNNERS: Record<Platform, string> = {
+  'linux-x64': 'ubuntu-latest',
+  'linux-arm64': 'ubuntu-24.04-arm',
+  'darwin-x64': 'macos-15-intel',
+  'darwin-arm64': 'macos-latest',
+}
+
+/** The workers' workflow: what `dispatch` sends, as `vx dte worker` reads it. */
+export function githubInit(options: GithubOptions, setup: DteSetup): DteInit {
+  const workflow = options.workflow ?? 'vx-worker.yml'
+  const runners = Object.fromEntries(
+    setup.sizes.map((s) => [
+      s.name,
+      options.runsOn?.[s.name] ?? RUNNERS[s.platform ?? 'linux-x64'],
+    ]),
+  )
+  const install = [
+    ...(setup.manager === 'pnpm'
+      ? ['      - uses: pnpm/action-setup@v4']
+      : [
+          '      # Every project: only pnpm selects by a git diff, as',
+          '      # `pnpm install --frozen-lockfile --filter "...[origin/main]"`',
+          '      # (fetch origin/main first: the checkout is one commit).',
+        ]),
+    ...installLines(setup.manager).map((l) => `      - run: ${l}`),
+  ]
+  const text = `# Written by vx dte init from dte() in .vx/workspace.ts: the workers of a
+# distributed run, which github() dispatches once per size. Run vx dte init
+# again after changing the sizes.
+name: vx-worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      run: { required: true }
+      relay: { required: true }
+      sha: { required: true }
+      size: { required: true }
+      workers: { required: true }
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  worker:
+    # The run reads a job that failed before its worker joined by this name.
+    name: \${{ matrix.worker }}
+    runs-on: \${{ fromJSON('${JSON.stringify(runners)}')[inputs.size] }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: \${{ fromJSON(inputs.workers) }}
+    env:
+      VX_DTE_RUN: \${{ inputs.run }}
+      VX_DTE_RELAY: \${{ inputs.relay }}
+      VX_DTE_WORKER: \${{ matrix.worker }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '\${{ inputs.sha }}' }
+      - uses: oven-sh/setup-bun@v2
+${install.join('\n')}
+      - run: ${vxCommand(setup.manager)} dte worker
+`
+  const vx = vxCommand(setup.manager)
+  const named = setup.tasks.main !== '' && setup.tasks.change !== ''
+  const run = `# Written by vx dte init: the run. main runs every task and fills the cache;
+# a pull request runs what it changed and its dependents. This job only
+# orchestrates: every task runs on a worker (${workflow}).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to a pull request cancels its older run, and its workers.
+concurrency:
+  group: ci-\${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: \${{ github.event_name == 'pull_request' }}
+
+jobs:
+  vx:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # The relay and the workers: each side proves itself by its OIDC token.
+      id-token: write
+      # Dispatching and cancelling the workers.
+      actions: write
+    env:
+      GITHUB_TOKEN: \${{ github.token }}
+    steps:
+      # One commit: --affected fetches its base itself.
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+${rootInstall(setup.manager).join('\n')}
+      - run: ${vx} lock --check
+${
+  named
+    ? ''
+    : `      # Name the tasks to run, as '${vx} run build test --affected': with
+      # none named, vx fails, listing the workspace's tasks.
+`
+}      - run: ${vx} run \${{ github.event_name == 'pull_request' && '${both(setup.tasks.change, '--affected')}' || '${both(setup.tasks.main, '--all')}' }}
+`
+  const repo = setup.repository ?? '<owner>/<repo>'
+  const files = { '.github/workflows/ci.yml': run, [`.github/workflows/${workflow}`]: text }
+  return {
+    files,
+    next: nextSteps(
+      setup.relay,
+      `${GITHUB_ISSUER}:${repo}:ci.yml ${GITHUB_ISSUER}:${repo}:${workflow}`,
+      Object.keys(files),
+    ),
+  }
+}
+
+/** Tasks then a flag, either possibly none. */
+function both(tasks: string, flag: string): string {
+  return tasks === '' ? flag : `${tasks} ${flag}`
+}
+
+const GITHUB_ISSUER = 'https://token.actions.githubusercontent.com'
+
+/** The run's job needs vx and the plugins only: no task runs there. */
+function rootInstall(manager: DteSetup['manager']): string[] {
+  if (manager === 'bun') return ["      - run: bun install --frozen-lockfile --filter './'"]
+  return [
+    ...(manager === 'pnpm' ? ['      - uses: pnpm/action-setup@v4'] : []),
+    ...installLines(manager).map((l) => `      - run: ${l}`),
+  ]
+}
+
+/** The job templates `include` holds, and the three jobs the user's pipeline adds. */
+export function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
+  if (setup.relay === undefined)
+    throw new UserError(
+      'vx dte init: gitlab() needs dte({ relay }) first, since each job asks its ID token for the relay: deploy one (https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay#run-it) and name it',
+    )
+  const relay = setup.relay
+  const vx = vxCommand(setup.manager)
+  const named = setup.tasks.main !== '' && setup.tasks.change !== ''
+  const text = `# Written by vx dte init from dte() in .vx/workspace.ts: the jobs of a
+# distributed run extend these. The image needs Bun and git.
+.vx:
+  image: oven/bun:1.4
+  before_script:
+${installLines(setup.manager)
+  .map((l) => `    - ${l}`)
+  .join('\n')}
+
+.vx-worker:
+  extends: .vx
+  id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }
+`
+  const ci = `# Written by vx dte init: the run. vx-plan writes the workers' child
+# pipeline, vx-workers starts it, vx orchestrates: every task runs on a
+# worker.${
+    named
+      ? ''
+      : ` Name the tasks in .vx-tasks, as 'build test --all': with
+# none named, vx fails, listing them.`
+  }
+include: [{ local: ${options.include} }]
+
+# What vx-plan and vx run: a merge request what it changed, anything else all.
+.vx-tasks:
+  variables: { VX_TASKS: '${both(setup.tasks.main, '--all')}' }
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables: { VX_TASKS: '${both(setup.tasks.change, '--affected')}' }
+    - when: on_success
+
+vx-plan:
+  extends: [.vx, .vx-tasks]
+  script: [${vx} dte plan $VX_TASKS]
+  artifacts:
+    paths: [vx-workers.yml, .vx/dte/]
+    reports: { dotenv: vx-dte.env }
+    access: none
+    expire_in: 1 hour
+
+vx-workers:
+  needs: [vx-plan]
+  variables: { PARENT_PIPELINE_ID: $CI_PIPELINE_ID }
+  trigger:
+    include: [{ artifact: vx-workers.yml, job: vx-plan }]
+
+vx:
+  extends: [.vx, .vx-tasks]
+  needs: [vx-plan]
+  id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }
+  script: [${vx} run $VX_TASKS]
+`
+  const files = { '.gitlab-ci.yml': ci, [options.include]: text }
+  return {
+    files,
+    next: nextSteps(
+      relay,
+      `https://gitlab.com:${setup.repository ?? '<group>/<project>'}:.gitlab-ci.yml`,
+      Object.keys(files),
+    ),
+  }
 }

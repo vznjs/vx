@@ -6,8 +6,6 @@
 // plays the others, manual jobs, as its work needs them.
 
 import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
-import { both } from './github.js'
-import { installLines, nextSteps, vxCommand, type DteInit, type DteSetup } from './init.js'
 import type { WorkerSpawn, DteAdapter } from './plugin.js'
 
 export interface GitlabOptions {
@@ -21,78 +19,6 @@ const KEYS: PluginOptionKinds<GitlabOptions> = { include: 'string', tags: 'objec
 
 /** What the child pipeline is written to, workspace-relative. */
 const WORKERS_FILE = 'vx-workers.yml'
-
-/** The job templates `include` holds, and the three jobs the user's pipeline adds. */
-function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
-  if (setup.relay === undefined)
-    throw new UserError(
-      'vx dte init: gitlab() needs dte({ relay }) first, since each job asks its ID token for the relay: deploy one (https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay#run-it) and name it',
-    )
-  const relay = setup.relay
-  const vx = vxCommand(setup.manager)
-  const named = setup.tasks.main !== '' && setup.tasks.change !== ''
-  const text = `# Written by vx dte init from dte() in .vx/workspace.ts: the jobs of a
-# distributed run extend these. The image needs Bun and git.
-.vx:
-  image: oven/bun:1.4
-  before_script:
-${installLines(setup.manager)
-  .map((l) => `    - ${l}`)
-  .join('\n')}
-
-.vx-worker:
-  extends: .vx
-  id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }
-`
-  const ci = `# Written by vx dte init: the run. vx-plan writes the workers' child
-# pipeline, vx-workers starts it, vx orchestrates: every task runs on a
-# worker.${
-    named
-      ? ''
-      : ` Name the tasks in .vx-tasks, as 'build test --all': with
-# none named, vx fails, listing them.`
-  }
-include: [{ local: ${options.include} }]
-
-# What vx-plan and vx run: a merge request what it changed, anything else all.
-.vx-tasks:
-  variables: { VX_TASKS: '${both(setup.tasks.main, '--all')}' }
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      variables: { VX_TASKS: '${both(setup.tasks.change, '--affected')}' }
-    - when: on_success
-
-vx-plan:
-  extends: [.vx, .vx-tasks]
-  script: [${vx} dte plan $VX_TASKS]
-  artifacts:
-    paths: [vx-workers.yml, .vx/dte/]
-    reports: { dotenv: vx-dte.env }
-    access: none
-    expire_in: 1 hour
-
-vx-workers:
-  needs: [vx-plan]
-  variables: { PARENT_PIPELINE_ID: $CI_PIPELINE_ID }
-  trigger:
-    include: [{ artifact: vx-workers.yml, job: vx-plan }]
-
-vx:
-  extends: [.vx, .vx-tasks]
-  needs: [vx-plan]
-  id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }
-  script: [${vx} run $VX_TASKS]
-`
-  const files = { '.gitlab-ci.yml': ci, [options.include]: text }
-  return {
-    files,
-    next: nextSteps(
-      relay,
-      `https://gitlab.com:${setup.repository ?? '<group>/<project>'}:.gitlab-ci.yml`,
-      Object.keys(files),
-    ),
-  }
-}
 
 export function gitlab(options: GitlabOptions): DteAdapter {
   refuseUnknownOptions('gitlab()', options, KEYS)
@@ -143,7 +69,7 @@ export function gitlab(options: GitlabOptions): DteAdapter {
     watch.unref()
   }
   return {
-    init: (setup) => gitlabInit(options, setup),
+    init: async (setup) => (await import('./init.js')).gitlabInit(options, setup),
     live: () => token() !== undefined,
     report(w) {
       warn = w

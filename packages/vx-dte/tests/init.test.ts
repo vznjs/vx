@@ -187,7 +187,7 @@ it('the README shows the workflow vx dte init writes for its sizes', async () =>
   expect(readme).toContain('```yaml\n# .github/workflows/ci.yml\n' + run + '```')
 })
 
-it('writes the tasks asked for: main with --all, a change request with --affected', () => {
+it('writes the tasks asked for: main with --all, a change request with --affected', async () => {
   const setup = {
     workspaceRoot: root,
     relay: 'https://r',
@@ -195,12 +195,12 @@ it('writes the tasks asked for: main with --all, a change request with --affecte
     manager: 'bun' as const,
     tasks: { main: 'build test e2e', change: 'build test' },
   }
-  const gh = github().init!(setup).files['.github/workflows/ci.yml']!
+  const gh = (await github().init!(setup)).files['.github/workflows/ci.yml']!
   expect(gh).toContain(
     "      - run: bun vx run ${{ github.event_name == 'pull_request' && 'build test --affected' || 'build test e2e --all' }}\n",
   )
   expect(gh).not.toContain('Name the tasks')
-  const gl = gitlab({ include: '.gitlab/vx.yml' }).init!(setup).files['.gitlab-ci.yml']!
+  const gl = (await gitlab({ include: '.gitlab/vx.yml' }).init!(setup)).files['.gitlab-ci.yml']!
   expect(gl).toContain("  variables: { VX_TASKS: 'build test e2e --all' }\n")
   expect(gl).toContain("      variables: { VX_TASKS: 'build test --affected' }\n")
   expect(gl).toContain('  script: [bun vx dte plan $VX_TASKS]\n')

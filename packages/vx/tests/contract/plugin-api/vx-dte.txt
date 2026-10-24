@@ -20,11 +20,17 @@ export interface DteAdapter {
   close?(): void | Promise<void>
   cancel?(ids: readonly string[]): void
   render?(plan: DtePlan): Readonly<Record<string, string>>
+  init?(setup: DteSetup): Promise<DteInit>
   live?(): boolean
   report?(warn: (message: string) => void): void
   readonly keyless?: boolean
   runId?(): string | undefined
   adopt?(worker: (id: string, size: string) => WorkerSpawn): void
+}
+== type DteInit (src/init.ts)
+export interface DteInit {
+  readonly files: Readonly<Record<string, string>>
+  readonly next: readonly string[]
 }
 == type DteOptions (src/plugin.ts)
 export interface DteOptions {
@@ -48,9 +54,19 @@ export interface DtePlan {
     live: boolean
   }[]
 }
+== type DteSetup (src/init.ts)
+export interface DteSetup {
+  readonly workspaceRoot: string
+  readonly relay?: string
+  readonly sizes: readonly { readonly name: string; readonly platform?: Platform }[]
+  readonly manager: PackageManager
+  readonly tasks: { readonly main: string; readonly change: string }
+  readonly repository?: string
+}
 == type GithubOptions (src/github.ts)
 export interface GithubOptions {
   readonly workflow?: string
+  readonly runsOn?: Readonly<Record<string, string>>
 }
 == type GitlabOptions (src/gitlab.ts)
 export interface GitlabOptions {
@@ -61,6 +77,8 @@ export interface GitlabOptions {
 export interface LocalOptions {
   readonly prepare?: string
 }
+== type PackageManager (src/init.ts)
+export type PackageManager = 'bun' | 'pnpm' | 'yarn' | 'npm'
 == type Strategy (src/strategy.ts)
 export interface Strategy {
   readonly order: 'critical-path' | 'graphene' | 'fifo'
