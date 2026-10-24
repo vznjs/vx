@@ -100,19 +100,21 @@ describe('ci.yml', () => {
 
   // docs.yml was its own workflow, its own install and sandbox runtime, for
   // a site the run already builds (owner, 2026-10-23: fold workflows into
-  // vx tasks on DTE). Only a green push to main deploys it.
-  it('deploys the docs site the Linux run built, on a push to main', () => {
+  // vx tasks on DTE). The deploy is a task of the run on a push to main
+  // (owner, 2026-10-24): the Pages actions after the run were 33 s.
+  it('deploys the docs site as a task of the run, on a push to main', () => {
     const job = doc.jobs['linux']!
-    const main = "success() && github.event_name == 'push' && github.ref == 'refs/heads/main'"
-    const upload = job.steps!.find((s) => s.uses?.startsWith('actions/upload-pages-artifact@'))
-    const deploy = job.steps!.find((s) => s.uses?.startsWith('actions/deploy-pages@'))
-    expect([upload?.if, upload?.with, deploy?.if]).toEqual([
-      main,
-      { path: 'private/vx-docs/dist' },
-      main,
-    ])
+    const main = "github.event_name == 'push' && github.ref == 'refs/heads/main'"
+    const run = job.steps!.find((s) => s.run?.includes('bin.ts run '))!.run!
+    expect(run).toContain(`\${{ ${main} && 'deploy.pages' || '' }}`)
+    const token = job.steps!.find((s) => s.uses?.startsWith('actions/github-script@'))!
+    expect(token.if).toBe(main)
+    expect(token.with?.['script']).toContain("core.exportVariable('ACTIONS_RUNTIME_TOKEN'")
+    expect(job.steps!.some((s) => /deploy-pages|upload-pages-artifact/.test(s.uses ?? ''))).toBe(
+      false,
+    )
     expect(job.environment).toBe("${{ github.event_name == 'push' && 'github-pages' || '' }}")
-    expect(job.permissions?.['pages']).toBe('write')
+    expect([job.permissions?.['pages'], job.permissions?.['id-token']]).toEqual(['write', 'write'])
   })
 
   // A run is what a developer would write (owner, 2026-10-23: "super

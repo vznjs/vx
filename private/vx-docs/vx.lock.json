@@ -385,6 +385,44 @@
         }
       }
     },
+    "deploy.pages": {
+      "description": "deploy dist/ to GitHub Pages (GitHub Actions only)",
+      "dependsOn": [
+        "ci"
+      ],
+      "exec": {
+        "command": "bun scripts/deploy-pages.ts",
+        "env": {
+          "passThrough": [
+            "ACTIONS_RUNTIME_TOKEN",
+            "ACTIONS_RESULTS_URL",
+            "ACTIONS_ID_TOKEN_REQUEST_URL",
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+            "GITHUB_TOKEN",
+            "GITHUB_REPOSITORY",
+            "GITHUB_SHA",
+            "GITHUB_API_URL"
+          ],
+          "secret": [
+            "ACTIONS_RUNTIME_TOKEN",
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+            "GITHUB_TOKEN"
+          ]
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "network": [
+              "*.actions.githubusercontent.com",
+              "*.blob.core.windows.net",
+              "api.github.com"
+            ]
+          }
+        }
+      }
+    },
     "dev": {
       "description": "astro dev server (persistent)",
       "dependsOn": [
