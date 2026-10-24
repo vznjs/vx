@@ -169,6 +169,9 @@ export interface AffectedChanges {
   nested?: readonly string[]
 }
 
+/** `<base>...HEAD` / `<base>..HEAD`: the base alone, read as `affectedChanges` reads it. */
+const HEAD_RANGE = /^(.+?)(\.{2,3})HEAD$/s
+
 export async function affectedChanges(
   args: AffectedArgs,
   perTask = true,
@@ -177,7 +180,7 @@ export async function affectedChanges(
   // vx already diffs from the merge base (three dots' meaning), and the
   // working tree it diffs to holds HEAD (D-117). Its two-dot `[A..HEAD]`
   // diffs from A itself (G-145). Any other range is refused.
-  const headRange = /^(.+?)(\.{2,3})HEAD$/s.exec(args.since)
+  const headRange = HEAD_RANGE.exec(args.since)
   const since = headRange?.[1] ?? args.since
   const fromMergeBase = headRange?.[2] !== '..'
   // The base reaches git as an argument, never through a shell, so `$(…)`
@@ -782,13 +785,15 @@ async function baseBranchRef(
 }
 
 /**
- * Does `ref` name the commit HEAD is on? A base that IS HEAD can never
- * mark anything affected — the shape of a single-branch clone whose
- * `origin/HEAD` is the branch under test.
+ * The base `ref` names (`<base>...HEAD` reads as `<base>`, as
+ * `affectedChanges` reads it) when it is the commit HEAD is on, else
+ * undefined. A base that IS HEAD can never mark anything affected — the
+ * shape of a single-branch clone whose `origin/HEAD` is the branch under test.
  */
-export function refIsHead(workspaceRoot: string, ref: string): boolean {
+export function headBase(workspaceRoot: string, ref: string): string | undefined {
   const head = revParse(workspaceRoot, 'HEAD')
-  return head !== undefined && head === revParse(workspaceRoot, ref)
+  const base = HEAD_RANGE.exec(ref)?.[1] ?? ref
+  return head !== undefined && head === revParse(workspaceRoot, base) ? base : undefined
 }
 
 /** The commit `ref` names, or undefined when it does not resolve here. */

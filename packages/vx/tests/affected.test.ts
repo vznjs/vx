@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, writeFile, rm, symlink } from 'node:fs/promis
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { affectedProjects, defaultAffectedBase, refIsHead } from '../src/workspace/affected.js'
+import { affectedProjects, defaultAffectedBase, headBase } from '../src/workspace/affected.js'
 import type { ProjectMeta } from '../src/workspace/workspace.js'
 import type { ProjectEntry } from '../src/workspace/index.js'
 import { LOCKFILE_NAME } from '../src/workspace/index.js'
@@ -1345,11 +1345,12 @@ describe('defaultAffectedBase', () => {
       await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
         'no default on the base branch (feat)',
       )
-      expect(refIsHead(root, 'origin/feat')).toBe(true)
+      expect(headBase(root, 'origin/feat')).toBe('origin/feat')
+      expect(headBase(root, 'origin/feat...HEAD')).toBe('origin/feat')
       await writeFile(path.join(root, 'a'), 'y')
       await git(root, 'commit', '-q', '-am', 'two')
-      expect(refIsHead(root, 'origin/feat')).toBe(false)
-      expect(refIsHead(root, 'no-such-ref')).toBe(false)
+      expect(headBase(root, 'origin/feat')).toBeUndefined()
+      expect(headBase(root, 'no-such-ref')).toBeUndefined()
     } finally {
       await rm(root, { recursive: true, force: true })
     }

@@ -66,9 +66,10 @@ export interface FingerprintClaims {
   extraFiles?(file: string, bytes: Uint8Array): readonly string[] | undefined
 }
 
-/** Is `ref` the current HEAD? A base that is already HEAD selects nothing,
- *  which is a clean exit rather than an empty run. */
-export function refIsHead(workspaceRoot: string, ref: string): boolean
+/** The base `ref` names (`<base>...HEAD` reads as `<base>`) when it is the
+ *  current HEAD, else undefined. A base that is already HEAD selects
+ *  nothing, which is a clean exit rather than an empty run. */
+export function headBase(workspaceRoot: string, ref: string): string | undefined
 ```
 
 ## Algorithm
