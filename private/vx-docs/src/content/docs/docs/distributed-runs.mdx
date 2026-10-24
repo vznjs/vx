@@ -11,7 +11,7 @@ with room, longest chain first. It reports every task as its own.
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
-import { dte, github } from '@vzn/vx-dte'
+import { dte, github } from '/path/to/vx/packages/vx-dte/src/index.ts'
 
 export default defineWorkspace({
   plugins: [
@@ -35,9 +35,8 @@ vx run build test --all
 ```
 
 <Aside title="Not on npm yet">
-  `@vzn/vx-dte` is built in the vx repository. Until it is on npm,
-  import it from a checkout:
-  [its README](https://github.com/vznjs/vx/tree/main/packages/vx-dte#try-it).
+  Until `@vzn/vx-dte` is on npm, import it from a checkout of the vx
+  repository, as above ([its README](https://github.com/vznjs/vx/tree/main/packages/vx-dte#try-it)).
 </Aside>
 
 ---
