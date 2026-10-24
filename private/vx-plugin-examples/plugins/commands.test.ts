@@ -17,11 +17,17 @@ const ctx = {
     hasMany: async () => null,
     getRun: async () => null,
   },
-  artifacts: { save: async () => {}, restore: async () => null, output: async () => null },
+  artifacts: {
+    save: async () => {},
+    restore: async () => null,
+    output: async () => null,
+    share: async () => false,
+  },
   artifactsFor: () => ({
     save: async () => {},
     restore: async () => null,
     output: async () => null,
+    share: async () => false,
   }),
 }
 

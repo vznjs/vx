@@ -175,7 +175,12 @@ describe('plugin-host — capability consultation + fallbacks', () => {
     warn: () => undefined,
     scope: undefined,
     refs: [],
-    artifacts: { save: async () => {}, restore: async () => null, output: async () => null },
+    artifacts: {
+      save: async () => {},
+      restore: async () => null,
+      output: async () => null,
+      share: async () => false,
+    },
     cacheFacts: async () => ({ refs: [], lent: {} }),
   }
 

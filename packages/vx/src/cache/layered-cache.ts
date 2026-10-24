@@ -608,7 +608,28 @@ export class LayeredCache implements CacheLayer {
       packed !== undefined
         ? Promise.resolve({ body: new Blob([packed]) })
         : this.local.pinArtifact(hash)
-    for (const lane of writable) lane.upload(hash, durationMs, body, this.local.uploads)
+    for (const lane of writable) void lane.upload(hash, durationMs, body, this.local.uploads)
+  }
+
+  /**
+   * True once a remote this run reads holds entry `hash`, uploading the
+   * local entry to each one it also writes when none does. Another machine
+   * of the run (a DTE worker) restores from the remotes alone: a hit only
+   * this cache held, the remote having evicted it, failed its dependant
+   * there.
+   */
+  async share(hash: string): Promise<boolean> {
+    for (const lane of this.readable) if ((await lane.has(hash)) !== null) return true
+    const lanes = this.readable.filter((l) => l.write)
+    if (lanes.length === 0) return false
+    const entry = await this.local.getIngested(hash)
+    if (entry === null) return false
+    const held = await Promise.all(
+      lanes.map((l) =>
+        l.upload(hash, entry.durationMs, () => this.local.pinArtifact(hash), this.local.uploads),
+      ),
+    )
+    return held.includes(true)
   }
 
   /**

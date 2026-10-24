@@ -411,6 +411,10 @@ use your own instead.
   except committed files, nested projects' files, and its dependencies'
   outputs (an additive task builds on its upstream's tree). An upstream's
   file the task leaves as it found it is not saved in its entry.
+- A hit only this machine's cache holds (the remote evicted it, or this
+  run does not write the remote) is uploaded to the remotes the workers
+  read before a task that depends on it is sent; with none written, its
+  dependant fails on the worker, naming the entry.
 - A failed or uncached task is saved under a key of the run, the task and
   the send (a retry gets its own), so no later lookup ever hits it; so is one core would not save (a
   `--no-cache` or read-only run, a dependant of a failure under

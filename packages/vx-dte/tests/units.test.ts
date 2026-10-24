@@ -356,6 +356,7 @@ it('a size is queued while a worker of it is late, given up beside one online', 
 function fakeArtifacts() {
   const saved = new Map<string, { stdout: string; stderr: string }>()
   const restored: string[] = []
+  const shared: string[] = []
   const artifacts: TaskArtifacts = {
     async save() {},
     async restore(key) {
@@ -365,8 +366,12 @@ function fakeArtifacts() {
     async output(key) {
       return saved.get(key) ?? null
     },
+    async share(key) {
+      shared.push(key)
+      return true
+    },
   }
-  return { artifacts, saved, restored }
+  return { artifacts, saved, restored, shared }
 }
 
 /** An orchestrator on a loopback relay, and workers of it that only listen. */
@@ -1408,6 +1413,9 @@ it('an order names its key and each dependency’s; the result comes back by the
       ['mid', runKey(R, 'mid')],
       ['lib', 'k-lib-hit'],
     ])
+    // The hit, held here, put where workers read before its first order;
+    // the key a worker saved is there already.
+    expect(h.store.shared).toEqual(['k-lib-hit'])
   } finally {
     await h.stop()
   }
@@ -1511,6 +1519,9 @@ it('a worker restores a dependency once, before any task that needs it runs', as
       async output() {
         return null
       },
+      async share() {
+        return false
+      },
       async restore() {
         restores++
         await Bun.sleep(100)
@@ -1605,6 +1616,9 @@ it('a worker restores a dependency again after a task cleared its files', async 
         async save() {},
         async output() {
           return null
+        },
+        async share() {
+          return false
         },
         async restore() {
           restores++
@@ -1802,6 +1816,9 @@ it('a worker whose answer meets a closed run exits 0', async () => {
         async output() {
           return null
         },
+        async share() {
+          return false
+        },
         async restore() {
           return null
         },
@@ -1873,6 +1890,9 @@ it('a worker begins its next task while the last one saves', async () => {
         },
         async output() {
           return null
+        },
+        async share() {
+          return false
         },
         async restore() {
           return null

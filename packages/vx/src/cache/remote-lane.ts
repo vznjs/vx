@@ -349,30 +349,36 @@ export class RemoteLane {
     return (await this.has(hash)) !== null
   }
 
-  /** Queue a PUT in this remote's bounded pool; `body` is asked for when the job starts. */
+  /**
+   * Queue a PUT in this remote's bounded pool; `body` is asked for when the
+   * job starts. Resolves true once this remote holds `hash`: put now, or held already.
+   */
   upload(
     hash: string,
     durationMs: number,
     body: () => Promise<{ body: Blob; release?: () => Promise<void> }>,
     tally: { count: number; bytes: number; ms: number; failed: number },
-  ): void {
+  ): Promise<boolean> {
     const key = this.trafficOf(hash)
     key.uploading++
     this.traffic.inFlight++
+    const { promise, resolve } = Promise.withResolvers<boolean>()
     this.uploadQueue.push(async () => {
       let release: (() => Promise<void>) | undefined
+      let holds = false
       try {
         if (this.stopped) return
         // A key whose bytes here did not read back is sent over them.
         if (!this.distrusted.has(hash)) {
-          if (this.held.has(hash)) return
-          if (!this.read && (await this.holds(hash))) return
+          if (this.held.has(hash)) return void (holds = true)
+          if (!this.read && (await this.holds(hash))) return void (holds = true)
         }
         if (this.stopped) return
         const start = performance.now()
         const got = await body()
         release = got.release
         await this.remote.put(hash, got.body, { durationMs })
+        holds = true
         tally.count++
         tally.bytes += got.body.size
         tally.ms += Math.round(performance.now() - start)
@@ -388,9 +394,11 @@ export class RemoteLane {
         // stopped first): no traffic, so the footer counts no upload.
         if (key.uploading === 0 && !key.landed && key.failures.length === 0)
           this.traffic.keys.delete(hash)
+        resolve(holds)
       }
     })
     this.pump()
+    return promise
   }
 
   /** Settles when the run is stopped. */

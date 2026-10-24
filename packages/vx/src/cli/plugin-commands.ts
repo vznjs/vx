@@ -259,6 +259,7 @@ function lazyArtifacts(open: () => Promise<TaskArtifacts>): TaskArtifacts {
     save: async (key, task, run) => (await artifacts()).save(key, task, run),
     restore: async (key, task) => (await artifacts()).restore(key, task),
     output: async (key) => (await artifacts()).output(key),
+    share: async (key) => (await artifacts()).share(key),
   }
 }
 
