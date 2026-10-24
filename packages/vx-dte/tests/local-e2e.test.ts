@@ -39,6 +39,11 @@ export default { name: 'b', tasks: {
     cache: { outputs: { files: ['out/**'] } },
   },
   fail: { exec: { command: 'echo oops >&2; exit 3' } },
+  trap: {
+    exec: { command: "trap 'exit 0' TERM; echo > t.txt; sleep 10 & wait", timeout: '1s' },
+    inputs: { files: ['vx.config.mjs'] },
+    cache: { outputs: { files: ['t.txt'] } },
+  },
   timed: { exec: { command: 'sleep 0.5 && echo timed-ok', timeout: '2s' } },
   slow: { exec: { command: 'touch started && sleep 60' } },
   once: { exec: { command: 'if [ -e ' + once + ' ]; then echo again; else touch ' + once + ' && sleep 60; fi' } },
@@ -634,6 +639,15 @@ it('saves no entry under its key that the run would not', async () => {
     expect(await readFile(path.join(root, 'b/out/b.txt'), 'utf8')).toBe('made\n')
     const next = vx(['run', 'a#gen']).stdout.toString()
     expect([flag, next.includes('restored')]).toEqual([flag, false])
+  }
+}, 60_000)
+
+// A task that exits 0 past its timeout (it traps SIGTERM) failed, but its
+// worker saved it under its key, and the next run hit it green (2026-10-24).
+it('saves no entry for a task that timed out, even on a 0 exit', async () => {
+  for (const run of ['trap-1', 'trap-2']) {
+    const r = vx(['run', 'b#trap'], run)
+    expect([run, r.exitCode, r.stdout.toString().includes('timed out')]).toEqual([run, 1, true])
   }
 }, 60_000)
 
