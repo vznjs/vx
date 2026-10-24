@@ -38,7 +38,7 @@ function statusLabel(t: TaskTelemetry): string {
   // theirs, and a `ran 0ms` row read as a run that did nothing (M, 2026-10-23).
   if (t.carried === true) return '🔗 served'
   // A hit that found its outputs in place restored nothing: up to date,
-  // whichever layer answered, as vx's own summary says it.
+  // as vx's own summary says it (a remote hit always restored).
   if (isCacheHit(t.status) && t.restored !== true) return '✔️ up-to-date'
   return STATUS_LABEL[t.status] ?? t.status
 }

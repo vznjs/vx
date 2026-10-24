@@ -321,7 +321,8 @@ export interface OutcomeView {
  * header and footer, the focused one-liner, the hash-only audit line,
  * the verbose summary table: `success` / `restored-local` /
  * `restored-remote` / `up-to-date` / `failed` / `skipped`. A hit that
- * materialized nothing is up-to-date whichever layer answered.
+ * materialized nothing is up-to-date; a remote hit always restored
+ * (`hitOutcome`), so it is never up to date.
  */
 export function outcomeWord(o: Pick<OutcomeView, 'status' | 'restored'>): string {
   switch (o.status) {
