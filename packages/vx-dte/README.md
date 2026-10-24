@@ -164,6 +164,7 @@ export default defineWorkspace({
 permissions: { id-token: write, contents: read, actions: write }
 steps:
   - uses: actions/checkout@v4
+  - uses: oven-sh/setup-bun@v2
   - run: bun install --frozen-lockfile
   - run: bunx @vzn/vx run build test --all
     env: { GITHUB_TOKEN: '${{ github.token }}' }
@@ -196,6 +197,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { ref: '${{ inputs.sha }}' }
+      - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bunx @vzn/vx dte worker
 ```

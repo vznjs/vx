@@ -29,16 +29,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4 # one commit: --affected fetches its base
       - uses: oven-sh/setup-bun@v2
-      - run: bun add -g @vzn/vx # hands off to the repo's own vx
       - run: bun install --frozen-lockfile
       # A lock that no longer matches the configs fails here, before any task.
-      - run: vx lock --check
+      - run: bunx vx lock --check
       # main runs everything and fills the cache every pull request
       # reads; a pull request runs only what it changed, and what depends on it.
       - run: >
-          vx run ci
+          bunx vx run ci
           ${{ github.event_name == 'pull_request'
-            && format('--affected=origin/{0}', github.base_ref)
+            && '--affected'
             || '--all' }}
         env:
           GITHUB_TOKEN: ${{ github.token }} # the PR check
