@@ -392,6 +392,11 @@ export function restorableOutput(
 ): (rel: string) => boolean
 == function run (src/orchestrator/run.ts)
 export async function run(options: RunOptions): Promise<RunSummary>
+== function sampleTrees (src/exec/proc-sample.ts)
+export async function sampleTrees(
+  roots: readonly number[],
+  skip?: ReadonlySet<string>,
+): Promise<Map<number, TreeUsage>>
 == function sandboxRequestFor (src/orchestrator/sandbox-request.ts)
 export async function sandboxRequestFor(
   node: Pick<TaskNode, 'projectDir'>,
@@ -2066,6 +2071,11 @@ export interface TelemetrySink {
 }
 == type Tone (src/util/ui.ts)
 export type Tone = 'ok' | 'warn' | 'error' | 'info'
+== type TreeUsage (src/exec/proc-sample.ts)
+export interface TreeUsage {
+  cpuMs: number
+  rssBytes: number
+}
 == type UploadTally (src/cache/cache.ts)
 export interface UploadTally {
   count: number

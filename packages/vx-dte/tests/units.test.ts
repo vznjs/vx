@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { crowdShare, loadMeter, localEnv, runWorker, swapRoots } from '../src/worker.js'
+import { crowdShare, loadMeter, localEnv, runWorker, swapRoots, treeMeter } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes, homeOf, needOf } from '../src/plugin.js'
@@ -648,7 +648,7 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
   const done = ['t1', 't2'].map((id) => h.o.execute(h.req(id)))
   expect(await a.batches()).toEqual([['t1', 't2']])
   for (const t of ['t1', 't2']) await a.begin(t)
-  await a.say({ type: 'held', running: ['t1', 't2'], load: { cpu: 1.5, memory: 0 } })
+  await a.say({ type: 'held', running: ['t1', 't2'], load: { cpu: 1.5, memory: 0, tasks: 1.2 } })
   // PR #4214's run asked 7 workers and cancelled each a second later: what each plan saw.
   h.o.planned({
     start: ['small'],
@@ -721,7 +721,7 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
     ev
       .filter((e) => e.ph === 'C' && e.pid === w && e.name === 'machine')
       .map((e) => e.args as unknown),
-  ).toContainEqual({ busy: 1.5 })
+  ).toContainEqual({ busy: 1.5, tasks: 1.2 })
   const plan = ev.find((e) => e.ph === 'i' && e.pid === 1 && e.name === 'plan') as
     | { args: Record<string, unknown> }
     | undefined
@@ -2329,4 +2329,25 @@ it('a task begins beside others only when its cores and memory fit in full', () 
   expect(fits(bin(1, 15e9), { cores: 1, memory: 2e9 })).toBe(false)
   expect(fits(bin(0.5, 0), { cores: 4, memory: 0 })).toBe(false)
   expect(fits(bin(0, 0, 0), { cores: Infinity, memory: Infinity })).toBe(true)
+})
+
+// Main fd9afe0: a Mac's tasks' exits said 1.8 cores and they ran at half
+// their share; the machine's busy cores beside its tasks' trees say where.
+it('reads each running task’s process tree every look: the cores its tree used since the last', async () => {
+  let cpu = 0
+  const trees = treeMeter(async (roots) => {
+    cpu += 30
+    return new Map(roots.map((r) => [r, { cpuMs: r === 7 ? cpu : 0, rssBytes: 0 }]))
+  }, 20)
+  try {
+    trees.watch('t1', 7)
+    trees.watch('t2', 8)
+    await Bun.sleep(130)
+    // 30 ms of CPU each 20 ms look: about one and a half cores, all t1's.
+    expect(trees.now()).toBeGreaterThan(0.5)
+    trees.drop('t1')
+    expect(trees.now()).toBe(0)
+  } finally {
+    trees.stop()
+  }
 })
