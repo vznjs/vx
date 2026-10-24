@@ -258,6 +258,18 @@ describe('resolveOtelConfig', () => {
     expect(c.serviceName).toBe('svc')
     expect(c.headers['authorization']).toBe('Bearer x')
   })
+  // The endpoint option lost to a signal's env endpoint: traces went to
+  // the env's collector, metrics to the configured one.
+  it('the endpoint option beats a signal endpoint from the env', () => {
+    const c = resolveOtelConfig(
+      { endpoint: 'http://opt:4318' },
+      { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://env/v1/traces' },
+    )!
+    expect([c.tracesUrl, c.metricsUrl]).toEqual([
+      'http://opt:4318/v1/traces',
+      'http://opt:4318/v1/metrics',
+    ])
+  })
   it('options override env, headers merge over env', () => {
     const c = resolveOtelConfig(
       { endpoint: 'http://opt:4318', serviceName: 'optsvc', headers: { x: 'opt' } },

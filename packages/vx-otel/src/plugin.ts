@@ -177,20 +177,31 @@ export function resolveOtelConfig(
 ): OtelSinkConfig | undefined {
   // Each URL with the setting it came from, so a refusal can name it
   // without printing a value that may hold a credential.
-  const from = (option: keyof OtelPluginOptions, envName: string): [string, string] | undefined => {
-    const o = present(opts[option] as string | undefined)
-    if (o !== undefined) return [o, `the ${option} option`]
-    const e = present(env[envName])
-    return e === undefined ? undefined : [e, envName]
+  const option = (name: keyof OtelPluginOptions): [string, string] | undefined => {
+    const o = present(opts[name] as string | undefined)
+    return o === undefined ? undefined : [o, `the ${name} option`]
   }
-  const base = from('endpoint', 'OTEL_EXPORTER_OTLP_ENDPOINT')
+  const fromEnv = (name: string): [string, string] | undefined => {
+    const e = present(env[name])
+    return e === undefined ? undefined : [e, name]
+  }
+  const joined = (
+    base: [string, string] | undefined,
+    signal: string,
+  ): [string, string] | undefined =>
+    base === undefined ? undefined : [joinSignal(base[0], signal), base[1]]
+  // Any option beats any env: the `endpoint` option lost to a signal's
+  // env endpoint, so a CI env set for another tool took vx's traces
+  // while its metrics went where the config said.
   const pick = (
-    option: keyof OtelPluginOptions,
+    name: keyof OtelPluginOptions,
     envName: string,
     signal: string,
   ): [string, string] | undefined =>
-    from(option, envName) ??
-    (base === undefined ? undefined : [joinSignal(base[0], signal), base[1]])
+    option(name) ??
+    joined(option('endpoint'), signal) ??
+    fromEnv(envName) ??
+    joined(fromEnv('OTEL_EXPORTER_OTLP_ENDPOINT'), signal)
   const picked = {
     traces: pick('tracesEndpoint', 'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'traces'),
     metrics: pick('metricsEndpoint', 'OTEL_EXPORTER_OTLP_METRICS_ENDPOINT', 'metrics'),
