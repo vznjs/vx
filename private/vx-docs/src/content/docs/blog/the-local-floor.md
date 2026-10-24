@@ -6,10 +6,12 @@ authors:
 tags:
   - design
   - plugins
-excerpt: "Every executor list ends with this machine. Every cache chain starts with the local cache. That is the one thing core does without being told, and it is what lets a plugin decline a task and hand it back instead of failing the run."
+excerpt: 'Your machine is always the last place a task can run, and the local cache is always asked first. A dead remote never breaks a build.'
 ---
 
-Point a remote cache at a port nothing listens on and run a build:
+Your machine is always the last place a task can run, and the local
+cache is always asked first. So a dead remote cache never breaks a
+build. Point one at a port nothing listens on:
 
 ```ts
 // .vx/workspace.ts
@@ -43,37 +45,37 @@ $ vx run build --all
   time      20ms
 ```
 
-The remote is down. The run is green, warns once, and the second run
-hits the local cache. Linux x64, vx at `0be0367`, 2026-10-23.
+The remote is down. The run is green and warns once. The second run
+hits the local cache.
 
-That works because running here and caching here are not plugins. They
-are the **floor**.
+<small>Linux x64 · vx 0be0367 · 2026-10-23</small>
+
+Running here and caching here aren't plugins. We call them the
+**floor**.
 
 ## Two lists, one floor
 
+```mermaid
+flowchart LR
+  subgraph run[where a task runs]
+    R1[reapi] --> R2[...] --> R3[this machine, always last]
+  end
+  subgraph cache[where a key is looked up]
+    C1[local cache, always first] --> C2[turboCache] --> C3[...]
+  end
+  style R3 stroke:#c6f84e,stroke-width:2px
+  style C1 stroke:#c6f84e,stroke-width:2px
 ```
-executors: [ reapi, …, local ]
-cache:     [ local cache, turboCache, … ]
-```
 
-- **Where a task runs.** vx asks each executor from `.vx/workspace.ts`
-  in order. This machine is always last.
-- **Where a key is looked up.** The local cache is always first, then
-  each remote in declared order. A save reaches every remote.
-
-You never write the local element and can't remove it. A workspace
-file with no plugins is the empty list plus the floor, so `vx run
-build` works in a fresh repository with that file and one
-`vx.config.ts`.
-
-The floor's artifacts live in `~/.vx/<id>/cache`, shared by every
-checkout of the repository; each workspace keeps its own index in
-`.vx/cache`. See [the shared store](../../caching/#storage-layout).
+You never write the floor and can't remove it. With no plugins,
+`vx run build` still works. A save reaches every remote. The local
+artifacts live in `~/.vx/<id>/cache`, shared by every checkout
+([storage](../../caching/#storage-layout)).
 
 ## A plugin may say no
 
-With the floor always there, declining is a placement decision, not a
-failure:
+Because the floor is always there, a plugin can turn a task down
+without failing the run:
 
 | Case                                         | Runs where       |
 | -------------------------------------------- | ---------------- |
@@ -83,22 +85,19 @@ failure:
 | remote cache errors or times out             | miss on that layer, warning |
 | REAPI server that only offers caching        | executor declines, cache works |
 
-A worker runs against an empty tree, can't reach a port on your laptop
-and has no sandbox, so those tasks stay. `vx run --dry` prints the
-choice per line once more than one executor is declared:
-`@vx/reapi`, `@local`, or `@noop` for an `exec.remote: 'only'` task no
-remote takes, which the run skips.
+A remote worker has an empty tree, can't reach your laptop's ports and
+has no sandbox, so those tasks stay. `vx run --dry` prints where each
+task goes: `@vx/reapi`, `@local`, or `@noop` for an
+`exec.remote: 'only'` task no remote takes.
 
 ## Why not a default plugin
 
-Shipping `localExecutorPlugin()` and prepending it to an empty list
-leaves a hole: a list that is *not* empty has no floor unless you
-remember it, and a declined task has nowhere to go. As part of every
-list, "no plugin" and "plugin declined" are the same case. No
-configuration leaves a task with nowhere to run.
+A default local plugin would leave a hole: once you add any plugin,
+the default is gone unless you remember it, and a declined task has
+nowhere to go. As part of every list, no setup can leave a task with
+nowhere to run.
 
-Core still names no plugin. It names a machine and a directory.
-Everything above the floor, including the wire a remote cache speaks,
-is declared in the workspace file or doesn't exist.
+Everything above the floor, like a remote cache, exists only if you
+name it in the workspace file.
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

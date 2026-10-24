@@ -6,11 +6,11 @@ authors:
 tags:
   - performance
   - benchmarks
-excerpt: "A synthetic 9,603-task workspace where vx, Turborepo, Nx and Vite Task each run the same graph from their own native config. Every number is a command away."
+excerpt: 'One synthetic 9,603-task graph, each tool in its own native config, every number one command away.'
 ---
 
-The time each runner adds on top of the tasks themselves, on one
-9,603-task graph:
+Every number on our benchmark page is one command away. Here is the
+time each runner adds on top of the tasks, on one 9,603-task graph:
 
 | Runner    | Cold build overhead | Nothing changed | Cold build CPU |
 | --------- | ------------------- | --------------- | -------------- |
@@ -19,13 +19,11 @@ The time each runner adds on top of the tasks themselves, on one
 | Nx        | 5 min 1 s | 26.21 s | 7 min 43 s |
 | Vite Task | 9.89 s | 12.89 s | 29.74 s |
 
-Lower is better. On a cold build the tasks alone take 1 min 53 s under
-an ideal schedule; with nothing changed the ideal is 0, so every
-millisecond there is the runner. No tool leads every row: Vite Task
-burns the least CPU.
+<small>Synthetic monorepo, 1,601 projects, 9,603 tasks, 30 levels · build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms · linux x64, 4 cores, concurrency 10 · vx 0be036747, Turborepo 2.11.10, Nx 24.0.1, Vite Task 1.4.0 · 2026-10-23</small>
 
-Benchmark workload: a synthetic monorepo of 1,601 projects and 9,603 tasks in 30 dependency levels, five core libraries a quarter of the projects use; build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms; real repos with uneven task times will differ.
-Run 2026-10-23 on linux x64, 4 cores, concurrency 10: vx at commit 0be036747, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0.
+Lower is better. A cold build's tasks alone take 1 min 53 s with an
+ideal schedule. With nothing changed the ideal is 0, so all of that time
+is the runner. No tool wins every row: Vite Task uses the least CPU.
 
 ## Re-run it
 
@@ -33,12 +31,18 @@ Run 2026-10-23 on linux x64, 4 cores, concurrency 10: vx at commit 0be036747, Tu
 $ bun private/vx-bench/compare.ts 3
 ```
 
-One workspace: 1,601 projects in 30 dependency levels, five core
-libraries about a quarter of the projects use, six kinds of task
-(`build`, `lint`, `test`, `typecheck`, `publish`, `installDeps`). Every
-runner runs it cold, with nothing changed, and with outputs restored.
-Every task is a `sleep` in fixed ratios, so the numbers isolate the
-runner from compilation.
+Every task is a `sleep` of a fixed length, so the numbers measure the
+runner, not a compiler. Each runner runs the graph cold, with nothing
+changed, and with outputs restored.
+
+```mermaid
+flowchart LR
+  G[generate.ts: one graph] --> V[vx config]
+  G --> T[turbo.json]
+  G --> N[Nx targets]
+  G --> VT[vite.config.ts]
+  V & T & N & VT --> C[compare.ts: same machine, one runner at a time]
+```
 
 | Rule                         | Why                                                   |
 | ---------------------------- | ----------------------------------------------------- |
@@ -54,21 +58,16 @@ Turbo uses none for `turbo run`).
 
 ## Reading the columns
 
-The first two columns are wall clock. The third is CPU time (user plus
-system, of the invocation and every child it waited for, less what the
-task commands burn): the tasks sleep, so it measures the runner's own
-work. A daemon that outlives the invocation isn't counted, so
-Turborepo's and Nx's are floors. Every row and the ideal run are in
+The first two columns are wall time. The third is the runner's own CPU
+time, minus the tasks. A daemon that outlives the run isn't counted, so
+Turborepo's and Nx's CPU are lower bounds. Every row is on
 [Benchmarks](../../benchmarks/).
-
-Real-repo rows return once each repo is rerun on the native config
-`bunx @vzn/vx-migrate` writes.
 
 ## The method
 
-Every warm-path change in vx ships with a number measured this way: A/B
-arms interleaved, min-of-N, the "before" arm in an immutable git
-worktree, one workspace copy per arm pre-warmed by that arm. If a number
-here doesn't reproduce on your machine, that is a bug report.
+Every change to vx's warm path ships with a number measured like this:
+before and after interleaved, fastest of N, "before" built from its own
+git worktree. If a number here doesn't reproduce on your machine,
+please file a bug.
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
