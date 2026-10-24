@@ -73,6 +73,15 @@ describe("scope: 'key'", () => {
     expect(m.asked.at(-1)).toEqual([refKey(MAIN, 'k1')])
   })
 
+  // Dropped, a worker of a `dte()` run got no OIDC token for the remote.
+  it("lends the run's access through the key-scoped layer", async () => {
+    const m = memory()
+    const lent = { token: 't', expiresAt: 1 }
+    const scoped = keyedByRef({ ...m.layer, lend: async () => lent }, [FEAT, MAIN])
+    expect(await scoped.lend?.()).toEqual(lent)
+    expect(keyedByRef(m.layer, [FEAT]).lend).toBeUndefined()
+  })
+
   it("scope is 'header' unless set, and anything else is refused", () => {
     expect([remoteScope('turbo-cache', undefined), remoteScope('turbo-cache', 'key')]).toEqual([
       'header',
