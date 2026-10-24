@@ -84,6 +84,13 @@ export default { name: 'p', tasks: {
   near: { dependsOn: ['srv'], exec: { command: at('near') } },
 } }
 `,
+    // A committed file under a task's output glob: never its output.
+    'g/gen/keep.txt': 'tracked\n',
+    'g/vx.config.mjs': `export default { name: 'g', tasks: {
+  gen: { exec: { command: 'echo made > gen/out.txt' }, inputs: { files: ['vx.config.mjs'] }, cache: { outputs: { files: ['gen/**'] } } },
+  use: { dependsOn: ['gen'], exec: { command: 'cat gen/keep.txt gen/out.txt' } },
+} }
+`,
     // Wide, then a two-task lull, then wide again.
     'c/vx.config.mjs': `const t = (dependsOn) => ({ exec: { command: 'sleep 0.3' }, dependsOn })
 export default { name: 'c', tasks: {
@@ -649,6 +656,15 @@ it('saves no entry for a task that timed out, even on a 0 exit', async () => {
     const r = vx(['run', 'b#trap'], run)
     expect([run, r.exitCode, r.stdout.toString().includes('timed out')]).toEqual([run, 1, true])
   }
+}, 60_000)
+
+// A worker cleared every file under a task's output globs before it ran,
+// a committed one too, which core never cleans: its dependant on that
+// worker found it gone (2026-10-24).
+it('leaves a tracked file under a task’s outputs in place on its worker', async () => {
+  const r = vx(['run', 'g#use'], 'tracked')
+  const out = r.stdout.toString()
+  expect([r.exitCode, out.includes('tracked'), out.includes('made')]).toEqual([0, true, true])
 }, 60_000)
 
 it('says why a worker never joined, and fails the run when none can', async () => {

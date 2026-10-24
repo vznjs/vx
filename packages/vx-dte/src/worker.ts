@@ -66,6 +66,14 @@ export async function runWorker(opts: {
   const tree = Bun.spawnSync(['git', 'rev-parse', 'HEAD^{tree}'], { cwd: opts.root })
     .stdout.toString()
     .trim()
+  // Never an output, as core never cleans one: the checkout is the run's
+  // commit, so this is the run's tracked set.
+  const tracked = new Set(
+    Bun.spawnSync(['git', 'ls-files', '-z'], { cwd: opts.root })
+      .stdout.toString()
+      .split('\0')
+      .filter(Boolean),
+  )
   const cores = machineParallelism()
   const memory = machineMemoryBytes()
   const info: WorkerInfo = {
@@ -245,7 +253,12 @@ export async function runWorker(opts: {
         await got
       }
       // An earlier task's files under these outputs would ship as this one's.
-      const cleared = await outputFiles(opts.root, m.project, m.outputs)
+      // A tracked file or a nested project's is none of them: cleared, a
+      // committed file under `gen/**` was gone for the task's dependants
+      // (2026-10-24).
+      const cleared = (await outputFiles(opts.root, m.project, m.outputs)).filter(
+        (f) => !tracked.has(f) && !m.nested.some((n) => f.startsWith(`${n}/`)),
+      )
       for (const [key, held] of holds)
         if (cleared.some(held)) {
           present.delete(key)
