@@ -25,7 +25,7 @@ import {
 } from '../workspace/index.js'
 import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
-import { parseDependencySpec } from '../graph/index.js'
+import { isDefaultBuild, parseDependencySpec } from '../graph/index.js'
 import { declaresInput, workspaceFilesReachInto } from '../cache/index.js'
 import {
   isUserError,
@@ -42,7 +42,6 @@ import {
   fingerprintClaims,
   gitOfDiscovery,
   hasHook,
-  isDefaultBuild,
   keepDiscoveryGraph,
 } from '../orchestrator/index.js'
 import {

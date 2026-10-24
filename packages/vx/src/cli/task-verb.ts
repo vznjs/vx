@@ -4,7 +4,8 @@
 // does it. It stays a refusal: a verb that runs whatever task shares its
 // name would change meaning the day a plugin declares that verb.
 
-import { isDefaultBuild, nxProjectTarget, projectNamed } from '../orchestrator/index.js'
+import { isDefaultBuild } from '../graph/index.js'
+import { nxProjectTarget, projectNamed } from '../orchestrator/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
 import { nearest } from '../util/index.js'
 import { findCwdProject } from './select.js'

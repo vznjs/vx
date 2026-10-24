@@ -26,7 +26,7 @@ import {
 import { applyGraphStage } from './graph-stage.js'
 import { hasHook } from './plugin-host.js'
 import type { VxPlugin } from './plugin.js'
-import { isDefaultBuild } from './projects.js'
+import { isDefaultBuild } from '../graph/index.js'
 
 /** Every file in this set re-keys each of its project's tasks, whatever their inputs. */
 const KEYED_BY_EVERY_TASK: ReadonlySet<string> = new Set(PROJECT_CONFIG_FILENAMES)

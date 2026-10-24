@@ -6,7 +6,7 @@ import type { GraphRules, TaskNode } from '../graph/index.js'
 import { type ProjectMeta, validateProjectConfig } from '../workspace/index.js'
 import { applyGraphHooks } from './plugin-host.js'
 import type { VxPlugin } from './plugin.js'
-import { isDefaultBuild } from './projects.js'
+import { isDefaultBuild } from '../graph/index.js'
 
 export async function applyGraphStage(
   plugins: readonly VxPlugin[],

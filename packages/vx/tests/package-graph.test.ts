@@ -158,6 +158,29 @@ describe('`^task` needs an edge source', () => {
     PARITY_TIMEOUT,
   )
 
+  // `c#build` on a project with no build named a `^build` its config
+  // never wrote: the default build's.
+  it(
+    "the default build's `^build` says it is the default build's",
+    async () => {
+      const root = await makeWorkspace({ prefix: 'vx-edge-source-default-' })
+      try {
+        await addProject(root, 'app', {
+          config: `export default { tasks: { test: { exec: { command: 'true' } } } }\n`,
+        })
+        gitIn(root)('add', '-A')
+        const r = await vx(root, ['run', 'app#build', '--dry=json'])
+        expect([r.code, r.err.split('\n')[0]]).toEqual([
+          1,
+          '✗ vx run  app#build: app declares no build, so it is the default build, whose ^build needs project edges; add pnpm()/bun()/npm()/yarn() and install so its lockfile exists, or a plugin that returns `deps`',
+        ])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    PARITY_TIMEOUT,
+  )
+
   it(
     'a run whose lock was written with an edge source refuses once the plugin is gone',
     async () => {

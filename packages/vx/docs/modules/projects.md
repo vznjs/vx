@@ -16,15 +16,12 @@ watch` cycle).
 
 A project whose config and plugins declare no `build` gets one, after the
 `project` stage: a group with `dependsOn: ['^build']` keyed on `**`
-(owner, 2026-10-04; `computeGroupKey`, task-hash.md).
+(owner, 2026-10-04; `computeGroupKey`, task-hash.md), the graph module's
+`DEFAULT_BUILD` (task-graph.md).
 
 ## Public surface
 
 ```ts
-// the default build; the picker, the "tasks here" and `vx build` hints and
-// `vx show <task>` leave it out
-export function isDefaultBuild(task: TaskConfig | undefined): boolean
-
 export function loadWorkspacePlugins(
   workspaceRoot: string,
   warn: (m: string) => void,

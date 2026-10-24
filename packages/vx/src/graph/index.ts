@@ -16,6 +16,7 @@ export {
   refuseFiltersThroughGroups,
   selectFoldedDeps,
 } from './folds.js'
+export { DEFAULT_BUILD, isDefaultBuild } from './default-build.js'
 export { computeReverseDepCount } from './priorities.js'
 export { taskDefinition, taskDefinitions } from './definition.js'
 export {

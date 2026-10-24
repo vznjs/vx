@@ -9,7 +9,8 @@
 import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
-import { affectedTaskProjects, isDefaultBuild } from '../orchestrator/index.js'
+import { isDefaultBuild } from '../graph/index.js'
+import { affectedTaskProjects } from '../orchestrator/index.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import {
   type ColorSupport,
