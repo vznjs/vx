@@ -1,17 +1,16 @@
 ---
-title: 'A pipeline with seams'
+title: 'A plugin fills one stage, often in under 25 lines'
 date: 2026-09-10T23:41:00Z
 authors:
   - vzn
 tags:
   - design
   - plugins
-excerpt: 'vx is built like Vite: a core pipeline with a named hook at every stage, and plugins that fill exactly the stage they need. A remote cache is one hook. A lockfile parser is one hook. Reading turbo.json as a start toward native config is one hook.'
+excerpt: 'vx is a pipeline with a named hook at every stage. A plugin fills only the stage it needs, and most example plugins are under 25 lines.'
 ---
 
-vx is built like Vite: a core pipeline with a named hook at every
-stage. A plugin fills only the hooks it needs. This one decides which
-ready task starts first:
+vx is a pipeline with a named hook at every stage. A plugin fills only
+the stage it needs. This one picks which ready task starts first:
 
 ```ts
 import { definePlugin, type VxPlugin } from '@vzn/vx'
@@ -27,29 +26,27 @@ export function prioritize(ids: readonly string[]): VxPlugin {
 }
 ```
 
-That is the whole plugin. List `prioritize(['app#build'])` under
-`plugins` in `.vx/workspace.ts` and it runs. Every stage has an example like it in
-`private/vx-plugin-examples`, each with a test:
+Add `prioritize(['app#build'])` to `plugins` in `.vx/workspace.ts`.
+Every stage has a tested example in `private/vx-plugin-examples`:
 
-| Example plugin | Hook        | Lines |
-| -------------- | ----------- | ----- |
-| `key.ts`       | `key`       | 12    |
-| `admit.ts`     | `admit`     | 13    |
-| `schedule.ts`  | `schedule`  | 13    |
-| `graph.ts`     | `graph`     | 17    |
-| `commands.ts`  | `commands`  | 21    |
-| `project.ts`   | `project`   | 22    |
-| `telemetry.ts` | `telemetry` | 23    |
-| `cache.ts`     | `cache`     | 41    |
-| `executor.ts`  | `executor`  | 61    |
-
-## The stages
-
+```mermaid
+xychart-beta horizontal
+  title "Lines per example plugin"
+  x-axis [key, admit, schedule, graph, commands, project, telemetry, cache, executor]
+  y-axis "lines" 0 --> 65
+  bar [12, 13, 13, 17, 21, 22, 23, 41, 61]
 ```
-config → discover → project → graph → key → fingerprint → schedule
-        → admit → executor / cache → telemetry
-setup and teardown wrap the run; commands adds a verb
+
+## The stages, in order
+
+```mermaid
+flowchart LR
+  A[config] --> B[discover] --> C[project] --> D[graph] --> K[key] --> F[fingerprint] --> S[schedule] --> AD[admit] --> E[executor / cache] --> T[telemetry]
 ```
+
+In words: `config → discover → project → graph → key → fingerprint →
+schedule → admit → executor`, with `setup` and `teardown` around the
+run and `commands` for new verbs.
 
 | Stage         | What a plugin can do there                                                                 |
 | ------------- | ------------------------------------------------------------------------------------------ |
@@ -69,53 +66,24 @@ setup and teardown wrap the run; commands adds a verb
 | `commands`    | Add a CLI verb. A verb named like a core verb is refused, so nothing shadows `vx run`.     |
 | `teardown`    | Flush and close at the end of the run.                                                     |
 
-A plugin is `definePlugin(import.meta, hooks)`. Its name is its package
-name, read from `import.meta`, never a field you set. Declaration order
-in `.vx/workspace.ts` is the order everywhere: executors are consulted in
-order, remote caches are asked in order after the local cache,
-telemetry sinks receive in order.
+Plugins run in the order `.vx/workspace.ts` lists them. A plugin's name
+is its package name, read from `import.meta`.
 
-## What ships on the seams
+## vx's own plugins use the same hooks
 
-Each first-party plugin uses only these hooks, with no special case in
-core:
+| Plugin | Hooks |
+| --- | --- |
+| `turbo()` (`@vzn/vx-migrate`) | `project`: turbo.json becomes vx tasks |
+| `@vzn/vx-lockfile` | `fingerprint`: keys each task on its own dependencies |
+| `@vzn/vx-schedule-history` | `schedule`, `admit`, `commands` |
+| `@vzn/vx-reapi` | `executor` and `cache` over Bazel's remote API |
+| `turboCache()`, `nxCache()` | `cache` on Turbo's and Nx's wire |
+| `@vzn/vx-otel`, `@vzn/vx-ci` | `telemetry` |
 
-- **`turbo()` from `@vzn/vx-migrate`** turns a `turbo.json` and each package's scripts
-  into vx tasks through the `project` stage, a start toward native config.
-- **`@vzn/vx-lockfile`** uses `fingerprint` to claim `pnpm-lock.yaml`
-  (or `bun.lock`, `package-lock.json`, `yarn.lock`) and key each task on
-  its own project's dependency closure. `--affected` follows the same
-  claim.
-- **`@vzn/vx-schedule-history`** fills `schedule` with the critical path
-  learned from run history, `admit` with a memory reservation packed
-  from what each task used before, and `commands` with `vx history`,
-  which prints what it learned per task.
-- **`@vzn/vx-reapi`** provides both `executor` and `cache` against any
-  Bazel Remote Execution API server: remote cache and remote execution
-  from one plugin.
-- **`turboCache()` and `nxCache()`**, from the same package, are `cache`
-  remotes speaking Turbo's `/v8/artifacts` and Nx's `/v1/cache` wire
-  formats, so an existing self-hosted cache server keeps working.
-- **`@vzn/vx-otel`** and **`@vzn/vx-ci`** are `telemetry` sinks: an
-  OTLP exporter with no OpenTelemetry SDK dependency, and a GitHub
-  Actions job summary plus a check run on the built commit.
-
-Every one of these lives in its own package and imports core only
-through `@vzn/vx`'s public façade. A test pins the façade so it cannot
-widen by accident.
-
-## The rule that keeps the seams honest
-
-**Seam over special case.** When core grows a branch for one consumer,
-the seam is too narrow: widen the seam, drop the branch. Migration left
-core for `@vzn/vx-migrate`, and the run-history scheduler became
-`@vzn/vx-schedule-history` on `schedule`, once their hooks existed.
-
-The second rule is the one that keeps the floor under your feet: core
-applies **no** plugin by default and names none. A capability a plugin
-must supply, a remote, a wire format, is declared in `.vx/workspace.ts`
-or it does not exist. The one thing that is implicit is the
-[local floor](../the-local-floor/): running here and caching here.
+Each imports core only through `@vzn/vx`, and a test pins that surface.
+When core grows a branch for one consumer, the seam is too narrow, so
+we widen it. Core applies no plugin by default. Only running and
+caching here are built in ([the local floor](../the-local-floor/)).
 
 Guide: [Writing a vx plugin](../../docs/plugins/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).
