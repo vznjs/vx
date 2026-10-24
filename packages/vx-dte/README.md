@@ -342,7 +342,7 @@ stops, instead of waiting for the job's timeout.
   connection) is asked through, by the orchestrator and workers alike.
   Joining has the same 10 s in all, its socket and request together: a
   relay silent that long fails the run with `cannot connect to the relay
-  <origin>: no answer in 10 s`.
+<origin>: no answer in 10 s`.
 - A worker that never joins says why on its row (`failed  exited 1:
 …`); its job ending, a success too, is what says so. Once the first
   worker of a size joins, each other of that size not joined within twice
