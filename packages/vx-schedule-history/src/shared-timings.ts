@@ -161,7 +161,7 @@ const lineage = (root: string, sha: string): Promise<string[] | null> =>
 async function mergeBase(root: string, defaultBranch: string): Promise<string | null> {
   const local = await git(root, ['merge-base', 'HEAD', `refs/heads/${defaultBranch}`])
   if (local?.[0] !== undefined) return local[0]
-  return (await mergeBaseWith(root, `origin/${defaultBranch}`).catch(() => undefined)) ?? null
+  return (await mergeBaseWith(root, `origin/${defaultBranch}`)) ?? null
 }
 
 /**

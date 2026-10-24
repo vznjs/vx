@@ -50,6 +50,9 @@ export function defaultAffectedBase(
   workspaceRoot: string,
   baseBranch: string | undefined,
 ): Promise<string>
+/** The merge base of `ref` and HEAD, or undefined; a shallow clone fetches it
+ *  (no blobs). The façade's, for a plugin reading the base branch's history. */
+export function mergeBaseWith(workspaceRoot: string, ref: string): Promise<string | undefined>
 /** Lockfiles a `fingerprint` plugin claims, so `--affected` can follow
  *  a per-project dependency closure instead of the whole fingerprint. */
 export interface FingerprintClaims {
