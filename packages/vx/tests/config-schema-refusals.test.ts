@@ -543,6 +543,18 @@ describe('a literal input a negation takes back (X-31)', () => {
       refused('tsconfig.json', 'tsconfig.json', 'tasks.t.inputs.workspaceFiles'),
     )
   })
+  it('is refused in outputs too: the file was never saved, and a hit said up-to-date', () => {
+    const lost = (g: string, by: string, where: string) =>
+      `${CFG}: ${where}: "${g}" is taken back by "!${by}" — a \`!\` entry subtracts wherever it ` +
+      `sits in the list, so the file is never saved or restored. Narrow the negation so it leaves "${g}".`
+    expect(cacheRefusal({ files: [] }, { files: ['out/f', '!out/**'] })).toBe(
+      lost('out/f', 'out/**', 'tasks.t.cache.outputs.files'),
+    )
+    expect(cacheRefusal({ files: [] }, { files: [], workspaceFiles: ['gen/a', '!gen/*'] })).toBe(
+      lost('gen/a', 'gen/*', 'tasks.t.cache.outputs.workspaceFiles'),
+    )
+    expect(cacheRefusal({ files: [] }, { files: ['dist/', '!dist/cache/**'] })).toBeNull()
+  })
   it('CONTROL: a directory literal a negation trims, and a glob, load', () => {
     expect(cacheRefusal({ files: ['src', '!src/gen/**'] })).toBeNull()
     expect(cacheRefusal({ files: ['src/**/*.ts', '!src/gen/**'] })).toBeNull()
