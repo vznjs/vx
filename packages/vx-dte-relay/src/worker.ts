@@ -6,7 +6,7 @@
 // `wrangler.jsonc` deploys it; ALLOW is a var in it.
 
 import { claimedRun, createVerifier, parseAllow } from './oidc.js'
-import { closeSocket, createRelay, GONE, runKey, type Kept, type Relay } from './relay.js'
+import { closeSocket, createRelay, refusedWith, runKey, type Kept, type Relay } from './relay.js'
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
 interface DurableObjectId {}
@@ -18,6 +18,7 @@ export interface DurableObjectNamespace {
   get(id: DurableObjectId): DurableObjectStub
 }
 interface Socket {
+  accept(): void
   send(text: string): void
   close(code?: number, reason?: string): void
   serializeAttachment(v: Kept): void
@@ -86,6 +87,20 @@ function allowRefusal(allow: string | undefined): string | undefined {
   return why
 }
 
+/**
+ * A refusal: a socket request is let in and its socket closed saying why,
+ * as the relay does (a failed upgrade tells a client nothing it can read).
+ */
+function refuse(req: Request, status: number, error: string): Response {
+  if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
+    return Response.json({ error }, { status })
+  }
+  const pair = new WebSocketPair()
+  pair[1].accept()
+  closeSocket(pair[1], refusedWith(status), error)
+  return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit)
+}
+
 /** Verifiers by ALLOW and audience, shared by the runs of one isolate. */
 const verifiers = new Map<string, ReturnType<typeof createVerifier>>()
 
@@ -94,7 +109,7 @@ export default {
     const run = RUN.exec(new URL(req.url).pathname)?.[1]
     if (run === undefined) return Response.json({ error: 'no such route' }, { status: 404 })
     const refused = allowRefusal(env.ALLOW)
-    if (refused !== undefined) return Response.json({ error: refused }, { status: 403 })
+    if (refused !== undefined) return refuse(req, 403, refused)
     const token = /^Bearer (\S+)$/.exec(req.headers.get('authorization') ?? '')?.[1]
     const claimed = token === undefined ? undefined : claimedRun(token)
     const stub = env.RELAY.get(env.RELAY.idFromName(await runKey(run, claimed)))
@@ -104,7 +119,7 @@ export default {
       // The host refused the object (a plan's daily limit, an outage): a
       // bare 500 told a failed run nothing (2026-10-22).
       const why = err instanceof Error ? err.message : String(err)
-      return Response.json({ error: `the relay's host refused the run: ${why}` }, { status: 503 })
+      return refuse(req, 503, `the relay's host refused the run: ${why}`)
     }
   },
 }
@@ -139,8 +154,7 @@ export class RelayRun {
         const pair = new WebSocketPair()
         state.acceptWebSocket(pair[1])
         const kept = this.relay.attach(key, id, pair[1])
-        if (kept === false) closeSocket(pair[1], GONE, 'gone')
-        else pair[1].serializeAttachment(kept)
+        if (kept !== false) pair[1].serializeAttachment(kept)
         return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit)
       },
     })

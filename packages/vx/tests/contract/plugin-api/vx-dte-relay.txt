@@ -6,7 +6,7 @@ export class TokenError extends Error {
   )
 }
 == const GONE (src/relay.ts)
-export const GONE = 4404
+export const GONE = refusedWith(404)
 == const PROOF_HEADER (src/proof.ts)
 export const PROOF_HEADER = 'vx-proof'
 == function closeSocket (src/relay.ts)
@@ -38,7 +38,6 @@ export interface Kept {
   key: string
   id: string
   role: 'orchestrator' | 'worker'
-  pin?: string
   cert?: string
 }
 == type OidcOptions (src/oidc.ts)
@@ -87,5 +86,4 @@ export interface ServeOptions extends Pick<RelayOptions, 'verify' | 'heartbeatMs
 export interface VerifiedToken {
   iss: string
   run: readonly string[]
-  job?: string
 }

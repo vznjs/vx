@@ -42,8 +42,7 @@ export interface Kept {
   key: string
   id: string
   role: 'orchestrator' | 'worker'
-  /** The orchestrator's: its run's `pin` and `cert`. */
-  pin?: string
+  /** The orchestrator's: its run's `cert`. */
   cert?: string
 }
 
@@ -53,28 +52,34 @@ export interface RelaySocket {
   close(code?: number, reason?: string): void
 }
 
+/** The close code of a socket request refused with HTTP `status`. */
+export const refusedWith = (status: number): number => 4000 + status
+
 /** The close code of a socket whose participant the relay lost, let go, or never knew. */
-export const GONE = 4404
+export const GONE = refusedWith(404)
 
 /**
- * Close `socket` with `code`, said first in a frame (`{ "close": code }`,
- * 0 for none): Bun 1.4.4's client fires its close only once the host ends
- * TCP too, and workerd never did, so a lost worker heard 4404 10 s late,
- * at its own redial limit (PR #4171, 2026-10-23).
+ * Close `socket` with `code`, said first in a frame (`{ "close": code,
+ * "error"? }`, 0 for none): Bun 1.4.4's client fires its close only once
+ * the host ends TCP too, and workerd never did, so a lost worker heard
+ * 4404 10 s late, at its own redial limit (PR #4171, 2026-10-23). A
+ * refusal's code is 4000 plus its HTTP status, its `reason` the error.
  */
 export function closeSocket(socket: RelaySocket, code?: number, reason?: string): void {
   try {
-    socket.send(JSON.stringify({ close: code ?? 0 }))
+    socket.send(JSON.stringify({ close: code ?? 0, ...(reason ? { error: reason } : {}) }))
     // quiet: a socket that can carry nothing is closed all the same
   } catch {}
-  socket.close(code, reason)
+  // A close reason holds 123 bytes; the frame said it whole.
+  socket.close(code, reason?.slice(0, 120))
 }
 
 export interface Relay {
   fetch(req: Request): Promise<Response>
   /**
    * Pushes the participant's messages down `socket`; returns what its host
-   * keeps with it, or false if it is gone.
+   * keeps with it, or false if it is gone or its request was refused: the
+   * relay has closed it, saying why.
    */
   attach(key: string, id: string, socket: RelaySocket): Kept | false
   /** The participant's socket closed: it is gone, and its peers are told. */
@@ -96,9 +101,6 @@ interface Participant {
   role: 'orchestrator' | 'worker'
   /** A worker's, until the orchestrator is told it joined. */
   info: unknown
-  /** Requests it may still make now, and when that was counted (a token bucket). */
-  tokens: number
-  filled: number
   /** The relay's own notices it could not push yet. */
   queue: Message[]
   socket?: RelaySocket | undefined
@@ -111,8 +113,6 @@ interface Run {
   closed: boolean
   orchestrator?: Participant
   byId: Map<string, Participant>
-  /** The CI job its orchestrator joined from (`VerifiedToken.job`); only that job acts as it. */
-  pin?: string
   /** The public key its orchestrator joined with; only its holder acts as it. */
   cert?: string
   certKey?: Promise<CryptoKey>
@@ -126,28 +126,16 @@ const MAX_BODY = 1 << 20
 /** How far a proof's time may be from the relay's: a CI runner's clock drifts. */
 const PROOF_SKEW_MS = 2 * 60_000
 
-/**
- * Each participant's requests and frames, as a token bucket: a burst, then
- * a steady rate, so one that loops cannot spend its host's request quota.
- */
-const RATE_BURST = 1000
-const RATE_PER_SECOND = 100
-
 class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
-    /** For a `429` of the rate: when the next request is taken. */
-    readonly retryAfterMs?: number,
   ) {
     super(message)
   }
 }
 
-const errorBody = (err: HttpError | TokenError): object =>
-  err instanceof HttpError && err.retryAfterMs !== undefined
-    ? { error: err.message, retryAfterMs: err.retryAfterMs }
-    : { error: err.message }
+const errorBody = (err: HttpError | TokenError): object => ({ error: err.message })
 
 export function createRelay(opts: RelayOptions): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 5_000
@@ -263,7 +251,6 @@ export function createRelay(opts: RelayOptions): Relay {
     for (const p of run.byId.values()) drain(p)
     run.byId.clear()
     delete run.orchestrator
-    delete run.pin
     delete run.cert
     delete run.certKey
     delete run.nonces
@@ -298,39 +285,13 @@ export function createRelay(opts: RelayOptions): Relay {
     }
   }
 
-  /** `token` 'socket': the frame came down a socket its upgrade already checked. */
-  const participant = (
-    run: Run,
-    id: unknown,
-    token: VerifiedToken | undefined | 'socket',
-  ): Participant => {
+  const participant = (run: Run, id: unknown): Participant => {
     const p = typeof id === 'string' ? run.byId.get(id) : undefined
     if (p === undefined) throw new HttpError(404, 'unknown id')
-    // An id is a bearer secret: one that leaks still acts as the orchestrator only from its job.
-    if (
-      p.role === 'orchestrator' &&
-      run.pin !== undefined &&
-      token !== 'socket' &&
-      token?.job !== run.pin
-    ) {
-      throw new HttpError(403, 'not the run’s orchestrator job')
-    }
-    const now = Date.now()
-    p.tokens = Math.min(RATE_BURST, p.tokens + ((now - p.filled) * RATE_PER_SECOND) / 1000)
-    p.filled = now
-    if (p.tokens < 1) {
-      const wait = Math.ceil(((1 - p.tokens) * 1000) / RATE_PER_SECOND)
-      throw new HttpError(429, 'rate limited', wait)
-    }
-    p.tokens -= 1
     return p
   }
 
-  const join = (
-    run: Run,
-    body: { role?: unknown; info?: unknown; key?: unknown },
-    token: VerifiedToken | undefined,
-  ): Participant => {
+  const join = (run: Run, body: { role?: unknown; info?: unknown; key?: unknown }): Participant => {
     const role = body.role
     if (role !== 'orchestrator' && role !== 'worker') {
       throw new HttpError(400, 'role is orchestrator or worker')
@@ -343,15 +304,12 @@ export function createRelay(opts: RelayOptions): Relay {
       role,
       // No one reads the orchestrator's.
       info: role === 'worker' ? (body.info ?? null) : null,
-      tokens: RATE_BURST,
-      filled: Date.now(),
       queue: [],
     }
     run.byId.set(p.id, p)
     if (p.role === 'orchestrator') {
       run.orchestrator = p
       run.cert = body.key as string
-      if (token?.job !== undefined) run.pin = token.job
       for (const a of run.byId.values()) if (a.role === 'worker') deliver(run, p, joined(a), true)
     } else if (run.orchestrator !== undefined) deliver(run, run.orchestrator, joined(p), true)
     return p
@@ -380,56 +338,50 @@ export function createRelay(opts: RelayOptions): Relay {
     return run
   }
 
+  /** Refusals of socket requests, by the id their host attaches the socket as. */
+  const refusals = new Map<string, HttpError | TokenError>()
+
+  /**
+   * A participant speaks only over its socket, and joins as it opens one
+   * (`socket?join=`): one request a participant on a host that bills each.
+   */
   const handle = async (req: Request): Promise<Response> => {
     const url = new URL(req.url)
-    const m = /^\/v1\/runs\/([^/]+)\/(join|socket)$/.exec(url.pathname)
+    const m = /^\/v1\/runs\/([^/]+)\/socket$/.exec(url.pathname)
     if (m === null) throw new HttpError(404, 'no such route')
-    const [, runId, verb] = m as unknown as [string, string, string]
+    const runId = m[1]!
     if (!RUN_ID.test(runId)) throw new HttpError(400, 'run id is not a random UUID')
-    if (req.method !== (verb === 'socket' ? 'GET' : 'POST')) {
-      throw new HttpError(405, 'wrong method')
-    }
+    if (req.method !== 'GET') throw new HttpError(405, 'wrong method')
     const token = await authorize(req, opts.verify)
     // A run is its id within its repository, so another tenant that learns
     // an id cannot open it first.
     const key = await runKey(runId, token)
-    const run = runs.get(key)
-    if (verb === 'socket') {
-      if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
-        throw new HttpError(426, 'not a websocket')
-      }
-      const asked = url.searchParams.get('join')
-      if (asked !== null) {
-        const p = await enter(key, req, url, parse(asked), asked, token)
-        p.hello = JSON.stringify({ joined: { id: p.id, heartbeatMs } })
-        return opts.upgrade(key, p.id, req)
-      }
-      const id = url.searchParams.get('id') ?? ''
-      // One the relay lost or let go learns it from the close code (GONE)
-      // its host gives the socket attach refuses: a failed upgrade says nothing.
-      if (run === undefined || run.closed || !run.byId.has(id)) return opts.upgrade(key, id, req)
-      // As the orchestrator: in its CI job, and signed by the key it joined with.
-      const p = participant(run, id, token)
-      if (p.role === 'orchestrator') await prove(run, req, url, '')
+    if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
+      throw new HttpError(426, 'not a websocket')
+    }
+    const asked = url.searchParams.get('join')
+    if (asked !== null) {
+      if (asked.length > MAX_BODY) throw new HttpError(413, 'join over 1 MiB')
+      const p = await enter(key, req, url, parse(asked))
+      p.hello = JSON.stringify({ joined: { id: p.id, heartbeatMs } })
       return opts.upgrade(key, p.id, req)
     }
-    const [body, text] = await readBody(req)
-    const p = await enter(key, req, url, body, text, token)
-    return Response.json({ id: p.id, heartbeatMs, socket: true })
+    const run = runs.get(key)
+    const id = url.searchParams.get('id') ?? ''
+    // One the relay lost or let go learns it from the close code (GONE)
+    // `attach` closes the socket with.
+    if (run === undefined || run.closed || !run.byId.has(id)) return opts.upgrade(key, id, req)
+    // As the orchestrator: signed by the key it joined with.
+    if (participant(run, id).role === 'orchestrator') await prove(run, req, url, '')
+    return opts.upgrade(key, id, req)
   }
 
-  /**
-   * Joins `body` to the run `key`: by a `join` request, or by the socket
-   * that carries it (`text` signed in its query), one request fewer a
-   * participant on a host that bills each.
-   */
+  /** Joins `body` to the run `key`, by the socket that carries it, signed in its query. */
   const enter = async (
     key: string,
     req: Request,
     url: URL,
     body: Record<string, unknown>,
-    text: string,
-    token: VerifiedToken | undefined,
   ): Promise<Participant> => {
     if (body['role'] === 'orchestrator') {
       if (
@@ -449,15 +401,15 @@ export function createRelay(opts: RelayOptions): Relay {
     if (body['role'] === 'worker') {
       // Its orchestrator starts it: a worker finds it live, or leaves.
       if (run === undefined || run.closed) throw new HttpError(410, 'no live run')
-      return join(run, body, token)
+      return join(run, body)
     }
     if (run !== undefined) throw new HttpError(409, 'the run has an orchestrator')
     const fresh: Run = { key, closed: false, byId: new Map() }
-    await prove(fresh, req, url, req.method === 'GET' ? '' : text, body['key'] as string)
+    await prove(fresh, req, url, '', body['key'] as string)
     // Another orchestrator may have joined while the key was checked.
     if (runs.has(key)) throw new HttpError(409, 'the run has an orchestrator')
     runs.set(key, fresh)
-    return join(fresh, body, token)
+    return join(fresh, body)
   }
 
   return {
@@ -465,16 +417,30 @@ export function createRelay(opts: RelayOptions): Relay {
       try {
         return await handle(req)
       } catch (err) {
-        if (err instanceof HttpError || err instanceof TokenError) {
-          return Response.json(errorBody(err), { status: err.status })
+        if (!(err instanceof HttpError || err instanceof TokenError)) throw err
+        // A failed upgrade tells a client nothing it can read: a socket
+        // request is let in, and its socket closed saying why.
+        if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+          const id = `refused-${crypto.randomUUID()}`
+          refusals.set(id, err)
+          return opts.upgrade('', id, req)
         }
-        throw err
+        return Response.json(errorBody(err), { status: err.status })
       }
     },
     attach(key, id, socket) {
+      const refused = refusals.get(id)
+      if (refused !== undefined) {
+        refusals.delete(id)
+        closeSocket(socket, refusedWith(refused.status), refused.message)
+        return false
+      }
       const run = runs.get(key)
       const p = run?.closed === false ? run.byId.get(id) : undefined
-      if (run === undefined || p === undefined) return false
+      if (run === undefined || p === undefined) {
+        closeSocket(socket, GONE, 'gone')
+        return false
+      }
       // One socket a participant. A host restoring several (a wake, a
       // redial whose old close it never ran) attached the last; a push
       // failing on a stale one unplugged it, and the live one, its pings
@@ -491,7 +457,6 @@ export function createRelay(opts: RelayOptions): Relay {
         key,
         id,
         role: p.role,
-        ...(p.role === 'orchestrator' && run.pin !== undefined ? { pin: run.pin } : {}),
         ...(p.role === 'orchestrator' && run.cert !== undefined ? { cert: run.cert } : {}),
       }
     },
@@ -531,7 +496,7 @@ export function createRelay(opts: RelayOptions): Relay {
           throw new HttpError(400, 'frame is not a JSON object')
         n = body.n ?? null
         const run = live(key)
-        const p = participant(run, id, 'socket')
+        const p = participant(run, id)
         // It spoke down this socket, so this socket reaches it: one its
         // host let go or never restored as its own left it deaf while its
         // pings were answered, and 13baaf6's orchestrator heard nothing
@@ -587,11 +552,9 @@ function restore(sockets: Iterable<readonly [Kept, RelaySocket]>, runs: Map<stri
       key: k.key,
       closed: false,
       byId: new Map(),
-      ...(k.pin === undefined ? {} : { pin: k.pin }),
       ...(k.cert === undefined ? {} : { cert: k.cert }),
     })
   }
-  const now = Date.now()
   for (const [k, socket] of all) {
     const run = k?.role === undefined ? undefined : runs.get(k.key)
     if (run === undefined) {
@@ -604,8 +567,6 @@ function restore(sockets: Iterable<readonly [Kept, RelaySocket]>, runs: Map<stri
       id: k.id,
       role: k.role,
       info: null,
-      tokens: RATE_BURST,
-      filled: now,
       queue: [],
     }
     p.socket = socket
@@ -636,14 +597,6 @@ async function authorize(
   const m = /^Bearer (\S+)$/.exec(req.headers.get('authorization') ?? '')
   if (m === null) throw new HttpError(401, 'no bearer token')
   return verify(m[1]!, req)
-}
-
-async function readBody(req: Request): Promise<[Record<string, unknown>, string]> {
-  const length = Number(req.headers.get('content-length') ?? 0)
-  if (length > MAX_BODY) throw new HttpError(413, 'body over 1 MiB')
-  const text = await req.text()
-  if (text.length > MAX_BODY) throw new HttpError(413, 'body over 1 MiB')
-  return [parse(text), text]
 }
 
 function parse(text: string): Record<string, unknown> {

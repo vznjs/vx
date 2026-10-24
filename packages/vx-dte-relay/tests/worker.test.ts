@@ -53,10 +53,9 @@ function namespace(env: () => Env): DurableObjectNamespace & { made: string[] } 
 
 const join = (env: Env, run: string, token?: string, origin = 'https://relay.example.com') =>
   worker.fetch(
-    new Request(`${origin}/v1/runs/${run}/join`, {
-      method: 'POST',
+    // No upgrade: Bun makes no 101, and each refusal here comes before one.
+    new Request(`${origin}/v1/runs/${run}/socket?join=${encodeURIComponent('{"role":"worker"}')}`, {
       headers: token === undefined ? {} : { authorization: `Bearer ${token}` },
-      body: JSON.stringify({ role: 'worker' }),
     }),
     env,
   )
@@ -132,6 +131,7 @@ it('rebuilds a run from its sockets’ attachments when it wakes', () => {
     pushed.set(kept.id, [])
     return {
       send: (t: string) => void pushed.get(kept.id)!.push(JSON.parse(t)),
+      accept() {},
       close() {},
       serializeAttachment() {},
       deserializeAttachment: () => kept,
@@ -210,11 +210,11 @@ it('takes its own URL as the audience when AUDIENCE is not set', async () => {
     await token('https://other.example.com'),
     'https://other.example.com',
   )
-  // 410, past the token: no live run.
+  // 426, past the token: no websocket here to join on.
   expect([mine.status, other.status, await other.json(), elsewhere.status]).toEqual([
-    410,
+    426,
     401,
     { error: 'wrong audience' },
-    410,
+    426,
   ])
 })

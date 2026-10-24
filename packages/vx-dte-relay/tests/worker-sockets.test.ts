@@ -75,23 +75,11 @@ const signed = async (
   [PROOF_HEADER]: await prover.proof(method, path, body),
 })
 
-const join = async (role: string, run = R): Promise<{ id: string; socket?: boolean }> => {
-  const path = `/v1/runs/${run}/join`
-  const body = JSON.stringify(role === 'orchestrator' ? { role, key: prover.key } : { role })
-  const res = await fetch(new URL(path, base), {
-    method: 'POST',
-    headers: role === 'orchestrator' ? await signed('POST', path, body) : auth,
-    body,
-  })
-  return (await res.json()) as { id: string; socket?: boolean }
-}
-
-/** A participant's socket, and the frames it got. */
-async function open(
-  id: string,
+/** A socket at `path`, and the frames it got. */
+async function dial(
+  path: string,
   orchestrator = false,
 ): Promise<{ ws: WebSocket; next(): Promise<unknown> }> {
-  const path = `/v1/runs/${R}/socket?id=${id}`
   const ws = new WebSocket(new URL(path, base).href.replace(/^http/, 'ws'), {
     headers: orchestrator ? await signed('GET', path) : auth,
   })
@@ -112,12 +100,21 @@ async function open(
   return { ws, next }
 }
 
+/** A participant that joined on its socket, and what that socket said first. */
+const join = async (role: string, run = R) => {
+  const body = JSON.stringify(role === 'orchestrator' ? { role, key: prover.key } : { role })
+  const s = await dial(
+    `/v1/runs/${run}/socket?join=${encodeURIComponent(body)}`,
+    role === 'orchestrator',
+  )
+  const first = (await s.next()) as { joined?: { id: string }; close?: number; error?: string }
+  return { ...s, id: first.joined?.id ?? '', first }
+}
+
 it('offers sockets, pushes each message down one and takes sends from it', async () => {
-  const o = await join('orchestrator')
-  const a = await join('worker')
-  expect([o.socket, a.socket]).toEqual([true, true])
-  const os = await open(o.id, true)
-  const as = await open(a.id)
+  const os = await join('orchestrator')
+  const as = await join('worker')
+  const a = as
   expect(await os.next()).toEqual({
     messages: [{ from: 'relay', body: { type: 'joined', id: a.id, info: null } }],
   })
@@ -129,8 +126,8 @@ it('offers sockets, pushes each message down one and takes sends from it', async
   as.ws.send(JSON.stringify({ n: 1, sends: [{ to: 'nobody' }] }))
   expect(await as.next()).toEqual({ n: 1, results: [{ status: 404, error: 'unknown to' }] })
   // Liveness is the connection: a worker's socket closing loses it at once.
-  const b = await join('worker')
-  const bs = await open(b.id)
+  const bs = await join('worker')
+  const b = bs
   expect(await os.next()).toEqual({
     messages: [{ from: 'relay', body: { type: 'joined', id: b.id, info: null } }],
   })
@@ -147,7 +144,8 @@ it('offers sockets, pushes each message down one and takes sends from it', async
 it('closes a socket of a run or id it does not know as gone, and refuses one without a token', async () => {
   await join('orchestrator', R3)
   const a = await join('worker', R3)
-  expect(a.socket).toBe(true)
+  // A join refused is let in and closed saying why: a failed upgrade says nothing.
+  expect((await join('worker', R2)).first).toEqual({ close: 4410, error: 'no live run' })
   // Said in a frame first: workerd never ends TCP after its close, and Bun
   // 1.4.4's client fires onclose only when it does, 10 s on (PR #4171).
   const closed = async (run: string, id: string): Promise<number> => {
@@ -160,10 +158,14 @@ it('closes a socket of a run or id it does not know as gone, and refuses one wit
     return code
   }
   expect([await closed(R2, a.id), await closed(R3, 'nobody')]).toEqual([4404, 4404])
-  const bare = await fetch(new URL(`/v1/runs/${R3}/socket?id=${a.id}`, base), {
-    headers: { upgrade: 'websocket' },
-  })
-  expect(bare.status).toBe(401)
+  const bare = new WebSocket(
+    new URL(`/v1/runs/${R3}/socket?id=${a.id}`, base).href.replace(/^http/, 'ws'),
+  )
+  const said = await new Promise(
+    (resolve) => (bare.onmessage = (e) => resolve(JSON.parse(String(e.data)))),
+  )
+  bare.close()
+  expect(said).toEqual({ close: 4401, error: 'no bearer token' })
 })
 
 it('reads an issuer’s keys once for all the runs it carries', async () => {
@@ -173,3 +175,35 @@ it('reads an issuer’s keys once for all the runs it carries', async () => {
   await join('worker', '00000000-0000-4000-8000-000000000005')
   expect(fetched).toEqual([`${ISS}/.well-known/openid-configuration`, `${ISS}/jwks`])
 })
+
+// Refused before any run's object (ALLOW admits no one), a socket is still
+// let in and closed saying why: the client stops dialing on a 4xx.
+it('refuses a socket at the door, saying why, when ALLOW admits no run', async () => {
+  const built = await Bun.build({
+    entrypoints: [path.join(import.meta.dir, '..', 'src', 'worker.ts')],
+    target: 'browser',
+    format: 'esm',
+  })
+  const closed = new Miniflare(
+    convertV4MiniflareOptions({
+      modules: true,
+      script: await built.outputs[0]!.text(),
+      compatibilityDate: '2026-10-01',
+      durableObjects: { RELAY: { className: 'RelayRun', useSQLite: true } },
+      bindings: { ALLOW: ' ' },
+    }),
+  )
+  try {
+    const url = (await closed.ready).href.replace(/^http/, 'ws')
+    const ws = new WebSocket(
+      `${url}v1/runs/${R}/socket?join=${encodeURIComponent('{"role":"worker"}')}`,
+    )
+    const said = await new Promise(
+      (resolve) => (ws.onmessage = (e) => resolve(JSON.parse(String(e.data)))),
+    )
+    ws.close()
+    expect(said).toEqual({ close: 4403, error: "this relay's ALLOW is empty: it admits no run" })
+  } finally {
+    await closed.dispose()
+  }
+}, 30_000)

@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte-relay: join on the socket only, drop pin and rate limit
+
+a participant joins only on its socket (socket?join=); POST join, the orchestrator's job pin and the rate limit are gone, and a refused socket closes with 4000 plus its status.
+
 ## vx-dte-relay: keep runs in socket attachments, not storage
 
 a relay host passes no `store` and calls no `open()`; it keeps what `attach` returns with each socket and hands the pairs back as `sockets`.
