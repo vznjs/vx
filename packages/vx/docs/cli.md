@@ -2711,8 +2711,9 @@ recorded the task, or in RUNID's. A failed task's is the kept failure
 output; any other task's is its cache entry's log (the one a hit
 replays, masked as it was), so a passing task's log reads too, on a hit
 or in the run that saved it. An uncached task that passed, or a skip,
-kept none: stdout is empty and stderr says so, exit 0. A kept log that
-is empty says the task printed nothing. With
+kept none, nor does a failed task past the newest 50 failed runs:
+stdout is empty and stderr says so, exit 0. A kept log that is empty
+says the task printed nothing. With
 `--format json` it is `{ runId, taskId, status, source, output }`,
 `source` `'failure'`, `'cache'` or `null`. A task no run recorded is
 refused, exit 1; `--log` does not combine with `--list` or `--failed`.

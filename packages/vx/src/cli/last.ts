@@ -495,7 +495,9 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         sayNotice(
           'info',
           'vx last',
-          `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
+          log.status === 'failed'
+            ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs'`
+            : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
         )
       } else if (log.output === '') {
         sayNotice('info', 'vx last', `${log.taskId} ended ${log.status} and printed nothing`)

@@ -94,6 +94,24 @@ it('a cached or failed task that printed nothing says so, not that its output wa
   }
 })
 
+it('a failed task whose kept failures were pruned says so, not that it printed nothing', async () => {
+  const kept = path.join(root, '.vx', 'cache', 'failures', `${runIds['bad']}.json`)
+  const bytes = await Bun.file(kept).bytes()
+  await rm(kept)
+  try {
+    expect(vx('last', runIds['bad']!, '--log', 'a#bad')).toEqual({
+      code: 0,
+      out: '',
+      err: noticed(
+        "vx last: a#bad ended failed, and vx kept no output for it: it keeps the newest 50 failed runs'\n",
+        'info',
+      ),
+    })
+  } finally {
+    await Bun.write(kept, bytes)
+  }
+})
+
 it('a task no run recorded, or one outside the run named, is refused', () => {
   expect(vx('last', '--log', 'a#nope')).toEqual({
     code: 1,
