@@ -9,7 +9,8 @@
 import path from 'node:path'
 import type { ProjectConfig, TaskConfig } from '../config.js'
 import { declaredTask } from '../graph/index.js'
-import { affectedTaskProjects, isDefaultBuild } from '../orchestrator/index.js'
+import { isDefaultBuild } from '../graph/index.js'
+import { affectedTaskProjects } from '../orchestrator/index.js'
 import { flagHint, formatValue, refuse, seeHelp } from './help.js'
 import {
   type ColorSupport,
@@ -219,6 +220,17 @@ export async function showCmd(args: readonly string[]): Promise<number> {
         }),
       )
       shown = shown.filter((p) => kept.has(p.name))
+    }
+    // An empty list printed nothing and exited 0, where the run says why.
+    if (shown.length === 0 && parsed.format === 'pretty') {
+      const n = declaring.length
+      sayNotice(
+        'info',
+        'vx show',
+        byDiff !== undefined
+          ? `no affected project's ${projectName} runs (${n} declare${n === 1 ? 's' : ''} it)`
+          : `no selected project declares ${projectName} (${n} outside the selection ${n === 1 ? 'does' : 'do'})`,
+      )
     }
     process.stdout.write(renderTaskAcross(root, shown, projectName!, parsed.format, colorsOut()))
     return 0

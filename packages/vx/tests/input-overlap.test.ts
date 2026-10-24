@@ -16,6 +16,7 @@ import { planRun as corePlanRun } from '../src/orchestrator/index.js'
 import { type Logger } from '../src/report/index.js'
 import { planRun } from './helpers/orchestrator.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
+import { cpuClock } from './helpers/cpu-clock.js'
 
 const silent = new Proxy({}, { get: () => () => undefined }) as Logger
 
@@ -290,9 +291,9 @@ describe('input overlaps stay near-linear', () => {
     }
     let best = Infinity
     for (let r = 0; r < 3; r++) {
-      const t0 = performance.now()
+      const cpu = cpuClock()
       expect(refusal({ app: tasks })).toBeNull()
-      best = Math.min(best, performance.now() - t0)
+      best = Math.min(best, cpu())
     }
     expect(best).toBeLessThan(1_000)
   }, 120_000)
@@ -355,9 +356,9 @@ describe('input overlaps stay near-linear over a shared input', () => {
     }
     let best = Infinity
     for (let r = 0; r < 3; r++) {
-      const t0 = performance.now()
+      const cpu = cpuClock()
       expect(refusal(projects)).toBeNull()
-      best = Math.min(best, performance.now() - t0)
+      best = Math.min(best, cpu())
     }
     expect(best).toBeLessThan(1_000)
   }, 120_000)

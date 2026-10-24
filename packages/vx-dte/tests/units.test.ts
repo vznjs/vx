@@ -303,6 +303,29 @@ it('gives up a started worker past twice the first of its size’s join, and sto
   }
 })
 
+// Main db1702f (2026-10-24): three smalls GitHub queued 60 s were given up
+// at their join limit and others asked; the three joined later, were told
+// to exit, and the run ended at 232 s against an ideal of 141 s. A worker
+// given up for lateness that joins after all is taken.
+it('takes a worker given up past its join limit that joins after all', async () => {
+  const overdue: string[] = []
+  const h = await harness(new Map([node('t1')]), undefined, 60_000, undefined, undefined, {
+    overdue: (id) => overdue.push(id),
+  })
+  try {
+    h.o.spawned('worker#1', { size: 'small', cpu: 1, memory: 1 })
+    h.o.spawned('worker#2', { size: 'small', cpu: 1, memory: 1 })
+    await h.worker(1, 'worker#1')
+    for (let i = 0; i < 50 && overdue.length === 0; i++) await Bun.sleep(20)
+    expect(overdue).toEqual(['worker#2'])
+    const late = await h.worker(1, 'worker#2')
+    const first = (await late.poll()).map((m) => m.body as { type: string; name?: string })
+    expect(first[0]).toMatchObject({ type: 'welcome', name: 'worker#2' })
+  } finally {
+    await h.stop()
+  }
+})
+
 /** A cache by key, in memory: what workers saved, and each restore asked. */
 function fakeArtifacts() {
   const saved = new Map<string, { stdout: string; stderr: string }>()
@@ -500,6 +523,31 @@ it('sends a worker what its booking fits, though its load reads low; busier than
   }
 })
 
+// Cold main bcc84f1: an unmeasured task counted 2 cores waiting and the
+// one it holds running, so each start freed room the plan found spare and
+// it cancelled 11 of the 25 workers it asked.
+it('plans a running unmeasured task as it planned it waiting', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]), () => ({
+    cores: 1,
+    memory: 0,
+    ask: { cores: 2, memory: 4e9 },
+  }))
+  try {
+    const a = await h.worker(4)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    void h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t1', 't2']])
+    for (const id of ['t1', 't2'])
+      await a.say({ type: 'start', task: id, load: { cpu: 0.1, memory: 0 } })
+    await Bun.sleep(50)
+    const running = h.o.planState(() => undefined, 0).workers.find((w) => w.id === a.id)!.running
+    expect(running.map((r) => r.cores)).toEqual([2, 2])
+  } finally {
+    await h.stop()
+  }
+})
+
 // Cold run 3, 2026-10-23: tasks booked at their history used 82% of it,
 // and every Linux worker ran at 63-73% CPU against the sim's 86%.
 it('books measured tasks at the share of their history the run’s tasks used, at most half again more', async () => {
@@ -577,6 +625,32 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
   const done = ['t1', 't2'].map((id) => h.o.execute(h.req(id)))
   expect(await a.batches()).toEqual([['t1', 't2']])
   for (const t of ['t1', 't2']) await a.begin(t)
+  // PR #4214's run asked 7 workers and cancelled each a second later: what each plan saw.
+  h.o.planned({
+    start: ['small'],
+    release: [],
+    tasks: 3,
+    endsInMs: 60_000,
+    boundMs: 63_000,
+    workers: [
+      { ...h.o.planState(() => 5_000, 0).workers[0]!, id: 'worker#1' },
+      {
+        id: 'small#2',
+        cores: 4,
+        memory: 1e9,
+        at: 12_000,
+        running: [],
+        idle: false,
+        starting: true,
+      },
+    ],
+    // Main d8a795c planned 38 s for an 88 s Mac lane: what it thought each took.
+    work: [
+      { id: 'p#build', cores: 2.16, memory: 0, ms: 33_240, deps: [], platform: 'darwin' },
+      { id: 'p#new', cores: 1, memory: 0, ms: undefined, deps: [] },
+    ],
+    warmUps: new Map([['mac', 16_900]]),
+  })
   await Bun.sleep(20)
   await a.say({ type: 'ran', task: 't1' })
   await Bun.sleep(20)
@@ -618,6 +692,15 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
   ).toEqual(['t1', 't2'])
   expect(ev.some((e) => e.ph === 'i' && e.pid === w && e.name === 'stopped')).toBe(true)
   expect(ev.some((e) => e.ph === 'C' && e.pid === w && e.name === 'cores')).toBe(true)
+  const plan = ev.find((e) => e.ph === 'i' && e.pid === 1 && e.name === 'plan') as
+    | { args: Record<string, unknown> }
+    | undefined
+  expect(plan?.args).toMatchObject({ start: 'small', tasks: 3, endsInMs: 60_000, boundMs: 63_000 })
+  expect(plan?.args.workers).toMatch(/^worker#1 1c\/\d+ 1c\/\d+ · small#2 joins 12000$/)
+  expect(plan?.args).toMatchObject({
+    work: 'p#build 33.2s 2.16c darwin · p#new ?s 1c',
+    warmUps: 'mac 16.9s',
+  })
 })
 
 // Main, 2026-10-23: vx-docs#build (41 s, then its test) got ready 3 s in,
@@ -912,6 +995,28 @@ it('replays what each task took on every worker the sizes allow: the ideal end',
   }
 })
 
+// Main 6a7224f: ideal 127.8 s above real 111.0 s. Mac shards ran five
+// side by side at a 0.22 share; the replay kept their crowded length and
+// booked the cores they would use free, so it ran them one at a time.
+it('replays a crowded task with the cores it used, never above the real run', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const sizes = [{ name: 'small', max: 1, cpu: 2, memory: 1e10 }]
+    const w = await h.worker(2)
+    await Bun.sleep(50)
+    const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
+    await w.batches()
+    await Bun.sleep(400)
+    const crowded = { exitCode: 0, durationMs: 400, cpuMs: 400, cpuShare: 0.5 }
+    await w.finish('t1', 'k-t1', crowded)
+    await w.finish('t2', 'k-t2', crowded)
+    await Promise.all(runs)
+    expect(h.o.idealMs(() => [], sizes)!).toBeLessThan(600)
+  } finally {
+    await h.stop()
+  }
+})
+
 // M, 2026-10-21: a worker the run's end stopped still read `online`, and
 // a size's machines were a `!` line apart from its workers.
 it('the final summary says how each worker ended, its size and machine under it', async () => {
@@ -931,7 +1036,7 @@ it('the final summary says how each worker ended, its size and machine under it'
   h.o.release([b.id])
   expect(await b.types()).toContain('exit')
   await h.stop()
-  const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+  const rows = h.o.footer(() => 98_240).map(([, line]) => ui.inline(line, { enabled: false }))
   const at = (label: string) => rows.findIndex((r) => r.startsWith(label + ' '))
   expect(rows[at('worker#1')]).toMatch(/^worker#1 +lost/)
   expect(rows[at('small#1')]).toMatch(/^small#1 +stopped/)
@@ -946,6 +1051,10 @@ it('the final summary says how each worker ended, its size and machine under it'
   // When the run asked for workers, for which work, and when its plan ended: why it had as many as it did.
   expect(rows.filter((r) => r.startsWith('asked'))).toEqual([
     expect.stringMatching(/^asked +2 at 0\.\ds for 3 tasks \(1 measured\), plan 70\.0s$/),
+  ])
+  // Every log carries how close the run came, beside core's time row (2026-10-23).
+  expect(rows.filter((r) => r.startsWith('ideal'))).toEqual([
+    expect.stringMatching(/^ideal +98\.2s: each task as long as it took, placed perfectly$/),
   ])
   // Main 68b851d: 41 of 119 unmeasured, each a whole worker, and the
   // summary said only how many (2026-10-23).
@@ -2002,8 +2111,59 @@ it('reads how crowded the CPU is from the run queue', async () => {
   } finally {
     meter.stop()
   }
-  // No /proc/stat: no correction.
-  const none = loadMeter(() => undefined)
+  // No /proc/stat (macOS): the load average says it, while every core is busy.
+  let ticks = 0
+  const full = (): [number, number] => [(ticks += 100), ticks]
+  const mac = loadMeter(
+    () => undefined,
+    () => cores * 2,
+    full,
+  )
+  try {
+    const from = mac.mark()
+    await Bun.sleep(450)
+    expect(mac.shareSince(from)).toBeCloseTo(1 / 2, 2)
+  } finally {
+    mac.stop()
+  }
+  // Main 8fa3c98: a macOS runner's load average read 49 with a core idle,
+  // and each shard was learned to need the whole machine. Not crowded.
+  let spare = 0
+  const idle = (): [number, number] => [(spare += 50), spare * 2]
+  const roomy = loadMeter(
+    () => undefined,
+    () => cores * 16,
+    idle,
+  )
+  try {
+    const from = roomy.mark()
+    await Bun.sleep(450)
+    expect(roomy.shareSince(from)).toBe(1)
+  } finally {
+    roomy.stop()
+  }
+  // Main 3917881: six shards used 2.3 of a Mac's 3 cores and read a share
+  // of 0.22; each wanted at most what it used and the cores left free.
+  let busy = 0
+  const nine = (): [number, number] => [(busy += 90), (busy / 90) * 100]
+  const free = loadMeter(
+    () => undefined,
+    () => cores * 5,
+    nine,
+  )
+  try {
+    const from = free.mark()
+    await Bun.sleep(450)
+    expect(free.shareSince(from)).toBeCloseTo(0.2, 2)
+    expect(free.shareSince(from, 0.4)).toBeCloseTo(0.4 / (0.4 + 0.1 * cores), 2)
+  } finally {
+    free.stop()
+  }
+  // Neither (Windows): no correction.
+  const none = loadMeter(
+    () => undefined,
+    () => 0,
+  )
   try {
     const from = none.mark()
     await Bun.sleep(250)

@@ -313,6 +313,35 @@ describe('parseWhyArgs', () => {
     TIMEOUT,
   )
 
+  // "Its key is folded by dependents only" read as if a dependent could
+  // hit; a keyless task's key is new each run, so every dependent misses.
+  it(
+    'an uncached task with no inputs says every dependent misses',
+    async () => {
+      const root = await makeWorkspace()
+      try {
+        const libDir = path.join(root, 'packages', 'lib')
+        await mkdir(libDir, { recursive: true })
+        await writeFile(path.join(libDir, 'package.json'), JSON.stringify({ name: 'lib' }))
+        await writeFile(
+          path.join(libDir, 'vx.config.mjs'),
+          `export default { tasks: { gen: { exec: { command: 'true' } } } }`,
+        )
+        gitIn(root)('add', '-A')
+        expect((await vx(root, ['run', 'gen', '--all'])).code).toBe(0)
+        expect((await vx(root, ['run', 'gen', '--all'])).code).toBe(0)
+        const why = await vx(root, ['why', 'lib#gen'])
+        expect(why.out).toContain(
+          'it declares no `inputs` either, so each run derives a new key and every task that depends on it misses',
+        )
+        expect(why.out).not.toContain('folded by dependents only')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
   it('parses target, --run and --format in both forms', () => {
     expect(parseWhyArgs(['app#build'])).toEqual({ target: 'app#build', format: 'pretty' })
     expect(parseWhyArgs(['build', '--run', 'r1'])).toEqual({

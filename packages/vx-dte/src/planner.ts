@@ -87,6 +87,28 @@ export interface Plan {
   readonly againInMs: number | undefined
 }
 
+/** History the run's finished tasks must have had before `slowdown` says anything. */
+const SLOWDOWN_MS = 20_000
+
+/**
+ * How much longer than history the run's finished tasks took (`took` ms,
+ * `forecast` ms), at least 1, once they had 20 s of history: the plan
+ * stretches what is left by it. A task past its forecast was planned to
+ * end now, so a run whose tasks took twice theirs planned 27 s left for
+ * 100 s, asked a worker, cancelled it as not needed, and asked again (PR
+ * #4192, 2026-10-23).
+ */
+export function slowdown(done: Iterable<{ took: number; forecast: number | undefined }>): number {
+  let took = 0
+  let forecast = 0
+  for (const d of done)
+    if (d.forecast !== undefined && d.forecast > 0) {
+      took += d.took
+      forecast += d.forecast
+    }
+  return forecast < SLOWDOWN_MS ? 1 : Math.max(1, took / forecast)
+}
+
 /**
  * Each task's tail: its usual duration and its longest chain of
  * dependants after it, the most of the run that waits on it starting.
@@ -152,7 +174,10 @@ export function planTasks(
  * The run's known work: of `remaining`, each task that runs a command and
  * missed the cache, handed over to run (`executed`), or waits on a cached
  * one that did, its key folding that one's. An uncached task runs every
- * time and changes no dependant's key (check.bun, under every install).
+ * time, so it is work before it is handed over, and changes no dependant's
+ * key (check.bun, under every install). Counted only once handed over,
+ * main e38d1d2's first plan missed check.build-cold behind its install and
+ * asked one Mac for a 37 s lane that ran to 120 s (2026-10-24).
  * Groups and hits are no work: counted, 85 hits of 109 tasks asked 6
  * workers where 2 did (main, 2026-10-23).
  */
@@ -175,8 +200,13 @@ export function missedWork(
     changed.set(id, c)
     return c
   }
-  const missed = (id: string): boolean =>
-    executed.has(id) || (nodes.get(id)?.deps ?? []).some(changes)
+  const missed = (id: string): boolean => {
+    const n = nodes.get(id)
+    return (
+      executed.has(id) ||
+      (n !== undefined && (n.config.cache === undefined || n.deps.some(changes)))
+    )
+  }
   return planTasks([...remaining].filter(missed), nodes, need, durationMs, home)
 }
 
@@ -402,16 +432,28 @@ export function plan(
           k.platform === w.platform,
       )
       const without = kept.filter((k) => k !== (twin ?? w))
-      if (simulate(tasks, without, how) <= bound) {
+      // Asked, it goes only when the plan gives it no task: within the
+      // margin, the next plan's estimates moved a second later and
+      // cancelled 7 asked one at a time (PR #4214); ending the run no
+      // sooner, main 005e8f2 cancelled a mac and asked one again 18 s on.
+      if (
+        twin === undefined
+          ? !play(tasks, kept, how).first.has(w.id)
+          : simulate(tasks, without, how) <= bound
+      ) {
         kept = without
         if (twin === undefined) release.push(w.id)
       }
     }
-    // Biggest first: a big idle one costs the most to keep.
+    // Biggest first: a big idle one costs the most to keep. Joined, its
+    // warm-up is spent: it goes when the plan gives it no task, not when
+    // the run ends within the margin without it (main e05bd71 let a mac go
+    // that way and asked another 4 s later).
     const idle = workers.filter((w) => w.idle).sort((a, b) => b.cores - a.cores)
     for (const w of idle) {
       const without = kept.filter((k) => k !== w)
-      if (simulate(tasks, without, how) <= bound) {
+      const next = play(tasks, kept, how).first.get(w.id)
+      if (next === undefined) {
         kept = without
         release.push(w.id)
         continue
@@ -421,12 +463,11 @@ export function plan(
       // next plan starts one at once: let go as 10 joined at 20 s, one was
       // started again at 20.06 (tests/sim.test.ts, a09b987 forecast).
       if (!replaceable) continue
-      const next = play(tasks, kept, how).first.get(w.id)
-      if (next !== undefined && next < 2 * warm(w.size) + MARGIN_MS) continue
+      if (next < 2 * warm(w.size) + MARGIN_MS) continue
       const instead = fresh(
         { cpu: w.cores, memory: w.memory, platform: w.platform, size: w.size },
         w.id,
-        next ?? Infinity,
+        next,
       )
       if (simulate(tasks, [...without, instead], how) <= bound) {
         kept = without
@@ -442,7 +483,9 @@ export function plan(
     if (at === undefined) continue
     // Given work within its warm-up and a margin: it starts now.
     const warmUp = added[i]!.at
-    if (at <= warmUp + MARGIN_MS) start.push(candidates[i]!)
+    // Within a millisecond counts: `againInMs` of 1e-10 replanned the
+    // same plan 100,000 times at one instant (tests/sim.test.ts).
+    if (at < warmUp + MARGIN_MS + 1) start.push(candidates[i]!)
     else againInMs = Math.min(againInMs ?? Infinity, at - warmUp - MARGIN_MS)
   }
   return { start, release, endsInMs: end, boundMs: bound, againInMs }

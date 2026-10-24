@@ -93,19 +93,22 @@ none of them one `git var -l` and a stat of each attributes file.
 ## A commit never changes a key
 
 A dirty file is hashed to the same blob id git gives it on commit. So
-edit, run, commit, run is one miss and then a hit:
+edit, run, commit, run misses once (`a` and `c`, which depends on it), then
+hits:
 
 ```sh frame="terminal"
 $ vx run build --all          # after editing packages/a
  ⏺︎    10ms success miss     packages/a#build
-            local 3✓ 1↑
+ ⏺︎     7ms success miss     packages/c#build
+            local 2✓ 2↑
 
 $ git commit -am edit && vx run build --all
             local 4✓
 ```
 
 A tool that hashes mtimes, or keeps its own fingerprint store, misses
-again at the commit, or needs a daemon to avoid it.
+again at the commit, or needs a daemon to avoid it. Demo workspace, vx
+at `dbe4033`, 2026-10-23.
 
 ## What the key ignores, on purpose
 

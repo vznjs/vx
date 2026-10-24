@@ -99,7 +99,7 @@ export function resolveNxCacheConfig(
  * the prefetch pass calls `get`) is a GET whose body is cancelled before
  * it answers, so no probe holds a connection. It kept the response for a
  * `get` of the same hash, which no caller makes. Bodies stream: `get` returns the `fetch` Response and `put`
- * sends the Blob core hands it. `put` treats `409` as success:
+ * sends the Blob core hands it. `put` treats any 2xx and `409` as success:
  * the record is immutable and content-addressed, so "already there" is the
  * outcome wanted. An auth failure (401/403) throws ONCE — core
  * reports it — and then turns the layer off for the rest of the process
@@ -188,23 +188,25 @@ export class NxRemoteCache implements RemoteCacheLayer {
       const first = !this.writesRefused
       this.writesRefused = true
       if (!first) return undefined
+      // The status and the server's own words, as turboCache() says them.
       throw new Error(
-        'HTTP 403: access forbidden (a read-only token cannot write); uploads off for this run, reads go on',
+        `${(await refusal(res)).message}: access forbidden (a read-only token cannot write); uploads off for this run, reads go on`,
       )
     }
     if (res.status === 401 || res.status === 403) {
       const first = !this.disabled
       this.disabled = true
       if (!first) return undefined
+      const said = (await refusal(res)).message
       const why =
         res.status === 401
           ? 'missing or invalid token'
           : 'access forbidden (the token may not read)'
       if (this.forget === undefined)
-        throw new Error(`HTTP ${res.status}: ${why}; remote cache off for this run`)
+        throw new Error(`${said}: ${why}; remote cache off for this run`)
       await this.forget()
       throw new Error(
-        `HTTP ${res.status}: ${why}; removed it from the OS keychain, so the next run asks again; remote cache off for this run`,
+        `${said}: ${why}; removed it from the OS keychain, so the next run asks again; remote cache off for this run`,
       )
     }
     return res
@@ -243,7 +245,8 @@ export class NxRemoteCache implements RemoteCacheLayer {
     if (this.disabled || this.writesRefused) return
     const res = await this.request('PUT', hash, body)
     if (res === undefined) return
-    if (res.status === 200 || res.status === 202 || res.status === 409) return
+    // The spec answers 200; a store behind it may say 201 or 204.
+    if (res.ok || res.status === 409) return
     throw await refusal(res)
   }
 }

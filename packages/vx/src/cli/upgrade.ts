@@ -68,7 +68,6 @@ export function isCompiledBinary(): boolean {
 }
 
 /**
- * The package dir/**
  * The package directory that owns `execPath` when it sits under a
  * `node_modules` — an npm install's platform binary, which the launcher
  * runs as `…/node_modules/@vzn/vx-<os>-<arch>/vx`. That file is npm's:

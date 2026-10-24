@@ -13,15 +13,6 @@ A coding agent cannot read a progress bar. It reads stdout, parses it and
 decides what to do next. If the answer is buried in a frame meant for
 human eyes, the agent guesses. vx is built so it never has to.
 
-```mermaid
-flowchart LR
-  A[agent] -->|vx last --format json| R[result on stdout]
-  A -->|vx last --failed --format json| F[failed output + file:line]
-  A -->|sqlite3 cache.db| H[run history]
-  A -->|llms.txt + SKILL.md| D[how to use vx]
-  style F stroke:#c6f84e,stroke-width:2px
-```
-
 ## The result on stdout, the logs on stderr
 
 `vx run` prints the run for people: a live region on a terminal, plain
@@ -30,27 +21,25 @@ run back from run history as one JSON document on stdout, a row per
 task. Notices go to stderr, so a pipe sees only the result.
 
 ```sh frame="terminal"
-$ vx run build --all
-$ vx last --format json | jq
+$ vx run bundle typecheck --all
+$ vx last --format json | jq '.invocation | {runId, command, taskCount, failedCount, hitCount, exitOk}'
 {
-  "invocation": {
-    "runId": "01a14427-c1f3-71a7-b2eb-79a8b88049c6",
-    "command": "vx run build --all",
-    "taskCount": 2,
-    "failedCount": 0,
-    "hitCount": 2,
-    "exitOk": true,
-    ...
-  },
-  "tasks": [
-    {
-      "project": "@demo/web",
-      "task": "build",
-      "status": "cache-hit",
-      "exitCode": 0,
-      "durationMs": 3,
-      "hash": "e9871a2398d39794",
-      ...
+  "runId": "01a16b0f-dbf0-75fc-aaaa-7ce32e7c3a57",
+  "command": "vx run bundle typecheck --all",
+  "taskCount": 2,
+  "failedCount": 1,
+  "hitCount": 0,
+  "exitOk": false
+}
+$ vx last --format json | jq '.tasks[0] | {project, task, status, exitCode, durationMs, hash}'
+{
+  "project": "packages/api",
+  "task": "bundle",
+  "status": "success",
+  "exitCode": 0,
+  "durationMs": 5,
+  "hash": "f2bf5dd5f2d36920"
+}
 ```
 
 `vx show`, `vx info`, `vx why` and `vx cache clean` take the same
@@ -74,14 +63,14 @@ files it blames. vx saves both, so the agent does not have to scroll a
 terminal it never saw.
 
 ```sh frame="terminal"
-$ vx last --failed --format json | jq '.tasks[] | select(.output != "") | {status, exitCode, output, locations}'
+$ vx last --failed --format json | jq '.tasks[] | select(.status == "failed") | {status, exitCode, output, locations}'
 {
   "status": "failed",
   "exitCode": 1,
   "output": "src/index.ts:3:7 - error TS2322: Type string is not assignable to type number\n",
   "locations": [
     {
-      "file": "/work/demo/packages/ui/src/index.ts",
+      "file": "/work/demo/packages/api/src/index.ts",
       "line": 3,
       "col": 7
     }
@@ -102,8 +91,8 @@ $ sqlite3 .vx/cache/cache.db "
   SELECT project, task, status, duration_ms FROM runs
   WHERE run_id = (SELECT run_id FROM runs ORDER BY id DESC LIMIT 1)
   ORDER BY duration_ms DESC;"
-@demo/ui|test|failed|207
-@demo/ui|build|cache-hit|1
+packages/api|typecheck|failed|6
+packages/api|bundle|success|5
 ```
 
 ## Docs and a skill, as markdown
@@ -122,4 +111,5 @@ $ cp node_modules/@vzn/vx/skills/vx/SKILL.md .claude/skills/vx/
 `bunx skills add vznjs/vx` installs the same skill. The
 [agents guide](../../guides/agents/) and
 [machine-readable output](../../cli/#machine-readable-output) have the
-details.
+details. Outputs above: a one-project workspace, vx at `dbe4033`,
+2026-10-23. More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

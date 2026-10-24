@@ -85,6 +85,17 @@ describe('the requests', () => {
     ])
   })
 
+  // A store behind the spec answering 201 or 204 was warned about as a failed upload.
+  it('an upload any 2xx answers is stored, not a refusal', async () => {
+    for (const status of [201, 204]) {
+      const { fetchImpl } = stub(() => new Response(null, { status }))
+      await new NxRemoteCache(
+        { server: SERVER, accessToken: '', timeoutMs: 1000, retries: 0 },
+        fetchImpl,
+      ).put('aa', new Blob(['x']))
+    }
+  })
+
   it('a GET answering 500 is an error, not a miss', async () => {
     const { fetchImpl } = stub(() => new Response(null, { status: 500 }))
     await expect(
@@ -103,6 +114,21 @@ describe('the requests', () => {
     )
     await expect(c.get('aa')).rejects.toThrow('HTTP 507: disk full')
     await expect(c.put('aa', new Blob(['x']))).rejects.toThrow('HTTP 507: disk full')
+  })
+  // A refused token said only its status: an expired token and a wrong
+  // workspace read alike.
+  it('a refused token or upload says the server’s own words too', async () => {
+    const c = (status: number, body: string): NxRemoteCache =>
+      new NxRemoteCache(
+        { server: SERVER, accessToken: '', timeoutMs: 1000, retries: 0 },
+        stub(() => new Response(body, { status })).fetchImpl,
+      )
+    await expect(c(401, 'token expired').get('aa')).rejects.toThrow(
+      'HTTP 401: token expired: missing or invalid token; remote cache off for this run',
+    )
+    await expect(c(403, 'read-only token').put('aa', new Blob(['x']))).rejects.toThrow(
+      'HTTP 403: read-only token: access forbidden (a read-only token cannot write)',
+    )
   })
   it('a GET answering 403 says a read was refused, not a write', async () => {
     const { fetchImpl } = stub(() => new Response(null, { status: 403 }))

@@ -23,6 +23,7 @@
 // file exists to prevent (item 445).
 
 import { isLiteralPattern, outputsOverlap, type GeneratedTask } from '@vzn/vx'
+import { withoutTakenBack } from './glob-grammar.js'
 import { relPosix } from './paths.js'
 import type { TrackedKinds } from './tracked-outputs.js'
 
@@ -612,7 +613,12 @@ export function excludeWorkspaceOutputs(
   }
 }
 
-/** A `!` output with no positive beside it takes back nothing, and core refuses a list of them alone. */
+/**
+ * A `!` output with no positive beside it takes back nothing, and core
+ * refuses a list of them alone; a literal one takes back was never saved,
+ * and core refuses it too (trpc's `package.json`, taken back).
+ */
 export function takingBack(globs: readonly string[]): string[] {
-  return globs.some((g) => !g.startsWith('!')) ? [...globs] : []
+  const kept = withoutTakenBack(globs)
+  return kept.some((g) => !g.startsWith('!')) ? kept : []
 }

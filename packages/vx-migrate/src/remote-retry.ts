@@ -24,7 +24,8 @@ export class Cooldown {
  * One request with Turbo's retry rule (`turborepo-api-client/src/retry.rs`):
  * a 5xx other than 501, or a request that never connected, is sent again
  * after 2 s, `retries` times. A 429 opens the remote's `cooldown` for its
- * `Retry-After` (capped at 10 s a wait, 2 s without one), and the request
+ * `Retry-After` (capped at 10 s a wait, 2 s without one or for a `0`
+ * after the first), and the request
  * is resent once it ends, as often as fits in 20 s from its first 429: a
  * limit longer than one capped wait lost every hit before (Growth's
  * parity run, 2026-10-16). A spent deadline is not retried, unlike
@@ -55,8 +56,12 @@ export async function withRetry(
       continue
     }
     if (res.status === 429) {
+      // `Retry-After: 0` resends at once, but only once in a row: each
+      // answered so sent again at once, hundreds a second for 20 s.
+      const asked = retryAfterMs(res)
+      const delay =
+        asked === undefined || (asked === 0 && firstLimit !== undefined) ? BACKOFF_MS : asked
       firstLimit ??= now()
-      const delay = retryAfterMs(res) ?? BACKOFF_MS
       if (retries === 0 || now() + delay - firstLimit > RATE_LIMIT_BUDGET_MS) return res
       cooldown.extend(delay)
       await res.body?.cancel()
@@ -77,10 +82,10 @@ function retryable(status: number): boolean {
   return status >= 500 && status !== 501
 }
 
-/** A refused port or an unresolved host, as Bun's `fetch` codes them (measured on 1.4.2). */
+/** A refused port or an unresolved host, as Bun's `fetch` codes them (1.4.4 took errno names). */
 function neverConnected(err: unknown): boolean {
   const code = (err as { code?: unknown } | null)?.code
-  return code === 'ConnectionRefused' || code === 'ENOTFOUND'
+  return code === 'ECONNREFUSED' || code === 'ENOTFOUND'
 }
 
 /** `Retry-After` as seconds or an HTTP date, capped as Turbo caps it. */

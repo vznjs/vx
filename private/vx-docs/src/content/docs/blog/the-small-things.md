@@ -8,9 +8,9 @@ tags:
 excerpt: 'A typo gets the right spelling. A task typed as a command gets the command. No task opens a picker. Tab completes every verb and flag. The parts of a tool you meet a hundred times a day.'
 ---
 
-Speed is the headline. The small things are what you meet a hundred
-times a day. Every answer below is real vx output from a four-package
-workspace.
+The small things are what you meet a hundred times a day. Every answer
+below is real output from a demo workspace, vx at `69617eb`,
+2026-10-23.
 
 ## A typo gets the right spelling
 
@@ -34,12 +34,12 @@ $ vx run tset --all
 $ vx build --all
 ✗ vx  `build` is a task here, not a command
 
-  fix  vx run build --all
+  fix  vx run build
 
 $ vx biuld
 ✗ vx  unknown command: biuld, a typo of the task `build`
 
-  fix  vx run build --all
+  fix  vx run build
 ```
 
 ## No task, a picker
@@ -50,18 +50,9 @@ agent, it never waits on a prompt. It names the tasks instead:
 
 ```sh frame="terminal"
 $ vx run < /dev/null
-✗ vx run  missing task name (stdin is not a TTY, so no picker; tasks here: build, test)
+✗ vx run  missing task name (stdin is not a TTY, so no picker; tasks here: build, check, e2e, flip, notes, plain, slow, test)
 
   see vx run --help
-```
-
-```mermaid
-flowchart LR
-  IN["what you typed"] --> OK["runs"]
-  IN --> FIX["a typo: the right spelling"]
-  IN --> CMD["a task as a verb: the command"]
-  IN --> PICK["no task: a picker, or the list"]
-  style FIX stroke:#c6f84e,stroke-width:2px
 ```
 
 ## Tab completes it all
@@ -75,6 +66,5 @@ vx completions zsh > ~/.zfunc/_vx                      # zsh, with ~/.zfunc on $
 vx completions fish > ~/.config/fish/completions/vx.fish
 ```
 
-Learn more: [the CLI reference](../../cli/),
-[Task picker](https://vznjs.github.io/vx/features/task-picker/) and
-[Shell completions](https://vznjs.github.io/vx/features/completions/).
+Reference: [the CLI](../../cli/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

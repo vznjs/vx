@@ -261,6 +261,13 @@ describe('the bash script, run', () => {
     expect(
       await offers(full, { words: ['vx', 'run', 'build', '--output-logs', ''], cword: 4 }),
     ).toEqual(['full', 'errors-only', 'hash-only', 'none'])
+    // `--schedule <Tab>` offered the flags again: its rules had no value set.
+    expect(await offers(full, { words: ['vx', 'run', '--schedule', ''], cword: 3 })).toEqual([
+      'most-work',
+      'critical-path',
+      'direct-dependents',
+      'ready-order',
+    ])
     expect(await offers(full, { words: ['vx', 'last', '--format', 'j'], cword: 3 })).toEqual([
       'json',
     ])

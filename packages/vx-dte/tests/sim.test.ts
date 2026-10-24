@@ -20,7 +20,7 @@ interface Fixture {
 }
 
 /** The fixture's graph; `known` is what history said before the run (default: how it ran). */
-function load(f: Fixture, known?: (r: Ran) => Ran | null): SimTask[] {
+function load(f: Fixture, known?: (r: Ran) => NonNullable<SimTask['known']> | null): SimTask[] {
   return f.nodes.map((n) => {
     const r = f.ran[n.id]
     if (r === undefined) return n
@@ -121,14 +121,13 @@ const cases: Case[] = [
     failing: ['utilization', 'makespan'],
   },
   // Each unmeasured task on a free core, the run sized as if each held 2
-  // (2026-10-23): it ends at 174 s where a whole worker each took 350 s,
-  // but with no forecast the plan sized by 2 cores cancels workers it
-  // started as tasks pack onto one core each.
+  // (2026-10-23): it ends at 174 s where a whole worker each took 350 s.
+  // An asked worker the plan gives a task stays, though tasks pack onto
+  // one core each.
   {
     name: 'main a09b987, no history',
     graph: load(a09, () => null),
     measured: false,
-    failing: ['churn'],
   },
   { name: 'main 2163fff, no history', graph: load(f2163, () => null), measured: false },
   // A third of the tasks new, the rest measured: the common run.
@@ -363,4 +362,49 @@ describe('the blog post: other ways to split a run', () => {
       const dte = c.ways.at(-1)!
       for (const o of c.ways.slice(0, -1)) expect(dte.endMs).toBeLessThanOrEqual(o.endMs + 1e-6)
     })
+})
+
+/** A graph of 20-120 tasks whose history was 1.5-3x too short, from a seed. */
+function slowerThanHistory(seed: number): SimTask[] {
+  let s = seed
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647
+  const n = 20 + Math.floor(rnd() * 100)
+  const k = 1.5 + rnd() * 1.5
+  return Array.from({ length: n }, (_, i) => {
+    const deps = i > 0 && rnd() < 0.5 ? [`t${Math.floor(rnd() * i)}`] : []
+    const ms = 3_000 + rnd() * 40_000
+    const cores = rnd() < 0.2 ? 3 : 1
+    return {
+      id: `t${i}`,
+      deps,
+      exec: true,
+      cache: true,
+      known: { ms, cores, memory: 2e8 },
+      ran: { ms: ms * k, cores, memory: 2e8 },
+    }
+  })
+}
+
+// PR #4192's run: its tasks took twice their history, a running task past
+// its forecast was planned to end now, and the plan asked a worker every
+// 10 s and cancelled each as not needed. What is left takes as much longer
+// as what ended did. Seeds that cancelled (195 also asked one again), and
+// two whose plan spun on a sub-millisecond `againInMs` (74, 283).
+it.each([14, 29, 74, 90, 151, 195, 283])(
+  'a run slower than its history asks for more, not a worker it then cancels (seed %d)',
+  (seed) => {
+    const r = simulate(slowerThanHistory(seed), { sizes: [small] })
+    expect(r.workers.filter((w) => w.cancelledAt !== undefined).map((w) => w.id)).toEqual([])
+    expect(r.churn).toBe(0)
+  },
+)
+
+// Cold main bcc84f1: no task had a measured need, so the plan counted each
+// as `unmeasured` (2 cores) while it waited and as the one core it held
+// once it ran. Each start freed a core the plan then found spare, and 11
+// of the 25 workers it asked were cancelled as not needed.
+it('a run of unmeasured needs keeps the workers it asks', () => {
+  const graph = load(a09, (r) => ({ ms: r.ms, memory: r.memory }))
+  const r = simulate(graph, { sizes: [small] })
+  expect(r.workers.filter((w) => w.cancelledAt !== undefined).map((w) => w.id)).toEqual([])
 })

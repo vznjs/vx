@@ -200,10 +200,10 @@ export class ReapiRemoteCache {
     // A lookup that fails writes, as before.
     const action = actionDigestFor(hash)
     const stored = this.client.getActionResult(action).then(
-      (r) => r?.output_files?.some((f) => f.path === ARTIFACT_PATH) === true,
+      (r) => r?.output_files?.find((f) => f.path === ARTIFACT_PATH)?.digest,
       (err: unknown) => {
         this.warn('looking up a stored entry before an upload', err)
-        return false
+        return undefined
       },
     )
     // Read once, and those bytes hashed and sent, wherever `writeBlob` would
@@ -228,7 +228,15 @@ export class ReapiRemoteCache {
       const missing = await this.client.findMissingBlobs([digest])
       if (missing.length > 0) await this.client.writeBlob(digest, data ?? body)
     }
-    if (await stored) return
+    // The two stores are pruned apart: an entry whose blob is gone is a
+    // miss every run, and kept, its key never hit again.
+    const kept = await stored
+    if (
+      kept !== undefined &&
+      (kept.hash === digest.hash || (await this.client.findMissingBlobs([kept])).length === 0)
+    ) {
+      return
+    }
     await this.client.updateActionResult(action, {
       exit_code: 0,
       output_files: [{ path: ARTIFACT_PATH, digest, is_executable: false }],

@@ -2280,7 +2280,7 @@ async function runSandboxedOnce(
     stdout,
     stderr,
     violations,
-    ...(proc.signalCode ? { signal: proc.signalCode } : {}),
+    ...(typeof proc.signalCode === 'string' ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...(cut ? { leftRunning: true } : {}),
     // Linux: the task's CPU and peak never reach this wait. bwrap runs it

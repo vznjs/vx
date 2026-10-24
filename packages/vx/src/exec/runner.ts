@@ -8,6 +8,7 @@ import type { Pointer } from 'bun:ffi'
 import { closeSync, existsSync, readFileSync } from 'node:fs'
 import { constants as osConstants } from 'node:os'
 import {
+  formatBytes,
   shellArgv,
   isExecutableMissing,
   isOutOfFds,
@@ -484,11 +485,13 @@ export function execWord(command: string): string | undefined {
 
 /**
  * POSIX shells report signal death as 128 + signal number (SIGTERM →
- * 143, SIGKILL → 137). Bun gives us the signal NAME; `os.constants`
- * maps it to the platform-correct number. Unknown names fall back to
- * 130 (128 + SIGINT).
+ * 143, SIGKILL → 137). Bun gives the signal's NAME, or since 1.4.4 its
+ * number when the signal has no name; `os.constants` maps a name to
+ * the platform-correct number. Unknown names fall back to 130 (128 +
+ * SIGINT).
  */
-export function signalExitCode(signal: string): number {
+export function signalExitCode(signal: string | number): number {
+  if (typeof signal === 'number') return 128 + signal
   const num = (osConstants.signals as Partial<Record<string, number>>)[signal]
   return num === undefined ? 130 : 128 + num
 }
@@ -1040,7 +1043,7 @@ export async function runCommand(opts: RunOptions): Promise<RunResult> {
     durationMs: Date.now() - start,
     stdout,
     stderr,
-    ...(proc.signalCode ? { signal: proc.signalCode } : {}),
+    ...(typeof proc.signalCode === 'string' ? { signal: proc.signalCode } : {}),
     ...(timeout.timedOut() ? { timedOut: true } : {}),
     ...(cut ? { leftRunning: true } : {}),
     ...resourceUsageToCpuRss(proc.resourceUsage(), rssFloorFor),
@@ -1105,9 +1108,6 @@ function rssFloorFor(peak: number): number {
 export const CAPTURE_HEAD_CHARS = 8 * 1024 * 1024
 export const CAPTURE_TAIL_CHARS = 8 * 1024 * 1024
 
-const mib = (n: number): string => `${(n / (1024 * 1024)).toFixed(1)} MiB`
-const size = (n: number): string => (n < 1024 * 1024 ? `${n / 1024} KiB` : mib(n))
-
 /** The line that stands where the dropped middle was. */
 export function droppedOutputLine(
   dropped: number,
@@ -1115,8 +1115,9 @@ export function droppedOutputLine(
   tailChars = CAPTURE_TAIL_CHARS,
 ): string {
   return (
-    `\n[vx] ${mib(dropped)} of output not kept — vx keeps the first ${size(headChars)} ` +
-    `and the last ${size(tailChars)} of a task's output\n`
+    // In vx's own units: a fixed MiB tier printed a few KiB dropped as `0.0 MiB`.
+    `\n[vx] ${formatBytes(dropped)} of output not kept — vx keeps the first ${formatBytes(headChars)} ` +
+    `and the last ${formatBytes(tailChars)} of a task's output\n`
   )
 }
 
@@ -1135,7 +1136,7 @@ export function maskCaptured(text: string, secrets: SecretMask): string {
   return head + text.slice(at, end) + tail
 }
 
-const DROPPED_LINE = /^\n\[vx\] [\d.]+ MiB of output not kept — /
+const DROPPED_LINE = /^\n\[vx\] [\d.]+ [KMGTP]?B of output not kept — /
 
 const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff
 

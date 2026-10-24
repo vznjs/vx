@@ -59,3 +59,13 @@ it('past a run, a failed or unknown one is named as before (control)', () => {
     [1, '', noticed('vx last: no recorded run 0199 (vx last --list shows recent runs)\n')],
   ])
 }, 30_000)
+
+it('a task id where a run id goes names the forms that take a task', () => {
+  expect(vx('last', 'packages/a#build')).toEqual([
+    1,
+    '',
+    noticed(
+      'vx last: packages/a#build is a task, not a run id — `vx last --log packages/a#build` prints its output, `vx last --stats packages/a#build` its durations\n',
+    ),
+  ])
+}, 30_000)

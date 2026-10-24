@@ -7,11 +7,15 @@
 import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, setDefaultTimeout } from 'bun:test'
 import { edgesSource, PLUGIN_IMPORT, pluginSource, writeEdges } from './helpers/plugin.js'
 import { noticed } from './helpers/notice.js'
 
 const CLI = path.join(import.meta.dir, 'helpers', 'vx-locked.ts')
+
+// A test spawns vx up to seven times: past bun's 5 s default on a loaded
+// shard, bun killed the running vx and the next assertion read `exit 1: `.
+setDefaultTimeout(30_000)
 
 function git(cwd: string, ...args: string[]): void {
   const p = Bun.spawnSync({
@@ -102,6 +106,17 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       'origin/feat is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)',
     )
   })
+
+  // Turbo's CI spelling reads as its base, so the note had to read it so
+  // too: `origin/feat...HEAD` said nothing of the base being HEAD.
+  for (const ref of ['origin/feat...HEAD', 'origin/feat..HEAD']) {
+    it(`a ${ref} whose base is HEAD itself is named as such`, () => {
+      git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
+      const r = vx(root, 'run', 'build', `--affected=${ref}`)
+      expect(r.exitCode).toBe(0)
+      expect(r.out).toContain(`nothing affected since ${ref} — origin/feat is HEAD itself`)
+    })
+  }
 
   // Nx's `defaultBase` (`develop` in a git-flow repo) had nowhere to go: a
   // bare --affected compared with origin/HEAD and ran the wrong set.

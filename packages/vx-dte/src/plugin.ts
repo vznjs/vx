@@ -383,7 +383,7 @@ export function dte(options: DteOptions) {
       const [
         { Orchestrator },
         { join },
-        { decide, knownMisses, tailsMs, WARM_UP_MS },
+        { decide, knownMisses, slowdown, tailsMs, WARM_UP_MS },
         { snapshot },
         seal,
       ] = await Promise.all([
@@ -545,7 +545,14 @@ export function dte(options: DteOptions) {
           (size === undefined ? undefined : (ups.get(size) ?? learned.get(size))) ??
           any ??
           WARM_UP_MS
-        const { workers, running } = o.planState((id) => peaks.get(id)?.p50DurationMs, warmUp)
+        // What is left takes as much longer than history as what ended did.
+        const p50 = (id: string): number | undefined => peaks.get(id)?.p50DurationMs
+        const slow = slowdown(o.finished(p50))
+        const ms = (id: string): number | undefined => {
+          const m = p50(id)
+          return m === undefined ? undefined : m * slow
+        }
+        const { workers, running } = o.planState(ms, warmUp)
         const final = adapter === undefined || (plannedWorkers !== undefined && later.size === 0)
         const p = decide({
           remaining,
@@ -553,7 +560,7 @@ export function dte(options: DteOptions) {
           executed: knownMisses(likely, sure, executed, remaining),
           // As the run books them: a plan of history alone asks for workers it then fills less.
           need: (id) => o.booking(need(id)),
-          durationMs: (id) => peaks.get(id)?.p50DurationMs,
+          durationMs: ms,
           workers,
           running,
           sizes,
@@ -568,6 +575,18 @@ export function dte(options: DteOptions) {
         })
         deadline = performance.now() + p.boundMs
         for (const t of p.tasks) known.add(t.id)
+        if ((p.start.length > 0 && !final) || p.release.length > 0)
+          o.planned({
+            start: final ? [] : p.start.map((s) => s.name),
+            release: p.release,
+            tasks: p.tasks.length,
+            endsInMs: p.endsInMs,
+            boundMs: p.boundMs,
+            workers,
+            ...(p.start.length > 0 && !final
+              ? { work: p.tasks, warmUps: new Map(sizes.map((s) => [s.name, warmUp(s.name)])) }
+              : {}),
+          })
         const { tasks } = p
         // At the end the relay closing ends them all.
         if (p.release.length > 0 && remaining.size > 0) {
@@ -680,7 +699,7 @@ export function dte(options: DteOptions) {
           replan()
           return o.execute(req)
         },
-        footer: () => o.footer(),
+        footer: () => o.footer(() => o.idealMs((id) => nodes?.get(id)?.deps ?? [], sizes)),
         machines: () => o.machines(),
         idealMs: () => o.idealMs((id) => nodes?.get(id)?.deps ?? [], sizes),
         profile: () => o.profile(),

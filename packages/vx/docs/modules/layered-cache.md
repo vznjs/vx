@@ -181,7 +181,7 @@ log. The error's `cause` is the layer's original throw.
 A run's requests are concurrent, so one fact (an unreachable server)
 fails every request at once. Each remote says each failure CLASS once
 per run: the class is the error's `code` when
-it carries one (a gRPC status, an errno, Bun's `ConnectionRefused`),
+it carries one (a gRPC status, an errno, Bun's `ECONNREFUSED`),
 else its message with the artifact's hash taken out. The operation is
 not part of it. The requests held back are counted, and `close()` says
 `<n> more requests failed the same way: <cause>` per class that had

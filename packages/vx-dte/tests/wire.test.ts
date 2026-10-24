@@ -65,6 +65,21 @@ it('learns from its socket’s close that the relay let it go, asking HTTP nothi
   expect(asked).toEqual([])
 })
 
+// workerd ends no TCP after it closes a socket, and Bun 1.4.4's client
+// fires onclose only once TCP ends: a removed worker heard 4404 10 s late
+// (PR #4171). The relay says its close in a frame first.
+it('learns it was let go from the frame the relay says it in, not the close', async () => {
+  const { url, host } = sockets()
+  const o = await join(url, R, 'orchestrator', null, undefined)
+  const a = await join(url, R, 'worker', null, undefined)
+  await o.poll()
+  host.deaf = true
+  const t0 = performance.now()
+  await o.remove(a.id)
+  await expect(a.poll()).rejects.toThrow('relay: unknown id')
+  expect(performance.now() - t0).toBeLessThan(1_000)
+}, 3_000)
+
 /** A relay on Bun.serve whose participants' sockets the test sees, and can drop as a network does. */
 function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof createRelay>[0]> = {}) {
   type Held = { key: string; id: string; socket?: { send(t: string): void; close(): void } }
@@ -78,8 +93,10 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
    * Once `forget` is set, the next participant to dial is refused for good.
    * `older`: a socket that would join is refused, as a relay before
    * PROTOCOL.md's `socket?join` refuses it, so each joins over HTTP.
+   * `deaf`: the relay's closes never reach the client, as workerd's under
+   * Bun 1.4.4 (it ends no TCP, and the client waits 10 s for it).
    */
-  const host = { refusing: false, forget: false, forgotten: '', older: false }
+  const host = { refusing: false, forget: false, forgotten: '', older: false, deaf: false }
   let server: Bun.Server<Held> | undefined
   const relay = createRelay({
     ...options,
@@ -101,7 +118,10 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
     websocket: {
       open(ws) {
         open.push(ws)
-        ws.data.socket = { send: (t) => void ws.send(t), close: () => ws.close() }
+        ws.data.socket = {
+          send: (t) => void ws.send(t),
+          close: () => void (host.deaf || ws.close()),
+        }
         relay.attach(ws.data.key, ws.data.id, ws.data.socket)
       },
       message(ws, m) {
@@ -143,7 +163,10 @@ it('asks a quiet relay each heartbeat, and pings only while it hears, not while 
   pings.length = 0
   frames.length = 0
   await Bun.sleep(2_600)
-  // Quiet, most half heartbeats are a frame or the one after it.
+  // Quiet, most half heartbeats are a frame or the one after it: fewer
+  // pings than asks, where a ping each half heartbeat was two an ask. A
+  // count, not a bound by time: a loaded runner slept 2.6 s for 4 s and
+  // pinged past a fixed 3 (PR #4254).
   const quiet = pings.filter((id) => id === a.id).length
   const asked = frames.filter((f) => f.includes('"sends":[]')).length
   pings.length = 0
@@ -152,7 +175,7 @@ it('asks a quiet relay each heartbeat, and pings only while it hears, not while 
     await a.send('orchestrator', i)
     await Bun.sleep(50)
   }
-  expect([quiet <= 3, asked >= 4, pings.filter((id) => id === a.id)]).toEqual([true, true, []])
+  expect([quiet < asked, asked >= 4, pings.filter((id) => id === a.id)]).toEqual([true, true, []])
   await a.leave()
   await o.leave()
 }, 15_000)
@@ -625,7 +648,8 @@ it('joins again after the relay answers 5xx or the network drops', async () => {
 })
 
 // A run its relay did not admit fails at once, naming the relay (owner,
-// 2026-10-23); a refusal is never waited out as a fault is.
+// 2026-10-23), with its status and message as every remote error; a
+// refusal is never waited out as a fault is.
 it('does not join again after a 4xx, and names the relay that refused it', async () => {
   const s = sockets()
   s.host.older = true
@@ -637,10 +661,28 @@ it('does not join again after a 4xx, and names the relay that refused it', async
     )
   }) as unknown as typeof fetch
   await expect(join(s.url, R, 'worker', null, undefined)).rejects.toThrow(
-    `cannot connect to the relay ${new URL(s.url).origin}: repository o/r is not in this relay's ALLOW`,
+    `cannot connect to the relay ${new URL(s.url).origin}: 403 repository o/r is not in this relay's ALLOW`,
   )
   expect(asked).toBe(1)
 })
+
+// PR #4225's run (2026-10-24): a relay that held the socket and then the
+// request took 10 s each, and the run failed after 21 s on a bare "The
+// operation timed out".
+it('gives up on a relay that answers nothing in 10 s in all, and names it', async () => {
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: () => new Promise<Response>(() => {}),
+  })
+  servers.push({ url: '', stop: () => server.stop(true) })
+  const url = `http://127.0.0.1:${server.port}`
+  const at = performance.now()
+  await expect(join(url, R, 'worker', null, undefined)).rejects.toThrow(
+    `cannot connect to the relay ${url}: no answer in 10 s`,
+  )
+  expect(performance.now() - at).toBeLessThan(11_000)
+}, 25_000)
 
 // M, 2026-10-23: a remote fault is at least a warning. Every send the
 // orchestrator and a worker make unawaited dropped its error.

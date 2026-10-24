@@ -8,79 +8,58 @@ tags:
 excerpt: 'vx show prints a project or a task as the run sees it: the evaluated config, after presets, plugins and TypeScript have had their say.'
 ---
 
-A `vx.config.ts` is TypeScript. Presets compose, plugins add tasks, a
-function can compute a command. So the file is not always the answer to
-"what will this task do?". `vx show` is.
+A `vx.config.ts` is TypeScript: presets compose, plugins add tasks, a
+function computes a command. `vx show` prints the task as the run sees
+it:
 
 ```sh frame="terminal"
-vx show @demo/web#build
+$ vx show packages/a#build
+
+─ packages/a#build ───────────────────────────────────────────
+  dir            packages/a
+  command        bun build src/index.ts --outdir dist
+  inputs.files   src/**
+  outputs.files  dist/**
 ```
+
+This is the evaluated config the cache key sees, not the source text.
+A preset that sets `outputs` or a plugin that rewrites a command shows
+here.
 
 ## Every project, one line each
 
 ```sh frame="terminal"
 $ vx show
-  project     dir            tasks
-  @demo/api   packages/api   2 tasks
-  @demo/docs  packages/docs  2 tasks
-  @demo/ui    packages/ui    2 tasks
-  @demo/web   packages/web   2 tasks
+  project     dir         tasks
+  packages/a  packages/a  7 tasks
+  packages/b  packages/b  4 tasks
+  packages/c  packages/c  5 tasks
+  packages/d  packages/d  2 tasks
 ```
 
-## One task, resolved
+Demo workspace, vx at `69617eb`, 2026-10-23.
 
-```sh frame="terminal"
-$ vx show @demo/web#build
+## Read from the lock
 
-─ @demo/web#build ────────────────────────────────────────────
-  dir            packages/web
-  command        mkdir -p dist && sleep 0.3 && cp src/index.ts dist/index.js
-  dependsOn      ^build
-  inputs.files   src/**
-  outputs.files  dist/**
+```
+vx.config.ts + presets + plugins → vx lock → .vx/projects.lock.json → vx show
+                                                                    → cache key
 ```
 
-This is the config the cache key sees, not the source text. When a
-preset sets `outputs` or a plugin rewrites a command, it shows here.
+`vx show` reads the lock, as a run does, so an edit shows after
+`vx lock`. `vx show --affected` lists the projects a change reaches,
+without running anything.
 
-```mermaid
-flowchart LR
-  SRC["vx.config.ts"] --> EVAL["vx lock evaluates"]
-  PRE["presets"] --> EVAL
-  PLUG["plugins"] --> EVAL
-  EVAL --> LOCK[".vx/projects.lock.json"]
-  LOCK --> SHOW["vx show"]
-  LOCK --> KEY["cache key"]
-  style SHOW stroke:#c6f84e,stroke-width:2px
+## For agents
+
+`--format json` prints the object itself:
+
+```json
+{"name":"packages/a","dir":"packages/a","task":"build","config":{"exec":{"command":"bun build src/index.ts --outdir dist"},"inputs":{"files":["src/**"]},"cache":{"outputs":{"files":["dist/**"]}}}}
 ```
 
-`vx show` reads the config from the lock, as a run does, so an edit
-shows after `vx lock`.
+On this repository `vx show --format json` covers 13 projects and 201
+tasks in 5,807 bytes.
 
-## The same answer, for agents
-
-`--format json` prints the object itself, so a script or an agent reads
-the task without parsing text:
-
-```sh frame="terminal"
-$ vx show @demo/web#build --format json
-{
-  "name": "@demo/web",
-  "dir": "packages/web",
-  "task": "build",
-  "config": {
-    "exec": { "command": "mkdir -p dist && sleep 0.3 && cp src/index.ts dist/index.js" },
-    "dependsOn": ["^build"],
-    "inputs": { "files": ["src/**"] },
-    "cache": {
-      "outputs": { "files": ["dist/**"] }
-    }
-  }
-}
-```
-
-`vx show --affected` lists the projects a change reaches, without
-running anything.
-
-Learn more: [the CLI reference](../../cli/) and
-[vx show](https://vznjs.github.io/vx/features/vx-show/).
+Reference: [the CLI](../../cli/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

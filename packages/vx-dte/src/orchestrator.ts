@@ -220,8 +220,10 @@ export class Orchestrator {
   private readonly retired = new Set<Worker>()
   /** Workers asked for that never joined, with why. */
   private readonly unstarted = new Map<string, string>()
-  /** Started, then not needed before they joined (`release`). */
+  /** Started, then not needed before they joined (`release`), or given up as late. */
   private readonly cancelled = new Set<string>()
+  /** Of `cancelled`, those given up past their join limit, not let go: taken if they join. */
+  private readonly late = new Set<string>()
   /** A failed start was given another worker (`failed`). */
   private restarts = 0
   private pumping = false
@@ -233,7 +235,7 @@ export class Orchestrator {
   private movedAt = performance.now()
   /** When core's cache probe answered, how many placed tasks it left to run, and how many it found in no cache. */
   private probe?: { at: number; left: number; misses: number }
-  /** Each task a worker ran: how long it held the worker, the cores it would use with them free, its memory, the platform. */
+  /** Each task a worker ran: how long it held the worker, the cores it used meanwhile, its memory, the platform. */
   private readonly took = new Map<
     string,
     { ms: number; cores: number; memory: number; platform: string | undefined }
@@ -729,7 +731,10 @@ export class Orchestrator {
       cores:
         head.cpuMs === undefined
           ? (job.held?.cores ?? 1)
-          : Math.min(a.cores, Math.max(0.25, head.cpuMs / share / Math.max(1, head.durationMs))),
+          : // The cores it used over the time it held: its free cores over
+            // its crowded length counted the crowd twice (6a7224f: ideal
+            // 127.8 s, real 111.0 s).
+            Math.min(a.cores, head.cpuMs / held),
       memory: head.peakRssBytes ?? job.held?.memory ?? 0,
       platform: a.platform,
     })
@@ -856,6 +861,13 @@ export class Orchestrator {
         return refuse(
           `runs on ${platform ?? 'no platform it names'}, and its size ${sized.size} says ${sized.platform}`,
         )
+      }
+      // One given up only for joining late is work the run can use: main
+      // db1702f told three smalls GitHub queued 60 s to exit and ended at
+      // 232 s against an ideal of 141 s. The plan lets it go if not.
+      if (info.id !== undefined && this.late.delete(info.id)) {
+        this.cancelled.delete(info.id)
+        this.unstarted.delete(info.id)
       }
       if (info.id !== undefined && this.cancelled.has(info.id)) {
         void this.o.me
@@ -1048,6 +1060,55 @@ export class Orchestrator {
     })
   }
 
+  /**
+   * A plan that started or let go of workers, in the profile: what it saw
+   * of each worker (cores busy / ms left per task, or when it joins) and
+   * of the work, so a worker asked and cancelled a second later can be
+   * read back (PR #4214's run: 7, 2026-10-23).
+   */
+  planned(p: {
+    start: readonly string[]
+    release: readonly string[]
+    tasks: number
+    endsInMs: number
+    boundMs: number
+    workers: readonly PlanWorker[]
+    /**
+     * A plan that starts workers: the work it played (seconds, cores,
+     * platform) and each size's warm-up, so it can be played back. Main
+     * d8a795c planned 38 s with one Mac for a Mac lane of 88 s, and
+     * nothing in the profile said what it thought each task took.
+     */
+    work?: readonly PlanTask[]
+    warmUps?: ReadonlyMap<string, number>
+  }): void {
+    const work = p.work?.map(
+      (t) =>
+        `${t.id} ${t.ms === undefined ? '?' : Math.round(t.ms / 100) / 10}s ${Math.round(t.cores * 100) / 100}c${t.platform === undefined ? '' : ` ${t.platform}`}`,
+    )
+    const workers = p.workers.map((w) =>
+      w.starting === true
+        ? `${w.id} joins ${Math.round(w.at)}`
+        : `${w.id} ${w.running.map((r) => `${Math.round(r.cores * 10) / 10}c/${Math.round(r.endsIn)}`).join(' ') || 'idle'}`,
+    )
+    this.trace.mark(ORCHESTRATOR, 'plan', {
+      start: p.start.join(' '),
+      release: p.release.join(' '),
+      tasks: p.tasks,
+      endsInMs: Math.round(p.endsInMs),
+      boundMs: Math.round(p.boundMs),
+      workers: workers.join(' · '),
+      ...(work === undefined ? {} : { work: work.join(' · ') }),
+      ...(p.warmUps === undefined
+        ? {}
+        : {
+            warmUps: [...p.warmUps]
+              .map(([s, ms]) => `${s} ${Math.round(ms / 100) / 10}s`)
+              .join(' · '),
+          }),
+    })
+  }
+
   /** `demand` asked the adapter for worker `id` (`WorkerSpawn.id`). */
   spawned(id: string, declared: Declared): void {
     // A worker whose start broke where no adapter sees it counted as
@@ -1068,6 +1129,7 @@ export class Orchestrator {
         if (this.ended || this.cancelled.has(id) || this.unstarted.has(id)) return
         if ([...this.workers.values(), ...this.gone].some((a) => a.label === id)) return
         this.cancelled.add(id)
+        this.late.add(id)
         this.o.overdue?.(id)
         this.failed(id, `did not join within ${Math.round(ms / 1000)} s`, true)
       },
@@ -1084,6 +1146,13 @@ export class Orchestrator {
     for (const a of [...this.workers.values(), ...this.gone])
       if (a.warmUpMs !== undefined && !(least! <= a.warmUpMs)) least = a.warmUpMs
     return least
+  }
+
+  /** Each task a worker ran, how long it held the worker, by `forecast`'s ms (`slowdown`). */
+  finished(
+    forecast: (id: string) => number | undefined,
+  ): { took: number; forecast: number | undefined }[] {
+    return [...this.took].map(([id, t]) => ({ took: t.ms, forecast: forecast(id) }))
   }
 
   /** `warmUpMs` of each size a worker this run started joined as. */
@@ -1124,10 +1193,14 @@ export class Orchestrator {
         ...(a.declared === undefined ? {} : { size: a.declared.size }),
         at: 0,
         idle: a.busy.size === 0,
+        // An unmeasured one counts as it did waiting (`ask`), not as the
+        // one core it holds: started, it freed a core the plan then found
+        // spare, and the worker asked for it was cancelled (cold main
+        // bcc84f1: 11 of 25, 2026-10-23).
         running: jobs.map((j) => ({
           id: j.req.taskId,
-          cores: Math.min(a.cores, (j.held?.cores ?? 0) * over),
-          memory: j.held?.memory ?? 0,
+          cores: Math.min(a.cores, Math.max((j.held?.cores ?? 0) * over, j.need.ask?.cores ?? 0)),
+          memory: Math.max(j.held?.memory ?? 0, Math.min(a.memory, j.need.ask?.memory ?? 0)),
           endsIn: Math.max(0, (ms(j.req.taskId) ?? 0) - (now - j.startedAt!)),
         })),
       })
@@ -1243,7 +1316,7 @@ export class Orchestrator {
   /**
    * The run's end had it placed its tasks perfectly (M, 2026-10-23: "how
    * close the run was"): each task a worker ran, as long as it held its
-   * worker and with the cores it would use with them free, played on as
+   * worker and with the cores it used meanwhile, played on as
    * many workers as the sizes allow, each joining after its platform's
    * fastest real warm-up, from when the run first knew its work. A task
    * waits on its deps through those no worker ran (groups, hits).
@@ -1340,9 +1413,10 @@ export class Orchestrator {
    * The `workers` rows, live and at the end: one per worker by `size#index`
    * with its status, the tasks it has done and the ones it runs now, then
    * this machine's; once over, each joined worker's warm-up and, under
-   * each, the cores and memory its size declares and its machine reports.
+   * each, the cores and memory its size declares and its machine reports;
+   * and `ideal`, the run's `idealMs`, asked once it ended.
    */
-  footer(): [string, ui.Inline][] {
+  footer(ideal?: () => number | undefined): [string, ui.Inline][] {
     if (this.spawnedAt.size === 0 && this.workers.size === 0 && this.gone.length === 0) return []
     const gone = new Set(this.gone)
     const all = [...this.workers.values(), ...this.gone]
@@ -1449,6 +1523,18 @@ export class Orchestrator {
                   .join(' · ')}`,
               ),
             ] as [string, ui.Inline],
+            // Beside core's time row, how close the run came (M, 2026-10-23).
+            ...((ms) =>
+              ms === undefined
+                ? []
+                : [
+                    [
+                      '',
+                      ui.dim(
+                        `${'ideal'.padEnd(width)}  ${seconds(ms)}: each task as long as it took, placed perfectly`,
+                      ),
+                    ] as [string, ui.Inline],
+                  ])(ideal?.()),
             ...(this.unmeasured.length === 0
               ? []
               : [

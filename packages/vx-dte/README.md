@@ -340,11 +340,15 @@ stops, instead of waiting for the job's timeout.
   than the workers. What finished is saved, so a rerun resumes from it.
   A shorter fault (a `5xx` while the host restarts the relay, a dropped
   connection) is asked through, by the orchestrator and workers alike.
+  Joining has the same 10 s in all, its socket and request together: a
+  relay silent that long fails the run with `cannot connect to the relay
+<origin>: no answer in 10 s`.
 - A worker that never joins says why on its row (`failed  exited 1:
 …`); its job ending, a success too, is what says so. Once the first
   worker of a size joins, each other of that size not joined within twice
   that first join is given up (`did not join within 60 s`) and its job
-  stopped; before one has, none is. The first three such failures in a
+  stopped; before one has, none is. One its CI started anyway that joins
+  later is taken, as any worker the plan may let go. The first three such failures in a
   run each start another worker in its place, as a checkout, install or
   join can fail on the network; a fourth starts none. When none is online
   or starting and this machine has no share, the remaining tasks fail
@@ -429,7 +433,8 @@ core's cache probe answered, how many tasks it left to run (held in no
 cache, or not answered for) and how many of them it found in none. The `asked` line says each
 time the run asked for workers: how many, when, for how many tasks that
 missed, how many of them with a measured need (an unmeasured one counts
-as `unmeasured`), and when its plan ended then. The first ask
+as `unmeasured`), and when its plan ended then. The `ideal` line is the run's ideal end
+(below), so every log reads it beside core's `time` row. The first ask
 waits for the needs another plugin fetches (`ctx.refining()`), such as
 `@vzn/vx-schedule-history`'s default-branch timings. The `unmeasured`
 line names the tasks the first ask had no measure of, and a worker that
@@ -445,6 +450,7 @@ machine together, and the share of their history the run's tasks used:
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
             probe    at 0.4s: 5 tasks left to run, 5 known misses
             asked    1 at 0.5s for 5 tasks (5 measured), plan 12.0s
+            ideal    10.8s: each task as long as it took, placed perfectly
             total    cpu utilization 58%
 ```
 
@@ -456,17 +462,21 @@ idle stretches, how it ended and a `cores` counter of the cores booked
 and used at once; each task takes the first lane free over its time
 there, from its send through restoring its dependencies, its command
 and its save, with its exit code, duration, CPU time and booked cores.
-The `orchestrator` process holds the cache probe, each ask for workers,
+The `orchestrator` process holds the cache probe, each ask for workers, each
+plan that started or let go of workers with what it saw of each worker
+(one that started workers also with each task's planned time, cores and
+platform and each size's warm-up, so it can be played back),
 stalls, the time each task waited for room, and each restore. Times are
 the orchestrator's: when it heard. Without `--profile` nothing is
 written. On CI, upload the file as an artifact; this repo's `ci.yml`
 does and links it from the job summary.
 
 After the run, `dte()` replays it perfectly: each task as long as it held
-its worker and with the cores it would use with them free, on as many
+its worker and with the cores it used meanwhile, on as many
 workers as the sizes allow, each joining after its platform's fastest
 real warm-up. That ideal end (`TaskExecutor.idealMs`) sits beside the
-real time in the run summary, and `@vzn/vx-ci` prints it.
+real time in the run summary and the footer's `ideal` line, and
+`@vzn/vx-ci` prints it.
 
 ## API
 
@@ -479,14 +489,18 @@ real time in the run summary, and `@vzn/vx-ci` prints it.
     platform (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`;
     absent, planned as this machine's and not checked on join). With no adapter, the sizes' platforms are
     the ones joining workers may have. Only work counts:
-    a task that missed the cache, or waits on a cached one that did; groups
-    and hits need no worker. At each miss, finish and join the run plays
+    a task that missed the cache, or waits on a cached one that did, and
+    every uncached task, which runs every time; groups and hits need no worker. At each miss, finish and join the run plays
     that work out on its workers and on N more (`src/planner.ts`), each new
     one joining after its size's warm-up: this run's first of that size,
     else an earlier run's, else any size's this run, else 20 s,
     and takes the fewest N that end within 5% (5 s at least) of the best.
     That margin is spent once: later plans keep its deadline until new
     work is known. A task waiting on one that runs waits until it ends.
+    What is left, running tasks too, takes as many times its history as
+    the run's finished tasks took theirs (once they had 20 s of it; never
+    less): a task past its forecast would otherwise be planned to end now,
+    and a plan that thinks the run nearly done cancels the worker it asked.
     Before any worker can say what misses, the run counts as work each
     cached task whose inputs changed since HEAD's parent (`git diff
 HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
@@ -501,16 +515,22 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     cores when tasks use less than history says; plans book the same.
     What a task used counts divided by its share of the CPU: a Linux
     worker reads its run queue (`procs_running` in /proc/stat) every 200 ms,
-    and a task whose threads got a third of a core each used a third of
-    its need, not its need. The run history keeps that share
+    a macOS one its load average while all its cores are busy (a GitHub Mac reads a load of 49 with a core idle), and a task whose threads got a third of a core each used a third of
+    its need, not its need. A task wanted at most what it used and the
+    cores left free beside it, so its share is never read below that. The run history keeps that share
     (`ExecuteResult.machine.cpuShare`) and learns the need, at most the
     machine's cores: learning the share packed the next run tighter, nine
-    1.1-core test shards on one 4-core worker.
+    1.1-core test shards on one 4-core worker. The need is the mean over
+    runs, and a task fills its worker only when it does on average: one
+    crowded run's 2.84 cores for a build using 1.3 to 1.9 booked it a whole
+    Mac.
     A worker the plan needs later starts when its warm-up nears. An idle
-    worker leaves when the plan still ends in that margin without it, or,
+    worker leaves when the plan gives it no task (its warm-up is spent), or,
     when its next task is two warm-ups away, with one started in its place
     a warm-up after it left: none is let go and started again. A worker still
-    starting that the plan ends as well without is cancelled: the adapter
+    starting that the plan gives no task (asked, a worker stays while the
+    plan has work for it, though the run would end no later without) is
+    cancelled: the adapter
     stops it before its setup if it can (`github()` cancels its workflow
     run once no worker in it is needed), and one that joins anyway is told
     to exit. The same signal changes nothing. The

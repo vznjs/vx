@@ -27,21 +27,27 @@ costs nothing, so the line stays on for laptops too.
 ## The job summary
 
 Every run appends a block to the workflow's summary page: the verdict,
-the counts, the failures first, then every task. This is the markdown
-the plugin wrote for a run where one test failed:
+the counts, the failures first, then every task. The plugin wrote this
+for a run where one task failed:
 
-```md frame="code" title="$GITHUB_STEP_SUMMARY"
+````md frame="code" title="$GITHUB_STEP_SUMMARY"
 ## ❌ vx run
 
-**8** tasks · **6** executed · **2** cache hits (2 up-to-date, 0 restored) · **1** failed · 901ms
+**2** tasks · **1** executed · **1** cache hit (1 up-to-date, 0 restored) · **1** failed · 42ms
 
 ### Failures
 
-- **@demo/ui#test** — exit 1
-```
+- **packages/api#typecheck** — exit 1
 
-Below that sits a row per task with its status and time, and a footer
-naming the vx version and the command.
+| Task | Status | Duration |
+| --- | --- | --- |
+| packages/api#typecheck | ❌ failed | 3ms |
+| packages/api#bundle | ✔️ up-to-date | 3ms |
+
+<sub>vx 0.0.0 · `vx run bundle typecheck --all` · 1/2 passed · 1 up-to-date · 0 restored</sub>
+````
+
+One-project workspace, vx at `c1ad075`, 2026-10-23.
 
 A task killed by a signal reads `exit 137 (128 + SIGKILL)`, a timeout
 reads `timed out, exit 143`, and each failure names the tasks it
@@ -52,15 +58,6 @@ blocked.
 With `GITHUB_TOKEN` in the job, the plugin also posts a check run
 (named `vx` unless you pass `checkName`) whose output is that same
 summary, so the result sits next to the commit and the pull request.
-
-```mermaid
-flowchart LR
-  RUN["vx run"] --> SINK["github() sink"]
-  SINK --> SUM["job summary"]
-  SINK --> CHECK["check run on the commit"]
-  CFG["config stage"] --> SCOPE["cache scope from the ref"]
-  style CHECK stroke:#c6f84e,stroke-width:2px
-```
 
 ## A cache a pull request cannot poison
 
@@ -79,5 +76,5 @@ The summary is written by a telemetry sink. vx isolates sinks and bounds
 their flush, so a slow or failing GitHub write can never fail or stall
 the run.
 
-Learn more: [CI and remote](../../guides/ci/) and
-[Results on GitHub](https://vznjs.github.io/vx/features/github-ci/).
+Guide: [CI and remote](../../guides/ci/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -26,6 +26,8 @@ const MAX_MS = 86_400_000
 const MAX_CORES = 65_536
 const MAX_BYTES = 2 ** 50
 const MAX_DEF = 64
+/** The share of its machine's cores a task must keep busy to fill it (core's history). */
+const SATURATED = 0.9
 
 const keyOf = (sha: string): string => `timings\0${sha}`
 
@@ -41,8 +43,8 @@ const graphKeyOf = (sha: string, ids: readonly string[]): string =>
 const keysOf = (sha: string, ids: readonly string[]): string[] => [graphKeyOf(sha, ids), keyOf(sha)]
 
 /**
- * A blob's timings, the entries a run's graph has: `{ version: 2, tasks:
- * { id: ms } }` (or 1), each ms a finite number in [0, 24 h]; anything else is
+ * A blob's timings, the entries a run's graph has: `{ version: 4, tasks:
+ * { id: ms } }` (or 1 to 3), each ms a finite number in [0, 24 h]; anything else is
  * dropped. Null for a blob that is not that shape, or over the caps.
  */
 export function parseTimings(
@@ -60,7 +62,7 @@ export function parseTimings(
  * `defs: { id: definition }` says which task each timing is of
  * (`taskDefinitions`); a reader keeps only a timing of the task as it is now.
  */
-const VERSIONS: ReadonlySet<unknown> = new Set([1, 2])
+const VERSIONS: ReadonlySet<unknown> = new Set([1, 2, 3, 4])
 
 function parseBlob(
   bytes: Uint8Array,
@@ -101,11 +103,14 @@ function parseBlob(
       out.set(id, ms)
   }
   const needs = new Map<string, TaskResources>()
-  // A version 1 blob's needs were learned as the share of a core a task got
-  // on a crowded worker, not what it needs (main c27c238 packed nine test
-  // shards on 4 cores): its timings stand, its needs do not.
+  // An older blob's needs are wrong: version 1 learned a crowded worker's
+  // share of a core (main c27c238 packed nine test shards on 4 cores),
+  // version 2 a macOS worker's use, which reported no share, and a hit's
+  // producer's (main 357d3aa packed six Mac shards on 3 cores), and
+  // version 3 a Mac share read below its free cores, so a shard asked 2.2
+  // cores and used 0.5 (main 3917881). Its timings stand, its needs do not.
   const raw =
-    (parsed as { version: number; needs?: unknown }).version === 1
+    (parsed as { version: number; needs?: unknown }).version !== 4
       ? undefined
       : (parsed as { needs?: unknown }).needs
   if (typeof raw === 'object' && raw !== null && !Array.isArray(raw))
@@ -325,7 +330,7 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
     if (def === undefined) defs.delete(id)
     else defs.set(id, def)
     const r = measured.get(id)
-    if (r?.maxCpuParallelism !== undefined) resources.set(id, r)
+    if (r?.maxCpuParallelism !== undefined) resources.set(id, blend(resources.get(id), r))
   }
   let bytes = encode(timings, resources, defs)
   // Tasks a repo dropped stay in the carried blob; past the cap, the run's own.
@@ -340,7 +345,27 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
   for (const key of keysOf(head[0], args.ids)) await args.cache.put(key, bytes)
 }
 
-/** `{ version: 2, tasks, needs?, defs? }`, each map by task id. */
+/**
+ * A run's need, averaged with the one carried from earlier runs: a CI run
+ * learns from its own executions only, so one crowded run's reading (a
+ * build at 2.84 cores that uses 1.3 to 1.9) booked the next run a whole
+ * 3-core Mac for it (main b5b83bb). It fills its machine only while the
+ * average does, or both did.
+ */
+function blend(carried: TaskResources | undefined, run: TaskResources): TaskResources {
+  if (carried?.maxCpuParallelism === undefined || run.maxCpuParallelism === undefined) return run
+  const cpu = (carried.maxCpuParallelism + run.maxCpuParallelism) / 2
+  const { saturatedCores, ...rest } = run
+  const cores = saturatedCores ?? carried.saturatedCores
+  const both = saturatedCores !== undefined && carried.saturatedCores !== undefined
+  return {
+    ...rest,
+    maxCpuParallelism: cpu,
+    ...(cores !== undefined && (both || cpu >= SATURATED * cores) ? { saturatedCores: cores } : {}),
+  }
+}
+
+/** `{ version: 4, tasks, needs?, defs? }`, each map by task id. */
 function encode(
   timings: ReadonlyMap<string, number>,
   resources: ReadonlyMap<string, TaskResources>,
@@ -363,7 +388,7 @@ function encode(
     }
   }
   const blob = {
-    version: 2,
+    version: 4,
     tasks,
     ...(Object.keys(needs).length === 0 ? {} : { needs }),
     ...(Object.keys(defs).length === 0 ? {} : { defs }),

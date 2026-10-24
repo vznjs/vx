@@ -7,14 +7,8 @@ import { open } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
-import { buildTaskGraph, expandRequested } from '../graph/index.js'
-import {
-  applyGraphStage,
-  discoverProjects,
-  hasHook,
-  isDefaultBuild,
-  loadProjects,
-} from '../orchestrator/index.js'
+import { buildTaskGraph, expandRequested, isDefaultBuild } from '../graph/index.js'
+import { applyGraphStage, discoverProjects, hasHook, loadProjects } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
   refusalNotice,
@@ -135,12 +129,14 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     resolved,
     reviewFiles: true,
     strayReviews: [],
+    shadowed: [],
   }
   try {
     const { workspaceConfig, plugins, cacheDir } = await loadCliWorkspace(root)
     out.reviewFiles = resolveSetting('lock.reviewFiles', workspaceConfig).value !== false
-    const { configs: found, strayReviews } = await findProjectConfigs(root)
+    const { configs: found, strayReviews, shadowed } = await findProjectConfigs(root)
     out.strayReviews = strayReviews
+    out.shadowed = shadowed
     // The one load that evaluates: every reader reads the lock this writes.
     const configs = await loadProjectConfigs(found.map((f) => f.configPath))
     // In the lock's form: a field left `undefined` is a key the stored JSON
@@ -233,6 +229,8 @@ interface GraphCheck {
   reviewFiles: boolean
   /** Review copies in a directory no config is in (`findProjectConfigs`). */
   strayReviews: string[]
+  /** Config files a higher-precedence one beside them hides (`findProjectConfigs`). */
+  shadowed: { file: string; read: string }[]
 }
 
 function configured(all: readonly ProjectMeta[]): ConfiguredMeta[] {
@@ -365,8 +363,35 @@ async function writeLock(
   ])
   const n = metas.length
   say(`${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}`)
+  // A second config beside the one read was edited and nothing changed.
+  warnShadowed(root, check, 'vx lock')
+  // Named here too: a lock that wrote clean failed the `--check` after it.
+  if (check.reviewFiles)
+    for (const file of await strayCopies(check)) sayNotice('warn', 'vx lock', strayLine(root, file))
   return 0
 }
+
+/**
+ * Review copies with no config beside them, sorted. One left beside a
+ * config since deleted shows reviewers tasks nothing runs, and keys the
+ * `**` of a project around it. vx never deletes a committed file; it
+ * names it. A project kept without a config (a plugin's) is checked on
+ * disk; any other directory is what discovery listed.
+ */
+async function strayCopies(check: GraphCheck): Promise<string[]> {
+  const kept = await Promise.all(
+    check.all
+      .filter((m) => m.configPath === null)
+      .map(async (m) => {
+        const file = path.join(m.dir, REVIEW_FILE)
+        return (await Bun.file(file).exists()) ? file : null
+      }),
+  )
+  return [...new Set([...kept.filter((f) => f !== null), ...check.strayReviews])].sort()
+}
+
+const strayLine = (root: string, file: string): string =>
+  `${relPosix(root, file)} has no vx.config beside it — delete it`
 
 /**
  * Each place an evaluated config holds the value of a secret in this
@@ -402,6 +427,16 @@ function secretsIn(projects: Record<string, ProjectConfig>): Array<{ at: string;
   return found
 }
 
+/** A second config beside the one read: edited, it changes nothing. */
+function warnShadowed(root: string, check: GraphCheck, verb: string): void {
+  for (const { file, read } of check.shadowed)
+    sayNotice(
+      'warn',
+      verb,
+      `${relPosix(root, file)} is not read: ${path.basename(read)} beside it is — delete one`,
+    )
+}
+
 /**
  * Audit the lock: find and re-evaluate every config in the CURRENT
  * environment and deep-compare it with the locked object. That sees an
@@ -410,6 +445,9 @@ function secretsIn(projects: Record<string, ProjectConfig>): Array<{ at: string;
  */
 async function checkLock(root: string, json: boolean): Promise<number> {
   const check = await audit(root, warnToStderr)
+  // A warning, as `vx lock` says it: the CI gate passed beside a hidden
+  // config whose edit changed nothing.
+  warnShadowed(root, check, 'vx lock --check')
   const { broken } = check
   const metas = configured(check.all)
   const bare = bareProjects(check.all, check.tasked)
@@ -469,22 +507,7 @@ async function checkLock(root: string, json: boolean): Promise<number> {
       }),
     )
     for (const f of stale) if (f !== null) failures.push(f)
-    // A copy left beside a config since deleted shows reviewers tasks
-    // nothing runs, and keys the `**` of a project around it. vx never
-    // deletes a committed file; it names it. A project kept without a
-    // config (a plugin's) is checked on disk; any other directory is
-    // what discovery listed.
-    const kept = await Promise.all(
-      check.all
-        .filter((m) => m.configPath === null)
-        .map(async (m) => {
-          const file = path.join(m.dir, REVIEW_FILE)
-          return (await Bun.file(file).exists()) ? file : null
-        }),
-    )
-    const orphans = new Set([...kept.filter((f) => f !== null), ...check.strayReviews])
-    for (const file of [...orphans].sort())
-      failures.push(`${relPosix(root, file)} has no vx.config beside it — delete it`)
+    for (const file of await strayCopies(check)) failures.push(strayLine(root, file))
   }
   for (const dir of Object.keys(lock.projects)) {
     if (!Object.hasOwn(check.fresh.projects, dir)) {

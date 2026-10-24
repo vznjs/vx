@@ -6,14 +6,35 @@ authors:
 tags:
   - caching
   - performance
-excerpt: 'A remote cache hit used to wait for its whole download, even when the task itself would have finished first. How vx now weighs each download against the task it replaces, gives up a slow one, and runs the task here instead.'
+excerpt: 'A remote hit should not wait for a download that takes longer than the task. vx weighs each download against the task it replaces, gives up a slow one and runs the task here.'
 ---
 
-A remote cache hit is supposed to save time. Usually it does: the task
-takes seconds, its outputs come down in milliseconds. But a large
-artifact on a slow link can take longer to download than the task takes
-to run. vx used to wait for the whole body anyway, because a hit was a
-hit.
+500 tasks, all of them remote hits. 20 entries are 8 MB each, on a link
+that serves 4 MB/s per connection:
+
+```sh frame="terminal"
+$ vx run build --all --dry
+500 task(s) planned, 500 cache hits (500 remote, 153 MB).
+
+$ vx run build --all
+  cache     local 20↑ · remote 480↓ 129 KB
+  time      1.02s
+```
+
+The 20 large entries would take 2 s each to come down. Their tasks run
+in milliseconds, so vx ran those 20 here (`local 20↑`) and took the
+other 480 from the remote.
+
+| The remote says               | Full run | Downloaded |
+| ----------------------------- | -------- | ---------- |
+| size and task time            | 1.15 s   | 129 KB     |
+| size only                     | 3.12 s   | 153 MB     |
+
+Min of 3 interleaved runs, local cache empty, outputs deleted.
+`private/vx-bench/generate.ts` with 500 projects, 20 of them writing
+8 MB of random bytes. A Turborepo-protocol stub 30 ms away that streams
+bodies at 4 MB/s, read through `turboCache()`. Linux x64, 4 cores, vx
+at `22f6eb7`, 2026-10-23.
 
 ## Weigh the download against the task
 
@@ -23,47 +44,28 @@ vx do the sum. Turbo's cache API sends both, in its batch query and on
 passes them on.
 
 While a task waits on its download, vx checks the body's pace every
-25 ms. When the rest of the body would take longer than twice the task's
-stored run time, it gives the download up and runs the task here. Twice,
-because a run here also has to save its outputs. The task counts as a
-miss and uploads nothing: the remote already holds the key.
+25 ms. When the rest of the body would take longer than twice the
+task's stored run time, it gives the download up and runs the task
+here. Twice, because a run here also has to save its outputs. The task
+counts as a miss and uploads nothing: the remote already holds the key.
 
-A remote that does not say the size or the time is awaited as before. A
-guess could only make a hit slower or a run wasted.
-
-## What it changed
-
-500 tasks, a remote 30 ms away serving 4 MB/s per connection, 20 of the
-entries 8 MB each. A full run went from 3,070 ms to 1,807 ms (min of 5
-runs, before and after the change). With 200 tiny tasks, where every
-download beats its task, the two tie.
+A remote that does not say the time is awaited, as in the second row.
+A guess could only make a hit slower or a run wasted.
 
 ## Know what a run will pull
 
-The footer now says how many bytes each remote direction moved, and
-`--dry` says what restoring the remote hits would download before
-anything runs:
-
-```sh frame="terminal"
-$ vx run build --all --dry
-500 task(s) planned, 500 cache hits (500 remote, 157 MB).
-$ vx run build --all
-  cache     ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰
-            local 19↑ · remote 481↓ 12 MB
-```
-
-Here 19 large entries came down slower than their tasks run, so those 19
-ran here (`local 19↑`), and the other 481 came from the remote.
+The footer says how many bytes each remote direction moved, and `--dry`
+says what restoring the remote hits would download before anything
+runs, as above.
 
 ## For plugin authors
 
-A remote's `has` now answers what it knows of an entry instead of a
-boolean: `{ size, durationMs }`, either one, `{}`, or `null` for a key
-it lacks. `hasMany` answers a `Map` of the held keys to the same. Any
-backend that can say a size gets the `--dry` figure, and one that can
-also say a duration gets the slow-download check.
-[Your own cache](../../guides/plugins/#your-own-cache) shows a whole
-remote.
+A remote's `has` answers what it knows of an entry: `{ size, durationMs }`,
+either one, `{}`, or `null` for a key it lacks. `hasMany` answers a
+`Map` of the held keys to the same. Any backend that can say a size gets
+the `--dry` figure, and one that can also say a duration gets the
+slow-download check. [Your own cache](../../guides/plugins/#your-own-cache)
+shows a whole remote.
 
-[Remote cache](../../guides/ci/#remote-cache) shows how to set one up.
-More on vx at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
+Setup: [Remote cache](../../guides/ci/#remote-cache). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -25,11 +25,21 @@ function machine(
       sh: async (argv) => {
         ran.push(argv.join(' '))
         if (argv.includes('/bin/true')) return o.probe ?? 0
-        return argv.includes('dpkg') ? (o.dpkg ?? 0) : 0
+        if (!argv.includes('dpkg')) return 0
+        // An installed deb brings its binary.
+        if ((o.dpkg ?? 0) === 0)
+          for (const a of argv) {
+            const pkg = /([a-z]+)\.deb$/.exec(a)?.[1]
+            if (pkg !== undefined) bins.add(BIN_OF[pkg] ?? pkg)
+          }
+        return o.dpkg ?? 0
       },
     })
   return { ran, go, debs }
 }
+
+const BIN_OF: Record<string, string> = { bubblewrap: 'bwrap', ripgrep: 'rg' }
+const KEPT = ['bubblewrap', 'socat', 'strace', 'ripgrep']
 
 const PROBE = 'bwrap --ro-bind / / --proc /proc --dev /dev /bin/true'
 
@@ -59,9 +69,27 @@ it('installs from apt by sudo, keeps the packages and says it fetched them', asy
 
 it('installs the kept packages with no index fetch, as root without sudo', async () => {
   const m = machine({ bins: ['apt-get'], root: true })
+  for (const p of KEPT) writeFileSync(path.join(m.debs, `${p}.deb`), '')
+  expect(await m.go()).toBe(0)
+  const [dpkg, ...rest] = m.ran
+  expect(dpkg!.split(' ').toSorted()).toEqual(
+    ['dpkg', '-i', ...KEPT.map((p) => path.join(m.debs, `${p}.deb`))].toSorted(),
+  )
+  expect(rest).toEqual([PROBE])
+})
+
+// A kept set holds only what its fetch installed: socat already on that
+// image left no socat.deb, and on an image without it setup said the
+// sandbox runs while socat stayed missing.
+it('fetches anew when the kept packages leave a binary missing', async () => {
+  const m = machine({ bins: ['apt-get'], root: true })
   writeFileSync(path.join(m.debs, 'bubblewrap.deb'), '')
   expect(await m.go()).toBe(0)
-  expect(m.ran).toEqual([`dpkg -i ${path.join(m.debs, 'bubblewrap.deb')}`, PROBE])
+  expect(m.ran.slice(0, 2)).toEqual([
+    `dpkg -i ${path.join(m.debs, 'bubblewrap.deb')}`,
+    `rm -rf ${m.debs}`,
+  ])
+  expect(m.ran).toContain('apt-get update')
 })
 
 it('fetches anew when the kept packages do not install', async () => {
@@ -73,6 +101,14 @@ it('fetches anew when the kept packages do not install', async () => {
     `sudo rm -rf ${m.debs}`,
   ])
   expect(m.ran).toContain('sudo apt-get update')
+})
+
+// GitLab's debs sit in the checkout (its cache keeps only paths there),
+// and a root task's `**` keyed them as inputs.
+it('git ignores the kept packages, so no task keys them', async () => {
+  const m = machine({ bins: ['apt-get'] })
+  await m.go()
+  expect(readFileSync(path.join(m.debs, '.gitignore'), 'utf8')).toBe('*\n')
 })
 
 it('an Alpine job installs by apk', async () => {

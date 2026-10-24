@@ -92,6 +92,15 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   already existed saw Bun everywhere (items 700, 708). "Runs under Bun"
   is a claim about every process a task spawns: probe it without the
   host's shim (`typeof Bun` printed from the code in question).
+- A complexity guard (a size and a time bound) times CPU, not wall
+  (`tests/helpers/cpu-clock.ts`): a crowded worker adds wall, not CPU. A
+  planRun bound redded at 6.6 s of wall on a CI worker booked 3.7 of 4
+  cores, and took 1.6-1.9 s of CPU idle or beside 24 busy loops
+  (2026-10-23). A deadline the code itself enforces stays on the wall.
+- Bun's per-test timeout is a wall budget too. A test that spawns vx and
+  git (457 ms idle, 1.3 s under strace) passed 5 s on a packed DTE worker
+  (#4198), so the core shards run `--timeout=30000` (`vx.config.ts`) as a
+  hang guard; speed is a CPU-time assertion, never the timeout.
 - Two measured quantities that are equal by construction sit on jitter:
   a light child's `ru_maxrss` IS the parent's mark, and the kernel's RSS
   counters lag by pages, so an exact `>` between them flipped on one CI

@@ -548,7 +548,8 @@ export function formatStatusRegion(
  * column below 100 minutes.
  */
 function formatExpected(ms: number): string {
-  if (ms < 1000) return `~${Math.round(ms)}ms`
+  // The tier by the rounded value: 999.6 ms printed `~1000ms` (item 1034's class).
+  if (Math.round(ms) < 1000) return `~${Math.round(ms)}ms`
   if (ms < 9950) return `~${(ms / 1000).toFixed(1)}s`
   const s = Math.round(ms / 1000)
   if (s < 60) return `~${s}s`

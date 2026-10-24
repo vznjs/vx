@@ -8,86 +8,66 @@ tags:
 excerpt: 'Every run is recorded. vx last replays its summary, vx last --failed finds the one that broke, and the answer ends with the command that re-runs it.'
 ---
 
-The terminal scrolled away, CI printed ten thousand lines, or an agent
-ran the build an hour ago. vx keeps a record of every run, so the
-question "what happened?" has an answer after the fact.
-
-```sh frame="terminal"
-vx last
-```
-
-## The last run
-
-```sh frame="terminal"
-$ vx last
-run 01a11e14-87de-749d-a6ba-eca7bb441469 — ok
-  $ vx run build --all
-  2026-10-09T00:33:44.415Z · 62ms · master @ 64a144f9
-  4 tasks · 4 hits (1 up-to-date, 3 restored: 3 local, 0 remote)
-
-  restored-local    @demo/ui#build        31ms  46046abb75e9c084
-  restored-local    @demo/web#build       31ms  b25e5bf41cb7a54d
-  restored-local    @demo/docs#build      31ms  1f858edb724ca91b
-  up-to-date        @demo/api#build        9ms  32b3a0bfa973a7a8
-```
-
-The command, the branch and commit, the time, and every task with its
-outcome and cache key.
-
-## The run that broke
-
-`--failed` skips to the newest run that failed, and ends with the
-command that runs only what failed:
+A test failed somewhere in the last run, and the terminal scrolled
+away:
 
 ```sh frame="terminal"
 $ vx last --failed
-run 01a11dab-5561-75fe-aa33-fd0fa220ad42 — FAILED
-  $ vx run test --all
-  2026-10-08T22:38:50.209Z · 606ms · feat @ 5f0b0da6+dirty
-  8 tasks · 2 hits (2 up-to-date, 0 restored) · 1 failed
+run 01a16ada-e526-75db-8cd6-f58c924aa0a3 — FAILED
+  $ vx run build test --all
+  2026-10-23T22:21:32.842Z · 49ms · master @ aa76c317+dirty
+  8 tasks · 5 hits (5 up-to-date, 0 restored) · 1 failed
 
-  failed (exit 1)   @demo/ui#test          4ms  fb349347b8a40aeb  0.5× cpu
-  success           @demo/web#test       206ms  9b78e7e1a95c53db  0.0× cpu
-  success           @demo/docs#test      205ms  36a0120a08d6c9d9  0.0× cpu
-  ...
+  failed (exit 1)   packages/b#test       14ms  99fea7dfce8b1fb5  0.6× cpu
+  success           packages/b#build      16ms  0ff42f6215707c25  0.5× cpu
+  success           packages/c#test       10ms  441a55956428a465  0.9× cpu
+  up-to-date        packages/c#build       3ms  ce5c731444829c07
+  up-to-date        packages/d#test        0ms  5b40789165953450
+  up-to-date        packages/a#test        0ms  9ea4543bb5eed678
+  up-to-date        packages/d#build       0ms  9f1cef08a2fd4006
+  up-to-date        packages/a#build       1ms  4ab2bc0d55dd78a0
 
-  re-run what failed: vx run @demo/ui#test
+  re-run what failed: vx run packages/b#test
+
+$ vx last --log packages/b#test
+src/sum.test.ts:
+3 | test('adds', () => { expect(sum(2, 2)).toBe(4) })
+                                           ^
+error: expect(received).toBe(expected)
+
+Expected: 4
+Received: 5
+…
 ```
 
-## Recent runs
+The command, the branch and commit, every task with its outcome and
+key, then the one command that re-runs only what failed. Demo
+workspace, vx at `69617eb`, 2026-10-23 (log trimmed).
+
+## Four questions
+
+| Command              | Answers                                     |
+| -------------------- | ------------------------------------------- |
+| `vx last`            | what the last run did                       |
+| `vx last --failed`   | the newest run that failed, and the re-run  |
+| `vx last --list`     | recent runs, one line each                  |
+| `vx last --log <id>` | what one task printed                       |
 
 ```sh frame="terminal"
 $ vx last --list
-ok     2026-10-09T00:33:44.415Z  01a11e14-87de  4 tasks · 4 hits (1 up-to-date, 3 restored: 3 local, 0 remote)   62ms  $ vx run build --all
-FAILED 2026-10-08T22:38:50.209Z  01a11dab-5561  8 tasks · 2 hits (2 up-to-date, 0 restored) · 1 failed          606ms  $ vx run test --all
-ok     2026-10-08T22:38:41.669Z  01a11dab-3405  8 tasks · 2 hits (2 up-to-date, 0 restored)                     912ms  $ vx run test --all
+FAILED 2026-10-23T22:21:32.842Z  01a16ada-e526  8 tasks · 5 hits (5 up-to-date, 0 restored) · 1 failed  49ms  $ vx run build test --all
+ok     2026-10-23T22:21:27.007Z  01a16ada-ce5a  5 tasks · 5 hits (5 up-to-date, 0 restored)             23ms  $ vx run build test flip --filter packages/a --filter packages/b
+ok     2026-10-23T22:21:26.832Z  01a16ada-cdaa  4 tasks · 3 hits (3 up-to-date, 0 restored)             54ms  $ vx run build --all
 ```
 
-## One task's output
+`--log` reads the last run that ran the task. A failure's output is
+kept, and a cached task's log is its cache entry, so a pass reads too.
 
-```sh frame="terminal"
-$ vx last --log app#test
-FAIL src/sum.test.ts > adds
-  expected 4, received 5
-```
+## Free
 
-`--log` prints what one task printed in the last run that ran it. A
-failure's output is kept, and a cached task's log is its cache entry,
-so a task that passed reads too.
+The record is the workspace's cache database, which the run already
+writes. Nothing extra is stored, nothing is uploaded. `--format json`
+gives an agent the same answer as data.
 
-```mermaid
-flowchart LR
-  RUN["vx run"] --> DB[("cache.db: runs")]
-  DB --> LAST["vx last"]
-  DB --> FAILED["vx last --failed"]
-  DB --> LIST["vx last --list"]
-  DB --> LOG["vx last --log"]
-  style FAILED stroke:#c6f84e,stroke-width:2px
-```
-
-The record lives in the workspace's cache database, so it costs the run
-nothing it was not already writing. `--format json` gives agents the
-same answer as data.
-
-Learn more: [the CLI reference](../../cli/) and
-[vx last](https://vznjs.github.io/vx/features/vx-last/).
+Reference: [the CLI](../../cli/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -291,3 +291,25 @@ it("a task never run here takes its need from the default branch's import", asyn
   })
   expect(got.get('p#u')).toEqual({ p50DurationMs: 9 })
 })
+
+// A hit's entry keeps its producer's CPU over its time, not its share: a
+// crowded producer's reads low. Main's blob carried that forward for each
+// shard that hit, and the next run packed them as tight (357d3aa).
+it("a hit's producer use gives way to the default branch's measured need", async () => {
+  const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
+  record('feature', 't', 1, true)
+  cache
+    .dbHandle()
+    .query(
+      `INSERT INTO entries(hash, project, task, command, exit_code, duration_ms, cpu_ms, size_bytes, created_at, accessed_at)
+       VALUES ('h${seq}', 'p', 't', 'x', 0, 10000, 3000, 0, 0, 0)`,
+    )
+    .run()
+  expect((await provider.resourcesFor(['p#t'])).get('p#t')?.maxCpuParallelism).toBe(0.3)
+  provider.importTimings(
+    'abc',
+    new Map([['p#t', 7]]),
+    new Map([['p#t', { p50DurationMs: 7, maxCpuParallelism: 1.2 }]]),
+  )
+  expect((await provider.resourcesFor(['p#t'])).get('p#t')?.maxCpuParallelism).toBe(1.2)
+})

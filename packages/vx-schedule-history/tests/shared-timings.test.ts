@@ -15,7 +15,7 @@ import {
   type TaskNode,
 } from '@vzn/vx'
 import { scheduleHistoryPlugin } from '../src/index.js'
-import { importTimings, parseTimings } from '../src/shared-timings.js'
+import { exportTimings, importTimings, parseTimings } from '../src/shared-timings.js'
 
 const GIT_ENV = {
   ...process.env,
@@ -209,7 +209,7 @@ describe('shared timings', () => {
       during: () => timed('main', 'p#y', 300),
     })
     expect(read(shared.store.get(key(b)))).toEqual({
-      version: 2,
+      version: 4,
       tasks: { 'p#gone': 5, 'p#x': 100, 'p#y': 300 },
     })
     // Each timing says which task it is of, a carried one's carried.
@@ -231,7 +231,7 @@ describe('shared timings', () => {
     const shared = spyCache({ scoped: true })
     timed('feature', 'p#x', 10)
     await runPlugin(shared, { ci: true, branch: 'feature', ids: ['p#x'] })
-    expect(read(shared.scoped.get(key(head)))).toEqual({ version: 2, tasks: { 'p#x': 10 } })
+    expect(read(shared.scoped.get(key(head)))).toEqual({ version: 4, tasks: { 'p#x': 10 } })
     expect(shared.store.size).toBe(0)
   })
 
@@ -272,7 +272,7 @@ describe('shared timings', () => {
     timed('main', 'p#shard', 100)
     await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#bench'] })
     await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#shard'] })
-    expect(read(shared.store.get(key(a)))).toEqual({ version: 2, tasks: { 'p#bench': 5 } })
+    expect(read(shared.store.get(key(a)))).toEqual({ version: 4, tasks: { 'p#bench': 5 } })
     git('checkout', '-q', '-b', 'feature')
     commit()
     const provider = new LocalHistoryProvider(
@@ -567,7 +567,7 @@ describe('shared timings', () => {
       key(a),
       new TextEncoder().encode(
         JSON.stringify({
-          version: 2,
+          version: 4,
           tasks: { 'p#x': 100, 'p#y': 50, 'p#z': 5 },
           defs: defsOf(['p#x', 'p#y', 'p#z']),
           needs: {
@@ -606,7 +606,7 @@ describe('shared timings', () => {
       key(a),
       new TextEncoder().encode(
         JSON.stringify({
-          version: 2,
+          version: 4,
           tasks: { 'p#x': 100, 'p#y': 50 },
           defs: { 'p#x': 'old', ...defsOf(['p#y']) },
         }),
@@ -641,7 +641,7 @@ describe('shared timings', () => {
     commit()
     const shared = spyCache()
     const put = (sha: string, body: object): void => {
-      shared.store.set(key(sha), new TextEncoder().encode(JSON.stringify({ version: 2, ...body })))
+      shared.store.set(key(sha), new TextEncoder().encode(JSON.stringify({ version: 4, ...body })))
     }
     put(a, { tasks: { 'p#x': 100 }, needs: { 'p#x': { cpu: 3 } } })
     put(b, { tasks: { 'p#x': 120 }, defs: defsOf(['p#x']) })
@@ -673,7 +673,7 @@ describe('shared timings', () => {
     shared.store.set(
       key(a),
       new TextEncoder().encode(
-        JSON.stringify({ version: 2, tasks: { 'p#x': 100 }, needs: { 'p#x': { cpu: 3 } } }),
+        JSON.stringify({ version: 4, tasks: { 'p#x': 100 }, needs: { 'p#x': { cpu: 3 } } }),
       ),
     )
     await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#x'] })
@@ -682,10 +682,10 @@ describe('shared timings', () => {
     })
   })
 
-  // Main c27c238: a version 1 blob's needs were each test shard's share of
-  // a crowded worker (0.36 of a core for one that takes 1.1), and the next
-  // run packed nine shards on 4 cores. Its timings stand; its needs go.
-  it("reads a version 1 blob's timings, not its needs, and main writes none of them on", async () => {
+  // Main b5b83bb: one crowded run read 2.84 cores for a build that uses
+  // 1.3 to 1.9, CI wrote it as the need, and the next run booked it a whole
+  // 3-core Mac; the tasks beside it waited 45 s.
+  it("writes a run's need averaged with the carried one, filling its machine only on average", async () => {
     const a = commit()
     const b = commit()
     const shared = spyCache()
@@ -693,34 +693,84 @@ describe('shared timings', () => {
       key(a),
       new TextEncoder().encode(
         JSON.stringify({
-          version: 1,
-          tasks: { 'p#x': 100 },
-          defs: defsOf(['p#x']),
-          needs: { 'p#x': { cpu: 0.36 } },
+          version: 4,
+          tasks: { 'p#build': 30_000, 'p#big': 30_000 },
+          defs: defsOf(['p#build', 'p#big']),
+          needs: { 'p#build': { cpu: 1.6 }, 'p#big': { cpu: 2.9, cores: 3 } },
         }),
       ),
     )
-    const provider = new LocalHistoryProvider(
-      cache.dbHandle(),
-      undefined,
-      'main',
-      taskDefinitions([node('p#x')]),
-    )
-    await importTimings({
+    const provider = {
+      p50sFor: async () =>
+        new Map([
+          ['p#build', 30_000],
+          ['p#big', 30_000],
+        ]),
+      resourcesFor: async () =>
+        new Map([
+          ['p#build', { p50DurationMs: 30_000, maxCpuParallelism: 2.84, saturatedCores: 3 }],
+          ['p#big', { p50DurationMs: 30_000, maxCpuParallelism: 2.8, saturatedCores: 3 }],
+        ]),
+    } as unknown as LocalHistoryProvider
+    await exportTimings({
       root,
-      defaultBranch: 'main',
       cache: shared,
       provider,
-      ids: ['p#x'],
-      warn: (m: string) => said.push(m),
-      triedFile: triedFile(),
-      branch: true,
+      ids: ['p#build', 'p#big'],
+      defs: new Map(Object.entries(defsOf(['p#build', 'p#big']))),
     })
-    expect([...(await provider.p50sFor(['p#x']))]).toEqual([['p#x', 100]])
-    expect((await provider.resourcesFor(['p#x'])).get('p#x')?.maxCpuParallelism).toBeUndefined()
-    await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#x'] })
-    expect(read(shared.store.get(key(b)))).toEqual({ version: 2, tasks: { 'p#x': 100 } })
+    expect((read(shared.store.get(key(b))) as { needs: unknown }).needs).toEqual({
+      'p#build': { cpu: 2.22 },
+      'p#big': { cpu: 2.85, cores: 3 },
+    })
   })
+
+  // Main c27c238: a version 1 blob's needs were each test shard's share of
+  // a crowded worker (0.36 of a core for one that takes 1.1), and the next
+  // run packed nine shards on 4 cores; main 357d3aa: a version 2 blob's
+  // Mac needs carried no share and packed six shards on 3 cores; main
+  // 3917881: a version 3 blob's Mac needs read a share below the free
+  // cores, a shard booked 2.2 cores using 0.5. Their timings stand; their
+  // needs go.
+  it.each([1, 2, 3])(
+    "reads a version %d blob's timings, not its needs, and main writes none of them on",
+    async (version) => {
+      const a = commit()
+      const b = commit()
+      const shared = spyCache()
+      shared.store.set(
+        key(a),
+        new TextEncoder().encode(
+          JSON.stringify({
+            version,
+            tasks: { 'p#x': 100 },
+            defs: defsOf(['p#x']),
+            needs: { 'p#x': { cpu: 0.36 } },
+          }),
+        ),
+      )
+      const provider = new LocalHistoryProvider(
+        cache.dbHandle(),
+        undefined,
+        'main',
+        taskDefinitions([node('p#x')]),
+      )
+      await importTimings({
+        root,
+        defaultBranch: 'main',
+        cache: shared,
+        provider,
+        ids: ['p#x'],
+        warn: (m: string) => said.push(m),
+        triedFile: triedFile(),
+        branch: true,
+      })
+      expect([...(await provider.p50sFor(['p#x']))]).toEqual([['p#x', 100]])
+      expect((await provider.resourcesFor(['p#x'])).get('p#x')?.maxCpuParallelism).toBeUndefined()
+      await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#x'] })
+      expect(read(shared.store.get(key(b)))).toEqual({ version: 4, tasks: { 'p#x': 100 } })
+    },
+  )
 
   it('drops oversized, malformed, out-of-range and non-graph entries', () => {
     const graph = new Set(['p#a', 'p#b', 'p#c', 'p#d', 'p#e', 'p#f'])
@@ -743,7 +793,7 @@ describe('shared timings', () => {
         ['p#f', 86_400_000],
       ]),
     )
-    expect(parseTimings(blob({ 'p#a': 1 }, 3), graph)).toBeNull()
+    expect(parseTimings(blob({ 'p#a': 1 }, 5), graph)).toBeNull()
     expect(parseTimings(new TextEncoder().encode('{'), graph)).toBeNull()
     expect(parseTimings(new TextEncoder().encode('[1]'), graph)).toBeNull()
     expect(parseTimings(new TextEncoder().encode('null'), graph)).toBeNull()

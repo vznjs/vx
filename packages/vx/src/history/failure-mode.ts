@@ -141,7 +141,7 @@ const keyOf = (c: { project: string; task: string; hash: string }): string =>
 /**
  * Which of this run's executed tasks are flaky, judged BEFORE the run's own
  * rows are recorded: a failure on a key that has passed before, a pass on a
- * key that already did so, or a within-run retry. A first pass after only
+ * key that already did so, or a pass that took a within-run retry. A first pass after only
  * failures is a recovery, not a flake. The counts fold this run in.
  *
  * The cost follows the run's colour. No candidate (every task a hit or a
@@ -187,7 +187,10 @@ export function detectFlaky(db: Database, candidates: readonly FlakyCandidate[])
   for (const c of suspects) {
     const before = counts.get(keyOf(c)) ?? { passes: 0, failures: 0, relapses: 0 }
     const relapsed = c.status === 'failed' ? before.passes > 0 : before.relapses > 0
-    if (!relapsed && c.attempts <= 1) continue
+    // A retry proves nothing until one attempt passes: every attempt
+    // failing on a key that never passed is a break, as `flakyTasks` reads it.
+    const retriedPass = c.status === 'success' && c.attempts > 1
+    if (!relapsed && !retriedPass) continue
     const passes = before.passes + (c.status === 'success' ? 1 : 0)
     const failures = before.failures + (c.status === 'failed' ? 1 : 0)
     out.push({ ...c, taskId: `${c.project}#${c.task}`, passes, failures })

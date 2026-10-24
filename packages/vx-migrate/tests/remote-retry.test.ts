@@ -73,6 +73,16 @@ describe('withRetry', () => {
     expect(waits).toEqual([[3000], [], [10_000], [10_000], [], [2000], [2000]])
   })
 
+  it('a 429 that says Retry-After: 0 again waits 2 s, so the budget still ends it', async () => {
+    const zero = () => status(429, { 'retry-after': '0' })
+    expect((await drive([zero(), zero(), status(200)])).waits).toEqual([2000])
+    expect(await drive([zero()])).toEqual({
+      attempts: 12,
+      waits: Array(10).fill(2000),
+      last: 429,
+    })
+  })
+
   it('the answer that is resent has its body cancelled, so it holds no connection', async () => {
     let cancelled = 0
     const body = () =>
@@ -96,7 +106,7 @@ describe('withRetry', () => {
   it('a connection never made is resent; a spent deadline or another error is not', async () => {
     expect(
       await Promise.all([
-        drive([fail('ConnectionRefused'), status(200)]),
+        drive([fail('ECONNREFUSED'), status(200)]),
         drive([fail('ENOTFOUND'), status(200)]),
         drive([fail('timed out', 'TimeoutError'), status(200)]),
         drive([fail('ECONNRESET'), status(200)]),
@@ -109,15 +119,23 @@ describe('withRetry', () => {
     ])
   })
 
+  it("Bun's own refused connection is resent (1.4.4 codes it ECONNREFUSED)", async () => {
+    const refused = await fetch('http://127.0.0.1:1').then(
+      () => new Error('port 1 answered'),
+      (e: Error) => e,
+    )
+    expect(await drive([refused, status(200)])).toEqual({ attempts: 2, waits: [2000], last: 200 })
+  })
+
   it('retries bounds the resends: 0 sends once, 2 sends three times', async () => {
     expect([
       await drive([status(503)], 0),
       await drive([status(503)], 2),
-      await drive([fail('ConnectionRefused')], 2),
+      await drive([fail('ECONNREFUSED')], 2),
     ]).toEqual([
       { attempts: 1, waits: [], last: 503 },
       { attempts: 3, waits: [2000, 2000], last: 503 },
-      { attempts: 3, waits: [2000, 2000], last: 'ConnectionRefused' },
+      { attempts: 3, waits: [2000, 2000], last: 'ECONNREFUSED' },
     ])
   })
 })

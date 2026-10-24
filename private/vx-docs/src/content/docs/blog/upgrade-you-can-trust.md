@@ -9,48 +9,31 @@ tags:
 excerpt: 'vx upgrade checks npm’s registry signature and the SHA-512 before it replaces anything, upgrades an npm, pnpm, bun or yarn install through that package manager, and swaps back if the new binary does not start. And a CLI that refuses 0x10 instead of guessing.'
 ---
 
-A tool that replaces itself has one job to get right: never leave you
-with a broken binary, or a binary someone else built. `vx upgrade` is
-careful about both.
-
-```mermaid
-flowchart LR
-  A[read the release from the npm registry] --> G{npm's signature verifies?}
-  G -->|no| N[nothing replaced]
-  G -->|yes| D[download]
-  D --> C{SHA-512 matches what npm signed?}
-  C -->|no| N
-  C -->|yes| S[swap in the new binary]
-  S --> V{answers --version?}
-  V -->|no| B[swap the old one back]
-  V -->|yes| OK[installed]
-  style N stroke:#c6f84e,stroke-width:2px
-```
-
-## One command
+`vx upgrade` replaces the binary you run. Each step below is checked
+before the next, and any failure leaves the old binary in place:
 
 ```sh frame="terminal"
 $ vx upgrade            # the latest release
 $ vx upgrade v0.4.0     # a specific one
 ```
 
-What it guards against:
+| Step                                      | If it fails                                  |
+| ----------------------------------------- | -------------------------------------------- |
+| folder is writable                        | refused before download, prints `sudo` line  |
+| npm's registry signature verifies         | nothing replaced                             |
+| download matches the SHA-512 npm signed   | nothing replaced                             |
+| new binary answers `--version` in 10 s    | old binary swapped back, exit 1              |
 
-- The release must carry npm's registry signature over its name, version
-  and SHA-512, checked against npm's key, which vx pins. The server that
-  hands out the file cannot make that signature, so a swapped file is
-  refused. So is a signature from a key vx does not know, with a note that
-  vx itself needs updating.
-- The download must match the SHA-512 npm signed. Nothing is written
-  until both checks pass.
-- The new binary must answer `--version` within 10 seconds. One that
-  does not start on this machine is swapped back, and the command exits 1.
-- A folder you cannot write, such as a root-owned `/usr/local/bin`, is
-  refused before anything downloads, with the `sudo` line to run instead.
-- No network, a dead proxy, or a captive portal's page is one line that
-  says nothing was replaced, never a stack trace.
-- On the version it already is, it says `already at <version>` and
-  downloads nothing.
+npm signs each release's name, version and SHA-512 with a key vx pins.
+The server that hands out the file can't make that signature, so a
+swapped file is refused. A signature from a key vx doesn't know is
+refused too, with a note that vx itself needs updating.
+
+No network, a dead proxy or a captive portal's page prints one line
+saying nothing was replaced. On the current version it prints
+`already at <version>` and downloads nothing.
+
+## A package manager install goes through it
 
 Installed with a package manager? Then that package manager owns the
 file, so `vx upgrade` asks it to do the upgrade and prints the command it

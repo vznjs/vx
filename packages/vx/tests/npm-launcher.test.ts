@@ -136,7 +136,7 @@ describe.skipIf(NODE === null)('npm launcher', () => {
     const r = run(['--version'], ['/usr/bin', '/bin'])
     expect(r.code).toBe(1)
     expect(r.err).toContain(`vx: no prebuilt binary for ${KEY}.`)
-    expect(r.err).toContain(`@vzn/vx-${KEY} optionalDependency, or install Bun (>=1.4)`)
+    expect(r.err).toContain(`@vzn/vx-${KEY} optionalDependency, or install Bun (>=1.4.4)`)
   })
 
   it('with no platform package but bun on PATH, runs the shipped source through bun', async () => {

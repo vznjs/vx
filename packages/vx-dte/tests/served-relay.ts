@@ -2,7 +2,7 @@
 // reach into it: `tap` sees (and may change) each frame a participant
 // sends, and `restart` loses every run, as a host restart does.
 
-import { createRelay, type Relay, type RelayOptions } from '@vzn/vx-dte-relay'
+import { closeSocket, createRelay, GONE, type Relay, type RelayOptions } from '@vzn/vx-dte-relay'
 
 type Held = {
   key: string
@@ -38,7 +38,8 @@ export function servedRelay(
           },
           close: (code, reason) => ws.close(code, reason),
         }
-        if (!relay.attach(ws.data.key, ws.data.id, ws.data.socket)) ws.close(4404, 'gone')
+        if (!relay.attach(ws.data.key, ws.data.id, ws.data.socket))
+          closeSocket(ws.data.socket, GONE, 'gone')
       },
       message(ws, m) {
         if (m === 'ping') {

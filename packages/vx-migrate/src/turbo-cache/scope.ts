@@ -57,6 +57,7 @@ export function keyedByRef(inner: RemoteCacheLayer, allRefs: readonly string[]):
   return {
     ...(inner.endpoint !== undefined ? { endpoint: inner.endpoint } : {}),
     ...(inner.open !== undefined ? { open: (ctx) => inner.open!(ctx) } : {}),
+    ...(inner.lend !== undefined ? { lend: () => inner.lend!() } : {}),
     has: firstHeld,
     ...(hasMany !== undefined
       ? {

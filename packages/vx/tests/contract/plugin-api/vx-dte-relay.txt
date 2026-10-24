@@ -5,8 +5,12 @@ export class TokenError extends Error {
     readonly status: 401 | 403,
   )
 }
+== const GONE (src/relay.ts)
+export const GONE = 4404
 == const PROOF_HEADER (src/proof.ts)
 export const PROOF_HEADER = 'vx-proof'
+== function closeSocket (src/relay.ts)
+export function closeSocket(socket: RelaySocket, code?: number, reason?: string): void
 == function createProver (src/proof.ts)
 export async function createProver(): Promise<Prover>
 == function createRelay (src/relay.ts)

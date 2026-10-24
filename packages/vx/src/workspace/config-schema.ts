@@ -23,6 +23,8 @@ import {
   UserError,
   BUN_GLOB_WILDCARDS,
   EXTGLOB,
+  braceRange,
+  BRACE_RANGE_LIMIT,
   anyTaskGlob,
   asTrees,
   isLiteralPattern,
@@ -946,6 +948,7 @@ export function validateProjectConfig(
         }
       }
       assertOutputsNotNegationOnly(outFiles as string[], `${where}.cache.outputs.files`)
+      assertNoLiteralTakenBack(outFiles as string[], `${where}.cache.outputs.files`, OUTPUT_LOST)
       const wsOutputs = (outputs as { workspaceFiles?: unknown }).workspaceFiles
       if (wsOutputs !== undefined) {
         validateWorkspaceGlobs(wsOutputs, `${where}.cache.outputs.workspaceFiles`, false)
@@ -1150,6 +1153,23 @@ function nearestSetting(key: string): string | undefined {
   return name === undefined ? undefined : `\`${byName.get(name)}\``
 }
 
+/**
+ * Where a field one level down lives: `retries`, `timeout` or `sandbox` on
+ * a task, beside `exec` rather than in it, was refused with the task's
+ * fields alone, none of which is it.
+ */
+function nestedHome(allowed: ReadonlySet<string>, key: string): string | undefined {
+  if (allowed !== TASK_FIELDS) return undefined
+  for (const [field, own] of [
+    ['exec', EXEC_FIELDS],
+    ['inputs', INPUT_FIELDS],
+    ['cache', CACHE_FIELDS],
+  ] as const) {
+    if (own.has(key)) return `\`${field}.${key}\``
+  }
+  return undefined
+}
+
 function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: string): void {
   // `typeof [] === 'object'`, so an array reaches here and its indices read
   // as fields: `outputs: ['dist/**']` (Turbo's spelling) was refused as
@@ -1164,7 +1184,7 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
     if (!allowed.has(key)) {
       // The nearest accepted spelling first: the list says what the level
       // takes, the hint says which one was meant.
-      const foreign = FOREIGN_FIELDS.get(allowed)?.[key]
+      const foreign = FOREIGN_FIELDS.get(allowed)?.[key] ?? nestedHome(allowed, key)
       const near =
         nearest(key, allowed) ?? (allowed === WORKSPACE_FIELDS ? nearestSetting(key) : undefined)
       throw new UserError(
@@ -1262,6 +1282,24 @@ function assertNoForeignToken(glob: string, where: string): void {
         `files it names. Write ${rewrite} instead.`,
     )
   }
+  assertNoBraceRange(glob, where)
+}
+
+const BRACE_RANGE = /(?<!\\)\{(-?\d+|[a-zA-Z])\.\.(-?\d+|[a-zA-Z])(\.\.-?\d+)?\}/g
+
+/**
+ * A range vx expands is any task glob's (`braceRange`). One it does not —
+ * mixed case, or past the limit — `Bun.Glob` would still read, so the
+ * readings would differ by engine: refused.
+ */
+function assertNoBraceRange(glob: string, where: string): void {
+  // Every range, not the first: `a{1..2}{A..c}` held one vx reads past.
+  const m = [...glob.matchAll(BRACE_RANGE)].find((r) => braceRange(r[0].slice(1, -1)) === null)
+  if (m === undefined) return
+  throw new UserError(
+    `${where}: "${glob}" holds the brace range ${m[0]}, which vx expands only within one case ` +
+      `and up to ${BRACE_RANGE_LIMIT} names. Write a smaller range or a comma brace.`,
+  )
 }
 
 /**
@@ -1347,7 +1385,7 @@ function assertPosixGlob(glob: string, where: string, base: string): void {
   )
 }
 
-const ONE_ALTERNATIVE_BRACE = /(?<!\\)\{[^{},]*\}/
+const ONE_ALTERNATIVE_BRACE = /(?<!\\)\{[^{},]*\}/g
 
 /**
  * What every run would refuse, or silently key nothing for, refused at
@@ -1357,8 +1395,11 @@ const ONE_ALTERNATIVE_BRACE = /(?<!\\)\{[^{},]*\}/
  * named. A path under `.git` is never listed by git, so it keyed nothing.
  */
 function assertInputGlob(glob: string, where: string): void {
-  const m = ONE_ALTERNATIVE_BRACE.exec(glob)
-  if (m !== null) {
+  // A range is a brace vx expands (`braceRange`), not one alternative.
+  const m = [...glob.matchAll(ONE_ALTERNATIVE_BRACE)].find(
+    (b) => braceRange(b[0].slice(1, -1)) === null,
+  )
+  if (m !== undefined) {
     const inner = m[0].slice(1, -1)
     throw new UserError(
       `${where}: "${glob}" holds a brace with one alternative, which matches ` +
@@ -1564,7 +1605,12 @@ function assertNotNegationOnly(globs: readonly string[], where: string): void {
  * entered the key, and an edit to it replayed the old output. Refusing is
  * free: the literal already selected nothing.
  */
-function assertNoLiteralTakenBack(globs: readonly string[], where: string): void {
+function assertNoLiteralTakenBack(
+  globs: readonly string[],
+  where: string,
+  // An output's literal is never saved: a hit left it missing and said up-to-date.
+  lost = 'the file never enters the key',
+): void {
   const negative = globs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
   if (negative.length === 0) return
   const taken = anyTaskGlob(asTrees(negative))
@@ -1575,7 +1621,7 @@ function assertNoLiteralTakenBack(globs: readonly string[], where: string): void
     const by = negative.find((n) => anyTaskGlob(asTrees([n]))(lit))
     throw new UserError(
       `${where}: "${g}" is taken back by "!${by}" — a \`!\` entry subtracts wherever it sits in ` +
-        `the list, so the file never enters the key. Narrow the negation so it leaves "${g}".`,
+        `the list, so ${lost}. Narrow the negation so it leaves "${g}".`,
     )
   }
 }
@@ -1617,13 +1663,18 @@ function validateWorkspaceGlobs(v: unknown, where: string, negation: boolean): v
   if (negation) {
     assertNotNegationOnly(v as string[], where)
     assertNoLiteralTakenBack(v as string[], where)
-  } else assertOutputsNotNegationOnly(v as string[], where)
+  } else {
+    assertOutputsNotNegationOnly(v as string[], where)
+    assertNoLiteralTakenBack(v as string[], where, OUTPUT_LOST)
+  }
 }
 
 /**
  * An output list of only `!` entries selects nothing: the task saves and
  * restores nothing while it reads as if it declared outputs (A-44).
  */
+const OUTPUT_LOST = 'the file is never saved or restored'
+
 function assertOutputsNotNegationOnly(globs: readonly string[], where: string): void {
   if (globs.length === 0 || globs.some((g) => !g.startsWith('!'))) return
   throw new UserError(

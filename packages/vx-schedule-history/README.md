@@ -58,20 +58,25 @@ configure:
 - **Per definition.** Each timing is of the task as it was: its command
   and `env.define` (`taskDefinitions`). A task whose command changed reads
   none of its old timings; editing its inputs, outputs or deps keeps them.
-- **Untrusted.** A blob over 1 MiB, not `{ version: 2, tasks }` (a version 1 blob's timings are read, its
-  needs, learned as a crowded worker's share of a core, are not), with
+- **Untrusted.** A blob over 1 MiB, not `{ version: 4, tasks }` (an older blob's timings are read,
+  its needs, learned wrong on a crowded or macOS worker, are not), with
   more than 50 000 tasks, or with a time outside 0 to 24 h, is dropped,
   silently; ids not in the run's graph are dropped. It can only order a
   run, never change what runs. The first write of a commit's blob stays,
   so the cache's write credential is the boundary: give PR jobs a
   read-only token.
+- **Averaged needs.** A CI run measures each task once, so the need it
+  writes is the mean of its own and the carried one, and a task fills its
+  machine only while that mean does (or both did).
 
 ## Timings between CI runners, without a remote cache
 
 A fresh CI runner has no history. `file` names a JSON file, from the
 workspace root, that carries it: read before ordering, rewritten after
 each run with every task's p50 (its directory made if absent), so a
-CI cache keeps one file.
+CI cache keeps one file. Git-ignore it: a task whose inputs cover it (a
+root project's `**`) would re-key on every rewrite, and a rewrite of a
+file git does not ignore warns.
 
 ```ts
 export default {

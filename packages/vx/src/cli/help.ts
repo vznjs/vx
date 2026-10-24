@@ -355,8 +355,9 @@ export function flagHint(verb: string, arg: string): string {
   if ((name === '--format' || name === '--json') && flags.includes('--dry'))
     return ' (the run as JSON is `vx last --format json` after it; the plan is --dry=json)'
   // A flag cut short at a word (`--dry` for prune's `--dry-run`, which
-  // `vx run` spells `--dry`) is too many edits away for either budget.
-  const cut = flags.filter((f) => f.startsWith(`${name}-`))
+  // `vx run` spells `--dry`) is too many edits away for either budget, and
+  // so is one a word too long (`vx run --dry-run`).
+  const cut = flags.filter((f) => f.startsWith(`${name}-`) || name.startsWith(`${f}-`))
   const best =
     nearest(name, flags) ??
     nearest(

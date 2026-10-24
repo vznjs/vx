@@ -55,8 +55,8 @@ export interface RunArgs {
    * workspace's `cache.policy` and applies these on top.
    */
   cacheFlags?: CacheFlags
-  /** The policy named a remote axis (`remote:r`, `:w`, `:rw`): the run says so when no plugin serves one. */
-  remoteRequested?: boolean
+  /** Which setting named a remote axis (`remote:r`, `:w`, `:rw`): the run says so when no plugin serves one. */
+  remoteRequested?: '--cache-policy' | 'VX_CACHE_POLICY'
   /** `--cache-dir <path>`: override the cache directory (cwd-relative). */
   cacheDir: string | undefined
   /** `vx watch --poll` (`watch.poll`). */
@@ -220,7 +220,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       }
       try {
         cachePolicy = parseCachePolicy(v, cachePolicy)
-        if (/remote:[rw]/.test(v)) out.remoteRequested = true
+        if (/remote:[rw]/.test(v)) out.remoteRequested = '--cache-policy'
       } catch (err) {
         cacheSpecError = `--cache-policy: ${err instanceof Error ? err.message : String(err)}`
       }
@@ -311,7 +311,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
         error: `VX_CACHE_POLICY: ${err instanceof Error ? err.message : String(err)}`,
       }
     }
-    if (/remote:[rw]/.test(envSpec)) out.remoteRequested = true
+    if (/remote:[rw]/.test(envSpec)) out.remoteRequested = 'VX_CACHE_POLICY'
   }
   // --no-cache (all off) beats --force (reads off, writes kept), both
   // layered on top of the spec; with none named, on the workspace's.
@@ -482,7 +482,7 @@ export async function resolveRunOptions(
     ...(parsed.cacheFlags !== undefined
       ? { cacheFlags: parsed.cacheFlags }
       : { cache: parsed.cache }),
-    ...(parsed.remoteRequested ? { remoteRequested: true } : {}),
+    ...(parsed.remoteRequested ? { remoteRequested: parsed.remoteRequested } : {}),
     // A laptop reads the shared cache and never writes it (owner,
     // 2026-10-03); naming the remote in `--cache-policy` is asking to.
     ...(!parsed.remoteRequested && !onCI(process.env['CI'])

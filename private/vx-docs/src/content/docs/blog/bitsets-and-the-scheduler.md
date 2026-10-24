@@ -107,4 +107,5 @@ own pool and is never asked, so a 64-wide worker fleet is not throttled
 by a laptop's core count.
 
 Reference: the scheduler module notes under
-[Architecture](../../architecture/).
+[Architecture](../../architecture/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

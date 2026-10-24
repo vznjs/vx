@@ -322,7 +322,7 @@ describe('cache.scope', () => {
       })
       expect(parseRunArgs(['build', '--force']).cache).toEqual({ ...off, localRead: false })
       process.env['VX_CACHE_POLICY'] = 'remote:rw'
-      expect(parseRunArgs(['build']).remoteRequested).toBe(true)
+      expect(parseRunArgs(['build']).remoteRequested).toBe('VX_CACHE_POLICY')
       process.env['VX_CACHE_POLICY'] = 'disk:r'
       expect(parseRunArgs(['build']).error).toContain("VX_CACHE_POLICY: invalid layer 'disk'")
       process.env['VX_CACHE_POLICY'] = ','

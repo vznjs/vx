@@ -26,6 +26,7 @@ import { mapRunCommands, shellQuote } from '../nx-command.js'
 import { scriptCommand, yarnPnp } from '../script-command.js'
 import {
   ownFileTakeBacks,
+  takingBack,
   excludeSiblingOutputs,
   excludeWorkspaceOutputs,
   resolveSharedOutputs,
@@ -1020,8 +1021,8 @@ function buildTask(
   if (inputs.runtimeCmds.length > 0) keyed.workspaceRuntime = inputs.runtimeCmds
   task.inputs = keyed
   if (cacheEnabled) {
-    const outputs: Record<string, unknown> = { files: outFiles }
-    if (wsOutFiles.length > 0) outputs.workspaceFiles = wsOutFiles
+    const outputs: Record<string, unknown> = { files: takingBack(outFiles) }
+    if (wsOutFiles.length > 0) outputs.workspaceFiles = takingBack(wsOutFiles)
     task.cache = { outputs }
   }
 

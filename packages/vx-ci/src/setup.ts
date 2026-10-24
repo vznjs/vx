@@ -63,11 +63,13 @@ export async function setup(o: SetupOptions): Promise<number> {
   const missing = BINARIES.filter((b) => !has(b))
   const debs = readdir(o.debs).filter((f) => f.endsWith('.deb'))
   // What the job's cache restored, else fetched: kept from an older
-  // image, they may not install.
+  // image, they may not install, and a set fetched where the image had a
+  // package already holds no deb of it.
   const kept =
     missing.length > 0 &&
     debs.length > 0 &&
-    (await sh([...sudo, 'dpkg', '-i', ...debs.map((f) => path.join(o.debs, f))])) === 0
+    (await sh([...sudo, 'dpkg', '-i', ...debs.map((f) => path.join(o.debs, f))])) === 0 &&
+    BINARIES.every((b) => has(b))
   if (missing.length > 0 && !kept) {
     if (has('apt-get')) {
       await run(['rm', '-rf', o.debs])
@@ -129,6 +131,9 @@ export async function setup(o: SetupOptions): Promise<number> {
     await run(['cp', profile, '/etc/apparmor.d/bwrap'])
     await run(['apparmor_parser', '-r', '/etc/apparmor.d/bwrap'])
   }
+  // GitLab keeps it in the checkout, where a root task's `**` keyed the
+  // debs: a job that had them missed every hit saved without them.
+  if (existsSync(o.debs)) await writeFile(path.join(o.debs, '.gitignore'), '*\n')
   if (o.output !== undefined && o.output !== '')
     await writeFile(o.output, `fetched=${fetched}\n`, { flag: 'a' })
   // The proof: a sandbox that cannot start fails here, named, not as every

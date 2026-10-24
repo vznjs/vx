@@ -49,6 +49,10 @@ last one learned:
     restore-keys: vx-timings-
 ```
 
+Add the file to `.gitignore`. A task whose inputs cover it, like a root
+project's `**`, would otherwise get a new key each time the file
+changes. vx warns when git does not ignore it.
+
 | Source of a task's time | Wins over |
 | --- | --- |
 | Runs on this machine | the file and `assume` |
@@ -69,7 +73,7 @@ changes.
 | Full local history | 10.64 s |
 
 With no times, the slow tasks start last. The file starts them first,
-cutting 12% off the wall time and matching a machine with its full
+cutting 1.4 s off the wall time and matching a machine with its full
 history. The lower bound here is 10.5 s.
 
 Setup: linux x64, 4 cores, 4 workers, `sleep` tasks, vx 0.0.634. Run it
@@ -82,3 +86,5 @@ file (194.07 s and 194.60 s).
 A run that executed nothing and restored only tasks the file already
 times leaves the file alone, so an all-cached CI run pays no extra history
 read. Runs that use no history plugin do no extra work.
+
+More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

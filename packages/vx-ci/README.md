@@ -135,8 +135,10 @@ if it cannot. On macOS the sandbox is built in and it does nothing.
 The packages it fetched stay in a directory the job's cache can keep:
 `~/.cache/vx/setup-debs` on Actions, `.vx-setup-debs` under
 `CI_PROJECT_DIR` on GitLab, or `--debs <dir>`. When that directory holds them, they install
-with no index fetch; when they do not install (an older image's), they
-are fetched again. On Actions the step's outputs, written to
+with no index fetch; when they do not install (an older image's) or
+leave a tool missing (one that image had already), they are fetched
+again. The directory holds a `*` `.gitignore`, so no task's inputs
+read it (on GitLab it sits in the checkout). On Actions the step's outputs, written to
 `GITHUB_OUTPUT`, are `fetched` and `key`
 (`vx-setup-debs-<RUNNER_OS>-<RUNNER_ARCH>-<image>-<version>`, the
 runner image's, which the restore prefix below finds), so a cache step

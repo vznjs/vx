@@ -140,8 +140,13 @@ describe('tarPack → tarEntries, seeded', () => {
 
       // libarchive on darwin takes a `._` component for AppleDouble metadata
       // and drops the entry, so the oracle is asked only about the others;
-      // vx's own reader above is held to every name.
-      const plain = [...files.keys()].filter((n) => !isAppleDouble(n))
+      // vx's own reader above is held to every name. Since Bun 1.4.4 it
+      // also refuses a tar whose LAST entry is one ("end-of-archive within
+      // a sequence of headers": the metadata names no file), so such a
+      // seed (4 of 150) skips the oracle there.
+      const names = [...files.keys()]
+      if (process.platform === 'darwin' && isAppleDouble(names.at(-1)!)) continue
+      const plain = names.filter((n) => !isAppleDouble(n))
       const oracle = await new Bun.Archive(tar).files()
       expect([...oracle.keys()].filter((n) => !isAppleDouble(n)).sort(), ctx).toEqual(plain.sort())
       for (const n of plain) {

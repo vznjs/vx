@@ -352,6 +352,7 @@ describe('cli run()', () => {
       ['why', 'x', '--rn', '1'],
       ['cache', 'clean', '--dry-rn'],
       ['cache', 'clean', '--dry'],
+      ['run', 'build', '--dry-run'],
       ['run', 'build', '--concurency', '2'],
       ['info', '--json'],
       ['last', '--json'],
@@ -393,6 +394,9 @@ describe('cli run()', () => {
       ).trimEnd(),
       noticed(
         'vx cache clean: unknown flag: --dry (did you mean --dry-run?) (see `vx cache --help`)',
+      ).trimEnd(),
+      noticed(
+        'vx run: unknown flag: --dry-run (did you mean --dry?) (see `vx run --help`)',
       ).trimEnd(),
       noticed(
         'vx run: unknown flag: --concurency (did you mean --concurrency?) (see `vx run --help`)',
@@ -1975,6 +1979,13 @@ describe('formatBytes', () => {
     expect(formatBytes(4 * 1024 ** 4)).toBe('4.0 TB')
     expect(formatBytes(2048 * 1024 ** 4)).toBe('2 PB')
   })
+
+  // The tier is the printed value's: 1 MiB less a byte printed `1024 KB`.
+  it('a value that rounds up to the next tier prints in it', () => {
+    expect(formatBytes(1024 ** 2 - 1)).toBe('1.0 MB')
+    expect(formatBytes(10 * 1024 - 1)).toBe('10 KB')
+    expect(formatBytes(1024 ** 5 - 1)).toBe('1 PB')
+  })
 })
 
 describe('parseDuration', () => {
@@ -2244,8 +2255,9 @@ describe('unknown-flag hints reach three edits', () => {
     // The distance was capped at 3, so "three or more" read as three: the
     // same-stem budget offered `--concurrency` for `--continue-on-error`
     // (nine edits) and `--cache-policy` for `--cache-directory`.
+    // `--continue-on-error` is `--continue` a word too long, which is the hint.
     expect(parseRunArgs(['build', '--continue-on-error']).error).toBe(
-      'unknown flag: --continue-on-error',
+      'unknown flag: --continue-on-error (did you mean --continue?)',
     )
     expect(parseRunArgs(['build', '--cache-directory', 'd']).error).toBe(
       'unknown flag: --cache-directory',
@@ -2266,6 +2278,15 @@ describe('nearest', () => {
     // The default budget of two: unchanged.
     expect(nearest('buidl', ['build'])).toBe('build')
     expect(nearest('bxyzl', ['build'])).toBeUndefined()
+  })
+
+  // `--filter=x9` offered `fix  //`: two edits rewrite any two letters.
+  it('a candidate the edits rewrite whole is no near miss', () => {
+    expect(nearest('x9', ['//', 'packages/p1'])).toBeUndefined()
+    expect(nearest('b', ['a'])).toBeUndefined()
+    // CONTROL: a real typo of a short name still hints.
+    expect(nearest('p1', ['p2'])).toBe('p2')
+    expect(nearest('b', ['ab'])).toBe('ab')
   })
 })
 

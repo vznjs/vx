@@ -6,16 +6,33 @@ authors:
 tags:
   - dx
   - caching
-excerpt: "vx names a task flaky only when its exact cache key failed after it had passed, or it needed a retry this run. A failure on inputs that never passed is a break, not a flake. No service, no upload: the local run history is enough."
+excerpt: "vx names a task flaky only when its exact cache key failed after it had passed, or it passed only on a retry this run. A failure on inputs that never passed is a break, not a flake. No service, no upload: the local run history is enough."
 ---
 
-Flaky-test detection is one of the features that usually lives behind
-a cloud login. Nx sells it. It is also one of the easiest things to get
-wrong, because "flaky" is used to mean "failed and I do not want to
-look," and a tool that agrees with that use is teaching a team to
-ignore red.
+This task fails, then passes, then fails, on the same inputs:
 
-vx defines it narrowly, and the narrow definition is the feature.
+```ts
+flip: {
+  exec: { command: 'bun flip.ts' },   // fails when a marker is absent, passes and removes it when present
+  inputs: { files: ['flip.ts'] },
+  cache: { outputs: { files: [] } },
+}
+```
+
+```sh frame="terminal"
+$ vx run packages/a#flip
+└─ packages/a#flip ── (10ms) failed (exit 1)
+$ vx run packages/a#flip
+└─ packages/a#flip ── (11ms) success
+$ vx run packages/a#flip --force
+└─ packages/a#flip ── (12ms) failed (exit 1) flaky - passed 1× before
+$ vx run packages/a#flip --force
+└─ packages/a#flip ── (11ms) success flaky - failed 2× before
+```
+
+The first failure is not flaky: that key had never passed. The second
+failure is, because the same key passed before it. Linux x64, vx at
+`69617eb`, 2026-10-23, local run history only.
 
 ## The definition
 
@@ -27,49 +44,60 @@ A task is **flaky** when one of two things is on record:
 - it needed a **retry** this run (`exec.retries` or `--retries`) and then
   passed.
 
-A failure on a key that never passed is a **break**. The inputs
-changed and the result is red, which is what a red run usually means,
-and it is not listed. Nor is the first pass after only failures: that
-is a recovery (a missing tool installed), not a flake. Only tasks with a `cache` block are judged at
-all: "same inputs, different outcome" is a claim only declared inputs
-can back. A task without them is keyed on its config alone, and two
-runs of it are not the same inputs in any meaningful sense.
+| Record                              | Verdict          |
+| ----------------------------------- | ---------------- |
+| key failed, never passed            | a break          |
+| key passed after only failures      | a recovery       |
+| key failed after it passed          | flaky            |
+| passed on a retry                   | flaky            |
+| task has no `cache` block           | not judged       |
+
+Without declared inputs, two runs are not the same inputs, so the claim
+can't be made.
+
+A retry shows the same way:
+
+```sh frame="terminal"
+$ vx run packages/a#e2e          # exec.retries: 1
+timeout talking to db
+vx: retrying packages/a#e2e (attempt 2/2) after exit 1
+pass
+└─ packages/a#e2e ── (17ms) success flaky - 2 attempts
+```
 
 ## What you see
 
-A flaky task says so on its own row in the run's task list, in a dim
-note after its name:
+In the run's task list the note rides the task's row:
 
 ```
  ◼︎   4.21s failed  miss     app#test flaky - passed 3× before
  ⏺︎  12.84s success miss     api#e2e flaky - failed 1× before · 2 attempts
 ```
 
-A task that was not flaky carries no note. `vx info` keeps the
-standing list across runs, and `vx last --stats --format json` gives an
-agent each task's failure mode, so it can tell a break from a flake
-without parsing text and does not learn to shrug at a repeated failure
-on changing inputs.
+`vx info` keeps the standing list. `vx last --stats --format json`
+gives each task a `failureMode`:
+
+```json
+{"taskId":"packages/a#flip","runs":4,"successRate":0.5,"failureMode":"flaky-fatal"}
+{"taskId":"packages/a#e2e","runs":1,"successRate":1,"failureMode":"flaky-recoverable"}
+```
 
 ## Why it is free
 
-The information was already there. Every cache entry records its key,
-its outcome and its run. Asking "has this key ever had the other
-outcome" is one index probe on a green miss, and nothing at all on a
-run that executed nothing. There is no upload because there is nothing
-to upload to; the history is the local `cache.db` that `vx why` and
-`vx last` already read.
+Every cache entry already records its key, outcome and run. "Has this
+key had the other outcome?" is one index probe on a green miss, and
+nothing on a run that executed nothing. No upload: the history is the
+local `cache.db` that `vx why` and `vx last` read.
 
-That is also why it works on the first day. A service-side detector
-needs a fleet of runs before it can say anything. vx's needs the second
-run of the same key on your machine. The record lives in the repo's
-store under `~/.vx`, so every worktree of the repo reads what the
-others saw.
+It works on the second run of a key on your machine, not after a fleet
+of runs. The record lives under `~/.vx`, so every worktree of the repo
+reads what the others saw.
 
 ## What it is not
 
-It is not a retry policy. `exec.retries` is separate and explicit, and
-a task that passes on retry is *reported* as flaky rather than quietly
-made green. It is not a quarantine: nothing is skipped, ever, because a
-skip is a silent pass. It is a label on a fact, kept where you can act
-on it, and the act is yours.
+- **Not a retry policy.** `exec.retries` is separate and explicit. A
+  pass on retry is *reported*, not quietly made green.
+- **Not a quarantine.** Nothing is skipped: a skip is a silent pass.
+
+It is a label on a fact. What to do about it is yours. More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

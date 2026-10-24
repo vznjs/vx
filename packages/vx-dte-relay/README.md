@@ -108,7 +108,9 @@ The same relay as a `fetch` handler, to mount in a server of your own
   `upgrade`, which answers a `socket` request, and `timer: false`, so the
   host calls `sweep()` itself; and the methods `attach` and `detach`,
   which hand the relay a participant's `RelaySocket` (`{ send, close }`),
-  `frame`, `seen` and `sweep`.
+  `frame`, `seen` and `sweep`. A host closes a socket `attach` refuses
+  with `closeSocket(socket, GONE)` (`GONE` is 4404), which says the close in a frame first
+  (PROTOCOL.md § Sockets).
 - `serveRelay(options: ServeOptions): RelayServer` serves the relay on
   `Bun.serve`, websockets included. `ServeOptions` is
   `{ hostname, port, verify?, heartbeatMs? }`, and a `RelayServer` is

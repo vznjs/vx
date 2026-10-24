@@ -243,6 +243,12 @@ describe('the relay carries one run between its orchestrator and workers', () =>
       (await owner.proof('GET', path, '')).replace(/^\d+/, String(Date.now() - 3 * 60_000)),
     )
     expect(await status(stale)).toBe(403)
+    // Sent at once, a replay still finds its nonce taken: the check awaited
+    // the signature before it took the nonce, and both passed.
+    const twice = await owner.proof('GET', path, '')
+    expect(
+      (await Promise.all([status(socket(twice)), status(socket(twice))])).toSorted((x, y) => x - y),
+    ).toEqual([101, 403])
   })
 
   it('joins a participant on the socket it opens: one request, its id said first', async () => {

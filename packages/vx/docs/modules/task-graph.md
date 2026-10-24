@@ -81,6 +81,13 @@ export function undeclaredDepsError(
   declared: Iterable<string>,
 ): UserError
 
+// The `build` a project declaring none gets (projects.md), and the test
+// for it: the picker, the "tasks here" and `vx build` hints and
+// `vx show <task>` leave it out, and its `^build` refusal with no edge
+// source says it is the default build's.
+export const DEFAULT_BUILD: TaskConfig
+export function isDefaultBuild(task: TaskConfig | undefined): boolean
+
 // Which `{project, task}` pairs a run's requested names resolve to, and
 // which resolve to nothing (`vx run`'s "every requested name must resolve").
 // A bare name matches no task `unselected` holds: `prepareRun` passes

@@ -10,7 +10,7 @@ in `src/cli/index.ts` dispatches to per-subcommand handlers under
 # that installs @vzn/vx, it runs that one (§ Which vx runs):
 bun add -g @vzn/vx
 
-# From source (Bun ≥ 1.4):
+# From source (Bun ≥ 1.4.4):
 bun src/bin.ts --version
 ```
 
@@ -269,9 +269,9 @@ git: <root> is not inside a git work tree`, as a plain run does, and a
 - `--affected=<ref>` uses the given git ref. A value that is empty or
   starts with `-` is refused before git sees it: the ref is an argument,
   never a shell command, and an option-like one (`--output=<path>`)
-  would be a real `git diff` option. A range (`HEAD~1..HEAD`,
+  would be a real `git diff` option. A range that does not end at HEAD (`HEAD~2..HEAD~1`,
   `main...feature`) is refused there too, naming the base to pass
-  alone — `ranges are not supported — pass the base alone ("HEAD~1")`
+  alone — `ranges are not supported — pass the base alone ("HEAD~2")`
   — because the other end is always the working tree; `<base>...HEAD`,
   Turbo's CI spelling, is read as `<base>`, since vx diffs from the merge
   base to a working tree that holds HEAD (D-117). Its two-dot `<base>..HEAD` diffs from
@@ -589,7 +589,8 @@ them in this precedence order:
 
 A spec that names a remote axis (`remote:r`, `remote:w`, `remote:rw`)
 in a workspace whose plugins supply no remote layer gets one status
-line saying so — the axes are inert without a layer to serve them, and
+line saying so, naming where the spec came from (`--cache-policy`,
+`VX_CACHE_POLICY` or `cache.policy`) — the axes are inert without a layer to serve them, and
 a CI job that believes it is filling a shared cache should be told.
 
 Whatever the axes, a lookup asks the local cache first, then each
@@ -1084,8 +1085,8 @@ Writes a Chrome-trace JSON of every task's wallclock span. Open in
 }
 ```
 
-Each project gets a distinct `tid` so concurrent tasks across packages
-render on separate lanes. `ts` and `dur` are microseconds derived
+Each project gets a distinct `tid`, and one more for each task it runs
+beside another of its own, so concurrent tasks render on separate lanes. `ts` and `dur` are microseconds derived
 from the per-task `hrtime.bigint()` spans the runner captures.
 `cat` carries the task's final status (`success`, `cache-hit`,
 `cache-hit-remote`, `failed`).
@@ -1458,10 +1459,11 @@ Both bounds may be combined: age-based eviction runs first, then LRU eviction if
 total is still over the size cap. No run evicts anything: to bound the
 cache, run this from a schedule or CI.
 
-After eviction, prune sweeps the cache directory for **orphans**: a
-`<hash>.tar.zst` the index has no row for (a `SCHEMA_VERSION` bump
-drops every table and leaves the artifacts behind, as a deleted
-`cache.db` does) and a `<hash>.tar.zst.tmp-*` a save that crashed never
+After eviction, prune sweeps the cache directory for **orphans**: an
+artifact (a `<hash>.tree` directory, or a `<hash>.tar.zst`) the index
+has no row for (a `SCHEMA_VERSION` bump drops every table and leaves
+the artifacts behind, as a deleted `cache.db` does) and a
+`<hash>.tree.tmp-*` or `<hash>.tar.zst.tmp-*` a save that crashed never
 renamed. A run that asks for an orphan's key indexes it again from its
 bytes and hits; one no task asks for again is only reclaimed here. The
 policy judges a row-less artifact as it judges an entry, by its file
@@ -1662,7 +1664,11 @@ fails the shape check and asks for `vx lock`. It also checks the graph rules ove
 evaluate now, and that each `vx.lock.json` is what its project resolves to
 here, and that none is left where a `vx.config` was deleted, the
 directory still a project or not (delete that one yourself: vx never
-deletes a committed file), unless `lock.reviewFiles` is off. The CI recipe is `vx lock --check && vx run …`.
+deletes a committed file; `vx lock` names it too, as a warning), unless `lock.reviewFiles` is off. The CI recipe is `vx lock --check && vx run …`.
+`vx lock` and `--check` also warn of a config file another one beside
+it hides (`vx.config.ts` and `vx.config.mjs` in one directory, or two
+`.vx/workspace.*`): precedence reads the first, and an edit to the
+other changes nothing. The warning does not fail `--check`.
 `--format json` prints the audit as one document
 (`schemas/lock.json`, exit code unchanged; a missing lock is one of
 its `problems`); it answers `--check` only.
@@ -2281,7 +2287,9 @@ projects, as `vx run` selects: `turbo ls --affected` is
 is `vx show t --affected`. Beside a task, `--affected` lists the
 projects whose task the run keeps: a change reaches another project
 only along a task edge, so a dependent whose `test` has no `^test` is
-not listed (X-147). With no task there is no edge to follow, and the
+not listed (X-147). A task's list the selection leaves empty says so on
+stderr (`no affected project's test runs`); `--format json` prints `[]`.
+With no task there is no edge to follow, and the
 list is the run's candidates, `--filter "...[<base>]"`'s: the changed
 projects and their package dependents. Beside one project or
 `<pkg>#<task>` they are refused.
@@ -2476,7 +2484,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   script or a bug-report template: `vx`, `vxPath` (the file that ran),
   `handedOffFrom` (the vx that handed the call to the project's own, else
   null), `bun`, `bunSupported` (false
-  below Bun 1.4.0), `git` (null when not
+  below Bun 1.4.4), `git` (null when not
   found), `gitStatusCache` (`{ fsmonitor, untrackedCache }`, null when
   git could not answer), `workspaceRoot`, `projects`, `tasks`,
   `plugins` (`[{ name, seams }]`), `workers` (`{ count, source, cores,
@@ -2620,7 +2628,8 @@ The component-level rows come from the `entry_inputs` input
 fingerprints persisted with each cache entry; when either side's entry
 is gone (pruned, or the run failed and never saved one) the verb still
 names the hash change and says the component diff is unavailable. When
-only the previous run failed, the diff is taken against the last run
+only the previous run failed, or passed beside a failed task
+(`--continue`, never saved), the diff is taken against the last run
 that saved an entry instead, and the detail line names that run. A
 task with `inputs` and no `cache` block derives a key too — it is what
 dependents fold — but saves no entry, so for it the verb can only report
@@ -2705,7 +2714,9 @@ recorded the task, or in RUNID's. A failed task's is the kept failure
 output; any other task's is its cache entry's log (the one a hit
 replays, masked as it was), so a passing task's log reads too, on a hit
 or in the run that saved it. An uncached task that passed, or a skip,
-kept none: stdout is empty and stderr says so, exit 0. With
+kept none, nor does a failed task past the newest 50 failed runs:
+stdout is empty and stderr says so, exit 0. A kept log that is empty
+says the task printed nothing. With
 `--format json` it is `{ runId, taskId, status, source, output }`,
 `source` `'failure'`, `'cache'` or `null`. A task no run recorded is
 refused, exit 1; `--log` does not combine with `--list` or `--failed`.
@@ -2715,7 +2726,7 @@ with no value takes the positional as its task.
 window the scheduler and `--dry` learn from: runs, p50 (the forecast a
 run shows: the median of the task's last five timings on the branch,
 else on any branch), p99 of the executed successes, pass and hit rate, failure mode (`stable`,
-`flaky-recoverable`, `flaky-fatal`), the largest peak RSS and CPU
+`flaky-recoverable`, `flaky-fatal`), the largest peak RSS and the mean CPU
 parallelism (a hit counts what its producing run used), one table row
 per task. A task id narrows to that task, a task name to it in every
 project; one the window has no run of is refused, exit 1. The branch is
@@ -2792,7 +2803,8 @@ and not completed, nor completed and then refused: a flag another
 verb's line names in passing (`--check` in a line about `vx lock`) is
 not one. After a flag with a fixed value set the script offers that
 set: `--format` pretty or json, `--output-logs` full, errors-only,
-hash-only or none, `--cache-download` all, toplevel or none — each value one
+hash-only or none, `--cache-download` all, toplevel or none, `--schedule`
+its four rules — each value one
 the flag's parser takes (`tests/completions.test.ts` holds it). A plugin verb completes `--help` only. Task and project
 names are not completed (they are the workspace's, and a completion
 that evaluates configs on every Tab is the wrong price). The zsh script
@@ -3102,8 +3114,9 @@ run history alone, no service:
 
 A task is flaky when its exact cache key FAILED AFTER IT HAD PASSED
 (this run counted; a cache hit is a pass, it replayed one), or when it
-needed a retry (`exec.retries` / `--retries`) this run. A failure on a
-key that never passed is a break and carries no note — a changed input
+passed only on a retry (`exec.retries` / `--retries`) this run. A failure on a
+key that never passed is a break and carries no note, every retry of it
+failed too — a changed input
 that fails is what a red run usually means — and the first pass after
 only failures is a recovery (a missing tool installed), not a flake.
 Only tasks with a `cache` block are judged: "same inputs, red after

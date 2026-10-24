@@ -138,10 +138,14 @@ export async function join(
   // own limit let one poll wait five minutes before the run failed (CI,
   // 2026-10-22). Two heartbeats, once `join` says what one is, 10 s at most.
   let deadlineMs = REPLY_MS
+  // The join, socket and request alike, has `REPLY_MS` in all: its socket
+  // and then its request each took 10 s, and PR #4225's run failed after
+  // 21 s on a bare "The operation timed out" (CI, 2026-10-24).
+  let joinBy = performance.now() + REPLY_MS
   const once = async (verb: string, body?: unknown, query = '', signal?: AbortSignal) => {
     const method = body === undefined ? 'GET' : 'POST'
     const text = body === undefined ? '' : JSON.stringify(body)
-    const limit = AbortSignal.timeout(deadlineMs)
+    const limit = AbortSignal.timeout(Math.max(1, Math.min(deadlineMs, joinBy - performance.now())))
     const res = await fetch(base + verb + query, {
       method,
       headers: await headers(method, base + verb + query, text),
@@ -159,7 +163,7 @@ export async function join(
       // Refused at the door is no fault to wait out: say so, and stop.
       const message =
         verb === 'join' && (res.status === 401 || res.status === 403)
-          ? `cannot connect to the relay ${new URL(base).origin}: ${json.error ?? res.status}`
+          ? `cannot connect to the relay ${new URL(base).origin}: ${res.status} ${json.error ?? ''}`.trimEnd()
           : `relay ${verb}: ${res.status} ${json.error ?? ''}`
       throw new RelayError(res.status, message, json.retryAfterMs)
     }
@@ -177,32 +181,42 @@ export async function join(
   // it opens. One that does not (an older relay, a refusal only `join`
   // says the reason for) joins by request.
   const query = `join=${encodeURIComponent(JSON.stringify(asked))}`
-  let socket: (Socket & { joined?: Joined }) | undefined = await connect(
-    base,
-    query,
-    await headers('GET', `${base}socket?${query}`, ''),
-    // quiet: a socket join that fails joins by request, whose refusal throws
-  ).catch(() => undefined)
-  if (socket?.joined !== undefined) ({ id, heartbeatMs } = socket.joined)
-  else {
-    const joined = await enter()
-    id = joined['id'] as string
-    heartbeatMs = joined['heartbeatMs'] as number
-    if (joined['socket'] !== true) {
-      throw new RelayError(
-        501,
-        'relay join: the relay offers no socket, which vx-dte needs (PROTOCOL.md § Sockets)',
-      )
-    }
-    socket = await dial()
-    // The relay made a run twice when two joins came at once and forgot the
-    // first's participants, whose first socket never opened: two of twelve
-    // workers on CI (2026-10-23). Joined again, it lands in the run that stayed.
-    if (socket === undefined) {
-      id = (await enter())['id'] as string
+  let socket: (Socket & { joined?: Joined }) | undefined
+  try {
+    socket = await connect(
+      base,
+      query,
+      await headers('GET', `${base}socket?${query}`, ''),
+      // quiet: a socket join that fails joins by request, whose refusal throws
+    ).catch(() => undefined)
+    if (socket?.joined !== undefined) ({ id, heartbeatMs } = socket.joined)
+    else {
+      const joined = await enter()
+      id = joined['id'] as string
+      heartbeatMs = joined['heartbeatMs'] as number
+      if (joined['socket'] !== true) {
+        throw new RelayError(
+          501,
+          'relay join: the relay offers no socket, which vx-dte needs (PROTOCOL.md § Sockets)',
+        )
+      }
       socket = await dial()
+      // The relay made a run twice when two joins came at once and forgot the
+      // first's participants, whose first socket never opened: two of twelve
+      // workers on CI (2026-10-23). Joined again, it lands in the run that stayed.
+      if (socket === undefined) {
+        id = (await enter())['id'] as string
+        socket = await dial()
+      }
     }
+  } catch (err) {
+    if ((err as Error).name !== 'TimeoutError') throw err
+    throw new RelayError(
+      504,
+      `cannot connect to the relay ${new URL(base).origin}: no answer in ${REPLY_MS / 1000} s`,
+    )
   }
+  joinBy = Infinity
   deadlineMs = replyMs(heartbeatMs)
   let failures = 0
   /** When the socket was last open: dials past `REPLY_MS` from it give up. */
@@ -224,6 +238,8 @@ export async function join(
     redial = undefined
     nudge()
   }
+  /** The last socket that closed: its close handshake may not have ended. */
+  let dropped: Socket | undefined
   const adopt = (s: Socket): void => {
     socket = s
     s.onMessages = (messages) => {
@@ -241,6 +257,7 @@ export async function join(
       if (code === GONE) end(new RelayError(404, 'relay: unknown id'))
       if (code === NOT_PROTOCOL) end(new RelayError(502, `relay: ${why}`))
       if (socket === s) socket = undefined
+      dropped = s
       again()
       nudge()
     }
@@ -345,7 +362,9 @@ export async function join(
       // no socket, the relay loses this participant as one gone silent.
       // quiet: leaving: the socket's close is the answer either way
       if (s?.open === true) await s.request({ leave: true }).catch(() => undefined)
-      await Promise.all([s?.close(), dialing])
+      // One the relay's close frame dropped may still be in its handshake:
+      // Bun 1.4.4 fires the close only after it.
+      await Promise.all([(s ?? dropped)?.close(), dialing])
     },
   }
 }
@@ -553,7 +572,7 @@ async function connect(
   ws.onmessage = (e) => {
     if (e.data === 'pong') return
     spoke = performance.now()
-    let m: Answer & { messages?: RelayMessage[]; n?: number; joined?: Joined }
+    let m: Answer & { messages?: RelayMessage[]; n?: number; joined?: Joined; close?: number }
     try {
       m = JSON.parse(String(e.data)) as typeof m
       if (typeof m !== 'object' || m === null) throw new Error()
@@ -561,6 +580,13 @@ async function connect(
       // Thrown here it left the process on a bare SyntaxError: a relay is anyone's to host.
       closed(`a frame that is not its protocol: ${String(e.data).slice(0, 200)}`, NOT_PROTOCOL)
       ws.close(NOT_PROTOCOL)
+      return
+    }
+    // The relay says its close first: Bun 1.4.4 reports the close itself
+    // only once the host ends TCP, which workerd never did (10 s late).
+    if (m.close !== undefined) {
+      closed('socket closed', typeof m.close === 'number' ? m.close : 0)
+      ws.close()
       return
     }
     if (m.joined !== undefined) {

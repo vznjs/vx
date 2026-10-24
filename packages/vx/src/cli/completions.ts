@@ -7,12 +7,19 @@
 
 import { acceptedFlags, CORE_VERBS, flagHint, seeHelp } from './help.js'
 import { nearest, sayNotice } from '../util/index.js'
+import { setting } from '../settings.js'
+
+function enumValues(path: string): readonly string[] {
+  const kind = setting(path).kind
+  return kind.type === 'enum' ? kind.values : []
+}
 
 /** A flag whose value is one of a fixed set; the tests hold each to its parser. */
 export const FLAG_VALUES: Readonly<Record<string, readonly string[]>> = {
   '--format': ['pretty', 'json'],
   '--output-logs': ['full', 'errors-only', 'hash-only', 'none'],
   '--cache-download': ['all', 'toplevel', 'none'],
+  '--schedule': enumValues('run.schedule'),
 }
 
 export type CompletionShell = 'bash' | 'zsh' | 'fish'

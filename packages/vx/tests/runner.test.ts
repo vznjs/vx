@@ -326,6 +326,10 @@ describe('signalExitCode', () => {
   it('falls back to 130 for unknown signal names', () => {
     expect(signalExitCode('SIGNOTREAL')).toBe(130)
   })
+
+  it('takes the number Bun 1.4.4 gives for a signal with no name', () => {
+    expect(signalExitCode(34)).toBe(162)
+  })
 })
 
 // The trailing sleeper is `exec`'d in every fixture below: without it the
@@ -1081,7 +1085,11 @@ describe('resourceUsageToCpuRss — peak RSS is bytes', () => {
       // from the mark either way).
       const MB = 1024 * 1024
       const hold = Buffer.alloc(300 * MB, 1)
-      expect(ownRssHighWater()).toBeGreaterThanOrEqual(300 * MB)
+      // Only Linux's floor is a high-water mark (`VmHWM`). macOS's is the
+      // current RSS, which a crowded Mac worker pages down: this hold read
+      // 296 MB, then 149 MB, of random bytes (Bun 1.4.4). The rows below
+      // size themselves from the floor either way.
+      if (process.platform === 'linux') expect(ownRssHighWater()).toBeGreaterThanOrEqual(300 * MB)
       const cwd = await mkdtemp(path.join(os.tmpdir(), 'vx-runner-floor-'))
       try {
         const env = { PATH: process.env.PATH ?? '' }

@@ -115,4 +115,37 @@ describe('vx show <task> --affected', () => {
       ['x', 'y'],
     ])
   })
+
+  // An empty list printed nothing at all, exit 0: no sign the change
+  // reached no project's task.
+  it('says so when the change reaches no project declaring the task', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'vx-show-affected-none-'))
+    roots.push(root)
+    const write = async (rel: string, content: string): Promise<void> => {
+      await mkdir(path.dirname(path.join(root, rel)), { recursive: true })
+      await writeFile(path.join(root, rel), content)
+    }
+    await write(
+      'package.json',
+      JSON.stringify({ name: 'r', private: true, workspaces: ['pkgs/*'] }),
+    )
+    await writeEdges(root, {})
+    await write('pkgs/x/package.json', JSON.stringify({ name: 'x' }))
+    await write(
+      'pkgs/x/vx.config.mjs',
+      `export default { tasks: { test: { exec: { command: 'echo t' } } } }\n`,
+    )
+    await write('pkgs/z/package.json', JSON.stringify({ name: 'z' }))
+    await write(
+      'pkgs/z/vx.config.mjs',
+      `export default { tasks: { lint: { exec: { command: 'echo l' } } } }\n`,
+    )
+    git(root, 'init', '-q')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-qm', 'init')
+    await write('pkgs/z/f.txt', 'q\n')
+    const r = vx(root, 'show', 'test', '--affected=HEAD')
+    expect([r.code, r.out]).toEqual([0, ''])
+    expect(r.err).toContain("no affected project's test runs (1 declares it)")
+  })
 })

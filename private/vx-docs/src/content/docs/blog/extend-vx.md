@@ -13,15 +13,6 @@ vx is a [pipeline with seams](../pipeline-with-seams/). This post is the
 practical side: how to write a plugin today, and how to call vx from
 code.
 
-```mermaid
-flowchart LR
-  I[vx init --plugin cache] --> P[plugins/cache.ts]
-  I --> T[plugins/cache.test.ts]
-  P --> W[.vx/workspace.ts]
-  T --> B[bun test]
-  style P stroke:#c6f84e,stroke-width:2px
-```
-
 ## Start from a working plugin
 
 ```sh frame="terminal"
@@ -113,16 +104,18 @@ predicts every task's cache status without running anything:
 // scripts/plan.ts
 import { planRun } from '@vzn/vx'
 
-const plan = await planRun({ cwd: process.cwd(), tasks: ['build'], projects: ['@demo/web'] })
+const plan = await planRun({ cwd: process.cwd(), tasks: ['build'], projects: ['packages/c'] })
 for (const t of plan.tasks) console.log(t.node.id, t.cacheStatus, t.hash.slice(0, 8))
 ```
 
 ```sh frame="terminal"
 $ bun scripts/plan.ts
-@demo/web#build hit-local b25e5bf4
-@demo/ui#build hit-local 46046abb
+packages/c#build hit-local aed9a2c6
+packages/a#build hit-local 823174d6
 ```
 
 `run()` takes the same options and returns every task's outcome. Every
 export is in the [API reference](../../api/), and each seam's contract is
-in [Plugins](../../modules/plugins/).
+in [Plugins](../../modules/plugins/). Outputs above: demo workspace, vx
+at `dbe4033`, 2026-10-23. More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

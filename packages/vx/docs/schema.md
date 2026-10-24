@@ -240,8 +240,8 @@ limit" — the platform silently reduces it to **1 ms**, so the task would
 be killed the moment it spawns and reported `failed`. vx refuses it at
 load rather than let that happen. **Omit `timeout` entirely for no
 limit.** The same bound applies to `--timeout` and to the workspace-level
-`run.timeout`; the `VX_RUN_TIMEOUT` env rung is clamped to it instead of
-refused, since that rung never fails a run.
+`run.timeout` and the `VX_RUN_TIMEOUT` env rung: past it, each is refused
+under its own name.
 
 A task with **no** `exec.timeout` falls back to a run-level default, if
 one is set. Precedence, highest first: **per-task `exec.timeout` →
@@ -392,8 +392,8 @@ export default defineProject({
   ⊘ skipped  app#ios:build • needs darwin-arm64 or darwin-x64, this is linux-x64
   ```
 
-  `--json` and telemetry carry it as `otherPlatform: { needs, host }`; a
-  dependant's `blockedBy` names the task.
+  A `run()` outcome and telemetry carry it as `otherPlatform: { needs, host }`; a
+  dependant's `blockedBy` names the task (in `vx last --format json` too).
 
 - **On CI** (`CI` or a provider's variable set) every task runs or the run
   fails: one whose platforms leave the machine out refuses the run before
@@ -850,9 +850,12 @@ and `app/d`, never the route. An input brace of one alternative (`{b}.ts`) is re
 lock`: it would match `b.ts` and never a file named `{b}.ts`; write the
 one you mean, `\{b\}.ts` for the braces. So is an input under `.git`
 (`.git/config`): git never lists it, so it would key nothing. An extglob (`@(a|b)`, `!(x)`,
-`+(…)`, `*(…)`, `?(…)`) is refused too: `Bun.Glob` reads it as literal
-text or a plain wildcard, so the key would miss the files it names;
-write `{a,b}`. A leading `!` is still the negation, so `!(group)/**`
+`+(…)`, `*(…)`, `?(…)`) is refused too: vx's own matchers read it as
+literal text or a plain wildcard, so the key would miss the files it
+names; write `{a,b}`. A brace range is `Bun.Glob`'s (Bun 1.4.4):
+`{1..3}`, `{3..1}`, `{01..03}`, `{a..c}`, `{1..10..3}`; vx expands it as
+a comma brace. A mixed-case range (`{A..c}`) or one of more than 1024
+names is refused wherever it sits in the glob. A leading `!` is still the negation, so `!(group)/**`
 takes a route group back. This holds for every task glob — `inputs.files`,
 `inputs.workspaceFiles`, `outputs.files`, `outputs.workspaceFiles` — and
 for everything read from them (`--affected`, `vx watch`, the
@@ -2460,6 +2463,7 @@ a user meets most:
 | `inputs.files: every entry is a negation, which selects NOTHING`                                                                      | Only `!` globs — nothing to subtract from.                                                                                                                                                                                     |
 | `inputs.files: "<file>" is taken back by "!<glob>"`                                                                                   | A literal input a `!` entry covers: the negation subtracts wherever it sits, so the file never entered the key.                                                                                                                |
 | `cache.outputs.files: every entry is a negation, which selects NOTHING`                                                               | Only `!` globs: a `!` entry only takes back what a positive glob selected (A-44).                                                                                                                                              |
+| `cache.outputs.files: "<file>" is taken back by "!<glob>"`                                                                            | A literal output a `!` entry covers: it is never saved, so a hit left it missing and said up-to-date.                                                                                                                          |
 | `cache.outputs.files: "<glob>" covers the project's own <file>`                                                                       | An output glob that matches the project's own `vx.config.*` (`**`, `*.ts`): the clean before a run would delete it. A `!` entry that takes the file back (`!vx.config.ts`) lets it load.                                       |
 | `cache.outputs.files: "<glob>" is under workspace-outputs/`                                                                           | A project output named into the artifact's namespace for `outputs.workspaceFiles`: every hit read it back as a workspace output.                                                                                               |
 | `inputs.files: '!!' is not a double negation`                                                                                         | `!!x` inverts the set — it folds only `x`.                                                                                                                                                                                     |
@@ -2492,7 +2496,9 @@ run-commands' `cwd`, `args`, `commands`, `parallel` and `shell`
 (D-100), and in a `cache` block wireit's `files` / `output`,
 `env`, `dependencies`, `enabled`, and `globs` / `include` / `patterns` /
 `exclude` / `ignore` under `inputs` or `outputs` (D-118). So `outputs` on a task
-ends `— vx spells it cache.outputs.files` in code quotes. A `cache` that
+ends `— vx spells it cache.outputs.files` in code quotes. A field of
+`exec`, `inputs` or `cache` written on the task itself (`retries`,
+`timeout`, `files`) names the level it belongs to (`exec.retries`). A `cache` that
 is no object (Turbo's `cache: false`) and a `persistent` that is none
 (`true`) name the shape to write.
 

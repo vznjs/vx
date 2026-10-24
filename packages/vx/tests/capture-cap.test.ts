@@ -45,7 +45,7 @@ describe('a task’s retained output is bounded', () => {
       expect(r.stdout.startsWith('START')).toBe(true)
       expect(r.stdout.endsWith('END')).toBe(true)
       expect(r.stdout).toContain(line)
-      expect(line).toContain('22.1 MiB of output not kept')
+      expect(line).toContain('22 MB of output not kept')
       // Live, every byte still streamed.
       let live = 0
       const again = await runCommand({

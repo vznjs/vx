@@ -599,11 +599,12 @@ describe('LocalHistoryProvider', () => {
     }
   })
 
-  it('reports the largest peak RSS and CPU parallelism an execution in the window used', async () => {
-    // What a reservation learned from history packs on: the maximum, not
-    // the mean (the OOM killer reads the maximum), over successful
-    // executions only — a hit reports nothing and a failure's usage is
-    // not what the task needs to succeed.
+  it('reports the largest peak RSS and the mean CPU parallelism the window’s executions used', async () => {
+    // What a reservation learned from history packs on: the RSS maximum
+    // (the OOM killer reads the maximum) and the CPU mean (one crowded
+    // run's 2.84 cores for a build that uses 1.3 to 1.9 booked a whole
+    // Mac, main b5b83bb), over successful executions only — a hit reports
+    // nothing and a failure's usage is not what the task needs to succeed.
     const cache = makeCache()
     const base = 1_000_000
     const unreported = (r: RunRecord): RunRecord => {
@@ -646,7 +647,7 @@ describe('LocalHistoryProvider', () => {
       'b#build',
     ])
     expect(table.get('a#build')?.maxPeakRssBytes).toBe(900 * 1024 * 1024)
-    expect(table.get('a#build')?.maxCpuParallelism).toBeCloseTo(2.6, 5)
+    expect(table.get('a#build')?.maxCpuParallelism).toBeCloseTo((1.5 + 2.6 + 0.8) / 3, 5)
     expect(table.get('b#build')?.maxPeakRssBytes).toBeUndefined()
     expect(table.get('b#build')?.maxCpuParallelism).toBeUndefined()
     cache.close()
@@ -776,6 +777,33 @@ describe('LocalHistoryProvider', () => {
     }
   })
 
+  // `vx last --stats` called a task that timed out on every retry, and
+  // never passed, flaky-fatal: the retried count took failed rows too,
+  // where `vx info` and the run's row count only a retry that passed
+  // (2026-10-23).
+  it('a retry that never passed is no flaky signal', async () => {
+    const cache = makeCache()
+    try {
+      cache.recordRuns(
+        [1, 2].map((i) => ({
+          ...mkRun({
+            hash: 'stuck',
+            project: 'pkg',
+            task: 'slow',
+            status: 'failed',
+            durationMs: 10,
+            startedAt: 1000 + i,
+          }),
+          attempts: 3,
+        })),
+      )
+      const table = await new LocalHistoryProvider(cache.dbHandle()).loadFor(['pkg#slow'])
+      expect(table.get('pkg#slow')?.failureMode).toBe('stable')
+    } finally {
+      cache.close()
+    }
+  })
+
   it('a row that never said whether it hit is an execution', async () => {
     // `RunRecord.cacheHit` is optional and the column stores NULL for it.
     const cache = makeCache()
@@ -891,7 +919,9 @@ describe('LocalHistoryProvider', () => {
       })
       cache.recordRuns([
         run('green', 'success', 1),
-        run('retried', 'failed', 2),
+        // Failed once, then passed on a retry: the retry already proves it.
+        run('retried', 'failed', 1),
+        run('retried', 'success', 2),
         run('broke', 'failed', 1),
       ])
       const db = cache.dbHandle()

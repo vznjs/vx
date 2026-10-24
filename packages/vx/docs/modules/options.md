@@ -24,7 +24,7 @@ export interface RunOptions {
   cacheDir?: string // --cache-dir, resolved against cwd
   cache?: CachePolicy // --cache-policy / VX_CACHE_POLICY resolved; absent → the workspace's cache.policy, else FULL_CACHE_POLICY
   cacheFlags?: CacheFlags // with no `cache`: --no-cache / --force over the workspace's cache.policy
-  remoteRequested?: boolean // a --cache-policy spec named a remote axis
+  remoteRequested?: string // the setting whose spec named a remote axis ('--cache-policy')
   cacheScope?: string // an embedder's scope, above VX_CACHE_SCOPE, a plugin's and the branch's
   remoteReadOnlyByDefault?: boolean // the default policy writes no remote; the CLI passes it off CI
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'

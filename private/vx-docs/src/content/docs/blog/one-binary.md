@@ -9,18 +9,29 @@ tags:
 excerpt: "vx ships as one self-contained executable per platform. No Node to pick, no Bun to install, no daemon to start. `bun add -d @vzn/vx` gets you the binary; a release tarball gets you the same binary without a package manager."
 ---
 
-The runner for a JavaScript monorepo is the first thing that runs in
-CI and the last thing you want to have an opinion about your Node
-version. vx is built on Bun, and the way you never notice that is that
-you never install Bun.
+The release binary, built the way the release builds it, on a
+1,000-project workspace with everything up to date:
 
-```mermaid
-flowchart LR
-  N[bun add -d @vzn/vx] --> B[prebuilt binary for your platform]
-  R[GitHub release] --> B
-  B --> X[vx: no postinstall, no runtime to match]
-  style X stroke:#c6f84e,stroke-width:2px
+```sh frame="terminal"
+$ ls -l vx-linux-x64
+-rwxr-xr-x 1 root root 117532848 vx-linux-x64
+
+$ time ./vx-linux-x64 run build --all
+real    0m0.163s
+
+$ time bun packages/vx/src/bin.ts run build --all
+real    0m0.253s
 ```
+
+| Same run, 1,000 tasks up to date | Wall time |
+| -------------------------------- | --------- |
+| release binary (`--bytecode`)    | 163 ms    |
+| from source under Bun            | 253 ms    |
+
+Min of 15 runs each, 3 interleaved arms. `private/vx-bench/generate.ts` with 1,000
+projects, Linux x64, 4 cores, vx at `22f6eb7`, 2026-10-23. The binary
+carries its runtime and its code precompiled, so nothing parses vx
+before vx runs. You never install Bun.
 
 ## What you install
 
@@ -45,21 +56,14 @@ is vx's business.
 
 ## What that buys
 
-- **A CI step with no setup.** No `setup-node` before the runner, no
-  cache of the runner's own dependencies. Fetch, run.
-- **No version skew between the tool and its host.** A compiled binary
-  carries its runtime. The `vx` that ran yesterday is the `vx` that
-  runs today, byte for byte, on every machine in the team.
-- **No runtime to boot before vx's own code runs**, run as the release
-  binary: a compiled Bun binary starts as itself, which is part of what
-  keeps a fully cached run in milliseconds. Through npm, the launcher
-  costs one shell start first, a few milliseconds; Node starts only
-  when no prebuilt binary fits.
-- **`vx.config.ts` evaluated natively.** TypeScript config with no
-  transpile step, no `ts-node`, no loader flag. The binary resolves the
-  `@vzn/vx` import from your `node_modules`, which is also why the
-  package stays in `devDependencies` even when you run the release
-  binary: it carries the types.
+- **A CI step with no setup.** No `setup-node` before the runner. Fetch,
+  run. Through npm, the launcher costs one shell start first, a few
+  milliseconds; Node starts only when no prebuilt binary fits.
+- **No version skew.** The `vx` that ran yesterday is the `vx` that runs
+  today, byte for byte, on every machine.
+- **`vx.config.ts` evaluated natively.** No transpile step, no loader
+  flag. The binary resolves `@vzn/vx` from your `node_modules`, which
+  is why the package stays in `devDependencies`: it carries the types.
 
 ## Why Bun, and why it does not leak
 
@@ -85,4 +89,5 @@ no service to reach. `vx run` in a container with no network does what
 are packages you add, and the [local floor](../the-local-floor/) is
 what runs when they are absent or decline.
 
-Install and first run: the [Quickstart](../../quickstart/).
+Install and first run: the [Quickstart](../../quickstart/). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -88,11 +88,16 @@ const OTHER_OUTPUTS = [
 // (`PLATFORM_TESTS` in scripts/test-shard.ts), a fifth of the suite's weight.
 export const PLATFORM_SHARD_COUNT = 6
 export const PLATFORM_UNSAFE_SHARD_COUNT = 3
+// Bun's per-test 5 s default is a wall-clock budget: a test that spawns vx
+// and git took 457 ms idle and passed 5 s on a packed, traced DTE worker
+// (#4198). Speed is asserted in CPU time (helpers/cpu-clock.ts); this is
+// only the hang guard, set where load does not reach it.
+const TEST_TIMEOUT = '--timeout=30000'
 const shardTask = (i: number, n = SHARD_COUNT, flags = '') => ({
   description: `bun test${flags}, shard ${i} of ${n} (dealt by scripts/test-shard.ts)`,
   dependsOn: ['install'],
   exec: {
-    command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${n}${flags})`,
+    command: `bun test --only-failures ${TEST_TIMEOUT} $(bun scripts/test-shard.ts ${i} ${n}${flags})`,
     ...(flags === '' ? {} : { platforms: MAC }),
     env: {
       passThrough: ['VX_REQUIRE_SANDBOX', 'VX_REQUIRE_WATCH_EVENTS', 'VX_REQUIRE_NONROOT'],
@@ -172,7 +177,7 @@ const unsafeShardTask = (i: number, n: number, flags = '') => ({
   description: `bun test${flags} — the files a sandbox cannot host, shard ${i} of ${n}`,
   dependsOn: ['install'],
   exec: {
-    command: `bun test --only-failures $(bun scripts/test-shard.ts ${i} ${n} --unsafe${flags})`,
+    command: `bun test --only-failures ${TEST_TIMEOUT} $(bun scripts/test-shard.ts ${i} ${n} --unsafe${flags})`,
     ...(flags === '' ? {} : { platforms: MAC }),
     env: {
       passThrough: [

@@ -203,6 +203,13 @@ describe('renderJobSummary', () => {
     )
     expect(one).toContain('| small#1 | left |  | 13 ok, 1 failed |')
     expect(one).not.toContain('this machine')
+    // The workers line named a task that ran on the run's own machine raw.
+    const here = renderJobSummary(
+      summary([task({ taskId: 'a#*x*' }), task({ taskId: 'b#y', where: 'w' })], {
+        machines: [{ ...m, name: 'w', done: 1, onlineMs: 1, busyMs: 1, cpuAvg: 0, utilization: 0 }],
+      }),
+    )
+    expect(here).toContain('1 on this machine: a#\\*x\\*.')
   })
 
   it('failures head the table and get a callout section', () => {
@@ -886,6 +893,15 @@ describe('every output the vx-ci sweep found unheld', () => {
     )
     expect(md).toContain('· ``vx run `echo` -- x`` · ')
     expect(md).toContain('- **a#\\*x\\*** — exit 1')
+  })
+
+  // GitHub reads `~x~` as strikethrough and `&lt;` as `<`: a task named so
+  // rendered struck through, or as another name.
+  it('an id escapes the strikethrough tilde and an entity', () => {
+    const md = renderJobSummary(
+      summary([task({ taskId: 'a#~x~&lt;', status: 'failed', exitCode: 1 })]),
+    )
+    expect(md).toContain('- **a#\\~x\\~\\&lt;** — exit 1')
   })
 
   it('the check-run payload: its times, its title in both numbers, its summary clamped', async () => {

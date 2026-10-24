@@ -150,6 +150,30 @@ it('cancels a worker still starting that the plan ends as well without', () => {
   expect(plan(wide, [online, starting], [], WARM).release).toEqual([])
 })
 
+// PR #4214: each plan asked one worker for a run 5% over its best, and
+// the next, a second later, found it ended within the margin without it:
+// 7 asked and cancelled. Asked, a worker goes only when it adds nothing.
+it('keeps a starting worker that ends the run sooner, though within the margin', () => {
+  const online = worker('one', { idle: false, running: [{ cores: 4, memory: 1e8, endsIn: 1_000 }] })
+  const starting = worker('two', { at: 1_000, idle: false, starting: true })
+  const tasks = [task('a', 40_000, [], 4), task('b', 3_000, [], 4)]
+  // Without it the run ends 3 s later, within 5 s of its best: it stays.
+  expect(simulate(tasks, [online])).toBeLessThanOrEqual(simulate(tasks, [online, starting]) + 5_000)
+  expect(simulate(tasks, [online])).toBeGreaterThan(simulate(tasks, [online, starting]))
+  expect(plan(tasks, [online, starting], [], WARM).release).toEqual([])
+})
+
+// Main 005e8f2: asked at 2.1 s, mac#2 was cancelled 0.2 s later as adding
+// nothing to the run's end, and a mac asked again at 19.9 s joined 20 s late.
+it('keeps a starting worker the plan gives a task, though the run ends no sooner', () => {
+  const one = worker('one', { idle: false })
+  const three = worker('three', { idle: false })
+  const two = worker('two', { at: 1_000, idle: false, starting: true })
+  const tasks = [task('a', 40_000, [], 4), task('b', 3_000, [], 4), task('c', 3_000, [], 4)]
+  expect(simulate(tasks, [one, three])).toBe(simulate(tasks, [one, three, two]))
+  expect(plan(tasks, [one, three, two], [], WARM).release).toEqual([])
+})
+
 it('waits a task on the running task it depends on', () => {
   const busy = worker('busy', {
     idle: false,
@@ -160,14 +184,21 @@ it('waits a task on the running task it depends on', () => {
 })
 
 it('spends its margin once: a later plan of the same work keeps the first one’s deadline', () => {
-  // Two workers end it in 40 s, one in 44: within 5 s, the first plan keeps one.
+  // Two workers end it in 40 s: the run may end 5 s past that.
   const work = [task('a', 40_000, [], 4), task('b', 4_000, [], 4)]
   const two = [worker('x'), worker('y')]
-  expect(plan(work, two, [], WARM).release).toEqual(['x'])
-  // A deadline 2 s past the best keeps both.
-  const p = plan(work, two, [], WARM, true, 42_000)
-  expect(p.release).toEqual([])
-  expect(p.boundMs).toBe(42_000)
+  expect(plan(work, two, [], WARM).boundMs).toBe(45_000)
+  // A deadline 2 s past the best is kept.
+  expect(plan(work, two, [], WARM, true, 42_000).boundMs).toBe(42_000)
+})
+
+// Main e05bd71: mac#2 joined at 18.4 s and was let go, the run ending
+// within its margin without it; a mac asked 4 s later joined at 44 s.
+it('keeps an idle worker the plan gives a task, though the run ends within its margin without it', () => {
+  const work = [task('a', 40_000, [], 4), task('b', 4_000, [], 4)]
+  const two = [worker('x'), worker('y')]
+  expect(simulate(work, [two[0]!])).toBeLessThanOrEqual(simulate(work, two) + 5_000)
+  expect(plan(work, two, [], WARM).release).toEqual([])
 })
 
 it('starts a worker of each platform its work needs, though that size is declared last', () => {
@@ -256,6 +287,31 @@ it('counts no work after a forecast miss the probe found held', () => {
   const both = new Set(['b', 't'])
   const still = knownMisses(new Set(['b']), new Set(), new Set(), both)
   expect(missedWork(both, nodes, still, one, () => 1000).map((t) => t.id)).toEqual(['b', 't'])
+})
+
+// Main e38d1d2: check.build-cold, uncached, waited on install; counted
+// only once handed over, the first plan asked one Mac for a 37 s lane.
+it('counts an uncached task as work before it is handed over', () => {
+  const nodes = new Map(
+    [
+      ['install', [], true],
+      ['cold', ['install'], false],
+      ['after', ['cold'], true],
+    ].map(([id, deps, cached]) => [
+      id as string,
+      {
+        id,
+        deps,
+        config: { exec: { command: 'x' }, ...(cached ? { cache: {} } : {}) },
+      } as unknown as TaskNode,
+    ]),
+  )
+  const one = () => ({ cores: 1, memory: 1e9 })
+  const remaining = new Set(['install', 'cold', 'after'])
+  // Nothing missed: the uncached task still runs, and its dependant's key holds.
+  expect(missedWork(remaining, nodes, new Set(), one, () => 1000).map((t) => t.id)).toEqual([
+    'cold',
+  ])
 })
 
 // Main fd5c72e: small workers joined in 15 s and its Mac in 27 s, while

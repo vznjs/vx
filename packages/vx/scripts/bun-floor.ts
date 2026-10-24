@@ -27,7 +27,7 @@ export const RELEASE_ASSET = (
   `https://github.com/oven-sh/bun/releases/download/bun-v${version}/bun-${platform === 'darwin' ? 'darwin' : 'linux'}-${arch === 'arm64' ? 'aarch64' : 'x64'}.zip`
 
 /** The version CI pins (`.github/workflows/ci.yml`); the gate asks for the floor, and names this as the known-good build. */
-export const CI_BUN = '1.4.2'
+export const CI_BUN = '1.4.4'
 
 export function floorVerdict(version: string): { ok: boolean; message: string } {
   if (!isUnsupportedBun(version))

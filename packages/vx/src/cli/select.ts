@@ -10,7 +10,7 @@ import {
   affectedChanges,
   type AffectedChanges,
   affectedProjects,
-  refIsHead,
+  headBase,
   applyFilters,
   buildPackageGraph,
   configuredBaseBranch,
@@ -25,7 +25,7 @@ import {
 } from '../workspace/index.js'
 import type { ProjectConfig } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
-import { parseDependencySpec } from '../graph/index.js'
+import { isDefaultBuild, parseDependencySpec } from '../graph/index.js'
 import { declaresInput, workspaceFilesReachInto } from '../cache/index.js'
 import {
   isUserError,
@@ -42,7 +42,6 @@ import {
   fingerprintClaims,
   gitOfDiscovery,
   hasHook,
-  isDefaultBuild,
   keepDiscoveryGraph,
 } from '../orchestrator/index.js'
 import {
@@ -417,11 +416,11 @@ export async function resolveFilters(
         // A base that IS HEAD (a single-branch clone whose `origin/HEAD` is
         // the branch under test) can never mark anything affected, and this
         // exit-0 note was the only sign (CI persona, 2026-09-16). Say so.
-        const self = includes.find((f) => refIsHead(root, f.gitSince!))
+        const self = includes.map((f) => headBase(root, f.gitSince!)).find((b) => b !== undefined)
         const hint =
           self === undefined
             ? ''
-            : ` — ${self.gitSince} is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)`
+            : ` — ${self} is HEAD itself: compare with the branch you merge into (--affected=origin/main) or the previous commit (--affected=HEAD~1)`
         return { empty: `nothing affected since ${refs}${hint}` }
       }
       // The diff matched and a walk or an exclusion left nothing: still the

@@ -56,7 +56,7 @@ import {
   type ui,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
-import { isDefaultBuild } from './projects.js'
+import { isDefaultBuild } from '../graph/index.js'
 import { commandWriteReach, prepareSandbox } from './sandbox-request.js'
 import { recordOutputDirSnapshots, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'
@@ -92,7 +92,7 @@ import { isPassStatus } from '../graph/index.js'
 import type { RunContextRecord } from './telemetry.js'
 import { plan, type RunPlan } from './plan.js'
 import type { AffectedReason } from './affected-tasks.js'
-import { openRemotes, prepareRun, type PreparedRun } from './prepare.js'
+import { namesRemote, openRemotes, prepareRun, type PreparedRun } from './prepare.js'
 import { acquireRunLock } from './run-lock.js'
 import { terminateChildren } from './signals.js'
 import { runStop } from './run-stop.js'
@@ -191,8 +191,22 @@ export function shouldShortCircuit(nodes: Map<string, TaskNode>, policy: CachePo
   return nodes.size > 0
 }
 
-function maskInvocation(command: string): string {
-  return secretMask([process.env])?.mask(command) ?? command
+/**
+ * The run's own secrets: vx's environment and every selected task's
+ * `define` and `exec.env.secret`, as each task's output masks them. With
+ * the environment's alone, a secret only a config names reached the stored
+ * line `vx last` prints in full.
+ */
+function invocationMask(nodes: Iterable<TaskNode>): (command: string) => string {
+  const sources: Array<Readonly<Record<string, string>>> = [process.env as Record<string, string>]
+  const named = new Set<string>()
+  for (const n of nodes) {
+    const env = n.config.exec?.env
+    if (env?.define !== undefined) sources.push(env.define)
+    for (const name of env?.secret ?? []) named.add(name)
+  }
+  const mask = secretMask(sources, [...named])
+  return (command) => mask?.mask(command) ?? command
 }
 
 /**
@@ -530,6 +544,7 @@ async function runOnBus(
     hashCache,
     workspaceProjectCount,
   } = prepared
+  const maskInvocation = invocationMask(nodes.values())
   const concurrency = options.concurrency ?? machineParallelism()
   // An earlier cycle's servers: the ones this graph starts again unchanged
   // stay up; the others go now, before anything binds their ports. A stop
@@ -690,9 +705,17 @@ async function runOnBus(
     // clean their outputs before every exec for a save that never
     // happened.
     const policy: CachePolicy = effectiveCachePolicy(prepared.cachePolicy, remoteCacheEnabled)
-    if (options.remoteRequested === true && !prepared.hasRemoteLayer) {
+    // The workspace's `cache.policy` asks as a flag does: it was the one source never told.
+    const remoteNamed =
+      options.remoteRequested ??
+      (options.cache === undefined &&
+      options.cacheFlags?.noCache !== true &&
+      namesRemote(prepared.workspaceConfig?.cache?.policy)
+        ? 'cache.policy'
+        : undefined)
+    if (remoteNamed !== undefined && !prepared.hasRemoteLayer) {
       warnOf(log)(
-        'vx: --cache-policy named the remote cache, but no cache plugin in .vx/workspace.* supplies one — the remote axes are off for this run',
+        `vx: ${remoteNamed} named the remote cache, but no cache plugin in .vx/workspace.* supplies one — the remote axes are off for this run`,
       )
     }
     const deferredOutputs = new DeferredOutputs({

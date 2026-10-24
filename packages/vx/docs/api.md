@@ -2154,7 +2154,7 @@ export interface RunOptions {
   cacheDir?: string
   cache?: CachePolicy
   cacheFlags?: CacheFlags
-  remoteRequested?: boolean
+  remoteRequested?: string
   cacheScope?: string
   remoteReadOnlyByDefault?: boolean
   outputLogs?: 'full' | 'errors-only' | 'none' | 'hash-only'
@@ -2967,6 +2967,7 @@ export type TelemetryRecord =
       total: number
       ts: number
       startedAt: number
+      originAt?: number
     }
   | {
       v: number

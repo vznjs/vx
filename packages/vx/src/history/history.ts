@@ -66,15 +66,19 @@ export interface TaskHistory {
    */
   maxPeakRssBytes?: number
   /**
-   * The most CPU parallelism any successful execution in the window
-   * showed: cpu time over wall time, so 2.0 means two cores busy for the
-   * whole task. Undefined when no row carried both numbers.
+   * The CPU parallelism the window's successful executions needed on
+   * average: cpu time over wall time over the share of a core it got, so
+   * 2.0 means two cores busy for the whole task. An average, not the
+   * most: one crowded run's need read 2.84 cores for a build that uses
+   * 1.3 to 1.9, booked it a whole 3-core Mac, and the tasks beside it
+   * waited 45 s (main b5b83bb). Undefined when no row carried both numbers.
    */
   maxCpuParallelism?: number
   /**
    * The most cores, and the most memory, of a machine an executor ran it
    * on (`ExecuteResult.machine`) that it used all of: 90% of the cores
-   * over its whole run, or 90% of the memory. A burst to every core is
+   * over its whole run, averaged over the window's runs on machines that
+   * size, or 90% of the memory in any one. A burst to every core is
    * not one: tasks beside it slow for a moment, and booking a machine for
    * it left CI agents half idle (M, 2026-10-22). A
    * task that filled a machine wanted a bigger one. Set by `resourcesFor`.
@@ -194,17 +198,19 @@ export class LocalHistoryProvider implements HistoryProvider {
         SUM(CASE WHEN r.status IN ${PASS_STATUSES} THEN 1 ELSE 0 END) AS successes,
         SUM(CASE WHEN r.cache_hit = 1 THEN 1 ELSE 0 END) AS hits,
         SUM(CASE WHEN r.status = 'failed' THEN 1 ELSE 0 END) AS failures,
-        SUM(CASE WHEN r.attempts > 1 THEN 1 ELSE 0 END) AS retried,
+        SUM(CASE WHEN r.status = 'success' AND r.attempts > 1 THEN 1 ELSE 0 END) AS retried,
         GROUP_CONCAT(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
                           THEN r.duration_ms END) AS ds,
         MAX(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
                  THEN r.peak_rss_bytes
                  WHEN r.cache_hit = 1 THEN e.peak_rss_bytes END) AS rss,
-        MAX(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
-                      AND r.cpu_ms IS NOT NULL AND r.duration_ms > 0
-                 THEN ${NEED_SQL}
-                 WHEN r.cache_hit = 1 AND e.cpu_ms IS NOT NULL AND e.duration_ms > 0
-                 THEN e.cpu_ms * 1.0 / e.duration_ms END) AS cpu
+        -- A hit's producer use only where no run here measured it (resourcesFor).
+        COALESCE(
+          AVG(CASE WHEN (r.cache_hit IS NULL OR r.cache_hit = 0) AND r.status = 'success'
+                        AND r.cpu_ms IS NOT NULL AND r.duration_ms > 0
+                   THEN ${NEED_SQL} END),
+          MAX(CASE WHEN r.cache_hit = 1 AND e.cpu_ms IS NOT NULL AND e.duration_ms > 0
+                   THEN e.cpu_ms * 1.0 / e.duration_ms END)) AS cpu
       FROM runs r
       -- A hit executed nothing here, but its entry carries what the
       -- PRODUCING execution used (the artifact's sidecar, indexed at save
@@ -428,7 +434,7 @@ export class LocalHistoryProvider implements HistoryProvider {
     const executed = this.db
       .query(
         `SELECT r.project, r.task${this.byDef}, MAX(r.peak_rss_bytes) AS rss,
-           MAX(CASE WHEN r.cpu_ms IS NOT NULL AND r.duration_ms > 0
+           AVG(CASE WHEN r.cpu_ms IS NOT NULL AND r.duration_ms > 0
                     THEN ${NEED_SQL} END) AS cpu
          FROM runs r
          WHERE r.id >= ? AND r.status = 'success' AND (r.cache_hit IS NULL OR r.cache_hit = 0)
@@ -462,17 +468,23 @@ export class LocalHistoryProvider implements HistoryProvider {
          GROUP BY r.project, r.task${this.byDef}`,
       )
       .all(floor) as Hit[]
+    // A hit's CPU is its producer's use, not need: the entry keeps no
+    // share, so a crowded producer's reads low. Only a task with no need
+    // from a run here or the default branch's import takes it: main's
+    // blob carried each hit shard's crowded use forward, and the next run
+    // packed them as tight (main 357d3aa, 2026-10-23).
+    const hitCpu = new Map<string, number>()
     for (const row of hits) {
       const key = `${row.project}#${row.task}`
       if (!wanted.has(key) || !this.current(key, row.def) || (row.rss === null && row.cpu === null))
         continue
+      if (row.cpu !== null) hitCpu.set(key, row.cpu)
       const had = out.get(key)
       const rss = Math.max(had?.maxPeakRssBytes ?? -Infinity, row.rss ?? -Infinity)
-      const cpu = Math.max(had?.maxCpuParallelism ?? -Infinity, row.cpu ?? -Infinity)
       out.set(key, {
+        ...had,
         p50DurationMs: p50s.get(key),
         ...(rss !== -Infinity ? { maxPeakRssBytes: rss } : {}),
-        ...(cpu !== -Infinity ? { maxCpuParallelism: cpu } : {}),
       })
     }
     // A failure counts: a task killed for memory filled its machine too.
@@ -486,13 +498,16 @@ export class LocalHistoryProvider implements HistoryProvider {
     const saturated = this.db
       .query(
         `SELECT r.project, r.task${this.byDef},
-           MAX(CASE WHEN ${NEED_SQL} >= ${SATURATED} * r.placement_cores
-                    THEN r.placement_cores END) AS cores,
-           MAX(CASE WHEN r.peak_rss_bytes >= ${SATURATED} * r.placement_memory
-                    THEN r.placement_memory END) AS memory
-         FROM runs r
-         WHERE r.id >= ? AND r.placement_cores IS NOT NULL AND r.duration_ms > 0
-           AND r.status IN ('success', 'failed') AND (r.cache_hit IS NULL OR r.cache_hit = 0)
+           MAX(CASE WHEN r.fill >= ${SATURATED} THEN r.cores END) AS cores,
+           MAX(r.memory) AS memory
+         FROM (SELECT r.project, r.task${this.byDef}, r.placement_cores AS cores,
+                 AVG(${NEED_SQL} / r.placement_cores) AS fill,
+                 MAX(CASE WHEN r.peak_rss_bytes >= ${SATURATED} * r.placement_memory
+                          THEN r.placement_memory END) AS memory
+               FROM runs r
+               WHERE r.id >= ? AND r.placement_cores IS NOT NULL AND r.duration_ms > 0
+                 AND r.status IN ('success', 'failed') AND (r.cache_hit IS NULL OR r.cache_hit = 0)
+               GROUP BY r.project, r.task${this.byDef}, r.placement_cores) r
          GROUP BY r.project, r.task${this.byDef}`,
       )
       .all(floor) as Saturated[]
@@ -513,6 +528,10 @@ export class LocalHistoryProvider implements HistoryProvider {
     // A forecast reads past the window: a task with none in it still has one.
     for (const [key, p50] of p50s) if (!out.has(key)) out.set(key, { p50DurationMs: p50 })
     this.remoteNeeds(wanted, out)
+    for (const [key, cpu] of hitCpu) {
+      const had = out.get(key)!
+      if (had.maxCpuParallelism === undefined) out.set(key, { ...had, maxCpuParallelism: cpu })
+    }
     return out
   }
 
