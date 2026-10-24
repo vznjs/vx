@@ -163,7 +163,7 @@ export async function join(
       // Refused at the door is no fault to wait out: say so, and stop.
       const message =
         verb === 'join' && (res.status === 401 || res.status === 403)
-          ? `cannot connect to the relay ${new URL(base).origin}: ${json.error ?? res.status}`
+          ? `cannot connect to the relay ${new URL(base).origin}: ${res.status} ${json.error ?? ''}`.trimEnd()
           : `relay ${verb}: ${res.status} ${json.error ?? ''}`
       throw new RelayError(res.status, message, json.retryAfterMs)
     }
