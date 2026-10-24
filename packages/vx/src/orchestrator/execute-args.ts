@@ -71,7 +71,10 @@ export function executeArgsOf(
     if (placements.remoteOnly.has(id)) a.remoteOnly = true
     if (placements.carried.has(id)) a.carried = true
     const servers = placements.servers.get(id)
-    if (servers !== undefined) a.servers = servers
+    if (servers !== undefined) {
+      a.servers = servers
+      a.serversNested = servers.map((s) => facts.nestedDirsByProject.get(s.projectName) ?? [])
+    }
     if (probe !== undefined) a.preProbed = probe
     if (upfrontKey !== undefined) a.upfrontKey = upfrontKey
     if (upfrontGroupKey !== undefined) a.upfrontGroupKey = upfrontGroupKey

@@ -278,6 +278,8 @@ export interface ExecuteArgs {
   carried?: true
   /** The persistent tasks its `servers` executor starts where it runs it. */
   servers?: readonly TaskNode[]
+  /** Each of `servers`' nested project dirs, in its order. */
+  serversNested?: readonly (readonly string[])[]
   /** When each command of the run ran and where it may write (command-windows.ts). */
   commandWindows?: CommandWindows
 }
@@ -1267,7 +1269,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(args.terminal === true ? { terminal: true as const } : {}),
       ...(args.servers === undefined
         ? {}
-        : { servers: args.servers.map((s) => serverSpec(s, args.workspaceRoot)) }),
+        : {
+            servers: args.servers.map((s, i) =>
+              serverSpec(s, args.workspaceRoot, args.serversNested?.[i] ?? []),
+            ),
+          }),
     }
     // The signal last: it arms a plugin's `exec.timeout`, and the sandbox's arming
     // below is vx's work, not the task's. Armed first, a 60 ms timeout

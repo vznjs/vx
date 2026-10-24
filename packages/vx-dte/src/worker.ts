@@ -291,6 +291,14 @@ export async function runWorker(opts: {
                 env: localEnv(s.env, root, opts.root),
                 ...(s.readyWhen === undefined ? {} : { readyWhen: s.readyWhen }),
                 ...(s.timeoutMs === undefined ? {} : { timeoutMs: s.timeoutMs }),
+                ...(s.sandbox === undefined
+                  ? {}
+                  : {
+                      sandbox: {
+                        config: s.sandbox.config,
+                        nested: s.sandbox.nested.map((n) => path.join(opts.root, n)),
+                      },
+                    }),
               })),
             }),
       }

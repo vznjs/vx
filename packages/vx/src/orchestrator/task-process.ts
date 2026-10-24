@@ -91,7 +91,11 @@ export function taskTimeoutMs(step: ExecConfig): number | undefined {
 }
 
 /** Persistent task `node` as a `servers` executor starts it: no forwarded args, which a dependency never gets. */
-export function serverSpec(node: TaskNode, workspaceRoot: string): ServerSpec {
+export function serverSpec(
+  node: TaskNode,
+  workspaceRoot: string,
+  nested: readonly string[],
+): ServerSpec {
   const step = node.config.exec!
   const timeoutMs = taskTimeoutMs(step)
   const readyWhen = step.persistent?.readyWhen
@@ -102,6 +106,7 @@ export function serverSpec(node: TaskNode, workspaceRoot: string): ServerSpec {
     env: taskEnv(node, step, workspaceRoot),
     ...(readyWhen === undefined ? {} : { readyWhen }),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    ...(step.sandbox === undefined ? {} : { sandbox: { config: step.sandbox, nested } }),
   }
 }
 

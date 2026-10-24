@@ -2589,6 +2589,7 @@ export interface ServerSpec {
   readonly env: NodeJS.ProcessEnv
   readonly readyWhen?: string
   readonly timeoutMs?: number
+  readonly sandbox?: { readonly config: SandboxConfig; readonly nested: readonly string[] }
 }
 ```
 

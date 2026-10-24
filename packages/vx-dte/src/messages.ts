@@ -85,6 +85,8 @@ export interface ServerOrder {
   env: Record<string, string>
   readyWhen?: string
   timeoutMs?: number
+  /** Its `exec.sandbox` and the projects nested in its own, workspace-relative: it starts inside it. */
+  sandbox?: { config: SandboxConfig; nested: string[] }
 }
 
 export type ToWorker =

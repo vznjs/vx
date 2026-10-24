@@ -39,9 +39,9 @@ cpuPeak; cpuAvg; memoryPeakBytes; memoryAvgBytes; utilization }`), asked
   its own machine (`sandboxRequestFor`);
   `servers: true` says a remote one starts a task's persistent
   dependencies where it runs the task (`req.servers`, each a `ServerSpec
-{ taskId; command; cwd; env; readyWhen?; timeoutMs? }`, in dependency
+{ taskId; command; cwd; env; readyWhen?; timeoutMs?; sandbox? }`, in dependency
   order), so their dependants are not pinned for it; `localFloor` starts
-  each once, shares it with every later task, and stops them on `close()`,
+  each once, a sandboxed one inside its `exec.sandbox` built there, shares it with every later task, and stops them on `close()`,
   and a server that never became ready fails the task with why; `runtime: true`
   says a remote one answers a task's `inputs.runtime` / `workspaceRuntime`
   probes where it runs the task (`answerRuntime`) and fails it when one
