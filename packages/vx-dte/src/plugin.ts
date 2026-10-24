@@ -37,6 +37,8 @@ export interface WorkerSpawn {
   readonly run: string
   readonly relay: string
   readonly size: string
+  /** Its size's `max`: `Infinity` when uncapped. */
+  readonly max: number
   /** Its size's cores and memory (bytes), for an adapter that sets a machine's limits. */
   readonly cpu: number
   readonly memory: number
@@ -65,6 +67,8 @@ export interface DteAdapter {
   report?(warn: (message: string) => void): void
   /** Its workers prove themselves by their CI identity (GitHub OIDC): the run makes no secret for them. */
   readonly keyless?: boolean
+  /** A worker's name in a job its CI started for several, when `VX_DTE_WORKER` is unset. */
+  workerId?(): string | undefined
   /** The run's id when `VX_DTE_RUN` is unset, in a CI job it starts workers from; none elsewhere. */
   runId?(): string | undefined
   /**
@@ -235,7 +239,11 @@ export function dte(options: DteOptions) {
     const files = await adapter.init({
       workspaceRoot: root,
       ...(options.relay !== undefined ? { relay: options.relay } : {}),
-      sizes: sizes.map((s) => ({ name: s.name, ...named(s.name) })),
+      sizes: sizes.map((s) => ({
+        name: s.name,
+        ...(s.max === Infinity ? {} : { max: s.max }),
+        ...named(s.name),
+      })),
       manager: managerOf(root),
       tasks: askTasks(),
       ...(repository !== undefined ? { repository } : {}),
@@ -276,7 +284,7 @@ export function dte(options: DteOptions) {
             import('./worker.js'),
             import('./seal.js'),
           ])
-          const id = process.env['VX_DTE_WORKER']
+          const id = process.env['VX_DTE_WORKER'] || adapter?.workerId?.()
           return runWorker({
             relay,
             run,
@@ -456,6 +464,7 @@ export function dte(options: DteOptions) {
           run,
           relay,
           size: s.name,
+          max: s.max,
           cpu: s.cpu,
           memory: s.memory,
           index: n,

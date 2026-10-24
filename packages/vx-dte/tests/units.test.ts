@@ -2036,6 +2036,7 @@ it('docker() starts each worker as a container of its size, on a fresh clone', a
       run: R,
       relay: 'http://127.0.0.1:9',
       size: 'small',
+      max: 1,
       cpu: 2,
       memory: 8e9,
       index: 3,

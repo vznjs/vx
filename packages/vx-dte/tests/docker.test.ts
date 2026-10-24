@@ -55,6 +55,7 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work
     await adapter.spawn({
       id: 'small#1',
       size: 'small',
+      max: 1,
       cpu: 1,
       memory: 1 << 30,
       index: 1,
@@ -93,6 +94,7 @@ it('says why a worker’s container ended before it joined', async () => {
     await docker({ image: 'x' }).spawn({
       id: 'small#1',
       size: 'small',
+      max: 1,
       cpu: 1,
       memory: 1 << 30,
       index: 2,
@@ -141,6 +143,7 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work
     await docker({ image: 'x' }).spawn({
       id: 'small#1',
       size: 'small',
+      max: 1,
       cpu: 1,
       memory: 1 << 30,
       index: 3,
@@ -187,6 +190,7 @@ it('on Linux, a container runs as this user, so what it writes in the store is t
     await docker({ image: 'x' }).spawn({
       id: 'small#1',
       size: 'small',
+      max: 1,
       cpu: 1,
       memory: 1 << 30,
       index: 4,

@@ -118,11 +118,13 @@ it('gitlab() writes one pipeline file: the run, and a job per size only its trig
   expect(ci).toContain('# Name the tasks in the vx job')
   expect(ci).toContain('    - git fetch -q --depth 1 origin $VX_DTE_SHA\n')
   expect(ci).toContain(
-    `'vx-worker small':\n  extends: .vx-worker\n  rules: [{ if: $VX_DTE_SIZE == "small" }]\n\n`,
+    `'vx-worker mac':\n  extends: .vx-worker\n  parallel:\n    matrix:\n      - VX_DTE_SLOT: ['1', '2']\n  rules: [{ if: $VX_DTE_SIZE == "mac" && $VX_DTE_SLOT =~ $VX_DTE_PICK }]\n  tags: ['saas-macos-medium-m1']\n`,
   )
-  expect(ci).toContain(
-    `'vx-worker mac':\n  extends: .vx-worker\n  rules: [{ if: $VX_DTE_SIZE == "mac" }]\n  tags: ['saas-macos-medium-m1']\n`,
-  )
+  expect(ci).toContain(`      - VX_DTE_SLOT: ['1', '2', '3', '4', '5', '6', '7', '8']\n`)
+  // A matrix needs its length.
+  expect(
+    init({ relay: 'https://r', workers: { small: { cpu: 2, memory: '8GB' } }, adapter }, '--force'),
+  ).rejects.toThrow('gitlab() needs workers.small.max, 1 to 200')
   expect(ci).not.toContain('bunx')
   expect(printed.join('')).toContain(
     'ALLOW (a plain var, no secret): https://gitlab.com:<group>/<project>:.gitlab-ci.yml',
@@ -195,7 +197,7 @@ it('the README shows the workflow vx dte init writes for its sizes', async () =>
   const gl = await gitlab().init!({
     workspaceRoot: root,
     relay: 'https://relay.example.com',
-    sizes: [{ name: 'small' }],
+    sizes: [{ name: 'small', max: 4 }],
     manager: 'bun',
     tasks: { main: '', change: '' },
   })
@@ -206,7 +208,7 @@ it('writes the tasks asked for: main with --all, a change request with --affecte
   const setup = {
     workspaceRoot: root,
     relay: 'https://r',
-    sizes: [{ name: 'small' }],
+    sizes: [{ name: 'small', max: 4 }],
     manager: 'bun' as const,
     tasks: { main: 'build test e2e', change: 'build test' },
   }

@@ -18,7 +18,12 @@ export interface DteSetup {
   /** The relay `dte()` names, if any. */
   readonly relay?: string
   /** `dte()`'s sizes in declared order, with the platform each names. */
-  readonly sizes: readonly { readonly name: string; readonly platform?: Platform }[]
+  readonly sizes: readonly {
+    readonly name: string
+    /** Absent: as many as the work needs. */
+    readonly max?: number
+    readonly platform?: Platform
+  }[]
   /** The workspace's package manager, by its lockfile. */
   readonly manager: PackageManager
   /** The tasks a push to the default branch runs (with `--all`) and a change request runs (with `--affected`), space separated; '' is none named yet, so the run fails until they are. */
@@ -309,15 +314,25 @@ export function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
     const tags = options.tags?.[s.name]
     if (tags !== undefined && (!Array.isArray(tags) || tags.some((t) => typeof t !== 'string')))
       throw new UserError(`vx dte init: gitlab() tags.${s.name} is a list of runner tags`)
+    // A matrix takes at most 200 jobs; a wave picks its slots.
+    if (s.max === undefined || s.max < 1 || s.max > 200)
+      throw new UserError(
+        `vx dte init: gitlab() needs workers.${s.name}.max, 1 to 200: its job is a matrix of that many slots`,
+      )
+    const slots = Array.from({ length: s.max }, (_, i) => quoted(String(i + 1)))
     return `
 ${quoted(`vx-worker ${s.name}`)}:
   extends: .vx-worker
-  rules: [{ if: $VX_DTE_SIZE == ${JSON.stringify(s.name)} }]
+  parallel:
+    matrix:
+      - VX_DTE_SLOT: [${slots.join(', ')}]
+  rules: [{ if: $VX_DTE_SIZE == ${JSON.stringify(s.name)} && $VX_DTE_SLOT =~ $VX_DTE_PICK }]
 ${tags === undefined ? '' : `  tags: [${tags.map(quoted).join(', ')}]\n`}`
   })
   const ci = `# Written by vx dte init from dte() in .vx/workspace.ts. The vx job
 # runs no task: once it is on the relay it triggers a pipeline of this
-# file per worker, which runs only the job of that worker's size.${
+# file for each wave of workers of a size, which runs only those slots
+# of that size's job.${
     named
       ? ''
       : `

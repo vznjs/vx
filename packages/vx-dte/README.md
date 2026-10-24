@@ -259,12 +259,15 @@ jobs:
 ## On GitLab
 
 One pipeline file. Your `vx` job is the orchestrator; once it is on the
-relay, it triggers a pipeline of the same file for each worker it needs,
-with the job's own `CI_JOB_TOKEN`, so no worker starts before the run and
-no token is stored. That pipeline runs only the job of the worker's size,
-at the run's commit. The run starts workers as its work needs them, up to
-each size's `max`; GitLab lets a job token trigger but not cancel, so a
-worker the run no longer needs leaves when it joins or when the run ends.
+relay, it triggers a pipeline of the same file for each wave of workers
+it asks of a size, with the job's own `CI_JOB_TOKEN`, so no worker starts
+before the run and no token is stored. Each size's job is a matrix of
+`max` slots (`VX_DTE_SLOT`); that pipeline runs only the slots the wave
+names (`VX_DTE_PICK`), at the run's commit, and each takes its name from
+`VX_DTE_IDS`. The run starts workers as its work needs them, up to each
+size's `max`, which `gitlab()` needs (at most 200, a matrix's limit).
+GitLab lets a job token trigger but not cancel, so a worker the run no
+longer needs leaves when it joins or when the run ends.
 
 ```ts
 // .vx/workspace.ts
@@ -286,7 +289,8 @@ lockfile names, asking what main and a merge request run:
 # .gitlab-ci.yml
 # Written by vx dte init from dte() in .vx/workspace.ts. The vx job
 # runs no task: once it is on the relay it triggers a pipeline of this
-# file per worker, which runs only the job of that worker's size.
+# file for each wave of workers of a size, which runs only those slots
+# of that size's job.
 # Name the tasks in the vx job, as 'build test --all': with none named,
 # vx fails, listing them.
 workflow:
@@ -326,7 +330,10 @@ vx:
 
 'vx-worker small':
   extends: .vx-worker
-  rules: [{ if: $VX_DTE_SIZE == "small" }]
+  parallel:
+    matrix:
+      - VX_DTE_SLOT: ['1', '2', '3', '4']
+  rules: [{ if: $VX_DTE_SIZE == "small" && $VX_DTE_SLOT =~ $VX_DTE_PICK }]
 ```
 
 `gitlab({ tags })` names each size's runner tags. Each job's ID token
@@ -657,9 +664,9 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   `VX_DTE_WORKER` (its name). It is
   described only by the cores and memory its machine reports. It exits 0
   when the run ended before it joined.
-- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn) }`; `init` gets a `DteSetup` (workspace root, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset.
-  `WorkerSpawn` is `{ run, relay, size, cpu, memory, index, id, workspaceRoot, env }`,
-  with `memory` in bytes,
+- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn) }`; `init` gets a `DteSetup` (workspace root, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset.
+  `WorkerSpawn` is `{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, env }`,
+  with `memory` in bytes and `max` its size's (`Infinity` uncapped),
   where `id` is the worker's name (`small#2`, numbered within its size) and `env` holds the three
   variables the worker reads.
 - `docker(options: DockerOptions)` starts workers as containers and a relay
@@ -669,7 +676,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   `{ workflow? }` (default `vx-worker.yml`). Its workers are `keyless`. It
   needs `GITHUB_TOKEN` with `actions: write`. See [On GitHub](#on-github).
 - `gitlab(options?: GitlabOptions)` triggers a pipeline of the project's
-  `.gitlab-ci.yml` per worker, with `CI_JOB_TOKEN`. `GitlabOptions` is
+  `.gitlab-ci.yml` per wave and size, with `CI_JOB_TOKEN`. `GitlabOptions` is
   `{ tags? }`: runner tags by size, which `vx dte init` writes. See
   [On GitLab](#on-gitlab).
 - `local(options?: LocalOptions)` starts workers on this machine and a relay

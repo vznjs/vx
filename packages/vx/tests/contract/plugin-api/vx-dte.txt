@@ -22,6 +22,7 @@ export interface DteAdapter {
   init?(setup: DteSetup): Promise<DteInit>
   report?(warn: (message: string) => void): void
   readonly keyless?: boolean
+  workerId?(): string | undefined
   runId?(): string | undefined
   adopt?(worker: (id: string, size: string) => WorkerSpawn): void
 }
@@ -43,7 +44,11 @@ export interface DteOptions {
 export interface DteSetup {
   readonly workspaceRoot: string
   readonly relay?: string
-  readonly sizes: readonly { readonly name: string; readonly platform?: Platform }[]
+  readonly sizes: readonly {
+    readonly name: string
+    readonly max?: number
+    readonly platform?: Platform
+  }[]
   readonly manager: PackageManager
   readonly tasks: { readonly main: string; readonly change: string }
   readonly repository?: string
@@ -82,6 +87,7 @@ export interface WorkerSpawn {
   readonly run: string
   readonly relay: string
   readonly size: string
+  readonly max: number
   readonly cpu: number
   readonly memory: number
   readonly index: number

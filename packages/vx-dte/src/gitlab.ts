@@ -1,12 +1,14 @@
-// `gitlab()`: each worker a pipeline of the project's own `.gitlab-ci.yml`
+// `gitlab()`: workers as pipelines of the project's own `.gitlab-ci.yml`
 // that the run triggers once it is on the relay (design dte-2026-10.md,
 // "Adapters"): a worker never arrives before its run. The trigger takes
-// the job's `CI_JOB_TOKEN`, so no token is stored; the worker's pipeline
-// runs only the job of its size (`VX_DTE_SIZE`), at the run's commit
-// (`VX_DTE_SHA`), and proves itself by the run's secret.
+// the job's `CI_JOB_TOKEN`, so no token is stored. One pipeline per size
+// for each wave the run asks: its `vx-worker <size>` job is a matrix of
+// `max` slots (`VX_DTE_SLOT`), of which the rules run those `VX_DTE_PICK`
+// names, at the run's commit (`VX_DTE_SHA`). Each proves itself by the
+// run's secret.
 
 import { refuseUnknownOptions, type PluginOptionKinds } from '@vzn/vx'
-import type { DteAdapter } from './plugin.js'
+import type { DteAdapter, WorkerSpawn } from './plugin.js'
 
 export interface GitlabOptions {
   /** Runner tags by worker size: the runners each size's jobs go to. */
@@ -17,35 +19,33 @@ const KEYS: PluginOptionKinds<GitlabOptions> = { tags: 'object' }
 
 export function gitlab(options: GitlabOptions = {}): DteAdapter {
   refuseUnknownOptions('gitlab()', options, KEYS)
+  // The workers asked in one tick, by size: the run asks a wave at once.
+  const waves = new Map<string, { workers: WorkerSpawn[]; sent: Promise<void> }>()
   return {
     init: async (setup) => (await import('./init.js')).gitlabInit(options, setup),
 
-    async spawn(a) {
-      const {
-        CI_API_V4_URL: base,
-        CI_PROJECT_ID: project,
-        CI_JOB_TOKEN: token,
-        CI_COMMIT_SHA: sha,
-      } = process.env
-      if (!base || !project || !token || !sha)
-        throw new Error('gitlab(): not in a GitLab job (CI_API_V4_URL, CI_JOB_TOKEN)')
-      // A merge request's pipeline is of its source branch; any other, of its ref.
-      const ref =
-        process.env['CI_MERGE_REQUEST_SOURCE_BRANCH_NAME'] || process.env['CI_COMMIT_REF_NAME']!
-      const form = new FormData()
-      form.set('token', token)
-      form.set('ref', ref)
-      const vars = { ...a.env, VX_DTE_SIZE: a.size, VX_DTE_SHA: sha }
-      for (const [k, v] of Object.entries(vars)) form.set(`variables[${k}]`, v)
-      const res = await fetch(`${base}/projects/${project}/trigger/pipeline`, {
-        method: 'POST',
-        body: form,
-        signal: AbortSignal.timeout(10_000),
-      })
-      if (!res.ok)
-        throw new Error(
-          `gitlab(): triggering ${a.id}'s pipeline: ${res.status} ${(await res.text()).slice(0, 200)}`,
-        )
+    spawn(a) {
+      let wave = waves.get(a.size)
+      if (wave === undefined) {
+        const workers: WorkerSpawn[] = []
+        const sent = Promise.resolve().then(() => {
+          waves.delete(a.size)
+          return trigger(workers)
+        })
+        wave = { workers, sent }
+        waves.set(a.size, wave)
+      }
+      wave.workers.push(a)
+      return wave.sent
+    },
+
+    workerId() {
+      const slot = process.env['VX_DTE_SLOT']
+      for (const pair of (process.env['VX_DTE_IDS'] ?? '').split(' ')) {
+        const at = pair.indexOf('=')
+        if (at > 0 && pair.slice(0, at) === slot) return pair.slice(at + 1)
+      }
+      return undefined
     },
 
     // Random: a pipeline id is guessable.
@@ -55,4 +55,49 @@ export function gitlab(options: GitlabOptions = {}): DteAdapter {
         : undefined
     },
   }
+}
+
+/** One pipeline for a wave of one size's workers. */
+async function trigger(workers: readonly WorkerSpawn[]): Promise<void> {
+  const {
+    CI_API_V4_URL: base,
+    CI_PROJECT_ID: project,
+    CI_JOB_TOKEN: token,
+    CI_COMMIT_SHA: sha,
+  } = process.env
+  if (!base || !project || !token || !sha)
+    throw new Error('gitlab(): not in a GitLab job (CI_API_V4_URL, CI_JOB_TOKEN)')
+  const first = workers[0]!
+  // A worker's slot is its number within its size, wrapped at `max`: a
+  // wave asks at most `max` workers, numbered one after another, so its
+  // slots differ though a lost worker's number is never reused.
+  const max = first.max
+  const slots = workers.map((w) => {
+    const n = Number(w.id.slice(w.id.lastIndexOf('#') + 1))
+    return [((n - 1) % max) + 1, w.id] as const
+  })
+  // A merge request's pipeline is of its source branch; any other, of its ref.
+  const ref =
+    process.env['CI_MERGE_REQUEST_SOURCE_BRANCH_NAME'] || process.env['CI_COMMIT_REF_NAME']!
+  const { VX_DTE_WORKER: _, ...env } = first.env
+  const vars: Record<string, string> = {
+    ...env,
+    VX_DTE_SIZE: first.size,
+    VX_DTE_SHA: sha,
+    VX_DTE_PICK: `/^(${slots.map(([s]) => s).join('|')})$/`,
+    VX_DTE_IDS: slots.map(([s, id]) => `${s}=${id}`).join(' '),
+  }
+  const form = new FormData()
+  form.set('token', token)
+  form.set('ref', ref)
+  for (const [k, v] of Object.entries(vars)) form.set(`variables[${k}]`, v)
+  const res = await fetch(`${base}/projects/${project}/trigger/pipeline`, {
+    method: 'POST',
+    body: form,
+    signal: AbortSignal.timeout(10_000),
+  })
+  if (!res.ok)
+    throw new Error(
+      `gitlab(): triggering ${workers.map((w) => w.id).join(', ')}: ${res.status} ${(await res.text()).slice(0, 200)}`,
+    )
 }
