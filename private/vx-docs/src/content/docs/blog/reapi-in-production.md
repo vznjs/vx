@@ -6,14 +6,12 @@ authors:
 tags:
   - remote-execution
   - caching
-excerpt: 'Connect @vzn/vx-reapi to BuildBuddy or a private server the way Bazel does. Repeat runs skip the worker, every downloaded byte is checked, a wedged server is a miss and not a hang, and CI can leave the outputs where they are.'
+excerpt: 'Connect @vzn/vx-reapi to BuildBuddy or your own server. Repeat runs skip the worker, every byte is checked, and a stuck server is a miss, not a hang.'
 ---
 
-[Remote execution](../remote-execution/) showed that vx can hand a task to
-any server that speaks Bazel's Remote Execution API. This post covers what
-it takes to run that in production: getting connected, keeping repeat
-runs cheap, and making sure a bad server costs you a miss, never a wrong
-build.
+`@vzn/vx-reapi` connects vx to BuildBuddy or any Bazel Remote Execution
+server. Repeat runs skip the worker, every downloaded byte is checked,
+and a bad server costs you a miss, never a wrong build.
 
 ```mermaid
 flowchart LR
@@ -28,10 +26,9 @@ flowchart LR
 
 ## Connect the way Bazel does
 
-TLS is on unless you turn it off. A hosted server's API key goes in
-`headers`. A private CA and mutual TLS take the same three files as
-Bazel's `--tls_certificate`, `--tls_client_certificate` and
-`--tls_client_key`.
+TLS is on by default. A hosted server's API key goes in `headers`. A
+private CA and mutual TLS take the same three files as Bazel's
+`--tls_certificate`, `--tls_client_certificate` and `--tls_client_key`.
 
 ```ts
 // .vx/workspace.ts
@@ -49,37 +46,29 @@ export default defineWorkspace({
 })
 ```
 
-A plaintext server needs `grpc://` written out. A certificate file that
-cannot be read is refused at startup, with the setting named. With no
-endpoint at all, the plugin declines and costs nothing.
+A plaintext server needs `grpc://` written out. An unreadable
+certificate stops startup and names the setting. With no endpoint, the
+plugin does nothing.
 
 ## Repeat runs skip the worker
 
-Every successful remote execution writes a record under the task's vx
-key: its outputs by digest and its stdout. The next run with that key
-skips building the input tree, the upload and `Execute`. The outputs are
-already in the server's store, and the stdout replays from the record.
-`--force` bypasses it.
-
-A file edited mid-run still runs, but its result is not recorded under a
-key that no longer describes it.
+Each successful remote run saves a record under the task's key: its
+outputs and its stdout. The next run with that key skips the upload and
+the execution, and replays the stdout. `--force` skips the record. A
+file edited mid-run isn't recorded under a key that no longer fits.
 
 ## Every byte is checked
 
-Each blob vx downloads is re-hashed and length-checked against the
-digest it was asked for. Bytes that do not match are refused before they
-touch the local store, so a corrupt or poisoned server degrades to a
-miss. Paths are held to the workspace too: an output that climbs out with
-`..`, or a link that points outside, is refused before anything is
-written.
+Each download is hashed again and checked against what vx asked for.
+Bytes that don't match are refused before they touch disk, so a corrupt
+server means a miss. An output path with `..`, or a link pointing out of
+the workspace, is refused too.
 
 ## A wedged server is a miss, not a hang
 
-A server that is down answers at once. The dangerous one accepts the
-connection and never replies. So every call has a deadline, and there are
-two: a short one for small control calls, and a longer one for transfers,
-which grow with the size of what moves. Raising the transfer deadline for
-a big `node_modules` upload does not make every probe wait that long too.
+A server that's down answers at once. The dangerous one accepts the
+connection and never replies. Every call has a deadline: a short one
+for small calls, and a longer one for transfers that grows with size.
 
 ## Leave the bytes on the server
 
@@ -90,10 +79,9 @@ $ vx run test --all --cache-download=none       # only the verdict comes home
 $ vx run app#build --cache-download=toplevel    # only what you asked for
 ```
 
-With `none`, outputs stay on the server and come down only when a local
-task needs them. Bazel calls this "build without the bytes". It never
-changes a cache key, and a task whose outputs another task's inputs could
-read stays eager on its own.
+With `none`, outputs stay on the server until a local task needs them.
+Bazel calls this "build without the bytes". It never changes a cache
+key.
 
 The full list of options and guarantees is in the
 [vx-reapi README](https://github.com/vznjs/vx/tree/main/packages/vx-reapi#readme). More at
