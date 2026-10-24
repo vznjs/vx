@@ -251,7 +251,7 @@ function play(
   tasks: readonly PlanTask[],
   workers: readonly PlanWorker[],
   how: Strategy,
-): { end: number; first: Map<string, number> } {
+): { end: number; first: Map<string, number>; ends: Map<string | undefined, number> } {
   const byId = new Map(tasks.map((t) => [t.id, t]))
   const dependants = new Map<string, string[]>()
   const waits = new Map<string, number>()
@@ -302,6 +302,8 @@ function play(
   let left = tasks.length
   let now = 0
   let last = Math.max(0, ...ends.map((e) => e[0]))
+  // When each platform's last task ends.
+  const byPlatform = new Map<string | undefined, number>()
   for (;;) {
     const order = ordered(
       ready.map((t) => t.id),
@@ -328,15 +330,17 @@ function play(
       const end = now + (t.ms ?? UNKNOWN_MS)
       ends.push([end, best, Math.min(t.cores, best.cores), Math.min(t.memory, best.memory), t.id])
       last = Math.max(last, end)
+      byPlatform.set(best.platform, Math.max(byPlatform.get(best.platform) ?? 0, end))
     }
     const first = (): Map<string, number> =>
       new Map(slots.flatMap((s) => (s.first === undefined ? [] : [[s.id, s.first] as const])))
-    if (left === 0 && ready.length === 0) return { end: last, first: first() }
+    if (left === 0 && ready.length === 0) return { end: last, first: first(), ends: byPlatform }
     // The next moment anything changes: a task ends or a worker joins.
     let next = Infinity
     for (const e of ends) next = Math.min(next, e[0])
     for (const s of slots) if (s.at > now) next = Math.min(next, s.at)
-    if (next === Infinity) return { end: left === 0 ? last : Infinity, first: first() }
+    if (next === Infinity)
+      return { end: left === 0 ? last : Infinity, first: first(), ends: byPlatform }
     now = next
     for (let i = 0; i < ends.length;) {
       const [at, s, cores, memory, id] = ends[i]!
@@ -416,6 +420,26 @@ export function plan(
     ends.findIndex((e) => e <= bound),
   )
   let kept = [...workers, ...added.slice(0, n)]
+  // Sizes come in turns, so the prefix can hold one the plan ends as soon
+  // without: a second Mac the plan needed came after a second Linux worker
+  // it did not, and main e118ccf cancelled that one unjoined (2026-10-24).
+  // Dropped only when neither the end nor its platform's moves past the
+  // margin: to the run's end alone, a 110 s guess of an unmeasured chain
+  // cut every other platform to it.
+  let before = best < Infinity && n > 0 ? play(tasks, kept, how) : undefined
+  if (before !== undefined)
+    for (let i = n - 1; i >= 0; i--) {
+      const platform = added[i]!.platform
+      const without = kept.filter((k) => k !== added[i])
+      const after = play(tasks, without, how)
+      if (
+        after.end <= before.end &&
+        (after.ends.get(platform) ?? 0) <= (before.ends.get(platform) ?? 0) + MARGIN_MS
+      ) {
+        kept = without
+        before = after
+      }
+    }
   const release: string[] = []
   if (best < Infinity) {
     // One starting that the plan ends as well without is cancelled before
