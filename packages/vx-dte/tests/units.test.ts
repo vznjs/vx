@@ -962,6 +962,28 @@ it('replays what each task took on every worker the sizes allow: the ideal end',
   }
 })
 
+// Main 6a7224f: ideal 127.8 s above real 111.0 s. Mac shards ran five
+// side by side at a 0.22 share; the replay kept their crowded length and
+// booked the cores they would use free, so it ran them one at a time.
+it('replays a crowded task with the cores it used, never above the real run', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const sizes = [{ name: 'small', max: 1, cpu: 2, memory: 1e10 }]
+    const w = await h.worker(2)
+    await Bun.sleep(50)
+    const runs = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
+    await w.batches()
+    await Bun.sleep(400)
+    const crowded = { exitCode: 0, durationMs: 400, cpuMs: 400, cpuShare: 0.5 }
+    await w.finish('t1', 'k-t1', crowded)
+    await w.finish('t2', 'k-t2', crowded)
+    await Promise.all(runs)
+    expect(h.o.idealMs(() => [], sizes)!).toBeLessThan(600)
+  } finally {
+    await h.stop()
+  }
+})
+
 // M, 2026-10-21: a worker the run's end stopped still read `online`, and
 // a size's machines were a `!` line apart from its workers.
 it('the final summary says how each worker ended, its size and machine under it', async () => {

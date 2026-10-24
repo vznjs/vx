@@ -466,7 +466,7 @@ written. On CI, upload the file as an artifact; this repo's `ci.yml`
 does and links it from the job summary.
 
 After the run, `dte()` replays it perfectly: each task as long as it held
-its worker and with the cores it would use with them free, on as many
+its worker and with the cores it used meanwhile, on as many
 workers as the sizes allow, each joining after its platform's fastest
 real warm-up. That ideal end (`TaskExecutor.idealMs`) sits beside the
 real time in the run summary and the footer's `ideal` line, and
