@@ -33,14 +33,11 @@ jobs:
       VX_DTE_WORKER: ${{ matrix.worker }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        # The full history: the API-break law reads the last release's tag
-        # and the commits after it; the PR-commit law walks base..head.
-        # Without old blobs (fetched on demand, few differ from HEAD's): the
-        # full clone was 5-7 s of every worker's warm-up.
+        # One commit: the laws that read history fetch it themselves
+        # (tests/helpers/history.ts). The full clone was 5-7 s of every
+        # worker's warm-up.
         with:
           ref: ${{ inputs.sha }}
-          fetch-depth: 0
-          filter: blob:none
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:

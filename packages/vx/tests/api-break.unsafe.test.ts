@@ -14,8 +14,10 @@ import path from 'node:path'
 import { expect, it } from 'bun:test'
 import { contractBreaks, packEntries } from '../scripts/api-break.js'
 import { commitsBetween, isBreaking } from '../scripts/release-notes.js'
+import { fetchHistory } from './helpers/history.js'
 
 const ROOT = path.resolve(import.meta.dir, '..')
+if (process.env['VX_REQUIRE_TAGS'] === '1') fetchHistory(ROOT)
 
 function git(...args: string[]): { ok: boolean; out: string } {
   const r = Bun.spawnSync(['git', ...args], { cwd: ROOT })

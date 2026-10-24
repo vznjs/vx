@@ -196,15 +196,10 @@ describe('vx-worker.yml', () => {
     )
   })
 
-  // The API-break law reads the last release's tag; the PR-commit law walks
-  // base..head. A task runs on whichever worker is free.
-  // Without old blobs: a full clone was 5-7 s of each warm-up (2026-10-23).
-  it('checks out the full history, without old blobs', () => {
-    expect(checkout(worker)?.with).toEqual({
-      ref: '${{ inputs.sha }}',
-      'fetch-depth': 0,
-      filter: 'blob:none',
-    })
+  // The laws that read history fetch it on the worker that runs them
+  // (tests/helpers/history.ts): a full clone was 5-7 s of each warm-up.
+  it('checks out one commit', () => {
+    expect(checkout(worker)?.with).toEqual({ ref: '${{ inputs.sha }}' })
   })
 
   // A worker saving to ~/.vx while a shard runs failed the shard's home
