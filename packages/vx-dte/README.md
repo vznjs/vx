@@ -453,7 +453,11 @@ waits for the needs another plugin fetches (`ctx.refining()`), such as
 line names the tasks the first ask had no measure of, and a worker that
 ran two tasks or fewer names them on its row. `used avg` is the cores
 its tasks used, `machine avg` the cores its machine was busy on average since
-the worker started, any process's, as its last frame said. The `total` line is the cpu utilization of every
+the worker started, any process's, as its last frame said. Where the
+rest went, the worker says in its own log as it leaves: `cpu over 61.2s:
+machine 2.80 cores · tasks 2.00 cores · this worker 0.15 cores · its other
+children 0.05 cores · most besides: Runner.Worker 0.30 cores`, the last
+from one `ps` as it starts and one as it leaves. The `total` line is the cpu utilization of every
 machine together, and the share of their history the run's tasks used:
 
 ```
