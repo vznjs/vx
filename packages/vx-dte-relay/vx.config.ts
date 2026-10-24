@@ -84,5 +84,26 @@ export default defineProject({
         outputs: { files: [] },
       },
     },
+
+    // The image `docker run` serves, built and carrying one run both ways.
+    // No sandbox: it reaches the Docker daemon.
+    'test.live': {
+      description: 'docker build, then one run through the container',
+      exec: { command: 'sh tests/docker/smoke.sh' },
+      dependsOn: ['install'],
+      inputs: {
+        files: [
+          'Dockerfile',
+          'index.ts',
+          'package.json',
+          'PROTOCOL.md',
+          'src/**',
+          'tests/docker/**',
+        ],
+      },
+      cache: {
+        outputs: { files: [] },
+      },
+    },
   },
 })

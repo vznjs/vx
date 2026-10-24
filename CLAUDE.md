@@ -146,7 +146,8 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   by `--platform`). The unsafe shards of both, `@vzn/vx-reapi#test` and
   `@vzn/vx-reapi#test.live` (which dial service containers on the host's
   loopback, unreachable from a Linux sandbox's network namespace), its
-  `services.cache` / `services.exec` (Docker), `@vzn/vx-migrate#nx.install`
+  `services.cache` / `services.exec` (Docker), `@vzn/vx-dte-relay#test.live`
+  (builds and runs the relay's image), `@vzn/vx-migrate#nx.install`
   (npm), `check.sandbox-canary` and
   `check.build-cold` (each drives the sandbox itself, on a Mac worker) are
   the ONLY tasks in the whole repo with no `exec.sandbox`.
