@@ -1432,20 +1432,14 @@ watch`.
 
 ## `vx cache clean`
 
-Evict old or oversized cache entries. Operates on the entries and
+`vx cache clean` evicts old or oversized cache entries, or with no
+bound clears the cache. It operates on the entries and
 `<hash>.tar.zst` artifacts of the store the workspace's index records
 (`~/.vx/<id>/cache`, shared by every checkout of the repository), or of
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
 
-A clean with a bound also drops run
-history and hash memos older than 30 days; a run never does.
-
-`clean` is the only `vx cache` subcommand: the statistics other runners
-put under a `cache` verb — the directory, the entry count, the size —
-are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
-`gc` and their neighbours say so (`list` also names `vx last --list`;
-`clear`, `purge`, `reset` and `wipe` name a bare `vx cache clean`) rather than printing a bare "unknown subcommand".
+### Usage
 
 ```
 vx cache clean --older-than <duration>     # Drop entries last used before now - duration (up to 1h slack).
@@ -1457,10 +1451,60 @@ vx cache clean                              # No bound: clear the whole cache (b
 vx cache clean --global                     # Also clear every other repository's store.
 ```
 
-With no bound it clears the cache ([below](#with-no-bound-clear-the-cache)).
+### Examples
+
+```
+$ vx cache clean --older-than 30d
+✓ vx cache clean  freed 1.3 GB
+
+  42 entries
+
+$ vx cache clean --older-than 30d      # after a SCHEMA_VERSION bump
+✓ vx cache clean  freed 1.3 GB
+
+  42 orphaned artifacts
+
+$ vx cache clean --older-than 30d --dry-run
+› vx cache clean  would free 1.3 GB (dry run)
+
+  42 entries · 3 orphaned artifacts
+```
+
+### Options
+
+| Option                    | Meaning                                                  |
+| ------------------------- | -------------------------------------------------------- |
+| `--older-than <duration>` | drop entries last used before now minus the duration     |
+| `--max-size <size>`       | then evict the least recently used until under the size  |
+| `--dry-run`               | say what would go; delete nothing                        |
+| `--global`                | with no bound, also clear every other repository's store |
+| `--format json`           | the result as one object                                 |
+| `--cache-dir <path>`      | the cache a run with the same flag uses                  |
+
 Both bounds may be combined: age-based eviction runs first, then LRU eviction if the
 total is still over the size cap. No run evicts anything: to bound the
 cache, run this from a schedule or CI.
+
+A clean with a bound also drops run
+history and hash memos older than 30 days; a run never does.
+
+Both flags take either form: `--older-than 30d` or `--older-than=30d`.
+
+**Duration units**: `s`, `m`, `h`, `d`, case-insensitive. Examples:
+`30d`, `24h`, `60m`, `30s`, `30D`.
+
+**Size units**: `K`, `M`, `G`, `T` (powers of 1024), case-insensitive, with an optional `B` or `iB` (`512MB`, `32KiB`).
+Optional `B` suffix is accepted. Examples: `500M`, `1G`, `100K`, `2T`,
+`500MB`, `1gb`. A bare number is refused here: `--max-size 10` would
+read as ten bytes and evict nearly everything, and nobody means that —
+write `10G`, or `10B` when bytes really are the unit.
+
+**A zero bound is rejected.** `--max-size 0` and `--older-than 0d` would
+evict every entry in the cache, which is far more often a
+computed-to-zero retention than an intent. `vx cache clean` with no
+bound clears the whole cache when that is really what you want.
+
+### Orphans
 
 After eviction, prune sweeps the cache directory for **orphans**: an
 artifact (a `<hash>.tree` directory, or a `<hash>.tar.zst`) the index
@@ -1484,38 +1528,7 @@ is kept until a later prune, but its bytes are left out all the same
 (item 1081). The sweep runs on every prune, under
 either flag, and reports separately from the policy's evictions.
 
-Both flags take either form: `--older-than 30d` or `--older-than=30d`.
-
-**Duration units**: `s`, `m`, `h`, `d`, case-insensitive. Examples:
-`30d`, `24h`, `60m`, `30s`, `30D`.
-
-**Size units**: `K`, `M`, `G`, `T` (powers of 1024), case-insensitive, with an optional `B` or `iB` (`512MB`, `32KiB`).
-Optional `B` suffix is accepted. Examples: `500M`, `1G`, `100K`, `2T`,
-`500MB`, `1gb`. A bare number is refused here: `--max-size 10` would
-read as ten bytes and evict nearly everything, and nobody means that —
-write `10G`, or `10B` when bytes really are the unit.
-
-**A zero bound is rejected.** `--max-size 0` and `--older-than 0d` would
-evict every entry in the cache, which is far more often a
-computed-to-zero retention than an intent. `vx cache clean` with no
-bound clears the whole cache when that is really what you want.
-
-```
-$ vx cache clean --older-than 30d
-✓ vx cache clean  freed 1.3 GB
-
-  42 entries
-
-$ vx cache clean --older-than 30d      # after a SCHEMA_VERSION bump
-✓ vx cache clean  freed 1.3 GB
-
-  42 orphaned artifacts
-
-$ vx cache clean --older-than 30d --dry-run
-› vx cache clean  would free 1.3 GB (dry run)
-
-  42 entries · 3 orphaned artifacts
-```
+### `--dry-run`
 
 `--dry-run` picks the victims under the same policy and counts the
 orphans the sweep would take, then returns without touching the index
@@ -1526,6 +1539,8 @@ leaves it: the shared store's entries still face the policy, and every
 artifact in the workspace's own directory is row-less, judged by the
 policy on its file time (item 1083).
 
+### Concurrent runs
+
 A prune that deletes waits for a `vx run` on the same workspace to
 finish first (the run's lock; it says `[vx] waiting for another vx run
 (pid N) on this workspace to finish…` after a second), so it never
@@ -1535,18 +1550,21 @@ workspace sharing the `--cache-dir` — survives a prune anyway: an
 artifact that vanishes before its restore is a miss, and the task runs
 ([caching](./caching.md#concurrent-runs)).
 
-Exit codes:
-
-- `0` — pruning completed (zero or more entries evicted). A workspace
-  that never ran has no cache: `› vx cache clean  nothing to free`,
-  and nothing is created.
-- `1` — parse error, missing policy, or workspace-discovery error.
+### Which cache
 
 `vx cache clean` resolves the workspace root from cwd and honors a
 `defineWorkspace({ cache: { dir } })` override — it prunes the same
 directory a run would use. `--cache-dir <path>` (cwd-relative, as on
 `vx run`) names another one, so a run that wrote elsewhere can be
 pruned there.
+
+### Other subcommands
+
+`clean` is the only `vx cache` subcommand: the statistics other runners
+put under a `cache` verb — the directory, the entry count, the size —
+are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
+`gc` and their neighbours say so (`list` also names `vx last --list`;
+`clear`, `purge`, `reset` and `wipe` name a bare `vx cache clean`) rather than printing a bare "unknown subcommand".
 
 ### With no bound: clear the cache
 
@@ -1590,6 +1608,13 @@ lock), as a trim does. With `--format json` it prints
 `{ dryRun, cleared, bytesFreed }` (`schemas/cache.json`), `cleared`
 listing the directories.
 
+### Exit codes
+
+| Code | When                                                                                                                                                   |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `0`  | pruning completed (zero or more entries evicted). A workspace that never ran has no cache: `› vx cache clean  nothing to free`, and nothing is created |
+| `1`  | parse error, missing policy, or workspace-discovery error                                                                                              |
+
 ## Runs read the lock
 
 Every run, `vx watch` cycle, `--affected` selection and the picker takes
@@ -1604,7 +1629,53 @@ config and checks the rules.
 
 ## `vx lock`
 
-Find every project, and freeze each one's **resolved** config into
+`vx lock` evaluates every `vx.config.*` and writes the resolved configs
+to `.vx/projects.lock.json`. Runs read the lock, never the configs:
+after you edit one, run `vx lock` and commit the lock.
+
+### Usage
+
+```
+vx lock              # Evaluate all vx.config.* now; write .vx/projects.lock.json.
+vx lock --check      # Audit: full re-evaluation vs the lock. Exit 1 on drift.
+vx lock --check --format json   # The audit as {upToDate, audited, notAudited, problems}.
+```
+
+### Example
+
+```
+$ vx lock
+✓ vx lock  2 project configs → .vx/projects.lock.json
+$ vx lock --check
+✓ vx lock --check  up to date (2 projects)
+```
+
+After an edit the lock has not seen:
+
+```
+$ vx lock --check
+✗ vx lock --check  packages/lib/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
+```
+
+### When to run it
+
+Run `vx lock` and commit `.vx/projects.lock.json` after
+editing any `vx.config.*` or `.vx/workspace.*`, after updating
+dependencies or plugins, and after changing a file a config imports.
+Runs read their configs from the lock, so until then they keep the old
+ones. `vx lock --check` as CI's first step fails a stale lock.
+The full workflow: the site's CI guide and `examples/ci`.
+
+### Options
+
+| Option          | Meaning                                                            |
+| --------------- | ------------------------------------------------------------------ |
+| `--check`       | re-evaluate every config and compare with the lock; writes nothing |
+| `--format json` | with `--check`, the audit as one document                          |
+
+### What it writes
+
+`vx lock` finds every project and freezes each one's **resolved** config into
 `.vx/projects.lock.json` at the workspace root. A project is a directory
 holding a `vx.config.*`, in any language: `vx lock` lists them with git
 (`git ls-files`, tracked and untracked, git's ignore rules applied; a
@@ -1624,19 +1695,6 @@ checks, `dependencies` (which projects a project may depend on,
 `VX_E_DEPENDENCY_RULE`) among them: a broken one prints `✗ vx lock  lock not written`
 with the rule's refusal under it and writes nothing.
 
-```
-vx lock              # Evaluate all vx.config.* now; write .vx/projects.lock.json.
-vx lock --check      # Audit: full re-evaluation vs the lock. Exit 1 on drift.
-vx lock --check --format json   # The audit as {upToDate, audited, notAudited, problems}.
-```
-
-**When to run it.** Run `vx lock` and commit `.vx/projects.lock.json` after
-editing any `vx.config.*` or `.vx/workspace.*`, after updating
-dependencies or plugins, and after changing a file a config imports.
-Runs read their configs from the lock, so until then they keep the old
-ones. `vx lock --check` as CI's first step fails a stale lock.
-The full workflow: the site's CI guide and `examples/ci`.
-
 `.vx/projects.lock.json` is minified: it is the one file vx reads, and it loads
 faster that way (10,000 projects: 15.6 ms against 22.5 ms pretty). For
 review, `vx lock` also writes each project's resolved config (plugins
@@ -1646,6 +1704,26 @@ it, it is no task's input, and `lock.reviewFiles: false`
 `.vx/.gitattributes` (`projects.lock.json linguist-generated=true`) when it is
 missing, so GitHub collapses the machine lock in a diff; `vx init` does
 too, and an existing one is never edited.
+
+A project with no `vx.config.*` — its tasks from a plugin's `project`
+stage (`turbo()` from `@vzn/vx-migrate`), or none at all — has nothing
+to freeze: the lock records nothing for it, `--check` does not audit
+it, and a run still loads its tasks live. Both verbs name such
+projects that have tasks (`0 project configs → .vx/projects.lock.json (no
+vx.config, so not locked: app, lib)`, five names then `and N more`),
+so an empty lock on a plugin-only workspace never reads like an audit.
+One with no task (core's default `build` aside) is not named.
+
+The lock is committed, so `vx lock` refuses to write one that holds a
+secret: a config that evaluated to the value of a secret-named variable
+(or one a task lists in `exec.env.secret`), say
+`` `--token ${process.env.API_TOKEN}` ``. It names each place
+(`a: tasks.deploy.exec.command holds $API_TOKEN`) and writes nothing.
+Masking it instead would freeze a `***` that every run runs. Let the
+shell expand it: `$API_TOKEN` in the command, the name in
+`exec.env.passThrough` (L-42).
+
+### How runs read it
 
 Every run consumes it: configs come from the
 lock with no evaluation, no staleness check and no schema validation
@@ -1658,6 +1736,8 @@ is not in the lock yet — run `vx lock`"). An entry edited by
 hand into a shape `vx lock` could not write fails the run with
 `.vx/projects.lock.json is invalid, run \`vx lock\``, checked only once
 something has crashed, so a normal run pays nothing for it.
+
+### `--check`
 
 `--check` is the audit: it re-evaluates every config in the current
 environment and `Bun.deepEquals`-compares it with the frozen object. A
@@ -1678,30 +1758,12 @@ its `problems`); it answers `--check` only.
 Full design: `docs/design/config-lock-2026-06.md`. A lock written by a
 1.x vx stays valid for every later 1.x (`tests/contract-lockfile.test.ts`).
 
-A project with no `vx.config.*` — its tasks from a plugin's `project`
-stage (`turbo()` from `@vzn/vx-migrate`), or none at all — has nothing
-to freeze: the lock records nothing for it, `--check` does not audit
-it, and a run still loads its tasks live. Both verbs name such
-projects that have tasks (`0 project configs → .vx/projects.lock.json (no
-vx.config, so not locked: app, lib)`, five names then `and N more`),
-so an empty lock on a plugin-only workspace never reads like an audit.
-One with no task (core's default `build` aside) is not named.
+### Exit codes
 
-The lock is committed, so `vx lock` refuses to write one that holds a
-secret: a config that evaluated to the value of a secret-named variable
-(or one a task lists in `exec.env.secret`), say
-`` `--token ${process.env.API_TOKEN}` ``. It names each place
-(`a: tasks.deploy.exec.command holds $API_TOKEN`) and writes nothing.
-Masking it instead would freeze a `***` that every run runs. Let the
-shell expand it: `$API_TOKEN` in the command, the name in
-`exec.env.passThrough` (L-42).
-
-Exit codes:
-
-- `0` — lock written / lock is up to date.
-- `1` — parse error, workspace-discovery error, missing lock
-  (`--check` without one), any drift (every mismatched project is
-  listed on stderr), or a secret value the lock would hold.
+| Code | When                                                                                                                                                                          |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | lock written / lock is up to date                                                                                                                                             |
+| `1`  | parse error, workspace-discovery error, missing lock (`--check` without one), any drift (every mismatched project is listed on stderr), or a secret value the lock would hold |
 
 ## Releasing (maintainers)
 
@@ -1852,12 +1914,51 @@ never hands off.
 
 ## `vx upgrade`
 
-Brings vx to a newer release (`vx upgrade TAG` pins one, `v0.4.0` or
+`vx upgrade` brings vx to a newer release (`vx upgrade TAG` pins one, `v0.4.0` or
 `0.4.0`; default latest; a second tag is refused, not dropped), the way
 it was installed. Named `upgrade` per CLI convention (`bun upgrade`,
 `deno upgrade`). Refuses when running from source: use `git pull`.
 
-**A compiled binary installed by hand** replaces itself. It reads its
+### Usage
+
+```
+vx upgrade [TAG] [-g|--global]
+```
+
+### Examples
+
+In a project whose `package.json` lists `@vzn/vx`, beside a `bun.lock`:
+
+```
+› vx upgrade  0.0.1 → 0.0.2
+
+  bun add @vzn/vx@0.0.2 in /repo
+```
+
+From a global vx in that project, both move:
+
+```
+› vx upgrade  project 0.0.1 → 0.0.2
+
+  bun add @vzn/vx@0.0.2 in /repo
+
+› vx upgrade  global 0.0.1 → 0.0.2
+
+  /usr/local/bin/vx
+
+✓ vx upgrade  global installed 0.0.2
+```
+
+### Options
+
+| Option           | Meaning                                                     |
+| ---------------- | ----------------------------------------------------------- |
+| `TAG`            | the release to install, `v0.4.0` or `0.4.0`; default latest |
+| `-g`, `--global` | move only the global vx, below                              |
+
+### A binary installed by hand
+
+A compiled binary installed by hand replaces itself. It reads its
 platform package (`@vzn/vx-<os>-<arch>`) from the npm registry and
 checks npm's registry signature over `<name>@<version>:<integrity>`
 against npm's signing key, pinned in vx (key id
@@ -1892,12 +1993,9 @@ swapped back for the previous vx, and the command exits 1 saying so
 already is it says `› vx upgrade  already at <version>` and downloads
 nothing.
 
-After an upgrade that installed something, inside a workspace, the new
-vx runs `vx lock` at the workspace root, since a release may record the
-lock differently. A lock that fails leaves the upgrade done and prints
-`vx upgrade  vx lock failed: run vx lock`. `vx upgrade -g` never locks.
+### A package manager's install
 
-**A vx a package manager installed** (the npm package's launcher runs
+A vx a package manager installed (the npm package's launcher runs
 `…/node_modules/@vzn/vx-<os>-<arch>/vx`) is upgraded by that package
 manager, never by a rename over its file, which the next install would
 undo. The path names the install:
@@ -1927,13 +2025,9 @@ release too young rather than mixing releases, and the error names
 `minimumReleaseAgeExclude`. vx prints what it runs, runs it there, and
 exits with an error if it fails:
 
-```
-› vx upgrade  0.0.1 → 0.0.2
+### A project's vx and the global one
 
-  bun add @vzn/vx@0.0.2 in /repo
-```
-
-**Inside a project with its own vx**, a global vx hands `vx upgrade` to
+Inside a project with its own vx, a global vx hands `vx upgrade` to
 the project's (§ Which vx runs), and one run moves both to the same
 version (`TAG`, or latest): first the project's dependency, then the
 global vx that started the run, each the way it was installed. Each
@@ -1943,41 +2037,80 @@ project that fails leaves the global as it was. The project's vx run
 directly (a package script, `node_modules/.bin/vx`) has no global behind it, so only
 the project moves.
 
-**`vx upgrade -g`** (`--global`) moves only the global vx, wherever it
+`vx upgrade -g` (`--global`) moves only the global vx, wherever it
 runs: it never hands the call to a project's vx, and it never touches a
 `package.json` or a plugin. Run as the project's own vx, it refuses:
 `vx upgrade -g: no global vx ran — <path> is the project's own. Install
 one (bun add -g @vzn/vx), or run \`vx upgrade\` to move the project's`.
 
-```
-› vx upgrade  project 0.0.1 → 0.0.2
+### After the upgrade
 
-  bun add @vzn/vx@0.0.2 in /repo
-
-› vx upgrade  global 0.0.1 → 0.0.2
-
-  /usr/local/bin/vx
-
-✓ vx upgrade  global installed 0.0.2
-```
+After an upgrade that installed something, inside a workspace, the new
+vx runs `vx lock` at the workspace root, since a release may record the
+lock differently. A lock that fails leaves the upgrade done and prints
+`vx upgrade  vx lock failed: run vx lock`. `vx upgrade -g` never locks.
 
 vx never installs Node or a package manager: one not on `PATH` is refused with the command to run. A vx run from a
 `bunx` cache has nothing installed to upgrade, and says to ask for
 `@vzn/vx@latest` instead.
 
-Exit codes: `0` installed, or already at that version; `1` anything
-refused or swapped back: from source, a cache install, a host it cannot
-reach, a directory it cannot write, a signature or integrity that does
-not verify, a binary that does not start, a package manager that failed
-or is missing.
+### Exit codes
+
+| Code | When                                                                                                                                                                                                                                          |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | installed, or already at that version                                                                                                                                                                                                         |
+| `1`  | anything refused or swapped back: from source, a cache install, a host it cannot reach, a directory it cannot write, a signature or integrity that does not verify, a binary that does not start, a package manager that failed or is missing |
 
 ## `vx init`
+
+`vx init` sets up vx in a repository: it installs `@vzn/vx`, writes
+`.vx/workspace.ts` and a root `vx.config.ts`, and writes the lock. In a
+Turborepo or Nx repo it maps their config instead.
+
+### Usage
+
+```
+vx init [--dry [--format pretty|json]] [--force] [--mjs] [--native|--keep] [--plugin <seam>]
+```
+
+### Example
+
+```
+$ vx init --dry
+
+─ vx init 0.0.0 ──────────────────────────────────────────────
+  from      no turbo.json or nx.json: one project, the root
+  dry run   nothing written
+  files     .vx/workspace.ts
+            vx.config.ts
+            .vx/.gitignore
+            .vx/.gitattributes
+
+  next      declare a task in vx.config.ts, then vx lock && vx run <task>
+```
+
+### Options
+
+| Option               | Meaning                                                                   |
+| -------------------- | ------------------------------------------------------------------------- |
+| `--dry`              | print the files; write nothing                                            |
+| `--format json`      | with `--dry`, the plan as one document                                    |
+| `--force`            | replace a file already there                                              |
+| `--mjs`              | write `.mjs` files instead of `.ts`                                       |
+| `--native`, `--keep` | in a Turbo or Nx repo: a `vx.config.ts` per package, or keep their config |
+| `--plugin <seam>`    | write a plugin for that seam instead, below                               |
+
+### Install
 
 `vx init` first installs `@vzn/vx` globally (the package manager that
 ran it, else npm; skipped when the `vx` on `PATH` is already that
 version) and, under the topmost `package.json`, as a root
 devDependency with that repo's own manager (M, 2026-10-20). A failed
-install stops init. When the directory it runs in, or one above it up
+install stops init.
+
+### In a Turborepo or Nx repo
+
+When the directory it runs in, or one above it up
 to the git top-level, holds a `turbo.json`, `turbo.jsonc` or `nx.json`,
 it runs `@vzn/vx-migrate` there, so `vx init` is the one command
 (owner, 2026-10-08): the latest release through `bun x`,
@@ -1991,6 +2124,8 @@ vx-migrate maps the Turbo or Nx repo, one `vx.config.ts` per package; writes the
 the plugins the repo calls for (the lockfile's, a remote cache the repo
 shows); installs them; and ends with `vx lock`. Its README holds the
 rules; [`bunx @vzn/vx-migrate`](#bunx-vznvx-migrate) below sums them up.
+
+### In any other repo
 
 With none of those files, it writes a workspace whose one project is
 the root, at the nearest workspace root up from the working directory,
@@ -2030,6 +2165,8 @@ commands the real run runs). `--native` and `--keep` answer
 a Turbo or Nx repo's question, so they are refused here. `--format json`
 without `--dry`, or with `--plugin`, is refused (`VX_E_USAGE`).
 
+### `--plugin`
+
 `vx init --plugin <seam>` writes a plugin instead: `plugins/<seam>.ts`,
 a small runnable plugin for that seam (`executor`, `cache`,
 `telemetry`, `schedule`, `admit`, `commands`, `project`, `graph`,
@@ -2043,10 +2180,12 @@ there is none). The templates are TypeScript, so `--mjs` with
 core (`src/cli/plugin-templates.ts`) and held equal by
 `tests/plugin-templates.unsafe.test.ts` (H-21).
 
-Exit codes: `0` the files written (or, with `--dry`, printed); `1` a
-refused flag, a parse error (`--mjs` with `--plugin` among them), or a
-plugin file already there without `--force`. Handed to
-`@vzn/vx-migrate`, the exit is its own.
+### Exit codes
+
+| Code | When                                                                                                                                                                   |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | the files written (or, with `--dry`, printed)                                                                                                                          |
+| `1`  | a refused flag, a parse error (`--mjs` with `--plugin` among them), or a plugin file already there without `--force`. Handed to `@vzn/vx-migrate`, the exit is its own |
 
 ## `bunx @vzn/vx-migrate`
 
