@@ -160,6 +160,21 @@ describe('ctx.cache', () => {
     expect(text(await c.get('x'))).toBe('timings')
   })
 
+  // A cold CI run (`local:w,remote:w`) still plans on the shared timings:
+  // only artifacts are cold (2026-10-24).
+  it('a cold policy, writing only, still reads and probes a remote entry', async () => {
+    const remote = wire({ batch: true })
+    remote.store.set(xxh3hex('vx-plugin\0org/a\0x'), bytes('timings'))
+    const c = pluginCache('org/a', {
+      db: localStore().dbHandle(),
+      policy: { localRead: false, localWrite: true, remoteRead: false, remoteWrite: true },
+      remotes: [remoteOf(remote, false, true)],
+      scope: undefined,
+    })
+    expect([...((await c.hasMany(['x', 'y'])) ?? [])]).toEqual(['x'])
+    expect(text(await c.get('x'))).toBe('timings')
+  })
+
   it('a read-only policy keeps a put out of the remote', async () => {
     const remote = wire()
     const c = pluginCache('org/a', {
