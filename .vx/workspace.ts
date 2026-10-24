@@ -26,9 +26,11 @@ export default defineWorkspace({
       // binary; macos-latest, whose account cap is 5, for the Mac tasks. A
       // platform's worker starts only when a task of it is in the graph.
       // A full Linux run asks ~46 cores of work at once: 8 workers ran it
-      // in 157-196 s at 50% CPU (2026-10-23).
+      // in 157-196 s at 50% CPU (2026-10-23). GitHub runs 20 of the
+      // account's jobs at once (2026-10-24: 20 ran, 12 queued): these 18
+      // and ci.yml's linux and perf jobs fill it.
       workers: {
-        small: { max: 12, cpu: 4, memory: '16GB', platform: 'linux-x64' },
+        small: { max: 13, cpu: 4, memory: '16GB', platform: 'linux-x64' },
         arm: { max: 1, cpu: 4, memory: '16GB', platform: 'linux-arm64' },
         mac: { max: 4, cpu: 3, memory: '7GB', platform: 'darwin-arm64' },
       },
