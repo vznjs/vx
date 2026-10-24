@@ -53,6 +53,8 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
 export interface TaskArtifacts {
   save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
   restore(key: string, task: ArtifactTask): Promise<{ stdout: string; stderr: string } | null>
+  // The output alone, no file laid (a remote-only task's stay off this disk).
+  output(key: string): Promise<{ stdout: string; stderr: string } | null>
 }
 // What a machine that runs the run's tasks reads its cache under
 // (`ExecutorContext.cacheFacts`, `CommandContext.artifactsFor`).

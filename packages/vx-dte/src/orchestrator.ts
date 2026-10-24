@@ -789,17 +789,21 @@ export class Orchestrator {
     this.savedAs.set(task, key)
     this.pumpSoon()
     const node = this.o.nodes()?.get(task)
-    const log = await this.o.artifacts
-      .restore(key, {
-        id: task,
-        projectDir: node?.projectDir ?? job.req.cwd,
-        command: job.req.command,
-        outputs: job.req.outputs,
-      })
-      .catch((err: unknown) => {
-        job.reject(err)
-        return undefined
-      })
+    // A remote-only task's files stay off this disk: an install's
+    // node_modules laid over this machine's own (schema: `'only'`).
+    const log = await (
+      job.req.remoteOnly === true
+        ? this.o.artifacts.output(key)
+        : this.o.artifacts.restore(key, {
+            id: task,
+            projectDir: node?.projectDir ?? job.req.cwd,
+            command: job.req.command,
+            outputs: job.req.outputs,
+          })
+    ).catch((err: unknown) => {
+      job.reject(err)
+      return undefined
+    })
     this.trace.slice({
       track: ORCHESTRATOR,
       name: task,
