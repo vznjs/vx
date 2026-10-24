@@ -13,6 +13,7 @@ export const MENU: Partial<Record<SectionId, MenuLink[]>> = {
     { label: 'Every feature, one line each', href: 'all-features/' },
   ],
   docs: [
+    { label: 'What is vx?', href: 'docs/', line: 'What it does, in one table.' },
     { label: 'Quickstart', href: 'quickstart/', line: 'Install, configure, cached in a minute.' },
     { label: 'Tasks', href: 'docs/tasks/', line: 'What runs, and in what order.' },
     { label: 'Caching', href: 'docs/caching/', line: 'Inputs, outputs, and what the key holds.' },

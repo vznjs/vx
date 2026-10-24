@@ -16,7 +16,7 @@ const BASE = (process.env['BASE_PATH'] ?? '/vx').replace(/\/?$/, '/')
 // Written by hand from the design, not read from src/nav/sections.ts.
 const PLACES: [string, string][] = [
   ['Features', 'features/'],
-  ['Docs', 'quickstart/'],
+  ['Docs', 'docs/'],
   ['Guides', 'guides/'],
   ['Reference', 'cli/'],
   ['Blog', 'blog/'],
@@ -24,6 +24,7 @@ const PLACES: [string, string][] = [
 ]
 // The Docs are one page per feature, in groups by area.
 const DOCS_PAGES: [string, string][] = [
+  ['What is vx?', 'docs/'],
   ['Quickstart', 'quickstart/'],
   ['Upgrading to 1.0', 'guides/upgrading/'],
   ['Workspace', 'docs/workspace/'],

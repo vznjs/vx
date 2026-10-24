@@ -1,5 +1,5 @@
 ---
-title: Sandboxing tasks
+title: Sandboxing
 description: Run a task where only the workspace files you declared exist, so an undeclared input cannot hide in the cache.
 ---
 
@@ -9,11 +9,41 @@ Prove a task reads only what it declares. A sandboxed task sees only the
 workspace files you grant, and a read or write outside them fails the task
 and names the path.
 
+```ts title="packages/app/vx.config.ts"
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    build: {
+      exec: {
+        command: 'vite build',
+        sandbox: {
+          allow: {
+            read: ['.', '~/.cache/ms-playwright'],
+            write: ['dist/**'],
+            network: ['registry.npmjs.org'],
+          },
+          deny: { network: ['telemetry.example.com'] },
+          ignore: { write: ['*.bun-build'] },
+        },
+      },
+      inputs: { files: ['src/**', 'index.html'] }, cache: { outputs: { files: ['dist/**'] } },
+    },
+  },
+})
+```
+
+Reads outside the workspace (`~/.cache`, `/etc`) are open and fold into
+no key. Credential stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc`) are
+denied unless `allow.read` names one.
+
 <Aside type="tip" title="Why bother">
   A cache is only as right as its inputs. A file a task reads but never
   declares is outside its key, so an edit to it replays an old result. The
   sandbox finds that file for you.
 </Aside>
+
+---
 
 ## Sandbox a task
 
@@ -48,33 +78,7 @@ and names the path.
 
 </Steps>
 
-Reads outside the workspace (`~/.cache`, `/etc`) are open and fold into
-no key. Credential stores under home (`~/.ssh`, `~/.aws`, `~/.npmrc`) are
-denied unless `allow.read` names one.
-
-```ts title="packages/app/vx.config.ts"
-import { defineProject } from '@vzn/vx/config'
-
-export default defineProject({
-  tasks: {
-    build: {
-      exec: {
-        command: 'vite build',
-        sandbox: {
-          allow: {
-            read: ['.', '~/.cache/ms-playwright'],
-            write: ['dist/**'],
-            network: ['registry.npmjs.org'],
-          },
-          deny: { network: ['telemetry.example.com'] },
-          ignore: { write: ['*.bun-build'] },
-        },
-      },
-      inputs: { files: ['src/**', 'index.html'] }, cache: { outputs: { files: ['dist/**'] } },
-    },
-  },
-})
-```
+---
 
 ## See it catch a missing input
 
@@ -143,6 +147,8 @@ build: {
   </TabItem>
 </Tabs>
 
+---
+
 ## What you can grant
 
 `allow` takes every key below; `deny` takes only `network`; `ignore`
@@ -161,6 +167,8 @@ union per run.
 | `pty`          | a terminal                                                        |
 | `gitConfig`    | write the repository's `.git/config`, for this task only          |
 
+---
+
 ## The boundary is the project
 
 A task never reaches another package or a root file you did not grant;
@@ -168,6 +176,8 @@ that wall is silent. An undeclared touch of its own files fails the task,
 and a failed task is never cached. A write refused past the wall is named
 with the directory to grant; under the host's temp directory it names
 `$TMPDIR` instead, the task's own empty temp directory.
+
+---
 
 ## Requirements & platform support
 
@@ -192,6 +202,8 @@ A persistent task (a dev server) runs inside the same walls, but nothing
 traces it: a refused read is `ENOENT`, named nowhere. Run its command as
 a one-shot sandboxed task to see what it was refused.
 
+---
+
 ## Common problems
 
 - **`write /proc/self/uid_map: Operation not permitted`.** You are root in a container. Run as a normal user, or set `weakerWhenNested: true` on every sandboxed task.
@@ -200,9 +212,11 @@ a one-shot sandboxed task to see what it was refused.
 - **`bun build --compile --target=…` fails on a fresh machine** ("Network error downloading executable", then "Failed to extract executable"). Bun fetches the target's runtime from npm into its cache. Grant `network: ['registry.npmjs.org']` and `write: ['~/.bun/install/cache/', '.*.tmp/**']`.
 - **`read packages/ui through packages/app/node_modules/@x/ui, and its key folds no task of @x/ui`.** The task imports a sibling its key never sees. Depend on a command task of it (`dependsOn: ['^source']`, or `^build`), or grant and key the files yourself.
 
+---
+
 ## Next
 
 <CardGrid>
-  <LinkCard title="Configure" description="Inputs, outputs and what the key holds." href="../../docs/caching/" />
+  <LinkCard title="Caching" description="Inputs, outputs and what the key holds." href="../caching/" />
   <LinkCard title="Security model" description="What the sandbox protects, and what it does not." href="../../security/" />
 </CardGrid>

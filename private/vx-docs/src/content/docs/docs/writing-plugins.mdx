@@ -14,6 +14,8 @@ flowchart LR
   config --> discover --> project --> G["graph"] --> key --> fingerprint --> schedule --> admit --> E["executor / cache"] --> T["telemetry / output"]
 ```
 
+---
+
 ## Write one
 
 <Steps>
@@ -61,6 +63,8 @@ export function typecheck(): VxPlugin {
 }
 ```
 
+---
+
 ## The hooks
 
 Plugins are asked in the order you list them. What every plugin declines
@@ -106,6 +110,8 @@ interface VxPlugin {
   teardown?(run?: RunReport): void | Promise<void>
 }
 ```
+
+---
 
 ## Workspace and projects
 
@@ -166,6 +172,8 @@ export function toolVersions(): VxPlugin {
 
 [`@vzn/vx-lockfile`](../../docs/lockfiles/) claims a lockfile this way.
 
+---
+
 ## Keys and order
 
 `key` adds what your inputs cannot see, like a tool version:
@@ -207,6 +215,8 @@ export default defineWorkspace({ plugins: [scheduleHistoryPlugin()] })
 On CI it keeps timings in the remote cache; with none,
 `scheduleHistoryPlugin({ file: '.vx-timings.json' })` keeps them in a file
 ([post](../../blog/ci-timings-file/)).
+
+---
 
 ## Setup and teardown
 
@@ -270,6 +280,8 @@ export function acme(): VxPlugin {
 and the log and outputs vx kept in the remote. `ctx.cache.getRun(name)`
 reads them back. See the [API](../../api/).
 
+---
+
 ## A verb and a sink
 
 `commands` adds a verb. A telemetry sink gets each run's summary; do
@@ -314,6 +326,8 @@ function hello(): VxPlugin {
 export default defineWorkspace({ plugins: [hello()] })
 ```
 
+---
+
 ## Draw the terminal
 
 `output` returns a `Logger` that gets every line vx would print. Decline
@@ -337,6 +351,8 @@ export function dots(): VxPlugin {
   })
 }
 ```
+
+---
 
 ## Where a task runs
 
@@ -385,6 +401,8 @@ export function nice(): VxPlugin {
   })
 }
 ```
+
+---
 
 ## Your own cache
 
@@ -502,6 +520,8 @@ Declare `signedCache(new AcmeRemote(url), PUBLIC_KEY_PEM)` and set
 `openssl genpkey -algorithm ed25519` and `openssl pkey -pubout`. `has()`
 is unchecked, so `--dry` can predict a hit the run then misses.
 
+---
+
 ## What core refuses
 
 - A `cache` or `executor` hook that breaks its contract: the three `RemoteCacheLayer` methods, or `execute` and a `name`.
@@ -511,6 +531,8 @@ is unchecked, so `--dry` can predict a hit the run then misses.
 
 A sink, `ctx.on` handler or `admit` that throws is switched off for the
 run with one warning. A verb that throws fails in one line.
+
+---
 
 ## Next
 

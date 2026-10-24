@@ -8,6 +8,13 @@ import { Steps, Aside, CardGrid, LinkCard } from '@astrojs/starlight/components'
 An agent asks vx what to run, runs it, and learns why it failed, all as
 typed JSON. People get the same answers as text.
 
+```sh
+bunx skills add vznjs/vx
+vx last --failed --format json
+```
+
+---
+
 ## Set up your agent
 
 <Steps>
@@ -43,6 +50,8 @@ typed JSON. People get the same answers as text.
 
 </Steps>
 
+---
+
 ## Every question has a command
 
 | Question                                      | Command                                              |
@@ -59,6 +68,8 @@ typed JSON. People get the same answers as text.
 | Is the lock current? What would `vx init` do? | `vx lock --check --format json`, `vx init --dry --format json` |
 | Free cache space.                             | `vx cache clean --max-size 1G --dry-run`             |
 
+---
+
 ## Read answers as JSON
 
 Each `--format json` prints one JSON document to stdout; notices go to
@@ -73,6 +84,8 @@ part of the key, so an agent fixes the cause instead of re-running:
 ```text
 {"kind":"file","name":"packages/app/src/a.ts","change":"changed","before":"d00491fd7e5bb6fa28c517a0bb32b8b506539d4d","after":"0cfbf08886fca9a91cb753ec8734c84fcbe52c9f"}
 ```
+
+---
 
 ## Branch on exit codes and error codes
 
@@ -105,6 +118,8 @@ $ vx run biuld --all --dry=json
   A mistyped flag gets the right one back: `--concurency` hints
   `--concurrency`, and `--json` hints `--format json`.
 </Aside>
+
+---
 
 ## Next
 
