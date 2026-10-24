@@ -1811,6 +1811,7 @@ export interface TaskExecutor {
   readonly sandbox?: boolean
   readonly servers?: boolean
   readonly runtime?: boolean
+  readonly exclusive?: boolean
   readonly platforms?: readonly string[]
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean

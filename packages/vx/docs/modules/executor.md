@@ -183,7 +183,8 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   gives a task back: its `execute` rejects with it, core says
   `[vx] <task>: <reason> — running it here` once and runs a fresh request
   (its own timeout) on the local executor. A task placed
-  `remote: 'only'` fails naming `reason` instead. A non-remote executor's
+  `remote: 'only'` fails naming `reason` instead, as does one an
+  `exclusive` executor took. A non-remote executor's
   fallback is an ordinary failure (B-100; `executor-fallback.test.ts`).
   `@vzn/vx-reapi`'s `queueTimeoutMs` is its consumer.
 
@@ -197,6 +198,13 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   runs on a distributed run's orchestrator). One with `exec.sandbox` or
   `exec.remote: false`, or one the run holds for itself (requested), is
   not carried.
+- An `exclusive` executor runs every task of the run (owner, 2026-10-24:
+  no task ever runs on a distributed run's orchestrator; only hits
+  restore there). Nothing is pinned for it: `exec.remote: false`,
+  `exec.interactive`, sandboxed and probed tasks and every server a
+  dependant needs go to it. A task that would still land on the local
+  floor (a platform it does not offer, one it declines, a probe it does
+  not check, a server requested on its own) refuses the run, naming it.
 - A task is `pinnedLocal` when it is persistent, transitively depends on a
   persistent task its executor does not carry, is
   sandboxed (the sandbox is this machine's machinery), depends on a

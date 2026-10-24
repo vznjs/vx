@@ -67,6 +67,17 @@ const t = (probe) => ({
 })
 export default { name: 'r', tasks: { same: t('echo 1.4.2'), here: t('pwd') } }
 `,
+    // Tasks core pins to the machine that runs \`vx run\`, each saying where it ran.
+    'p/vx.config.mjs': `const log = ${JSON.stringify(path.join(root, 'pinned.log'))}
+const at = (name) => 'echo "' + name + ' $PWD" >> ' + log
+export default { name: 'p', tasks: {
+  here: { exec: { command: at('here'), remote: false } },
+  above: { dependsOn: ['here'], exec: { command: at('above') } },
+  tty: { exec: { command: at('tty'), interactive: true } },
+  srv: { exec: { command: at('srv') + ' && touch up && echo up && exec sleep 60', remote: false, persistent: { readyWhen: 'up' } } },
+  near: { dependsOn: ['srv'], exec: { command: at('near') } },
+} }
+`,
     // Wide, then a two-task lull, then wide again.
     'c/vx.config.mjs': `const t = (dependsOn) => ({ exec: { command: 'sleep 0.3' }, dependsOn })
 export default { name: 'c', tasks: {
@@ -208,6 +219,23 @@ it('starts a server on each machine its shards run on', async () => {
   expect(starts).toHaveLength(2)
   expect(new Set(starts).size).toBe(2)
   expect(starts).not.toContain(path.join(root, 's'))
+}, 60_000)
+
+// No task ever runs on the orchestrator under dte(), only cache hits
+// restore there (owner, 2026-10-24): not a task that says
+// \`exec.remote: false\`, its dependant, an interactive one, or a server.
+it('runs no task on the orchestrator, pinned ones included', async () => {
+  const r = vx(['run', 'p#above', 'p#tty', 'p#near'], 'e2e-pinned')
+  expect([r.exitCode, r.stderr.toString()]).toEqual([0, expect.any(String)])
+  const ran = (await readFile(path.join(root, 'pinned.log'), 'utf8')).trim().split('\n')
+  expect(ran.map((l) => l.split(' ')[0]!).sort((x, y) => x.localeCompare(y))).toEqual([
+    'above',
+    'here',
+    'near',
+    'srv',
+    'tty',
+  ])
+  for (const l of ran) expect(l).not.toEndWith(` ${path.join(root, 'p')}`)
 }, 60_000)
 
 // Nothing runs on the orchestrator (owner, 2026-10-22), a task that keys
