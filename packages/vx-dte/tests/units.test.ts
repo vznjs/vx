@@ -625,6 +625,7 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
   const done = ['t1', 't2'].map((id) => h.o.execute(h.req(id)))
   expect(await a.batches()).toEqual([['t1', 't2']])
   for (const t of ['t1', 't2']) await a.begin(t)
+  await a.say({ type: 'held', running: ['t1', 't2'], load: { cpu: 1.5, memory: 0 } })
   // PR #4214's run asked 7 workers and cancelled each a second later: what each plan saw.
   h.o.planned({
     start: ['small'],
@@ -692,6 +693,12 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
   ).toEqual(['t1', 't2'])
   expect(ev.some((e) => e.ph === 'i' && e.pid === w && e.name === 'stopped')).toBe(true)
   expect(ev.some((e) => e.ph === 'C' && e.pid === w && e.name === 'cores')).toBe(true)
+  // What its machine had busy, its tasks' or not: what a full Mac queued on.
+  expect(
+    ev
+      .filter((e) => e.ph === 'C' && e.pid === w && e.name === 'machine')
+      .map((e) => e.args as unknown),
+  ).toContainEqual({ busy: 1.5 })
   const plan = ev.find((e) => e.ph === 'i' && e.pid === 1 && e.name === 'plan') as
     | { args: Record<string, unknown> }
     | undefined

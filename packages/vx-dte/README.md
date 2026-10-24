@@ -458,8 +458,10 @@ machine together, and the share of their history the run's tasks used:
 writes (open it in https://ui.perfetto.dev or `chrome://tracing`).
 Each worker is a process: its first row holds its warm-up (split, when it
 says when its `vx` started, into its machine's start and vx's boot), its
-idle stretches, how it ended and a `cores` counter of the cores booked
-and used at once; each task takes the first lane free over its time
+idle stretches, how it ended, a `cores` counter of the cores booked
+and used at once, and a `machine` counter of the cores its machine
+reported busy, its tasks' or not (placement never fills a worker past
+it); each task takes the first lane free over its time
 there, from its send through restoring its dependencies, its command
 and its save, with its exit code, duration, CPU time and booked cores.
 The `orchestrator` process holds the cache probe, each ask for workers, each
