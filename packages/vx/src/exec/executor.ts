@@ -13,6 +13,7 @@
 // process primitives — the module-boundary matrix forbids `exec` → `cache`,
 // which is why sandbox baselines arrive pre-resolved on the request.
 
+import type { SandboxConfig } from '../config.js'
 import type { CaptureConfig, RunResult } from './runner.js'
 import type { ResolvedSandboxConfig, SandboxViolation } from './sandbox-runtime.js'
 import { UserError, type ui } from '../util/index.js'
@@ -94,6 +95,12 @@ export interface ServerSpec {
   readonly readyWhen?: string
   /** Bounds the readiness wait. */
   readonly timeoutMs?: number
+  /**
+   * Its `exec.sandbox`, and the directories of the projects nested in its
+   * own (a wall its grants do not reach): it starts inside that sandbox,
+   * built where it runs, as a one-shot task's.
+   */
+  readonly sandbox?: { readonly config: SandboxConfig; readonly nested: readonly string[] }
 }
 
 export interface ExecuteRequest {

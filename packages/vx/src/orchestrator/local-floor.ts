@@ -1,20 +1,22 @@
 // Core's local floor for a plugin that runs tasks itself: `@vzn/vx-dte`'s
-// orchestrator for its own share, and its workers, which run tasks another
-// machine placed. A run arms the sandbox runtime before it builds a
-// sandboxed request; a worker is no run, so it arms here. It starts a
-// request's servers (`ExecuteRequest.servers`) once each, before the
-// task, and stops them when it closes.
+// workers, which run tasks another machine placed. A run arms the sandbox
+// runtime before it builds a sandboxed request; a worker is no run, so it
+// arms here. It starts a request's servers (`ExecuteRequest.servers`) once
+// each, before the task, each inside its own sandbox, and stops them when
+// it closes.
 
 import type { ExecConfig } from '../config.js'
 import {
   localExecutor,
+  releaseBridges,
   resetSandbox,
   runPersistent,
   type ExecuteRequest,
   type ExecuteResult,
   type ServerSpec,
+  wrapSandboxedCommand,
 } from '../exec/index.js'
-import { prepareSandbox } from './sandbox-request.js'
+import { placeholderSweeper, prepareSandbox, sandboxRequestFor } from './sandbox-request.js'
 import { forwardedSignal, terminateChildren } from './signals.js'
 
 export interface LocalFloor {
@@ -43,20 +45,58 @@ export function localFloor(
   // Each server, by task id: shared by every task here that depends on it.
   const servers = new Map<string, Promise<ReturnType<typeof Bun.spawn>>>()
   const children: ReturnType<typeof Bun.spawn>[] = []
-  const serve = (spec: ServerSpec): Promise<unknown> => {
-    let up = servers.get(spec.taskId)
-    if (up === undefined) {
-      const spawn = runPersistent({
-        command: spec.command,
+  // A sandboxed one starts inside its sandbox, built here as a one-shot
+  // task's; its port bridges and untouched placeholders go when it exits.
+  const start = async (spec: ServerSpec, root: string): Promise<ReturnType<typeof Bun.spawn>> => {
+    let command = spec.command
+    let signalChannel = false
+    let gone = async (): Promise<unknown> => undefined
+    if (spec.sandbox !== undefined) {
+      await armer?.arm()
+      const sb = await sandboxRequestFor(
+        { projectDir: spec.cwd },
+        spec.sandbox.config,
+        root,
+        undefined,
+        spec.sandbox.nested,
+      )
+      const swept = placeholderSweeper(sb.placeholders)
+      const wrapped = await wrapSandboxedCommand({
+        command,
         cwd: spec.cwd,
         env: spec.env,
-        onStdout: () => {},
-        onStderr: () => {},
-        ...(spec.readyWhen === undefined ? {} : { readyWhen: spec.readyWhen }),
-        ...(spec.timeoutMs === undefined ? {} : { timeoutMs: spec.timeoutMs }),
+        ...sb.sandbox,
+        server: true,
+      }).catch(async (err: unknown) => {
+        await swept()
+        throw err
       })
-      children.push(spawn.child)
-      up = spawn.ready.then(() => spawn.child)
+      command = wrapped.wrapped
+      signalChannel = wrapped.forwardsSignals
+      gone = async () => {
+        if (wrapped.tag !== undefined) releaseBridges(wrapped.tag)
+        return swept()
+      }
+    }
+    const spawn = runPersistent({
+      command,
+      cwd: spec.cwd,
+      env: spec.env,
+      onStdout: () => {},
+      onStderr: () => {},
+      ...(spec.readyWhen === undefined ? {} : { readyWhen: spec.readyWhen }),
+      ...(spec.timeoutMs === undefined ? {} : { timeoutMs: spec.timeoutMs }),
+      ...(signalChannel ? { signalChannel } : {}),
+    })
+    children.push(spawn.child)
+    void spawn.child.exited.then(gone, gone)
+    await spawn.ready
+    return spawn.child
+  }
+  const serve = (spec: ServerSpec, root: string): Promise<unknown> => {
+    let up = servers.get(spec.taskId)
+    if (up === undefined) {
+      up = start(spec, root)
       servers.set(spec.taskId, up)
       // One that never became ready is asked again by the next task.
       up.catch(() => servers.delete(spec.taskId))
@@ -67,7 +107,7 @@ export function localFloor(
     async execute(req) {
       for (const spec of req.servers ?? []) {
         try {
-          await serve(spec)
+          await serve(spec, req.workspaceRoot)
         } catch (err) {
           const why = err instanceof Error ? err.message : String(err)
           return {

@@ -584,12 +584,22 @@ export class Orchestrator {
                   env: defined(s.env),
                   ...(s.readyWhen === undefined ? {} : { readyWhen: s.readyWhen }),
                   ...(s.timeoutMs === undefined ? {} : { timeoutMs: s.timeoutMs }),
+                  ...(s.sandbox === undefined
+                    ? {}
+                    : {
+                        sandbox: {
+                          config: s.sandbox.config,
+                          nested: s.sandbox.nested.map((d) => path.relative(this.o.root, d)),
+                        },
+                      }),
                 })),
               }),
         } as RunOrder,
       }
     })
-    const sandboxed = orders.some((o) => o.order.sandbox !== undefined)
+    const sandboxed = orders.some(
+      (o) => o.order.sandbox !== undefined || o.order.servers?.some((s) => s.sandbox !== undefined),
+    )
     const sandboxes = sandboxed && !a.sandboxes ? sandboxConfigs(nodes) : undefined
     if (sandboxed) a.sandboxes = true
     a.chain = a.chain

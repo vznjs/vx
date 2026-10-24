@@ -32,6 +32,13 @@ export default { plugins: [dte({ workers: { small: { max: 1, cpu: 2, memory: '1G
   key: { exec: { command: 'cat "$HOME/.ssh/id"', sandbox: {} } },
 } }
 `,
+      // A server it needs starts on the worker, inside its own sandbox: no
+      // write grant, so its write to the orchestrator's checkout is refused.
+      's/vx.config.mjs': `export default { name: 's', tasks: {
+  srv: { exec: { command: 'echo x > ${path.join(root, 'escaped.txt')}; echo ready; exec sleep 30', persistent: { readyWhen: 'ready' }, sandbox: {} } },
+  use: { exec: { command: 'sleep 1' }, dependsOn: ['srv'] },
+} }
+`,
       'a/vx.config.mjs': `export default { name: 'a', tasks: {
   gen: {
     exec: { command: 'mkdir -p out && pwd > out/where.txt', sandbox: { allow: { read: ['.'], write: ['out/'] } } },
@@ -77,6 +84,12 @@ export default { plugins: [dte({ workers: { small: { max: 1, cpu: 2, memory: '1G
     const where = (await readFile(path.join(root, 'a/out/where.txt'), 'utf8')).trim()
     expect(where).not.toBe(path.join(root, 'a'))
     expect(where.endsWith(`${path.sep}a`)).toBe(true)
+  }, 60_000)
+
+  it('starts a sandboxed server it needs inside that sandbox', async () => {
+    const r = vx(['run', 's#use'], crypto.randomUUID())
+    expect([r.exitCode, r.stdout.toString() + r.stderr.toString()]).toEqual([0, expect.any(String)])
+    expect(await Bun.file(path.join(root, 'escaped.txt')).exists()).toBe(false)
   }, 60_000)
 
   it('fails a read outside its grants, naming this checkout', () => {
