@@ -415,6 +415,8 @@ export async function sandboxRequestFor(
 export function splitTaskId(id: string): [project: string, task: string]
 == function status (src/util/ui.ts)
 export function status(t: Tone, verb: string, headline: Inline): Block
+== function sweepPlaceholders (src/orchestrator/sandbox-request.ts)
+export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
 == function table (src/util/ui.ts)
 export function table(columns: readonly string[], rows: readonly (readonly Inline[])[]): Block
 == function taskDefinitions (src/graph/definition.ts)

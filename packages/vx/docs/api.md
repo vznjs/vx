@@ -2618,6 +2618,21 @@ private copy until item 646; one rule, one place.
 export function splitTaskId(id: string): [project: string, task: string]
 ```
 
+## `sweepPlaceholders`
+
+function · `src/orchestrator/sandbox-request.ts`
+
+Remove the placeholder files the task never wrote — still empty, mtime
+untouched — and return their paths. What the task wrote is its output
+and stays; what it did not is vx's own litter, and litter under a
+declared output would be archived as the task's (an empty `dist/vx`
+saved as a build) or, as a file where the task wanted a directory,
+would fail every later run the same way.
+
+```ts
+export async function sweepPlaceholders(placeholders: readonly Placeholder[]): Promise<string[]>
+```
+
 ## `TaskArtifacts`
 
 type · `src/orchestrator/task-artifacts.ts`

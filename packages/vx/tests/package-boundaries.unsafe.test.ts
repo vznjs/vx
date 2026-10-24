@@ -189,6 +189,8 @@ describe('package boundaries', () => {
       // Widened 2026-10-22: a DTE worker builds a task's sandbox on its own OS.
       'sandboxRequestFor',
       'splitTaskId',
+      // Widened 2026-10-24: a DTE worker takes back the placeholders as core does.
+      'sweepPlaceholders',
       // Widened 2026-10-23: a plugin reading history reads only the rows
       // of each task as it is now (M: a changed command is a new task).
       'taskDefinitions',
