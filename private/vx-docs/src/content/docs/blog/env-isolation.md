@@ -6,8 +6,11 @@ authors:
 tags:
   - caching
   - security
-excerpt: 'Your shell holds dozens of variables, and some of them are credentials. A vx task gets a short fixed list plus the names you write down, and any value that looks like a secret prints as ***.'
+excerpt: 'Your shell holds dozens of variables, some of them secrets. A task gets a short fixed list plus the names you write down, and secrets print as ***.'
 ---
+
+Your shell holds tokens, cloud keys and leftovers. A vx task gets a
+short fixed list plus the names you write down.
 
 ```sh frame="terminal"
 $ env | wc -l
@@ -16,9 +19,7 @@ $ vx run packages/d#envcount        # command: env | wc -l
 9
 ```
 
-Your shell holds tokens, cloud keys, proxies and leftovers. A task gets
-a short fixed list plus the names you write down. Linux x64, vx at
-`69617eb`, 2026-10-23.
+<small>Linux x64 · vx 69617eb · 2026-10-23</small>
 
 ```ts
 // packages/d/vx.config.ts
@@ -54,7 +55,18 @@ GH_PAT=***
 `FOO` never reached the task. `NODE_ENV` came from the config. Both
 tokens arrived, and both printed as `***`.
 
-## Three layers
+## What gets in
+
+```mermaid
+flowchart LR
+  SH["your shell: 189 vars"] -->|always| B["PATH, HOME, TMPDIR, locale, CI, NODE_OPTIONS"]
+  SH -->|passThrough| P[named tokens]
+  CF[config] -->|define| D[literal values]
+  B --> T[task: 9 vars]
+  P --> T
+  D --> T
+  D -.->|in cache key| K[key]
+```
 
 | Layer          | Example                         | In the cache key? |
 | -------------- | ------------------------------- | ----------------- |
@@ -62,23 +74,21 @@ tokens arrived, and both printed as `***`.
 | `passThrough`  | a token from your environment   | no                |
 | `define`       | a literal value in the config   | yes               |
 
-`passThrough` stays out of the key, so a laptop and a CI runner still
-share a hit. `secret` marks a name to mask that vx wouldn't guess.
+`passThrough` stays out of the key, so a laptop and CI still share
+cache hits.
 
-## Masked everywhere vx prints
+## Secrets print as ***
 
-A name holding `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or
-`CREDENTIAL` is masked unasked. `GH_PAT` holds none, so it is listed in
-`secret`. Masking covers the live log, the output a hit replays, the
-command a remote cache receives, `vx show`, `vx why`, `vx last`,
-telemetry and agent JSON. A multi-line key is masked line by line, and
-a value split across two output chunks is still caught.
+A name with `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD` or
+`CREDENTIAL` in it is masked without asking. `GH_PAT` has none, so it
+goes in `secret`. Masking covers every place vx prints: logs, cache
+replays, `vx show`, `vx why`, `vx last`, telemetry and JSON. A value
+split across two output chunks is still caught.
 
 ## When a variable changes the output
 
-Some variables change what a build produces, like `NODE_OPTIONS`
-loading a loader. vx doesn't guess which. Name it, and the value joins
-the key:
+Some variables change the build output, like `NODE_OPTIONS` loading a
+loader. vx doesn't guess which. Name it, and its value joins the key:
 
 ```ts
 inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, cache: { outputs: { files: ['dist/**'] } }
@@ -87,16 +97,13 @@ inputs: { files: ['src/**'], env: ['NODE_OPTIONS'] }, cache: { outputs: { files:
 ## Hygiene, not a wall
 
 Dropping variables keeps builds the same across machines. It doesn't
-stop a task that goes looking: an unsandboxed task runs as you.
+stop a task that goes looking, because an unsandboxed task runs as you.
 
 - **Linux:** vx makes itself non-dumpable, so a task can't read vx's
-  environment (`VX_DEBUG_DUMPABLE=1` turns that off for strace and
-  debuggers).
-- **macOS:** vx zeroes the values `ps eww` reads, all but the
-  essentials every task gets.
+  environment. `VX_DEBUG_DUMPABLE=1` turns that off for debuggers.
+- **macOS:** vx blanks the values `ps eww` would show.
 
-That guards the environment, not your files. To keep a task away from
-what it wasn't given, use `exec.sandbox`.
+To keep a task away from your files, use `exec.sandbox`.
 
 Rules: [schema](../../schema/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

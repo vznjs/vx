@@ -6,8 +6,19 @@ authors:
 tags:
   - dx
   - config
-excerpt: 'Edges in dependsOn, selections in --filter. A small grammar covers upstream builds, cross-project tasks, groups, dependents, folders and tags. And a name that matches nothing stops the run before it starts.'
+excerpt: 'dependsOn says what a task needs first, --filter says which projects to run. A name that matches nothing stops the run before it starts.'
 ---
+
+Two small languages pick what runs. `dependsOn` says what a task needs
+first. `--filter` says which projects to touch. A name that matches
+nothing stops the run.
+
+```mermaid
+flowchart LR
+  F["--filter: which projects"] --> S[selected tasks]
+  D["dependsOn: what each task needs first"] --> S
+  S --> G[one task graph] --> R[run]
+```
 
 ```sh frame="terminal"
 $ vx run build --filter '...packages/a' --dry
@@ -27,12 +38,10 @@ $ echo $?
 ```
 
 `...packages/a` is `a` and everything that depends on it. A typo stops
-the run before anything starts, so it never turns into a green run that
-quietly skipped your linter. Demo workspace, vx at `69617eb`,
-2026-10-23.
+the run before it starts, so you never get a green run that skipped
+your linter.
 
-Two small languages decide a run: `dependsOn` says what a task needs
-first, `--filter` says which projects to touch.
+<small>Demo workspace · vx 69617eb · 2026-10-23</small>
 
 ## What a task needs: dependsOn
 
@@ -60,8 +69,8 @@ export default defineProject({
 - `name.*` and `^name.*` match every task under a prefix, so `lint.*`
   takes `lint.oxlint` and `lint.oxfmt`.
 
-A task with no `exec` is a group: it runs its dependencies and nothing
-else. `dependsOn: []` is a named no-op you can fill in later.
+A task with no `exec` is a group. It runs its dependencies and nothing
+else.
 
 ## Which projects: --filter
 
@@ -78,8 +87,8 @@ $ vx run build --all --filter '!@demo/docs' # all but one
 $ vx run test --filter '...[main]'          # what changed since main, and its dependents
 ```
 
-`--exclude-dependencies` runs only what you selected and skips the
-`dependsOn` edges, or only the edges you name.
+`--exclude-dependencies` runs only what you selected, without its
+`dependsOn` tasks.
 
 Every selector is in the [CLI reference](../../cli/), and `dependsOn`
 is in the [schema](../../schema/). More at
