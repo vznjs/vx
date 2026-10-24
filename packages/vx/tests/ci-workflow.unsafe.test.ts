@@ -145,6 +145,17 @@ describe('ci.yml', () => {
     expect(cached).toEqual(['~/.cache/vx/setup-debs', '~/.cache/vx/setup-debs'])
   })
 
+  // Spotlight indexed what a Mac worker's tasks wrote: a fixed test
+  // workload ran 27.6 s with it, 23.3 s without (2026-10-24). Our
+  // workflow's concern, not vx's (owner, 2026-10-24).
+  it('turns Spotlight off on a Mac worker, first and in the background', () => {
+    const first = worker.steps![0]!
+    expect([first.if, first.run]).toEqual([
+      "runner.os == 'macOS'",
+      '(sudo mdutil -a -i off && sudo mdutil -a -d) >/dev/null 2>&1 &',
+    ])
+  })
+
   // `vx setup github` saves under `vx-setup-debs-<RUNNER_OS>-<RUNNER_ARCH>-<image>`
   // (vx-ci's debsKey): a key led by the image matched no restore, and
   // every worker fetched again (2026-10-23).
@@ -215,8 +226,9 @@ describe('vx-worker.yml', () => {
   // runner runs twice?"): the runtime set up by the CI plugin before the
   // worker starts (owner: "vx setup github", "we should do before"), its
   // packages kept per runner image, and no mount of its own.
-  it('is checkout, Bun, install, the sandbox runtime and the worker', () => {
+  it('is Spotlight off, checkout, Bun, install, the sandbox runtime and the worker', () => {
     expect(worker.steps!.map((s) => s.uses?.split('@')[0] ?? s.run)).toEqual([
+      '(sudo mdutil -a -i off && sudo mdutil -a -d) >/dev/null 2>&1 &',
       'actions/checkout',
       'oven-sh/setup-bun',
       'bun install --frozen-lockfile',

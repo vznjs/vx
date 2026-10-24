@@ -32,6 +32,12 @@ jobs:
       VX_DTE_RELAY: ${{ inputs.relay }}
       VX_DTE_WORKER: ${{ matrix.worker }}
     steps:
+      # Spotlight indexes what the tasks write: 0.13-0.29 cores of a
+      # 3-core Mac, and a fixed test workload ran 27.6 s on average with it
+      # against 23.3 s without (2 runners each, 2026-10-24). In the
+      # background: mdutil took up to 8 s.
+      - if: runner.os == 'macOS'
+        run: (sudo mdutil -a -i off && sudo mdutil -a -d) >/dev/null 2>&1 &
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # One commit: the laws that read history fetch it themselves
         # (tests/helpers/history.ts). The full clone was 5-7 s of every
