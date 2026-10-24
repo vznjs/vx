@@ -220,6 +220,8 @@ export class Orchestrator {
   private readonly sent: Map<string, number>
   /** Each hit's key, once on a remote a worker reads (`TaskArtifacts.share`). */
   private readonly shared = new Map<string, Promise<boolean>>()
+  /** Keys a worker could not read, sent again over the remotes' copy: once each. */
+  private readonly resent = new Set<string>()
   /** When each worker this run started was asked for, by `WorkerSpawn.index`. */
   private readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
   private ended = false
@@ -589,6 +591,17 @@ export class Orchestrator {
     )
   }
 
+  /** True when one of `keys` not sent again before reached a remote. */
+  private async resend(keys: readonly string[]): Promise<boolean> {
+    const fresh = keys.filter((k) => typeof k === 'string' && !this.resent.has(k))
+    for (const k of fresh) this.resent.add(k)
+    // quiet: a key no remote took fails the task, by name
+    const got = await Promise.all(
+      fresh.map((k) => this.o.artifacts.share(k, true).catch(() => false)),
+    )
+    return got.includes(true)
+  }
+
   private send(a: Worker, jobs: readonly Job[]): void {
     const nodes = this.o.nodes()
     const orders = jobs.map((job) => {
@@ -806,6 +819,19 @@ export class Orchestrator {
   private async finish(a: Worker, task: string, key: string, head: WiredResult): Promise<void> {
     const job = a.busy.get(task)
     if (job === undefined) return
+    // A dependency's remote copy did not read back there (a truncated
+    // upload): sent again from this machine, the task runs again. Taken as
+    // the task's failure, it failed every run, the remote saying it held the
+    // key (2026-10-25).
+    if (head.unread !== undefined && (await this.resend(head.unread)) && a.busy.get(task) === job) {
+      a.started.delete(task)
+      const again = this.retry(a, job, `could not read ${head.unread.join(', ')}`)
+      if (again !== undefined) {
+        this.queue.unshift(again)
+        this.pumpSoon()
+      }
+      return
+    }
     const endAt = performance.now()
     this.traceTask(a, job, head, endAt)
     a.busy.delete(task)
@@ -1711,7 +1737,7 @@ export class Orchestrator {
 }
 
 function result(r: WiredResult, log: { stdout: string; stderr: string }): ExecuteResult {
-  const { cpuShare: _, removed: __, ...rest } = r
+  const { cpuShare: _, removed: __, unread: ___, ...rest } = r
   const violations = (r.violations ?? []).map((v) => ({ ...v, timestamp: new Date(v.timestamp) }))
   return { ...rest, ...log, violations, outputs: { kind: 'disk' } }
 }

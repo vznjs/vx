@@ -57,7 +57,8 @@ export interface TaskArtifacts {
   output(key: string): Promise<{ stdout: string; stderr: string } | null>
   // True once a remote the run reads holds it: this machine's entry uploaded
   // to those it writes when none does. Another machine reads the remotes alone.
-  share(key: string): Promise<boolean>
+  // `unreadable`: that machine found the remotes' copy corrupt; sent over it.
+  share(key: string, unreadable?: boolean): Promise<boolean>
 }
 // What a machine that runs the run's tasks reads its cache under
 // (`ExecutorContext.cacheFacts`, `CommandContext.artifactsFor`).

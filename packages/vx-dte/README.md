@@ -419,7 +419,9 @@ use your own instead.
 - A hit only this machine's cache holds (the remote evicted it, or this
   run does not write the remote) is uploaded to the remotes the workers
   read before a task that depends on it is sent; with none written, its
-  dependant fails on the worker, naming the entry.
+  dependant fails on the worker, naming the entry. One whose remote copy
+  does not read back on a worker (a truncated upload) is sent again from
+  this machine over that copy, and the task runs again; once per entry.
 - A failed or uncached task is saved under a key of the run, the task and
   the send (a retry gets its own), so no later lookup ever hits it; so is one core would not save (a
   `--no-cache` or read-only run, a dependant of a failure under

@@ -155,6 +155,8 @@ export type WiredResult = Omit<ExecuteResult, 'violations' | 'outputs' | 'stdout
   cpuShare?: number
   /** Workspace-relative upstream outputs the task removed: this machine removes them too. */
   removed?: string[]
+  /** Dependency keys whose remote copy did not read back: this machine sends its own over them. */
+  unread?: string[]
 }
 
 /**

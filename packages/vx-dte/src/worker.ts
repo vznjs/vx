@@ -265,7 +265,7 @@ export async function runWorker(opts: {
           // a worker that never came (2026-10-24).
           if (!isUserError(err)) throw err
           ui.print('err', ui.status('error', m.task, err.message))
-          const res = { exitCode: 1, durationMs: 0, stdout: '', violations: [] }
+          const res = { exitCode: 1, durationMs: 0, stdout: '', violations: [], unread: [d.key] }
           await reply(m, m.runKey, undefined, { ...res, stderr: `${err.message}\n` }, true)
           return
         }
