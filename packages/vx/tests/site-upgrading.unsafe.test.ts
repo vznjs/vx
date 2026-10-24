@@ -8,8 +8,10 @@ import path from 'node:path'
 import { expect, it } from 'bun:test'
 import { commitsBetween } from '../scripts/release-notes.ts'
 import { page, PAGE } from '../scripts/upgrading.ts'
+import { fetchHistory } from './helpers/history.ts'
 
 const ROOT = path.resolve(import.meta.dir, '../../..')
+if (process.env['VX_REQUIRE_TAGS'] === '1') fetchHistory(ROOT)
 
 /** Each entry's text under its heading. */
 function footers(md: string): string[] {

@@ -10,10 +10,12 @@ import path from 'node:path'
 import { expect, it } from 'bun:test'
 import { conventionalError, squashBreakingError } from '../scripts/conventional.js'
 import { commitsBetween } from '../scripts/release-notes.js'
+import { fetchHistory } from './helpers/history.js'
 
 const title = process.env['VX_PR_TITLE'] ?? ''
 const base = process.env['VX_PR_BASE'] ?? ''
 const head = process.env['VX_PR_HEAD'] ?? ''
+if (base !== '') fetchHistory(path.resolve(import.meta.dir, '..'))
 
 it("the PR's title is a Conventional Commits header", () => {
   if (title === '') return
