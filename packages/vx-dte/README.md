@@ -451,14 +451,16 @@ as `unmeasured`), and when its plan ended then. The `ideal` line is the run's id
 waits for the needs another plugin fetches (`ctx.refining()`), such as
 `@vzn/vx-schedule-history`'s default-branch timings. The `unmeasured`
 line names the tasks the first ask had no measure of, and a worker that
-ran two tasks or fewer names them on its row. The `total` line is the cpu utilization of every
+ran two tasks or fewer names them on its row. `used avg` is the cores
+its tasks used, `machine avg` the cores its machine reported busy, any
+process's, from the load each frame of its carries. The `total` line is the cpu utilization of every
 machine together, and the share of their history the run's tasks used:
 
 ```
             small#1  stopped  5 done · warm-up 0.2s
                      declared 4c/14G · actual 4c/14G
                      online 12.1s · busy 9.8s · idle 2.3s
-                     cpu peak 3.6 · used avg 2.4 cores · booked avg 3.8 · cpu utilization 61%
+                     cpu peak 3.6 · used avg 2.4 cores · machine avg 2.9 · booked avg 3.8 · cpu utilization 61%
                      memory peak 1.2 GB · avg 640.0 MB
                      sent 6 messages · 3.1 MB, received 15 messages · 8.4 MB
             probe    at 0.4s: 5 tasks left to run, 5 known misses

@@ -500,6 +500,7 @@ export class Orchestrator {
   private heard(a: Worker, load: Load | undefined): void {
     if (load === undefined) return
     a.load = { cpu: Number(load.cpu) || 0, memory: Number(load.memory) || 0, at: performance.now() }
+    a.usage.load(a.load.cpu, a.load.at)
     const tasks = Number(load.tasks)
     this.trace.load(a.label, a.load.cpu, a.load.at, Number.isFinite(tasks) ? tasks : undefined)
   }
@@ -1627,7 +1628,7 @@ function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string):
 function describe(st: UsageStats, u: Usage): string[] {
   return [
     `online ${seconds(st.onlineMs)} · busy ${seconds(st.busyMs)} · idle ${seconds(Math.max(0, st.onlineMs - st.busyMs))}`,
-    `cpu peak ${st.cpuPeak.toFixed(1)} · used avg ${st.cpuAvg.toFixed(1)} cores · booked avg ${st.bookedAvg.toFixed(1)} · cpu utilization ${percent(st.utilization)}`,
+    `cpu peak ${st.cpuPeak.toFixed(1)} · used avg ${st.cpuAvg.toFixed(1)} cores${st.machineAvg === undefined ? '' : ` · machine avg ${st.machineAvg.toFixed(1)}`} · booked avg ${st.bookedAvg.toFixed(1)} · cpu utilization ${percent(st.utilization)}`,
     // No task said what it held: `memory peak 0 B` would be a claim.
     ...(st.memoryPeak > 0
       ? [`memory peak ${bytes(st.memoryPeak)} · avg ${bytes(st.memoryAvg)}`]

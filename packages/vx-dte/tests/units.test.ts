@@ -639,6 +639,20 @@ it('books a worker the cores of a task from its start to its command’s end', a
   expect(rows.find((r) => r.includes('booked avg'))).toContain('booked avg 0.0 ·')
 })
 
+it('says each worker’s machine busy average from the loads it sent', async () => {
+  const h = await harness(new Map([node('t1')]))
+  const a = await h.worker(4)
+  await Bun.sleep(50)
+  void h.o.execute(h.req('t1'))
+  expect(await a.batches()).toEqual([['t1']])
+  await a.say({ type: 'start', task: 't1', load: { cpu: 3, memory: 0 } })
+  await a.say({ type: 'ran', task: 't1', load: { cpu: 3, memory: 0 } })
+  await Bun.sleep(50)
+  await h.stop()
+  const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
+  expect(rows.find((r) => r.includes('used avg'))).toContain('· machine avg 3.0 ·')
+})
+
 // M, 2026-10-23: "a generated Chrome profile with all workers and tasks
 // they executed in time so you could debug better".
 it('profiles the run: each worker’s tasks on their own lanes, the run’s waits and restores', async () => {
@@ -2122,6 +2136,18 @@ it('a machine’s booked cores: what the run held for its tasks, averaged over i
   u.book(1, 2000)
   // Still held when the run ends at 4000: 4 + 1 + 2 * 2 core-seconds.
   expect(u.stats(4, 4000).bookedAvg).toBe(2.25)
+})
+
+// Macs read 1.0 core used of 2.6 busy (2026-10-24): the tasks' own CPU
+// leaves out the machine's other processes, which the load counts.
+it('a machine’s busy cores: its loads, each held until the next, averaged from the first', () => {
+  const u = new Usage(0)
+  expect(u.stats(4, 4000).machineAvg).toBeUndefined()
+  u.load(2, 1000)
+  u.load(4, 2000)
+  u.load(1, 3000)
+  // 2 + 4 + 1 core-seconds over the 3 s since the first load.
+  expect(u.stats(4, 4000).machineAvg).toBeCloseTo(7 / 3)
 })
 
 // A Ctrl-C read `0 done · 2 failed` for one failed and one stopped task.
