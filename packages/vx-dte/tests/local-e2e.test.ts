@@ -623,6 +623,20 @@ export default { plugins: [dte({ workers: { small: { max: 1, cpu: 1, memory: '1G
   ])
 }, 60_000)
 
+// A worker saved each task under its key whatever the run's policy, so a
+// `--no-cache` run left an entry the next run hit (2026-10-24).
+it('saves no entry under its key that the run would not', async () => {
+  for (const flag of ['--no-cache', '--cache-policy=local:r']) {
+    expect(vx(['cache', 'clean']).exitCode).toBe(0)
+    await rm(path.join(root, 'a/out'), { recursive: true, force: true })
+    const r = vx(['run', 'b#use', flag], 'unsaved')
+    expect([flag, r.exitCode]).toEqual([flag, 0])
+    expect(await readFile(path.join(root, 'b/out/b.txt'), 'utf8')).toBe('made\n')
+    const next = vx(['run', 'a#gen']).stdout.toString()
+    expect([flag, next.includes('restored')]).toEqual([flag, false])
+  }
+}, 60_000)
+
 it('says why a worker never joined, and fails the run when none can', async () => {
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),

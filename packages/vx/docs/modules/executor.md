@@ -100,7 +100,10 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   to core's local executor alone),
   `inputs?: TaskInputs`, `cacheKey?` (a cacheable task's key, the address
   an executor's own remote record uses), `refresh?` (cache reads are off:
-  do not answer from that record), `remoteOnly?` (`exec.remote: 'only'`:
+  do not answer from that record), `unsaved?` (core saves no entry
+  under the key: the policy writes no layer, or an upstream failed under
+  `--continue=always`, ran unkeyed or is keyless; an executor that saves
+  results for dependants keeps them off the key too), `remoteOnly?` (`exec.remote: 'only'`:
   leave outputs off this disk), `platform?` (one of the task's
   `exec.platforms` the executor's `platforms` lists: run it there; its key
   folds it), `download?: 'eager' | 'deferred'`.

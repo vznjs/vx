@@ -654,6 +654,7 @@ export interface ExecuteRequest {
   readonly workspaceRoot: string
   readonly inputs?: TaskInputs
   readonly cacheKey?: string
+  readonly unsaved?: boolean
   readonly refresh?: boolean
   readonly remoteOnly?: boolean
   readonly platform?: string

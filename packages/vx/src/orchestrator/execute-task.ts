@@ -1260,6 +1260,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
       ...(effectiveTimeout !== undefined ? { timeoutMs: effectiveTimeout } : {}),
       ...(inputs !== undefined ? { inputs } : {}),
       ...(cfgCacheable ? { cacheKey: hash } : {}),
+      ...(cfgCacheable && !remoteOnly && !willSave ? { unsaved: true } : {}),
       ...(remoteOnly ? { remoteOnly: true } : {}),
       ...(node.platform !== undefined ? { platform: node.platform } : {}),
       ...(deferralRequested ? { download: 'deferred' as const } : {}),

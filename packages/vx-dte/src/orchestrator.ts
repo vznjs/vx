@@ -563,7 +563,8 @@ export class Orchestrator {
         job,
         order: {
           task: req.taskId,
-          ...(req.cacheKey === undefined ? {} : { key: req.cacheKey }),
+          // Unsaved: under the run's own key, as an uncached task's.
+          ...(req.cacheKey === undefined || req.unsaved === true ? {} : { key: req.cacheKey }),
           runKey: runKey(this.o.run, req.taskId),
           deps,
           nested: node === undefined ? [] : nestedIn(nodes!, node.projectDir, this.o.root),

@@ -117,6 +117,15 @@ export interface ExecuteRequest {
    */
   readonly cacheKey?: string
   /**
+   * Core saves no entry under `cacheKey` after this attempt: the run's
+   * policy writes no layer (`--no-cache`, `--cache-policy local:r`), or an
+   * upstream failed under `--continue=always`, ran unkeyed or is keyless.
+   * An executor that saves a task's result for its dependants keeps it off
+   * that key too: a distributed run's worker saved it, and the next run
+   * hit an entry the user had said not to write (2026-10-24).
+   */
+  readonly unsaved?: boolean
+  /**
    * Cache READS are disabled for this run (`--force` / `--no-cache`). An
    * executor that keeps its OWN remote record of executions must not serve
    * this request from it — the user asked for re-execution, and a private
