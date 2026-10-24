@@ -337,9 +337,16 @@ export async function runWorker(opts: {
         ],
       )
       // Only a success the sandbox found nothing wrong with is the task's
-      // entry; anything else is kept where no lookup finds it.
+      // entry; anything else is kept where no lookup finds it. A 0 past the
+      // timeout (a trapped SIGTERM) failed, and saved under the key the
+      // next run hit it green (2026-10-24).
       const key =
-        res.exitCode === 0 && res.violations.length === 0 && m.key !== undefined ? m.key : m.runKey
+        res.exitCode === 0 &&
+        res.timedOut !== true &&
+        res.violations.length === 0 &&
+        m.key !== undefined
+          ? m.key
+          : m.runKey
       await reply(m, key, {
         ...res,
         violations: back,
