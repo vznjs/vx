@@ -1040,21 +1040,26 @@ describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
     // sandbox itself), vx#test.bun.unsafe's and vx#test.platform.unsafe's
     // shards, vx-dte-relay#test.live (Docker), vx-migrate#nx.install,
     // vx-reapi#test, #test.live and its two services. If none are found the reader is broken, not the docs.
-    expect(found.sort()).toEqual([
-      'vx#check.build-cold',
-      'vx#check.sandbox-canary',
-      ...Array.from({ length: UNSAFE_SHARD_COUNT }, (_, k) => `vx#test.bun.unsafe.shard-${k + 1}`),
-      ...Array.from(
-        { length: PLATFORM_UNSAFE_SHARD_COUNT },
-        (_, k) => `vx#test.platform.unsafe.shard-${k + 1}`,
-      ),
-      'vx-dte-relay#test.live',
-      'vx-migrate#nx.install',
-      'vx-reapi#services.cache',
-      'vx-reapi#services.exec',
-      'vx-reapi#test',
-      'vx-reapi#test.live',
-    ])
+    expect(found.sort()).toEqual(
+      [
+        'vx#check.build-cold',
+        'vx#check.sandbox-canary',
+        ...Array.from(
+          { length: UNSAFE_SHARD_COUNT },
+          (_, k) => `vx#test.bun.unsafe.shard-${k + 1}`,
+        ),
+        ...Array.from(
+          { length: PLATFORM_UNSAFE_SHARD_COUNT },
+          (_, k) => `vx#test.platform.unsafe.shard-${k + 1}`,
+        ),
+        'vx-dte-relay#test.live',
+        'vx-migrate#nx.install',
+        'vx-reapi#services.cache',
+        'vx-reapi#services.exec',
+        'vx-reapi#test',
+        'vx-reapi#test.live',
+      ].sort(),
+    )
   })
 })
 
