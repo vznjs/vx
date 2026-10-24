@@ -285,7 +285,10 @@ export async function runWorker(opts: {
       ui.print('out', ui.status('info', m.task, ui.dim('running')))
       const crowd = load.mark()
       const { outputs: _, ...res } = await floor.execute(req)
-      const cpuShare = load.shareSince(crowd)
+      const cpuShare = load.shareSince(
+        crowd,
+        res.cpuMs === undefined || !(res.durationMs > 0) ? undefined : res.cpuMs / res.durationMs,
+      )
       // Its command is done: saving its outputs to the cache is the
       // network's time, and its cores are the next task's (main,
       // 2026-10-23: workers booked 3.7 cores and used 2.4).
@@ -401,6 +404,13 @@ export async function runWorker(opts: {
   }
 }
 
+/** The looks a task's share is read over, and the CPUs' busy and total time then. */
+interface Mark {
+  sum: number
+  n: number
+  times: [number, number]
+}
+
 /** How often the run queue is read: a test shard's spawns come and go within a second. */
 const CROWD_EVERY_MS = 200
 /** The share of the CPUs' time busy at which a Mac may be crowded. */
@@ -450,8 +460,8 @@ export function loadMeter(
   times: () => [number, number] = cpuTimes,
 ): {
   now: () => Load
-  mark: () => { sum: number; n: number }
-  shareSince: (from: { sum: number; n: number }) => number | undefined
+  mark: () => Mark
+  shareSince: (from: Mark, used?: number) => number | undefined
   stop: () => void
 } {
   let last = times()
@@ -491,13 +501,23 @@ export function loadMeter(
   crowded.unref?.()
   return {
     now: () => ({ cpu: Math.round(cpu * 100) / 100, memory: os.totalmem() - available() }),
-    mark: () => ({ ...crowd }),
+    mark: () => ({ ...crowd, times: times() }),
     // Its mean share over the looks since `from`; none (a task shorter
-    // than a look, or no /proc) is no correction.
-    shareSince: (from) =>
-      crowd.n > from.n
-        ? Math.round(((crowd.sum - from.sum) / (crowd.n - from.n)) * 1000) / 1000
-        : undefined,
+    // than a look, or no /proc) is no correction. A task that used `used`
+    // cores beside cores left free wanted at most both: six test shards
+    // on a 3-core Mac used 2.3 cores, read a share of 0.22 from its load
+    // average, and the next run booked each 2.2 cores (main 3917881).
+    shareSince: (from, used) => {
+      if (crowd.n <= from.n) return undefined
+      let share = (crowd.sum - from.sum) / (crowd.n - from.n)
+      const now = times()
+      const total = now[1] - from.times[1]
+      if (used !== undefined && used > 0 && total > 0) {
+        const free = Math.max(0, 1 - (now[0] - from.times[0]) / total) * cores
+        share = Math.max(share, Math.min(1, used / (used + free)))
+      }
+      return Math.round(share * 1000) / 1000
+    },
     stop: () => {
       clearInterval(timer)
       clearInterval(crowded)

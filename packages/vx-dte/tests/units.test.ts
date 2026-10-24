@@ -2109,6 +2109,23 @@ it('reads how crowded the CPU is from the run queue', async () => {
   } finally {
     roomy.stop()
   }
+  // Main 3917881: six shards used 2.3 of a Mac's 3 cores and read a share
+  // of 0.22; each wanted at most what it used and the cores left free.
+  let busy = 0
+  const nine = (): [number, number] => [(busy += 90), (busy / 90) * 100]
+  const free = loadMeter(
+    () => undefined,
+    () => cores * 5,
+    nine,
+  )
+  try {
+    const from = free.mark()
+    await Bun.sleep(450)
+    expect(free.shareSince(from)).toBeCloseTo(0.2, 2)
+    expect(free.shareSince(from, 0.4)).toBeCloseTo(0.4 / (0.4 + 0.1 * cores), 2)
+  } finally {
+    free.stop()
+  }
   // Neither (Windows): no correction.
   const none = loadMeter(
     () => undefined,
