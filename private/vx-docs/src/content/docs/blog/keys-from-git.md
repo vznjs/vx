@@ -6,20 +6,21 @@ authors:
 tags:
   - internals
   - caching
-excerpt: "Hashing inputs is the cost every cache pays. vx lets git pay it and reads the blob ids back: 2.3 ms for 2,527 files, where reading and hashing them takes 154 ms. How the key is built, and why a commit never changes it."
+excerpt: "vx reads file hashes from git's index instead of reading your files: 2.3 ms for 2,527 files. A commit never changes a key."
 ---
 
-Every build cache has to hash its inputs. vx doesn't read your files to
-do it. Git already did.
+vx hashes your inputs without reading them. Git already stored a hash
+for every tracked file.
 
-```
-git ls-files -s -v                           min 2.3 ms   (20 runs)
-git status --porcelain -uall                 min 5.6 ms   (10 runs)
-read + xxh3 every tracked file yourself      min 154.1 ms (10 runs)
+```mermaid
+xychart-beta horizontal
+  title "Hash 2,527 tracked files (ms, min of runs)"
+  x-axis ["git ls-files -s -v", "git status --porcelain -uall", "read + xxh3 every file"]
+  y-axis "ms" 0 --> 160
+  bar [2.3, 5.6, 154.1]
 ```
 
-This repository: 2,527 tracked files, 48 MB. Linux x64, 4 cores, warm
-page cache, 2026-10-23.
+<small>This repository, 48 MB · linux x64, 4 cores, warm page cache · 2026-10-23</small>
 
 ```mermaid
 flowchart LR
@@ -30,15 +31,12 @@ flowchart LR
   style K stroke:#c6f84e,stroke-width:2px
 ```
 
-## What goes into a key
+## A key has eleven parts
 
-A vx cache key is an xxh3 hash, seed-chained across eleven parts:
-each part folds into the running digest under its own label
-(`task:`, `config:`, `upstream:`, `plugin:`, `inputs:`, …). Every list
-of pairs folds its length first and splits name from value with a `\0`,
-so two layouts of the same bytes can't collide. Bun's xxh3 reads only 32
-bits of a seed, so each step feeds the seed forward and the chain keeps
-all 64 bits. The parts, as [Caching](../../caching/) numbers them:
+A key is an xxh3 hash, seed-chained across eleven parts. Each part goes
+in under its own label (`task:`, `config:`, `upstream:`, `plugin:`,
+`inputs:`, …), with lengths and `\0` separators so two layouts never
+collide. The parts, as [Caching](../../caching/) numbers them:
 
 1. The key-derivation sentinel (`CACHE_VERSION`), so a change to how
    keys are derived is never served by an older entry.
@@ -59,42 +57,27 @@ all 64 bits. The parts, as [Caching](../../caching/) numbers them:
     id, plus its mode for an executable or a symlink, and for a symlink
     what it points to.
 
-Part 11 is where the money is. A real package's build reads hundreds of
-files, and a workspace has hundreds of packages.
+Part 11 is where the money is: hundreds of files per package, hundreds
+of packages.
 
-## Ask git, once
+## vx asks git once
 
-Git stores a content hash for every tracked file: the blob id in the
-index. vx runs one `git ls-files -s -v` for the whole workspace. It
-reads only the index and returns every path, its blob id and its
-cache-state flag. One `git status --porcelain -uall` runs beside it and
-says which tracked files differ and what is untracked.
+One `git ls-files -s -v` reads every path and its blob id from the
+index. One `git status --porcelain -uall` beside it lists dirty and
+untracked files. An index id is trusted only when it matches the disk,
+so four prunes run against it:
 
-An index id is trusted only where git stores the worktree bytes as they
-are, so four prunes run against it:
-
-1. a dirty path (from status);
-2. a `skip-worktree` or `assume-unchanged` path, whose id says nothing
-   about the disk;
+1. a dirty path;
+2. a `skip-worktree` or `assume-unchanged` path;
 3. a path a clean filter could rewrite;
 4. an id whose blob is not the size the index recorded for the file.
 
-A repository whose config weakens the stat git judges by
+A repo whose config weakens git's stat check
 (`core.trustctime=false`, `core.checkStat=minimal`) trusts no index id
-at all. Every pruned or untracked path is hashed in-process with git's
-own blob-id algorithm (`blob <size>\0<bytes>`, SHA-1, or SHA-256 in a
-SHA-256 repository).
-
-Clean filters (`text`, `eol`, `ident`, `filter`,
-`working-tree-encoding`, `core.autocrlf`) store a normalised blob while
-your build reads different bytes. The check costs a repository with
-none of them one `git var -l` and a stat of each attributes file.
+at all. Pruned files are hashed the way git would hash them. Finding
+clean filters costs one `git var -l` and a stat per attributes file.
 
 ## A commit never changes a key
-
-A dirty file is hashed to the same blob id git gives it on commit. So
-edit, run, commit, run misses once (`a` and `c`, which depends on it), then
-hits:
 
 ```sh frame="terminal"
 $ vx run build --all          # after editing packages/a
@@ -106,11 +89,12 @@ $ git commit -am edit && vx run build --all
             local 4✓
 ```
 
-A tool that hashes mtimes, or keeps its own fingerprint store, misses
-again at the commit, or needs a daemon to avoid it. Demo workspace, vx
-at `dbe4033`, 2026-10-23.
+<small>Demo workspace · vx `dbe4033` · 2026-10-23</small>
 
-## What the key ignores, on purpose
+A dirty file gets the blob id git gives it on commit. So after the
+commit, everything hits.
+
+## What the key leaves out
 
 | Not in the key           | Why                                                                        |
 | ------------------------ | -------------------------------------------------------------------------- |
@@ -120,10 +104,7 @@ at `dbe4033`, 2026-10-23.
 | `.vx/projects.lock.json` | `vx lock` itself must not re-key the world.                                |
 | Ignored files            | `src/**` skips them. Name one outright (`.env.local`) to hash it.          |
 
-If a variable changes the output, list it under `inputs.env`. Globs stay
-inside the project; `inputs.workspaceFiles` names files at the workspace
-root, like a shared `tsconfig.base.json`.
-
-When a key does change, [`vx why`](../why-did-this-rerun/) names the
-part that moved. The full derivation is in [Caching](../../caching/).
-More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
+A variable that changes the output goes under `inputs.env`. A shared root
+file goes under `inputs.workspaceFiles`. When a key changes,
+[`vx why`](../why-did-this-rerun/) names the part. More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).
