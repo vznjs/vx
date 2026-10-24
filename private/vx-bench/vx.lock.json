@@ -9,8 +9,7 @@
       "dependsOn": [
         "lint",
         "test",
-        "check.site",
-        "check.perf"
+        "check.site"
       ]
     },
     "check.perf": {

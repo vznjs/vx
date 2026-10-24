@@ -123,3 +123,29 @@ jobs:
         env:
           URL: ${{ steps.trace.outputs.artifact-url }}
         run: echo "[Run profile]($URL), opened in https://ui.perfetto.dev" >> "$GITHUB_STEP_SUMMARY"
+
+  # The benchmarks, on a runner of their own: they time the machine, and a
+  # DTE worker is packed for the run's wall time, not a task's (owner,
+  # 2026-10-24). Beside the run, so off its critical path; no relay, so
+  # vx runs them here.
+  perf:
+    name: Perf
+    if: github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      VX_REQUIRE_SANDBOX: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/vx/setup-debs
+          key: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}
+          restore-keys: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}-
+      - run: bun packages/vx/src/bin.ts setup github
+      - run: bun packages/vx/src/bin.ts run check.perf ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}

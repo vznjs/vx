@@ -174,7 +174,9 @@ measured with its own core.
 ### The per-PR guard
 
 `private/vx-bench/perf-guard.ts` runs in every PR's gate as
-`@vzn/vx-bench#check.perf`. It builds a 25- and a 100-package workspace
+`@vzn/vx-bench#check.perf`, in CI's `Perf` job: a runner of its own
+beside the distributed run, whose workers are packed for the run's wall
+time, not a task's (ci.yml `perf`). It builds a 25- and a 100-package workspace
 and drives core in-process through five phases, each from a `vx lock`
 taken first: cold run, up-to-date run, restore run, plan, one-edit run. Two kinds of number, against
 `private/vx-bench/perf-baseline.json`:
