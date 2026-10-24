@@ -386,13 +386,6 @@ export interface WhyDidThisRerun {
 }
 
 /**
- * The endings an UNCHANGED cache key can have. A re-execution is told apart
- * by the evidence the index holds: every one used to blame `--no-cache` /
- * `--force`, when the previous run on the key had failed (a failure saves
- * nothing) or the entry had been pruned, and the invocation recorded that
- * no flag was passed (item 1009).
- */
-/**
  * Failed tasks in a run that wrote the cache: a passing task beside one
  * ran past a failed dependency (--continue) and was never saved.
  */
@@ -404,6 +397,13 @@ function failedWithWrites(db: Database, id: string | null): number {
   return row !== null && writesCache(row.p) ? row.f : 0
 }
 
+/**
+ * The endings an UNCHANGED cache key can have. A re-execution is told apart
+ * by the evidence the index holds: every one used to blame `--no-cache` /
+ * `--force`, when the previous run on the key had failed (a failure saves
+ * nothing) or the entry had been pruned, and the invocation recorded that
+ * no flag was passed (item 1009).
+ */
 function unchangedKeyNote(
   db: Database,
   runId: string,
