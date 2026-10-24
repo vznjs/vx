@@ -1,26 +1,9 @@
 {
   "workspace": {
     "levels": {
-      "": [
-        "baseBranch",
-        "cache",
-        "lock",
-        "plugins",
-        "run",
-        "watch"
-      ],
-      "run": [
-        "concurrency",
-        "continue",
-        "retries",
-        "rules",
-        "schedule",
-        "timeout"
-      ],
-      "run.rules": [
-        "dependencies",
-        "exclusiveOutputs"
-      ],
+      "": ["baseBranch", "cache", "lock", "plugins", "run", "watch"],
+      "run": ["concurrency", "continue", "retries", "rules", "schedule", "timeout"],
+      "run.rules": ["dependencies", "exclusiveOutputs"],
       "cache": [
         "concurrency",
         "dir",
@@ -31,44 +14,18 @@
         "store",
         "upload"
       ],
-      "cache.inputStability": [
-        "severity",
-        "strategy"
-      ],
-      "cache.outputs": [
-        "clean"
-      ],
-      "cache.upload": [
-        "failures"
-      ],
-      "cache.store": [
-        "decompress",
-        "embeddings"
-      ],
-      "cache.concurrency": [
-        "download",
-        "restore",
-        "upload"
-      ],
-      "lock": [
-        "reviewFiles"
-      ],
-      "watch": [
-        "poll"
-      ]
+      "cache.inputStability": ["severity", "strategy"],
+      "cache.outputs": ["clean"],
+      "cache.upload": ["failures"],
+      "cache.store": ["decompress", "embeddings"],
+      "cache.concurrency": ["download", "restore", "upload"],
+      "lock": ["reviewFiles"],
+      "watch": ["poll"]
     },
     "records": [],
     "fields": {
       "baseBranch": {
-        "ok": [
-          "<absent>",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "\"main\""
-        ],
+        "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"main\""],
         "$CONFIG: `baseBranch` must be a branch name like 'main'": [
           "null",
           "true",
@@ -99,11 +56,7 @@
         ]
       },
       "run": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: `run` must be an object (fields: concurrency, schedule, timeout, retries, continue, rules)": [
           "null",
           "true",
@@ -140,13 +93,7 @@
         ]
       },
       "run.concurrency": {
-        "ok": [
-          "<absent>",
-          "1",
-          "65536",
-          "2147483648",
-          "2"
-        ],
+        "ok": ["<absent>", "1", "65536", "2147483648", "2"],
         "$CONFIG: `run.concurrency` must be a positive integer, or a share of the cores like '50%' (got null)": [
           "null"
         ],
@@ -233,10 +180,7 @@
         ]
       },
       "run.schedule": {
-        "ok": [
-          "<absent>",
-          "\"critical-path\""
-        ],
+        "ok": ["<absent>", "\"critical-path\""],
         "$CONFIG: `run.schedule` must be one of 'most-work', 'critical-path', 'direct-dependents', 'ready-order' (got null)": [
           "null"
         ],
@@ -332,10 +276,7 @@
         ]
       },
       "run.timeout": {
-        "ok": [
-          "<absent>",
-          "\"1s\""
-        ],
+        "ok": ["<absent>", "\"1s\""],
         "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got null)": [
           "null"
         ],
@@ -348,9 +289,7 @@
         "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 0)": [
           "0"
         ],
-        "$CONFIG: `run.timeout` takes a duration with its unit, like '1ms' or '1s' (got 1)": [
-          "1"
-        ],
+        "$CONFIG: `run.timeout` takes a duration with its unit, like '1ms' or '1s' (got 1)": ["1"],
         "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got 1.5)": [
           "1.5"
         ],
@@ -431,130 +370,57 @@
         ]
       },
       "run.retries": {
-        "ok": [
-          "<absent>",
-          "0",
-          "1",
-          "65536",
-          "2147483648"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got null)": [
-          "null"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got true)": [
-          "true"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got false)": [
-          "false"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
+        "ok": ["<absent>", "0", "1", "65536", "2147483648"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got null)": ["null"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got true)": ["true"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got false)": ["false"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got 1.5)": ["1.5"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got -1)": ["-1"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got \"\")": ["\"\""],
+        "$CONFIG: `run.retries` must be a non-negative integer (got \"x\")": ["\"x\""],
+        "$CONFIG: `run.retries` must be a non-negative integer (got \"(\")": ["\"(\""],
+        "$CONFIG: `run.retries` must be a non-negative integer (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `run.retries` must be a non-negative integer (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `run.retries` must be a non-negative integer (got \"10\")": ["\"10\""],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [])": ["[]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [1])": ["[1]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [3000])": ["[3000]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"!x\"])": ["[\"!x\"]"],
         "$CONFIG: `run.retries` must be a non-negative integer (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `run.retries` must be a non-negative integer (got {})": [
-          "{}"
-        ],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `run.retries` must be a non-negative integer (got {})": ["{}"],
         "$CONFIG: `run.retries` must be a non-negative integer (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "run.continue": {
-        "ok": [
-          "<absent>",
-          "\"deps-ok\""
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got null)": [
-          "null"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got true)": [
-          "true"
-        ],
+        "ok": ["<absent>", "\"deps-ok\""],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got null)": ["null"],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got true)": ["true"],
         "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got false)": [
           "false"
         ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got -1)": [
-          "-1"
-        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 0)": ["0"],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 1)": ["1"],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 1.5)": ["1.5"],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got -1)": ["-1"],
         "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 65536)": [
           "65536"
         ],
         "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got 2147483648)": [
           "2147483648"
         ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"\")": [
-          "\"\""
-        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"\")": ["\"\""],
         "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"x\")": [
           "\"x\""
         ],
@@ -570,18 +436,14 @@
         "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got \"10\")": [
           "\"10\""
         ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [])": [
-          "[]"
-        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [])": ["[]"],
         "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"x\"])": [
           "[\"x\"]"
         ],
         "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"\"])": [
           "[\"\"]"
         ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [1])": [
-          "[1]"
-        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [1])": ["[1]"],
         "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [3000])": [
           "[3000]"
         ],
@@ -612,19 +474,13 @@
         "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got [\"A*\"])": [
           "[\"A*\"]"
         ],
-        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got {})": [
-          "{}"
-        ],
+        "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got {})": ["{}"],
         "$CONFIG: `run.continue` must be one of 'never', 'deps-ok', 'always' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "run.rules": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: `run.rules` must be an object (fields: exclusiveOutputs, dependencies)": [
           "null",
           "true",
@@ -661,95 +517,45 @@
         ]
       },
       "run.rules.exclusiveOutputs": {
-        "ok": [
-          "<absent>",
-          "true",
-          "false"
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got null)": [
-          "null"
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got 65536)": [
-          "65536"
-        ],
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got null)": ["null"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got 0)": ["0"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got 1)": ["1"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got 65536)": ["65536"],
         "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got 2147483648)": [
           "2147483648"
         ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [])": ["[]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
         "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"!/x\"])": [
           "[\"!/x\"]"
         ],
         "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"../x\"])": [
           "[\"../x\"]"
         ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
         "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"**\"])": [
-          "[\"**\"]"
-        ],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"**\"])": ["[\"**\"]"],
         "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"A=B\"])": [
           "[\"A=B\"]"
         ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got {})": [
-          "{}"
-        ],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got {})": ["{}"],
         "$CONFIG: `run.rules.exclusiveOutputs` must be true or false (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
@@ -796,11 +602,7 @@
         ]
       },
       "cache": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: `cache` must be an object like { dir, policy }; a task caches through its own `cache` in its project's vx.config": [
           "null",
           "true",
@@ -837,93 +639,35 @@
         ]
       },
       "cache.dir": {
-        "ok": [
-          "<absent>",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "\".vx/cache\""
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got null)": [
-          "null"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got true)": [
-          "true"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got false)": [
-          "false"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
+        "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\".vx/cache\""],
+        "$CONFIG: `cache.dir` must be a non-blank string (got null)": ["null"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got true)": ["true"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got false)": ["false"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got 0)": ["0"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got 1)": ["1"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got -1)": ["-1"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got 65536)": ["65536"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got 2147483648)": ["2147483648"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got \"\")": ["\"\""],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [])": ["[]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [1])": ["[1]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [3000])": ["[3000]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"!x\"])": ["[\"!x\"]"],
         "$CONFIG: `cache.dir` must be a non-blank string (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got {})": [
-          "{}"
-        ],
-        "$CONFIG: `cache.dir` must be a non-blank string (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got {})": ["{}"],
+        "$CONFIG: `cache.dir` must be a non-blank string (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
       },
       "cache.policy": {
         "ok": [
@@ -935,126 +679,51 @@
           "\"10\"",
           "\"local:rw,remote:r\""
         ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got null)": [
-          "null"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got true)": [
-          "true"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got false)": [
-          "false"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
+        "$CONFIG: `cache.policy` must be a non-blank string (got null)": ["null"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got true)": ["true"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got false)": ["false"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got 0)": ["0"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got 1)": ["1"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got -1)": ["-1"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got 65536)": ["65536"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got 2147483648)": ["2147483648"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got \"\")": ["\"\""],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [])": ["[]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [1])": ["[1]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [3000])": ["[3000]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"!x\"])": ["[\"!x\"]"],
         "$CONFIG: `cache.policy` must be a non-blank string (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got {})": [
-          "{}"
-        ],
-        "$CONFIG: `cache.policy` must be a non-blank string (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got {})": ["{}"],
+        "$CONFIG: `cache.policy` must be a non-blank string (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
       },
       "cache.download": {
-        "ok": [
-          "<absent>",
-          "\"all\""
-        ],
-        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got null)": [
-          "null"
-        ],
-        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got true)": [
-          "true"
-        ],
-        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got false)": [
-          "false"
-        ],
-        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got 65536)": [
-          "65536"
-        ],
+        "ok": ["<absent>", "\"all\""],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got null)": ["null"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got true)": ["true"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got false)": ["false"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got 0)": ["0"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got 1)": ["1"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got -1)": ["-1"],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got 65536)": ["65536"],
         "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got 2147483648)": [
           "2147483648"
         ],
-        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got \"(\")": [
-          "\"(\""
-        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got \"\")": ["\"\""],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got \"x\")": ["\"x\""],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got \"(\")": ["\"(\""],
         "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got \"30d\")": [
           "\"30d\""
         ],
@@ -1064,18 +733,14 @@
         "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got \"10\")": [
           "\"10\""
         ],
-        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [])": [
-          "[]"
-        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [])": ["[]"],
         "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [\"x\"])": [
           "[\"x\"]"
         ],
         "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [\"\"])": [
           "[\"\"]"
         ],
-        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [1])": [
-          "[1]"
-        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [1])": ["[1]"],
         "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [3000])": [
           "[3000]"
         ],
@@ -1106,19 +771,13 @@
         "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got [\"A*\"])": [
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got {})": [
-          "{}"
-        ],
+        "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got {})": ["{}"],
         "$CONFIG: `cache.download` must be one of 'all', 'toplevel', 'none' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "cache.inputStability": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: `cache.inputStability` must be an object (fields: strategy, severity)": [
           "null",
           "true",
@@ -1155,10 +814,7 @@
         ]
       },
       "cache.inputStability.strategy": {
-        "ok": [
-          "<absent>",
-          "\"mutable\""
-        ],
+        "ok": ["<absent>", "\"mutable\""],
         "$CONFIG: `cache.inputStability.strategy` must be one of 'immutable', 'mutable', 'unchecked' (got null)": [
           "null"
         ],
@@ -1254,10 +910,7 @@
         ]
       },
       "cache.inputStability.severity": {
-        "ok": [
-          "<absent>",
-          "\"error\""
-        ],
+        "ok": ["<absent>", "\"error\""],
         "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got null)": [
           "null"
         ],
@@ -1267,18 +920,12 @@
         "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got false)": [
           "false"
         ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 1)": [
-          "1"
-        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 0)": ["0"],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 1)": ["1"],
         "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 1.5)": [
           "1.5"
         ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got -1)": [
-          "-1"
-        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got -1)": ["-1"],
         "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got 65536)": [
           "65536"
         ],
@@ -1303,9 +950,7 @@
         "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got \"10\")": [
           "\"10\""
         ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [])": [
-          "[]"
-        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [])": ["[]"],
         "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"x\"])": [
           "[\"x\"]"
         ],
@@ -1345,19 +990,13 @@
         "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got [\"A*\"])": [
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got {})": [
-          "{}"
-        ],
+        "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got {})": ["{}"],
         "$CONFIG: `cache.inputStability.severity` must be one of 'warn', 'error' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "cache.outputs": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: `cache.outputs` must be an object (fields: clean)": [
           "null",
           "true",
@@ -1389,110 +1028,46 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache.outputs` has unknown field \"x\" (allowed: clean)": [
-          "{\"x\":\"y\"}"
-        ]
+        "$CONFIG: `cache.outputs` has unknown field \"x\" (allowed: clean)": ["{\"x\":\"y\"}"]
       },
       "cache.outputs.clean": {
-        "ok": [
-          "<absent>",
-          "true",
-          "false"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got null)": [
-          "null"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got null)": ["null"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got 0)": ["0"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got 1)": ["1"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got 2147483648)": ["2147483648"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [])": ["[]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
         "$CONFIG: `cache.outputs.clean` must be true or false (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `cache.outputs.clean` must be true or false (got {})": [
-          "{}"
-        ],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `cache.outputs.clean` must be true or false (got {})": ["{}"],
         "$CONFIG: `cache.outputs.clean` must be true or false (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "cache.upload": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: `cache.upload` must be an object (fields: failures)": [
           "null",
           "true",
@@ -1524,15 +1099,10 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache.upload` has unknown field \"x\" (allowed: failures)": [
-          "{\"x\":\"y\"}"
-        ]
+        "$CONFIG: `cache.upload` has unknown field \"x\" (allowed: failures)": ["{\"x\":\"y\"}"]
       },
       "cache.upload.failures": {
-        "ok": [
-          "<absent>",
-          "\"always\""
-        ],
+        "ok": ["<absent>", "\"always\""],
         "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got null)": [
           "null"
         ],
@@ -1542,18 +1112,12 @@
         "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got false)": [
           "false"
         ],
-        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got 1)": [
-          "1"
-        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got 0)": ["0"],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got 1)": ["1"],
         "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got 1.5)": [
           "1.5"
         ],
-        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got -1)": [
-          "-1"
-        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got -1)": ["-1"],
         "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got 65536)": [
           "65536"
         ],
@@ -1578,9 +1142,7 @@
         "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got \"10\")": [
           "\"10\""
         ],
-        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [])": [
-          "[]"
-        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [])": ["[]"],
         "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [\"x\"])": [
           "[\"x\"]"
         ],
@@ -1620,19 +1182,13 @@
         "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got [\"A*\"])": [
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got {})": [
-          "{}"
-        ],
+        "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got {})": ["{}"],
         "$CONFIG: `cache.upload.failures` must be one of 'ci', 'local', 'always' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "cache.store": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: `cache.store` must be an object (fields: embeddings, decompress)": [
           "null",
           "true",
@@ -1669,31 +1225,19 @@
         ]
       },
       "cache.store.embeddings": {
-        "ok": [
-          "<absent>",
-          "false",
-          "\"10G\"",
-          "\"10\"",
-          "\"32KiB\""
-        ],
+        "ok": ["<absent>", "false", "\"10G\"", "\"10\"", "\"32KiB\""],
         "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got null)": [
           "null"
         ],
         "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got true)": [
           "true"
         ],
-        "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got 1)": [
-          "1"
-        ],
+        "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got 0)": ["0"],
+        "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got 1)": ["1"],
         "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got 1.5)": [
           "1.5"
         ],
-        "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got -1)": [
-          "-1"
-        ],
+        "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got -1)": ["-1"],
         "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got 65536)": [
           "65536"
         ],
@@ -1712,9 +1256,7 @@
         "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got \"30d\")": [
           "\"30d\""
         ],
-        "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got [])": [
-          "[]"
-        ],
+        "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got [])": ["[]"],
         "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got [\"x\"])": [
           "[\"x\"]"
         ],
@@ -1754,113 +1296,49 @@
         "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got [\"A*\"])": [
           "[\"A*\"]"
         ],
-        "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got {})": [
-          "{}"
-        ],
+        "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got {})": ["{}"],
         "$CONFIG: `cache.store.embeddings` must be false, or a size like '32KiB' (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "cache.store.decompress": {
-        "ok": [
-          "<absent>",
-          "true",
-          "false"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got null)": [
-          "null"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got null)": ["null"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got 0)": ["0"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got 1)": ["1"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got 2147483648)": ["2147483648"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `cache.store.decompress` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `cache.store.decompress` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `cache.store.decompress` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `cache.store.decompress` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `cache.store.decompress` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `cache.store.decompress` must be true or false (got [])": ["[]"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
         "$CONFIG: `cache.store.decompress` must be true or false (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `cache.store.decompress` must be true or false (got {})": [
-          "{}"
-        ],
+        "$CONFIG: `cache.store.decompress` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `cache.store.decompress` must be true or false (got {})": ["{}"],
         "$CONFIG: `cache.store.decompress` must be true or false (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "cache.concurrency": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: `cache.concurrency` must be an object (fields: download, upload, restore)": [
           "null",
           "true",
@@ -1897,290 +1375,126 @@
         ]
       },
       "cache.concurrency.download": {
-        "ok": [
-          "<absent>",
-          "1",
-          "65536",
-          "2147483648",
-          "64"
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got null)": [
-          "null"
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got true)": [
-          "true"
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got false)": [
-          "false"
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
+        "ok": ["<absent>", "1", "65536", "2147483648", "64"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got null)": ["null"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got true)": ["true"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got false)": ["false"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got 0)": ["0"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got -1)": ["-1"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"\")": ["\"\""],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"x\")": ["\"x\""],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"(\")": ["\"(\""],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got \"10\")": ["\"10\""],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [])": ["[]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [1])": ["[1]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [3000])": ["[3000]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"/x\"])": ["[\"/x\"]"],
         "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"!/x\"])": [
           "[\"!/x\"]"
         ],
         "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"../x\"])": [
           "[\"../x\"]"
         ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"!x\"])": ["[\"!x\"]"],
         "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"**\"])": [
-          "[\"**\"]"
-        ],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"**\"])": ["[\"**\"]"],
         "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"A=B\"])": [
           "[\"A=B\"]"
         ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got {})": [
-          "{}"
-        ],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got {})": ["{}"],
         "$CONFIG: `cache.concurrency.download` must be an integer ≥ 1 (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "cache.concurrency.upload": {
-        "ok": [
-          "<absent>",
-          "1",
-          "65536",
-          "2147483648",
-          "64"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got null)": [
-          "null"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got true)": [
-          "true"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got false)": [
-          "false"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
+        "ok": ["<absent>", "1", "65536", "2147483648", "64"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got null)": ["null"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got true)": ["true"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got false)": ["false"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got 0)": ["0"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got -1)": ["-1"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"\")": ["\"\""],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"x\")": ["\"x\""],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"(\")": ["\"(\""],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got \"10\")": ["\"10\""],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [])": ["[]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [1])": ["[1]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [3000])": ["[3000]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"!/x\"])": ["[\"!/x\"]"],
         "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"../x\"])": [
           "[\"../x\"]"
         ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"!x\"])": ["[\"!x\"]"],
         "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got {})": [
-          "{}"
-        ],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got {})": ["{}"],
         "$CONFIG: `cache.concurrency.upload` must be an integer ≥ 1 (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "cache.concurrency.restore": {
-        "ok": [
-          "<absent>",
-          "1",
-          "65536",
-          "2147483648",
-          "16"
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got null)": [
-          "null"
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got true)": [
-          "true"
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got false)": [
-          "false"
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
+        "ok": ["<absent>", "1", "65536", "2147483648", "16"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got null)": ["null"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got true)": ["true"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got false)": ["false"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got 0)": ["0"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got 1.5)": ["1.5"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got -1)": ["-1"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"\")": ["\"\""],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"x\")": ["\"x\""],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"(\")": ["\"(\""],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got \"10\")": ["\"10\""],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [])": ["[]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [1])": ["[1]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [3000])": ["[3000]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"/x\"])": ["[\"/x\"]"],
         "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"!/x\"])": [
           "[\"!/x\"]"
         ],
         "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"../x\"])": [
           "[\"../x\"]"
         ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"!x\"])": ["[\"!x\"]"],
         "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"**\"])": [
-          "[\"**\"]"
-        ],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"**\"])": ["[\"**\"]"],
         "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"A=B\"])": [
           "[\"A=B\"]"
         ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got {})": [
-          "{}"
-        ],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got {})": ["{}"],
         "$CONFIG: `cache.concurrency.restore` must be an integer ≥ 1 (got {\"x\":\"y\"})": [
           "{\"x\":\"y\"}"
         ]
       },
       "lock": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: `lock` must be an object (fields: reviewFiles)": [
           "null",
           "true",
@@ -2212,110 +1526,44 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `lock` has unknown field \"x\" (allowed: reviewFiles)": [
-          "{\"x\":\"y\"}"
-        ]
+        "$CONFIG: `lock` has unknown field \"x\" (allowed: reviewFiles)": ["{\"x\":\"y\"}"]
       },
       "lock.reviewFiles": {
-        "ok": [
-          "<absent>",
-          "true",
-          "false"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got null)": [
-          "null"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got null)": ["null"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got 0)": ["0"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got 1)": ["1"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got 2147483648)": ["2147483648"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [])": ["[]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
         "$CONFIG: `lock.reviewFiles` must be true or false (got [\"!!x\",\"y\"])": [
           "[\"!!x\",\"y\"]"
         ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got {})": [
-          "{}"
-        ],
-        "$CONFIG: `lock.reviewFiles` must be true or false (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got {})": ["{}"],
+        "$CONFIG: `lock.reviewFiles` must be true or false (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
       },
       "watch": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: `watch` must be an object (fields: poll)": [
           "null",
           "true",
@@ -2347,109 +1595,42 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `watch` has unknown field \"x\" (allowed: poll)": [
-          "{\"x\":\"y\"}"
-        ]
+        "$CONFIG: `watch` has unknown field \"x\" (allowed: poll)": ["{\"x\":\"y\"}"]
       },
       "watch.poll": {
-        "ok": [
-          "<absent>",
-          "true",
-          "false"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got null)": [
-          "null"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got 0)": [
-          "0"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got 1)": [
-          "1"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got 1.5)": [
-          "1.5"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got -1)": [
-          "-1"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got 65536)": [
-          "65536"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got 2147483648)": [
-          "2147483648"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got \"\")": [
-          "\"\""
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got \"x\")": [
-          "\"x\""
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got \"(\")": [
-          "\"(\""
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got \"30d\")": [
-          "\"30d\""
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got \"10G\")": [
-          "\"10G\""
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got \"10\")": [
-          "\"10\""
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got [])": [
-          "[]"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got [\"x\"])": [
-          "[\"x\"]"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got [\"\"])": [
-          "[\"\"]"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got [1])": [
-          "[1]"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got [3000])": [
-          "[3000]"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got [\"/x\"])": [
-          "[\"/x\"]"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got [\"!/x\"])": [
-          "[\"!/x\"]"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got [\"../x\"])": [
-          "[\"../x\"]"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got [\"!x\"])": [
-          "[\"!x\"]"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got [\"!!x\",\"y\"])": [
-          "[\"!!x\",\"y\"]"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got [\".\"])": [
-          "[\".\"]"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got [\"**\"])": [
-          "[\"**\"]"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got [\"A=B\"])": [
-          "[\"A=B\"]"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got [\"A*\"])": [
-          "[\"A*\"]"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got {})": [
-          "{}"
-        ],
-        "$CONFIG: `watch.poll` must be true or false (got {\"x\":\"y\"})": [
-          "{\"x\":\"y\"}"
-        ]
+        "ok": ["<absent>", "true", "false"],
+        "$CONFIG: `watch.poll` must be true or false (got null)": ["null"],
+        "$CONFIG: `watch.poll` must be true or false (got 0)": ["0"],
+        "$CONFIG: `watch.poll` must be true or false (got 1)": ["1"],
+        "$CONFIG: `watch.poll` must be true or false (got 1.5)": ["1.5"],
+        "$CONFIG: `watch.poll` must be true or false (got -1)": ["-1"],
+        "$CONFIG: `watch.poll` must be true or false (got 65536)": ["65536"],
+        "$CONFIG: `watch.poll` must be true or false (got 2147483648)": ["2147483648"],
+        "$CONFIG: `watch.poll` must be true or false (got \"\")": ["\"\""],
+        "$CONFIG: `watch.poll` must be true or false (got \"x\")": ["\"x\""],
+        "$CONFIG: `watch.poll` must be true or false (got \"(\")": ["\"(\""],
+        "$CONFIG: `watch.poll` must be true or false (got \"30d\")": ["\"30d\""],
+        "$CONFIG: `watch.poll` must be true or false (got \"10G\")": ["\"10G\""],
+        "$CONFIG: `watch.poll` must be true or false (got \"10\")": ["\"10\""],
+        "$CONFIG: `watch.poll` must be true or false (got [])": ["[]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"x\"])": ["[\"x\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"\"])": ["[\"\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [1])": ["[1]"],
+        "$CONFIG: `watch.poll` must be true or false (got [3000])": ["[3000]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"/x\"])": ["[\"/x\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"!/x\"])": ["[\"!/x\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"../x\"])": ["[\"../x\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"!x\"])": ["[\"!x\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"!!x\",\"y\"])": ["[\"!!x\",\"y\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\".\"])": ["[\".\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"**\"])": ["[\"**\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"A=B\"])": ["[\"A=B\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got [\"A*\"])": ["[\"A*\"]"],
+        "$CONFIG: `watch.poll` must be true or false (got {})": ["{}"],
+        "$CONFIG: `watch.poll` must be true or false (got {\"x\":\"y\"})": ["{\"x\":\"y\"}"]
       },
       "plugins": {
-        "ok": [
-          "<absent>",
-          "[]"
-        ],
+        "ok": ["<absent>", "[]"],
         "$CONFIG: `plugins` must be an array of plugin objects": [
           "null",
           "true",
@@ -2482,28 +1663,15 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: `plugins[0]` must be an object": [
-          "[1]",
-          "[3000]"
-        ]
+        "$CONFIG: `plugins[0]` must be an object": ["[1]", "[3000]"]
       }
     },
     "keys": {}
   },
   "project": {
     "levels": {
-      "": [
-        "name",
-        "tags",
-        "tasks"
-      ],
-      "tasks.*": [
-        "cache",
-        "dependsOn",
-        "description",
-        "exec",
-        "inputs"
-      ],
+      "": ["name", "tags", "tasks"],
+      "tasks.*": ["cache", "dependsOn", "description", "exec", "inputs"],
       "tasks.*.exec": [
         "command",
         "env",
@@ -2515,14 +1683,8 @@
         "sandbox",
         "timeout"
       ],
-      "tasks.*.exec.env": [
-        "define",
-        "passThrough",
-        "secret"
-      ],
-      "tasks.*.exec.persistent": [
-        "readyWhen"
-      ],
+      "tasks.*.exec.env": ["define", "passThrough", "secret"],
+      "tasks.*.exec.persistent": ["readyWhen"],
       "tasks.*.exec.sandbox": [
         "allow",
         "deny",
@@ -2541,52 +1703,17 @@
         "unixSockets",
         "write"
       ],
-      "tasks.*.exec.sandbox.deny": [
-        "network"
-      ],
-      "tasks.*.exec.sandbox.ignore": [
-        "network",
-        "read",
-        "systemInfo",
-        "write"
-      ],
-      "tasks.*.inputs": [
-        "env",
-        "files",
-        "runtime",
-        "tasks",
-        "workspaceFiles",
-        "workspaceRuntime"
-      ],
-      "tasks.*.cache": [
-        "inputStability",
-        "outputs"
-      ],
-      "tasks.*.cache.outputs": [
-        "clean",
-        "files",
-        "workspaceFiles"
-      ],
-      "tasks.*.cache.inputStability": [
-        "severity",
-        "strategy"
-      ]
+      "tasks.*.exec.sandbox.deny": ["network"],
+      "tasks.*.exec.sandbox.ignore": ["network", "read", "systemInfo", "write"],
+      "tasks.*.inputs": ["env", "files", "runtime", "tasks", "workspaceFiles", "workspaceRuntime"],
+      "tasks.*.cache": ["inputStability", "outputs"],
+      "tasks.*.cache.outputs": ["clean", "files", "workspaceFiles"],
+      "tasks.*.cache.inputStability": ["severity", "strategy"]
     },
-    "records": [
-      "tasks",
-      "tasks.*.exec.env.define"
-    ],
+    "records": ["tasks", "tasks.*.exec.env.define"],
     "fields": {
       "name": {
-        "ok": [
-          "<absent>",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "\"web\""
-        ],
+        "ok": ["<absent>", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"web\""],
         "$CONFIG: `name` must be a non-empty string with no surrounding whitespace and no \"#\" (a task is <name>#<task>)": [
           "null",
           "true",
@@ -2660,11 +1787,7 @@
         ]
       },
       "tasks": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: `tasks` must be an object keyed by task name": [
           "null",
           "true",
@@ -2701,10 +1824,7 @@
         ]
       },
       "tasks.*": {
-        "ok": [
-          "<absent>",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "<seed>"],
         "$CONFIG: tasks.t must be an object": [
           "null",
           "true",
@@ -2717,12 +1837,8 @@
           "2147483648",
           "\"\""
         ],
-        "$CONFIG: tasks.t must be an object — a command is { exec: { command: \"x\" } }": [
-          "\"x\""
-        ],
-        "$CONFIG: tasks.t must be an object — a command is { exec: { command: \"(\" } }": [
-          "\"(\""
-        ],
+        "$CONFIG: tasks.t must be an object — a command is { exec: { command: \"x\" } }": ["\"x\""],
+        "$CONFIG: tasks.t must be an object — a command is { exec: { command: \"(\" } }": ["\"(\""],
         "$CONFIG: tasks.t must be an object — a command is { exec: { command: \"30d\" } }": [
           "\"30d\""
         ],
@@ -2756,16 +1872,7 @@
         ]
       },
       "tasks.*.description": {
-        "ok": [
-          "<absent>",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "\"d\""
-        ],
+        "ok": ["<absent>", "\"\"", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"d\""],
         "$CONFIG: tasks.t.description must be a string": [
           "null",
           "true",
@@ -2834,10 +1941,7 @@
         ]
       },
       "tasks.*.exec": {
-        "ok": [
-          "<absent>",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "<seed>"],
         "$CONFIG: tasks.t.exec must be an object with a `command` string": [
           "null",
           "true",
@@ -2871,9 +1975,7 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: tasks.t.exec.command must be a non-empty string": [
-          "{}"
-        ],
+        "$CONFIG: tasks.t.exec.command must be a non-empty string": ["{}"],
         "$CONFIG: tasks.t.exec has unknown field \"x\" (allowed: command, env, interactive, persistent, platforms, remote, retries, sandbox, timeout)": [
           "{\"x\":\"y\"}"
         ]
@@ -2908,21 +2010,10 @@
           "{}",
           "{\"x\":\"y\"}"
         ],
-        "ok": [
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "\"true\""
-        ]
+        "ok": ["\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"true\""]
       },
       "tasks.*.exec.remote": {
-        "ok": [
-          "<absent>",
-          "true",
-          "false"
-        ],
+        "ok": ["<absent>", "true", "false"],
         "$CONFIG: tasks.t.exec.remote must be a boolean or 'only' (or omitted)": [
           "null",
           "0",
@@ -2956,10 +2047,7 @@
         ]
       },
       "tasks.*.exec.timeout": {
-        "ok": [
-          "<absent>",
-          "\"1s\""
-        ],
+        "ok": ["<absent>", "\"1s\""],
         "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got null)": [
           "null"
         ],
@@ -3055,11 +2143,7 @@
         ]
       },
       "tasks.*.exec.env": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: tasks.t.exec.env must be an object (or omitted)": [
           "null",
           "true",
@@ -3098,12 +2182,7 @@
         ]
       },
       "tasks.*.exec.env.passThrough": {
-        "ok": [
-          "<absent>",
-          "[]",
-          "[\"x\"]",
-          "[\"CI\"]"
-        ],
+        "ok": ["<absent>", "[]", "[\"x\"]", "[\"CI\"]"],
         "$CONFIG: tasks.t.exec.env.passThrough must be an array of env var names (non-empty, no '=' or NUL)": [
           "null",
           "true",
@@ -3153,12 +2232,7 @@
         ]
       },
       "tasks.*.exec.env.define": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "{\"x\":\"y\"}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "{\"x\":\"y\"}", "<seed>"],
         "$CONFIG: tasks.t.exec.env.define must be an object of name:value string pairs": [
           "null",
           "true",
@@ -3192,16 +2266,7 @@
         ]
       },
       "tasks.*.exec.env.define.*": {
-        "ok": [
-          "<absent>",
-          "\"\"",
-          "\"x\"",
-          "\"(\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "\"b\""
-        ],
+        "ok": ["<absent>", "\"\"", "\"x\"", "\"(\"", "\"30d\"", "\"10G\"", "\"10\"", "\"b\""],
         "$CONFIG: tasks.t.exec.env.define.A must be a string with no NUL": [
           "null",
           "true",
@@ -3231,15 +2296,7 @@
         ]
       },
       "tasks.*.exec.env.secret": {
-        "ok": [
-          "<absent>",
-          "[]",
-          "[\"x\"]",
-          "[\"/x\"]",
-          "[\"../x\"]",
-          "[\".\"]",
-          "[\"CI\"]"
-        ],
+        "ok": ["<absent>", "[]", "[\"x\"]", "[\"/x\"]", "[\"../x\"]", "[\".\"]", "[\"CI\"]"],
         "$CONFIG: tasks.t.exec.env.secret must be an array of env var names (non-empty, no '=', NUL or wildcard)": [
           "null",
           "true",
@@ -3276,11 +2333,7 @@
         ]
       },
       "tasks.*.exec.persistent": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: tasks.t.exec.persistent must be an object (or omitted) — `persistent: {}`, or `{ readyWhen: '<regex>' }` to wait for a line": [
           "null",
           "true",
@@ -3319,15 +2372,7 @@
         ]
       },
       "tasks.*.exec.persistent.readyWhen": {
-        "ok": [
-          "<absent>",
-          "\"\"",
-          "\"x\"",
-          "\"30d\"",
-          "\"10G\"",
-          "\"10\"",
-          "\"ready\""
-        ],
+        "ok": ["<absent>", "\"\"", "\"x\"", "\"30d\"", "\"10G\"", "\"10\"", "\"ready\""],
         "$CONFIG: tasks.t.exec.persistent.readyWhen must be a string regex": [
           "null",
           "true",
@@ -3360,11 +2405,7 @@
         ]
       },
       "tasks.*.exec.sandbox": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: tasks.t.exec.sandbox must be an object (e.g. `{}` for the baseline, or `{ allow: { read: [...] } }`)": [
           "null",
           "true",
@@ -3401,11 +2442,7 @@
         ]
       },
       "tasks.*.exec.sandbox.allow": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: tasks.t.exec.sandbox.allow must be an object": [
           "null",
           "true",
@@ -3636,13 +2673,7 @@
         ]
       },
       "tasks.*.exec.sandbox.allow.localBinding": {
-        "ok": [
-          "<absent>",
-          "true",
-          "false",
-          "[1]",
-          "[3000]"
-        ],
+        "ok": ["<absent>", "true", "false", "[1]", "[3000]"],
         "$CONFIG: tasks.t.exec.sandbox.allow.localBinding must be a boolean or a non-empty list of ports (1–65535)": [
           "null",
           "0",
@@ -3713,11 +2744,7 @@
         ]
       },
       "tasks.*.exec.sandbox.allow.pty": {
-        "ok": [
-          "<absent>",
-          "true",
-          "false"
-        ],
+        "ok": ["<absent>", "true", "false"],
         "$CONFIG: tasks.t.exec.sandbox.allow.pty must be a boolean": [
           "null",
           "0",
@@ -3751,11 +2778,7 @@
         ]
       },
       "tasks.*.exec.sandbox.allow.gitConfig": {
-        "ok": [
-          "<absent>",
-          "true",
-          "false"
-        ],
+        "ok": ["<absent>", "true", "false"],
         "$CONFIG: tasks.t.exec.sandbox.allow.gitConfig must be a boolean": [
           "null",
           "0",
@@ -3789,11 +2812,7 @@
         ]
       },
       "tasks.*.exec.sandbox.deny": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: tasks.t.exec.sandbox.deny must be an object": [
           "null",
           "true",
@@ -3869,11 +2888,7 @@
         ]
       },
       "tasks.*.exec.sandbox.ignore": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: tasks.t.exec.sandbox.ignore must be an object": [
           "null",
           "true",
@@ -4065,11 +3080,7 @@
         ]
       },
       "tasks.*.exec.sandbox.weakerWhenNested": {
-        "ok": [
-          "<absent>",
-          "true",
-          "false"
-        ],
+        "ok": ["<absent>", "true", "false"],
         "$CONFIG: tasks.t.exec.sandbox.weakerWhenNested must be a boolean": [
           "null",
           "0",
@@ -4103,11 +3114,7 @@
         ]
       },
       "tasks.*.exec.sandbox.weakerNetworkIsolation": {
-        "ok": [
-          "<absent>",
-          "true",
-          "false"
-        ],
+        "ok": ["<absent>", "true", "false"],
         "$CONFIG: tasks.t.exec.sandbox.weakerNetworkIsolation must be a boolean": [
           "null",
           "0",
@@ -4141,11 +3148,7 @@
         ]
       },
       "tasks.*.exec.interactive": {
-        "ok": [
-          "<absent>",
-          "true",
-          "false"
-        ],
+        "ok": ["<absent>", "true", "false"],
         "$CONFIG: tasks.i.exec.interactive must be a boolean (or omitted)": [
           "null",
           "0",
@@ -4179,10 +3182,7 @@
         ]
       },
       "tasks.*.exec.platforms": {
-        "ok": [
-          "<absent>",
-          "[\"linux-x64\",\"darwin-arm64\"]"
-        ],
+        "ok": ["<absent>", "[\"linux-x64\",\"darwin-arm64\"]"],
         "$CONFIG: tasks.i.exec.platforms must be a non-empty array of distinct platforms, each one of linux-x64, linux-arm64, darwin-x64, darwin-arm64": [
           "null",
           "true",
@@ -4218,13 +3218,7 @@
         ]
       },
       "tasks.*.exec.retries": {
-        "ok": [
-          "<absent>",
-          "0",
-          "1",
-          "65536",
-          "2147483648"
-        ],
+        "ok": ["<absent>", "0", "1", "65536", "2147483648"],
         "$CONFIG: tasks.c.exec.retries must be a non-negative integer": [
           "null",
           "true",
@@ -4292,15 +3286,11 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: tasks.c.inputs.files must be an array of glob strings": [
-          "{}"
-        ],
+        "$CONFIG: tasks.c.inputs.files must be an array of glob strings": ["{}"],
         "$CONFIG: tasks.c.inputs has unknown field \"x\" (allowed: env, files, runtime, tasks, workspaceFiles, workspaceRuntime)": [
           "{\"x\":\"y\"}"
         ],
-        "ok": [
-          "<seed>"
-        ]
+        "ok": ["<seed>"]
       },
       "tasks.*.inputs.files": {
         "$CONFIG: tasks.c.inputs.files must be an array of glob strings": [
@@ -4323,14 +3313,7 @@
           "{}",
           "{\"x\":\"y\"}"
         ],
-        "ok": [
-          "[]",
-          "[\"x\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "[\"src/**\"]"
-        ],
+        "ok": ["[]", "[\"x\"]", "[\"**\"]", "[\"A=B\"]", "[\"A*\"]", "[\"src/**\"]"],
         "$CONFIG: tasks.c.inputs.files must be an array of non-empty strings": [
           "[\"\"]",
           "[1]",
@@ -4409,15 +3392,7 @@
         ]
       },
       "tasks.*.inputs.env": {
-        "ok": [
-          "<absent>",
-          "[]",
-          "[\"x\"]",
-          "[\"/x\"]",
-          "[\"../x\"]",
-          "[\".\"]",
-          "[\"A\"]"
-        ],
+        "ok": ["<absent>", "[]", "[\"x\"]", "[\"/x\"]", "[\"../x\"]", "[\".\"]", "[\"A\"]"],
         "$CONFIG: tasks.c.inputs.env must be an array of env var names (non-empty, no '=' or NUL)": [
           "null",
           "true",
@@ -4458,14 +3433,7 @@
         ]
       },
       "tasks.*.inputs.tasks": {
-        "ok": [
-          "<absent>",
-          "[]",
-          "[\"!/x\"]",
-          "[\"!x\"]",
-          "[\"**\"]",
-          "[\"A*\"]"
-        ],
+        "ok": ["<absent>", "[]", "[\"!/x\"]", "[\"!x\"]", "[\"**\"]", "[\"A*\"]"],
         "$CONFIG: tasks.c.inputs.tasks must be an array of non-empty strings (Turbo/Nx micro-syntax: 'name', '^name', 'pkg#name', '*', '^*', '!name')": [
           "null",
           "true",
@@ -4586,10 +3554,7 @@
         ]
       },
       "tasks.*.cache": {
-        "ok": [
-          "<absent>",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "<seed>"],
         "$CONFIG: tasks.c.cache must be an object when present — `inputs: { files: [...] }, cache: { outputs: { files: [...] } }`, or no `cache` for a task that never caches": [
           "null",
           "true",
@@ -4623,18 +3588,13 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs is required when `cache` is set": [
-          "{}"
-        ],
+        "$CONFIG: tasks.c.cache.outputs is required when `cache` is set": ["{}"],
         "$CONFIG: tasks.c.cache has unknown field \"x\" (allowed: inputStability, outputs)": [
           "{\"x\":\"y\"}"
         ]
       },
       "tasks.*.cache.outputs": {
-        "$CONFIG: tasks.c.cache.outputs is required when `cache` is set": [
-          "<absent>",
-          "null"
-        ],
+        "$CONFIG: tasks.c.cache.outputs is required when `cache` is set": ["<absent>", "null"],
         "$CONFIG: tasks.c.cache.outputs must be an object — `outputs: { files: [...] }`": [
           "true",
           "false",
@@ -4667,15 +3627,11 @@
           "[\"A=B\"]",
           "[\"A*\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.files must be an array of glob strings": [
-          "{}"
-        ],
+        "$CONFIG: tasks.c.cache.outputs.files must be an array of glob strings": ["{}"],
         "$CONFIG: tasks.c.cache.outputs has unknown field \"x\" (allowed: clean, files, workspaceFiles)": [
           "{\"x\":\"y\"}"
         ],
-        "ok": [
-          "<seed>"
-        ]
+        "ok": ["<seed>"]
       },
       "tasks.*.cache.outputs.files": {
         "$CONFIG: tasks.c.cache.outputs.files must be an array of glob strings": [
@@ -4698,13 +3654,7 @@
           "{}",
           "{\"x\":\"y\"}"
         ],
-        "ok": [
-          "[]",
-          "[\"x\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "[\"dist/**\"]"
-        ],
+        "ok": ["[]", "[\"x\"]", "[\"A=B\"]", "[\"A*\"]", "[\"dist/**\"]"],
         "$CONFIG: tasks.c.cache.outputs.files must be an array of non-empty strings": [
           "[\"\"]",
           "[1]",
@@ -4733,15 +3683,7 @@
         ]
       },
       "tasks.*.cache.outputs.workspaceFiles": {
-        "ok": [
-          "<absent>",
-          "[]",
-          "[\"x\"]",
-          "[\"**\"]",
-          "[\"A=B\"]",
-          "[\"A*\"]",
-          "[\"out/**\"]"
-        ],
+        "ok": ["<absent>", "[]", "[\"x\"]", "[\"**\"]", "[\"A=B\"]", "[\"A*\"]", "[\"out/**\"]"],
         "$CONFIG: tasks.c.cache.outputs.workspaceFiles must be an array of glob strings": [
           "null",
           "true",
@@ -4786,11 +3728,7 @@
         ]
       },
       "tasks.*.cache.outputs.clean": {
-        "ok": [
-          "<absent>",
-          "true",
-          "false"
-        ],
+        "ok": ["<absent>", "true", "false"],
         "$CONFIG: tasks.c.cache.outputs.clean must be true or false": [
           "null",
           "0",
@@ -4824,11 +3762,7 @@
         ]
       },
       "tasks.*.cache.inputStability": {
-        "ok": [
-          "<absent>",
-          "{}",
-          "<seed>"
-        ],
+        "ok": ["<absent>", "{}", "<seed>"],
         "$CONFIG: tasks.c.cache.inputStability must be an object — `inputStability: { strategy: 'mutable' }`": [
           "null",
           "true",
@@ -4865,10 +3799,7 @@
         ]
       },
       "tasks.*.cache.inputStability.strategy": {
-        "ok": [
-          "<absent>",
-          "\"mutable\""
-        ],
+        "ok": ["<absent>", "\"mutable\""],
         "$CONFIG: tasks.c.cache.inputStability.strategy must be 'immutable', 'mutable' or 'unchecked'": [
           "null",
           "true",
@@ -4904,10 +3835,7 @@
         ]
       },
       "tasks.*.cache.inputStability.severity": {
-        "ok": [
-          "<absent>",
-          "\"error\""
-        ],
+        "ok": ["<absent>", "\"error\""],
         "$CONFIG: tasks.c.cache.inputStability.severity must be 'warn' or 'error'": [
           "null",
           "true",
@@ -4963,9 +3891,7 @@
         "$CONFIG: task name \"!x\" starts with '!', which names dependencies' tasks or negates — dependsOn, inputs.tasks and the CLI could not name it. Rename the task.": [
           "\"!x\""
         ],
-        "ok": [
-          "\"A=B\""
-        ]
+        "ok": ["\"A=B\""]
       },
       "tasks.*.exec.env.define": {
         "$CONFIG: tasks.t.exec.env.define: \"\" is not an env var name (non-empty, no '=' or NUL)": [
