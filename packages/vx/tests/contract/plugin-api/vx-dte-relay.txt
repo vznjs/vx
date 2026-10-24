@@ -49,12 +49,10 @@ export interface Prover {
 == type Relay (src/relay.ts)
 export interface Relay {
   fetch(req: Request): Promise<Response>
-  attach(key: string, id: string, socket: RelaySocket, heardAt?: number): boolean
+  attach(key: string, id: string, socket: RelaySocket): boolean
   detach(key: string, id: string, socket: RelaySocket): void
-  frame(key: string, id: string, text: string, socket?: RelaySocket): string
-  seen(key: string, id: string, at: number): void
-  sweep(): number | undefined
-  close(): void
+  frame(key: string, id: string, text: string, socket?: RelaySocket): string | undefined
+  open(): boolean
 }
 == type RelayOptions (src/relay.ts)
 export interface RelayOptions {
@@ -62,7 +60,6 @@ export interface RelayOptions {
   heartbeatMs?: number
   store?: RelayStore | undefined
   upgrade: (key: string, id: string, req: Request) => Response
-  timer?: boolean
 }
 == type RelayServer (src/serve.ts)
 export interface RelayServer {
