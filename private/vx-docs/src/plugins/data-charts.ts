@@ -158,14 +158,19 @@ export const dataCharts = defineMdastPlugin({
     const table = node as MdNode & { align?: Array<string | null> }
     const figures = figureColumns(rows)
     table.align = header.map((_, c) => table.align?.[c] ?? (c > 0 && figures[c] ? 'right' : null))
+    // A wide table scrolls in this wrapper, so the table itself can span the full scrolled width.
+    const scroller = [
+      { type: 'html', value: '<div class="vx-table-scroll">' },
+      node,
+      { type: 'html', value: '</div>' },
+    ]
     // A table quoted in a blockquote is sample output (a job summary), not a measurement.
-    if (ctx.parent(node).type === 'blockquote') return
-    const groups = groupsForTable(header, rows)
-    if (groups.length === 0) return
+    const groups = ctx.parent(node).type === 'blockquote' ? [] : groupsForTable(header, rows)
+    if (groups.length === 0) return ctx.replaceNode(node, scroller)
     ctx.replaceNode(node, [
       { type: 'html', value: renderBars(groups) },
       { type: 'html', value: '<details class="vx-chart-table"><summary>The table</summary>' },
-      node,
+      ...scroller,
       { type: 'html', value: '</details>' },
     ])
   },

@@ -149,23 +149,27 @@ pre.mermaid svg {
   height: auto;
 }
 
-/* Tables (owner, 2026-10-24: "ugly and unreadable"): a framed card with a
-   tinted header, row rules and a faint zebra, figures right-aligned on
-   tabular digits (data-charts.ts marks figure columns). A table wider than
-   the column scrolls inside its frame instead of squashing. */
-.sl-markdown-content table {
-  display: block;
-  width: max-content;
-  max-width: 100%;
+/* Tables (owner, 2026-10-24: "ugly and unreadable"): a tinted header, row
+   rules and a faint zebra, figures right-aligned on tabular digits
+   (data-charts.ts marks figure columns). No outer frame, and a wide table
+   scrolls in its .vx-table-scroll wrapper (data-charts.ts) while the table
+   itself spans the whole scrolled width, so header and rows run edge to edge
+   (owner, 2026-10-24). */
+.sl-markdown-content .vx-table-scroll {
   overflow-x: auto;
-  border: 1px solid var(--vx-border);
-  border-radius: 10px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.sl-markdown-content table {
+  display: table;
+  width: 100%;
+  margin: 0;
+  border: 0;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.9rem;
   line-height: 1.45;
   font-variant-numeric: tabular-nums;
-  -webkit-overflow-scrolling: touch;
 }
 .sl-markdown-content :is(th, td) {
   padding: 0.55rem 0.9rem;
