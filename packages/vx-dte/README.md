@@ -169,7 +169,7 @@ steps:
   # tasks. A full install when a task must run here (exec.remote: false,
   # an interactive one, a persistent one you asked for).
   - run: bun install --frozen-lockfile --filter './'
-  - run: bunx @vzn/vx run build test --all
+  - run: bun vx run build test --all
     env: { GITHUB_TOKEN: '${{ github.token }}' }
 ```
 
@@ -206,7 +206,7 @@ jobs:
       # "...[origin/main]"` installs only what a PR changed and its
       # dependents (fetch origin/main first: the checkout is one commit).
       - run: bun install --frozen-lockfile
-      - run: bunx @vzn/vx dte worker
+      - run: bun vx dte worker
 ```
 
 ## On GitLab
@@ -235,7 +235,7 @@ include: [{ local: .gitlab/vx.yml }]
 
 vx-plan:
   extends: .vx
-  script: [bunx @vzn/vx dte plan build test --all] # the run's selection
+  script: [bun vx dte plan build test --all] # the run's selection
   artifacts:
     paths: [vx-workers.yml, .vx/dte/]
     reports: { dotenv: vx-dte.env }
@@ -252,7 +252,7 @@ vx:
   extends: .vx
   needs: [vx-plan]
   id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
-  script: [bunx @vzn/vx run build test --all]
+  script: [bun vx run build test --all]
 ```
 
 ```yaml
