@@ -58,4 +58,4 @@ tasks it found; `vx show --format json` lists each project's. …
 Every core code has its section, and a test holds the list to the codes
 the source can throw. Under `--format json` the refusal line carries
 the same `docs` link for an agent. See the
-[Agents guide](../../guides/agents/).
+[Agents guide](../../docs/agents/).

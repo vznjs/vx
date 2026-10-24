@@ -9,17 +9,7 @@ import { describe, expect, it } from 'bun:test'
 
 const PACKAGES = path.resolve(import.meta.dir, '..', '..')
 const PAGE = readFileSync(
-  path.join(
-    PACKAGES,
-    '..',
-    'private',
-    'vx-docs',
-    'src',
-    'content',
-    'docs',
-    'guides',
-    'plugins.mdx',
-  ),
+  path.join(PACKAGES, '..', 'private', 'vx-docs', 'src', 'content', 'docs', 'docs', 'plugins.mdx'),
   'utf8',
 )
 const FACTORIES: Record<string, string[]> = {

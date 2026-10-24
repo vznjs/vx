@@ -11,7 +11,7 @@ const LIFECYCLE = new Set(['setup', 'teardown'])
 
 describe('the site guides follow PLUGIN_HOOKS', () => {
   it('plugins.mdx declares every hook in its VxPlugin block', async () => {
-    const text = await Bun.file(path.join(GUIDES, 'plugins.mdx')).text()
+    const text = await Bun.file(path.join(GUIDES, '..', 'docs', 'writing-plugins.mdx')).text()
     const block = /interface VxPlugin \{([\s\S]*?)\n\}/.exec(text)?.[1] ?? ''
     const declared = new Set([...block.matchAll(/^\s+([a-z]+)\??[(:]/gm)].map((m) => m[1]!))
     for (const hook of PLUGIN_HOOKS) expect(declared).toContain(hook)
@@ -20,7 +20,7 @@ describe('the site guides follow PLUGIN_HOOKS', () => {
   // The introduction's table lacked `admit` until 2026-09-16 (item 305). The
   // introduction and the extensibility page merged into the quickstart and
   // this guide (the site redo, R3); the stage table lives here now.
-  for (const file of ['guides/plugins.mdx']) {
+  for (const file of ['docs/writing-plugins.mdx']) {
     it(`${file} tabulates every stage (the lifecycle pair is prose)`, async () => {
       const text = await Bun.file(path.join(GUIDES, '..', file)).text()
       const found = new Set<string>()

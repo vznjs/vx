@@ -38,7 +38,7 @@ async function pages(dir: string): Promise<string[]> {
     const p = path.join(dir, e.name)
     if (e.isDirectory()) {
       if (!['blog', 'releases', 'plugins'].includes(e.name)) out.push(...(await pages(p)))
-    } else if (/\.mdx?$/.test(e.name) && !p.endsWith('guides/plugins.mdx')) out.push(p)
+    } else if (/\.mdx?$/.test(e.name) && !p.endsWith('docs/writing-plugins.mdx')) out.push(p)
   }
   return out
 }

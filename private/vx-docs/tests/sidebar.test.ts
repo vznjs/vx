@@ -33,12 +33,13 @@ const DOCS_PAGES: [string, string][] = [
   ['Dev servers', 'docs/dev-servers/'],
   ['Lockfiles', 'docs/lockfiles/'],
   ['Running tasks', 'docs/running-tasks/'],
-  ['Sandboxing', 'guides/sandboxing/'],
+  ['Sandboxing', 'docs/sandboxing/'],
   ['CI', 'docs/ci/'],
   ['Remote cache', 'docs/remote-cache/'],
   ['Remote execution', 'docs/remote-execution/'],
-  ['Plugins', 'guides/plugins/'],
-  ['AI agents', 'guides/agents/'],
+  ['Plugins', 'docs/plugins/'],
+  ['Write a plugin', 'docs/writing-plugins/'],
+  ['AI agents', 'docs/agents/'],
 ]
 const DOCS_GROUPS = ['Get started', 'Configure', 'Run', 'Extend']
 const GUIDES_GROUPS = ['Get started', 'Caching', 'Running', 'CI', 'Debugging']

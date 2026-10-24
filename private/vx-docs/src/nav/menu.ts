@@ -18,13 +18,13 @@ export const MENU: Partial<Record<SectionId, MenuLink[]>> = {
     { label: 'Caching', href: 'docs/caching/', line: 'Inputs, outputs, and what the key holds.' },
     {
       label: 'Sandboxing',
-      href: 'guides/sandboxing/',
+      href: 'docs/sandboxing/',
       line: 'A task touches only what it declares.',
     },
     { label: 'CI', href: 'docs/ci/', line: 'GitHub Actions, GitLab, affected runs.' },
     { label: 'Remote cache', href: 'docs/remote-cache/', line: 'Share results between machines.' },
-    { label: 'AI agents', href: 'guides/agents/', line: 'The agent skill, JSON output, vx why.' },
-    { label: 'Plugins', href: 'guides/plugins/', line: 'Every stage is a seam.' },
+    { label: 'AI agents', href: 'docs/agents/', line: 'The agent skill, JSON output, vx why.' },
+    { label: 'Plugins', href: 'docs/plugins/', line: 'Every stage is a seam.' },
   ],
   guides: [
     {

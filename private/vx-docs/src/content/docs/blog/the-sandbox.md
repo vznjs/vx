@@ -121,5 +121,5 @@ vx's own repository runs 132 of its 148 command tasks sandboxed. The 16
 others are suites a sandbox cannot host, services in Docker, and checks
 that drive the sandbox themselves.
 
-Guide: [Sandboxing tasks](../../guides/sandboxing/). More at
+Guide: [Sandboxing tasks](../../docs/sandboxing/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -272,7 +272,7 @@ export default defineProject({
     },
     image: 'sandbox.png',
     imageAlt: 'A sandboxed task fails on a write it did not declare, naming the path.',
-    docs: { label: 'Sandboxing', href: 'guides/sandboxing/' },
+    docs: { label: 'Sandboxing', href: 'docs/sandboxing/' },
     deepDive: { label: 'The sandbox', href: 'blog/the-sandbox/' },
   },
   {
@@ -721,7 +721,7 @@ export default defineWorkspace({
     },
     image: 'plugins.png',
     imageAlt: 'The vx pipeline and the seams plugins fill.',
-    docs: { label: 'Plugins', href: 'guides/plugins/' },
+    docs: { label: 'Plugins', href: 'docs/plugins/' },
     deepDive: { label: 'A pipeline with seams', href: 'blog/pipeline-with-seams/' },
   },
   {
@@ -754,7 +754,7 @@ export default defineWorkspace({
     example: { lang: 'ts', code: workspace('@vzn/vx-otel', 'otel()') },
     image: 'opentelemetry.png',
     imageAlt: 'A vx run as a trace in an OpenTelemetry backend.',
-    docs: { label: 'OpenTelemetry', href: 'guides/plugins/#opentelemetry' },
+    docs: { label: 'OpenTelemetry', href: 'docs/plugins/#opentelemetry' },
     deepDive: { label: 'Telemetry never breaks a run', href: 'blog/telemetry-never-breaks-a-run/' },
   },
   {
@@ -775,7 +775,7 @@ export default defineWorkspace({
     },
     image: 'critical-path.png',
     imageAlt: 'The longest chain of tasks scheduled first.',
-    docs: { label: 'Keys and order', href: 'guides/plugins/#keys-and-order' },
+    docs: { label: 'Keys and order', href: 'docs/writing-plugins/#keys-and-order' },
     deepDive: {
       label: '@vzn/vx-schedule-history',
       href: 'https://github.com/vznjs/vx/tree/main/packages/vx-schedule-history',

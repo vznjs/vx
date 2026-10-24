@@ -102,5 +102,5 @@ is wrapped the same way; a remote outage is a slower run, never a
 broken one, and a plugin that never fails still warns so you know it
 happened.
 
-Guide: [Writing a vx plugin](../../guides/plugins/). More at
+Guide: [Writing a vx plugin](../../docs/plugins/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

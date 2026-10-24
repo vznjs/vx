@@ -51,7 +51,7 @@ const pillars = [
     title: 'Sandbox',
     body: 'A sandboxed task cannot read a workspace file it did not declare.',
     more: 'Sandboxing',
-    doc: href('guides/sandboxing/'),
+    doc: href('docs/sandboxing/'),
   },
   {
     id: 'extensible',
@@ -60,7 +60,7 @@ const pillars = [
     title: 'Extensibility',
     body: 'Plugins decide where tasks run, where the cache lives and who watches.',
     more: 'Writing a plugin',
-    doc: href('guides/plugins/'),
+    doc: href('docs/plugins/'),
   },
   {
     id: 'free',
@@ -265,7 +265,7 @@ vx run build         # again: up-to-date, from the cache`
               <h3><code>bunx skills add vznjs/vx</code></h3>
               <p>One skill teaches any coding agent the CLI: run tasks, read failures and history, ask why.</p>
               <ul class="tool-chips">{SKILL_COMMANDS.map((t) => <li><code>{t}</code></li>)}</ul>
-              <a class="section-link" href={href('guides/agents/')}>Built for agents →</a>
+              <a class="section-link" href={href('docs/agents/')}>Built for agents →</a>
             </article>
             <article class="agent-card">
               <h3><code>vx why</code></h3>
@@ -306,7 +306,7 @@ vx run build         # again: up-to-date, from the cache`
                 </a>
               ))
             }
-            <a class="plugin-card plugin-own" href={href('guides/plugins/')}>
+            <a class="plugin-card plugin-own" href={href('docs/plugins/')}>
               <h3>Your own</h3>
               <code class="plugin-pkg">definePlugin()</code>
               <p>Fill any of the 15 stages: where tasks run, where the cache lives, who watches, what the terminal draws, which commands exist.</p>

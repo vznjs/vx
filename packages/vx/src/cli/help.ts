@@ -197,7 +197,7 @@ export function helpText(pluginCommands: readonly string[] = []): string {
     '  cache, distributed execution, and telemetry export are provided by',
     '  PLUGINS declared in .vx/workspace.ts — first-party or your own. Core',
     '  depends on none of them; a plain `vx run` never requires a plugin.',
-    '  See the plugin guide: https://vznjs.github.io/vx/guides/plugins/',
+    '  See the plugin guide: https://vznjs.github.io/vx/docs/plugins/',
     '',
     'Argument forwarding (for run):',
     "  Anything after `--` is forwarded (shell-quoted) to the task's exec",

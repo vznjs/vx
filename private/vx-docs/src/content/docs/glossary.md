@@ -153,7 +153,7 @@ where undeclared files cannot be reached, and reporting what it tried.
 A sandbox is how a runner proves the key is complete, rather than
 trusting it.
 
-- vx: `exec.sandbox`, run locally on Linux and macOS ([sandboxing](../guides/sandboxing/))
+- vx: `exec.sandbox`, run locally on Linux and macOS ([sandboxing](../docs/sandboxing/))
 - Turborepo: —
 - Nx: task sandboxing, an Nx Cloud add-on run on a dedicated compute cluster ([task sandboxing](https://nx.dev/docs/features/ci-features/sandboxing))
 - Bazel: [hermeticity](https://bazel.build/reference/glossary#hermeticity), enforced by [sandboxing](https://bazel.build/reference/glossary#sandboxing)
@@ -198,7 +198,7 @@ are where a task runs, where artifacts live, who observes the run, and how
 the graph is shaped. A plugin fills one or more seams. The width of the
 seams decides what can be built on a tool without forking it.
 
-- vx: plugin stages from `config` to `telemetry` ([plugins](../guides/plugins/))
+- vx: plugin stages from `config` to `telemetry` ([plugins](../docs/plugins/))
 - Turborepo: —
 - Nx: a [plugin](https://nx.dev/docs/reference/glossary#plugin), which can infer tasks and supply [executors](https://nx.dev/docs/reference/glossary#executor)
 - Bazel: [rules](https://bazel.build/reference/glossary#rule) written in [Starlark](https://bazel.build/reference/glossary#starlark)

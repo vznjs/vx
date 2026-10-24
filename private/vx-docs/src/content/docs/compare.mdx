@@ -63,7 +63,7 @@ on Nx Cloud ([task sandboxing](https://nx.dev/docs/features/ci-features/sandboxi
 Bazel makes you declare every action's inputs and sandboxes each action
 by default ([sandboxing](https://bazel.build/docs/sandboxing)). vx makes
 you declare the inputs and sandboxes the tasks that opt in
-([Sandboxing tasks](../guides/sandboxing/)).
+([Sandboxing tasks](../docs/sandboxing/)).
 
 ## The other choices
 
@@ -105,11 +105,11 @@ both tables show everything.
   the tasks that opt in and whose `allow.read` mirrors their inputs
   ([Caching](../docs/caching/)).
 - **A small ecosystem.** The plugins that exist are the first-party ones
-  ([Writing a vx plugin](../guides/plugins/)).
+  ([Writing a vx plugin](../docs/plugins/)).
 - **Nothing distributed ships.** The repository holds no workers, no
   service and no dashboard. Remote caching and remote execution are
   plugins that speak other tools' protocols to servers you run or rent
-  ([Writing a vx plugin](../guides/plugins/)).
+  ([Writing a vx plugin](../docs/plugins/)).
 - **No first-party cloud.** Nobody sells a hosted vx
   ([Remote caching](../docs/remote-cache/)).
 

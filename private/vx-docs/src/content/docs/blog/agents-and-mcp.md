@@ -87,5 +87,5 @@ denies undeclared reads and unlisted domains, and a
 cancelled. An agent that can run only declared commands on declared
 paths is one you can leave alone with the repository.
 
-Guide: [AI agents](../../guides/agents/). More at
+Guide: [AI agents](../../docs/agents/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

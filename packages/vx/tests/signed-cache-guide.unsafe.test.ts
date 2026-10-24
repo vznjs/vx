@@ -14,7 +14,7 @@ import { run } from './helpers/orchestrator.js'
 
 const GUIDE = path.resolve(
   import.meta.dir,
-  '../../../private/vx-docs/src/content/docs/guides/plugins.mdx',
+  '../../../private/vx-docs/src/content/docs/docs/writing-plugins.mdx',
 )
 
 /** The guide's `signed-cache.ts` fence, importing core from source. */

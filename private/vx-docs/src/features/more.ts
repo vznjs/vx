@@ -646,7 +646,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'llms.txt: the docs as markdown for agents.',
     docs: {
       label: 'AI agents',
-      href: 'guides/agents/',
+      href: 'docs/agents/',
     },
     deepDive: {
       label: 'Built for the agent at the keyboard',
@@ -718,7 +718,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'The vx skill copied into an agent’s skills folder.',
     docs: {
       label: 'AI agents',
-      href: 'guides/agents/',
+      href: 'docs/agents/',
     },
     deepDive: {
       label: 'Built for the agent at the keyboard',
@@ -1127,7 +1127,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A cache plugin: has, get and put.',
     docs: {
       label: 'Plugins',
-      href: 'guides/plugins/',
+      href: 'docs/plugins/',
     },
     deepDive: {
       label: 'Extend vx in an afternoon',
@@ -1224,7 +1224,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'A sandbox refusal naming the path and the fix.',
     docs: {
       label: 'Sandboxing',
-      href: 'guides/sandboxing/',
+      href: 'docs/sandboxing/',
     },
     deepDive: {
       label: 'Guard rails that tell you the fix',
@@ -1728,7 +1728,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'The local executor and cache at the end of every list.',
     docs: {
       label: 'Plugins',
-      href: 'guides/plugins/',
+      href: 'docs/plugins/',
     },
     deepDive: {
       label: 'The local floor',
@@ -1752,7 +1752,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'vx history listing what each task costs.',
     docs: {
       label: 'Plugins',
-      href: 'guides/plugins/',
+      href: 'docs/plugins/',
     },
     deepDive: {
       label: 'A scheduler that learns from your runs',
@@ -1776,7 +1776,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Plugin setup and teardown around a run.',
     docs: {
       label: 'Plugins',
-      href: 'guides/plugins/',
+      href: 'docs/plugins/',
     },
     deepDive: {
       label: 'Extend vx in an afternoon',
@@ -1920,7 +1920,7 @@ export const MORE: readonly Feature[] = [
     imageAlt: 'Tasks admitted against learned peak memory.',
     docs: {
       label: 'Plugins',
-      href: 'guides/plugins/',
+      href: 'docs/plugins/',
     },
     deepDive: {
       label: 'A scheduler that learns from your runs',

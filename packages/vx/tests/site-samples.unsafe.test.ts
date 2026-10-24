@@ -135,7 +135,7 @@ describe('the plugins guide states the CacheLayer method count', () => {
     'twenty',
   ]
   it('"the N `RemoteCacheLayer` methods" is REMOTE_CACHE_METHODS.length', () => {
-    const page = readFileSync(path.join(GUIDES, 'plugins.mdx'), 'utf8')
+    const page = readFileSync(path.join(DOCS, 'docs', 'writing-plugins.mdx'), 'utf8')
     const m = /the ([a-z]+) `RemoteCacheLayer` methods/.exec(page)
     expect(m).not.toBeNull()
     expect(m![1]).toBe(WORDS[REMOTE_CACHE_METHODS.length])
@@ -786,7 +786,7 @@ describe('every page tabulating the pipeline stages names all of them', () => {
     )
     expect(pages.map((p) => path.basename(p)).sort()).toEqual([
       'pipeline-with-seams.md',
-      'plugins.mdx',
+      'writing-plugins.mdx',
     ])
     for (const page of pages) {
       const text = readFileSync(page, 'utf8')
@@ -816,7 +816,7 @@ describe('every page tabulating the pipeline stages names all of them', () => {
 // (item 377, 2026-09-19).
 describe.each([
   ['the sandbox post', path.join(DOCS, 'blog', 'the-sandbox.md')],
-  ['the sandboxing guide', path.join(GUIDES, 'sandboxing.mdx')],
+  ['the sandboxing guide', path.join(DOCS, 'docs', 'sandboxing.mdx')],
 ])('%s names the whole permission surface', (_label, file) => {
   const src = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'config.ts'), 'utf8')
   const page = readFileSync(file, 'utf8')
@@ -848,7 +848,7 @@ describe('the sandboxing guide says what gitConfig grants', () => {
     )
     expect(binds).toContain('allowGitConfig: c.gitConfig')
     expect(runtime).toContain('perTaskRun')
-    const row = readFileSync(path.join(GUIDES, 'sandboxing.mdx'), 'utf8')
+    const row = readFileSync(path.join(DOCS, 'docs', 'sandboxing.mdx'), 'utf8')
       .split('\n')
       .find((l) => l.startsWith('| `gitConfig`'))
     expect(row).toBeDefined()
@@ -978,7 +978,10 @@ describe('the otel guide names attributes the exporter actually emits', () => {
         .map((m) => m[1]!),
     )
     expect(emitted.size).toBeGreaterThan(30)
-    const page = section(readFileSync(path.join(GUIDES, 'plugins.mdx'), 'utf8'), 'OpenTelemetry')
+    const page = section(
+      readFileSync(path.join(DOCS, 'docs', 'plugins.mdx'), 'utf8'),
+      'OpenTelemetry',
+    )
     // Backticked attribute names only, and not the prefixes it shows as
     // shapes (`vx.log.*`) or the workspace file's name.
     const named = [...page.matchAll(/`(vx\.[a-z_.]+)`/g)]
@@ -1008,7 +1011,10 @@ describe('the otel guide tabulates every option the plugin takes', () => {
       .map((m) => m[1]!)
       .filter((f) => f !== 'post')
     expect(fields.length).toBe(11)
-    const page = section(readFileSync(path.join(GUIDES, 'plugins.mdx'), 'utf8'), 'OpenTelemetry')
+    const page = section(
+      readFileSync(path.join(DOCS, 'docs', 'plugins.mdx'), 'utf8'),
+      'OpenTelemetry',
+    )
     const rows = [...page.matchAll(/^\| `(\w+)` *\|/gm)].map((m) => m[1]!)
     expect(rows.sort()).toEqual([...fields].sort())
   })
@@ -1091,7 +1097,10 @@ describe('the plugins guide names the remote seam core defines', () => {
       'open',
       'put',
     ])
-    const page = section(readFileSync(path.join(GUIDES, 'plugins.mdx'), 'utf8'), 'Your own cache')
+    const page = section(
+      readFileSync(path.join(DOCS, 'docs', 'writing-plugins.mdx'), 'utf8'),
+      'Your own cache',
+    )
     for (const m of methods) expect(page).toContain('`' + m.name + '`')
     expect(methods.find((m) => m.name === 'hasMany')!.optional).toBe(true)
     expect(page.replace(/\s+/g, ' ')).toContain('an optional `hasMany`')
@@ -1282,7 +1291,7 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
     for (const hook of ['async schedule(', 'hooks.admit =', 'commands: {']) {
       expect(src).toContain(hook)
     }
-    const page = readFileSync(path.join(GUIDES, 'plugins.mdx'), 'utf8').replace(/\s+/g, ' ')
+    const page = readFileSync(path.join(DOCS, 'docs', 'plugins.mdx'), 'utf8').replace(/\s+/g, ' ')
     expect(page).toContain('`@vzn/vx-schedule-history` fills three at once')
     for (const hook of ['`schedule`', '`admit`', '`commands`']) expect(page).toContain(hook)
   })
@@ -1297,13 +1306,13 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
       .filter((m) => m.private !== true && m.name !== '@vzn/vx')
       .map((m) => m.name)
       .sort()
-    const page = readFileSync(path.join(GUIDES, 'plugins.mdx'), 'utf8')
+    const page = readFileSync(path.join(DOCS, 'docs', 'plugins.mdx'), 'utf8')
     const section = /## Plugins that ship\n([\s\S]*?)\n## /.exec(page)![1]!
     const rows = [...section.matchAll(/^\| \[?`(@vzn\/[\w-]+)`/gm)].map((m) => m[1]!)
     expect([...rows].sort()).toEqual(shipped)
   })
   it('its hook interface block is PLUGIN_HOOKS, in order', () => {
-    const page = readFileSync(path.join(GUIDES, 'plugins.mdx'), 'utf8')
+    const page = readFileSync(path.join(DOCS, 'docs', 'writing-plugins.mdx'), 'utf8')
     const block = fencedBlock(page, 'ts', "import type { VxPlugin } from '@vzn/vx'")
     const named = [...block.matchAll(/^  (\w+)\??[?:(]/gm)]
       .map((m) => m[1]!)
@@ -2173,7 +2182,7 @@ describe('the sandbox pitch claims what the sandbox does', () => {
     expect(flat(path.join(repo, 'README.md'))).toContain(
       'a workspace file the task did not declare is out of its reach, so it cannot poison the cache.',
     )
-    expect(flat(path.join(GUIDES, 'sandboxing.mdx'))).toContain(
+    expect(flat(path.join(DOCS, 'docs', 'sandboxing.mdx'))).toContain(
       'so an undeclared input cannot hide in the cache.',
     )
     expect(flat(path.join(DOCS, 'blog', 'the-sandbox.md'))).toContain(
@@ -2298,7 +2307,7 @@ describe('the sandbox pages say a refused temp write points at $TMPDIR', () => {
     expect(flat(path.join(core, 'docs', 'modules', 'sandbox-runtime.md'))).toContain(
       "or, for a path under the host's shared temp directory",
     )
-    expect(flat(path.join(GUIDES, 'sandboxing.mdx'))).toContain(
+    expect(flat(path.join(DOCS, 'docs', 'sandboxing.mdx'))).toContain(
       "under the host's temp directory it names `$TMPDIR` instead",
     )
   })
@@ -2355,7 +2364,10 @@ describe('the sandboxing guide says a server is never traced', () => {
         'utf8',
       ),
     ).toContain('ran in the sandbox, which reports nothing for a server')
-    const guide = readFileSync(path.join(GUIDES, 'sandboxing.mdx'), 'utf8').replace(/\s+/g, ' ')
+    const guide = readFileSync(path.join(DOCS, 'docs', 'sandboxing.mdx'), 'utf8').replace(
+      /\s+/g,
+      ' ',
+    )
     expect(guide).toContain(
       'A persistent task (a dev server) runs inside the same walls, but nothing traces it',
     )

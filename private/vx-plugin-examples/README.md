@@ -6,7 +6,7 @@ One small, runnable plugin for each of nine seams (`config`, `discover`,
 through vx's `run()`. The gate runs every test, so an example that stops
 working turns it red. `vx init --plugin <seam>` writes the same two files
 into your workspace. The
-[plugins guide](../vx-docs/src/content/docs/guides/plugins.mdx#workspace-and-projects)
+[plugins guide](../vx-docs/src/content/docs/docs/writing-plugins.mdx#workspace-and-projects)
 shows `config`, `discover` and `fingerprint`.
 
 | Seam        | File                                           | What it does                                                                       |

@@ -140,7 +140,7 @@ export const CHOICES: readonly Choice[] = [
         costs:
           'It is off until a task opts in. Its grants are a second list next to the inputs, and it proves the key only as far as the two agree. No native Windows.',
         sources: [
-          { label: 'Sandboxing tasks', href: 'guides/sandboxing/' },
+          { label: 'Sandboxing tasks', href: 'docs/sandboxing/' },
           {
             label: 'tests/sandbox-runtime.unsafe.test.ts',
             href: `${GH}packages/vx/tests/sandbox-runtime.unsafe.test.ts`,
@@ -268,7 +268,7 @@ export const CHOICES: readonly Choice[] = [
         costs:
           'A young API with few plugins besides the first-party ones. Plugins run on Bun, and none can turn a task into anything but a command.',
         sources: [
-          { label: 'Writing a plugin', href: 'guides/plugins/' },
+          { label: 'Writing a plugin', href: 'docs/plugins/' },
           {
             label: 'tests/plugin-pipeline.test.ts',
             href: `${GH}packages/vx/tests/plugin-pipeline.test.ts`,

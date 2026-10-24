@@ -117,5 +117,5 @@ must supply, a remote, a wire format, is declared in `.vx/workspace.ts`
 or it does not exist. The one thing that is implicit is the
 [local floor](../the-local-floor/): running here and caching here.
 
-Guide: [Writing a vx plugin](../../guides/plugins/). More at
+Guide: [Writing a vx plugin](../../docs/plugins/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

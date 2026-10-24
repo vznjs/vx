@@ -10,7 +10,7 @@ import path from 'node:path'
 import { expect, it } from 'bun:test'
 
 const SITE = path.resolve(import.meta.dir, '..')
-const GUIDE = path.join(SITE, 'src/content/docs/guides/plugins.mdx')
+const GUIDE = path.join(SITE, 'src/content/docs/docs/writing-plugins.mdx')
 // oxlint is a ROOT devDependency; Bun hoists it, so this package's own
 // `node_modules/.bin` never has it and the root's is the one place it is.
 const ROOT = path.resolve(SITE, '../..')

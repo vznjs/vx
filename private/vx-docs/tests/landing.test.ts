@@ -74,8 +74,8 @@ const STAGES = ['graph', 'key', 'schedule', 'run', 'cache', 'telemetry']
 // The four pillars, in order: title, and the Docs page each links.
 const PILLARS = [
   ['Correctness', 'caching/'],
-  ['Sandbox', 'guides/sandboxing/'],
-  ['Extensibility', 'guides/plugins/'],
+  ['Sandbox', 'docs/sandboxing/'],
+  ['Extensibility', 'docs/plugins/'],
   ['Freedom', 'guides/migrate/'],
 ]
 
@@ -106,10 +106,10 @@ const OLD_LINKS = [
   'guide/why/',
   'guides/caching/',
   'guides/mcp/',
-  'guides/plugins/',
+  'docs/plugins/',
   'guides/remote-caching/',
   'guides/remote-execution/',
-  'guides/sandboxing/',
+  'docs/sandboxing/',
   'logo-mark.svg',
   'migrate/from-nx/',
   'migrate/from-turborepo/',

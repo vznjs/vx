@@ -98,7 +98,7 @@ you declare into a wall the task can't cross.
 
 `vx why --format json` prints one object:
 `{ taskId, runId, why, diff, roots }`. The
-[agent skill](../../guides/agents/) teaches a coding agent the command,
+[agent skill](../../docs/agents/) teaches a coding agent the command,
 so "why is CI rebuilding everything" is a question it can answer.
 
 Guide: [Caching › Why did it re-run?](../../docs/caching/#why-did-it-re-run).
