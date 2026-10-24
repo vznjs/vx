@@ -73,6 +73,16 @@ describe('withRetry', () => {
     expect(waits).toEqual([[3000], [], [10_000], [10_000], [], [2000], [2000]])
   })
 
+  it('a 429 that says Retry-After: 0 again waits 2 s, so the budget still ends it', async () => {
+    const zero = () => status(429, { 'retry-after': '0' })
+    expect((await drive([zero(), zero(), status(200)])).waits).toEqual([2000])
+    expect(await drive([zero()])).toEqual({
+      attempts: 12,
+      waits: Array(10).fill(2000),
+      last: 429,
+    })
+  })
+
   it('the answer that is resent has its body cancelled, so it holds no connection', async () => {
     let cancelled = 0
     const body = () =>
