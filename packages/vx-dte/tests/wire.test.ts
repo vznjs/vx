@@ -648,7 +648,8 @@ it('joins again after the relay answers 5xx or the network drops', async () => {
 })
 
 // A run its relay did not admit fails at once, naming the relay (owner,
-// 2026-10-23); a refusal is never waited out as a fault is.
+// 2026-10-23), with its status and message as every remote error; a
+// refusal is never waited out as a fault is.
 it('does not join again after a 4xx, and names the relay that refused it', async () => {
   const s = sockets()
   s.host.older = true
@@ -660,7 +661,7 @@ it('does not join again after a 4xx, and names the relay that refused it', async
     )
   }) as unknown as typeof fetch
   await expect(join(s.url, R, 'worker', null, undefined)).rejects.toThrow(
-    `cannot connect to the relay ${new URL(s.url).origin}: repository o/r is not in this relay's ALLOW`,
+    `cannot connect to the relay ${new URL(s.url).origin}: 403 repository o/r is not in this relay's ALLOW`,
   )
   expect(asked).toBe(1)
 })
