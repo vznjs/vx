@@ -489,8 +489,8 @@ real time in the run summary and the footer's `ideal` line, and
     platform (`linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`;
     absent, planned as this machine's and not checked on join). With no adapter, the sizes' platforms are
     the ones joining workers may have. Only work counts:
-    a task that missed the cache, or waits on a cached one that did; groups
-    and hits need no worker. At each miss, finish and join the run plays
+    a task that missed the cache, or waits on a cached one that did, and
+    every uncached task, which runs every time; groups and hits need no worker. At each miss, finish and join the run plays
     that work out on its workers and on N more (`src/planner.ts`), each new
     one joining after its size's warm-up: this run's first of that size,
     else an earlier run's, else any size's this run, else 20 s,
