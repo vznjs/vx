@@ -154,6 +154,8 @@ export function dte(options: DteOptions) {
   // An adapter's run in its own CI with a relay names itself: the CI file
   // sets nothing (owner, 2026-10-23: "super simple" CI).
   let made: string | undefined
+  /** Each task's sends under the run's id, across the runs `vx watch` makes. */
+  const sent = new Map<string, number>()
   const runOf = (): string | undefined =>
     givenRun() ??
     (options.relay === undefined
@@ -413,6 +415,7 @@ export function dte(options: DteOptions) {
         artifacts: ctx.artifacts,
         cacheFacts: () => ctx.cacheFacts(),
         run,
+        sent,
         keyOf: (id) => keys.get(id),
         tail: (id) =>
           (tails ??= tailsMs(nodes ?? new Map(), (x) => peaks.get(x)?.p50DurationMs))(id),

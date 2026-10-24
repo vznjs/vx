@@ -389,6 +389,7 @@ async function harness(
     stalled?: (waiting: string) => void
     stallMs?: number
     overdue?: (id: string) => void
+    sent?: Map<string, number>
   } = {},
 ) {
   const store = fakeArtifacts()
@@ -1461,6 +1462,29 @@ it('saves each send of a task under a run key of its own', async () => {
   } finally {
     await h.stop()
   }
+})
+
+// `vx watch` runs again under one run id: its next run sent a task under
+// the last run's run key, which a remote holds the first bytes of
+// (2026-10-24).
+it('counts a task’s sends across the runs that share a sent map', async () => {
+  const sent = new Map<string, number>()
+  const keys: string[] = []
+  for (let i = 0; i < 2; i++) {
+    const h = await harness(new Map([node('t')]), undefined, undefined, undefined, undefined, {
+      sent,
+    })
+    try {
+      const a = await h.worker(1)
+      await Bun.sleep(50)
+      void h.o.execute(h.req('t'))
+      expect(await a.batches()).toEqual([['t']])
+      keys.push(a.orders[0]!.runKey)
+    } finally {
+      await h.stop()
+    }
+  }
+  expect(keys).toEqual([runKey(R, 't'), runKey(R, 't', 1)])
 })
 
 it('sends a task to the worker that holds its dependency’s outputs', async () => {

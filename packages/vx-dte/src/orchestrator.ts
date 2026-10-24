@@ -132,6 +132,12 @@ export interface OrchestratorOptions {
   readonly cacheFacts: () => Promise<CacheFacts>
   /** The run id, which a task's run key is made of. */
   readonly run: string
+  /**
+   * Sends of each task under `run`, kept by whoever outlives this run:
+   * `vx watch` runs again under one run id, and a send counted from 0
+   * again took the last run's run key (2026-10-24).
+   */
+  readonly sent?: Map<string, number>
   /** A task's cache key, once the run computed it (a hit's too); undefined when it has none. */
   readonly keyOf: (taskId: string) => string | undefined
   /** Worker `id` (its label) was lost, or never started: room for another. */
@@ -211,7 +217,7 @@ export class Orchestrator {
   /** Keys the run's requests named for their dependencies. */
   private readonly upstreamKeys = new Map<string, string>()
   /** How many times each task was sent: its run key is one per send. */
-  private readonly sent = new Map<string, number>()
+  private readonly sent: Map<string, number>
   /** Each hit's key, once on a remote a worker reads (`TaskArtifacts.share`). */
   private readonly shared = new Map<string, Promise<boolean>>()
   /** When each worker this run started was asked for, by `WorkerSpawn.index`. */
@@ -280,6 +286,7 @@ export class Orchestrator {
   private relend: ReturnType<typeof setTimeout> | undefined
 
   constructor(private readonly o: OrchestratorOptions) {
+    this.sent = o.sent ?? new Map()
     // A root that is gone fails the run's own reads first.
     this.realRoot = (() => {
       try {

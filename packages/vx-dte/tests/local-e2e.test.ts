@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
+import { local } from '../src/index.ts'
 
 const DTE = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
@@ -896,6 +897,31 @@ it('saves no entry under its key for a task that changed its input on its worker
   ])
   const again = vx(['run', 'f#fmt'], 'fmt-2')
   expect([again.exitCode, again.stdout.toString().includes('small#')]).toEqual([0, true])
+}, 60_000)
+
+// `vx watch` runs again in one process: a `local()` the last run closed
+// started no worker, and the run's tasks were aborted (2026-10-24).
+it('local() starts workers again after a run closed it', async () => {
+  const a = local()
+  await a.relay!()
+  await a.close!()
+  await a.relay!()
+  await a.spawn({
+    run: crypto.randomUUID(),
+    relay: '',
+    size: 'small',
+    max: 1,
+    cpu: 1,
+    memory: 1e9,
+    index: 1,
+    id: 'small#1',
+    workspaceRoot: root,
+    env: {},
+    exited: () => {},
+  })
+  const trees = Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
+  expect(trees.stdout.toString().match(/^worktree /gm)?.length).toBe(2)
+  await a.close!()
 }, 60_000)
 
 it('says why a worker never joined, and fails the run when none can', async () => {
