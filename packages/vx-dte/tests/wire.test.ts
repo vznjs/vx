@@ -668,6 +668,24 @@ it('does not join again after a 4xx, and names the relay that refused it', async
   expect(asked).toBe(1)
 })
 
+// PR #4311's CI: a refusal whose frame never reached the client gave up
+// as "no answer in 10 s"; the close itself says why.
+it('reads a refusal from the close when its frame is lost', async () => {
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: (req, srv) => (srv.upgrade(req) ? undefined : new Response(null, { status: 400 })),
+    websocket: { open: (ws) => ws.close(4403, 'not in ALLOW'), message() {} },
+  })
+  try {
+    await expect(join(server.url.href, R, 'worker', null, 'token')).rejects.toThrow(
+      `cannot connect to the relay ${server.url.origin}: 403 not in ALLOW`,
+    )
+  } finally {
+    await server.stop(true)
+  }
+})
+
 // PR #4225's run (2026-10-24): a relay that held the socket and then the
 // request took 10 s each, and the run failed after 21 s on a bare "The
 // operation timed out".

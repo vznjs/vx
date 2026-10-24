@@ -612,20 +612,17 @@ async function connect(
   const ws = new WebSocket(`${base.replace(/^http/, 'ws')}socket?${query}`, { headers })
   // An upgrade the relay holds is a dial that failed, as a request past two heartbeats.
   const wait = heartbeatMs === undefined ? REPLY_MS : replyMs(heartbeatMs)
-  const opened = await new Promise<boolean>((resolve) => {
+  // Its handlers are set before it opens: a relay that refuses closes at
+  // once, and Bun may report that close, or its frame, with the open.
+  let opening: (ok: boolean) => void = () => {}
+  const opened = new Promise<boolean>((resolve) => {
     const timer = setTimeout(() => resolve(false), wait)
-    const settle = (ok: boolean) => () => {
+    opening = (ok) => {
       clearTimeout(timer)
       resolve(ok)
     }
-    ws.onopen = settle(true)
-    ws.onerror = settle(false)
-    ws.onclose = settle(false)
   })
-  if (!opened) {
-    ws.close()
-    return undefined
-  }
+  ws.onopen = () => opening(true)
   let open = true
   const inbox: RelayMessage[] = []
   let code = 0
@@ -731,11 +728,22 @@ async function connect(
     shut = resolve
   })
   ws.onclose = (e) => {
-    closed('socket closed', e.code)
+    // An error before it closes the socket with no code: the close's code
+    // and reason still say why it was refused.
+    if (!open && code === 0) {
+      code = e.code
+      if (e.reason !== '') reason = e.reason
+    }
+    closed(e.reason || 'socket closed', e.code)
     shut()
+    opening(false)
   }
-  ws.onerror = () => closed()
+  ws.onerror = () => {
+    closed()
+    opening(false)
+  }
   ws.onmessage = (e) => {
+    opening(true)
     spoke = performance.now()
     let m: Answer & {
       messages?: RelayMessage[]
@@ -810,6 +818,11 @@ async function connect(
       // socket (the host logs that as a client that disconnected).
       await Promise.race([done, Bun.sleep(CLOSE_WAIT_MS)])
     },
+  }
+  if (!(await opened)) {
+    closed()
+    ws.close()
+    if (heartbeatMs !== undefined) return undefined
   }
   if (heartbeatMs === undefined) {
     const timer = setTimeout(() => said(undefined), wait)
