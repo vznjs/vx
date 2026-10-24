@@ -6,7 +6,7 @@ authors:
 tags:
   - performance
   - internals
-excerpt: 'With nothing changed, vx adds 720 ms to a 9,603-task run, with no daemon. That number is five structural decisions, and each one is also a correctness win.'
+excerpt: 'With nothing changed, vx adds 720 ms to a 9,603-task run, with no daemon. Five design choices make that number.'
 ---
 
 With nothing changed, vx adds **720 ms** to a 9,603-task run. No daemon
@@ -19,80 +19,67 @@ keeps it warm.
 | Cold build                                                 | 9.27 s  | 11.05 s   | 5 min 1 s  | 9.89 s    |
 | Cold build: CPU the runner burns                           | 49.58 s | 1 min 30 s | 7 min 43 s | 29.74 s  |
 
-Synthetic monorepo, 30 dependency levels; build 300 ms, test and
-typecheck 150 ms, lint 75 ms, publish 30 ms. Run 2026-10-23 on linux
-x64, 4 cores, concurrency 10: vx at `0be036747`, Turborepo 2.11.10, Nx
-24.0.1, Vite Task (vite-plus) 1.4.0, each in its own native config. Real repos with uneven
-task times will differ. Source: [Benchmarks](../../benchmarks/).
+<small>Synthetic monorepo, 1,601 projects, 30 levels · linux x64, 4 cores, concurrency 10 · vx `0be036747`, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0, native configs · 2026-10-23 · [benchmarks](../../benchmarks/)</small>
 
-The time comes from five decisions.
+Five design choices make that number. Each one also makes the cache
+harder to get wrong.
 
-## 1. The key is already in git's index
+## 1. Git already hashed your files
 
-A cache key needs a hash of every input file. Git already has one: the
-blob id of every tracked file. vx asks git instead of reading files.
-
-```
-git ls-files -s -v                           min 2.3 ms   (20 runs)
-git status --porcelain -uall                 min 5.6 ms   (10 runs)
-read + xxh3 every tracked file yourself      min 154.1 ms (10 runs)
+```mermaid
+xychart-beta horizontal
+  title "Hash 2,527 tracked files (ms, min of runs)"
+  x-axis ["git ls-files", "git status", "read + hash every file"]
+  y-axis "ms" 0 --> 160
+  bar [2.3, 5.6, 154.1]
 ```
 
-This repo: 2,527 tracked files, 48 MB. Linux x64, 4 cores, warm page
-cache, 2026-10-23.
+<small>This repo, 48 MB · linux x64, 4 cores, warm page cache · 2026-10-23</small>
 
-Clean-tree key derivation costs zero source-file reads. Only dirty
-files are hashed, and they get the same blob id git would
-give them. So committing a file never changes its key.
-[Your cache key is already in git's index](../keys-from-git/) has the
-details.
+Git keeps a hash of every tracked file. vx asks git instead of reading
+them. Clean-tree key derivation costs zero source-file reads. A dirty
+file gets the same hash git would give it, so a commit never changes a
+key ([how](../keys-from-git/)).
 
-## 2. Bitsets, not walks
+## 2. The scheduler counts with bitsets
 
-The scheduler starts the task with the most work below it first
-(`most-work`, the default). Counting that work with a depth-first walk
-over sets took 8.5 s of a 10 s warm run on a 1,090-package, 100-level
-graph. Packed bitsets with popcount do it in single-digit milliseconds.
+vx starts the task with the most work below it first. Counting that
+with a graph walk took 8.5 s of a 10 s run on a 1,090-package graph.
+Bitsets do it in milliseconds ([how](../bitsets-and-the-scheduler/)).
 
-Then each tick is cheap: ready tasks sit in a binary heap, and a task
-that finishes only decrements its direct dependents' counters.
-[Bitsets and the scheduler](../bitsets-and-the-scheduler/).
+## 3. A hit on an up-to-date tree is a few stat calls
 
-## 3. vx knows what a hit leaves on disk
+```mermaid
+flowchart LR
+  H[cache hit] --> S{files on disk match the record?}
+  S -->|yes| D[done: no copy, no write]
+  S -->|no| C[copy the cached files]
+```
 
-Declared outputs are wiped before a task runs, and a hit leaves exactly
-the cached files. So vx knows the tree after either one. When each file
-on disk still matches what it recorded (size, mode, millisecond mtime,
-inode and ctime), a hit is a few `stat` calls: no
-copy, no decompress, no write.
+vx wipes outputs before a task runs, so it knows what a hit leaves on
+disk. If each file still matches (size, mode, millisecond mtime, inode
+and ctime), there is nothing to restore.
 
 ## 4. A hit is a file copy
 
-The local cache keeps each entry as plain files, unpacked once. A hit
-hands them to the kernel (`copy_file_range`, or a clone on APFS, Btrfs
-or XFS). The `tar.zst` exists only on the wire to a remote. Metadata and
-the captured stdout live in the index (the stdout in a side table), so
-a hit replays its log with a SQL read.
-
-```
-restore 1,000 entries of 96 KiB    from tar.zst 1.26 s   →   plain files 0.76 s   (min of 5)
+```mermaid
+xychart-beta horizontal
+  title "Restore 1,000 entries of 96 KiB (s, min of 5)"
+  x-axis ["from tar.zst", "plain files"]
+  y-axis "s" 0 --> 1.4
+  bar [1.26, 0.76]
 ```
 
-[A cache hit is a file copy](../a-hit-is-a-file-copy/).
+The local cache stores plain files and the kernel copies them. Metadata
+and the captured stdout live in the index (the stdout in a side table),
+so the log comes back with one SQL read ([how](../a-hit-is-a-file-copy/)).
 
 ## 5. Nothing runs that is not needed
 
-- A run evaluates no config. It reads `.vx/projects.lock.json`.
-- No telemetry plugin means no event subscriber, no summary, no `git`
-  spawn.
-- A plugin that declines a task costs nothing.
+A run reads `.vx/projects.lock.json` and evaluates no config. No
+telemetry plugin means no listener and no `git` spawn. A plugin that
+skips a task costs nothing.
 
-## How each number is kept
-
-Every change to the warm path ships with a number: two arms
-interleaved, min of N, the "before" arm in its own git worktree, each
-arm on its own pre-warmed copy. A change without a number is not done.
-The full list, each with its invariant and source file:
-[Optimizations](../../optimizations/).
-
-More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
+Every change to this path ships with a measured before and after
+([Optimizations](../../optimizations/)). More at
+[vznjs.github.io/vx](https://vznjs.github.io/vx/).

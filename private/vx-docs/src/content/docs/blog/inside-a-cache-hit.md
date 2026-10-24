@@ -6,11 +6,11 @@ authors:
 tags:
   - caching
   - correctness
-excerpt: 'Files, env vars, tool versions and upstream tasks go into the key. Outputs and both output streams come back. A warm hit restores nothing at all, and a damaged download is a miss, never a wrong build.'
+excerpt: 'Files, env vars, tool versions and upstream tasks go into the key. Outputs and logs come back. A damaged download is a miss, never a wrong build.'
 ---
 
-A cache is only as good as two lists: what it hashes, and what it hands
-back. vx makes you write both down, then guards each end.
+A cache is only as good as two lists: what goes into the key, and what
+comes back on a hit. You write both down. vx checks each end.
 
 ```mermaid
 flowchart LR
@@ -51,14 +51,12 @@ export default defineProject({
 })
 ```
 
-`files` globs stay inside the project: a glob never reaches into a
-neighbour's folder, so one project's edit cannot hide in another's key.
-A shared root file is named in `workspaceFiles`, on purpose.
-`inputs.tasks` narrows which upstream tasks' keys fold in.
+`files` globs stay inside the project. A shared root file goes in
+`workspaceFiles` by name. `inputs.tasks` picks which upstream tasks'
+keys count.
 
-An env var in the key is not the same as an env var the task sees. List
-it in both places, as above, or the key varies on a value the command
-never reads. Change it, and the key changes:
+A var in the key isn't the same as a var the task sees. List it in
+both, as above. Change it and the key changes:
 
 ```sh frame="terminal"
 $ NODE_ENV=production vx run packages/api#bundle
@@ -76,7 +74,7 @@ bundling for development
 
 ## What comes back
 
-A hit replays stdout and stderr in the order the task printed them, so a
+A hit prints stdout and stderr in the order the task printed them, so a
 warning shows where it did the first time:
 
 ```sh frame="terminal"
@@ -87,9 +85,9 @@ warn: large chunk
 └─ packages/api#bundle ── (3ms) up-to-date
 ```
 
-When the outputs on disk already match, vx restores nothing. It compares
-a few stats, calls the task up to date, and moves on. Delete one
-project's `dist` and only that one comes back from the store:
+If the outputs on disk already match, vx restores nothing. It checks a
+few file stats and moves on. Delete one project's `dist` and only that
+one comes back:
 
 ```sh frame="terminal"
 $ vx run build --all
@@ -101,29 +99,24 @@ $ rm -rf packages/c/dist && vx run build --all
   time      21ms
 ```
 
-Restores run on their own lane, so a warm run is never queued behind
-compilers.
+Restores run on their own lane, so they never wait behind compilers.
 
 ## A damaged download is a miss
 
-Every archive vx sends to a remote ends with a CRC-32 over everything
-before it, and its own key. Tar checks only its headers, and a zstd
-block of incompressible bytes, like an image or a wasm file, decodes
-clean even with a byte flipped. So vx checks the sum before the entry is
-used. A wrong sum, a wrong key, or an entry outside the declared outputs
-makes the hit a miss, and the task runs again. The local store is vx's
-own, so a local hit copies its files out unchecked
+Every archive vx uploads ends with a CRC-32 checksum and its own key.
+Tar checks only its headers, and zstd can decode a flipped byte in an
+image without error. So vx checks the sum first. A wrong sum, wrong key,
+or a file outside the declared outputs turns the hit into a miss, and
+the task runs. Local hits are vx's own files, copied out unchecked
 ([A cache hit is a file copy](../a-hit-is-a-file-copy/)).
 
 ## Uploads never hold the run
 
-With a remote cache, the local save is immediate and the upload happens
-in the background. Dependents start at once. Uploads drain before vx
-exits, so a short run still ships everything, and a failed upload is a
-warning, never a red build.
+The local save is immediate. The upload runs in the background, and
+dependents start at once. vx finishes uploads before it exits. A failed
+upload is a warning, never a red build.
 
-Outputs above: a one-project workspace for `bundle` and the four-project
-demo for `build`, vx at `dbe4033`, 2026-10-23.
+<small>One-project workspace for `bundle`, four-project demo for `build` · vx dbe4033 · 2026-10-23</small>
 
 The full rules are in [Caching](../../caching/) and the
 [schema](../../schema/). More at
