@@ -165,7 +165,10 @@ permissions: { id-token: write, contents: read, actions: write }
 steps:
   - uses: actions/checkout@v4
   - uses: oven-sh/setup-bun@v2
-  - run: bun install --frozen-lockfile
+  # The root's packages only (vx and the plugins): the workers run the
+  # tasks. A full install when a task must run here (exec.remote: false,
+  # an interactive one, a persistent one you asked for).
+  - run: bun install --frozen-lockfile --filter './'
   - run: bunx @vzn/vx run build test --all
     env: { GITHUB_TOKEN: '${{ github.token }}' }
 ```
@@ -198,6 +201,10 @@ jobs:
       - uses: actions/checkout@v4
         with: { ref: '${{ inputs.sha }}' }
       - uses: oven-sh/setup-bun@v2
+      # Every project: bun's --filter selects by name or path, not by a
+      # git diff. With pnpm, `pnpm install --frozen-lockfile --filter
+      # "...[origin/main]"` installs only what a PR changed and its
+      # dependents (fetch origin/main first: the checkout is one commit).
       - run: bun install --frozen-lockfile
       - run: bunx @vzn/vx dte worker
 ```
