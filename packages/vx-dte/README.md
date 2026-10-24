@@ -463,7 +463,9 @@ and used at once; each task takes the first lane free over its time
 there, from its send through restoring its dependencies, its command
 and its save, with its exit code, duration, CPU time and booked cores.
 The `orchestrator` process holds the cache probe, each ask for workers, each
-plan that started or let go of workers with what it saw of each worker,
+plan that started or let go of workers with what it saw of each worker
+(one that started workers also with each task's planned time, cores and
+platform and each size's warm-up, so it can be played back),
 stalls, the time each task waited for room, and each restore. Times are
 the orchestrator's: when it heard. Without `--profile` nothing is
 written. On CI, upload the file as an artifact; this repo's `ci.yml`

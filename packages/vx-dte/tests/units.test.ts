@@ -644,6 +644,12 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
         starting: true,
       },
     ],
+    // Main d8a795c planned 38 s for an 88 s Mac lane: what it thought each took.
+    work: [
+      { id: 'p#build', cores: 2.16, memory: 0, ms: 33_240, deps: [], platform: 'darwin' },
+      { id: 'p#new', cores: 1, memory: 0, ms: undefined, deps: [] },
+    ],
+    warmUps: new Map([['mac', 16_900]]),
   })
   await Bun.sleep(20)
   await a.say({ type: 'ran', task: 't1' })
@@ -691,6 +697,10 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
     | undefined
   expect(plan?.args).toMatchObject({ start: 'small', tasks: 3, endsInMs: 60_000, boundMs: 63_000 })
   expect(plan?.args.workers).toMatch(/^worker#1 1c\/\d+ 1c\/\d+ · small#2 joins 12000$/)
+  expect(plan?.args).toMatchObject({
+    work: 'p#build 33.2s 2.16c darwin · p#new ?s 1c',
+    warmUps: 'mac 16.9s',
+  })
 })
 
 // Main, 2026-10-23: vx-docs#build (41 s, then its test) got ready 3 s in,
