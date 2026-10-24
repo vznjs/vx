@@ -282,6 +282,15 @@ export function placeTasks(
       `${id} would run on this machine, and ${executorLabel(sole!)} runs every task elsewhere: ${why}`,
     )
   }
+  // A server it cannot carry first: one asked for pins its dependants, and
+  // the run named a dependant, as folding a runtime probe (2026-10-24).
+  if (sole !== undefined)
+    for (const node of nodes.values())
+      if (
+        node.config.exec?.persistent !== undefined &&
+        !(sole.servers === true && carriable(node, true))
+      )
+        refuse(node.id, 'it starts a server only beside a task that needs it')
   for (const node of nodes.values()) {
     delete node.platform
     if (isGroupTask(node) || node.config.exec?.persistent !== undefined) continue

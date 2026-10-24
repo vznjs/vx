@@ -352,6 +352,11 @@ describe('placeTasks — an exclusive executor leaves this machine nothing', () 
     expect(refuses([dev])).toThrow(
       "s#dev would run on this machine, and executor 'dte' runs every task elsewhere: it starts a server only beside a task that needs it",
     )
+    // Asked for beside a task that needs it, the server pinned the task,
+    // and the run named the task, as folding a runtime probe (2026-10-24).
+    expect(refuses([node('s#t', {}, ['s#dev']), dev])).toThrow(
+      "s#dev would run on this machine, and executor 'dte' runs every task elsewhere: it starts a server only beside a task that needs it",
+    )
   })
 })
 
