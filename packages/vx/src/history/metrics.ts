@@ -580,13 +580,11 @@ export function whyDidThisRerun(db: Database, runId: string, taskId: string): Wh
           // and its key is derived only so dependents can fold it. A keyless
           // one's is new each run, so every dependent misses: "folded by
           // dependents" read as if they could hit.
-          `this task declares no \`cache\` block — it runs on every invocation; ${
-            this_.keylessBy === null
-              ? 'its key is folded by dependents only'
-              : this_.keylessBy === taskId
-                ? 'it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs`'
-                : `its key folds ${this_.keylessBy}, which declares no \`inputs\`, so each run derives a new key and every task that depends on it misses; declare inputs on ${this_.keylessBy}`
-          }`
+          this_.keylessBy === null
+          ? 'this task declares no `cache` block — it runs on every invocation; its key is folded by dependents only'
+          : this_.keylessBy === taskId
+            ? 'this task declares no `cache` block — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs`'
+            : `this task declares no \`cache\` block — it runs on every invocation; its key folds ${this_.keylessBy}, which declares no \`inputs\`, so each run derives a new key and every task that depends on it misses; declare inputs on ${this_.keylessBy}`
         : this_.keylessBy !== null
           ? keylessNote(taskId, this_.keylessBy)
           : prev && prev.hash !== this_.hash
