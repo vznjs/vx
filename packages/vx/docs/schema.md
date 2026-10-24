@@ -327,6 +327,8 @@ daemon, a Docker socket, a device, a VPN-only host.
 - **Only meaningful with a remote executor declared.** A workspace with
   no executor plugin already runs everything here, so the field changes
   nothing.
+- **Lifted by an `exclusive` executor.** One that runs every task
+  elsewhere (`@vzn/vx-dte`) takes this task too, and every pin below.
 - **Pinned by inference too.** A `persistent` task, and anything that
   depends on one (transitively), is pinned regardless of what it
   declares — a worker cannot reach a port served on the submitter —
