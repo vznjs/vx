@@ -575,6 +575,15 @@ export function dte(options: DteOptions) {
         })
         deadline = performance.now() + p.boundMs
         for (const t of p.tasks) known.add(t.id)
+        if ((p.start.length > 0 && !final) || p.release.length > 0)
+          o.planned({
+            start: final ? [] : p.start.map((s) => s.name),
+            release: p.release,
+            tasks: p.tasks.length,
+            endsInMs: p.endsInMs,
+            boundMs: p.boundMs,
+            workers,
+          })
         const { tasks } = p
         // At the end the relay closing ends them all.
         if (p.release.length > 0 && remaining.size > 0) {
