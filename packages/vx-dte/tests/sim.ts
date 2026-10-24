@@ -53,6 +53,29 @@ export interface SimOptions {
   readonly probe?: boolean
   /** How long a hit takes to restore (default 0: it ends at once). */
   readonly restoreMs?: number
+  /**
+   * Scales in place of the planner (`decide`), for comparing other
+   * scaling rules on the same play (tests/goals.ts): which sizes to start,
+   * which idle or starting workers to let go.
+   */
+  readonly scaler?: (s: ScaleState) => { start: Size[]; release: string[] }
+}
+
+/** What a `scaler` sees at each event. */
+export interface ScaleState {
+  readonly now: number
+  /** Ready tasks waiting for a worker, with what history says they take. */
+  readonly queued: readonly { id: string; ms: number; cores: number; platform?: string }[]
+  /** Each worker's cores, its running tasks' ms left by history, and whether it has joined. */
+  readonly workers: readonly {
+    id: string
+    cores: number
+    platform: string | undefined
+    joined: boolean
+    left: readonly number[]
+  }[]
+  readonly sizes: readonly Size[]
+  readonly warmUpMs: number
 }
 
 export interface SimWorker {
@@ -314,25 +337,27 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       })
     const held = (t: SimTask): boolean => options.probe !== false && t.cache && t.ran === undefined
     const remaining = graph.filter((t) => !done.has(t.id) && !held(t)).map((t) => t.id)
-    const p = decide({
-      remaining,
-      nodes,
-      executed: likely.size === 0 ? executed : new Set([...likely, ...executed]),
-      need,
-      durationMs: ms,
-      workers: planWorkers,
-      running,
-      sizes: options.sizes,
-      started,
-      final: false,
-      warmUpMs: warmUp,
-      replaceable: true,
-      limitMs: deadline === undefined ? undefined : deadline - now,
-      known: planned,
-      how,
-      home: options.home,
-    })
-    deadline = now + p.boundMs
+    const p = options.scaler
+      ? scaled(options.scaler, warmUp)
+      : decide({
+          remaining,
+          nodes,
+          executed: likely.size === 0 ? executed : new Set([...likely, ...executed]),
+          need,
+          durationMs: ms,
+          workers: planWorkers,
+          running,
+          sizes: options.sizes,
+          started,
+          final: false,
+          warmUpMs: warmUp,
+          replaceable: true,
+          limitMs: deadline === undefined ? undefined : deadline - now,
+          known: planned,
+          how,
+          home: options.home,
+        })
+    deadline = p.boundMs === undefined ? undefined : now + p.boundMs
     for (const t of p.tasks) planned.add(t.id)
     if (p.release.length > 0 && remaining.length > 0)
       for (const id of p.release) {
@@ -374,6 +399,38 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
     }
   }
   const joinAt = new Map<string, number>()
+  const scaled = (
+    scaler: NonNullable<SimOptions['scaler']>,
+    warmUp: number,
+  ): { boundMs: undefined; tasks: []; release: string[]; start: Size[]; againInMs: undefined } => {
+    const d = scaler({
+      now,
+      queued: queue.map((id) => {
+        const k = known(id)
+        const platform = byId.get(id)!.platform ?? options.home
+        return {
+          id,
+          ms: k?.ms ?? warmUp,
+          cores: Math.max(0.25, k?.cores ?? 1),
+          ...(platform === undefined ? {} : { platform }),
+        }
+      }),
+      workers: workers
+        .filter((w) => w.leftAt === undefined && w.cancelledAt === undefined)
+        .map((w) => ({
+          id: w.id,
+          cores: w.cores,
+          platform: w.platform,
+          joined: w.joinedAt !== undefined,
+          left: [...w.running.values()].map((r) =>
+            Math.max(0, (r.knownMs ?? 0) - (now - r.startedAt)),
+          ),
+        })),
+      sizes: options.sizes,
+      warmUpMs: warmUp,
+    })
+    return { boundMs: undefined, tasks: [], againInMs: undefined, ...d }
+  }
 
   // Ready roots, then events until every task ended.
   // Roots first, then each: a root that ends at once readies its dependants itself.
