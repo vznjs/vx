@@ -39,6 +39,7 @@ export default { name: 'b', tasks: {
     cache: { outputs: { files: ['out/**'] } },
   },
   fail: { exec: { command: 'echo oops >&2; exit 3' } },
+  timed: { exec: { command: 'sleep 0.5 && echo timed-ok', timeout: '2s' } },
   slow: { exec: { command: 'touch started && sleep 60' } },
   once: { exec: { command: 'if [ -e ' + once + ' ]; then echo again; else touch ' + once + ' && sleep 60; fi' } },
   env: { exec: {
@@ -595,6 +596,31 @@ export default { plugins: [dte({ workers: { small: { max: 1, cpu: 1, memory: '1G
   } finally {
     await rm(tmp, { recursive: true, force: true })
   }
+}, 60_000)
+
+// A task's timeout counts from its start on a worker: core's clock,
+// armed as the task was sent, killed a 0.5 s task with a 2 s timeout
+// while its worker still booted (2026-10-24).
+it('times a task from its start on the worker, not from the wait for one', async () => {
+  await writeFile(
+    path.join(root, '.vx/workspace.mjs'),
+    `import { dte, local } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ workers: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'sleep 3' }) })] }
+`,
+  )
+  Bun.spawnSync(
+    ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'p'],
+    {
+      cwd: root,
+    },
+  )
+  const r = vx(['run', 'b#timed'], 'timed')
+  const out = r.stdout.toString() + r.stderr.toString()
+  expect([r.exitCode, out.includes('timed-ok'), out.includes('timed out')]).toEqual([
+    0,
+    true,
+    false,
+  ])
 }, 60_000)
 
 it('says why a worker never joined, and fails the run when none can', async () => {

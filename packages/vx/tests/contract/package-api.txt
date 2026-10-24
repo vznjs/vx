@@ -1813,6 +1813,7 @@ export interface TaskExecutor {
   readonly servers?: boolean
   readonly runtime?: boolean
   readonly exclusive?: boolean
+  readonly timeouts?: boolean
   readonly platforms?: readonly string[]
   readonly capacity?: number
   accepts?(task: TaskPlacement): boolean

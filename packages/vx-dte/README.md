@@ -408,6 +408,9 @@ use your own instead.
   tree) is refused.
 - A task whose key folds a file the run's commit lacks (untracked, or
   gitignored and named outright) fails, naming the file: no worker has it.
+- A task's `exec.timeout` counts from its start on its worker: the wait
+  for a worker still booting is not its run (the executor declares
+  `timeouts`).
 - A worker that stops answering, stops saying it holds a task, or cannot
   run one (a full disk) gets no more work, and its tasks run again on
   another. A task two such workers had begun fails, naming both; one an

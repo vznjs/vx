@@ -198,6 +198,11 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   runs on a distributed run's orchestrator). One with `exec.sandbox` or
   `exec.remote: false`, or one the run holds for itself (requested), is
   not carried.
+- A `timeouts` executor enforces `timeoutMs` where it runs the command,
+  timed from its start, and reports `timedOut`; core arms no clock for
+  it, so the wait for a worker still booting is not the task's run time
+  (a 0.5 s task with a 2 s timeout was killed unrun, 2026-10-24). The
+  run's stop still aborts its request.
 - An `exclusive` executor runs every task of the run (owner, 2026-10-24:
   no task ever runs on a distributed run's orchestrator; only hits
   restore there). Nothing is pinned for it: `exec.remote: false`,
