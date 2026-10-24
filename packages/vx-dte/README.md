@@ -165,9 +165,8 @@ permissions: { id-token: write, contents: read, actions: write }
 steps:
   - uses: actions/checkout@v4
   - uses: oven-sh/setup-bun@v2
-  # The root's packages only (vx and the plugins): the workers run the
-  # tasks. A full install when a task must run here (exec.remote: false,
-  # an interactive one, a persistent one you asked for).
+  # The root's packages only (vx and the plugins): no task runs here,
+  # the workers run them all and this job reads their results.
   - run: bun install --frozen-lockfile --filter './'
   - run: bun vx run build test --all
     env: { GITHUB_TOKEN: '${{ github.token }}' }
