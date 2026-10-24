@@ -259,22 +259,6 @@ its cores. Orange is warm-up, grey is billed and idle.
 - **vx DTE** ends first or level in all four. One machine bills less
   when one task sets the end.
 
-## What is still slow
-
-Main's three runs after [#4168](https://github.com/vznjs/vx/pull/4168):
-
-| Run | Tasks run | Workers | Plan | Real | CPU used |
-| --- | --- | --- | --- | --- | --- |
-| [ef42557](https://github.com/vznjs/vx/actions/runs/40032885630) | 25 | 3 | 106.7 s | 147.0 s | 64% |
-| [417328e](https://github.com/vznjs/vx/actions/runs/40032902248) | 27 | 4 | 109.4 s | 116.7 s | 56% |
-| [b910453](https://github.com/vznjs/vx/actions/runs/40033392306) | 9 | 3 | 49.5 s | 86.5 s | 40% |
-
-- **Runs end 7 to 40 s after the plan.** On b910453 the last worker was
-  asked at 51.3 s, after the plan's own end.
-- **CPU used is 40% to 64%**, against the simulator's 90%. Bookings miss
-  both ways: on 417328e small#1 booked 3.0 cores and used 1.9.
-- **Every worker warms up 15 to 29 s** before its first task.
-
 ## What it costs, next to Nx Cloud
 
 Nx Cloud is the closest product. Since 2026-10-22 its
