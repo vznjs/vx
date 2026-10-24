@@ -386,6 +386,18 @@ export interface WhyDidThisRerun {
 }
 
 /**
+ * Failed tasks in a run that wrote the cache: a passing task beside one
+ * ran past a failed dependency (--continue) and was never saved.
+ */
+function failedWithWrites(db: Database, id: string | null): number {
+  if (id === null) return 0
+  const row = db
+    .query('SELECT cache_policy AS p, failed_count AS f FROM invocations WHERE run_id = ?')
+    .get(id) as { p: string; f: number } | null
+  return row !== null && writesCache(row.p) ? row.f : 0
+}
+
+/**
  * The endings an UNCHANGED cache key can have. A re-execution is told apart
  * by the evidence the index holds: every one used to blame `--no-cache` /
  * `--force`, when the previous run on the key had failed (a failure saves
@@ -431,17 +443,9 @@ function unchangedKeyNote(
     prev.status === 'success' &&
     prev.cacheHit === 0
   ) {
-    const failedWithWrites = (id: string | null): number => {
-      if (id === null) return 0
-      const row = db
-        .query('SELECT cache_policy AS p, failed_count AS f FROM invocations WHERE run_id = ?')
-        .get(id) as { p: string; f: number } | null
-      const writes = row !== null && writesCache(row.p)
-      return writes ? (row?.f ?? 0) : 0
-    }
-    const before = failedWithWrites(prev.runId)
+    const before = failedWithWrites(db, prev.runId)
     if (before > 0) {
-      const now = failedWithWrites(runId)
+      const now = failedWithWrites(db, runId)
       if (createdAt === undefined && now > 0) {
         return `cache key unchanged — neither run saved it: each ran beside a failed task (${now} failed in this one), and a task run past a failed dependency (--continue) is never cached`
       }
@@ -802,7 +806,9 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
   // A failed previous run kept no fingerprints; the last run that saved an
   // entry still names what moved since then (the edit an agent made to fix
   // the failure, or the one that broke it).
-  if (cur.length > 0 && old.length === 0 && !isPassStatus(prev.status)) {
+  // So did one that passed beside a failed task (--continue).
+  const tainted = isPassStatus(prev.status) && failedWithWrites(db, prev.runId) > 0
+  if (cur.length > 0 && old.length === 0 && (!isPassStatus(prev.status) || tainted)) {
     const saved = db
       .query(
         `SELECT run_id AS runId, hash FROM runs
@@ -813,7 +819,7 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
       .get(project, task, this_.id) as { runId: string | null; hash: string } | undefined
     if (saved) {
       const { entries, unchangedCount } = diffKeyComponents(loadEntryInputs(db, saved.hash), cur)
-      const since = `run ${saved.runId}, the last that saved an entry (the previous run ended ${prev.status})`
+      const since = `run ${saved.runId}, the last that saved an entry (${tainted ? 'the previous run ran beside a failed task, so it was not saved' : `the previous run ended ${prev.status}`})`
       return {
         runId,
         taskId,
@@ -840,7 +846,9 @@ export function cacheKeyDiff(db: Database, runId: string, taskId: string): Cache
         ? `this run ended ${this_.status}`
         : old.length === 0 && !isPassStatus(prev.status)
           ? `the previous run ended ${prev.status}`
-          : null
+          : old.length === 0 && tainted
+            ? 'the previous run ran beside a failed task'
+            : null
     return {
       runId,
       taskId,

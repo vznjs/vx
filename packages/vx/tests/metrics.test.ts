@@ -722,6 +722,55 @@ describe('cacheKeyDiff', () => {
       )
     })
   })
+  // A run past a failed dependency (--continue) passes and saves nothing:
+  // its successor blamed a prune and named no input, though the last saved
+  // entry still says what moved.
+  it('diffs against the last run that saved an entry when the previous one ran beside a failure', () => {
+    withCache((cache) => {
+      const run = (hash: string, runId: string, startedAt: number, failedCount = 0) =>
+        cache.recordRunBundle({
+          runs: [mkRun({ hash, project: 'pkg', task: 'test', runId, startedAt })],
+          invocation: mkInvocation({
+            runId,
+            startedAt,
+            cachePolicy: 'local:rw,remote:',
+            failedCount,
+          }),
+        })
+      run('hA', 'r-1', 1000)
+      run('hB', 'r-2', 2000, 1)
+      run('hC', 'r-3', 3000)
+      seedEntryInputs(cache, 'hA', [{ kind: 'file', name: 'a.ts', hash: 'x' }])
+      seedEntryInputs(cache, 'hC', [{ kind: 'file', name: 'a.ts', hash: 'z' }])
+      const diff = cacheKeyDiff(cache.dbHandle(), 'r-3', 'pkg#test')
+      expect([diff.previousRunId, diff.entries.map((e) => e.name), diff.note]).toEqual([
+        'r-1',
+        ['a.ts'],
+        '1 cache-key component(s) changed since run r-1, the last that saved an entry (the previous run ran beside a failed task, so it was not saved)',
+      ])
+    })
+    // With no saved run before it, the cause is still named, not a prune.
+    withCache((cache) => {
+      for (const [hash, runId, startedAt, failedCount] of [
+        ['hB', 'r-2', 2000, 1],
+        ['hC', 'r-3', 3000, 0],
+      ] as const) {
+        cache.recordRunBundle({
+          runs: [mkRun({ hash, project: 'pkg', task: 'test', runId, startedAt })],
+          invocation: mkInvocation({
+            runId,
+            startedAt,
+            cachePolicy: 'local:rw,remote:',
+            failedCount,
+          }),
+        })
+      }
+      seedEntryInputs(cache, 'hC', [{ kind: 'file', name: 'a.ts', hash: 'z' }])
+      expect(cacheKeyDiff(cache.dbHandle(), 'r-3', 'pkg#test').note).toBe(
+        'cache key changed but input fingerprints are unavailable — the previous run ran beside a failed task and saved no entry; only the key change is known',
+      )
+    })
+  })
 })
 
 describe('getRun', () => {
