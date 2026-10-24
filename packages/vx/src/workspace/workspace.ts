@@ -19,7 +19,7 @@ import {
   relPosix,
   UserError,
 } from '../util/index.js'
-import { gitTop, workspaceFile, workspaceRootOf } from '../handoff.js'
+import { gitTop, WORKSPACE_CONFIG_FILENAMES, workspaceFile, workspaceRootOf } from '../handoff.js'
 import { repoIdOf } from './repo-id.js'
 
 export interface ProjectMeta {
@@ -220,6 +220,7 @@ export function pathName(root: string, dir: string): string {
 }
 
 const CONFIG_RANK = new Map(PROJECT_CONFIG_FILENAMES.map((n, i) => [n, i]))
+const WORKSPACE_RANK = new Map(WORKSPACE_CONFIG_FILENAMES.map((n, i) => [n, i]))
 
 /** A directory holding a vx config, and the config file precedence picked there. */
 export interface ConfigDir {
@@ -235,6 +236,8 @@ export interface ProjectConfigs {
   readonly configs: ConfigDir[]
   /** Absolute: review copies in a directory with no config, which no `vx lock` rewrites. */
   readonly strayReviews: string[]
+  /** Absolute: config files a higher-precedence one beside them hides, the root's workspace config among them, by the one read. */
+  readonly shadowed: { file: string; read: string }[]
 }
 
 /**
@@ -268,19 +271,33 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
     if (names === undefined) byDir.set(dir, [base])
     else names.push(base)
   }
+  const shadowed: { file: string; read: string }[] = []
+  // The files among `names` (ranked), the first of them the one read: git
+  // lists a tracked config deleted from the worktree, and a directory may
+  // carry a config's name. Every other file is shadowed, said by `vx lock`.
+  const firstFile = async (
+    dir: string,
+    names: string[],
+    rank: ReadonlyMap<string, number>,
+  ): Promise<string | null> => {
+    names.sort((a, b) => rank.get(a)! - rank.get(b)!)
+    const files = (
+      await Promise.all(names.map(async (n) => ((await isFile(path.join(dir, n))) ? n : null)))
+    ).filter((n) => n !== null)
+    for (const n of files.slice(1))
+      shadowed.push({ file: path.join(dir, n), read: path.join(dir, files[0]!) })
+    return files[0] === undefined ? null : path.join(dir, files[0])
+  }
   const found = await Promise.all(
     [...byDir].map(async ([rel, names]) => {
       const dir = rel === '' ? root : path.join(root, rel)
-      names.sort((a, b) => CONFIG_RANK.get(a)! - CONFIG_RANK.get(b)!)
-      // A file each: git lists a tracked config deleted from the worktree,
-      // and a directory may carry a config's name.
-      for (const name of names) {
-        const configPath = path.join(dir, name)
-        if (await isFile(configPath)) return { dir, configPath }
-      }
-      return null
+      const configPath = await firstFile(dir, names, CONFIG_RANK)
+      return configPath === null ? null : { dir, configPath }
     }),
   )
+  // The root's own, asked by name: a walk outside git lists no dot-directory.
+  await firstFile(root, [...WORKSPACE_CONFIG_FILENAMES], WORKSPACE_RANK)
+  shadowed.sort((a, b) => (a.file < b.file ? -1 : 1))
   const configs = found
     .filter((f): f is ConfigDir => f !== null)
     .sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0))
@@ -290,7 +307,7 @@ export async function findProjectConfigs(root: string): Promise<ProjectConfigs> 
     .filter((dir) => !configured.has(dir))
     .map((dir) => path.join(dir, REVIEW_FILE))
     .sort()
-  return { configs, strayReviews }
+  return { configs, strayReviews, shadowed }
 }
 
 async function isFile(p: string): Promise<boolean> {

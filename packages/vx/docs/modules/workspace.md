@@ -45,6 +45,7 @@ export const REVIEW_FILE: string
 export interface ProjectConfigs {
   readonly configs: ConfigDir[]
   readonly strayReviews: string[]
+  readonly shadowed: { file: string; read: string }[]
 }
 
 // A project's config file names, in the order discovery prefers them.
@@ -140,7 +141,9 @@ dot-directories and `node_modules`. A config at or under a nested
 `.vx/workspace.*` is that workspace's and is left out. Where a directory
 holds several, `PROJECT_CONFIG_FILENAMES` order picks the first that is a
 file (a directory may carry a config's name; git lists a tracked config
-deleted from the worktree). The same listing names each `vx.lock.json`
+deleted from the worktree). Every other file there is `shadowed`, with
+the one read, and so is a root `.vx/workspace.*` behind another: `vx lock`
+names each, since an edit to it changes nothing. The same listing names each `vx.lock.json`
 (`REVIEW_FILE`): one in a directory with no config is `strayReviews`,
 which `vx lock --check` names. Left where a project's config was
 deleted, it is a source of the project around it, and a `**` reader

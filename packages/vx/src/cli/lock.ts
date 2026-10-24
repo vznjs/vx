@@ -135,12 +135,14 @@ async function audit(root: string, warn: (message: string) => void): Promise<Gra
     resolved,
     reviewFiles: true,
     strayReviews: [],
+    shadowed: [],
   }
   try {
     const { workspaceConfig, plugins, cacheDir } = await loadCliWorkspace(root)
     out.reviewFiles = resolveSetting('lock.reviewFiles', workspaceConfig).value !== false
-    const { configs: found, strayReviews } = await findProjectConfigs(root)
+    const { configs: found, strayReviews, shadowed } = await findProjectConfigs(root)
     out.strayReviews = strayReviews
+    out.shadowed = shadowed
     // The one load that evaluates: every reader reads the lock this writes.
     const configs = await loadProjectConfigs(found.map((f) => f.configPath))
     // In the lock's form: a field left `undefined` is a key the stored JSON
@@ -233,6 +235,8 @@ interface GraphCheck {
   reviewFiles: boolean
   /** Review copies in a directory no config is in (`findProjectConfigs`). */
   strayReviews: string[]
+  /** Config files a higher-precedence one beside them hides (`findProjectConfigs`). */
+  shadowed: { file: string; read: string }[]
 }
 
 function configured(all: readonly ProjectMeta[]): ConfiguredMeta[] {
@@ -365,6 +369,13 @@ async function writeLock(
   ])
   const n = metas.length
   say(`${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}`)
+  // A second config beside the one read was edited and nothing changed.
+  for (const { file, read } of check.shadowed)
+    sayNotice(
+      'warn',
+      'vx lock',
+      `${relPosix(root, file)} is not read: ${path.basename(read)} beside it is — delete one`,
+    )
   // Named here too: a lock that wrote clean failed the `--check` after it.
   if (check.reviewFiles)
     for (const file of await strayCopies(check)) sayNotice('warn', 'vx lock', strayLine(root, file))
