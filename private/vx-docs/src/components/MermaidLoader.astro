@@ -10,6 +10,28 @@
   // its own chunk), and re-renders when Starlight toggles the theme.
   const sources = new WeakMap<Element, string>()
 
+  // Setting any xyChart variable drops the theme's text colours, so all
+  // are given, from the site's tokens.
+  function chartColors(): Record<string, string> {
+    const css = getComputedStyle(document.documentElement)
+    const token = (name: string): string => css.getPropertyValue(name).trim()
+    const text = token('--vx-text')
+    const muted = token('--vx-muted')
+    return {
+      backgroundColor: 'transparent',
+      plotColorPalette: token('--vx-accent'),
+      titleColor: text,
+      xAxisLabelColor: text,
+      yAxisLabelColor: muted,
+      xAxisTitleColor: muted,
+      yAxisTitleColor: muted,
+      xAxisLineColor: muted,
+      yAxisLineColor: muted,
+      xAxisTickColor: muted,
+      yAxisTickColor: muted,
+    }
+  }
+
   async function renderMermaid() {
     const blocks = Array.from(
       document.querySelectorAll<HTMLElement>('pre.mermaid'),
@@ -24,6 +46,9 @@
       securityLevel: 'loose',
       theme: dark ? 'dark' : 'neutral',
       fontFamily: 'inherit',
+      // Charts in the site's accent on the page's own background, not
+      // Mermaid's blue on a grey card.
+      themeVariables: { xyChart: chartColors() },
     })
 
     for (const el of blocks) {
