@@ -54,8 +54,8 @@ flowchart LR
 ```
 
 - Workers and the run meet at a relay, since CI runners take no inbound
-  connection. Host your own: [`@vzn/vx-dte-relay`](https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay)
-  deploys to Cloudflare's free plan.
+  connection. Host your own: [Deploy a relay](../relay/) takes four
+  steps, on Cloudflare's free plan, Bun or Docker.
 - The relay carries orders and status, never files. A worker saves each
   task's outputs to the cache the run reads, so they need one cache in
   common ([Remote cache](../remote-cache/)).

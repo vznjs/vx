@@ -1,0 +1,133 @@
+---
+title: Deploy a relay
+description: Host the relay a distributed run's workers meet at, and point dte() at it.
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components'
+
+A [distributed run](../distributed-runs/) needs a relay: CI runners take
+no inbound connection, so the run and its workers all dial out to it. You
+host your own. It runs on Cloudflare's free plan, or on Bun or Docker
+anywhere your CI can reach.
+
+<Steps>
+
+1. **Deploy the relay.**
+
+   <Tabs syncKey="relay-host">
+   <TabItem label="Cloudflare (button)">
+
+   [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay)
+
+   The button copies the relay into a new repository of yours and deploys
+   it. It asks for one var, `ALLOW` (step 2). The relay's URL is the
+   Worker's, such as `https://vx-dte-relay.<you>.workers.dev`.
+
+   </TabItem>
+   <TabItem label="Cloudflare (wrangler)">
+
+   From `packages/vx-dte-relay` in a checkout of the vx repository, with
+   `ALLOW` filled in `wrangler.jsonc`'s `vars` first:
+
+   ```sh
+   bun install
+   bunx wrangler login
+   bunx wrangler deploy
+   ```
+
+   </TabItem>
+   <TabItem label="Bun">
+
+   From a checkout of the vx repository:
+
+   ```sh
+   bun packages/vx-dte-relay/src/bun.ts \
+     --allow https://token.actions.githubusercontent.com:acme/app:ci.yml \
+     --allow https://token.actions.githubusercontent.com:acme/app:vx-worker.yml \
+     --audience https://relay.example.com --port 8080
+   ```
+
+   `--audience` is the relay's public URL. Put it behind HTTPS.
+
+   </TabItem>
+   <TabItem label="Docker">
+
+   ```sh
+   docker build -t vx-dte-relay packages/vx-dte-relay
+   docker run -p 8080:8080 vx-dte-relay \
+     --allow https://token.actions.githubusercontent.com:acme/app:ci.yml \
+     --allow https://token.actions.githubusercontent.com:acme/app:vx-worker.yml \
+     --audience https://relay.example.com
+   ```
+
+   </TabItem>
+   </Tabs>
+
+2. **Say who may use it: `ALLOW`.** One entry per workflow,
+   `issuer:owner/repo:workflow`, space separated. List both the
+   workflow that runs `vx run` and the workers' workflow; every other
+   token is refused.
+
+   ```jsonc title="wrangler.jsonc"
+   "vars": {
+     "ALLOW": "https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml"
+   }
+   ```
+
+   - GitHub Actions: `https://token.actions.githubusercontent.com:acme/app:ci.yml`
+   - GitLab: `https://gitlab.com:group/project:.gitlab-ci.yml`
+
+   On Bun and Docker each entry is one `--allow`. GitLab names a project
+   by its full path, `group/subgroup/project`.
+
+   <Aside type="caution" title="A plain var, not a secret">
+     `ALLOW` names repositories, nothing secret. Keep it in your copy's
+     `wrangler.jsonc`: each deploy sets vars from that file, so one set
+     only in the dashboard is lost on the next deploy.
+   </Aside>
+
+3. **Check it answers.** A request with no token is refused by name:
+
+   ```sh
+   curl https://relay.example.com/v1/runs/$(uuidgen)/socket
+   ```
+
+   ```text
+   {"error":"no bearer token"}
+   ```
+
+   A Cloudflare relay with an empty `ALLOW` says so instead:
+   `this relay's ALLOW is empty: it admits no run`.
+
+4. **Name it in `dte()`.**
+
+   ```ts title=".vx/workspace.ts"
+   dte({
+     relay: 'https://relay.example.com',
+     workers: { small: { max: 8, cpu: 4, memory: '16GB' } },
+     adapter: github(),
+   })
+   ```
+
+   Each side proves itself with its job's OIDC token for the relay's URL,
+   so no secret is stored. On GitHub Actions both workflows need
+   `permissions: { id-token: write }`; on GitLab the orchestrator and
+   worker jobs ask for one: `id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }`.
+
+</Steps>
+
+---
+
+## What to know
+
+- The relay carries orders and status, never files: outputs go through
+  your [remote cache](../remote-cache/).
+- On Cloudflare each run is one Durable Object, and the relay fits the
+  free plan: websocket messages count 20 to one Durable Object request,
+  against 100,000 a day, and it writes no row. On Bun and Docker runs
+  live in memory, and a restart ends the runs it was carrying.
+- `AUDIENCE` (Cloudflare) is unset by default: tokens must name the URL
+  the relay is reached at. Set it only when they name another one.
+
+See [`@vzn/vx-dte-relay`](https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay)
+for every option and the API to mount it in a server of your own.
