@@ -14,12 +14,12 @@
       ]
     },
     "check.perf": {
-      "description": "perf-guard.ts: hot-path counts and times against perf-baseline.json",
+      "description": "perf-guard.ts then pr-bench.ts: hot-path counts and vx vs Turborepo ratios against their baselines",
       "dependsOn": [
         "install"
       ],
       "exec": {
-        "command": "bun perf-guard.ts",
+        "command": "bun perf-guard.ts && bun pr-bench.ts",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
@@ -40,40 +40,11 @@
         "files": [
           "perf-guard.ts",
           "perf-baseline.json",
-          "package.json"
-        ]
-      },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
-    },
-    "check.vs-turbo": {
-      "description": "pr-bench.ts: vx vs Turborepo ratios against pr-bench-baseline.json",
-      "dependsOn": [
-        "install"
-      ],
-      "exec": {
-        "command": "bun pr-bench.ts",
-        "env": {
-          "define": {
-            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
-          }
-        },
-        "sandbox": {
-          "allow": {
-            "read": [
-              "**/*"
-            ]
-          }
-        }
-      },
-      "inputs": {
-        "files": [
           "pr-bench.ts",
           "pr-bench-baseline.json",
+          "quiet.ts",
           "bench-env.ts",
+          "edges.ts",
           "package.json"
         ]
       },
