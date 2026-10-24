@@ -268,9 +268,9 @@ describe('examples/ci', () => {
   }
 
   it('runs the lines the workflow runs', () => {
-    expect(
-      [...workflow.matchAll(/^\s+- run: >?\s*bun (vx \w+[^\n]*)/gm)].map((m) => m[1]),
-    ).toEqual(['vx lock --check', 'vx run ci'])
+    expect([...workflow.matchAll(/^\s+- run: >?\s*bun (vx \w+[^\n]*)/gm)].map((m) => m[1])).toEqual(
+      ['vx lock --check', 'vx run ci'],
+    )
     expect(workflow).toContain("&& '--affected'")
     expect(workflow).toContain("|| '--all' }}")
   })
