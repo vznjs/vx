@@ -943,6 +943,8 @@ async function runOnBus(
     // local-only runs never reach here, so their behavior + perf is
     // unchanged (no upfront key pass, no local probing).
     let prefetchDone: Promise<void> = Promise.resolve()
+    /** `--profile`'s run events beside the tasks: the cache probe's. */
+    const runSpans: Record<string, unknown>[] = []
     // A remote that is read answers which tasks it holds: demand settles
     // on that answer, a failed prefetch settling it on none.
     const prefetchSettles = prepared.hasRemoteLayer && policy.remoteRead
@@ -966,6 +968,7 @@ async function runOnBus(
           concurrency: options.downloadConcurrency ?? networkConcurrency(),
           remoteRead: policy.remoteRead,
           remoteWrite: policy.remoteWrite,
+          spans: options.profile === undefined ? undefined : runSpans,
         }),
       )
     }
@@ -1367,7 +1370,9 @@ async function runOnBus(
             target: profile,
             cwd: options.cwd,
             outcomes: list,
+            runStartNs: runStartHrTimeNs,
             executors: executors.map((e) => executorProfile(e, fault)),
+            spans: runSpans,
           }),
         )
         log.status(`vx: profile written to ${wrote}`)

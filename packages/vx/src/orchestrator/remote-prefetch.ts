@@ -51,6 +51,22 @@ export interface PrefetchArgs {
    * remote, and those every store answered it does not: they run.
    */
   held?: ((ids: readonly string[], missed: readonly string[]) => void) | undefined
+  /** `--profile`'s run events: the keys' derivation and the batch probe, `ts` on `performance.now()`. */
+  spans?: Record<string, unknown>[] | undefined
+}
+
+function span(spans: PrefetchArgs['spans'], name: string, start: number, args: object): void {
+  const end = performance.now()
+  spans?.push({
+    name,
+    cat: 'cache',
+    ph: 'X',
+    ts: start * 1000,
+    dur: (end - start) * 1000,
+    pid: 1,
+    tid: 0,
+    args,
+  })
 }
 
 /**
@@ -84,7 +100,9 @@ export function startRemotePrefetch(args: PrefetchArgs): Promise<void> {
 }
 
 async function runPrefetch(args: PrefetchArgs): Promise<void> {
+  const keysAt = performance.now()
   const stableKeys = await deriveStableKeys(args)
+  span(args.spans, 'stable keys', keysAt, { keys: stableKeys.length })
   // `complete`: every store asked answered for every key, so one it does
   // not hold is a miss; else only its hits are known.
   const tell = (holds: (hash: string) => boolean, complete: boolean): void =>
@@ -124,6 +142,7 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
   const kept = args.cache.remoteKnown?.(uniqueHashes)
   const known = kept === undefined || kept.size === 0 ? undefined : kept
   if (known !== undefined) pool.push(toPrefetch.filter((k) => known.has(k.hash)))
+  const probeAt = performance.now()
   const asked = args.cache.remoteHasMany?.(uniqueHashes)
   // Demand hears the index only when no probe will answer: a key the
   // index lacks may still be held (a PR's CI stored main's next tree), and
@@ -144,6 +163,11 @@ async function runPrefetch(args: PrefetchArgs): Promise<void> {
   // restored, and small#1 joined to nothing (2026-10-23). A run that plans
   // nothing pulls instead, as before.
   let present = (await asked) ?? null
+  if (asked !== undefined)
+    span(args.spans, 'remote probe', probeAt, {
+      keys: uniqueHashes.length,
+      held: present?.size ?? null,
+    })
   if (present === null && args.held !== undefined && asked !== undefined)
     present = (await args.cache.remoteHasEach?.(uniqueHashes, args.concurrency)) ?? null
   if (!early) tell((h) => held?.has(h) === true || present?.has(h) === true, present !== null)

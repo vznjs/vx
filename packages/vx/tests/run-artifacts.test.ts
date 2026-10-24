@@ -59,6 +59,7 @@ describe('writeRunProfile', () => {
 
   it('emits a Chrome-trace JSON shape with one complete event per task', async () => {
     const out = await writeRunProfile({
+      runStartNs: 0n,
       target: path.join(tmp, 'profile.json'),
       cwd: tmp,
       outcomes: [
@@ -91,6 +92,7 @@ describe('writeRunProfile', () => {
     const now = performance.now()
     const hr = process.hrtime.bigint()
     const out = await writeRunProfile({
+      runStartNs: 0n,
       target: path.join(tmp, 'profile.json'),
       cwd: tmp,
       outcomes: [
@@ -122,6 +124,7 @@ describe('writeRunProfile', () => {
 
   it('assigns a distinct tid per project (so parallel tasks land on separate lanes)', async () => {
     const out = await writeRunProfile({
+      runStartNs: 0n,
       target: path.join(tmp, 'profile.json'),
       cwd: tmp,
       outcomes: [
@@ -158,6 +161,7 @@ describe('writeRunProfile', () => {
     const span = (project: string, task: string, from: bigint, to: bigint): TaskOutcome =>
       outcome({ node: execNode(project, task), wallclockStartNs: from, wallclockEndNs: to })
     const out = await writeRunProfile({
+      runStartNs: 0n,
       target: path.join(tmp, 'profile.json'),
       cwd: tmp,
       outcomes: [
@@ -180,8 +184,35 @@ describe('writeRunProfile', () => {
     })
   })
 
+  // Tasks are timed from the run's start, an executor's events and the
+  // run's own spans on performance.now(): a CI run's DTE marks and cache
+  // probe sat the run's setup late beside its tasks (2026-10-24).
+  it('an event and a task taken at one moment land at one ts', async () => {
+    const runStartNs = process.hrtime.bigint()
+    await Bun.sleep(30)
+    const nowNs = process.hrtime.bigint() - runStartNs
+    const nowUs = performance.now() * 1000
+    const out = await writeRunProfile({
+      runStartNs,
+      target: path.join(tmp, 'profile.json'),
+      cwd: tmp,
+      outcomes: [
+        outcome({ node: execNode('pkg', 'build'), wallclockStartNs: nowNs, wallclockEndNs: nowNs }),
+      ],
+      spans: [{ name: 'probe', ph: 'X', ts: nowUs, dur: 0, pid: 1, tid: 0 }],
+      executors: [[{ name: 'mark', ph: 'i', ts: nowUs, pid: 1, tid: 1 }]],
+    })
+    const parsed = JSON.parse(await readFile(out, 'utf8')) as {
+      traceEvents: Array<{ name: string; ts?: number }>
+    }
+    const ts = Object.fromEntries(parsed.traceEvents.map((e) => [e.name, e.ts]))
+    expect(Math.abs(ts['probe']! - ts['pkg#build']!)).toBeLessThan(2_000)
+    expect(Math.abs(ts['mark']! - ts['pkg#build']!)).toBeLessThan(2_000)
+  })
+
   it('omits tasks without hrtime spans (group tasks, legacy outcomes)', async () => {
     const out = await writeRunProfile({
+      runStartNs: 0n,
       target: path.join(tmp, 'profile.json'),
       cwd: tmp,
       outcomes: [
@@ -202,6 +233,7 @@ describe('writeRunProfile', () => {
 
   it('an outcome with a start and no end is not an event: its duration is unknown', async () => {
     const out = await writeRunProfile({
+      runStartNs: 0n,
       target: path.join(tmp, 'profile.json'),
       cwd: tmp,
       outcomes: [outcome({ node: execNode('pkg', 'cut'), wallclockStartNs: 5_000n })],
@@ -212,6 +244,7 @@ describe('writeRunProfile', () => {
 
   it('a relative target resolves against cwd, not the process directory', async () => {
     const out = await writeRunProfile({
+      runStartNs: 0n,
       target: path.join('nested', 'profile.json'),
       cwd: tmp,
       outcomes: [],
@@ -222,6 +255,7 @@ describe('writeRunProfile', () => {
 
   it('includes cpuMs / peakRssBytes / hash inside the args object when available', async () => {
     const out = await writeRunProfile({
+      runStartNs: 0n,
       target: path.join(tmp, 'profile.json'),
       cwd: tmp,
       outcomes: [
@@ -255,6 +289,7 @@ describe('writeRunProfile', () => {
         wallclockEndNs: 1_000n,
       })
     const out = await writeRunProfile({
+      runStartNs: 0n,
       target: path.join(tmp, 'profile.json'),
       cwd: tmp,
       outcomes: [
@@ -281,6 +316,7 @@ describe('writeRunProfile', () => {
     // either the serialize would throw OR a number > 2^53 would lose
     // precision silently. Pin: very-large hrtime values survive.
     const out = await writeRunProfile({
+      runStartNs: 0n,
       target: path.join(tmp, 'profile.json'),
       cwd: tmp,
       outcomes: [
