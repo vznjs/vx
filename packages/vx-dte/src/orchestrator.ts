@@ -26,6 +26,7 @@ import {
 } from '@vzn/vx'
 import {
   HELD_EVERY,
+  HOST_ENV,
   type WorkerInfo,
   type DepOrder,
   type RunOrder,
@@ -604,7 +605,7 @@ export class Orchestrator {
       // A task sent here leaves its outputs here for its dependants.
       a.has.add(req.taskId)
       const node = nodes?.get(req.taskId)
-      const env = defined(req.env)
+      const env = defined(req.env, req.envDefine)
       return {
         job,
         order: {
@@ -643,7 +644,7 @@ export class Orchestrator {
                   task: s.taskId,
                   command: s.command,
                   cwd: path.relative(this.o.root, s.cwd),
-                  env: defined(s.env),
+                  env: defined(s.env, {}),
                   ...(s.readyWhen === undefined ? {} : { readyWhen: s.readyWhen }),
                   ...(s.timeoutMs === undefined ? {} : { timeoutMs: s.timeoutMs }),
                   ...(s.sandbox === undefined
@@ -1818,9 +1819,18 @@ function runtimeOrders(req: ExecuteRequest): { runtime?: RuntimeOrder[] } {
   return runtime.length === 0 ? {} : { runtime }
 }
 
-/** `env` without its unset names, as it travels. */
-function defined(env: NodeJS.ProcessEnv): Record<string, string> {
+/**
+ * `env` as it travels: no unset name, and no name whose value is the
+ * worker's (`HOST_ENV`) unless `define` sets it. A defined `HOME` ran
+ * with the worker's own, saved under a key that folded the defined one
+ * (2026-10-24).
+ */
+function defined(
+  env: NodeJS.ProcessEnv,
+  define: Readonly<Record<string, string>>,
+): Record<string, string> {
   const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(env)) if (v !== undefined) out[k] = v
+  for (const [k, v] of Object.entries(env))
+    if (v !== undefined && (!HOST_ENV.includes(k) || k in define)) out[k] = v
   return out
 }

@@ -56,7 +56,8 @@ it('a worker runs the orchestrator’s env with its own root, host names and PAT
     expect(
       localEnv(
         {
-          HOME: '/orc/home',
+          // Sent only when the task's `env.define` sets it.
+          TMPDIR: '/defined/tmp',
           PATH: '/orc/ws/node_modules/.bin:/orc/ws2/bin:/orc/ws:/opt/orc',
           VX_RUN_WORKSPACE: '/orc/ws',
           X: '1',
@@ -69,6 +70,7 @@ it('a worker runs the orchestrator’s env with its own root, host names and PAT
       ),
     ).toMatchObject({
       HOME: '/worker/home',
+      TMPDIR: '/defined/tmp',
       PATH: '/worker/ws/node_modules/.bin:/worker/ws:/usr/bin',
       VX_RUN_WORKSPACE: '/worker/ws',
       X: '1',
@@ -1416,6 +1418,25 @@ it('an order names its key and each dependency’s; the result comes back by the
     // The hit, held here, put where workers read before its first order;
     // the key a worker saved is there already.
     expect(h.store.shared).toEqual(['k-lib-hit'])
+  } finally {
+    await h.stop()
+  }
+})
+
+// A defined HOME ran with the worker's own, saved under a key that folded
+// the defined one (2026-10-24).
+it('sends a host name such as HOME only when the task’s env.define sets it', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    void h.o.execute({
+      ...h.req('t1'),
+      env: { HOME: '/orc/home', TMPDIR: '/defined/tmp', X: '1' },
+      envDefine: { TMPDIR: '/defined/tmp' },
+    })
+    expect(await a.batches()).toEqual([['t1']])
+    expect(a.orders[0]!.env).toEqual({ TMPDIR: '/defined/tmp', X: '1' })
   } finally {
     await h.stop()
   }
