@@ -303,6 +303,29 @@ it('gives up a started worker past twice the first of its size’s join, and sto
   }
 })
 
+// Main db1702f (2026-10-24): three smalls GitHub queued 60 s were given up
+// at their join limit and others asked; the three joined later, were told
+// to exit, and the run ended at 232 s against an ideal of 141 s. A worker
+// given up for lateness that joins after all is taken.
+it('takes a worker given up past its join limit that joins after all', async () => {
+  const overdue: string[] = []
+  const h = await harness(new Map([node('t1')]), undefined, 60_000, undefined, undefined, {
+    overdue: (id) => overdue.push(id),
+  })
+  try {
+    h.o.spawned('worker#1', { size: 'small', cpu: 1, memory: 1 })
+    h.o.spawned('worker#2', { size: 'small', cpu: 1, memory: 1 })
+    await h.worker(1, 'worker#1')
+    for (let i = 0; i < 50 && overdue.length === 0; i++) await Bun.sleep(20)
+    expect(overdue).toEqual(['worker#2'])
+    const late = await h.worker(1, 'worker#2')
+    const first = (await late.poll()).map((m) => m.body as { type: string; name?: string })
+    expect(first[0]).toMatchObject({ type: 'welcome', name: 'worker#2' })
+  } finally {
+    await h.stop()
+  }
+})
+
 /** A cache by key, in memory: what workers saved, and each restore asked. */
 function fakeArtifacts() {
   const saved = new Map<string, { stdout: string; stderr: string }>()
