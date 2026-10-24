@@ -99,7 +99,7 @@ export function resolveNxCacheConfig(
  * the prefetch pass calls `get`) is a GET whose body is cancelled before
  * it answers, so no probe holds a connection. It kept the response for a
  * `get` of the same hash, which no caller makes. Bodies stream: `get` returns the `fetch` Response and `put`
- * sends the Blob core hands it. `put` treats `409` as success:
+ * sends the Blob core hands it. `put` treats any 2xx and `409` as success:
  * the record is immutable and content-addressed, so "already there" is the
  * outcome wanted. An auth failure (401/403) throws ONCE — core
  * reports it — and then turns the layer off for the rest of the process
@@ -243,7 +243,8 @@ export class NxRemoteCache implements RemoteCacheLayer {
     if (this.disabled || this.writesRefused) return
     const res = await this.request('PUT', hash, body)
     if (res === undefined) return
-    if (res.status === 200 || res.status === 202 || res.status === 409) return
+    // The spec answers 200; a store behind it may say 201 or 204.
+    if (res.ok || res.status === 409) return
     throw await refusal(res)
   }
 }
