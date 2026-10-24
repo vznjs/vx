@@ -27,7 +27,7 @@ declare global {
 /** The top navigation, in order. `href` is under the site's base. */
 export const SECTIONS: readonly { id: SectionId; label: string; href: string }[] = [
   { id: 'features', label: 'Features', href: 'features/' },
-  { id: 'docs', label: 'Docs', href: 'quickstart/' },
+  { id: 'docs', label: 'Docs', href: 'docs/' },
   { id: 'guides', label: 'Guides', href: 'guides/' },
   { id: 'reference', label: 'Reference', href: 'cli/' },
   { id: 'blog', label: 'Blog', href: 'blog/' },
@@ -44,6 +44,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
     {
       label: 'Get started',
       items: [
+        { label: 'What is vx?', link: '/docs/' },
         { label: 'Quickstart', link: '/quickstart/' },
         { label: 'Upgrading to 1.0', link: '/guides/upgrading/' },
       ],

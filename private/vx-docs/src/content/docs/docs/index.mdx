@@ -1,0 +1,60 @@
+---
+title: What is vx?
+description: A task runner and cache for JavaScript monorepos, built on Bun.
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components'
+
+vx is a task runner and cache for JavaScript monorepos. Each project
+declares its tasks in a `vx.config.ts`; `vx run` runs them in dependency
+order, in parallel, and skips any task whose inputs did not change.
+
+```sh
+bunx @vzn/vx init
+vx run build --all
+```
+
+```ts title="packages/app/vx.config.ts"
+import { defineProject } from '@vzn/vx/config'
+
+export default defineProject({
+  tasks: {
+    build: {
+      dependsOn: ['^build'],
+      exec: { command: 'tsc -b' },
+      inputs: { files: ['src/**', 'tsconfig.json'] },
+      cache: { outputs: { files: ['dist/**'] } },
+    },
+  },
+})
+```
+
+vx runs on [Bun](https://bun.com), on macOS and Linux (glibc). On Windows, use WSL2.
+
+---
+
+## What it does
+
+| You want to                         | vx                                                                             |
+| ----------------------------------- | ------------------------------------------------------------------------------ |
+| run a task in every package         | `vx run build --all`, upstream first ([Tasks](./tasks/))                       |
+| skip work that is already done      | restores `dist/` when the inputs match ([Caching](./caching/))                 |
+| know why a task re-ran              | `vx why app#build` names the file or variable that changed                     |
+| run only what a branch touched      | `vx run test --affected` ([Running tasks](./running-tasks/))                   |
+| prove a task's inputs are complete  | `exec.sandbox` fails a read outside them ([Sandboxing](./sandboxing/))         |
+| share the cache with CI             | a remote cache plugin ([Remote cache](./remote-cache/))                        |
+| keep a Turborepo or Nx config       | `@vzn/vx-migrate` runs it unchanged ([Migrate](../guides/migrate/))            |
+
+Nothing is inferred. A task is cached only when it says what it reads
+(`inputs`) and what it writes (`cache.outputs`).
+
+---
+
+## Next
+
+<CardGrid>
+  <LinkCard title="Quickstart" description="Cache your first task in two minutes." href="../quickstart/" />
+  <LinkCard title="Guides" description="One task per page: run what changed, find a miss." href="../guides/" />
+  <LinkCard title="CLI" description="Every command and flag." href="../cli/" />
+  <LinkCard title="vx.config.ts" description="Every config field." href="../schema/" />
+</CardGrid>
