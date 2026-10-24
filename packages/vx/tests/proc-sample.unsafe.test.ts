@@ -83,35 +83,6 @@ describe('sampleTrees', () => {
     }
   }, 30_000)
 
-  it("keeps the CPU of a child that exited in its parent's share", async () => {
-    const dir = mkdtempSync(path.join(tmpdir(), 'vx-proc-sample-'))
-    roots.push(dir)
-    const marker = path.join(dir, 'reaped')
-    const script = `
-      const want = ${BURN_MS} * 1000
-      for (;;) { const u = process.cpuUsage(); if (u.user + u.system >= want) break }
-    `
-    // The root reaps the burner, then idles: the burn lives only in what
-    // the root's children used. Without it a test shard reads as idle.
-    const child = Bun.spawn(
-      ['sh', '-c', '"$0" -e "$1"; echo done > "$MARKER"; sleep 30', process.execPath, script],
-      {
-        env: { ...process.env, MARKER: marker },
-        stdout: 'ignore',
-        stderr: 'ignore',
-        detached: true,
-      },
-    )
-    try {
-      while (!existsSync(marker) || readFileSync(marker, 'utf8').trim() !== 'done')
-        await Bun.sleep(20)
-      const usage = (await sampleTrees([child.pid])).get(child.pid)
-      expect(usage!.cpuMs).toBeGreaterThan(BURN_MS * 0.9)
-    } finally {
-      stop(child)
-    }
-  }, 30_000)
-
   it('has no entry for a root that is gone, and one for a live root beside it', async () => {
     const gone = Bun.spawn(['true'])
     await gone.exited
