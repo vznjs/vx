@@ -9,8 +9,14 @@ port=18788
 docker build -q -t "$tag" .
 name=$(docker run -d --rm --network host "$tag" --no-auth --port "$port")
 trap 'docker rm -f "$name" >/dev/null 2>&1; docker rmi -f "$tag" >/dev/null 2>&1' EXIT
+ready=
 for _ in $(seq 50); do
-  docker logs "$name" 2>&1 | grep -q "vx-dte-relay on" && break
+  if docker logs "$name" 2>&1 | grep -q "vx-dte-relay on"; then ready=1; break; fi
   sleep 0.2
 done
+if [ -z "$ready" ]; then
+  echo "vx-dte-relay smoke: the container never listened" >&2
+  docker logs "$name" >&2 || true
+  exit 1
+fi
 VX_DTE_RELAY_SMOKE="http://127.0.0.1:$port" bun tests/docker/smoke.ts
