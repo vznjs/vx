@@ -539,11 +539,13 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
       throw new UserError(
         noRuns()
           ? 'vx last: no recorded runs yet — run something first'
-          : parsed.runId !== undefined
-            ? `vx last: no recorded run ${parsed.runId} (vx last --list shows recent runs)`
-            : parsed.failed === true
-              ? 'vx last: no recorded run failed'
-              : 'vx last: no recorded runs yet — run something first',
+          : parsed.runId?.includes('#') === true
+            ? `vx last: ${parsed.runId} is a task, not a run id — \`vx last --log ${parsed.runId}\` prints its output, \`vx last --stats ${parsed.runId}\` its durations`
+            : parsed.runId !== undefined
+              ? `vx last: no recorded run ${parsed.runId} (vx last --list shows recent runs)`
+              : parsed.failed === true
+                ? 'vx last: no recorded run failed'
+                : 'vx last: no recorded runs yet — run something first',
         'VX_E_NO_HISTORY',
       )
     }
