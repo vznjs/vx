@@ -1152,6 +1152,23 @@ function nearestSetting(key: string): string | undefined {
   return name === undefined ? undefined : `\`${byName.get(name)}\``
 }
 
+/**
+ * Where a field one level down lives: `retries`, `timeout` or `sandbox` on
+ * a task, beside `exec` rather than in it, was refused with the task's
+ * fields alone, none of which is it.
+ */
+function nestedHome(allowed: ReadonlySet<string>, key: string): string | undefined {
+  if (allowed !== TASK_FIELDS) return undefined
+  for (const [field, own] of [
+    ['exec', EXEC_FIELDS],
+    ['inputs', INPUT_FIELDS],
+    ['cache', CACHE_FIELDS],
+  ] as const) {
+    if (own.has(key)) return `\`${field}.${key}\``
+  }
+  return undefined
+}
+
 function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: string): void {
   // `typeof [] === 'object'`, so an array reaches here and its indices read
   // as fields: `outputs: ['dist/**']` (Turbo's spelling) was refused as
@@ -1166,7 +1183,7 @@ function assertKnownFields(value: object, allowed: ReadonlySet<string>, where: s
     if (!allowed.has(key)) {
       // The nearest accepted spelling first: the list says what the level
       // takes, the hint says which one was meant.
-      const foreign = FOREIGN_FIELDS.get(allowed)?.[key]
+      const foreign = FOREIGN_FIELDS.get(allowed)?.[key] ?? nestedHome(allowed, key)
       const near =
         nearest(key, allowed) ?? (allowed === WORKSPACE_FIELDS ? nearestSetting(key) : undefined)
       throw new UserError(

@@ -2495,7 +2495,9 @@ run-commands' `cwd`, `args`, `commands`, `parallel` and `shell`
 (D-100), and in a `cache` block wireit's `files` / `output`,
 `env`, `dependencies`, `enabled`, and `globs` / `include` / `patterns` /
 `exclude` / `ignore` under `inputs` or `outputs` (D-118). So `outputs` on a task
-ends `— vx spells it cache.outputs.files` in code quotes. A `cache` that
+ends `— vx spells it cache.outputs.files` in code quotes. A field of
+`exec`, `inputs` or `cache` written on the task itself (`retries`,
+`timeout`, `files`) names the level it belongs to (`exec.retries`). A `cache` that
 is no object (Turbo's `cache: false`) and a `persistent` that is none
 (`true`) name the shape to write.
 
