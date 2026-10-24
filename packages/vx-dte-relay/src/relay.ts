@@ -1,6 +1,7 @@
-// The relay of PROTOCOL.md: per-run mailboxes between one orchestrator and
-// its workers, held in memory: a relay restart ends the runs it carried,
-// unless a `store` keeps them (a Durable Object's, across hibernation).
+// The relay of PROTOCOL.md: pushes each message between one orchestrator
+// and its workers down the receiver's socket, or drops it; only its own
+// notices wait. A relay restart ends the runs it carried, unless a `store`
+// keeps them (a Durable Object's, across hibernation).
 // It knows as little as routing needs: a run is a hash, bodies and an
 // worker's info are its peers' ciphertext, and no body is ever stored.
 
@@ -18,7 +19,7 @@ export interface RelayOptions {
   heartbeatMs?: number
   /**
    * Keeps runs and participants across a restart, never a message: a
-   * participant whose queue was not empty is lost on restore.
+   * participant a notice waited for is lost on restore.
    */
   store?: RelayStore | undefined
   /**
@@ -98,9 +99,8 @@ interface Participant {
   /** Requests it may still make now, and when that was counted (a token bucket). */
   tokens: number
   filled: number
+  /** The relay's own notices it could not push yet. */
   queue: Message[]
-  /** The queue's size, in bytes of the bodies that filled it. */
-  bytes: number
   socket?: RelaySocket | undefined
   /** A participant that joined on its socket: what that socket says first. */
   hello?: string
@@ -126,9 +126,6 @@ interface Run {
 /** A random (v4) UUID: no one can guess a run id to open it first or join it. */
 const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_BODY = 1 << 20
-const MAX_QUEUE = 10_000
-/** 10 000 bodies of 1 MiB would be 10 GiB held for one participant with no socket. */
-const MAX_QUEUE_BYTES = 64 << 20
 /**
  * A participant silent this many heartbeats is lost, on a socket or not:
  * no reply for 10 s and it is dead (owner, 2026-10-23). A client pings or
@@ -185,12 +182,13 @@ export function createRelay(opts: RelayOptions): Relay {
   }
 
   /**
-   * `capped` false: the relay's own notice (joined, lost, closed), queued
-   * past a full queue. Refused, it threw out of a close or a sweep: the
-   * workers after it never heard, the run was never forgotten, and the Bun
-   * host's timer threw it out of the process (2026-10-23).
+   * Down the participant's socket, or nowhere: a participant's message the
+   * relay cannot push now is dropped, and its sender, unacknowledged, sends
+   * it again (NATS-style; the relay holds nothing a sender can resend). The
+   * relay's own notices (`notice`: joined, lost, closed) have no sender to
+   * resend them, so they wait for the next socket.
    */
-  const deliver = (run: Run, p: Participant, m: Message, bytes = 0, capped = true): void => {
+  const deliver = (run: Run, p: Participant, m: Message, notice = false): void => {
     if (p.socket !== undefined && p.queue.length === 0) {
       try {
         p.socket.send(JSON.stringify({ messages: [m] }))
@@ -199,12 +197,9 @@ export function createRelay(opts: RelayOptions): Relay {
         unplug(p)
       }
     }
-    if (capped && (p.queue.length >= MAX_QUEUE || p.bytes + bytes > MAX_QUEUE_BYTES)) {
-      throw new HttpError(429, 'queue full')
-    }
+    if (!notice) return
     if (p.queue.length === 0) store?.put(qAt(run, p.id), true)
     p.queue.push(m)
-    p.bytes += bytes
   }
 
   /**
@@ -233,16 +228,12 @@ export function createRelay(opts: RelayOptions): Relay {
       }
     }
     if (p.queue.length === 0) return
-    const bytes = p.bytes
     const messages = drain(run, p)
     try {
       socket.send(JSON.stringify({ messages }))
     } catch {
       unplug(p)
-      // Queued again as they were: delivered anew, their bytes were lost and
-      // past the cap (the relay's own notices go over it) a 429 threw from here.
       p.queue = messages
-      p.bytes = bytes
       store?.put(qAt(run, p.id), true)
     }
   }
@@ -251,7 +242,6 @@ export function createRelay(opts: RelayOptions): Relay {
     const messages = p.queue
     if (messages.length > 0) store?.delete(qAt(run, p.id))
     p.queue = []
-    p.bytes = 0
     return messages
   }
 
@@ -261,7 +251,7 @@ export function createRelay(opts: RelayOptions): Relay {
     saveRun(run)
     for (const p of [...run.byId.values()]) {
       if (p.role !== 'worker') continue
-      deliver(run, p, { from: 'relay', body: { type: 'closed' } }, 0, false)
+      deliver(run, p, { from: 'relay', body: { type: 'closed' } }, true)
       drop(run, p, false)
     }
     // A run is live while its orchestrator is, and only a live one is kept:
@@ -292,7 +282,7 @@ export function createRelay(opts: RelayOptions): Relay {
       return
     }
     if (tell && run.orchestrator !== undefined && !run.closed) {
-      deliver(run, run.orchestrator, { from: 'relay', body: { type: 'lost', id: p.id } }, 0, false)
+      deliver(run, run.orchestrator, { from: 'relay', body: { type: 'lost', id: p.id } }, true)
     }
   }
 
@@ -429,7 +419,6 @@ export function createRelay(opts: RelayOptions): Relay {
       tokens: RATE_BURST,
       filled: Date.now(),
       queue: [],
-      bytes: 0,
     }
     run.byId.set(p.id, p)
     if (p.role === 'orchestrator') {
@@ -440,12 +429,12 @@ export function createRelay(opts: RelayOptions): Relay {
       saveParticipant(run, p)
       for (const a of run.byId.values()) {
         if (a.role === 'worker') {
-          deliver(run, p, joined(a), 0, false)
+          deliver(run, p, joined(a), true)
           saveParticipant(run, a)
         }
       }
     } else if (run.orchestrator !== undefined) {
-      deliver(run, run.orchestrator, joined(p), 0, false)
+      deliver(run, run.orchestrator, joined(p), true)
       saveParticipant(run, p)
     } else {
       // Held until an orchestrator joins to read it.
@@ -454,12 +443,7 @@ export function createRelay(opts: RelayOptions): Relay {
     return p
   }
 
-  const send = (
-    run: Run,
-    from: Participant,
-    body: { to?: unknown; body?: unknown },
-    bytes: number,
-  ): void => {
+  const send = (run: Run, from: Participant, body: { to?: unknown; body?: unknown }): void => {
     const to =
       from.role === 'worker'
         ? body.to === 'orchestrator'
@@ -469,12 +453,10 @@ export function createRelay(opts: RelayOptions): Relay {
           ? run.byId.get(body.to)
           : undefined
     if (to === undefined || to === from) throw new HttpError(404, 'unknown to')
-    deliver(
-      run,
-      to,
-      { from: from.role === 'orchestrator' ? 'orchestrator' : from.id, body: body.body },
-      bytes,
-    )
+    deliver(run, to, {
+      from: from.role === 'orchestrator' ? 'orchestrator' : from.id,
+      body: body.body,
+    })
   }
 
   const live = (key: string): Run => {
@@ -647,7 +629,7 @@ export function createRelay(opts: RelayOptions): Relay {
             try {
               if (typeof one !== 'object' || one === null)
                 throw new HttpError(400, 'a send is an object')
-              send(run, p, one, JSON.stringify(one).length)
+              send(run, p, one)
               return null
             } catch (err) {
               if (!(err instanceof HttpError)) throw err
@@ -720,7 +702,6 @@ function restore(store: RelayStore, runs: Map<string, Run>): [Run, Participant][
       tokens: RATE_BURST,
       filled: now,
       queue: [],
-      bytes: 0,
     }
     run.byId.set(id, p)
     if (role === 'orchestrator') run.orchestrator = p

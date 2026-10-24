@@ -61,7 +61,11 @@ proof: its upgrade did.
 Frames are text:
 
 - the relay pushes `{ "messages": [{ "from", "body" }] }` as messages
-  arrive, starting with any queued before the socket opened;
+  arrive. A participant's message it cannot push now (no socket, or a
+  push that failed) is dropped: the relay holds none, and its sender
+  sends again what its receiver did not acknowledge (vx-dte numbers
+  each send and acks it end to end). Only the relay's own notices
+  (§ Messages from the relay) wait for the next socket;
 - the participant sends `{ "n", "sends": [{ "to", "body" }] }`, answered
   `{ "n" }` when all were taken, else `{ "n", "results" }` with `null` or
   `{ "status", "error" }` for each. The orchestrator sends to any worker;
@@ -71,8 +75,8 @@ Frames are text:
   socket's close. The orchestrator leaving closes the run;
 - `{ "n", "remove": "<worker>" }`, by the orchestrator only (`403`
   otherwise), takes the worker off the run: one it did not admit
-  (§ Bodies). The worker's socket is pushed what queued for it, its
-  `refused` with the reason, and closed. The orchestrator is not told it
+  (§ Bodies). The worker's socket is closed, after any notice waiting for
+  it. The orchestrator is not told it
   was lost;
 - a frame that fails is answered `{ "n", "status", "error" }`, any other
   frame `400`. A frame is held to 1 MiB whole; one over it is answered `413` by its `n` when the
@@ -87,16 +91,17 @@ Frames are text:
   (10 s at most) as closed: a network that stops carrying a socket sends
   no close;
 - the socket a frame comes down is its participant's from then on, and
-  what queued for it is pushed down it: a host that let the socket go
+  is pushed down from then on: a host that let the socket go
   while answering its pings left the participant deaf.
 
 A socket's close does not lose its participant: it opens another, and
-the relay pushes what queued meanwhile. vx-dte's client dials again
+the relay pushes the notices that waited meanwhile; its peers send again
+what it did not acknowledge. vx-dte's client dials again
 after a backoff with full jitter (up to 250 ms, doubling per failed dial
 to half a heartbeat), and gives the participant up after 3 failed
 dials or 10 s without a socket, whichever comes first. The relay closes with code
 `4404` the socket of a participant that left or was lost, after pushing
-what queued for it (a removed worker's `refused`), and lets in a `socket`
+the notices that waited for it, and lets in a `socket`
 request of an `id` or run it does not know only to close it so: a failed
 upgrade tells a client nothing it can read. It closes a socket a push
 failed on without a code: left open, its pings answered, it would carry
@@ -140,9 +145,7 @@ A worker's messages carry `"from": "<its id>"`, the orchestrator's
 `400` a malformed request, `401` a missing or invalid token, `403` a token
 of a repository the relay does not serve, `403` a request as the orchestrator from another CI job (§ Tokens) or not signed by its key (§ The orchestrator's key), `404` an unknown `id` or `to`, `409` a second
 orchestrator, `410` a closed run, `413` a body over 1 MiB, `426` a
-`socket` request that is not an upgrade, `429` a send to a queue
-over 10 000 messages or 64 MiB (the relay's own `joined`, `lost` and
-`closed` still queue), or a participant past its rate: a burst
+`socket` request that is not an upgrade, `429` a participant past its rate: a burst
 of 1000 requests and socket frames, then 100 a second, after Tailscale's
 DERP. A rate's `429` says `"retryAfterMs"`, when the next one is taken;
 `@vzn/vx-dte` waits that long and asks again. On Workers, `503` is a
@@ -191,9 +194,9 @@ Only what routing needs, and no longer:
   store or object name says whose run it is. A token is checked, never kept.
 - A worker's `info` is held until the orchestrator is told it joined; the
   orchestrator's is dropped.
-- A message waits in memory, never in storage, until it is delivered. A
-  relay restart loses a participant whose queue was not empty, as if it
-  went silent.
+- A participant's message is pushed or dropped, never held. A notice of
+  the relay's own waits in memory for the next socket; a relay restart
+  loses a participant one waited for, as if it went silent.
 - A closed run is gone at once; while open, each participant's
   role and when it was last heard from are kept, so a restart still
   loses the silent.

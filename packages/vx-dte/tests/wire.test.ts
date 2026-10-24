@@ -234,8 +234,8 @@ it('keeps its quiet socket while a new one fails to open, so the relay keeps it'
   await o.leave()
 })
 
-it('dials its socket again after it drops, and gets what queued meanwhile', async () => {
-  const { url, open } = sockets()
+it('dials its socket again after it drops, and gets what was sent meanwhile, sent again', async () => {
+  const { url, open } = sockets(500)
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()

@@ -153,6 +153,7 @@ describe('the relay carries one run between its orchestrator and workers', () =>
     const o = await c.join(R, 'orchestrator')
     const a = await c.join(R, 'worker')
     const b = await c.join(R, 'worker')
+    for (const id of [o, a, b]) await c.plug(R, id)
     await c.poll(R, o)
     expect((await c.send(R, o, a, { run: 'x#build' })).status).toBe(204)
     expect(await c.poll(R, a)).toEqual([{ from: 'orchestrator', body: { run: 'x#build' } }])
@@ -209,6 +210,7 @@ describe('the relay carries one run between its orchestrator and workers', () =>
     ]).toEqual([403, 409, 101, 101])
     // Its socket, once open, is its job's: its frames need no token.
     expect(await c.plug(R, o, 'job-1')).toBe(true)
+    expect(await c.plug(R, a, 'job-2')).toBe(true)
     expect(await c.frame(R, o, { sends: [{ to: a, body: 'go' }] }, 'job-1')).toEqual({ n: 0 })
     expect(await c.poll(R, a, 'job-2')).toEqual([{ from: 'orchestrator', body: 'go' }])
   })
@@ -333,8 +335,8 @@ describe('the relay carries one run between its orchestrator and workers', () =>
     })
     expect((await c.frame(R, o, { remove: o })).status).toBe(404)
     // `early` gets what it was told before its socket closes; `late` has none to tell.
-    await c.send(R, o, early, { type: 'refused' })
     await c.plug(R, early)
+    await c.send(R, o, early, { type: 'refused' })
     for (const worker of [early, late]) {
       expect(await c.frame(R, o, { remove: worker })).toEqual({ n: expect.any(Number) })
       expect((await c.send(R, worker, 'orchestrator', 1)).status).toBe(404)
@@ -378,84 +380,31 @@ describe('the relay carries one run between its orchestrator and workers', () =>
     }
   })
 
-  it('holds at most 64 MiB for a participant with no socket', async () => {
+  // NATS-style: a sender resends what its receiver did not acknowledge,
+  // so the relay holds no participant's message. Its own notices have no
+  // sender to resend them, and wait for the next socket.
+  it('drops a message it cannot push now; its own notices wait for the socket', async () => {
     const c = client()
     const o = await c.join(R, 'orchestrator')
     const a = await c.join(R, 'worker')
-    const body = 'x'.repeat((1 << 20) - 100)
-    const statuses: number[] = []
-    for (let i = 0; i < 66; i++) statuses.push((await c.send(R, o, a, body)).status)
-    expect(statuses.indexOf(429)).toBe(64)
-    expect((await c.poll(R, a)).length).toBe(64)
-    expect((await c.send(R, o, a, body)).status).toBe(204)
-  })
-
-  // A worker's queue full when its run closed threw out of the close: the
-  // workers after it never heard, and the run was never forgotten, so its
-  // id refused the next orchestrator for good.
-  it('closes a run whose worker’s queue is full: every worker hears, the run is gone', async () => {
-    const c = client()
-    const o = await c.join(R, 'orchestrator')
-    const a = await c.join(R, 'worker')
-    const b = await c.join(R, 'worker')
-    await c.poll(R, o)
-    // 10 000 messages, the most it holds.
-    for (let i = 0; i < 5; i++) await c.frame(R, o, { sends: Array(2000).fill({ to: a, body: i }) })
-    expect((await c.send(R, o, a, 'one more')).status).toBe(429)
-    await c.plug(R, b)
-    const left = await c.frame(R, o, { leave: true })
-    expect(left.status).toBeUndefined()
-    expect(await c.poll(R, b)).toEqual([{ from: 'relay', body: { type: 'closed' } }])
-    expect([c.closes.get(o), c.closes.get(b)]).toEqual([[GONE], [GONE]])
-    expect((await c.call(R, 'join', { role: 'orchestrator' })).status).toBe(200)
-  })
-
-  it('tells an orchestrator whose queue is full of a lost worker, and sweeps on', async () => {
-    const c = client({ heartbeatMs: 20, timer: false })
-    const o = await c.join(R, 'orchestrator')
-    const a = await c.join(R, 'worker')
-    const b = await c.join(R, 'worker')
-    for (let i = 0; i < 4; i++)
-      await c.frame(R, a, { sends: Array(2500).fill({ to: 'orchestrator', body: i }) })
-    expect((await c.send(R, a, 'orchestrator', 'one more')).status).toBe(429)
-    await Bun.sleep(60)
-    for (const id of [o, a]) c.relay.seen(K, id, Date.now())
-    expect(c.relay.sweep()).toBeNumber()
-    expect((await c.poll(R, o)).at(-1)).toEqual({ from: 'relay', body: { type: 'lost', id: b } })
-  })
-
-  // A push that failed queued each message again as new: its bytes were
-  // forgotten, and past 10 000 (the relay's own notices go over it) the
-  // re-queue threw a 429 out of the socket's attach, losing the rest.
-  it('queues again what a failed push took, as it was', async () => {
-    const c = client()
-    const o = await c.join(R, 'orchestrator')
-    const a = await c.join(R, 'worker')
-    for (let i = 0; i < 5; i++)
-      await c.frame(R, a, { sends: Array(2000).fill({ to: 'orchestrator', body: i }) })
-    await c.join(R, 'worker')
+    const big = 'x'.repeat((1 << 20) - 100)
+    for (let i = 0; i < 80; i++) expect((await c.send(R, o, a, big)).status).toBe(204)
+    expect((await c.send(R, a, 'orchestrator', 'before its socket')).status).toBe(204)
+    await c.plug(R, a)
+    expect(await c.poll(R, a)).toEqual([])
+    expect(await c.poll(R, o)).toEqual([
+      { from: 'relay', body: { type: 'joined', id: a, info: null } },
+    ])
     const failing = {
       send() {
         throw new Error('dropped')
       },
       close() {},
     }
-    expect(c.relay.attach(K, o, failing)).toBe(true)
-    const got: unknown[] = []
-    const socket = {
-      send: (t: string) => void got.push(...(JSON.parse(t) as { messages: unknown[] }).messages),
-      close() {},
-    }
-    expect(c.relay.attach(K, o, socket)).toBe(true)
-    expect(got).toHaveLength(10_001)
-
-    const b = await c.join(R, 'worker')
-    const big = 'x'.repeat((1 << 20) - 100)
-    for (let i = 0; i < 63; i++) expect((await c.send(R, o, b, big)).status).toBe(204)
-    expect(c.relay.attach(K, b, failing)).toBe(true)
-    // 64 MiB: the cap counts what the failed push queued again.
-    expect((await c.send(R, o, b, big)).status).toBe(204)
-    expect((await c.send(R, o, b, big)).status).toBe(429)
+    expect(c.relay.attach(K, a, failing)).toBe(true)
+    expect((await c.send(R, o, a, 'on a dead socket')).status).toBe(204)
+    expect(await c.plug(R, a)).toBe(true)
+    expect(await c.poll(R, a)).toEqual([])
   })
 
   it('wants a bearer token when it verifies', async () => {
@@ -517,12 +466,12 @@ describe('a host that keeps runs and holds websockets', () => {
       kept.includes(R),
     ]).toEqual([false, false, false, false, false])
     const after = client({ store, timer: false, verify }, before.provers)
-    // `a`'s queue held a message the restart lost: `a` is lost, `b` goes on.
+    // The message to `a`, which had no socket, was never held: all go on.
     expect([
       await after.plug(R, a, 't'),
       await after.poll(R, b, 't'),
       await after.poll(R, o, 't'),
-    ]).toEqual([false, [], [{ from: 'relay', body: { type: 'lost', id: a } }]])
+    ]).toEqual([true, [], []])
   })
 
   it('keeps no worker’s info: its orchestrator is told it as it joins', async () => {
@@ -721,7 +670,8 @@ describe('a host that keeps runs and holds websockets', () => {
       status: 204,
       json: expect.anything(),
     })
-    // Both closed: the live one's client dials again and gets the result.
+    // Both closed: the live one's client dials again, and the result,
+    // unacknowledged, is sent again down it.
     expect(closed).toEqual(['live', 'stale'])
     const pushed: unknown[] = []
     const again = {
@@ -729,12 +679,13 @@ describe('a host that keeps runs and holds websockets', () => {
       close() {},
     }
     expect(c.relay.attach(K, o, again)).toBe(true)
+    await c.send(R, a, 'orchestrator', 'result')
     expect(pushed).toContainEqual({ from: a, body: 'result' })
   })
 
   // Main 13baaf6: a socket whose host let it go, its pings still
   // answered, left the orchestrator deaf for 8 min (2026-10-23).
-  it('makes the socket a frame came down its sender’s, and pushes what queued down it', async () => {
+  it('makes the socket a frame came down its sender’s, and pushes down it from then on', async () => {
     const c = client()
     const o = await c.join(R, 'orchestrator')
     const a = await c.join(R, 'worker')
@@ -745,7 +696,7 @@ describe('a host that keeps runs and holds websockets', () => {
     }
     expect(c.relay.attach(K, a, socket)).toBe(true)
     live.splice(0)
-    // Its host let the socket go: the relay queues, the client hears pongs.
+    // Its host let the socket go: the relay drops, the client hears pongs.
     c.relay.detach(K, a, socket)
     await c.send(R, o, a, 'task')
     expect(live).toEqual([])
@@ -753,7 +704,6 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(JSON.parse(c.relay.frame(K, a, JSON.stringify({ n: 7, sends: [] }), socket))).toEqual({
       n: 7,
     })
-    expect(live).toEqual([{ from: 'orchestrator', body: 'task' }])
     await c.send(R, o, a, 'next')
     expect(live.at(-1)).toEqual({ from: 'orchestrator', body: 'next' })
   })
@@ -781,7 +731,8 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(joined.json.socket).toBe(true)
     const o = joined.json.id
     const a = await c.join(R, 'worker')
-    await c.send(R, o, a, 'queued')
+    await c.plug(R, o)
+    await c.send(R, o, a, 'dropped')
     const frames: unknown[] = []
     const socket = { send: (t: string) => void frames.push(JSON.parse(t)), close() {} }
     expect(c.relay.attach(K, a, socket)).toBe(true)
@@ -818,18 +769,15 @@ describe('a host that keeps runs and holds websockets', () => {
       status: 413,
       error: 'body over 1 MiB',
     })
-    expect(frames).toEqual([
-      { messages: [{ from: 'orchestrator', body: 'queued' }] },
-      { messages: [{ from: 'orchestrator', body: 'pushed' }] },
-    ])
+    expect(frames).toEqual([{ messages: [{ from: 'orchestrator', body: 'pushed' }] }])
     expect((await c.poll(R, o)).at(-1)).toEqual({ from: a, body: 3 })
     c.relay.detach(K, a, socket)
     await c.send(R, o, a, 'after')
-    expect(await c.poll(R, a)).toEqual([{ from: 'orchestrator', body: 'after' }])
+    expect(await c.poll(R, a)).toEqual([])
     expect(c.relay.attach(K, 'gone', socket)).toBe(false)
   })
 
-  it('closes a socket a push failed on, so its participant redials for what queued', async () => {
+  it('closes a socket a push failed on, so its participant redials', async () => {
     const c = client()
     const o = (await c.call(R, 'join', { role: 'orchestrator' })).json.id
     const a = await c.join(R, 'worker')
@@ -843,7 +791,8 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(c.relay.attach(K, a, socket)).toBe(true)
     await c.send(R, o, a, 'lost?')
     expect(closed).toBe(1)
-    expect(await c.poll(R, a)).toEqual([{ from: 'orchestrator', body: 'lost?' }])
+    // Dropped: its sender, unacknowledged, sends it again.
+    expect(await c.poll(R, a)).toEqual([])
   })
 
   it('answers a socket request without the upgrade header 426', async () => {
