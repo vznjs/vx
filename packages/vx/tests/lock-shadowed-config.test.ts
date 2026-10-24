@@ -15,8 +15,8 @@ afterEach(async () => {
   root = undefined
 })
 
-const lock = (cwd: string): { code: number; err: string } => {
-  const p = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock'], cwd, stderr: 'pipe' })
+const lock = (cwd: string, ...args: string[]): { code: number; err: string } => {
+  const p = Bun.spawnSync({ cmd: [process.execPath, BIN, 'lock', ...args], cwd, stderr: 'pipe' })
   return { code: p.exitCode, err: p.stderr.toString() }
 }
 
@@ -35,6 +35,19 @@ for (const git of ['init', false] as const) {
         ) +
         noticed(
           'vx lock: packages/a/vx.config.mjs is not read: vx.config.ts beside it is — delete one\n',
+          'warn',
+        ),
+    })
+    // The CI gate passes, as after any clean lock, and says it too.
+    expect(lock(r, '--check')).toEqual({
+      code: 0,
+      err:
+        noticed(
+          'vx lock --check: .vx/workspace.cjs is not read: workspace.mjs beside it is — delete one\n',
+          'warn',
+        ) +
+        noticed(
+          'vx lock --check: packages/a/vx.config.mjs is not read: vx.config.ts beside it is — delete one\n',
           'warn',
         ),
     })
