@@ -332,3 +332,35 @@ it("plans each size's own warm-up", () => {
   expect(p.endsInMs).toBe(90_000)
   expect(plan(work, [], [linux, mac], WARM).endsInMs).toBe(95_000)
 })
+
+// Main e118ccf (2026-10-24): five Linux tasks fit one small, the two Mac
+// ones needed two Macs. Sizes come in turns (small mac small mac), and
+// the shortest prefix with the second Mac took a second small too: it was
+// asked, given nothing, and cancelled unjoined.
+it('asks the fewest of each size, not the shortest prefix of the turns', () => {
+  const linux = { ...small, platform: 'linux-x64' }
+  const mac: Size = { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' }
+  const on = (t: PlanTask, platform: string): PlanTask => ({ ...t, platform })
+  const tasks = [
+    on(task('check.bun', 300, [], 2), 'linux-x64'),
+    on(task('migrate.live', 25_800, [], 1.31), 'linux-x64'),
+    on(task('reapi.live', 11_300, [], 0.52), 'linux-x64'),
+    on(task('release.sync', 1_400, [], 0.25), 'linux-x64'),
+    on(task('deploy.pages', 26_900, [], 0.25), 'linux-x64'),
+    on(task('check.sandbox-canary', 5_200, [], 1.31), 'darwin-arm64'),
+    on(task('check.build-cold', 32_800, [], 2.11), 'darwin-arm64'),
+  ]
+  const sizes = candidates(
+    [linux, mac],
+    new Map(),
+    [],
+    tasks.length,
+    new Map([
+      ['linux-x64', 5],
+      ['darwin-arm64', 2],
+    ]),
+  )
+  expect(sizes.slice(0, 4).map((s) => s.name)).toEqual(['small', 'mac', 'small', 'mac'])
+  const p = plan(tasks, [], sizes, WARM)
+  expect(p.start.map((s) => s.name).sort()).toEqual(['mac', 'mac', 'small'])
+})

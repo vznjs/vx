@@ -604,6 +604,9 @@ real time in the run summary and the footer's `ideal` line, and
     one joining after its size's warm-up: this run's first of that size,
     else an earlier run's, else any size's this run, else 20 s,
     and takes the fewest N that end within 5% (5 s at least) of the best.
+    Sizes of different platforms come in turns, so of those N it drops
+    each the plan ends as soon without, its platform's work no more than
+    5 s later.
     That margin is spent once: later plans keep its deadline until new
     work is known. A task waiting on one that runs waits until it ends.
     What is left, running tasks too, takes as many times its history as
