@@ -356,8 +356,12 @@ it('a size is queued while a worker of it is late, given up beside one online', 
 function fakeArtifacts() {
   const saved = new Map<string, { stdout: string; stderr: string }>()
   const restored: string[] = []
+  const shared: string[] = []
   const artifacts: TaskArtifacts = {
     async save() {},
+    async share(key) {
+      shared.push(key)
+    },
     async restore(key) {
       restored.push(key)
       return saved.get(key) ?? null
@@ -366,7 +370,7 @@ function fakeArtifacts() {
       return saved.get(key) ?? null
     },
   }
-  return { artifacts, saved, restored }
+  return { artifacts, saved, restored, shared }
 }
 
 /** An orchestrator on a loopback relay, and workers of it that only listen. */
@@ -1413,6 +1417,47 @@ it('an order names its key and each dependency’s; the result comes back by the
   }
 })
 
+// A dependency that hit only in the orchestrator's store was in no cache
+// its worker read: every dependant failed on every worker (2026-10-24).
+it('sends a dependency that hit here to the remotes once before its dependant goes out, not one a worker saved', async () => {
+  const cached = (id: string, deps: string[] = []) =>
+    [
+      id,
+      {
+        id,
+        deps,
+        projectDir: `/ws/${id}`,
+        config: { cache: { outputs: { files: ['dist/**'] } } },
+      } as unknown as TaskNode,
+    ] as const
+  const h = await harness(
+    new Map([
+      cached('lib'),
+      cached('mid', ['lib']),
+      cached('app', ['mid']),
+      cached('top', ['lib']),
+    ]),
+    undefined,
+    undefined,
+    (id) => (id === 'lib' ? 'k-lib-hit' : undefined),
+  )
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    const mid = h.o.execute(h.req('mid', 'k-mid'))
+    expect(await a.batches()).toEqual([['mid']])
+    expect(h.store.shared).toEqual(['k-lib-hit'])
+    await a.finish('mid', 'k-mid')
+    await mid
+    void h.o.execute(h.req('app', 'k-app'))
+    void h.o.execute(h.req('top', 'k-top'))
+    expect((await a.batches()).flat()).toEqual(['app'])
+    expect(h.store.shared).toEqual(['k-lib-hit'])
+  } finally {
+    await h.stop()
+  }
+})
+
 // A remote keeps the first bytes put under a key: a retry saved under its
 // first attempt's run key replayed that failure under a green result
 // (2026-10-24).
@@ -1508,6 +1553,7 @@ it('a worker restores a dependency once, before any task that needs it runs', as
     let restores = 0
     const artifacts: TaskArtifacts = {
       async save() {},
+      async share() {},
       async output() {
         return null
       },
@@ -1603,6 +1649,7 @@ it('a worker restores a dependency again after a task cleared its files', async 
       proof: secretProof('s'),
       artifacts: () => ({
         async save() {},
+        async share() {},
         async output() {
           return null
         },
@@ -1802,6 +1849,7 @@ it('a worker whose answer meets a closed run exits 0', async () => {
         async output() {
           return null
         },
+        async share() {},
         async restore() {
           return null
         },
@@ -1874,6 +1922,7 @@ it('a worker begins its next task while the last one saves', async () => {
         async output() {
           return null
         },
+        async share() {},
         async restore() {
           return null
         },

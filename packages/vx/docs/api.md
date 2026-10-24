@@ -2644,6 +2644,7 @@ export interface TaskArtifacts {
   save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
   restore(key: string, task: ArtifactTask): Promise<{ stdout: string; stderr: string } | null>
   output(key: string): Promise<{ stdout: string; stderr: string } | null>
+  share(key: string): Promise<void>
 }
 ```
 

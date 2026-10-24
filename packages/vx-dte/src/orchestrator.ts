@@ -207,6 +207,8 @@ export class Orchestrator {
   private readonly savedAs = new Map<string, string>()
   /** Keys the run's requests named for their dependencies. */
   private readonly upstreamKeys = new Map<string, string>()
+  /** Entries this machine held that each worker restores from a remote, sent there once. */
+  private readonly shared = new Map<string, Promise<void>>()
   /** How many times each task was sent: its run key is one per send. */
   private readonly sent = new Map<string, number>()
   /** When each worker this run started was asked for, by `WorkerSpawn.index`. */
@@ -302,6 +304,10 @@ export class Orchestrator {
         )
     }
     for (const u of req.inputs?.upstream ?? []) this.upstreamKeys.set(u.taskId, u.hash)
+    // A worker restores each dependency from a remote: one that hit only
+    // here (this machine's store) was in no cache the worker read, and the
+    // task failed on every worker (2026-10-24).
+    await Promise.all([...upstream(this.o.nodes(), req.taskId)].map((id) => this.share(id)))
     return new Promise((resolve, reject) => {
       const need = this.o.need(req.taskId)
       const job: Job = {
@@ -317,6 +323,20 @@ export class Orchestrator {
       this.queue.push(job)
       this.pumpSoon()
     })
+  }
+
+  /** Sends dependency `id`'s entry to the remotes, unless a worker saved it there. */
+  private share(id: string): Promise<void> | undefined {
+    if (this.savedAs.has(id) || this.o.nodes()?.get(id)?.config.cache?.outputs === undefined)
+      return undefined
+    const key = this.upstreamKeys.get(id) ?? this.o.keyOf(id)
+    if (key === undefined) return undefined
+    let p = this.shared.get(key)
+    if (p === undefined) {
+      p = this.o.artifacts.share(key)
+      this.shared.set(key, p)
+    }
+    return p
   }
 
   /** The run's cache facts; once they end, every worker is sent them again before then. */

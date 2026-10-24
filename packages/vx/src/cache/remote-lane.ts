@@ -349,16 +349,20 @@ export class RemoteLane {
     return (await this.has(hash)) !== null
   }
 
-  /** Queue a PUT in this remote's bounded pool; `body` is asked for when the job starts. */
+  /**
+   * Queue a PUT in this remote's bounded pool; `body` is asked for when the
+   * job starts. Settles when the job does, or the run is stopped.
+   */
   upload(
     hash: string,
     durationMs: number,
     body: () => Promise<{ body: Blob; release?: () => Promise<void> }>,
     tally: { count: number; bytes: number; ms: number; failed: number },
-  ): void {
+  ): Promise<void> {
     const key = this.trafficOf(hash)
     key.uploading++
     this.traffic.inFlight++
+    const { promise, resolve } = Promise.withResolvers<void>()
     this.uploadQueue.push(async () => {
       let release: (() => Promise<void>) | undefined
       try {
@@ -388,9 +392,22 @@ export class RemoteLane {
         // stopped first): no traffic, so the footer counts no upload.
         if (key.uploading === 0 && !key.landed && key.failures.length === 0)
           this.traffic.keys.delete(hash)
+        resolve()
       }
     })
     this.pump()
+    return Promise.race([promise, this.stopping])
+  }
+
+  /** `upload`, unless this remote holds `hash`: settled once it does. */
+  async share(
+    hash: string,
+    durationMs: number,
+    body: () => Promise<{ body: Blob; release?: () => Promise<void> }>,
+    tally: { count: number; bytes: number; ms: number; failed: number },
+  ): Promise<void> {
+    if ((await this.has(hash)) !== null) return
+    await this.upload(hash, durationMs, body, tally)
   }
 
   /** Settles when the run is stopped. */

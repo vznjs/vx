@@ -405,7 +405,9 @@ use your own instead.
   or `none`, a task's files it defers land here only if a task here needs
   them.
 - A worker restores, by key, the declared outputs of every task the one
-  it runs depends on, unless it ran or restored them before. Files a task
+  it runs depends on, unless it ran or restored them before. One that hit
+  only in the orchestrator's own store is sent to the remotes it writes
+  first. Files a task
   writes without declaring them stay on the worker. Before a task runs, its
   worker removes the files under its outputs that an earlier task left,
   except committed files, nested projects' files, and its dependencies'

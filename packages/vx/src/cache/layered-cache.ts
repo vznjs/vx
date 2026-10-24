@@ -608,7 +608,19 @@ export class LayeredCache implements CacheLayer {
       packed !== undefined
         ? Promise.resolve({ body: new Blob([packed]) })
         : this.local.pinArtifact(hash)
-    for (const lane of writable) lane.upload(hash, durationMs, body, this.local.uploads)
+    for (const lane of writable) void lane.upload(hash, durationMs, body, this.local.uploads)
+  }
+
+  async share(hash: string): Promise<void> {
+    const writable = this.lanes.filter((l) => l.write)
+    if (writable.length === 0) return
+    const entry = await this.local.getIngested(hash)
+    if (entry === null) return
+    await Promise.all(
+      writable.map((lane) =>
+        lane.share(hash, entry.durationMs, () => this.local.pinArtifact(hash), this.local.uploads),
+      ),
+    )
   }
 
   /**

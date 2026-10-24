@@ -474,6 +474,20 @@ describe('LayeredCache', () => {
     expect(remote.gets).toBe(0)
   })
 
+  // A DTE worker restores its dependencies from a remote: one held only
+  // here was in no cache it read (2026-10-24).
+  it('share() sends a local entry the remote lacks once, settled when it lands, and none it holds', async () => {
+    await saveSample(local, 'h-share')
+    const layered = makeLayered()
+    await layered.share('h-share')
+    expect(remote.puts).toBe(1)
+    expect(remote.store.has('h-share')).toBe(true)
+    await layered.share('h-share')
+    expect(remote.puts).toBe(1)
+    await layered.share('h-none')
+    expect(remote.puts).toBe(1)
+  })
+
   it('save() with remote writes off uploads nothing: local entry, no remote PUT', async () => {
     // The write twin of the two read gates (item 641): `--cache-policy` turning
     // remote writes off must leave the upload pool idle, and the local

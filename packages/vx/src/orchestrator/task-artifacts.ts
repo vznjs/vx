@@ -66,6 +66,13 @@ export interface TaskArtifacts {
    * it. An `exec.remote: 'only'` task's files stay off this disk.
    */
   output(key: string): Promise<{ stdout: string; stderr: string } | null>
+  /**
+   * Sends entry `key`, held here, to each remote the workspace writes that
+   * does not hold it, so another machine's `restore` finds it. Resolves
+   * once those uploads settle; a remote that fails degrades as a save's
+   * upload does.
+   */
+  share(key: string): Promise<void>
 }
 
 export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArtifacts {
@@ -116,6 +123,10 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
     async output(key) {
       const entry = await (cache.getSaved ? cache.getSaved(key) : cache.get(key))
       return entry === null ? null : outputOf(entry.stdout)
+    },
+
+    async share(key) {
+      await cache.share?.(key)
     },
   }
 }

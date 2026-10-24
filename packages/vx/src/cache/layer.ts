@@ -628,6 +628,12 @@ export interface CacheLayer {
   drainUploads?(): Promise<void>
   /** The run was stopped: start no more uploads, and let `drainUploads` resolve now. */
   stopUploads?(): void
+  /**
+   * Make `hash`, held here, readable on each remote the run writes: one
+   * that does not hold it is sent it. Resolves once those uploads settle; a
+   * failed one degrades as a save's does. Only meaningful with `hasRemote`.
+   */
+  share?(hash: string): Promise<void>
   key(input: CacheKeyInput): Promise<string>
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   /**
