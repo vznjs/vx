@@ -2063,6 +2063,25 @@ it('a machine’s usage: peaks of tasks at once, averages over its time online',
   })
 })
 
+// A worker restoring and saving between commands read 10 s idle on main
+// (M, 2026-10-24): a task holds it from its send to its result.
+it('a machine’s busy time: each task from its send, restore and save included', () => {
+  const u = new Usage(0)
+  const now = performance.now
+  try {
+    performance.now = () => 5000
+    // Sent at 1000, its command 1 s of it: the rest restored and saved.
+    u.record({ exitCode: 0, durationMs: 1000, cpuMs: 2000 }, 1000)
+    performance.now = () => 9000
+    u.record({ exitCode: 0, durationMs: 1000, cpuMs: 2000 }, 5000)
+  } finally {
+    performance.now = now
+  }
+  const st = u.stats(4, 10_000)
+  expect(st.busyMs).toBe(8000)
+  expect(st.cpuMs).toBe(4000)
+})
+
 // Main ran 12 workers at 25% with each busy all its time online: what the
 // run held on each says whether packing or the tasks left the cores idle.
 it('a machine’s booked cores: what the run held for its tasks, averaged over its time online', () => {

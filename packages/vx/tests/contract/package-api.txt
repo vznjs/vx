@@ -1082,6 +1082,7 @@ export interface MachineReport {
   utilization: number
   bookedAvg?: number
   warmUpMs?: number
+  startMs?: number
 }
 == type MigrationFormat (src/workspace/migration.ts)
 export type MigrationFormat = 'ts' | 'mjs'

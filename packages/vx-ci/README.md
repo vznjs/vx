@@ -34,7 +34,10 @@ violation count, and the tasks each failure blocked. A server a
 distributed run carried to its dependants' workers reads `served`,
 with no duration of its own. When an executor
 ran the run on other machines (`@vzn/vx-dte`'s workers), a Workers table
-shows each one's status, warm-up, tasks, time online and idle, the cores
+shows each one's status, when it was asked for, its total time (warm-up
+plus online), its warm-up, its time online after the warm-up and the part
+of that with no task on it (a task counts from its send to its result,
+restore and save included), its tasks, the cores
 its tasks were expected to use (their last run's) beside the cores it used, its peak RAM of its memory, and
 its utilization, under a line
 of the expected and used share of all their core-time. Tasks the executor left to the run's own machine get a `this machine` row, and a line splits the executed count between workers and this machine. A footer line

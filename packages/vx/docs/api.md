@@ -1341,6 +1341,7 @@ export interface MachineReport {
   utilization: number
   bookedAvg?: number
   warmUpMs?: number
+  startMs?: number
 }
 ```
 

@@ -723,7 +723,7 @@ export class Orchestrator {
     a.started.delete(task)
     a.ran++
     a.done.push(task)
-    a.usage.record(head)
+    a.usage.record(head, job.sentAt)
     const share = shareOf(head.cpuShare)
     const held = Math.max(1, job.startedAt === undefined ? head.durationMs : endAt - job.startedAt)
     this.took.set(task, {
@@ -1406,6 +1406,7 @@ export class Orchestrator {
         a.reported.memory,
       ),
       ...(a.warmUpMs === undefined ? {} : { warmUpMs: a.warmUpMs }),
+      startMs: Math.max(0, a.usage.from - (a.warmUpMs ?? 0) - this.startedAt),
     }))
   }
 

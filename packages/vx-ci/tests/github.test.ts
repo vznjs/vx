@@ -151,6 +151,7 @@ describe('renderJobSummary', () => {
               memoryPeakBytes: 9.8e9,
               utilization: 0.5,
               warmUpMs: 21_000,
+              startMs: 800,
             },
             {
               ...m,
@@ -172,13 +173,13 @@ describe('renderJobSummary', () => {
     expect(md).toContain('| c#services | 🔗 served |  |')
     // A carried server ran in its dependants; a task that ran on the run's
     // own machine is named, and the counts add up (owner, 2026-10-23).
-    expect(md).toContain('| this machine | ok |  | 1 |  |  |  |  |  |  |')
+    expect(md).toContain('| this machine | ok |  |  |  |  |  | 1 |  |  |  |  |')
     expect(md).toContain('3 executed: 2 on workers, 1 on this machine: e#gen.')
     expect(md).toContain(
-      '| small#1 | left | 21.0s | 3 | 40.0s | 4.0s | 3.9 of 4 | 2.0 of 4 | 9.8 of 16.0 GB | 50% |',
+      '| small#1 | left | 800ms | 1m 1s | 21.0s | 40.0s | 4.0s | 3 | 3.9 of 4 | 2.0 of 4 | 9.8 of 16.0 GB | 50% |',
     )
     expect(md).toContain(
-      '| small#2 | left | 1m 30s | 0 | 10.0s | 10.0s | 0.0 of 4 | 0.0 of 4 | 1.0 of 16.0 GB | 0% |',
+      '| small#2 | left |  | 1m 40s | 1m 30s | 10.0s | 10.0s | 0 | 0.0 of 4 | 0.0 of 4 | 1.0 of 16.0 GB | 0% |',
     )
     expect(md).toContain(
       "Over their online time, tasks booked 78% of the workers' cores and used 40%.",
@@ -201,7 +202,7 @@ describe('renderJobSummary', () => {
         ],
       }),
     )
-    expect(one).toContain('| small#1 | left |  | 13 ok, 1 failed |')
+    expect(one).toContain('| small#1 | left |  | 1ms |  | 1ms | 0ms | 13 ok, 1 failed |')
     expect(one).not.toContain('this machine')
     // The workers line named a task that ran on the run's own machine raw.
     const here = renderJobSummary(
