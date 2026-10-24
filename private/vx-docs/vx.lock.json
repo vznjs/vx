@@ -93,6 +93,7 @@
           "!src/content/docs/patterns.md",
           "!src/content/docs/schema.md",
           "!src/content/docs/security.md",
+          "!src/content/docs/switchboard.md",
           "!src/content/docs/upstream-ledger.md",
           "!src/content/docs/modules/**",
           "!src/content/docs/design/**",
@@ -111,7 +112,7 @@
       }
     },
     "import": {
-      "description": "generate src/content/docs from packages/vx/docs and the plugin READMEs",
+      "description": "generate src/content/docs from packages/vx/docs, the plugin READMEs and the relay protocol",
       "dependsOn": [
         "install"
       ],
@@ -123,7 +124,8 @@
               "**/*",
               "../../packages/vx/docs/**",
               "../../packages/vx-*/README.md",
-              "../../packages/vx-*/package.json"
+              "../../packages/vx-*/package.json",
+              "../../packages/vx-dte-relay/PROTOCOL.md"
             ],
             "write": [
               "src/content/docs/**"
@@ -142,7 +144,8 @@
         "workspaceFiles": [
           "packages/vx/docs/**",
           "packages/vx-*/README.md",
-          "packages/vx-*/package.json"
+          "packages/vx-*/package.json",
+          "packages/vx-dte-relay/PROTOCOL.md"
         ]
       },
       "cache": {
@@ -164,6 +167,7 @@
             "src/content/docs/patterns.md",
             "src/content/docs/schema.md",
             "src/content/docs/security.md",
+            "src/content/docs/switchboard.md",
             "src/content/docs/upstream-ledger.md",
             "src/content/docs/modules/**",
             "src/content/docs/design/**",
@@ -245,6 +249,7 @@
           "!src/content/docs/patterns.md",
           "!src/content/docs/schema.md",
           "!src/content/docs/security.md",
+          "!src/content/docs/switchboard.md",
           "!src/content/docs/upstream-ledger.md",
           "!src/content/docs/modules/**",
           "!src/content/docs/design/**",
@@ -366,6 +371,7 @@
           "!src/content/docs/patterns.md",
           "!src/content/docs/schema.md",
           "!src/content/docs/security.md",
+          "!src/content/docs/switchboard.md",
           "!src/content/docs/upstream-ledger.md",
           "!src/content/docs/modules/**",
           "!src/content/docs/design/**",

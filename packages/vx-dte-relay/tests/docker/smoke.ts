@@ -4,7 +4,7 @@ import { createProver } from '../../src/index.js'
 
 const relay = process.env['VX_DTE_RELAY_SMOKE']!
 const run = crypto.randomUUID()
-const base = `${relay.replace(/^http/, 'ws')}/v1/runs/${run}/`
+const base = `${relay.replace(/^http/, 'ws')}/sessions/${run}/`
 
 interface Peer {
   id: string
@@ -12,16 +12,16 @@ interface Peer {
   ws: WebSocket
 }
 
-async function dial(role: 'orchestrator' | 'worker'): Promise<Peer> {
-  const prover = role === 'orchestrator' ? await createProver() : undefined
+async function dial(role: 'host' | 'peer'): Promise<Peer> {
+  const prover = role === 'host' ? await createProver() : undefined
   const join = JSON.stringify({ role, ...(prover === undefined ? {} : { key: prover.key }) })
   const query = `socket?join=${encodeURIComponent(join)}`
   const headers: Record<string, string> = {}
   if (prover !== undefined) {
     const { pathname, search } = new URL(base + query)
-    headers['vx-proof'] = await prover.proof('GET', pathname + search, '')
+    headers['relay-proof'] = await prover.proof('GET', pathname + search, '')
   }
-  const ws = new WebSocket(base + query, { headers })
+  const ws = new WebSocket(base + query, { headers, protocols: ['switchboard.v1'] } as never)
   const frames: any[] = []
   const waiting: ((f: any) => void)[] = []
   ws.onmessage = (e) => {
@@ -52,12 +52,12 @@ const deadline = setTimeout(() => {
   console.error('vx-dte-relay smoke: no answer in 10 s')
   process.exit(1)
 }, 10_000)
-const o = await dial('orchestrator')
-const w = await dial('worker')
-w.ws.send(JSON.stringify({ n: 0, sends: [{ to: 'orchestrator', body: 'up' }] }))
+const o = await dial('host')
+const w = await dial('peer')
+w.ws.send(JSON.stringify({ n: 0, sends: [{ to: 'host', body: 'up' }] }))
 const up = await heard(o, w.id)
 o.ws.send(JSON.stringify({ n: 0, sends: [{ to: w.id, body: 'down' }] }))
-const down = await heard(w, 'orchestrator')
+const down = await heard(w, 'host')
 clearTimeout(deadline)
 if (up !== 'up' || down !== 'down') {
   console.error(`vx-dte-relay smoke: heard ${JSON.stringify([up, down])}`)

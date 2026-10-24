@@ -9,8 +9,10 @@ It admits only CI OIDC tokens of the repositories it names, and binds
 each run to the repository that started it.
 
 The relay is one package whose one runtime dependency is `jose`, which checks
-the CI tokens; not even vx itself. Any
-server that speaks [PROTOCOL.md](./PROTOCOL.md) can take its place.
+the CI tokens; not even vx itself. It speaks the
+[Switchboard protocol](./PROTOCOL.md) (`switchboard.v1`): one host, the
+run's orchestrator, and its peers, the workers, behind one relay. Any
+server that speaks it can take its place, and any tool can use it.
 
 ## Run it
 
@@ -108,14 +110,14 @@ The same relay as a `fetch` handler, to mount in a server of your own
   participants hear from each other, said in each join's answer. A `Relay` is `{ fetch(req) }`,
   plus the hooks a host of websockets drives (`src/worker.ts` is their
   user): the options `sockets`, the `[Kept, RelaySocket]` pairs a host
-  kept across a restart, from which the runs are rebuilt (PROTOCOL.md
+  kept across a restart, from which the sessions are rebuilt (PROTOCOL.md
   § What the relay knows), and `upgrade`, which answers a `socket`
   request; and the methods `attach` and `detach` (its socket closed: the
   participant is gone), which hand the relay a participant's
   `RelaySocket` (`{ send, close }`), and `frame`, which returns the
   answer to send down the socket, or `undefined` for none. `attach`
   returns the `Kept` its host keeps with the socket (a Durable Object's
-  attachment: run, id, role, and the orchestrator's key), or
+  attachment: session, id, role, and the host's key), or
   `false`. A host closes a socket `attach` refuses
   with `closeSocket(socket, GONE)` (`GONE` is 4404), which says the close in a frame first
   (PROTOCOL.md § Sockets).
@@ -123,11 +125,11 @@ The same relay as a `fetch` handler, to mount in a server of your own
   `Bun.serve`, websockets included. `ServeOptions` is
   `{ hostname, port, verify?, heartbeatMs? }`, and a `RelayServer` is
   `{ url, stop() }`.
-- `createProver(): Promise<Prover>` makes the orchestrator's key for one
-  run (PROTOCOL.md § The orchestrator's key). A `Prover` is
+- `createProver(): Promise<Prover>` makes the host's key for one
+  session (PROTOCOL.md § The host's key). A `Prover` is
   `{ key, proof(method, path, body) }`: `key` is what its `join` names,
-  and `proof` is the value of the `PROOF_HEADER` (`vx-proof`) header of
-  each request as the orchestrator.
+  and `proof` is the value of the `PROOF_HEADER` (`relay-proof`) header of
+  each request as the host.
 - `createVerifier(options: OidcOptions)` returns that `verify`.
   `OidcOptions` is
   `{ allow, audience, runClaims?, fetchJson?, now? }`: who may take part,
