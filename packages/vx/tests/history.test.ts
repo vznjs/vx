@@ -599,11 +599,12 @@ describe('LocalHistoryProvider', () => {
     }
   })
 
-  it('reports the largest peak RSS and CPU parallelism an execution in the window used', async () => {
-    // What a reservation learned from history packs on: the maximum, not
-    // the mean (the OOM killer reads the maximum), over successful
-    // executions only — a hit reports nothing and a failure's usage is
-    // not what the task needs to succeed.
+  it('reports the largest peak RSS and the mean CPU parallelism the window’s executions used', async () => {
+    // What a reservation learned from history packs on: the RSS maximum
+    // (the OOM killer reads the maximum) and the CPU mean (one crowded
+    // run's 2.84 cores for a build that uses 1.3 to 1.9 booked a whole
+    // Mac, main b5b83bb), over successful executions only — a hit reports
+    // nothing and a failure's usage is not what the task needs to succeed.
     const cache = makeCache()
     const base = 1_000_000
     const unreported = (r: RunRecord): RunRecord => {
@@ -646,7 +647,7 @@ describe('LocalHistoryProvider', () => {
       'b#build',
     ])
     expect(table.get('a#build')?.maxPeakRssBytes).toBe(900 * 1024 * 1024)
-    expect(table.get('a#build')?.maxCpuParallelism).toBeCloseTo(2.6, 5)
+    expect(table.get('a#build')?.maxCpuParallelism).toBeCloseTo((1.5 + 2.6 + 0.8) / 3, 5)
     expect(table.get('b#build')?.maxPeakRssBytes).toBeUndefined()
     expect(table.get('b#build')?.maxCpuParallelism).toBeUndefined()
     cache.close()

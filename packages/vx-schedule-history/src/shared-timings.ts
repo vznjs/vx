@@ -26,6 +26,8 @@ const MAX_MS = 86_400_000
 const MAX_CORES = 65_536
 const MAX_BYTES = 2 ** 50
 const MAX_DEF = 64
+/** The share of its machine's cores a task must keep busy to fill it (core's history). */
+const SATURATED = 0.9
 
 const keyOf = (sha: string): string => `timings\0${sha}`
 
@@ -328,7 +330,7 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
     if (def === undefined) defs.delete(id)
     else defs.set(id, def)
     const r = measured.get(id)
-    if (r?.maxCpuParallelism !== undefined) resources.set(id, r)
+    if (r?.maxCpuParallelism !== undefined) resources.set(id, blend(resources.get(id), r))
   }
   let bytes = encode(timings, resources, defs)
   // Tasks a repo dropped stay in the carried blob; past the cap, the run's own.
@@ -341,6 +343,26 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
     )
   }
   for (const key of keysOf(head[0], args.ids)) await args.cache.put(key, bytes)
+}
+
+/**
+ * A run's need, averaged with the one carried from earlier runs: a CI run
+ * learns from its own executions only, so one crowded run's reading (a
+ * build at 2.84 cores that uses 1.3 to 1.9) booked the next run a whole
+ * 3-core Mac for it (main b5b83bb). It fills its machine only while the
+ * average does, or both did.
+ */
+function blend(carried: TaskResources | undefined, run: TaskResources): TaskResources {
+  if (carried?.maxCpuParallelism === undefined || run.maxCpuParallelism === undefined) return run
+  const cpu = (carried.maxCpuParallelism + run.maxCpuParallelism) / 2
+  const { saturatedCores, ...rest } = run
+  const cores = saturatedCores ?? carried.saturatedCores
+  const both = saturatedCores !== undefined && carried.saturatedCores !== undefined
+  return {
+    ...rest,
+    maxCpuParallelism: cpu,
+    ...(cores !== undefined && (both || cpu >= SATURATED * cores) ? { saturatedCores: cores } : {}),
+  }
 }
 
 /** `{ version: 4, tasks, needs?, defs? }`, each map by task id. */

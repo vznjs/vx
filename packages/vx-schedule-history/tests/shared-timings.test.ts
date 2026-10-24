@@ -15,7 +15,7 @@ import {
   type TaskNode,
 } from '@vzn/vx'
 import { scheduleHistoryPlugin } from '../src/index.js'
-import { importTimings, parseTimings } from '../src/shared-timings.js'
+import { exportTimings, importTimings, parseTimings } from '../src/shared-timings.js'
 
 const GIT_ENV = {
   ...process.env,
@@ -679,6 +679,49 @@ describe('shared timings', () => {
     await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#x'] })
     expect((read(shared.store.get(key(b))) as { needs: unknown }).needs).toEqual({
       'p#x': { cpu: 3 },
+    })
+  })
+
+  // Main b5b83bb: one crowded run read 2.84 cores for a build that uses
+  // 1.3 to 1.9, CI wrote it as the need, and the next run booked it a whole
+  // 3-core Mac; the tasks beside it waited 45 s.
+  it("writes a run's need averaged with the carried one, filling its machine only on average", async () => {
+    const a = commit()
+    const b = commit()
+    const shared = spyCache()
+    shared.store.set(
+      key(a),
+      new TextEncoder().encode(
+        JSON.stringify({
+          version: 4,
+          tasks: { 'p#build': 30_000, 'p#big': 30_000 },
+          defs: defsOf(['p#build', 'p#big']),
+          needs: { 'p#build': { cpu: 1.6 }, 'p#big': { cpu: 2.9, cores: 3 } },
+        }),
+      ),
+    )
+    const provider = {
+      p50sFor: async () =>
+        new Map([
+          ['p#build', 30_000],
+          ['p#big', 30_000],
+        ]),
+      resourcesFor: async () =>
+        new Map([
+          ['p#build', { p50DurationMs: 30_000, maxCpuParallelism: 2.84, saturatedCores: 3 }],
+          ['p#big', { p50DurationMs: 30_000, maxCpuParallelism: 2.8, saturatedCores: 3 }],
+        ]),
+    } as unknown as LocalHistoryProvider
+    await exportTimings({
+      root,
+      cache: shared,
+      provider,
+      ids: ['p#build', 'p#big'],
+      defs: new Map(Object.entries(defsOf(['p#build', 'p#big']))),
+    })
+    expect((read(shared.store.get(key(b))) as { needs: unknown }).needs).toEqual({
+      'p#build': { cpu: 2.22 },
+      'p#big': { cpu: 2.85, cores: 3 },
     })
   })
 
