@@ -1312,7 +1312,7 @@ describe('defaultAffectedBase', () => {
     const root = await repo('vx-affected-trunk-', 'main')
     try {
       await expect(defaultAffectedBase(root, undefined)).rejects.toThrow(
-        '--affected has no default on the base branch (main): name the last good commit, --affected=<sha>',
+        '--affected has no default on the base branch (main): run --all (the cache skips what did not change), or name the last good commit, --affected=<sha>',
       )
       await git(root, 'checkout', '-q', '-b', 'feat')
       expect(await defaultAffectedBase(root, undefined)).toBe('main')

@@ -251,10 +251,12 @@ Run the task only in projects whose files changed since `<base>`.
   `baseBranch` is `origin/HEAD`'s branch, then `main`, then `master`; the
   local branch in a clone with no remote; its tip when they share no
   history). On the base branch itself there is no default (set
-  `VX_AFFECTED_BASE` or pass one): vx refuses
-  (`--affected has no default on the base branch (main): name the last
-good commit, --affected=<sha>`), since `HEAD~1` saw one commit of a
-  multi-commit push. A shallow clone (CI's one-commit checkout) needs no
+  `VX_AFFECTED_BASE` or pass one): vx refuses (`--affected has no default
+on the base branch (main): run --all (the cache skips what did not
+change), or name the last good commit, --affected=<sha>`), since
+  `HEAD~1` saw one commit of a multi-commit push. CI on main needs only
+  the current commit: `--all` reads no history, and the cache runs only
+  what changed. A shallow clone (CI's one-commit checkout) needs no
   more history: vx fetches from origin what the merge base needs, the
   base's tip at depth 1, then both tips deepened 1, 2, 4… commits until
   git finds it, commits and trees only (no blobs). A pull request's merge

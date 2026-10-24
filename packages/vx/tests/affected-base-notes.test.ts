@@ -93,7 +93,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     const r = vx(root, 'run', 'build', '--affected')
     expect(r.exitCode).not.toBe(0)
     expect(r.out).toContain(
-      '--affected has no default on the base branch (feat): name the last good commit, --affected=<sha>',
+      '--affected has no default on the base branch (feat): run --all (the cache skips what did not change), or name the last good commit, --affected=<sha>',
     )
   })
 

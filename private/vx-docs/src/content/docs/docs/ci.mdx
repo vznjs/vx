@@ -123,7 +123,7 @@ the workflow's first step.
 ### Common problems
 
 - **`--affected has no base here`.** The clone has no base branch and no `origin` to fetch it from. Set `baseBranch`, or pass `--affected=<ref>`.
-- **`nothing affected since <ref>` on every push.** `origin/main` on a push to `main` is the commit itself. Use `github.event.before`.
+- **`nothing affected since <ref>` on every push.** `origin/main` on a push to `main` is the commit itself. Run `--all` on `main`: the cache skips what did not change, and the checkout needs no history.
 - **The whole log lands in the job summary.** Don't redirect vx's output there; declare `github()` from `@vzn/vx-ci`, which writes the summary.
 
 ---

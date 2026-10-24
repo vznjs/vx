@@ -1916,8 +1916,8 @@ interface CacheSettings {
 - **`baseBranch`** — the repository's default branch, by name
   (`'develop'`; `VX_BASE_BRANCH` beats it). Omitted → `origin/HEAD`'s
   branch, then `main`, then `master`. On it a run has no cache scope and
-  a bare `--affected` has no default (pass the last good commit,
-  `--affected=<sha>`); elsewhere a bare `--affected` compares with the
+  a bare `--affected` has no default (run `--all`, or pass the last good
+  commit, `--affected=<sha>`); elsewhere a bare `--affected` compares with the
   merge base of HEAD and `origin/<baseBranch>` (the local branch in a
   clone with no remote), or that branch's tip when they share no
   history. A plugin's `config` stage may set it: `nx()` from nx.json's

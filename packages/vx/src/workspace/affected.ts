@@ -749,7 +749,7 @@ export async function defaultAffectedBase(
   }
   if (found.onIt) {
     throw new UserError(
-      `--affected has no default on the base branch (${found.branch}): name the last good commit, --affected=<sha>`,
+      `--affected has no default on the base branch (${found.branch}): run --all (the cache skips what did not change), or name the last good commit, --affected=<sha>`,
       'VX_E_AFFECTED_BASE',
     )
   }
