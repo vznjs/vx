@@ -160,6 +160,8 @@ describe('VX_RUN_TIMEOUT — the env rung parser', () => {
   it('refuses a value past the timer ceiling, which would fire at once', () => {
     expect(read(`${MAX_TIMEOUT_MS}ms`)).toBe(MAX_TIMEOUT_MS)
     expect(refusal(`${MAX_TIMEOUT_MS + 1}ms`)).toContain('exceeds the maximum timer delay')
+    // A bare number past it named '<n>ms' and '<n/1000>s', both refused in turn.
+    expect(refusal(String(MAX_TIMEOUT_MS + 1))).toContain('exceeds the maximum timer delay')
   })
 })
 

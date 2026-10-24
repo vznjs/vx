@@ -359,10 +359,12 @@ export function settingRefusal(
         : typeof raw === 'string' && /^\d+$/.test(raw)
           ? Number(raw)
           : null
-    if (n !== null && Number.isSafeInteger(n) && n > 0) {
+    const bare = n !== null && Number.isSafeInteger(n) && n > 0
+    // A bare number past the ceiling is past it in either unit it could mean.
+    const ms = bare ? n : typeof raw === 'string' ? parseDuration(raw) : null
+    if (bare && !(kind.timer === true && n > MAX_TIMEOUT_MS)) {
       return `${where} takes a duration with its unit, like '${n}ms' or '${Math.max(1, Math.round(n / 1000))}s' (got ${got})`
     }
-    const ms = typeof raw === 'string' ? parseDuration(raw) : null
     if (kind.timer === true && ms !== null && ms > MAX_TIMEOUT_MS) {
       return (
         `${where} of ${got} exceeds the maximum timer delay (${MAX_TIMEOUT_MS} ms, ~24.8 days): ` +
