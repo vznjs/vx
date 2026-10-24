@@ -211,20 +211,6 @@ export class LayeredCache implements CacheLayer {
   private readonly inflight = new Map<string, Promise<boolean>>()
 
   /**
-   * Hashes a batch probe is asking about, each resolving whether a pull may
-   * still find it (false: no remote holds it). A `get` that lands while the
-   * probe is out waits for its answer instead of spending a GET on a key
-   * the probe is about to call absent.
-   */
-  private readonly probing = new Map<string, Promise<boolean>>()
-
-  /** Hashes the index says a remote holds (`remoteKnown`): their pulls wait on no probe. */
-  private readonly trusted = new Set<string>()
-
-  /** Settles once the run's batch probe has started (`probeFirst`); a pull waits on it. */
-  private probeStarted: Promise<void> | null = null
-
-  /**
    * Hashes whose local artifact was materialized FROM a remote this run
    * (by `prefetch` or `get`'s read-through). A later `get` finds them as
    * a local hit, but the work was still saved by the remote cache — so
@@ -274,10 +260,7 @@ export class LayeredCache implements CacheLayer {
   remoteKnown(hashes: readonly string[]): Map<string, ArtifactInfo> {
     if (this.readable.length === 0) return new Map()
     const known = this.local.remoteHits.get(hashes)
-    for (const [h, info] of known) {
-      this.trusted.add(h)
-      if (!this.infos.has(h)) this.infos.set(h, info)
-    }
+    for (const [h, info] of known) if (!this.infos.has(h)) this.infos.set(h, info)
     return known
   }
 
@@ -294,33 +277,13 @@ export class LayeredCache implements CacheLayer {
    */
   async remoteHasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
     if (this.readable.length === 0) return null
-    const answer = this.probeMany(hashes).then((found) => {
-      if (found !== null) {
-        for (const [h, info] of found) this.infos.set(h, info)
-        // The whole answer, kept for the next run and the next process.
-        this.local.remoteHits.record(hashes, found)
-      }
-      return found
-    })
-    const waiting = hashes.filter(
-      (h) => !this.inflight.has(h) && !this.probing.has(h) && !this.trusted.has(h),
-    )
-    for (const h of waiting) {
-      this.probing.set(
-        h,
-        answer.then(
-          (found) => {
-            this.probing.delete(h)
-            return found === null || found.has(h)
-          },
-          () => {
-            this.probing.delete(h)
-            return true
-          },
-        ),
-      )
+    const found = await this.probeMany(hashes)
+    if (found !== null) {
+      for (const [h, info] of found) this.infos.set(h, info)
+      // The whole answer, kept for the next run and the next process.
+      this.local.remoteHits.record(hashes, found)
     }
-    return answer
+    return found
   }
 
   /**
@@ -368,17 +331,6 @@ export class LayeredCache implements CacheLayer {
     }
   }
 
-  probeFirst(started: Promise<void>): void {
-    const gate = started.then(
-      () => {},
-      () => {},
-    )
-    this.probeStarted = gate
-    void gate.then(() => {
-      if (this.probeStarted === gate) this.probeStarted = null
-    })
-  }
-
   probeBeforeUpload(hashes: Promise<readonly string[]>): void {
     for (const lane of this.lanes) lane.probeBeforeUpload(hashes)
   }
@@ -401,6 +353,9 @@ export class LayeredCache implements CacheLayer {
     // remote walk per key: a settled `false` means no remote had it
     // (no second probe), and a settled/in-flight `true` means the
     // artifact was/will-be ingested locally — re-read below.
+    // A lookup never waits on the run's batch probe: a hit then paid two
+    // round-trips before its first byte (the probe, then the GET), ~300 ms
+    // an up-to-date task on CI. A GET answers a miss as fast as the probe.
     const ingested = await this.awaitOrRun(hash, this.pullFromRemote(hash, ctx))
     if (!ingested) return null
 
@@ -492,16 +447,6 @@ export class LayeredCache implements CacheLayer {
   private pullFromRemote(hash: string, ctx?: CacheGetContext): Promise<boolean> {
     const existing = this.inflight.get(hash)
     if (existing) return existing
-    if (this.trusted.has(hash)) {
-      const p = this.doPullFromRemote(hash, ctx)
-      this.inflight.set(hash, p)
-      return p
-    }
-    const probed = this.probing.get(hash)
-    if (probed !== undefined)
-      return probed.then((found) => (found ? this.pullFromRemote(hash, ctx) : false))
-    if (this.probeStarted !== null)
-      return this.probeStarted.then(() => this.pullFromRemote(hash, ctx))
     const p = this.doPullFromRemote(hash, ctx)
     this.inflight.set(hash, p)
     return p

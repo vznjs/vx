@@ -620,12 +620,6 @@ export interface CacheLayer {
    */
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
   /**
-   * The run's batch probe starts when `started` settles: until then a pull
-   * waits, so a lookup that lands first does not GET a key the probe is
-   * about to call absent. Only meaningful with `hasRemote`.
-   */
-  probeFirst?(started: Promise<void>): void
-  /**
    * Resolve once every background write-through upload settles. The
    * orchestrator awaits it before `close()` — an upload reading layer state
    * after close would race. Only meaningful with `hasRemote`; a layer that

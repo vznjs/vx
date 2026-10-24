@@ -396,9 +396,10 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
   // `restored` distinguishes "we just wrote files to disk" from
   // "disk already matched the cached snapshot". Drives the
   // "up-to-date" vs "local-cache" / "remote-cache" label in the
-  // framed block. Only meaningful when at least one output was
-  // declared — no-outputs tasks never materialize anything, so
-  // they're vacuously up-to-date.
+  // framed block. A hit the remote answered is never up to date: up to
+  // date is fresh here, and a remote hit waited on the network and
+  // downloaded its entry, outputs or none (M, 2026-10-24: "Up to date is
+  // a fresh. It should not require any cache").
   return {
     node,
     status,
@@ -412,7 +413,7 @@ function hitOutcome(restore: RestoreHitArgs, restored: boolean): TaskOutcome {
     ...(hit.sizeBytes !== undefined ? { artifactBytes: hit.sizeBytes } : {}),
     ...(hit.fetchMs !== undefined ? { fetchMs: hit.fetchMs } : {}),
     hash,
-    restored,
+    restored: restored || hit.source === 'remote',
     wallclockStartNs: taskStartNs,
     wallclockEndNs: process.hrtime.bigint() - args.runStartHrTimeNs,
   }

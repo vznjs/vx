@@ -16,6 +16,7 @@ import {
 import { FULL_CACHE_POLICY, type RemoteCacheLayer } from '../src/cache/index.js'
 import { parseRunArgs, resolveRunOptions } from '../src/cli/run.js'
 import { run } from './helpers/orchestrator.js'
+import { outcomeWord } from '../src/report/index.js'
 import { PLUGIN_IMPORT, pluginSource } from './helpers/plugin.js'
 
 const BUILD_CONFIG = `
@@ -159,11 +160,10 @@ describe('cache.scope', () => {
   )
 
   it(
-    'a lookup that lands before the batch probe answers waits for it: no GET for an absent key',
+    'a lookup that lands before the batch probe answers GETs at once, absent key or not',
     async () => {
-      // The task's own lookup raced the prefetch's probe: under load it
-      // spent a GET the probe was about to call absent (2 in 25 runs).
-      // A slow probe makes the race certain.
+      // Waiting on the probe made every remote hit two round-trips (~300 ms
+      // an up-to-date task on CI, 2026-10-24). A GET answers a miss as fast.
       const fixture = await makeWorkspace('vx-cache-scope-')
       const { layer, gets } = memoryRemote(300)
       try {
@@ -172,9 +172,45 @@ describe('cache.scope', () => {
           config: BUILD_CONFIG,
         })
         expect((await runScoped(fixture, layer, undefined, 'v1')).status).toBe('success')
-        expect(gets).toEqual([])
+        expect(gets).toHaveLength(1)
+        // An absent key: its 404 is the answer the probe would have given.
         expect((await runScoped(fixture, layer, 'ref-b', 'v2')).status).toBe('success')
-        expect(gets).toEqual([])
+        expect(gets).toHaveLength(2)
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'a remote hit is never up to date, outputs or none; a local one with nothing to restore is',
+    async () => {
+      // CI's summary called a remote hit of a task with no outputs up to
+      // date, at ~300 ms of network (M, 2026-10-24: "Up to date is a fresh.
+      // It should not require any cache").
+      const fixture = await makeWorkspace('vx-cache-uptodate-')
+      const { layer } = memoryRemote()
+      try {
+        await addProject(fixture.root, 'app', {
+          files: { 'src/in.txt': 'v1' },
+          config: `export default { tasks: { check: {
+            exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } },
+          } } }`,
+        })
+        const once = async (): Promise<string> => {
+          const result = await run({
+            cwd: fixture.root,
+            tasks: ['check'],
+            log: silentLogger(fixture),
+            remoteCache: layer,
+          })
+          return outcomeWord(result.outcomes[0]!)
+        }
+        expect(await once()).toBe('success')
+        await rm(path.join(fixture.root, '.vx', 'cache'), { recursive: true, force: true })
+        expect(await once()).toBe('restored-remote')
+        expect(await once()).toBe('up-to-date')
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }

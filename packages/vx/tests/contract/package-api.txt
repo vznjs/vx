@@ -581,7 +581,6 @@ export interface CacheLayer {
   remoteKnown?(hashes: readonly string[]): Map<string, ArtifactInfo>
   markRemoteAbsent?(hashes: Iterable<string>): void
   probeBeforeUpload?(hashes: Promise<readonly string[]>): void
-  probeFirst?(started: Promise<void>): void
   drainUploads?(): Promise<void>
   stopUploads?(): void
   key(input: CacheKeyInput): Promise<string>

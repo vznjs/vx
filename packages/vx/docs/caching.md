@@ -600,6 +600,10 @@ Hard invariants of the remote prefetch:
   the outputs of a dependency the key does not fold) is not prefetched: its key would name the wrong
   artifact, and it resolves via the lazy read-through in `execute-task`. Instability propagates: a task that folds an
   unstable upstream is itself unstable. When in doubt, skip.
+- **A lookup waits on no probe.** A task that asks for its key while
+  the batch probe is out GETs it at once: waiting made a remote hit two
+  round-trips (`layered-cache.test.ts` › "a get() while the batch probe
+  is out GETs at once…").
 - **Kept hits, trusted at once.** What a `hasMany` says a remote holds
   is kept in the index's `remote_hits` table (shared by every worktree),
   so a later process trusts it: `vx run --dry` (or `vx dte plan`)
