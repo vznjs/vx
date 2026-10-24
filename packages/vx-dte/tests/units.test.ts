@@ -1613,6 +1613,85 @@ it('a worker restores a dependency once, before any task that needs it runs', as
   }
 })
 
+// A dependency in no cache the worker read was its fault: each worker it
+// reached was dropped, and the run waited on one that never came
+// (2026-10-24).
+it('a worker fails a task whose dependency is in no cache it reads, and stays', async () => {
+  const root = await tmp()
+  const served = servedRelay()
+  const url = served.url
+  try {
+    const o = sealOrchestrator(
+      await join(url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const saved: string[] = []
+    const artifacts: TaskArtifacts = {
+      async save(key) {
+        saved.push(key)
+      },
+      async output() {
+        return null
+      },
+      async share() {
+        return false
+      },
+      async restore() {
+        return null
+      },
+    }
+    const code = runWorker({
+      relay: url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => artifacts,
+    })
+    const order: RunOrder = {
+      task: 't1',
+      key: 'k-t1',
+      runKey: runKey(R, 't1'),
+      deps: [
+        { task: 'd', key: 'k-d', project: '', outputs: { files: ['dep.txt'], workspaceFiles: [] } },
+      ],
+      nested: [],
+      command: 'true',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    }
+    const got: { type: string; key?: string; result?: { exitCode: number } }[] = []
+    for (let i = 0; i < 100 && got.length === 0; i++) {
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string; key?: string; result?: { exitCode: number } }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 2,
+            memory: 1e9,
+          })
+          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+        } else if (m.type === 'end' || m.type === 'fault') {
+          got.push(m)
+          await o.send(from, { type: 'exit' })
+        }
+      }
+    }
+    expect(await code).toBe(0)
+    expect(got).toMatchObject([{ type: 'end', key: runKey(R, 't1'), result: { exitCode: 1 } }])
+    expect(saved).toEqual([runKey(R, 't1')])
+  } finally {
+    await served.stop()
+  }
+})
+
 // A task whose outputs overlap a restored dependency's cleared its files,
 // and a later task that needed them ran without them: the worker still
 // counted them restored (2026-10-22).

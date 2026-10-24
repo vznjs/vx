@@ -20,6 +20,7 @@ import {
   sandboxRequestFor,
   sweepPlaceholders,
   isUserError,
+  UserError,
   type CacheFacts,
   type ExecuteRequest,
   type LocalFloor,
@@ -114,44 +115,46 @@ export async function runWorker(opts: {
   /** Of `present`, which files each holds: a task that clears one makes it absent. */
   const holds = new Map<string, (file: string) => boolean>()
 
-  /** Saves the task's files and output under `key` and says so. */
+  /** Saves the task's files (none when `bare`) and output under `key` and says so. */
   const reply = async (
     m: RunOrder,
     key: string,
     others: ReadonlySet<string> | undefined,
     res: WiredResult & { stdout: string; stderr: string },
+    bare = false,
   ): Promise<void> => {
-    const { stdout, stderr, ...wired } = res
-    let result: WiredResult = wired
-    const task = {
-      id: m.task,
-      projectDir: path.join(opts.root, m.project),
-      command: m.command,
-      outputs: m.outputs,
-      nestedProjectDirs: m.nested.map((n) => path.join(opts.root, n)),
-      ...(others === undefined || others.size === 0 ? {} : { others }),
-    }
-    const run = {
-      stdout,
-      stderr,
-      durationMs: res.durationMs,
-      ...(res.cpuMs === undefined ? {} : { cpuMs: res.cpuMs }),
-      ...(res.peakRssBytes === undefined ? {} : { peakRssBytes: res.peakRssBytes }),
-      env: m.env,
-    }
+    const { stdout, stderr, ...result } = res
     try {
-      await artifacts.save(key, task, run)
+      await artifacts.save(
+        key,
+        {
+          id: m.task,
+          projectDir: path.join(opts.root, m.project),
+          command: m.command,
+          outputs: bare ? { files: [], workspaceFiles: [] } : m.outputs,
+          nestedProjectDirs: m.nested.map((n) => path.join(opts.root, n)),
+          ...(others === undefined || others.size === 0 ? {} : { others }),
+        },
+        {
+          stdout,
+          stderr,
+          durationMs: res.durationMs,
+          ...(res.cpuMs === undefined ? {} : { cpuMs: res.cpuMs }),
+          ...(res.peakRssBytes === undefined ? {} : { peakRssBytes: res.peakRssBytes }),
+          env: m.env,
+        },
+      )
     } catch (err) {
       // Its outputs refused (a link out of its project): the task fails, as
       // core fails it, not this worker. Taken as a fault, it failed every
       // worker it reached and the run with them (2026-10-24).
-      if (!isUserError(err)) throw err
-      key = m.runKey
-      result = { ...result, exitCode: 1 }
-      await artifacts.save(
-        key,
-        { ...task, outputs: { files: [], workspaceFiles: [] } },
-        { ...run, stderr: `${stderr}${err.message}\n` },
+      if (bare || !isUserError(err)) throw err
+      return reply(
+        m,
+        m.runKey,
+        undefined,
+        { ...res, exitCode: 1, stderr: `${stderr}${err.message}\n` },
+        true,
       )
     }
     if (result.exitCode === 0) {
@@ -247,14 +250,25 @@ export async function runWorker(opts: {
             })
             .then((log) => {
               if (log === null)
-                throw new Error(`${d.task}'s entry ${d.key} is in no cache this worker reads`)
+                throw new UserError(`${d.task}'s entry ${d.key} is in no cache this worker reads`)
             })
           present.set(d.key, got)
           holds.set(d.key, names(d.project, d.outputs))
           // quiet: awaited below, where its error is the task's fault
           got.catch(() => present.delete(d.key))
         }
-        await got
+        try {
+          await got
+        } catch (err) {
+          // No worker reads it either: the task fails, naming it. Taken as a
+          // fault, each worker it reached was dropped and the run waited on
+          // a worker that never came (2026-10-24).
+          if (!isUserError(err)) throw err
+          ui.print('err', ui.status('error', m.task, err.message))
+          const res = { exitCode: 1, durationMs: 0, stdout: '', violations: [] }
+          await reply(m, m.runKey, undefined, { ...res, stderr: `${err.message}\n` }, true)
+          return
+        }
       }
       // An earlier task's files under these outputs would ship as this one's.
       // A tracked file or a nested project's is none of them: cleared, a
