@@ -340,6 +340,39 @@ describe('execute-task — what the outcome and the request carry', () => {
     }
   })
 
+  it('tells the executor when core will save no entry under the key', async () => {
+    // A distributed run's worker saved under the key whatever the policy:
+    // a `--no-cache` run left an entry the next run hit (2026-10-24).
+    const b = await bench()
+    try {
+      const log = capturingLogger({ root: '', out: [], err: [] })
+      const seen: Array<boolean | undefined> = []
+      const recorder = {
+        name: 'org/recorder',
+        remote: true,
+        execute: async (req: ExecuteRequest) => {
+          seen.push(req.unsaved)
+          return { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
+        },
+      } as never
+      const cached = node(b, {
+        exec: { command: 'true' },
+        inputs: { files: ['package.json'] },
+        cache: { outputs: { files: [] } },
+      })
+      const run = (extra: object) =>
+        executeTask({ ...baseArgs(b, cached, log), executor: recorder, ...extra })
+      // Reads off throughout, so each run reaches the executor.
+      const force = { localRead: false, localWrite: true, remoteRead: false, remoteWrite: false }
+      await run({ cachePolicy: force })
+      await run({ cachePolicy: NO_CACHE })
+      await run({ cachePolicy: force, taintedUpstream: true })
+      expect(seen).toEqual([undefined, true, true])
+    } finally {
+      await closeBench(b)
+    }
+  })
+
   it('reports the sandbox violation COUNT and lines on the outcome', async () => {
     // The rewrite of a zero exit to 1 is pinned next door, but what the
     // outcome then TELLS the reader was not: the count feeds the

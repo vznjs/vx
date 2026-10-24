@@ -403,7 +403,9 @@ use your own instead.
   it runs depends on, unless it ran or restored them before. Files a task
   writes without declaring them stay on the worker.
 - A failed or uncached task is saved under a key of the run and the task,
-  so no later lookup ever hits it.
+  so no later lookup ever hits it; so is one core would not save (a
+  `--no-cache` or read-only run, a dependant of a failure under
+  `--continue=always`).
 - A worker whose tracked files differ from the orchestrator's (another
   tree) is refused.
 - A task whose key folds a file the run's commit lacks (untracked, or
