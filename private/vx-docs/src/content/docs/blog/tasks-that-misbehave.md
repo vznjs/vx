@@ -6,8 +6,11 @@ authors:
 tags:
   - dx
   - execution
-excerpt: 'A task hangs, gets killed, prompts for input, or calls vx run on itself. Each one gets a clear line from vx instead of a mystery. Plus timeouts, forwarded arguments, and two runs that politely take turns.'
+excerpt: 'A task hangs, gets killed, prompts for input, or calls vx run on itself. vx tells you what happened in one line.'
 ---
+
+A task hangs, gets killed, or prompts for input. vx tells you what
+happened in one line.
 
 ```sh frame="terminal"
 $ vx run packages/b#hang                 # exec: { command: 'sleep 30', timeout: '1s' }
@@ -21,18 +24,19 @@ $ vx run packages/b#killed               # exec: { command: 'kill -9 $$' }
 └─ packages/b#killed ── (5ms) failed (exit 137, 128 + SIGKILL)
 ```
 
-A hang becomes a named timeout. Exit 137 gets its signal and its usual
-suspects. Demo workspace, vx at `69617eb`, 2026-10-23.
+A hang becomes a named timeout. Exit 137 gets its signal and the usual
+causes.
 
-`exec.timeout` takes a duration (`'1s'`, `'5m'`); `--timeout` sets one
-for the run.
+<small>Demo workspace · vx 69617eb · 2026-10-23</small>
+
+`exec.timeout` takes a duration (`'1s'`, `'5m'`). `--timeout` sets one
+for the whole run.
 
 ## No vx run inside a task
 
-A task that runs `vx run` on its own workspace hides its work from the
-graph, the scheduler and the cache key, and a loop back to itself would
-fork forever. vx sets `VX_RUN_WORKSPACE` and `VX_RUN_TASK` on every task
-and refuses:
+A task that calls `vx run` on its own workspace hides work from the
+graph and the cache key, and a loop back to itself never ends. vx
+refuses it:
 
 ```sh frame="terminal"
 $ vx run packages/b#nested
@@ -43,7 +47,7 @@ $ vx run packages/b#nested
 └─ packages/b#nested ── (112ms) failed (exit 1)
 ```
 
-Driving a different workspace from a task is fine.
+Running a different workspace from a task is fine.
 
 ## A config typo names the line
 
@@ -60,12 +64,12 @@ $ vx lock
       |                                          ^
 ```
 
-The key, the file, the column, and no stack trace.
+File, line and column. No stack trace.
 
 ## Arguments after --
 
-Everything after `--` reaches the task's command and joins its cache
-key, so a run with different flags never reuses the wrong result:
+Everything after `--` goes to the command and into the cache key, so
+different flags never reuse the wrong result:
 
 ```sh frame="terminal"
 $ vx run packages/b#echo -- --watch=false
@@ -75,16 +79,14 @@ args: --watch=false
 
 ## Prompts get the terminal
 
-A task with `exec.interactive: true`, such as a database migration that
-asks before it applies, gets vx's own terminal. It runs alone, its output
-is passed straight through, and it is never cached. Off a terminal, on CI
-or in a pipe, its input is empty, so a prompt reads end of input and
-never hangs.
+A task with `exec.interactive: true`, like a migration that asks before
+it applies, gets your terminal. It runs alone and is never cached. In
+CI or a pipe its input is empty, so a prompt can't hang.
 
 ## Two runs take turns
 
-Start a second `vx run` in the same workspace and it waits for the first.
-After a second it says who it is waiting for:
+A second `vx run` in the same workspace waits for the first. After a
+second it tells you:
 `[vx] waiting for another vx run (pid N) on this workspace to finish…`.
 
 Every option is in the [schema](../../schema/) and the
