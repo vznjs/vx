@@ -2515,33 +2515,67 @@ workspace here or above, or a parse error.
 
 ## `vx why`
 
-Answer "why did this task re-run?" from the terminal, from the
-per-component input fingerprints core persists on every miss. Read-only over the local
-`cache.db`: no config evaluation, no re-hash.
+`vx why` tells you why a task re-ran: the file, variable or dependency
+that moved its cache key since the run before. It reads the local
+`cache.db` only: no config evaluation, no re-hash.
+
+### Usage
 
 ```
 vx why (TASK | PKG#TASK) [--run RUNID] [--format pretty|json] [--cache-dir <path>]
 ```
 
+### Example
+
+```
+$ vx why app#build
+app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
+  this run   2026-10-08T01:57:05.486Z · success · executed · key 9ef9806a9c69209e
+  previous   2026-10-08T01:57:05.325Z · success · key e240348b20e79fd6
+  verdict    cache key changed: file packages/app/src/input.txt
+
+  what changed (1 component, 6 unchanged):
+    changed file  packages/app/src/input.txt  78981922613b2afb6025042ff6bd878ac1994e85 → 61780798228d17af2d34fce4cfbdf35556832472
+
+  what to do:
+    file  an edit re-runs by design; a file the task does not read belongs out of inputs.files
+```
+
+### Arguments
+
+| Argument   | Meaning |
+| ---------- | ------- |
+| `PKG#TASK` | one project's task |
+| `TASK`     | a bare task name: resolves when exactly one project ran it (several → the project the current directory is in, as `vx run` picks, else an error listing the candidates; unknown → include-match suggestions, or, with none near, a pointer to `vx last --list`, or word that nothing has run yet; after runs of only groups, which record no task row, that no run executed a task and to ask about one the group depends on, X-50) |
+
+### Options
+
+| Option | Meaning |
+| ------ | ------- |
+| `--run RUNID` | explain that run instead of the latest; a unique prefix of the id is enough. A task that run did not run is refused, pointing at `vx last --list`, and so is an id no run carries |
+| `--format pretty\|json` | `json` emits one object, below |
+| `--cache-dir <path>` | read the cache a run with the same flag uses |
+
 By default it compares the task's **latest** recorded run against its
-immediately-previous run; `--run RUNID` pins a specific run (a unique
-prefix of the id is enough; a task that run did not run is refused,
-pointing at `vx last --list`, and so is an id no run carries). History is
+immediately-previous run. History is
 the cache directory's, not the checkout's: worktrees that share one
 `--cache-dir` share one history, so the previous run may be another
 worktree's (its branch is in `vx last`), and its edits read as changes. Latest and
 previous are the order runs were recorded, not their clock: a clock that
-stepped back once swapped the two and diffed the edit backwards. A bare task
-name resolves when exactly one project ran it (several → the project
-the current directory is in, as `vx run` picks, else an error listing
-the candidates; unknown → include-match suggestions, or, with
-none near, a pointer to `vx last --list`, or word that nothing has run
-yet; after runs of only groups, which record no task row, that no run
-executed a task and to ask about one the group depends on, X-50).
+stepped back once swapped the two and diffed the edit backwards.
 
-A control character in a component's name (a file named with an
-escape or a carriage return) prints as `\xNN`, so no file name drives
-the terminal; `--format json` carries the name as it is.
+### Understanding the output
+
+**The verdict.** A changed key's verdict names what moved, kind and name, three at most
+and then a count (`cache key changed: env MODE`), so a key that moved
+only by an environment variable says so in one line; when neither
+entry kept its components it reads `(inputs differ)`. A key that folds a
+task with no `inputs` is new every run, so the task never hits; the
+verdict names that task:
+
+```
+  verdict    never cached: its key folds app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate
+```
 
 An **unchanged** key has three endings, and the verdict distinguishes
 them rather than calling all three a re-run: the run was served from
@@ -2559,32 +2593,11 @@ policy wrote no cache says that instead). Otherwise, with this run's
 policy recorded as reading the cache, it says it cannot name the cause;
 only a run with no recorded policy names `--no-cache` / `--force`.
 
-```
-$ vx why app#build
-app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
-  this run   2026-10-08T01:57:05.486Z · success · executed · key 9ef9806a9c69209e
-  previous   2026-10-08T01:57:05.325Z · success · key e240348b20e79fd6
-  verdict    cache key changed: file packages/app/src/input.txt
+**The run lines.** A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status
+names the hit and its tier, so only an executed run carries the word.
+A skipped task never ran and derived no key: its line is `skipped · no key`.
 
-  what changed (1 component, 6 unchanged):
-    changed file  packages/app/src/input.txt  78981922613b2afb6025042ff6bd878ac1994e85 → 61780798228d17af2d34fce4cfbdf35556832472
-
-  what to do:
-    file  an edit re-runs by design; a file the task does not read belongs out of inputs.files
-```
-
-A changed key's verdict names what moved, kind and name, three at most
-and then a count (`cache key changed: env MODE`), so a key that moved
-only by an environment variable says so in one line; when neither
-entry kept its components it reads `(inputs differ)`. A key that folds a
-task with no `inputs` is new every run, so the task never hits; the
-verdict names that task:
-
-```
-  verdict    never cached: its key folds app#gate, which declares no `inputs`, so each run derives a new key; declare inputs on app#gate
-```
-
-Under the rows, `what to do` gives one line per changed kind: what
+**What to do and root cause.** Under the rows, `what to do` gives one line per changed kind: what
 moves it and how to stop a move the task does not need. An upstream
 row is only the carrier, so `vx why` follows each dependency that moved
 in the same run down to the tasks whose OWN inputs moved and prints
@@ -2598,36 +2611,39 @@ count), and `what to do` speaks to those kinds instead:
 
 A dependency the walk cannot find in the run keeps the `upstream` line,
 which names the `vx why` to run next; a `config` line names the
-`vx show` that prints the task's config now. `--format json` carries
-the walk as `roots` (`chain`, `entries`).
+`vx show` that prints the task's config now.
 
-A moved input file whose last change fell inside a recorded task's run
+**Changed during a run.** A moved input file whose last change fell inside a recorded task's run
 window names that task: a task that writes a file another key reads (a
 build rewriting a translation file in another package) re-keys that key
 on every run, so the miss is right and only moving the write ends it.
-`--format json` carries these as `writers` (`taskId`, `file`,
-`writers`); an edit made outside a run names none.
+An edit made outside a run names none.
 
 ```
   changed during a run:
     packages/lib/src/gen.txt  while app#build ran
 ```
 
-A hit's line is `cache-hit · key …` (or `cache-hit-remote`): the status
-names the hit and its tier, so only an executed run carries the word.
-A skipped task never ran and derived no key: its line is `skipped · no key`.
-A row's kind is what the key folded: `file` (an input file, by blob
-id), `linked` (the content behind a `file` that is a symlink), `env` (a declared variable, by digest), `runtime` and
-`ws-runtime` (a declared command's output, `inputs.runtime` and
-`inputs.workspaceRuntime`), `forward` (the argv forwarded after `--`),
-`config` (the evaluated task config), `upstream` (a dependency's input
-key — a lockfile change moves it too, so that row rides with the
-lockfile plugin's), `plugin` (a `key` plugin's material, by name; a
-lockfile plugin's dependency closure), `platform` (the platform a task
-naming `exec.platforms` ran on) and
-`format` (the key format vx itself folds: it moves only with an
-upgrade, and re-keys every task once, X-142).
-The component-level rows come from the `entry_inputs` input
+**Kinds.** A row's kind is what the key folded:
+
+| Kind | What the key folded |
+| ---- | ------------------- |
+| `file` | an input file, by blob id |
+| `linked` | the content behind a `file` that is a symlink |
+| `env` | a declared variable, by digest |
+| `runtime`, `ws-runtime` | a declared command's output, `inputs.runtime` and `inputs.workspaceRuntime` |
+| `forward` | the argv forwarded after `--` |
+| `config` | the evaluated task config |
+| `upstream` | a dependency's input key — a lockfile change moves it too, so that row rides with the lockfile plugin's |
+| `plugin` | a `key` plugin's material, by name; a lockfile plugin's dependency closure |
+| `platform` | the platform a task naming `exec.platforms` ran on |
+| `format` | the key format vx itself folds: it moves only with an upgrade, and re-keys every task once, X-142 |
+
+A control character in a component's name (a file named with an
+escape or a carriage return) prints as `\xNN`, so no file name drives
+the terminal; `--format json` carries the name as it is.
+
+**When there is no diff.** The component-level rows come from the `entry_inputs` input
 fingerprints persisted with each cache entry; when either side's entry
 is gone (pruned, or the run failed and never saved one) the verb still
 names the hash change and says the component diff is unavailable. When
@@ -2637,10 +2653,17 @@ that saved an entry instead, and the detail line names that run. A
 task with `inputs` and no `cache` block derives a key too — it is what
 dependents fold — but saves no entry, so for it the verb can only report
 the key change and says so.
+
+### JSON
+
 `--format json` emits one machine-readable object (`{ taskId, runId,
 why, diff, roots, writers }`); when the task's recorded runs predate run ids, `{ taskId,
 why, diff, explanation }`, `why` and `diff` null and `explanation` the
-latest cache entry's key.
+latest cache entry's key. `roots` is the root-cause walk (`chain`,
+`entries`); `writers` the changed-during-a-run files (`taskId`, `file`,
+`writers`).
+
+### Exit codes
 
 Exit codes: `0` the task's run explained; `1` no recorded run of the
 task, a `--run` with no row for it, or a parse error.
