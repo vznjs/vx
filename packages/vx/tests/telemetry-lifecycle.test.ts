@@ -104,6 +104,35 @@ describe('telemetry flush is time-bounded', () => {
     expect(seen?.aborted).toBe(true)
   }, 15_000)
 
+  // A sink that warns as the abort lands said nothing: flush returned at
+  // the deadline, and the run ended before the aborted export's warning
+  // (vx-otel's "export failed …: The operation was aborted.", lost on CI).
+  it('a sink that warns as its flush is aborted is heard before flush returns', async () => {
+    process.env['VX_TEST_TEARDOWN_TIMEOUT'] = '100ms'
+    const warnings: string[] = []
+    const aborted: TelemetrySink = {
+      flush: (signal) =>
+        new Promise<void>((resolve) =>
+          signal.addEventListener('abort', () =>
+            setTimeout(() => {
+              warnings.push('export aborted')
+              resolve()
+            }, 5),
+          ),
+        ),
+    }
+    const source = createTelemetrySource({
+      sinks: [aborted],
+      run: RUN,
+      warn: (m) => warnings.push(m),
+    })
+    await source.flush()
+    expect(warnings).toEqual([
+      '[vx] telemetry flush timed out after 100ms; buffered records lost',
+      'export aborted',
+    ])
+  }, 15_000)
+
   it('a healthy sink still completes its flush, and no timeout is reported', async () => {
     process.env['VX_TEST_TEARDOWN_TIMEOUT'] = '2000ms'
     const warnings: string[] = []
