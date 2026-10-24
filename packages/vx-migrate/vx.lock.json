@@ -389,9 +389,9 @@
       ]
     },
     "nx.install": {
-      "description": "npm install nx@22 into .nx-live",
+      "description": "bun add nx@22 into .nx-live",
       "exec": {
-        "command": "npm install --no-audit --no-fund --prefix .nx-live nx@22 @nx/js@22 typescript@5 && echo installed",
+        "command": "mkdir -p .nx-live && cd .nx-live && { [ -f package.json ] || echo '{\"private\":true}' > package.json; } && bun add nx@22 @nx/js@22 typescript@5 && echo installed",
         "persistent": {
           "readyWhen": "^installed$"
         },

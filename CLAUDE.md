@@ -148,7 +148,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   loopback, unreachable from a Linux sandbox's network namespace), its
   `services.cache` / `services.exec` (Docker), `@vzn/vx-dte-relay#test.live`
   (builds and runs the relay's image), `@vzn/vx-migrate#nx.install`
-  (npm), `check.sandbox-canary` and
+  (the npm registry), `check.sandbox-canary` and
   `check.build-cold` (each drives the sandbox itself, on a Mac worker) are
   the ONLY tasks in the whole repo with no `exec.sandbox`.
 - Every package's suite is its `test` task, so `vx run ci --all` gates

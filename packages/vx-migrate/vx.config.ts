@@ -144,12 +144,14 @@ export default defineProject({
     // Real Nx inside the package (gitignored), where test.live's read grant
     // covers it. Persistent, so a distributed run installs it on the agent
     // that runs test.live; it is ready when it exits. No sandbox: it
-    // downloads from the npm registry.
+    // downloads from the npm registry. Bun's install, not npm's: 21 s
+    // against 4 s, on the critical path of every main run (2026-10-24),
+    // the live files passing on both.
     'nx.install': {
-      description: 'npm install nx@22 into .nx-live',
+      description: 'bun add nx@22 into .nx-live',
       exec: {
         command:
-          'npm install --no-audit --no-fund --prefix .nx-live nx@22 @nx/js@22 typescript@5 && echo installed',
+          'mkdir -p .nx-live && cd .nx-live && { [ -f package.json ] || echo \'{"private":true}\' > package.json; } && bun add nx@22 @nx/js@22 typescript@5 && echo installed',
         persistent: { readyWhen: '^installed$' },
         timeout: '5m',
       },
