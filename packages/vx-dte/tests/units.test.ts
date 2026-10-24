@@ -662,10 +662,14 @@ it('books a worker the cores of a task from its start to its command’s end', a
   expect(await a.batches()).toEqual([['t1', 't2']])
   await a.begin('t1')
   await a.say({ type: 'ran', task: 't1' })
-  await Bun.sleep(50)
+  await Bun.sleep(300)
   await h.stop()
   const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
-  expect(rows.find((r) => r.includes('booked avg'))).toContain('booked avg 0.0 ·')
+  // A bound, not 0.0: the relay's time between begin and ran is booked,
+  // and a slow CI runner read 0.1 (2026-10-24). Held to its save, t1 is
+  // booked over the sleep, past half.
+  const booked = Number(/booked avg ([\d.]+)/.exec(rows.join('\n'))?.[1])
+  expect(booked).toBeLessThan(0.3)
 })
 
 it('says each worker’s machine busy average from the loads it sent', async () => {
