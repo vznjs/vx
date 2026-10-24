@@ -180,8 +180,10 @@ stay exact). Measured 2026-09-09 at 116k rows, 1,000 pairs, window 50:
   such a task on a bigger size next time.
 - Skipped rows (`status = 'skipped'`) are excluded from the window
   (`EXECUTED_RUNS_SQL`), so a run of skips cannot dilute the numbers.
-- `maxPeakRssBytes` and `maxCpuParallelism` (cpu time over wall time) are
-  maxima over the window's successful executions, plus — for hit rows —
+- `maxPeakRssBytes` is the maximum and `maxCpuParallelism` (cpu time over
+  wall time over the CPU share) the mean over the window's successful
+  executions (one crowded run's reading booked a build a whole Mac, main
+  b5b83bb), plus — for hit rows —
   what the PRODUCING execution used, read from the hit's `entries` row
   (a primary-key join, hit rows only): the artifact's sidecar carries it,
   save and ingest index it, so a task this machine has only ever

@@ -211,6 +211,29 @@ it('names the biggest machine a task filled, by its cores or its memory', async 
   expect(r.get('p#burst')?.saturatedCores).toBeUndefined()
 })
 
+// Main b5b83bb (2026-10-24): one crowded run read 2.84 cores for a build
+// that uses 1.3 to 1.9; the most over the window booked it a whole 3-core
+// Mac, and the tasks beside it waited 45 s.
+it('learns the mean need over the window, filling a machine only on average', async () => {
+  const at = (i: number, cpuMs: number, cpuShare?: number): RunRecord => ({
+    ...run(i, `mean${i}`, 'build'),
+    status: 'success',
+    exitCode: 0,
+    cacheHit: false,
+    durationMs: 10_000,
+    placement: 'mac#1',
+    placementCores: 3,
+    placementMemoryBytes: 7e9,
+    cpuMs,
+    ...(cpuShare === undefined ? {} : { cpuShare }),
+  })
+  for (const [i, r] of [at(0, 16_000), at(1, 19_000, 0.67), at(2, 19_000)].entries())
+    cache.recordRunBundle({ runs: [r], invocation: invocation(`mean${i}`, 5_000 + i) })
+  const r = await new LocalHistoryProvider(cache.dbHandle()).resourcesFor(['p#build'])
+  expect(r.get('p#build')?.maxCpuParallelism).toBeCloseTo((1.6 + 1.9 / 0.67 + 1.9) / 3, 2)
+  expect(r.get('p#build')?.saturatedCores).toBeUndefined()
+})
+
 // Main c27c238 (2026-10-23): nine test shards on a 4-core worker each used
 // 0.36 cores of the 1.1 they take alone; history learned 0.36, the next run
 // packed them as tight, and their 5 s tests timed out. A run's CPU is

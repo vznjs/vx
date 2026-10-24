@@ -517,7 +517,10 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     cores left free beside it, so its share is never read below that. The run history keeps that share
     (`ExecuteResult.machine.cpuShare`) and learns the need, at most the
     machine's cores: learning the share packed the next run tighter, nine
-    1.1-core test shards on one 4-core worker.
+    1.1-core test shards on one 4-core worker. The need is the mean over
+    runs, and a task fills its worker only when it does on average: one
+    crowded run's 2.84 cores for a build using 1.3 to 1.9 booked it a whole
+    Mac.
     A worker the plan needs later starts when its warm-up nears. An idle
     worker leaves when the plan gives it no task (its warm-up is spent), or,
     when its next task is two warm-ups away, with one started in its place

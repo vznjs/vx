@@ -2723,7 +2723,7 @@ with no value takes the positional as its task.
 window the scheduler and `--dry` learn from: runs, p50 (the forecast a
 run shows: the median of the task's last five timings on the branch,
 else on any branch), p99 of the executed successes, pass and hit rate, failure mode (`stable`,
-`flaky-recoverable`, `flaky-fatal`), the largest peak RSS and CPU
+`flaky-recoverable`, `flaky-fatal`), the largest peak RSS and the mean CPU
 parallelism (a hit counts what its producing run used), one table row
 per task. A task id narrows to that task, a task name to it in every
 project; one the window has no run of is refused, exit 1. The branch is
