@@ -1811,6 +1811,50 @@ describe('OtelSink: the times, the headers and the version it ships (item 807)',
     expect([record.timeUnixNano, record.observedTimeUnixNano]).toEqual(['1050000000', '2000000000'])
   })
 
+  // The stages begin at module load, before the run lock and the summary's
+  // `startedAt`, and the last ends after its `endedAt`: each sat outside
+  // the root it is a child of (startup ~90 ms before it).
+  it('the root covers its stages from the run’s origin, and every span names that start', async () => {
+    const { cfg, calls } = mkConfig({ metricsEnabled: false, logsEnabled: false })
+    const sink = new OtelSink(cfg)
+    sink.onRecord({
+      v: 1,
+      kind: 'run.start',
+      run: RUN,
+      total: 1,
+      ts: 1000,
+      startedAt: 1000,
+      originAt: 910,
+    } as TelemetryRecord)
+    end(sink, 1050, 40)
+    sink.onRunSummary({
+      ...summaryFor(RUN, []),
+      startedAt: 1000,
+      endedAt: 1100,
+      stages: [
+        { name: 'startup', startedAt: 910, endedAt: 990 },
+        { name: 'record history', startedAt: 1099, endedAt: 1103.2 },
+      ],
+    })
+    await sink.flush()
+    const spans = spansOf(calls).spans as (Span & {
+      attributes: { key: string; value: { intValue?: string } }[]
+    })[]
+    const at = (s: (typeof spans)[number], key: string) =>
+      s.attributes.find((a) => a.key === key)?.value.intValue
+    const root = spans.find((s) => s.name === 'vx.run')!
+    expect([root.startTimeUnixNano, root.endTimeUnixNano]).toEqual(['910000000', '1104000000'])
+    for (const s of spans.filter((x) => x !== root)) {
+      expect(BigInt(s.startTimeUnixNano) >= BigInt(root.startTimeUnixNano)).toBe(true)
+      expect(BigInt(s.endTimeUnixNano) <= BigInt(root.endTimeUnixNano)).toBe(true)
+    }
+    const task = spans.find((s) => s.name === 'vx.task')!
+    expect([at(root, 'vx.run.started_at'), at(task, 'vx.task.run_started_at')]).toEqual([
+      '910',
+      '910',
+    ])
+  })
+
   it('a run that recorded nothing POSTs nothing', async () => {
     const { cfg, calls } = mkConfig()
     await new OtelSink(cfg).flush()

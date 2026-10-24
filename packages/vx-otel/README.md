@@ -134,8 +134,9 @@ otel({
   `load configs`, `git enumeration`, `classify + probe`, `run graph`,
   `record history`, …, the stages `VX_DEBUG_TIMING` prints), with
   `vx.stage.name`: where the time before the first task and after the
-  last went. The stages ahead of the run lock end before the `vx.run`
-  span starts.
+  last went. The `vx.run` span covers them: it starts where the first
+  stage does, before the run lock, and that start is the
+  `vx.run.started_at` every task's `vx.task.run_started_at` names.
 
 **Metrics per run**: `vx.tasks.total`, `vx.tasks.failed`,
 `vx.tasks.cache_hits{source=local|remote}`, what those hits did to the disk as

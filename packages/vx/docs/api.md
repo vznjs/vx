@@ -2967,6 +2967,7 @@ export type TelemetryRecord =
       total: number
       ts: number
       startedAt: number
+      originAt?: number
     }
   | {
       v: number
