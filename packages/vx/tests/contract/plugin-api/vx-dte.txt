@@ -52,6 +52,7 @@ export interface DteSetup {
   readonly manager: PackageManager
   readonly tasks: { readonly main: string; readonly change: string }
   readonly repository?: string
+  readonly host?: string
 }
 == type GithubOptions (src/github.ts)
 export interface GithubOptions {
