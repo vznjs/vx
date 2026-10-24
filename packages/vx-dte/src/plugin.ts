@@ -535,6 +535,7 @@ export function dte(options: DteOptions) {
           known,
           how,
           home,
+          queued: o.queued(warmUp),
         })
         deadline = performance.now() + p.boundMs
         for (const t of p.tasks) known.add(t.id)

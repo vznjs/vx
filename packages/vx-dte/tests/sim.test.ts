@@ -8,6 +8,7 @@ import type { Size } from '../src/planner.js'
 import { DEFAULT_STRATEGY, STRATEGIES } from '../src/strategy.js'
 import a09 from './fixtures/main-run-a09b987.json'
 import f2163 from './fixtures/main-run-2026-10-23.json'
+import q2f0 from './fixtures/pr-run-2f0e2a4.json'
 import { compare } from '../scripts/compare.js'
 import { bestMs, simulate, type SimResult, type SimTask } from './sim.js'
 
@@ -407,4 +408,42 @@ it('a run of unmeasured needs keeps the workers it asks', () => {
   const graph = load(a09, (r) => ({ ms: r.ms, memory: r.memory }))
   const r = simulate(graph, { sizes: [small] })
   expect(r.workers.filter((w) => w.cancelledAt !== undefined).map((w) => w.id)).toEqual([])
+})
+
+// PR 2f0e2a4 (2026-10-24): GitHub queued 9 of the 11 workers asked at 1 s
+// for 30-85 s. The run planned each to join at once and asked 4 more, then
+// 3 to replace those its join limit gave up on; none of the 7 got a
+// runner before it was cancelled. A worker asked behind a queued one joins
+// after it: none is asked while one of its size is late.
+it('asks no worker while the CI queues one of its size', () => {
+  const unmeasured = new Set([
+    '@vzn/vx#check.bun',
+    '@vzn/vx-docs#build',
+    '@vzn/vx-docs#import',
+    '@vzn/vx-docs#test',
+    '@vzn/vx-dte#lint.oxlint',
+    '@vzn/vx-dte#lint.oxfmt',
+    '@vzn/vx-dte#test.wire',
+    '@vzn/vx-dte#test.local-e2e',
+    '@vzn/vx-dte#test.units',
+    '@vzn/vx-dte#test.gitlab',
+    '@vzn/vx-dte#test.rest',
+  ])
+  const graph = load(q2f0).map((t) =>
+    t.ran !== undefined && unmeasured.has(t.id) ? { ...t, known: null } : t,
+  )
+  // Each worker's join, in the order the run asked them; later ones queue behind.
+  const joins = [16.5, 84.3, 78.5, 67.4, 44.9, 85.9, 80.0, 18.1, 78.3, 74.3, 13.9]
+  const r = simulate(graph, {
+    sizes: [
+      { ...small, platform: 'linux-x64' },
+      { name: 'arm', max: 1, cpu: 4, memory: 16e9, platform: 'linux-arm64' },
+      { name: 'mac', max: 4, cpu: 3, memory: 7e9, platform: 'darwin-arm64' },
+    ],
+    home: 'linux-x64',
+    warmUpMs: (n) => (joins[n - 1] ?? 90) * 1_000,
+  })
+  expect(r.workers.filter((w) => w.cancelledAt !== undefined).map((w) => w.id)).toEqual([])
+  // The run's ideal: 121.6 s.
+  expect(r.endMs).toBeLessThanOrEqual(125_000)
 })

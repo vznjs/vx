@@ -563,6 +563,11 @@ export function decide(input: {
   readonly how?: Strategy
   /** The platform a task naming none runs on (`homeOf`). */
   readonly home?: string | undefined
+  /**
+   * Sizes with a worker asked and not joined past its warm-up: the CI
+   * queued it, and one asked now queues behind it. None of them starts.
+   */
+  readonly queued?: ReadonlySet<string>
 }): Plan & { readonly tasks: readonly PlanTask[] } {
   const how = input.how ?? DEFAULT_STRATEGY
   const tasks = missedWork(
@@ -579,7 +584,9 @@ export function decide(input: {
   const sizes = input.final
     ? []
     : candidates(
-        input.sizes,
+        input.queued === undefined
+          ? input.sizes
+          : input.sizes.filter((s) => !input.queued!.has(s.name)),
         input.started,
         tasks.flatMap((t) => t.above ?? []),
         tasks.length,

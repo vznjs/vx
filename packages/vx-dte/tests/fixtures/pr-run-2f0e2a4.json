@@ -1,0 +1,848 @@
+{
+  "_": "PR 2f0e2a4, 2026-10-24: the CI graph (cache: false for an uncached task), and the tasks that ran with how long each ran, its cores (cpu over wall) and peak RSS in MB; every other task hit",
+  "nodes": [
+    {
+      "id": "@vzn/vx#ci",
+      "deps": ["@vzn/vx#check.binary", "@vzn/vx#lint", "@vzn/vx#test"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#lint",
+      "deps": ["@vzn/vx#lint.oxfmt", "@vzn/vx#lint.oxlint"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#lint.oxlint",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#install",
+      "deps": ["@vzn/vx#check.bun"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#check.bun",
+      "deps": [],
+      "exec": true,
+      "cache": false
+    },
+    {
+      "id": "@vzn/vx#lint.oxfmt",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test",
+      "deps": ["@vzn/vx#test.bun"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun",
+      "deps": [
+        "@vzn/vx#test.bun.shard-1",
+        "@vzn/vx#test.bun.shard-10",
+        "@vzn/vx#test.bun.shard-11",
+        "@vzn/vx#test.bun.shard-12",
+        "@vzn/vx#test.bun.shard-13",
+        "@vzn/vx#test.bun.shard-14",
+        "@vzn/vx#test.bun.shard-15",
+        "@vzn/vx#test.bun.shard-16",
+        "@vzn/vx#test.bun.shard-17",
+        "@vzn/vx#test.bun.shard-18",
+        "@vzn/vx#test.bun.shard-19",
+        "@vzn/vx#test.bun.shard-2",
+        "@vzn/vx#test.bun.shard-20",
+        "@vzn/vx#test.bun.shard-21",
+        "@vzn/vx#test.bun.shard-22",
+        "@vzn/vx#test.bun.shard-23",
+        "@vzn/vx#test.bun.shard-24",
+        "@vzn/vx#test.bun.shard-25",
+        "@vzn/vx#test.bun.shard-26",
+        "@vzn/vx#test.bun.shard-27",
+        "@vzn/vx#test.bun.shard-28",
+        "@vzn/vx#test.bun.shard-29",
+        "@vzn/vx#test.bun.shard-3",
+        "@vzn/vx#test.bun.shard-30",
+        "@vzn/vx#test.bun.shard-31",
+        "@vzn/vx#test.bun.shard-32",
+        "@vzn/vx#test.bun.shard-33",
+        "@vzn/vx#test.bun.shard-34",
+        "@vzn/vx#test.bun.shard-35",
+        "@vzn/vx#test.bun.shard-36",
+        "@vzn/vx#test.bun.shard-37",
+        "@vzn/vx#test.bun.shard-38",
+        "@vzn/vx#test.bun.shard-39",
+        "@vzn/vx#test.bun.shard-4",
+        "@vzn/vx#test.bun.shard-40",
+        "@vzn/vx#test.bun.shard-41",
+        "@vzn/vx#test.bun.shard-42",
+        "@vzn/vx#test.bun.shard-43",
+        "@vzn/vx#test.bun.shard-44",
+        "@vzn/vx#test.bun.shard-45",
+        "@vzn/vx#test.bun.shard-46",
+        "@vzn/vx#test.bun.shard-5",
+        "@vzn/vx#test.bun.shard-6",
+        "@vzn/vx#test.bun.shard-7",
+        "@vzn/vx#test.bun.shard-8",
+        "@vzn/vx#test.bun.shard-9",
+        "@vzn/vx#test.bun.unsafe"
+      ],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-1",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-2",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-3",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-4",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-5",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-6",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-7",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-8",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-9",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-10",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-11",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-12",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-13",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-14",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-15",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-16",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-17",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-18",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-19",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-20",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-21",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-22",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-23",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-24",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-25",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-26",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-27",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-28",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-29",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-30",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-31",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-32",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-33",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-34",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-35",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-36",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-37",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-38",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-39",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-40",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-41",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-42",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-43",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-44",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-45",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.shard-46",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe",
+      "deps": [
+        "@vzn/vx#test.bun.unsafe.shard-1",
+        "@vzn/vx#test.bun.unsafe.shard-10",
+        "@vzn/vx#test.bun.unsafe.shard-2",
+        "@vzn/vx#test.bun.unsafe.shard-3",
+        "@vzn/vx#test.bun.unsafe.shard-4",
+        "@vzn/vx#test.bun.unsafe.shard-5",
+        "@vzn/vx#test.bun.unsafe.shard-6",
+        "@vzn/vx#test.bun.unsafe.shard-7",
+        "@vzn/vx#test.bun.unsafe.shard-8",
+        "@vzn/vx#test.bun.unsafe.shard-9"
+      ],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-1",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-2",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-3",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-4",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-5",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-6",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-7",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-8",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-9",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.bun.unsafe.shard-10",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#check.binary",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-docs#ci",
+      "deps": ["@vzn/vx-docs#build", "@vzn/vx-docs#lint", "@vzn/vx-docs#test"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-docs#lint",
+      "deps": ["@vzn/vx-docs#lint.oxfmt", "@vzn/vx-docs#lint.oxlint"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-docs#lint.oxlint",
+      "deps": ["@vzn/vx-docs#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-docs#install",
+      "deps": [
+        "@vzn/vx#build",
+        "@vzn/vx-ci#build",
+        "@vzn/vx-lockfile#build",
+        "@vzn/vx-otel#build",
+        "@vzn/vx-reapi#build",
+        "@vzn/vx-schedule-history#build"
+      ],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-schedule-history#build",
+      "deps": ["@vzn/vx#build", "@vzn/vx-schedule-history#source"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#build",
+      "deps": ["@vzn/vx#source"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#source",
+      "deps": [],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-schedule-history#source",
+      "deps": [],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-reapi#build",
+      "deps": ["@vzn/vx#build", "@vzn/vx-reapi#source"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-reapi#source",
+      "deps": [],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-otel#build",
+      "deps": ["@vzn/vx#build", "@vzn/vx-otel#source"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-otel#source",
+      "deps": [],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-lockfile#build",
+      "deps": ["@vzn/vx#build", "@vzn/vx-lockfile#source"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-lockfile#source",
+      "deps": [],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-ci#build",
+      "deps": ["@vzn/vx#build", "@vzn/vx-ci#source"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-ci#source",
+      "deps": [],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-docs#lint.oxfmt",
+      "deps": ["@vzn/vx-docs#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-docs#build",
+      "deps": ["@vzn/vx-docs#build.images", "@vzn/vx-docs#import", "@vzn/vx-docs#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-docs#import",
+      "deps": ["@vzn/vx-docs#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-docs#build.images",
+      "deps": ["@vzn/vx-docs#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-docs#test",
+      "deps": ["@vzn/vx-docs#build", "@vzn/vx-docs#import", "@vzn/vx-docs#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-dte#ci",
+      "deps": ["@vzn/vx-dte#lint", "@vzn/vx-dte#test"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-dte#lint",
+      "deps": ["@vzn/vx-dte#lint.oxfmt", "@vzn/vx-dte#lint.oxlint"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-dte#lint.oxlint",
+      "deps": ["@vzn/vx-dte#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-dte#install",
+      "deps": ["@vzn/vx#build", "@vzn/vx-dte-relay#build"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-dte-relay#build",
+      "deps": ["@vzn/vx#build", "@vzn/vx-dte-relay#source"],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-dte-relay#source",
+      "deps": [],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-dte#lint.oxfmt",
+      "deps": ["@vzn/vx-dte#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-dte#test",
+      "deps": [
+        "@vzn/vx-dte#test.gitlab",
+        "@vzn/vx-dte#test.local-e2e",
+        "@vzn/vx-dte#test.rest",
+        "@vzn/vx-dte#test.units",
+        "@vzn/vx-dte#test.wire"
+      ],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-dte#test.wire",
+      "deps": ["@vzn/vx-dte#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-dte#test.local-e2e",
+      "deps": ["@vzn/vx-dte#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-dte#test.units",
+      "deps": ["@vzn/vx-dte#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-dte#test.gitlab",
+      "deps": ["@vzn/vx-dte#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-dte#test.rest",
+      "deps": ["@vzn/vx-dte#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#build.bun.linux-arm64",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#build.bun.darwin-arm64",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.platform",
+      "deps": [
+        "@vzn/vx#test.platform.shard-1",
+        "@vzn/vx#test.platform.shard-2",
+        "@vzn/vx#test.platform.shard-3",
+        "@vzn/vx#test.platform.shard-4",
+        "@vzn/vx#test.platform.shard-5",
+        "@vzn/vx#test.platform.shard-6",
+        "@vzn/vx#test.platform.unsafe.shard-1",
+        "@vzn/vx#test.platform.unsafe.shard-2",
+        "@vzn/vx#test.platform.unsafe.shard-3"
+      ],
+      "exec": false,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx#test.platform.shard-1",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true,
+      "platform": "darwin-arm64"
+    },
+    {
+      "id": "@vzn/vx#test.platform.shard-2",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true,
+      "platform": "darwin-arm64"
+    },
+    {
+      "id": "@vzn/vx#test.platform.shard-3",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true,
+      "platform": "darwin-arm64"
+    },
+    {
+      "id": "@vzn/vx#test.platform.shard-4",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true,
+      "platform": "darwin-arm64"
+    },
+    {
+      "id": "@vzn/vx#test.platform.shard-5",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true,
+      "platform": "darwin-arm64"
+    },
+    {
+      "id": "@vzn/vx#test.platform.shard-6",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true,
+      "platform": "darwin-arm64"
+    },
+    {
+      "id": "@vzn/vx#test.platform.unsafe.shard-1",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true,
+      "platform": "darwin-arm64"
+    },
+    {
+      "id": "@vzn/vx#test.platform.unsafe.shard-2",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true,
+      "platform": "darwin-arm64"
+    },
+    {
+      "id": "@vzn/vx#test.platform.unsafe.shard-3",
+      "deps": ["@vzn/vx#install"],
+      "exec": true,
+      "cache": true,
+      "platform": "darwin-arm64"
+    }
+  ],
+  "ran": {
+    "@vzn/vx-docs#import": [2529, 0.09, 100],
+    "@vzn/vx-dte#lint.oxlint": [4683, 2.29, 1382],
+    "@vzn/vx-dte#test.rest": [13320, 0.27, 139],
+    "@vzn/vx-dte#test.units": [16289, 0.07, 132],
+    "@vzn/vx-docs#build": [29330, 0.92, 1976],
+    "@vzn/vx-dte#test.wire": [35637, 0.01, 82],
+    "@vzn/vx#test.bun.shard-1": [46473, 0.64, 229],
+    "@vzn/vx#test.bun.shard-7": [48176, 0.51, 238],
+    "@vzn/vx#test.bun.shard-8": [48378, 0.5, 297],
+    "@vzn/vx#test.bun.shard-5": [51165, 0.65, 240],
+    "@vzn/vx#test.bun.shard-18": [40402, 0.86, 270],
+    "@vzn/vx#test.bun.shard-19": [47764, 0.78, 242],
+    "@vzn/vx#test.platform.unsafe.shard-2": [8829, 0.19, 90],
+    "@vzn/vx#test.bun.shard-26": [32750, 0.62, 233],
+    "@vzn/vx#test.bun.shard-27": [37442, 0.54, 289],
+    "@vzn/vx#test.bun.shard-16": [38726, 0.8, 260],
+    "@vzn/vx#test.bun.shard-9": [40878, 0.36, 260],
+    "@vzn/vx#test.bun.shard-6": [69639, 0.71, 245],
+    "@vzn/vx#test.bun.shard-24": [41742, 0.22, 231],
+    "@vzn/vx#test.bun.shard-3": [70241, 0.59, 243],
+    "@vzn/vx-dte#lint.oxfmt": [1629, 0.58, 402],
+    "@vzn/vx#test.bun.shard-21": [74204, 0.68, 244],
+    "@vzn/vx#test.bun.shard-10": [74526, 0.51, 255],
+    "@vzn/vx#test.bun.shard-42": [48592, 0.36, 245],
+    "@vzn/vx#test.bun.shard-36": [42370, 0.58, 310],
+    "@vzn/vx-docs#test": [13510, 0.46, 524],
+    "@vzn/vx#test.bun.unsafe.shard-2": [20295, 0.28, 213],
+    "@vzn/vx#test.bun.shard-29": [37469, 0.6, 435],
+    "@vzn/vx#test.bun.shard-46": [34022, 0.79, 631],
+    "@vzn/vx#test.bun.shard-4": [36978, 0.41, 255],
+    "@vzn/vx#test.bun.unsafe.shard-5": [17740, 0.45, 0],
+    "@vzn/vx#test.platform.unsafe.shard-3": [18854, 1.26, 97],
+    "@vzn/vx#test.bun.shard-31": [36194, 0.74, 258],
+    "@vzn/vx#test.platform.unsafe.shard-1": [22803, 0.52, 114],
+    "@vzn/vx-dte#test.local-e2e": [29514, 0.61, 334],
+    "@vzn/vx#test.bun.shard-13": [32067, 0.43, 260],
+    "@vzn/vx#test.bun.shard-44": [36882, 0.56, 356],
+    "@vzn/vx#test.bun.shard-28": [47811, 0.54, 670],
+    "@vzn/vx#test.bun.shard-22": [40545, 0.71, 270],
+    "@vzn/vx#test.bun.shard-40": [41796, 0.6, 263],
+    "@vzn/vx#test.bun.shard-33": [36978, 0.62, 283],
+    "@vzn/vx#test.bun.shard-38": [36977, 0.7, 383],
+    "@vzn/vx#test.bun.shard-45": [36978, 0.54, 422],
+    "@vzn/vx#test.bun.shard-39": [43471, 0.59, 337],
+    "@vzn/vx#test.bun.shard-35": [43467, 0.79, 237],
+    "@vzn/vx#test.bun.unsafe.shard-1": [15982, 0.58, 0],
+    "@vzn/vx#build.bun.darwin-arm64": [4598, 0.34, 609],
+    "@vzn/vx#test.platform.shard-2": [52184, 0.49, 222],
+    "@vzn/vx#test.platform.shard-4": [52184, 0.48, 133],
+    "@vzn/vx#test.bun.unsafe.shard-10": [26432, 0.63, 0],
+    "@vzn/vx#test.platform.shard-5": [53841, 0.27, 100],
+    "@vzn/vx#test.platform.shard-6": [53841, 0.18, 637],
+    "@vzn/vx#test.bun.shard-23": [28497, 0.64, 288],
+    "@vzn/vx#test.bun.unsafe.shard-4": [15830, 0.54, 0],
+    "@vzn/vx#lint.oxlint": [4668, 2.16, 1125],
+    "@vzn/vx#test.bun.unsafe.shard-6": [24215, 0.83, 0],
+    "@vzn/vx#build.bun.linux-arm64": [6276, 0.26, 346],
+    "@vzn/vx#test.bun.shard-17": [46959, 0.27, 372],
+    "@vzn/vx#test.bun.shard-32": [53416, 0.59, 282],
+    "@vzn/vx#test.platform.shard-1": [43434, 0.5, 250],
+    "@vzn/vx#test.bun.unsafe.shard-7": [14348, 0.82, 0],
+    "@vzn/vx#test.bun.shard-11": [49870, 0.88, 225],
+    "@vzn/vx#test.bun.shard-43": [27140, 0.93, 268],
+    "@vzn/vx#test.bun.shard-15": [50114, 0.44, 245],
+    "@vzn/vx#test.bun.shard-20": [37999, 0.58, 1310],
+    "@vzn/vx#lint.oxfmt": [10634, 2.53, 1568],
+    "@vzn/vx#test.bun.shard-2": [51352, 0.89, 221],
+    "@vzn/vx#test.bun.unsafe.shard-3": [14420, 1.24, 0],
+    "@vzn/vx#test.bun.shard-14": [29527, 0.93, 235],
+    "@vzn/vx#test.bun.unsafe.shard-9": [17789, 0.89, 0],
+    "@vzn/vx#test.platform.shard-3": [49462, 0.63, 238],
+    "@vzn/vx#test.bun.shard-12": [57614, 0.83, 257],
+    "@vzn/vx#test.bun.shard-30": [48906, 0.65, 635],
+    "@vzn/vx#test.bun.shard-41": [46401, 0.67, 360],
+    "@vzn/vx#test.bun.shard-25": [58905, 0.78, 300],
+    "@vzn/vx#test.bun.shard-34": [59235, 0.49, 368],
+    "@vzn/vx#test.bun.shard-37": [59235, 0.58, 260],
+    "@vzn/vx#test.bun.unsafe.shard-8": [22083, 0.94, 0]
+  }
+}

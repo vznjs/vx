@@ -426,7 +426,10 @@ use your own instead.
   stopped; before one has, none is. One its CI started anyway that joins
   later is taken, as any worker the plan may let go. The first three such failures in a
   run each start another worker in its place, as a checkout, install or
-  join can fail on the network; a fourth starts none. When none is online
+  join can fail on the network; a fourth starts none. While a worker of
+  a size is past its warm-up unjoined, or given up so beside one of its
+  size online, the run asks no more of that size: its CI queued it, and
+  one asked then would queue behind it. When none is online
   or starting and this machine has no share, the remaining tasks fail
   with `no worker could start`.
 - Liveness is the connection: a socket's close loses its participant at
