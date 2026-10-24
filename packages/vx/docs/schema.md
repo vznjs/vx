@@ -392,8 +392,8 @@ export default defineProject({
   ⊘ skipped  app#ios:build • needs darwin-arm64 or darwin-x64, this is linux-x64
   ```
 
-  `--json` and telemetry carry it as `otherPlatform: { needs, host }`; a
-  dependant's `blockedBy` names the task.
+  A `run()` outcome and telemetry carry it as `otherPlatform: { needs, host }`; a
+  dependant's `blockedBy` names the task (in `vx last --format json` too).
 
 - **On CI** (`CI` or a provider's variable set) every task runs or the run
   fails: one whose platforms leave the machine out refuses the run before
