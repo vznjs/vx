@@ -33,6 +33,14 @@ export interface Allowed {
   repository?: string
   workflow?: string
 }
+== type Kept (src/relay.ts)
+export interface Kept {
+  key: string
+  id: string
+  role: 'orchestrator' | 'worker'
+  pin?: string
+  cert?: string
+}
 == type OidcOptions (src/oidc.ts)
 export interface OidcOptions {
   allow: readonly Allowed[]
@@ -49,16 +57,15 @@ export interface Prover {
 == type Relay (src/relay.ts)
 export interface Relay {
   fetch(req: Request): Promise<Response>
-  attach(key: string, id: string, socket: RelaySocket): boolean
+  attach(key: string, id: string, socket: RelaySocket): Kept | false
   detach(key: string, id: string, socket: RelaySocket): void
   frame(key: string, id: string, text: string, socket?: RelaySocket): string | undefined
-  open(): boolean
 }
 == type RelayOptions (src/relay.ts)
 export interface RelayOptions {
   verify?: ((token: string, req: Request) => Promise<VerifiedToken>) | undefined
   heartbeatMs?: number
-  store?: RelayStore | undefined
+  sockets?: Iterable<readonly [Kept, RelaySocket]> | undefined
   upgrade: (key: string, id: string, req: Request) => Response
 }
 == type RelayServer (src/serve.ts)
@@ -70,12 +77,6 @@ export interface RelayServer {
 export interface RelaySocket {
   send(text: string): void
   close(code?: number, reason?: string): void
-}
-== type RelayStore (src/relay.ts)
-export interface RelayStore {
-  put(key: string, value: unknown): void
-  delete(key: string): unknown
-  list(opts: { prefix: string }): Iterable<[string, unknown]>
 }
 == type ServeOptions (src/serve.ts)
 export interface ServeOptions extends Pick<RelayOptions, 'verify' | 'heartbeatMs'> {

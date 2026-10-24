@@ -1,4 +1,11 @@
-export { closeSocket, createRelay, GONE, type Relay, type RelayOptions } from './relay.js'
+export {
+  closeSocket,
+  createRelay,
+  GONE,
+  type Kept,
+  type Relay,
+  type RelayOptions,
+} from './relay.js'
 export { serveRelay, type RelayServer, type ServeOptions } from './serve.js'
 export {
   createVerifier,

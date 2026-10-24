@@ -8,7 +8,7 @@ import worker, {
   type DurableObjectState,
   type Env,
 } from '../src/worker.js'
-import { runKey } from '../src/relay.js'
+import { runKey, type Kept } from '../src/relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const A = '00000000-0000-4000-8000-000000000001'
@@ -23,20 +23,9 @@ Object.assign(globalThis, {
   caches: { default: { match: async () => undefined, put: async () => {} } },
 })
 
-/** An object's state with no websocket, its storage in memory. */
+/** An object's state with no websocket. */
 function state(): DurableObjectState {
-  const kv = new Map<string, unknown>()
   return {
-    storage: {
-      kv: {
-        put: (k, v) => kv.set(k, v),
-        delete: (k) => kv.delete(k),
-        list: ({ prefix }) => [...kv].filter(([k]) => k.startsWith(prefix)),
-      },
-      deleteAll: async () => {
-        kv.clear()
-      },
-    },
     acceptWebSocket: () => {},
     getWebSockets: () => [],
   }
@@ -134,6 +123,30 @@ it('refuses every join with a 403 while ALLOW admits no one, waking no object', 
     const res = await join(env, A)
     expect([res.status, await res.json()]).toEqual([403, { error }])
   }
+})
+
+// Hibernated, an object is built again from its sockets: it writes no storage.
+it('rebuilds a run from its sockets’ attachments when it wakes', () => {
+  const pushed = new Map<string, unknown[]>()
+  const sock = (kept: Kept) => {
+    pushed.set(kept.id, [])
+    return {
+      send: (t: string) => void pushed.get(kept.id)!.push(JSON.parse(t)),
+      close() {},
+      serializeAttachment() {},
+      deserializeAttachment: () => kept,
+    }
+  }
+  const o = sock({ key: 'k', id: 'o', role: 'orchestrator', cert: 'c' })
+  const a = sock({ key: 'k', id: 'a', role: 'worker' })
+  const env: Env = { RELAY: namespace(() => env), ALLOW: `${ISS}:o/r:.gitlab-ci.yml` }
+  const run = new RelayRun({ acceptWebSocket: () => {}, getWebSockets: () => [o, a] }, env)
+  run.webSocketMessage(a, JSON.stringify({ sends: [{ to: 'orchestrator', body: 'hi' }] }))
+  run.webSocketMessage(o, JSON.stringify({ sends: [{ to: 'a', body: 'go' }] }))
+  expect([pushed.get('o'), pushed.get('a')]).toEqual([
+    [{ messages: [{ from: 'a', body: 'hi' }] }],
+    [{ messages: [{ from: 'orchestrator', body: 'go' }] }],
+  ])
 })
 
 it('will not start without ALLOW, or with an entry it cannot read', () => {

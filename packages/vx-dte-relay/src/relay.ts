@@ -1,7 +1,8 @@
 // The relay of PROTOCOL.md: pushes each message between one orchestrator
 // and its workers down the receiver's socket, or drops it; only its own
-// notices wait. A relay restart ends the runs it carried, unless a `store`
-// keeps them (a Durable Object's, across hibernation).
+// notices wait. A relay restart ends the runs it carried, unless its host
+// hands back the sockets it kept (a Durable Object's, across hibernation),
+// each with what `attach` gave it to keep.
 // It knows as little as routing needs: a run is a hash, bodies and an
 // worker's info are its peers' ciphertext, and no body is ever stored.
 
@@ -21,10 +22,11 @@ export interface RelayOptions {
    */
   heartbeatMs?: number
   /**
-   * Keeps runs and participants across a restart, never a message: a
-   * participant a notice waited for is lost on restore.
+   * The sockets its host kept across a restart, each with what `attach`
+   * gave it to keep: the runs are rebuilt from them, and a run whose
+   * orchestrator's socket is not among them is over.
    */
-  store?: RelayStore | undefined
+  sockets?: Iterable<readonly [Kept, RelaySocket]> | undefined
   /**
    * Answers a participant's `socket` request: the host accepts the
    * websocket and `attach`es it. A participant speaks only over it.
@@ -32,11 +34,17 @@ export interface RelayOptions {
   upgrade: (key: string, id: string, req: Request) => Response
 }
 
-/** A Durable Object's synchronous `storage.kv`. */
-export interface RelayStore {
-  put(key: string, value: unknown): void
-  delete(key: string): unknown
-  list(opts: { prefix: string }): Iterable<[string, unknown]>
+/**
+ * What a host keeps with a participant's socket (a Durable Object's
+ * attachment, at most 2 KiB) so a restart rebuilds its run: no message.
+ */
+export interface Kept {
+  key: string
+  id: string
+  role: 'orchestrator' | 'worker'
+  /** The orchestrator's: its run's `pin` and `cert`. */
+  pin?: string
+  cert?: string
 }
 
 /** A participant's websocket, as its host holds it. */
@@ -64,8 +72,11 @@ export function closeSocket(socket: RelaySocket, code?: number, reason?: string)
 
 export interface Relay {
   fetch(req: Request): Promise<Response>
-  /** Pushes the participant's messages down `socket`; false if it is gone. */
-  attach(key: string, id: string, socket: RelaySocket): boolean
+  /**
+   * Pushes the participant's messages down `socket`; returns what its host
+   * keeps with it, or false if it is gone.
+   */
+  attach(key: string, id: string, socket: RelaySocket): Kept | false
   /** The participant's socket closed: it is gone, and its peers are told. */
   detach(key: string, id: string, socket: RelaySocket): void
   /**
@@ -73,8 +84,6 @@ export interface Relay {
    * returns the answer frame, if it gets one.
    */
   frame(key: string, id: string, text: string, socket?: RelaySocket): string | undefined
-  /** Whether any run is open: a host with none may forget everything. */
-  open(): boolean
 }
 
 interface Message {
@@ -102,9 +111,6 @@ interface Run {
   closed: boolean
   orchestrator?: Participant
   byId: Map<string, Participant>
-  /** When its first participant joined: a run no orchestrator joins soon is over. */
-  openedAt: number
-  closedAt?: number
   /** The CI job its orchestrator joined from (`VerifiedToken.job`); only that job acts as it. */
   pin?: string
   /** The public key its orchestrator joined with; only its holder acts as it. */
@@ -146,21 +152,6 @@ const errorBody = (err: HttpError | TokenError): object =>
 export function createRelay(opts: RelayOptions): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 5_000
   const runs = new Map<string, Run>()
-  const store = opts.store
-  const runAt = (key: string): string => `r/${key}`
-  const pAt = (run: Run, id: string): string => `p/${run.key}/${id}`
-  /** Marks a participant whose queue holds a message: one a restart would lose. */
-  const qAt = (run: Run, id: string): string => `q/${run.key}/${id}`
-  const saveRun = (run: Run): void =>
-    store?.put(runAt(run.key), {
-      closed: run.closed,
-      openedAt: run.openedAt,
-      closedAt: run.closedAt ?? null,
-      pin: run.pin ?? null,
-      cert: run.cert ?? null,
-    })
-  const saveParticipant = (run: Run, p: Participant): void =>
-    store?.put(pAt(run, p.id), { role: p.role, info: p.info })
 
   /**
    * Down the participant's socket, or nowhere: a participant's message the
@@ -178,9 +169,7 @@ export function createRelay(opts: RelayOptions): Relay {
         unplug(p)
       }
     }
-    if (!notice) return
-    if (p.queue.length === 0) store?.put(qAt(run, p.id), true)
-    p.queue.push(m)
+    if (notice) p.queue.push(m)
   }
 
   /**
@@ -209,27 +198,23 @@ export function createRelay(opts: RelayOptions): Relay {
       }
     }
     if (p.queue.length === 0) return
-    const messages = drain(run, p)
+    const messages = drain(p)
     try {
       socket.send(JSON.stringify({ messages }))
     } catch {
       unplug(p)
       p.queue = messages
-      store?.put(qAt(run, p.id), true)
     }
   }
 
-  const drain = (run: Run, p: Participant): Message[] => {
+  const drain = (p: Participant): Message[] => {
     const messages = p.queue
-    if (messages.length > 0) store?.delete(qAt(run, p.id))
     p.queue = []
     return messages
   }
 
   const close = (run: Run): void => {
     run.closed = true
-    run.closedAt = Date.now()
-    saveRun(run)
     for (const p of [...run.byId.values()]) {
       if (p.role !== 'worker') continue
       deliver(run, p, { from: 'relay', body: { type: 'closed' } }, true)
@@ -245,7 +230,7 @@ export function createRelay(opts: RelayOptions): Relay {
   /** `tell`: the orchestrator hears its worker was lost (not when it removed it). */
   const drop = (run: Run, p: Participant, tell = true): void => {
     if (!run.byId.delete(p.id)) return
-    const left = drain(run, p)
+    const left = drain(p)
     if (!tell) {
       // What queued, its `refused` among it, before the socket closes.
       if (left.length > 0) {
@@ -254,8 +239,6 @@ export function createRelay(opts: RelayOptions): Relay {
         } catch {}
       }
     }
-    store?.delete(pAt(run, p.id))
-    store?.delete(qAt(run, p.id))
     // Its socket learns it is gone by the close code; its next socket, from `socket`.
     if (p.socket !== undefined) closeSocket(p.socket, GONE, 'gone')
     if (p.role === 'orchestrator') {
@@ -277,28 +260,21 @@ export function createRelay(opts: RelayOptions): Relay {
 
   /** A closed run's participants, and what it knew of its orchestrator. */
   const empty = (run: Run): void => {
-    for (const p of run.byId.values()) {
-      drain(run, p)
-      store?.delete(pAt(run, p.id))
-      store?.delete(qAt(run, p.id))
-    }
+    for (const p of run.byId.values()) drain(p)
     run.byId.clear()
     delete run.orchestrator
     delete run.pin
     delete run.cert
     delete run.certKey
     delete run.nonces
-    if (run.closed) saveRun(run)
   }
 
   const forget = (run: Run): void => {
     runs.delete(run.key)
     empty(run)
-    store?.delete(runAt(run.key))
   }
 
-  // A participant whose queued messages the restart lost: as if it went silent.
-  if (store !== undefined) for (const [run, p] of restore(store, runs)) drop(run, p)
+  if (opts.sockets !== undefined) restore(opts.sockets, runs)
 
   /** The orchestrator's request is signed by the key it joined with, at most once. */
   const prove = async (run: Run, req: Request, url: URL, body: string, cert = run.cert) => {
@@ -376,21 +352,8 @@ export function createRelay(opts: RelayOptions): Relay {
       run.orchestrator = p
       run.cert = body.key as string
       if (token?.job !== undefined) run.pin = token.job
-      saveRun(run)
-      saveParticipant(run, p)
-      for (const a of run.byId.values()) {
-        if (a.role === 'worker') {
-          deliver(run, p, joined(a), true)
-          saveParticipant(run, a)
-        }
-      }
-    } else if (run.orchestrator !== undefined) {
-      deliver(run, run.orchestrator, joined(p), true)
-      saveParticipant(run, p)
-    } else {
-      // Held until an orchestrator joins to read it.
-      saveParticipant(run, p)
-    }
+      for (const a of run.byId.values()) if (a.role === 'worker') deliver(run, p, joined(a), true)
+    } else if (run.orchestrator !== undefined) deliver(run, run.orchestrator, joined(p), true)
     return p
   }
 
@@ -489,7 +452,7 @@ export function createRelay(opts: RelayOptions): Relay {
       return join(run, body, token)
     }
     if (run !== undefined) throw new HttpError(409, 'the run has an orchestrator')
-    const fresh: Run = { key, closed: false, byId: new Map(), openedAt: Date.now() }
+    const fresh: Run = { key, closed: false, byId: new Map() }
     await prove(fresh, req, url, req.method === 'GET' ? '' : text, body['key'] as string)
     // Another orchestrator may have joined while the key was checked.
     if (runs.has(key)) throw new HttpError(409, 'the run has an orchestrator')
@@ -524,7 +487,13 @@ export function createRelay(opts: RelayOptions): Relay {
         } catch {}
       }
       plug(run, p, socket)
-      return true
+      return {
+        key,
+        id,
+        role: p.role,
+        ...(p.role === 'orchestrator' && run.pin !== undefined ? { pin: run.pin } : {}),
+        ...(p.role === 'orchestrator' && run.cert !== undefined ? { cert: run.cert } : {}),
+      }
     },
     detach(key, id, socket) {
       const run = runs.get(key)
@@ -594,7 +563,6 @@ export function createRelay(opts: RelayOptions): Relay {
         return JSON.stringify({ n, status: err.status, ...errorBody(err) })
       }
     },
-    open: () => runs.size > 0,
   }
 }
 
@@ -606,56 +574,44 @@ const joined = (a: Participant): Message => {
 }
 
 /**
- * Runs as `store` kept them. Returns the participants whose queued
- * messages are gone.
+ * Runs as their sockets kept them. A run without its orchestrator's
+ * socket is over (liveness is the connection), as is a socket kept by an
+ * older relay: each is closed as gone. Of a participant's several, the
+ * last is its socket.
  */
-function restore(store: RelayStore, runs: Map<string, Run>): [Run, Participant][] {
-  const now = Date.now()
-  const parts = (k: string): string[] => k.split('/')
-  for (const [k, v] of store.list({ prefix: 'r/' })) {
-    const { closed, openedAt, closedAt, pin, cert } = v as {
-      closed: boolean
-      openedAt?: number
-      closedAt: number | null
-      pin?: string | null
-      cert?: string | null
-    }
-    const [, key] = parts(k) as [string, string]
-    runs.set(key, {
-      key,
-      closed,
+function restore(sockets: Iterable<readonly [Kept, RelaySocket]>, runs: Map<string, Run>): void {
+  const all = [...sockets]
+  for (const [k] of all) {
+    if (k?.role !== 'orchestrator' || runs.has(k.key)) continue
+    runs.set(k.key, {
+      key: k.key,
+      closed: false,
       byId: new Map(),
-      openedAt: openedAt ?? now,
-      ...(closedAt === null ? {} : { closedAt }),
-      ...(pin == null ? {} : { pin }),
-      ...(cert == null ? {} : { cert }),
+      ...(k.pin === undefined ? {} : { pin: k.pin }),
+      ...(k.cert === undefined ? {} : { cert: k.cert }),
     })
   }
-  for (const [k, v] of store.list({ prefix: 'p/' })) {
-    const [, key, id] = parts(k) as [string, string, string]
-    const run = runs.get(key)
-    if (run === undefined) continue
-    const { role, info } = v as Pick<Participant, 'role' | 'info'>
-    const p: Participant = {
-      id,
-      role,
-      info,
+  const now = Date.now()
+  for (const [k, socket] of all) {
+    const run = k?.role === undefined ? undefined : runs.get(k.key)
+    if (run === undefined) {
+      closeSocket(socket, GONE, 'gone')
+      continue
+    }
+    const before = run.byId.get(k.id)
+    if (before?.socket !== undefined) closeSocket(before.socket)
+    const p: Participant = before ?? {
+      id: k.id,
+      role: k.role,
+      info: null,
       tokens: RATE_BURST,
       filled: now,
       queue: [],
     }
-    run.byId.set(id, p)
-    if (role === 'orchestrator') run.orchestrator = p
+    p.socket = socket
+    run.byId.set(k.id, p)
+    if (k.role === 'orchestrator') run.orchestrator = p
   }
-  const lost: [Run, Participant][] = []
-  for (const [k] of store.list({ prefix: 'q/' })) {
-    const [, key, id] = parts(k) as [string, string, string]
-    const run = runs.get(key)
-    const p = run?.byId.get(id)
-    if (p === undefined) store.delete(k)
-    else lost.push([run!, p])
-  }
-  return lost
 }
 
 function missing(): never {
