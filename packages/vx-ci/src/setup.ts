@@ -63,11 +63,13 @@ export async function setup(o: SetupOptions): Promise<number> {
   const missing = BINARIES.filter((b) => !has(b))
   const debs = readdir(o.debs).filter((f) => f.endsWith('.deb'))
   // What the job's cache restored, else fetched: kept from an older
-  // image, they may not install.
+  // image, they may not install, and a set fetched where the image had a
+  // package already holds no deb of it.
   const kept =
     missing.length > 0 &&
     debs.length > 0 &&
-    (await sh([...sudo, 'dpkg', '-i', ...debs.map((f) => path.join(o.debs, f))])) === 0
+    (await sh([...sudo, 'dpkg', '-i', ...debs.map((f) => path.join(o.debs, f))])) === 0 &&
+    BINARIES.every((b) => has(b))
   if (missing.length > 0 && !kept) {
     if (has('apt-get')) {
       await run(['rm', '-rf', o.debs])
