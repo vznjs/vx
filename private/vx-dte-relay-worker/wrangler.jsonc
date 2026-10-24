@@ -14,4 +14,7 @@
     "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }],
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RelayRun"] }],
+  // Every invocation's outcome, CPU and wall time in Workers Logs: two
+  // relay stalls (2026-10-24, 00:47 and 01:03 UTC) left no record to read.
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
 }
