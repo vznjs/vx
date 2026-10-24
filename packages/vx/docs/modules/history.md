@@ -194,6 +194,9 @@ stay exact). Measured 2026-09-09 at 116k rows, 1,000 pairs, window 50:
   hit's own row says what the restore cost, never what the task needs; a
   failure's usage is not what the task needs to succeed; an entry pruned
   since contributes nothing. Absent when no row carried the number.
+  `resourcesFor` times a task with no forecast by its hits' producers,
+  the longest: a task made on a branch that main only restores has no
+  timing of its own anywhere.
   `@vzn/vx-schedule-history` turns them into the reservations its
   `admit` hook packs (`docs/design/resource-estimates-2026-09.md`).
 

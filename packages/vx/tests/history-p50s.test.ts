@@ -127,20 +127,31 @@ it('answers the p50 and resource maxima loadFor answers for each task', async ()
     const got = await history.resourcesFor(ids)
     // The forecast reads past the window (p50sFor); the maxima stay in it.
     const p50s = await history.p50sFor(ids)
+    // A task with no forecast is timed by its hits' producers, at most.
+    const produced = (id: string): number | undefined =>
+      p50s.has(id) ? p50s.get(id) : got.get(id)?.p50DurationMs
     const expected = ids.flatMap((id): Array<[string, TaskResources]> => {
       const h = full.get(id)
       if (h === undefined) return p50s.has(id) ? [[id, { p50DurationMs: p50s.get(id) }]] : []
       const r: TaskResources = {
-        p50DurationMs: p50s.get(id),
+        p50DurationMs: produced(id),
         ...(h.maxPeakRssBytes !== undefined ? { maxPeakRssBytes: h.maxPeakRssBytes } : {}),
         ...(h.maxCpuParallelism !== undefined ? { maxCpuParallelism: h.maxCpuParallelism } : {}),
       }
       return r.p50DurationMs === undefined && Object.keys(r).length === 1 ? [] : [[id, r]]
     })
     expect([recent, [...got]]).toEqual([recent, expected])
-    // CONTROL: a hit-only task carries its entry's numbers and no p50.
+    // CONTROL: a hit-only task carries its entry's numbers, its time the
+    // longest producer's.
     if (recent >= 7) {
-      expect(got.get('p#only-hits')?.p50DurationMs).toBeUndefined()
+      const longest = cache
+        .dbHandle()
+        .query(
+          `SELECT MAX(e.duration_ms) AS ms FROM entries e WHERE e.task = 'only-hits' AND e.hash IN (
+             SELECT hash FROM runs WHERE task = 'only-hits' ORDER BY id DESC LIMIT ?)`,
+        )
+        .get(recent) as { ms: number }
+      expect(got.get('p#only-hits')?.p50DurationMs).toBe(longest.ms)
       expect(got.get('p#only-hits')?.maxPeakRssBytes).toBeGreaterThan(0)
     }
   }

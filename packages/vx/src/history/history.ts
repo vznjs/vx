@@ -457,12 +457,14 @@ export class LocalHistoryProvider implements HistoryProvider {
       def?: string | null
       rss: number | null
       cpu: number | null
+      ms: number | null
     }
     const hits = this.db
       .query(
         `SELECT r.project, r.task${this.byDef}, MAX(e.peak_rss_bytes) AS rss,
            MAX(CASE WHEN e.cpu_ms IS NOT NULL AND e.duration_ms > 0
-                    THEN e.cpu_ms * 1.0 / e.duration_ms END) AS cpu
+                    THEN e.cpu_ms * 1.0 / e.duration_ms END) AS cpu,
+           MAX(CASE WHEN e.duration_ms > 0 THEN e.duration_ms END) AS ms
          FROM (SELECT DISTINCT project, task, hash, def FROM runs WHERE id >= ? AND cache_hit = 1) r
          JOIN entries e ON e.hash = r.hash
          GROUP BY r.project, r.task${this.byDef}`,
@@ -476,14 +478,22 @@ export class LocalHistoryProvider implements HistoryProvider {
     const hitCpu = new Map<string, number>()
     for (const row of hits) {
       const key = `${row.project}#${row.task}`
-      if (!wanted.has(key) || !this.current(key, row.def) || (row.rss === null && row.cpu === null))
+      if (
+        !wanted.has(key) ||
+        !this.current(key, row.def) ||
+        (row.rss === null && row.cpu === null && row.ms === null)
+      )
         continue
       if (row.cpu !== null) hitCpu.set(key, row.cpu)
       const had = out.get(key)
       const rss = Math.max(had?.maxPeakRssBytes ?? -Infinity, row.rss ?? -Infinity)
       out.set(key, {
         ...had,
-        p50DurationMs: p50s.get(key),
+        // A task this store only restored is timed by its producer: one a
+        // branch's run made, main restored and never timed, and every
+        // later run planned it at a guess (PR #4339's docs chain: 90 s
+        // guessed, 45 s run, 2026-10-24).
+        p50DurationMs: p50s.get(key) ?? row.ms ?? undefined,
         ...(rss !== -Infinity ? { maxPeakRssBytes: rss } : {}),
       })
     }

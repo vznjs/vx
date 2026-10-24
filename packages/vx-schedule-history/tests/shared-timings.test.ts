@@ -357,9 +357,12 @@ describe('shared timings', () => {
     const waiting: (() => void)[] = []
     let first: (() => void) | undefined
     const firstPut = new Promise<void>((resolve) => (first = resolve))
+    let arrived: (() => void) | undefined
+    const firstProbe = new Promise<void>((resolve) => (arrived = resolve))
     shared.hasMany = async (ks, scoped) => {
       if (scoped !== false) {
         const turn = waiting.length
+        if (turn === 0) arrived?.()
         await new Promise<void>((resolve) => {
           waiting.push(resolve)
           if (waiting.length === 2) waiting[0]!()
@@ -390,7 +393,11 @@ describe('shared timings', () => {
         ran: new Set(['p#x']),
         defs: new Map(Object.entries(defsOf(['p#x']))),
       })
-    await Promise.all([run(300), run(500)])
+    // The 500 run starts once the 300 run probes: started together, either
+    // could probe first, and the blobs swapped (300 and 300).
+    const early = run(300)
+    await firstProbe
+    await Promise.all([early, run(500)])
     shared.hasMany = probe
     shared.put = put
     // Two blobs of b: the second holds the first's 300 and its own 500.
@@ -944,6 +951,30 @@ describe('shared timings', () => {
       'p#cold': 32_000,
       'p#new': 30_000,
     })
+  })
+
+  // PR #4339 (2026-10-24): a branch's run made vx-docs#build's entry, main
+  // only restored it, and main's blob never timed the task as it is now:
+  // every run guessed 30 s for each step of a 45 s chain and asked too few.
+  it("writes a task the run only restored at its producer's time", async () => {
+    commit()
+    const b = commit()
+    const shared = spyCache()
+    const provider = {
+      p50sFor: async () => new Map([['p#ran', 5_000]]),
+      resourcesFor: async () => new Map([['p#restored', { p50DurationMs: 29_000 }]]),
+    } as unknown as LocalHistoryProvider
+    await exportTimings({
+      root,
+      cache: shared,
+      provider,
+      ids: ['p#ran', 'p#restored'],
+      ran: new Set(['p#ran']),
+      defs: new Map(Object.entries(defsOf(['p#ran', 'p#restored']))),
+    })
+    const written = read(shared.store.get(key(b))) as { tasks: unknown; ran: unknown }
+    expect(written.tasks).toEqual({ 'p#ran': 5_000, 'p#restored': 29_000 })
+    expect(written.ran).toEqual({ 'p#ran': 5_000 })
   })
 
   it("writes a run's need averaged with the carried one, filling its machine only on average", async () => {

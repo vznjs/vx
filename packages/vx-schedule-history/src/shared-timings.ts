@@ -417,9 +417,12 @@ export interface ExportArgs {
 export async function exportTimings(args: ExportArgs): Promise<void> {
   const head = await git(args.root, ['rev-parse', 'HEAD'])
   if (head?.[0] === undefined) return
-  const p50s = await args.provider.p50sFor(args.ids)
-  if (p50s.size === 0) return
   const measured = await args.provider.resourcesFor(args.ids)
+  // A task the run only restored, never timed here: its producer's time.
+  const p50s = new Map(await args.provider.p50sFor(args.ids))
+  for (const [id, r] of measured)
+    if (!p50s.has(id) && r.p50DurationMs !== undefined) p50s.set(id, r.p50DurationMs)
+  if (p50s.size === 0) return
   const shas = (await lineage(args.root, head[0])) ?? [head[0]]
   const newest = await newestAlong(args.cache, shas, args.ids)
   const carried = newest.bytes === null ? null : parseBlob(newest.bytes, null)
