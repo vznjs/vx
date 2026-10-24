@@ -855,7 +855,7 @@ literal text or a plain wildcard, so the key would miss the files it
 names; write `{a,b}`. A brace range is `Bun.Glob`'s (Bun 1.4.4):
 `{1..3}`, `{3..1}`, `{01..03}`, `{a..c}`, `{1..10..3}`; vx expands it as
 a comma brace. A mixed-case range (`{A..c}`) or one of more than 1024
-names is refused. A leading `!` is still the negation, so `!(group)/**`
+names is refused wherever it sits in the glob. A leading `!` is still the negation, so `!(group)/**`
 takes a route group back. This holds for every task glob — `inputs.files`,
 `inputs.workspaceFiles`, `outputs.files`, `outputs.workspaceFiles` — and
 for everything read from them (`--affected`, `vx watch`, the
