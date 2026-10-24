@@ -42,13 +42,30 @@ const checkout = (j: Job | undefined): Step | undefined =>
 
 describe('ci.yml', () => {
   // The run only plans and dispatches: Linux x64, so every macOS and arm
-  // runner is a worker's.
-  it('is one run', () => {
+  // runner is a worker's. The benchmarks run beside it on a runner of
+  // their own.
+  it('is one run, and the benchmarks beside it', () => {
     const top =
       "github.event.action != 'closed' && github.event.pull_request.stack.position == github.event.pull_request.stack.size"
     expect(
       Object.entries(doc.jobs).map(([id, j]) => [id, j.name, j['runs-on'], j.if, j.needs]),
-    ).toEqual([['linux', 'VX DTE', 'ubuntu-latest', top, undefined]])
+    ).toEqual([
+      ['linux', 'VX DTE', 'ubuntu-latest', top, undefined],
+      ['perf', 'Perf', 'ubuntu-latest', top, undefined],
+    ])
+  })
+
+  // A DTE worker is packed for the run's wall time, so a benchmark there
+  // timed its neighbours (owner, 2026-10-24): it runs where no relay is set,
+  // and the run's `ci` does not reach it.
+  it('runs the benchmarks off the DTE run', () => {
+    const perf = doc.jobs['perf']!
+    expect(JSON.stringify(perf)).not.toContain('VX_DTE')
+    expect(perf.steps?.at(-1)?.run).toBe(
+      "bun packages/vx/src/bin.ts run check.perf ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}",
+    )
+    const bench = readFileSync(path.join(dir, '../../private/vx-bench/vx.config.ts'), 'utf8')
+    expect(bench).toContain("dependsOn: ['lint', 'test', 'check.site'],")
   })
 
   // A merged PR's run held its workers' runners until it ended, and the next
@@ -139,12 +156,16 @@ describe('ci.yml', () => {
   // The remote cache serves every hit (owner, 2026-10-23: "we dont need
   // to carry any vx cache anymore"), and Bun's packages restored took as
   // long as a cold install (4-9 s against about 5 s, main 68b851d): only
-  // a worker's sandbox runtime is kept.
+  // the sandbox runtime of a worker and of the benchmarks' job is kept.
   it('carries no vx cache between runs', () => {
     const cached = [...Object.values(doc.jobs), worker].flatMap((j) =>
       j.steps!.filter((s) => s.uses?.startsWith('actions/cache')).map((s) => s.with?.['path']),
     )
-    expect(cached).toEqual(['~/.cache/vx/setup-debs', '~/.cache/vx/setup-debs'])
+    expect(cached).toEqual([
+      '~/.cache/vx/setup-debs',
+      '~/.cache/vx/setup-debs',
+      '~/.cache/vx/setup-debs',
+    ])
   })
 
   // Spotlight indexed what a Mac worker's tasks wrote: a fixed test

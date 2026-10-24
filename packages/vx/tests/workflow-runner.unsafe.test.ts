@@ -66,7 +66,12 @@ for (const file of files) {
 }
 describe('a Linux CI job that runs a vx task', () => {
   it('is every one of these — the pin is not vacuous', () => {
-    expect(covered).toEqual(['auto-release.yml#release', 'npm.yml#publish', 'release.yml#assets'])
+    expect(covered).toEqual([
+      'auto-release.yml#release',
+      'ci.yml#perf',
+      'npm.yml#publish',
+      'release.yml#assets',
+    ])
   })
 
   it('leaves out only the distributed runs', () => {

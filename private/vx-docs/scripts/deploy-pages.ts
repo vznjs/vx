@@ -91,6 +91,15 @@ const FINAL_ERRORS = new Set([
   'deployment_lost',
 ])
 
+/** A twirp answer's field, by its JSON or its proto name. */
+function field(body: Record<string, unknown>, json: string, proto: string): string {
+  const v = body[json] ?? body[proto]
+  if (typeof v !== 'string' || v === '') {
+    throw new Error(`deploy-pages: no ${proto} in ${JSON.stringify(body)}`)
+  }
+  return v
+}
+
 async function call(what: string, res: Response): Promise<any> {
   if (!res.ok) throw new Error(`deploy-pages: ${what}: ${res.status} ${await res.text()}`)
   return res.status === 204 ? undefined : res.json()
@@ -119,9 +128,18 @@ export async function deploy(
         },
         body: JSON.stringify(body),
       },
-    ).then((r) => call(method, r))
+    )
+      .then((r) => call(method, r))
+      .then((body: Record<string, unknown>) => {
+        if (body['ok'] !== true) {
+          throw new Error(`deploy-pages: ${method} refused: ${JSON.stringify(body)}`)
+        }
+        return body
+      })
 
   const zip = zipStored('artifact.tar', tar)
+  // The service answers in proto field names (`signed_upload_url`); the
+  // artifact client reads either spelling, and so does this.
   const created = await twirp('CreateArtifact', {
     ...ids,
     mimeType: 'application/zip',
@@ -130,18 +148,18 @@ export async function deploy(
   })
   await call(
     'upload',
-    await fetch(created.signedUploadUrl, {
+    await fetch(field(created, 'signedUploadUrl', 'signed_upload_url'), {
       method: 'PUT',
       headers: { 'x-ms-blob-type': 'BlockBlob', 'content-type': 'application/zip' },
       body: zip,
     }),
   )
   const sha256 = createHash('sha256').update(zip).digest('hex')
-  const { artifactId } = await twirp('FinalizeArtifact', {
-    ...ids,
-    size: String(zip.length),
-    hash: `sha256:${sha256}`,
-  })
+  const artifactId = field(
+    await twirp('FinalizeArtifact', { ...ids, size: String(zip.length), hash: `sha256:${sha256}` }),
+    'artifactId',
+    'artifact_id',
+  )
   log(`deploy-pages: artifact ${artifactId}, ${zip.length} bytes`)
 
   const oidc = await fetch(env.ACTIONS_ID_TOKEN_REQUEST_URL, {

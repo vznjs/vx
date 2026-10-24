@@ -48,7 +48,8 @@ function fake(statuses: string[]) {
           workflowJobRunBackendId: 'job-2',
           name: 'github-pages',
         })
-        return Response.json({ ok: true, signedUploadUrl: `${url.origin}/blob?sig=1` })
+        // As GitHub's service answers: proto field names.
+        return Response.json({ ok: true, signed_upload_url: `${url.origin}/blob?sig=1` })
       }
       if (url.pathname === '/blob') {
         expect(req.headers.get('x-ms-blob-type')).toBe('BlockBlob')
@@ -57,7 +58,7 @@ function fake(statuses: string[]) {
       }
       if (url.pathname.endsWith('/FinalizeArtifact')) {
         finalized = await req.json()
-        return Response.json({ ok: true, artifactId: '42' })
+        return Response.json({ ok: true, artifact_id: '42' })
       }
       if (url.pathname === '/oidc') {
         expect(auth).toBe('Bearer id-req')
@@ -116,4 +117,21 @@ it('fails on a final deployment status, naming it', async () => {
     'deployment deployment_content_failed',
   )
   await f.server.stop()
+})
+
+it('says what the service refused', async () => {
+  const server = Bun.serve({ port: 0, fetch: () => Response.json({ ok: false }) })
+  const env = readEnv({
+    ACTIONS_RUNTIME_TOKEN: TOKEN,
+    ACTIONS_RESULTS_URL: `http://127.0.0.1:${server.port}/`,
+    ACTIONS_ID_TOKEN_REQUEST_URL: 'x',
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'x',
+    GITHUB_TOKEN: 'x',
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_SHA: 's',
+  })
+  await expect(deploy(new Uint8Array(1), env, { log: () => {} })).rejects.toThrow(
+    'CreateArtifact refused: {"ok":false}',
+  )
+  await server.stop()
 })
