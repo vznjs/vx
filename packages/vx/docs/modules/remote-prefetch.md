@@ -44,7 +44,7 @@ export function getContext(node: TaskNode, command: string): CacheGetContext
 2. The keys the local store already holds (`localHasMany`) are dropped:
    a run the local cache answers makes no remote call.
 3. The hits the index kept from an earlier probe (`remoteKnown`, maybe
-   another process's: `vx dte plan`, then `vx run`) are trusted now:
+   another process's: `vx run --dry`, then `vx run`) are trusted now:
    their pulls start at once, waiting on no probe. `held` hears them,
    and every other key as missed, only when no batch probe follows.
 4. One batched existence probe when the layer offers it

@@ -30,8 +30,7 @@ appears and removes any without the run's key from the channel.
 The relay reads nothing they say. Each worker and the orchestrator run a
 [Noise](https://noiseprotocol.org/noise.html) handshake through it, one
 session per worker, with keys made for that session only. With the run's
-key (`VX_DTE_SECRET`, the one `vx dte plan` wrote, or one an adapter made
-for its workers) it is `Noise_NNpsk0_25519_AESGCM_SHA256`: the key is the
+key (`VX_DTE_SECRET`, or one an adapter made for its workers) it is `Noise_NNpsk0_25519_AESGCM_SHA256`: the key is the
 pre-shared key, so a side without it cannot finish the handshake, and the
 worker's `join` info (cores, memory, tree) is already encrypted. On GitHub
 Actions with no key it is `Noise_NN_25519_AESGCM_SHA256`, and each side
@@ -160,52 +159,115 @@ export default defineWorkspace({
 ```
 
 ```yaml
-# .github/workflows/ci.yml, the run's job
-permissions: { id-token: write, contents: read, actions: write }
-steps:
-  - uses: actions/checkout@v4
-  - run: bun install --frozen-lockfile
-  - run: bunx @vzn/vx run build test --all
-    env: { GITHUB_TOKEN: '${{ github.token }}' }
+# .github/workflows/ci.yml
+# Written by vx dte init: the run. main runs every task and fills the cache;
+# a pull request runs what it changed and its dependents. This job only
+# orchestrates: every task runs on a worker (vx-worker.yml).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to a pull request cancels its older run, and its workers.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  vx:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # The relay and the workers: each side proves itself by its OIDC token.
+      id-token: write
+      # Dispatching and cancelling the workers.
+      actions: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      # One commit: --affected fetches its base itself.
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile --filter './'
+      - run: bun vx lock --check
+      # Name the tasks to run, as 'bun vx run build test --affected': with
+      # none named, vx fails, listing the workspace's tasks.
+      - run: bun vx run ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
 ```
+
+`vx dte init` writes both from `dte()`, the run's above and the workers' below,
+and prints what is left: a relay that admits them (its `ALLOW`, and how
+to deploy one), a shared remote cache, the commit. In a terminal it asks
+what main runs and what a pull request runs (main's by default); without
+one it names none, and the run fails, listing the tasks, until you do. Each size runs on
+its platform's GitHub-hosted runner (`ubuntu-latest` for none named,
+`ubuntu-24.04-arm`, `macos-latest`, `macos-15-intel`), or on the label
+`github({ runsOn: { small: 'ubuntu-latest-16-cores' } })` names, as
+`gitlab({ tags })` does. It installs with the package manager your lockfile
+names and runs vx as `bun vx`, which runs the repo's own and never
+downloads one, as `pnpm exec` does. `--dry` prints it; a file you changed
+is kept unless `--force`. For the sizes above:
 
 ```yaml
 # .github/workflows/vx-worker.yml
+# Written by vx dte init from dte() in .vx/workspace.ts: the workers of a
+# distributed run, which github() dispatches once per size. Run vx dte init
+# again after changing the sizes.
 name: vx-worker
+
 on:
   workflow_dispatch:
     inputs:
-      {
-        run: { required: true },
-        relay: { required: true },
-        sha: { required: true },
-        size: { required: true },
-        workers: { required: true },
-      }
-permissions: { id-token: write, contents: read }
+      run: { required: true }
+      relay: { required: true }
+      sha: { required: true }
+      size: { required: true }
+      workers: { required: true }
+
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   worker:
+    # The run reads a job that failed before its worker joined by this name.
+    name: ${{ matrix.worker }}
     runs-on: ${{ fromJSON('{"small":"ubuntu-latest"}')[inputs.size] }}
-    strategy: { matrix: { worker: '${{ fromJSON(inputs.workers) }}' } }
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: ${{ fromJSON(inputs.workers) }}
     env:
-      {
-        VX_DTE_RUN: '${{ inputs.run }}',
-        VX_DTE_RELAY: '${{ inputs.relay }}',
-        VX_DTE_WORKER: '${{ matrix.worker }}',
-      }
+      VX_DTE_RUN: ${{ inputs.run }}
+      VX_DTE_RELAY: ${{ inputs.relay }}
+      VX_DTE_WORKER: ${{ matrix.worker }}
     steps:
       - uses: actions/checkout@v4
         with: { ref: '${{ inputs.sha }}' }
+      - uses: oven-sh/setup-bun@v2
+      # Every project: only pnpm selects by a git diff, as
+      # `pnpm install --frozen-lockfile --filter "...[origin/main]"`
+      # (fetch origin/main first: the checkout is one commit).
       - run: bun install --frozen-lockfile
-      - run: bunx @vzn/vx dte worker
+      - run: bun vx dte worker
 ```
 
 ## On GitLab
 
-Three jobs of your own pipeline: `vx-plan` writes the workers' child
-pipeline, `vx-workers` triggers it, and `vx` is the orchestrator, your own
-`vx run`. Every worker the plan wrote starts at once, beside the
-orchestrator, and leaves when the run ends.
+One pipeline file. Your `vx` job is the orchestrator; once it is on the
+relay, it triggers a pipeline of the same file for each wave of workers
+it asks of a size, with the job's own `CI_JOB_TOKEN`, so no worker starts
+before the run and no token is stored. Each size's job is a matrix of
+`max` slots (`VX_DTE_SLOT`); that pipeline runs only the slots the wave
+names (`VX_DTE_PICK`), at the run's commit, and each takes its name from
+`VX_DTE_IDS`. The run starts workers as its work needs them, up to each
+size's `max`, which `gitlab()` needs (at most 200, a matrix's limit).
+GitLab lets a job token trigger but not cancel, so a worker the run no
+longer needs leaves when it joins or when the run ends.
 
 ```ts
 // .vx/workspace.ts
@@ -214,62 +276,72 @@ export default defineWorkspace({
     dte({
       relay: 'https://relay.example.com',
       workers: { small: { max: 4, cpu: 2, memory: '8GB' } },
-      adapter: gitlab({ include: '.gitlab/vx.yml' }),
+      adapter: gitlab(),
     }),
   ],
 })
 ```
 
+`vx dte init` writes it, from `dte()`, in the package manager your
+lockfile names, asking what main and a merge request run:
+
 ```yaml
 # .gitlab-ci.yml
-include: [{ local: .gitlab/vx.yml }]
+# Written by vx dte init from dte() in .vx/workspace.ts. The vx job
+# runs no task: once it is on the relay it triggers a pipeline of this
+# file for each wave of workers of a size, which runs only those slots
+# of that size's job.
+# Name the tasks in the vx job, as 'build test --all': with none named,
+# vx fails, listing them.
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "pipeline" && $VX_DTE_SIZE
 
-vx-plan:
-  extends: .vx
-  script: [bunx @vzn/vx dte plan build test --all] # the run's selection
-  artifacts:
-    paths: [vx-workers.yml, .vx/dte/]
-    reports: { dotenv: vx-dte.env }
-    access: none
-    expire_in: 1 hour # as long as the pipeline may run
-
-vx-workers:
-  needs: [vx-plan]
-  variables: { PARENT_PIPELINE_ID: $CI_PIPELINE_ID }
-  trigger:
-    include: [{ artifact: vx-workers.yml, job: vx-plan }]
+# The image needs Bun and git.
+default:
+  image: oven/bun:1.4
 
 vx:
-  extends: .vx
-  needs: [vx-plan]
+  rules:
+    - if: $VX_DTE_SIZE
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables: { VX_TASKS: '--affected' }
+    - when: on_success
+      variables: { VX_TASKS: '--all' }
   id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
-  script: [bunx @vzn/vx run build test --all]
-```
+  before_script:
+    - bun install --frozen-lockfile --filter './'
+  script:
+    - bun vx lock --check
+    - bun vx run $VX_TASKS
 
-```yaml
-# .gitlab/vx.yml
-.vx:
-  image: oven/bun:1.4
-  before_script: [pnpm install --frozen-lockfile]
-
+# A worker runs at the run's commit, which its branch may have moved past.
 .vx-worker:
-  extends: .vx
+  variables: { GIT_DEPTH: 1 }
   id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
+  before_script:
+    - git fetch -q --depth 1 origin $VX_DTE_SHA
+    - git checkout -q FETCH_HEAD
+    - bun install --frozen-lockfile
+  script: [bun vx dte worker]
+
+'vx-worker small':
+  extends: .vx-worker
+  parallel:
+    matrix:
+      - VX_DTE_SLOT: ['1', '2', '3', '4']
+  rules: [{ if: $VX_DTE_SIZE == "small" && $VX_DTE_SLOT =~ $VX_DTE_PICK }]
 ```
 
-The run's secret is an artifact no one can download (`access: none`);
-the orchestrator and the workers get it through `needs`. Set
-`VX_DTE_SECRET` to use your own instead.
-
-Set `VX_DTE_GITLAB_TOKEN` (an access token with `api` scope, as a masked
-CI/CD variable both `vx-plan` and `vx` see) to spawn live: the plan then
-starts with the run only the workers its start keeps busy, and writes the
-others as `when: manual` jobs. It reads that from the run's own graph
-(`vx run <its args> --dry=json`) and history, so give `vx dte plan` the
-run's selection; a task with no history counts as `unmeasured` says. The run plays one when its work needs it and cancels
-the ones it never played when it ends. A played job that fails before
-its worker joins fails the run's wait for it, so the run starts another or
-stops, instead of waiting for the job's timeout.
+`gitlab({ tags })` names each size's runner tags. Each job's ID token
+(`VX_DTE_TOKEN`) admits it to the relay; the worker proves itself to the
+run by the run's secret, made for that run only and passed as a trigger
+variable, since a GitLab ID token's audience is fixed when its job starts
+and cannot bind the handshake as GitHub's does. Set `VX_DTE_SECRET` to
+use your own instead.
 
 ## What runs where
 
@@ -589,24 +661,12 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
       `tests/sim.test.ts` plays main's runs with each.
 - `vx dte worker` is a worker. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else
   `relay`), `VX_DTE_SECRET` (the run's) and, when the run started it,
-  `VX_DTE_WORKER` (its name). With no `VX_DTE_SECRET` it reads
-  `.vx/dte/secret`, the one `vx dte plan` wrote. It is
+  `VX_DTE_WORKER` (its name). It is
   described only by the cores and memory its machine reports. It exits 0
   when the run ended before it joined.
-- `vx dte plan [<tasks> <run flags>]` writes the CI files that start the
-  run's workers, through the adapter's `render`: every size's `max`
-  workers. With an adapter that spawns live (`live()`), only the first
-  wave starts at once: the workers the run's start keeps busy, from
-  `vx run <args> --dry=json` and history, as the run's own demand counts
-  them. It names the run (`VX_DTE_RUN`, else the adapter's `runId()`),
-  writes the workers for the orchestrator to `.vx/dte/plan.json` and,
-  unless `VX_DTE_SECRET` is set, a secret to `.vx/dte/secret`.
-- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), render?(plan: DtePlan), live?(), runId?(), adopt?(worker), report?(warn) }`; `report` hands it the run's warning channel as the run starts, where `github()` and `gitlab()` say a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined.
-  `DtePlan` is `{ run, relay, workspaceRoot, workers }`, each worker
-  `{ id, size, cpu, memory, live }`: a `live` one the run `spawn`s when
-  it needs it.
-  `WorkerSpawn` is `{ run, relay, size, cpu, memory, index, id, workspaceRoot, env }`,
-  with `memory` in bytes,
+- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn) }`; `init` gets a `DteSetup` (workspace root, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset.
+  `WorkerSpawn` is `{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, env }`,
+  with `memory` in bytes and `max` its size's (`Infinity` uncapped),
   where `id` is the worker's name (`small#2`, numbered within its size) and `env` holds the three
   variables the worker reads.
 - `docker(options: DockerOptions)` starts workers as containers and a relay
@@ -615,10 +675,10 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   one workflow, one dispatch per size and demand. `GithubOptions` is
   `{ workflow? }` (default `vx-worker.yml`). Its workers are `keyless`. It
   needs `GITHUB_TOKEN` with `actions: write`. See [On GitHub](#on-github).
-- `gitlab(options: GitlabOptions)` runs workers as jobs of a child
-  pipeline. `GitlabOptions` is `{ include, tags? }`: the file holding the
-  `.vx-worker` job template every worker job extends, and runner tags by
-  size. See [On GitLab](#on-gitlab).
+- `gitlab(options?: GitlabOptions)` triggers a pipeline of the project's
+  `.gitlab-ci.yml` per wave and size, with `CI_JOB_TOKEN`. `GitlabOptions` is
+  `{ tags? }`: runner tags by size, which `vx dte init` writes. See
+  [On GitLab](#on-gitlab).
 - `local(options?: LocalOptions)` starts workers on this machine and a relay
   of its own on loopback. `LocalOptions` is `{ prepare? }`: a shell line
   each worktree runs before its worker starts.

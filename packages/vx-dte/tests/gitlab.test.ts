@@ -1,289 +1,112 @@
-// `gitlab()` and `vx dte plan`: the plan writes one child-pipeline job per
-// worker the run may start, the orchestrator job's run id, and a secret for
-// the run, which both sides then read.
+// `gitlab()`: the run, once on the relay, triggers a pipeline of the
+// project's own file per wave and size with the job's CI_JOB_TOKEN, so no
+// worker arrives before it and no token is stored.
 
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import os from 'node:os'
-import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
-import type { CommandContext } from '@vzn/vx'
-import { dte, gitlab } from '../src/index.js'
+import { gitlab } from '../src/index.js'
+import type { WorkerSpawn } from '../src/plugin.js'
 
-const DTE = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
-const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
-
-let root: string
 const saved = { ...process.env }
-beforeEach(async () => {
-  root = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-gitlab-'))
-  delete process.env['VX_DTE_RUN']
-  delete process.env['VX_DTE_SECRET']
-  process.env['CI_PIPELINE_ID'] = '900'
+let server: ReturnType<typeof Bun.serve> | undefined
+let calls: { path: string; form: Record<string, string>; headers: string[] }[]
+let reply: () => Response
+beforeEach(() => {
+  calls = []
+  reply = () => Response.json({ id: 1 }, { status: 201 })
+  server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    async fetch(req) {
+      const form = await req.formData()
+      calls.push({
+        path: `${req.method} ${new URL(req.url).pathname}`,
+        form: Object.fromEntries(
+          [...form].map(([k, v]) => [k, typeof v === 'string' ? v : v.name]),
+        ),
+        headers: [...req.headers.keys()].filter((h) => /token|authorization/i.test(h)),
+      })
+      return reply()
+    },
+  })
+  Object.assign(process.env, {
+    GITLAB_CI: 'true',
+    CI_API_V4_URL: `http://127.0.0.1:${server.port}/api/v4`,
+    CI_PROJECT_ID: '7',
+    CI_JOB_TOKEN: 'job-token',
+    CI_COMMIT_SHA: 'abc123',
+    CI_COMMIT_REF_NAME: 'refs/merge-requests/4/head',
+    CI_MERGE_REQUEST_SOURCE_BRANCH_NAME: 'fix-it',
+  })
 })
 afterEach(async () => {
   process.env = { ...saved }
-  await rm(root, { recursive: true, force: true })
+  await server?.stop(true)
 })
 
-function plan(options: Parameters<typeof dte>[0]): Promise<number> {
-  const verb = dte(options).commands!['dte']!
-  return Promise.resolve(
-    verb.run(['plan'], { workspaceRoot: root } as CommandContext),
-  ) as Promise<number>
-}
+const env = { VX_DTE_RUN: 'r', VX_DTE_RELAY: 'https://relay', VX_DTE_SECRET: 's' }
+const spawn = (id: string, size = 'small', max = 8): WorkerSpawn =>
+  ({ id, size, max, env: { ...env, VX_DTE_WORKER: id } }) as unknown as WorkerSpawn
+const worker = spawn('small#2')
 
-it('writes a job per planned worker, the run id and a secret no one else reads', async () => {
-  await writeFile(path.join(root, 'pnpm-lock.yaml'), '')
-  expect(
-    await plan({
-      relay: 'https://relay.example.com',
-      workers: {
-        big: { max: 1, cpu: 16, memory: '64GB' },
-        small: { max: 2, cpu: 4, memory: '16GB' },
-      },
-      adapter: gitlab({ include: '.gitlab/vx.yml', tags: { big: ['saas-linux-xlarge-amd64'] } }),
-    }),
-  ).toBe(0)
-  // A random id, not the pipeline's: that one is guessable.
-  const env = await readFile(path.join(root, 'vx-dte.env'), 'utf8')
-  const run = /^VX_DTE_RUN=(.+)\n$/.exec(env)![1]!
-  expect(run).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
-  expect(await readFile(path.join(root, 'vx-workers.yml'), 'utf8'))
-    .toBe(`# Written by vx dte plan for run ${run}; do not commit.
-include:
-  - local: ".gitlab/vx.yml"
-
-"vx-worker big#1":
-  extends: .vx-worker
-  needs:
-    - pipeline: $PARENT_PIPELINE_ID
-      job: vx-plan
-  tags:
-    - "saas-linux-xlarge-amd64"
-  variables:
-    VX_DTE_RUN: "${run}"
-    VX_DTE_WORKER: "big#1"
-    VX_DTE_RELAY: "https://relay.example.com"
-  script:
-    - "bunx @vzn/vx dte worker"
-
-"vx-worker small#1":
-  extends: .vx-worker
-  needs:
-    - pipeline: $PARENT_PIPELINE_ID
-      job: vx-plan
-  variables:
-    VX_DTE_RUN: "${run}"
-    VX_DTE_WORKER: "small#1"
-    VX_DTE_RELAY: "https://relay.example.com"
-  script:
-    - "bunx @vzn/vx dte worker"
-
-"vx-worker small#2":
-  extends: .vx-worker
-  needs:
-    - pipeline: $PARENT_PIPELINE_ID
-      job: vx-plan
-  variables:
-    VX_DTE_RUN: "${run}"
-    VX_DTE_WORKER: "small#2"
-    VX_DTE_RELAY: "https://relay.example.com"
-  script:
-    - "bunx @vzn/vx dte worker"
-`)
-  const secret = path.join(root, '.vx/dte/secret')
-  expect((await readFile(secret, 'utf8')).trim()).toMatch(/^[\w-]{43}$/)
-  expect((await stat(secret)).mode & 0o777).toBe(0o600)
-})
-
-it('writes no secret when VX_DTE_SECRET is set, and names what a plan needs', async () => {
-  process.env['VX_DTE_SECRET'] = 'given'
-  const adapter = gitlab({ include: '.gitlab/vx.yml' })
-  const workers = { small: { max: 1, cpu: 4, memory: '16GB' } }
-  expect(await plan({ relay: 'https://r', workers, adapter })).toBe(0)
-  await expect(stat(path.join(root, '.vx/dte/secret'))).rejects.toThrow()
-  await expect(
-    plan({ relay: 'https://r', workers: { small: { cpu: 4, memory: '16GB' } }, adapter }),
-  ).rejects.toThrow('dte(): workers.small needs max: a plan writes that many')
-  await expect(plan({ workers, adapter })).rejects.toThrow('vx dte plan needs dte({ relay })')
-  process.env['VX_DTE_RUN'] = '900-42'
-  await expect(plan({ relay: 'https://r', workers, adapter })).rejects.toThrow(
-    'VX_DTE_RUN is a random UUID, such as one `uuidgen` prints, so no one can guess the run: not "900-42"',
-  )
-  expect(() => gitlab({} as never)).toThrow(
-    "gitlab() needs include: the file holding .vx-worker, such as '.gitlab/vx.yml'",
-  )
-})
-
-it('with VX_DTE_GITLAB_TOKEN, starts what the run keeps busy and plays the others as it asks', async () => {
-  // Three independent unmeasured tasks: a whole worker each, so three of four start.
-  const files: Record<string, string> = {
-    'package.json': JSON.stringify({ name: 'ws', private: true }),
-    '.gitignore': '.vx/cache\nvx-workers.yml\nvx-dte.env\n.vx/dte\n',
-    '.vx/workspace.mjs': `import { dte, gitlab } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ relay: 'https://r', workers: { small: { max: 4, cpu: 2, memory: '8GB' } }, adapter: gitlab({ include: '.gitlab/vx.yml' }) })] }
-`,
-    ...Object.fromEntries(
-      ['a', 'b', 'c'].map((p) => [
-        `${p}/vx.config.mjs`,
-        `export default { name: '${p}', tasks: { t: { exec: { command: 'true' } } } }\n`,
-      ]),
-    ),
-  }
-  for (const [rel, text] of Object.entries(files)) {
-    await mkdir(path.dirname(path.join(root, rel)), { recursive: true })
-    await writeFile(path.join(root, rel), text)
-  }
-  Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
-  const vx = (...args: string[]) => {
-    const { VX_DTE_RUN: _, ...env } = process.env
-    return Bun.spawnSync([process.execPath, CORE_BIN, ...args], {
-      cwd: root,
-      env: { ...env, VX_DTE_GITLAB_TOKEN: 'glpat-test', VX_DTE_SECRET: 'given', NO_COLOR: '1' },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-  }
-  expect(vx('lock').exitCode).toBe(0)
-  const planned = vx('dte', 'plan', 't', '--all')
-  expect([planned.exitCode, planned.stderr.toString()]).toEqual([0, ''])
-  const yml = await readFile(path.join(root, 'vx-workers.yml'), 'utf8')
-  expect(yml.split('\n\n').map((job) => job.includes('when: manual'))).toEqual([
-    false,
-    false,
-    false,
-    false,
-    true,
+it("triggers one pipeline per size for a wave: its slots, the run's commit and env", async () => {
+  const adapter = gitlab()
+  // Main ran small#1..8, lost two, and asks small#9 and #10 with a mac.
+  await Promise.all([
+    adapter.spawn(spawn('small#9')),
+    adapter.spawn(spawn('mac#1', 'mac', 2)),
+    adapter.spawn(spawn('small#10')),
   ])
-  expect(JSON.parse(await readFile(path.join(root, '.vx/dte/plan.json'), 'utf8'))).toEqual({
-    run: expect.stringMatching(/^[0-9a-f-]{36}$/),
-    workers: [1, 2, 3, 4].map((i) => ({
-      id: `small#${i}`,
-      size: 'small',
-      cpu: 2,
-      memory: 8e9,
-      live: i > 3,
-    })),
-  })
-  process.env['VX_DTE_GITLAB_TOKEN'] = 'glpat-test'
-
-  const calls: string[] = []
-  let bridgeAsks = 0
-  const server = Bun.serve({
-    port: 0,
-    hostname: '127.0.0.1',
-    fetch(req) {
-      const url = new URL(req.url)
-      calls.push(
-        `${req.method} ${url.pathname}${req.headers.get('private-token') === 'glpat-test' ? '' : ' (no token)'}`,
-      )
-      if (url.pathname.endsWith('/pipelines/900/bridges'))
-        // The child comes up on the second ask.
-        return Response.json([
-          { name: 'vx-workers', downstream_pipeline: bridgeAsks++ === 0 ? null : { id: 901 } },
-        ])
-      if (url.pathname.endsWith('/pipelines/901/jobs'))
-        return Response.json([
-          { id: 2, name: 'vx-worker small#2' },
-          { id: 3, name: 'vx-worker small#3' },
-        ])
-      return Response.json({})
+  expect(calls).toEqual([
+    {
+      path: 'POST /api/v4/projects/7/trigger/pipeline',
+      form: {
+        token: 'job-token',
+        ref: 'fix-it',
+        'variables[VX_DTE_RUN]': 'r',
+        'variables[VX_DTE_RELAY]': 'https://relay',
+        'variables[VX_DTE_SECRET]': 's',
+        'variables[VX_DTE_SIZE]': 'small',
+        'variables[VX_DTE_SHA]': 'abc123',
+        'variables[VX_DTE_PICK]': '/^(1|2)$/',
+        'variables[VX_DTE_IDS]': '1=small#9 2=small#10',
+      },
+      // The job token goes in the form: no header carries a token.
+      headers: [],
     },
-  })
-  process.env['CI_API_V4_URL'] = `http://127.0.0.1:${server.port}/api/v4`
-  process.env['CI_PROJECT_ID'] = '7'
-  try {
-    const adapter = gitlab({ include: '.gitlab/vx.yml' })
-    await adapter.spawn({ id: 'small#2' } as Parameters<typeof adapter.spawn>[0])
-    await adapter.close!()
-    expect(calls).toEqual([
-      'GET /api/v4/projects/7/pipelines/900/bridges',
-      'GET /api/v4/projects/7/pipelines/900/bridges',
-      'GET /api/v4/projects/7/pipelines/901/jobs',
-      'POST /api/v4/projects/7/jobs/2/play',
-      'POST /api/v4/projects/7/jobs/3/cancel',
-    ])
-  } finally {
-    await server.stop(true)
-  }
-}, 20_000)
+    expect.objectContaining({
+      form: expect.objectContaining({
+        'variables[VX_DTE_SIZE]': 'mac',
+        'variables[VX_DTE_PICK]': '/^(1)$/',
+        'variables[VX_DTE_IDS]': '1=mac#1',
+      }),
+    }),
+  ])
+  // The next wave is its own pipeline.
+  delete process.env['CI_MERGE_REQUEST_SOURCE_BRANCH_NAME']
+  process.env['CI_COMMIT_REF_NAME'] = 'main'
+  await adapter.spawn(spawn('small#11'))
+  expect(calls[2]!.form).toMatchObject({ ref: 'main', 'variables[VX_DTE_IDS]': '3=small#11' })
+})
 
-it('says a played worker job that ended before its worker joined, and why', async () => {
-  // Before: the job failed in its install, the run heard nothing and
-  // waited for the orchestrator job's timeout.
-  process.env['VX_DTE_GITLAB_TOKEN'] = 'glpat-test'
-  let reads = 0
-  const server = Bun.serve({
-    port: 0,
-    hostname: '127.0.0.1',
-    fetch(req) {
-      const url = new URL(req.url)
-      if (url.pathname.endsWith('/pipelines/900/bridges'))
-        return Response.json([{ name: 'vx-workers', downstream_pipeline: { id: 901 } }])
-      if (url.pathname.endsWith('/pipelines/901/jobs'))
-        return Response.json([{ id: 3, name: 'vx-worker small#3' }])
-      if (url.pathname.endsWith('/jobs/3'))
-        return Response.json(
-          reads++ === 0
-            ? { status: 'running' }
-            : { status: 'failed', failure_reason: 'script_failure' },
-        )
-      return Response.json({})
-    },
-  })
-  process.env['CI_API_V4_URL'] = `http://127.0.0.1:${server.port}/api/v4`
-  process.env['CI_PROJECT_ID'] = '7'
-  try {
-    const adapter = gitlab({ include: '.gitlab/vx.yml' })
-    const why = Promise.withResolvers<string>()
-    await adapter.spawn({ id: 'small#3', exited: why.resolve } as Parameters<
-      typeof adapter.spawn
-    >[0])
-    expect(await why.promise).toBe('job failed (script_failure)')
-    expect(reads).toBe(2)
-    await adapter.close!()
-  } finally {
-    await server.stop(true)
-  }
-}, 20_000)
+it("names a worker by its matrix slot in the wave's ids", () => {
+  Object.assign(process.env, { VX_DTE_SLOT: '2', VX_DTE_IDS: '1=small#9 2=small#10' })
+  expect(gitlab().workerId!()).toBe('small#10')
+  process.env['VX_DTE_SLOT'] = '3'
+  expect(gitlab().workerId!()).toBeUndefined()
+})
 
-// M, 2026-10-23: a remote fault is at least a warning. A job poll or a
-// cancel GitLab refused went unsaid.
-it('says each job poll and cancel GitLab refused, by status and body, once', async () => {
-  process.env['VX_DTE_GITLAB_TOKEN'] = 'glpat-test'
-  const server = Bun.serve({
-    port: 0,
-    hostname: '127.0.0.1',
-    fetch(req) {
-      const url = new URL(req.url)
-      if (url.pathname.endsWith('/pipelines/900/bridges'))
-        return Response.json([{ name: 'vx-workers', downstream_pipeline: { id: 901 } }])
-      if (url.pathname.endsWith('/pipelines/901/jobs'))
-        return Response.json([
-          { id: 3, name: 'vx-worker small#3' },
-          { id: 4, name: 'vx-worker small#4' },
-        ])
-      if (url.pathname.endsWith('/jobs/3/play')) return Response.json({})
-      if (url.pathname.endsWith('/jobs/3')) return new Response('bad gateway', { status: 502 })
-      return new Response('cannot cancel', { status: 500 })
-    },
-  })
-  process.env['CI_API_V4_URL'] = `http://127.0.0.1:${server.port}/api/v4`
-  process.env['CI_PROJECT_ID'] = '7'
-  try {
-    const said: string[] = []
-    const adapter = gitlab({ include: '.gitlab/vx.yml' })
-    adapter.report?.((m) => said.push(m))
-    await adapter.spawn({ id: 'small#3', exited: () => {} } as unknown as Parameters<
-      typeof adapter.spawn
-    >[0])
-    for (let i = 0; i < 150 && said.length === 0; i++) await Bun.sleep(100)
-    await adapter.close!()
-    expect(said).toEqual([
-      'gitlab(): reading job 3 failed: GET jobs/3: 502 bad gateway',
-      'gitlab(): cancelling job 4 failed: POST jobs/4/cancel: 500 cannot cancel',
-    ])
-  } finally {
-    await server.stop(true)
-  }
-}, 20_000)
+it('says a trigger GitLab refused, by status and body', async () => {
+  reply = () => new Response('{"message":"403 Forbidden"}', { status: 403 })
+  expect(gitlab().spawn(worker)).rejects.toThrow(
+    `gitlab(): triggering small#2: 403 {"message":"403 Forbidden"}`,
+  )
+})
+
+it('names a run only in a GitLab job, and starts no worker outside one', async () => {
+  expect(gitlab().runId!()).toMatch(/^[0-9a-f-]{36}$/)
+  delete process.env['GITLAB_CI']
+  expect(gitlab().runId!()).toBeUndefined()
+  delete process.env['CI_JOB_TOKEN']
+  expect(gitlab().spawn(worker)).rejects.toThrow('gitlab(): not in a GitLab job')
+  expect(() => gitlab({ include: 'x' } as never)).toThrow('include')
+})

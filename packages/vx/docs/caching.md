@@ -613,7 +613,7 @@ Hard invariants of the remote prefetch:
   (`remote-prefetch.test.ts` › "pulls the first pool of keys…").
 - **Kept hits, trusted at once.** What a `hasMany` says a remote holds
   is kept in the index's `remote_hits` table (shared by every worktree),
-  so a later process trusts it: `vx run --dry` (or `vx dte plan`)
+  so a later process trusts it: `vx run --dry`
   followed by `vx run` probes once in each, and the run GETs the kept
   hits before its own probe answers. Only hits are kept. A plain run
   waits on the remote for nothing; an executor that plans its machines

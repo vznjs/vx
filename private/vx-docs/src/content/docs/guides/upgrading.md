@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte: gitlab() triggers each worker's pipeline from the run
+
+gitlab() takes no include and vx dte plan is gone: run vx dte init to write the new .gitlab-ci.yml, give each size a max, and drop VX_DTE_GITLAB_TOKEN.
+
 ## vx-dte-relay: join on the socket only, drop pin and rate limit
 
 a participant joins only on its socket (socket?join=); POST join, the orchestrator's job pin and the rate limit are gone, and a refused socket closes with 4000 plus its status.

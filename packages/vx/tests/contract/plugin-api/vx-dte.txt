@@ -5,7 +5,7 @@ export function dte(options: DteOptions)
 == function github (src/github.ts)
 export function github(options: GithubOptions = {}): DteAdapter
 == function gitlab (src/gitlab.ts)
-export function gitlab(options: GitlabOptions): DteAdapter
+export function gitlab(options: GitlabOptions = {}): DteAdapter
 == function local (src/local.ts)
 export function local(options: LocalOptions = {}): DteAdapter
 == type DockerOptions (src/docker.ts)
@@ -19,12 +19,17 @@ export interface DteAdapter {
   spawn(worker: WorkerSpawn): void | Promise<void>
   close?(): void | Promise<void>
   cancel?(ids: readonly string[]): void
-  render?(plan: DtePlan): Readonly<Record<string, string>>
-  live?(): boolean
+  init?(setup: DteSetup): Promise<DteInit>
   report?(warn: (message: string) => void): void
   readonly keyless?: boolean
+  workerId?(): string | undefined
   runId?(): string | undefined
   adopt?(worker: (id: string, size: string) => WorkerSpawn): void
+}
+== type DteInit (src/init.ts)
+export interface DteInit {
+  readonly files: Readonly<Record<string, string>>
+  readonly next: readonly string[]
 }
 == type DteOptions (src/plugin.ts)
 export interface DteOptions {
@@ -35,32 +40,34 @@ export interface DteOptions {
   readonly scheduler?: Partial<Strategy>
   readonly unmeasured?: { readonly cpu: number; readonly memory: number | string }
 }
-== type DtePlan (src/plugin.ts)
-export interface DtePlan {
-  readonly run: string
-  readonly relay: string
+== type DteSetup (src/init.ts)
+export interface DteSetup {
   readonly workspaceRoot: string
-  readonly workers: readonly {
-    id: string
-    size: string
-    cpu: number
-    memory: number
-    live: boolean
+  readonly relay?: string
+  readonly sizes: readonly {
+    readonly name: string
+    readonly max?: number
+    readonly platform?: Platform
   }[]
+  readonly manager: PackageManager
+  readonly tasks: { readonly main: string; readonly change: string }
+  readonly repository?: string
 }
 == type GithubOptions (src/github.ts)
 export interface GithubOptions {
   readonly workflow?: string
+  readonly runsOn?: Readonly<Record<string, string>>
 }
 == type GitlabOptions (src/gitlab.ts)
 export interface GitlabOptions {
-  readonly include: string
   readonly tags?: Readonly<Record<string, readonly string[]>>
 }
 == type LocalOptions (src/local.ts)
 export interface LocalOptions {
   readonly prepare?: string
 }
+== type PackageManager (src/init.ts)
+export type PackageManager = 'bun' | 'pnpm' | 'yarn' | 'npm'
 == type Strategy (src/strategy.ts)
 export interface Strategy {
   readonly order: 'critical-path' | 'graphene' | 'fifo'
@@ -80,6 +87,7 @@ export interface WorkerSpawn {
   readonly run: string
   readonly relay: string
   readonly size: string
+  readonly max: number
   readonly cpu: number
   readonly memory: number
   readonly index: number

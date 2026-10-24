@@ -268,11 +268,10 @@ describe('examples/ci', () => {
   }
 
   it('runs the lines the workflow runs', () => {
-    expect([...workflow.matchAll(/^\s+- run: >?\s*(vx \w+[^\n]*)/gm)].map((m) => m[1])).toEqual([
-      'vx lock --check',
-      'vx run ci',
-    ])
-    expect(workflow).toContain("format('--affected=origin/{0}', github.base_ref)")
+    expect([...workflow.matchAll(/^\s+- run: >?\s*bun (vx \w+[^\n]*)/gm)].map((m) => m[1])).toEqual(
+      ['vx lock --check', 'vx run ci'],
+    )
+    expect(workflow).toContain("&& '--affected'")
     expect(workflow).toContain("|| '--all' }}")
   })
 
@@ -309,14 +308,14 @@ describe('examples/ci', () => {
     )
     commit(root)
     expect(step(pr, ['lock', '--check']).exit).toBe(0)
-    const opened = step(pr, ['run', 'ci', '--affected=origin/main'])
+    const opened = step(pr, ['run', 'ci', '--affected'])
     expect(opened.exit).toBe(0)
     expect(opened.status).toEqual({
       'app#build': 'success',
       'app#test': 'success',
       'lib#build': 'cache-hit',
     })
-    expect(step(pr, ['run', 'ci', '--affected=origin/main']).status['app#build']).toBe('cache-hit')
+    expect(step(pr, ['run', 'ci', '--affected']).status['app#build']).toBe('cache-hit')
     // One disk, one pool: main on the same tree hits what the pull request built.
     expect(step(main, ['run', 'ci', '--all']).status).toEqual({
       'app#build': 'cache-hit',

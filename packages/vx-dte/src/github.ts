@@ -13,9 +13,11 @@ import type { WorkerSpawn, DteAdapter } from './plugin.js'
 export interface GithubOptions {
   /** The workers' workflow file in `.github/workflows` (default `vx-worker.yml`). */
   readonly workflow?: string
+  /** The runner label of each size, by size name, which `vx dte init` writes; absent, its platform's GitHub-hosted runner. */
+  readonly runsOn?: Readonly<Record<string, string>>
 }
 
-const KEYS: PluginOptionKinds<GithubOptions> = { workflow: 'string' }
+const KEYS: PluginOptionKinds<GithubOptions> = { workflow: 'string', runsOn: 'object' }
 
 /** In `RUNNER_TEMP`: one dispatched workflow run's API path per line. */
 const RUNS_FILE = 'vx-dte-runs'
@@ -184,6 +186,8 @@ export function github(options: GithubOptions = {}): DteAdapter {
     }
   }
   return {
+    // Loaded only by `vx dte init`: a run never needs it.
+    init: async (setup) => (await import('./init.js')).githubInit(options, setup),
     keyless: true,
     report(w) {
       warn = w
