@@ -207,6 +207,8 @@ export class Orchestrator {
   private readonly savedAs = new Map<string, string>()
   /** Keys the run's requests named for their dependencies. */
   private readonly upstreamKeys = new Map<string, string>()
+  /** How many times each task was sent: its run key is one per send. */
+  private readonly sent = new Map<string, number>()
   /** When each worker this run started was asked for, by `WorkerSpawn.index`. */
   private readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
   private ended = false
@@ -535,6 +537,18 @@ export class Orchestrator {
     return false
   }
 
+  /**
+   * This send's number for `task`. A remote keeps the first bytes put
+   * under a key, as this machine's store keeps the ones it restored: a
+   * retry saved under its first attempt's run key restored that failure's
+   * files and output under a green result (2026-10-24).
+   */
+  private sends(task: string): number {
+    const n = this.sent.get(task) ?? 0
+    this.sent.set(task, n + 1)
+    return n
+  }
+
   private send(a: Worker, jobs: readonly Job[]): void {
     const nodes = this.o.nodes()
     const orders = jobs.map((job) => {
@@ -565,7 +579,7 @@ export class Orchestrator {
           task: req.taskId,
           // Unsaved: under the run's own key, as an uncached task's.
           ...(req.cacheKey === undefined || req.unsaved === true ? {} : { key: req.cacheKey }),
-          runKey: runKey(this.o.run, req.taskId),
+          runKey: runKey(this.o.run, req.taskId, this.sends(req.taskId)),
           deps,
           nested: node === undefined ? [] : nestedIn(nodes!, node.projectDir, this.o.root),
           command: withForwardArgs(req.command, req.forwardArgs),
@@ -1660,9 +1674,10 @@ function shareOf(share: unknown): number {
   return typeof share === 'number' && share > 0 && share <= 1 ? Math.max(0.05, share) : 1
 }
 
-/** What a task that is not a cache hit to be is saved under: of this run and task, so no lookup ever finds it. */
-export function runKey(run: string, task: string): string {
-  return Bun.hash.xxHash3(`vx-dte\0${run}\0${task}`).toString(16).padStart(16, '0')
+/** What a task that is not a cache hit to be is saved under: of this run, task and send, so no lookup ever finds it. */
+export function runKey(run: string, task: string, send = 0): string {
+  const id = send === 0 ? `vx-dte\0${run}\0${task}` : `vx-dte\0${run}\0${task}\0${send}`
+  return Bun.hash.xxHash3(id).toString(16).padStart(16, '0')
 }
 
 /** The projects inside `dir`, workspace-relative. */

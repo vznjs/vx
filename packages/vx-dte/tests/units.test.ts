@@ -1409,6 +1409,27 @@ it('an order names its key and each dependency’s; the result comes back by the
   }
 })
 
+// A remote keeps the first bytes put under a key: a retry saved under its
+// first attempt's run key replayed that failure under a green result
+// (2026-10-24).
+it('saves each send of a task under a run key of its own', async () => {
+  const h = await harness(new Map([node('t')]))
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    const first = h.o.execute(h.req('t'))
+    expect(await a.batches()).toEqual([['t']])
+    await a.finish('t', a.orders[0]!.runKey)
+    await first
+    void h.o.execute(h.req('t'))
+    expect(await a.batches()).toEqual([['t']])
+    expect(a.orders.map((o) => o.runKey)).toEqual([runKey(R, 't'), runKey(R, 't', 1)])
+    expect(runKey(R, 't', 1)).not.toBe(runKey(R, 't'))
+  } finally {
+    await h.stop()
+  }
+})
+
 it('sends a task to the worker that holds its dependency’s outputs', async () => {
   const h = await harness(new Map([node('x'), node('y', ['x'])]))
   try {
