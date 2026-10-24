@@ -1073,7 +1073,19 @@ export class Orchestrator {
     endsInMs: number
     boundMs: number
     workers: readonly PlanWorker[]
+    /**
+     * A plan that starts workers: the work it played (seconds, cores,
+     * platform) and each size's warm-up, so it can be played back. Main
+     * d8a795c planned 38 s with one Mac for a Mac lane of 88 s, and
+     * nothing in the profile said what it thought each task took.
+     */
+    work?: readonly PlanTask[]
+    warmUps?: ReadonlyMap<string, number>
   }): void {
+    const work = p.work?.map(
+      (t) =>
+        `${t.id} ${t.ms === undefined ? '?' : Math.round(t.ms / 100) / 10}s ${Math.round(t.cores * 100) / 100}c${t.platform === undefined ? '' : ` ${t.platform}`}`,
+    )
     const workers = p.workers.map((w) =>
       w.starting === true
         ? `${w.id} joins ${Math.round(w.at)}`
@@ -1086,6 +1098,14 @@ export class Orchestrator {
       endsInMs: Math.round(p.endsInMs),
       boundMs: Math.round(p.boundMs),
       workers: workers.join(' · '),
+      ...(work === undefined ? {} : { work: work.join(' · ') }),
+      ...(p.warmUps === undefined
+        ? {}
+        : {
+            warmUps: [...p.warmUps]
+              .map(([s, ms]) => `${s} ${Math.round(ms / 100) / 10}s`)
+              .join(' · '),
+          }),
     })
   }
 
