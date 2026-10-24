@@ -377,7 +377,7 @@ describe('a refused token costs ONE line on a whole workspace', () => {
     expect({ exitCode, warnings: warnings.length }).toEqual({ exitCode: 0, warnings: 1 })
     expect(warnings[0]).toMatch(
       new RegExp(
-        `^\\[vx\\] plugin '@vzn/vx-migrate': (probe of 6 artifacts at|download [0-9a-f]{16} from) ${srv.url}/v8/artifacts failed: HTTP 401: the token was refused; remote cache off for this run$`,
+        `^\\[vx\\] plugin '@vzn/vx-migrate': (probe of 6 artifacts at|download [0-9a-f]{16} from) ${srv.url}/v8/artifacts failed: HTTP 401: nope: the token was refused; remote cache off for this run$`,
       ),
     )
   })

@@ -667,19 +667,22 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       const first = !this.writesRefused
       this.writesRefused = true
       if (!first) return undefined
+      // The status and the server's own words (`refusal`): a scope it
+      // refuses and a token it no longer takes read alike.
       throw new Error(
-        'HTTP 403: the upload was refused (a read-only token or server); uploads off for this run, reads go on',
+        `${(await refusal(res)).message}: the upload was refused (a read-only token or server); uploads off for this run, reads go on`,
       )
     }
     if (res.status === 401 || res.status === 403) {
       const first = !this.disabled
       this.disabled = true
       if (!first) return undefined
+      const said = (await refusal(res)).message
       if (this.forget === undefined)
-        throw new Error(`HTTP ${res.status}: the token was refused; remote cache off for this run`)
+        throw new Error(`${said}: the token was refused; remote cache off for this run`)
       await this.forget()
       throw new Error(
-        `HTTP ${res.status}: the token was refused; removed it from the OS keychain, so the next run asks again; remote cache off for this run`,
+        `${said}: the token was refused; removed it from the OS keychain, so the next run asks again; remote cache off for this run`,
       )
     }
     return res
