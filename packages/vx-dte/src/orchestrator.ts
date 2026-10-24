@@ -1,6 +1,6 @@
 // The orchestrator's half of a distributed run: the `vx run` the user
-// started. It keeps a share of the tasks for this machine and hands the
-// rest to the workers online, critical path first (the order core asks in):
+// started. It runs no task itself (only hits restore here) and hands
+// every task to the workers online, critical path first (the order core asks in):
 // each task to a worker it fits now, by the load that worker last reported
 // and what was sent since, preferring the worker that already holds the
 // task's dependencies; none waits in a worker's queue. No file travels through the relay: an

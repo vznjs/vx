@@ -716,6 +716,8 @@ export function dte(options: DteOptions) {
       return {
         name: 'dte',
         remote: true,
+        // No task runs on the orchestrator; only hits restore here (owner, 2026-10-24).
+        exclusive: true,
         sandbox: true,
         // A task's persistent dependencies start on its worker, never here.
         servers: true,

@@ -5,7 +5,8 @@
 // folds a runtime probe into its key; an `exec.interactive` task goes to the
 // local floor directly, as only it can hand over this terminal;
 // everything else asks the executors in declaration order, and the local
-// floor takes what nothing claimed.
+// floor takes what nothing claimed. An `exclusive` executor lifts every
+// pin and leaves the floor nothing: a task that would land here refuses.
 
 import { machineParallelism, UserError } from '../util/index.js'
 import { hostPlatform, isLocalExecutor, selectExecutor, type TaskExecutor } from '../exec/index.js'
@@ -34,13 +35,16 @@ export function pinnedLocalSet(
   servers = false,
   /** `false` for a `runtime` executor: it checks the probes where it runs the task. */
   runtime = true,
+  /** For an `exclusive` executor: it takes what pins elsewhere, servers included. */
+  exclusive = false,
 ): Set<string> {
   const pinned = new Set<string>()
   for (const node of nodes.values()) {
     if (
-      (node.config.exec?.persistent !== undefined && !(servers && carriable(node))) ||
-      (sandbox && node.config.exec?.sandbox !== undefined) ||
-      node.config.exec?.remote === false
+      (node.config.exec?.persistent !== undefined && !(servers && carriable(node, exclusive))) ||
+      (!exclusive &&
+        ((sandbox && node.config.exec?.sandbox !== undefined) ||
+          node.config.exec?.remote === false))
     ) {
       pinned.add(node.id)
     }
@@ -71,17 +75,17 @@ export function pinnedLocalSet(
 /**
  * A persistent task a `servers` executor can start where it runs a
  * dependant: one the run holds for its dependants only, with no sandbox
- * (this machine's machinery) and no `exec.remote: false`.
+ * (this machine's machinery) and no `exec.remote: false`, which an
+ * `exclusive` executor takes all the same.
  */
-function carriable(node: TaskNode): boolean {
+function carriable(node: TaskNode, exclusive = false): boolean {
   const exec = node.config.exec
   return (
     exec?.persistent !== undefined &&
     !node.requested &&
     node.surfaced !== true &&
-    exec.sandbox === undefined &&
-    exec.remote !== false &&
-    exec.interactive !== true
+    (exclusive ||
+      (exec.sandbox === undefined && exec.remote !== false && exec.interactive !== true))
   )
 }
 
@@ -218,11 +222,19 @@ export function placeTasks(
 ): Placements {
   // Each executor's pins, computed only when one reads them.
   const pins = new Map<string, Set<string>>()
-  const pinsOf = (e: Pick<TaskExecutor, 'sandbox' | 'servers' | 'runtime'>): Set<string> => {
-    const k = `${e.sandbox === true}${e.servers === true}${e.runtime === true}`
+  const pinsOf = (
+    e: Pick<TaskExecutor, 'sandbox' | 'servers' | 'runtime' | 'exclusive'>,
+  ): Set<string> => {
+    const k = `${e.sandbox === true}${e.servers === true}${e.runtime === true}${e.exclusive === true}`
     let set = pins.get(k)
     if (set === undefined) {
-      set = pinnedLocalSet(nodes, e.sandbox !== true, e.servers === true, e.runtime !== true)
+      set = pinnedLocalSet(
+        nodes,
+        e.sandbox !== true,
+        e.servers === true,
+        e.runtime !== true,
+        e.exclusive === true,
+      )
       pins.set(k, set)
     }
     return set
@@ -263,10 +275,17 @@ export function placeTasks(
   }
   const pinned = pinsOf({})
   const routers = executors.filter((e) => e.platforms !== undefined)
+  const sole = executors.find((e) => e.exclusive === true)
+  /** A task an `exclusive` executor leaves to this machine: the run refuses. */
+  const refuse = (id: string, why: string): never => {
+    throw new UserError(
+      `${id} would run on this machine, and ${executorLabel(sole!)} runs every task elsewhere: ${why}`,
+    )
+  }
   for (const node of nodes.values()) {
     delete node.platform
     if (isGroupTask(node) || node.config.exec?.persistent !== undefined) continue
-    if (node.config.exec?.interactive === true) {
+    if (node.config.exec?.interactive === true && sole === undefined) {
       placements.executors.set(node.id, floor)
       here(node)
       continue
@@ -287,6 +306,16 @@ export function placeTasks(
       executorLabel,
       (e) => pinsOf(e).has(node.id) || !routes(e),
     )
+    if (sole !== undefined && executor === floor) {
+      refuse(
+        node.id,
+        pinsOf(sole).has(node.id)
+          ? 'its key folds a runtime probe, which it does not check'
+          : routes(sole)
+            ? 'it declined the task'
+            : `it offers ${sole.platforms?.join(', ') ?? 'no platform'}, and exec.platforms asks for ${wants!.join(', ')}`,
+      )
+    }
     placements.executors.set(node.id, executor)
     if (wants !== undefined) {
       const offered = executor.platforms
@@ -317,7 +346,9 @@ export function placeTasks(
   for (const servers of placements.servers.values())
     for (const s of servers) if (!heldHere.has(s.id)) placements.carried.add(s.id)
   for (const node of nodes.values()) {
-    if (node.config.exec?.persistent !== undefined && !placements.carried.has(node.id)) here(node)
+    if (node.config.exec?.persistent === undefined || placements.carried.has(node.id)) continue
+    if (sole !== undefined) refuse(node.id, 'it starts a server only beside a task that needs it')
+    here(node)
   }
   return placements
 }

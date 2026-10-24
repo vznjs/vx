@@ -4,8 +4,8 @@ Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 
 Distributed task execution for vx: one `vx run` spread over workers your
 own CI starts, replayed here as one run. The run you start is the
-orchestrator. It keeps a share of the tasks, starts workers for the rest,
-and hands the ready tasks to the workers with room, critical path first. A worker runs it in its own checkout and saves the task's
+orchestrator. It runs no task itself, only restores cache hits: it starts
+workers and hands the ready tasks to the workers with room, critical path first. A worker runs it in its own checkout and saves the task's
 output and the files its declared outputs left to the workspace's cache,
 under the task's key. They land here before the task ends, so the run
 reports the task as its own. No file travels through the relay: it
@@ -381,9 +381,12 @@ stops, instead of waiting for the job's timeout.
 - A task whose key folds a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first and
   fails the task when it answers otherwise than this machine did.
-- Tasks that must run here stay here: a requested persistent task, one
-  with `exec.remote: false`, interactive tasks, and their dependants
-  (core's placement).
+- No task runs on the orchestrator, only cache hits restore there
+  (owner, 2026-10-24): a task with `exec.remote: false`, an interactive
+  one and their dependants run on workers too (the executor is
+  `exclusive`). A task no worker can take refuses the run before any
+  starts, naming it: one whose `exec.platforms` no size offers, or a
+  persistent task asked for on its own.
 - A worker restores, by key, the declared outputs of every task the one
   it runs depends on, unless it ran or restored them before. Files a task
   writes without declaring them stay on the worker.

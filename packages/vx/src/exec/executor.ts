@@ -278,6 +278,16 @@ export interface TaskExecutor {
    */
   readonly runtime?: boolean
   /**
+   * A `remote` executor that runs every task of the run, so none runs on
+   * this machine; only cache hits restore here (owner, 2026-10-24: "no
+   * task should ever run on the orchestrator"). Nothing is pinned for it:
+   * it is offered `exec.remote: false` and `exec.interactive` tasks too,
+   * and starts every server a dependant needs. A task it cannot take (a
+   * platform it does not offer, one it declines, a server requested on its
+   * own) refuses the run, and a task it gives back fails.
+   */
+  readonly exclusive?: boolean
+  /**
    * The platforms this executor runs tasks on (`exec.platforms`' names). It
    * is offered a task that declares `exec.platforms` only when one of them
    * is listed, and runs it on `ExecuteRequest.platform`; an executor that
