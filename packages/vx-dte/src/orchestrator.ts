@@ -1236,6 +1236,30 @@ export class Orchestrator {
   }
 
   /**
+   * Sizes the CI has not started a worker of past its warm-up, `warmUpMs`
+   * from its ask: one given up as late counts while one of its size is
+   * online. A worker asked now queues behind it: PR 2f0e2a4's run asked 7
+   * more while GitHub queued its first 11 for 30-85 s; none got a runner
+   * before its join limit cancelled it (2026-10-24).
+   */
+  queued(warmUpMs: (size: string) => number): Set<string> {
+    const now = performance.now()
+    const online = new Set([...this.workers.values()].map((a) => a.declared?.size))
+    const joined = new Set([...this.workers.values(), ...this.gone].map((a) => a.label))
+    const out = new Set<string>()
+    for (const [id, { at, declared }] of this.spawnedAt) {
+      if (joined.has(id)) continue
+      if (
+        this.late.has(id)
+          ? online.has(declared.size)
+          : !this.cancelled.has(id) && !this.unstarted.has(id) && now - at > warmUpMs(declared.size)
+      )
+        out.add(declared.size)
+    }
+    return out
+  }
+
+  /**
    * Workers `ids` leave (`exit`) if still idle, and each faulty idle one:
    * none comes back. Of `ids`, each started and not joined is cancelled:
    * the ones returned, for the adapter to stop; one that joins anyway is
@@ -1273,6 +1297,8 @@ export class Orchestrator {
    * waiting).
    */
   failed(id: string, reason: string, overdue = false): void {
+    // Its job ended: one given up as late no longer joins after all.
+    if (!overdue) this.late.delete(id)
     if (this.ended || (this.cancelled.has(id) && !overdue)) return
     const live = [...this.workers.values()].find((a) => a.label === id)
     if (live !== undefined) {
@@ -1469,12 +1495,14 @@ export class Orchestrator {
             : ''),
       ])
     for (const id of this.spawnedAt.keys())
-      if (!joined.has(id) && !this.cancelled.has(id)) {
+      if (!joined.has(id) && (!this.cancelled.has(id) || this.late.has(id))) {
         const why = this.unstarted.get(id)
         lines.push(why === undefined ? [id, 'starting', ''] : [id, 'failed', why])
       }
     lines.sort((x, y) => x[0].localeCompare(y[0], 'en', { numeric: true }))
-    const cancelled = [...this.cancelled].filter((id) => !joined.has(id)).length
+    const cancelled = [...this.cancelled].filter(
+      (id) => !joined.has(id) && !this.late.has(id),
+    ).length
     if (cancelled > 0)
       lines.push([`${cancelled} worker${cancelled === 1 ? '' : 's'}`, 'cancelled', 'not needed'])
     if (left.length > 0)

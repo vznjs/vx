@@ -270,7 +270,14 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       const m = durationMs(id)
       return m === undefined ? undefined : m * slow
     }
-    const warmUp = warmUpOf(1)
+    // As the plugin: the fastest join of the size this run, else the first worker's.
+    const warmUp = (size: string | undefined): number => {
+      let least: number | undefined
+      for (const w of workers)
+        if (w.joinedAt !== undefined && sizeOf.get(w.id)?.name === size)
+          least = Math.min(least ?? Infinity, w.joinedAt - w.spawnedAt)
+      return least ?? warmUpOf(1)
+    }
     const planWorkers: PlanWorker[] = []
     const running = new Set<string>()
     for (const w of joined()) {
@@ -301,17 +308,22 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
         })),
       })
     }
-    for (const w of starting())
+    const queued = new Set<string>()
+    for (const w of starting()) {
+      const size = sizeOf.get(w.id)!.name
+      if (now - w.spawnedAt > warmUp(size)) queued.add(size)
       planWorkers.push({
         id: w.id,
         cores: w.cores,
         memory: w.memory,
         platform: w.platform,
-        at: Math.max(0, warmUp - (now - w.spawnedAt)),
+        size,
+        at: Math.max(0, warmUp(size) - (now - w.spawnedAt)),
         idle: false,
         running: [],
         starting: true,
       })
+    }
     const held = (t: SimTask): boolean => options.probe !== false && t.cache && t.ran === undefined
     const remaining = graph.filter((t) => !done.has(t.id) && !held(t)).map((t) => t.id)
     const p = decide({
@@ -331,6 +343,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       known: planned,
       how,
       home: options.home,
+      queued,
     })
     deadline = now + p.boundMs
     for (const t of p.tasks) planned.add(t.id)
@@ -346,7 +359,7 @@ export function simulate(graph: readonly SimTask[], options: SimOptions): SimRes
       }
     again = p.againInMs === undefined ? undefined : now + p.againInMs
     for (const s of p.start) {
-      if (goneAt.some((g) => g.size === s.name && now - g.at < warmUp)) churn++
+      if (goneAt.some((g) => g.size === s.name && now - g.at < warmUp(s.name))) churn++
       index++
       const id = `${s.name}#${index}`
       started.set(s.name, (started.get(s.name) ?? 0) + 1)

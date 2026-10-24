@@ -326,6 +326,32 @@ it('takes a worker given up past its join limit that joins after all', async () 
   }
 })
 
+// PR 2f0e2a4 (2026-10-24): GitHub queued smalls 30-85 s; the run asked
+// more behind them and replaced those its join limit gave up on. A size
+// with a worker late to join, or given up as late beside one online, is
+// queued: the plan starts none of it.
+it('a size is queued while a worker of it is late, given up beside one online', async () => {
+  const overdue: string[] = []
+  const h = await harness(new Map([node('t1')]), undefined, 60_000, undefined, undefined, {
+    overdue: (id) => overdue.push(id),
+  })
+  try {
+    h.o.spawned('worker#1', { size: 'small', cpu: 1, memory: 1 })
+    h.o.spawned('worker#2', { size: 'small', cpu: 1, memory: 1 })
+    expect(h.o.queued(() => 60_000)).toEqual(new Set())
+    expect(h.o.queued(() => 0)).toEqual(new Set(['small']))
+    await h.worker(1, 'worker#1')
+    for (let i = 0; i < 50 && overdue.length === 0; i++) await Bun.sleep(20)
+    expect(overdue).toEqual(['worker#2'])
+    expect(h.o.queued(() => 60_000)).toEqual(new Set(['small']))
+    // Its job ended: it joins no more.
+    h.o.failed('worker#2', 'job cancelled')
+    expect(h.o.queued(() => 60_000)).toEqual(new Set())
+  } finally {
+    await h.stop()
+  }
+})
+
 /** A cache by key, in memory: what workers saved, and each restore asked. */
 function fakeArtifacts() {
   const saved = new Map<string, { stdout: string; stderr: string }>()
