@@ -5,7 +5,7 @@ export function dte(options: DteOptions)
 == function github (src/github.ts)
 export function github(options: GithubOptions = {}): DteAdapter
 == function gitlab (src/gitlab.ts)
-export function gitlab(options: GitlabOptions): DteAdapter
+export function gitlab(options: GitlabOptions = {}): DteAdapter
 == function local (src/local.ts)
 export function local(options: LocalOptions = {}): DteAdapter
 == type DockerOptions (src/docker.ts)
@@ -19,9 +19,7 @@ export interface DteAdapter {
   spawn(worker: WorkerSpawn): void | Promise<void>
   close?(): void | Promise<void>
   cancel?(ids: readonly string[]): void
-  render?(plan: DtePlan): Readonly<Record<string, string>>
   init?(setup: DteSetup): Promise<DteInit>
-  live?(): boolean
   report?(warn: (message: string) => void): void
   readonly keyless?: boolean
   runId?(): string | undefined
@@ -41,19 +39,6 @@ export interface DteOptions {
   readonly scheduler?: Partial<Strategy>
   readonly unmeasured?: { readonly cpu: number; readonly memory: number | string }
 }
-== type DtePlan (src/plugin.ts)
-export interface DtePlan {
-  readonly run: string
-  readonly relay: string
-  readonly workspaceRoot: string
-  readonly workers: readonly {
-    id: string
-    size: string
-    cpu: number
-    memory: number
-    live: boolean
-  }[]
-}
 == type DteSetup (src/init.ts)
 export interface DteSetup {
   readonly workspaceRoot: string
@@ -70,7 +55,6 @@ export interface GithubOptions {
 }
 == type GitlabOptions (src/gitlab.ts)
 export interface GitlabOptions {
-  readonly include: string
   readonly tags?: Readonly<Record<string, readonly string[]>>
 }
 == type LocalOptions (src/local.ts)

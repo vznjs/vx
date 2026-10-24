@@ -266,6 +266,11 @@ ${
   }
 }
 
+/** A YAML single-quoted string, as oxfmt writes one. */
+function quoted(s: string): string {
+  return `'${s.replaceAll("'", "''")}'`
+}
+
 /** Tasks then a flag, either possibly none. */
 function both(tasks: string, flag: string): string {
   return tasks === '' ? flag : `${tasks} ${flag}`
@@ -282,7 +287,11 @@ function rootInstall(manager: DteSetup['manager']): string[] {
   ]
 }
 
-/** The job templates `include` holds, and the three jobs the user's pipeline adds. */
+/**
+ * The project's one pipeline file: the run's `vx` job on a merge request
+ * or the default branch, and a job per worker size, which only a pipeline
+ * the run triggers (`VX_DTE_SIZE`) runs.
+ */
 export function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
   if (setup.relay === undefined)
     throw new UserError(
@@ -291,65 +300,71 @@ export function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
   const relay = setup.relay
   const vx = vxCommand(setup.manager)
   const named = setup.tasks.main !== '' && setup.tasks.change !== ''
-  const text = `# Written by vx dte init from dte() in .vx/workspace.ts: the jobs of a
-# distributed run extend these. The image needs Bun and git.
-.vx:
-  image: oven/bun:1.4
-  before_script:
-${installLines(setup.manager)
-  .map((l) => `    - ${l}`)
-  .join('\n')}
-
-.vx-worker:
-  extends: .vx
-  id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }
-`
-  const ci = `# Written by vx dte init: the run. vx-plan writes the workers' child
-# pipeline, vx-workers starts it, vx orchestrates: every task runs on a
-# worker.${
+  const root =
+    setup.manager === 'bun'
+      ? ["bun install --frozen-lockfile --filter './'"]
+      : installLines(setup.manager)
+  const lines = (l: readonly string[]): string => l.map((x) => `    - ${x}`).join('\n')
+  const workers = setup.sizes.map((s) => {
+    const tags = options.tags?.[s.name]
+    if (tags !== undefined && (!Array.isArray(tags) || tags.some((t) => typeof t !== 'string')))
+      throw new UserError(`vx dte init: gitlab() tags.${s.name} is a list of runner tags`)
+    return `
+${quoted(`vx-worker ${s.name}`)}:
+  extends: .vx-worker
+  rules: [{ if: $VX_DTE_SIZE == ${JSON.stringify(s.name)} }]
+${tags === undefined ? '' : `  tags: [${tags.map(quoted).join(', ')}]\n`}`
+  })
+  const ci = `# Written by vx dte init from dte() in .vx/workspace.ts. The vx job
+# runs no task: once it is on the relay it triggers a pipeline of this
+# file per worker, which runs only the job of that worker's size.${
     named
       ? ''
-      : ` Name the tasks in .vx-tasks, as 'build test --all': with
-# none named, vx fails, listing them.`
+      : `
+# Name the tasks in the vx job, as 'build test --all': with none named,
+# vx fails, listing them.`
   }
-include: [{ local: ${options.include} }]
-
-# What vx-plan and vx run: a merge request what it changed, anything else all.
-.vx-tasks:
-  variables: { VX_TASKS: '${both(setup.tasks.main, '--all')}' }
+workflow:
   rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "pipeline" && $VX_DTE_SIZE
+
+# The image needs Bun and git.
+default:
+  image: oven/bun:1.4
+
+vx:
+  rules:
+    - if: $VX_DTE_SIZE
+      when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       variables: { VX_TASKS: '${both(setup.tasks.change, '--affected')}' }
     - when: on_success
-
-vx-plan:
-  extends: [.vx, .vx-tasks]
-  script: [${vx} dte plan $VX_TASKS]
-  artifacts:
-    paths: [vx-workers.yml, .vx/dte/]
-    reports: { dotenv: vx-dte.env }
-    access: none
-    expire_in: 1 hour
-
-vx-workers:
-  needs: [vx-plan]
-  variables: { PARENT_PIPELINE_ID: $CI_PIPELINE_ID }
-  trigger:
-    include: [{ artifact: vx-workers.yml, job: vx-plan }]
-
-vx:
-  extends: [.vx, .vx-tasks]
-  needs: [vx-plan]
+      variables: { VX_TASKS: '${both(setup.tasks.main, '--all')}' }
   id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }
-  script: [${vx} run $VX_TASKS]
-`
-  const files = { '.gitlab-ci.yml': ci, [options.include]: text }
+  before_script:
+${lines(root)}
+  script:
+    - ${vx} lock --check
+    - ${vx} run $VX_TASKS
+
+# A worker runs at the run's commit, which its branch may have moved past.
+.vx-worker:
+  variables: { GIT_DEPTH: 1 }
+  id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }
+  before_script:
+    - git fetch -q --depth 1 origin $VX_DTE_SHA
+    - git checkout -q FETCH_HEAD
+${lines(installLines(setup.manager))}
+  script: [${vx} dte worker]
+${workers.join('')}`.replace(/\n+$/, '\n')
   return {
-    files,
+    files: { '.gitlab-ci.yml': ci },
     next: nextSteps(
       relay,
       `https://gitlab.com:${setup.repository ?? '<group>/<project>'}:.gitlab-ci.yml`,
-      Object.keys(files),
+      ['.gitlab-ci.yml'],
     ),
   }
 }

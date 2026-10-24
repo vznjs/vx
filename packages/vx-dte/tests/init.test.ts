@@ -104,19 +104,26 @@ it('keeps a workflow its owner changed unless --force, and says when it is up to
   expect(printed.join('')).toContain('vx dte init: .github/workflows/vx-worker.yml is up to date')
 })
 
-it('gitlab() writes the include its workers extend, the token for the relay', async () => {
+it('gitlab() writes one pipeline file: the run, and a job per size only its trigger runs', async () => {
   await writeFile(path.join(root, 'bun.lock'), '')
-  const adapter = gitlab({ include: '.gitlab/vx.yml' })
+  const adapter = gitlab({ tags: { mac: ['saas-macos-medium-m1'] } })
   expect(init({ workers: sizes, adapter })).rejects.toThrow('gitlab() needs dte({ relay })')
   expect(await init({ relay: 'https://relay.example.com', workers: sizes, adapter })).toBe(0)
-  const yml = await readFile(path.join(root, '.gitlab/vx.yml'), 'utf8')
-  expect(yml).toContain('.vx-worker:\n  extends: .vx\n')
-  expect(yml).toContain('id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }')
-  expect(yml).toContain('    - bun install --frozen-lockfile\n')
   const ci = await readFile(path.join(root, '.gitlab-ci.yml'), 'utf8')
-  expect(ci).toContain('include: [{ local: .gitlab/vx.yml }]')
-  expect(ci).toContain("  variables: { VX_TASKS: '--all' }\n")
-  expect(ci).toContain('Name the tasks in .vx-tasks')
+  expect(ci).toContain('  id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }\n')
+  expect(ci).toContain('    - if: $CI_PIPELINE_SOURCE == "pipeline" && $VX_DTE_SIZE\n')
+  // No task runs on the orchestrator: vx and the plugins only.
+  expect(ci).toContain("  before_script:\n    - bun install --frozen-lockfile --filter './'\n")
+  expect(ci).toContain("      variables: { VX_TASKS: '--all' }\n")
+  expect(ci).toContain('# Name the tasks in the vx job')
+  expect(ci).toContain('    - git fetch -q --depth 1 origin $VX_DTE_SHA\n')
+  expect(ci).toContain(
+    `'vx-worker small':\n  extends: .vx-worker\n  rules: [{ if: $VX_DTE_SIZE == "small" }]\n\n`,
+  )
+  expect(ci).toContain(
+    `'vx-worker mac':\n  extends: .vx-worker\n  rules: [{ if: $VX_DTE_SIZE == "mac" }]\n  tags: ['saas-macos-medium-m1']\n`,
+  )
+  expect(ci).not.toContain('bunx')
   expect(printed.join('')).toContain(
     'ALLOW (a plain var, no secret): https://gitlab.com:<group>/<project>:.gitlab-ci.yml',
   )
@@ -185,6 +192,14 @@ it('the README shows the workflow vx dte init writes for its sizes', async () =>
   expect(readme).toContain('```yaml\n# .github/workflows/vx-worker.yml\n' + written + '```')
   const run = await readFile(path.join(root, '.github/workflows/ci.yml'), 'utf8')
   expect(readme).toContain('```yaml\n# .github/workflows/ci.yml\n' + run + '```')
+  const gl = await gitlab().init!({
+    workspaceRoot: root,
+    relay: 'https://relay.example.com',
+    sizes: [{ name: 'small' }],
+    manager: 'bun',
+    tasks: { main: '', change: '' },
+  })
+  expect(readme).toContain('```yaml\n# .gitlab-ci.yml\n' + gl.files['.gitlab-ci.yml'] + '```')
 })
 
 it('writes the tasks asked for: main with --all, a change request with --affected', async () => {
@@ -200,9 +215,10 @@ it('writes the tasks asked for: main with --all, a change request with --affecte
     "      - run: bun vx run ${{ github.event_name == 'pull_request' && 'build test --affected' || 'build test e2e --all' }}\n",
   )
   expect(gh).not.toContain('Name the tasks')
-  const gl = (await gitlab({ include: '.gitlab/vx.yml' }).init!(setup)).files['.gitlab-ci.yml']!
-  expect(gl).toContain("  variables: { VX_TASKS: 'build test e2e --all' }\n")
+  const gl = (await gitlab().init!(setup)).files['.gitlab-ci.yml']!
+  expect(gl).toContain("      variables: { VX_TASKS: 'build test e2e --all' }\n")
   expect(gl).toContain("      variables: { VX_TASKS: 'build test --affected' }\n")
-  expect(gl).toContain('  script: [bun vx dte plan $VX_TASKS]\n')
-  expect(gl).toContain('  script: [bun vx run $VX_TASKS]\n')
+  expect(gl).toContain('    - bun vx run $VX_TASKS\n')
+  expect(gl).toContain('  script: [bun vx dte worker]\n')
+  expect(gl).not.toContain('Name the tasks')
 })

@@ -13,10 +13,6 @@ import {
   type TaskNode,
   type TaskResources,
 } from '@vzn/vx'
-import { Database } from 'bun:sqlite'
-import { existsSync, readFileSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
-import path from 'node:path'
 import type { DteInit, DteSetup } from './init.js'
 import type { Need } from './dispatch.js'
 import { booked, DEFAULT_STRATEGY, STRATEGIES, type Strategy } from './strategy.js'
@@ -55,22 +51,6 @@ export interface WorkerSpawn {
   readonly exited: (reason: string) => void
 }
 
-/** What `vx dte plan` hands an adapter that writes its CI's worker jobs. */
-export interface DtePlan {
-  readonly run: string
-  readonly relay: string
-  readonly workspaceRoot: string
-  /** Every worker the run may start: `max` of each size, in declared order; `live` ones the run starts as it needs them (`spawn`). */
-  readonly workers: readonly {
-    id: string
-    size: string
-    cpu: number
-    memory: number
-    live: boolean
-  }[]
-}
-
-/** How one CI starts workers: `local()`, `docker()`, `gitlab()`. */
 export interface DteAdapter {
   /** A relay of its own, for a run whose `dte()` names none. */
   relay?(): Promise<string>
@@ -79,22 +59,13 @@ export interface DteAdapter {
   close?(): void | Promise<void>
   /** Workers `ids` it started are not needed: stop each that has not joined, if it can. */
   cancel?(ids: readonly string[]): void
-  /**
-   * The files that start the plan's workers (workspace-relative path to
-   * text), which `vx dte plan` writes. An adapter with it starts every
-   * planned worker that is not `live` up front, and `spawn`s a `live` one,
-   * by its `id`, when the run needs it.
-   */
-  render?(plan: DtePlan): Readonly<Record<string, string>>
   /** The CI files that start its workers, which `vx dte init` writes; none for an adapter that starts them on this machine. */
   init?(setup: DteSetup): Promise<DteInit>
-  /** Whether a plan's workers beyond the first wait for the run to start them. */
-  live?(): boolean
   /** Where it says a fault it works around (a status poll or a cancel that failed); called as the run starts. */
   report?(warn: (message: string) => void): void
   /** Its workers prove themselves by their CI identity (GitHub OIDC): the run makes no secret for them. */
   readonly keyless?: boolean
-  /** The run id `vx dte plan` names when `VX_DTE_RUN` is unset. */
+  /** The run's id when `VX_DTE_RUN` is unset, in a CI job it starts workers from; none elsewhere. */
   runId?(): string | undefined
   /**
    * Workers the CI started for this run before it began (`size#n`): each
@@ -176,14 +147,15 @@ export function dte(options: DteOptions) {
   const home = homeOf(sizes, hostPlatform())
   const unmeasured = unmeasuredOf(options.unmeasured)
   const adapter = options.adapter
-  // A keyless adapter's run on GitHub Actions with a relay names its own
-  // run: ci.yml sets nothing (owner, 2026-10-23: "super simple" CI).
+  // An adapter's run in its own CI with a relay names itself: the CI file
+  // sets nothing (owner, 2026-10-23: "super simple" CI).
   let made: string | undefined
   const runOf = (): string | undefined =>
     givenRun() ??
-    (adapter?.keyless === true && options.relay !== undefined && onGitHub()
-      ? (made ??= crypto.randomUUID())
-      : undefined)
+    (options.relay === undefined
+      ? undefined
+      : (made ??=
+          adapter?.keyless === true && onGitHub() ? crypto.randomUUID() : adapter?.runId?.()))
   if (adapter !== undefined && typeof adapter.spawn !== 'function') {
     throw new UserError('dte(): adapter is an adapter, such as local()')
   }
@@ -242,37 +214,6 @@ export function dte(options: DteOptions) {
     await adapter?.close?.()
   }
 
-  /**
-   * `vx dte plan [run args]`: the run's id and secret, and the files its
-   * adapter starts workers with. Spawning live, the first wave is what the
-   * run's graph keeps busy at its start, from `vx run <args> --dry=json`
-   * and history; the rest wait for the run.
-   */
-  const plan = async (args: readonly string[], ctx: CommandContext): Promise<number> => {
-    const root = ctx.workspaceRoot
-    if (adapter?.render === undefined) throw new UserError('vx dte plan: the adapter plans nothing')
-    const run = runOf() ?? adapter.runId?.()
-    if (!run) throw new UserError('vx dte plan needs VX_DTE_RUN, or an adapter that names the run')
-    if (options.relay === undefined) throw new UserError('vx dte plan needs dte({ relay })')
-    const { runSecret } = await import('./seal.js')
-    const live = adapter.live?.() === true
-    const workers = planned(sizes, live ? await firstWave(args, ctx, sizes, unmeasured) : undefined)
-    const files: Record<string, string> = {
-      ...adapter.render({ run, relay: options.relay, workspaceRoot: root, workers }),
-    }
-    if (!process.env['VX_DTE_SECRET']) files[SECRET_FILE] = `${runSecret()}\n`
-    files[PLAN_FILE] = `${JSON.stringify({ run, workers })}\n`
-    for (const [rel, text] of Object.entries(files)) {
-      const at = path.join(root, rel)
-      await mkdir(path.dirname(at), { recursive: true })
-      await writeFile(at, text, rel === SECRET_FILE ? { mode: 0o600 } : {})
-    }
-    process.stdout.write(
-      `vx dte plan: run ${run}, ${workers.length} worker${workers.length === 1 ? '' : 's'}; wrote ${Object.keys(files).join(', ')}\n`,
-    )
-    return 0
-  }
-
   /** `vx dte init [--dry] [--force]`: the run's CI and its workers', from these sizes. */
   const init = async (args: readonly string[], ctx: CommandContext): Promise<number> => {
     const extra = args.find((a) => a !== '--dry' && a !== '--force')
@@ -312,14 +253,11 @@ export function dte(options: DteOptions) {
     commands: {
       dte: {
         description:
-          'dte init: write the CI of a distributed run; dte plan: write the CI jobs of a run’s workers; dte worker: run tasks for a distributed run',
+          'dte init: write the CI of a distributed run; dte worker: run tasks for a distributed run',
         async run(argv, ctx) {
-          if (argv[0] === 'plan') return plan(argv.slice(1), ctx)
           if (argv[0] === 'init') return init(argv.slice(1), ctx)
           if (argv[0] !== 'worker' || argv.length > 1) {
-            throw new UserError(
-              'Usage: vx dte plan [<tasks> <run flags>] | vx dte worker | vx dte init [--dry] [--force]',
-            )
+            throw new UserError('Usage: vx dte worker | vx dte init [--dry] [--force]')
           }
           const run = runOf()
           const relay = process.env['VX_DTE_RELAY'] ?? options.relay
@@ -328,10 +266,10 @@ export function dte(options: DteOptions) {
               'vx dte worker needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })',
             )
           }
-          const secret = givenSecret(ctx.workspaceRoot)
+          const secret = givenSecret()
           if (secret === undefined && !onGitHub()) {
             throw new UserError(
-              `vx dte worker needs VX_DTE_SECRET or ${SECRET_FILE}, the run’s, or a GitHub Actions job with id-token: write`,
+              'vx dte worker needs VX_DTE_SECRET, the run’s, or a GitHub Actions job with id-token: write',
             )
           }
           const [{ runWorker }, seal] = await Promise.all([
@@ -434,16 +372,12 @@ export function dte(options: DteOptions) {
         import('./tree.js'),
         import('./seal.js'),
       ])
-      // VX_DTE_SECRET or the plan's wins. On GitHub, workers that join on
-      // their own or an adapter's keyless ones prove themselves by OIDC;
-      // the workers another adapter starts get a secret made for this run.
-      let secret = givenSecret(ctx.workspaceRoot)
+      // VX_DTE_SECRET wins. On GitHub, workers that join on their own or
+      // an adapter's keyless ones prove themselves by OIDC; the workers
+      // another adapter starts get a secret made for this run.
+      let secret = givenSecret()
       let proof: Proof | undefined
       if (secret === undefined) {
-        if (adapter?.render !== undefined)
-          throw new UserError(
-            `dte(): no ${SECRET_FILE}: run vx dte plan first, in a job this one needs`,
-          )
         if ((adapter === undefined || adapter.keyless === true) && onGitHub())
           proof = seal.githubProof()
         else if (adapter === undefined)
@@ -478,9 +412,8 @@ export function dte(options: DteOptions) {
         how,
         home,
         lost: (id) => {
-          // A planned worker is not started again: its job is spent.
           const s = sizeOf.get(id)
-          if (s === undefined || plannedWorkers !== undefined) return
+          if (s === undefined) return
           sizeOf.delete(id)
           started.set(s.name, started.get(s.name)! - 1)
           // Before the run counts what is left to start: none would fail it.
@@ -508,26 +441,6 @@ export function dte(options: DteOptions) {
         const n = (numbered.get(size) ?? 0) + 1
         numbered.set(size, n)
         return `${size}#${n}`
-      }
-      // A planned run's first wave is on its way already; the rest, if
-      // any, waits for the run to start it, by size.
-      const later = new Map<string, string[]>()
-      const plannedWorkers =
-        adapter?.render === undefined ? undefined : readPlan(ctx.workspaceRoot, run)
-      for (const a of plannedWorkers ?? []) {
-        if (a.live) {
-          later.set(a.size, [...(later.get(a.size) ?? []), a.id])
-          continue
-        }
-        o.spawned(a.id, {
-          size: a.size,
-          cpu: a.cpu,
-          memory: a.memory,
-          ...named(a.size),
-        })
-        started.set(a.size, (started.get(a.size) ?? 0) + 1)
-        numbered.set(a.size, (numbered.get(a.size) ?? 0) + 1)
-        index++
       }
       // A worker the run counts as started, against its size's max.
       const spawnOf = (s: Size, id: string, n: number): WorkerSpawn => {
@@ -594,7 +507,7 @@ export function dte(options: DteOptions) {
           return m === undefined ? undefined : m * slow
         }
         const { workers, running } = o.planState(ms, warmUp)
-        const final = adapter === undefined || (plannedWorkers !== undefined && later.size === 0)
+        const final = adapter === undefined
         const p = decide({
           remaining,
           nodes: nodes ?? new Map(),
@@ -656,8 +569,7 @@ export function dte(options: DteOptions) {
         )
         for (const s of p.start) {
           ++index
-          // Counted against its size's max, so a planned one is left.
-          const id = plannedWorkers === undefined ? nextId(s.name) : later.get(s.name)!.shift()!
+          const id = nextId(s.name)
           const a = spawnOf(s, id, index)
           void Promise.resolve(adapter.spawn(a)).catch((err: unknown) =>
             o.failed(id, err instanceof Error ? err.message : String(err)),
@@ -764,125 +676,14 @@ export function dte(options: DteOptions) {
   })
 }
 
-/** Where `vx dte plan` keeps the run's secret, workspace-relative: a CI artifact no one downloads. */
-const SECRET_FILE = '.vx/dte/secret'
-
 /** A GitHub Actions job that may ask for OIDC tokens. */
 function onGitHub(): boolean {
   return Boolean(process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] && process.env['GITHUB_REPOSITORY_ID'])
 }
 
-/** `VX_DTE_SECRET`, else the one `vx dte plan` wrote. */
-function givenSecret(root: string): string | undefined {
-  const env = process.env['VX_DTE_SECRET']
-  if (env !== undefined && env !== '') return env
-  try {
-    return readFileSync(path.join(root, SECRET_FILE), 'utf8').trim() || undefined
-    // quiet: no secret file: the run makes one
-  } catch {
-    return undefined
-  }
-}
-
-/** What `vx dte plan` wrote for the run's orchestrator, workspace-relative: its workers and which are live. */
-const PLAN_FILE = '.vx/dte/plan.json'
-
-/** The planned workers of `run`, as `vx dte plan` wrote them. */
-function readPlan(root: string, run: string): DtePlan['workers'] {
-  let plan: { run?: unknown; workers?: DtePlan['workers'] }
-  try {
-    plan = JSON.parse(readFileSync(path.join(root, PLAN_FILE), 'utf8'))
-  } catch {
-    throw new UserError(`dte(): no ${PLAN_FILE}: run vx dte plan first, in a job this one needs`)
-  }
-  if (plan.run !== run || !Array.isArray(plan.workers))
-    throw new UserError(`dte(): ${PLAN_FILE} is another run's (${String(plan.run)}), not ${run}`)
-  return plan.workers
-}
-
-/**
- * The workers by size the run's start keeps busy: the tasks `vx run
- * <args>` would run (`--dry=json`), laid out by the graph and history as
- * a run's demand lays them.
- */
-async function firstWave(
-  args: readonly string[],
-  ctx: CommandContext,
-  sizes: readonly Size[],
-  unmeasured: Need,
-): Promise<Map<string, number>> {
-  const { VX_DTE_RUN: _, ...env } = process.env
-  const dry = Bun.spawnSync([...ctx.vx, 'run', ...args, '--dry=json'], {
-    cwd: ctx.workspaceRoot,
-    env,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  if (dry.exitCode !== 0) {
-    const why = dry.stderr.toString().trim().split('\n').at(-1) ?? ''
-    throw new UserError(`vx dte plan: vx run ${args.join(' ')} --dry=json failed: ${why}`)
-  }
-  const tasks = (JSON.parse(dry.stdout.toString()) as { tasks: DryTask[] }).tasks
-  const hit = new Set(['hit-local', 'hit-remote', 'not-started'])
-  const remaining = new Set(tasks.filter((t) => !hit.has(t.cacheStatus)).map((t) => t.id))
-  const nodes = new Map(
-    tasks.map((t) => [
-      t.id,
-      {
-        id: t.id,
-        deps: t.deps,
-        config: t.cacheStatus === 'group' ? {} : { exec: { command: '' } },
-      } as unknown as TaskNode,
-    ]),
-  )
-  const p50 = new Map(
-    tasks.flatMap((t) => (t.p50Ms === undefined ? [] : [[t.id, t.p50Ms] as const])),
-  )
-  let peaks: ReadonlyMap<string, TaskResources> = new Map()
-  const index = path.join(ctx.cacheDir, 'cache.db')
-  if (existsSync(index)) {
-    const db = new Database(index, { readonly: true })
-    try {
-      peaks = await new LocalHistoryProvider(db).resourcesFor([...remaining])
-      // quiet: no history: every task books unmeasured
-    } catch {
-      // No history: every task books `unmeasured`, as a run packs it.
-    } finally {
-      db.close()
-    }
-  }
-  const { candidates, plan, planTasks } = await import('./planner.js')
-  const need = (id: string): Need => needOf(peaks.get(id), unmeasured)
-  const work = planTasks(
-    remaining,
-    nodes,
-    need,
-    (id) => peaks.get(id)?.p50DurationMs ?? p50.get(id),
-    homeOf(sizes, hostPlatform()),
-  )
-  // All start at once: no warm-up between them.
-  const { start } = plan(
-    work,
-    [],
-    candidates(
-      sizes,
-      new Map(),
-      work.flatMap((t) => t.above ?? []),
-      work.length,
-    ),
-    0,
-  )
-  const wave = new Map<string, number>()
-  for (const s of start) wave.set(s.name, (wave.get(s.name) ?? 0) + 1)
-  return wave
-}
-
-/** A task of `vx run --dry=json` (schemas/plan.json), as far as a plan reads it. */
-interface DryTask {
-  readonly id: string
-  readonly cacheStatus: string
-  readonly deps: string[]
-  readonly p50Ms?: number
+/** `VX_DTE_SECRET`: the run's, given. */
+function givenSecret(): string | undefined {
+  return process.env['VX_DTE_SECRET'] || undefined
 }
 
 /**
@@ -927,31 +728,6 @@ export function needOf(r: TaskResources | undefined, ask: Need = FRESH): Need {
   // whole core and CI's workers ran at 30-50% (M, 2026-10-22: "close to
   // 100%"). A quarter at least, so a task that only waits is not free.
   return { cores: Math.max(0.25, r.maxCpuParallelism), memory: r.maxPeakRssBytes ?? 0 }
-}
-
-/**
- * Each size's `max` workers, numbered within their size as a run numbers
- * those it starts. With a `wave` (workers by size), only that many of each start
- * with the run: the run starts the rest, `live`, as its work needs them.
- */
-function planned(
-  sizes: readonly Size[],
-  wave: ReadonlyMap<string, number> | undefined,
-): DtePlan['workers'] {
-  const out: DtePlan['workers'][number][] = []
-  for (const s of sizes) {
-    if (s.max === Infinity)
-      throw new UserError(`dte(): workers.${s.name} needs max: a plan writes that many`)
-    for (let i = 0; i < s.max; i++)
-      out.push({
-        id: `${s.name}#${i + 1}`,
-        size: s.name,
-        cpu: s.cpu,
-        memory: s.memory,
-        live: wave !== undefined && i >= (wave.get(s.name) ?? 0),
-      })
-  }
-  return out
 }
 
 /** The executor's pool when workers are uncapped: more than any run starts at once. */
