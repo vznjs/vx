@@ -352,6 +352,7 @@ describe('cli run()', () => {
       ['why', 'x', '--rn', '1'],
       ['cache', 'clean', '--dry-rn'],
       ['cache', 'clean', '--dry'],
+      ['run', 'build', '--dry-run'],
       ['run', 'build', '--concurency', '2'],
       ['info', '--json'],
       ['last', '--json'],
@@ -393,6 +394,9 @@ describe('cli run()', () => {
       ).trimEnd(),
       noticed(
         'vx cache clean: unknown flag: --dry (did you mean --dry-run?) (see `vx cache --help`)',
+      ).trimEnd(),
+      noticed(
+        'vx run: unknown flag: --dry-run (did you mean --dry?) (see `vx run --help`)',
       ).trimEnd(),
       noticed(
         'vx run: unknown flag: --concurency (did you mean --concurrency?) (see `vx run --help`)',
@@ -2251,8 +2255,9 @@ describe('unknown-flag hints reach three edits', () => {
     // The distance was capped at 3, so "three or more" read as three: the
     // same-stem budget offered `--concurrency` for `--continue-on-error`
     // (nine edits) and `--cache-policy` for `--cache-directory`.
+    // `--continue-on-error` is `--continue` a word too long, which is the hint.
     expect(parseRunArgs(['build', '--continue-on-error']).error).toBe(
-      'unknown flag: --continue-on-error',
+      'unknown flag: --continue-on-error (did you mean --continue?)',
     )
     expect(parseRunArgs(['build', '--cache-directory', 'd']).error).toBe(
       'unknown flag: --cache-directory',
