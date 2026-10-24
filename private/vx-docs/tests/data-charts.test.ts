@@ -5,11 +5,23 @@
 import { describe, expect, it } from 'bun:test'
 import {
   dataCharts,
+  figureColumns,
   groupsForTable,
   parseDuration,
   renderBars,
 } from '../src/plugins/data-charts.ts'
 import { markdownToHtml } from 'satteri'
+
+describe('figureColumns', () => {
+  it('marks a column right only when every filled cell is a figure', () => {
+    expect(
+      figureColumns([
+        ['default', '120.5 s', '86%', '$1,016', 'best-fit'],
+        ['fifo', '348.9 s', '', '~2 min (warm)', '10'],
+      ]),
+    ).toEqual([false, true, true, true, false])
+  })
+})
 
 describe('parseDuration', () => {
   it.each([
