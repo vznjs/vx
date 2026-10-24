@@ -66,6 +66,12 @@ export interface TaskArtifacts {
    * it. An `exec.remote: 'only'` task's files stay off this disk.
    */
   output(key: string): Promise<{ stdout: string; stderr: string } | null>
+  /**
+   * True once a remote the run reads holds entry `key`, this machine's
+   * entry uploaded to those it writes when none does: another machine of
+   * the run reads the remotes alone. False when none holds it and none took it.
+   */
+  share(key: string): Promise<boolean>
 }
 
 export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArtifacts {
@@ -117,6 +123,8 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
       const entry = await (cache.getSaved ? cache.getSaved(key) : cache.get(key))
       return entry === null ? null : outputOf(entry.stdout)
     },
+
+    share: (key) => cache.share?.(key) ?? Promise.resolve(false),
   }
 }
 

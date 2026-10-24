@@ -209,6 +209,8 @@ export class Orchestrator {
   private readonly upstreamKeys = new Map<string, string>()
   /** How many times each task was sent: its run key is one per send. */
   private readonly sent = new Map<string, number>()
+  /** Each hit's key, once on a remote a worker reads (`TaskArtifacts.share`). */
+  private readonly shared = new Map<string, Promise<boolean>>()
   /** When each worker this run started was asked for, by `WorkerSpawn.index`. */
   private readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
   private ended = false
@@ -302,6 +304,7 @@ export class Orchestrator {
         )
     }
     for (const u of req.inputs?.upstream ?? []) this.upstreamKeys.set(u.taskId, u.hash)
+    await this.share(req.taskId)
     return new Promise((resolve, reject) => {
       const need = this.o.need(req.taskId)
       const job: Job = {
@@ -547,6 +550,33 @@ export class Orchestrator {
     const n = this.sent.get(task) ?? 0
     this.sent.set(task, n + 1)
     return n
+  }
+
+  /**
+   * Each dependency of `id` this machine restored, a hit no worker ran, put
+   * on a remote the workers read: a worker reads the remotes alone, and a
+   * hit only this cache held (the remote evicted it, or this machine does
+   * not write it) failed the dependant there (2026-10-24).
+   */
+  private async share(id: string): Promise<void> {
+    const nodes = this.o.nodes()
+    const keys: string[] = []
+    for (const d of upstream(nodes, id)) {
+      if (this.savedAs.has(d) || nodes?.get(d)?.config.cache?.outputs === undefined) continue
+      const key = this.upstreamKeys.get(d) ?? this.o.keyOf(d)
+      if (key !== undefined) keys.push(key)
+    }
+    await Promise.all(
+      keys.map((k) => {
+        let got = this.shared.get(k)
+        if (got === undefined) {
+          // quiet: a key no remote took fails on the worker, by name
+          got = this.o.artifacts.share(k).catch(() => false)
+          this.shared.set(k, got)
+        }
+        return got
+      }),
+    )
   }
 
   private send(a: Worker, jobs: readonly Job[]): void {

@@ -212,3 +212,59 @@ it('leaves the files a task names as others out of its entry', async () => {
     await Bun.file(path.join(there, 'up.js')).exists(),
   ]).toEqual([true, false])
 })
+
+// A DTE worker restores a dependency from the remotes alone: a hit only
+// this machine's cache held (the remote evicted it, or this run did not
+// write) failed its dependant there.
+it('share uploads an entry only this machine holds, and only that one', async () => {
+  const remote = memoryRemote()
+  const here = await machine('here', remote.layer)
+  const task = (root: string) => ({
+    id: 'app#build',
+    projectDir: path.join(root, 'app'),
+    command: 'build',
+    outputs: { files: ['dist/**'], workspaceFiles: [] },
+  })
+  await mkdir(path.join(here.root, 'app', 'dist'), { recursive: true })
+  await writeFile(path.join(here.root, 'app', 'dist', 'out.js'), 'built')
+  await here.artifacts.save(KEY, task(here.root), { stdout: 'ok\n', stderr: '', durationMs: 12 })
+  expect(await here.artifacts.share(KEY)).toBe(true)
+  expect(remote.puts()).toBe(1)
+  remote.store.delete(KEY)
+  const later = taskArtifacts(layeredOver(caches.at(-1)!, remote.layer), here.root)
+  expect(await later.share(KEY)).toBe(true)
+  expect(remote.puts()).toBe(2)
+  expect(await later.share('fedcba9876543210')).toBe(false)
+
+  const worker = await machine('worker', remote.layer)
+  expect(await worker.artifacts.restore(KEY, task(worker.root))).toEqual({
+    stdout: 'ok\n',
+    stderr: '',
+  })
+})
+
+it('share uploads nothing to a remote the run does not write', async () => {
+  const remote = memoryRemote()
+  const root = path.join(dir, 'ro')
+  await mkdir(path.join(root, 'app'), { recursive: true })
+  const local = new Cache(path.join(root, '.vx', 'cache'), { read: true, write: true }, root)
+  caches.push(local)
+  const ro = taskArtifacts(
+    layeredOver(local, remote.layer, {
+      policy: { localRead: true, localWrite: true, remoteRead: true, remoteWrite: false },
+    }),
+    root,
+  )
+  await ro.save(
+    KEY,
+    {
+      id: 'app#t',
+      projectDir: path.join(root, 'app'),
+      command: 't',
+      outputs: { files: [], workspaceFiles: [] },
+    },
+    { stdout: '', stderr: '', durationMs: 1 },
+  )
+  expect(await ro.share(KEY)).toBe(false)
+  expect(remote.puts()).toBe(0)
+})

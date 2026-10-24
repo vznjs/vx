@@ -637,6 +637,12 @@ export interface CacheLayer {
    */
   getSaved?(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   /**
+   * True once a remote the run reads holds entry `hash`, the local entry
+   * uploaded to those it writes when none does (`TaskArtifacts.share`). A
+   * layer without it shares nothing.
+   */
+  share?(hash: string): Promise<boolean>
+  /**
    * Optional batched `get` (same answers, fewer round trips). The
    * short-circuit probe uses it when a layer offers one; a layer without it
    * is probed hash by hash. `ctx` is each hash's `get` context.

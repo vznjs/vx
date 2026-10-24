@@ -55,6 +55,9 @@ export interface TaskArtifacts {
   restore(key: string, task: ArtifactTask): Promise<{ stdout: string; stderr: string } | null>
   // The output alone, no file laid (a remote-only task's stay off this disk).
   output(key: string): Promise<{ stdout: string; stderr: string } | null>
+  // True once a remote the run reads holds it: this machine's entry uploaded
+  // to those it writes when none does. Another machine reads the remotes alone.
+  share(key: string): Promise<boolean>
 }
 // What a machine that runs the run's tasks reads its cache under
 // (`ExecutorContext.cacheFacts`, `CommandContext.artifactsFor`).
