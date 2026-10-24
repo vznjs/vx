@@ -9,7 +9,15 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## cache: GET a looked-up key at once, not after the batch probe
+## vx-dte-relay: keep runs in socket attachments, not storage
+
+a relay host passes no `store` and calls no `open()`; it keeps what `attach` returns with each socket and hands the pairs back as `sockets`.
+
+## vx-dte-relay: lose a participant when its socket closes
+
+No migration note.
+
+## cache: one round-trip per remote hit, never "up to date"
 
 CacheLayer.probeFirst is removed, with the probe gate behind it.
 

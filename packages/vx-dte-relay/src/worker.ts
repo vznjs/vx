@@ -1,11 +1,12 @@
 // The relay on Cloudflare Workers: each run is one Durable Object, so one
 // run's sockets meet in one place. Participants hold websockets the object
-// hibernates between messages: its state is in its storage. It keeps no
-// alarm: a socket's close loses its participant.
+// hibernates between messages: its state is in their attachments, and it
+// writes no storage. It keeps no alarm: a socket's close loses its
+// participant.
 // `wrangler.jsonc` deploys it; ALLOW is a var in it.
 
 import { claimedRun, createVerifier, parseAllow } from './oidc.js'
-import { closeSocket, createRelay, GONE, runKey, type Relay, type RelayStore } from './relay.js'
+import { closeSocket, createRelay, GONE, runKey, type Kept, type Relay } from './relay.js'
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
 interface DurableObjectId {}
@@ -19,18 +20,10 @@ export interface DurableObjectNamespace {
 interface Socket {
   send(text: string): void
   close(code?: number, reason?: string): void
-  serializeAttachment(v: Attachment): void
-  deserializeAttachment(): Attachment
-}
-interface Attachment {
-  key: string
-  id: string
+  serializeAttachment(v: Kept): void
+  deserializeAttachment(): Kept
 }
 export interface DurableObjectState {
-  readonly storage: {
-    readonly kv: RelayStore
-    deleteAll(): Promise<void>
-  }
   acceptWebSocket(ws: Socket): void
   getWebSockets(): Socket[]
 }
@@ -120,10 +113,7 @@ export default {
 export class RelayRun {
   private readonly relay: Relay
 
-  constructor(
-    private readonly state: DurableObjectState,
-    env: Env,
-  ) {
+  constructor(state: DurableObjectState, env: Env) {
     let allow: ReturnType<typeof parseAllow>
     try {
       allow = parseAllow(env.ALLOW ?? '')
@@ -144,27 +134,20 @@ export class RelayRun {
     }
     this.relay = createRelay({
       verify: (token, req) => verifierOf(env.AUDIENCE || new URL(req.url).origin)(token),
-      store: state.storage.kv,
+      sockets: state.getWebSockets().map((ws) => [ws.deserializeAttachment(), ws] as const),
       upgrade: (key, id) => {
         const pair = new WebSocketPair()
         state.acceptWebSocket(pair[1])
-        pair[1].serializeAttachment({ key, id })
-        if (!this.relay.attach(key, id, pair[1])) closeSocket(pair[1], GONE, 'gone')
+        const kept = this.relay.attach(key, id, pair[1])
+        if (kept === false) closeSocket(pair[1], GONE, 'gone')
+        else pair[1].serializeAttachment(kept)
         return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit)
       },
     })
-    for (const ws of state.getWebSockets()) {
-      const { key, id } = ws.deserializeAttachment()
-      if (!this.relay.attach(key, id, ws)) closeSocket(ws, GONE, 'gone')
-    }
   }
 
-  async fetch(req: Request): Promise<Response> {
-    try {
-      return await this.relay.fetch(req)
-    } finally {
-      await this.end()
-    }
+  fetch(req: Request): Promise<Response> {
+    return this.relay.fetch(req)
   }
 
   webSocketMessage(ws: Socket, message: string | ArrayBuffer): void {
@@ -175,21 +158,14 @@ export class RelayRun {
     try {
       if (answer !== undefined) ws.send(answer)
     } catch {}
-    void this.end()
   }
 
   webSocketClose(ws: Socket): void {
     const { key, id } = ws.deserializeAttachment()
     this.relay.detach(key, id, ws)
-    void this.end()
   }
 
   webSocketError(ws: Socket): void {
     this.webSocketClose(ws)
-  }
-
-  /** No run is left: the object keeps nothing, so its host can drop it. */
-  private async end(): Promise<void> {
-    if (!this.relay.open()) await this.state.storage.deleteAll()
   }
 }

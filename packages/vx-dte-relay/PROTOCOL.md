@@ -205,7 +205,9 @@ Only what routing needs, and no longer:
   the relay's own waits in memory for the next socket; a relay restart
   loses a participant one waited for, as if it went silent.
 - A closed run is gone at once; while open, each participant's role is
-  kept, never when it was last heard from.
+  kept, never when it was last heard from. The Workers host keeps it with
+  the participant's socket and writes no storage: a run whose
+  orchestrator's socket is gone after a restart is over.
 - It logs nothing. It still sees each message's size, time and recipient.
 
 ## Bodies, end to end
