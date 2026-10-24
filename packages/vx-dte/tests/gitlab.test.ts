@@ -88,6 +88,16 @@ it("triggers one pipeline per size for a wave: its slots, the run's commit and e
   expect(calls[2]!.form).toMatchObject({ ref: 'main', 'variables[VX_DTE_IDS]': '3=small#11' })
 })
 
+it('never puts two workers of a wave in one slot', async () => {
+  const adapter = gitlab()
+  // small#1 and small#5 share slot 1 of 4: two pipelines, each one job.
+  await Promise.all([
+    adapter.spawn(spawn('small#1', 'small', 4)),
+    adapter.spawn(spawn('small#5', 'small', 4)),
+  ])
+  expect(calls.map((c) => c.form['variables[VX_DTE_IDS]'])).toEqual(['1=small#1', '1=small#5'])
+})
+
 it("names a worker by its matrix slot in the wave's ids", () => {
   Object.assign(process.env, { VX_DTE_SLOT: '2', VX_DTE_IDS: '1=small#9 2=small#10' })
   expect(gitlab().workerId!()).toBe('small#10')
