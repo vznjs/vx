@@ -35,6 +35,7 @@ import type {
   SaveArgs,
 } from './cache.js'
 import type { OutputDirRow } from './cache.js'
+import { CorruptArtifactError } from './layer.js'
 import { RemoteLane, type ResolvedRemote } from './remote-lane.js'
 import type { PluginSecrets } from '../util/index.js'
 
@@ -532,6 +533,9 @@ export class LayeredCache implements CacheLayer {
       // crash the run. A corrupt LOCAL artifact is a miss too, one level
       // down: `Cache.restoreOutputs` drops it (A-52).
       lane.report('download', hash, err)
+      // Bad bytes there: the re-run's save sends good ones over them, or
+      // every machine rebuilt the task and none repaired it (2026-10-24).
+      if (err instanceof CorruptArtifactError) lane.distrust(hash)
       return false
     } finally {
       this.downloads.delete(hash)

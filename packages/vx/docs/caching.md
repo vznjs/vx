@@ -659,7 +659,9 @@ Hard invariants of the remote prefetch:
 - **Never fail.** Every remote path (get / put / ingest / prefetch)
   catches all errors and degrades to a cache miss. A remote 500, a
   network drop, a corrupt artifact, or a failed integrity check can
-  never fail a run.
+  never fail a run. A key whose remote bytes do not read back is
+  uploaded again after the task re-runs, held or not, so a remote that
+  replaces on `put` heals.
 - **Said once, and said whole.** The warning names the operation
   (`probe`, `download`, `upload`), the artifact and the layer's
   `endpoint`, with a URL's credentials, query and fragment dropped:
