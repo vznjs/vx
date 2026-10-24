@@ -28,6 +28,11 @@ export interface ArtifactTask {
   }
   /** The projects inside `projectDir` (absolute), whose files are not its outputs. */
   readonly nestedProjectDirs?: readonly string[]
+  /**
+   * Files under its outputs it found and left as they were (absolute): an
+   * upstream's, which an additive task builds on, not its entry's.
+   */
+  readonly others?: ReadonlySet<string>
 }
 
 /** What a task's run left besides its files: its output, and its time and usage. */
@@ -74,6 +79,9 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
         }),
         resolveWorkspaceOutputs({ workspaceRoot, outputs: task.outputs.workspaceFiles }),
       ])
+      const mine = (f: string) => task.others?.has(f) !== true
+      const files = tree.files.filter(mine)
+      const ws = wsFiles.filter(mine)
       const mask = secretMask([process.env, run.env ?? {}])
       const log = encodeOutputLog([
         { text: run.stdout, err: false },
@@ -82,10 +90,10 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
       await cache.save({
         hash: key,
         projectDir: task.projectDir,
-        outputFiles: tree.files,
+        outputFiles: files,
         ...(tree.emptyDirs.length > 0 ? { outputDirs: tree.emptyDirs } : {}),
         workspaceRoot,
-        ...(wsFiles.length > 0 ? { workspaceOutputFiles: wsFiles } : {}),
+        ...(ws.length > 0 ? { workspaceOutputFiles: ws } : {}),
         entry: {
           taskId: task.id,
           command: mask?.mask(task.command) ?? task.command,

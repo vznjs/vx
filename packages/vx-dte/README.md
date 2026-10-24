@@ -409,7 +409,8 @@ use your own instead.
   writes without declaring them stay on the worker. Before a task runs, its
   worker removes the files under its outputs that an earlier task left,
   except committed files, nested projects' files, and its dependencies'
-  outputs (an additive task builds on its upstream's tree).
+  outputs (an additive task builds on its upstream's tree). An upstream's
+  file the task leaves as it found it is not saved in its entry.
 - A failed or uncached task is saved under a key of the run and the task,
   so no later lookup ever hits it; so is one core would not save (a
   `--no-cache` or read-only run, a dependant of a failure under

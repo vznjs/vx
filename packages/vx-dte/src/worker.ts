@@ -6,7 +6,7 @@
 // there under its key; the relay carries only orders and status.
 
 import { readFileSync, realpathSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { lstat, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import {
@@ -130,6 +130,7 @@ export async function runWorker(opts: {
   const reply = async (
     m: RunOrder,
     key: string,
+    others: ReadonlySet<string> | undefined,
     res: WiredResult & { stdout: string; stderr: string },
   ): Promise<void> => {
     const { stdout, stderr, ...result } = res
@@ -141,6 +142,7 @@ export async function runWorker(opts: {
         command: m.command,
         outputs: m.outputs,
         nestedProjectDirs: m.nested.map((n) => path.join(opts.root, n)),
+        ...(others === undefined || others.size === 0 ? {} : { others }),
       },
       {
         stdout,
@@ -223,7 +225,7 @@ export async function runWorker(opts: {
       const differs = await runtimeDiffers(m)
       if (differs !== undefined) {
         ui.print('err', ui.status('error', m.task, differs))
-        await reply(m, m.runKey, {
+        await reply(m, m.runKey, undefined, {
           exitCode: 1,
           durationMs: 0,
           stdout: '',
@@ -259,11 +261,20 @@ export async function runWorker(opts: {
       // (2026-10-24). Nor is a dependency's: an additive task (outputs over
       // its upstream's tree) found the files it builds on gone.
       const upstream = m.deps.map((d) => names(d.project, d.outputs))
-      const cleared = (await outputFiles(opts.root, m.project, m.outputs)).filter(
+      const under = await outputFiles(opts.root, m.project, m.outputs)
+      const cleared = under.filter(
         (f) =>
           !tracked.has(f) &&
           !m.nested.some((n) => f.startsWith(`${n}/`)) &&
           !upstream.some((held) => held(f)),
+      )
+      // An upstream's file it leaves as it found it is not its entry's: one
+      // saved there replayed the upstream's old bytes over its new ones on
+      // a hit that did not fold the upstream's key (2026-10-24).
+      const found = await stamps(
+        under
+          .filter((f) => !cleared.includes(f) && upstream.some((held) => held(f)))
+          .map((f) => path.join(opts.root, f)),
       )
       for (const [key, held] of holds)
         if (cleared.some(held)) {
@@ -367,6 +378,7 @@ export async function runWorker(opts: {
       // run's hit (2026-10-24). Core withholds its own save if the key read
       // it; this entry is withheld for any.
       const changed = await changedTracked(opts.root, m, names(m.project, m.outputs))
+      const others = await unchanged(found)
       const key =
         res.exitCode === 0 &&
         res.timedOut !== true &&
@@ -377,7 +389,7 @@ export async function runWorker(opts: {
         m.key !== undefined
           ? m.key
           : m.runKey
-      await reply(m, key, {
+      await reply(m, key, others, {
         ...res,
         violations: back,
         ...(cpuShare === undefined ? {} : { cpuShare }),
@@ -701,6 +713,37 @@ function procStat(): string | undefined {
  * workspace-relative: its outputs and nested projects' files are not its
  * project's inputs.
  */
+type Stamp = { size: number; mtimeMs: number; ino: number; ctimeMs: number }
+
+/** Each file's stat, by absolute path. */
+async function stamps(files: readonly string[]): Promise<Map<string, Stamp>> {
+  const out = new Map<string, Stamp>()
+  for (const f of files) {
+    const st = await lstat(f).catch(() => undefined)
+    if (st !== undefined)
+      out.set(f, { size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, ctimeMs: st.ctimeMs })
+  }
+  return out
+}
+
+/** Of `found`, the files still as they were. */
+async function unchanged(found: ReadonlyMap<string, Stamp>): Promise<Set<string>> {
+  const now = await stamps([...found.keys()])
+  const out = new Set<string>()
+  for (const [f, was] of found) {
+    const is = now.get(f)
+    if (
+      is !== undefined &&
+      is.size === was.size &&
+      is.mtimeMs === was.mtimeMs &&
+      is.ino === was.ino &&
+      is.ctimeMs === was.ctimeMs
+    )
+      out.add(f)
+  }
+  return out
+}
+
 async function changedTracked(
   root: string,
   m: RunOrder,

@@ -184,3 +184,31 @@ it('output resolves the output alone and lays no file', async () => {
   expect(await here.artifacts.output(KEY)).toEqual({ stdout: 'installed\n', stderr: '' })
   expect(await Bun.file(path.join(here.root, 'app', 'node_modules', 'x.js')).exists()).toBe(false)
 })
+
+it('leaves the files a task names as others out of its entry', async () => {
+  const remote = memoryRemote()
+  const agent = await machine('agent', remote.layer)
+  const task = (root: string, others?: Set<string>) => ({
+    id: 'app#add',
+    projectDir: path.join(root, 'app'),
+    command: 'add',
+    outputs: { files: ['dist/**'], workspaceFiles: [] },
+    ...(others === undefined ? {} : { others }),
+  })
+  const dist = path.join(agent.root, 'app', 'dist')
+  await mkdir(dist, { recursive: true })
+  await writeFile(path.join(dist, 'up.js'), 'upstream')
+  await writeFile(path.join(dist, 'mine.js'), 'mine')
+  await agent.artifacts.save(KEY, task(agent.root, new Set([path.join(dist, 'up.js')])), {
+    stdout: '',
+    stderr: '',
+    durationMs: 1,
+  })
+  const here = await machine('here', remote.layer)
+  await here.artifacts.restore(KEY, task(here.root))
+  const there = path.join(here.root, 'app', 'dist')
+  expect([
+    await Bun.file(path.join(there, 'mine.js')).exists(),
+    await Bun.file(path.join(there, 'up.js')).exists(),
+  ]).toEqual([true, false])
+})
