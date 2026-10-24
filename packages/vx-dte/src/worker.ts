@@ -376,9 +376,15 @@ export async function runWorker(opts: {
       // is one the orchestrator's disk never shows: its key read the file
       // as checked out, and the entry built from the rewrite was the next
       // run's hit (2026-10-24). Core withholds its own save if the key read
-      // it; this entry is withheld for any.
+      // it; this entry is withheld for any. Nor for an additive task that
+      // removed an upstream's file: a hit left the file in place, and core
+      // saves none once this machine removes it too (2026-10-24).
       const changed = await changedTracked(opts.root, m, names(m.project, m.outputs))
-      const others = await unchanged(found)
+      const now = await stamps([...found.keys()])
+      const others = unchanged(found, now)
+      const removed = [...found.keys()]
+        .filter((f) => !now.has(f))
+        .map((f) => path.relative(opts.root, f))
       const key =
         res.exitCode === 0 &&
         res.timedOut !== true &&
@@ -386,6 +392,7 @@ export async function runWorker(opts: {
         !stop.signal.aborted &&
         res.violations.length === 0 &&
         changed.length === 0 &&
+        removed.length === 0 &&
         m.key !== undefined
           ? m.key
           : m.runKey
@@ -394,6 +401,7 @@ export async function runWorker(opts: {
         violations: back,
         ...(cpuShare === undefined ? {} : { cpuShare }),
         ...(changed.length === 0 ? {} : { changed }),
+        ...(removed.length === 0 ? {} : { removed }),
       })
     } finally {
       running.delete(m.task)
@@ -728,8 +736,7 @@ async function stamps(files: readonly string[]): Promise<Map<string, Stamp>> {
 }
 
 /** Of `found`, the files still as they were. */
-async function unchanged(found: ReadonlyMap<string, Stamp>): Promise<Set<string>> {
-  const now = await stamps([...found.keys()])
+function unchanged(found: ReadonlyMap<string, Stamp>, now: ReadonlyMap<string, Stamp>): Set<string> {
   const out = new Set<string>()
   for (const [f, was] of found) {
     const is = now.get(f)

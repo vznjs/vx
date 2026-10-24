@@ -10,6 +10,7 @@
 // as its own.
 
 import { realpathSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import {
   ui,
@@ -40,6 +41,7 @@ import { assign, ordered, type Need } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 import { RelayError, unsent, type Participant } from './wire.js'
 import { ORCHESTRATOR, Trace } from './trace.js'
+import { names } from './outputs.js'
 
 /** What a task is expected to hold while it runs, from its history; `Infinity`: a whole worker (one that filled its worker). */
 
@@ -867,6 +869,13 @@ export class Orchestrator {
       )
       return
     }
+    // An upstream's file the task removed there is gone here too: a restore
+    // lays files, never removes one, and this disk is what core saves from.
+    if (head.removed !== undefined && job.req.remoteOnly !== true && !deferred) {
+      const ours = names(path.relative(this.o.root, node?.projectDir ?? job.req.cwd), job.req.outputs)
+      for (const f of head.removed)
+        if (typeof f === 'string' && !f.split('/').includes('..') && ours(f)) await rm(path.join(this.o.root, f), { force: true })
+    }
     if (log.stdout !== '') job.req.onStdout(log.stdout)
     if (log.stderr !== '') job.req.onStderr(log.stderr)
     job.resolve({
@@ -1690,7 +1699,7 @@ export class Orchestrator {
 }
 
 function result(r: WiredResult, log: { stdout: string; stderr: string }): ExecuteResult {
-  const { cpuShare: _, ...rest } = r
+  const { cpuShare: _, removed: __, ...rest } = r
   const violations = (r.violations ?? []).map((v) => ({ ...v, timestamp: new Date(v.timestamp) }))
   return { ...rest, ...log, violations, outputs: { kind: 'disk' } }
 }

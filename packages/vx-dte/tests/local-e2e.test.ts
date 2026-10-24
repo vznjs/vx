@@ -828,6 +828,46 @@ export default { name: 'ad', tasks: {
   ])
 }, 60_000)
 
+// An additive task that removed an upstream's file was saved under its
+// key: a hit left the file it removes in place. Core saves none (2026-10-24).
+it('saves no entry for an additive task that removed an upstream’s file', async () => {
+  const ws = path.join(root, '.vx/workspace.mjs')
+  await writeFile(
+    ws,
+    (await readFile(ws, 'utf8')).replace(
+      'export default {',
+      'export default { run: { rules: { exclusiveOutputs: false } },',
+    ),
+  )
+  await mkdir(path.join(root, 'ad'))
+  await writeFile(
+    path.join(root, 'ad/vx.config.mjs'),
+    `const outputs = { files: ['dist/**'] }
+export default { name: 'ad', tasks: {
+  up: { exec: { command: 'mkdir -p dist && echo up > dist/a.txt' }, inputs: { files: ['vx.config.mjs'] }, cache: { outputs } },
+  prune: { dependsOn: ['up'], exec: { command: 'rm dist/a.txt && echo b > dist/b.txt' }, inputs: { files: ['vx.config.mjs'] }, cache: { outputs } },
+} }
+`,
+  )
+  await writeFile(path.join(root, 'ad/.gitignore'), 'dist\n')
+  expect(vx(['lock']).exitCode).toBe(0)
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: root })
+  git('add', '-A')
+  git('commit', '-qm', 'ad')
+  const first = vx(['run', 'ad#prune'], 'prune-1')
+  expect([first.exitCode, first.stdout.toString() + first.stderr.toString()]).toEqual([
+    0,
+    expect.any(String),
+  ])
+  await rm(path.join(root, 'ad/dist'), { recursive: true, force: true })
+  const again = vx(['run', 'ad#prune'], 'prune-2')
+  expect([again.exitCode, await Bun.file(path.join(root, 'ad/dist/a.txt')).exists()]).toEqual([
+    0,
+    false,
+  ])
+}, 60_000)
+
 // A worker saved a task that rewrote its own input under its key: this
 // machine never saw the rewrite, and the next run hit it (2026-10-24).
 it('saves no entry under its key for a task that changed its input on its worker', async () => {
