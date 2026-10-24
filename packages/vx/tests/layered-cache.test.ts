@@ -576,6 +576,21 @@ describe('LayeredCache', () => {
     expect(await pull).toBe(true)
   })
 
+  it('a get() while the batch probe is out GETs at once, not after the probe', async () => {
+    // Waiting cost a remote hit two round-trips, the probe then the GET:
+    // ~300 ms an up-to-date task on CI.
+    await saveSample(makeLayered(), 'h-eager')
+    await wipeLocal()
+    const answer = Promise.withResolvers<Map<string, object>>()
+    const layered = layeredOver(local, { ...remote.layer, hasMany: () => answer.promise })
+    const probe = layered.remoteHasMany(['h-eager'])
+    const hit = await layered.get('h-eager', { taskId: 'pkg#build', command: 'echo produced' })
+    expect(hit?.source).toBe('remote')
+    answer.resolve(new Map([['h-eager', {}]]))
+    expect((await probe)?.size).toBe(1)
+    expect(remote.gets).toBe(1)
+  })
+
   it("the pulled entry carries the caller's task id, and the upload the entry's duration", async () => {
     const metas: Array<{ durationMs?: number }> = []
     const layer: RemoteCacheLayer = {

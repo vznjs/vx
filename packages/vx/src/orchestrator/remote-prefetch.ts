@@ -80,14 +80,10 @@ export function startRemotePrefetch(args: PrefetchArgs): Promise<void> {
   // a still-in-flight prefetch can never ingest into a closed DB. Errors
   // degrade inside LayeredCache.prefetch; the catch keeps the handle
   // from ever rejecting.
-  const started = Promise.withResolvers<void>()
-  args.cache.probeFirst?.(started.promise)
-  return runPrefetch(args, started.resolve)
-    .catch(() => {})
-    .finally(started.resolve)
+  return runPrefetch(args).catch(() => {})
 }
 
-async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<void> {
+async function runPrefetch(args: PrefetchArgs): Promise<void> {
   const stableKeys = await deriveStableKeys(args)
   // `complete`: every store asked answered for every key, so one it does
   // not hold is a miss; else only its hits are known.
@@ -143,8 +139,6 @@ async function runPrefetch(args: PrefetchArgs, probing: () => void): Promise<voi
   // would 404. When the remote can't batch (`null` — an older remote, reads
   // disabled, or a layer that doesn't implement the hook at all), fall back to
   // prefetching every stable key, exactly as before.
-  // Every lookup that waited on the probe now finds its hash in it.
-  probing()
   // A remote that answered no batch query is asked key by key when demand
   // plans on the answer: main f71b377 asked 15 workers for 116 tasks, 107
   // restored, and small#1 joined to nothing (2026-10-23). A run that plans

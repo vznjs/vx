@@ -49,9 +49,9 @@ export function getContext(node: TaskNode, command: string): CacheGetContext
 4. One batched existence probe when the layer offers it
    (`remoteHasMany`): the hashes it reports absent are marked
    (`markRemoteAbsent`, so the lazy read-through skips them too) and
-   only the present ones are fetched. Until the probe starts
-   (`probeFirst`) and while it is out, a task's own lookup waits for it,
-   so a key the probe calls absent costs no GET. Its whole answer is
+   only the present ones are fetched. A task's own lookup waits on no
+   probe: it GETs at once, since waiting made a hit two round-trips.
+   Its whole answer is
    kept for the next run, and `held` hears it: a key the index lacked
    was often stored since (a PR's CI stores its merged tree), and
    calling it missed sized a run for work that restored. When the

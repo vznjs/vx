@@ -373,11 +373,12 @@ describe('orchestrator e2e: injected remote cache (stub HTTP layer)', () => {
           'c#build success',
         ])
         // One probe for the plan, one background refresh for the run, and
-        // no HEAD; each hit fetched once, before the refresh answered.
+        // no HEAD; each key fetched once, before the refresh answered: c's
+        // lookup waits on no probe, so its miss is one GET.
         expect(remote.batchCalls() - batches).toBe(2)
         expect(remote.headCounts.size).toBe(0)
-        expect([...remote.getCounts.values()]).toEqual([1, 1])
-        expect(gets.filter((t) => t < answeredAt)).toHaveLength(2)
+        expect([...remote.getCounts.values()]).toEqual([1, 1, 1])
+        expect(gets.filter((t) => t < answeredAt)).toHaveLength(3)
       } finally {
         await rm(fixture.root, { recursive: true, force: true })
       }
