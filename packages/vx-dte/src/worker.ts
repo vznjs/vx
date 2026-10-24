@@ -352,10 +352,12 @@ export async function runWorker(opts: {
       // Only a success the sandbox found nothing wrong with is the task's
       // entry; anything else is kept where no lookup finds it. A 0 past the
       // timeout (a trapped SIGTERM) failed, and saved under the key the
-      // next run hit it green (2026-10-24).
+      // next run hit it green (2026-10-24). A process it left running may
+      // still write its outputs: core saves no entry, nor does this.
       const key =
         res.exitCode === 0 &&
         res.timedOut !== true &&
+        res.leftRunning !== true &&
         res.violations.length === 0 &&
         m.key !== undefined
           ? m.key

@@ -407,7 +407,8 @@ use your own instead.
 - A failed or uncached task is saved under a key of the run and the task,
   so no later lookup ever hits it; so is one core would not save (a
   `--no-cache` or read-only run, a dependant of a failure under
-  `--continue=always`).
+  `--continue=always`, one that left a process running that may still
+  write its outputs).
 - A worker whose tracked files differ from the orchestrator's (another
   tree) is refused.
 - A task whose key folds a file the run's commit lacks (untracked, or

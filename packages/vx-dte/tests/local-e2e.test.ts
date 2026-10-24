@@ -49,6 +49,11 @@ export default { name: 'b', tasks: {
     cache: { outputs: { files: ['t.txt'] } },
   },
   far: { dependsOn: ['a#ro'], exec: { command: 'cat ../a/out/ro.txt' } },
+  bg: {
+    exec: { command: 'echo a > bg.txt && (sleep 1; echo late > late.txt) &' },
+    inputs: { files: ['vx.config.mjs'] },
+    cache: { outputs: { files: ['bg.txt', 'late.txt'] } },
+  },
   timed: { exec: { command: 'sleep 0.5 && echo timed-ok', timeout: '2s' } },
   slow: { exec: { command: 'touch started && sleep 60' } },
   once: { exec: { command: 'if [ -e ' + once + ' ]; then echo again; else touch ' + once + ' && sleep 60; fi' } },
@@ -666,6 +671,15 @@ it('saves no entry for a task that timed out, even on a 0 exit', async () => {
 // A worker cleared every file under a task's output globs before it ran,
 // a committed one too, which core never cleans: its dependant on that
 // worker found it gone (2026-10-24).
+// A task that left a process running was saved under its key on its
+// worker, where core saves none, and the next run restored it (2026-10-24).
+it('saves no entry for a task that left a process running', async () => {
+  for (const run of ['bg-1', 'bg-2']) {
+    const r = vx(['run', 'b#bg'], run)
+    expect([run, r.exitCode, r.stdout.toString().includes('small#')]).toEqual([run, 0, true])
+  }
+}, 60_000)
+
 it('leaves a tracked file under a task’s outputs in place on its worker', async () => {
   const r = vx(['run', 'g#use'], 'tracked')
   const out = r.stdout.toString()
