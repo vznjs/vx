@@ -6,7 +6,7 @@
 
 import { stat } from 'node:fs/promises'
 import path from 'node:path'
-import type { ProjectConfig, TaskConfig } from '../config.js'
+import type { ProjectConfig } from '../config.js'
 import {
   checkProjectNames,
   frozenProjectConfigs,
@@ -33,7 +33,7 @@ import {
   resolveCacheDir,
   validateWorkspace,
 } from '../workspace/index.js'
-import { parseDependencySpec } from '../graph/index.js'
+import { DEFAULT_BUILD, parseDependencySpec } from '../graph/index.js'
 import { applyConfigHooks, applyDiscoverHooks, applyProjectHooks, hasHook } from './plugin-host.js'
 import type { BranchFacts, VxPlugin } from './plugin.js'
 
@@ -371,24 +371,6 @@ export async function loadProjects(args: LoadProjectsArgs): Promise<LoadedProjec
     }
   }
   return { projects, configured }
-}
-
-/**
- * The `build` a project gets when neither its config nor a plugin declared
- * one (owner, 2026-10-04): a group behind `^build`, keyed on every file of
- * the project. A package consumed as source then carries its files to every
- * dependent behind `^build`, in the key and in `--affected`, and the chain
- * through it to deeper builds holds. A keyed group, as a config may
- * declare one (config-schema.ts).
- */
-const DEFAULT_BUILD: TaskConfig = Object.freeze({
-  dependsOn: Object.freeze(['^build']),
-  inputs: Object.freeze({ files: Object.freeze(['**']) }),
-})
-
-/** The default `build`, which a menu of the tasks a user declared leaves out. */
-export function isDefaultBuild(task: TaskConfig | undefined): boolean {
-  return task === DEFAULT_BUILD
 }
 
 function withDefaultBuild(config: ProjectConfig): ProjectConfig {

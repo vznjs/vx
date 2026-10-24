@@ -56,7 +56,7 @@ import {
   type ui,
 } from '../util/index.js'
 import { keyedProjects } from './keyed-projects.js'
-import { isDefaultBuild } from './projects.js'
+import { isDefaultBuild } from '../graph/index.js'
 import { commandWriteReach, prepareSandbox } from './sandbox-request.js'
 import { recordOutputDirSnapshots, type OutputDirSnapshot, type SaveFacts } from './miss-save.js'
 import { admitTasks, taintTracker } from './admission.js'

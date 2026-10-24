@@ -7,14 +7,8 @@ import { open } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
-import { buildTaskGraph, expandRequested } from '../graph/index.js'
-import {
-  applyGraphStage,
-  discoverProjects,
-  hasHook,
-  isDefaultBuild,
-  loadProjects,
-} from '../orchestrator/index.js'
+import { buildTaskGraph, expandRequested, isDefaultBuild } from '../graph/index.js'
+import { applyGraphStage, discoverProjects, hasHook, loadProjects } from '../orchestrator/index.js'
 import { resolveSetting, runRules } from '../settings.js'
 import {
   refusalNotice,
