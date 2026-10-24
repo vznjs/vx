@@ -66,7 +66,10 @@ export function local(options: LocalOptions = {}): DteAdapter {
   const why = reasons()
 
   return {
+    // Each run asks for one (`vx watch` runs again): a new run, on the tree as it is now.
     async relay() {
+      closed = false
+      tree = undefined
       relay = await loopbackRelay()
       return relay.url
     },
