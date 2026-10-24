@@ -48,6 +48,8 @@ export type {
 export { defineProject, defineWorkspace, PLATFORMS } from './config.js'
 export { definePlugin, refuseUnknownOptions } from './orchestrator/index.js'
 export { branchCacheScope } from './workspace/index.js'
+// A plugin reading the base branch's history: a shallow clone fetches it.
+export { mergeBaseWith } from './workspace/index.js'
 
 // Programmatic engine API: run / plan / prepare (docs/cli.md § Programmatic
 // API). The graph primitives, the cache-key hashing seam and the git / host

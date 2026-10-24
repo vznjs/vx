@@ -398,6 +398,41 @@ describe('shared timings', () => {
     expect(shared.calls).toEqual(['hasMany'])
   })
 
+  // CI's default checkout holds one commit and no main: the merge-base is
+  // fetched from origin (core's mergeBaseWith), not given up.
+  it("a pull request's one-commit merge checkout reads its merge-base's blob", async () => {
+    const a = commit()
+    git('checkout', '-q', '-b', 'feat')
+    commit()
+    git('checkout', '-q', '-b', 'pr', 'main')
+    git('merge', '-q', '--no-ff', '-m', 'merge', 'feat')
+    git('checkout', '-q', 'main')
+    const clone = mkdtempSync(path.join(tmpdir(), 'vx-shared-timings-clone-'))
+    try {
+      const c = Bun.spawnSync(
+        ['git', 'clone', '-q', '--depth', '1', '--branch', 'pr', `file://${root}`, clone],
+        { env: GIT_ENV },
+      )
+      expect(c.exitCode).toBe(0)
+      const shared = spyCache()
+      shared.store.set(key(a), blob({ 'p#x': 42 }))
+      const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
+      await importTimings({
+        root: clone,
+        defaultBranch: 'main',
+        cache: shared,
+        provider,
+        ids: ['p#x'],
+        warn: (m: string) => said.push(m),
+        triedFile: path.join(clone, 'tried'),
+        branch: false,
+      })
+      expect((await provider.p50sFor(['p#x'])).get('p#x')).toBe(42)
+    } finally {
+      rmSync(clone, { recursive: true, force: true })
+    }
+  })
+
   it('walks back up to five commits from the merge-base for a blob', async () => {
     const a = commit()
     for (let i = 0; i < 4; i++) commit()

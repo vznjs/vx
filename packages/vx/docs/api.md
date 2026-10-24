@@ -1344,6 +1344,22 @@ export interface MachineReport {
 }
 ```
 
+## `mergeBaseWith`
+
+function · `src/workspace/affected.ts`
+
+The merge base of `ref` and HEAD, or undefined when there is none. A
+shallow clone fetches what it needs from origin (`reachMergeBase`):
+a plugin reading the base branch's history (shared timings) asks this,
+not `git merge-base`, so a one-commit checkout serves it too.
+
+```ts
+export async function mergeBaseWith(
+  workspaceRoot: string,
+  ref: string,
+): Promise<string | undefined>
+```
+
 ## `MigrationFormat`
 
 type · `src/workspace/migration.ts`

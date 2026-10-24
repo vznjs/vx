@@ -883,6 +883,19 @@ async function mergeBase(workspaceRoot: string, ref: string): Promise<string> {
   return ref
 }
 
+/**
+ * The merge base of `ref` and HEAD, or undefined when there is none. A
+ * shallow clone fetches what it needs from origin (`reachMergeBase`):
+ * a plugin reading the base branch's history (shared timings) asks this,
+ * not `git merge-base`, so a one-commit checkout serves it too.
+ */
+export async function mergeBaseWith(
+  workspaceRoot: string,
+  ref: string,
+): Promise<string | undefined> {
+  return (await gitMergeBase(workspaceRoot, ref)) ?? (await reachMergeBase(workspaceRoot, ref))
+}
+
 async function gitMergeBase(workspaceRoot: string, ref: string): Promise<string | undefined> {
   const proc = spawnGit(['merge-base', '--end-of-options', ref, 'HEAD'], workspaceRoot)
   const [out, exit] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
