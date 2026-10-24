@@ -368,8 +368,12 @@ function fakeArtifacts() {
     async output(key) {
       return saved.get(key) ?? null
     },
-    async share(key, unreadable) {
-      shared.push(unreadable === true ? `${key} again` : key)
+    async share(key) {
+      shared.push(key)
+      return true
+    },
+    async resend(key) {
+      shared.push(`${key} again`)
       return true
     },
   }
@@ -1590,6 +1594,9 @@ it('a worker restores a dependency once, before any task that needs it runs', as
       async share() {
         return false
       },
+      async resend() {
+        return false
+      },
       async restore() {
         restores++
         await Bun.sleep(100)
@@ -1684,6 +1691,9 @@ it('a worker fails a task whose dependency is in no cache it reads, and stays', 
       async share() {
         return false
       },
+      async resend() {
+        return false
+      },
       async restore() {
         return null
       },
@@ -1767,6 +1777,9 @@ it('a worker restores a dependency again after a task cleared its files', async 
           return null
         },
         async share() {
+          return false
+        },
+        async resend() {
           return false
         },
         async restore() {
@@ -1968,6 +1981,9 @@ it('a worker whose answer meets a closed run exits 0', async () => {
         async share() {
           return false
         },
+        async resend() {
+          return false
+        },
         async restore() {
           return null
         },
@@ -2041,6 +2057,9 @@ it('a worker begins its next task while the last one saves', async () => {
           return null
         },
         async share() {
+          return false
+        },
+        async resend() {
           return false
         },
         async restore() {

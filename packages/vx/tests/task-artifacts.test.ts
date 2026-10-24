@@ -262,7 +262,7 @@ it('share sends the entry over a remote copy another machine found corrupt', asy
   remote.store.set(KEY, remote.store.get(KEY)!.slice(0, 40))
   const worker = await machine('worker', remote.layer)
   expect(await worker.artifacts.restore(KEY, task(worker.root))).toBeNull()
-  expect(await here.artifacts.share(KEY, true)).toBe(true)
+  expect(await here.artifacts.resend(KEY)).toBe(true)
   const again = await machine('worker2', remote.layer)
   expect(await again.artifacts.restore(KEY, task(again.root))).toEqual({
     stdout: 'ok\n',

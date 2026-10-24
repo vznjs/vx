@@ -70,10 +70,13 @@ export interface TaskArtifacts {
    * True once a remote the run reads holds entry `key`, this machine's
    * entry uploaded to those it writes when none does: another machine of
    * the run reads the remotes alone. False when none holds it and none took it.
-   * `unreadable`: another machine found the remotes' copy corrupt, so it is
-   * uploaded over theirs.
    */
-  share(key: string, unreadable?: boolean): Promise<boolean>
+  share(key: string): Promise<boolean>
+  /**
+   * This machine's entry `key` uploaded over each written remote's copy,
+   * which another machine of the run found corrupt. True when one took it.
+   */
+  resend(key: string): Promise<boolean>
 }
 
 export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArtifacts {
@@ -126,7 +129,8 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
       return entry === null ? null : outputOf(entry.stdout)
     },
 
-    share: (key, unreadable) => cache.share?.(key, unreadable) ?? Promise.resolve(false),
+    share: (key) => cache.share?.(key) ?? Promise.resolve(false),
+    resend: (key) => cache.resend?.(key) ?? Promise.resolve(false),
   }
 }
 

@@ -639,10 +639,14 @@ export interface CacheLayer {
   /**
    * True once a remote the run reads holds entry `hash`, the local entry
    * uploaded to those it writes when none does (`TaskArtifacts.share`). A
-   * layer without it shares nothing. `unreadable`: another machine found
-   * the remotes' copy corrupt; it is uploaded over theirs.
+   * layer without it shares nothing.
    */
-  share?(hash: string, unreadable?: boolean): Promise<boolean>
+  share?(hash: string): Promise<boolean>
+  /**
+   * The local entry uploaded over each written remote's copy, which another
+   * machine found corrupt (`TaskArtifacts.resend`). True when one took it.
+   */
+  resend?(hash: string): Promise<boolean>
   /**
    * Optional batched `get` (same answers, fewer round trips). The
    * short-circuit probe uses it when a layer offers one; a layer without it

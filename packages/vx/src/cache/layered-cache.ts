@@ -616,17 +616,24 @@ export class LayeredCache implements CacheLayer {
    * local entry to each one it also writes when none does. Another machine
    * of the run (a DTE worker) restores from the remotes alone: a hit only
    * this cache held, the remote having evicted it, failed its dependant
-   * there. `unreadable`: that machine found the remotes' copy corrupt, so
-   * it is sent over theirs.
+   * there.
    */
-  async share(hash: string, unreadable = false): Promise<boolean> {
-    if (!unreadable)
-      for (const lane of this.readable) if ((await lane.has(hash)) !== null) return true
+  async share(hash: string): Promise<boolean> {
+    for (const lane of this.readable) if ((await lane.has(hash)) !== null) return true
+    return this.upload(hash, false)
+  }
+
+  /** `share`, over a remote copy another machine of the run found corrupt. */
+  resend(hash: string): Promise<boolean> {
+    return this.upload(hash, true)
+  }
+
+  private async upload(hash: string, over: boolean): Promise<boolean> {
     const lanes = this.readable.filter((l) => l.write)
     if (lanes.length === 0) return false
     const entry = await this.local.getIngested(hash)
     if (entry === null) return false
-    if (unreadable) for (const lane of lanes) lane.distrust(hash)
+    if (over) for (const lane of lanes) lane.distrust(hash)
     const held = await Promise.all(
       lanes.map((l) =>
         l.upload(hash, entry.durationMs, () => this.local.pinArtifact(hash), this.local.uploads),

@@ -596,9 +596,7 @@ export class Orchestrator {
     const fresh = keys.filter((k) => typeof k === 'string' && !this.resent.has(k))
     for (const k of fresh) this.resent.add(k)
     // quiet: a key no remote took fails the task, by name
-    const got = await Promise.all(
-      fresh.map((k) => this.o.artifacts.share(k, true).catch(() => false)),
-    )
+    const got = await Promise.all(fresh.map((k) => this.o.artifacts.resend(k).catch(() => false)))
     return got.includes(true)
   }
 
