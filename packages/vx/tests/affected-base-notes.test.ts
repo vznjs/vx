@@ -107,6 +107,17 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     )
   })
 
+  // Turbo's CI spelling reads as its base, so the note had to read it so
+  // too: `origin/feat...HEAD` said nothing of the base being HEAD.
+  for (const ref of ['origin/feat...HEAD', 'origin/feat..HEAD']) {
+    it(`a ${ref} whose base is HEAD itself is named as such`, () => {
+      git(root, 'update-ref', 'refs/remotes/origin/feat', 'HEAD')
+      const r = vx(root, 'run', 'build', `--affected=${ref}`)
+      expect(r.exitCode).toBe(0)
+      expect(r.out).toContain(`nothing affected since ${ref} — origin/feat is HEAD itself`)
+    })
+  }
+
   // Nx's `defaultBase` (`develop` in a git-flow repo) had nowhere to go: a
   // bare --affected compared with origin/HEAD and ran the wrong set.
   it('a bare --affected compares with baseBranch, from the file or a config stage; a value still wins', async () => {

@@ -7,7 +7,7 @@ export {
   affectedProjects,
   defaultAffectedBase,
   type FingerprintClaims,
-  refIsHead,
+  headBase,
 } from './affected.js'
 export { applyFilters, parseFilter } from './filter.js'
 export { readClaimedFiles } from './fingerprint.js'
