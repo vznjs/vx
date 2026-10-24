@@ -68,8 +68,11 @@ it('github() writes the workers workflow: the inputs it dispatches, a runner per
   expect(run).toContain(
     "      - run: bun vx run ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}\n",
   )
+  // No relay named yet: how to deploy one, and the rest of the steps.
+  expect(printed.join('')).toContain('packages/vx-dte-relay#run-it')
+  expect(printed.join('')).toContain('https://vznjs.github.io/vx/docs/remote-cache/')
   expect(printed.join('')).toContain(
-    'ALLOW="https://token.actions.githubusercontent.com:<owner>/<repo>:ci.yml https://token.actions.githubusercontent.com:<owner>/<repo>:vx-worker.yml"',
+    'Its ALLOW (a plain var, no secret): https://token.actions.githubusercontent.com:<owner>/<repo>:ci.yml https://token.actions.githubusercontent.com:<owner>/<repo>:vx-worker.yml',
   )
 })
 
@@ -114,7 +117,12 @@ it('gitlab() writes the include its workers extend, the token for the relay', as
   expect(ci).toContain('include: [{ local: .gitlab/vx.yml }]')
   expect(ci).toContain("  variables: { VX_TASKS: '--all' }\n")
   expect(ci).toContain('Name the tasks in .vx-tasks')
-  expect(printed.join('')).toContain('ALLOW="https://gitlab.com:<group>/<project>:.gitlab-ci.yml"')
+  expect(printed.join('')).toContain(
+    'ALLOW (a plain var, no secret): https://gitlab.com:<group>/<project>:.gitlab-ci.yml',
+  )
+  expect(printed.join('')).toContain(
+    'The relay at https://relay.example.com must admit these workflows.',
+  )
 })
 
 it('an adapter that starts workers here writes nothing; no lockfile is refused', async () => {

@@ -7,7 +7,7 @@
 
 import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
 import { both } from './github.js'
-import { installLines, vxCommand, type DteInit, type DteSetup } from './init.js'
+import { installLines, nextSteps, vxCommand, type DteInit, type DteSetup } from './init.js'
 import type { WorkerSpawn, DteAdapter } from './plugin.js'
 
 export interface GitlabOptions {
@@ -26,7 +26,7 @@ const WORKERS_FILE = 'vx-workers.yml'
 function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
   if (setup.relay === undefined)
     throw new UserError(
-      'vx dte init: gitlab() needs dte({ relay }): each job asks its ID token for the relay',
+      'vx dte init: gitlab() needs dte({ relay }) first, since each job asks its ID token for the relay: deploy one (https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay#run-it) and name it',
     )
   const relay = setup.relay
   const vx = vxCommand(setup.manager)
@@ -83,11 +83,14 @@ vx:
   id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }
   script: [${vx} run $VX_TASKS]
 `
+  const files = { '.gitlab-ci.yml': ci, [options.include]: text }
   return {
-    files: { '.gitlab-ci.yml': ci, [options.include]: text },
-    next: [
-      `The relay admits the pipeline: ALLOW="https://gitlab.com:${setup.repository ?? '<group>/<project>'}:.gitlab-ci.yml"`,
-    ],
+    files,
+    next: nextSteps(
+      relay,
+      `https://gitlab.com:${setup.repository ?? '<group>/<project>'}:.gitlab-ci.yml`,
+      Object.keys(files),
+    ),
   }
 }
 

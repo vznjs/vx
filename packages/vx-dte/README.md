@@ -200,7 +200,8 @@ jobs:
 ```
 
 `vx dte init` writes both from `dte()`, the run's above and the workers' below,
-and prints the relay's `ALLOW` for them. In a terminal it asks
+and prints what is left: a relay that admits them (its `ALLOW`, and how
+to deploy one), a shared remote cache, the commit. In a terminal it asks
 what main runs and what a pull request runs (main's by default); without
 one it names none, and the run fails, listing the tasks, until you do. Each size runs on
 its platform's GitHub-hosted runner (`ubuntu-latest` for none named,

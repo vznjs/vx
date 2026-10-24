@@ -39,6 +39,31 @@ export function repositoryOf(root: string): string | undefined {
   return m?.[1]
 }
 
+const SITE = 'https://vznjs.github.io/vx/docs'
+const RELAY_DOCS = 'https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay#run-it'
+
+/** What is left after the files: a relay that admits them, a shared cache, a commit. */
+export function nextSteps(
+  relay: string | undefined,
+  allow: string,
+  files: readonly string[],
+): string[] {
+  return [
+    '',
+    'Next:',
+    relay === undefined
+      ? `  1. A relay, where the run and its workers meet. Deploy your own on Cloudflare's free plan (the Deploy button) or run it with Bun or Docker: ${RELAY_DOCS}`
+      : `  1. The relay at ${relay} must admit these workflows.`,
+    `     Its ALLOW (a plain var, no secret): ${allow}`,
+    ...(relay === undefined
+      ? ["     Then name it in .vx/workspace.ts: dte({ relay: 'https://<your relay>' })"]
+      : []),
+    `  2. A remote cache the run and the workers share: workers hand back outputs only through it. ${SITE}/remote-cache/`,
+    `  3. Commit ${files.join(', ')}, .vx/workspace.ts and the lock (vx lock), and push.`,
+    `  How a run spreads over workers: ${SITE}/distributed-runs/`,
+  ]
+}
+
 const TASKS = /^[\w@/#.:*-]+( [\w@/#.:*-]+)*$/
 
 /**

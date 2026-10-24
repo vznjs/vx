@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs'
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
 import { refuseUnknownOptions, UserError, type Platform, type PluginOptionKinds } from '@vzn/vx'
-import { installLines, vxCommand, type DteInit, type DteSetup } from './init.js'
+import { installLines, nextSteps, vxCommand, type DteInit, type DteSetup } from './init.js'
 import type { WorkerSpawn, DteAdapter } from './plugin.js'
 
 export interface GithubOptions {
@@ -130,11 +130,14 @@ ${
 }      - run: ${vx} run \${{ github.event_name == 'pull_request' && '${both(setup.tasks.change, '--affected')}' || '${both(setup.tasks.main, '--all')}' }}
 `
   const repo = setup.repository ?? '<owner>/<repo>'
+  const files = { '.github/workflows/ci.yml': run, [`.github/workflows/${workflow}`]: text }
   return {
-    files: { '.github/workflows/ci.yml': run, [`.github/workflows/${workflow}`]: text },
-    next: [
-      `The relay admits both workflows: ALLOW="${GITHUB_ISSUER}:${repo}:ci.yml ${GITHUB_ISSUER}:${repo}:${workflow}"`,
-    ],
+    files,
+    next: nextSteps(
+      setup.relay,
+      `${GITHUB_ISSUER}:${repo}:ci.yml ${GITHUB_ISSUER}:${repo}:${workflow}`,
+      Object.keys(files),
+    ),
   }
 }
 
