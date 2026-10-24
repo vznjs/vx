@@ -645,8 +645,10 @@ it('says each worker’s machine busy average from the loads it sent', async () 
   await Bun.sleep(50)
   void h.o.execute(h.req('t1'))
   expect(await a.batches()).toEqual([['t1']])
-  await a.say({ type: 'start', task: 't1', load: { cpu: 3, memory: 0 } })
-  await a.say({ type: 'ran', task: 't1', load: { cpu: 3, memory: 0 } })
+  // Its last frame's average, not the run's of its samples: a worker that
+  // sent 3 frames, each as a task started, read 0.6 of 2.0 used (#4313).
+  await a.say({ type: 'start', task: 't1', load: { cpu: 0.2, memory: 0, avg: 1 } })
+  await a.say({ type: 'ran', task: 't1', load: { cpu: 0.2, memory: 0, avg: 3 } })
   await Bun.sleep(50)
   await h.stop()
   const rows = h.o.footer().map(([, line]) => ui.inline(line, { enabled: false }))
@@ -2138,18 +2140,6 @@ it('a machine’s booked cores: what the run held for its tasks, averaged over i
   expect(u.stats(4, 4000).bookedAvg).toBe(2.25)
 })
 
-// Macs read 1.0 core used of 2.6 busy (2026-10-24): the tasks' own CPU
-// leaves out the machine's other processes, which the load counts.
-it('a machine’s busy cores: its loads, each held until the next, averaged from the first', () => {
-  const u = new Usage(0)
-  expect(u.stats(4, 4000).machineAvg).toBeUndefined()
-  u.load(2, 1000)
-  u.load(4, 2000)
-  u.load(1, 3000)
-  // 2 + 4 + 1 core-seconds over the 3 s since the first load.
-  expect(u.stats(4, 4000).machineAvg).toBeCloseTo(7 / 3)
-})
-
 // A Ctrl-C read `0 done · 2 failed` for one failed and one stopped task.
 it('counts a task the stop killed as aborted, a timeout as failed', () => {
   const u = new Usage(0)
@@ -2245,6 +2235,25 @@ it('reads how crowded the CPU is from the run queue', async () => {
     expect(none.shareSince(from)).toBeUndefined()
   } finally {
     none.stop()
+  }
+})
+
+// #4313's run: a worker's frames were too few to average `cpu` by; each
+// frame says the machine's average since the worker started.
+it('says the machine’s busy cores on average since the meter started', async () => {
+  const cores = (await import('node:os')).cpus().length
+  // Half the CPUs' time busy at each read after the first.
+  let t = 0
+  const half = (): [number, number] => [(t += 50), t * 2]
+  const meter = loadMeter(
+    () => undefined,
+    () => 0,
+    half,
+  )
+  try {
+    expect(meter.now().avg).toBeCloseTo(cores / 2, 2)
+  } finally {
+    meter.stop()
   }
 })
 

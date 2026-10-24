@@ -23,9 +23,9 @@ export interface UsageStats {
   /** Cores the run held for its tasks, on average over its time online: what packing gave it. */
   readonly bookedAvg: number
   /**
-   * Cores busy on its machine, any process's, on average from its first
-   * load to its end: what `cpuAvg` leaves out (a Mac's indexer, a task's
-   * orphans). Undefined when it sent no load.
+   * Cores busy on its machine, any process's, on average since its worker
+   * started, as its last frame said: what `cpuAvg` leaves out (a Mac's
+   * indexer, a task's orphans). Undefined when it said none.
    */
   readonly machineAvg?: number | undefined
 }
@@ -46,7 +46,8 @@ export class Usage {
   private booked = 0
   private bookedMs = 0
   private bookedAt = 0
-  private machine: { cpu: number; at: number; since: number; ms: number } | undefined
+  /** Its machine's busy cores on average, as its last frame said. */
+  machineAvg: number | undefined
 
   constructor(readonly from: number = performance.now()) {}
 
@@ -86,17 +87,6 @@ export class Usage {
     this.bookedMs += this.booked * (at - this.bookedAt)
     this.bookedAt = at
     this.booked += cores
-  }
-
-  /** Its machine had `cpu` cores busy at `at`, until the next load says otherwise. */
-  load(cpu: number, at: number = performance.now()): void {
-    const m = this.machine
-    if (m === undefined) this.machine = { cpu, at, since: at, ms: 0 }
-    else {
-      m.ms += m.cpu * Math.max(0, at - m.at)
-      m.cpu = cpu
-      m.at = Math.max(m.at, at)
-    }
   }
 
   stats(cores: number, until: number): UsageStats {
@@ -139,10 +129,7 @@ export class Usage {
       utilization: cpuMs / (cores * onlineMs),
       cpuMs,
       bookedAvg: (this.bookedMs + this.booked * Math.max(0, end - this.bookedAt)) / onlineMs,
-      machineAvg: ((m) =>
-        m === undefined || end <= m.since
-          ? undefined
-          : (m.ms + m.cpu * Math.max(0, end - m.at)) / (end - m.since))(this.machine),
+      machineAvg: this.machineAvg,
     }
   }
 }

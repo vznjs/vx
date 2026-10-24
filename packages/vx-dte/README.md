@@ -452,8 +452,8 @@ waits for the needs another plugin fetches (`ctx.refining()`), such as
 `@vzn/vx-schedule-history`'s default-branch timings. The `unmeasured`
 line names the tasks the first ask had no measure of, and a worker that
 ran two tasks or fewer names them on its row. `used avg` is the cores
-its tasks used, `machine avg` the cores its machine reported busy, any
-process's, from the load each frame of its carries. The `total` line is the cpu utilization of every
+its tasks used, `machine avg` the cores its machine was busy on average since
+the worker started, any process's, as its last frame said. The `total` line is the cpu utilization of every
 machine together, and the share of their history the run's tasks used:
 
 ```

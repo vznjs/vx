@@ -500,7 +500,8 @@ export class Orchestrator {
   private heard(a: Worker, load: Load | undefined): void {
     if (load === undefined) return
     a.load = { cpu: Number(load.cpu) || 0, memory: Number(load.memory) || 0, at: performance.now() }
-    a.usage.load(a.load.cpu, a.load.at)
+    const avg = Number(load.avg)
+    if (Number.isFinite(avg) && avg >= 0) a.usage.machineAvg = avg
     const tasks = Number(load.tasks)
     this.trace.load(a.label, a.load.cpu, a.load.at, Number.isFinite(tasks) ? tasks : undefined)
   }

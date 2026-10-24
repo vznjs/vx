@@ -471,6 +471,7 @@ export function loadMeter(
   stop: () => void
 } {
   let last = times()
+  const first = last
   let cpu = 0
   const timer = setInterval(() => {
     const next = times()
@@ -506,7 +507,15 @@ export function loadMeter(
   const crowded = setInterval(look, CROWD_EVERY_MS)
   crowded.unref?.()
   return {
-    now: () => ({ cpu: Math.round(cpu * 100) / 100, memory: os.totalmem() - available() }),
+    now: () => {
+      const t = times()
+      const total = t[1] - first[1]
+      return {
+        cpu: Math.round(cpu * 100) / 100,
+        memory: os.totalmem() - available(),
+        ...(total > 0 ? { avg: Math.round(((t[0] - first[0]) / total) * cores * 100) / 100 } : {}),
+      }
+    },
     mark: () => ({ ...crowd, times: times() }),
     // Its mean share over the looks since `from`; none (a task shorter
     // than a look, or no /proc) is no correction. A task that used `used`
