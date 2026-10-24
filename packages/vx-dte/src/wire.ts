@@ -77,6 +77,32 @@ const replyMs = (heartbeatMs: number): number =>
 const answerMs = (heartbeatMs: number): number =>
   Math.min(Math.max(heartbeatMs, MIN_WAIT_MS), REPLY_MS)
 
+/**
+ * A send as it travels: numbered per receiver, so a resend is dropped as
+ * seen, and carrying the sender's ack of what it took from that receiver,
+ * so most acks cost no message of their own.
+ */
+interface Numbered {
+  readonly seq: number
+  readonly body: unknown
+  readonly acked?: number
+}
+/** The receiver took every send to it numbered up to `acked`. */
+interface Acked {
+  readonly acked: number
+}
+const isNumbered = (b: unknown): b is Numbered =>
+  typeof b === 'object' &&
+  b !== null &&
+  typeof (b as Numbered).seq === 'number' &&
+  'body' in b &&
+  Object.keys(b).length === ('acked' in b ? 3 : 2)
+const isAcked = (b: unknown): b is Acked =>
+  typeof b === 'object' &&
+  b !== null &&
+  typeof (b as Acked).acked === 'number' &&
+  Object.keys(b).length === 1
+
 /** Runs `f` again, at most `RETRIES` times, after a rate-limit answer or (`faults`) a fault. */
 async function paced<T>(f: () => Promise<T>, signal?: AbortSignal, faults = true): Promise<T> {
   const by = performance.now() + REPLY_MS
@@ -177,6 +203,89 @@ export async function join(
     connect(base, `id=${id}`, await headers('GET', `${base}socket?id=${id}`, ''), heartbeatMs)
   /** What the sockets brought and nobody took yet, kept across redials. */
   const inbox: RelayMessage[] = []
+  /**
+   * Each receiver's sends it has not acknowledged yet, and when each last
+   * went: sent again after a heartbeat, or at once on a new socket, so a
+   * send survives a socket or a relay that dropped it (NATS-style: the
+   * relay holds nothing a participant cannot send again).
+   */
+  const outbox = new Map<
+    string,
+    { next: number; unacked: Map<number, { body: unknown; at: number }> }
+  >()
+  /** Each sender's sends taken in order, and those that came ahead of a gap. */
+  const taken = new Map<string, { upTo: number; ahead: Map<number, unknown> }>()
+  /**
+   * Acks owed, by peer: each rides the next send to its peer; those with
+   * none in half a heartbeat go together in one frame, before any peer
+   * sends again, in place of a ping.
+   */
+  const owing = new Set<string>()
+  let acking: ReturnType<typeof setTimeout> | undefined
+  const ack = (to: string): void => {
+    owing.add(to)
+    if (acking !== undefined) return
+    acking = setTimeout(() => {
+      acking = undefined
+      if (left || ended !== undefined) return
+      for (const peer of owing) {
+        const upTo = taken.get(peer)?.upTo
+        if (upTo === undefined) continue
+        // quiet: a lost ack only costs a resend, which is dropped as seen
+        over((s) => s.send(peer, { acked: upTo } satisfies Acked)).catch(() => undefined)
+      }
+      owing.clear()
+    }, heartbeatMs / 2)
+    acking.unref()
+  }
+  /** The ack owed `to`, if any, for a send to it to carry. */
+  const owed = (to: string): { acked?: number } =>
+    owing.delete(to) ? { acked: taken.get(to)!.upTo } : {}
+  const settle = (from: string, acked: number): void => {
+    const o = outbox.get(from)
+    if (o !== undefined) for (const seq of o.unacked.keys()) if (seq <= acked) o.unacked.delete(seq)
+  }
+  /** What a socket brought, in each sender's order, each send once; acks and losses settle the outbox. */
+  const take = (messages: readonly RelayMessage[]): RelayMessage[] => {
+    const out: RelayMessage[] = []
+    for (const m of messages) {
+      const body = m.body
+      if (m.from === 'relay') {
+        const lost = body as { type?: unknown; id?: unknown }
+        if (lost?.type === 'lost' && typeof lost.id === 'string') {
+          outbox.delete(lost.id)
+          taken.delete(lost.id)
+        }
+        out.push(m)
+      } else if (isAcked(body)) settle(m.from, body.acked)
+      else if (isNumbered(body)) {
+        if (body.acked !== undefined) settle(m.from, body.acked)
+        let t = taken.get(m.from)
+        if (t === undefined) taken.set(m.from, (t = { upTo: 0, ahead: new Map() }))
+        if (body.seq > t.upTo) t.ahead.set(body.seq, body.body)
+        while (t.ahead.has(t.upTo + 1)) {
+          const next = t.ahead.get(++t.upTo)
+          t.ahead.delete(t.upTo)
+          out.push({ from: m.from, body: next })
+        }
+        ack(m.from)
+      } else out.push(m)
+    }
+    return out
+  }
+  /** Sends again what waited `ms` unacknowledged; all of it, at 0. */
+  const resend = (ms: number): void => {
+    const now = performance.now()
+    for (const [to, o] of outbox)
+      for (const [seq, u] of o.unacked) {
+        if (now - u.at < ms) continue
+        u.at = now
+        // quiet: unacknowledged, it goes again next heartbeat
+        over((s) => s.send(to, { seq, body: u.body, ...owed(to) } satisfies Numbered)).catch(
+          () => undefined,
+        )
+      }
+  }
   // One request a participant, which a host may bill: the socket joins as
   // it opens. One that does not (an older relay, a refusal only `join`
   // says the reason for) joins by request.
@@ -234,16 +343,18 @@ export async function join(
   }
   const end = (err: RelayError): void => {
     ended ??= err
+    clearInterval(resending)
     clearTimeout(redial)
     redial = undefined
     nudge()
   }
   /** The last socket that closed: its close handshake may not have ended. */
   let dropped: Socket | undefined
+  let adopted = false
   const adopt = (s: Socket): void => {
     socket = s
     s.onMessages = (messages) => {
-      inbox.push(...messages)
+      inbox.push(...take(messages))
       if (
         messages.some(
           (m) => m.from === 'relay' && (m.body as { type?: unknown })?.type === 'closed',
@@ -261,7 +372,10 @@ export async function join(
       again()
       nudge()
     }
-    inbox.push(...s.inbox.splice(0))
+    inbox.push(...take(s.inbox.splice(0)))
+    // A new socket: what the old one may have dropped goes again.
+    if (adopted) resend(0)
+    adopted = true
     nudge()
   }
   /** A socket that failed or dropped is dialed again after a jittered backoff. */
@@ -294,6 +408,8 @@ export async function join(
       end(new RelayError(404, `relay: no socket in ${REPLY_MS / 1000} s`))
     else again()
   }
+  const resending = setInterval(() => resend(heartbeatMs), heartbeatMs)
+  resending.unref()
   const first = socket
   socket = undefined
   took(first)
@@ -339,7 +455,17 @@ export async function join(
     id,
     heartbeatMs,
     async send(to, body) {
-      await over((s) => s.send(to, body))
+      let o = outbox.get(to)
+      if (o === undefined) outbox.set(to, (o = { next: 0, unacked: new Map() }))
+      const seq = ++o.next
+      o.unacked.set(seq, { body, at: performance.now() })
+      try {
+        await over((s) => s.send(to, { seq, body, ...owed(to) } satisfies Numbered))
+      } catch (err) {
+        // Refused: the caller hears it; nothing waits on an ack.
+        o.unacked.delete(seq)
+        throw err
+      }
     },
     async poll(signal) {
       if (inbox.length === 0 && signal?.aborted !== true) {
@@ -357,6 +483,8 @@ export async function join(
     async leave() {
       left = true
       clearTimeout(redial)
+      clearInterval(resending)
+      clearTimeout(acking)
       const s = socket
       // The relay drops it and closes the socket, which is its answer. With
       // no socket, the relay loses this participant as one gone silent.

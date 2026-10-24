@@ -359,6 +359,12 @@ stops, instead of waiting for the job's timeout.
   client's beat is a frame the relay must answer within two (10 s at
   most), which also makes it push down that socket again. A participant
   the relay hears nothing from for two heartbeats is lost.
+- Each send is numbered for its receiver and held until the receiver
+  acknowledges it, so one a socket or the relay dropped goes again after
+  a heartbeat, or at once on a new socket; the receiver takes each once,
+  in order. An ack rides the next send back, and those with none to ride
+  go together in one frame per half heartbeat: no message of its own on
+  a busy run.
 - A run where no task began or ended for a minute warns what it waits
   on, a line a task: which worker, and whether it runs or saves.
 - A message the relay would not take is a warning naming it, its
