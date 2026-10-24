@@ -789,17 +789,20 @@ export class Orchestrator {
     this.savedAs.set(task, key)
     this.pumpSoon()
     const node = this.o.nodes()?.get(task)
+    const restore = () =>
+      this.o.artifacts.restore(key, {
+        id: task,
+        projectDir: node?.projectDir ?? job.req.cwd,
+        command: job.req.command,
+        outputs: job.req.outputs,
+      })
     // A remote-only task's files stay off this disk: an install's
-    // node_modules laid over this machine's own (schema: `'only'`).
+    // node_modules laid over this machine's own (schema: `'only'`). A
+    // deferred one's land only if a task here needs them: under
+    // `--cache-download=none` every file of the run came home (2026-10-24).
+    const deferred = job.req.remoteOnly !== true && job.req.download === 'deferred'
     const log = await (
-      job.req.remoteOnly === true
-        ? this.o.artifacts.output(key)
-        : this.o.artifacts.restore(key, {
-            id: task,
-            projectDir: node?.projectDir ?? job.req.cwd,
-            command: job.req.command,
-            outputs: job.req.outputs,
-          })
+      job.req.remoteOnly === true || deferred ? this.o.artifacts.output(key) : restore()
     ).catch((err: unknown) => {
       job.reject(err)
       return undefined
@@ -824,6 +827,17 @@ export class Orchestrator {
     if (log.stderr !== '') job.req.onStderr(log.stderr)
     job.resolve({
       ...result(head, log),
+      ...(deferred
+        ? {
+            outputs: {
+              kind: 'deferred' as const,
+              materialize: async () => {
+                if ((await restore()) === null)
+                  throw new Error(`${task}'s entry ${key} is in no cache this machine reads`)
+              },
+            },
+          }
+        : {}),
       where: a.label,
       machine: {
         cores: a.reported.cores,

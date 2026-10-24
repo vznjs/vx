@@ -401,7 +401,9 @@ use your own instead.
   starts, naming it: one whose `exec.platforms` no size offers, or a
   persistent task asked for on its own.
 - An `exec.remote: 'only'` task's files stay on the workers: this machine
-  restores its output, never its files.
+  restores its output, never its files. Under `--cache-download=toplevel`
+  or `none`, a task's files it defers land here only if a task here needs
+  them.
 - A worker restores, by key, the declared outputs of every task the one
   it runs depends on, unless it ran or restored them before. Files a task
   writes without declaring them stay on the worker. Before a task runs, its
