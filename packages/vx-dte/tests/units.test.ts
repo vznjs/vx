@@ -602,6 +602,26 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
   const done = ['t1', 't2'].map((id) => h.o.execute(h.req(id)))
   expect(await a.batches()).toEqual([['t1', 't2']])
   for (const t of ['t1', 't2']) await a.begin(t)
+  // PR #4214's run asked 7 workers and cancelled each a second later: what each plan saw.
+  h.o.planned({
+    start: ['small'],
+    release: [],
+    tasks: 3,
+    endsInMs: 60_000,
+    boundMs: 63_000,
+    workers: [
+      { ...h.o.planState(() => 5_000, 0).workers[0]!, id: 'worker#1' },
+      {
+        id: 'small#2',
+        cores: 4,
+        memory: 1e9,
+        at: 12_000,
+        running: [],
+        idle: false,
+        starting: true,
+      },
+    ],
+  })
   await Bun.sleep(20)
   await a.say({ type: 'ran', task: 't1' })
   await Bun.sleep(20)
@@ -643,6 +663,11 @@ it('profiles the run: each worker’s tasks on their own lanes, the run’s wait
   ).toEqual(['t1', 't2'])
   expect(ev.some((e) => e.ph === 'i' && e.pid === w && e.name === 'stopped')).toBe(true)
   expect(ev.some((e) => e.ph === 'C' && e.pid === w && e.name === 'cores')).toBe(true)
+  const plan = ev.find((e) => e.ph === 'i' && e.pid === 1 && e.name === 'plan') as
+    | { args: Record<string, unknown> }
+    | undefined
+  expect(plan?.args).toMatchObject({ start: 'small', tasks: 3, endsInMs: 60_000, boundMs: 63_000 })
+  expect(plan?.args.workers).toMatch(/^worker#1 1c\/\d+ 1c\/\d+ · small#2 joins 12000$/)
 })
 
 // Main, 2026-10-23: vx-docs#build (41 s, then its test) got ready 3 s in,

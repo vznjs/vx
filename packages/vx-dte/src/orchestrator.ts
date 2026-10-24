@@ -1048,6 +1048,35 @@ export class Orchestrator {
     })
   }
 
+  /**
+   * A plan that started or let go of workers, in the profile: what it saw
+   * of each worker (cores busy / ms left per task, or when it joins) and
+   * of the work, so a worker asked and cancelled a second later can be
+   * read back (PR #4214's run: 7, 2026-10-23).
+   */
+  planned(p: {
+    start: readonly string[]
+    release: readonly string[]
+    tasks: number
+    endsInMs: number
+    boundMs: number
+    workers: readonly PlanWorker[]
+  }): void {
+    const workers = p.workers.map((w) =>
+      w.starting === true
+        ? `${w.id} joins ${Math.round(w.at)}`
+        : `${w.id} ${w.running.map((r) => `${Math.round(r.cores * 10) / 10}c/${Math.round(r.endsIn)}`).join(' ') || 'idle'}`,
+    )
+    this.trace.mark(ORCHESTRATOR, 'plan', {
+      start: p.start.join(' '),
+      release: p.release.join(' '),
+      tasks: p.tasks,
+      endsInMs: Math.round(p.endsInMs),
+      boundMs: Math.round(p.boundMs),
+      workers: workers.join(' · '),
+    })
+  }
+
   /** `demand` asked the adapter for worker `id` (`WorkerSpawn.id`). */
   spawned(id: string, declared: Declared): void {
     // A worker whose start broke where no adapter sees it counted as
