@@ -1,244 +1,185 @@
-# vx-dte relay protocol, v1
+# Switchboard protocol, v1
 
-A relay carries messages between one run's orchestrator and its workers.
-CI runners take no inbound connection, so every participant dials out to
-the relay: one websocket, which joins as it opens and carries the rest.
-Any server that speaks this protocol can stand in
-for `@vzn/vx-dte-relay`; `@vzn/vx-dte` knows only the relay's URL.
+Switchboard connects one **host** to any number of **peers** through a
+relay, when none of them takes an inbound connection (CI runners, laptops
+behind NAT). Each participant dials out: one websocket, which joins as it
+opens and carries the rest. The shape is a star: the host talks to every
+peer, a peer talks only to the host, and the relay passes each message on
+without reading it. What host and peers say to each other is their own
+protocol, versioned on its own.
 
-The relay never reads a message body. What the orchestrator and workers say
-to each other is `@vzn/vx-dte`'s business, versioned on its own.
+`@vzn/vx-dte-relay` is one relay that speaks it (on Bun and on Cloudflare
+Workers); any server that does can stand in for it.
 
-## Requests
+## Versions
 
-One request is HTTP, a websocket upgrade under `<relay>/v1/runs/<run>/`,
-where `<run>` is the run id, a random (v4) UUID, so no one can guess it;
-any other answers `400`. It carries `Authorization: Bearer <CI OIDC token>`.
+A client names the versions it speaks in the websocket's subprotocol
+header, on the request that joins, so negotiation costs no round trip:
 
-| Request               | Query                                                                 | Answer |
-| --------------------- | --------------------------------------------------------------------- | ------ |
-| `GET socket?join=<j>` | `<j>`: `{ "role": "orchestrator" \| "worker", "info"?: any, "key"? }` | `101`  |
-| `GET socket?id=<id>`  | the `id` its join said                                                | `101`  |
+```
+Sec-WebSocket-Protocol: switchboard.v2, switchboard.v1
+```
 
-- `socket?join=` makes a participant, and its socket's first frame is
-  `{ "joined": { "id", "heartbeatMs" } }`: one request a participant, on
-  a host that bills each. The `id` is a secret the relay picked: whoever
-  holds it, with a token of this run, acts as it. A run has one
-  orchestrator; a second `orchestrator` join is refused `409`. The
-  orchestrator's join starts the run, and a run is kept only while it is
-  live: a worker's join of any other is refused `410`, and the worker
-  leaves.
-- `socket?id=` is the socket dialed again (§ Sockets).
-- A refused request is let in all the same and its socket closed saying
-  why: `{ "close": 4000 + <status>, "error" }`, then the close with that
-  code (a failed upgrade tells a client nothing it can read). One that
-  is no upgrade is answered `{ "error" }` with its status.
+The relay answers with the highest version both speak. If none is, it
+answers with the first one offered (a client offered nothing it can read
+otherwise) and closes the socket `4406`, reason `supported:
+switchboard.v<lowest>-v<highest>`. A request offering none is refused the
+same way. This document is `switchboard.v1`.
 
-## The orchestrator's key
+## Sessions
 
-A run id is a channel: workers join it before or after the orchestrator
-does, and the orchestrator claims it. Its join names `key`, a P-256
-public key (raw, base64url), and the relay keeps it for the run; a join
-without one is refused `400`. Each of its `socket` requests, its join too, carries `vx-proof: <ms>.<nonce>.<signature>`: an
+One request is HTTP, a websocket upgrade of `GET
+<relay>/sessions/<session>/socket`. `<session>` is the session id, a random
+(v4) UUID, so no one can guess it; another answers `400`, another path
+`404`, another method `405`, a request that is no upgrade `426`. It carries
+`Authorization: Bearer <token>` (§ Tokens).
+
+| Query       | Does                                                                         |
+| ----------- | ---------------------------------------------------------------------------- |
+| `?join=<j>` | joins: `<j>` is `{ "role": "host" \| "peer", "info"?: any, "key"?: string }` |
+| `?id=<id>`  | a participant's socket dialed again (§ Sockets)                              |
+
+- A join's socket says first `{ "joined": { "id", "heartbeatMs" } }`. The
+  `id` is a secret the relay picked: whoever holds it, with a token of this
+  session, acts as that participant.
+- The host's join opens the session; a session has one host, and a second
+  host's join is refused `409`. A peer's join of a session with no host is
+  refused `410`.
+- A session lives while its host does. The host leaving, or its socket
+  closing, closes the session, and the relay keeps nothing of it.
+
+## The host's key
+
+The host's join names `key`, a P-256 public key (raw, base64url), which
+the relay keeps for the session; one without it is refused `400`. Each of
+the host's socket requests, its join too, carries `relay-proof: <ms>.<nonce>.<signature>`, an
 ECDSA SHA-256 signature by that key of
 
 ```
-vx-dte-proof\0GET\0<path and query>\0<ms>\0<nonce>\0
+switchboard-proof\0GET\0<path and query>\0<ms>\0<nonce>\0
 ```
 
-`<ms>` the time it was made, within two minutes of the relay's clock,
-and `<nonce>` 16 to 64 base64url characters the relay takes once. Any
-other is refused `403`. So only the side holding the private key, which
-never leaves it, acts as the orchestrator, and the relay passes no
-message to or from any other: a second orchestrator's join is refused
-`409`, and a closed run never takes one. A `socket` frame carries no
-proof: its upgrade did.
+`<ms>` is when it was made, within two minutes of the relay's clock, and
+`<nonce>` 16 to 64 base64url characters the relay takes once; else `403`.
+So only the side holding the private key acts as the host, and a leaked
+host `id` acts as it nowhere. A frame carries no proof: its socket's
+upgrade did.
+
+## Frames
+
+Frames are JSON text, each at most 1 MiB.
+
+The relay pushes:
+
+- `{ "messages": [{ "from", "body" }] }` as messages arrive. `from` is
+  `"host"`, a peer's `id`, or `"relay"` (§ Notices);
+- `{ "close": <code>, "error"? }` just before it closes the socket, `0`
+  for no code. A client acts on this frame: a host may never end TCP after
+  its close.
+
+A participant sends:
+
+| Frame                                  | Does                                                       |
+| -------------------------------------- | ---------------------------------------------------------- |
+| `{ "n", "sends": [{ "to", "body" }] }` | passes each `body` to `to`                                 |
+| `{ "n", "leave": true }`               | removes the participant; its answer is the socket's close  |
+| `{ "n", "remove": "<peer id>" }`       | the host only (`403` else): takes the peer off the session |
+
+- The host sends to any peer `id`; a peer sends only to `"host"`. An
+  unknown or gone `to` is `404`.
+- A frame with a number `n` is answered `{ "n" }` when all went, else
+  `{ "n", "results" }` with `null` or `{ "status", "error" }` for each
+  send. A frame of sends with no `n` is answered only if a send in it
+  fails, `n` then `null`.
+- A frame that fails is answered `{ "n", "status", "error" }`; one that is
+  no JSON object, or none of the above, `400`; one over 1 MiB `413`,
+  answered by its `n` when the frame starts `{"n":`.
+- A removed peer's socket is closed `4404` after what waited for it; the
+  host is not told it left.
+
+## Delivery
+
+The relay holds no participant's message. One it cannot push now (no
+socket, or a push that failed) is dropped. Delivery is the clients': a
+sender numbers each send, the receiver acknowledges it end to end, and
+the sender sends again what is not acknowledged, at once on a new socket.
+How they number and acknowledge is inside `body`, their own protocol;
+`@vzn/vx-dte` puts `{ "n" }` and `{ "acked" }` beside its payload.
+
+Only the relay's notices wait, in memory, for the participant's next
+socket.
+
+## Notices
+
+The relay itself sends, `"from": "relay"`:
+
+- to the host, `{ "type": "joined", "id", "info" }` for each peer, its
+  `info` as its join said, then forgotten;
+- to the host, `{ "type": "left", "id" }` when a peer leaves or its
+  socket closes;
+- to every peer, `{ "type": "closed" }` when the session closes. A peer on
+  a socket is told and let go; one with no socket gets `4404` when it
+  opens one.
 
 ## Sockets
 
-`socket` is the participant's websocket (`426` without the upgrade).
-Frames are text:
-
-- the relay pushes `{ "messages": [{ "from", "body" }] }` as messages
-  arrive. A participant's message it cannot push now (no socket, or a
-  push that failed) is dropped: the relay holds none, and its sender
-  sends again what its receiver did not acknowledge (vx-dte numbers
-  each send and acks it end to end). Only the relay's own notices
-  (§ Messages from the relay) wait for the next socket;
-- the participant sends `{ "n", "sends": [{ "to", "body" }] }`, answered
-  `{ "n" }` when all were taken, else `{ "n", "results" }` with `null` or
-  `{ "status", "error" }` for each. A frame of sends with no `n`, whose
-  sender waits on no answer (vx-dte's acks, probes and resends), is
-  answered only when a send in it fails, `n` then `null`. The orchestrator sends to any worker;
-  a worker sends only to `"orchestrator"`; an unknown or gone `to` is
-  `404`;
-- `{ "n", "leave": true }` removes the participant, and its answer is the
-  socket's close. The orchestrator leaving closes the run;
-- `{ "n", "remove": "<worker>" }`, by the orchestrator only (`403`
-  otherwise), takes the worker off the run: one it did not admit
-  (§ Bodies). The worker's socket is closed, after any notice waiting for
-  it. The orchestrator is not told it
-  was lost;
-- a frame that fails is answered `{ "n", "status", "error" }`, any other
-  frame `400`. A frame is held to 1 MiB whole; one over it is answered `413` by its `n` when the
-  frame starts `{"n":`. vx-dte's client keeps a frame of several sends
-  under 512 KiB;
-- the relay counts no heartbeat and needs no ping: `heartbeatMs` is how
-  often participants hear from each other (§ Liveness);
-- the socket a frame comes down is its participant's from then on, and
-  is pushed down from then on: a host that let the socket go
-  while answering its pings left the participant deaf.
-
-A socket's close loses its participant (§ Liveness). A socket its
-client gave up on whose close never reached the relay (a network that
-stops carrying it sends none) is replaced: the participant opens another
-by its `id`, the relay closes the earlier and pushes the notices that
-waited, and its peers send again what it did not acknowledge. vx-dte's
-client dials again after a backoff with full jitter (up to 250 ms, doubling per failed dial
-to half a heartbeat), and gives the participant up after 3 failed
-dials or 10 s without a socket, whichever comes first. The relay closes with code
-`4404` the socket of a participant that left or was lost, after pushing
-the notices that waited for it, and lets in a `socket`
-request of an `id` or run it does not know only to close it so: a failed
-upgrade tells a client nothing it can read. It closes a socket a push
-failed on without a code: left open, its pings answered, it would carry
-nothing again. Each close it makes is said first in a frame, `{ "close":
-4404 }` or `{ "close": 0 }` for none, and a client acts on that frame: a
-host may never end TCP after its close (workerd does not), and a client
-that reports a close only then (Bun 1.4.4) hears it 10 s late.
+The socket a frame comes down is its participant's from then on. A
+client that gave up on a socket whose close never reached the relay dials
+again by its `id`: the relay closes the earlier one and pushes what
+waited. The relay closes `4404` the socket of a participant that left, was
+removed or lost, or that it never knew (a failed upgrade tells a client
+nothing it can read, so the request is let in and closed). It closes a
+socket a push failed on with no code.
 
 ## Liveness
 
-Liveness is the connection (owner, 2026-10-23). A participant's socket
-closing loses it at once, as if it had left: a worker's, and the
-orchestrator hears `lost`; the orchestrator's, and the run closes. The
-relay keeps no timer. A peer quiet on a socket that never closed is its
-peers' to lose, within two `heartbeatMs` (10 s on the default): vx-dte's
-orchestrator probes a worker it has heard nothing from for 1.5 (an empty
-numbered send), which the worker acknowledges at once; a worker probes
-its orchestrator quiet 1.6; either side quiet 1.9 to the other is lost,
-a worker by ending. A peer that talks is never probed. A numbered frame
-the relay leaves unanswered a heartbeat closes the client's socket.
-vx-dte's client asks again through a `5xx` or a dropped connection, 3
-times at most and within 10 s of the first try.
+Liveness is the connection: a participant whose socket closes is gone at
+once, as if it left. The relay keeps no timer and counts no heartbeat.
+`heartbeatMs` is how often participants should hear from each other: a
+peer quiet on a socket that never closed is its peers' to lose. The
+clients probe a quiet peer with an empty numbered send, which it
+acknowledges at once, and lose one quiet for two `heartbeatMs`. A
+numbered frame the relay leaves unanswered a heartbeat is a dead socket.
 
-## Leases (planned, above the relay)
+## Close codes
 
-Leases are `@vzn/vx-dte`'s messages, so the relay stays body-blind. The
-orchestrator leases each task to one worker with an expiry, and every
-frame that worker sends renews its leases. A lease that expires sends
-its task back to ready. The orchestrator accepts a result only from the
-task's current lease holder and drops any late one. The design is in
-`packages/vx/docs/design/dte-2026-10.md`.
+A refused request is let in and its socket closed with `4000 + status`,
+said first in a `{ "close", "error" }` frame:
 
-## Messages from the relay
+| Code   | Why                                                                       |
+| ------ | ------------------------------------------------------------------------- |
+| `4400` | a malformed request or join                                               |
+| `4401` | no token, or an invalid one                                               |
+| `4403` | a token the relay does not admit, or a host request not signed by its key |
+| `4404` | an unknown, left or removed participant (and every socket it let go)      |
+| `4406` | no version both speak; the reason names the relay's range                 |
+| `4409` | a second host                                                             |
+| `4410` | a closed session                                                          |
+| `4413` | a join over 1 MiB                                                         |
+| `4503` | the relay's host refused the session (a plan's limit)                     |
 
-The relay itself sends with `"from": "relay"`:
-
-- to the orchestrator, `{ "type": "joined", "id", "info" }` for each worker;
-- to the orchestrator, `{ "type": "lost", "id" }` when a worker leaves or
-  is lost;
-- to every worker, `{ "type": "closed" }` when the orchestrator leaves or is
-  lost, or its socket closes. The relay then keeps nothing of the run: a
-  worker on a socket is told and let go at once, one with no socket gets
-  `4404` when it opens one, and a join is refused `410`.
-
-A worker's messages carry `"from": "<its id>"`, the orchestrator's
-`"from": "orchestrator"`.
-
-## Errors
-
-`400` a malformed request, `401` a missing or invalid token, `403` a token
-of a repository the relay does not serve, or a request as the
-orchestrator not signed by its key (§ The orchestrator's key), `404` an
-unknown `id` or `to`, `409` a second orchestrator, `410` a closed run,
-`413` a join or frame over 1 MiB, `426` a `socket` request that is not an
-upgrade. On Workers, `503` is a run's Durable Object the host refused (a
-plan's daily limit), its reason in the error. A socket request is
-refused by its socket's close, 4000 plus the status (§ Requests); any
-other answers `{ "error": "<reason>" }`. The relay counts no rate: a
-participant is a CI job the relay's ALLOW admits.
+A request that is no upgrade is answered its status and `{ "error" }`.
 
 ## Tokens
 
-The relay checks each token's signature against its issuer's published
-keys (`<iss>/.well-known/openid-configuration`, then `jwks_uri`; RS256),
-its `exp` and `nbf`, that `iss` is one the relay trusts, that `aud`
-names the relay's audience, and that the token's repository and workflow
-are an entry the relay allows for its issuer (`repository` on GitHub
-Actions, `project_path` on GitLab; `job_workflow_ref` on GitHub, a file of
-`.github/workflows/`, `ci_config_ref_uri` on GitLab, any ref; matched
-without case; else `403`). A run is its id within its token's
-issuer and run claims: the same id in a token of another repository is
-another run, so a tenant cannot open a run id before its owner does,
-even one it learned. The run claims name the repository:
-
-| Issuer                                                         | Run claims      |
-| -------------------------------------------------------------- | --------------- |
-| GitLab (`https://gitlab.com`, or a self-managed host)          | `project_id`    |
-| GitHub Actions (`https://token.actions.githubusercontent.com`) | `repository_id` |
-
-So only jobs of the repository that started a run can join it, and only
-of a workflow the relay allows for that repository.
-
-The orchestrator's `id` leaked to a worker or a log acts as it nowhere
-else: each of its sockets is signed by its key. Its workers talk only to
-`"orchestrator"`, and need not be of its pipeline: they may run in
-another one (a GitLab child pipeline, a GitHub workflow the run
-dispatches). Which workers take part is the run's own
-business: `@vzn/vx-dte` admits only a worker that completes a Noise
-handshake with the run's key, or on GitHub one bound by its OIDC identity
-(below).
+The relay checks the bearer token. `@vzn/vx-dte-relay` takes CI OIDC
+tokens: their signature by the issuer's published keys
+(`<iss>/.well-known/openid-configuration`, then `jwks_uri`; RS256), `exp`
+and `nbf`, an issuer it trusts, an `aud` naming its audience, and a
+repository and workflow it allows (`403` else). A session is its id
+within its token's issuer and repository claims (`repository_id` on
+GitHub Actions, `project_id` on GitLab), so a tenant that learns another's
+session id cannot open or join it.
 
 ## What the relay knows
 
 Only what routing needs, and no longer:
 
-- A run is a SHA-256 of its id and its tokens' issuer and run claims: no
-  store or object name says whose run it is. A token is checked, never kept.
-- A worker's `info` is held until the orchestrator is told it joined; the
-  orchestrator's is dropped.
-- A participant's message is pushed or dropped, never held. A notice of
-  the relay's own waits in memory for the next socket; a relay restart
-  loses a participant one waited for, as if it went silent.
-- A closed run is gone at once; while open, each participant's role is
-  kept, never when it was last heard from. The Workers host keeps it with
-  the participant's socket and writes no storage: a run whose
-  orchestrator's socket is gone after a restart is over.
+- A session is a SHA-256 of its id and its tokens' issuer and claims: no
+  name says whose it is. A token is checked, never kept.
+- A peer's `info` is held until the host is told it joined.
+- A message is pushed or dropped, never held; a notice waits in memory.
+- A closed session is gone at once; while open, each participant's role
+  is kept. A relay restart loses a session whose host's socket it did not
+  keep.
 - It logs nothing. It still sees each message's size, time and recipient.
-
-## Bodies, end to end
-
-What `@vzn/vx-dte` puts in `info` and `body` is opaque to the relay. For
-anyone writing a worker or orchestrator of their own: each worker and the
-orchestrator run a [Noise](https://noiseprotocol.org/noise.html) handshake
-through the relay, prologue `vx-dte\0<run>`, the worker the initiator.
-
-- With the run's key (`VX_DTE_SECRET`, or the one `vx dte plan` or an
-  adapter made): `Noise_NNpsk0_25519_AESGCM_SHA256`, the psk the key's
-  SHA-256. A side with another key cannot complete.
-- Keyless on GitHub Actions: `Noise_NN_25519_AESGCM_SHA256`. The worker's
-  `join` carries an OIDC token whose audience is
-  `vx-dte:<base64url SHA-256 of "join\0<run>\0<message 1>">`; the
-  orchestrator's `hello` one for `"hello\0<run>\0<handshake hash>"`. Each
-  side checks the other's as a token of the same `repository_id`.
-
-| Who           | `info` / `body`                                         |
-| ------------- | ------------------------------------------------------- |
-| worker `join` | `info: { "noise": <message 1>, "token"? }`              |
-| orchestrator  | `{ "type": "hello", "noise": <message 2>, "token"? }`   |
-| orchestrator  | `{ "type": "refused", "reason" }`, plain, then `remove` |
-| either, then  | `{ "seal": ["<n>.<ciphertext>", …] }`                   |
-
-The orchestrator checks each worker the moment the relay says it joined,
-before or after its own join, and `remove`s one whose handshake fails.
-Message 1's payload is the worker's info (JSON), encrypted under the psk.
-After the handshake every body is Noise transport messages, base64, each
-at most 65535 bytes and naming its nonce `n` (Noise §11.4, since a relay
-may reorder); each is sealed with associated data `<first n>.<parts>`
-of its body, so no part opens in another body. A body whose first nonce
-was seen before is a replay and is dropped, one that does not open loses
-its sender. The plaintext is JSON padded with trailing
-spaces to its size class, a power of two from 256 bytes, then whole
-transport messages, so the relay learns no size within a class (after
-Tailscale's DERP).

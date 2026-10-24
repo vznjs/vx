@@ -167,7 +167,7 @@ export async function join(
   /** A function is asked again for a token about to expire: GitHub's last 5 minutes. */
   token: string | undefined | (() => Promise<string | undefined>),
 ): Promise<Participant> {
-  const base = `${relay.replace(/\/+$/, '')}/v1/runs/${encodeURIComponent(run)}/`
+  const base = `${relay.replace(/\/+$/, '')}/sessions/${encodeURIComponent(run)}/`
   const auth = bearer(token)
   // The orchestrator signs each request by a key the relay keeps from its join.
   const prover =
@@ -176,11 +176,15 @@ export async function join(
     const h = await auth()
     if (prover !== undefined) {
       const { pathname, search } = new URL(url)
-      h['vx-proof'] = await prover.proof(method, pathname + search, body)
+      h[PROOF_HEADER] = await prover.proof(method, pathname + search, body)
     }
     return h
   }
-  const asked = { role, info, ...(prover && { key: prover.key }) }
+  const asked = {
+    role: role === 'orchestrator' ? 'host' : 'peer',
+    info,
+    ...(prover && { key: prover.key }),
+  }
   let id = ''
   let heartbeatMs = 0
   const dial = async () =>
@@ -591,6 +595,23 @@ interface Socket {
   close(): Promise<void>
 }
 
+/** The relay protocol this client speaks (PROTOCOL.md § Versions). */
+const PROTOCOL = 'switchboard.v1'
+/** The proof header (PROTOCOL.md § The host's key). */
+const PROOF_HEADER = 'relay-proof'
+
+/**
+ * A relay message in vx-dte's words: the run's orchestrator is the
+ * session's host, and a worker the relay lost is `lost`.
+ */
+function inward(m: RelayMessage): RelayMessage {
+  if (m.from === 'host') return { from: 'orchestrator', body: m.body }
+  const body = m.body as { type?: unknown } | null
+  return m.from === 'relay' && body?.type === 'left'
+    ? { from: m.from, body: { ...body, type: 'lost' } }
+    : m
+}
+
 /** What a socket that joined says first (PROTOCOL.md `socket?join`). */
 interface Joined {
   id: string
@@ -610,7 +631,10 @@ async function connect(
   /** Unknown to one that joins, until its socket says. */
   heartbeatMs?: number,
 ): Promise<(Socket & { joined?: Joined }) | undefined> {
-  const ws = new WebSocket(`${base.replace(/^http/, 'ws')}socket?${query}`, { headers })
+  const ws = new WebSocket(`${base.replace(/^http/, 'ws')}socket?${query}`, {
+    headers,
+    protocols: [PROTOCOL],
+  } as unknown as string[])
   // An upgrade the relay holds is a dial that failed, as a request past two heartbeats.
   const wait = heartbeatMs === undefined ? REPLY_MS : replyMs(heartbeatMs)
   // Its handlers are set before it opens: a relay that refuses closes at
@@ -676,7 +700,7 @@ async function connect(
     frame(batch)
   }
   const frame = (batch: typeof sends, asked = false): void => {
-    const out = batch.map(({ to, body }) => ({ to, body }))
+    const out = batch.map(({ to, body }) => ({ to: to === 'orchestrator' ? 'host' : to, body }))
     if (!asked && batch.every((one) => one.quiet)) {
       ws.send(JSON.stringify({ sends: out }))
       for (const one of batch) one.resolve()
@@ -775,6 +799,7 @@ async function connect(
       return
     }
     if (m.messages !== undefined) {
+      m.messages = m.messages.map(inward)
       if (me.onMessages === undefined) inbox.push(...m.messages)
       else me.onMessages(m.messages)
       return

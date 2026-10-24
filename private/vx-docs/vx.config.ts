@@ -34,6 +34,7 @@ const IMPORTED = [
   'src/content/docs/patterns.md',
   'src/content/docs/schema.md',
   'src/content/docs/security.md',
+  'src/content/docs/switchboard.md',
   'src/content/docs/upstream-ledger.md',
   'src/content/docs/modules/**',
   'src/content/docs/design/**',
@@ -133,7 +134,8 @@ export default defineProject({
     // generated set by name — a hit restores exactly them and never wipes
     // a tracked page.
     import: {
-      description: 'generate src/content/docs from packages/vx/docs and the plugin READMEs',
+      description:
+        'generate src/content/docs from packages/vx/docs, the plugin READMEs and the relay protocol',
       dependsOn: ['install'],
       exec: {
         command: 'bun scripts/import-docs.ts',
@@ -144,6 +146,7 @@ export default defineProject({
               '../../packages/vx/docs/**',
               '../../packages/vx-*/README.md',
               '../../packages/vx-*/package.json',
+              '../../packages/vx-dte-relay/PROTOCOL.md',
             ],
             write: ['src/content/docs/**'],
             systemInfo: ['vfs.disk-space'],
@@ -156,6 +159,7 @@ export default defineProject({
           'packages/vx/docs/**',
           'packages/vx-*/README.md',
           'packages/vx-*/package.json',
+          'packages/vx-dte-relay/PROTOCOL.md',
         ],
       },
       cache: {
