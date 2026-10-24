@@ -373,6 +373,43 @@ describe('execute-task — what the outcome and the request carry', () => {
     }
   })
 
+  it('saves nothing under the key when the executor says the command changed an input', async () => {
+    // A distributed run's worker ran a task that rewrote its own input:
+    // this disk never showed it, and the entry built from the rewrite was
+    // the next run's hit (2026-10-24).
+    const b = await bench()
+    try {
+      const f = { root: '', out: [] as string[], err: [] as string[] }
+      const log: Logger = { ...capturingLogger(f), warn: (line) => f.err.push(line) }
+      const elsewhere = (changed: string[]) =>
+        ({
+          name: 'org/elsewhere',
+          remote: true,
+          execute: async () => ({
+            exitCode: 0,
+            durationMs: 1,
+            stdout: '',
+            stderr: '',
+            violations: [],
+            changed,
+          }),
+        }) as never
+      const cached = node(b, {
+        exec: { command: 'true' },
+        inputs: { files: ['package.json'] },
+        cache: { outputs: { files: [] } },
+      })
+      const run = (changed: string[]) =>
+        executeTask({ ...baseArgs(b, cached, log), executor: elsewhere(changed) })
+      const moved = await run(['proj/package.json'])
+      expect([moved.status, moved.saved]).toEqual(['success', undefined])
+      expect(f.err.join('')).toContain('`proj/package.json` changed after its key was taken')
+      expect((await run(['proj/other.txt'])).saved).toBe(true)
+    } finally {
+      await closeBench(b)
+    }
+  })
+
   it('reports the sandbox violation COUNT and lines on the outcome', async () => {
     // The rewrite of a zero exit to 1 is pinned next door, but what the
     // outcome then TELLS the reader was not: the count feeds the

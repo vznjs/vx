@@ -223,6 +223,13 @@ export interface ExecuteResult extends RunResult {
    */
   readonly outputs?: { kind: 'disk' } | { kind: 'deferred'; materialize: () => Promise<void> }
   /**
+   * Tracked files the command changed where it ran, workspace-relative
+   * POSIX: an executor that runs it elsewhere says so, as this disk shows
+   * none of it. One the key read withholds the save under the key, as an
+   * input changed here does.
+   */
+  readonly changed?: readonly string[]
+  /**
    * Executor-reported placement label — which machine ran the command
    * (a REAPI worker id, a pool member). Absent = this host. Rides
    * `TaskOutcome.where` into telemetry so a task can be attributed to
@@ -474,6 +481,12 @@ export function assertExecuteResult(
     } else if (outputs.kind !== 'disk')
       fail(`outputs.kind is ${String(outputs.kind)} (expected disk or deferred)`)
   }
+  const changed = r['changed']
+  if (
+    changed !== undefined &&
+    (!Array.isArray(changed) || changed.some((f) => typeof f !== 'string'))
+  )
+    fail('changed is not an array of paths')
 }
 
 /**

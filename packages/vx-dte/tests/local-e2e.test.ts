@@ -101,6 +101,12 @@ export default { name: 'p', tasks: {
   use: { dependsOn: ['gen'], exec: { command: 'cat gen/keep.txt gen/out.txt' } },
 } }
 `,
+    // A task that rewrites its own input, as a formatter does.
+    'f/in.txt': '1\n',
+    'f/vx.config.mjs': `export default { name: 'f', tasks: {
+  fmt: { exec: { command: 'echo x >> in.txt && mkdir -p out && cp in.txt out/f.txt' }, inputs: { files: ['in.txt'] }, cache: { outputs: { files: ['out/**'] } } },
+} }
+`,
     // Wide, then a two-task lull, then wide again.
     'c/vx.config.mjs': `const t = (dependsOn) => ({ exec: { command: 'sleep 0.3' }, dependsOn })
 export default { name: 'c', tasks: {
@@ -725,6 +731,18 @@ export default { name: 'ad', tasks: {
   const r = vx(['run', 'ad#dep'], 'additive')
   expect([r.exitCode, r.stdout.toString() + r.stderr.toString()]).toEqual([0, expect.any(String)])
   expect(await readFile(path.join(root, 'ad/dist/ind/b.txt'), 'utf8')).toBe('up\n')
+}, 60_000)
+
+// A worker saved a task that rewrote its own input under its key: this
+// machine never saw the rewrite, and the next run hit it (2026-10-24).
+it('saves no entry under its key for a task that changed its input on its worker', async () => {
+  const first = vx(['run', 'f#fmt'], 'fmt-1')
+  expect([first.exitCode, first.stdout.toString() + first.stderr.toString()]).toEqual([
+    0,
+    expect.stringContaining('`f/in.txt` changed after its key was taken'),
+  ])
+  const again = vx(['run', 'f#fmt'], 'fmt-2')
+  expect([again.exitCode, again.stdout.toString().includes('small#')]).toEqual([0, true])
 }, 60_000)
 
 it('says why a worker never joined, and fails the run when none can', async () => {

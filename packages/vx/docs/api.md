@@ -689,6 +689,7 @@ type · `src/exec/executor.ts`
 export interface ExecuteResult extends RunResult {
   readonly violations: readonly SandboxViolation[]
   readonly outputs?: { kind: 'disk' } | { kind: 'deferred'; materialize: () => Promise<void> }
+  readonly changed?: readonly string[]
   readonly where?: string
   readonly machine?: {
     readonly cores: number

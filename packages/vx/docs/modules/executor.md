@@ -133,13 +133,16 @@ cacheable }` — what `accepts()` sees. Placement happens ONCE per task,
   hit would have matched; held in memory for the attempt and never
   persisted (`env`/`runtime` values may be secrets — `entry_inputs` stores
   digests only).
-- `ExecuteResult extends RunResult { violations; outputs?; where? }` —
+- `ExecuteResult extends RunResult { violations; outputs?; changed?; where? }` —
   `outputs` is `{ kind: 'disk' }` or `{ kind: 'deferred'; materialize }`
   (outputs left remote, fetched only if a local consumer needs them).
   `spawnFailed: true` says the command never started (its 127 is the
   executor's, so no "command not found" line follows; A-41).
   `leftRunning: true` says a process the command left still held its
   output when vx stopped reading: core saves no entry for the task.
+  `changed` lists the tracked files (workspace-relative) the command
+  changed where an executor ran it elsewhere: one the key read withholds
+  core's save under the key, with the line an input changed here gets.
   Checked at the
   seam (`assertExecuteResult`): a plugin that resolves something else is
   refused with one line naming the executor, the task and the field

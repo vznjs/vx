@@ -1,3 +1,4 @@
+import path from 'node:path'
 import type { ExecConfig, TaskConfig, CacheConfig, InputStability } from '../config.js'
 import {
   ArtifactVanishedError,
@@ -1428,6 +1429,12 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
    */
   async function movedSinceKey(): Promise<string | null | undefined> {
     if (described!.hash !== hash) return null
+    // Changed where an executor ran it: this disk never shows it.
+    if (result.changed !== undefined && result.changed.length > 0) {
+      const changed = new Set(result.changed.map((f) => path.join(args.workspaceRoot, f)))
+      const there = keyedInputs(described!.facts).find((f) => changed.has(f.path))
+      if (there !== undefined) return there.path
+    }
     return (
       (await movedInput(
         keyedInputs(described!.facts),

@@ -285,6 +285,13 @@ describe('assertExecuteResult — what a plugin executor may resolve', () => {
     expect(refusal({ ...ok, outputs: null })).toBe(says('outputs is not an object'))
   })
 
+  it('a changed list that is not paths is refused', () => {
+    // Core matches each against the key's inputs to withhold a save.
+    expect(refusal({ ...ok, changed: 'a.txt' })).toBe(says('changed is not an array of paths'))
+    expect(refusal({ ...ok, changed: [1] })).toBe(says('changed is not an array of paths'))
+    expect(refusal({ ...ok, changed: ['a.txt'] })).toBe('ACCEPTED')
+  })
+
   it('CONTROL: the shapes a correct executor resolves all pass', () => {
     // `outputs` ABSENT is the ordinary case — every executor before deferral
     // existed resolved exactly this — so the guard must not require it.

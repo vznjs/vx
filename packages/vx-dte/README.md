@@ -411,7 +411,9 @@ use your own instead.
   so no later lookup ever hits it; so is one core would not save (a
   `--no-cache` or read-only run, a dependant of a failure under
   `--continue=always`, one that left a process running that may still
-  write its outputs).
+  write its outputs), and one that left a tracked file under its project
+  changed on its worker (a formatter's input), which this machine never
+  sees: core withholds its own save when the key read that file, and says so.
 - A worker whose tracked files differ from the orchestrator's (another
   tree) is refused.
 - A task whose key folds a file the run's commit lacks (untracked, or
