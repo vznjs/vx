@@ -269,9 +269,9 @@ git: <root> is not inside a git work tree`, as a plain run does, and a
 - `--affected=<ref>` uses the given git ref. A value that is empty or
   starts with `-` is refused before git sees it: the ref is an argument,
   never a shell command, and an option-like one (`--output=<path>`)
-  would be a real `git diff` option. A range (`HEAD~1..HEAD`,
+  would be a real `git diff` option. A range that does not end at HEAD (`HEAD~2..HEAD~1`,
   `main...feature`) is refused there too, naming the base to pass
-  alone — `ranges are not supported — pass the base alone ("HEAD~1")`
+  alone — `ranges are not supported — pass the base alone ("HEAD~2")`
   — because the other end is always the working tree; `<base>...HEAD`,
   Turbo's CI spelling, is read as `<base>`, since vx diffs from the merge
   base to a working tree that holds HEAD (D-117). Its two-dot `<base>..HEAD` diffs from
