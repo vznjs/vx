@@ -360,8 +360,9 @@ export interface MachineReport {
   memoryBytes: number
   done: number
   failed: number
+  /** From when it joined to when it left or the run ended: warm-up not counted. */
   onlineMs: number
-  /** Time with at least one task running. */
+  /** Time with at least one task on it, from its send to its result. */
   busyMs: number
   /** Cores in use at once, at the most and on average over its time online. */
   cpuPeak: number
@@ -375,6 +376,8 @@ export interface MachineReport {
   bookedAvg?: number
   /** From when the executor asked for it to when it joined, for one it started. */
   warmUpMs?: number
+  /** When it was asked for (else when it joined), from the executor's start. */
+  startMs?: number
 }
 
 /**

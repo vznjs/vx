@@ -251,8 +251,8 @@ function renderWorkers(
   const lines = [
     '### Workers',
     '',
-    '| Worker | Status | Warm-up | Tasks | Online | Idle | Booked cores, avg | Used cores, avg | Peak RAM | Used of all cores |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| Worker | Status | Started at | Total | Warm-up | Online after warm-up | Idle while online | Tasks | Booked cores, avg | Used cores, avg | Peak RAM | Used of all cores |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   ]
   let coreMs = 0
   let cpuMs = 0
@@ -265,10 +265,12 @@ function renderWorkers(
       `| ${[
         escapeMarkdownCell(escapeInline(m.name)),
         escapeMarkdownCell(m.status),
+        m.startMs === undefined ? '' : fmtMs(m.startMs),
+        fmtMs((m.warmUpMs ?? 0) + m.onlineMs),
         m.warmUpMs === undefined ? '' : fmtMs(m.warmUpMs),
-        tasksCell(m.done, m.failed),
         fmtMs(m.onlineMs),
         fmtMs(Math.max(0, m.onlineMs - m.busyMs)),
+        tasksCell(m.done, m.failed),
         m.bookedAvg === undefined ? '' : `${m.bookedAvg.toFixed(1)} of ${m.cores}`,
         `${m.cpuAvg.toFixed(1)} of ${m.cores}`,
         `${gb(m.memoryPeakBytes)} of ${gb(m.memoryBytes)} GB`,
@@ -286,7 +288,7 @@ function renderWorkers(
   if (here.length > 0) {
     const failed = here.filter((t) => t.status === 'failed').length
     lines.push(
-      `| this machine | ok |  | ${tasksCell(here.length - failed, failed)} |  |  |  |  |  |  |`,
+      `| this machine | ok |  |  |  |  |  | ${tasksCell(here.length - failed, failed)} |  |  |  |  |`,
       '',
       `${ran.length} executed: ${ran.length - here.length} on workers, ${here.length} on this machine: ${here.map((t) => escapeInline(t.taskId)).join(', ')}.`,
     )
