@@ -37,15 +37,31 @@ const SATURATED = 0.9
 const keyOf = (sha: string): string => `timings\0${sha}`
 
 /**
- * `sha`'s blob for one graph: each CI job of a commit writes the tasks of
- * its own graph, and the first job's plain blob wins, so a job whose tasks
- * another job's blob lacks (the dte job's shards) read none (2026-10-22).
+ * Blobs one commit's runs of one graph keep: a rerun, a push and its PR,
+ * two workflows (M, 2026-10-24). A run writes the lowest free one, so a
+ * later slot is a later run; an entry is written once.
  */
-const graphKeyOf = (sha: string, ids: readonly string[]): string =>
-  `timings\0${sha}\0${Bun.hash.xxHash3([...ids].sort().join('\0')).toString(16)}`
+const SLOTS = 8
 
-/** The keys `sha`'s blob may be under, the run's own graph's first. */
-const keysOf = (sha: string, ids: readonly string[]): string[] => [graphKeyOf(sha, ids), keyOf(sha)]
+/**
+ * Each CI job of a commit writes the tasks of its own graph, and the first
+ * job's plain blob wins, so a job whose tasks another job's blob lacks (the
+ * dte job's shards) read none (2026-10-22).
+ */
+const graphOf = (ids: readonly string[]): string =>
+  Bun.hash.xxHash3([...ids].sort().join('\0')).toString(16)
+
+const slotKeyOf = (sha: string, graph: string, slot: number): string =>
+  `timings\0${sha}\0${graph}${slot === 0 ? '' : `\0${slot}`}`
+
+/** The keys `sha`'s blob may be under, the run's own graph's newest slot first. */
+const keysOf = (sha: string, ids: readonly string[]): string[] => {
+  const graph = graphOf(ids)
+  const keys: string[] = []
+  for (let slot = SLOTS - 1; slot >= 0; slot--) keys.push(slotKeyOf(sha, graph, slot))
+  keys.push(keyOf(sha))
+  return keys
+}
 
 /**
  * A blob's timings, the entries a run's graph has: `{ version: 4, tasks:
@@ -77,6 +93,10 @@ function parseBlob(
   timings: Map<string, number>
   needs: Map<string, TaskResources>
   defs: Map<string, string>
+  /** The run's own times, which a later write folds in when this blob was skipped. */
+  ran: Map<string, number>
+  /** The runs it holds (`sha:graph:slot`); absent, its own and every older one. */
+  has: Set<string> | null
 } | null {
   if (bytes.byteLength > MAX_BLOB_BYTES) return null
   let parsed: unknown
@@ -136,8 +156,21 @@ function parseBlob(
   if (typeof rawDefs === 'object' && rawDefs !== null && !Array.isArray(rawDefs))
     for (const [id, d] of Object.entries(rawDefs))
       if (out.has(id) && typeof d === 'string' && d.length <= MAX_DEF) defs.set(id, d)
-  return { timings: out, needs, defs }
+  const ran = new Map<string, number>()
+  const rawRan = (parsed as { ran?: unknown }).ran
+  if (typeof rawRan === 'object' && rawRan !== null && !Array.isArray(rawRan))
+    for (const [id, ms] of Object.entries(rawRan))
+      if (out.has(id) && within(ms, MAX_MS)) ran.set(id, ms)
+  const rawHas = (parsed as { has?: unknown }).has
+  const has =
+    Array.isArray(rawHas) && rawHas.length <= WALK * SLOTS
+      ? new Set(rawHas.filter((id): id is string => typeof id === 'string' && RUN_ID.test(id)))
+      : null
+  return { timings: out, needs, defs, ran, has }
 }
+
+/** A run's blob: `sha:graph:slot`. */
+const RUN_ID = /^[0-9a-f]{40,64}:[0-9a-f]{1,16}:[0-9]$/
 
 const within = (v: unknown, max: number): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max
@@ -199,26 +232,42 @@ async function mergeBase(root: string, defaultBranch: string): Promise<string | 
 /**
  * The newest blob along `shas`, the default branch's lineage, so its entries
  * are the base branch's (`scoped` false): one batch probe, one fetch;
- * sequential fetches with no batch probe.
+ * sequential fetches with no batch probe. `holds` says whether a key is
+ * stored: the probe's answer, else one `has`.
  */
+async function newestAlong(
+  cache: PluginCache,
+  shas: readonly string[],
+  ids: readonly string[],
+): Promise<{
+  /** Its index in `shas`, and its slot (-1 the plain blob). */
+  at: number
+  slot: number
+  bytes: Uint8Array | null
+  holds: (key: string) => Promise<boolean>
+}> {
+  const present = await cache.hasMany(
+    shas.flatMap((sha) => keysOf(sha, ids)),
+    false,
+  )
+  const holds = async (key: string): Promise<boolean> =>
+    present !== null ? present.has(key) : (await cache.has(key, false)) === true
+  for (const [at, sha] of shas.entries()) {
+    for (const [k, key] of keysOf(sha, ids).entries()) {
+      if (present !== null && !present.has(key)) continue
+      const bytes = await cache.get(key, false)
+      if (bytes !== null || present !== null) return { at, slot: SLOTS - 1 - k, bytes, holds }
+    }
+  }
+  return { at: -1, slot: -1, bytes: null, holds }
+}
+
 async function newestBlob(
   cache: PluginCache,
   shas: readonly string[],
   ids: readonly string[],
 ): Promise<Uint8Array | null> {
-  const present = await cache.hasMany(
-    shas.flatMap((sha) => keysOf(sha, ids)),
-    false,
-  )
-  for (const sha of shas) {
-    for (const key of keysOf(sha, ids)) {
-      if (present !== null && !present.has(key)) continue
-      const got = await cache.get(key, false)
-      if (got !== null) return got
-      if (present !== null) return null
-    }
-  }
-  return null
+  return (await newestAlong(cache, shas, ids)).bytes
 }
 
 export interface ImportArgs {
@@ -308,8 +357,13 @@ async function importParent(args: ImportArgs, late: () => boolean): Promise<bool
   if (parent === undefined || args.provider.hasImported(parent)) return false
   const tried = `${args.triedFile}-branch`
   if ((await readTried(tried)) === parent) return false
+  const keys = keysOf(parent, args.ids)
+  const present = await args.cache.hasMany(keys)
   let blob: Uint8Array | null = null
-  for (const key of keysOf(parent, args.ids)) if ((blob = await args.cache.get(key)) !== null) break
+  for (const key of keys) {
+    if (present !== null && !present.has(key)) continue
+    if ((blob = await args.cache.get(key)) !== null || present !== null) break
+  }
   if (late()) return false
   // quiet: a local marker; unwritten, the next run asks again
   await Bun.write(tried, parent).catch(() => {})
@@ -343,6 +397,8 @@ export interface ExportArgs {
   readonly ids: readonly string[]
   /** The run's tasks' definitions (`taskDefinitions`), written beside their timings. */
   readonly defs: ReadonlyMap<string, string>
+  /** The tasks the run executed: their times are its own, which a later write may fold in. */
+  readonly ran: ReadonlySet<string>
 }
 
 /**
@@ -350,6 +406,13 @@ export interface ExportArgs {
  * with each graph task's forecast after the run over it, so whichever of a
  * commit's blobs a run reads holds every task, and a job whose task set
  * changed still finds its tasks (owner, 2026-10-22). Never replaces a blob.
+ *
+ * Two main runs in parallel race: a child that writes before its parent
+ * carries the grandparent's blob, and the parent's lands where no reader
+ * looks (M, 2026-10-24). So a blob names the commits whose runs it holds
+ * (`has`) and keeps its run's own times (`ran`), and a write folds in each
+ * blob of its lineage the newest lacks. With no race the newest holds
+ * every older one and nothing more is fetched.
  */
 export async function exportTimings(args: ExportArgs): Promise<void> {
   const head = await git(args.root, ['rev-parse', 'HEAD'])
@@ -357,12 +420,58 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
   const p50s = await args.provider.p50sFor(args.ids)
   if (p50s.size === 0) return
   const measured = await args.provider.resourcesFor(args.ids)
-  const shas = await lineage(args.root, head[0])
-  const prior = shas === null ? null : await newestBlob(args.cache, shas, args.ids)
-  const carried = prior === null ? null : parseBlob(prior, null)
+  const shas = (await lineage(args.root, head[0])) ?? [head[0]]
+  const newest = await newestAlong(args.cache, shas, args.ids)
+  const carried = newest.bytes === null ? null : parseBlob(newest.bytes, null)
   const timings = new Map(carried?.timings)
   const resources = new Map(carried?.needs)
   const defs = new Map(carried?.defs)
+  const graph = graphOf(args.ids)
+  // A blob that names no runs holds its own commit's earlier slots and
+  // every older commit's.
+  const covered = (i: number, slot: number): boolean =>
+    carried === null
+      ? false
+      : carried.has !== null
+        ? carried.has.has(`${shas[i]}:${graph}:${slot}`)
+        : i > newest.at || (i === newest.at && slot <= newest.slot)
+  // HEAD's own slots are the run's scope's (a branch's reruns write
+  // there), probed last: the later the probe, the fewer runs of HEAD that
+  // write between it and this run's put pick the same slot.
+  let headPresent: Promise<Set<string> | null> | undefined
+  const holds = async (i: number, key: string): Promise<boolean> => {
+    if (i > 0) return newest.holds(key)
+    const present = await (headPresent ??= args.cache.hasMany(
+      Array.from({ length: SLOTS }, (_, slot) => slotKeyOf(head[0]!, graph, slot)),
+    ))
+    return present !== null ? present.has(key) : (await args.cache.has(key)) === true
+  }
+  const has: string[] = []
+  let free: number | null = null
+  // Oldest first, so a newer run's time weighs more.
+  for (let i = shas.length - 1; i >= 0; i--) {
+    const sha = shas[i]!
+    for (let slot = 0; slot < SLOTS; slot++) {
+      const key = slotKeyOf(sha, graph, slot)
+      if (!(await holds(i, key))) {
+        if (i === 0) free = slot
+        break
+      }
+      has.push(`${sha}:${graph}:${slot}`)
+      if (covered(i, slot)) continue
+      const bytes = await args.cache.get(key, i > 0 ? false : undefined)
+      const missed = bytes === null ? null : parseBlob(bytes, null)
+      if (missed === null) continue
+      for (const [id, ms] of missed.ran) {
+        const def = args.defs.get(id) ?? defs.get(id)
+        if (missed.defs.get(id) !== def) continue
+        const was = timings.get(id)
+        timings.set(id, was === undefined ? ms : Math.round((was + ms) / 2))
+        const r = missed.needs.get(id)
+        if (r !== undefined) resources.set(id, blend(resources.get(id), r))
+      }
+    }
+  }
   for (const [id, ms] of p50s) {
     const def = args.defs.get(id)
     const same = defs.get(id) === def
@@ -378,7 +487,10 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
     const r = measured.get(id)
     if (r?.maxCpuParallelism !== undefined) resources.set(id, blend(resources.get(id), r))
   }
-  let bytes = encode(timings, resources, defs)
+  // Eight runs of one commit and graph already wrote: its plain blob stands.
+  if (free !== null) has.push(`${head[0]}:${graph}:${free}`)
+  const ran = new Map([...p50s].filter(([id]) => args.ran.has(id)))
+  let bytes = encode(timings, resources, defs, ran, has)
   // Tasks a repo dropped stay in the carried blob; past the cap, the run's own.
   if (bytes.byteLength > MAX_BLOB_BYTES) {
     const own = (id: string): boolean => p50s.has(id)
@@ -386,9 +498,12 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
       new Map([...timings].filter(([id]) => own(id))),
       new Map([...resources].filter(([id]) => own(id))),
       defs,
+      ran,
+      has,
     )
   }
-  for (const key of keysOf(head[0], args.ids)) await args.cache.put(key, bytes)
+  if (free !== null) await args.cache.put(slotKeyOf(head[0], graph, free), bytes)
+  await args.cache.put(keyOf(head[0]), bytes)
 }
 
 /**
@@ -411,11 +526,13 @@ function blend(carried: TaskResources | undefined, run: TaskResources): TaskReso
   }
 }
 
-/** `{ version: 4, tasks, needs?, defs? }`, each map by task id. */
+/** `{ version: 4, tasks, needs?, defs?, ran, has }`, each map by task id. */
 function encode(
   timings: ReadonlyMap<string, number>,
   resources: ReadonlyMap<string, TaskResources>,
   defsById: ReadonlyMap<string, string>,
+  ranById: ReadonlyMap<string, number>,
+  has: readonly string[],
 ): Uint8Array {
   const tasks: Record<string, number> = {}
   const needs: Record<string, Record<string, number>> = {}
@@ -438,6 +555,10 @@ function encode(
     tasks,
     ...(Object.keys(needs).length === 0 ? {} : { needs }),
     ...(Object.keys(defs).length === 0 ? {} : { defs }),
+    ran: Object.fromEntries(
+      [...ranById].filter(([id]) => id in tasks).map(([id, ms]) => [id, Math.round(ms)]),
+    ),
+    has,
   }
   return new TextEncoder().encode(JSON.stringify(blob))
 }

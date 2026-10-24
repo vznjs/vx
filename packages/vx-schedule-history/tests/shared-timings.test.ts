@@ -68,7 +68,7 @@ interface Spy extends PluginCache {
   store: Map<string, Uint8Array>
   /** The run's scope's entries: a scoped read's, and a put's when `scoped`. */
   scoped: Map<string, Uint8Array>
-  /** A scoped read is `get!`. */
+  /** A scoped read is `get!`, a scoped probe `hasMany!`. */
   calls: string[]
 }
 
@@ -77,6 +77,9 @@ function spyCache(opts: { hang?: boolean; scoped?: boolean } = {}): Spy {
   const scoped = new Map<string, Uint8Array>()
   const calls: string[] = []
   const never = new Promise<never>(() => {})
+  // An unscoped run's scope is the default branch.
+  const inScope = (k: string): Uint8Array | undefined =>
+    scoped.get(k) ?? (opts.scoped ? undefined : store.get(k))
   return {
     store,
     scoped,
@@ -84,21 +87,21 @@ function spyCache(opts: { hang?: boolean; scoped?: boolean } = {}): Spy {
     async get(k, fromScope = true) {
       calls.push(fromScope ? 'get!' : 'get')
       if (opts.hang) return never
-      return (fromScope ? scoped : store).get(k) ?? null
+      return (fromScope ? inScope(k) : store.get(k)) ?? null
     },
     async put(k, b) {
       calls.push('put')
       const into = opts.scoped ? scoped : store
       if (!into.has(k)) into.set(k, b)
     },
-    async has(k) {
+    async has(k, fromScope = true) {
       calls.push('has')
-      return store.has(k)
+      return (fromScope ? inScope(k) : store.get(k)) !== undefined
     },
-    async hasMany(ks) {
-      calls.push('hasMany')
+    async hasMany(ks, fromScope = true) {
+      calls.push(fromScope ? 'hasMany!' : 'hasMany')
       if (opts.hang) return never
-      return new Set(ks.filter((k) => store.has(k)))
+      return new Set(ks.filter((k) => (fromScope ? inScope(k) : store.get(k)) !== undefined))
     },
     async getRun() {
       return null
@@ -112,10 +115,14 @@ const defsOf = (ids: Iterable<string>): Record<string, string> =>
   Object.fromEntries([...ids].map((id) => [id, defOf(id)]))
 const blob = (tasks: Record<string, unknown>, version: unknown = 2): Uint8Array =>
   new TextEncoder().encode(JSON.stringify({ version, tasks, defs: defsOf(Object.keys(tasks)) }))
-/** A written blob, its `defs` aside: each test task's is `defOf`. */
+/** A written blob, its `defs` and `has` aside: each test task's is `defOf`. */
 const read = (b: Uint8Array | undefined): unknown => {
   if (b === undefined) return undefined
-  const { defs: _, ...rest } = JSON.parse(new TextDecoder().decode(b)) as Record<string, unknown>
+  const {
+    defs: _,
+    has: __,
+    ...rest
+  } = JSON.parse(new TextDecoder().decode(b)) as Record<string, unknown>
   return rest
 }
 const defsIn = (b: Uint8Array | undefined): unknown =>
@@ -152,9 +159,12 @@ async function runPlugin(
     refined?: ReadonlyMap<string, number>[]
     /** The run ends before a promised refine lands; by default it outlasts it. */
     short?: boolean
+    /** The tasks it executed; by default every one of `ids`. */
+    ran?: string[]
   },
 ): Promise<ReadonlyMap<string, number> | undefined> {
   const plugin = scheduleHistoryPlugin({ resources: false })
+  const completed: ((...a: unknown[]) => void)[] = []
   const base = {
     workspaceRoot: root,
     cacheDir: path.join(root, '.vx', 'cache'),
@@ -165,7 +175,9 @@ async function runPlugin(
     cache: shared,
     ci: opts.ci,
     branch: opts.branch,
-    on: () => {},
+    on: (event: string, fn: (...a: unknown[]) => void) => {
+      if (event === 'onTaskComplete') completed.push(fn)
+    },
     secret: () => Promise.reject(new Error('no secrets here')),
     forgetSecret: async () => {},
   })
@@ -189,6 +201,8 @@ async function runPlugin(
     refining: async () => {},
   })
   opts.during?.()
+  for (const id of opts.ran ?? opts.ids)
+    for (const fn of completed) fn(node(id), { status: 'success' })
   if (opts.short !== true) await Promise.all(refines)
   await plugin.teardown!()
   return weights
@@ -207,11 +221,13 @@ describe('shared timings', () => {
       branch: 'main',
       ids: ['p#x', 'p#y'],
       during: () => timed('main', 'p#y', 300),
+      ran: ['p#y'],
     })
     expect(read(shared.store.get(key(b)))).toEqual({
       version: 4,
       // y's run averaged with its carried 50: one run's time is one sample.
       tasks: { 'p#gone': 5, 'p#x': 100, 'p#y': 175 },
+      ran: { 'p#y': 300 },
     })
     // Each timing says which task it is of, a carried one's carried.
     expect(defsIn(shared.store.get(key(b)))).toEqual(defsOf(['p#gone', 'p#x', 'p#y']))
@@ -232,7 +248,11 @@ describe('shared timings', () => {
     const shared = spyCache({ scoped: true })
     timed('feature', 'p#x', 10)
     await runPlugin(shared, { ci: true, branch: 'feature', ids: ['p#x'] })
-    expect(read(shared.scoped.get(key(head)))).toEqual({ version: 4, tasks: { 'p#x': 10 } })
+    expect(read(shared.scoped.get(key(head)))).toEqual({
+      version: 4,
+      tasks: { 'p#x': 10 },
+      ran: { 'p#x': 10 },
+    })
     expect(shared.store.size).toBe(0)
   })
 
@@ -259,8 +279,8 @@ describe('shared timings', () => {
       'p#x': 7,
       'p#y': 50,
     })
-    // The parent's blob for this graph first, then its plain one.
-    expect(shared.calls).toEqual(['hasMany', 'get', 'get!', 'get!'])
+    // One probe of the parent's blobs, then the one held.
+    expect(shared.calls).toEqual(['hasMany', 'get', 'hasMany!', 'get!'])
   })
 
   // Every CI job of a commit writes its own graph's tasks, and the first
@@ -273,7 +293,11 @@ describe('shared timings', () => {
     timed('main', 'p#shard', 100)
     await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#bench'] })
     await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#shard'] })
-    expect(read(shared.store.get(key(a)))).toEqual({ version: 4, tasks: { 'p#bench': 5 } })
+    expect(read(shared.store.get(key(a)))).toEqual({
+      version: 4,
+      tasks: { 'p#bench': 5 },
+      ran: { 'p#bench': 5 },
+    })
     git('checkout', '-q', '-b', 'feature')
     commit()
     const provider = new LocalHistoryProvider(
@@ -292,6 +316,93 @@ describe('shared timings', () => {
       branch: false,
     })
     expect(Object.fromEntries(await provider.p50sFor(['p#shard']))).toEqual({ 'p#shard': 100 })
+  })
+
+  // M, 2026-10-24: two main runs in parallel. The child's run wrote first,
+  // over the grandparent's blob; the parent's landed after it, where no
+  // reader of the child looks, and its time was lost.
+  it("a parent's run that writes after its child's is folded in by the next commit", async () => {
+    const a = commit()
+    const b = commit()
+    const c = commit()
+    const d = commit()
+    const shared = spyCache()
+    shared.store.set(key(a), blob({ 'p#x': 100 }))
+    git('checkout', '-q', c)
+    await job(shared, { 'p#x': 300 })
+    git('checkout', '-q', b)
+    await job(shared, { 'p#x': 500 })
+    git('checkout', '-q', d)
+    await job(shared, { 'p#x': 100 })
+    // c's 200 with b's 500 folded in, then d's 100; without b's, 150.
+    expect((read(shared.store.get(key(d))) as { tasks: unknown }).tasks).toEqual({ 'p#x': 225 })
+    // And the next commit has nothing left to fold.
+    const e = commit()
+    shared.calls.length = 0
+    await job(shared, { 'p#x': 225 })
+    expect((read(shared.store.get(key(e))) as { tasks: unknown }).tasks).toEqual({ 'p#x': 225 })
+    expect(shared.calls.filter((c) => c === 'get').length).toBe(1)
+  })
+
+  // M, 2026-10-24: a commit may have concurrent CI runs (a rerun, a push
+  // and its PR, two workflows). Both read the parent's blob before either
+  // wrote; the second's put found the key taken, and its time was lost.
+  it('two runs of one commit each keep their time', async () => {
+    const a = commit()
+    const b = commit()
+    const shared = spyCache()
+    shared.store.set(key(a), blob({ 'p#x': 100 }))
+    // Each run's probe of its own commit waits until both have read the parent's.
+    const probe = shared.hasMany.bind(shared)
+    const waiting: (() => void)[] = []
+    let first: (() => void) | undefined
+    const firstPut = new Promise<void>((resolve) => (first = resolve))
+    shared.hasMany = async (ks, scoped) => {
+      if (scoped !== false) {
+        const turn = waiting.length
+        await new Promise<void>((resolve) => {
+          waiting.push(resolve)
+          if (waiting.length === 2) waiting[0]!()
+        })
+        if (turn === 1) await firstPut
+      }
+      return probe(ks, scoped)
+    }
+    const put = shared.put.bind(shared)
+    shared.put = async (k, bytes) => {
+      await put(k, bytes)
+      if (k === key(b)) {
+        first?.()
+        waiting[1]?.()
+      }
+    }
+    const provider = (ms: number) =>
+      ({
+        p50sFor: async () => new Map([['p#x', ms]]),
+        resourcesFor: async () => new Map(),
+      }) as unknown as LocalHistoryProvider
+    const run = (ms: number) =>
+      exportTimings({
+        root,
+        cache: shared,
+        provider: provider(ms),
+        ids: ['p#x'],
+        ran: new Set(['p#x']),
+        defs: new Map(Object.entries(defsOf(['p#x']))),
+      })
+    await Promise.all([run(300), run(500)])
+    shared.hasMany = probe
+    shared.put = put
+    // Two blobs of b: the second holds the first's 300 and its own 500.
+    const blobs = [...shared.store].filter(([k]) => k.startsWith(`timings\0${b}\0`))
+    expect(blobs.map(([, v]) => (read(v) as { tasks: unknown }).tasks)).toEqual([
+      { 'p#x': 200 },
+      { 'p#x': 350 },
+    ])
+    // The next commit reads the second, which needs no folding.
+    const c = commit()
+    await job(shared, { 'p#x': 100 })
+    expect((read(shared.store.get(key(c))) as { tasks: unknown }).tasks).toEqual({ 'p#x': 225 })
   })
 
   /** One CI job on main: its own machine, which timed `times`. */
@@ -496,6 +607,7 @@ describe('shared timings', () => {
         cache: shared,
         provider,
         ids: ['p#new'],
+        ran: new Set(['p#new']),
         defs: new Map(Object.entries(defsOf(['p#new']))),
       })
       expect((read(shared.store.get(key(b))) as { tasks: unknown }).tasks).toEqual({
@@ -825,6 +937,7 @@ describe('shared timings', () => {
       cache: shared,
       provider,
       ids: ['p#cold', 'p#new'],
+      ran: new Set(['p#cold', 'p#new']),
       defs: new Map(Object.entries(defsOf(['p#cold', 'p#new']))),
     })
     expect((read(shared.store.get(key(b))) as { tasks: unknown }).tasks).toEqual({
@@ -865,6 +978,7 @@ describe('shared timings', () => {
       cache: shared,
       provider,
       ids: ['p#build', 'p#big'],
+      ran: new Set(['p#build', 'p#big']),
       defs: new Map(Object.entries(defsOf(['p#build', 'p#big']))),
     })
     expect((read(shared.store.get(key(b))) as { needs: unknown }).needs).toEqual({
@@ -916,7 +1030,11 @@ describe('shared timings', () => {
       expect([...(await provider.p50sFor(['p#x']))]).toEqual([['p#x', 100]])
       expect((await provider.resourcesFor(['p#x'])).get('p#x')?.maxCpuParallelism).toBeUndefined()
       await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#x'] })
-      expect(read(shared.store.get(key(b)))).toEqual({ version: 4, tasks: { 'p#x': 100 } })
+      expect(read(shared.store.get(key(b)))).toEqual({
+        version: 4,
+        tasks: { 'p#x': 100 },
+        ran: { 'p#x': 100 },
+      })
     },
   )
 
