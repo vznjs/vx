@@ -1,0 +1,25 @@
+# Probe (dropped before merge): Spotlight on vs off on macos-latest.
+name: probe-spotlight
+on: pull_request
+permissions: { contents: read }
+jobs:
+  mac:
+    name: spotlight-${{ matrix.arm }}-${{ matrix.rep }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix: { arm: ['on', 'off'], rep: [1, 2] }
+    env: { ARM: '${{ matrix.arm }}' }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with: { bun-version: 1.4.4 }
+      - run: bun install --frozen-lockfile
+      - if: matrix.arm == 'off'
+        run: |
+          sudo mdutil -a -i off || true
+          sudo mdutil -a -d || true
+          sudo killall -9 mds_stores mdworker_shared mdworker 2>/dev/null || true
+          mdutil -a -s || true
+      - run: bun private/probe/spotlight.ts
+      - run: bun private/probe/spotlight.ts
