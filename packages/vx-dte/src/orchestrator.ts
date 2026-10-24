@@ -494,6 +494,7 @@ export class Orchestrator {
   private heard(a: Worker, load: Load | undefined): void {
     if (load === undefined) return
     a.load = { cpu: Number(load.cpu) || 0, memory: Number(load.memory) || 0, at: performance.now() }
+    this.trace.load(a.label, a.load.cpu, a.load.at)
   }
 
   /** Whether a worker bigger than `above` is starting: a task that filled that size waits for it. */

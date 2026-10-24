@@ -44,6 +44,9 @@ export class Trace {
   private readonly slices: Slice[] = []
   private readonly marks: Mark[] = []
   private readonly uses: Use[] = []
+  /** Each worker's machine: cores busy, as it reported, task or not. */
+  private readonly loads: { readonly track: string; readonly at: number; readonly cpu: number }[] =
+    []
   /** Each worker's time online: idle is what its tasks leave of it. */
   private readonly online = new Map<string, { from: number; to?: number }>()
   /** `performance.now()` here when `Date.now()` was `wall`: a worker's own clock to ours. */
@@ -59,6 +62,16 @@ export class Trace {
 
   use(u: Use): void {
     if (u.to > u.from) this.uses.push(u)
+  }
+
+  /**
+   * Worker `track`'s machine had `cpu` cores busy at `at`, its tasks' or
+   * not: a Mac whose tasks used 0.65 cores read 2.3 busy and queued a
+   * 1.67-core build 65 s (main b141dd5, 2026-10-24).
+   */
+  load(track: string, cpu: number, at = performance.now()): void {
+    const last = this.loads.findLast((l) => l.track === track)
+    if (last?.cpu !== cpu) this.loads.push({ track, at, cpu })
   }
 
   /**
@@ -249,6 +262,18 @@ export class Trace {
           args: { booked: round(booked), used: round(used) },
         })
       }
+    }
+    for (const l of this.loads) {
+      const id = pid.get(l.track)
+      if (id !== undefined)
+        events.push({
+          ph: 'C',
+          name: 'machine',
+          pid: id,
+          tid: 0,
+          ts: us(l.at),
+          args: { busy: round(l.cpu) },
+        })
     }
     return events
   }
