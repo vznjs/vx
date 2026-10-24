@@ -609,10 +609,10 @@
 
 /* ─────────────────────────  Motion in posts  ───────────────────────── */
 
-/* A post's terminal prints line by line and its bars grow as each one
-   scrolls up past the bottom quarter of the screen (owner, 2026-10-24:
-   "Do a lot of graphs, viz, animations"). Each element runs on its own
-   view timeline, so what is already on screen at load shows whole. CSS
+/* A post's terminal prints line by line as it scrolls up past the bottom
+   quarter of the screen (owner, 2026-10-24: "Do a lot of graphs, viz,
+   animations"). Bars render at full size: no grow-in (owner, 2026-10-24).
+   What is already on screen at load shows whole. CSS
    only: a browser without view timelines, or a reader who asks for less
    motion, sees everything at once. */
 @supports (animation-timeline: view()) {
@@ -621,11 +621,6 @@
       from {
         opacity: 0;
         transform: translateX(-0.6em);
-      }
-    }
-    @keyframes vx-bar-grow {
-      from {
-        width: 0;
       }
     }
     /* The lines sit in a scrolling <pre>, so they read the figure's
@@ -645,13 +640,6 @@
         animation-range: cover calc(4% + min(sibling-index(), 16) * 2.2%) cover
           calc(9% + min(sibling-index(), 16) * 2.2%);
       }
-    }
-    :root:has(.vx-post-hero) .vx-bar-fill {
-      animation-name: vx-bar-grow;
-      animation-fill-mode: both;
-      animation-timing-function: ease-out;
-      animation-timeline: view();
-      animation-range: cover 10% cover 35%;
     }
   }
 }
