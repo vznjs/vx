@@ -63,6 +63,9 @@ flowchart LR
 - The relay reads nothing it carries: each worker and the run talk over
   an encrypted session. On GitHub Actions each side proves itself with the
   job's OIDC token, so no secret is stored.
+- Workers check out the run's commit, uncommitted changes included. A
+  task whose inputs hold an untracked file fails, naming it: no worker has
+  it.
 - Workers start at the first task the cache does not answer, so a warm
   run starts none. An idle worker the rest of the run cannot keep busy
   leaves.
