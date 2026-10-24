@@ -42,13 +42,11 @@ bunx wrangler deploy
 Set `ALLOW` in `wrangler.jsonc`'s `vars` first.
 
 `src/worker.ts` is the same relay as the one on Bun. Each run is one
-Durable Object, so its mailboxes live in one place. Participants hold
+Durable Object, so its sockets meet in one place. Participants hold
 websockets, which the object hibernates between messages: the run is kept
-in the object's storage, the runtime answers heartbeats without waking
-it, and an alarm finds the participants that went silent. Since the
-runtime's answer proves only the edge, a client that heard nothing for a heartbeat
-sends an empty frame the object itself answers, on the socket it then
-pushes to. Issuers' keys
+in the object's storage. It sets no alarm and counts no heartbeat: a
+socket's close loses its participant, and a peer quiet on a socket that
+never closed is its peers' to lose. Issuers' keys
 are read once per isolate and held ten minutes in the data center's
 cache, so a run's object does not fetch them again; a token naming a key
 they lack is checked against a fresh read.
@@ -102,15 +100,15 @@ The same relay as a `fetch` handler, to mount in a server of your own
 - `createRelay(options?: RelayOptions): Relay`. `RelayOptions` is
   `{ verify?, heartbeatMs? }`: `verify` checks a request's bearer token
   (none admits every request) and gets the request too, `heartbeatMs` (default 5000) is how often
-  a participant must be heard from. A `Relay` is `{ fetch(req), close() }`,
+  participants hear from each other, said in each join's answer. A `Relay` is `{ fetch(req), open() }`,
   plus the hooks a host of websockets drives (`src/worker.ts` is their
   user): the options `store`, a `RelayStore` (`{ put, delete, list }`,
   a Durable Object's `storage.kv`) that keeps runs and participants, never
   a message, across a restart (PROTOCOL.md § What the relay knows),
-  `upgrade`, which answers a `socket` request, and `timer: false`, so the
-  host calls `sweep()` itself; and the methods `attach` and `detach`,
+  and `upgrade`, which answers a `socket` request; and the methods
+  `attach` and `detach` (its socket closed: the participant is gone),
   which hand the relay a participant's `RelaySocket` (`{ send, close }`),
-  `frame`, `seen` and `sweep`. A host closes a socket `attach` refuses
+  and `frame`, which returns the answer to send down the socket, or `undefined` for none. `open()` says whether any run is left. A host closes a socket `attach` refuses
   with `closeSocket(socket, GONE)` (`GONE` is 4404), which says the close in a frame first
   (PROTOCOL.md § Sockets).
 - `serveRelay(options: ServeOptions): RelayServer` serves the relay on

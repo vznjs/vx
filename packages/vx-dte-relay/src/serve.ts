@@ -38,8 +38,10 @@ export function serveRelay(opts: ServeOptions): RelayServer {
     idleTimeout: 60,
     fetch: (req) => relay.fetch(req),
     websocket: {
-      // A silent socket is lost by the relay's heartbeat, not Bun's idle timeout.
-      idleTimeout: 0,
+      // A socket with no frame in three heartbeats has no peer listening
+      // either (each probes a quiet one within two): closed, it loses its
+      // participant, as a half-open one on no other host would be.
+      idleTimeout: Math.max(1, Math.ceil((3 * (opts.heartbeatMs ?? 5_000)) / 1000)),
       open(ws: ServerWebSocket<Held>) {
         const { key, id } = ws.data
         ws.data.socket = {
@@ -53,12 +55,8 @@ export function serveRelay(opts: ServeOptions): RelayServer {
       },
       message(ws: ServerWebSocket<Held>, message) {
         const { key, id } = ws.data
-        if (message === 'ping') {
-          relay.seen(key, id, Date.now())
-          ws.send('pong')
-          return
-        }
-        ws.send(relay.frame(key, id, String(message), ws.data.socket))
+        const answer = relay.frame(key, id, String(message), ws.data.socket)
+        if (answer !== undefined) ws.send(answer)
       },
       close(ws: ServerWebSocket<Held>) {
         const { key, id, socket } = ws.data
@@ -70,7 +68,6 @@ export function serveRelay(opts: ServeOptions): RelayServer {
   return {
     url: `http://${host}:${server.port}`,
     async stop() {
-      relay.close()
       await server.stop(true)
     },
   }

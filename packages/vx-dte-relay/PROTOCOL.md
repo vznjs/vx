@@ -68,7 +68,9 @@ Frames are text:
   (§ Messages from the relay) wait for the next socket;
 - the participant sends `{ "n", "sends": [{ "to", "body" }] }`, answered
   `{ "n" }` when all were taken, else `{ "n", "results" }` with `null` or
-  `{ "status", "error" }` for each. The orchestrator sends to any worker;
+  `{ "status", "error" }` for each. A frame of sends with no `n`, whose
+  sender waits on no answer (vx-dte's acks, probes and resends), is
+  answered only when a send in it fails, `n` then `null`. The orchestrator sends to any worker;
   a worker sends only to `"orchestrator"`; an unknown or gone `to` is
   `404`;
 - `{ "n", "leave": true }` removes the participant, and its answer is the
@@ -82,22 +84,18 @@ Frames are text:
   frame `400`. A frame is held to 1 MiB whole; one over it is answered `413` by its `n` when the
   frame starts `{"n":`. vx-dte's client keeps a frame of several sends
   under 512 KiB;
-- the participant sends a frame or `ping` at least each `heartbeatMs`;
-  the relay answers `pong`. A host may answer pings without the relay
-  (Cloudflare's auto-response), so pongs are no word from the relay:
-  vx-dte's client, having heard no push or answer for a heartbeat, sends
-  `{ "n", "sends": [] }`, which the relay itself answers, and treats a
-  socket that leaves a frame or an upgrade unanswered for two heartbeats
-  (10 s at most) as closed: a network that stops carrying a socket sends
-  no close;
+- the relay counts no heartbeat and needs no ping: `heartbeatMs` is how
+  often participants hear from each other (§ Liveness);
 - the socket a frame comes down is its participant's from then on, and
   is pushed down from then on: a host that let the socket go
   while answering its pings left the participant deaf.
 
-A socket's close does not lose its participant: it opens another, and
-the relay pushes the notices that waited meanwhile; its peers send again
-what it did not acknowledge. vx-dte's client dials again
-after a backoff with full jitter (up to 250 ms, doubling per failed dial
+A socket's close loses its participant (§ Liveness). A socket its
+client gave up on whose close never reached the relay (a network that
+stops carrying it sends none) is replaced: the participant opens another
+by its `id`, the relay closes the earlier and pushes the notices that
+waited, and its peers send again what it did not acknowledge. vx-dte's
+client dials again after a backoff with full jitter (up to 250 ms, doubling per failed dial
 to half a heartbeat), and gives the participant up after 3 failed
 dials or 10 s without a socket, whichever comes first. The relay closes with code
 `4404` the socket of a participant that left or was lost, after pushing
@@ -110,9 +108,18 @@ nothing again. Each close it makes is said first in a frame, `{ "close":
 host may never end TCP after its close (workerd does not), and a client
 that reports a close only then (Bun 1.4.4) hears it 10 s late.
 
-Every frame and ping counts as a heartbeat. A participant silent two
-`heartbeatMs` (10 s on the default) is lost, as if it had left, on a
-socket or not. The orchestrator's socket closing closes the run at once.
+## Liveness
+
+Liveness is the connection (owner, 2026-10-23). A participant's socket
+closing loses it at once, as if it had left: a worker's, and the
+orchestrator hears `lost`; the orchestrator's, and the run closes. The
+relay keeps no timer. A peer quiet on a socket that never closed is its
+peers' to lose, within two `heartbeatMs` (10 s on the default): vx-dte's
+orchestrator probes a worker it has heard nothing from for 1.5 (an empty
+numbered send), which the worker acknowledges at once; a worker probes
+its orchestrator quiet 1.6; either side quiet 1.9 to the other is lost,
+a worker by ending. A peer that talks is never probed. A numbered frame
+the relay leaves unanswered a heartbeat closes the client's socket.
 vx-dte's client asks again through a `5xx`, a dropped connection or a
 `429`, 3 times at most and within 10 s of the first try.
 
@@ -197,9 +204,8 @@ Only what routing needs, and no longer:
 - A participant's message is pushed or dropped, never held. A notice of
   the relay's own waits in memory for the next socket; a relay restart
   loses a participant one waited for, as if it went silent.
-- A closed run is gone at once; while open, each participant's
-  role and when it was last heard from are kept, so a restart still
-  loses the silent.
+- A closed run is gone at once; while open, each participant's role is
+  kept, never when it was last heard from.
 - It logs nothing. It still sees each message's size, time and recipient.
 
 ## Bodies, end to end

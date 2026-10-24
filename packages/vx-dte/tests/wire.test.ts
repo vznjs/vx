@@ -3,8 +3,9 @@
 // whenever it drops.
 
 import { afterEach, expect, it } from 'bun:test'
-import { createRelay, serveRelay, type RelayServer } from '@vzn/vx-dte-relay'
+import { closeSocket, createRelay, GONE, serveRelay, type RelayServer } from '@vzn/vx-dte-relay'
 import { join, RelayError, unsent } from '../src/wire.js'
+import { answer } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
@@ -86,6 +87,12 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
   const open: Bun.ServerWebSocket<Held>[] = []
   const closes: { id: string; code: number }[] = []
   const frames: string[] = []
+  /** What the relay answered, as frames down the sockets. */
+  const answers: string[] = []
+  const reply = (ws: { send(t: string): unknown }, t: string | undefined): void => {
+    if (t !== undefined) answers.push(t)
+    answer(ws, t)
+  }
   /** Whose ping each was. */
   const pings: string[] = []
   /**
@@ -106,6 +113,8 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
     lose: 0,
     /** Each frame of sends reaches the relay twice. */
     twice: false,
+    /** A socket's close never reaches the relay, as a network that stops carrying it. */
+    halfOpen: false,
   }
   let server: Bun.Server<Held> | undefined
   const relay = createRelay({
@@ -132,68 +141,77 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
           send: (t) => void ws.send(t),
           close: () => void (host.deaf || ws.close()),
         }
-        relay.attach(ws.data.key, ws.data.id, ws.data.socket)
+        if (!relay.attach(ws.data.key, ws.data.id, ws.data.socket))
+          closeSocket(ws.data.socket, GONE, 'gone')
       },
       message(ws, m) {
-        if (m === 'ping') {
-          pings.push(ws.data.id)
-          relay.seen(ws.data.key, ws.data.id, Date.now())
-          ws.send('pong')
-        } else {
+        if (m === 'ping') pings.push(ws.data.id)
+        else {
           frames.push(String(m))
           const f = JSON.parse(String(m)) as { n: number; sends?: unknown[] }
           if (f.sends !== undefined && f.sends.length > 0 && host.lose > 0) {
             host.lose--
-            ws.send(relay.frame(ws.data.key, ws.data.id, JSON.stringify({ n: f.n, sends: [] })))
+            reply(ws, relay.frame(ws.data.key, ws.data.id, JSON.stringify({ n: f.n, sends: [] })))
             return
           }
           if (f.sends !== undefined && f.sends.length > 0 && host.twice)
             relay.frame(ws.data.key, ws.data.id, String(m))
-          ws.send(relay.frame(ws.data.key, ws.data.id, String(m)))
+          reply(ws, relay.frame(ws.data.key, ws.data.id, String(m)))
         }
       },
       close(ws, code) {
         closes.push({ id: ws.data.id, code })
-        relay.detach(ws.data.key, ws.data.id, ws.data.socket!)
+        if (!host.halfOpen) relay.detach(ws.data.key, ws.data.id, ws.data.socket!)
       },
     },
   })
   servers.push({
     url: '',
     async stop() {
-      relay.close()
       await server!.stop(true)
     },
   })
-  return { url: `http://127.0.0.1:${server.port}`, relay, open, closes, frames, pings, host }
+  return {
+    url: `http://127.0.0.1:${server.port}`,
+    relay,
+    open,
+    closes,
+    frames,
+    answers,
+    pings,
+    host,
+  }
 }
 
-// Each ping is a message a relay host may bill: at two a heartbeat they
-// were nearly all of a run's (2026-10-23), so none goes in a half
-// heartbeat a frame went in. Quiet, the relay is asked: a frame it must
-// answer each heartbeat (owner, 2026-10-23: "if not ask to send"). Frames
-// go every 50 ms, a tenth of the heartbeat.
-it('asks a quiet relay each heartbeat, and pings only while it hears, not while it frames', async () => {
-  const { url, pings, frames } = sockets(500)
+// Each frame is a message a relay host may bill: pings at two a heartbeat
+// were nearly all of a run's (2026-10-23). Quiet, a pair trades one probe
+// and its ack each heartbeat and a half (owner, 2026-10-23: "if not ask
+// to send") and pings nothing; talking, it is asked nothing.
+it('a quiet pair trades one probe and its ack, a talking one none, and none pings', async () => {
+  const { url, pings, frames, answers } = sockets(500)
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
-  pings.length = 0
   frames.length = 0
+  answers.length = 0
   await Bun.sleep(2_600)
-  // Quiet, most half heartbeats are a frame or the one after it: fewer
-  // pings than asks, where a ping each half heartbeat was two an ask. A
-  // count, not a bound by time: a loaded runner slept 2.6 s for 4 s and
-  // pinged past a fixed 3 (PR #4254).
-  const quiet = pings.filter((id) => id === a.id).length
-  const asked = frames.filter((f) => f.includes('"sends":[]')).length
-  pings.length = 0
+  const probe = /"sends":\[\{"to":"[^"]+","body":\{"seq":\d+(,"acked":\d+)?\}\}\]/
+  const quiet = frames.splice(0)
+  // Five heartbeats: the orchestrator's probe and the worker's ack each
+  // one and a half. Before, each side asked the relay a heartbeat and
+  // pinged it twice.
+  expect([quiet.length >= 4, quiet.length <= 8]).toEqual([true, true])
+  expect(quiet.filter((f) => probe.test(f)).length).toBeLessThanOrEqual(4)
+  // Neither waits on the relay's answer to either, so it sends none.
+  expect(answers).toEqual([])
   const t = performance.now()
-  for (let i = 0; performance.now() - t < 2_000; i++) {
+  for (let i = 0; performance.now() - t < 2_500; i++) {
+    // A probe due as the talk began may still go.
+    if (performance.now() - t < 500) frames.length = 0
     await a.send('orchestrator', i)
     await Bun.sleep(50)
   }
-  expect([quiet < asked, asked >= 4, pings.filter((id) => id === a.id)]).toEqual([true, true, []])
+  expect([frames.filter((f) => probe.test(f) || f.includes('"sends":[]')), pings]).toEqual([[], []])
   await a.leave()
   await o.leave()
 }, 15_000)
@@ -234,13 +252,31 @@ it('keeps its quiet socket while a new one fails to open, so the relay keeps it'
   await o.leave()
 })
 
-it('dials its socket again after it drops, and gets what was sent meanwhile, sent again', async () => {
+// Liveness is the connection (owner, 2026-10-23): a socket whose close
+// the relay hears is its participant gone, at once.
+it('is lost the moment its socket closes: the orchestrator hears it, the worker ends', async () => {
   const { url, open } = sockets(500)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
+  await o.poll()
+  for (const w of open) if (w.data.id === a.id) w.close()
+  expect(await o.poll()).toEqual([{ from: 'relay', body: { type: 'lost', id: a.id } }])
+  const polls = async (): Promise<never> => {
+    for (;;) await a.poll()
+  }
+  // Refused its redial, or (a slow host) its orchestrator quiet since it joined.
+  await expect(polls()).rejects.toThrow(/relay: (unknown id|the orchestrator went silent)/)
+  await o.leave()
+})
+
+it('dials its socket again after one the relay never heard close, and gets what was sent meanwhile, sent again', async () => {
+  const { url, open, host } = sockets(500)
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   const workerSockets = () => open.filter((w) => w.data.id === a.id)
   const asked = verbs()
+  host.halfOpen = true
   workerSockets()[0]!.close()
   await o.send(a.id, 'while down')
   // Polls the close and the redial wake come back empty until the resend lands.
@@ -248,6 +284,7 @@ it('dials its socket again after it drops, and gets what was sent meanwhile, sen
   for (let i = 0; got.length === 0 && i < 8; i++) got = await a.poll()
   expect(got).toEqual([{ from: 'orchestrator', body: 'while down' }])
   expect(workerSockets()).toHaveLength(2)
+  host.halfOpen = false
   await a.send('orchestrator', 'back')
   expect(await o.poll()).toEqual([{ from: a.id, body: 'back' }])
   expect(asked).toEqual([])
@@ -359,11 +396,12 @@ type Held = { key: string; id: string; socket?: { send(t: string): void; close()
  */
 function dropping(): {
   url: string
-  drop(id: string, mode: 'all' | 'frames'): void
-  forget(id: string): void
+  drop(id: string, mode: 'all' | 'frames', forever?: boolean): void
   garble(id: string, text: string): void
 } {
   const drops = new Map<Bun.ServerWebSocket<Held>, 'all' | 'frames'>()
+  /** Participants each socket of which, dialed again too, drops so. */
+  const always = new Map<string, 'all' | 'frames'>()
   const open = new Set<Bun.ServerWebSocket<Held>>()
   let server: Bun.Server<Held> | undefined
   const relay = createRelay({
@@ -382,6 +420,8 @@ function dropping(): {
     websocket: {
       open(ws) {
         open.add(ws)
+        const mode = always.get(ws.data.id)
+        if (mode !== undefined) drops.set(ws, mode)
         ws.data.socket = {
           send: (t) => {
             if (!drops.has(ws)) ws.send(t)
@@ -392,34 +432,27 @@ function dropping(): {
       },
       message(ws, m) {
         const drop = drops.get(ws)
-        if (m === 'ping') {
-          if (drop === 'all') return
-          relay.seen(ws.data.key, ws.data.id, Date.now())
-          ws.send('pong')
-        } else if (drop === undefined)
-          ws.send(relay.frame(ws.data.key, ws.data.id, String(m), ws.data.socket))
+        if (drop === undefined)
+          answer(ws, relay.frame(ws.data.key, ws.data.id, String(m), ws.data.socket))
       },
       close(ws) {
         open.delete(ws)
-        relay.detach(ws.data.key, ws.data.id, ws.data.socket!)
+        // A socket that carries nothing carries no close either.
+        if (!drops.has(ws)) relay.detach(ws.data.key, ws.data.id, ws.data.socket!)
       },
     },
   })
   servers.push({
     url: '',
     async stop() {
-      relay.close()
       await server!.stop(true)
     },
   })
   return {
     url: `http://127.0.0.1:${server.port}`,
-    drop(id, mode) {
+    drop(id, mode, forever = false) {
+      if (forever) always.set(id, mode)
       for (const ws of open) if (ws.data.id === id) drops.set(ws, mode)
-    },
-    /** The relay lets `id`'s socket go, which stays open and answers its pings. */
-    forget(id) {
-      for (const ws of open) if (ws.data.id === id) relay.detach(ws.data.key, id, ws.data.socket!)
     },
     /** `text` down `id`'s socket, as no relay frame is. */
     garble(id, text) {
@@ -467,55 +500,39 @@ it('drops a socket the relay stopped answering, and carries on over a new one', 
   await o.leave()
 }, 5_000)
 
-// Main 13baaf6: the relay let the orchestrator's socket go while its host
-// still answered its pings, and it heard nothing for 8 min (2026-10-23).
-it('hears again within a few heartbeats when the relay lets its socket go', async () => {
-  const { url, forget } = dropping()
-  const o = await join(url, R2, 'orchestrator', null, undefined)
-  const a = await join(url, R2, 'worker', null, undefined)
-  await o.poll()
-  await a.poll()
-  forget(a.id)
-  await o.send(a.id, 'task')
-  const at = performance.now()
-  const got = []
-  for (let i = 0; i < 10 && got.length === 0; i++) got.push(...(await a.poll()))
-  expect(got).toEqual([{ from: 'orchestrator', body: 'task' }])
-  // A quiet heartbeat, then the beat the relay answers.
-  expect(performance.now() - at).toBeLessThan(2_500)
-  await a.leave()
-  await o.leave()
-}, 5_000)
-
-// A Cloudflare relay over its daily limit still answers pings, which the
-// host does without the object, but no frame: a send waited for its
-// answer forever, and the run with it (CI on #3888, 2026-10-22).
-it('sends again on a new socket when one answers pings but not frames', async () => {
+// A Cloudflare relay over its daily limit answers no frame: a send waited
+// for its answer forever, and the run with it (CI on #3888, 2026-10-22).
+// Owner, 2026-10-23: "if it does not reply for 10s its dead".
+it('a worker whose relay answers nothing ends, and the orchestrator loses it, within two heartbeats', async () => {
   const { url, drop } = dropping()
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   await a.poll()
-  drop(a.id, 'frames')
-  await a.send('orchestrator', 'result')
+  drop(a.id, 'frames', true)
+  const at = performance.now()
+  const polls = async (): Promise<never> => {
+    for (;;) await a.poll()
+  }
+  await expect(polls()).rejects.toThrow('relay: the orchestrator went silent')
   const read = []
   for (let i = 0; i < 10 && read.length === 0; i++) read.push(...(await o.poll()))
-  expect(read).toEqual([{ from: a.id, body: 'result' }])
+  expect(read).toEqual([{ from: 'relay', body: { type: 'lost', id: a.id } }])
+  expect(performance.now() - at).toBeLessThan(2_500)
   await o.leave()
-  await a.leave()
 }, 5_000)
 
-it('leaves when its socket answers pings but not frames: the run still closes', async () => {
+it('a worker ends when its orchestrator’s relay answers nothing, the run’s close unheard', async () => {
   const { url, drop } = dropping()
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   drop(o.id, 'frames')
   await o.leave()
-  const read = []
-  for (let i = 0; i < 20 && read.length === 0; i++) read.push(...(await a.poll()))
-  expect(read).toEqual([{ from: 'relay', body: { type: 'closed' } }])
-  await a.leave()
+  const polls = async (): Promise<never> => {
+    for (;;) await a.poll()
+  }
+  await expect(polls()).rejects.toThrow('relay: the orchestrator went silent')
 }, 5_000)
 
 // A relay that held a poll left the run waiting on Bun's own five-minute
@@ -568,18 +585,17 @@ it('dials again through a relay fault shorter than three heartbeats', async () =
         relay.attach(ws.data.key, ws.data.id, ws)
       },
       message(ws, m) {
-        if (m === 'ping') ws.send('pong')
-        else ws.send(relay.frame(ws.data.key, ws.data.id, String(m)))
+        answer(ws, relay.frame(ws.data.key, ws.data.id, String(m)))
       },
       close(ws) {
-        relay.detach(ws.data.key, ws.data.id, ws)
+        // The network dropped it: the relay never hears its close.
+        if (!fail) relay.detach(ws.data.key, ws.data.id, ws)
       },
     },
   })
   servers.push({
     url: '',
     async stop() {
-      relay.close()
       await server!.stop(true)
     },
   })
