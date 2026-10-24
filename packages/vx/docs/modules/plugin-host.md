@@ -87,8 +87,10 @@ nothing runs and caches here.
   again, so it stalled the run for good (item 1023). Both warnings say
   `[vx]` first, as every plugin warning on the status line does
   (`admit-warning-prefix.test.ts`).
-- `teardownPlugins(plugins, warn)` — end-of-run, in declaration order:
-  each plugin's `teardown()` under try/catch and a time bound
+- `teardownPlugins(plugins, warn)` — end-of-run, in declaration order,
+  a plugin with a `cache` capability after every other (a teardown may
+  write through the cache; one that revoked its token first refused the
+  write, main 7bdbf01): each plugin's `teardown()` under try/catch and a time bound
   (`teardownTimeoutMs()`: 3 s; a
   call that never settles is warned by name, never awaited past the
   bound). A throw is warned as every stage names one (C-84):

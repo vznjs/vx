@@ -816,7 +816,10 @@ export async function resolveExecutors(
 
 /**
  * End-of-run plugin lifecycle: each plugin's optional `teardown()`, in
- * declaration order. Crash-isolated — a throwing teardown is logged and
+ * declaration order, a plugin that supplies a remote cache after every
+ * other: a teardown may write through the cache (`RunReport`), and one
+ * that revoked its token first refused the write (main 7bdbf01: the
+ * schedule's timings, put after the Vercel token's revoke). Crash-isolated — a throwing teardown is logged and
  * skipped, never propagated — and each call is time-bounded by
  * {@link teardownTimeoutMs}. Runs on every exit of a run once its plugins'
  * factories ran, and of a plan (item 1021); the finally-path disposers
@@ -837,7 +840,8 @@ export async function teardownPlugins(
   report?: RunReport,
   step: <T>(id: string, work: () => Promise<T>) => Promise<T> = (_id, work) => work(),
 ): Promise<void> {
-  for (const plugin of plugins) {
+  const last = (p: VxPlugin): number => (p.cache === undefined ? 0 : 1)
+  for (const plugin of plugins.toSorted((a, b) => last(a) - last(b))) {
     if (plugin.teardown === undefined) continue
     const ms = teardownTimeoutMs()
     try {

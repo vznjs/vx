@@ -240,8 +240,10 @@ export interface VxPlugin {
   setup?(ctx: PluginSetupContext): void | Promise<void>
 
   /**
-   * Optional teardown at end-of-run (flush a sink, close a socket). Errors
-   * are logged, never thrown. A run that ran to its end passes its
+   * Optional teardown at end-of-run (flush a sink, close a socket), in
+   * declaration order, a plugin with `cache` after every other: the
+   * others may still write through its remote. Errors are logged, never
+   * thrown. A run that ran to its end passes its
    * `RunReport`; every other exit (a refused setup, a stop) passes none.
    */
   teardown?(run?: RunReport): void | Promise<void>
