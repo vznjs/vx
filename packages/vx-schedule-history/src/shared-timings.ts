@@ -150,9 +150,41 @@ async function git(root: string, args: readonly string[]): Promise<string[] | nu
   return out.split('\n').filter((l) => l !== '')
 }
 
-/** `sha` and up to `WALK - 1` of its first-parent ancestors, newest first. */
-const lineage = (root: string, sha: string): Promise<string[] | null> =>
-  git(root, ['rev-list', '--first-parent', `--max-count=${WALK}`, sha])
+/**
+ * `sha` and up to `WALK - 1` of its first-parent ancestors, newest first.
+ * A shallow clone (CI's one-commit checkout) holds none of them: their
+ * commits are fetched from origin, no blobs, and a failed fetch throws.
+ */
+async function lineage(root: string, sha: string): Promise<string[] | null> {
+  const walk = ['rev-list', '--first-parent', `--max-count=${WALK}`, sha]
+  const held = await git(root, walk)
+  if (held === null || held.length >= WALK) return held
+  if ((await git(root, ['rev-parse', '--is-shallow-repository']))?.[0] !== 'true') return held
+  const fetch = Bun.spawn(
+    [
+      'git',
+      'fetch',
+      '--quiet',
+      '--no-tags',
+      '--no-recurse-submodules',
+      '--filter=blob:none',
+      `--depth=${WALK}`,
+      'origin',
+      sha,
+    ],
+    {
+      cwd: root,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      stdin: 'ignore',
+      stdout: 'ignore',
+      stderr: 'pipe',
+    },
+  )
+  const [err, code] = await Promise.all([new Response(fetch.stderr).text(), fetch.exited])
+  if (code !== 0)
+    throw new Error(`git fetch of ${sha.slice(0, 12)}'s history failed: ${err.trim()}`)
+  return git(root, walk)
+}
 
 /**
  * The merge-base of HEAD with the default branch: the local branch, else

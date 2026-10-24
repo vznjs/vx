@@ -433,6 +433,80 @@ describe('shared timings', () => {
     }
   })
 
+  // The newest main commits' runs had not written theirs: the walk back
+  // needs main's history, which the one-commit checkout lacks.
+  it('a one-commit checkout walks back from its merge-base, fetching the commits', async () => {
+    const a = commit()
+    commit()
+    commit()
+    git('checkout', '-q', '-b', 'feat')
+    commit()
+    git('checkout', '-q', '-b', 'pr', 'main')
+    git('merge', '-q', '--no-ff', '-m', 'merge', 'feat')
+    git('checkout', '-q', 'main')
+    const clone = mkdtempSync(path.join(tmpdir(), 'vx-shared-timings-clone-'))
+    try {
+      Bun.spawnSync(
+        ['git', 'clone', '-q', '--depth', '1', '--branch', 'pr', `file://${root}`, clone],
+        {
+          env: GIT_ENV,
+        },
+      )
+      const shared = spyCache()
+      shared.store.set(key(a), blob({ 'p#x': 42 }))
+      const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
+      await importTimings({
+        root: clone,
+        defaultBranch: 'main',
+        cache: shared,
+        provider,
+        ids: ['p#x'],
+        warn: (m: string) => said.push(m),
+        triedFile: path.join(clone, 'tried'),
+        branch: false,
+      })
+      expect(said).toEqual([])
+      expect((await provider.p50sFor(['p#x'])).get('p#x')).toBe(42)
+    } finally {
+      rmSync(clone, { recursive: true, force: true })
+    }
+  })
+
+  // Main's run checks out one commit too: the blob it writes carries
+  // HEAD~1's tasks this run did not time.
+  it("a one-commit main checkout carries its parent's blob", async () => {
+    const a = commit()
+    const b = commit()
+    const clone = mkdtempSync(path.join(tmpdir(), 'vx-shared-timings-clone-'))
+    try {
+      Bun.spawnSync(
+        ['git', 'clone', '-q', '--depth', '1', '--branch', 'main', `file://${root}`, clone],
+        {
+          env: GIT_ENV,
+        },
+      )
+      const shared = spyCache()
+      shared.store.set(key(a), blob({ 'p#old': 7_000 }))
+      const provider = {
+        p50sFor: async () => new Map([['p#new', 30_000]]),
+        resourcesFor: async () => new Map(),
+      } as unknown as LocalHistoryProvider
+      await exportTimings({
+        root: clone,
+        cache: shared,
+        provider,
+        ids: ['p#new'],
+        defs: new Map(Object.entries(defsOf(['p#new']))),
+      })
+      expect((read(shared.store.get(key(b))) as { tasks: unknown }).tasks).toEqual({
+        'p#old': 7_000,
+        'p#new': 30_000,
+      })
+    } finally {
+      rmSync(clone, { recursive: true, force: true })
+    }
+  })
+
   it('walks back up to five commits from the merge-base for a blob', async () => {
     const a = commit()
     for (let i = 0; i < 4; i++) commit()
