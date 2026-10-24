@@ -1,7 +1,7 @@
-// `vx dte init`: the CI files that start a run's workers, written from
-// `dte()` itself, so the worker workflow is never copied by hand. Each
-// adapter writes its own (`DteAdapter.init`); one that starts workers on
-// this machine (`local()`, `docker()`) needs none.
+// `vx dte init`: the whole CI of a distributed run, written from
+// `dte()` itself: the run's job and its workers', never copied by hand.
+// Each adapter writes its own (`DteAdapter.init`); one that starts workers
+// on this machine (`local()`, `docker()`) needs none.
 
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -19,12 +19,47 @@ export interface DteSetup {
   readonly sizes: readonly { readonly name: string; readonly platform?: Platform }[]
   /** The workspace's package manager, by its lockfile. */
   readonly manager: PackageManager
+  /** The tasks a push to the default branch runs (with `--all`) and a change request runs (with `--affected`), space separated; '' is none named yet, so the run fails until they are. */
+  readonly tasks: { readonly main: string; readonly change: string }
+  /** `owner/repo` (a GitLab project's full path) of the `origin` remote, if it has one. */
+  readonly repository?: string
 }
 
 /** What an adapter's `init` gives back: files to write (workspace-relative path to text), then lines to print. */
 export interface DteInit {
   readonly files: Readonly<Record<string, string>>
   readonly next: readonly string[]
+}
+
+/** `owner/repo` of the `origin` remote: what the relay's ALLOW names. */
+export function repositoryOf(root: string): string | undefined {
+  const r = Bun.spawnSync(['git', 'config', '--get', 'remote.origin.url'], { cwd: root })
+  const url = r.exitCode === 0 ? r.stdout.toString().trim() : ''
+  const m = /[:/]([^:]+?\/[^/]+?)(?:\.git)?\/?$/.exec(url.replace(/^[a-z+]+:\/\/[^/]+\//, '/'))
+  return m?.[1]
+}
+
+const TASKS = /^[\w@/#.:*-]+( [\w@/#.:*-]+)*$/
+
+/**
+ * Asks, in a terminal, what main runs and what a change request runs (main's
+ * by default). Elsewhere none are named, and the written run fails until
+ * its owner names them.
+ */
+export function askTasks(): { main: string; change: string } {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return { main: '', change: '' }
+  const ask = (q: string, fallback: string): string => {
+    const a = (prompt(q) ?? '').trim().replace(/\s+/g, ' ') || fallback
+    if (a !== '' && !TASKS.test(a))
+      throw new UserError(`vx dte init: ${JSON.stringify(a)} is not a list of task names`)
+    return a
+  }
+  const main = ask('Tasks to run on main (such as build test):', '')
+  const change = ask(
+    `Tasks to run on a pull or merge request${main === '' ? '' : ` [${main}]`}:`,
+    main,
+  )
+  return { main, change }
 }
 
 export function managerOf(root: string): PackageManager {

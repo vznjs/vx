@@ -6,6 +6,7 @@
 // plays the others, manual jobs, as its work needs them.
 
 import { refuseUnknownOptions, UserError, type PluginOptionKinds } from '@vzn/vx'
+import { both } from './github.js'
 import { installLines, vxCommand, type DteInit, type DteSetup } from './init.js'
 import type { WorkerSpawn, DteAdapter } from './plugin.js'
 
@@ -29,6 +30,7 @@ function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
     )
   const relay = setup.relay
   const vx = vxCommand(setup.manager)
+  const named = setup.tasks.main !== '' && setup.tasks.change !== ''
   const text = `# Written by vx dte init from dte() in .vx/workspace.ts: the jobs of a
 # distributed run extend these. The image needs Bun and git.
 .vx:
@@ -42,29 +44,49 @@ ${installLines(setup.manager)
   extends: .vx
   id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }
 `
+  const ci = `# Written by vx dte init: the run. vx-plan writes the workers' child
+# pipeline, vx-workers starts it, vx orchestrates: every task runs on a
+# worker.${
+    named
+      ? ''
+      : ` Name the tasks in .vx-tasks, as 'build test --all': with
+# none named, vx fails, listing them.`
+  }
+include: [{ local: ${options.include} }]
+
+# What vx-plan and vx run: a merge request what it changed, anything else all.
+.vx-tasks:
+  variables: { VX_TASKS: '${both(setup.tasks.main, '--all')}' }
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables: { VX_TASKS: '${both(setup.tasks.change, '--affected')}' }
+    - when: on_success
+
+vx-plan:
+  extends: [.vx, .vx-tasks]
+  script: [${vx} dte plan $VX_TASKS]
+  artifacts:
+    paths: [vx-workers.yml, .vx/dte/]
+    reports: { dotenv: vx-dte.env }
+    access: none
+    expire_in: 1 hour
+
+vx-workers:
+  needs: [vx-plan]
+  variables: { PARENT_PIPELINE_ID: $CI_PIPELINE_ID }
+  trigger:
+    include: [{ artifact: vx-workers.yml, job: vx-plan }]
+
+vx:
+  extends: [.vx, .vx-tasks]
+  needs: [vx-plan]
+  id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }
+  script: [${vx} run $VX_TASKS]
+`
   return {
-    files: { [options.include]: text },
+    files: { '.gitlab-ci.yml': ci, [options.include]: text },
     next: [
-      "Add to .gitlab-ci.yml, with the run's tasks in both jobs:",
-      `include: [{ local: ${options.include} }]`,
-      'vx-plan:',
-      '  extends: .vx',
-      `  script: [${vx} dte plan build test --all]`,
-      '  artifacts:',
-      '    paths: [vx-workers.yml, .vx/dte/]',
-      '    reports: { dotenv: vx-dte.env }',
-      '    access: none',
-      '    expire_in: 1 hour',
-      'vx-workers:',
-      '  needs: [vx-plan]',
-      '  variables: { PARENT_PIPELINE_ID: $CI_PIPELINE_ID }',
-      '  trigger:',
-      '    include: [{ artifact: vx-workers.yml, job: vx-plan }]',
-      'vx:',
-      '  extends: .vx',
-      '  needs: [vx-plan]',
-      `  id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }`,
-      `  script: [${vx} run build test --all]`,
+      `The relay admits the pipeline: ALLOW="https://gitlab.com:${setup.repository ?? '<group>/<project>'}:.gitlab-ci.yml"`,
     ],
   }
 }

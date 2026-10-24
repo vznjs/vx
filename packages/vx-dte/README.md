@@ -160,19 +160,49 @@ export default defineWorkspace({
 ```
 
 ```yaml
-# .github/workflows/ci.yml, the run's job
-permissions: { id-token: write, contents: read, actions: write }
-steps:
-  - uses: actions/checkout@v4
-  - uses: oven-sh/setup-bun@v2
-  # The root's packages only (vx and the plugins): no task runs here,
-  # the workers run them all and this job reads their results.
-  - run: bun install --frozen-lockfile --filter './'
-  - run: bun vx run build test --all
-    env: { GITHUB_TOKEN: '${{ github.token }}' }
+# .github/workflows/ci.yml
+# Written by vx dte init: the run. main runs every task and fills the cache;
+# a pull request runs what it changed and its dependents. This job only
+# orchestrates: every task runs on a worker (vx-worker.yml).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to a pull request cancels its older run, and its workers.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  vx:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # The relay and the workers: each side proves itself by its OIDC token.
+      id-token: write
+      # Dispatching and cancelling the workers.
+      actions: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      # One commit: --affected fetches its base itself.
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile --filter './'
+      - run: bun vx lock --check
+      # Name the tasks to run, as 'bun vx run build test --affected': with
+      # none named, vx fails, listing the workspace's tasks.
+      - run: bun vx run ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
 ```
 
-`vx dte init` writes the workers' workflow from `dte()`: each size runs on
+`vx dte init` writes both from `dte()`, the run's above and the workers' below,
+and prints the relay's `ALLOW` for them. In a terminal it asks
+what main runs and what a pull request runs (main's by default); without
+one it names none, and the run fails, listing the tasks, until you do. Each size runs on
 its platform's GitHub-hosted runner (`ubuntu-latest` for none named,
 `ubuntu-24.04-arm`, `macos-latest`, `macos-15-intel`), or on the label
 `github({ runsOn: { small: 'ubuntu-latest-16-cores' } })` names, as
@@ -283,8 +313,8 @@ vx:
   id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }
 ```
 
-`vx dte init` writes `.gitlab/vx.yml` (the `include`) from `dte()`, in
-the package manager your lockfile names, and prints the three jobs.
+`vx dte init` writes both files from `dte()`, in the package manager your
+lockfile names, asking what main and a merge request run (`.vx-tasks`).
 
 The run's secret is an artifact no one can download (`access: none`);
 the orchestrator and the workers get it through `needs`. Set

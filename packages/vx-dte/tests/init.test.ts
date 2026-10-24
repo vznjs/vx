@@ -58,7 +58,19 @@ it('github() writes the workers workflow: the inputs it dispatches, a runner per
   )
   // Never a download: `bunx` fetches a package the repo lacks.
   expect(yml).not.toContain('bunx')
-  expect(printed.join('')).toContain('actions: write')
+  const run = await readFile(path.join(root, '.github/workflows/ci.yml'), 'utf8')
+  expect(run).toContain('      id-token: write\n')
+  expect(run).toContain('      actions: write\n')
+  expect(run).toContain('GITHUB_TOKEN: ${{ github.token }}')
+  // No task runs on the orchestrator: vx and the plugins only.
+  expect(run).toContain("      - run: bun install --frozen-lockfile --filter './'\n")
+  // The tasks are the user's: none written, so the run fails until named.
+  expect(run).toContain(
+    "      - run: bun vx run ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}\n",
+  )
+  expect(printed.join('')).toContain(
+    'ALLOW="https://token.actions.githubusercontent.com:<owner>/<repo>:ci.yml https://token.actions.githubusercontent.com:<owner>/<repo>:vx-worker.yml"',
+  )
 })
 
 it('github({ runsOn }) names a size its runner; pnpm gets its setup step', async () => {
@@ -98,7 +110,11 @@ it('gitlab() writes the include its workers extend, the token for the relay', as
   expect(yml).toContain('.vx-worker:\n  extends: .vx\n')
   expect(yml).toContain('id_tokens: { VX_DTE_TOKEN: { aud: https://relay.example.com } }')
   expect(yml).toContain('    - bun install --frozen-lockfile\n')
-  expect(printed.join('')).toContain('script: [bun vx dte plan build test --all]')
+  const ci = await readFile(path.join(root, '.gitlab-ci.yml'), 'utf8')
+  expect(ci).toContain('include: [{ local: .gitlab/vx.yml }]')
+  expect(ci).toContain("  variables: { VX_TASKS: '--all' }\n")
+  expect(ci).toContain('Name the tasks in .vx-tasks')
+  expect(printed.join('')).toContain('ALLOW="https://gitlab.com:<group>/<project>:.gitlab-ci.yml"')
 })
 
 it('an adapter that starts workers here writes nothing; no lockfile is refused', async () => {
@@ -128,6 +144,28 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
   })
   expect([r.exitCode, r.stderr.toString()]).toEqual([0, ''])
   expect(r.stdout.toString()).toContain(`'{"small":"ubuntu-latest"}'`)
+  // The relay's ALLOW names the origin's repository.
+  Bun.spawnSync(['git', 'remote', 'add', 'origin', 'git@github.com:acme/app.git'], { cwd: root })
+  const written = Bun.spawnSync([process.execPath, CORE_BIN, 'dte', 'init'], {
+    cwd: root,
+    env: { ...process.env, NO_COLOR: '1' },
+    stdout: 'pipe',
+  })
+  expect(written.stdout.toString()).toContain(
+    'https://token.actions.githubusercontent.com:acme/app:ci.yml',
+  )
+  // The run line as written, no task named, fails on CI and lists the tasks.
+  const run = Bun.spawnSync([process.execPath, CORE_BIN, 'run', '--all'], {
+    cwd: root,
+    env: { ...process.env, NO_COLOR: '1', CI: 'true' },
+    stdin: 'pipe',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  expect([run.exitCode, run.stderr.toString()]).toEqual([
+    1,
+    expect.stringContaining('missing task name'),
+  ])
 })
 
 it('the README shows the workflow vx dte init writes for its sizes', async () => {
@@ -137,4 +175,26 @@ it('the README shows the workflow vx dte init writes for its sizes', async () =>
   const written = await readFile(path.join(root, WORKFLOW), 'utf8')
   const readme = await readFile(path.resolve(import.meta.dir, '..', 'README.md'), 'utf8')
   expect(readme).toContain('```yaml\n# .github/workflows/vx-worker.yml\n' + written + '```')
+  const run = await readFile(path.join(root, '.github/workflows/ci.yml'), 'utf8')
+  expect(readme).toContain('```yaml\n# .github/workflows/ci.yml\n' + run + '```')
+})
+
+it('writes the tasks asked for: main with --all, a change request with --affected', () => {
+  const setup = {
+    workspaceRoot: root,
+    relay: 'https://r',
+    sizes: [{ name: 'small' }],
+    manager: 'bun' as const,
+    tasks: { main: 'build test e2e', change: 'build test' },
+  }
+  const gh = github().init!(setup).files['.github/workflows/ci.yml']!
+  expect(gh).toContain(
+    "      - run: bun vx run ${{ github.event_name == 'pull_request' && 'build test --affected' || 'build test e2e --all' }}\n",
+  )
+  expect(gh).not.toContain('Name the tasks')
+  const gl = gitlab({ include: '.gitlab/vx.yml' }).init!(setup).files['.gitlab-ci.yml']!
+  expect(gl).toContain("  variables: { VX_TASKS: 'build test e2e --all' }\n")
+  expect(gl).toContain("      variables: { VX_TASKS: 'build test --affected' }\n")
+  expect(gl).toContain('  script: [bun vx dte plan $VX_TASKS]\n')
+  expect(gl).toContain('  script: [bun vx run $VX_TASKS]\n')
 })

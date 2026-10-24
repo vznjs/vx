@@ -273,7 +273,7 @@ export function dte(options: DteOptions) {
     return 0
   }
 
-  /** `vx dte init [--dry] [--force]`: the CI files the adapter starts workers with, from these sizes. */
+  /** `vx dte init [--dry] [--force]`: the run's CI and its workers', from these sizes. */
   const init = async (args: readonly string[], ctx: CommandContext): Promise<number> => {
     const extra = args.find((a) => a !== '--dry' && a !== '--force')
     if (extra !== undefined)
@@ -289,12 +289,15 @@ export function dte(options: DteOptions) {
       )
       return 0
     }
-    const { managerOf, writeInit } = await import('./init.js')
+    const { askTasks, managerOf, repositoryOf, writeInit } = await import('./init.js')
+    const repository = repositoryOf(root)
     const files = adapter.init({
       workspaceRoot: root,
       ...(options.relay !== undefined ? { relay: options.relay } : {}),
       sizes: sizes.map((s) => ({ name: s.name, ...named(s.name) })),
       manager: managerOf(root),
+      tasks: askTasks(),
+      ...(repository !== undefined ? { repository } : {}),
     })
     const out = (line: string): void => void process.stdout.write(`${line}\n`)
     if (args.includes('--dry')) {
@@ -309,7 +312,7 @@ export function dte(options: DteOptions) {
     commands: {
       dte: {
         description:
-          'dte init: write the CI files that start the workers; dte plan: write the CI jobs of a run’s workers; dte worker: run tasks for a distributed run',
+          'dte init: write the CI of a distributed run; dte plan: write the CI jobs of a run’s workers; dte worker: run tasks for a distributed run',
         async run(argv, ctx) {
           if (argv[0] === 'plan') return plan(argv.slice(1), ctx)
           if (argv[0] === 'init') return init(argv.slice(1), ctx)
