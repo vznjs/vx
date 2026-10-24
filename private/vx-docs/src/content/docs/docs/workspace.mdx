@@ -57,10 +57,10 @@ With no plugins in it, vx runs and caches on this machine.
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
-import { reapi } from '@vzn/vx-reapi'
+import { bun } from '@vzn/vx-lockfile'
 
 export default defineWorkspace({
-  plugins: [reapi({ endpoint: 'grpcs://cache.internal:443' })],
+  plugins: [bun()],
   run: {
     concurrency: 8, // default: usable cores
     timeout: '10m', // default: none

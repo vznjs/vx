@@ -115,12 +115,12 @@ const wins = [
 // Plugins: what core's seams unlock (owner, 2026-10-12: plugins are not
 // core features; the section shows they are examples, not the limit).
 const plugins = [
-  { pkg: 'vx-reapi', title: 'Remote cache and remote execution', line: 'Any Bazel REAPI server: NativeLink, BuildBuddy, your own.' },
   { pkg: 'vx-migrate', title: 'Keep the cache you have', line: 'Keep Turbo’s or Nx’s remote cache while you move to native config.' },
   { pkg: 'vx-otel', title: 'Observability', line: 'Every run and task in any OpenTelemetry backend.' },
   { pkg: 'vx-ci', title: 'CI results on the PR', line: 'GitHub job summary and Checks.' },
   { pkg: 'vx-schedule-history', title: 'Smarter scheduling', line: 'Order by the critical path learned from your run history.' },
   { pkg: 'vx-lockfile', title: 'Precise lockfile keys', line: 'Each task keyed on its own dependency closure: pnpm, bun, npm, yarn.' },
+  { pkg: 'vx-reapi', title: 'Bazel remote cache and execution', line: 'For a Bazel REAPI server you already run: NativeLink, BuildBuddy.' },
 ]
 
 // Where vx differs from both, each cell as the choosing page's model says it
@@ -136,7 +136,7 @@ const edges: { trait: string; vx: Edge; turbo: Edge; nx: Edge }[] = [
   },
   {
     trait: 'Remote execution you host',
-    vx: { kind: 'yes', text: 'Bazel’s open REAPI protocol' },
+    vx: { kind: 'yes', text: 'Your own CI’s workers (DTE), or a REAPI pool' },
     turbo: { kind: 'no', text: 'None' },
     nx: { kind: 'paid', text: 'Nx Agents on Nx Cloud' },
   },
