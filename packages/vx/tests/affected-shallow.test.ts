@@ -117,6 +117,18 @@ describe('a shallow clone', () => {
     )
   })
 
+  it('fetches nothing when the clone already has the merge base', async () => {
+    const root = await mkdtemp(path.join(dir, 'clone-'))
+    gitIn(dir)('clone', '-q', '--depth', '20', '--no-single-branch', `file://${origin}`, root)
+    gitIn(root)('checkout', '-q', 'feat')
+    expect(shallow(root)).toBe('true')
+    // An origin that cannot answer: any fetch would fail the diff.
+    gitIn(root)('remote', 'set-url', 'origin', `file://${dir}/nowhere`)
+    const before = commits(root)
+    expect(await changed(root, 'origin/main')).toEqual(['b.txt', 'c.txt'])
+    expect(commits(root)).toBe(before)
+  })
+
   it('with no origin to fetch from, says the clone is shallow', async () => {
     const root = await clone('feat')
     gitIn(root)('remote', 'remove', 'origin')
