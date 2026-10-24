@@ -220,8 +220,10 @@ export class Orchestrator {
   private readonly retired = new Set<Worker>()
   /** Workers asked for that never joined, with why. */
   private readonly unstarted = new Map<string, string>()
-  /** Started, then not needed before they joined (`release`). */
+  /** Started, then not needed before they joined (`release`), or given up as late. */
   private readonly cancelled = new Set<string>()
+  /** Of `cancelled`, those given up past their join limit, not let go: taken if they join. */
+  private readonly late = new Set<string>()
   /** A failed start was given another worker (`failed`). */
   private restarts = 0
   private pumping = false
@@ -860,6 +862,13 @@ export class Orchestrator {
           `runs on ${platform ?? 'no platform it names'}, and its size ${sized.size} says ${sized.platform}`,
         )
       }
+      // One given up only for joining late is work the run can use: main
+      // db1702f told three smalls GitHub queued 60 s to exit and ended at
+      // 232 s against an ideal of 141 s. The plan lets it go if not.
+      if (info.id !== undefined && this.late.delete(info.id)) {
+        this.cancelled.delete(info.id)
+        this.unstarted.delete(info.id)
+      }
       if (info.id !== undefined && this.cancelled.has(info.id)) {
         void this.o.me
           .send(id, { type: 'exit' } satisfies ToWorker)
@@ -1100,6 +1109,7 @@ export class Orchestrator {
         if (this.ended || this.cancelled.has(id) || this.unstarted.has(id)) return
         if ([...this.workers.values(), ...this.gone].some((a) => a.label === id)) return
         this.cancelled.add(id)
+        this.late.add(id)
         this.o.overdue?.(id)
         this.failed(id, `did not join within ${Math.round(ms / 1000)} s`, true)
       },
