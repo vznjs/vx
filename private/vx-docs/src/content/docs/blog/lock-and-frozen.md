@@ -87,5 +87,5 @@ the first command.
 {"upToDate":false,"audited":4,"notAudited":0,"problems":["packages/d/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'"]}
 ```
 
-Same idea as `--frozen-lockfile` in package managers. Reference: [`vx lock`](../../cli/#vx-lock). More at
+Same idea as `--frozen-lockfile` in package managers. Reference: [`vx lock`](../../cli/lock/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

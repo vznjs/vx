@@ -56,4 +56,4 @@ An agent or a script can read the same answer as JSON:
 vx why @demo/ui#build --format json
 ```
 
-See [`vx why`](../../../cli/#vx-why).
+See [`vx why`](../../../cli/why/).

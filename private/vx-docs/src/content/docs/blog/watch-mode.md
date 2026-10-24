@@ -85,5 +85,5 @@ is heard.
 - A persistent task starts once and stays up. It restarts only when its
   own config or forwarded args change, or when it dies.
 
-Reference: [`vx watch`](../../cli/#vx-watch). More at
+Reference: [`vx watch`](../../cli/watch/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

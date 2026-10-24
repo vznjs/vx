@@ -85,6 +85,13 @@ function siteSource(urlPath: string): string | undefined {
   if (page === 'design') return path.join(CORE_DOCS, 'design')
   // import-docs places this core page beside the hand-authored compare page.
   if (page === 'compare/turbo-nx-support') return path.join(CORE_DOCS, 'turbo-nx-support.md')
+  // A page import-docs splits out of cli.md or schema.md (SPLIT_REFERENCES)
+  // carries that source's headings.
+  const split = /^(cli|schema)\/[\w-]+$/.exec(page)
+  if (split) {
+    const built = path.join(CONTENT, `${page}.md`)
+    return existsSync(built) ? built : path.join(CORE_DOCS, `${split[1]}.md`)
+  }
   // And each published plugin's README as `plugins/<package>/`.
   const plugin = /^plugins\/(vx-[\w-]+)$/.exec(page)
   if (plugin) return path.join(repo, 'packages', plugin[1]!, 'README.md')

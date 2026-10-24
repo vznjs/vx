@@ -31,4 +31,4 @@ In GitHub Actions, run it before the build:
 - run: vx run build --all
 ```
 
-See [`vx lock`](../../../cli/#vx-lock).
+See [`vx lock`](../../../cli/lock/).
