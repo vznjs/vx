@@ -116,7 +116,6 @@
         "test.local-e2e",
         "test.units",
         "test.gitlab",
-        "test.goals",
         "test.rest"
       ]
     },
@@ -296,54 +295,10 @@
         }
       }
     },
-    "test.goals": {
-      "description": "bun test ./tests/goals.test.ts",
-      "exec": {
-        "command": "bun test --only-failures ./tests/goals.test.ts",
-        "env": {
-          "define": {
-            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
-            "GIT_CONFIG_GLOBAL": "/dev/null",
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "VX_CACHE_DIR": ".vx/cache"
-          }
-        },
-        "sandbox": {
-          "allow": {
-            "read": [
-              "**/*"
-            ],
-            "systemInfo": [
-              "vfs.disk-space",
-              "net.link.addr"
-            ],
-            "machLookup": [
-              "com.apple.sysmond"
-            ],
-            "localBinding": true
-          }
-        }
-      },
-      "dependsOn": [
-        "install"
-      ],
-      "inputs": {
-        "files": [
-          "src/**",
-          "tests/**",
-          "package.json"
-        ]
-      },
-      "cache": {
-        "outputs": {
-          "files": []
-        }
-      }
-    },
     "test.rest": {
       "description": "bun test the files no other shard runs",
       "exec": {
-        "command": "bun test --only-failures $(ls tests/*.test.ts | grep -v -e /wire.test.ts -e /local-e2e.test.ts -e /units.test.ts -e /gitlab.test.ts -e /goals.test.ts)",
+        "command": "bun test --only-failures $(ls tests/*.test.ts | grep -v -e /wire.test.ts -e /local-e2e.test.ts -e /units.test.ts -e /gitlab.test.ts)",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
