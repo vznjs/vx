@@ -6,13 +6,11 @@ authors:
 tags:
   - config
   - dx
-excerpt: 'Every vx setting has one path in .vx/workspace.ts, and its environment variable and flag are spelled from it. run.retries is VX_RUN_RETRIES and --retries. Learn one name and you know all three. A duration carries its unit, and vx info says where each value came from.'
+excerpt: 'Every vx setting has one name. run.retries is VX_RUN_RETRIES and --retries. Learn one, know all three.'
 ---
 
-A tool with forty knobs usually has three names for each one: a config
-key, an environment variable that grew a `_MS` suffix, and a flag someone
-shortened. vx gives every setting one path, and spells the other two
-from it.
+Every vx setting has one name. Its environment variable and flag are
+spelled from it, so learn one and you know all three.
 
 | Setting          | Variable             | Flag            |
 | ---------------- | -------------------- | --------------- |
@@ -21,11 +19,10 @@ from it.
 | `cache.dir`      | `VX_CACHE_DIR`       | `--cache-dir`   |
 | `cache.policy`   | `VX_CACHE_POLICY`    | `--cache-policy` |
 
-The settings live in four groups in `.vx/workspace.ts`: `run`, `cache`,
+Settings live in four groups in `.vx/workspace.ts`: `run`, `cache`,
 `lock` and `watch`.
 
-```ts
-// .vx/workspace.ts
+```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
 
 export default defineWorkspace({
@@ -36,10 +33,13 @@ export default defineWorkspace({
 
 ## Which value wins
 
-A flag beats its variable, which beats the file, which beats the
-built-in default. A task's own field beats all four: `exec.retries` on
-a task is that task's count, whatever `--retries` says. `vx info` lists
-every setting that is not at its default and where its value came from:
+```mermaid
+flowchart LR
+  T[task field] --> F[--flag] --> V[VX_ variable] --> W[.vx/workspace.ts] --> D[default]
+```
+
+Left wins. `exec.retries` on a task beats `--retries`. `vx info` shows
+each changed setting and where its value came from:
 
 ```sh frame="terminal"
 $ VX_RUN_CONCURRENCY=2 vx info
@@ -49,9 +49,9 @@ $ VX_RUN_CONCURRENCY=2 vx info
 
 ## Units are part of the value
 
-A duration says its unit (`'500ms'`, `'30s'`, `'10m'`, `'2h'`, `'30d'`),
-and a size says its own (`'32KiB'`). A bare number is refused, because
-nobody can tell whether `2000` means milliseconds or seconds:
+Durations carry a unit (`'500ms'`, `'30s'`, `'2h'`), sizes too
+(`'32KiB'`). A bare number is refused. Nobody can tell if `2000` means
+milliseconds or seconds:
 
 ```sh frame="terminal"
 $ VX_CONFIG_WORKER_TIMEOUT=2000 vx run build
@@ -60,8 +60,7 @@ $ VX_CONFIG_WORKER_TIMEOUT=2000 vx run build
 
 ## Unknown names are refused
 
-A key a setting does not have is an unknown field, and a flag vx does
-not have is an unknown flag, never silently ignored:
+A typo in a key or a flag stops the run with the line to fix:
 
 ```sh frame="terminal"
 $ vx run build
@@ -77,9 +76,10 @@ $ vx run build
       |   ^
 ```
 
-A few settings are read before the workspace file loads, such as
-`run.outputLogs` and `debug.timing`. Those are set only by a variable
-or a flag, never in the file. Every setting, with its variable, flag,
-values and default, is in the [settings table](../../schema/#settings).
-Outputs above: demo workspace, vx at `22f6eb7`, 2026-10-23. More at
+A few settings, like `run.outputLogs` and `debug.timing`, are read
+before the file loads, so only a variable or flag sets them.
+
+<small>Demo workspace · vx 22f6eb7 · 2026-10-23</small>
+
+Every setting: [settings table](../../schema/#settings). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

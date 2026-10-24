@@ -6,18 +6,25 @@ authors:
 tags:
   - ai
   - dx
-excerpt: 'Under --format json, a refusal is a JSON line with a stable code and a link to its fix. An agent branches on VX_E_UNKNOWN_TASK, not on the wording of a sentence, and vx docs <code> prints the fix.'
+excerpt: 'When vx refuses, it prints a stable code and a link to the fix. Scripts and agents check the code, not the wording.'
 ---
 
-A typo, under `--format json` or `--dry=json`:
+When vx refuses, it gives a stable code and a link to the fix. Your
+script or agent checks the code, so it never breaks when the wording
+changes.
 
 ```sh frame="terminal"
 $ vx run biuld --all --dry=json
 {"ok":false,"error":{"code":"VX_E_UNKNOWN_TASK","message":"vx run: no projects declare task(s): biuld. Did you mean build?","docs":"https://vznjs.github.io/vx/cli/#vx_e_unknown_task"}}
 ```
 
-Exit 1, stdout one JSON line, stderr the same in words. An agent
-branches on the code, which is stable; the message may change.
+```mermaid
+flowchart LR
+  R[vx refuses] -->|exit 1| O["stdout: one JSON line<br/>code + message + docs link"]
+  R --> E[stderr: the same in words]
+  O --> A[agent branches on the code]
+  A --> F[vx docs CODE prints the fix]
+```
 
 | Code                | Means                                        |
 | ------------------- | -------------------------------------------- |
@@ -34,8 +41,8 @@ branches on the code, which is stable; the message may change.
 
 ## Each code says the fix
 
-`docs` links that code's section, and `vx docs` prints it in the
-terminal, as your version wrote it:
+`vx docs` prints the fix in the terminal, from the docs of your
+version:
 
 ```sh frame="terminal"
 $ vx docs VX_E_UNKNOWN_TASK
@@ -55,7 +62,5 @@ tasks it found; `vx show --format json` lists each project's. …
 | `VX_E_NO_HISTORY` | run the task once first                 |
 | `VX_E_FDS`        | `ulimit -n 4096`, or fewer tasks at once |
 
-Every core code has its section, and a test holds the list to the codes
-the source can throw. Under `--format json` the refusal line carries
-the same `docs` link for an agent. See the
-[Agents guide](../../docs/agents/).
+Every code has a docs section. A test checks the list against the codes
+vx can throw. See the [Agents guide](../../docs/agents/).

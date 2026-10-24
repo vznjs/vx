@@ -5,11 +5,11 @@ authors:
   - vzn
 tags:
   - dx
-excerpt: 'Every run is recorded. vx last replays its summary, vx last --failed finds the one that broke, and the answer ends with the command that re-runs it.'
+excerpt: 'The terminal scrolled away? vx last --failed shows the run that broke and the command that runs only what failed.'
 ---
 
-A test failed somewhere in the last run, and the terminal scrolled
-away:
+A test failed and the terminal scrolled away. `vx last --failed` finds
+it and gives you the command to run just that again:
 
 ```sh frame="terminal"
 $ vx last --failed
@@ -40,9 +40,7 @@ Received: 5
 …
 ```
 
-The command, the branch and commit, every task with its outcome and
-key, then the one command that re-runs only what failed. Demo
-workspace, vx at `69617eb`, 2026-10-23 (log trimmed).
+<small>Demo workspace · vx 69617eb · 2026-10-23 · log trimmed</small>
 
 ## Four questions
 
@@ -60,14 +58,21 @@ ok     2026-10-23T22:21:27.007Z  01a16ada-ce5a  5 tasks · 5 hits (5 up-to-date,
 ok     2026-10-23T22:21:26.832Z  01a16ada-cdaa  4 tasks · 3 hits (3 up-to-date, 0 restored)             54ms  $ vx run build --all
 ```
 
-`--log` reads the last run that ran the task. A failure's output is
-kept, and a cached task's log is its cache entry, so a pass reads too.
+`--log` reads the last run that ran the task. Failed output is kept, and
+a cached task's log is in its cache entry, so passes work too.
 
-## Free
+## It costs nothing extra
 
-The record is the workspace's cache database, which the run already
-writes. Nothing extra is stored, nothing is uploaded. `--format json`
-gives an agent the same answer as data.
+```mermaid
+flowchart LR
+  R[vx run] -->|writes anyway| DB[(workspace cache database)]
+  DB --> L[vx last]
+  L --> T[terminal]
+  L --> J["--format json"]
+```
+
+The record is the cache database every run already writes. Nothing
+extra is stored and nothing is uploaded.
 
 Reference: [the CLI](../../cli/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).
