@@ -359,11 +359,13 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
     | { cache: Cache; ids: string[]; branch: string | null; defs: ReadonlyMap<string, string> }
     | undefined
   let exporting: { cache: PluginCache; root: string; warn: (m: string) => void } | undefined
+  let fileWarn: { root: string; warn: (m: string) => void } | undefined
   hooks.setup = (ctx) => {
     // A branch's write lands under its scope (M, 2026-10-18), for its next
     // commit's runs to read.
     exporting = ctx.ci ? { cache: ctx.cache, root: ctx.workspaceRoot, warn: ctx.warn } : undefined
     if (options.file === undefined) return
+    fileWarn = { root: ctx.workspaceRoot, warn: ctx.warn }
     inRun = true
     changed = false
     ctx.on('onTaskComplete', (node, outcome) => {
@@ -415,7 +417,9 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
     inRun = false
     if (!wrote || done === undefined) return
     const table = await readHistory(done.cache, done.ids, options, done.branch, done.defs)
-    ;(await import('./timings-file.js')).writeTimings(done.file, done.carried, table)
+    const timings = await import('./timings-file.js')
+    timings.writeTimings(done.file, done.carried, table)
+    if (fileWarn !== undefined) timings.warnUnignored(done.file, fileWarn.root, fileWarn.warn)
   }
   // What the run's tasks reserve, learned in `schedule` (one history read
   // serves both) and declared in the options; asked at every dispatch.

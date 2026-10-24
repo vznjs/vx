@@ -70,3 +70,24 @@ export function writeTimings(
     throw err
   }
 }
+
+/**
+ * Says so when git does not ignore the file it rewrote: a task whose
+ * inputs cover it (a root project's `**`) keyed each run's new timings,
+ * and missed the run after every write. Asked after the write, off the run.
+ */
+export function warnUnignored(file: string, root: string, warn: (m: string) => void): void {
+  const rel = path.relative(root, file)
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return
+  const p = Bun.spawnSync({
+    cmd: ['git', 'check-ignore', '-q', '--', rel],
+    cwd: root,
+    stdout: 'ignore',
+    stderr: 'ignore',
+  })
+  // 0: ignored; 128: no repository or git refused, which says nothing of it.
+  if (p.exitCode !== 1) return
+  warn(
+    `[vx] schedule-history: timings file ${rel} is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore`,
+  )
+}

@@ -49,6 +49,10 @@ last one learned:
     restore-keys: vx-timings-
 ```
 
+Add the file to `.gitignore`. A task whose inputs cover it, like a root
+project's `**`, would otherwise get a new key each time the file
+changes. vx warns when git does not ignore it.
+
 | Source of a task's time | Wins over |
 | --- | --- |
 | Runs on this machine | the file and `assume` |

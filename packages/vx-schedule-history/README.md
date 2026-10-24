@@ -71,7 +71,9 @@ configure:
 A fresh CI runner has no history. `file` names a JSON file, from the
 workspace root, that carries it: read before ordering, rewritten after
 each run with every task's p50 (its directory made if absent), so a
-CI cache keeps one file.
+CI cache keeps one file. Git-ignore it: a task whose inputs cover it (a
+root project's `**`) would re-key on every rewrite, and a rewrite of a
+file git does not ignore warns.
 
 ```ts
 export default {
