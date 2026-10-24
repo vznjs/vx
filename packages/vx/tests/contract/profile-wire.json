@@ -4,6 +4,7 @@
   "traceEvents[].args": "object",
   "traceEvents[].args.cpuMs": "number",
   "traceEvents[].args.exitCode": "number",
+  "traceEvents[].args.fetchMs": "number",
   "traceEvents[].args.hash": "null | string",
   "traceEvents[].args.peakRssBytes": "number",
   "traceEvents[].cat": "string",

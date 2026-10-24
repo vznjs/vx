@@ -72,7 +72,10 @@ async function profileJson(): Promise<unknown> {
   const file = await writeRunProfile({
     target: 'profile.json',
     cwd: dir,
-    outcomes: [outcome('a#build', { hash: 'h1', cpuMs: 5, peakRssBytes: 4 }), outcome('b#gen', {})],
+    outcomes: [
+      outcome('a#build', { hash: 'h1', cpuMs: 5, peakRssBytes: 4, fetchMs: 3 }),
+      outcome('b#gen', {}),
+    ],
   })
   return JSON.parse(readFileSync(file, 'utf8'))
 }
