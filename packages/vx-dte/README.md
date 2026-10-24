@@ -403,7 +403,10 @@ use your own instead.
   restores its output, never its files.
 - A worker restores, by key, the declared outputs of every task the one
   it runs depends on, unless it ran or restored them before. Files a task
-  writes without declaring them stay on the worker.
+  writes without declaring them stay on the worker. Before a task runs, its
+  worker removes the files under its outputs that an earlier task left,
+  except committed files, nested projects' files, and its dependencies'
+  outputs (an additive task builds on its upstream's tree).
 - A failed or uncached task is saved under a key of the run and the task,
   so no later lookup ever hits it; so is one core would not save (a
   `--no-cache` or read-only run, a dependant of a failure under

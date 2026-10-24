@@ -680,6 +680,39 @@ it('leaves a remote-only task’s files on the workers', async () => {
   expect(await Bun.file(path.join(root, 'a/out/ro.txt')).exists()).toBe(false)
 }, 60_000)
 
+// A worker cleared every file under a task's output globs, its upstream's
+// too: an additive task (outputs over its upstream's tree) found the files
+// it builds on gone (2026-10-24).
+it('leaves an upstream’s files in place for an additive task on its worker', async () => {
+  const ws = path.join(root, '.vx/workspace.mjs')
+  await writeFile(
+    ws,
+    (await readFile(ws, 'utf8')).replace(
+      'export default {',
+      'export default { run: { rules: { exclusiveOutputs: false } },',
+    ),
+  )
+  await mkdir(path.join(root, 'ad'))
+  await writeFile(
+    path.join(root, 'ad/vx.config.mjs'),
+    `const outputs = { files: ['dist/**'] }
+export default { name: 'ad', tasks: {
+  up: { exec: { command: 'mkdir -p dist && echo up > dist/a.txt' }, inputs: { files: ['vx.config.mjs'] }, cache: { outputs } },
+  dep: { dependsOn: ['up'], exec: { command: 'mkdir -p dist/ind && cp dist/a.txt dist/ind/b.txt' }, inputs: { files: ['vx.config.mjs'] }, cache: { outputs } },
+} }
+`,
+  )
+  await writeFile(path.join(root, 'ad/.gitignore'), 'dist\n')
+  expect(vx(['lock']).exitCode).toBe(0)
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: root })
+  git('add', '-A')
+  git('commit', '-qm', 'ad')
+  const r = vx(['run', 'ad#dep'], 'additive')
+  expect([r.exitCode, r.stdout.toString() + r.stderr.toString()]).toEqual([0, expect.any(String)])
+  expect(await readFile(path.join(root, 'ad/dist/ind/b.txt'), 'utf8')).toBe('up\n')
+}, 60_000)
+
 it('says why a worker never joined, and fails the run when none can', async () => {
   await writeFile(
     path.join(root, '.vx/workspace.mjs'),
