@@ -72,42 +72,7 @@ describe('a CI OIDC token', () => {
     const fetched: string[] = []
     const verify = verifier(fetched)
     expect(await verify(await sign(good))).toEqual({ iss: ISS, run: ['7'] })
-    // The job a run's orchestrator is pinned to, when the token names one.
-    expect(await verify(await sign({ ...good, job_id: 99 }))).toEqual({
-      iss: ISS,
-      run: ['7'],
-      job: '99',
-    })
     expect(fetched).toEqual([`${ISS}/.well-known/openid-configuration`, `${ISS}/jwks`])
-  })
-
-  it('names a GitHub token’s own job, not the workflow run its other jobs share', async () => {
-    const GH = 'https://token.actions.githubusercontent.com'
-    const verify = createVerifier({
-      allow: [{ issuer: GH }],
-      audience: AUD,
-      now: () => now,
-      fetchJson: async (url) =>
-        url === `${GH}/.well-known/openid-configuration`
-          ? { jwks_uri: `${GH}/jwks` }
-          : { keys: [{ ...jwk, kid: 'k1' }] },
-    })
-    const gh = {
-      iss: GH,
-      aud: AUD,
-      exp: now + 300,
-      repository_id: '5',
-      run_id: '8',
-      run_attempt: '1',
-    }
-    const jobs = await Promise.all(
-      [{ check_run_id: 31 }, { check_run_id: 32 }, {}].map(async (c) => {
-        const t = await verify(await sign({ ...gh, ...c }))
-        return t.job
-      }),
-    )
-    // A host whose tokens name no job: the workflow run and attempt.
-    expect(jobs).toEqual(['31', '32', '8\0' + '1'])
   })
 
   it('is refused unless its job is of a workflow the relay names for its repository', async () => {

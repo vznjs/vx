@@ -3,7 +3,7 @@
 // whenever it drops.
 
 import { afterEach, expect, it } from 'bun:test'
-import { closeSocket, createRelay, GONE, serveRelay, type RelayServer } from '@vzn/vx-dte-relay'
+import { createRelay, serveRelay, TokenError, type RelayServer } from '@vzn/vx-dte-relay'
 import { join, RelayError, unsent } from '../src/wire.js'
 import { answer } from './served-relay.js'
 
@@ -98,8 +98,9 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
   /**
    * While `refusing`, the host answers each new dial 503, as one overloaded.
    * Once `forget` is set, the next participant to dial is refused for good.
-   * `older`: a socket that would join is refused, as a relay before
-   * PROTOCOL.md's `socket?join` refuses it, so each joins over HTTP.
+   * `failJoins`: that many sockets that would join get a bare 500, as a
+   * host whose object restarts. `hold`: a redial's upgrade is never
+   * answered.
    * `deaf`: the relay's closes never reach the client, as workerd's under
    * Bun 1.4.4 (it ends no TCP, and the client waits 10 s for it).
    */
@@ -107,7 +108,8 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
     refusing: false,
     forget: false,
     forgotten: '',
-    older: false,
+    failJoins: 0,
+    hold: false,
     deaf: false,
     /** Frames of sends the relay takes and loses, as a relay with no queue does. */
     lose: 0,
@@ -130,10 +132,14 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
   server = Bun.serve<Held>({
     hostname: '127.0.0.1',
     port: 0,
-    fetch: (r) =>
-      host.older && r.url.includes('socket?join=')
-        ? new Response(null, { status: 404 })
-        : relay.fetch(r),
+    fetch: (r) => {
+      if (r.url.includes('socket?join=') && host.failJoins > 0) {
+        host.failJoins--
+        return new Response(null, { status: 500 })
+      }
+      if (host.hold && r.url.includes('socket?id=')) return new Promise<Response>(() => {})
+      return relay.fetch(r)
+    },
     websocket: {
       open(ws) {
         open.push(ws)
@@ -141,8 +147,7 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
           send: (t) => void ws.send(t),
           close: () => void (host.deaf || ws.close()),
         }
-        if (!relay.attach(ws.data.key, ws.data.id, ws.data.socket))
-          closeSocket(ws.data.socket, GONE, 'gone')
+        relay.attach(ws.data.key, ws.data.id, ws.data.socket)
       },
       message(ws, m) {
         if (m === 'ping') pings.push(ws.data.id)
@@ -341,49 +346,29 @@ it('sends asked for together go as one frame, each answered', async () => {
   await o.leave()
 })
 
-it('refuses a relay that offers no socket', async () => {
-  const server = Bun.serve({
-    hostname: '127.0.0.1',
-    port: 0,
-    fetch: () => Response.json({ id: 'p1', heartbeatMs: 100 }),
-  })
-  servers.push({ url: '', stop: () => server.stop(true) })
-  await expect(
-    join(`http://127.0.0.1:${server.port}`, R, 'worker', null, undefined),
-  ).rejects.toThrow('the relay offers no socket')
-})
-
 it('asks for a new token a minute before the one it holds expires', async () => {
   const b64 = (v: unknown): string => Buffer.from(JSON.stringify(v)).toString('base64url')
   const jwt = (inS: number): string => `${b64({})}.${b64({ exp: Date.now() / 1000 + inS })}.x`
-  const { url, host } = sockets(undefined, { verify: async () => ({ iss: 'i', run: ['1'] }) })
-  // Several requests a participant, to tell one token from several.
-  host.older = true
+  const { url, host, open } = sockets(undefined, {
+    verify: async () => ({ iss: 'i', run: ['1'] }),
+  })
   // A worker joins a run its orchestrator started.
   await join(url, R, 'orchestrator', null, async () => jwt(300))
   const asked = async (inS: number): Promise<number> => {
     let n = 0
     const me = await join(url, R, 'worker', null, async () => (n++, jwt(inS)))
+    // Its socket drops unseen by the relay: it dials again.
+    const mine = () => open.filter((w) => w.data.id === me.id)
+    host.halfOpen = true
+    mine()[0]!.close()
+    for (const t = performance.now(); mine().length < 2 && performance.now() - t < 3_000;)
+      await Bun.sleep(20)
+    host.halfOpen = false
     await me.leave()
     return n
   }
-  // The socket that would join, its join and its socket's: once, or each time.
-  expect([await asked(300), await asked(30)]).toEqual([1, 3])
-})
-
-it('waits out the relay’s rate limit and joins again', async () => {
-  const s = sockets()
-  s.host.older = true
-  await join(s.url, R, 'orchestrator', null, undefined)
-  let limited = 0
-  globalThis.fetch = ((input: string, init?: RequestInit) =>
-    input.endsWith('/join') && limited++ === 0
-      ? Promise.resolve(Response.json({ error: 'rate limited', retryAfterMs: 30 }, { status: 429 }))
-      : realFetch(input, init)) as typeof fetch
-  const at = Date.now()
-  const a = await join(s.url, R, 'worker', null, undefined)
-  expect([limited, Date.now() - at >= 25]).toEqual([2, true])
-  await a.leave()
+  // The socket that joined and the one dialed again: one token, or each its own.
+  expect([await asked(300), await asked(30)]).toEqual([1, 2])
 })
 
 type Held = { key: string; id: string; socket?: { send(t: string): void; close(): void } }
@@ -539,20 +524,16 @@ it('a worker ends when its orchestrator’s relay answers nothing, the run’s c
 // limit before it failed (CI, 2026-10-22): an upgrade held past three
 // heartbeats is a dial that failed, and no socket for three is the end.
 it('gives up on a socket upgrade the relay holds, after 3 dials', async () => {
-  const server = Bun.serve({
-    hostname: '127.0.0.1',
-    port: 0,
-    fetch: (r) =>
-      r.url.includes('/join')
-        ? Response.json({ id: 'p1', heartbeatMs: 100, socket: true })
-        : r.url.includes('socket?join=')
-          ? new Response(null, { status: 404 })
-          : new Promise<Response>(() => {}),
-  })
-  servers.push({ url: '', stop: () => server.stop(true) })
+  const { url, host, open } = sockets(100)
+  const o = await join(url, R, 'orchestrator', null, undefined)
   const at = performance.now()
-  const o = await join(`http://127.0.0.1:${server.port}`, R, 'orchestrator', null, undefined)
-  await expect(o.poll()).rejects.toThrow('no socket in 3 dials')
+  host.hold = true
+  host.halfOpen = true
+  for (const w of open) w.close()
+  const polls = async (): Promise<never> => {
+    for (;;) await o.poll()
+  }
+  await expect(polls()).rejects.toThrow('no socket in 3 dials')
   expect(performance.now() - at).toBeLessThan(6_000)
 }, 10_000)
 
@@ -662,21 +643,11 @@ it('sends asked for together that would pass the relay’s body limit go as seve
 
 // One 500 from the relay's host on join failed a whole CI run before any
 // task started (PR #3911, 2026-10-22): join asks again.
-it('joins again after the relay answers 5xx or the network drops', async () => {
+it('joins again after its socket is refused 5xx', async () => {
   const s = sockets()
-  s.host.older = true
-  let failures = 0
-  globalThis.fetch = ((input: string, init?: RequestInit) => {
-    if (input.endsWith('/join') && failures < 2) {
-      failures++
-      return failures === 1
-        ? Promise.resolve(new Response('{}', { status: 500 }))
-        : Promise.reject(new TypeError('fetch failed'))
-    }
-    return realFetch(input, init)
-  }) as typeof fetch
+  s.host.failJoins = 2
   const o = await join(s.url, R, 'orchestrator', null, undefined)
-  expect([failures, typeof o.id]).toEqual([2, 'string'])
+  expect([s.host.failJoins, typeof o.id]).toEqual([0, 'string'])
   await o.leave()
 })
 
@@ -684,16 +655,14 @@ it('joins again after the relay answers 5xx or the network drops', async () => {
 // 2026-10-23), with its status and message as every remote error; a
 // refusal is never waited out as a fault is.
 it('does not join again after a 4xx, and names the relay that refused it', async () => {
-  const s = sockets()
-  s.host.older = true
   let asked = 0
-  globalThis.fetch = (() => {
-    asked++
-    return Promise.resolve(
-      Response.json({ error: "repository o/r is not in this relay's ALLOW" }, { status: 403 }),
-    )
-  }) as unknown as typeof fetch
-  await expect(join(s.url, R, 'worker', null, undefined)).rejects.toThrow(
+  const s = sockets(undefined, {
+    verify: async () => {
+      asked++
+      throw new TokenError("repository o/r is not in this relay's ALLOW", 403)
+    },
+  })
+  await expect(join(s.url, R, 'worker', null, 'token')).rejects.toThrow(
     `cannot connect to the relay ${new URL(s.url).origin}: 403 repository o/r is not in this relay's ALLOW`,
   )
   expect(asked).toBe(1)

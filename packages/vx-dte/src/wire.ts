@@ -9,8 +9,6 @@ export class RelayError extends Error {
   constructor(
     readonly status: number,
     message: string,
-    /** A `429` of the relay's rate limit: when to ask again. */
-    readonly retryAfterMs?: number,
   ) {
     super(message)
   }
@@ -71,7 +69,7 @@ const NOT_PROTOCOL = 1002
 const REPLY_MS = 10_000
 /**
  * How many times a request or a socket is tried again, after a fault (a
- * 5xx, a dropped connection) or a rate limit, before the participant gives
+ * 5xx, a dropped connection), before the participant gives
  * up: the run is live, or it isn't (owner, 2026-10-23: "3 retries nothing
  * more").
  */
@@ -132,8 +130,8 @@ const isAcked = (b: unknown): b is Acked =>
   typeof (b as Acked).acked === 'number' &&
   Object.keys(b).length === 1
 
-/** Runs `f` again, at most `RETRIES` times, after a rate-limit answer or (`faults`) a fault. */
-async function paced<T>(f: () => Promise<T>, signal?: AbortSignal, faults = true): Promise<T> {
+/** Runs `f` again after a fault, at most `RETRIES` times and within `REPLY_MS`. */
+async function paced<T>(f: () => Promise<T>): Promise<T> {
   const by = performance.now() + REPLY_MS
   for (let tries = 0; ; tries++) {
     try {
@@ -141,14 +139,9 @@ async function paced<T>(f: () => Promise<T>, signal?: AbortSignal, faults = true
     } catch (err) {
       // A request the relay held past its deadline already took the whole wait.
       const fault =
-        err instanceof RelayError
-          ? err.retryAfterMs !== undefined || (faults && err.status >= 500)
-          : faults && (err as Error).name !== 'TimeoutError'
-      const wait =
-        err instanceof RelayError && err.retryAfterMs !== undefined
-          ? err.retryAfterMs
-          : Math.random() * FIRST_REDIAL_MS * 2 ** tries
-      if (!fault || tries >= RETRIES || signal?.aborted === true) throw err
+        err instanceof RelayError ? err.status >= 500 : (err as Error).name !== 'TimeoutError'
+      const wait = Math.random() * FIRST_REDIAL_MS * 2 ** tries
+      if (!fault || tries >= RETRIES) throw err
       if (performance.now() + wait >= by) throw err
       await Bun.sleep(wait)
     }
@@ -187,45 +180,7 @@ export async function join(
     }
     return h
   }
-  const call = (verb: string, body?: unknown, query = '', signal?: AbortSignal) =>
-    paced(() => once(verb, body, query, signal), signal)
-  // A relay that holds a request past its longest poll is stuck: Bun's
-  // own limit let one poll wait five minutes before the run failed (CI,
-  // 2026-10-22). Two heartbeats, once `join` says what one is, 10 s at most.
-  let deadlineMs = REPLY_MS
-  // The join, socket and request alike, has `REPLY_MS` in all: its socket
-  // and then its request each took 10 s, and PR #4225's run failed after
-  // 21 s on a bare "The operation timed out" (CI, 2026-10-24).
-  let joinBy = performance.now() + REPLY_MS
-  const once = async (verb: string, body?: unknown, query = '', signal?: AbortSignal) => {
-    const method = body === undefined ? 'GET' : 'POST'
-    const text = body === undefined ? '' : JSON.stringify(body)
-    const limit = AbortSignal.timeout(Math.max(1, Math.min(deadlineMs, joinBy - performance.now())))
-    const res = await fetch(base + verb + query, {
-      method,
-      headers: await headers(method, base + verb + query, text),
-      ...(body === undefined ? {} : { body: text }),
-      signal: signal === undefined ? limit : AbortSignal.any([signal, limit]),
-    })
-    if (res.status === 204) return null
-    // A host's own error page (a proxy's, an empty one) is no relay answer.
-    // quiet: the status names the refusal; a host's page is no relay answer
-    const json = ((await res.json().catch(() => null)) ?? {}) as {
-      error?: string
-      retryAfterMs?: number
-    }
-    if (!res.ok) {
-      // Refused at the door is no fault to wait out: say so, and stop.
-      const message =
-        verb === 'join' && (res.status === 401 || res.status === 403)
-          ? `cannot connect to the relay ${new URL(base).origin}: ${res.status} ${json.error ?? ''}`.trimEnd()
-          : `relay ${verb}: ${res.status} ${json.error ?? ''}`
-      throw new RelayError(res.status, message, json.retryAfterMs)
-    }
-    return json as Record<string, unknown>
-  }
   const asked = { role, info, ...(prover && { key: prover.key }) }
-  const enter = async () => (await call('join', asked))!
   let id = ''
   let heartbeatMs = 0
   const dial = async () =>
@@ -383,47 +338,25 @@ export async function join(
       }
     }
   }
-  // One request a participant, which a host may bill: the socket joins as
-  // it opens. One that does not (an older relay, a refusal only `join`
-  // says the reason for) joins by request.
+  // The socket joins as it opens: one request a participant, which a host
+  // may bill. A refusal closes it saying why (PROTOCOL.md § Sockets).
   const query = `join=${encodeURIComponent(JSON.stringify(asked))}`
   let socket: (Socket & { joined?: Joined }) | undefined
   try {
-    socket = await connect(
-      base,
-      query,
-      await headers('GET', `${base}socket?${query}`, ''),
-      // quiet: a socket join that fails joins by request, whose refusal throws
-    ).catch(() => undefined)
-    if (socket?.joined !== undefined) ({ id, heartbeatMs } = socket.joined)
-    else {
-      const joined = await enter()
-      id = joined['id'] as string
-      heartbeatMs = joined['heartbeatMs'] as number
-      if (joined['socket'] !== true) {
-        throw new RelayError(
-          501,
-          'relay join: the relay offers no socket, which vx-dte needs (PROTOCOL.md § Sockets)',
-        )
-      }
-      socket = await dial()
-      // The relay made a run twice when two joins came at once and forgot the
-      // first's participants, whose first socket never opened: two of twelve
-      // workers on CI (2026-10-23). Joined again, it lands in the run that stayed.
-      if (socket === undefined) {
-        id = (await enter())['id'] as string
-        socket = await dial()
-      }
-    }
+    socket = await paced(async () => {
+      const s = await connect(base, query, await headers('GET', `${base}socket?${query}`, ''))
+      // A fault: dialed again within `REPLY_MS`.
+      if (s === undefined) throw new Error('no socket')
+      return s
+    })
   } catch (err) {
-    if ((err as Error).name !== 'TimeoutError') throw err
+    if (err instanceof RelayError) throw err
     throw new RelayError(
       504,
       `cannot connect to the relay ${new URL(base).origin}: no answer in ${REPLY_MS / 1000} s`,
     )
   }
-  joinBy = Infinity
-  deadlineMs = replyMs(heartbeatMs)
+  ;({ id, heartbeatMs } = socket.joined!)
   let failures = 0
   /** When the socket was last open: dials past `REPLY_MS` from it give up. */
   let lostAt: number | undefined
@@ -461,8 +394,10 @@ export async function join(
       nudge()
     }
     s.onClose = (code, why) => {
-      // The relay closes the socket of a participant it lost or let go.
+      // The relay closes the socket of a participant it lost or let go, or
+      // refused (4000 plus the status).
       if (code === GONE) end(new RelayError(404, 'relay: unknown id'))
+      else if ((refusal(code) ?? 500) < 500) end(new RelayError(code - 4000, `relay: ${why}`))
       if (code === NOT_PROTOCOL) end(new RelayError(502, `relay: ${why}`))
       if (socket === s) socket = undefined
       dropped = s
@@ -543,7 +478,7 @@ export async function join(
     for (;;) {
       const s = await live()
       try {
-        await paced(() => down(s), undefined, false)
+        await down(s)
         return
       } catch (err) {
         // Closed under it: sent again on the next (a resent seal is a
@@ -694,12 +629,12 @@ async function connect(
   let open = true
   const inbox: RelayMessage[] = []
   let code = 0
+  let reason = ''
   let n = 0
   let hb = heartbeatMs ?? REPLY_MS
   type Answer = {
     status?: number
     error?: string
-    retryAfterMs?: number
     results?: (Answer | null)[]
   }
   const pending = new Map<number, { settle(a: Answer): void; reject(err: Error): void }>()
@@ -715,7 +650,7 @@ async function connect(
     }, answerMs(hb)).unref()
   }
   const refused = (a: Answer): RelayError =>
-    new RelayError(a.status!, `relay send: ${a.status} ${a.error ?? ''}`, a.retryAfterMs)
+    new RelayError(a.status!, `relay send: ${a.status} ${a.error ?? ''}`)
   /** Sends asked for in this turn of the event loop, which go as one frame. */
   let sends: {
     to: string
@@ -785,6 +720,7 @@ async function connect(
     if (!open) return
     open = false
     code = by
+    reason = why
     for (const p of pending.values()) p.reject(new Error(why))
     pending.clear()
     said(undefined)
@@ -819,7 +755,7 @@ async function connect(
     // The relay says its close first: Bun 1.4.4 reports the close itself
     // only once the host ends TCP, which workerd never did (10 s late).
     if (m.close !== undefined) {
-      closed('socket closed', typeof m.close === 'number' ? m.close : 0)
+      closed(m.error ?? 'socket closed', typeof m.close === 'number' ? m.close : 0)
       ws.close()
       return
     }
@@ -881,8 +817,20 @@ async function connect(
     clearTimeout(timer)
     if (j === undefined) {
       await me.close()
-      return undefined
+      const status = refusal(code)
+      if (status === undefined) return undefined
+      const why = `${status} ${reason}`
+      throw new RelayError(
+        status,
+        status === 401 || status === 403
+          ? `cannot connect to the relay ${new URL(base).origin}: ${why}`
+          : `relay join: ${why}`,
+      )
     }
   }
   return me
 }
+
+/** The HTTP status a close code refuses with (4000 plus it), if it is one. */
+const refusal = (code: number): number | undefined =>
+  code >= 4400 && code < 4600 ? code - 4000 : undefined

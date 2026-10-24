@@ -2,7 +2,7 @@
 
 A relay carries messages between one run's orchestrator and its workers.
 CI runners take no inbound connection, so every participant dials out to
-the relay: `join` over HTTP, then a websocket that carries the rest.
+the relay: one websocket, which joins as it opens and carries the rest.
 Any server that speaks this protocol can stand in
 for `@vzn/vx-dte-relay`; `@vzn/vx-dte` knows only the relay's URL.
 
@@ -11,47 +11,46 @@ to each other is `@vzn/vx-dte`'s business, versioned on its own.
 
 ## Requests
 
-Two requests are HTTP, under `<relay>/v1/runs/<run>/`, where `<run>` is
-the run id, a random (v4) UUID, so no one can guess it; any other answers
-`400`. Each carries `Authorization: Bearer <CI OIDC token>`.
+One request is HTTP, a websocket upgrade under `<relay>/v1/runs/<run>/`,
+where `<run>` is the run id, a random (v4) UUID, so no one can guess it;
+any other answers `400`. It carries `Authorization: Bearer <CI OIDC token>`.
 
-| Request               | Body                                                           | Answer                                  |
-| --------------------- | -------------------------------------------------------------- | --------------------------------------- |
-| `POST join`           | `{ "role": "orchestrator" \| "worker", "info"?: any, "key"? }` | `200 { "id", "heartbeatMs", "socket" }` |
-| `GET socket?id=<id>`  | none, a websocket upgrade                                      | `101`                                   |
-| `GET socket?join=<j>` | none, a websocket upgrade; `<j>` is `join`'s body, as JSON     | `101`                                   |
+| Request               | Query                                                                 | Answer |
+| --------------------- | --------------------------------------------------------------------- | ------ |
+| `GET socket?join=<j>` | `<j>`: `{ "role": "orchestrator" \| "worker", "info"?: any, "key"? }` | `101`  |
+| `GET socket?id=<id>`  | the `id` its join said                                                | `101`  |
 
-- `join` makes a participant and returns its `id`, a secret the relay
-  picked: whoever holds it, with a token of this run, acts as it. A run
-  has one orchestrator; a second `orchestrator` join answers `409`. The
+- `socket?join=` makes a participant, and its socket's first frame is
+  `{ "joined": { "id", "heartbeatMs" } }`: one request a participant, on
+  a host that bills each. The `id` is a secret the relay picked: whoever
+  holds it, with a token of this run, acts as it. A run has one
+  orchestrator; a second `orchestrator` join is refused `409`. The
   orchestrator's join starts the run, and a run is kept only while it is
-  live: a worker's join of any other answers `410`, and the worker leaves.
-  `"socket": true` says the relay
-  speaks this version.
-- `socket` opens the participant's websocket (§ Sockets). With `join`
-  in place of `id` it joins too, as `join` would, and the socket's first
-  frame is `{ "joined": { "id", "heartbeatMs" } }`: one request a
-  participant, not two, on a host that bills each. A socket dialed again
-  names its `id`. An orchestrator signs it like any `socket`, the body
-  in its query.
+  live: a worker's join of any other is refused `410`, and the worker
+  leaves.
+- `socket?id=` is the socket dialed again (§ Sockets).
+- A refused request is let in all the same and its socket closed saying
+  why: `{ "close": 4000 + <status>, "error" }`, then the close with that
+  code (a failed upgrade tells a client nothing it can read). One that
+  is no upgrade is answered `{ "error" }` with its status.
 
 ## The orchestrator's key
 
 A run id is a channel: workers join it before or after the orchestrator
-does, and the orchestrator claims it. Its `join` names `key`, a P-256
+does, and the orchestrator claims it. Its join names `key`, a P-256
 public key (raw, base64url), and the relay keeps it for the run; a join
-without one answers `400`. Its join and each `socket` upgrade carry `vx-proof: <ms>.<nonce>.<signature>`: an
+without one is refused `400`. Each of its `socket` requests, its join too, carries `vx-proof: <ms>.<nonce>.<signature>`: an
 ECDSA SHA-256 signature by that key of
 
 ```
-vx-dte-proof\0<method>\0<path and query>\0<ms>\0<nonce>\0<body>
+vx-dte-proof\0GET\0<path and query>\0<ms>\0<nonce>\0
 ```
 
 `<ms>` the time it was made, within two minutes of the relay's clock,
 and `<nonce>` 16 to 64 base64url characters the relay takes once. Any
-other answers `403`. So only the side holding the private key, which
+other is refused `403`. So only the side holding the private key, which
 never leaves it, acts as the orchestrator, and the relay passes no
-message to or from any other: a second orchestrator `join` answers
+message to or from any other: a second orchestrator's join is refused
 `409`, and a closed run never takes one. A `socket` frame carries no
 proof: its upgrade did.
 
@@ -120,8 +119,8 @@ numbered send), which the worker acknowledges at once; a worker probes
 its orchestrator quiet 1.6; either side quiet 1.9 to the other is lost,
 a worker by ending. A peer that talks is never probed. A numbered frame
 the relay leaves unanswered a heartbeat closes the client's socket.
-vx-dte's client asks again through a `5xx`, a dropped connection or a
-`429`, 3 times at most and within 10 s of the first try.
+vx-dte's client asks again through a `5xx` or a dropped connection, 3
+times at most and within 10 s of the first try.
 
 ## Leases (planned, above the relay)
 
@@ -142,7 +141,7 @@ The relay itself sends with `"from": "relay"`:
 - to every worker, `{ "type": "closed" }` when the orchestrator leaves or is
   lost, or its socket closes. The relay then keeps nothing of the run: a
   worker on a socket is told and let go at once, one with no socket gets
-  `4404` when it opens one, and a `join` answers `410`.
+  `4404` when it opens one, and a join is refused `410`.
 
 A worker's messages carry `"from": "<its id>"`, the orchestrator's
 `"from": "orchestrator"`.
@@ -150,14 +149,15 @@ A worker's messages carry `"from": "<its id>"`, the orchestrator's
 ## Errors
 
 `400` a malformed request, `401` a missing or invalid token, `403` a token
-of a repository the relay does not serve, `403` a request as the orchestrator from another CI job (§ Tokens) or not signed by its key (§ The orchestrator's key), `404` an unknown `id` or `to`, `409` a second
-orchestrator, `410` a closed run, `413` a body over 1 MiB, `426` a
-`socket` request that is not an upgrade, `429` a participant past its rate: a burst
-of 1000 requests and socket frames, then 100 a second, after Tailscale's
-DERP. A rate's `429` says `"retryAfterMs"`, when the next one is taken;
-`@vzn/vx-dte` waits that long and asks again. On Workers, `503` is a
-run's Durable Object the host refused (a plan's daily limit), its
-reason in the error. An error answers `{ "error": "<reason>" }`.
+of a repository the relay does not serve, or a request as the
+orchestrator not signed by its key (§ The orchestrator's key), `404` an
+unknown `id` or `to`, `409` a second orchestrator, `410` a closed run,
+`413` a join or frame over 1 MiB, `426` a `socket` request that is not an
+upgrade. On Workers, `503` is a run's Durable Object the host refused (a
+plan's daily limit), its reason in the error. A socket request is
+refused by its socket's close, 4000 plus the status (§ Requests); any
+other answers `{ "error": "<reason>" }`. The relay counts no rate: a
+participant is a CI job the relay's ALLOW admits.
 
 ## Tokens
 
@@ -181,14 +181,11 @@ even one it learned. The run claims name the repository:
 So only jobs of the repository that started a run can join it, and only
 of a workflow the relay allows for that repository.
 
-The orchestrator is pinned to the CI job it joined from: GitHub's
-`check_run_id` (on a host whose tokens lack it, `run_id` and
-`run_attempt`, which the run's other jobs share), GitLab's `job_id`. A request as the
-orchestrator with a token of another job answers `403`, so its `id`
-leaked to a worker or a log acts from nowhere else. Its workers run in
-other jobs and talk only to `"orchestrator"`, which is always that one. Not of its
-pipeline: workers run in another one (a GitLab child pipeline, a GitHub
-workflow the run dispatches). Which workers take part is the run's own
+The orchestrator's `id` leaked to a worker or a log acts as it nowhere
+else: each of its sockets is signed by its key. Its workers talk only to
+`"orchestrator"`, and need not be of its pipeline: they may run in
+another one (a GitLab child pipeline, a GitHub workflow the run
+dispatches). Which workers take part is the run's own
 business: `@vzn/vx-dte` admits only a worker that completes a Noise
 handshake with the run's key, or on GitHub one bound by its OIDC identity
 (below).
