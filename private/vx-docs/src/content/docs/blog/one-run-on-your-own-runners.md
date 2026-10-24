@@ -92,7 +92,7 @@ worktrees) and `docker()`.
 
 [`@vzn/vx-dte-relay`](https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay)
 depends only on [`jose`](https://github.com/panva/jose) and speaks
-[PROTOCOL.md](https://github.com/vznjs/vx/blob/main/packages/vx-dte-relay/PROTOCOL.md).
+[Switchboard](../../switchboard/), an open relay protocol.
 It has one route: a websocket that joins as it opens. It pushes each
 message down the receiver's socket and keeps no copy. It runs one Durable
 Object per run on Cloudflare's free plan, or on Bun in Docker. One var,
@@ -106,7 +106,7 @@ xychart-beta
   bar [92, 60]
 ```
 
-<small>1 orchestrator and 3 idle workers · before: 88-96 frames, 44-48 each way · after: 24 up, 36 down ([#4309](https://github.com/vznjs/vx/pull/4309)) · each participant joins with one request; Workers bills 20 websocket messages as one request, and the relay writes no storage row ([pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/), read 2026-10-23) · [how it works](../relay-stores-nothing/)</small>
+<small>1 orchestrator and 3 idle workers · before: 88-96 frames, 44-48 each way · after: 24 up, 36 down ([#4309](https://github.com/vznjs/vx/pull/4309)) · each participant joins with one request; Workers bills 20 websocket messages as one request, and the relay writes no storage row ([pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/), read 2026-10-23) · [how Switchboard works](../relay-stores-nothing/)</small>
 
 ## The relay reads nothing it carries
 
