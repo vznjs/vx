@@ -299,7 +299,7 @@
         "$CONFIG: `run.timeout` takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
           "65536"
         ],
-        "$CONFIG: `run.timeout` takes a duration with its unit, like '2147483648ms' or '2147484s' (got 2147483648)": [
+        "$CONFIG: `run.timeout` of 2147483648 exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\" — omit it for no limit": [
           "2147483648"
         ],
         "$CONFIG: `run.timeout` must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"\")": [
@@ -2072,7 +2072,7 @@
         "$CONFIG: tasks.t.exec.timeout takes a duration with its unit, like '65536ms' or '66s' (got 65536)": [
           "65536"
         ],
-        "$CONFIG: tasks.t.exec.timeout takes a duration with its unit, like '2147483648ms' or '2147484s' (got 2147483648)": [
+        "$CONFIG: tasks.t.exec.timeout of 2147483648 exceeds the maximum timer delay (2147483647 ms, ~24.8 days): a longer timer fires at once, it does not mean \"no limit\" — omit it for no limit": [
           "2147483648"
         ],
         "$CONFIG: tasks.t.exec.timeout must be a duration like '500ms', '30s' or '5m', at most 24 days (got \"\")": [
