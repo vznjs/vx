@@ -317,6 +317,41 @@ export default defineProject({
       },
     },
 
+    // Main's deploy, a task of the run (owner, 2026-10-24): once the site's
+    // own checks pass it goes live beside the rest of the run. The Pages
+    // actions ran after the whole run, 33 s of main's workflow. The job's
+    // tokens it passes through work from any worker (ci.yml).
+    'deploy.pages': {
+      description: 'deploy dist/ to GitHub Pages (GitHub Actions only)',
+      dependsOn: ['ci'],
+      exec: {
+        command: 'bun scripts/deploy-pages.ts',
+        env: {
+          passThrough: [
+            'ACTIONS_RUNTIME_TOKEN',
+            'ACTIONS_RESULTS_URL',
+            'ACTIONS_ID_TOKEN_REQUEST_URL',
+            'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+            'GITHUB_TOKEN',
+            'GITHUB_REPOSITORY',
+            'GITHUB_SHA',
+            'GITHUB_API_URL',
+          ],
+          secret: ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'GITHUB_TOKEN'],
+        },
+        sandbox: {
+          allow: {
+            read: ['**/*'],
+            network: [
+              '*.actions.githubusercontent.com',
+              '*.blob.core.windows.net',
+              'api.github.com',
+            ],
+          },
+        },
+      },
+    },
+
     dev: {
       description: 'astro dev server (persistent)',
       dependsOn: ['install', 'build.images'],

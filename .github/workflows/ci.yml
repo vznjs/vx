@@ -91,6 +91,16 @@ jobs:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
       - run: bun packages/vx/src/bin.ts lock --check
+      # The Pages deploy is a task of the run (@vzn/vx-docs#deploy.pages,
+      # owner, 2026-10-24). GitHub hands the job's runtime token, which
+      # uploads the site's artifact, only to JavaScript actions: this hands
+      # it to the run, whose env isolation passes it to that task alone.
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN)
+            core.exportVariable('ACTIONS_RESULTS_URL', process.env.ACTIONS_RESULTS_URL)
       # Plans the graph, starts the workers its width needs, then
       # orchestrates them. A PR runs what its diff affects, inputs outside
       # a project included (owner, 2026-10-23); main runs everything.
@@ -98,7 +108,7 @@ jobs:
       # when affected (macOS-only defects reached main unseen on Linux,
       # 2026-08-22; a PR's Mac-only test turned main red, #4293). Main also
       # proves each release binary launches on its platform.
-      - run: bun packages/vx/src/bin.ts run --profile=profile.json ci test.live build.bun.linux-arm64 build.bun.darwin-arm64 test.platform ${{ github.event_name != 'pull_request' && 'build.bun.linux-x64 build.bun.darwin-x64 check.binary.linux-arm64 check.binary.darwin-arm64 check.sandbox-canary check.build-cold' || '' }} ${{ github.event_name == 'push' && 'release.sync' || '' }} ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
+      - run: bun packages/vx/src/bin.ts run --profile=profile.json ci test.live build.bun.linux-arm64 build.bun.darwin-arm64 test.platform ${{ github.event_name != 'pull_request' && 'build.bun.linux-x64 build.bun.darwin-x64 check.binary.linux-arm64 check.binary.darwin-arm64 check.sandbox-canary check.build-cold' || '' }} ${{ github.event_name == 'push' && 'release.sync' || '' }} ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'deploy.pages' || '' }} ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
       # The run in time (--profile): every worker's tasks on their own
       # lanes (@vzn/vx-dte), opened in https://ui.perfetto.dev; the job
       # summary links it.
@@ -113,9 +123,3 @@ jobs:
         env:
           URL: ${{ steps.trace.outputs.artifact-url }}
         run: echo "[Run profile]($URL), opened in https://ui.perfetto.dev" >> "$GITHUB_STEP_SUMMARY"
-      - if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
-        with:
-          path: private/vx-docs/dist
-      - if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
