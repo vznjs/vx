@@ -9,11 +9,8 @@ tags:
 excerpt: 'One command scaffolds a working plugin and its test. Bring your own remote cache through one small interface, hook setup and teardown around the run, or drive vx from your own scripts with run() and planRun().'
 ---
 
-vx is a [pipeline with seams](../pipeline-with-seams/). This post is the
-practical side: how to write a plugin today, and how to call vx from
-code.
-
-## Start from a working plugin
+One command writes a working plugin and its test. Fill in one method
+and vx does the rest.
 
 ```sh frame="terminal"
 $ vx init --plugin cache --dry
@@ -22,17 +19,20 @@ Declare it in .vx/workspace.ts: import { dirCache } from '../plugins/cache.ts', 
 Test it: bun test plugins/cache.test.ts (needs @vzn/vx installed)
 ```
 
-Drop `--dry` and the files are written. Every seam has a template:
-`executor`, `cache`, `telemetry`, `schedule`, `admit`, `commands`,
-`project`, `graph` and `key`. Each one runs, and its test drives it
-through a real `run()`. The templates are the same files vx's own gate
-runs, so they cannot rot.
+Drop `--dry` to write the files. There is a template for every seam
+(`executor`, `cache`, `telemetry`, `schedule`, `admit`, `commands`,
+`project`, `graph`, `key`). vx's own CI runs each one, so they keep
+working.
 
-## Bring your own remote cache
+## A remote cache is three methods
 
-A remote is a `RemoteCacheLayer`: `has`, `get` and `put`, plus an
-optional batched `hasMany`. Here is the whole template, which uses a
-directory as the store:
+```mermaid
+flowchart LR
+  R[run] --> L[local cache]
+  L -->|miss| P[your RemoteCacheLayer: has, get, put]
+  P -->|error| M[a miss and a warning]
+  P -->|bytes| V[same integrity check as local]
+```
 
 ```ts
 // plugins/cache.ts
@@ -73,32 +73,19 @@ export function dirCache(dir: string): VxPlugin {
 }
 ```
 
-`put` writes aside and links the file into place rather than renaming
-it: on a shared directory a rename can swap the file under a reader,
-while a link never replaces an existing file, and an `EEXIST` is
-success because the same hash means the same bytes. (Thanks to a
-reader's comment.)
+A `RemoteCacheLayer` has `has`, `get` and `put`, plus an optional batched
+`hasMany`. `put` links the file into place, so a reader never sees half
+a file. Swap the directory for S3, R2 or your own server. vx keeps the
+local cache in front and uploads in the background. Give each network
+call its own deadline.
 
-Swap the directory for S3, R2 or your own HTTP server. The plugin
-returns only its remote, and core does the rest: the local cache stays
-in front, `--cache-policy` and `cache.policy` gate the remote, a remote
-error turns into a miss and a warning that names the plugin, uploads run
-in the background, and every artifact gets the same integrity check as
-a local one. vx bounds no call, so a
-network store gives each request its own deadline. A plugin's name is its
-package name, taken from `import.meta`.
+## Code before and after the run
 
-## Code around the run
+`setup(ctx)` runs before the first task and `teardown` after the last.
+A `setup` that throws stops the run and names the plugin. A `teardown`
+gets 3 seconds.
 
-`setup(ctx)` runs before the first task, and `teardown` runs after the
-last. Use them to start a service, take a lock, or flush a report. A
-`setup` that throws stops the run with a clean error naming the plugin.
-A `teardown` cannot hold the exit hostage: it gets a fixed 3 seconds.
-
-## vx from your own scripts
-
-`@vzn/vx` exports the same `run()` and `planRun()` the CLI uses. A plan
-predicts every task's cache status without running anything:
+## Call vx from a script
 
 ```ts
 // scripts/plan.ts
@@ -114,8 +101,15 @@ packages/c#build hit-local aed9a2c6
 packages/a#build hit-local 823174d6
 ```
 
-`run()` takes the same options and returns every task's outcome. Every
-export is in the [API reference](../../api/), and each seam's contract is
-in [Plugins](../../modules/plugins/). Outputs above: demo workspace, vx
-at `dbe4033`, 2026-10-23. More at
+```sh frame="terminal"
+$ bun scripts/plan.ts
+packages/c#build hit-local aed9a2c6
+packages/a#build hit-local 823174d6
+```
+
+<small>Demo workspace · vx `dbe4033` · 2026-10-23</small>
+
+`planRun()` tells you each task's cache status without running it.
+`run()` runs them. See the [API reference](../../api/) and
+[Plugins](../../modules/plugins/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).
