@@ -126,6 +126,12 @@ export interface Load {
   readonly memory: number
   /** Cores its running tasks' process trees used over the last look: the rest of `cpu` is no task's. */
   readonly tasks?: number
+  /**
+   * Cores busy on average since the worker started: the summary's
+   * `machine avg`. A worker sends few frames, so the run cannot average
+   * `cpu` (one that sent 3, each as a task started, read 0.6 of 2.0 used).
+   */
+  readonly avg?: number
 }
 
 export type ToOrchestrator =
