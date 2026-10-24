@@ -69,8 +69,12 @@ describe('--cache-policy spec validation', () => {
     )
     expect(parseRunArgs(['build', '--cache-policy=local:rw']).remoteRequested ?? false).toBe(false)
     // The controls: an axis actually asked for, either way round.
-    expect(parseRunArgs(['build', '--cache-policy=remote:r']).remoteRequested).toBe(true)
-    expect(parseRunArgs(['build', '--cache-policy=remote:rw']).remoteRequested).toBe(true)
+    expect(parseRunArgs(['build', '--cache-policy=remote:r']).remoteRequested).toBe(
+      '--cache-policy',
+    )
+    expect(parseRunArgs(['build', '--cache-policy=remote:rw']).remoteRequested).toBe(
+      '--cache-policy',
+    )
   })
 
   it('still accepts a layer with EMPTY flags — that means "layer off"', () => {
