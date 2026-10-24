@@ -161,6 +161,9 @@ describe('package boundaries', () => {
       'lockfileClaim',
       'machineMemoryBytes',
       'machineParallelism',
+      // Widened 2026-10-24: `@vzn/vx-schedule-history` finds its merge-base
+      // in a one-commit checkout the way `--affected` does.
+      'mergeBaseWith',
       'normalizeGlob',
       // Widened 2026-09-20 (item 445): `@vzn/vx-migrate` asks the same
       // "do these two output globs provably overlap?" question at
