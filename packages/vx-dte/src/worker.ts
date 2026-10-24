@@ -255,9 +255,14 @@ export async function runWorker(opts: {
       // An earlier task's files under these outputs would ship as this one's.
       // A tracked file or a nested project's is none of them: cleared, a
       // committed file under `gen/**` was gone for the task's dependants
-      // (2026-10-24).
+      // (2026-10-24). Nor is a dependency's: an additive task (outputs over
+      // its upstream's tree) found the files it builds on gone.
+      const upstream = m.deps.map((d) => names(d.project, d.outputs))
       const cleared = (await outputFiles(opts.root, m.project, m.outputs)).filter(
-        (f) => !tracked.has(f) && !m.nested.some((n) => f.startsWith(`${n}/`)),
+        (f) =>
+          !tracked.has(f) &&
+          !m.nested.some((n) => f.startsWith(`${n}/`)) &&
+          !upstream.some((held) => held(f)),
       )
       for (const [key, held] of holds)
         if (cleared.some(held)) {
