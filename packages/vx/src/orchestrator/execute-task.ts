@@ -575,7 +575,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   // The local executor keeps its own timer from the spawn (it signals the
   // process group), so its request carries no clock: armed here, it also
   // timed the sandbox's wrap, and a wrap slower than the timeout aborted
-  // the request before the spawn — a task reported killed, never run.
+  // the request before the spawn — a task reported killed, never run. So
+  // does an executor that declares `timeouts`.
   let timeoutTimer: ReturnType<typeof setTimeout> | undefined
   let timeoutFired = false
   // The attempt's listener on the run's stop signal, taken off once the
@@ -596,7 +597,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
     }
     clearTimeout(timeoutTimer)
     timeoutFired = false
-    if (effectiveTimeout !== undefined && !local) {
+    if (effectiveTimeout !== undefined && !local && args.executor.timeouts !== true) {
       timeoutTimer = setTimeout(() => {
         timeoutFired = true
         stop.abort(new Error(`timed out after ${effectiveTimeout}ms`))

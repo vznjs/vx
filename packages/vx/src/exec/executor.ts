@@ -295,6 +295,14 @@ export interface TaskExecutor {
    */
   readonly exclusive?: boolean
   /**
+   * A `remote` executor that enforces `ExecuteRequest.timeoutMs` where it
+   * runs the command, timed from its start, and reports `timedOut`. Core
+   * then arms no clock of its own: armed at the request, it counted the
+   * wait for a worker still booting and killed a 1 s task with a 3 s
+   * timeout before it began (2026-10-24). The run's stop still aborts.
+   */
+  readonly timeouts?: boolean
+  /**
    * The platforms this executor runs tasks on (`exec.platforms`' names). It
    * is offered a task that declares `exec.platforms` only when one of them
    * is listed, and runs it on `ExecuteRequest.platform`; an executor that

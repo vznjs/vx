@@ -2562,6 +2562,29 @@ describe('execute-task edges', () => {
     expect([o.status, o.timedOut]).toEqual(['failed', true])
   })
 
+  it('an executor that keeps its own timeouts gets no clock from core', async () => {
+    // A distributed run's task waited 4 s for its worker to boot: core's
+    // clock, armed at the request, killed it under its 3 s timeout unrun.
+    let aborted: boolean | undefined
+    let timeoutMs: number | undefined
+    const own: TaskExecutor = {
+      name: 'own',
+      remote: true,
+      timeouts: true,
+      execute: async (req: ExecuteRequest) => {
+        await Bun.sleep(150)
+        aborted = req.signal!.aborted
+        timeoutMs = req.timeoutMs
+        return { exitCode: 0, durationMs: 20, stdout: '', stderr: '', violations: [] }
+      },
+    } as TaskExecutor
+    const o = await executeTask({
+      ...baseArgs(b, node(b, { exec: { command: 'true', timeout: '50ms' } }), log),
+      executor: own,
+    })
+    expect([o.status, o.timedOut, aborted, timeoutMs]).toEqual(['success', undefined, false, 50])
+  })
+
   // A-41: a spawn refused for want of descriptors ran no shell, so its 127
   // is vx's; the shell's "command not found" line sent each of 17 tasks to
   // install a command that existed.
