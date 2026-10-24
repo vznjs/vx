@@ -6,62 +6,49 @@ authors:
 tags:
   - caching
   - ci
-excerpt: 'A pull request should read what main built and never write where main reads. vx keeps task keys plain and lets the cache server decide: the CI token picks where a write lands, a header names which branches a read may see. How it works, and how a cache server builds its half.'
+excerpt: 'A pull request reads what main built and can never write where main reads. The CI token decides writes, one header steers reads. How it works, and how a cache server builds its half.'
 ---
 
-A pull request should reuse everything `main` built. And nothing a pull
-request builds should ever be replayed on `main`: one non-hermetic
-build, or one hostile one, would poison every run after it.
+A pull request reuses everything `main` built. Nothing it builds can
+land in `main`'s cache, so one bad build cannot poison the next run.
 
-vx keeps task keys plain and lets the cache server enforce both rules:
+```mermaid
+sequenceDiagram
+  participant PR as PR run (feat-x)
+  participant S as cache server
+  PR->>S: read, scopes: feat-x, then main
+  S-->>PR: first hit
+  PR->>S: write, with CI's signed OIDC token
+  S->>S: token says feat-x, store in feat-x only
+```
 
 | Decision                    | Who makes it | From what                                   |
 | --------------------------- | ------------ | ------------------------------------------- |
 | Where a write lands         | the server   | the CI's signed OIDC token                  |
 | Which branches a read sees  | the client   | one header, own branch first, then `main`   |
 
-The client can steer reads, never writes. So no client, honest or not,
-can write into `main`'s cache.
+## The token decides writes
 
-## The token decides writes, always
+The server checks the CI's signed OIDC token against its trust policy.
+A matching token writes the trusted cache. Any other token from the repo
+writes only its own branch. No token writes nothing. No header or key
+can change that.
 
-**The OIDC token, checked against the server's OIDC trust policy, is
-the only thing that decides where a write may land.** A token that
-matches a trust rule writes the trusted cache. Any other token from the
-repository writes only its own branch's cache. A missing token, or one
-from a repository no rule names, writes nothing. No header, key or
-client option can change that.
-
-GitHub Actions and GitLab CI both mint a signed token per job that
-names the repository, the ref and the workflow. That is a fact the
-server can check, which a header or a key never is. So the server does
-not have to trust the client at all.
-
-## The header steers reads
-
-What the client knows best is which branches a read should see.
-A pull request from `feat-x` wants its own earlier results first, then
-`main`'s. `turboCache()` names those refs on every read, own branch
-first, in one header:
+## One header steers reads
 
 ```http
 HEAD /v8/artifacts/0a1b2c3d4e5f6789
 x-artifact-read-scopes: refs/heads/feat-x, refs/heads/main
 ```
 
-The server walks the list and returns the first hit. The key is the
-same on every branch, so a hit on `main`'s entry is the same bytes a
-`feat-x` run would have built from the same inputs. A server that does
-not know the header ignores it and keeps one shared cache, so nothing
-breaks on a plain Turbo server.
+The server returns the first hit in that order. Keys are the same on
+every branch, so a hit on `main` is the bytes `feat-x` would have built.
+A server that ignores the header keeps one shared cache.
 
-CI's refs come from its env: `GITHUB_HEAD_REF` or `GITHUB_REF`, then
-`GITHUB_BASE_REF` on Actions; `CI_COMMIT_REF_NAME`, then
-`CI_MERGE_REQUEST_TARGET_BRANCH_NAME` on GitLab. A merge queue reads its
-base branch. On a laptop they come from git alone: the current branch,
-then the default one (`origin/HEAD`). No API call, no PR lookup. That
-works because a PR run writes to its head branch, so `git checkout
-feat-x` on a laptop asks for exactly what CI stored for `feat-x`.
+CI refs come from env (`GITHUB_HEAD_REF` or `GITHUB_REF`, then
+`GITHUB_BASE_REF`; `CI_COMMIT_REF_NAME`, then
+`CI_MERGE_REQUEST_TARGET_BRANCH_NAME`). On a laptop they come from git:
+the current branch, then `origin/HEAD`.
 
 ## Two client modes
 
@@ -80,12 +67,19 @@ export default defineWorkspace({
 })
 ```
 
-`'key'` gives a header-blind server separate branch entries: a run
-writes under its own ref's key and asks every ref's key in one batch.
-That is isolation, not security: any writer can compute `main`'s key,
-and that server checks nothing. Only a server can enforce, so
-`'header'` is the default. `nxCache()` sends plain requests: the Nx cache spec has no
-batch query, so a list of keys would cost one request per ref.
+```ts
+// .vx/workspace.ts
+import { defineWorkspace } from '@vzn/vx/config'
+import { turboCache } from '@vzn/vx-migrate'
+
+export default defineWorkspace({
+  plugins: [turboCache({ scope: 'key' })], // a server that ignores the header
+})
+```
+
+`'key'` separates branches but secures nothing: anyone can compute
+`main`'s key. Only a server can enforce, so `'header'` is the default.
+`nxCache()` sends plain requests, since the Nx spec has no batch query.
 
 ## Building the server half
 

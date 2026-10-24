@@ -1,16 +1,16 @@
 ---
-title: 'Why did this re-run?'
+title: 'vx why names the change that made a task run again'
 date: 2026-09-10T23:47:00Z
 authors:
   - vzn
 tags:
   - dx
   - caching
-excerpt: "You changed one file and expected one rebuild; you got twelve. vx keeps the parts behind every cache key, so `vx why` names the one that moved."
+excerpt: "You changed one file and got twelve rebuilds. `vx why` names the part of the cache key that changed, and follows it to the root cause."
 ---
 
-A cache key is one hash. When it changes, you need to know which part
-moved. vx stores every part next to every entry, so it can tell you:
+`vx why` tells you which part of a cache key changed, with the before
+and after.
 
 ```sh frame="terminal"
 $ vx why packages/b#build
@@ -26,23 +26,27 @@ packages/b#build — run 01a16ac6-3270-70fe-aad8-7c5385ba6c66
     file  an edit re-runs by design; a file the task does not read belongs out of inputs.files
 ```
 
-One part moved, and it is named, with the blob id before and after.
+<small>Demo workspace · 2026-10-23</small>
 
-## Follow it upstream
+## It follows the change upstream
 
-When the part that moved is `upstream`, a dependency's key, `vx why`
-follows it down to the task whose own inputs moved:
+```mermaid
+flowchart RL
+  A[app#build: upstream changed] --> L[lib#build: upstream changed]
+  L --> F[file packages/lib/src/index.ts]
+  style F stroke:#c6f84e,stroke-width:2px
+```
 
 ```
   root cause:
     app#build ← lib#build ← file packages/lib/src/index.ts
 ```
 
-## What it reads
+## It only reads the cache database
 
-`vx why` only reads the local `cache.db`. It evaluates no project
-config, hashes nothing and runs nothing. It diffs the task's last run
-against the one before (or `--run <id>`), one row per kind of part:
+`vx why` reads the local `cache.db`. It loads no config and runs
+nothing, so it answers later and on another machine. Keep a CI job's
+`cache.dir` and ask it from your laptop. A key has these parts:
 
 | Kind         | What it is                                                        |
 | ------------ | ----------------------------------------------------------------- |
@@ -58,15 +62,13 @@ against the one before (or `--run <id>`), one row per kind of part:
 | `platform`   | the platform, for a task that names `exec.platforms`              |
 | `format`     | the key format; moves only with a vx upgrade                      |
 
-Because it only reads a database, it works later and elsewhere. A CI job
-that keeps its `cache.dir` can be asked tomorrow, from a laptop, why it
-rebuilt. Without `cache.dir`, entries live in `~/.vx/<id>/cache`.
-
 ## When the key did not change
 
-Most "why did it re-run" questions end with an unchanged key.
-`vx why` says which case it was. Each verdict below is quoted from the
-code:
+Most reruns keep the same key. `vx why` says which case it was, in one
+of these exact sentences:
+
+<details>
+<summary>Every verdict vx prints</summary>
 
 | vx says                                                                                                    | What happened                                                    |
 | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
@@ -88,18 +90,15 @@ code:
 | this task declares no `cache` block — it runs on every invocation; it declares no `inputs` either, so each run derives a new key and every task that depends on it misses; declare its `inputs` | not cached, and no task depending on it can hit |
 | this task recorded no cache key (skipped, or a persistent task) — nothing to compare | there is no key to compare |
 
-Read "vx cannot name the cause" twice. An undeclared input never shows
-up there: a file or env var the key can't see changes the output but
-not the key, so the task hits and replays stale bytes. The
-[sandbox](../the-sandbox/) makes that impossible by turning the inputs
-you declare into a wall the task can't cross.
+</details>
 
-## The same answer for machines
+A missing input never shows up here. The task hits and brings back old
+output. The [sandbox](../the-sandbox/) catches that.
 
-`vx why --format json` prints one object:
-`{ taskId, runId, why, diff, roots }`. The
-[agent skill](../../docs/agents/) teaches a coding agent the command,
-so "why is CI rebuilding everything" is a question it can answer.
+## Scripts and agents get JSON
+
+`vx why --format json` prints `{ taskId, runId, why, diff, roots }`.
+The [agent skill](../../docs/agents/) teaches it to coding agents.
 
 Guide: [Caching › Why did it re-run?](../../docs/caching/#why-did-it-re-run).
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
