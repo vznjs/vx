@@ -19,6 +19,7 @@ import {
   sampleTrees,
   sandboxRequestFor,
   sweepPlaceholders,
+  isUserError,
   type CacheFacts,
   type ExecuteRequest,
   type LocalFloor,
@@ -120,27 +121,40 @@ export async function runWorker(opts: {
     others: ReadonlySet<string> | undefined,
     res: WiredResult & { stdout: string; stderr: string },
   ): Promise<void> => {
-    const { stdout, stderr, ...result } = res
-    await artifacts.save(
-      key,
-      {
-        id: m.task,
-        projectDir: path.join(opts.root, m.project),
-        command: m.command,
-        outputs: m.outputs,
-        nestedProjectDirs: m.nested.map((n) => path.join(opts.root, n)),
-        ...(others === undefined || others.size === 0 ? {} : { others }),
-      },
-      {
-        stdout,
-        stderr,
-        durationMs: res.durationMs,
-        ...(res.cpuMs === undefined ? {} : { cpuMs: res.cpuMs }),
-        ...(res.peakRssBytes === undefined ? {} : { peakRssBytes: res.peakRssBytes }),
-        env: m.env,
-      },
-    )
-    if (res.exitCode === 0) {
+    const { stdout, stderr, ...wired } = res
+    let result: WiredResult = wired
+    const task = {
+      id: m.task,
+      projectDir: path.join(opts.root, m.project),
+      command: m.command,
+      outputs: m.outputs,
+      nestedProjectDirs: m.nested.map((n) => path.join(opts.root, n)),
+      ...(others === undefined || others.size === 0 ? {} : { others }),
+    }
+    const run = {
+      stdout,
+      stderr,
+      durationMs: res.durationMs,
+      ...(res.cpuMs === undefined ? {} : { cpuMs: res.cpuMs }),
+      ...(res.peakRssBytes === undefined ? {} : { peakRssBytes: res.peakRssBytes }),
+      env: m.env,
+    }
+    try {
+      await artifacts.save(key, task, run)
+    } catch (err) {
+      // Its outputs refused (a link out of its project): the task fails, as
+      // core fails it, not this worker. Taken as a fault, it failed every
+      // worker it reached and the run with them (2026-10-24).
+      if (!isUserError(err)) throw err
+      key = m.runKey
+      result = { ...result, exitCode: 1 }
+      await artifacts.save(
+        key,
+        { ...task, outputs: { files: [], workspaceFiles: [] } },
+        { ...run, stderr: `${stderr}${err.message}\n` },
+      )
+    }
+    if (result.exitCode === 0) {
       present.set(key, Promise.resolve())
       holds.set(key, names(m.project, m.outputs))
     }
