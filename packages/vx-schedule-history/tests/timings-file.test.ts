@@ -8,7 +8,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { type HistoryTable, type Logger } from '@vzn/vx'
 import { planRun, run } from '../../vx/tests/helpers/orchestrator.js'
-import { readTimings, writeTimings } from '../src/timings-file.js'
+import { readTimings, warnUnignored, writeTimings } from '../src/timings-file.js'
 
 const PLUGIN_INDEX = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const TIMEOUT = 20_000
@@ -208,4 +208,21 @@ describe('the file between machines', () => {
     },
     TIMEOUT,
   )
+})
+
+// The README's `.vx-timings.json` sat untracked at the root, where a root
+// project's `**` keyed it: each rewrite missed the next run, unsaid.
+it('says a timings file git does not ignore re-keys the tasks over it', async () => {
+  Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+  const said: string[] = []
+  const file = path.join(root, '.vx-timings.json')
+  await writeFile(file, '{}')
+  warnUnignored(file, root, (m) => said.push(m))
+  expect(said).toEqual([
+    '[vx] schedule-history: timings file .vx-timings.json is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore',
+  ])
+  await writeFile(path.join(root, '.gitignore'), '.vx-timings.json\n')
+  warnUnignored(file, root, (m) => said.push(m))
+  warnUnignored(path.join(os.tmpdir(), 'elsewhere.json'), root, (m) => said.push(m))
+  expect(said).toHaveLength(1)
 })
