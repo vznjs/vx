@@ -872,9 +872,13 @@ export class Orchestrator {
     // An upstream's file the task removed there is gone here too: a restore
     // lays files, never removes one, and this disk is what core saves from.
     if (head.removed !== undefined && job.req.remoteOnly !== true && !deferred) {
-      const ours = names(path.relative(this.o.root, node?.projectDir ?? job.req.cwd), job.req.outputs)
+      const ours = names(
+        path.relative(this.o.root, node?.projectDir ?? job.req.cwd),
+        job.req.outputs,
+      )
       for (const f of head.removed)
-        if (typeof f === 'string' && !f.split('/').includes('..') && ours(f)) await rm(path.join(this.o.root, f), { force: true })
+        if (typeof f === 'string' && !f.split('/').includes('..') && ours(f))
+          await rm(path.join(this.o.root, f), { force: true })
     }
     if (log.stdout !== '') job.req.onStdout(log.stdout)
     if (log.stderr !== '') job.req.onStderr(log.stderr)

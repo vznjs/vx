@@ -736,7 +736,10 @@ async function stamps(files: readonly string[]): Promise<Map<string, Stamp>> {
 }
 
 /** Of `found`, the files still as they were. */
-function unchanged(found: ReadonlyMap<string, Stamp>, now: ReadonlyMap<string, Stamp>): Set<string> {
+function unchanged(
+  found: ReadonlyMap<string, Stamp>,
+  now: ReadonlyMap<string, Stamp>,
+): Set<string> {
   const out = new Set<string>()
   for (const [f, was] of found) {
     const is = now.get(f)
