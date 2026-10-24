@@ -137,7 +137,7 @@ describe('workspace digests (npm)', () => {
     expect(() => parseLockfile('{"lockfileVersion":1,"dependencies":{}}')).toThrow(
       /lockfileVersion 1 has no/,
     )
-    expect(() => parseLockfile('nope')).toThrow(/package-lock.json:/)
+    expect(() => parseLockfile('nope')).toThrow(/JSON Parse error/)
   })
 })
 

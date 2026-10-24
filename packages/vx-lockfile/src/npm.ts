@@ -32,20 +32,16 @@ export interface Entry {
 }
 
 export function parseLockfile(text: string): Lockfile {
-  let doc: unknown
-  try {
-    doc = JSON.parse(text)
-  } catch (err) {
-    throw new Error(`package-lock.json: ${err instanceof Error ? err.message : String(err)}`)
-  }
+  // The claim names the file: npm-shrinkwrap.json or package-lock.json.
+  const doc: unknown = JSON.parse(text)
   const d = record(doc)
   const version = d === undefined ? undefined : d['lockfileVersion']
   if (typeof version !== 'number') {
-    throw new Error('package-lock.json: not an npm lockfile (no lockfileVersion)')
+    throw new Error('not an npm lockfile (no lockfileVersion)')
   }
   if (version < 2) {
     throw new Error(
-      `package-lock.json: lockfileVersion ${version} has no \`packages\` map — npm 7+ writes version 2 or 3`,
+      `lockfileVersion ${version} has no \`packages\` map — npm 7+ writes version 2 or 3`,
     )
   }
   const raws = record(d!['packages']) ?? {}

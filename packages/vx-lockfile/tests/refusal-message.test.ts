@@ -58,6 +58,19 @@ describe('a lockfile the plugin cannot read', () => {
       'bun.lock: not a Bun text lockfile (no lockfileVersion) — regenerate it with `bun install` (as of the base ref)',
     ])
   })
+  // npm's parser named package-lock.json in every message, so a broken
+  // shrinkwrap said "npm-shrinkwrap.json: package-lock.json: …".
+  it('a shrinkwrap is named as itself, not as package-lock.json', () => {
+    expect([
+      refusal(npm(), 'npm-shrinkwrap.json', '{}'),
+      refusal(npm(), 'npm-shrinkwrap.json', '{"lockfileVersion":1}'),
+      refusal(npm(), 'npm-shrinkwrap.json', '{'),
+    ]).toEqual([
+      'npm-shrinkwrap.json: not an npm lockfile (no lockfileVersion) — regenerate it with `npm install` (as of the base ref)',
+      'npm-shrinkwrap.json: lockfileVersion 1 has no `packages` map — npm 7+ writes version 2 or 3 — regenerate it with `npm install` (as of the base ref)',
+      expect.stringMatching(/^npm-shrinkwrap\.json: (?!package-lock)/),
+    ])
+  })
 })
 
 describe('a malformed bun.lock on the key path (L-16)', () => {
