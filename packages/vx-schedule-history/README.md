@@ -38,7 +38,9 @@ remote cache declared, the plugin carries them there, with nothing to
 configure:
 
 - **Write.** A CI run writes each task's p50 under its commit after the
-  run; on a branch that lands under the branch's cache scope. A commit's
+  run; on a branch that lands under the branch's cache scope. A task the
+  run only restored, never timed here, is written at the time the run
+  that made its cache entry took. A commit's
   timings are written once and never replaced; a read-only cache policy
   keeps them local. A local run never writes.
 - **Parallel runs.** Each of up to 8 runs of one commit and task graph
