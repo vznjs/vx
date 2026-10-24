@@ -349,8 +349,10 @@ export class RemoteLane {
     return (await this.has(hash)) !== null
   }
 
-  /** Queue a PUT in this remote's bounded pool; `body` is asked for when the job starts. */
-  /** Resolves true once this remote holds `hash`: put now, or held already. */
+  /**
+   * Queue a PUT in this remote's bounded pool; `body` is asked for when the
+   * job starts. Resolves true once this remote holds `hash`: put now, or held already.
+   */
   upload(
     hash: string,
     durationMs: number,
