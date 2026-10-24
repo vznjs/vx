@@ -2287,7 +2287,9 @@ projects, as `vx run` selects: `turbo ls --affected` is
 is `vx show t --affected`. Beside a task, `--affected` lists the
 projects whose task the run keeps: a change reaches another project
 only along a task edge, so a dependent whose `test` has no `^test` is
-not listed (X-147). With no task there is no edge to follow, and the
+not listed (X-147). A task's list the selection leaves empty says so on
+stderr (`no affected project's test runs`); `--format json` prints `[]`.
+With no task there is no edge to follow, and the
 list is the run's candidates, `--filter "...[<base>]"`'s: the changed
 projects and their package dependents. Beside one project or
 `<pkg>#<task>` they are refused.
