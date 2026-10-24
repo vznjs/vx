@@ -2,8 +2,7 @@
 // A sim fixture from a real run: the graph `vx run --dry=json` printed for
 // the run's tasks, and how each task that ran took from the run's
 // `--profile` (its ms, cores as cpu over wall, peak RSS, and the platform
-// of the worker it ran on). What tests/sim.test.ts and tests/goals.test.ts
-// play.
+// of the worker it ran on). What tests/sim.test.ts plays.
 //
 //   bun packages/vx-dte/scripts/fixture.ts dry.json profile.json "main <sha>, <date>" > fixture.json
 
