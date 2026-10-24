@@ -210,9 +210,7 @@ export function taskLog(
   const base = { runId: row.runId, taskId, status: row.status }
   if (row.status === 'failed') {
     const kept = runFailures(cacheDir, db, row.runId)?.tasks.find((t) => t.taskId === taskId)
-    if (kept !== undefined && kept.output !== '') {
-      return { ...base, source: 'failure', output: kept.output }
-    }
+    if (kept !== undefined) return { ...base, source: 'failure', output: kept.output }
   } else if (row.hash !== '') {
     const stored = db.query('SELECT stdout FROM entry_stdout WHERE hash = ?').get(row.hash) as {
       stdout: string
@@ -224,6 +222,10 @@ export function taskLog(
           .join(''),
       )
       return { ...base, source: 'cache', output }
+    }
+    // An entry that printed nothing stores no stdout row: kept, and empty.
+    if (db.query('SELECT 1 FROM entries WHERE hash = ?').get(row.hash) !== null) {
+      return { ...base, source: 'cache', output: '' }
     }
   }
   return { ...base, source: null, output: '' }
