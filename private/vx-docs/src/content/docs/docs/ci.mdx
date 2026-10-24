@@ -69,7 +69,8 @@ export default defineWorkspace({
     bun(),
     // On Actions: the job summary, the PR check, and the PR's base for --affected.
     github(),
-    // The shared cache. With no VX_REAPI_ENDPOINT it declines and vx
+    // The shared cache, here a Bazel REAPI server; turboCache() or nxCache()
+    // fit the same slot. With no VX_REAPI_ENDPOINT it declines and vx
     // caches on this machine alone.
     reapi({ headers: token ? { authorization: `Bearer ${token}` } : {} }),
   ],
@@ -82,6 +83,9 @@ export default defineWorkspace({
 changed and what depends on that. Both files are
 [`examples/ci`](https://github.com/vznjs/vx/tree/main/examples/ci), and
 vx's own CI runs them on every commit.
+
+To spread the run over more runners, add
+[`dte()`](../distributed-runs/).
 
 `github()` writes this job summary and a PR check (the check needs
 `GITHUB_TOKEN`). Off Actions it declines.

@@ -728,10 +728,11 @@ export default defineWorkspace({
     slug: 'remote-execution',
     title: 'Remote cache and execution',
     category: 'extend',
-    hook: 'Distributed builds over Bazel’s open Remote Execution API.',
+    hook: 'Spread one run over your own CI’s machines.',
     body: [
       'Distributed builds usually arrive as a platform: a service, agents, a dashboard, a bill. In vx they are a plugin.',
-      '`@vzn/vx-reapi` speaks Bazel’s Remote Execution API, so it works with servers you host: NativeLink, BuildBuddy, Buildbarn, bazel-remote. It caches by default; set `execute: true` and tasks run there too.',
+      '`@vzn/vx-dte` hands one run’s tasks to workers your own CI starts, through a relay you host, and reports them as one run.',
+      'Already run a Bazel worker pool? `@vzn/vx-reapi` speaks Bazel’s Remote Execution API instead, to servers such as NativeLink, BuildBuddy, Buildbarn or bazel-remote. It caches by default; set `execute: true` and tasks run there too.',
     ],
     example: {
       lang: 'ts',
@@ -739,7 +740,7 @@ export default defineWorkspace({
     },
     image: 'remote-execution.png',
     imageAlt: 'vx sending tasks to a REAPI server.',
-    docs: { label: 'Remote execution', href: 'docs/remote-execution/' },
+    docs: { label: 'Distributed runs', href: 'docs/distributed-runs/' },
     deepDive: { label: 'Remote execution', href: 'blog/remote-execution/' },
   },
   {

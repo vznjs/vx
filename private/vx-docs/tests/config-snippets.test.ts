@@ -28,6 +28,7 @@ const AMBIENT = [
   '@vzn/vx-migrate',
   '@vzn/vx-ci',
   '@vzn/vx-schedule-history',
+  '@vzn/vx-dte',
 ]
 
 // plugins/ is each plugin's README, whose snippets use that plugin's own
