@@ -166,3 +166,21 @@ it('gives each cache plugin the token lent to it, read when asked', async () => 
   await layer.has(KEY)
   expect(seen).toEqual(['ta', undefined, 'ta2', 'tb'])
 })
+
+it('output resolves the output alone and lays no file', async () => {
+  // A remote-only task's files stay off the run's machine; its output does not.
+  const remote = memoryRemote()
+  const agent = await machine('agent', remote.layer)
+  const task = {
+    id: 'app#install',
+    projectDir: path.join(agent.root, 'app'),
+    command: 'install',
+    outputs: { files: ['node_modules/**'], workspaceFiles: [] },
+  }
+  await mkdir(path.join(agent.root, 'app', 'node_modules'), { recursive: true })
+  await writeFile(path.join(agent.root, 'app', 'node_modules', 'x.js'), 'x')
+  await agent.artifacts.save(KEY, task, { stdout: 'installed\n', stderr: '', durationMs: 3 })
+  const here = await machine('here', remote.layer)
+  expect(await here.artifacts.output(KEY)).toEqual({ stdout: 'installed\n', stderr: '' })
+  expect(await Bun.file(path.join(here.root, 'app', 'node_modules', 'x.js')).exists()).toBe(false)
+})

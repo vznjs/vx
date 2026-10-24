@@ -362,6 +362,9 @@ function fakeArtifacts() {
       restored.push(key)
       return saved.get(key) ?? null
     },
+    async output(key) {
+      return saved.get(key) ?? null
+    },
   }
   return { artifacts, saved, restored }
 }
@@ -1480,6 +1483,9 @@ it('a worker restores a dependency once, before any task that needs it runs', as
     let restores = 0
     const artifacts: TaskArtifacts = {
       async save() {},
+      async output() {
+        return null
+      },
       async restore() {
         restores++
         await Bun.sleep(100)
@@ -1572,6 +1578,9 @@ it('a worker restores a dependency again after a task cleared its files', async 
       proof: secretProof('s'),
       artifacts: () => ({
         async save() {},
+        async output() {
+          return null
+        },
         async restore() {
           restores++
           await mkdir(path.join(root, 'p/dist'), { recursive: true })
@@ -1765,6 +1774,9 @@ it('a worker whose answer meets a closed run exits 0', async () => {
         async save() {
           await Bun.sleep(100)
         },
+        async output() {
+          return null
+        },
         async restore() {
           return null
         },
@@ -1833,6 +1845,9 @@ it('a worker begins its next task while the last one saves', async () => {
       artifacts: () => ({
         async save(_key, task) {
           if (task.id === 't1') await saving
+        },
+        async output() {
+          return null
         },
         async restore() {
           return null

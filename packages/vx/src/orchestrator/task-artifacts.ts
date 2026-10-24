@@ -56,6 +56,11 @@ export interface TaskArtifacts {
    * again.
    */
   restore(key: string, task: ArtifactTask): Promise<{ stdout: string; stderr: string } | null>
+  /**
+   * Entry `key`'s output alone, laying no file; null when no cache holds
+   * it. An `exec.remote: 'only'` task's files stay off this disk.
+   */
+  output(key: string): Promise<{ stdout: string; stderr: string } | null>
 }
 
 export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArtifacts {
@@ -97,15 +102,25 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
       const entry = await (cache.getSaved ? cache.getSaved(key) : cache.get(key))
       if (entry === null) return null
       await cache.restoreOutputs(key, task.projectDir, workspaceRoot, task.outputs)
-      let stdout = ''
-      let stderr = ''
-      for (const c of decodeOutputLog(entry.stdout)) {
-        if (c.err) stderr += c.text
-        else stdout += c.text
-      }
-      return { stdout, stderr }
+      return outputOf(entry.stdout)
+    },
+
+    async output(key) {
+      const entry = await (cache.getSaved ? cache.getSaved(key) : cache.get(key))
+      return entry === null ? null : outputOf(entry.stdout)
     },
   }
+}
+
+/** A stored output log, split back into its two streams. */
+function outputOf(log: string): { stdout: string; stderr: string } {
+  let stdout = ''
+  let stderr = ''
+  for (const c of decodeOutputLog(log)) {
+    if (c.err) stderr += c.text
+    else stdout += c.text
+  }
+  return { stdout, stderr }
 }
 
 /**

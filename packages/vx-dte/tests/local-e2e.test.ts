@@ -25,6 +25,10 @@ export default { plugins: [dte({ workers: { small: { max: 2, cpu: 1, memory: '1G
   exec: { command: 'mkdir -p out && echo made > out/a.txt' },
   inputs: { files: ['vx.config.mjs'] },
   cache: { outputs: { files: ['out/**'] } },
+}, ro: {
+  exec: { command: 'mkdir -p out && echo far > out/ro.txt', remote: 'only' },
+  inputs: { files: ['vx.config.mjs'] },
+  cache: { outputs: { files: ['out/ro.txt'] } },
 } } }
 `,
     // The marker lives outside every worktree, so the worker that runs the
@@ -44,6 +48,7 @@ export default { name: 'b', tasks: {
     inputs: { files: ['vx.config.mjs'] },
     cache: { outputs: { files: ['t.txt'] } },
   },
+  far: { dependsOn: ['a#ro'], exec: { command: 'cat ../a/out/ro.txt' } },
   timed: { exec: { command: 'sleep 0.5 && echo timed-ok', timeout: '2s' } },
   slow: { exec: { command: 'touch started && sleep 60' } },
   once: { exec: { command: 'if [ -e ' + once + ' ]; then echo again; else touch ' + once + ' && sleep 60; fi' } },
@@ -665,6 +670,14 @@ it('leaves a tracked file under a task’s outputs in place on its worker', asyn
   const r = vx(['run', 'g#use'], 'tracked')
   const out = r.stdout.toString()
   expect([r.exitCode, out.includes('tracked'), out.includes('made')]).toEqual([0, true, true])
+}, 60_000)
+
+// A remote-only task's files stay off the run's machine (schema: 'only'):
+// its worker's install was laid over this machine's own (2026-10-24).
+it('leaves a remote-only task’s files on the workers', async () => {
+  const r = vx(['run', 'b#far'], 'far')
+  expect([r.exitCode, r.stdout.toString().includes('far')]).toEqual([0, true])
+  expect(await Bun.file(path.join(root, 'a/out/ro.txt')).exists()).toBe(false)
 }, 60_000)
 
 it('says why a worker never joined, and fails the run when none can', async () => {
