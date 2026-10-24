@@ -719,6 +719,7 @@ type Stamp = { size: number; mtimeMs: number; ino: number; ctimeMs: number }
 async function stamps(files: readonly string[]): Promise<Map<string, Stamp>> {
   const out = new Map<string, Stamp>()
   for (const f of files) {
+    // quiet: a file gone is one with no stamp
     const st = await lstat(f).catch(() => undefined)
     if (st !== undefined)
       out.set(f, { size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, ctimeMs: st.ctimeMs })
