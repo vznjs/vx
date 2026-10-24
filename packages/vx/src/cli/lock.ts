@@ -370,12 +370,7 @@ async function writeLock(
   const n = metas.length
   say(`${n} project config${n === 1 ? '' : 's'} → ${LOCKFILE_NAME}${bareNote(bare)}`)
   // A second config beside the one read was edited and nothing changed.
-  for (const { file, read } of check.shadowed)
-    sayNotice(
-      'warn',
-      'vx lock',
-      `${relPosix(root, file)} is not read: ${path.basename(read)} beside it is — delete one`,
-    )
+  warnShadowed(root, check, 'vx lock')
   // Named here too: a lock that wrote clean failed the `--check` after it.
   if (check.reviewFiles)
     for (const file of await strayCopies(check)) sayNotice('warn', 'vx lock', strayLine(root, file))
@@ -438,6 +433,16 @@ function secretsIn(projects: Record<string, ProjectConfig>): Array<{ at: string;
   return found
 }
 
+/** A second config beside the one read: edited, it changes nothing. */
+function warnShadowed(root: string, check: GraphCheck, verb: string): void {
+  for (const { file, read } of check.shadowed)
+    sayNotice(
+      'warn',
+      verb,
+      `${relPosix(root, file)} is not read: ${path.basename(read)} beside it is — delete one`,
+    )
+}
+
 /**
  * Audit the lock: find and re-evaluate every config in the CURRENT
  * environment and deep-compare it with the locked object. That sees an
@@ -446,6 +451,9 @@ function secretsIn(projects: Record<string, ProjectConfig>): Array<{ at: string;
  */
 async function checkLock(root: string, json: boolean): Promise<number> {
   const check = await audit(root, warnToStderr)
+  // A warning, as `vx lock` says it: the CI gate passed beside a hidden
+  // config whose edit changed nothing.
+  warnShadowed(root, check, 'vx lock --check')
   const { broken } = check
   const metas = configured(check.all)
   const bare = bareProjects(check.all, check.tasked)
