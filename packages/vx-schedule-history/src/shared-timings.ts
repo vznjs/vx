@@ -41,8 +41,8 @@ const graphKeyOf = (sha: string, ids: readonly string[]): string =>
 const keysOf = (sha: string, ids: readonly string[]): string[] => [graphKeyOf(sha, ids), keyOf(sha)]
 
 /**
- * A blob's timings, the entries a run's graph has: `{ version: 3, tasks:
- * { id: ms } }` (or 1, 2), each ms a finite number in [0, 24 h]; anything else is
+ * A blob's timings, the entries a run's graph has: `{ version: 4, tasks:
+ * { id: ms } }` (or 1 to 3), each ms a finite number in [0, 24 h]; anything else is
  * dropped. Null for a blob that is not that shape, or over the caps.
  */
 export function parseTimings(
@@ -60,7 +60,7 @@ export function parseTimings(
  * `defs: { id: definition }` says which task each timing is of
  * (`taskDefinitions`); a reader keeps only a timing of the task as it is now.
  */
-const VERSIONS: ReadonlySet<unknown> = new Set([1, 2, 3])
+const VERSIONS: ReadonlySet<unknown> = new Set([1, 2, 3, 4])
 
 function parseBlob(
   bytes: Uint8Array,
@@ -101,13 +101,14 @@ function parseBlob(
       out.set(id, ms)
   }
   const needs = new Map<string, TaskResources>()
-  // An older blob's needs read low: version 1 learned a crowded worker's
-  // share of a core (main c27c238 packed nine test shards on 4 cores), and
+  // An older blob's needs are wrong: version 1 learned a crowded worker's
+  // share of a core (main c27c238 packed nine test shards on 4 cores),
   // version 2 a macOS worker's use, which reported no share, and a hit's
-  // producer's (main 357d3aa packed six Mac shards on 3 cores). Its
-  // timings stand, its needs do not.
+  // producer's (main 357d3aa packed six Mac shards on 3 cores), and
+  // version 3 a Mac share read below its free cores, so a shard asked 2.2
+  // cores and used 0.5 (main 3917881). Its timings stand, its needs do not.
   const raw =
-    (parsed as { version: number; needs?: unknown }).version !== 3
+    (parsed as { version: number; needs?: unknown }).version !== 4
       ? undefined
       : (parsed as { needs?: unknown }).needs
   if (typeof raw === 'object' && raw !== null && !Array.isArray(raw))
@@ -342,7 +343,7 @@ export async function exportTimings(args: ExportArgs): Promise<void> {
   for (const key of keysOf(head[0], args.ids)) await args.cache.put(key, bytes)
 }
 
-/** `{ version: 3, tasks, needs?, defs? }`, each map by task id. */
+/** `{ version: 4, tasks, needs?, defs? }`, each map by task id. */
 function encode(
   timings: ReadonlyMap<string, number>,
   resources: ReadonlyMap<string, TaskResources>,
@@ -365,7 +366,7 @@ function encode(
     }
   }
   const blob = {
-    version: 3,
+    version: 4,
     tasks,
     ...(Object.keys(needs).length === 0 ? {} : { needs }),
     ...(Object.keys(defs).length === 0 ? {} : { defs }),

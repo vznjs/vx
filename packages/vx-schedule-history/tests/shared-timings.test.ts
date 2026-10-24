@@ -209,7 +209,7 @@ describe('shared timings', () => {
       during: () => timed('main', 'p#y', 300),
     })
     expect(read(shared.store.get(key(b)))).toEqual({
-      version: 3,
+      version: 4,
       tasks: { 'p#gone': 5, 'p#x': 100, 'p#y': 300 },
     })
     // Each timing says which task it is of, a carried one's carried.
@@ -231,7 +231,7 @@ describe('shared timings', () => {
     const shared = spyCache({ scoped: true })
     timed('feature', 'p#x', 10)
     await runPlugin(shared, { ci: true, branch: 'feature', ids: ['p#x'] })
-    expect(read(shared.scoped.get(key(head)))).toEqual({ version: 3, tasks: { 'p#x': 10 } })
+    expect(read(shared.scoped.get(key(head)))).toEqual({ version: 4, tasks: { 'p#x': 10 } })
     expect(shared.store.size).toBe(0)
   })
 
@@ -272,7 +272,7 @@ describe('shared timings', () => {
     timed('main', 'p#shard', 100)
     await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#bench'] })
     await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#shard'] })
-    expect(read(shared.store.get(key(a)))).toEqual({ version: 3, tasks: { 'p#bench': 5 } })
+    expect(read(shared.store.get(key(a)))).toEqual({ version: 4, tasks: { 'p#bench': 5 } })
     git('checkout', '-q', '-b', 'feature')
     commit()
     const provider = new LocalHistoryProvider(
@@ -567,7 +567,7 @@ describe('shared timings', () => {
       key(a),
       new TextEncoder().encode(
         JSON.stringify({
-          version: 3,
+          version: 4,
           tasks: { 'p#x': 100, 'p#y': 50, 'p#z': 5 },
           defs: defsOf(['p#x', 'p#y', 'p#z']),
           needs: {
@@ -606,7 +606,7 @@ describe('shared timings', () => {
       key(a),
       new TextEncoder().encode(
         JSON.stringify({
-          version: 3,
+          version: 4,
           tasks: { 'p#x': 100, 'p#y': 50 },
           defs: { 'p#x': 'old', ...defsOf(['p#y']) },
         }),
@@ -641,7 +641,7 @@ describe('shared timings', () => {
     commit()
     const shared = spyCache()
     const put = (sha: string, body: object): void => {
-      shared.store.set(key(sha), new TextEncoder().encode(JSON.stringify({ version: 3, ...body })))
+      shared.store.set(key(sha), new TextEncoder().encode(JSON.stringify({ version: 4, ...body })))
     }
     put(a, { tasks: { 'p#x': 100 }, needs: { 'p#x': { cpu: 3 } } })
     put(b, { tasks: { 'p#x': 120 }, defs: defsOf(['p#x']) })
@@ -673,7 +673,7 @@ describe('shared timings', () => {
     shared.store.set(
       key(a),
       new TextEncoder().encode(
-        JSON.stringify({ version: 3, tasks: { 'p#x': 100 }, needs: { 'p#x': { cpu: 3 } } }),
+        JSON.stringify({ version: 4, tasks: { 'p#x': 100 }, needs: { 'p#x': { cpu: 3 } } }),
       ),
     )
     await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#x'] })
@@ -685,9 +685,11 @@ describe('shared timings', () => {
   // Main c27c238: a version 1 blob's needs were each test shard's share of
   // a crowded worker (0.36 of a core for one that takes 1.1), and the next
   // run packed nine shards on 4 cores; main 357d3aa: a version 2 blob's
-  // Mac needs carried no share and packed six shards on 3 cores. Their
-  // timings stand; their needs go.
-  it.each([1, 2])(
+  // Mac needs carried no share and packed six shards on 3 cores; main
+  // 3917881: a version 3 blob's Mac needs read a share below the free
+  // cores, a shard booked 2.2 cores using 0.5. Their timings stand; their
+  // needs go.
+  it.each([1, 2, 3])(
     "reads a version %d blob's timings, not its needs, and main writes none of them on",
     async (version) => {
       const a = commit()
@@ -723,7 +725,7 @@ describe('shared timings', () => {
       expect([...(await provider.p50sFor(['p#x']))]).toEqual([['p#x', 100]])
       expect((await provider.resourcesFor(['p#x'])).get('p#x')?.maxCpuParallelism).toBeUndefined()
       await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#x'] })
-      expect(read(shared.store.get(key(b)))).toEqual({ version: 3, tasks: { 'p#x': 100 } })
+      expect(read(shared.store.get(key(b)))).toEqual({ version: 4, tasks: { 'p#x': 100 } })
     },
   )
 
@@ -748,7 +750,7 @@ describe('shared timings', () => {
         ['p#f', 86_400_000],
       ]),
     )
-    expect(parseTimings(blob({ 'p#a': 1 }, 4), graph)).toBeNull()
+    expect(parseTimings(blob({ 'p#a': 1 }, 5), graph)).toBeNull()
     expect(parseTimings(new TextEncoder().encode('{'), graph)).toBeNull()
     expect(parseTimings(new TextEncoder().encode('[1]'), graph)).toBeNull()
     expect(parseTimings(new TextEncoder().encode('null'), graph)).toBeNull()
