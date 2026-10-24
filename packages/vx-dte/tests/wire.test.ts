@@ -221,6 +221,42 @@ it('a quiet pair trades one probe and its ack, a talking one none, and none ping
   await o.leave()
 }, 15_000)
 
+// PR #4317's run (2026-10-24): two workers each sent `ran` a moment
+// before their orchestrator's next probe was due. The orchestrator, having
+// heard them, probed no more and acked half a heartbeat later; the worker,
+// its send unacked, did not probe, and judged it silent first.
+it('a worker that sends just before the next probe still hears its orchestrator', async () => {
+  const { url, frames } = sockets(500)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
+  await o.poll()
+  const probe = new RegExp(
+    `"sends":\\[\\{"to":"${a.id}","body":\\{"seq":\\d+(,"acked":\\d+)?\\}\\}\\]`,
+  )
+  frames.length = 0
+  while (!frames.some((f) => probe.test(f))) await Bun.sleep(5)
+  await Bun.sleep(710)
+  await a.send('orchestrator', 'ran')
+  const polls = (async () => {
+    for (;;) await a.poll()
+  })()
+  const read = []
+  const t = performance.now()
+  while (performance.now() - t < 1_500) read.push(...(await o.poll()))
+  expect(read).toEqual([{ from: a.id, body: 'ran' }])
+  expect(
+    await Promise.race([
+      polls.then(
+        () => 'ended',
+        (e: Error) => e.message,
+      ),
+      Bun.sleep(1).then(() => 'live'),
+    ]),
+  ).toBe('live')
+  await a.leave()
+  await o.leave()
+}, 10_000)
+
 it('joins again when its first socket does not open', async () => {
   // A relay that made a run twice for two joins at once forgot the first
   // one's participants: their first socket never opened (CI, 2026-10-23).

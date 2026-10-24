@@ -314,7 +314,8 @@ export async function join(
         nudge()
       } else if (
         quiet >= (role === 'orchestrator' ? PROBE_BEATS : WORKER_PROBE_BEATS) * heartbeatMs &&
-        (outbox.get(peer)?.unacked.size ?? 0) === 0
+        // a numbered send's ack may be deferred past the loss line; a probe's is not
+        ![...(outbox.get(peer)?.unacked.values() ?? [])].some((u) => u.body === PROBED)
       ) {
         let o = outbox.get(peer)
         if (o === undefined) outbox.set(peer, (o = { next: 0, unacked: new Map() }))
