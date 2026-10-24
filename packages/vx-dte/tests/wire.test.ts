@@ -163,7 +163,10 @@ it('asks a quiet relay each heartbeat, and pings only while it hears, not while 
   pings.length = 0
   frames.length = 0
   await Bun.sleep(2_600)
-  // Quiet, most half heartbeats are a frame or the one after it.
+  // Quiet, most half heartbeats are a frame or the one after it: fewer
+  // pings than asks, where a ping each half heartbeat was two an ask. A
+  // count, not a bound by time: a loaded runner slept 2.6 s for 4 s and
+  // pinged past a fixed 3 (PR #4254).
   const quiet = pings.filter((id) => id === a.id).length
   const asked = frames.filter((f) => f.includes('"sends":[]')).length
   pings.length = 0
@@ -172,7 +175,7 @@ it('asks a quiet relay each heartbeat, and pings only while it hears, not while 
     await a.send('orchestrator', i)
     await Bun.sleep(50)
   }
-  expect([quiet <= 3, asked >= 4, pings.filter((id) => id === a.id)]).toEqual([true, true, []])
+  expect([quiet < asked, asked >= 4, pings.filter((id) => id === a.id)]).toEqual([true, true, []])
   await a.leave()
   await o.leave()
 }, 15_000)
