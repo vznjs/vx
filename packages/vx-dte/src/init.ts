@@ -42,14 +42,10 @@ export function repositoryOf(root: string): string | undefined {
 }
 
 const SITE = 'https://vznjs.github.io/vx/docs'
-const RELAY_DOCS = 'https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay#run-it'
+const RELAY_DOCS = 'https://vznjs.github.io/vx/docs/relay/'
 
 /** What is left after the files: a relay that admits them, a shared cache, a commit. */
-function nextSteps(
-  relay: string | undefined,
-  allow: string,
-  files: readonly string[],
-): string[] {
+function nextSteps(relay: string | undefined, allow: string, files: readonly string[]): string[] {
   return [
     '',
     'Next:',
@@ -290,7 +286,7 @@ function rootInstall(manager: DteSetup['manager']): string[] {
 export function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
   if (setup.relay === undefined)
     throw new UserError(
-      'vx dte init: gitlab() needs dte({ relay }) first, since each job asks its ID token for the relay: deploy one (https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay#run-it) and name it',
+      'vx dte init: gitlab() needs dte({ relay }) first, since each job asks its ID token for the relay: deploy one (https://vznjs.github.io/vx/docs/relay/) and name it',
     )
   const relay = setup.relay
   const vx = vxCommand(setup.manager)

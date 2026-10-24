@@ -69,7 +69,7 @@ it('github() writes the workers workflow: the inputs it dispatches, a runner per
     "      - run: bun vx run ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}\n",
   )
   // No relay named yet: how to deploy one, and the rest of the steps.
-  expect(printed.join('')).toContain('packages/vx-dte-relay#run-it')
+  expect(printed.join('')).toContain('https://vznjs.github.io/vx/docs/relay/')
   expect(printed.join('')).toContain('https://vznjs.github.io/vx/docs/remote-cache/')
   expect(printed.join('')).toContain(
     'Its ALLOW (a plain var, no secret): https://token.actions.githubusercontent.com:<owner>/<repo>:ci.yml https://token.actions.githubusercontent.com:<owner>/<repo>:vx-worker.yml',
