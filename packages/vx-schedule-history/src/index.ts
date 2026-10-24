@@ -358,12 +358,23 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
   let shared:
     | { cache: Cache; ids: string[]; branch: string | null; defs: ReadonlyMap<string, string> }
     | undefined
-  let exporting: { cache: PluginCache; root: string; warn: (m: string) => void } | undefined
+  let exporting:
+    | { cache: PluginCache; root: string; warn: (m: string) => void; ran: Set<string> }
+    | undefined
   let fileWarn: { root: string; warn: (m: string) => void } | undefined
   hooks.setup = (ctx) => {
     // A branch's write lands under its scope (M, 2026-10-18), for its next
     // commit's runs to read.
-    exporting = ctx.ci ? { cache: ctx.cache, root: ctx.workspaceRoot, warn: ctx.warn } : undefined
+    exporting = ctx.ci
+      ? { cache: ctx.cache, root: ctx.workspaceRoot, warn: ctx.warn, ran: new Set() }
+      : undefined
+    if (exporting !== undefined) {
+      const ran = exporting.ran
+      ctx.on('onTaskComplete', (node, outcome) => {
+        if (outcome.status === 'success' && node.config.exec?.command !== undefined)
+          ran.add(node.id)
+      })
+    }
     if (options.file === undefined) return
     fileWarn = { root: ctx.workspaceRoot, warn: ctx.warn }
     inRun = true
@@ -402,6 +413,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
           ),
           ids: run.ids,
           defs: run.defs,
+          ran: out.ran,
         })
       } catch (err) {
         // A hint: the next commit's runs walk back to an older blob, and the

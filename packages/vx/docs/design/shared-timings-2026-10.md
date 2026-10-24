@@ -21,7 +21,9 @@ declares. No new wire, no mutable entry.
   immutable. Each run also writes it under that commit and its graph's
   task ids (2026-10-22): every CI job of a commit writes its own graph's
   tasks and the first job's plain blob wins, so a reader asks its own
-  graph's blob first, then the plain one.
+  graph's blob first, then the plain one. A graph's key has 8 slots
+  (2026-10-24, M: "a commit may have concurrent ci runs"): a run writes
+  the lowest free one, and a reader asks the highest first.
 - **Write (on CI, core's `ci` fact; the policy decides which layers keep
   it):** after the run, fetch the newest blob along `HEAD`'s lineage (a
   job before it on `HEAD`, else the parent's, walking back up to 5) and
@@ -29,7 +31,10 @@ declares. No new wire, no mutable entry.
   tell a task the repo dropped from one only another job runs
   (2026-10-22). So whichever of a commit's blobs a reader gets holds every
   task, and a job whose task set changed still finds its own. Put it under
-  `HEAD`; a merge over 1 MiB keeps only the run's own tasks. A branch or PR run writes under its own sha, which no reader on
+  `HEAD`; a merge over 1 MiB keeps only the run's own tasks. A blob names
+  the runs it holds (`has`) and keeps its run's own times (`ran`); a write
+  folds in each blob of its lineage's slots the newest lacks, so a
+  parent's run that writes after its child's still counts (2026-10-24). A branch or PR run writes under its own sha, which no reader on
   another branch asks for: only commits that land on the default branch
   are ever read back.
 - **Read (only when needed):** only when some task in the run has no

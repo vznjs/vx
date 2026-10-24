@@ -41,6 +41,14 @@ configure:
   run; on a branch that lands under the branch's cache scope. A commit's
   timings are written once and never replaced; a read-only cache policy
   keeps them local. A local run never writes.
+- **Parallel runs.** Each of up to 8 runs of one commit and task graph
+  (a rerun, a push and its PR, two workflows) writes its own blob, and
+  each blob names the runs it holds and keeps its run's own times. A
+  write folds in every blob of its last 5 commits the newest one lacks,
+  so a parent's run that finishes after its child's is not lost. With no
+  race this costs no extra request. Two runs of one commit whose writes
+  land within one cache round trip of each other pick the same blob, and
+  one is lost: a cache entry is written once and has no compare-and-swap.
 - **Read.** When some task has no timing on this branch, the plugin
   takes the merge-base of HEAD with `defaultBranch` (or
   `origin/<defaultBranch>`) and imports the newest timings at it or its
