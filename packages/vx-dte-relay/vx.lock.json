@@ -37,7 +37,8 @@
     "ci": {
       "dependsOn": [
         "lint",
-        "test"
+        "test",
+        "test.live"
       ]
     },
     "lint": {

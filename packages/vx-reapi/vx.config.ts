@@ -22,7 +22,7 @@ export default defineProject({
     },
 
     ci: {
-      dependsOn: ['lint', 'test'],
+      dependsOn: ['lint', 'test', 'test.live'],
     },
 
     // ONE bun PROCESS PER TEST FILE, not one for the suite: Bun 1.4.0's

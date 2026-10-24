@@ -436,8 +436,32 @@ export default defineProject({
     ...shardTasks,
     ...unsafeShardTasks,
     ...releaseTasks,
+    // What CI asks of every change: the platform's own tests and the arm64
+    // builds run on their workers, and on a Linux machine with no such
+    // worker are skipped with a warning (a Mac-only test merged green and
+    // turned main red, #4293).
     ci: {
-      dependsOn: ['lint', 'test', 'check.binary'],
+      dependsOn: [
+        'lint',
+        'test',
+        'check.binary',
+        'test.platform',
+        'build.bun.linux-arm64',
+        'build.bun.darwin-arm64',
+      ],
+    },
+    // What main adds: every release binary, each proven to launch on its
+    // platform, the sandbox canary, a cold build, and the release notes.
+    release: {
+      dependsOn: [
+        'ci',
+        'build.bun',
+        'check.binary.linux-arm64',
+        'check.binary.darwin-arm64',
+        'check.sandbox-canary',
+        'check.build-cold',
+        'release.sync',
+      ],
     },
 
     // `check.bun` sits under install so that every shard, the unsafe suite,
