@@ -289,6 +289,31 @@ it('counts no work after a forecast miss the probe found held', () => {
   expect(missedWork(both, nodes, still, one, () => 1000).map((t) => t.id)).toEqual(['b', 't'])
 })
 
+// Main e38d1d2: check.build-cold, uncached, waited on install; counted
+// only once handed over, the first plan asked one Mac for a 37 s lane.
+it('counts an uncached task as work before it is handed over', () => {
+  const nodes = new Map(
+    [
+      ['install', [], true],
+      ['cold', ['install'], false],
+      ['after', ['cold'], true],
+    ].map(([id, deps, cached]) => [
+      id as string,
+      {
+        id,
+        deps,
+        config: { exec: { command: 'x' }, ...(cached ? { cache: {} } : {}) },
+      } as unknown as TaskNode,
+    ]),
+  )
+  const one = () => ({ cores: 1, memory: 1e9 })
+  const remaining = new Set(['install', 'cold', 'after'])
+  // Nothing missed: the uncached task still runs, and its dependant's key holds.
+  expect(missedWork(remaining, nodes, new Set(), one, () => 1000).map((t) => t.id)).toEqual([
+    'cold',
+  ])
+})
+
 // Main fd5c72e: small workers joined in 15 s and its Mac in 27 s, while
 // every plan waited 20 s for each.
 it("plans each size's own warm-up", () => {

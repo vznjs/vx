@@ -174,7 +174,10 @@ export function planTasks(
  * The run's known work: of `remaining`, each task that runs a command and
  * missed the cache, handed over to run (`executed`), or waits on a cached
  * one that did, its key folding that one's. An uncached task runs every
- * time and changes no dependant's key (check.bun, under every install).
+ * time, so it is work before it is handed over, and changes no dependant's
+ * key (check.bun, under every install). Counted only once handed over,
+ * main e38d1d2's first plan missed check.build-cold behind its install and
+ * asked one Mac for a 37 s lane that ran to 120 s (2026-10-24).
  * Groups and hits are no work: counted, 85 hits of 109 tasks asked 6
  * workers where 2 did (main, 2026-10-23).
  */
@@ -197,8 +200,13 @@ export function missedWork(
     changed.set(id, c)
     return c
   }
-  const missed = (id: string): boolean =>
-    executed.has(id) || (nodes.get(id)?.deps ?? []).some(changes)
+  const missed = (id: string): boolean => {
+    const n = nodes.get(id)
+    return (
+      executed.has(id) ||
+      (n !== undefined && (n.config.cache === undefined || n.deps.some(changes)))
+    )
+  }
   return planTasks([...remaining].filter(missed), nodes, need, durationMs, home)
 }
 
