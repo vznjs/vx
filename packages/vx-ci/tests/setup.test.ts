@@ -103,6 +103,14 @@ it('fetches anew when the kept packages do not install', async () => {
   expect(m.ran).toContain('sudo apt-get update')
 })
 
+// GitLab's debs sit in the checkout (its cache keeps only paths there),
+// and a root task's `**` keyed them as inputs.
+it('git ignores the kept packages, so no task keys them', async () => {
+  const m = machine({ bins: ['apt-get'] })
+  await m.go()
+  expect(readFileSync(path.join(m.debs, '.gitignore'), 'utf8')).toBe('*\n')
+})
+
 it('an Alpine job installs by apk', async () => {
   const m = machine({ bins: ['apk'], root: true })
   await m.go()

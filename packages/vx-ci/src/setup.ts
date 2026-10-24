@@ -131,6 +131,9 @@ export async function setup(o: SetupOptions): Promise<number> {
     await run(['cp', profile, '/etc/apparmor.d/bwrap'])
     await run(['apparmor_parser', '-r', '/etc/apparmor.d/bwrap'])
   }
+  // GitLab keeps it in the checkout, where a root task's `**` keyed the
+  // debs: a job that had them missed every hit saved without them.
+  if (existsSync(o.debs)) await writeFile(path.join(o.debs, '.gitignore'), '*\n')
   if (o.output !== undefined && o.output !== '')
     await writeFile(o.output, `fetched=${fetched}\n`, { flag: 'a' })
   // The proof: a sandbox that cannot start fails here, named, not as every
