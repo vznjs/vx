@@ -80,6 +80,6 @@ $ vx run build
 A few settings are read before the workspace file loads, such as
 `run.outputLogs` and `debug.timing`. Those are set only by a variable
 or a flag, never in the file. Every setting, with its variable, flag,
-values and default, is in the [settings table](../../schema/#settings).
+values and default, is in the [settings table](../../schema/workspace/#settings).
 Outputs above: demo workspace, vx at `22f6eb7`, 2026-10-23. More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

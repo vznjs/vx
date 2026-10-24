@@ -144,6 +144,12 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
       label: 'Config',
       items: [
         { label: 'vx.config.ts', link: '/schema/' },
+        { label: 'exec', link: '/schema/exec/' },
+        { label: 'exec.sandbox', link: '/schema/sandbox/' },
+        { label: 'dependsOn', link: '/schema/depends-on/' },
+        { label: 'inputs', link: '/schema/inputs/' },
+        { label: 'cache', link: '/schema/cache/' },
+        { label: '.vx/workspace.ts', link: '/schema/workspace/' },
         { label: 'Caching in depth', link: '/caching/' },
         { label: '@vzn/vx API', link: '/api/' },
         { label: 'Security model', link: '/security/' },

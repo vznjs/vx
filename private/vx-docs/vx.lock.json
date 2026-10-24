@@ -98,6 +98,7 @@
           "!src/content/docs/design/**",
           "!src/content/docs/plugins/**",
           "!src/content/docs/cli/**",
+          "!src/content/docs/schema/**",
           "!public/_img/**",
           "!dist/**",
           "package.json"
@@ -167,7 +168,8 @@
             "src/content/docs/modules/**",
             "src/content/docs/design/**",
             "src/content/docs/plugins/**",
-            "src/content/docs/cli/**"
+            "src/content/docs/cli/**",
+            "src/content/docs/schema/**"
           ]
         }
       }
@@ -201,7 +203,8 @@
               "../../packages/vx/tests/layered-cache.test.ts",
               "../../packages/vx-reapi/tests/exec-e2e.test.ts",
               "../../packages/vx-migrate/tests/turbo.test.ts",
-              "../../packages/vx/docs/cli.md"
+              "../../packages/vx/docs/cli.md",
+              "../../packages/vx/docs/schema.md"
             ],
             "systemInfo": [
               "vfs.disk-space"
@@ -247,6 +250,7 @@
           "!src/content/docs/design/**",
           "!src/content/docs/plugins/**",
           "!src/content/docs/cli/**",
+          "!src/content/docs/schema/**",
           "!public/_img/**",
           "!dist/**"
         ],
@@ -258,7 +262,8 @@
           "packages/vx/tests/layered-cache.test.ts",
           "packages/vx-reapi/tests/exec-e2e.test.ts",
           "packages/vx-migrate/tests/turbo.test.ts",
-          "packages/vx/docs/cli.md"
+          "packages/vx/docs/cli.md",
+          "packages/vx/docs/schema.md"
         ]
       },
       "cache": {
@@ -366,6 +371,7 @@
           "!src/content/docs/design/**",
           "!src/content/docs/plugins/**",
           "!src/content/docs/cli/**",
+          "!src/content/docs/schema/**",
           "!public/_img/**",
           "!dist/**",
           "package.json"
