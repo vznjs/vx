@@ -93,7 +93,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     const r = vx(root, 'run', 'build', '--affected')
     expect(r.exitCode).not.toBe(0)
     expect(r.out).toContain(
-      '--affected has no default on the base branch (feat): name the last good commit, --affected=<sha>',
+      '--affected has no default on the base branch (feat): run --all (the cache skips what did not change), or name the last good commit, --affected=<sha>',
     )
   })
 
@@ -300,10 +300,10 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
         cwd: clone,
       })
       expect(shallow.stdout.toString().trim()).toBe('true')
-      const plan = (args: string[]) => {
+      const plan = (args: string[], cwd = clone) => {
         const p = Bun.spawnSync({
           cmd: ['bun', CLI, 'run', 'build', ...args, '--dry=json'],
-          cwd: clone,
+          cwd,
           stdout: 'pipe',
           stderr: 'pipe',
           env: { ...process.env, CI: '', GITHUB_ACTIONS: '', NO_COLOR: '1' },
@@ -315,6 +315,10 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
       }
       expect(plan(['--affected=HEAD~1'])).toEqual(['app#build', 'lib#build'])
       expect(plan(['--filter', '...[HEAD^]'])).toEqual(['app#build', 'lib#build'])
+      // A depth-1 clone (CI's default checkout) fetches the parent it lacks.
+      const one = path.join(parent, 'one')
+      git(parent, 'clone', '-q', '--depth', '1', `file://${root}`, one)
+      expect(plan(['--affected=HEAD~1'], one)).toEqual(['app#build', 'lib#build'])
     } finally {
       await rm(parent, { recursive: true, force: true })
     }
@@ -445,13 +449,11 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     ])
   }, 30_000)
 
-  it('no origin/HEAD and no parent commit: no base at all, said in CI terms, exit 1', () => {
+  it('no origin/HEAD and no parent commit: no base at all, exit 1', () => {
     const r = vx(root, 'run', 'build', '--affected')
     expect(r.exitCode).toBe(1)
     expect(r.out).toContain('--affected has no base here')
-    expect(r.out).toContain(
-      'a shallow clone?\n\n  Fetch history (actions/checkout: fetch-depth: 0)',
-    )
+    expect(r.out).toContain('set `baseBranch`, or name the base: --affected=origin/main')
     expect(r.out).not.toContain('did not resolve')
   })
 
@@ -480,7 +482,7 @@ describe('--affected with no value, in the clone shapes CI produces', () => {
     }
   })
 
-  it('a repository with no commit yet says that, not "a shallow clone?" (X-52)', async () => {
+  it('a repository with no commit yet says that, not "no base branch" (X-52)', async () => {
     const root = await withoutGit()
     try {
       git(root, 'init', '-q', '-b', 'feat')

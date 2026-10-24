@@ -164,9 +164,10 @@ exactly that. The config-import channel
 - On the base branch itself it refuses: there is no default (`HEAD~1`
   saw one commit of a multi-commit push); the last good commit is the
   caller's to name.
-- With no base branch at all (a CI checkout at `fetch-depth: 1`), a
-  `UserError` asks to fetch history, set `baseBranch`, or name the base
-  (`--affected=origin/main`).
+- With no base branch at all, a shallow clone fetches it from origin at
+  depth 1 (the configured one, else origin's default from `ls-remote
+--symref`); otherwise a `UserError` asks to set `baseBranch` or name
+  the base (`--affected=origin/main`).
 - `affectedChanges` diffs from the merge base of that ref and HEAD, or
   from the ref's tip when they share no history.
 
@@ -182,9 +183,18 @@ spawns) — easy to test against in-memory fixtures.
 
 ## What this does NOT do
 
-- **Doesn't run `git fetch`.** If the local clone is stale,
-  `affectedProjects` operates on stale refs. CI scripts should
-  fetch first.
+- **Doesn't run `git fetch` in a whole clone.** If the local clone is
+  stale, `affectedProjects` operates on stale refs. Only a shallow
+  clone fetches, and only what its merge base needs
+  (`reachMergeBase`): the base's tip at depth 1, then both tips
+  deepened 1, 2, 4… commits (to 1,024) until git finds the merge base;
+  a merge checkout whose parent is the base needs no deepening. Every
+  fetch is `--filter=blob:none`: `--name-only` reads no blob. In a
+  partial clone the diff is the base's tree against HEAD's plus HEAD's
+  against the working tree, so no base blob is ever read (a stat-dirty
+  file made `git diff <base>` fetch one per file; git 2.43 crashed).
+  Probes set `GIT_NO_LAZY_FETCH`: a missing commit fetched its whole
+  history.
 - **Doesn't honor `.gitattributes` or `--diff-filter`.** A
   whitespace-only commit still marks projects as affected.
 - **Doesn't intersect with `inputs.files`.** A project is
