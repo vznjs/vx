@@ -243,11 +243,10 @@ it('dials its socket again after it drops, and gets what was sent meanwhile, sen
   const asked = verbs()
   workerSockets()[0]!.close()
   await o.send(a.id, 'while down')
-  // A poll the socket's close wakes may come back empty; the next waits on the redial.
-  const got = await a.poll()
-  expect(got.length > 0 ? got : await a.poll()).toEqual([
-    { from: 'orchestrator', body: 'while down' },
-  ])
+  // Polls the close and the redial wake come back empty until the resend lands.
+  let got = await a.poll()
+  for (let i = 0; got.length === 0 && i < 8; i++) got = await a.poll()
+  expect(got).toEqual([{ from: 'orchestrator', body: 'while down' }])
   expect(workerSockets()).toHaveLength(2)
   await a.send('orchestrator', 'back')
   expect(await o.poll()).toEqual([{ from: a.id, body: 'back' }])
