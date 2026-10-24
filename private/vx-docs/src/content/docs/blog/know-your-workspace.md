@@ -6,11 +6,11 @@ authors:
 tags:
   - dx
   - caching
-excerpt: 'vx info answers the questions a bug report starts with: versions, projects, workers, memory, cache size, flaky tasks, sandbox. And one command keeps the cache in bounds.'
+excerpt: 'vx info answers the first questions of every bug report on one screen: versions, workers, memory, cache size, flaky tasks, sandbox.'
 ---
 
 Every bug report starts with the same questions. `vx info` answers them
-on one screen:
+on one screen.
 
 ```sh frame="terminal"
 $ vx info
@@ -34,24 +34,28 @@ $ vx info
   projects lock     yes
 ```
 
-Demo workspace, Linux x64, vx at `69617eb`, 2026-10-23 (paths
-shortened).
+<small>Demo workspace · Linux x64 · vx 69617eb · 2026-10-23 · paths shortened</small>
 
-| Line              | Where it comes from                            |
-| ----------------- | ---------------------------------------------- |
-| `memory`          | the container's cgroup limit, not the machine  |
-| `git status cache`| whether git's fast status cache is on          |
-| `flaky tasks`     | the local run history ([flaky](../flaky-tasks/)) |
-| `sandbox`         | whether this host can sandbox, and who asks    |
+## Where each answer comes from
 
-Nothing is uploaded or computed fresh: it reads the run history, the
-cache index and the host. `--format json` gives an agent the same
-facts.
+```mermaid
+flowchart LR
+  H[run history] --> I[vx info]
+  X[cache index] --> I
+  O[this machine: cgroup, git, sandbox] --> I
+  I --> T[terminal]
+  I --> J["--format json"]
+```
 
-## A cache you keep in bounds
+Nothing is uploaded and nothing is recomputed. `memory` is the
+container's limit, not the machine's. `flaky tasks` comes from your
+local runs ([flaky](../flaky-tasks/)). `--format json` gives an agent
+the same facts.
 
-A content-addressed cache only grows, and no run evicts. Trim it by
-hand or on a schedule, and look first:
+## Keep the cache small
+
+No run deletes cache entries. Trim it by hand or on a schedule, and
+look first:
 
 ```sh frame="terminal"
 $ vx cache clean --max-size 4KB --dry-run

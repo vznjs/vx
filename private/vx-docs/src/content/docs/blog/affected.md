@@ -6,11 +6,11 @@ authors:
 tags:
   - ci
   - dx
-excerpt: 'vx run test --affected runs the projects your branch changed and every project downstream of them. Nothing else starts, and what it skips it can explain.'
+excerpt: 'vx run test --affected runs what your branch changed and everything downstream of it, and says why each task was picked.'
 ---
 
-The branch edits one file in `packages/a`. `packages/c#build` depends
-on `packages/a#build`:
+`--affected` runs only what your branch changed and what depends on it.
+Each task says why it was picked.
 
 ```sh frame="terminal"
 $ vx run build test --affected=master --dry
@@ -32,34 +32,42 @@ $ vx run build test --affected=master
   tasks     3 success · 3 total
 ```
 
-Three of eight tasks, each with the reason it was picked. `c#test`
-doesn't read `a`, so it isn't in the set. Demo workspace, vx at
-`69617eb`, 2026-10-23.
+3 of 8 tasks ran. `c#test` doesn't read `a`, so it stayed out.
 
-## Which base
+<small>Demo workspace · vx 69617eb · 2026-10-23</small>
 
-`--affected` compares against a git base. Name one (`--affected=main`),
-or let vx pick: on a pull request, `github()` names the PR's base commit;
-elsewhere vx takes the merge base with the base branch (`origin/HEAD`'s
-branch, else `main` or `master`, or `baseBranch` in `.vx/workspace.ts`).
-On the base branch itself there is no default: pass the last commit that
-passed, `--affected=<sha>`.
+## It follows task edges
 
-It is sugar for a filter, `--filter "...[<base>]"`: the projects changed
-since the base, and their dependents. So it combines with any other
-filter, and `vx show --affected` lists the projects without running.
+```mermaid
+flowchart LR
+  F["packages/a/src/index.ts changed"] --> AB["a#build ▶"]
+  F --> AT["a#test ▶"]
+  AB -->|dependsOn| CB["c#build ▶"]
+  CT["c#test"]:::off
+  BB["b#build"]:::off
+  classDef off stroke-dasharray: 4 4,opacity:0.5
+```
 
-## Why the cache still matters
+`c` has no package dependency on `a`. Its `build` is still downstream,
+through `dependsOn`. The set is what your tasks really depend on, not
+only `package.json`.
 
-`--affected` decides which projects are in the run. The cache key still
-decides which tasks execute. A file outside every task's inputs, a
-README say, puts its project in the set, and every task there is a hit.
+## Which base it compares to
 
-## The edges are task edges
+Name one with `--affected=main`, or let vx pick. On a pull request,
+`github()` gives the PR's base commit. Elsewhere vx uses the merge base
+with your base branch (`origin/HEAD`, else `main` or `master`, or
+`baseBranch` in `.vx/workspace.ts`). On the base branch itself, pass the
+last green commit: `--affected=<sha>`.
 
-vx follows the task graph, not only `package.json`. Above, `c` has no
-package dependency on `a`; its `build` is downstream through
-`dependsOn`. The set is what your tasks really depend on.
+It is short for `--filter "...[<base>]"`, so it combines with other
+filters. `vx show --affected` lists the projects without running.
+
+## The cache still decides what runs
+
+`--affected` picks the projects. The cache key picks the tasks that run.
+Edit a README and its project joins the set, but every task there is a
+cache hit.
 
 Reference: [the CLI](../../cli/#--affectedbase). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

@@ -6,11 +6,11 @@ authors:
 tags:
   - ai
   - dx
-excerpt: 'vx docs <query> searches the reference your vx version wrote, read from its release tag on GitHub: the sections that match print whole, with their URL.'
+excerpt: 'vx docs <query> searches the docs for the vx version you run, so the answer matches your binary.'
 ---
 
-The site shows the newest docs. The vx you run may be older. `vx docs`
-searches the reference your version wrote:
+The site shows docs for the newest vx. `vx docs` searches the docs for
+the version you run.
 
 ```sh frame="terminal"
 $ vx docs exit codes --limit 1
@@ -20,16 +20,22 @@ $ vx docs exit codes --limit 1
 …
 ```
 
-About one second per query (948 to 1,095 ms, two queries, Linux x64,
-2026-10-23), most of it the fetch.
+A query takes about one second, mostly the download (948 to 1,095 ms,
+two queries, Linux x64, 2026-10-23).
 
-## How it works
+## How it finds an answer
 
-- It reads every page of `packages/vx/docs` at your release tag
-  (`v<version>`) on GitHub, each time. Nothing ships inside vx.
-- A section matches when it holds every word of the query. A word in
-  its heading ranks it first.
-- The best three print whole. `--limit` changes how many.
+```mermaid
+flowchart LR
+  Q[vx docs cache inputs] --> T[docs at your version tag on GitHub]
+  T --> M[sections with every word]
+  M --> R[heading match first]
+  R --> P[print the best 3 whole]
+```
+
+Nothing ships inside vx. `--limit` changes how many sections print.
+
+## What to ask
 
 | You ask                     | You get                               |
 | --------------------------- | ------------------------------------- |
@@ -39,9 +45,9 @@ About one second per query (948 to 1,095 ms, two queries, Linux x64,
 | `vx docs VX_E_UNKNOWN_TASK` | the fix for that [refusal](../error-codes/) |
 | `vx docs ... --format json` | `{query, hits: [{page, heading, url, text}]}` |
 
-With no network it refuses with `VX_E_NETWORK` and names the site. The
-JSON shape is `schemas/docs.json`. Guides stay on the site;
-[llms.txt](https://vznjs.github.io/vx/llms.txt) indexes them.
+Offline, it stops with `VX_E_NETWORK` and names the site. The JSON shape
+is `schemas/docs.json`. Guides stay on the site, indexed in
+[llms.txt](https://vznjs.github.io/vx/llms.txt).
 
 Reference: [`vx docs`](../../cli/#vx-docs). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

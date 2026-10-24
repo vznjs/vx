@@ -8,7 +8,8 @@ tags:
 excerpt: 'One line per task while it runs, the full log only for what failed, and one summary block at the end. Nothing prints below it.'
 ---
 
-Eight tasks in four projects, in parallel, one test failing:
+You see one line per task, the full log only for what failed, and one
+summary at the bottom. Here 8 tasks run in parallel and one test fails:
 
 ```sh frame="terminal"
 $ vx run build test --filter packages/a --filter packages/b --filter packages/c --filter packages/d --force
@@ -49,19 +50,21 @@ Received: 4
   time      59ms · max 19ms · avg 13ms · min 7ms
 ```
 
-Demo workspace, vx at `69617eb`, 2026-10-23. Three parts, each with one
-job:
+<small>Demo workspace · vx 69617eb · 2026-10-23</small>
 
-| Part              | Job                                                        |
-| ----------------- | ---------------------------------------------------------- |
-| a line per task   | glyph, time, outcome, whether the cache had it             |
-| a frame per failure | the whole log and the command, no other task's output in it |
-| one summary, last | the answer to "did it pass?", where your eyes land          |
+## Three parts, read top to bottom
 
-`--output-logs full` gives every task its own frame, in the order tasks
-finish. On CI the frames fold into log groups, and `vx last` replays
-the summary later.
+```mermaid
+flowchart TB
+  A["a line per task<br/>time, result, cache hit or miss"] --> B["a frame per failure<br/>its command and whole log, nothing else"]
+  B --> C["one summary, last<br/>did it pass? where your eyes land"]
+```
 
-Fix the test and run again: four hits, four restores, 30 ms.
+`--output-logs full` gives every task its own frame, in the order they
+finish. On CI the frames fold into log groups. `vx last` prints the
+summary again later.
+
+Fix the test and run again. Four tasks come from the cache, and the run
+takes 30 ms.
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).
