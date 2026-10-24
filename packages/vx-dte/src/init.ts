@@ -30,6 +30,8 @@ export interface DteSetup {
   readonly tasks: { readonly main: string; readonly change: string }
   /** `owner/repo` (a GitLab project's full path) of the `origin` remote, if it has one. */
   readonly repository?: string
+  /** The `origin` remote's host: a self-managed GitLab issues its tokens as itself. */
+  readonly host?: string
 }
 
 /** What an adapter's `init` gives back: files to write (workspace-relative path to text), then lines to print. */
@@ -38,12 +40,20 @@ export interface DteInit {
   readonly next: readonly string[]
 }
 
-/** `owner/repo` of the `origin` remote: what the relay's ALLOW names. */
-export function repositoryOf(root: string): string | undefined {
+/** `owner/repo` of the `origin` remote and its host: what the relay's ALLOW names. */
+export function originOf(root: string): { repository?: string; host?: string } {
   const r = Bun.spawnSync(['git', 'config', '--get', 'remote.origin.url'], { cwd: root })
   const url = r.exitCode === 0 ? r.stdout.toString().trim() : ''
   const m = /[:/]([^:]+?\/[^/]+?)(?:\.git)?\/?$/.exec(url.replace(/^[a-z+]+:\/\/[^/]+\//, '/'))
-  return m?.[1]
+  // An https URL's port is its issuer's; an ssh one's is not.
+  const host =
+    /^https?:\/\/(?:[^@/]*@)?([^/]+)/.exec(url)?.[1] ??
+    /^[a-z+]+:\/\/(?:[^@/]*@)?([^/:]+)/.exec(url)?.[1] ??
+    /^(?:[^@/:]*@)?([^/:]+):/.exec(url)?.[1]
+  return {
+    ...(m?.[1] === undefined ? {} : { repository: m[1] }),
+    ...(host === undefined ? {} : { host }),
+  }
 }
 
 const SITE = 'https://vznjs.github.io/vx/docs'
@@ -378,7 +388,7 @@ ${workers.join('')}`.replace(/\n+$/, '\n')
     files: { '.gitlab-ci.yml': ci },
     next: nextSteps(
       relay,
-      `https://gitlab.com:${setup.repository ?? '<group>/<project>'}:.gitlab-ci.yml`,
+      `https://${setup.host ?? 'gitlab.com'}:${setup.repository ?? '<group>/<project>'}:.gitlab-ci.yml`,
       ['.gitlab-ci.yml'],
     ),
   }

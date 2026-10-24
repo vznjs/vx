@@ -134,6 +134,28 @@ it('gitlab() writes one pipeline file: the run, and a job per size only its trig
   )
 })
 
+it("gitlab()'s ALLOW names the origin's GitLab, a self-managed one too", async () => {
+  await writeFile(path.join(root, 'bun.lock'), '')
+  Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
+  const adapter = gitlab()
+  const relay = 'https://relay.example.com'
+  for (const [url, allow] of [
+    ['git@gitlab.example.com:group/sub/app.git', 'https://gitlab.example.com:group/sub/app'],
+    ['ssh://git@gitlab.example.com:2222/group/app.git', 'https://gitlab.example.com:group/app'],
+    [
+      'https://ci@gitlab.example.com:8443/group/app.git',
+      'https://gitlab.example.com:8443:group/app',
+    ],
+    ['https://gitlab.com/group/app', 'https://gitlab.com:group/app'],
+  ]) {
+    Bun.spawnSync(['git', 'remote', 'remove', 'origin'], { cwd: root })
+    Bun.spawnSync(['git', 'remote', 'add', 'origin', url!], { cwd: root })
+    printed = []
+    expect(await init({ relay, workers: sizes, adapter }, '--dry')).toBe(0)
+    expect(printed.join('')).toContain(`ALLOW (a plain var, no secret): ${allow}:.gitlab-ci.yml\n`)
+  }
+})
+
 it('an adapter that starts workers here writes nothing; no lockfile is refused', async () => {
   expect(await init({ workers: sizes, adapter: local() })).toBe(0)
   expect(printed.join('')).toContain('no CI files to write')

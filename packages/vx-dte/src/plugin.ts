@@ -234,8 +234,7 @@ export function dte(options: DteOptions) {
       )
       return 0
     }
-    const { askTasks, managerOf, repositoryOf, writeInit } = await import('./init.js')
-    const repository = repositoryOf(root)
+    const { askTasks, managerOf, originOf, writeInit } = await import('./init.js')
     const files = await adapter.init({
       workspaceRoot: root,
       ...(options.relay !== undefined ? { relay: options.relay } : {}),
@@ -246,7 +245,7 @@ export function dte(options: DteOptions) {
       })),
       manager: managerOf(root),
       tasks: askTasks(),
-      ...(repository !== undefined ? { repository } : {}),
+      ...originOf(root),
     })
     const out = (line: string): void => void process.stdout.write(`${line}\n`)
     if (args.includes('--dry')) {
