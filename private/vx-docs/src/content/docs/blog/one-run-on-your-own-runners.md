@@ -65,7 +65,7 @@ flowchart TB
   orch[your CI job: vx run, the orchestrator]
   api[CI API]
   workers[your CI jobs: vx dte worker, one per worker]
-  relay[(relay: one Durable Object per run)]
+  relay[(relay: one socket each, nothing stored)]
   cache[(your remote cache)]
   orch -->|dispatch, cancel| api
   api --> workers
@@ -81,30 +81,32 @@ flowchart TB
 - **A worker** is `vx dte worker` in a CI job. It runs what it is sent
   and saves outputs to your cache under the task's key.
 - **The relay** passes messages, since CI runners take no inbound
-  connection.
+  connection. It keeps none: each side numbers its messages and sends one
+  again until the other acks it.
 - **The cache** carries every file. No file goes through the relay.
 
 Adapters start workers: `github()`, `gitlab()`, `local()` (git
 worktrees) and `docker()`.
 
-## The relay fits the free plan
+## The relay stores nothing
 
 [`@vzn/vx-dte-relay`](https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay)
 depends only on [`jose`](https://github.com/panva/jose) and speaks
 [PROTOCOL.md](https://github.com/vznjs/vx/blob/main/packages/vx-dte-relay/PROTOCOL.md).
-It runs one Durable Object per run on Cloudflare, or in memory on Bun.
-It stores no message. One var, `ALLOW`, lists who may join as
-`issuer:owner/repo:workflow`.
+It has one route: a websocket that joins as it opens. It pushes each
+message down the receiver's socket and keeps no copy. It runs one Durable
+Object per run on Cloudflare's free plan, or on Bun in Docker. One var,
+`ALLOW`, lists who may join as `issuer:owner/repo:workflow`.
 
 ```mermaid
-xychart-beta horizontal
-  title "Runs a day on the Workers free plan"
-  x-axis ["18 participants (measured)", "50 workers (estimate)"]
-  y-axis "runs" 0 --> 1600
-  bar [1500, 500]
+xychart-beta
+  title "Relay frames, quiet run, 4 sockets, 10 heartbeats"
+  x-axis ["relay pings every socket", "peers probe only the quiet"]
+  y-axis "frames" 0 --> 100
+  bar [92, 60]
 ```
 
-<small>Free plan: 100,000 Durable Object requests and 100,000 rows a day, 20 websocket messages count as one request ([pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/), read 2026-10-23) · a 2-minute run of 18 participants used about 65 requests and 60 rows ([README](https://github.com/vznjs/vx/blob/main/packages/vx-dte-relay/README.md#on-cloudflare-workers))</small>
+<small>1 orchestrator and 3 idle workers · before: 88-96 frames, 44-48 each way · after: 24 up, 36 down ([#4309](https://github.com/vznjs/vx/pull/4309)) · each participant joins with one request; Workers bills 20 websocket messages as one request, and the relay writes no storage row ([pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/), read 2026-10-23) · [how it works](../relay-stores-nothing/)</small>
 
 ## The relay reads nothing it carries
 
@@ -113,7 +115,7 @@ sequenceDiagram
   participant W as worker
   participant R as relay
   participant O as orchestrator
-  W->>R: join (CI OIDC token)
+  W->>R: open socket, join (CI OIDC token)
   R->>O: a worker joined
   W->>R: Noise message 1: e (psk), join info encrypted
   R->>O: message 1

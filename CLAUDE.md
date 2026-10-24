@@ -93,7 +93,7 @@ packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fi
 private/vx-docs         Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts
 packages/vx-dte         distributed runs: `dte()` executor + `vx dte worker` over the relay, `local()` adapter
                         (workers in git worktrees). Private until npm has it
-packages/vx-dte-relay   the reference relay of `@vzn/vx-dte` (PROTOCOL.md): mailboxes per run behind CI
+packages/vx-dte-relay   the reference relay of `@vzn/vx-dte` (PROTOCOL.md): passes a run's messages, storing none, behind CI
                         OIDC tokens; imports only jose, not even core. Private until npm has it
 private/vx-bench        synthetic workspace generator + runners (vx / turbo / nx)
 skills/vx/SKILL.md      the agent skill, where `npx skills add vznjs/vx` finds it (.claude/skills are
@@ -124,7 +124,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   pipe a check through `tail`/`grep` — it masks the exit.
 - The core suite runs as `SHARD_COUNT` (46, `vx.config.ts`) parallel
   shard tasks, generated from one template; `scripts/test-shard.ts <i>
-<n>` deals the files by recorded weight (`tests/shard-weights.json`,
+  <n>` deals the files by recorded weight (`tests/shard-weights.json`,
   refreshed with `--weigh <junit-dir>`), so the wall time is the
   average shard, not the alphabet's heaviest. Many processes is not
   only speed: `bun test` pins ~2 descriptors per imported module and

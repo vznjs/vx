@@ -11,21 +11,21 @@ ever needs. Its sibling packages integrate with core exclusively
 through its public API (`src/index.ts`, imported as the bare `@vzn/vx`
 specifier — enforced by `tests/package-boundaries.unsafe.test.ts`):
 
-| Package                        | What                                                                                                                                                                             |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/vx`                  | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                                       |
-| `packages/vx-otel`             | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces, metrics and logs, zero SDK deps                                                                               |
-| `packages/vx-reapi`            | `@vzn/vx-reapi` — `reapi()` plugin: remote cache (Bazel AC/CAS) + remote execution over REAPI v2                                                                                 |
-| `packages/vx-ci`               | `@vzn/vx-ci` — `github()` telemetry plugin: the GitHub Actions job summary and a Checks API run                                                                                  |
-| `packages/vx-schedule-history` | `@vzn/vx-schedule-history` — `schedule` + `admit` + `commands` plugin: order by the critical path learned from run history, pack by what past executions used, `vx history`      |
-| `packages/vx-migrate`          | `@vzn/vx-migrate` — adoption: `turbo()` / `nx()` project-stage plugins, `nx-exec` (one Nx executor per process), `turboCache()` / `nxCache()` cache plugins, the migrate CLI     |
-| `packages/vx-lockfile`         | `@vzn/vx-lockfile` — `bun()` `pnpm()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim` |
-| `private/vx-docs`              | Astro Starlight docs site; imports `packages/vx/docs/**` at build time (private)                                                                                                 |
-| `packages/vx-dte`              | `@vzn/vx-dte` — distributed task execution: one run spread over workers the CI starts, through a relay; `local()` adapter; private until it is on npm                            |
-| `packages/vx-dte-relay`        | `@vzn/vx-dte-relay` — the reference relay of `@vzn/vx-dte`: per-run mailboxes for CI workers behind CI OIDC tokens (`PROTOCOL.md`); private until it is on npm                   |
-| `private/vx-bench`             | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                            |
-| `private/vx-plugin-examples`   | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                      |
-| `private/vx-dte-relay-worker`  | vznjs's own relay deploy: `@vzn/vx-dte-relay`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                               |
+| Package                        | What                                                                                                                                                                                |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/vx`                  | `@vzn/vx` — the core runner. Everything below in this doc.                                                                                                                          |
+| `packages/vx-otel`             | `@vzn/vx-otel` — `otel()` telemetry plugin, OTLP/HTTP JSON traces, metrics and logs, zero SDK deps                                                                                  |
+| `packages/vx-reapi`            | `@vzn/vx-reapi` — `reapi()` plugin: remote cache (Bazel AC/CAS) + remote execution over REAPI v2                                                                                    |
+| `packages/vx-ci`               | `@vzn/vx-ci` — `github()` telemetry plugin: the GitHub Actions job summary and a Checks API run                                                                                     |
+| `packages/vx-schedule-history` | `@vzn/vx-schedule-history` — `schedule` + `admit` + `commands` plugin: order by the critical path learned from run history, pack by what past executions used, `vx history`         |
+| `packages/vx-migrate`          | `@vzn/vx-migrate` — adoption: `turbo()` / `nx()` project-stage plugins, `nx-exec` (one Nx executor per process), `turboCache()` / `nxCache()` cache plugins, the migrate CLI        |
+| `packages/vx-lockfile`         | `@vzn/vx-lockfile` — `bun()` `pnpm()` `npm()` `yarn()`: each claims its lockfile and keys each task on its project's own dependency closure; parsers over core's `lockfileClaim`    |
+| `private/vx-docs`              | Astro Starlight docs site; imports `packages/vx/docs/**` at build time (private)                                                                                                    |
+| `packages/vx-dte`              | `@vzn/vx-dte` — distributed task execution: one run spread over workers the CI starts, through a relay; `local()` adapter; private until it is on npm                               |
+| `packages/vx-dte-relay`        | `@vzn/vx-dte-relay` — the reference relay of `@vzn/vx-dte`: passes a run's messages between sockets behind CI OIDC tokens, storing none (`PROTOCOL.md`); private until it is on npm |
+| `private/vx-bench`             | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                               |
+| `private/vx-plugin-examples`   | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                         |
+| `private/vx-dte-relay-worker`  | vznjs's own relay deploy: `@vzn/vx-dte-relay`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                                  |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the public API (52 runtime symbols, a deliberate
@@ -397,7 +397,7 @@ never branches on layering.
       restore tier: restores take no weight. A plugin's later weights
       (`ctx.refine`) re-rank the ready queues while the graph runs.
    6. `runGraph({ nodes, concurrency, execute, priorities,
-restoreTier, … })` runs the DAG two-tier. Each ready node invokes
+      restoreTier, … })` runs the DAG two-tier. Each ready node invokes
       `executeTask({ node, upstream, preProbed?, … })`.
    7. After the graph drains, dependency-only persistent subprocesses
       are `SIGTERM`ed (SIGKILL after the kill grace); persistent tasks
