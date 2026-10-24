@@ -97,3 +97,18 @@ it('src/@(a1|a2).ts is refused, though Bun.Glob now reads it', async () => {
   await project('src/@(a1|a2).ts')
   await expect(run({ cwd: root!, tasks: ['build'], log: quiet })).rejects.toThrow('is an extglob')
 }, 30_000)
+
+it('a mixed-case range after one vx expands is refused too, in an output as well', async () => {
+  await project('src/a{1..2}{A..c}.ts')
+  await expect(run({ cwd: root!, tasks: ['build'], log: quiet })).rejects.toThrow(
+    '"src/a{1..2}{A..c}.ts" holds the brace range {A..c}',
+  )
+  await rm(root!, { recursive: true, force: true })
+  root = await makeWorkspace({ prefix: 'vx-glob-144-' })
+  await addProject(root, 'p', {
+    config: `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: ['o{1..2}{A..c}'] } } } } }`,
+  })
+  await expect(run({ cwd: root, tasks: ['build'], log: quiet })).rejects.toThrow(
+    '"o{1..2}{A..c}" holds the brace range {A..c}',
+  )
+}, 30_000)
