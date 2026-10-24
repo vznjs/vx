@@ -359,11 +359,18 @@ export async function runWorker(opts: {
       // timeout (a trapped SIGTERM) failed, and saved under the key the
       // next run hit it green (2026-10-24). A process it left running may
       // still write its outputs: core saves no entry, nor does this.
+      // A tracked file it changed under its project (a formatter's input)
+      // is one the orchestrator's disk never shows: its key read the file
+      // as checked out, and the entry built from the rewrite was the next
+      // run's hit (2026-10-24). Core withholds its own save if the key read
+      // it; this entry is withheld for any.
+      const changed = await changedTracked(opts.root, m, names(m.project, m.outputs))
       const key =
         res.exitCode === 0 &&
         res.timedOut !== true &&
         res.leftRunning !== true &&
         res.violations.length === 0 &&
+        changed.length === 0 &&
         m.key !== undefined
           ? m.key
           : m.runKey
@@ -371,6 +378,7 @@ export async function runWorker(opts: {
         ...res,
         violations: back,
         ...(cpuShare === undefined ? {} : { cpuShare }),
+        ...(changed.length === 0 ? {} : { changed }),
       })
     } finally {
       running.delete(m.task)
@@ -683,6 +691,41 @@ function procStat(): string | undefined {
     // quiet: not Linux: no run queue to read, so no correction
     return undefined
   }
+}
+
+/**
+ * The tracked files under `m`'s project that differ from the checkout,
+ * workspace-relative: its outputs and nested projects' files are not its
+ * project's inputs.
+ */
+async function changedTracked(
+  root: string,
+  m: RunOrder,
+  output: (file: string) => boolean,
+): Promise<string[]> {
+  const p = Bun.spawn(
+    [
+      'git',
+      'diff',
+      '--name-only',
+      '-z',
+      '--no-renames',
+      'HEAD',
+      '--',
+      m.project === '' ? '.' : m.project,
+    ],
+    {
+      cwd: root,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'ignore',
+    },
+  )
+  const out = await new Response(p.stdout).text()
+  await p.exited
+  return out
+    .split('\0')
+    .filter((f) => f !== '' && !output(f) && !m.nested.some((n) => f.startsWith(`${n}/`)))
 }
 
 /** Memory a task can take: Linux's MemAvailable counts the page cache it may reclaim, free memory does not. */
