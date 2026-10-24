@@ -2543,18 +2543,18 @@ app#build — run 01a1193a-7b39-75a9-870b-5c03e26d7104
 
 ### Arguments
 
-| Argument   | Meaning |
-| ---------- | ------- |
-| `PKG#TASK` | one project's task |
+| Argument   | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PKG#TASK` | one project's task                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `TASK`     | a bare task name: resolves when exactly one project ran it (several → the project the current directory is in, as `vx run` picks, else an error listing the candidates; unknown → include-match suggestions, or, with none near, a pointer to `vx last --list`, or word that nothing has run yet; after runs of only groups, which record no task row, that no run executed a task and to ask about one the group depends on, X-50) |
 
 ### Options
 
-| Option | Meaning |
-| ------ | ------- |
-| `--run RUNID` | explain that run instead of the latest; a unique prefix of the id is enough. A task that run did not run is refused, pointing at `vx last --list`, and so is an id no run carries |
-| `--format pretty\|json` | `json` emits one object, below |
-| `--cache-dir <path>` | read the cache a run with the same flag uses |
+| Option                  | Meaning                                                                                                                                                                           |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--run RUNID`           | explain that run instead of the latest; a unique prefix of the id is enough. A task that run did not run is refused, pointing at `vx last --list`, and so is an id no run carries |
+| `--format pretty\|json` | `json` emits one object, below                                                                                                                                                    |
+| `--cache-dir <path>`    | read the cache a run with the same flag uses                                                                                                                                      |
 
 By default it compares the task's **latest** recorded run against its
 immediately-previous run. History is
@@ -2626,18 +2626,18 @@ An edit made outside a run names none.
 
 **Kinds.** A row's kind is what the key folded:
 
-| Kind | What the key folded |
-| ---- | ------------------- |
-| `file` | an input file, by blob id |
-| `linked` | the content behind a `file` that is a symlink |
-| `env` | a declared variable, by digest |
-| `runtime`, `ws-runtime` | a declared command's output, `inputs.runtime` and `inputs.workspaceRuntime` |
-| `forward` | the argv forwarded after `--` |
-| `config` | the evaluated task config |
-| `upstream` | a dependency's input key — a lockfile change moves it too, so that row rides with the lockfile plugin's |
-| `plugin` | a `key` plugin's material, by name; a lockfile plugin's dependency closure |
-| `platform` | the platform a task naming `exec.platforms` ran on |
-| `format` | the key format vx itself folds: it moves only with an upgrade, and re-keys every task once, X-142 |
+| Kind                    | What the key folded                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| `file`                  | an input file, by blob id                                                                               |
+| `linked`                | the content behind a `file` that is a symlink                                                           |
+| `env`                   | a declared variable, by digest                                                                          |
+| `runtime`, `ws-runtime` | a declared command's output, `inputs.runtime` and `inputs.workspaceRuntime`                             |
+| `forward`               | the argv forwarded after `--`                                                                           |
+| `config`                | the evaluated task config                                                                               |
+| `upstream`              | a dependency's input key — a lockfile change moves it too, so that row rides with the lockfile plugin's |
+| `plugin`                | a `key` plugin's material, by name; a lockfile plugin's dependency closure                              |
+| `platform`              | the platform a task naming `exec.platforms` ran on                                                      |
+| `format`                | the key format vx itself folds: it moves only with an upgrade, and re-keys every task once, X-142       |
 
 A control character in a component's name (a file named with an
 escape or a carriage return) prints as `\xNN`, so no file name drives
@@ -2665,22 +2665,75 @@ latest cache entry's key. `roots` is the root-cause walk (`chain`,
 
 ### Exit codes
 
-Exit codes: `0` the task's run explained; `1` no recorded run of the
-task, a `--run` with no row for it, or a parse error.
+| Code | When                                                                        |
+| ---- | --------------------------------------------------------------------------- |
+| `0`  | the task's run explained                                                    |
+| `1`  | no recorded run of the task, a `--run` with no row for it, or a parse error |
 
 ## `vx last`
 
-Replay a recorded run's summary from the local history — no
-re-execution, no cache probe, no config evaluation. With the
-self-hosted dashboard gone (2026-08-23), this is THE run-replay
-surface. A run a Ctrl-C (or SIGTERM, SIGHUP) stopped records nothing,
-so `vx last` still shows the run before it.
+`vx last` replays a recorded run's summary from the local history: no
+re-execution, no cache probe, no config evaluation. A run a Ctrl-C (or
+SIGTERM, SIGHUP) stopped records nothing, so `vx last` still shows the
+run before it.
+
+### Usage
 
 ```
 vx last [RUNID] [--list[=N]] [--failed] [--log <task>] [--stats [<task>] [--branch <name>]] [--format pretty|json] [--cache-dir <path>]
 ```
 
-Bare `vx last` replays the most recent run: a header (verdict, command,
+### Examples
+
+```
+$ vx last
+run 01a16de7-6cd7-7563-984c-5ffba8fb6629 — ok
+  $ vx run ci --all
+  2026-10-24T12:34:05.662Z · 61ms · master @ 1587dec6
+  3 tasks · 0 hits
+
+  success           app#test        3ms  d6e223ce81dfdb2c  1.1× cpu
+  success           app#build       7ms  b63bf0705528ba99  0.5× cpu
+  success           lib#build       7ms  e5123c0191687798  0.7× cpu
+```
+
+```
+$ vx last --list
+ok     2026-10-24T12:34:05.662Z  01a16de7-6cd7  3 tasks · 0 hits  61ms  $ vx run ci --all
+ok     2026-10-24T12:34:05.367Z  01a16de7-6bb3  3 tasks · 0 hits  52ms  $ vx run ci --all
+```
+
+```sh
+vx last --failed          # the latest run that failed
+vx last --log app#test    # one task's output
+vx last --stats app#test  # p50, p99, pass and hit rate over the last 50 runs
+```
+
+### Arguments
+
+| Argument | Meaning                                                                                                                                                                                |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RUNID`  | replay that run instead of the latest. A run id may be typed as a unique prefix; a prefix several runs share fails and lists them. An unknown run id fails loud and points at `--list` |
+
+### Options
+
+| Option                  | Meaning                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| `--list[=N]`            | the N most recent runs (default 10)                                                   |
+| `--failed`              | the latest run that failed, past any green one since; with `--list`, only failed runs |
+| `--log <task>`          | one task's output instead of the summary                                              |
+| `--stats [<task>]`      | per-task numbers over the last 50 runs                                                |
+| `--branch <name>`       | the branch `--stats` forecasts from                                                   |
+| `--format pretty\|json` | `json` for scripts and agents, below                                                  |
+| `--cache-dir <path>`    | read the cache a run with the same flag uses                                          |
+
+`--log` does not combine with `--list` or `--failed`. `--stats` does not
+combine with `--list`, `--failed` or `--log`; `--branch` combines only
+with `--stats`.
+
+### Understanding the output
+
+**The header and rows.** Bare `vx last` replays the most recent run: a header (verdict, command,
 when, duration, branch @ sha, CI, task/hit/failure counts) and a
 per-task table — status, id, duration, cache key, and for a task that
 executed, what it used (peak RSS and CPU parallelism, `312 MB · 1.4×
@@ -2696,17 +2749,36 @@ footer gave a reason, the row ends with it instead: `timed out`,
 as before). A task whose key met a remote failure ends with it, read or
 write alike: `remote ✗ download: connection refused; upload: 503` (the
 v40 column, `remoteError` in `--format json`). A task an executor
-plugin ran elsewhere carries where after its id: `app#build@small#1` (v44, `placement`). Rows run failures first, then what executed or was
+plugin ran elsewhere carries where after its id: `app#build@small#1` (v44, `placement`).
+
+**Order and folding.** Rows run failures first, then what executed or was
 skipped, then hits; past sixteen hits the rest fold into one line with
 their count (`… +980 more cache hits`) — a thousand-task warm run is a
 thousand rows otherwise, with the one failure a screen above the
 prompt — and the sixteen shown are the slowest restores, the one thing
 a hit's row tells. `--format json` lists every row.
-Below the tasks, the steps the run did not wait on (`vx:prefetch`, a
+
+**Steps.** Below the tasks, the steps the run did not wait on (`vx:prefetch`, a
 remote's downloads beside the tasks), which its own output never shows:
 `success  vx:prefetch  1.20s  internal`. They are kept per run, the
 newest 50, in `<cache dir>/steps/<run id>.json`, written only by a run
 that had one; `--format json` adds them as `steps`.
+
+**Re-run what failed.** A replayed run with
+failures ends with the command that re-runs them (`re-run what failed:
+vx run app#test -- …`, with the arguments the run forwarded to the
+tasks that got them; a failed dependency, which never got them, gets a
+line of its own without them, X-140). The
+replayed `$ vx run …` or `$ vx watch …` line and that one keep each
+argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49).
+
+**No runs yet.** Before any run, every form says so
+(`› vx last  no runs yet` with `fix  vx run`, exit 1; `--list` prints
+`› vx last  no runs yet`, exit 0), and past green runs only,
+`--list --failed` prints `› vx last  no failed runs`.
+
+### `--list`
+
 `vx last --list` prints the N most recent runs (default 10), one per
 line in aligned columns (verdict, start, run id, counts, duration,
 command), each run id cut to the shortest prefix no other run shares, 13 characters at least (`--list 5`
@@ -2714,10 +2786,46 @@ and `--list=5` alike; the space form takes the next argument as the
 count unless it is a flag or a run id, eight hex digits at least, so
 `--list 1.5` is refused as a count); `vx last RUNID` replays a
 specific one, and the two do not combine (a word beside `--list` no run
-id could be is refused as an unexpected argument). `--failed` replays the latest
-run that failed, past any green one since, and with `--list` lists only
-failed runs. `--format json`
-emits `{ invocation, tasks }` for scripting; a failed task's row adds
+id could be is refused as an unexpected argument).
+
+### `--log`
+
+`--log <task>`
+prints one task's output instead of the summary: in the latest run that
+recorded the task, or in RUNID's. A failed task's is the kept failure
+output; any other task's is its cache entry's log (the one a hit
+replays, masked as it was), so a passing task's log reads too, on a hit
+or in the run that saved it. An uncached task that passed, or a skip,
+kept none, nor does a failed task past the newest 50 failed runs:
+stdout is empty and stderr says so, exit 0. A kept log that is empty
+says the task printed nothing. With
+`--format json` it is `{ runId, taskId, status, source, output }`,
+`source` `'failure'`, `'cache'` or `null`. A task no run recorded is
+refused, exit 1.
+`vx last app#build --log` reads the same as `--log app#build`: a `--log`
+with no value takes the positional as its task.
+
+### `--stats`
+
+`--stats [<task>]` prints per-task numbers over the last 50 runs, the
+window the scheduler and `--dry` learn from: runs, p50 (the forecast a
+run shows: the median of the task's last five timings on the branch,
+else on any branch), p99 of the executed successes, pass and hit rate, failure mode (`stable`,
+`flaky-recoverable`, `flaky-fatal`), the largest peak RSS and the mean CPU
+parallelism (a hit counts what its producing run used), one table row
+per task. A task id narrows to that task, a task name to it in every
+project; one the window has no run of is refused, exit 1. The branch is
+`--branch`, else `VX_RUN_BRANCH`, else git's, then the CI provider's, as
+a run's. With `--format json` it is `{ window, branch, stats }`, each row `{ taskId, runs,
+p50DurationMs, p99DurationMs, successRate, hitRate, failureMode,
+maxPeakRssBytes, maxCpuParallelism }`, `null` where nothing was
+measured.
+
+### JSON
+
+`--format json`
+emits `{ invocation, tasks }` for scripting; `--list --format json`
+an array of the same `invocation` objects, newest first. A failed task's row adds
 `output` (its output as plain text, the first 8 KiB and last 56 KiB,
 secrets masked) and `locations` (the existing files it names,
 `{ file, line?, col? }`, file absolute; a file also named with a line
@@ -2734,46 +2842,9 @@ line). A task
 failed by `inputStability.severity: 'error'` adds `inputMoved`, the
 input that changed during the run. They live in `<cacheDir>/failures/<runId>.json`, the
 newest 50 failed runs; past those, or when the write was refused, a
-failed row reads `output: ''` and `locations: []`. `--log <task>`
-prints one task's output instead of the summary: in the latest run that
-recorded the task, or in RUNID's. A failed task's is the kept failure
-output; any other task's is its cache entry's log (the one a hit
-replays, masked as it was), so a passing task's log reads too, on a hit
-or in the run that saved it. An uncached task that passed, or a skip,
-kept none, nor does a failed task past the newest 50 failed runs:
-stdout is empty and stderr says so, exit 0. A kept log that is empty
-says the task printed nothing. With
-`--format json` it is `{ runId, taskId, status, source, output }`,
-`source` `'failure'`, `'cache'` or `null`. A task no run recorded is
-refused, exit 1; `--log` does not combine with `--list` or `--failed`.
-`vx last app#build --log` reads the same as `--log app#build`: a `--log`
-with no value takes the positional as its task.
-`--stats [<task>]` prints per-task numbers over the last 50 runs, the
-window the scheduler and `--dry` learn from: runs, p50 (the forecast a
-run shows: the median of the task's last five timings on the branch,
-else on any branch), p99 of the executed successes, pass and hit rate, failure mode (`stable`,
-`flaky-recoverable`, `flaky-fatal`), the largest peak RSS and the mean CPU
-parallelism (a hit counts what its producing run used), one table row
-per task. A task id narrows to that task, a task name to it in every
-project; one the window has no run of is refused, exit 1. The branch is
-`--branch`, else `VX_RUN_BRANCH`, else git's, then the CI provider's, as
-a run's. With `--format json` it is `{ window, branch, stats }`, each row `{ taskId, runs,
-p50DurationMs, p99DurationMs, successRate, hitRate, failureMode,
-maxPeakRssBytes, maxCpuParallelism }`, `null` where nothing was
-measured. `--stats` does not combine with `--list`, `--failed` or
-`--log`; `--branch` combines only with `--stats`. `--list --format json`
-an array of the same `invocation` objects, newest first. An unknown run id fails
-loud and points at `--list`. Before any run, every form says so
-(`› vx last  no runs yet` with `fix  vx run`, exit 1; `--list` prints
-`› vx last  no runs yet`, exit 0), and past green runs only,
-`--list --failed` prints `› vx last  no failed runs`. A run id may be typed as a unique prefix; a
-prefix several runs share fails and lists them. A replayed run with
-failures ends with the command that re-runs them (`re-run what failed:
-vx run app#test -- …`, with the arguments the run forwarded to the
-tasks that got them; a failed dependency, which never got them, gets a
-line of its own without them, X-140). The
-replayed `$ vx run …` or `$ vx watch …` line and that one keep each
-argument shell-quoted (`-- 'a b'`), so either pastes back as it ran (X-49).
+failed row reads `output: ''` and `locations: []`.
+
+### `--cache-dir`
 
 `vx why`, `vx last`, `vx info` and `vx cache clean` all read the cache
 a run wrote, so each takes `--cache-dir <path>` with `vx run`'s rules
@@ -2785,9 +2856,12 @@ or `.vx/cache`). A `--cache-dir` that is not there is refused by name
 ran, `vx why`, `vx last`, `vx info`, `vx show` and `vx cache clean`
 (dry or not) read it as empty and create nothing (item 900, E-7, E-38).
 
-Exit codes: `0` the run (or the list) printed, `--list` with no runs
-included; `1` no recorded run yet, a run id it has no record of, or a
-parse error.
+### Exit codes
+
+| Code | When                                                                |
+| ---- | ------------------------------------------------------------------- |
+| `0`  | the run (or the list) printed, `--list` with no runs included       |
+| `1`  | no recorded run yet, a run id it has no record of, or a parse error |
 
 ## `vx docs`
 
