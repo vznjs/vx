@@ -17,9 +17,15 @@ import os from 'node:os'
 import path from 'node:path'
 import { benchEnv } from './bench-env.js'
 import { BENCH_WORKSPACE } from './edges.js'
+import { enoughQuiet, machineBusyMs, type Pair, quietest, tracerCpuMs } from './quiet.js'
 
 const PROJECTS = 100
+/** The pairs of each held arm its ratio comes from: the quietest. */
 const REPS = 7
+/** Pairs an arm runs at most, waiting for REPS quiet ones. */
+const MAX_REPS = 30
+/** A pair is quiet when other processes kept at most this many cores busy beside it. */
+const QUIET_CORES = 0.5
 const CONCURRENCY = 4
 /** A ratio past baseline × this fails. */
 const TOLERANCE = 1.3
@@ -30,11 +36,18 @@ const ARMS = ['cold', 'restore', 'noop'] as const
 const HELD: readonly Arm[] = ['restore', 'noop']
 type Arm = (typeof ARMS)[number]
 
+/** CPU ms every child this process spawned used: with its own and its tracer's, a pair's neighbours are what is left. */
+let childCpuMs = 0
 function sh(cmd: string[], cwd: string): { ok: boolean; out: string } {
   // Turbo's telemetry writes ~/.config/turborepo, which the task sandbox refuses.
   const env = benchEnv({ TURBO_TELEMETRY_DISABLED: '1', DO_NOT_TRACK: '1' })
   const r = Bun.spawnSync(cmd, { cwd, env, stdout: 'pipe', stderr: 'pipe' })
+  if (r.resourceUsage !== undefined) childCpuMs += Number(r.resourceUsage.cpuTime.total) / 1000
   return { ok: r.exitCode === 0, out: r.stdout.toString() + r.stderr.toString() }
+}
+const ownCpuMs = (): number => {
+  const u = process.cpuUsage()
+  return (u.user + u.system) / 1000 + childCpuMs + tracerCpuMs()
 }
 function must(cmd: string[], cwd: string): string {
   const r = sh(cmd, cwd)
@@ -144,6 +157,23 @@ try {
     const ms = (Bun.nanoseconds() - t0) / 1e6
     const k = `${tool} ${arm}`
     best.set(k, Math.min(best.get(k) ?? Infinity, ms))
+    return ms
+  }
+  // vx then Turbo, back to back, and the cores other processes kept busy
+  // over both: the machine's busy time less this process's and its children's.
+  const pair = (arm: Arm): Pair => {
+    const busy0 = machineBusyMs()
+    const own0 = ownCpuMs()
+    const t0 = Bun.nanoseconds()
+    const vx = time('vx', arm)
+    const turbo = time('turbo', arm)
+    const busy1 = machineBusyMs()
+    const wall = (Bun.nanoseconds() - t0) / 1e6
+    const others =
+      busy0 === undefined || busy1 === undefined
+        ? 0
+        : Math.max(0, busy1 - busy0 - (ownCpuMs() - own0)) / wall
+    return { vx, turbo, others }
   }
   // Warm both tools once, then interleave: vx and Turbo alternate within each rep.
   // A check reps only the held arms and prints cold from the warm-up: cold
@@ -151,9 +181,30 @@ try {
   // longest task of a full run, 2026-10-23).
   for (const tool of ['vx', 'turbo'] as const) time(tool, 'cold')
   if (update) best.clear()
-  for (let rep = 0; rep < REPS; rep++) {
-    for (const arm of update ? ARMS : HELD)
-      for (const tool of ['vx', 'turbo'] as const) time(tool, arm)
+  // Each arm reps until REPS of its pairs ran quiet (MAX_REPS at most),
+  // and its ratio is the min of each tool over its REPS quietest pairs.
+  const arms = update ? ARMS : HELD
+  const pairs = new Map<Arm, Pair[]>(arms.map((a) => [a, []]))
+  for (let rep = 0; rep < MAX_REPS; rep++) {
+    const left = arms.filter(
+      (a) => pairs.get(a)!.length < REPS || !enoughQuiet(pairs.get(a)!, REPS, QUIET_CORES),
+    )
+    if (left.length === 0) break
+    for (const arm of left) pairs.get(arm)!.push(pair(arm))
+  }
+  for (const arm of arms) {
+    const ran = pairs.get(arm)!
+    const kept = quietest(ran, REPS)
+    best.set(`vx ${arm}`, Math.min(...kept.map((p) => p.vx)))
+    best.set(`turbo ${arm}`, Math.min(...kept.map((p) => p.turbo)))
+    const others = Math.max(...kept.map((p) => p.others))
+    console.log(
+      `${arm}: ${ran.length} pairs, the ${kept.length} quietest with ≤ ${others.toFixed(2)} cores busy beside them`,
+    )
+    if (others > QUIET_CORES)
+      console.log(
+        `BUSY ${arm}: no ${REPS} pairs ran quiet; held anyway, so a fail may be the neighbours`,
+      )
   }
 
   const ratios = Object.fromEntries(

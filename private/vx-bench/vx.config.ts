@@ -13,37 +13,34 @@ export default defineProject({
       dependsOn: ['lint', 'test', 'check.site', 'check.perf'],
     },
 
-    // The per-PR performance guard (perf-guard.ts): exact work counts and
-    // box-normalized times of core's hot paths against perf-baseline.json.
-    // Core's source reaches the key through install's ^build.
+    // The per-PR benchmarks, one task so they never share a machine with
+    // each other: on #4323's CI the two ran side by side beside two test
+    // shards and the Turbo ratio failed a commit its rerun passed.
+    // perf-guard.ts: exact work counts and box-normalized times of core's
+    // hot paths against perf-baseline.json. pr-bench.ts: vx / turbo time
+    // ratios on one small workspace, held to pr-bench-baseline.json, from
+    // the pairs no other process disturbed (quiet.ts). Core's source
+    // reaches the key through install's ^build.
     'check.perf': {
-      description: 'perf-guard.ts: hot-path counts and times against perf-baseline.json',
+      description:
+        'perf-guard.ts then pr-bench.ts: hot-path counts and vx vs Turborepo ratios against their baselines',
       dependsOn: ['install'],
       exec: {
-        command: 'bun perf-guard.ts',
+        command: 'bun perf-guard.ts && bun pr-bench.ts',
         env: NO_TRANSPILER_CACHE,
         sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
       },
-      inputs: { files: ['perf-guard.ts', 'perf-baseline.json', 'package.json'] },
-      cache: {
-        outputs: { files: [] },
-      },
-    },
-
-    // The per-PR bench against Turborepo (pr-bench.ts): vx / turbo time
-    // ratios on one small workspace, held to pr-bench-baseline.json. Not
-    // in `ci`, so a laptop's `vx run ci` skips it; CI's run names it.
-    // Core's source reaches the key through install's ^build.
-    'check.vs-turbo': {
-      description: 'pr-bench.ts: vx vs Turborepo ratios against pr-bench-baseline.json',
-      dependsOn: ['install'],
-      exec: {
-        command: 'bun pr-bench.ts',
-        env: NO_TRANSPILER_CACHE,
-        sandbox: { allow: { read: ['**/*'] } },
-      },
       inputs: {
-        files: ['pr-bench.ts', 'pr-bench-baseline.json', 'bench-env.ts', 'package.json'],
+        files: [
+          'perf-guard.ts',
+          'perf-baseline.json',
+          'pr-bench.ts',
+          'pr-bench-baseline.json',
+          'quiet.ts',
+          'bench-env.ts',
+          'edges.ts',
+          'package.json',
+        ],
       },
       cache: {
         outputs: { files: [] },

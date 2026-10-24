@@ -203,16 +203,25 @@ sandbox, as the check is.
 
 ### The per-PR bench against Turborepo
 
-`private/vx-bench/pr-bench.ts` runs in every PR's CI as
-`@vzn/vx-bench#check.vs-turbo`, on a runner of its own (beside the
-suites, load moved the ratio from 0.83 to 1.29), in about 20 s. One 100-package
+`private/vx-bench/pr-bench.ts` runs in every PR's gate after
+perf-guard.ts, in the same task (`@vzn/vx-bench#check.perf`), so the
+two benchmarks never share a machine; it takes about 20 s. One 100-package
 workspace (build then test, copy-sized tasks), this checkout's vx
 compiled as released against Turborepo 2.11.7 (pinned in
 `private/vx-bench/package.json`), both at concurrency 4: restore
-and nothing-changed in 7 interleaved reps, min of each, and cold once.
-A shared
-runner moves both tools alike, so what is held is the ratio vx / turbo
-from the same job: a restore or nothing-changed ratio grown past 1.3×
+and nothing-changed as pairs, vx then Turbo back to back, and cold once.
+Other processes on the machine slow vx more than Turbo (four busy
+loops moved the nothing-changed ratio from 0.90 to 1.28; check.perf and
+two test shards beside it, from 0.97 to 1.25 on one commit), so each
+pair also reads the cores other processes kept busy while it ran
+(`/proc/stat`, less the bench's own CPU, its children's and the sandbox's
+strace). An arm reps until 7 pairs ran with at most half a core busy
+beside them, 30 pairs at most, and takes the min of each tool over its
+7 quietest; when none of that many ran quiet it says `BUSY` and holds
+the ratio anyway. Under the sandbox, two busy loops for the first 25 s
+cost 9 more pairs per arm and left both ratios at or below a quiet run's.
+What is held is the ratio
+vx / turbo: a restore or nothing-changed ratio grown past 1.3×
 its value in `private/vx-bench/pr-bench-baseline.json` (the CI
 runner's) fails, and a case vx loses prints `LOSS`. Cold is printed,
 not held, so a check runs it once (`--update` reps it): 200 spawns on 4 cores moved its ratio from 0.71 to 1.12
