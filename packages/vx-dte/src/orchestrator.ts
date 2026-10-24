@@ -13,6 +13,7 @@ import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import {
   ui,
+  UserError,
   withForwardArgs,
   type CacheFacts,
   type ExecuteRequest,
@@ -199,6 +200,8 @@ const stopped = (): ExecuteResult =>
 
 export class Orchestrator {
   private readonly workers = new Map<string, Worker>()
+  /** The run tree's files, workspace-relative, listed when a task first asks. */
+  private inTree?: Promise<Set<string> | undefined>
   private readonly queue: Job[] = []
   /** Where a worker saved each task it ran: its cache key or its run key. */
   private readonly savedAs = new Map<string, string>()
@@ -282,8 +285,20 @@ export class Orchestrator {
     this.loop = this.listen()
   }
 
-  execute(req: ExecuteRequest): Promise<ExecuteResult> {
-    if (this.lost !== undefined) return Promise.reject(new Error(this.lost))
+  async execute(req: ExecuteRequest): Promise<ExecuteResult> {
+    if (this.lost !== undefined) throw new Error(this.lost)
+    // A worker runs the run's tree: a file its key folds that the tree
+    // lacks (untracked) is not there, and the output it saved under that
+    // key was a stale hit for the next run (2026-10-24).
+    if (req.inputs !== undefined && req.inputs.files.length > 0) {
+      this.inTree ??= listTree(this.o.root, this.o.tree)
+      const tree = await this.inTree
+      const stray = tree === undefined ? undefined : req.inputs.files.find((f) => !tree.has(f.path))
+      if (stray !== undefined)
+        throw new UserError(
+          `${req.taskId} keys ${stray.path}, which is not in the commit workers check out: commit it, or leave it out of the task's inputs`,
+        )
+    }
     for (const u of req.inputs?.upstream ?? []) this.upstreamKeys.set(u.taskId, u.hash)
     return new Promise((resolve, reject) => {
       const need = this.o.need(req.taskId)
@@ -1627,6 +1642,18 @@ function nestedIn(nodes: ReadonlyMap<string, TaskNode>, dir: string, root: strin
   for (const n of nodes.values())
     if (n.projectDir.startsWith(dir + path.sep)) out.add(path.relative(root, n.projectDir))
   return [...out].sort()
+}
+
+/** `tree`'s files under `root`, relative to it; undefined when git cannot list it. */
+async function listTree(root: string, tree: string): Promise<Set<string> | undefined> {
+  const p = Bun.spawn(['git', 'ls-tree', '-r', '-z', '--name-only', tree], {
+    cwd: root,
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'ignore',
+  })
+  const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited])
+  return code === 0 ? new Set(out.split('\0').filter((f) => f !== '')) : undefined
 }
 
 /** Each distinct `exec.sandbox` of the run, for a worker's sandbox runtime. */

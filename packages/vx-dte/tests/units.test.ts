@@ -2413,3 +2413,45 @@ it('reads each running task’s process tree every look: the cores its tree used
     trees.stop()
   }
 })
+
+// Workers run the run's tree: a key that folds an untracked file was
+// saved from a run without it, a stale hit for the next run here
+// (2026-10-24, untracked a/src/z: the hit replayed the output that lacked it).
+it('fails a task whose key folds a file the run’s tree lacks, naming it', async () => {
+  const root = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', ...a], { cwd: root })
+      .stdout.toString()
+      .trim()
+  git('init', '-q')
+  await mkdir(path.join(root, 'a/src'), { recursive: true })
+  await writeFile(path.join(root, 'a/src/x'), 'x\n')
+  git('add', '-A')
+  git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'i')
+  await writeFile(path.join(root, 'a/src/z'), 'z\n')
+  const served = servedRelay()
+  try {
+    const o = new Orchestrator({
+      me: await join(served.url, R, 'orchestrator', null, undefined),
+      root,
+      tree: git('rev-parse', 'HEAD^{tree}'),
+      nodes: () => undefined,
+      need: () => ({ cores: 1, memory: 0 }),
+      artifacts: fakeArtifacts().artifacts,
+      cacheFacts: async () => ({ refs: [], lent: {} }),
+      run: R,
+      keyOf: () => undefined,
+    })
+    const req = (taskId: string, ...paths: string[]) =>
+      ({
+        taskId,
+        inputs: { files: paths.map((p) => ({ path: p, digest: 'd' })) },
+      }) as unknown as ExecuteRequest
+    await expect(o.execute(req('a#build', 'a/src/x', 'a/src/z'))).rejects.toThrow(
+      "a#build keys a/src/z, which is not in the commit workers check out: commit it, or leave it out of the task's inputs",
+    )
+    await o.close()
+  } finally {
+    await served.stop()
+  }
+})
