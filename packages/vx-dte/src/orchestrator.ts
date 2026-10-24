@@ -481,8 +481,14 @@ export class Orchestrator {
     return { ...need, cores: need.cores * used }
   }
 
-  /** `job`'s cores and memory go back to its worker, once: its command ended, or it left. */
+  /**
+   * `job`'s cores and memory go back to its worker, once: its command
+   * ended, or it left. Its worker's last load counted it busy, and its
+   * save: kept, a Mac read 2.9 cores busy with one 1.1-core task left and
+   * the next task waited for the next frame (main 2975e38, 2026-10-24).
+   */
   private unhold(a: Worker, job: Job): void {
+    delete a.load
     if (job.held === undefined) return
     a.usedCores -= job.held.cores
     a.usedMemory -= job.held.memory

@@ -506,9 +506,9 @@ it('sends a worker what its booking fits, though its load reads low; busier than
     expect(await b.batches()).toEqual([['t5', 't6', 't7', 't8']])
     // Its machine busier than booked: the core a task freed stays taken.
     await b.say({ type: 'start', task: 't5', load: { cpu: 4, memory: 0 } })
-    const t9 = h.o.execute(h.req('t9'))
     await b.finish('t5')
     await b.say({ type: 'held', running: ['t6', 't7', 't8'], load: { cpu: 4, memory: 0 } })
+    const t9 = h.o.execute(h.req('t9'))
     await Bun.sleep(50)
     expect(h.o.where('t9')).toBeNull()
     // The plan holds its tasks at what its load says, not their history.
@@ -518,6 +518,29 @@ it('sends a worker what its booking fits, though its load reads low; busier than
       .running.reduce((n, r) => n + r.cores, 0)
     expect(held).toBeCloseTo(4)
     void t9
+  } finally {
+    await h.stop()
+  }
+})
+
+// Main 2975e38: a Mac's frame as a task ended read 2.9 of 3 cores busy,
+// that task and its save among them, and held the next task for the next
+// frame, up to 30 s on.
+it('places on a worker by its booking once a task ends: the load it reported counted that task', async () => {
+  const h = await harness(new Map([node('t1'), node('t2'), node('t3')]))
+  try {
+    const a = await h.worker(2)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    void h.o.execute(h.req('t2'))
+    expect(await a.batches()).toEqual([['t1', 't2']])
+    for (const id of ['t1', 't2'])
+      await a.say({ type: 'start', task: id, load: { cpu: 2, memory: 0 } })
+    void h.o.execute(h.req('t3'))
+    await Bun.sleep(50)
+    expect(h.o.where('t3')).toBeNull()
+    await a.say({ type: 'ran', task: 't1', load: { cpu: 2, memory: 0 } })
+    expect(await a.batches()).toEqual([['t3']])
   } finally {
     await h.stop()
   }
