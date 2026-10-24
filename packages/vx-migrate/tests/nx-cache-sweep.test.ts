@@ -85,6 +85,17 @@ describe('the requests', () => {
     ])
   })
 
+  // A store behind the spec answering 201 or 204 was warned about as a failed upload.
+  it('an upload any 2xx answers is stored, not a refusal', async () => {
+    for (const status of [201, 204]) {
+      const { fetchImpl } = stub(() => new Response(null, { status }))
+      await new NxRemoteCache(
+        { server: SERVER, accessToken: '', timeoutMs: 1000, retries: 0 },
+        fetchImpl,
+      ).put('aa', new Blob(['x']))
+    }
+  })
+
   it('a GET answering 500 is an error, not a miss', async () => {
     const { fetchImpl } = stub(() => new Response(null, { status: 500 }))
     await expect(
