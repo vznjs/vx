@@ -166,6 +166,16 @@ test: {
 
 ### `exec` (optional — required for non-group tasks)
 
+`exec` is the one command a task runs, and how: its environment,
+time limit, retries and where it may run. A task without `exec` is a
+group ([below](#group-tasks-no-exec)).
+
+```ts
+build: {
+  exec: { command: 'tsc -b', timeout: '5m', env: { define: { NODE_ENV: 'production' } } },
+}
+```
+
 ```ts
 interface ExecConfig {
   command: string // shell command, run from the project's dir
@@ -785,6 +795,16 @@ Semantics:
 
 ### `inputs` (optional)
 
+`inputs` lists what a task reads: files, environment variables and
+command outputs. The cache key is built from them.
+
+```ts
+build: {
+  exec: { command: 'tsc -b' },
+  inputs: { files: ['src/**', 'tsconfig.json'], env: ['NODE_ENV'] },
+}
+```
+
 ```ts
 inputs?: InputsConfig
 ```
@@ -1162,6 +1182,17 @@ task's outputs. Typical case: an integration-test task `dependsOn`s
 `inputs.tasks: []` to keep `build` from invalidating it.
 
 ### `cache` (optional)
+
+`cache` makes a task cached: `outputs` lists what it writes, which a
+hit restores. A task with no `cache` block always runs.
+
+```ts
+build: {
+  exec: { command: 'tsc -b' },
+  inputs: { files: ['src/**', 'tsconfig.json'] },
+  cache: { outputs: { files: ['dist/**'] } },
+}
+```
 
 ```ts
 interface CacheConfig {
