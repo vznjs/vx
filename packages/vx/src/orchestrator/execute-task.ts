@@ -977,6 +977,8 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           const why = secrets?.mask(raw.message) ?? raw.message
           if (remoteOnly) {
             raw = new UserError(`${why}, and remote: 'only' keeps it off this machine`)
+          } else if (args.executor.exclusive === true) {
+            raw = new UserError(`${why}, and ${args.executor.name} runs no task on this machine`)
           } else {
             warnOf(log)(`[vx] ${node.id}: ${why} — running it here`)
             const local = await localExecutor().execute(await buildRequest(true))

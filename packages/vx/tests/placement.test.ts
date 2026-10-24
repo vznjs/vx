@@ -294,6 +294,67 @@ describe('placeTasks — a servers executor carries persistent dependencies', ()
   })
 })
 
+// No task runs on a distributed run's orchestrator; only hits restore
+// there (owner, 2026-10-24): an `exclusive` executor lifts every pin, and a
+// task that would still land here refuses the run.
+describe('placeTasks — an exclusive executor leaves this machine nothing', () => {
+  const floor = localExecutor()
+  const dte: TaskExecutor = {
+    name: 'dte',
+    remote: true,
+    exclusive: true,
+    servers: true,
+    runtime: true,
+    platforms: ['linux-x64'],
+    execute: () => {
+      throw new Error('never runs')
+    },
+  }
+  const probed = {
+    ...node('a#probe', {}),
+    config: { exec: { command: 'true' }, inputs: { files: [], runtime: ['node -v'] } },
+  } as TaskNode
+
+  it('takes what pins here: remote: false, its dependants, interactive, sandboxed, probed, and their servers', () => {
+    const p = placeTasks(
+      graph(
+        node('a#here', { remote: false }),
+        node('a#above', {}, ['a#here']),
+        node('a#tty', { interactive: true }),
+        node('a#boxed', { sandbox: { allow: { read: [] } } }),
+        probed,
+        node('s#db', { persistent: {}, remote: false, sandbox: { allow: { read: [] } } }),
+        node('a#test', {}, ['s#db']),
+      ),
+      [dte, floor],
+    )
+    expect([...p.executors].map(([id, e]) => [id, e.name])).toEqual(
+      ['a#here', 'a#above', 'a#tty', 'a#boxed', 'a#probe', 'a#test'].map((id) => [id, 'dte']),
+    )
+    expect([...p.carried]).toEqual(['s#db'])
+  })
+
+  it('refuses the run for a task it cannot take, naming it and why', () => {
+    const refuses =
+      (n: TaskNode[], executors: TaskExecutor[] = [dte, floor]) =>
+      () =>
+        placeTasks(graph(...n), executors)
+    expect(refuses([node('a#mac', { platforms: ['darwin-arm64'] })])).toThrow(
+      "a#mac would run on this machine, and executor 'dte' runs every task elsewhere: it offers linux-x64, and exec.platforms asks for darwin-arm64",
+    )
+    expect(refuses([node('a#x', {})], [{ ...dte, accepts: () => false }, floor])).toThrow(
+      'it declined the task',
+    )
+    expect(refuses([probed], [{ ...dte, runtime: false }, floor])).toThrow(
+      'its key folds a runtime probe, which it does not check',
+    )
+    const dev = { ...node('s#dev', { persistent: {} }), requested: true } as TaskNode
+    expect(refuses([dev])).toThrow(
+      "s#dev would run on this machine, and executor 'dte' runs every task elsewhere: it starts a server only beside a task that needs it",
+    )
+  })
+})
+
 describe('placeTasks — what an executor is offered, and where a task lands', () => {
   const taker = (
     name: string,

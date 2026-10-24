@@ -18,7 +18,7 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-async function fixture(remote: 'only' | undefined): Promise<void> {
+async function fixture(remote: 'only' | undefined, exclusive = false): Promise<void> {
   await Bun.write(
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'ws', workspaces: ['a'] }),
@@ -41,7 +41,7 @@ async function fixture(remote: 'only' | undefined): Promise<void> {
           `{ executor() {
              return {
                name: 'gives-back',
-               remote: true,
+               remote: true,${exclusive ? '\n               exclusive: true,' : ''}
                async execute() {
                  throw executorFallback('no worker started it')
                },
@@ -99,6 +99,19 @@ describe('a remote executor that gives a task back', () => {
     await fixture('only')
     const named =
       "plugin 'org/gives-back' (executor 'gives-back') failed in execute: no worker started it, and remote: 'only' keeps it off this machine"
+    expect(await runIt()).toEqual({
+      ok: false,
+      statuses: ['failed'],
+      out: 'absent',
+      said: [],
+      stderr: `[vx] a#gen: ${named}`,
+    })
+  })
+
+  it('fails a task an exclusive executor gives back: none runs here', async () => {
+    await fixture(undefined, true)
+    const named =
+      "plugin 'org/gives-back' (executor 'gives-back') failed in execute: no worker started it, and gives-back runs no task on this machine"
     expect(await runIt()).toEqual({
       ok: false,
       statuses: ['failed'],

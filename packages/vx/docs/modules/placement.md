@@ -16,6 +16,7 @@ export function pinnedLocalSet(
   sandbox?: boolean,
   servers?: boolean,
   runtime?: boolean, // false for a `runtime` executor
+  exclusive?: boolean, // an `exclusive` executor: nothing pins, servers included
 ): Set<string>
 // the exec.interactive tasks when `tty`, else none; throws UserError when two would read the keys at once
 export function terminalHolders(nodes: Map<string, TaskNode>, tty: boolean): Set<string>
