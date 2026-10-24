@@ -163,6 +163,17 @@ it('keeps a starting worker that ends the run sooner, though within the margin',
   expect(plan(tasks, [online, starting], [], WARM).release).toEqual([])
 })
 
+// Main 005e8f2: asked at 2.1 s, mac#2 was cancelled 0.2 s later as adding
+// nothing to the run's end, and a mac asked again at 19.9 s joined 20 s late.
+it('keeps a starting worker the plan gives a task, though the run ends no sooner', () => {
+  const one = worker('one', { idle: false })
+  const three = worker('three', { idle: false })
+  const two = worker('two', { at: 1_000, idle: false, starting: true })
+  const tasks = [task('a', 40_000, [], 4), task('b', 3_000, [], 4), task('c', 3_000, [], 4)]
+  expect(simulate(tasks, [one, three])).toBe(simulate(tasks, [one, three, two]))
+  expect(plan(tasks, [one, three, two], [], WARM).release).toEqual([])
+})
+
 it('waits a task on the running task it depends on', () => {
   const busy = worker('busy', {
     idle: false,

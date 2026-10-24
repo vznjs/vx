@@ -121,14 +121,13 @@ const cases: Case[] = [
     failing: ['utilization', 'makespan'],
   },
   // Each unmeasured task on a free core, the run sized as if each held 2
-  // (2026-10-23): it ends at 174 s where a whole worker each took 350 s,
-  // but with no forecast the plan sized by 2 cores cancels workers it
-  // started as tasks pack onto one core each.
+  // (2026-10-23): it ends at 174 s where a whole worker each took 350 s.
+  // An asked worker the plan gives a task stays, though tasks pack onto
+  // one core each.
   {
     name: 'main a09b987, no history',
     graph: load(a09, () => null),
     measured: false,
-    failing: ['churn'],
   },
   { name: 'main 2163fff, no history', graph: load(f2163, () => null), measured: false },
   // A third of the tasks new, the rest measured: the common run.
@@ -158,7 +157,9 @@ const cases: Case[] = [
     likely: forecastAll(),
     probe: false,
     restoreMs: 1_000,
-    failing: ['utilization'],
+    // A worker the plan gave a forecast task stays asked; the task a hit,
+    // it joins to none. Cancelling it instead cancelled main 005e8f2's mac.
+    failing: ['utilization', 'every worker that joins runs a task'],
   },
   // The forecast knows some keys: half its misses.
   {
