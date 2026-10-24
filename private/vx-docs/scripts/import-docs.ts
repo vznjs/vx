@@ -203,8 +203,14 @@ export function deriveDescription(lines: string[]): string {
   return ''
 }
 
-export function transformFile(srcRel: string, content: string, linkMap: LinkMap): string {
-  const cleanUrl = cleanUrlFor(srcRel)
+/** `url` serves the page somewhere other than srcRel's own URL (a CLI command's page). */
+export function transformFile(
+  srcRel: string,
+  content: string,
+  linkMap: LinkMap,
+  url = cleanUrlFor(srcRel),
+): string {
+  const cleanUrl = url
   const depth = cleanUrl.replace(/\/$/, '').split('/').length
   const prefix = '../'.repeat(depth)
   const sourceDir = srcRel.includes('/') ? srcRel.slice(0, srcRel.lastIndexOf('/')) : ''
@@ -256,6 +262,190 @@ export function transformFile(srcRel: string, content: string, linkMap: LinkMap)
   fm.push(`editUrl: ${yaml(`https://github.com/vznjs/vx/edit/main/packages/vx/docs/${srcRel}`)}`)
   fm.push('---', '')
   return `${fm.join('\n')}${body.join('\n').replace(/^\n+/, '')}`
+}
+
+// ---- the CLI reference: one page per command, as Bun's is ----
+
+/**
+ * The `## ` sections of cli.md that leave cli/ for a page of their own,
+ * in page order; the first names the page. The rest stay on cli/, which
+ * lists the pages. cli.md stays one file: the contract tests read it whole.
+ */
+export const CLI_PAGES: readonly (readonly [string, readonly string[]])[] = [
+  ['run', ['`vx run`', 'Planning mode (`--dry`)', 'Run artifacts (`--profile`)', 'Sandbox']],
+  ['watch', ['`vx watch`']],
+  ['show', ['`vx show`']],
+  ['why', ['`vx why`']],
+  ['last', ['`vx last`']],
+  ['info', ['`vx info`']],
+  ['lock', ['`vx lock`', 'Runs read the lock']],
+  ['cache', ['`vx cache clean`']],
+  ['init', ['`vx init`', '`bunx @vzn/vx-migrate`']],
+  ['upgrade', ['`vx upgrade`']],
+  ['docs', ['`vx docs`']],
+  ['completions', ['`vx completions`']],
+  ['plugin-commands', ['Plugin commands']],
+  ['environment-variables', ['Environment variables vx reads']],
+  // Machine-readable output stays: a JSON refusal's `docs` links
+  // cli/#vx_e_<code> (src/util/errors.ts), in binaries already released.
+  ['output', ['Output format']],
+]
+
+/** A heading's id as the site's build writes it (github-slugger), before dedupe. */
+export function headingSlug(text: string): string {
+  return text
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[`*]/g, '')
+    .replace(/\\(.)/g, '$1')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M} _-]/gu, '')
+    .replace(/ /g, '-')
+}
+
+type CliSection = { heading: string; lines: string[] }
+
+function cliSections(source: string): { head: string[]; sections: CliSection[] } {
+  const head: string[] = []
+  const sections: CliSection[] = []
+  let fenced = false
+  for (const line of source.replace(/\r\n/g, '\n').split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced
+    const h2 = fenced ? null : /^##\s+(.+?)\s*$/.exec(line)
+    if (h2) sections.push({ heading: h2[1]!, lines: [line] })
+    else if (sections.length > 0) sections[sections.length - 1]!.lines.push(line)
+    else head.push(line)
+  }
+  return { head, sections }
+}
+
+/** Every heading id in `lines`, in order, deduped as the build dedupes one page's. */
+function headingIds(lines: readonly string[]): string[] {
+  const seen = new Map<string, number>()
+  const ids: string[] = []
+  let fenced = false
+  for (const line of lines) {
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced
+    const m = fenced ? null : /^#{2,6}\s+(.+?)\s*$/.exec(line)
+    if (!m) continue
+    const base = headingSlug(m[1]!)
+    const n = seen.get(base) ?? 0
+    seen.set(base, n + 1)
+    ids.push(n === 0 ? base : `${base}-${n}`)
+  }
+  return ids
+}
+
+/** Where an id of the one-page CLI reference lives now: a page ('' is cli/), and its id there. */
+export type CliAnchors = ReadonlyMap<string, { page: string; id?: string }>
+
+/** Each command page's markdown (H1 first), cli/'s own, and where every old id went. */
+export function splitCli(source: string): {
+  index: string
+  pages: { page: string; markdown: string }[]
+  anchors: CliAnchors
+  /** cli/'s script that sends an old #id to its page. */
+  forward: string
+} {
+  const { head, sections } = cliSections(source)
+  const byHeading = new Map(sections.map((s) => [s.heading, s]))
+  const owner = new Map<string, string>()
+  for (const [page, headings] of CLI_PAGES) {
+    for (const h of headings) {
+      if (!byHeading.has(h))
+        throw new Error(`import-docs: cli.md has no "## ${h}" for cli/${page}/`)
+      owner.set(h, page)
+    }
+  }
+  // An old id is a heading's position in the whole file; its new id is its
+  // position on the page it moved to.
+  const oldIds = headingIds(sections.flatMap((s) => s.lines))
+  const oldIdOf = new Map<CliSection, string[]>()
+  let at = 0
+  for (const s of sections) {
+    const n = headingIds(s.lines).length
+    oldIdOf.set(s, oldIds.slice(at, at + n))
+    at += n
+  }
+  const anchors = new Map<string, { page: string; id?: string }>()
+  const place = (page: string, lines: string[], moved: CliSection[], titled?: CliSection) => {
+    const ids = headingIds(lines)
+    let i = 0
+    for (const s of moved) {
+      const old = oldIdOf.get(s)!
+      // The titled section's H2 became the page's H1: its id is the page.
+      if (s === titled) {
+        anchors.set(old[0]!, { page })
+        old.slice(1).forEach((o) => anchors.set(o, { page, id: ids[i++]! }))
+      } else old.forEach((o) => anchors.set(o, { page, id: ids[i++]! }))
+    }
+  }
+  const pages = CLI_PAGES.map(([page, headings]) => {
+    const moved = headings.map((h) => byHeading.get(h)!)
+    const [first, ...rest] = moved
+    const title = first!.heading.replace(/`/g, '')
+    const lines = [`# ${title}`, ...first!.lines.slice(1), ...rest.flatMap((s) => s.lines)]
+    place(page, lines, moved, first)
+    return { page, markdown: lines.join('\n') }
+  })
+  const stays = sections.filter((s) => !owner.has(s.heading))
+  const list = [
+    '## Commands',
+    '',
+    '| Page | Covers |',
+    '| --- | --- |',
+    ...CLI_PAGES.map(
+      ([page, headings]) =>
+        `| [${headings[0]!.replace(/`/g, '')}](./${page}/) | ${headings.map((h) => h.replace(/`/g, '')).join(', ')} |`,
+    ),
+    '',
+  ]
+  const indexLines = [...head, ...list, ...stays.flatMap((s) => s.lines)]
+  place('', indexLines.slice(head.length + list.length), stays)
+  // A link from outside the site (an old post, a released binary's help)
+  // still names cli/#<id>: send it to the page the id moved to.
+  const moved = Object.fromEntries(
+    [...anchors]
+      .filter(([, a]) => a.page !== '')
+      .map(([o, a]) => [o, `${a.page}/${a.id === undefined ? '' : `#${a.id}`}`]),
+  )
+  // Added after the markdown transform, which escapes a tag as prose.
+  const forward = `<script>{const m=${JSON.stringify(moved)};const t=m[decodeURIComponent(location.hash.slice(1))];if(t)location.replace(new URL(t,location.href.split("#")[0]))}</script>`
+  return { index: indexLines.join('\n'), pages, anchors, forward }
+}
+
+/**
+ * Point every link into the one-page CLI reference (`cli/#id`, and on a CLI
+ * page its own `#id`) at the page that holds that id now. `url` is the page
+ * the text is served at.
+ */
+export function relinkCli(text: string, url: string, anchors: CliAnchors): string {
+  const prefix = '../'.repeat(url.replace(/\/$/, '').split('/').length)
+  const onCli = url === 'cli/' || url.startsWith('cli/')
+  const to = (id: string, whole: string): string => {
+    const a = anchors.get(id)
+    if (!a) return whole
+    const page = a.page === '' ? 'cli/' : `cli/${a.page}/`
+    return `](${prefix}${page}${a.id === undefined ? '' : `#${a.id}`})`
+  }
+  let fenced = false
+  return text
+    .split('\n')
+    .map((line) => {
+      if (/^\s*(```|~~~)/.test(line)) fenced = !fenced
+      if (fenced) return line
+      let out = line.replace(/\]\((?:\.\.\/)*cli\/#([^)\s]+)\)/g, (whole, id: string) =>
+        to(id, whole),
+      )
+      if (onCli) {
+        out = out.replace(/\]\(#([^)\s]+)\)/g, (whole, id: string) => {
+          const a = anchors.get(id)
+          const here = url === 'cli/' ? '' : url.slice(4, -1)
+          return a && a.page !== here ? to(id, whole) : whole
+        })
+      }
+      return out
+    })
+    .join('\n')
 }
 
 // ---- plugin pages: each published plugin's README ----
@@ -393,15 +583,29 @@ export async function importDocs(
     const head = (await Bun.file(path.join(outDir, f)).text()).slice(0, 400)
     if (head.includes(GENERATED_MARK)) await rm(path.join(outDir, f), { force: true })
   }
-  for (const entry of ['modules', 'design', 'plugins']) {
+  for (const entry of ['modules', 'design', 'plugins', 'cli']) {
     await rm(path.join(outDir, entry), { recursive: true, force: true })
   }
 
   const designFiles: { url: string; title: string; description?: string }[] = []
 
+  const cliFile = Bun.file(path.join(docsDir, 'cli.md'))
+  const cli = (await cliFile.exists())
+    ? splitCli(await cliFile.text())
+    : { index: '', pages: [], anchors: new Map(), forward: '' }
+  for (const { page, markdown } of cli.pages) {
+    const url = `cli/${page}/`
+    const text = relinkCli(transformFile('cli.md', markdown, linkMap, url), url, cli.anchors)
+    await mkdir(path.join(outDir, 'cli'), { recursive: true })
+    await Bun.write(path.join(outDir, 'cli', `${page}.md`), text)
+  }
+
   for (const srcRel of sources) {
-    const content = await Bun.file(path.join(docsDir, srcRel)).text()
-    const transformed = transformFile(srcRel, content, linkMap)
+    const content =
+      srcRel === 'cli.md' ? cli.index : await Bun.file(path.join(docsDir, srcRel)).text()
+    const transformed =
+      relinkCli(transformFile(srcRel, content, linkMap), cleanUrlFor(srcRel), cli.anchors) +
+      (srcRel === 'cli.md' ? `\n${cli.forward}\n` : '')
     const outRel = outRelFor(srcRel)
     const outPath = path.join(outDir, outRel)
     await mkdir(path.dirname(outPath), { recursive: true })

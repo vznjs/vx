@@ -41,4 +41,4 @@ On the base branch itself there is no default: name the last commit that
 passed, or set `VX_AFFECTED_BASE`. On CI, fetch the history
 (`fetch-depth: 0`) so the base commit is there.
 
-See [`--affected`](../../../cli/#--affectedbase).
+See [`--affected`](../../../cli/run/#--affectedbase).

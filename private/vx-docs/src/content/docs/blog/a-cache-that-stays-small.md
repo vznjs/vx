@@ -99,6 +99,6 @@ cannot see, such as another workspace sharing the cache directory, is
 still safe: an entry that disappears before its restore is a miss, and
 the task runs.
 
-Reference: [`vx cache clean`](../../cli/#vx-cache-clean) and the
+Reference: [`vx cache clean`](../../cli/cache/) and the
 [schema](../../schema/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

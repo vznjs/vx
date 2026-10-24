@@ -87,5 +87,5 @@ the first one. That is the point.
 
 Package managers learned the same lesson with `--frozen-lockfile`:
 resolve freely in development, pin where reproducibility is the
-contract. Reference: [`vx lock`](../../cli/#vx-lock). More at
+contract. Reference: [`vx lock`](../../cli/lock/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).

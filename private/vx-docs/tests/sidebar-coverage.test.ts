@@ -32,9 +32,9 @@ const OUT_OF_SIDEBAR = /^\/(?:modules|design|internals|blog|releases)\//
  * pages beside them (introduction, quickstart, …) do not and are tracked.
  */
 function importedPages(): string[] {
-  // Any depth but modules/, design/ and plugins/, which the .gitignore lists whole.
+  // Any depth but modules/, design/, plugins/ and cli/, which the .gitignore lists whole.
   return readdirSync(CONTENT, { recursive: true, encoding: 'utf8' })
-    .filter((f) => !/^(modules|design|plugins)\//.test(f))
+    .filter((f) => !/^(modules|design|plugins|cli)\//.test(f))
     .filter(
       (f) =>
         f.endsWith('.md') &&

@@ -26,6 +26,7 @@ dist/
 /src/content/docs/modules/
 /src/content/docs/design/
 /src/content/docs/plugins/
+/src/content/docs/cli/
 
 # The resized images, built by `build.images` (scripts/build-images.ts)
 /public/_img/

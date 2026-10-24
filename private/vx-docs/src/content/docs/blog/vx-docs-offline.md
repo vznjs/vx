@@ -14,7 +14,7 @@ the version you run.
 
 ```sh frame="terminal"
 $ vx docs exit codes --limit 1
-── cli.md § Exit codes · https://vznjs.github.io/vx/cli/#exit-codes
+── cli.md § Exit codes · https://vznjs.github.io/vx/cli/watch/#exit-codes
 
 ### Exit codes
 …
@@ -49,5 +49,5 @@ Offline, it stops with `VX_E_NETWORK` and names the site. The JSON shape
 is `schemas/docs.json`. Guides stay on the site, indexed in
 [llms.txt](https://vznjs.github.io/vx/llms.txt).
 
-Reference: [`vx docs`](../../cli/#vx-docs). More at
+Reference: [`vx docs`](../../cli/docs/). More at
 [vznjs.github.io/vx](https://vznjs.github.io/vx/).
