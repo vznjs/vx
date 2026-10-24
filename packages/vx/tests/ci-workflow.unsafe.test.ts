@@ -64,9 +64,10 @@ describe('ci.yml', () => {
   })
 
   // Shallow, a run found no merge-base and so no measured needs, and every
-  // shard booked a whole worker at ~25% CPU (2026-10-22).
-  it('checks the run out with the history its timings import walks', () => {
-    expect(checkout(doc.jobs['linux'])?.with).toEqual({ 'fetch-depth': 0, filter: 'blob:none' })
+  // shard booked a whole worker at ~25% CPU (2026-10-22). The run fetches
+  // its merge-base now (mergeBaseWith), so the checkout is one commit.
+  it('checks the run out at one commit: the run fetches its merge-base', () => {
+    expect(checkout(doc.jobs['linux'])?.with).toBeUndefined()
   })
 
   // The run's report is the job summary, not a check run of its own beside

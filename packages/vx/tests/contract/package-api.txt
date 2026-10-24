@@ -346,6 +346,11 @@ export function lockfileClaim(options: LockfileClaimOptions): LockfileClaimHooks
 export function machineMemoryBytes(probe: CgroupProbe = {}): number
 == function machineParallelism (src/util/cgroup.ts)
 export function machineParallelism(probe: CgroupProbe = {}): number
+== function mergeBaseWith (src/workspace/affected.ts)
+export async function mergeBaseWith(
+  workspaceRoot: string,
+  ref: string,
+): Promise<string | undefined>
 == function next (src/util/ui.ts)
 export function next(command: Inline): Block
 == function normalizeGlob (src/util/paths.ts)

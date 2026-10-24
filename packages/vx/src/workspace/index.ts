@@ -8,6 +8,7 @@ export {
   defaultAffectedBase,
   type FingerprintClaims,
   headBase,
+  mergeBaseWith,
 } from './affected.js'
 export { applyFilters, parseFilter } from './filter.js'
 export { readClaimedFiles } from './fingerprint.js'

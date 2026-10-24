@@ -45,6 +45,8 @@ configure:
   takes the merge-base of HEAD with `defaultBranch` (or
   `origin/<defaultBranch>`) and imports the newest timings at it or its
   4 first-parent ancestors, once per merge-base for all its worktrees.
+  A shallow clone (CI's one-commit checkout) fetches that merge-base from
+  origin, as `--affected` does: no `fetch-depth: 0`.
   On a branch it then reads HEAD's parent's timings from the branch's
   scope, once per commit: a task there overrides the default branch's,
   and a task missing there keeps it. The run never waits for them: it starts in the order local history
