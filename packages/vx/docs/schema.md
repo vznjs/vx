@@ -240,8 +240,8 @@ limit" — the platform silently reduces it to **1 ms**, so the task would
 be killed the moment it spawns and reported `failed`. vx refuses it at
 load rather than let that happen. **Omit `timeout` entirely for no
 limit.** The same bound applies to `--timeout` and to the workspace-level
-`run.timeout`; the `VX_RUN_TIMEOUT` env rung is clamped to it instead of
-refused, since that rung never fails a run.
+`run.timeout` and the `VX_RUN_TIMEOUT` env rung: past it, each is refused
+under its own name.
 
 A task with **no** `exec.timeout` falls back to a run-level default, if
 one is set. Precedence, highest first: **per-task `exec.timeout` →
