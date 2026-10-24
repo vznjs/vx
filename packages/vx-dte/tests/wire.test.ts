@@ -42,7 +42,7 @@ it('talks over the socket the relay offers: sends, removes and leaves, polling n
   await a.send('orchestrator', 'done')
   expect(await o.poll()).toEqual([{ from: a.id, body: 'done' }])
   await expect(a.send('nobody', 1)).rejects.toThrow('relay send: 404 unknown to')
-  await expect(a.remove(o.id)).rejects.toThrow('relay send: 403 only the orchestrator removes')
+  await expect(a.remove(o.id)).rejects.toThrow('relay send: 403 only the host removes')
   const b = await join(s.url, R, 'worker', null, undefined)
   await o.poll()
   await o.remove(b.id)

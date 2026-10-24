@@ -23,6 +23,7 @@ dist/
 /src/content/docs/api.md
 /src/content/docs/compare/turbo-nx-support.md
 /src/content/docs/security.md
+/src/content/docs/switchboard.md
 /src/content/docs/modules/
 /src/content/docs/design/
 /src/content/docs/plugins/

@@ -6,7 +6,15 @@
 // `wrangler.jsonc` deploys it; ALLOW is a var in it.
 
 import { claimedRun, createVerifier, parseAllow } from './oidc.js'
-import { closeSocket, createRelay, refusedWith, runKey, type Kept, type Relay } from './relay.js'
+import {
+  closeSocket,
+  createRelay,
+  negotiate,
+  refusedWith,
+  sessionKey,
+  type Kept,
+  type Relay,
+} from './relay.js'
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
 interface DurableObjectId {}
@@ -44,7 +52,7 @@ export interface Env {
   readonly AUDIENCE?: string
 }
 
-const RUN = /^\/v1\/runs\/([^/]+)\//
+const SESSION = /^\/sessions\/([^/]+)\//
 
 /** How long the data center's cache holds an issuer's keys for the next isolate. */
 const KEYS_TTL_S = 600
@@ -98,7 +106,16 @@ function refuse(req: Request, status: number, error: string): Response {
   const pair = new WebSocketPair()
   pair[1].accept()
   closeSocket(pair[1], refusedWith(status), error)
-  return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit)
+  return upgraded(pair[0], negotiate(req).protocol)
+}
+
+/** The `101` handing the client its end of `socket`, naming the subprotocol chosen. */
+function upgraded(socket: Socket, protocol: string | undefined): Response {
+  return new Response(null, {
+    status: 101,
+    webSocket: socket,
+    ...(protocol === undefined ? {} : { headers: { 'sec-websocket-protocol': protocol } }),
+  } as ResponseInit)
 }
 
 /** Verifiers by ALLOW and audience, shared by the runs of one isolate. */
@@ -106,13 +123,13 @@ const verifiers = new Map<string, ReturnType<typeof createVerifier>>()
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
-    const run = RUN.exec(new URL(req.url).pathname)?.[1]
-    if (run === undefined) return Response.json({ error: 'no such route' }, { status: 404 })
+    const session = SESSION.exec(new URL(req.url).pathname)?.[1]
+    if (session === undefined) return Response.json({ error: 'no such route' }, { status: 404 })
     const refused = allowRefusal(env.ALLOW)
     if (refused !== undefined) return refuse(req, 403, refused)
     const token = /^Bearer (\S+)$/.exec(req.headers.get('authorization') ?? '')?.[1]
     const claimed = token === undefined ? undefined : claimedRun(token)
-    const stub = env.RELAY.get(env.RELAY.idFromName(await runKey(run, claimed)))
+    const stub = env.RELAY.get(env.RELAY.idFromName(await sessionKey(session, claimed)))
     try {
       return await stub.fetch(req)
     } catch (err) {
@@ -150,12 +167,12 @@ export class RelayRun {
     this.relay = createRelay({
       verify: (token, req) => verifierOf(env.AUDIENCE || new URL(req.url).origin)(token),
       sockets: state.getWebSockets().map((ws) => [ws.deserializeAttachment(), ws] as const),
-      upgrade: (key, id) => {
+      upgrade: (key, id, _req, protocol) => {
         const pair = new WebSocketPair()
         state.acceptWebSocket(pair[1])
         const kept = this.relay.attach(key, id, pair[1])
         if (kept !== false) pair[1].serializeAttachment(kept)
-        return new Response(null, { status: 101, webSocket: pair[0] } as ResponseInit)
+        return upgraded(pair[0], protocol)
       },
     })
   }

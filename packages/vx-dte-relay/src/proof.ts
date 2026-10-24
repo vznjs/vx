@@ -7,8 +7,8 @@ const ALG = { name: 'ECDSA', namedCurve: 'P-256' } as const
 const SIGN = { name: 'ECDSA', hash: 'SHA-256' } as const
 const text = new TextEncoder()
 
-/** The header a request as the orchestrator proves itself in. */
-export const PROOF_HEADER = 'vx-proof'
+/** The header a request as the host proves itself in. */
+export const PROOF_HEADER = 'relay-proof'
 
 /** What a proof signs: the request, when, and a nonce the relay sees once. */
 export function proofText(
@@ -18,7 +18,7 @@ export function proofText(
   nonce: string,
   body: string,
 ): Uint8Array<ArrayBuffer> {
-  return text.encode(`vx-dte-proof\0${method}\0${path}\0${ts}\0${nonce}\0${body}`)
+  return text.encode(`switchboard-proof\0${method}\0${path}\0${ts}\0${nonce}\0${body}`)
 }
 
 /** A run's orchestrator key: `key` its join names, `proof` the header of each request. */

@@ -16,8 +16,11 @@ it (an OIDC exchange's token, never a stored secret) when it has none of
 its own.
 
 Workers and the orchestrator meet at a relay
-([`@vzn/vx-dte-relay`](../vx-dte-relay/PROTOCOL.md)), since CI runners
-take no inbound connection. Host your own: its
+([`@vzn/vx-dte-relay`](../vx-dte-relay/README.md)), since CI runners
+take no inbound connection. It speaks the
+[Switchboard protocol](../vx-dte-relay/PROTOCOL.md): the run is a
+session, its id the run id, the orchestrator its host and each worker a
+peer. Host your own: its
 [README](../vx-dte-relay/README.md) has a Deploy to Cloudflare button,
 which asks only for the repositories whose runs it carries.
 
@@ -42,6 +45,41 @@ encrypts a message, so a leaked one opens no past run.
 
 It is not on npm yet: it is being built in this repo. It runs workers with
 `local()`, `docker()`, `github()` and `gitlab()`.
+
+### Bodies
+
+What vx-dte puts in Switchboard's `info` and `body`, for anyone writing a
+worker or orchestrator of their own. Each worker and the orchestrator run
+a Noise handshake through the relay, prologue `vx-dte\0<run>`, the worker
+the initiator.
+
+- With the run's key: `Noise_NNpsk0_25519_AESGCM_SHA256`, the psk the
+  key's SHA-256.
+- Keyless on GitHub Actions: `Noise_NN_25519_AESGCM_SHA256`. The worker's
+  `join` carries an OIDC token whose audience is
+  `vx-dte:<base64url SHA-256 of "join\0<run>\0<message 1>">`; the
+  orchestrator's `hello` one for `"hello\0<run>\0<handshake hash>"`. Each
+  side checks the other's as a token of the same `repository_id`.
+
+| Who           | `info` / `body`                                         |
+| ------------- | ------------------------------------------------------- |
+| worker `join` | `info: { "noise": <message 1>, "token"? }`              |
+| orchestrator  | `{ "type": "hello", "noise": <message 2>, "token"? }`   |
+| orchestrator  | `{ "type": "refused", "reason" }`, plain, then `remove` |
+| either, then  | `{ "seal": ["<n>.<ciphertext>", …] }`                   |
+
+The orchestrator checks each worker the moment the relay says it joined,
+and `remove`s one whose handshake fails. Message 1's payload is the
+worker's info (JSON), encrypted under the psk. After the handshake every
+body is Noise transport messages, base64, each at most 65535 bytes and
+naming its nonce `n` (Noise §11.4, since a relay may reorder); each is
+sealed with associated data `<first n>.<parts>` of its body, so no part
+opens in another body. A body whose first nonce was seen before is a
+replay and is dropped; one that does not open loses its sender. The
+plaintext is JSON padded with trailing spaces to its size class, a power
+of two from 256 bytes, then whole transport messages, so the relay learns
+no size within a class. Inside, each send is numbered and acknowledged
+end to end, and a quiet peer probed (Switchboard § Delivery, § Liveness).
 
 ## Try it
 
