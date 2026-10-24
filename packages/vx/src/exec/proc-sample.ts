@@ -5,7 +5,7 @@
 // A tree, not a process group: a sandboxed task runs under bwrap in a
 // session of its own, so its processes carry another group, but each still
 // has its parent. A process that left the tree (re-parented to init) is not
-// counted; nor is the CPU of a descendant that already exited.
+// counted; a descendant that exited counts in its parent once reaped.
 
 import { readdir, readFile } from 'node:fs/promises'
 import { procfsIsOwn } from '../util/index.js'
@@ -121,11 +121,15 @@ async function linuxRssKiB(pid: number): Promise<number> {
   }
 }
 
-/** macOS (and any non-Linux): one `ps` for the whole table. */
+/**
+ * macOS (and any non-Linux): one `ps` for the whole table. `-S` adds the
+ * reaped children's CPU to each parent, as Linux's `cutime` does: a test
+ * shard's many short processes otherwise vanish from its sum.
+ */
 async function psTable(): Promise<Map<number, Proc> | undefined> {
   let text: string
   try {
-    const ps = Bun.spawn(['ps', '-A', '-o', 'pid=,ppid=,rss=,time='], {
+    const ps = Bun.spawn(['ps', '-A', '-S', '-o', 'pid=,ppid=,rss=,time='], {
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'ignore',
