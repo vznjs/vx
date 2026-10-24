@@ -1284,7 +1284,7 @@ function assertNoForeignToken(glob: string, where: string): void {
   assertNoBraceRange(glob, where)
 }
 
-const BRACE_RANGE = /(?<!\\)\{(-?\d+|[a-zA-Z])\.\.(-?\d+|[a-zA-Z])(\.\.-?\d+)?\}/
+const BRACE_RANGE = /(?<!\\)\{(-?\d+|[a-zA-Z])\.\.(-?\d+|[a-zA-Z])(\.\.-?\d+)?\}/g
 
 /**
  * A range vx expands is any task glob's (`braceRange`). One it does not —
@@ -1292,8 +1292,9 @@ const BRACE_RANGE = /(?<!\\)\{(-?\d+|[a-zA-Z])\.\.(-?\d+|[a-zA-Z])(\.\.-?\d+)?\}
  * readings would differ by engine: refused.
  */
 function assertNoBraceRange(glob: string, where: string): void {
-  const m = BRACE_RANGE.exec(glob)
-  if (m === null || braceRange(m[0].slice(1, -1)) !== null) return
+  // Every range, not the first: `a{1..2}{A..c}` held one vx reads past.
+  const m = [...glob.matchAll(BRACE_RANGE)].find((r) => braceRange(r[0].slice(1, -1)) === null)
+  if (m === undefined) return
   throw new UserError(
     `${where}: "${glob}" holds the brace range ${m[0]}, which vx expands only within one case ` +
       `and up to ${BRACE_RANGE_LIMIT} names. Write a smaller range or a comma brace.`,
