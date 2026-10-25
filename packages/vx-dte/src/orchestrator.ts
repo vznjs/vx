@@ -210,7 +210,7 @@ const stopped = (): ExecuteResult =>
 export class Orchestrator {
   private readonly workers = new Map<string, Worker>()
   /** The run tree's files, workspace-relative, listed when a task first asks. */
-  private inTree?: Promise<Set<string> | undefined>
+  private inTree?: Promise<Tree | undefined>
   private readonly queue: Job[] = []
   /** Where a worker saved each task it ran: its cache key or its run key. */
   private readonly savedAs = new Map<string, string>()
@@ -309,11 +309,17 @@ export class Orchestrator {
     if (req.inputs !== undefined && req.inputs.files.length > 0) {
       this.inTree ??= listTree(this.o.root, this.o.tree)
       const tree = await this.inTree
-      const stray = tree === undefined ? undefined : req.inputs.files.find((f) => !tree.has(f.path))
-      if (stray !== undefined)
+      const stray =
+        tree === undefined ? undefined : req.inputs.files.find((f) => !tree.files.has(f.path))
+      if (stray !== undefined) {
+        // A committed submodule's files are not the tree's: its gitlink is.
+        const link = tree?.links.find((l) => stray.path.startsWith(`${l}/`))
         throw new UserError(
-          `${req.taskId} keys ${stray.path}, which is not in the commit workers check out: commit it, or leave it out of the task's inputs`,
+          link === undefined
+            ? `${req.taskId} keys ${stray.path}, which is not in the commit workers check out: commit it, or leave it out of the task's inputs`
+            : `${req.taskId} keys ${stray.path}, in submodule ${link}, whose files workers do not check out: leave it out of the task's inputs`,
         )
+      }
     }
     for (const u of req.inputs?.upstream ?? []) this.upstreamKeys.set(u.taskId, u.hash)
     await this.share(req.taskId)
@@ -1763,16 +1769,29 @@ function nestedIn(nodes: ReadonlyMap<string, TaskNode>, dir: string, root: strin
   return [...out].sort()
 }
 
-/** `tree`'s files under `root`, relative to it; undefined when git cannot list it. */
-async function listTree(root: string, tree: string): Promise<Set<string> | undefined> {
-  const p = Bun.spawn(['git', 'ls-tree', '-r', '-z', '--name-only', tree], {
+/** A tree's file paths, and its submodules' (gitlinks). */
+type Tree = { files: Set<string>; links: string[] }
+
+/** `tree`'s files and submodules under `root`, relative to it; undefined when git cannot list it. */
+async function listTree(root: string, tree: string): Promise<Tree | undefined> {
+  const p = Bun.spawn(['git', 'ls-tree', '-r', '-z', tree], {
     cwd: root,
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'ignore',
   })
   const [out, code] = await Promise.all([new Response(p.stdout).text(), p.exited])
-  return code === 0 ? new Set(out.split('\0').filter((f) => f !== '')) : undefined
+  if (code !== 0) return undefined
+  const files = new Set<string>()
+  const links: string[] = []
+  for (const e of out.split('\0')) {
+    const tab = e.indexOf('\t')
+    if (tab === -1) continue
+    const name = e.slice(tab + 1)
+    if (e.startsWith('160000 ')) links.push(name)
+    else files.add(name)
+  }
+  return { files, links }
 }
 
 /** Each distinct `exec.sandbox` of the run, for a worker's sandbox runtime. */

@@ -2705,3 +2705,41 @@ it('fails a task whose key folds a file the run’s tree lacks, naming it', asyn
     await served.stop()
   }
 })
+
+it('names the submodule of a keyed file the run’s tree holds only as a gitlink', async () => {
+  const root = await tmp()
+  const git = (cwd: string, ...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd })
+      .stdout.toString()
+      .trim()
+  git(root, 'init', '-q')
+  const sub = path.join(root, 'a/vendor')
+  await mkdir(sub, { recursive: true })
+  await writeFile(path.join(sub, 'x'), 'x\n')
+  git(sub, 'init', '-q')
+  git(sub, 'add', '-A')
+  git(sub, 'commit', '-qm', 'v')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-qm', 'i')
+  const served = servedRelay()
+  try {
+    const o = new Orchestrator({
+      me: await join(served.url, R, 'orchestrator', null, undefined),
+      root,
+      tree: git(root, 'rev-parse', 'HEAD^{tree}'),
+      nodes: () => undefined,
+      need: () => ({ cores: 1, memory: 0 }),
+      artifacts: fakeArtifacts().artifacts,
+      cacheFacts: async () => ({ refs: [], lent: {} }),
+      run: R,
+      keyOf: () => undefined,
+    })
+    const req = { taskId: 'a#build', inputs: { files: [{ path: 'a/vendor/x', digest: 'd' }] } }
+    await expect(o.execute(req as unknown as ExecuteRequest)).rejects.toThrow(
+      "a#build keys a/vendor/x, in submodule a/vendor, whose files workers do not check out: leave it out of the task's inputs",
+    )
+    await o.close()
+  } finally {
+    await served.stop()
+  }
+})

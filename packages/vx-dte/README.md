@@ -432,7 +432,8 @@ use your own instead.
 - A worker whose tracked files differ from the orchestrator's (another
   tree) is refused.
 - A task whose key folds a file the run's commit lacks (untracked, or
-  gitignored and named outright) fails, naming the file: no worker has it.
+  gitignored and named outright, or inside a submodule, whose files the
+  commit holds only as a gitlink) fails, naming the file: no worker has it.
 - A task's `exec.timeout` counts from its start on its worker: the wait
   for a worker still booting is not its run (the executor declares
   `timeouts`).
