@@ -113,8 +113,16 @@ describe('ci.yml', () => {
     const run = steps.find((s) => s.run?.includes('bin.ts run ') === true)!
     expect(at).toBeLessThan(steps.indexOf(run))
     expect(steps[at]?.id).toBe('relay')
+    const cache = steps.findIndex(
+      (s) =>
+        s.run === 'bun private/vx-dte-service/preview.ts private/vx-cache-service VX_CACHE_URL',
+    )
+    expect(steps[cache]?.if).toBe(steps[at]?.if)
+    expect(cache).toBeLessThan(steps.indexOf(run))
+    expect(steps[cache]?.id).toBe('cache')
     expect(run.env).toEqual({
       VX_DTE_RELAY: '${{ steps.relay.outputs.url || env.VX_DTE_RELAY }}',
+      VX_CACHE_URL: '${{ steps.cache.outputs.url || env.VX_CACHE_URL }}',
     })
   })
 
@@ -275,6 +283,8 @@ describe('vx-worker.yml', () => {
       '(sudo mdutil -a -i off && sudo mdutil -a -d) >/dev/null 2>&1 &',
       'actions/checkout',
       'oven-sh/setup-bun',
+      // The variables the run hands its workers (github({ env })).
+      expect.stringMatching(/^jq -r 'to_entries/),
       'bun install --frozen-lockfile',
       'actions/cache/restore',
       'bun packages/vx/src/bin.ts setup github',

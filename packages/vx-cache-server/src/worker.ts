@@ -37,13 +37,14 @@ export interface Env {
   readonly MAX_UPLOAD_BYTES?: string
 }
 
+/** An object's key in the data center's cache. */
+const keyOf = (name: string): Request => new Request(`https://vx-cache.blobs/${name}`)
+
 /**
  * R2, read through the data center's cache: an artifact never changes
  * under its name, so a copy needs no expiry of its own. The server has
  * checked the token and named the object before a read reaches here.
  */
-/** An object's key in the data center's cache. */
-const keyOf = (name: string): Request => new Request(`https://vx-cache.blobs/${name}`)
 
 function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): Blobs {
   return {

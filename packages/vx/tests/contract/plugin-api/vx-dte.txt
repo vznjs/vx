@@ -59,6 +59,7 @@ export interface DteSetup {
 export interface GithubOptions {
   readonly workflow?: string
   readonly runsOn?: Readonly<Record<string, string>>
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 == type GitlabOptions (src/gitlab.ts)
 export interface GitlabOptions {

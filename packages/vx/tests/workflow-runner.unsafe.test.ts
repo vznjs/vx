@@ -243,6 +243,8 @@ describe('a VX_ var a workflow sets reaches the task that reads it', () => {
       'VX_DTE_WORKER',
       'VX_CACHE_DIR',
       'VX_CACHE_POLICY',
+      // .vx/workspace.ts: the cache server a run and its workers use.
+      'VX_CACHE_URL',
     ])
     const dropped = [...declaredInWorkflows]
       .filter((n) => !forwarded.has(n) && !readByVx.has(n))

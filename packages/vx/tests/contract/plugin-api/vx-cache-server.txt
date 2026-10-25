@@ -8,13 +8,11 @@ export const blobName = async (
 == const DEFAULT_LIMITS (src/server.ts)
 export const DEFAULT_LIMITS: Limits = {
   maxCheckHashes: 500,
-  maxBatchArtifacts: 100,
   maxUploadBytes: 100_000_000,
 }
 == const LIMIT_HEADERS (src/protocol.ts)
 export const LIMIT_HEADERS = {
   maxCheckHashes: 'x-artifact-max-check-hashes',
-  maxBatchArtifacts: 'x-artifact-max-batch-artifacts',
   maxUploadBytes: 'x-artifact-max-upload-bytes',
 } as const
 == const SCOPE_HEADER (src/protocol.ts)
@@ -35,7 +33,6 @@ export interface Blobs {
 == type Limits (src/server.ts)
 export interface Limits {
   readonly maxCheckHashes: number
-  readonly maxBatchArtifacts: number
   readonly maxUploadBytes: number
 }
 == type ServerOptions (src/server.ts)
