@@ -403,6 +403,7 @@ async function harness(
     stallMs?: number
     overdue?: (id: string) => void
     sent?: Map<string, number>
+    pinWaitMs?: number
   } = {},
 ) {
   const store = fakeArtifacts()
@@ -1650,6 +1651,120 @@ it('an order names every dependency, held by its worker or not', async () => {
     expect(a.orders.find((o) => o.task === 'y')!.deps.map((d) => [d.task, d.key])).toEqual([
       ['x', 'k-x'],
     ])
+  } finally {
+    await h.stop()
+  }
+})
+
+// An uncached task declares no outputs, so no cache carries its files:
+// two generators ran on two workers and their dependant, on one, did not
+// find the other's file (#4407). Its dependants go where its files are;
+// with them on two workers, one runs again beside the other (M, 2026-10-25).
+it('an uncached task’s dependant goes to the worker holding its files, made again there when split', async () => {
+  const h = await harness(new Map([node('g1'), node('g2'), node('u', ['g1', 'g2'])]))
+  try {
+    const a = await h.worker(1, 'a')
+    const b = await h.worker(1, 'b')
+    const g1 = h.o.execute(h.req('g1'))
+    const g2 = h.o.execute(h.req('g2'))
+    const [onA, onB] = [await a.batches(), await b.batches()]
+    expect([...onA, ...onB].flat().sort()).toEqual(['g1', 'g2'])
+    const [first, second] = onA.flat()[0] === 'g1' ? [a, b] : [b, a]
+    await first.finish('g1', runKey(R, 'g1'))
+    await second.finish('g2', runKey(R, 'g2'))
+    await Promise.all([g1, g2])
+    const u = h.o.execute(h.req('u'))
+    // g2 again where g1 lies, then u there: never u beside one alone.
+    expect(await first.batches()).toEqual([['g2']])
+    await first.finish('g2', runKey(R, 'g2', 1))
+    expect(await first.batches()).toEqual([['u']])
+    await first.finish('u', runKey(R, 'u'))
+    expect((await u).exitCode).toBe(0)
+    expect(second.orders.map((o) => o.task)).toEqual(['g2'])
+  } finally {
+    await h.stop()
+  }
+})
+
+it('an uncached task’s dependant waits on its worker, then has it made again on another', async () => {
+  const h = await harness(
+    new Map([node('g'), node('x'), node('u', ['g'])]),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { pinWaitMs: 200 },
+  )
+  try {
+    const a = await h.worker(1, 'a')
+    const g = h.o.execute(h.req('g'))
+    expect(await a.batches()).toEqual([['g']])
+    await a.finish('g', runKey(R, 'g'))
+    await g
+    void h.o.execute(h.req('x'))
+    expect(await a.batches()).toEqual([['x']])
+    const b = await h.worker(1, 'b')
+    const began = performance.now()
+    const u = h.o.execute(h.req('u'))
+    // a stays full with x: past the wait, g runs again on b, and u follows it.
+    expect(await b.batches()).toEqual([['g']])
+    expect(performance.now() - began).toBeGreaterThanOrEqual(150)
+    await b.finish('g', runKey(R, 'g', 1))
+    expect(await b.batches()).toEqual([['u']])
+    await b.finish('u', runKey(R, 'u'))
+    expect((await u).exitCode).toBe(0)
+  } finally {
+    await h.stop()
+  }
+})
+
+it('an uncached task made again for its dependant and failing fails the dependant, saying why', async () => {
+  const h = await harness(
+    new Map([node('g'), node('x'), node('u', ['g'])]),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { pinWaitMs: 100 },
+  )
+  try {
+    const a = await h.worker(1, 'a')
+    const g = h.o.execute(h.req('g'))
+    expect(await a.batches()).toEqual([['g']])
+    await a.finish('g', runKey(R, 'g'))
+    await g
+    void h.o.execute(h.req('x'))
+    expect(await a.batches()).toEqual([['x']])
+    const b = await h.worker(1, 'b')
+    const u = h.o.execute(h.req('u'))
+    expect(await b.batches()).toEqual([['g']])
+    await b.finish('g', runKey(R, 'g', 1), { exitCode: 2, durationMs: 1 })
+    const got = await u
+    expect(got.exitCode).toBe(1)
+    expect(got.stderr).toBe('g ran again for it and failed (exit 2)\n')
+  } finally {
+    await h.stop()
+  }
+})
+
+it('a cached task’s dependant goes wherever it fits: a cache carries its outputs', async () => {
+  const cached = (id: string, deps: string[] = []) =>
+    [
+      id,
+      { id, deps, projectDir: '/ws', config: { cache: { outputs: { files: ['out/**'] } } } },
+    ] as unknown as readonly [string, TaskNode]
+  const h = await harness(new Map([cached('g'), cached('x'), cached('u', ['g'])]))
+  try {
+    const a = await h.worker(1, 'a')
+    const g = h.o.execute(h.req('g', 'k-g'))
+    expect(await a.batches()).toEqual([['g']])
+    await a.finish('g')
+    await g
+    void h.o.execute(h.req('x', 'k-x'))
+    expect(await a.batches()).toEqual([['x']])
+    const b = await h.worker(1, 'b')
+    void h.o.execute(h.req('u', 'k-u'))
+    expect(await b.batches()).toEqual([['u']])
   } finally {
     await h.stop()
   }

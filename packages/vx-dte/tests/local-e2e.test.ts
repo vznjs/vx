@@ -123,6 +123,14 @@ export default { name: 'p', tasks: {
   fmt: { exec: { command: 'echo x >> in.txt && mkdir -p out && cp in.txt out/f.txt' }, inputs: { files: ['in.txt'] }, cache: { outputs: { files: ['out/**'] } } },
 } }
 `,
+    // Two uncached generators, long enough to run on two workers, and a
+    // task reading both: no cache carries their files (#4407).
+    'k/vx.config.mjs': `const gen = (n) => ({ exec: { command: 'sleep 1 && echo ' + n + ' > ' + n + '.txt' } })
+export default { name: 'k', tasks: {
+  one: gen('one'), two: gen('two'),
+  both: { dependsOn: ['one', 'two'], exec: { command: 'cat one.txt two.txt' } },
+} }
+`,
     // Wide, then a two-task lull, then wide again.
     'c/vx.config.mjs': `const t = (dependsOn) => ({ exec: { command: 'sleep 0.3' }, dependsOn })
 export default { name: 'c', tasks: {
@@ -180,6 +188,15 @@ it('runs a task on a worker with its dependency’s outputs, and brings its outp
   // machine's pool as `N workers`.
   expect(second.stdout.toString()).toMatch(/^ {2}workers +none started: no task needed one$/m)
   expect(second.stdout.toString()).not.toMatch(/\d+ workers? ·/)
+}, 60_000)
+
+// Two uncached generators ran on two workers, and their dependant, on
+// one, found the other's file missing (#4407): it now runs where both
+// lie, one made again beside the other (M, 2026-10-25).
+it('a task reads the files of uncached tasks that ran on other workers', async () => {
+  const run = vx(['run', 'k#both'], 'e2e-kept')
+  const out = run.stdout.toString() + run.stderr.toString()
+  expect([run.exitCode, out]).toEqual([0, expect.stringContaining('one\ntwo\n')])
 }, 60_000)
 
 // 2026-10-25: a `cache.dir` the workspace names, relative, named each
