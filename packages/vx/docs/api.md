@@ -1503,6 +1503,24 @@ export interface OutputContext extends BaseContext {
 }
 ```
 
+## `outputDirPrefixes`
+
+function · `src/util/paths.ts`
+
+The directories whose snapshot covers every path the positive `globs`
+can match, or `null` when one reaches outside the project. A
+whole-subtree glob or a literal is its own tree
+({@link wholeSubtreePrefixes}); any other glob is the tree under its
+static prefix, and a root-anchored one (`**\/dist/**`, Turbo's shape) is
+the whole project, `''`. Sound for the same reason: a file added or
+removed anywhere under a recorded directory bumps a recorded mtime. The
+snapshot's file list is then held to the entry's rows through the globs
+themselves, so a source file beside the outputs is no stray.
+
+```ts
+export function outputDirPrefixes(globs: readonly string[]): string[] | null
+```
+
 ## `outputsOverlap`
 
 function · `src/graph/task-graph.ts`

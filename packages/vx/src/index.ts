@@ -22,7 +22,12 @@ export { machineMemoryBytes, machineParallelism } from './util/index.js'
 // How core reads a task glob — its spelling, and which characters are
 // wildcards (`[` `]` and an escape are) — for a plugin that turns declared
 // outputs into something else (`@vzn/vx-reapi`'s literal `output_paths`).
-export { isLiteralPattern, normalizeGlob, restorableOutput } from './util/index.js'
+export {
+  isLiteralPattern,
+  normalizeGlob,
+  outputDirPrefixes,
+  restorableOutput,
+} from './util/index.js'
 
 // Schema types and helpers (used by user vx.config files and presets).
 export type {

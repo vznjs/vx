@@ -367,6 +367,8 @@ export function next(command: Inline): Block
 export function normalizeGlob(glob: string): string
 == function notice (src/util/ui.ts)
 export function notice(p: NoticeParts): Block
+== function outputDirPrefixes (src/util/paths.ts)
+export function outputDirPrefixes(globs: readonly string[]): string[] | null
 == function outputsOverlap (src/graph/task-graph.ts)
 export function outputsOverlap(rawA: string, rawB: string): boolean
 == function planRun (src/orchestrator/run.ts)
