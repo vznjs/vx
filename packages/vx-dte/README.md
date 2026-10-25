@@ -86,13 +86,22 @@ end to end, and a quiet peer probed (Switchboard § Delivery, § Liveness).
 
 ## Try it
 
-Until it is on npm, import it from a checkout of this repo. Inside this
-repo it is a workspace package, so the import there is `'@vzn/vx-dte'`.
+Until it is on npm, link it from a checkout of this repo. The vx you run
+must come from the same checkout: the published one lacks exports this
+package needs.
+
+```sh
+git clone https://github.com/vznjs/vx ~/vx
+cd ~/vx && bun install
+(cd packages/vx && bun link) && (cd packages/vx-dte && bun link)
+cd ~/your-repo
+bun link --save @vzn/vx @vzn/vx-dte
+```
 
 ```ts
 // .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
-import { dte, local } from '/path/to/vx/packages/vx-dte/src/index.ts'
+import { dte, local } from '@vzn/vx-dte'
 
 export default defineWorkspace({
   plugins: [
