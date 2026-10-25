@@ -415,7 +415,12 @@ class ReadyHeap {
   // was two per heap level on every push and pop.
   private readonly prio: number[] = []
   private next = 0
-  constructor(private priority: ReadonlyMap<string, number>) {}
+  /** Queued ids `counts` holds true for. */
+  counted = 0
+  constructor(
+    private priority: ReadonlyMap<string, number>,
+    private readonly counts?: (id: string) => boolean,
+  ) {}
   get size(): number {
     return this.ids.length
   }
@@ -470,6 +475,7 @@ class ReadyHeap {
    * it holds without that argument.
    */
   push(id: string, seq: number = this.next++): void {
+    if (this.counts?.(id) === true) this.counted++
     this.ids.push(id)
     this.seq.push(seq)
     this.prio.push(this.priority.get(id) ?? 0)
@@ -489,6 +495,7 @@ class ReadyHeap {
     const n = this.ids.length
     if (n === 0) return undefined
     const top = this.ids[0]!
+    if (this.counts?.(top) === true) this.counted--
     const lastId = this.ids.pop()!
     const lastSeq = this.seq.pop()!
     const lastPrio = this.prio.pop()!
@@ -607,7 +614,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   for (const id of idle) unanswered.delete(id)
   const heldReady = new Set<string>()
   let settledIdle = 0
-  const execReady = new ReadyHeap(priority)
+  // Counting those no pool takes: with every pool full, only one of them can start.
+  const execReady = new ReadyHeap(
+    priority,
+    options.poolOf === undefined ? undefined : (id) => options.poolOf!(id) === undefined,
+  )
   const restoreReady = new ReadyHeap(priority)
   options.reprioritize?.((weights) => {
     const merged = mergePriorities(baseline, weights)
@@ -667,6 +678,18 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   // against a real executor (and never parks).
   const poolOf = options.poolOf
   const poolActive = new Map<string, number>()
+  // Every pool a task of the run is placed in, by name: a task's pool is
+  // fixed for the run, so read once here.
+  const pools = new Map<string, number>()
+  if (poolOf !== undefined)
+    for (const id of nodes.keys()) {
+      const p = poolOf(id)
+      if (p !== undefined) pools.set(p.name, p.capacity)
+    }
+  const poolRoom = (): boolean => {
+    for (const [name, capacity] of pools) if ((poolActive.get(name) ?? 0) < capacity) return true
+    return false
+  }
   // A pooled task is admitted against ITS pool's capacity, a local one
   // against `concurrency`; pooled tasks reserve no local resources. A
   // restore is local disk work wherever its task was placed: on the pool's
@@ -905,8 +928,11 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         // with a wide frontier that is O(R) per tick, O(R²) per run (the
         // 6,000-task scale pin went 0.5 s → 28 s when the restore lane's
         // first cut let the scan run past a full exec lane, 2026-09-10).
-        // This is the legacy O(1) gate, kept per lane.
-        const execAdmissible = poolOf !== undefined || execRoom()
+        // This is the legacy O(1) gate, kept per lane. Every pool full is
+        // the same: a remote pool of 6 slots before 2000 ready tasks
+        // re-popped them all on each end (DTE, 2026-10-25).
+        const execAdmissible =
+          poolOf === undefined ? execRoom() : (execRoom() && execReady.counted > 0) || poolRoom()
         if (execAdmissible) {
           while (execReady.size > 0) {
             const seq = execReady.peekSeq()
