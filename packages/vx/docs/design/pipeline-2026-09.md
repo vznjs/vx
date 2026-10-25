@@ -143,6 +143,6 @@ plugin verbs after core's when a workspace is present.
    loader and graph builder are byte-identical (a probe that counts
    validations).
 2. **`commands`.** Move `migrate`, `prune`, `upgrade` out behind it.
-3. **`schedule`, `key`.** Ship a `@vzn/vx-schedule-history` reference
+3. **`schedule`, `key`.** Ship a `@vzn/vx-history` reference
    plugin (the old predictive mode) to prove the seam.
 4. Docs + site: the plugin guide is rewritten around the stage table.

@@ -310,7 +310,7 @@ The owner's direction — "devs will not know what to put in
 `exec.resources`", then "the concept of resources should be only in
 history schedule, why should core know it" — became items 157–161:
 core keeps one `admit` seam and no notion of resources;
-`@vzn/vx-schedule-history` learns each task's reservation from what
+`@vzn/vx-history` learns each task's reservation from what
 its past executions used and packs it; the producing execution's
 usage rides the artifact's sidecar so a fresh runner has a number on
 its first hit; and two container limits the raw numbers hid are read
@@ -343,7 +343,7 @@ third before pinning. Never end with "what next?".
 carried the surfaces the resources arc had left unread. The doctor's
 facts moved to `orchestrator/doctor.ts` and `vx mcp` answers them as
 `getWorkspaceInfo` (167); `vx last` ends each executed row with what
-it used, `45 MB · 0.9× cpu` (168); `@vzn/vx-schedule-history` adds
+it used, `45 MB · 0.9× cpu` (168); `@vzn/vx-history` adds
 `vx history`, the reservation it packs per task over the budgets it
 packs into (169). Dogfooding those found the day's real defect, the
 second in the RSS unit's neighbourhood: Linux folds the forking
@@ -1558,7 +1558,7 @@ and they are one arc: every shipped plugin walked as the person who
 declares it, against a real counterpart rather than a stub seam. 413 the
 two remote caches, 414 `vx mcp`, 415 `@vzn/vx-otel`, 416
 `@vzn/vx-github`, 417 `@vzn/vx-lockfile`, 418
-`@vzn/vx-schedule-history`, 419 the rule the arc taught, written where a
+`@vzn/vx-history`, 419 the rule the arc taught, written where a
 plugin author reads it. With 408–412 before them the adoption surface is
 now walked end to end: first run, Turbo, Nx, remote caches, and every
 first-party plugin.
@@ -1968,7 +1968,7 @@ this container's Bun reports `resourceUsage().maxRSS` in the kernel's
 KILOBYTES, core reads the bytes Bun >= 1.4 documents, so every peak reads
 1024× small, falls under the parent-RSS floor and is never recorded —
 core's `resourceUsageToCpuRss` canary rows and both
-`@vzn/vx-schedule-history` memory rows follow from that one fact.
+`@vzn/vx-history` memory rows follow from that one fact.
 
 **The gate's baseline in a cloud container (2026-09-19).** A session
 that gates somewhere other than a dev box will see `vx run ci --all`
@@ -2943,7 +2943,7 @@ schedule to `vx-bench/schedule-policy.ts`, which ranks with core's
 `computeReverseDepCount` and `mergePriorities` and the plugin's
 `criticalPathPriorities`. Bundling those needed no shim: they moved,
 unchanged, into files that import only types (`graph/priorities.ts`,
-`vx-schedule-history/src/critical-path.ts`; the scheduler and the plugin
+`vx-history/src/critical-path.ts`; the scheduler and the plugin
 re-import them), because `scheduler.ts` pulls `util/`, whose modules read
 `Bun` and `process` at load. The site defines `import.meta.main` false,
 so the bench's report drops out. The island is one 9,618 B chunk (4,018
@@ -3048,12 +3048,12 @@ test's key and restoring the file restores it. Held by
 `core-source-key.unsafe.test.ts`: every dependant's `test` and
 `lint.oxlint` reach `@vzn/vx#source` in the dry-run graph (red with
 `build` back to no deps). The class is every package consumed as source, not
-core alone: the site imports vx-github and vx-schedule-history, and the
-bench vx-schedule-history, and no plugin had a `build` at all. Every
+core alone: the site imports vx-github and vx-history, and the
+bench vx-history, and no plugin had a `build` at all. Every
 plugin package now has `build` (`^build` and its own `source`, keyed by
 `src/**`), and the law checks every workspace dependency edge: each
 dependant's `test` and `lint.oxlint` reach `<dep>#source` (red, naming
-the three missing edges, with vx-schedule-history's `source` edge
+the three missing edges, with vx-history's `source` edge
 removed). Found by the W2 implementer, who had patched only the site's
 test with `workspaceFiles: ['packages/vx/src/**']`; that second copy of
 the rule is removed, the cascade covers it.

@@ -227,7 +227,7 @@ Items 1–64 are in `2026-09-review-arc.md`, items 65–104 in
       this one is embarrassing in the useful way; the RSS re-fix it
       follows is recorded inside 437's entry, where the mistake was).
       CI stayed red on that fix, and the failing check was not a test at all:
-      `@vzn/vx-schedule-history#lint.oxfmt`. My edit in 437 left two
+      `@vzn/vx-history#lint.oxfmt`. My edit in 437 left two
       over-indented lines in that package's test file, and the
       formatter said so — in the LOCAL gate, twice, in the runs I
       declared clean.

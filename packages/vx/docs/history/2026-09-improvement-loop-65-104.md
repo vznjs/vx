@@ -24,8 +24,8 @@ what shipped and the numbers behind it. Items 1–64 are in
     (`@vzn/vx/plugins/schedule-history`) with a root shim for the
     compiled binary, its own boundary rule (Rule 4: a plugin imports
     core only via `'@vzn/vx'`) and a `plugins` module in the boundary
-    matrix. It is `@vzn/vx-schedule-history` now
-    (`packages/vx-schedule-history`, laid out like the other plugin
+    matrix. It is `@vzn/vx-history` now
+    (`packages/vx-history`, laid out like the other plugin
     packages: manifest with `@vzn/vx` as a peer, root shim, the unit
     pins and the end-to-end critical-path pin moved with it, its own
     CI step). Core lost the directory, the shim, the exports subpath,
@@ -90,7 +90,7 @@ migrate` was 1,475 lines of core that knew Turbo's and Nx's file
     init, upgrade, show, info, why, last — orchestration and its own
     cache, history and lock, nothing else.
 
-68. DONE (the cold gate's tail, and `assume` for `@vzn/vx-schedule-history`):
+68. DONE (the cold gate's tail, and `assume` for `@vzn/vx-history`):
     CI's Linux gate read 98.7 s for 53 tasks on four workers, and its last
     29 s were `@vzn/vx-docs#build` running alone — ready at the second
     second (its cross-compile deps take a second each) and started last,
@@ -129,7 +129,7 @@ migrate` was 1,475 lines of core that knew Turbo's and Nx's file
     refusals, three controls) and by the façade snapshot. The same
     morning's `vx/<thing>` convention is superseded by this: `vx info`
     now lists `@vzn/vx-otel`, `@vzn/vx-github`, `@vzn/vx-mcp`,
-    `@vzn/vx-schedule-history`.
+    `@vzn/vx-history`.
 
 70. DONE (the sandbox starts on the first task that executes, not up
     front): `armSandbox(nodes)` ran before classify + probe on every run
@@ -995,10 +995,10 @@ name is folded into the material, so nothing re-keyed either way.
 CI's Linux job went red on 15136a6 in `@vzn/vx-docs#test`: the plugins
 guide's type-check pin exited 1 with no diagnostic line captured. The
 cause was the sandbox, not the types: item 65 had pointed the pin's
-tsconfig `paths` straight at `packages/vx-schedule-history/src`, a
+tsconfig `paths` straight at `packages/vx-history/src`, a
 sibling the site does not depend on, and a sandboxed task may read its
 project, its `node_modules` and what those link to — nothing else. The
-fix is the honest one: the site declares `@vzn/vx-schedule-history` as
+fix is the honest one: the site declares `@vzn/vx-history` as
 a devDependency, Bun links it into the site's `node_modules`, the
 sandbox grants the link target, and the pin resolves the package
 through that link. Reproduced and proven differentially under the real

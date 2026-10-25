@@ -53,7 +53,7 @@
     directory from the repo it migrates, whose Nx graph already runs that
     repo's plugins: no boundary to cross. Rendered task names go through
     `quoteTsLiteral` (`__proto__` included), reasons into line comments.
-    `vx watch` turns file events into reruns only; vx-schedule-history
+    `vx watch` turns file events into reruns only; vx-history
     reads core's own run history. No bug.
 12. Self-update and launch. `vx upgrade` takes the asset URL the release
     API names unchecked, but refuses the bytes unless they match the
@@ -116,7 +116,7 @@
 27. The docs playground. The reader's config runs in a Worker made from a
     Blob URL, away from the page; no config comes from the URL; results
     reach the page as `textContent`. No bug.
-28. `vx-schedule-history` reads only core's own run history. No bug.
+28. `vx-history` reads only core's own run history. No bug.
 29. A named pipe in an input glob or as an output. Input hashing skips it
     (a run with a FIFO under `src/**` finished at once), and the save
     refuses an output that is not a regular file. No bug.

@@ -588,7 +588,7 @@ vx-migrate's mappers, cache clients and CLI, vx-reapi's wire and Merkle
 encoders. Each entry now exports its plugins, their options types and
 what a documented option or class needs (vx-github's `FetchFn`,
 vx-reapi's `ReapiRemoteCache` with `ReapiOptions`); tests import the
-module. vx-schedule-history kept its helpers: its README documents them
+module. vx-history kept its helpers: its README documents them
 for policies. Breaking, declared per package (#2503, #2508, #2512,
 #2520, #2521).
 
@@ -596,7 +596,7 @@ for policies. Breaking, declared per package (#2503, #2508, #2512,
 
 `plugin-exports-documented.unsafe.test.ts` requires each name in a
 plugin-api record in that package's README. It found vx-migrate's and
-vx-schedule-history's options types unnamed, and vx-otel's `post` option
+vx-history's options types unnamed, and vx-otel's `post` option
 undocumented with its `PostFn` and `OtlpTls` types unexported, so a config
 could not name them; both are exported now. Differential: dropping the
 vx-migrate names lists exactly those four types (#2527).

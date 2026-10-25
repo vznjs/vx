@@ -184,7 +184,7 @@ Items 1–64 are in `2026-09-review-arc.md`, items 65–104 in
       diff walk tested that error four times instead of the thing it
       was about. The scenario needs two commits.
 
-418.  DONE (2026-09-20, `@vzn/vx-schedule-history` — the last unwalked
+418.  DONE (2026-09-20, `@vzn/vx-history` — the last unwalked
       plugin — and the three baseline failures it turned out to share a
       cause with). Its `test` task is red in the container baseline, so
       that came first, and the answer is environmental but only because

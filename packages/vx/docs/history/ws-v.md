@@ -61,7 +61,7 @@ the rounds run with `GIT_CONFIG_GLOBAL=/dev/null`.
   verb runs. Row: `vx-lockfile/tests/lazy-load.test.ts`.
 - **V-8.** `@vzn/vx-ci` loaded its sink and Checks API client at import;
   they load where a summary file is set (`require`: the telemetry hook is
-  sync). The renderer stays eager: `renderJobSummary` is a frozen export. `@vzn/vx-schedule-history` loads `vx history`'s table with
+  sync). The renderer stays eager: `renderJobSummary` is a frozen export. `@vzn/vx-history` loads `vx history`'s table with
   the verb. Rows: each package's `tests/lazy-load.test.ts`.
 - **V-9.** A repository with no remote is named by its root commit, and
   every run spawned `rev-parse --is-shallow-repository` then `rev-list`

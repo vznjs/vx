@@ -562,7 +562,7 @@ and the `realpath` was most of the call: an empty clean 10.5 → 6 µs
 - **Owner / coordinator: skip macOS where it cannot differ from
   Linux (I-14).** 135 of 436 commits since 2026-09-27 touch nothing the
   macOS job can see differently: not core's `src/`, `tests/`,
-  `scripts/` or manifests, not `vx-schedule-history` or the
+  `scripts/` or manifests, not `vx-history` or the
   playground (the macOS job runs them), not `ci.yml`, the runner
   action, `bun.lock`, the root manifests or `README.md`. The rest is
   docs, stream history, other plugins and the site, which only text

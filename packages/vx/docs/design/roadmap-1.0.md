@@ -26,7 +26,7 @@ handoff. When a milestone item lands, strike it here in the same commit.
 - **Distribution is the largest real gap.** Only `@vzn/vx` is on npm
   (latest 0.0.21, tag `v0.0.21`). None of the seven plugin packages are
   published: `vx-migrate`, `vx-reapi`, `vx-otel`, `vx-ci`, `vx-mcp`,
-  `vx-lockfile` and `vx-schedule-history` all return npm 404. The publish
+  `vx-lockfile` and `vx-history` all return npm 404. The publish
   workflow (`.github/workflows/npm.yml`) ships only the core and its
   platform binaries. Yet the docs call the plugins published and tell
   users to run `bunx @vzn/vx-migrate`, which is the adoption entry

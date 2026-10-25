@@ -57,7 +57,7 @@ one directory, no lock shared with an unrelated repository's run).
 Moving the whole `cache.db` to the home directory would share what is
 one workspace's alone:
 
-- `vx last`, `vx why`, `vx-schedule-history` and the MCP tools read
+- `vx last`, `vx why`, `vx-history` and the MCP tools read
   `runs` and `invocations`: one shared table answers with another
   repository's runs (about 25 statements would each need a workspace
   filter).

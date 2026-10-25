@@ -227,7 +227,7 @@ file records), items 719–743 in
       landed first: the cache and history tools of vx mcp open the index as `vx last` does, making nothing on disk and refusing an earlier schema's index by name.
 
 1066. SUPERSEDED (2026-09-27) by G-4 (`docs/history/ws-g.md`), which
-      landed first: vx-schedule-history checks its number options.
+      landed first: vx-history checks its number options.
 
 1067. DONE (2026-09-27, the MCP and schedule-history review's leads 4
       and 5). `vx mcp` answered what JSON-RPC 2.0 and MCP call invalid.

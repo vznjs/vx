@@ -249,7 +249,7 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       `CACHE_VERSION` bump — see the design note). `TaskHistory` now
       carries the usage maxima over the window (`maxPeakRssBytes`,
       `maxCpuParallelism`, successful executions only), and
-      `@vzn/vx-schedule-history` turns them into reservations in the
+      `@vzn/vx-history` turns them into reservations in the
       history read it already makes: the largest peak RSS × 1.25
       rounded up to 64 MB (omitted under a step), the most parallelism
       seen rounded to a core (omitted at one); `reservations` declares
@@ -285,7 +285,7 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       outcome, `--summarize` and the event stream (what the hit
       skipped, never what it spent, the `storedDurationMs` split); the
       history reader takes them from a hit row's entry with a
-      primary-key join over hit rows only, so `@vzn/vx-schedule-history`
+      primary-key join over hit rows only, so `@vzn/vx-history`
       has a reservation on the machine's next run. No "observed
       elsewhere" row: the entry is the record. The ingest side takes a
       foreign sidecar's numbers only as plain non-negative numbers.
@@ -324,7 +324,7 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       at 200 KB. `docs/modules/runner.md` corrected; CLAUDE.md gains the
       rule. Not a stale-hit class: the number never fed a key.
 160.  DONE (2026-09-12): the memory budget is what the process may use,
-      not the host's RAM. `@vzn/vx-schedule-history` defaulted `memory`
+      not the host's RAM. `@vzn/vx-history` defaulted `memory`
       to `os.totalmem()`, which inside a cgroup-limited container is the
       host's total — this box says 15.7 GiB while its leaf cgroup allows
       13.3 GiB, and a CI job's docker executor or a Kubernetes runner is
@@ -358,7 +358,7 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       it is the default in `run()`, the placement preview and
       `--concurrency <n>%`. `machineMemoryBytes()` moved here from the
       plugin (item 160) and both are on the façade, so
-      `@vzn/vx-schedule-history` imports the one walk instead of
+      `@vzn/vx-history` imports the one walk instead of
       carrying its own. Pinned on fixture trees for both hierarchies
       (`tests/cgroup.test.ts`: the tightest level, `max` / `-1`, the
       fraction, the escape, the live read never above what the OS
@@ -430,7 +430,7 @@ status -uall` scoped is 19 ms here against 54 for the tree; the
       `modules/doctor.md`, the package README and the site's MCP guide.
 168.  DONE (2026-09-12): `vx last` shows what each executed task used.
       The runner has recorded every execution's peak RSS and CPU time
-      since item 157, and `@vzn/vx-schedule-history` reserves from
+      since item 157, and `@vzn/vx-history` reserves from
       them, but no surface showed a developer the number — the JSON
       form carried it, the table did not. A task's row now ends
       `45 MB · 0.9× cpu` (peak RSS, CPU time over wall time); a hit
