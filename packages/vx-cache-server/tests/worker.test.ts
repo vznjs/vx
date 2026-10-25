@@ -14,7 +14,7 @@ let mf: Miniflare
 let base: URL
 let iss: Issuer
 
-async function start(bindings: Record<string, string>): Promise<Miniflare> {
+async function start(bindings: Record<string, unknown>): Promise<Miniflare> {
   const built = await Bun.build({
     entrypoints: [path.join(import.meta.dir, '..', 'src', 'worker.ts')],
     target: 'browser',
@@ -151,6 +151,20 @@ it('checks 6 lookups by default: one round of the calls a request has waiting', 
       headers: { ...NAMED, authorization: `Bearer ${await iss.sign(JOBS.read, AUD)}` },
     })
     expect(((await res.json()) as { maxCheckHashes: number }).maxCheckHashes).toBe(6)
+  } finally {
+    await other.dispose()
+  }
+})
+
+// wrangler hands a var written as a JSON list in wrangler.jsonc to the
+// Worker as that list: TRUST.trim threw, and every request was a 500.
+it('takes TRUST written as a list in wrangler.jsonc', async () => {
+  const other = await start({ TRUST: JSON.parse(JSON.stringify(TRUST)) as unknown })
+  try {
+    const res = await fetch(new URL('/v1/capabilities', await other.ready), {
+      headers: { ...NAMED, authorization: `Bearer ${await iss.sign(JOBS.read, AUD)}` },
+    })
+    expect(res.status).toBe(200)
   } finally {
     await other.dispose()
   }
