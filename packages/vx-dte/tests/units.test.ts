@@ -151,6 +151,8 @@ it('a send to a worker the relay would not take is said', async () => {
       me: {
         id: me.id,
         heartbeatMs: me.heartbeatMs,
+        online: true,
+        resumed: () => {},
         poll: (signal) => me.poll(signal),
         remove: (id) => me.remove(id),
         leave: () => me.leave(),
@@ -285,6 +287,62 @@ it('a task a worker runs across a relay restart and its orchestrator’s absence
       }
     expect(seen.filter((t) => t !== 'held')).toEqual(['joined', 'start', 'ran', 'end'])
     expect(await code).toBe(0)
+  } finally {
+    await served.stop()
+  }
+})
+
+// An orchestrator may send a task again to the worker running it (its lease
+// ended while the relay was away): it is not run twice.
+it('a worker sent a task it runs already does not run it again', async () => {
+  const root = await tmp()
+  const served = servedRelay({ heartbeatMs: 500 })
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => fakeArtifacts().artifacts,
+    })
+    const order: RunOrder = {
+      task: 't',
+      key: 'k-t',
+      runKey: runKey(R, 't'),
+      deps: [],
+      nested: [],
+      command: 'echo ran >> runs.txt && sleep 1',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    }
+    const seen: string[] = []
+    for (let i = 0; i < 100 && !seen.includes('end'); i++)
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string }
+        seen.push(m.type)
+        if (from === 'relay') {
+          if (m.type !== 'joined') continue
+          await o.send(m.id!, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
+          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+          continue
+        }
+        if (m.type === 'start')
+          await o.send(from, { type: 'batch', root, realRoot: root, tasks: [order] })
+        if (m.type === 'end') await o.send(from, { type: 'exit' })
+      }
+    expect(await code).toBe(0)
+    expect(await readFile(path.join(root, 'runs.txt'), 'utf8')).toBe('ran\n')
+    expect(seen.filter((t) => t === 'start')).toHaveLength(1)
   } finally {
     await served.stop()
   }
@@ -560,7 +618,7 @@ async function harness(
     await o.close()
     await served.stop()
   }
-  return { o, worker, req, stop, store, cache }
+  return { o, worker, req, stop, store, cache, served }
 }
 
 it('a worker reads the cache as the run does, and is lent its remotes’ access again before it ends', async () => {
@@ -1464,6 +1522,35 @@ it('a task a worker stops saying it holds goes back when its lease ends', async 
     } finally {
       clearInterval(alive)
     }
+  } finally {
+    await h.stop()
+  }
+})
+
+// The relay restarts while a worker runs t1, and the orchestrator is away
+// most of two heartbeats: past t1's lease, which no `held` renewed. It
+// stays the worker's, not run again elsewhere (owner, 2026-10-25: "make
+// sure on rejoin we don't repeat work").
+it('a task held across a relay restart stays its worker’s: its lease waits for both to be back', async () => {
+  const beat = 300
+  const h = await harness(new Map([node('t1')]), undefined, beat)
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.begin('t1')
+    await a.say({ type: 'held', running: ['t1'], queued: [] })
+    const b = await h.worker(1)
+    h.served.refuse = (r) => decodeURIComponent(r.url).includes('"role":"host"')
+    h.served.restart()
+    setTimeout(() => (h.served.refuse = undefined), 500)
+    // Past the lease of 3 heartbeats from that `held`, 900 ms.
+    const until = performance.now() + 1_200
+    const got: string[] = []
+    while (performance.now() < until)
+      for (const m of await b.poll()) got.push((m.body as { type: string }).type)
+    expect(got.filter((t) => t === 'batch')).toEqual([])
   } finally {
     await h.stop()
   }

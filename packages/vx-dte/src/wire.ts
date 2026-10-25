@@ -158,6 +158,14 @@ async function paced<T>(f: () => Promise<T>): Promise<T> {
 export interface Participant {
   readonly id: string
   readonly heartbeatMs: number
+  /** Whether it has a socket: with none, nobody can be heard. */
+  readonly online: boolean
+  /**
+   * `f` is told when this side is back on a socket after none (no peer
+   * named), or a worker joined again (it named): what each holds was not
+   * said meanwhile, and is not lost for that.
+   */
+  resumed(f: (peer?: string) => void): void
   send(to: string, body: unknown): Promise<void>
   /** Held up to one heartbeat, which also keeps this participant alive. */
   poll(signal?: AbortSignal): Promise<RelayMessage[]>
@@ -223,6 +231,7 @@ export async function join(
    * restart, and joins again.
    */
   const joins = new WeakSet<Socket>()
+  let onResumed: ((peer?: string) => void) | undefined
   /** The orchestrator's workers that joined again: their relay id now, by the id it holds them by. */
   const relayIds = new Map<string, string>()
   /** And back: the id it holds a worker by, by its relay id now. */
@@ -356,6 +365,7 @@ export async function join(
     heldIds.set(relayId, was)
     heard.set(was, performance.now())
     resend(0, was)
+    onResumed?.(was)
   }
   const forget = (peer: string): void => {
     heard.delete(peer)
@@ -495,6 +505,7 @@ export async function join(
       const now = performance.now()
       for (const peer of heard.keys()) heard.set(peer, now)
       resend(0)
+      onResumed?.()
     }
     adopted = true
     nudge()
@@ -602,6 +613,12 @@ export async function join(
   return {
     id,
     heartbeatMs,
+    get online() {
+      return socket?.open === true
+    },
+    resumed(f) {
+      onResumed = f
+    },
     async send(to, body) {
       let o = outbox.get(to)
       if (o === undefined) outbox.set(to, (o = { next: 0, unacked: new Map() }))

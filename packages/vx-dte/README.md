@@ -528,7 +528,9 @@ use your own instead.
 - The relay stores nothing, so a restart forgets the run. The orchestrator
   joins again as its host and each worker joins again as itself, for two
   heartbeats (4 s on the default); tasks keep running meanwhile, and what
-  either side sent goes again once both are back. One not back by then
+  either side sent goes again once both are back, taken once. Leases
+  wait while either is away, and a worker sent a task it runs already
+  does not run it again, so no work repeats. One not back by then
   ends: a worker's tasks run elsewhere, an orchestrator's run fails.
   Joining has the same 10 s in all, its socket and request together: a
   relay silent that long fails the run with `cannot connect to the relay
