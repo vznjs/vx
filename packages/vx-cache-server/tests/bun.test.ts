@@ -86,7 +86,7 @@ it('refuses a TOKENS entry that is no hash', () => {
 })
 
 it('answers 404 for an artifact whose blob the bucket dropped', async () => {
-  const k = 'dropped1'
+  const k = 'd0aa1'
   const auth = { authorization: `Bearer ${WRITE}` }
   await fetch(new URL(`/v1/artifacts/${k}`, server.url), {
     method: 'PUT',

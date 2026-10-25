@@ -5,7 +5,7 @@
 import { parseTokens, tokenAuth } from './auth.js'
 import { evict, retentionFrom } from './evict.js'
 import { anyAuth, oidcAuth, parseTrust } from './oidc.js'
-import { problem, Refusal } from './protocol.js'
+import { errorJson, Refusal } from './protocol.js'
 import { createCacheServer } from './server.js'
 import type { Blobs, Db } from './store.js'
 
@@ -101,17 +101,17 @@ export default {
       try {
         tokens = parseTokens(env.TOKENS ?? '')
       } catch (err) {
-        return problem(500, `TOKENS: ${(err as Error).message}`)
+        return errorJson(500, `TOKENS: ${(err as Error).message}`)
       }
       let trust
       try {
         trust = parseTrust(env.TRUST ?? '')
       } catch (err) {
-        return problem(500, `TRUST: ${(err as Error).message}`)
+        return errorJson(500, `TRUST: ${(err as Error).message}`)
       }
       const max = env.MAX_ARTIFACT_BYTES === undefined ? undefined : Number(env.MAX_ARTIFACT_BYTES)
       if (max !== undefined && !(Number.isSafeInteger(max) && max > 0)) {
-        return problem(500, `MAX_ARTIFACT_BYTES: not a byte count: ${env.MAX_ARTIFACT_BYTES}`)
+        return errorJson(500, `MAX_ARTIFACT_BYTES: not a byte count: ${env.MAX_ARTIFACT_BYTES}`)
       }
       made = {
         key,

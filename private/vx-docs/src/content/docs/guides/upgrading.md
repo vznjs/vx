@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-cache-server: speak Turbo's remote cache API under /v1
+
+the server and vxCache() speak Turbo's remote cache API under /v1; update both together and start the server on an empty database and bucket.
+
 ## vx-dte-server: rename @vzn/vx-dte-relay to vx-dte-server
 
 the package is @vzn/vx-dte-server, at packages/vx-dte-server; import it under that name.

@@ -4,7 +4,8 @@ Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 
 A cache and run-history server for vx that you host yourself. It stores
 task artifacts and each run's task timings, and speaks the
-[vx-cache protocol](./PROTOCOL.md) (`/v1`). Two backends answer alike:
+[vx-cache protocol](./PROTOCOL.md) (`/v1`): Turbo's remote cache API
+for artifacts, under `/v1`, plus run history. Two backends answer alike:
 
 - **Bun**, with any S3-compatible bucket for artifacts and a SQLite file
   for the rest.
@@ -97,7 +98,7 @@ names on the first deploy.
 It fits Workers' free plan:
 
 - An artifact is one request; a run's existence check is one
-  `POST /v1/artifacts/query` for up to 1000 keys. HEAD reads only D1.
+  `POST /v1/artifacts` for up to 1000 hashes. HEAD reads only D1.
 - An artifact is one D1 row and a run is one row, its tasks a JSON column,
   with no index beyond each primary key: D1's free plan counts every row
   written, index rows too, 100 000 a day.
@@ -145,5 +146,5 @@ over storage of your own (`src/index.ts`):
   `Retention` (`{ trustedDays, branchDays, runDays }`), and
   `retentionFrom(env)` reads it from `TRUSTED_DAYS`, `BRANCH_DAYS` and
   `RUN_DAYS`.
-- `DURATION_HEADER` (`vx-duration`) and `READ_SCOPES_HEADER`
-  (`vx-read-scopes`) are the header names (PROTOCOL.md).
+- `DURATION_HEADER` (`x-artifact-duration`) and `READ_SCOPES_HEADER`
+  (`x-artifact-read-scopes`) are the header names (PROTOCOL.md).

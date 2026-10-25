@@ -49,21 +49,21 @@ async function store() {
 it('evicts each scope by its own age, the row and then its blob, and old runs', async () => {
   const s = await store()
   for (const [key, days] of [
-    ['old', 31],
-    ['kept', 10],
+    ['a01d', 31],
+    ['cee9', 10],
   ] as const) {
     s.at(days)
-    expect((await s.put(key)).status).toBe(201)
+    expect((await s.put(key)).status).toBe(202)
   }
   // Branch scopes as an OIDC token writes them: straight rows, the same blob names.
   for (const [key, days] of [
-    ['b-old', 8],
-    ['b-kept', 3],
+    ['b01d', 8],
+    ['bcee', 3],
   ] as const) {
-    s.sqlite.run(`INSERT INTO artifacts VALUES ('default', ?, 'refs/heads/f', 1, 1, ?)`, [
-      key,
-      NOW - days * DAY,
-    ])
+    s.sqlite.run(
+      `INSERT INTO artifacts (ns, key, scope, size, duration_ms, created_at) VALUES ('default', ?, 'refs/heads/f', 1, 1, ?)`,
+      [key, NOW - days * DAY],
+    )
     s.objects.set(`v1/default/refs%2Fheads%2Ff/${key}`, key)
   }
   for (const days of [91, 5]) {
@@ -83,12 +83,12 @@ it('evicts each scope by its own age, the row and then its blob, and old runs', 
   }
   expect(await evict(s.db, s.blobs, retentionFrom({}), NOW)).toEqual({ artifacts: 2, runs: 1 })
   expect(s.sqlite.query('SELECT key FROM artifacts ORDER BY key').values().flat()).toEqual([
-    'b-kept',
-    'kept',
+    'bcee',
+    'cee9',
   ])
   expect([...s.objects.keys()].sort()).toEqual([
-    'v1/default/refs%2Fheads%2Ff/b-kept',
-    'v1/default/trusted/kept',
+    'v1/default/refs%2Fheads%2Ff/bcee',
+    'v1/default/trusted/cee9',
   ])
   expect(s.sqlite.query('SELECT id FROM runs').values().flat()).toEqual(['r5'])
 })
@@ -97,7 +97,7 @@ it('sweeps more than one pass of rows, and makes the tables a first sweep needs'
   const s = await store()
   expect(await evict(s.db, s.blobs, retentionFrom({}), NOW)).toEqual({ artifacts: 0, runs: 0 })
   s.at(40)
-  for (let i = 0; i < 450; i++) await s.put(`k${i}`)
+  for (let i = 0; i < 450; i++) await s.put(`f${i}`)
   expect((await evict(s.db, s.blobs, retentionFrom({ TRUSTED_DAYS: '35' }), NOW)).artifacts).toBe(
     450,
   )
