@@ -32,6 +32,7 @@ import {
 import type { CommandContext } from '@vzn/vx'
 import path from 'node:path'
 import type { HistoryRow } from './history-view.js'
+import type { HistoryServer, ServerTiming } from './history-server.js'
 
 export interface VxHistoryOptions {
   /** How many recent invocations to learn from. Default 20. */
@@ -85,6 +86,14 @@ export interface VxHistoryOptions {
    * most 500 ms). Default `'main'`.
    */
   readonly defaultBranch?: string
+  /**
+   * A vx-history server's URL (`@vzn/vx-history-server`), or
+   * `VX_HISTORY_URL`. On a CI job with a token (GitHub's OIDC, or GitLab's
+   * `VX_HISTORY_TOKEN`) each run asks it for its tasks' numbers, without
+   * waiting, and sends its own timings once at its end; the
+   * `defaultBranch` blobs are then neither read nor written.
+   */
+  readonly server?: string
 }
 
 // The provider's own default (50) serves `--dry` predictions; an ordering
@@ -226,6 +235,7 @@ const VX_HISTORY_KEYS: PluginOptionKinds<VxHistoryOptions> = {
   assume: 'object',
   file: 'string',
   defaultBranch: 'string',
+  server: 'string',
 }
 
 export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
@@ -296,10 +306,49 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       reservations = reservationsFor(nodes.keys(), table, options)
       const order = (t: ReadonlyMap<string, TaskResources>): ReadonlyMap<string, number> =>
         criticalPath([...nodes.values()], t, { ...assumptions(options, ctx.warn), ...carried })
-      // Only a run missing some timing on its branch fetches its merge-base's,
-      // and the run never waits on it: the order from local history stands
-      // until the fetched timings re-rank what has not started.
-      if (provider.lackedBranchHistory) {
+      // With a history server, its numbers re-rank what has not started
+      // when they land; the run never waits on them.
+      remote ??= await serverOf()
+      if (remote !== undefined) {
+        const server = remote
+        let late = false
+        stopImport = () => (late = true)
+        const scope = `refs/heads/${ctx.branch ?? options.defaultBranch ?? DEFAULT_BRANCH}`
+        const weights = (async () => {
+          const hashes = [...new Set(ids.flatMap((id) => defs.get(id) ?? []))]
+          const got = await server.query(scope, hashes)
+          const timings = new Map<string, number>()
+          const needs = new Map<string, TaskResources>()
+          for (const id of ids) {
+            const t = got.get(defs.get(id) ?? '')
+            if (t === undefined) continue
+            timings.set(id, t.durationMs)
+            needs.set(id, {
+              p50DurationMs: t.durationMs,
+              ...(t.cores === undefined ? {} : { maxCpuParallelism: t.cores }),
+              ...(t.rssBytes === undefined ? {} : { maxPeakRssBytes: t.rssBytes }),
+            })
+          }
+          // A run that ended first writes nothing: its cache is closing.
+          if (timings.size === 0 || late) return undefined
+          const sha = `vx-history-server:${Bun.hash(JSON.stringify([...got])).toString(16)}`
+          if (!provider.hasImported(sha)) provider.importTimings(sha, timings, needs, defs)
+          const fresh = await provider.resourcesFor(ids)
+          reservations = reservationsFor(nodes.keys(), fresh, options)
+          return order(fresh)
+        })().catch((err: unknown) => {
+          if (!late) {
+            ctx.warn(
+              `[vx] vx-history: the history server's timings were not applied: ${err instanceof Error ? err.message : String(err)}`,
+            )
+          }
+          return undefined
+        })
+        ctx.refine(weights)
+      } else if (provider.lackedBranchHistory) {
+        // Only a run missing some timing on its branch fetches its merge-base's,
+        // and the run never waits on it: the order from local history stands
+        // until the fetched timings re-rank what has not started.
         const stopped = new Promise<void>((resolve) => (stopImport = resolve))
         const weights = (async () => {
           const imported = await (
@@ -330,6 +379,17 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       return order(table)
     },
   }
+  // The run's history server, when one is named and the job has a token.
+  let remote: HistoryServer | undefined
+  // Loaded only when a server is named: every run evaluates the config.
+  const serverOf = async (): Promise<HistoryServer | undefined> => {
+    if ((options.server ?? Bun.env.VX_HISTORY_URL ?? '') === '') return undefined
+    const m = await import('./history-server.js')
+    const url = m.serverUrlOf(options.server)
+    return url === undefined || !m.hasToken(Bun.env) ? undefined : new m.HistoryServer(url)
+  }
+  // What the run sends the history server at its end, by task definition.
+  let reported: { timings: Map<string, ServerTiming>; warn: (m: string) => void } | undefined
   // The run's merge-base import, still going; teardown stops it, so no
   // run waits for history it did not need, and no row lands after the
   // cache closes.
@@ -360,12 +420,33 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     | { cache: PluginCache; root: string; warn: (m: string) => void; ran: Set<string> }
     | undefined
   let fileWarn: { root: string; warn: (m: string) => void } | undefined
-  hooks.setup = (ctx) => {
+  hooks.setup = async (ctx) => {
+    remote ??= await serverOf()
+    if (remote !== undefined) {
+      const { timingOf: timing } = await import('./history-server.js')
+      // Only the run that ran the tasks hears them: under DTE, the
+      // orchestrator, with each worker's measurements.
+      const timings = new Map<string, ServerTiming>()
+      reported = { timings, warn: ctx.warn }
+      ctx.on('onTaskComplete', (node, outcome) => {
+        if (node.config.exec?.command === undefined) return
+        const def = taskDefinitions([node]).get(node.id)
+        const t = timing(outcome)
+        if (def !== undefined && t !== undefined) timings.set(def, t)
+      })
+    } else if (ctx.ci && (options.server ?? Bun.env.VX_HISTORY_URL ?? '') !== '') {
+      ctx.warn(
+        Bun.env.GITHUB_ACTIONS === 'true'
+          ? '[vx] vx-history: this job gets no OIDC token for the history server: give it `permissions: id-token: write`'
+          : '[vx] vx-history: no CI token for the history server: name an id_tokens entry VX_HISTORY_TOKEN',
+      )
+    }
     // A branch's write lands under its scope (M, 2026-10-18), for its next
-    // commit's runs to read.
-    exporting = ctx.ci
-      ? { cache: ctx.cache, root: ctx.workspaceRoot, warn: ctx.warn, ran: new Set() }
-      : undefined
+    // commit's runs to read; a history server takes the run's timings instead.
+    exporting =
+      ctx.ci && remote === undefined
+        ? { cache: ctx.cache, root: ctx.workspaceRoot, warn: ctx.warn, ran: new Set() }
+        : undefined
     if (exporting !== undefined) {
       const ran = exporting.ran
       ctx.on('onTaskComplete', (node, outcome) => {
@@ -392,6 +473,19 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     await importing
     importing = undefined
     stopImport = undefined
+    const server = remote
+    const sent = reported
+    remote = undefined
+    reported = undefined
+    if (server !== undefined && sent !== undefined) {
+      try {
+        await server.upload(sent.timings)
+      } catch (err) {
+        sent.warn(
+          `[vx] vx-history: the timings were not sent to the history server: ${err instanceof Error ? err.message : String(err)}`,
+        )
+      }
+    }
     const run = shared
     const out = exporting
     shared = undefined

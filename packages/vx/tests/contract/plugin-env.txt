@@ -22,6 +22,8 @@
 @vzn/vx-ci GITLAB_CI
 @vzn/vx-ci RUNNER_ARCH
 @vzn/vx-ci RUNNER_OS
+@vzn/vx-history GITHUB_ACTIONS
+@vzn/vx-history VX_HISTORY_URL
 @vzn/vx-migrate ACTIONS_ID_TOKEN_REQUEST_TOKEN
 @vzn/vx-migrate ACTIONS_ID_TOKEN_REQUEST_URL
 @vzn/vx-migrate GITHUB_ACTIONS
