@@ -32,6 +32,19 @@
         "@types/bun": "^1.4.0",
       },
     },
+    "packages/vx-cache-server": {
+      "name": "@vzn/vx-cache-server",
+      "version": "0.0.0",
+      "bin": {
+        "vx-cache-server": "./src/bun.ts",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "*",
+        "miniflare": "5.20261019.1-beta",
+        "wrangler": "4.149.0",
+      },
+    },
     "packages/vx-ci": {
       "name": "@vzn/vx-ci",
       "version": "0.0.0",
@@ -731,6 +744,8 @@
     "@vzn/vx": ["@vzn/vx@workspace:packages/vx"],
 
     "@vzn/vx-bench": ["@vzn/vx-bench@workspace:private/vx-bench"],
+
+    "@vzn/vx-cache-server": ["@vzn/vx-cache-server@workspace:packages/vx-cache-server"],
 
     "@vzn/vx-ci": ["@vzn/vx-ci@workspace:packages/vx-ci"],
 

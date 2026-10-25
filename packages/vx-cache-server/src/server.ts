@@ -1,0 +1,351 @@
+// vx-cache v1 (PROTOCOL.md) over any Blobs and Db: one fetch handler that
+// the Bun server and the Worker both serve.
+
+import type { Access, Authorize } from './auth.js'
+import {
+  DURATION_HEADER,
+  isCount,
+  isKey,
+  isOpaque,
+  parseReadScopes,
+  problem,
+  READ_SCOPES_HEADER,
+  Refusal,
+} from './protocol.js'
+import { blobName, type Blobs, type Db, findArtifacts, SCHEMA, TRUSTED } from './store.js'
+
+export interface ServerOptions {
+  blobs: Blobs
+  db: Db
+  authorize: Authorize
+  /** The largest artifact a PUT may store, in bytes. */
+  maxArtifactBytes?: number
+  /** Milliseconds since the epoch; tests move the clock. */
+  now?: () => number
+}
+
+/** Workers' free plan takes a request body up to 100 MB. */
+export const DEFAULT_MAX_ARTIFACT_BYTES = 100_000_000
+/** Keys one existence query may name. */
+const MAX_QUERY_KEYS = 1000
+/** A run's record, as JSON. */
+const MAX_RUN_BYTES = 1 << 20
+const MAX_RUN_TASKS = 20_000
+/** Tasks one history query may name. */
+const MAX_QUERY_TASKS = 1000
+/** A history query reads the newest runs up to this many. */
+const SCANNED_RUNS = 100
+const MAX_SAMPLES = 20
+const DEFAULT_SAMPLES = 5
+const MAX_LISTED_RUNS = 100
+const DEFAULT_LISTED_RUNS = 20
+
+export function createCacheServer(opts: ServerOptions): (req: Request) => Promise<Response> {
+  const { blobs, db, authorize } = opts
+  const maxArtifactBytes = opts.maxArtifactBytes ?? DEFAULT_MAX_ARTIFACT_BYTES
+  const now = opts.now ?? Date.now
+  let ready: Promise<void> | undefined
+  const schema = (): Promise<void> => {
+    ready ??= db.batch(SCHEMA).catch((err: unknown) => {
+      ready = undefined
+      throw err
+    })
+    return ready
+  }
+
+  /** The scopes a read walks: the header's refs, then the trusted scope. */
+  const readScopes = (req: Request): string[] => [
+    ...parseReadScopes(req.headers.get(READ_SCOPES_HEADER)),
+    TRUSTED,
+  ]
+
+  const writeScope = (access: Access): string => {
+    if (access.write === undefined) throw new Refusal(403, 'this token reads only')
+    return access.write
+  }
+
+  async function artifact(req: Request, key: string): Promise<Response> {
+    if (!isKey(key)) throw new Refusal(400, 'a key is 1 to 128 of [A-Za-z0-9_-]')
+    const access = await authorize(req)
+    await schema()
+    if (req.method === 'PUT') return put(req, access, key)
+    const row = (await findArtifacts(db, access.ns, [key], readScopes(req))).get(key)
+    const body =
+      row === undefined
+        ? null
+        : await (req.method === 'GET' ? blobs.get(blobName(access.ns, row.scope, key)) : '')
+    if (row === undefined || body === null) {
+      return req.method === 'HEAD'
+        ? new Response(null, { status: 404 })
+        : problem(404, 'no artifact under this key')
+    }
+    return new Response(req.method === 'HEAD' ? null : body, {
+      headers: {
+        'content-length': String(row.size),
+        'content-type': 'application/octet-stream',
+        [DURATION_HEADER]: String(row.duration_ms),
+      },
+    })
+  }
+
+  async function put(req: Request, access: Access, key: string): Promise<Response> {
+    const scope = writeScope(access)
+    const length = req.headers.get('content-length')
+    if (length === null) throw new Refusal(411, 'a PUT names its Content-Length')
+    const size = Number(length)
+    if (!isCount(size)) throw new Refusal(400, 'Content-Length is not a byte count')
+    if (size > maxArtifactBytes) {
+      throw new Refusal(413, `an artifact is at most ${maxArtifactBytes} bytes`)
+    }
+    const durationHeader = req.headers.get(DURATION_HEADER)
+    const durationMs = durationHeader === null ? 0 : Number(durationHeader)
+    if (!isCount(durationMs) || durationHeader === '') {
+      throw new Refusal(400, `${DURATION_HEADER} is not whole milliseconds`)
+    }
+    const held = await db.all(`SELECT 1 FROM artifacts WHERE ns = ?1 AND key = ?2 AND scope = ?3`, [
+      access.ns,
+      key,
+      scope,
+    ])
+    // Immutable: the stored bytes stay, and this upload is not read.
+    if (held.length > 0) {
+      await req.body?.cancel()
+      return new Response(null, { status: 200 })
+    }
+    const name = blobName(access.ns, scope, key)
+    try {
+      await blobs.put(name, req.body ?? new Blob([]).stream(), size)
+    } catch (err) {
+      // quiet: the failure below is what the client hears; a partial blob no row names is unread
+      await blobs.delete(name).catch(() => undefined)
+      if (err instanceof Refusal) throw err
+      throw new Refusal(502, `the bucket refused the artifact: ${message(err)}`)
+    }
+    // The row is the commit: a blob no row names is never read.
+    await db.run(
+      `INSERT OR IGNORE INTO artifacts (ns, key, scope, size, duration_ms, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
+      [access.ns, key, scope, size, durationMs, now()],
+    )
+    return new Response(null, { status: 201 })
+  }
+
+  async function queryArtifacts(req: Request): Promise<Response> {
+    const access = await authorize(req)
+    const body = await readJson(req, MAX_QUERY_KEYS * 160)
+    const keys = field(body, 'keys')
+    if (
+      !Array.isArray(keys) ||
+      keys.length > MAX_QUERY_KEYS ||
+      !keys.every((k) => typeof k === 'string' && isKey(k))
+    ) {
+      throw new Refusal(400, `keys: up to ${MAX_QUERY_KEYS} keys`)
+    }
+    await schema()
+    const found = await findArtifacts(db, access.ns, keys as string[], readScopes(req))
+    const artifacts: Record<string, { size: number; durationMs: number }> = {}
+    for (const [key, row] of found) artifacts[key] = { size: row.size, durationMs: row.duration_ms }
+    return Response.json({ artifacts })
+  }
+
+  async function recordRun(req: Request): Promise<Response> {
+    const access = await authorize(req)
+    const scope = writeScope(access)
+    const run = parseRun(await readJson(req, MAX_RUN_BYTES))
+    await schema()
+    const failed = run.tasks.filter((t) => t.exitCode !== undefined && t.exitCode !== 0).length
+    const changed = await db.run(
+      `INSERT OR IGNORE INTO runs (ns, scope, started_at, id, duration_ms, task_count, failed_count, tasks, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+      [
+        access.ns,
+        scope,
+        run.startedAt,
+        run.id,
+        run.durationMs,
+        run.tasks.length,
+        failed,
+        JSON.stringify(run.tasks),
+        now(),
+      ],
+    )
+    return new Response(null, { status: changed > 0 ? 201 : 200 })
+  }
+
+  async function listRuns(req: Request, url: URL): Promise<Response> {
+    const access = await authorize(req)
+    const limit = numberParam(url, 'limit', DEFAULT_LISTED_RUNS, MAX_LISTED_RUNS)
+    await schema()
+    const rows = await db.all<{
+      id: string
+      scope: string
+      started_at: number
+      duration_ms: number
+      task_count: number
+      failed_count: number
+    }>(
+      `SELECT id, scope, started_at, duration_ms, task_count, failed_count FROM runs WHERE ns = ?1 AND scope IN (SELECT value FROM json_each(?2)) ORDER BY started_at DESC, id LIMIT ?3`,
+      [access.ns, JSON.stringify(readScopes(req)), limit],
+    )
+    return Response.json({
+      runs: rows.map((r) => ({
+        id: r.id,
+        scope: r.scope,
+        startedAt: r.started_at,
+        durationMs: r.duration_ms,
+        taskCount: r.task_count,
+        failedCount: r.failed_count,
+      })),
+    })
+  }
+
+  async function queryTasks(req: Request): Promise<Response> {
+    const access = await authorize(req)
+    const body = await readJson(req, MAX_QUERY_TASKS * 600)
+    const tasks = field(body, 'tasks')
+    if (!Array.isArray(tasks) || tasks.length > MAX_QUERY_TASKS || !tasks.every(isOpaque)) {
+      throw new Refusal(400, `tasks: up to ${MAX_QUERY_TASKS} task names`)
+    }
+    const limit = field(body, 'limit') ?? DEFAULT_SAMPLES
+    if (!isCount(limit) || limit < 1 || limit > MAX_SAMPLES) {
+      throw new Refusal(400, `limit: 1 to ${MAX_SAMPLES}`)
+    }
+    await schema()
+    const rows = await db.all<{ run: string; scope: string; task: string }>(
+      `SELECT run, scope, task FROM (SELECT r.id AS run, r.scope AS scope, r.started_at AS at, t.value AS task, ROW_NUMBER() OVER (PARTITION BY json_extract(t.value, '$.task') ORDER BY r.started_at DESC, r.id) AS n FROM (SELECT id, scope, started_at, tasks FROM runs WHERE ns = ?1 AND scope IN (SELECT value FROM json_each(?2)) ORDER BY started_at DESC, id LIMIT ${SCANNED_RUNS}) r, json_each(r.tasks) t WHERE json_extract(t.value, '$.task') IN (SELECT value FROM json_each(?3))) WHERE n <= ?4 ORDER BY at DESC, run`,
+      [access.ns, JSON.stringify(readScopes(req)), JSON.stringify(tasks), limit],
+    )
+    const out: Record<string, unknown[]> = {}
+    for (const t of tasks as string[]) out[t] = []
+    for (const row of rows) {
+      const { task, ...sample } = JSON.parse(row.task) as TaskRecord
+      out[task]!.push({ run: row.run, scope: row.scope, ...sample })
+    }
+    return Response.json({ tasks: out })
+  }
+
+  return async (req) => {
+    const url = new URL(req.url)
+    try {
+      const path = url.pathname
+      if (path === '/v1/artifacts/query') {
+        return req.method === 'POST' ? await queryArtifacts(req) : notAllowed('POST')
+      }
+      if (path.startsWith('/v1/artifacts/')) {
+        const key = path.slice('/v1/artifacts/'.length)
+        return ['GET', 'HEAD', 'PUT'].includes(req.method)
+          ? await artifact(req, key)
+          : notAllowed('GET, HEAD, PUT')
+      }
+      if (path === '/v1/runs') {
+        if (req.method === 'POST') return await recordRun(req)
+        return req.method === 'GET' ? await listRuns(req, url) : notAllowed('GET, POST')
+      }
+      if (path === '/v1/tasks/query') {
+        return req.method === 'POST' ? await queryTasks(req) : notAllowed('POST')
+      }
+      return problem(404, 'no such route')
+    } catch (err) {
+      if (err instanceof Refusal) {
+        return req.method === 'HEAD'
+          ? new Response(null, { status: err.status })
+          : problem(err.status, err.message)
+      }
+      // Never swallowed: the client warns with what the server says.
+      console.error(err)
+      return problem(500, message(err))
+    }
+  }
+}
+
+const notAllowed = (allow: string): Response => {
+  const res = problem(405, `this route takes ${allow}`)
+  res.headers.set('allow', allow)
+  return res
+}
+
+const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+
+async function readJson(req: Request, max: number): Promise<unknown> {
+  if (!/^application\/json\b/i.test(req.headers.get('content-type') ?? '')) {
+    throw new Refusal(415, 'the body is application/json')
+  }
+  if (Number(req.headers.get('content-length') ?? 0) > max) {
+    throw new Refusal(413, `the body is at most ${max} bytes`)
+  }
+  const text = await req.text()
+  if (text.length > max) throw new Refusal(413, `the body is at most ${max} bytes`)
+  try {
+    return JSON.parse(text)
+  } catch {
+    throw new Refusal(400, 'the body is not JSON')
+  }
+}
+
+const field = (body: unknown, name: string): unknown =>
+  typeof body === 'object' && body !== null ? (body as Record<string, unknown>)[name] : undefined
+
+function numberParam(url: URL, name: string, fallback: number, max: number): number {
+  const raw = url.searchParams.get(name)
+  const n = raw === null ? fallback : Number(raw)
+  if (!isCount(n) || n < 1 || n > max) throw new Refusal(400, `${name}: 1 to ${max}`)
+  return n
+}
+
+/** One task of a run, as stored: unknown fields are dropped. */
+interface TaskRecord {
+  task: string
+  key?: string
+  durationMs: number
+  exitCode?: number
+  cached?: boolean
+  startedAt?: number
+}
+
+interface RunRecord {
+  id: string
+  startedAt: number
+  durationMs: number
+  tasks: TaskRecord[]
+}
+
+function parseRun(body: unknown): RunRecord {
+  const id = field(body, 'id')
+  const startedAt = field(body, 'startedAt')
+  const durationMs = field(body, 'durationMs')
+  const tasks = field(body, 'tasks')
+  if (!isOpaque(id)) throw new Refusal(400, 'id: a string of up to 512 characters')
+  if (!isCount(startedAt)) throw new Refusal(400, 'startedAt: milliseconds since the epoch')
+  if (!isCount(durationMs)) throw new Refusal(400, 'durationMs: whole milliseconds')
+  if (!Array.isArray(tasks) || tasks.length > MAX_RUN_TASKS) {
+    throw new Refusal(400, `tasks: a list of up to ${MAX_RUN_TASKS}`)
+  }
+  return {
+    id,
+    startedAt,
+    durationMs,
+    tasks: tasks.map((t: unknown, i): TaskRecord => {
+      const bad = (what: string): never => {
+        throw new Refusal(400, `tasks[${i}].${what}`)
+      }
+      const task = field(t, 'task')
+      const key = field(t, 'key')
+      const duration = field(t, 'durationMs')
+      const exitCode = field(t, 'exitCode')
+      const cached = field(t, 'cached')
+      const started = field(t, 'startedAt')
+      if (!isOpaque(task)) bad('task: a string of up to 512 characters')
+      if (key !== undefined && !(typeof key === 'string' && isKey(key))) bad('key: a key')
+      if (!isCount(duration)) bad('durationMs: whole milliseconds')
+      if (exitCode !== undefined && !Number.isSafeInteger(exitCode)) bad('exitCode: an integer')
+      if (cached !== undefined && typeof cached !== 'boolean') bad('cached: a boolean')
+      if (started !== undefined && !isCount(started)) bad('startedAt: milliseconds since the epoch')
+      return {
+        task: task as string,
+        ...(key === undefined ? {} : { key: key as string }),
+        durationMs: duration as number,
+        ...(exitCode === undefined ? {} : { exitCode: exitCode as number }),
+        ...(cached === undefined ? {} : { cached: cached as boolean }),
+        ...(started === undefined ? {} : { startedAt: started as number }),
+      }
+    }),
+  }
+}
