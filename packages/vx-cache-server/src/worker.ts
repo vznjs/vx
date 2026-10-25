@@ -33,6 +33,8 @@ export interface Env {
   readonly TRUST?: string
   /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
   readonly AUDIENCE?: string
+  /** `public`: a request with no token reads a repository TRUST names. */
+  readonly READ_ACCESS?: string
   readonly MAX_CHECK_HASHES?: string
   readonly MAX_UPLOAD_BYTES?: string
 }
@@ -109,7 +111,13 @@ let made: { key: string; authorize: Authorize; limits: Limits } | undefined
 
 export default {
   async fetch(req: Request, env: Env, ctx: Context): Promise<Response> {
-    const key = [env.TRUST, env.AUDIENCE, env.MAX_CHECK_HASHES, env.MAX_UPLOAD_BYTES].join('\0')
+    const key = [
+      env.TRUST,
+      env.AUDIENCE,
+      env.READ_ACCESS,
+      env.MAX_CHECK_HASHES,
+      env.MAX_UPLOAD_BYTES,
+    ].join('\0')
     if (made?.key !== key) {
       let trust
       let limits
@@ -125,7 +133,11 @@ export default {
       }
       made = {
         key,
-        authorize: oidcAuth({ trust, ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}) }),
+        authorize: oidcAuth({
+          trust,
+          readAccess: env.READ_ACCESS,
+          ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
+        }),
         limits,
       }
     }

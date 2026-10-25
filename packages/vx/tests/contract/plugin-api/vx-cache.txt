@@ -24,7 +24,7 @@ export function resolveVxCacheConfig(
   env: Record<string, string | undefined> = Bun.env,
 ): ResolvedVxCacheConfig | undefined
 == function vxCache (src/index.ts)
-export function vxCache(options: VxCacheOptions = {}): VxPlugin
+export function vxCache(options: VxCacheOptions): VxPlugin
 == type ResolvedVxCacheConfig (src/index.ts)
 export interface ResolvedVxCacheConfig extends Required<Omit<VxCacheOptions, 'headers'>> {
   readonly headers: Readonly<Record<string, string>>
@@ -32,6 +32,8 @@ export interface ResolvedVxCacheConfig extends Required<Omit<VxCacheOptions, 'he
 == type VxCacheOptions (src/index.ts)
 export interface VxCacheOptions {
   url?: string
+  issuer: string
+  repository: string
   timeoutMs?: number
   uploadTimeoutMs?: number
   headers?: Record<string, string | undefined>

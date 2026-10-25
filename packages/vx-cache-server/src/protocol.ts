@@ -5,15 +5,15 @@
 import { Refusal } from '@vzn/vx-devtools'
 
 /** The scope (a ref's hash) a download reads: `GET /v1/artifacts/<hash>`. */
-export const SCOPE_HEADER = 'x-artifact-scope'
+export const SCOPE_HEADER = 'vx-scope'
 
 /**
  * The limits a server sets, as headers on every `/v1/artifacts`
  * answer: a client batches checks only by what it was told.
  */
 export const LIMIT_HEADERS = {
-  maxCheckHashes: 'x-artifact-max-check-hashes',
-  maxUploadBytes: 'x-artifact-max-upload-bytes',
+  maxCheckHashes: 'vx-max-check-hashes',
+  maxUploadBytes: 'vx-max-upload-bytes',
 } as const
 
 /** An artifact's hash, as Turbo's spec has it (hex), and at most 128 long. */

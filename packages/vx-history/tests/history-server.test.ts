@@ -10,8 +10,9 @@ import { afterAll, beforeAll, describe, expect, it, setSystemTime } from 'bun:te
 import { hashPart, oidcAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
-import { type Issuer, issuer, trustOf } from './issuer.js'
+import { type Issuer, issuer, NAMED, trustOf } from './issuer.js'
 import { HistoryServer, proxyHeaders, serverUrlOf } from '../src/history-server.js'
+import { vxHistory } from '../src/index.js'
 
 let iss: Issuer
 let srv: Bun.Server<undefined>
@@ -46,7 +47,7 @@ afterAll(() => srv.stop(true))
 describe('HistoryServer', () => {
   it('sends timings in uploads of the limit the server names, and reads them back', async () => {
     const token = await iss.sign('main', new URL(url).origin)
-    const client = new HistoryServer(url, { VX_HISTORY_TOKEN: token })
+    const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: token })
     const before = seen.length
     await client.upload(new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000 }]]))
     expect(seen.slice(before).map((r) => r.path)).toEqual([
@@ -62,7 +63,7 @@ describe('HistoryServer', () => {
 
   it("says a refusal with the server's own words", async () => {
     const read = await iss.sign('read', new URL(url).origin)
-    const client = new HistoryServer(url, { VX_HISTORY_TOKEN: read })
+    const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: read })
     expect(client.upload(new Map([['b', { durationMs: 1 }]]))).rejects.toThrow('HTTP 403: ')
   })
 
@@ -87,7 +88,7 @@ describe('HistoryServer', () => {
       ACTIONS_ID_TOKEN_REQUEST_URL: 'https://oidc.example/token',
       ACTIONS_ID_TOKEN_REQUEST_TOKEN: 't',
     }
-    const client = new HistoryServer('https://h.example', env, fake)
+    const client = new HistoryServer('https://h.example', NAMED, env, fake)
     try {
       await client.query(['0'.repeat(32)], ['a', 'b', 'c'])
       expect(asks).toBe(1)
@@ -114,6 +115,7 @@ describe('HistoryServer', () => {
     expect(headers).toEqual({ 'CF-Access-Client-Id': 'id' })
     const client = new HistoryServer(
       'https://h.example',
+      NAMED,
       { VX_HISTORY_TOKEN: 'jwt' },
       fake,
       headers,
@@ -121,9 +123,59 @@ describe('HistoryServer', () => {
     await client.query(['0'.repeat(32)], ['a']).catch(() => {})
     expect(seen.length).toBeGreaterThan(0)
     for (const h of seen)
-      expect([h.get('cf-access-client-id'), h.get('authorization')]).toEqual(['id', 'Bearer jwt'])
+      expect([
+        h.get('cf-access-client-id'),
+        h.get('authorization'),
+        h.get('vx-issuer'),
+        h.get('vx-repository'),
+      ]).toEqual([
+        'id',
+        'Bearer jwt',
+        await hashPart(NAMED.issuer),
+        await hashPart(NAMED.repository),
+      ])
     for (const bad of [{ Authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
       expect(() => proxyHeaders(bad)).toThrow('vxHistory(): ')
+  })
+
+  it('reads with no token from a public server, sending none', async () => {
+    const db = new Database(':memory:', { strict: true })
+    const store = sqliteStore({
+      all: async <T>(sql: string, p: readonly unknown[]) =>
+        db.query(sql).all(...(p as never[])) as T[],
+      run: async (sql, p) => db.query(sql).run(...(p as never[])).changes,
+    })
+    await store.init()
+    await store.fold(NAMED, await hashPart('refs/heads/main'), 1, [{ hash: 'p1', durationMs: 7 }])
+    const handle = createHistoryServer({
+      store,
+      authorize: oidcAuth({
+        trust: trustOf(),
+        readAccess: 'public',
+        fetchJson: (u) => iss.fetchJson(u),
+      }),
+    })
+    const auths: (string | null)[] = []
+    const fake = (async (u: string, init: RequestInit) => {
+      const req = new Request(u, init)
+      auths.push(req.headers.get('authorization'))
+      return handle(req)
+    }) as unknown as typeof fetch
+    const client = new HistoryServer('https://h.example', NAMED, {}, fake)
+    expect(client.writes).toBe(false)
+    expect(await client.query([await hashPart('refs/heads/main')], ['p1'])).toEqual(
+      new Map([['p1', { durationMs: 7 }]]),
+    )
+    expect(auths).toEqual([null, null])
+  })
+
+  it('refuses a workspace that names a server but no issuer or repository', () => {
+    expect(() => vxHistory({ server: 'https://h.example', repository: 'acme/app' })).toThrow(
+      "vxHistory(): issuer must be the CI issuer's URL",
+    )
+    expect(() => vxHistory({ server: 'https://h.example', issuer: NAMED.issuer })).toThrow(
+      'vxHistory(): repository must be org/name, got undefined',
+    )
   })
 
   it('reads the URL over VX_HISTORY_URL', () => {
@@ -152,7 +204,7 @@ describe('vx run with vxHistory({ server })', () => {
     await Bun.write(
       path.join(root, '.vx/workspace.mjs'),
       `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
-        `export default { plugins: [vxHistory({ server: ${JSON.stringify(url)} })] }\n`,
+        `export default { plugins: [vxHistory({ server: ${JSON.stringify(url)}, ...${JSON.stringify(NAMED)} })] }\n`,
     )
     Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: root })
   })

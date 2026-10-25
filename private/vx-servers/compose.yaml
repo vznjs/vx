@@ -17,6 +17,7 @@ services:
     environment:
       - TRUST
       - AUDIENCE
+      - READ_ACCESS
       - S3_BUCKET
       - S3_ENDPOINT
       - S3_REGION
@@ -31,6 +32,7 @@ services:
     environment:
       - TRUST
       - AUDIENCE
+      - READ_ACCESS
       - TIMING_DAYS
     volumes: ['history:/data']
     ports: ['${HISTORY_PORT:-8082}:8080']

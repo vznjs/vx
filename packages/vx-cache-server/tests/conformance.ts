@@ -18,6 +18,9 @@ export interface Target {
    * does not serve.
    */
   sign(job: Job): Promise<string>
+  /** The issuer and repository its tokens name, which every request names by their hashes. */
+  readonly issuer: string
+  readonly repository: string
   /** The limits it was given. */
   readonly maxCheckHashes: number
   readonly maxUploadBytes: number
@@ -41,10 +44,17 @@ export function conformance(name: string, target: Target): void {
       target.sign('branch'),
     ])
   })
-  const call = (path: string, init: RequestInit & { token?: string | null } = {}) => {
-    const { token = read, ...rest } = init
+  const call = (
+    path: string,
+    init: RequestInit & { token?: string | null; named?: boolean } = {},
+  ) => {
+    const { token = read, named = true, ...rest } = init
     const headers = new Headers(rest.headers)
     if (token !== null) headers.set('authorization', `Bearer ${token}`)
+    if (named) {
+      headers.set('vx-issuer', scopeOf(target.issuer))
+      headers.set('vx-repository', scopeOf(target.repository))
+    }
     return fetch(new URL(path, target.base()), { ...rest, headers })
   }
   const MAIN = scopeOf('refs/heads/main')
@@ -66,7 +76,7 @@ export function conformance(name: string, target: Target): void {
     })
   /** One artifact's bytes, read from `scope`. */
   const get = (k: string, scope = MAIN) =>
-    call(`/v1/artifacts/${k}`, { headers: { 'x-artifact-scope': scope } })
+    call(`/v1/artifacts/${k}`, { headers: { 'vx-scope': scope } })
   const text = async (k: string, scope = MAIN) => (await get(k, scope)).text()
   /** Turbo's batch query over `scopes`: each hash's `{ size, scope }`, or null. */
   const held = async (hashes: string[], scopes = [MAIN]) =>
@@ -85,6 +95,20 @@ export function conformance(name: string, target: Target): void {
       }
       const other = await target.sign('stranger')
       expect((await call(`/v1/artifacts/${key()}`, { token: other })).status).toBe(403)
+    })
+
+    it('refuses a request that names no issuer and repository, or another than its token', async () => {
+      const res = await call(`/v1/artifacts/${key()}`, { named: false })
+      expect(await res.json()).toEqual({
+        code: 'bad_request',
+        message:
+          "vx-issuer and vx-repository: the issuer's and the repository's hashes (PROTOCOL.md § Keys)",
+      })
+      const other = await call(`/v1/artifacts/${key()}`, {
+        named: false,
+        headers: { 'vx-issuer': scopeOf(target.issuer), 'vx-repository': scopeOf('acme/other') },
+      })
+      expect(other.status).toBe(403)
     })
 
     it('refuses Turbo’s team params: the token names the repository', async () => {
@@ -114,7 +138,7 @@ export function conformance(name: string, target: Target): void {
     it('answers HEAD with the size the scope holds, and no bytes', async () => {
       const k = key()
       const head = (scope = MAIN) =>
-        call(`/v1/artifacts/${k}`, { method: 'HEAD', headers: { 'x-artifact-scope': scope } })
+        call(`/v1/artifacts/${k}`, { method: 'HEAD', headers: { 'vx-scope': scope } })
       expect((await head()).status).toBe(404)
       await put(k, 'four')
       const res = await head()
@@ -179,7 +203,7 @@ export function conformance(name: string, target: Target): void {
       const res = await put(key(), 'x', read)
       expect([res.status, await res.json()]).toEqual([
         403,
-        { code: 'forbidden', message: 'this token reads only' },
+        { code: 'forbidden', message: 'this request reads only' },
       ])
       expect((await put('a-b', 'x')).status).toBe(400)
       expect((await put('f'.repeat(129), 'x')).status).toBe(400)
@@ -193,8 +217,8 @@ export function conformance(name: string, target: Target): void {
         maxUploadBytes: target.maxUploadBytes,
       }
       expect([
-        Number(res.headers.get('x-artifact-max-check-hashes')),
-        Number(res.headers.get('x-artifact-max-upload-bytes')),
+        Number(res.headers.get('vx-max-check-hashes')),
+        Number(res.headers.get('vx-max-upload-bytes')),
       ]).toEqual(Object.values(limits))
       expect(await (await call('/v1/capabilities')).json()).toEqual(limits)
       expect((await call('/v1/capabilities', { token: null })).status).toBe(401)

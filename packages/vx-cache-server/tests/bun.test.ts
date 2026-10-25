@@ -7,7 +7,7 @@ import { blobName } from '../src/store.js'
 import { createCacheServer, limitsFrom } from '../src/server.js'
 import { conformance, scopeOf } from './conformance.js'
 import { fakeS3, type FakeS3 } from './fake-s3.js'
-import { type Issuer, issuer, JOBS, TRUST, MAIN_JOB } from './issuer.js'
+import { GITHUB, type Issuer, issuer, JOBS, MAIN_JOB, NAMED, REPO, TRUST } from './issuer.js'
 
 const LIMITS = { maxCheckHashes: 50, maxUploadBytes: 7 * 1024 * 1024 }
 
@@ -38,6 +38,8 @@ afterAll(async () => {
 conformance('Bun with S3', {
   base: () => server.url.href,
   sign: (job) => iss.sign(JOBS[job], server.url.origin),
+  issuer: GITHUB,
+  repository: REPO,
   ...LIMITS,
 })
 
@@ -46,14 +48,12 @@ it('names an object <issuer>/<repository>/<scope>/<hash>, each hashed, and check
   await fetch(new URL(`/v1/artifacts/${k}`, server.url), {
     method: 'PUT',
     body: 'x',
-    headers: { authorization: `Bearer ${token}` },
+    headers: { ...NAMED, authorization: `Bearer ${token}` },
   })
   const main = scopeOf('refs/heads/main')
-  const name = await blobName('token.actions.githubusercontent.com', 'acme/app', main, k)
+  const name = await blobName(GITHUB, REPO, main, k)
   // The write's scope is its token's ref hashed by the server, as a client hashes it.
-  expect(name).toBe(
-    `${scopeOf('token.actions.githubusercontent.com')}/${scopeOf('acme/app')}/${main}/abc123`,
-  )
+  expect(name).toBe(`${NAMED['vx-issuer']}/${NAMED['vx-repository']}/${main}/abc123`)
   expect([...s3.objects.keys()].join()).not.toMatch(/refs|github|acme/)
   expect(s3.objects.get(`/b/${name}`)).toEqual(new TextEncoder().encode('x'))
   const before = s3.log.length
@@ -62,7 +62,7 @@ it('names an object <issuer>/<repository>/<scope>/<hash>, each hashed, and check
       await fetch(new URL('/v1/artifacts', server.url), {
         method: 'POST',
         body: JSON.stringify({ hashes, scopes: [main] }),
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        headers: { ...NAMED, authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       })
     ).json()
   expect(await check([k])).toEqual({ [k]: { size: 1, scope: main } })

@@ -28,6 +28,8 @@ conformance('the Docker image', {
       .setIssuedAt()
       .setExpirationTime('1h')
       .sign(await key),
+  issuer: env('VX_CACHE_ISSUER'),
+  repository: '42',
   maxCheckHashes: 500,
   maxUploadBytes: 7 * 1024 * 1024,
 })

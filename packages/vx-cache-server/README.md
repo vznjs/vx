@@ -17,11 +17,12 @@ points `vx` at it.
 
 ## CI tokens
 
-Every request carries a CI job's own OIDC token: there are no stored
-tokens (`vxCache()` asks GitHub for it; on GitLab name an `id_tokens`
-entry `VX_CACHE_TOKEN`). The token's repository is what it reads and
-writes, and the token decides where the job writes: its own branch's
-scope, never another's.
+Every request names its issuer and repository by their hashes
+(`vx-issuer`, `vx-repository`; `vxCache({ issuer, repository })`). A
+CI job's carries its own OIDC token: there are no stored tokens
+(`vxCache()` asks GitHub for it; on GitLab name an `id_tokens` entry
+`VX_CACHE_TOKEN`). The token must be of the repository named, and it
+decides where the job writes: its own branch's scope, never another's.
 
 - A ref a rule names (`refs/heads/main`) is protected: only a job
   matching the rule writes it. Any other job on it only reads.
@@ -59,6 +60,9 @@ main's `ref` while running a pull request's code. A merge queue's runs
 write their queue ref before their code lands; queued code is approved code.
 `AUDIENCE` is the `aud` a token must name, by default the origin the
 server is reached at, which is what `vxCache()` asks GitHub for.
+`READ_ACCESS=public` lets a request with no token read a repository
+`TRUST` names (a developer's laptop): it writes nothing. Unset, a
+request with no token is `401`.
 
 ## On Bun
 
@@ -91,7 +95,7 @@ builds and runs all three (`docker compose up -d`).
 `MAX_CHECK_HASHES` (lookups, hashes × scopes, a check makes; default
 500, 6 on Workers) and
 `MAX_UPLOAD_BYTES` (default 100 MB, one artifact) set
-the limits. Every check names them to clients (`x-artifact-max-*`), and
+the limits. Every check names them to clients (`vx-max-*`), and
 `GET /v1/capabilities` too.
 
 ## On Cloudflare Workers
@@ -151,5 +155,5 @@ over a bucket of your own (`src/index.ts`):
   it (PROTOCOL.md § Keys), so no segment is a plain value.
 - `TRUST` and the CI token check are [`@vzn/vx-devtools`](https://github.com/vznjs/vx/tree/main/packages/vx-devtools)'s,
   the check every vx server shares.
-- `SCOPE_HEADER` (`x-artifact-scope`) and `LIMIT_HEADERS` are the header names
+- `SCOPE_HEADER` (`vx-scope`) and `LIMIT_HEADERS` are the header names
   (PROTOCOL.md).

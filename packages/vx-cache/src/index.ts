@@ -1,9 +1,11 @@
 // @vzn/vx-cache — `vxCache()`, a vx `cache` plugin for a server that speaks
 // the vx-cache protocol (`@vzn/vx-cache-server`, its PROTOCOL.md, /v1).
 // Nothing is on by default: declare it in `.vx/workspace.ts` with the
-// server's URL. It serves CI jobs only: every request carries the job's
-// OIDC token, and off CI it declines with one note. Every read names
-// exact scopes: the run's branch, then the branches it reads after it.
+// server's URL, the CI issuer and the repository, which every request
+// names by their hashes (M, 2026-10-25: the user names them, nothing
+// guesses). A CI job's requests carry its OIDC token and write; with no
+// token it reads only, from a server with `READ_ACCESS=public`. Every read
+// names exact scopes: the run's branch, then the branches it reads after it.
 // Imports core only through `@vzn/vx`.
 
 import {
@@ -19,6 +21,10 @@ import {
 export interface VxCacheOptions {
   /** The server's base URL (`https://cache.example.com`), or `VX_CACHE_URL`. */
   url?: string
+  /** The CI issuer whose tokens the server takes, as they name it (`https://token.actions.githubusercontent.com`). */
+  issuer: string
+  /** The repository at that issuer, `org/name`. */
+  repository: string
   /** Per-request deadline for reads and queries (default 30 s). */
   timeoutMs?: number
   /** … and for an upload (default 60 s). */
@@ -34,6 +40,8 @@ export interface VxCacheOptions {
 
 const KEYS: PluginOptionKinds<VxCacheOptions> = {
   url: 'string',
+  issuer: 'string',
+  repository: 'string',
   timeoutMs: 'number',
   uploadTimeoutMs: 'number',
   headers: 'object',
@@ -75,7 +83,7 @@ function proxyHeaders(
   return out
 }
 
-/** A ref's scope on the wire: its SHA-256's first 128 bits in hex, never the ref (M, 2026-10-25). */
+/** A ref's scope, an issuer or a repository on the wire: its SHA-256's first 128 bits in hex, never the value (M, 2026-10-25). */
 const scopeOf = (ref: string): string =>
   new Bun.CryptoHasher('sha256').update(ref).digest('hex').slice(0, 32)
 
@@ -137,15 +145,15 @@ class Lane<T> {
   }
 }
 
-/** The limits a server names at `/v1/capabilities` and on each check (`x-artifact-max-*`). */
+/** The limits a server names at `/v1/capabilities` and on each check (`vx-max-*`). */
 interface Limits {
   readonly maxCheckHashes: number
   readonly maxUploadBytes: number
 }
 
 const LIMIT_HEADERS: Record<keyof Limits, string> = {
-  maxCheckHashes: 'x-artifact-max-check-hashes',
-  maxUploadBytes: 'x-artifact-max-upload-bytes',
+  maxCheckHashes: 'vx-max-check-hashes',
+  maxUploadBytes: 'vx-max-upload-bytes',
 }
 
 const count = (n: unknown): number | undefined =>
@@ -185,12 +193,19 @@ export class VxCacheLayer implements RemoteCacheLayer {
 
   private readonly uploads = new Lane<{ hash: string; body: Blob }>((item) => this.upload(item))
 
+  /** The issuer and repository, named on every request by their hashes. */
+  private readonly named: Readonly<Record<string, string>>
+
   constructor(
     private readonly config: ResolvedVxCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly env: Record<string, string | undefined> = Bun.env,
   ) {
     this.endpoint = config.url
+    this.named = {
+      'vx-issuer': scopeOf(config.issuer),
+      'vx-repository': scopeOf(config.repository),
+    }
   }
 
   private idToken: { jwt: string; exp: number } | undefined
@@ -264,11 +279,13 @@ export class VxCacheLayer implements RemoteCacheLayer {
       write?: boolean
     } = {},
   ): Promise<Response | undefined> {
+    const bearer = await this.bearer()
     const res = await this.fetchImpl(`${this.config.url}${path}`, {
       method: init.method ?? 'POST',
       headers: {
         ...this.config.headers,
-        authorization: `Bearer ${await this.bearer()}`,
+        ...this.named,
+        ...(bearer === '' ? {} : { authorization: `Bearer ${bearer}` }),
         ...init.headers,
       },
       ...(init.body === undefined ? {} : { body: init.body }),
@@ -287,7 +304,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
       this.disabled = true
       if (!first) return undefined
       throw new Error(
-        `${(await refusal(res)).message}: the token was refused; remote cache off for this run`,
+        `${(await refusal(res)).message}: ${bearer === '' ? 'a read with no token was refused' : 'the token was refused'}; remote cache off for this run`,
       )
     }
     return res
@@ -401,7 +418,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
       if (this.disabled) return null
       const res = await this.request(`/v1/artifacts/${hash}`, {
         method: 'GET',
-        headers: { 'x-artifact-scope': scope },
+        headers: { 'vx-scope': scope },
       })
       if (res === undefined) return null
       if (res.status === 404) {
@@ -416,7 +433,9 @@ export class VxCacheLayer implements RemoteCacheLayer {
 
   /** An artifact over the server's upload limit is not sent: it is said. */
   async put(hash: string, body: Blob, _meta: { durationMs: number }): Promise<void> {
-    if (this.disabled || this.writesRefused) return
+    // With no token a job reads only: nothing is uploaded.
+    if (this.disabled || this.writesRefused || !hasCiToken(this.env, this.lent?.() !== undefined))
+      return
     const max = this.limits?.maxUploadBytes
     if (max !== undefined && body.size > max) {
       this.warn(
@@ -440,16 +459,30 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 }
 
+/** The issuer and repository as a key names them: the issuer's URL with no trailing slash, `org/name` lowercased. */
+function namedOf(options: VxCacheOptions): { issuer: string; repository: string } {
+  const { issuer, repository } = options as Partial<VxCacheOptions>
+  if (typeof issuer !== 'string' || !/^https?:\/\/\S+$/.test(issuer))
+    throw new Error(
+      `vxCache(): issuer must be the CI issuer's URL (https://token.actions.githubusercontent.com), got ${String(issuer)}`,
+    )
+  if (typeof repository !== 'string' || !/^[^/\s]+(\/[^/\s]+)+$/.test(repository))
+    throw new Error(`vxCache(): repository must be org/name, got ${String(repository)}`)
+  return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
+}
+
 /** Options over `VX_CACHE_URL`; `undefined`: no server named. */
 export function resolveVxCacheConfig(
   options: VxCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
 ): ResolvedVxCacheConfig | undefined {
+  const named = namedOf(options)
   const url = (options.url ?? env.VX_CACHE_URL)?.replace(/\/+$/, '')
   if (url === undefined || url === '') return undefined
   if (!/^https?:\/\//.test(url)) throw new Error(`vxCache(): url must be http(s), got ${url}`)
   return {
     url,
+    ...named,
     timeoutMs: options.timeoutMs ?? 30_000,
     uploadTimeoutMs: options.uploadTimeoutMs ?? 60_000,
     headers: proxyHeaders('vxCache()', options.headers),
@@ -473,24 +506,27 @@ export function hasCiToken(env: Record<string, string | undefined>, lent: boolea
  * Declare in `.vx/workspace.ts`; the local store stays the floor beneath it:
  *
  * ```ts
- * plugins: [vxCache({ url: 'https://cache.example.com' })]
+ * plugins: [
+ *   vxCache({
+ *     url: 'https://cache.example.com',
+ *     issuer: 'https://token.actions.githubusercontent.com',
+ *     repository: 'acme/app',
+ *   }),
+ * ]
  * ```
  */
-export function vxCache(options: VxCacheOptions = {}): VxPlugin {
+export function vxCache(options: VxCacheOptions): VxPlugin {
   refuseUnknownOptions('vxCache()', options, KEYS)
+  namedOf(options)
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
       const config = resolveVxCacheConfig(options)
       if (config === undefined) return undefined
       const lent = ctx.lent?.() !== undefined
-      if (!hasCiToken(Bun.env, lent)) {
+      if (!hasCiToken(Bun.env, lent) && Bun.env.GITHUB_ACTIONS === 'true')
         ctx.warn(
-          Bun.env.GITHUB_ACTIONS === 'true'
-            ? '[vx] vx-cache: this job gets no OIDC token: give it `permissions: id-token: write`; remote cache off for this run'
-            : '[vx] vx-cache: serves CI jobs only (no CI token here); remote cache off for this run',
+          '[vx] vx-cache: this job gets no OIDC token (give it `permissions: id-token: write`): it reads only',
         )
-        return undefined
-      }
       if (ctx.refs.length === 0) {
         ctx.warn(
           '[vx] vx-cache: the run reads no ref, so it names no key; remote cache off for this run',

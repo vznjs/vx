@@ -12,6 +12,7 @@ const USAGE = `usage: vx-cache-server [--port 8080] [--host 0.0.0.0]
   TRUST           the CI repositories it serves and the jobs it trusts, a JSON list
                   (README.md § CI tokens); only their OIDC tokens are taken
   AUDIENCE        the aud a CI token names (default: the origin it was sent to)
+  READ_ACCESS     public: a request with no token reads a repository TRUST names
   S3_BUCKET       the bucket; S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID and
                   S3_SECRET_ACCESS_KEY as Bun's S3 client reads them
   MAX_CHECK_HASHES       keys one check names (default ${DEFAULT_LIMITS.maxCheckHashes})
@@ -96,7 +97,11 @@ function main(argv: string[]): void {
   }
   const handle = createCacheServer({
     blobs: s3Blobs(new Bun.S3Client({ bucket: env.S3_BUCKET })),
-    authorize: oidcAuth({ trust, ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}) }),
+    authorize: oidcAuth({
+      trust,
+      readAccess: env.READ_ACCESS,
+      ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
+    }),
     limits,
   })
   const server = Bun.serve({

@@ -25,6 +25,7 @@ export interface OidcOptions {
   readonly audience?: string
   readonly fetchJson?: (url: string) => Promise<unknown>
   readonly now?: () => number
+  readonly readAccess?: string | undefined
 }
 == type TrustRule (src/oidc.ts)
 export interface TrustRule {

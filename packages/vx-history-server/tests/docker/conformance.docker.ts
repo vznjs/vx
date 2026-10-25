@@ -27,4 +27,6 @@ conformance('the Docker image', {
       .setIssuedAt()
       .setExpirationTime('1h')
       .sign(await key),
+  issuer: env('VX_HISTORY_ISSUER'),
+  repository: '42',
 })

@@ -3,8 +3,8 @@
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import path from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
-import { conformance } from './conformance.js'
-import { GITHUB, type Issuer, issuer, trustOf } from './issuer.js'
+import { conformance, scopeOf } from './conformance.js'
+import { GITHUB, type Issuer, issuer, REPO, trustOf } from './issuer.js'
 
 /** The Worker's own origin, its tokens' audience. */
 const AUD = 'https://history.example.com'
@@ -46,6 +46,8 @@ afterAll(() => mf.dispose())
 conformance('Workers with D1', {
   base: () => base.href,
   sign: (job) => iss.sign(job, AUD),
+  issuer: GITHUB,
+  repository: REPO,
 })
 
 it('refuses every request, saying why, while TRUST or TIMING_DAYS is unset or wrong', async () => {
@@ -65,7 +67,11 @@ it('refuses every request, saying why, while TRUST or TIMING_DAYS is unset or wr
     const other = await start(bindings)
     try {
       const res = await other.dispatchFetch(new URL('/v1/capabilities', await other.ready), {
-        headers: { authorization: `Bearer ${await iss.sign('read', AUD)}` },
+        headers: {
+          authorization: `Bearer ${await iss.sign('read', AUD)}`,
+          'vx-issuer': scopeOf(GITHUB),
+          'vx-repository': scopeOf(REPO),
+        },
       })
       expect([res.status, ((await res.json()) as { message: string }).message]).toEqual([
         status,

@@ -12,14 +12,19 @@ import type { JWTPayload } from 'jose'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import {
   BRANCH_JOB,
+  GITHUB,
   type Issuer,
   issuer,
   READ_JOB,
+  REPO,
   TRUST,
   MAIN_JOB,
 } from '../../vx-cache-server/tests/issuer.js'
 import { memBlobs } from '../../vx-cache-server/tests/mem-blobs.js'
 import { hasCiToken, resolveVxCacheConfig, vxCache, VxCacheLayer } from '../src/index.js'
+
+/** The repository the server's TRUST serves, as a workspace names it. */
+const NAMED = { issuer: GITHUB, repository: 'Acme/App' }
 
 let iss: Issuer
 beforeAll(async () => {
@@ -27,12 +32,12 @@ beforeAll(async () => {
 })
 
 /** The server over a Map bucket: what the wire sees is the server's own. */
-function server(maxUploadBytes = 1 << 20) {
+function server(maxUploadBytes = 1 << 20, readAccess?: string) {
   const blobs = new Map<string, Uint8Array>()
   const seen: { method: string; path: string; body: string; scope: string | null }[] = []
   const handle = createCacheServer({
     blobs: memBlobs(blobs),
-    authorize: oidcAuth({ trust: TRUST, fetchJson: (u) => iss.fetchJson(u) }),
+    authorize: oidcAuth({ trust: TRUST, readAccess, fetchJson: (u) => iss.fetchJson(u) }),
     limits: { maxUploadBytes },
   })
   const srv = Bun.serve({
@@ -45,7 +50,7 @@ function server(maxUploadBytes = 1 << 20) {
         method: req.method,
         path: new URL(req.url).pathname,
         body: text.split('\n')[0]!,
-        scope: req.headers.get('x-artifact-scope'),
+        scope: req.headers.get('vx-scope'),
       })
       return handle(req as never)
     },
@@ -70,7 +75,14 @@ const keysOf = (body: string) => (JSON.parse(body) as { hashes: string[] }).hash
 /** A layer whose job's token is `token`, as GitLab's `VX_CACHE_TOKEN` carries it, reading `refs`. */
 function layer(url: string, token: string, refs: string[] = [MAIN], fetchImpl = fetch) {
   const c = new VxCacheLayer(
-    { url, timeoutMs: 5_000, uploadTimeoutMs: 5_000, headers: {} },
+    {
+      url,
+      timeoutMs: 5_000,
+      uploadTimeoutMs: 5_000,
+      headers: {},
+      issuer: GITHUB,
+      repository: REPO,
+    },
     fetchImpl,
     {
       VX_CACHE_TOKEN: token,
@@ -166,7 +178,7 @@ describe('VxCacheLayer', () => {
         if (new URL(input instanceof Request ? input.url : input).pathname === '/v1/capabilities')
           return Response.json({})
         const headers = new Headers(res.headers)
-        headers.delete('x-artifact-max-check-hashes')
+        headers.delete('vx-max-check-hashes')
         return new Response(res.body, { status: res.status, headers })
       },
       { preconnect: fetch.preconnect },
@@ -186,7 +198,7 @@ describe('VxCacheLayer', () => {
   it('says a job that reads only was refused a write once, and reads on', async () => {
     const c = layer(srv.url, read)
     expect(c.put('cc33', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
-      'HTTP 403: this token reads only: the write was refused (this job reads only); writes off for this run, reads go on',
+      'HTTP 403: this request reads only: the write was refused (this job reads only); writes off for this run, reads go on',
     )
     await c.put('dd44', new Blob(['x']), { durationMs: 1 })
     expect(await c.has('aa11')).not.toBeNull()
@@ -252,7 +264,7 @@ describe('GitHub OIDC', () => {
         ACTIONS_ID_TOKEN_REQUEST_URL: github.url.href,
         ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'gh',
       }
-      const c = new VxCacheLayer(resolveVxCacheConfig({ url: srv.url }, env)!, fetch, env)
+      const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, env)!, fetch, env)
       await c.put('f1', new Blob(['x']), { durationMs: 1 })
       await c.put('f2', new Blob(['y']), { durationMs: 1 })
       expect(asked).toEqual([`bearer gh ${new URL(srv.url).origin}`])
@@ -288,7 +300,11 @@ describe('lend', () => {
       ACTIONS_ID_TOKEN_REQUEST_TOKEN: job,
     })
     const on = (job: string) =>
-      new VxCacheLayer(resolveVxCacheConfig({ url: srv.url }, envOf(job))!, fetch, envOf(job))
+      new VxCacheLayer(
+        resolveVxCacheConfig({ ...NAMED, url: srv.url }, envOf(job))!,
+        fetch,
+        envOf(job),
+      )
     try {
       const run = on('run')
       const lent = await run.lend()
@@ -332,7 +348,11 @@ describe('config', () => {
       return new Response('{}', { status: 404 })
     }) as unknown as typeof fetch
     const config = resolveVxCacheConfig(
-      { url: 'https://c.example', headers: { 'CF-Access-Client-Id': 'id', 'X-Unset': undefined } },
+      {
+        ...NAMED,
+        url: 'https://c.example',
+        headers: { 'CF-Access-Client-Id': 'id', 'X-Unset': undefined },
+      },
       {},
     )!
     expect(config.headers).toEqual({ 'CF-Access-Client-Id': 'id' })
@@ -341,22 +361,29 @@ describe('config', () => {
     await c.has('0123456789abcdef').catch(() => {})
     expect(seen.length).toBeGreaterThan(0)
     for (const h of seen)
-      expect([h.get('cf-access-client-id'), h.get('authorization')]).toEqual(['id', 'Bearer jwt'])
+      expect([
+        h.get('cf-access-client-id'),
+        h.get('authorization'),
+        h.get('vx-issuer'),
+        h.get('vx-repository'),
+      ]).toEqual(['id', 'Bearer jwt', await hashPart(GITHUB), await hashPart(REPO)])
     for (const bad of [{ authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
-      expect(() => resolveVxCacheConfig({ url: 'https://c.example', headers: bad }, {})).toThrow(
-        'vxCache(): header',
-      )
+      expect(() =>
+        resolveVxCacheConfig({ ...NAMED, url: 'https://c.example', headers: bad }, {}),
+      ).toThrow('vxCache(): header')
   })
 
   it('reads the URL over VX_CACHE_URL, and a CI token from GitHub, GitLab or a lending run', () => {
-    expect(resolveVxCacheConfig({}, {})).toBeUndefined()
-    expect(resolveVxCacheConfig({}, { VX_CACHE_URL: 'https://c.example/' })).toEqual({
+    expect(resolveVxCacheConfig(NAMED, {})).toBeUndefined()
+    expect(resolveVxCacheConfig(NAMED, { VX_CACHE_URL: 'https://c.example/' })).toEqual({
       url: 'https://c.example',
+      issuer: GITHUB,
+      repository: REPO,
       timeoutMs: 30_000,
       uploadTimeoutMs: 60_000,
       headers: {},
     })
-    expect(() => resolveVxCacheConfig({ url: 'c.example' }, {})).toThrow(
+    expect(() => resolveVxCacheConfig({ ...NAMED, url: 'c.example' }, {})).toThrow(
       'vxCache(): url must be http(s), got c.example',
     )
     expect(hasCiToken({}, false)).toBe(false)
@@ -366,27 +393,47 @@ describe('config', () => {
     expect(hasCiToken(gh, false)).toBe(true)
   })
 
-  it('declines off CI with one note, and never asks the server', async () => {
-    const saved = { ...Bun.env }
-    for (const k of [
-      'VX_CACHE_TOKEN',
-      'ACTIONS_ID_TOKEN_REQUEST_URL',
-      'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
-      'GITHUB_ACTIONS',
-    ]) {
-      delete Bun.env[k]
-    }
+  // M, 2026-10-25: the user names both, always; nothing guesses them.
+  it('refuses a workspace that names no issuer or repository', () => {
+    for (const [options, said] of [
+      [{ repository: 'acme/app' }, "vxCache(): issuer must be the CI issuer's URL"],
+      [{ issuer: 'token.actions.githubusercontent.com', repository: 'acme/app' }, 'issuer must be'],
+      [{ issuer: GITHUB }, 'vxCache(): repository must be org/name, got undefined'],
+      [{ issuer: GITHUB, repository: 'app' }, 'vxCache(): repository must be org/name, got app'],
+    ] as const)
+      expect(() => vxCache(options as never)).toThrow(said)
+  })
+
+  it('reads with no token from a public server, sends none, and uploads nothing', async () => {
+    const srv = server(1 << 20, 'public')
     try {
-      const said: string[] = []
-      const hooks = vxCache({ url: 'https://c.example' }) as unknown as {
-        cache(ctx: object): unknown
-      }
-      expect(hooks.cache({ refs: [], warn: (m: string) => said.push(m) })).toBeUndefined()
-      expect(said).toEqual([
-        '[vx] vx-cache: serves CI jobs only (no CI token here); remote cache off for this run',
+      const writer = layer(srv.url, await srv.token(MAIN_JOB))
+      await writer.put('ab12', new Blob(['x']), { durationMs: 1 })
+      const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, {})!, fetch, {})
+      c.refs = [MAIN]
+      expect(await c.has('ab12')).toEqual({ size: 1 })
+      await c.put('cd34', new Blob(['y']), { durationMs: 1 })
+      expect(srv.seen.filter((r) => r.method === 'PUT').map((r) => r.path)).toEqual([
+        '/v1/artifacts/ab12',
       ])
     } finally {
-      Object.assign(Bun.env, saved)
+      await srv.stop()
+    }
+  })
+
+  it('says once that a server refuses a read with no token, then asks nothing', async () => {
+    const srv = server()
+    try {
+      const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, {})!, fetch, {})
+      c.refs = [MAIN]
+      await expect(c.has('ab12')).rejects.toThrow(
+        'HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run',
+      )
+      const asked = srv.seen.length
+      expect(await c.has('ab12')).toBeNull()
+      expect(srv.seen.length).toBe(asked)
+    } finally {
+      await srv.stop()
     }
   })
 })
@@ -411,7 +458,7 @@ describe('vx run with vxCache()', () => {
     await Bun.write(
       path.join(root, '.vx/workspace.mjs'),
       `import { vxCache } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
-        `export default { plugins: [vxCache({ url: ${JSON.stringify(srv.url)} })] }\n`,
+        `export default { plugins: [vxCache({ url: ${JSON.stringify(srv.url)}, issuer: ${JSON.stringify(GITHUB)}, repository: ${JSON.stringify(REPO)} })] }\n`,
     )
     // A branch with a commit: the run reads refs/heads/main.
     Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: root })

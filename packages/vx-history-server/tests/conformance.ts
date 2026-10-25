@@ -13,6 +13,9 @@ export interface Target {
   base(): string
   /** A token for the server: of main (the ref TRUST protects), of `feature`, or reading only. */
   sign(job: 'main' | 'branch' | 'read'): Promise<string>
+  /** The issuer and repository its tokens name, which every request names by their hashes. */
+  readonly issuer: string
+  readonly repository: string
 }
 
 /** A fresh task hash per call: every target is shared by the whole suite. */
@@ -26,6 +29,10 @@ export function conformance(name: string, target: Target): void {
   const call = (path: string, init: RequestInit = {}, token: string | null = tokens.read) => {
     const headers = new Headers(init.headers)
     if (token !== null) headers.set('authorization', `Bearer ${token}`)
+    if (!headers.has('vx-repository')) {
+      headers.set('vx-issuer', scopeOf(target.issuer))
+      headers.set('vx-repository', scopeOf(target.repository))
+    }
     return fetch(new URL(path, target.base()), { ...init, headers })
   }
   const post = (path: string, body: unknown, token?: string | null) =>
@@ -154,6 +161,8 @@ export function conformance(name: string, target: Target): void {
         maxQueryScopes: 8,
       })
       expect((await call('/v1/capabilities', {}, null)).status).toBe(401)
+      const other = { 'vx-issuer': scopeOf(target.issuer), 'vx-repository': scopeOf('acme/other') }
+      expect((await call('/v1/capabilities', { headers: other })).status).toBe(403)
       const get = await call('/v1/timings/query')
       expect([get.status, get.headers.get('allow')]).toEqual([405, 'POST'])
       expect((await call('/v1/nope')).status).toBe(404)

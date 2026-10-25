@@ -16,9 +16,9 @@ Turbo's routes (`/v8/artifacts`), under `/v1`:
 | `GET /v1/capabilities`      | the server's limits                      |
 
 Where it differs from Turbo: a read names its scopes (§ Keys), since an
-artifact lives in its branch's scope; the CI token
-names the repository, so `teamId` and `slug` are refused; there is no
-events route.
+artifact lives in its branch's scope; every request names its issuer
+and repository by their hashes (§ Repository), so `teamId` and `slug`
+are refused; there is no events route.
 
 ## Opaque strings
 
@@ -28,10 +28,23 @@ encrypted (a keyed hash for names, a cipher for bytes). No ref goes on
 the wire plain: a scope is its ref's hash (§ Keys), and the server
 hashes the token's ref the same way to find where a write goes.
 
+## Repository
+
+Every request names its repository: `vx-issuer`, the hash (§ Keys) of
+the CI issuer's URL as its tokens name it, no trailing slash
+(`https://token.actions.githubusercontent.com`), and `vx-repository`,
+the hash of its `org/name` there, lowercased. One missing or not a hash
+is `400`. A token of another repository than the one named is `403`.
+
+A server whose `READ_ACCESS` is `public` takes a request with no token
+too: it reads a repository its rules name (another is `403`) and writes
+nothing (`403`, `this request reads only`). Any other server answers a
+request with no token `401`.
+
 ## Tokens
 
-Every request carries `Authorization: Bearer <token>`, a CI job's OIDC
-token (GitHub Actions, GitLab CI): there is no other. Its signature,
+A request's `Authorization: Bearer <token>` is a CI job's OIDC token
+(GitHub Actions, GitLab CI): there is no other. Its signature,
 `RS256`, `exp` and `aud` (the server's own) are checked, and the token
 alone decides what it reads and where it writes, by the server's trust
 rules:
@@ -48,7 +61,7 @@ rules:
   matches no rule reads only (a write is `403`), so main's runs never
   read a write they did not make.
 
-A missing or bad token is `401`. A server with no rules refuses every
+A bad token is `401`. A server with no rules refuses every
 request: `401`, `the server trusts no CI: set TRUST`.
 
 ## Keys
@@ -56,7 +69,7 @@ request: `401`, `the server trusts no CI: set TRUST`.
 An artifact lives in one scope, and a key names both: `{ scope, hash }`.
 `scope` is a ref's hash: the first 128 bits of the SHA-256 of its UTF-8
 (`refs/heads/main`), 32 lowercase hex digits; a plain ref is `400`.
-`GET` and `HEAD` name one scope in `x-artifact-scope`; a check names
+`GET` and `HEAD` name one scope in `vx-scope`; a check names
 its scopes in its body.
 `hash` is 1 to 128 hex digits. A read is exact: the server answers the scope named and no
 other, so a client that wants its branch's work and then main's asks
@@ -67,7 +80,7 @@ download after a check that held it may miss, which a client reads as a
 miss.
 
 `GET /v1/artifacts/<hash>` (as Turbo's `GET /v8/artifacts/<hash>`) with
-`x-artifact-scope: <scope>`: `200` with the bytes (`application/octet-stream`,
+`vx-scope: <scope>`: `200` with the bytes (`application/octet-stream`,
 `Content-Length`, `Cache-Control: private, max-age=31536000, immutable`:
 the bytes under a key never change), or `404`. `HEAD` is the same with
 no bytes.
@@ -82,8 +95,8 @@ names the server's limits, which a client chunks its checks by, sending
 the chunks at once:
 
 ```
-x-artifact-max-check-hashes: 500
-x-artifact-max-upload-bytes: 100000000
+vx-max-check-hashes: 500
+vx-max-upload-bytes: 100000000
 ```
 
 `PUT /v1/artifacts/<hash>` (a token that writes, as Turbo's
@@ -115,7 +128,7 @@ Every refusal is `{ code, message }`, `application/json`, its `message`
 saying what to fix:
 
 ```json
-{ "code": "forbidden", "message": "this token reads only" }
+{ "code": "forbidden", "message": "this request reads only" }
 ```
 
 A JSON body without `Content-Type: application/json` is `400`; an unknown

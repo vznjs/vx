@@ -79,12 +79,13 @@ Put TLS in front of it: a CI token is a bearer token.
 | --- | --- | --- |
 | `TRUST` | empty: refuse all | the repositories it serves and the jobs that write protected refs ([`TRUST`](../#trust-who-reads-and-who-writes)) |
 | `AUDIENCE` | the origin it is reached at | the `aud` a CI token must name |
+| `READ_ACCESS` | unset: a token for every request | `public`: a request with no token reads a repository `TRUST` names, and writes nothing |
 | `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | | the bucket (Bun and Docker), as Bun's S3 client reads them |
 | `MAX_CHECK_HASHES` | 500 (6 on Workers) | the lookups (hashes × scopes) one check may make |
 | `MAX_UPLOAD_BYTES` | 100 MB | the largest upload, one artifact |
 
 On Workers, each setting is a var in `wrangler.jsonc`. Every check
-answer names the limits (`x-artifact-max-*` headers), and so does
+answer names the limits (`vx-max-*` headers), and so does
 `GET /v1/capabilities`. Clients check hashes in chunks within those
 limits. Downloads and uploads go one artifact at a time, many at once.
 
@@ -99,7 +100,7 @@ refused with `400`, so no ref crosses the wire. A write names no scope:
 the server hashes the token's ref the same way. A read is exact: it
 names each scope it wants. A check names `vxCache()`'s branch, then the
 branch it merges into, then the default branch, and the first scope that
-holds the hash answers; the download names that scope (`x-artifact-scope`).
+holds the hash answers; the download names that scope (`vx-scope`).
 
 An artifact's object name in the bucket is:
 
@@ -133,7 +134,13 @@ import { defineWorkspace } from '@vzn/vx/config'
 import { vxCache } from '/path/to/vx/packages/vx-cache/src/index.ts'
 
 export default defineWorkspace({
-  plugins: [vxCache({ url: 'https://cache.example.com' })], // or VX_CACHE_URL
+  plugins: [
+    vxCache({
+      url: 'https://cache.example.com', // or VX_CACHE_URL
+      issuer: 'https://token.actions.githubusercontent.com',
+      repository: 'acme/app',
+    }),
+  ],
 })
 ```
 
@@ -142,9 +149,13 @@ export default defineWorkspace({
   repository, as above.
 </Aside>
 
-`vxCache({ url?, timeoutMs?, uploadTimeoutMs?, headers? })`:
+`vxCache({ url?, issuer, repository, timeoutMs?, uploadTimeoutMs?, headers? })`:
 
 - `url` is the server's base URL, or `VX_CACHE_URL`.
+- `issuer` (the CI issuer's URL, as its tokens name it; on GitLab
+  `https://gitlab.com` or your instance) and `repository` (`org/name`
+  there) are required. Every request names both by their hashes, and the
+  server refuses a token of another repository.
 - `timeoutMs` (default 30 000) bounds each read and check, and
   `uploadTimeoutMs` (default 60 000) bounds each upload.
 - `headers` are sent on every request to the server, for a proxy in
@@ -166,8 +177,7 @@ permissions:
 ```
 
 The plugin asks GitHub for the token itself, and asks again before it
-expires. A job without `id-token: write` warns and runs without the
-remote cache.
+expires. A job without `id-token: write` warns and reads only.
 
 </TabItem>
 <TabItem label="GitLab CI">
@@ -182,8 +192,9 @@ vx:
 </TabItem>
 </Tabs>
 
-Off CI there is no token: the plugin says so once and the run stays
-local. A refused token is said once and turns the remote off for the
+Off CI there is no token: the run reads only, from a server with
+`READ_ACCESS=public`, and uploads nothing; any other server refuses the
+first read, said once, and the run stays local. A refused token is said once and turns the remote off for the
 run. A refused write (a job that only reads) turns off writes alone. In a
 [distributed run](../../distributed-runs/), the run lends its token to its
 workers, so they read and write the scopes the run reads.
@@ -195,7 +206,7 @@ Turbo's routes under `/v1`, each read naming its scope
 
 | Route | Does |
 | --- | --- |
-| `GET /v1/artifacts/<hash>` | one artifact's bytes, its scope in `x-artifact-scope` |
+| `GET /v1/artifacts/<hash>` | one artifact's bytes, its scope in `vx-scope` |
 | `HEAD /v1/artifacts/<hash>` | whether the scope holds it, and its size |
 | `PUT /v1/artifacts/<hash>` | one artifact's bytes, to the token's scope |
 | `POST /v1/artifacts` | `{ hashes, scopes }`: each hash's size and the first scope holding it |

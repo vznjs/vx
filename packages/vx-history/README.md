@@ -19,7 +19,7 @@ import { vxHistory } from '@vzn/vx-history'
 export default { plugins: [vxHistory()] }
 ```
 
-`vxHistory({ window?, assume?, file?, defaultBranch?, server?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
+`vxHistory({ window?, assume?, file?, defaultBranch?, server?, issuer?, repository?, serverHeaders?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
 
 `assume` is for the run that has no history: a fresh CI runner. It names durations (task id → ms) for tasks the history has not seen, so a long leaf task — a docs build, a cross-compile — starts first instead of last:
 
@@ -45,15 +45,28 @@ started when they land; it never waits for them. At its end it sends the
 timings of the tasks it ran, once: under DTE that is the orchestrator,
 with each worker's measurements. A refusal is said with the server's
 words, and a CI job with no token says so once (on GitHub Actions,
-`GITHUB_ACTIONS`, naming the permission). With a server the cache blobs below are neither read nor written;
-off CI there is no token, and the run orders by local history alone.
+`GITHUB_ACTIONS`, naming the permission). With a server the cache blobs below are neither read nor written.
+A run with no token (off CI) reads only, from a server whose
+`READ_ACCESS` is `public`, and sends nothing.
+`issuer` (the CI issuer's URL, as its tokens name it) and `repository`
+(`org/name` there) are required with a server: every request names both
+by their hashes (`vx-issuer`, `vx-repository`), and nothing guesses
+them; `VX_HISTORY_URL` alone, with neither declared, is said and not asked.
 `serverHeaders` are sent on every request to the server, for a proxy in
 front of it (a Cloudflare Access service token:
 `{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID, … }`); an
 unset value is left out, and `authorization` stays the CI token's.
 
 ```ts
-export default { plugins: [vxHistory({ server: 'https://history.example.com' })] }
+export default {
+  plugins: [
+    vxHistory({
+      server: 'https://history.example.com',
+      issuer: 'https://token.actions.githubusercontent.com',
+      repository: 'acme/app',
+    }),
+  ],
+}
 ```
 
 ## Timings through the cache

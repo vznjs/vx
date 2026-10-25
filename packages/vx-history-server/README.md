@@ -24,8 +24,11 @@ a job writes its branch's scope, a ref a rule protects only a job
 matching the rule, and another repository is refused. A query names its
 scopes in order, each its ref's hash (no ref goes on the wire or into a
 row plain): `vxHistory()` asks its branch's rows, then the default
-branch's. `AUDIENCE` is the `aud` a
-token must name, by default the origin the server is reached at.
+branch's. Every request names its issuer and repository by their hashes
+(`vx-issuer`, `vx-repository`), which a token must match. `AUDIENCE` is
+the `aud` a token must name, by default the origin the server is reached
+at. `READ_ACCESS=public` lets a query with no token read a repository
+`TRUST` names; it uploads nothing.
 
 ## On Bun
 

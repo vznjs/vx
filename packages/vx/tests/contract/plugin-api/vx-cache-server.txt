@@ -12,11 +12,11 @@ export const DEFAULT_LIMITS: Limits = {
 }
 == const LIMIT_HEADERS (src/protocol.ts)
 export const LIMIT_HEADERS = {
-  maxCheckHashes: 'x-artifact-max-check-hashes',
-  maxUploadBytes: 'x-artifact-max-upload-bytes',
+  maxCheckHashes: 'vx-max-check-hashes',
+  maxUploadBytes: 'vx-max-upload-bytes',
 } as const
 == const SCOPE_HEADER (src/protocol.ts)
-export const SCOPE_HEADER = 'x-artifact-scope'
+export const SCOPE_HEADER = 'vx-scope'
 == function createCacheServer (src/server.ts)
 export function createCacheServer(opts: ServerOptions): (req: Request) => Promise<Response>
 == type Blob (src/store.ts)

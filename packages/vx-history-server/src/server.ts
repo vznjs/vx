@@ -43,7 +43,7 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
   // The fold is one upsert, a few ms for a thousand tasks: done inline (M, 2026-10-25).
   async function upload(req: Request): Promise<Response> {
     const access = await authorize(req)
-    if (access.write === undefined) throw new Refusal(403, 'this token reads only')
+    if (access.write === undefined) throw new Refusal(403, 'this request reads only')
     const reports = parseReports(await readJson(req, MAX_UPLOAD_TIMINGS * 200))
     await schema()
     await store.fold(access, await hashPart(access.write), now(), reports)

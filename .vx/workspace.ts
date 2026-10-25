@@ -9,15 +9,18 @@ const relay = process.env['VX_DTE_RELAY']
 // A PR that changes the cache server runs on its Preview (ci.yml), and
 // hands it to the workers.
 const cacheUrl = process.env['VX_CACHE_URL'] || 'https://vx-cache.exelord.workers.dev'
+// What our servers' TRUST names: every request names it, hashed.
+const repo = { issuer: 'https://token.actions.githubusercontent.com', repository: 'vznjs/vx' }
 
 export default defineWorkspace({
   plugins: [
     bun(),
     github(),
     // Our own servers (private/vx-cache-service, private/vx-history-service):
-    // CI jobs sign in with their OIDC token, so off CI both stay local.
-    vxCache({ url: cacheUrl }),
-    vxHistory({ server: 'https://vx-history.exelord.workers.dev' }),
+    // CI jobs sign in with their OIDC token; off CI they read only, where a
+    // server opens reads (READ_ACCESS=public).
+    vxCache({ url: cacheUrl, ...repo }),
+    vxHistory({ server: 'https://vx-history.exelord.workers.dev', ...repo }),
     // CI's one run over workers (ci.yml `linux`, vx-worker.yml);
     // a run with no VX_DTE_RUN, as on a laptop, is not distributed.
     dte({

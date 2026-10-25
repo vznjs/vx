@@ -23,6 +23,8 @@ export interface Env {
   readonly TRUST?: string
   /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
   readonly AUDIENCE?: string
+  /** `public`: a request with no token reads a repository TRUST names. */
+  readonly READ_ACCESS?: string
   /** Days a task's timings outlive its last report (default 30). */
   readonly TIMING_DAYS?: string
 }
@@ -51,7 +53,7 @@ let made: { key: string; handle: (req: Request) => Promise<Response> } | undefin
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
-    const key = [env.TRUST, env.AUDIENCE, env.TIMING_DAYS].join('\0')
+    const key = [env.TRUST, env.AUDIENCE, env.READ_ACCESS, env.TIMING_DAYS].join('\0')
     if (made?.key !== key) {
       let trust
       let timingDays
@@ -65,7 +67,11 @@ export default {
         key,
         handle: createHistoryServer({
           store: sqliteStore(d1Db(env.DB)),
-          authorize: oidcAuth({ trust, ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}) }),
+          authorize: oidcAuth({
+            trust,
+            readAccess: env.READ_ACCESS,
+            ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
+          }),
           ...(timingDays === undefined ? {} : { timingDays }),
         }),
       }
