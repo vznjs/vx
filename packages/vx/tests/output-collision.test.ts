@@ -828,6 +828,8 @@ describe('the path index finds every pair the rule refuses', () => {
     ['out/**', '*/types/*.d.ts'],
     ['*/dist/**', 'pkg/*/x.js'],
     ['*.js', '[ab].js'],
+    // A last `**` takes a segment: met at `gen/a`, `gen/[ab]/**` holds nothing.
+    ['gen/[ab]/**', '**/a*'],
   ]
   for (const [a, b] of met) {
     it(`two globs that meet at a path neither builds alone: ${a} against ${b}`, () => {

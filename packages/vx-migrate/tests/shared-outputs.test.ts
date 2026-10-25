@@ -108,7 +108,8 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
     // caches all three. Each kept task gives the other's tree back with `!`.
     // turbo() adds `**/types` beside `**/types/**`, which meets build's
     // `dist/**` only at a `types` nested in it, and `**/types/**` meets
-    // `**/dist/**` at `dist/types/x`, which build gives back too.
+    // `**/dist/**` at `dist/types/x`, which build gives back too, and
+    // `coverage/**` at `coverage/types/x`, which coverage gives back.
     const tasks = resolveSharedOutputs([
       task('build', ['dist/**', '**/dist/**', '**/dist'], ['^build']),
       task('types', ['types/**', '**/types/**', '**/types'], ['^types']),
@@ -131,7 +132,7 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
         0,
       ],
       ['types', ['types/**', '**/types/**', '**/types', '!coverage/**'], 0],
-      ['coverage', ['coverage/**', '!**/types'], 0],
+      ['coverage', ['coverage/**', '!**/types/**', '!**/types'], 0],
     ])
     // CONTROL: a sibling tree with that name in its path is the keeper's
     // product, and a keeper rooted at a literal directory is no dir at any

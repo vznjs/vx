@@ -1030,12 +1030,22 @@ function unified(sa: readonly string[], sb: readonly string[]): string | null {
     let out: string | null = null
     if (i === sa.length && j === sb.length) out = ''
     else if (sa[i] === '**' || sb[j] === '**') {
+      // A last `**` takes one segment at least: `out/**` is not `out`.
+      const lastA = sa[i] === '**' && i === sa.length - 1
+      const lastB = sb[j] === '**' && j === sb.length - 1
       const [wide, x, y, other] = sa[i] === '**' ? [sa, i, j, sb] : [sb, j, i, sa]
-      const skip = wide === sa ? walk(i + 1, j) : walk(i, j + 1)
-      out = skip ?? (sa[i] === '**' && sb[j] === '**' ? walk(i, j + 1) : null)
+      if (lastA && lastB) out = 'x'
+      if (out === null && sa[i] === '**' && !lastA) out = walk(i + 1, j)
+      if (out === null && sb[j] === '**' && !lastB) out = walk(i, j + 1)
       if (out === null && y < other.length && other[y] !== '**') {
         const name = segmentMeet('*', other[y]!)
-        const rest = name === null ? null : wide === sa ? walk(x, y + 1) : walk(y + 1, x)
+        // Having taken one, it may take more or stop.
+        const rest =
+          name === null
+            ? null
+            : wide === sa
+              ? (walk(x, y + 1) ?? walk(x + 1, y + 1))
+              : (walk(y + 1, x) ?? walk(y + 1, x + 1))
         if (name !== null && rest !== null) out = join(name, rest)
       }
     } else if (i < sa.length && j < sb.length) {
