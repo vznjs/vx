@@ -1,0 +1,128 @@
+{
+  "tasks": {
+    "install": {
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "ci": {
+      "dependsOn": [
+        "lint",
+        "test"
+      ]
+    },
+    "lint": {
+      "dependsOn": [
+        "lint.oxlint",
+        "lint.oxfmt"
+      ]
+    },
+    "lint.oxlint": {
+      "description": "oxlint with tsgolint-backed type-aware checks",
+      "exec": {
+        "command": "oxlint --type-aware --type-check",
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "*.ts",
+          "src/**",
+          "tests/**",
+          "package.json",
+          ".oxlintrc.json",
+          "tsconfig.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "lint.oxfmt": {
+      "description": "oxfmt --check (no rewrite; CI-safe)",
+      "exec": {
+        "command": "oxfmt --check .",
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "**/*",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test": {
+      "description": "bun test",
+      "exec": {
+        "command": "bun test --only-failures",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "tests/**",
+          "wrangler.jsonc",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": {
+        "files": [
+          "**"
+        ]
+      }
+    }
+  }
+}

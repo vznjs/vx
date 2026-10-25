@@ -180,6 +180,19 @@
         "turbo": "2.11.7",
       },
     },
+    "private/vx-cache-service": {
+      "name": "@vzn/vx-cache-service",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vzn/vx-cache-server": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+        "jose": "6.2.13",
+        "wrangler": "4.149.0",
+      },
+    },
     "private/vx-docs": {
       "name": "@vzn/vx-docs",
       "version": "0.0.0",
@@ -767,6 +780,8 @@
     "@vzn/vx-cache": ["@vzn/vx-cache@workspace:packages/vx-cache"],
 
     "@vzn/vx-cache-server": ["@vzn/vx-cache-server@workspace:packages/vx-cache-server"],
+
+    "@vzn/vx-cache-service": ["@vzn/vx-cache-service@workspace:private/vx-cache-service"],
 
     "@vzn/vx-ci": ["@vzn/vx-ci@workspace:packages/vx-ci"],
 
