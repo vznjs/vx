@@ -87,6 +87,22 @@ it('github({ runsOn }) names a size its runner; pnpm gets its setup step', async
   )
 })
 
+// A `: ` in a plain scalar made GitHub refuse the workflow (2026-10-25).
+it('writes workflows that parse as YAML', async () => {
+  await writeFile(path.join(root, 'bun.lock'), '')
+  expect(await init({ workers: sizes, adapter: github() })).toBe(0)
+  for (const file of [WORKFLOW, '.github/workflows/ci.yml']) {
+    const yml = await readFile(path.join(root, file), 'utf8')
+    expect(() => Bun.YAML.parse(yml)).not.toThrow()
+  }
+  const steps = (
+    Bun.YAML.parse(await readFile(path.join(root, WORKFLOW), 'utf8')) as {
+      jobs: { worker: { steps: { run?: string }[] } }
+    }
+  ).jobs.worker.steps
+  expect(steps.some((s) => s.run?.startsWith('jq -r'))).toBe(true)
+})
+
 // CI reads its files at the repository's root: a workspace in a
 // subdirectory got them in its own, which no CI reads (2026-10-25).
 it('writes the CI files at the repository’s root, running in the workspace’s directory', async () => {

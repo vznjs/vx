@@ -297,7 +297,8 @@ jobs:
       - uses: actions/checkout@v4
         with: { ref: '${{ inputs.sha }}' }
       - env: { HANDED: '${{ inputs.env }}' }
-        run: jq -r 'to_entries[] | if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.value | type == "string") and (.value | test("[\r\n]") | not) then "\(.key)=\(.value)" else error("env \(.key): a name, and a string of one line") end' <<<"$HANDED" >> "$GITHUB_ENV"
+        run: |
+          jq -r 'to_entries[] | if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.value | type == "string") and (.value | test("[\r\n]") | not) then "\(.key)=\(.value)" else error("env \(.key): a name, and a string of one line") end' <<<"$HANDED" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@v2
       # Every project: only pnpm selects by a git diff, as
       # `pnpm install --frozen-lockfile --filter "...[origin/main]"`
