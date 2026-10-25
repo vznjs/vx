@@ -100,7 +100,8 @@ if (import.meta.main) {
   const url = await relayFor(worker, deployed, {
     // The checkout is the PR's merge commit, one deep: its first parent is the base.
     async changed() {
-      const base = (await git('rev-parse', 'HEAD^1')).trim()
+      // One deep, the parent is not here; the commit still names it.
+      const base = /^parent ([0-9a-f]+)$/m.exec(await git('cat-file', '-p', 'HEAD'))![1]!
       await git('fetch', '-q', '--depth=1', 'origin', base)
       return (await git('diff', '--name-only', base, 'HEAD')).split('\n').filter((f) => f !== '')
     },
