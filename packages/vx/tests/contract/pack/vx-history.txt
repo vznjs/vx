@@ -3,6 +3,7 @@ README.md
 index.ts
 package.json
 schemas/history.json
+src/history-server.ts
 src/history-view.ts
 src/index.ts
 src/shared-timings.ts

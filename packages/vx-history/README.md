@@ -19,7 +19,7 @@ import { vxHistory } from '@vzn/vx-history'
 export default { plugins: [vxHistory()] }
 ```
 
-`vxHistory({ window?, assume?, file?, defaultBranch?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
+`vxHistory({ window?, assume?, file?, defaultBranch?, server?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
 
 `assume` is for the run that has no history: a fresh CI runner. It names durations (task id → ms) for tasks the history has not seen, so a long leaf task — a docs build, a cross-compile — starts first instead of last:
 
@@ -30,6 +30,26 @@ export default {
 ```
 
 A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. A duration that is not a finite non-negative number (`Number()` of an unset variable is NaN) is dropped with one warning naming its task ids; the rest still order the run. vx's own CI declares four, this one among them — its docs build was the 29 s tail of a 99 s cold gate, ready from the second second and started last (2026-09-10).
+
+## Timings from a history server
+
+`server` (or `VX_HISTORY_URL`) names a
+[`@vzn/vx-history-server`](https://github.com/vznjs/vx/tree/main/packages/vx-history-server).
+On a CI job with a token (GitHub's OIDC token, which needs
+`permissions: id-token: write`, or a GitLab `id_tokens` entry
+`VX_HISTORY_TOKEN` with the server's origin as `aud`), each run asks it
+for its tasks' numbers, by task definition, its branch's then trusted's.
+The run starts on its local history and re-ranks the tasks not yet
+started when they land; it never waits for them. At its end it sends the
+timings of the tasks it ran, once: under DTE that is the orchestrator,
+with each worker's measurements. A refusal is said with the server's
+words, and a CI job with no token says so once (on GitHub Actions,
+`GITHUB_ACTIONS`, naming the permission). With a server the cache blobs below are neither read nor written;
+off CI there is no token, and the run orders by local history alone.
+
+```ts
+export default { plugins: [vxHistory({ server: 'https://history.example.com' })] }
+```
 
 ## Timings through the cache
 

@@ -28,9 +28,16 @@
   "engines": {
     "bun": ">=1.4.4"
   },
+  "//": [
+    "@vzn/vx-history-server, @vzn/vx-devtools: the tests run the plugin against the real server, in process.",
+    "jose: the tests sign the CI tokens the server checks."
+  ],
   "devDependencies": {
     "@types/bun": "^1.4.0",
-    "@vzn/vx": "workspace:*"
+    "@vzn/vx": "workspace:*",
+    "@vzn/vx-history-server": "workspace:*",
+    "@vzn/vx-devtools": "workspace:*",
+    "jose": "6.2.13"
   },
   "publishConfig": {
     "access": "public"
