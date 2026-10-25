@@ -1,21 +1,26 @@
-// The relay a pull request's DTE run uses. Workers Builds makes a Preview
-// of this Worker for a branch whose push touches its watch paths
-// (README), from that commit's code: such a PR's run must use it, since
-// its client and the deployed relay may speak different protocols. Any
-// other PR keeps the deployed relay (owner, 2026-10-25: only when the PR
-// affects the relay). A push to main that changes the relay waits for its
-// deploy. CI runs it before the run; it outputs `url` when the run is to
-// use the Preview.
+// The relay a pull request's DTE run uses, or another of our Workers (the
+// cache server): `preview.ts [service dir] [env naming its URL]`, by
+// default this one and VX_DTE_RELAY. Workers Builds makes a Preview of a
+// Worker for a branch whose push touches its watch paths (its README),
+// from that commit's code: such a PR's run must use it, since its client
+// and the deployed Worker may speak different protocols. Any other PR
+// keeps the deployed one (owner, 2026-10-25: only when the PR affects
+// it). A push to main that changes it waits for its deploy. CI runs it
+// before the run; it outputs `url` when the run is to use the Preview.
 
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
 
-/** Workers Builds' watch paths for this Worker, as the dashboard holds them (README). */
-export const WATCH = ['packages/vx-dte-server/', 'private/vx-dte-service/', 'bun.lock']
+/** A Worker's watch paths, as the dashboard holds them: its README's `- Watch paths:` line. */
+export function watchOf(readme: string): string[] {
+  const line = readme.split('\n').find((l) => l.startsWith('- Watch paths:'))
+  if (line === undefined) throw new Error('the README names no `- Watch paths:`')
+  return [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1]!.replace(/\*$/, ''))
+}
 
 /** Whether Workers Builds builds a commit that changes `files`. */
-export function watched(files: readonly string[]): boolean {
-  return files.some((f) => WATCH.some((w) => (w.endsWith('/') ? f.startsWith(w) : f === w)))
+export function watched(watch: readonly string[], files: readonly string[]): boolean {
+  return files.some((f) => watch.some((w) => (w.endsWith('/') ? f.startsWith(w) : f === w)))
 }
 
 /**
@@ -57,14 +62,18 @@ const POLL_MS = 5_000
  * head's relay: Workers Builds skips a push that changes no watch path
  * (#4333's 67a4c46), so the head's relay may be an earlier commit's build.
  */
-async function build(name: string, deps: PreviewDeps): Promise<CheckRun | undefined> {
+async function build(
+  name: string,
+  watch: readonly string[],
+  deps: PreviewDeps,
+): Promise<CheckRun | undefined> {
   const commits = await deps.commits()
   for (const sha of commits) {
     const run = (await deps.checks(sha)).find(
       (r) => r.app?.slug === 'cloudflare-workers-and-pages' && r.name === name,
     )
     if (run === undefined) continue
-    return sha === commits[0] || !watched(await deps.since(sha)) ? run : undefined
+    return sha === commits[0] || !watched(watch, await deps.since(sha)) ? run : undefined
   }
   return undefined
 }
@@ -78,15 +87,16 @@ async function build(name: string, deps: PreviewDeps): Promise<CheckRun | undefi
  */
 export async function relayFor(
   worker: string,
+  watch: readonly string[],
   deployed: string,
   deps: PreviewDeps,
   main = false,
 ): Promise<string | undefined> {
-  if (!watched(await deps.changed())) return undefined
+  if (!watched(watch, await deps.changed())) return undefined
   const name = `Workers Builds: ${worker}`
   const end = deps.now() + WAIT_MS
   for (;;) {
-    const run = await build(name, deps)
+    const run = await build(name, watch, deps)
     if (run?.status === 'completed') {
       if (run.conclusion !== 'success') throw new Error(`${name} ended ${run.conclusion}`)
       if (main) return undefined
@@ -116,14 +126,17 @@ if (import.meta.main) {
     GH_TOKEN: token,
     VX_PR_HEAD: pr,
     GITHUB_SHA: pushed,
-    VX_DTE_RELAY: deployed,
   } = process.env
+  const dir = path.resolve(process.argv[2] ?? import.meta.dir)
+  const urlEnv = process.argv[3] ?? 'VX_DTE_RELAY'
+  const deployed = process.env[urlEnv]
   const head = pr || pushed
   if (!repo || !out || !token || !head || !deployed)
     throw new Error(
-      'needs GITHUB_REPOSITORY, GITHUB_OUTPUT, GH_TOKEN, VX_PR_HEAD or GITHUB_SHA, and VX_DTE_RELAY',
+      `needs GITHUB_REPOSITORY, GITHUB_OUTPUT, GH_TOKEN, VX_PR_HEAD or GITHUB_SHA, and ${urlEnv}`,
     )
-  const wrangler = await Bun.file(path.join(import.meta.dir, 'wrangler.jsonc')).text()
+  const wrangler = await Bun.file(path.join(dir, 'wrangler.jsonc')).text()
+  const watch = watchOf(await Bun.file(path.join(dir, 'README.md')).text())
   const worker = /"name":\s*"([^"]+)"/.exec(wrangler)![1]!
   const api = async <T>(route: string): Promise<T> => {
     const res = await fetch(`https://api.github.com/repos/${repo}/${route}`, {
@@ -142,6 +155,7 @@ if (import.meta.main) {
   }
   const url = await relayFor(
     worker,
+    watch,
     deployed,
     {
       async changed() {
@@ -167,6 +181,6 @@ if (import.meta.main) {
   )
   if (url !== undefined) {
     await appendFile(out, `url=${url}\n`)
-    console.log(`relay: ${worker}'s Preview of this commit, ${url}`)
-  } else console.log(`relay: the deployed one${pr ? '' : ", with this commit's relay"}`)
+    console.log(`${worker}: its Preview of this commit, ${url}`)
+  } else console.log(`${worker}: the deployed one${pr ? '' : ", with this commit's code"}`)
 }

@@ -13,6 +13,8 @@ on:
       sha: { required: true }
       size: { required: true }
       workers: { required: true }
+      # The variables the run hands its workers (github({ env })), as a JSON object.
+      env: { required: false, default: '{}' }
 
 permissions:
   contents: read
@@ -48,6 +50,11 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
+
+      - name: The run's variables
+        env:
+          HANDED: ${{ inputs.env }}
+        run: jq -r 'to_entries[] | "\(.key)=\(.value)"' <<<"$HANDED" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
