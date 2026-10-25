@@ -9,10 +9,9 @@ name: npm publish
 # over the OIDC exchange, which is why none is set — see the Publish steps).
 # The job requests an OIDC token (`id-token: write`) and npm (>= 11.5.1)
 # exchanges it for a short-lived, package-scoped credential + provenance.
-# Configure a Trusted Publisher on npmjs.com for EACH of the ELEVEN package
-# names (@vzn/vx, the four @vzn/vx-<target>, and the six plugins the
-# assemble step emits: vx-ci, vx-lockfile, vx-migrate, vx-otel,
-# vx-reapi, vx-history), linking this repo + this workflow.
+# Configure a Trusted Publisher on npmjs.com for EACH package name
+# (@vzn/vx, the four @vzn/vx-<target>, and every public packages/* the
+# assemble step emits), linking this repo + this workflow.
 #
 # Every step past the setup is a `release.*` vx task (packages/vx/
 # vx.config.ts, scripts/release.ts): CI runs vx tasks, not commands of its

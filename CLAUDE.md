@@ -91,12 +91,12 @@ packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fi
                         `lockfileClaim` (orchestrator/lockfile-claim.ts: memo, per-run gate, --affected diff).
                         This repo declares bun()
 packages/vx-cache-server  a cache server anyone hosts (PROTOCOL.md, /v1): one bucket, no database; Bun or Docker + S3,
-                        or Workers + R2, one handler, one conformance suite. Private until npm has it
+                        or Workers + R2, one handler, one conformance suite
 packages/vx-devtools    code vx's servers and plugins share, never core (M, 2026-10-25: core has nothing to do with
-                        OIDC): first the CI OIDC token check (TRUST, oidcAuth), only jose. Private until npm has it
+                        OIDC): first the CI OIDC token check (TRUST, oidcAuth), only jose
 packages/vx-history-server  the task timings vx-history reads, one folded row per task (PROTOCOL.md, /v1): Bun +
-                        SQLite, Workers + D1, or Docker. Private until npm has it
-packages/vx-cache       vxCache(): the remote cache, CI jobs only, over vx-cache-server's /v1 wire. Private until npm has it
+                        SQLite, Workers + D1, or Docker
+packages/vx-cache       vxCache(): the remote cache, CI jobs only, over vx-cache-server's /v1 wire
 private/vx-docs         Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts
 packages/vx-dte         distributed runs: `dte()` executor + `vx dte worker` over the relay, `local()` adapter
                         (workers in git worktrees). Private until npm has it

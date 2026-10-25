@@ -2,10 +2,10 @@
   "name": "@vzn/vx-devtools",
   "version": "0.0.0",
   "license": "MIT",
-  "private": true,
   "description": "Code vx's servers and plugins share, never core: first, the CI OIDC token check.",
   "keywords": [
     "vx",
+    "monorepo",
     "oidc",
     "ci"
   ],

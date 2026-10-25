@@ -186,6 +186,10 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
         { label: '@vzn/vx-otel', link: '/plugins/vx-otel/' },
         { label: '@vzn/vx-reapi', link: '/plugins/vx-reapi/' },
         { label: '@vzn/vx-history', link: '/plugins/vx-history/' },
+        { label: '@vzn/vx-cache', link: '/plugins/vx-cache/' },
+        { label: '@vzn/vx-cache-server', link: '/plugins/vx-cache-server/' },
+        { label: '@vzn/vx-history-server', link: '/plugins/vx-history-server/' },
+        { label: '@vzn/vx-devtools', link: '/plugins/vx-devtools/' },
       ],
     },
     {
