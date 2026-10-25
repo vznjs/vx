@@ -480,8 +480,9 @@ describe('config', () => {
     try {
       let down = 2
       const flaky: typeof fetch = Object.assign(
-        (input: RequestInfo | URL, init?: RequestInit) =>
-          String(input).endsWith('/v1/capabilities') && down-- > 0
+        (input: string | URL | Request, init?: RequestInit) =>
+          (input instanceof Request ? input.url : input.toString()).endsWith('/v1/capabilities') &&
+          down-- > 0
             ? Promise.resolve(new Response('restarting', { status: 503 }))
             : fetch(input, init),
         { preconnect: fetch.preconnect },
