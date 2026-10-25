@@ -1919,6 +1919,29 @@ describe('parseStraceViolations (the deny anchor and the dedup key)', () => {
     ])
   })
 
+  // A DTE worker quiet two heartbeats is lost: a test shard's trace of
+  // 44,788 calls held the loop 2.9 s and lost two workers (main, 2026-10-25).
+  it('lets the event loop turn while it judges a long trace', async () => {
+    const ws = path.join(dir, 'ws')
+    await mkdir(ws, { recursive: true })
+    const log = path.join(dir, 'trace.log')
+    await writeFile(log, Array.from({ length: 5000 }, (_, i) => at(`${ws}/m${i}.js`)).join('\n'))
+    // Counted by its hand-backs: turns of the loop while it reads the file
+    // say nothing about the judging after.
+    const yields = spyOn(globalThis, 'setImmediate')
+    try {
+      const produced = await parseStraceViolations(
+        log,
+        { command: 'x', cwd: ws, env: {}, config: resolveSandboxConfig({}, ws) } as never,
+        { allowRead: [], denyRead: [ws], cwd: ws },
+      )
+      expect(produced).toHaveLength(5000)
+      expect(yields.mock.calls.length).toBeGreaterThanOrEqual(5)
+    } finally {
+      yields.mockRestore()
+    }
+  })
+
   it('marks an openat ignorable by either list, since the trace lacks its flags', async () => {
     const ws = path.join(dir, 'ws')
     const produced = await produce(at(`${ws}/s.txt`))

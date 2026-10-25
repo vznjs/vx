@@ -331,6 +331,9 @@ export function deniedCalls(text: string, cwd?: string, reads = false): DeniedCa
   return out
 }
 
+/** Distinct calls `parseStraceViolations` judges between yields to the event loop. */
+const JUDGED_PER_TURN = 500
+
 export async function parseStraceViolations(
   logPath: string,
   args: SandboxedRunArgs,
@@ -386,12 +389,21 @@ export async function parseStraceViolations(
   }
 
   const seen = new Set<string>()
+  const judged = new Set<string>()
   const out: SandboxViolation[] = []
   for (const { syscall, rawPath, errno, dir, read } of deniedCalls(
     text,
     baselines.cwd,
     widened.size > 0,
   )) {
+    // A suite's log repeats a call by the thousand, each judged by sync
+    // stats: a test shard's 44,788 calls held the event loop 2.9 s, and a
+    // DTE worker that quiet for two heartbeats was lost (main, 2026-10-25).
+    // Each call is judged once, and the loop yields between batches.
+    const call = `${syscall}\0${rawPath}\0${dir}\0${errno}\0${read}`
+    if (judged.has(call)) continue
+    judged.add(call)
+    if (judged.size % JUDGED_PER_TURN === 0) await new Promise((r) => setImmediate(r))
     const lexical = absolutize(rawPath, dir ?? baselines.cwd)
     const abs = toRealPath(lexical)
     // Only report paths under the workspace-root deny anchor — system
