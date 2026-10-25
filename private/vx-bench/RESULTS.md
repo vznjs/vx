@@ -12,22 +12,22 @@
 
 ## Overhead (measured minus ideal)
 
-| Runner | Version | Warm overhead | Restore overhead | Cold overhead |
-| --- | --- | --- | --- | --- |
-| vx | vx 0.0.0 @ 9abdfb52c | 799 ms | 1.28 s | 7.57 s |
-| turbo | 2.11.10 | 927 ms | 2.01 s | 9.63 s |
-| nx | 24.0.1 | 24.15 s | 24.45 s | 3m 6s |
-| vite-task | 1.4.0 | 12.07 s | 11.86 s | 9.01 s |
+| Runner    | Version              | Warm overhead | Restore overhead | Cold overhead |
+| --------- | -------------------- | ------------- | ---------------- | ------------- |
+| vx        | vx 0.0.0 @ 9abdfb52c | 799 ms        | 1.28 s           | 7.57 s        |
+| turbo     | 2.11.10              | 927 ms        | 2.01 s           | 9.63 s        |
+| nx        | 24.0.1               | 24.15 s       | 24.45 s          | 3m 6s         |
+| vite-task | 1.4.0                | 12.07 s       | 11.86 s          | 9.01 s        |
 
 ## Wall time (warm, restore)
 
-| Runner | Warm | Restore | CPU, cold | CPU, warm |
-| --- | --- | --- | --- | --- |
-| ideal | 0 ms | 0 ms | 27.51 s | 0 ms |
-| vx | 799 ms | 1.28 s | 1m 4s | 1.28 s |
-| turbo | 927 ms | 2.01 s | 1m 40s | 1.96 s |
-| nx | 24.15 s | 24.45 s | 6m 1s | 30.42 s |
-| vite-task | 12.07 s | 11.86 s | 52.83 s | 11.98 s |
+| Runner    | Warm    | Restore | CPU, cold | CPU, warm |
+| --------- | ------- | ------- | --------- | --------- |
+| ideal     | 0 ms    | 0 ms    | 27.51 s   | 0 ms      |
+| vx        | 799 ms  | 1.28 s  | 1m 4s     | 1.28 s    |
+| turbo     | 927 ms  | 2.01 s  | 1m 40s    | 1.96 s    |
+| nx        | 24.15 s | 24.45 s | 6m 1s     | 30.42 s   |
+| vite-task | 12.07 s | 11.86 s | 52.83 s   | 11.98 s   |
 
 **Ideal** is the theoretical best case: cold is the tasks' own durations
 list-scheduled critical-path first on 10 workers (critical path
