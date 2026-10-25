@@ -72,7 +72,8 @@ runs here as always (on GitHub Actions, `github()` with a relay names one
 itself). It is a random UUID, so no one can guess a run to
 open it first or join it; vx and the relay refuse any other. `local()` starts each worker as a process in its own
 git worktree of the tracked files as they are, uncommitted changes
-included (untracked files are not: a task that keys one fails). When a worker fails, its row names
+included (untracked files are not: a task that keys one fails), at the
+workspace's place in it (a workspace in a subdirectory of its repository too). When a worker fails, its row names
 the error line and the log that holds its whole stderr. At the run's end,
 or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
 a detached shell removes them and prunes git's records.
