@@ -382,7 +382,7 @@ it('plans 9000 ready tasks of mixed needs in seconds of CPU, not minutes', () =>
   plan(tasks, [], sizes, 3000)
   const { user, system } = process.cpuUsage(start)
   expect((user + system) / 1000).toBeLessThan(5000)
-})
+}, 60_000)
 
 // 2026-10-25: measured needs are unrounded, so every task can be its own
 // kind; read kind by kind, a plan of 1000 took 37 s. Read task by task,
@@ -400,4 +400,5 @@ it('plans 9000 ready tasks each of its own need in seconds of CPU', () => {
   plan(tasks, [], sizes, 3000)
   const { user, system } = process.cpuUsage(start)
   expect((user + system) / 1000).toBeLessThan(8000)
-})
+  // CPU is the guard; the wall clock of a loaded runner is not (2.2 s here, over 5 s on CI).
+}, 60_000)
