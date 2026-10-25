@@ -36,7 +36,7 @@ export interface Env {
   readonly MAX_ARTIFACT_BYTES?: string
 }
 
-export function d1Db(d1: D1Database): Db {
+function d1Db(d1: D1Database): Db {
   return {
     all: async <T>(sql: string, params: readonly unknown[]) =>
       (
@@ -58,7 +58,7 @@ export function d1Db(d1: D1Database): Db {
   }
 }
 
-export function r2Blobs(bucket: R2Bucket): Blobs {
+function r2Blobs(bucket: R2Bucket): Blobs {
   return {
     async put(name, body, size) {
       // R2 takes a stream of known length; this one errors at any other.

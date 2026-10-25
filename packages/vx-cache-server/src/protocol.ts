@@ -94,7 +94,3 @@ export function parseReadScopes(value: string | null): string[] {
   }
   return out
 }
-
-/** `Vx-Read-Scopes` for `refs`, as a client sends it. */
-export const formatReadScopes = (refs: readonly string[]): string =>
-  refs.map((r) => `"${r.replace(/[\\"]/g, '\\$&')}"`).join(', ')
