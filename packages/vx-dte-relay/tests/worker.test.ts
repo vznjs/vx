@@ -54,9 +54,12 @@ function namespace(env: () => Env): DurableObjectNamespace & { made: string[] } 
 const join = (env: Env, run: string, token?: string, origin = 'https://relay.example.com') =>
   worker.fetch(
     // No upgrade: Bun makes no 101, and each refusal here comes before one.
-    new Request(`${origin}/sessions/${run}/socket?join=${encodeURIComponent('{"role":"peer"}')}`, {
-      headers: token === undefined ? {} : { authorization: `Bearer ${token}` },
-    }),
+    new Request(
+      `${origin}/v1/sessions/${run}/socket?join=${encodeURIComponent('{"role":"peer"}')}`,
+      {
+        headers: token === undefined ? {} : { authorization: `Bearer ${token}` },
+      },
+    ),
     env,
   )
 

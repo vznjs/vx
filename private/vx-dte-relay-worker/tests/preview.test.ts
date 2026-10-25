@@ -109,6 +109,25 @@ describe('the relay a PR’s run uses', () => {
     expect(d.slept).toBe(1)
   })
 
+  // 0dccec2's run dialed the old relay 38 s before its deploy landed.
+  it('keeps the deployed relay on main once its deploy of the commit ends', async () => {
+    const production = SUMMARY.replace('/previews/feat-relay', '')
+    const d = deps(
+      ['packages/vx-dte-relay/src/relay.ts'],
+      [
+        async () => [],
+        check('in_progress', null, production),
+        check('completed', 'success', production),
+      ],
+    )
+    expect(await relayFor('vx-dte-relay', DEPLOYED, d, true)).toBeUndefined()
+    expect(d.slept).toBe(2)
+    const failed = deps(['bun.lock'], [check('completed', 'failure', production)])
+    await expect(relayFor('vx-dte-relay', DEPLOYED, failed, true)).rejects.toThrow(
+      'Workers Builds: vx-dte-relay ended failure',
+    )
+  })
+
   it('serves the Preview its check names beside the deployed Worker', () => {
     expect(previewUrl(SUMMARY, DEPLOYED)).toBe(
       'https://feat-relay-vx-dte-relay.exelord.workers.dev',

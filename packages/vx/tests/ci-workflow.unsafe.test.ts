@@ -104,10 +104,12 @@ describe('ci.yml', () => {
   // A PR that changes the relay runs on its own relay code, Workers Builds'
   // Preview of its commit; the rest keep the deployed one (owner,
   // 2026-10-25). Before the run, on a PR only.
-  it('points a PR’s run at the relay Preview before it runs', () => {
+  it('points a PR’s run at the relay Preview, and main’s at its deploy, before it runs', () => {
     const steps = doc.jobs['linux']!.steps!
     const at = steps.findIndex((s) => s.run === 'bun private/vx-dte-relay-worker/preview.ts')
-    expect(steps[at]?.if).toBe("github.event_name == 'pull_request'")
+    expect(steps[at]?.if).toBe(
+      "github.event_name == 'pull_request' || github.ref == 'refs/heads/main'",
+    )
     const run = steps.find((s) => s.run?.includes('bin.ts run ') === true)!
     expect(at).toBeLessThan(steps.indexOf(run))
     expect(steps[at]?.id).toBe('relay')

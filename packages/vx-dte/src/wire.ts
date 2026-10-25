@@ -167,7 +167,7 @@ export async function join(
   /** A function is asked again for a token about to expire: GitHub's last 5 minutes. */
   token: string | undefined | (() => Promise<string | undefined>),
 ): Promise<Participant> {
-  const base = `${relay.replace(/\/+$/, '')}/sessions/${encodeURIComponent(run)}/`
+  const base = `${relay.replace(/\/+$/, '')}/v1/sessions/${encodeURIComponent(run)}/`
   const auth = bearer(token)
   // The orchestrator signs each request by a key the relay keeps from its join.
   const prover =

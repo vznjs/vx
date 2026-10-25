@@ -54,7 +54,7 @@ export interface Env {
   readonly AUDIENCE?: string
 }
 
-const SESSION = /^\/sessions\/([^/]+)\//
+const SESSION = /^\/v1\/sessions\/([^/]+)\//
 
 /** How long the data center's cache holds an issuer's keys for the next isolate. */
 const KEYS_TTL_S = 600
