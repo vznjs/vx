@@ -2056,12 +2056,6 @@ function sandboxConfigs(nodes: ReadonlyMap<string, TaskNode> | undefined): Sandb
 }
 
 /**
- * Every task `id` depends on, transitively, each after its own
- * dependencies: the order a worker restores them in. Dependant first, an
- * additive task's rewrite of its upstream's file was undone by the
- * upstream's restore, and its dependants read the old bytes (2026-10-25).
- */
-/**
  * An uncached task that may leave files its dependants read: no cache
  * carries them. A sandboxed one writes only where its grants say; with
  * none (a gate like a lint or a version check) it leaves nothing, and
@@ -2073,6 +2067,12 @@ function leaves(node: TaskNode): boolean {
   return sandbox === undefined || (sandbox.allow?.write?.length ?? 0) > 0
 }
 
+/**
+ * Every task `id` depends on, transitively, each after its own
+ * dependencies: the order a worker restores them in. Dependant first, an
+ * additive task's rewrite of its upstream's file was undone by the
+ * upstream's restore, and its dependants read the old bytes (2026-10-25).
+ */
 function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string): Set<string> {
   const seen = new Set<string>()
   const out = new Set<string>()
