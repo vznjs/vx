@@ -10,7 +10,7 @@ internal. This is the **cross-package contract**: the plugin packages
 any third-party plugin import everything they need from here via the
 bare `'@vzn/vx'` specifier — never a deep `src/...` path
 (`tests/package-boundaries.unsafe.test.ts` pins it). The runtime symbol
-set (53 names) is pinned by the same test; widening it is a deliberate
+set (54 names) is pinned by the same test; widening it is a deliberate
 snapshot update. A seam with no consumer leaves the façade — the graph
 primitives, the hashing seam, the event bus wire form and the
 run-history readers went on 2026-09-10 — and is re-added, shaped by its
