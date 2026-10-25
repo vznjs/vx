@@ -1,10 +1,16 @@
-// @vzn/vx-cache-server: a cache and run-history server for vx, on Bun with
+// @vzn/vx-cache-server: a remote cache and scheduling-history server for vx, on Bun with
 // an S3-compatible bucket or on Cloudflare Workers with D1 and R2.
 
-export { type Access, type Authorize, parseTokens, tokenAuth } from './auth.js'
 export { evict, type Retention, retentionFrom } from './evict.js'
-export { anyAuth, oidcAuth, type OidcOptions, parseTrust, type TrustRule } from './oidc.js'
-export { DURATION_HEADER, READ_SCOPES_HEADER } from './protocol.js'
+export {
+  type Access,
+  type Authorize,
+  oidcAuth,
+  type OidcOptions,
+  parseTrust,
+  type TrustRule,
+} from './oidc.js'
+export { READ_SCOPES_HEADER } from './protocol.js'
 export { createCacheServer, type ServerOptions } from './server.js'
 export { postgresStore } from './postgres.js'
 export { type Blobs, type Db, sqliteStore, type Store } from './store.js'

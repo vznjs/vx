@@ -1,20 +1,24 @@
 // @vzn/vx-cache — `vxCache()`, a vx `cache` plugin for a server that speaks
 // the vx-cache protocol (`@vzn/vx-cache-server`, its PROTOCOL.md, /v1).
-// Nothing is on by default: declare it in `.vx/workspace.ts`, with the
-// server's URL and a token. With no URL or token it declines and the run
-// stays local. It also keeps the run history there: a CI run's task
-// timings are written after it, and every run orders its tasks by the
-// critical path those timings give. Imports core only through `@vzn/vx`.
+// Nothing is on by default: declare it in `.vx/workspace.ts` with the
+// server's URL. It serves CI jobs only: every request carries the job's
+// OIDC token, and off CI it declines with one note. It also keeps the
+// timings a scheduler needs: each task a run ran is timed on the server,
+// and every run orders its tasks by the critical path those timings give.
+// Imports core only through `@vzn/vx`.
 
 import {
   type ArtifactInfo,
   definePlugin,
   type LentAccess,
+  LocalHistoryProvider,
   type PluginOptionKinds,
   refuseUnknownOptions,
   type RemoteCacheLayer,
   type TaskNode,
   type TaskOutcome,
+  type TaskResources,
+  taskDefinitions,
   type VxPlugin,
 } from '@vzn/vx'
 import { criticalPath } from '@vzn/vx-schedule-history'
@@ -22,29 +26,27 @@ import { criticalPath } from '@vzn/vx-schedule-history'
 export interface VxCacheOptions {
   /** The server's base URL (`https://cache.example.com`), or `VX_CACHE_URL`. */
   url?: string
-  /** The bearer token every request carries, or `VX_CACHE_TOKEN`. */
-  token?: string
   /** Per-request deadline for reads and queries (default 30 s). */
   timeoutMs?: number
   /** … and for an upload (default 60 s). */
   uploadTimeoutMs?: number
-  /** Write CI runs' task timings and order tasks by them (default true). */
-  history?: boolean
-  /**
-   * On GitHub Actions, send the job's OIDC token (for the server's origin
-   * as audience) in place of `token`, so the server decides where it
-   * writes: trusted, or the job's branch (default false).
-   */
-  oidc?: boolean
 }
 
 const KEYS: PluginOptionKinds<VxCacheOptions> = {
   url: 'string',
-  token: 'string',
   timeoutMs: 'number',
   uploadTimeoutMs: 'number',
-  history: 'boolean',
-  oidc: 'boolean',
+}
+
+/** What a run that ran a task learned of it: what the server keeps. */
+export interface Timing {
+  /** The task's definition hash (`taskDefinitions`). */
+  hash: string
+  durationMs: number
+  /** CPU cores it kept busy on average. */
+  cores?: number
+  /** Its peak memory. */
+  rssBytes?: number
 }
 
 /** A JWT's `exp`, in ms, or 0 when it has none. */
@@ -61,24 +63,23 @@ function expiryOf(jwt: string): number {
   }
 }
 
-/** One task of a run, as `POST /v1/runs` takes it. */
-export interface RunTask {
-  task: string
-  key?: string
-  durationMs: number
-  exitCode: number
-  cached: boolean
-  startedAt?: number
-}
-
 /** A lent token ending sooner than this is asked again first, so a request never carries a spent one. */
 const LEND_MARGIN_MS = 5 * 60_000
-/** Hashes one batch query carries (the server's cap). */
+/** Hashes one check or timings query carries (the server's cap). */
 const QUERY_MAX = 1000
-/** Tasks one history query carries (the protocol's cap). */
-const TASKS_MAX = 1000
+/** Uploads open at once; more wait. */
+const IN_FLIGHT = 4
+/** Waiting uploads go as one batch only when more than this many wait. */
+const BATCH_OVER = 2
+/** Timings one upload's line carries (the server's cap). */
+const LINE_TIMINGS_MAX = 1000
+/** Timings one `POST /v1/timings/upload` carries (the server's cap). */
+const TIMINGS_MAX = 20_000
+/** Timings asked per task: the newest few, trusted first. */
+const TIMINGS_LIMIT = 5
 /** Refs one read names (the protocol's cap). */
 const READ_SCOPES_MAX = 8
+const BATCH_TYPE = 'application/vnd.vx-cache.batch'
 
 /** `x-artifact-read-scopes`: an RFC 8941 list of strings. */
 function readScopes(refs: readonly string[]): Record<string, string> {
@@ -88,7 +89,7 @@ function readScopes(refs: readonly string[]): Record<string, string> {
     : { 'x-artifact-read-scopes': list.map((r) => `"${r.replace(/[\\"]/g, '\\$&')}"`).join(', ') }
 }
 
-/** A refusal, named by its status and the server's own `message` (Turbo's spec's `Error`). */
+/** A refusal, named by its status and the server's own `message`. */
 async function refusal(res: Response): Promise<Error> {
   let said = ''
   try {
@@ -113,21 +114,83 @@ function deadline(ms: number): AbortSignal {
   return controller.signal
 }
 
-const durationOf = (header: string | null): number | undefined => {
-  const n = Number(header)
-  return header !== null && header !== '' && Number.isFinite(n) && n >= 0 ? n : undefined
+interface Waiting<T, R> {
+  readonly item: T
+  resolve(r: R): void
+  reject(err: unknown): void
 }
 
-const infoOf = (size: number | undefined, durationMs: number | undefined): ArtifactInfo => ({
-  ...(size === undefined ? {} : { size }),
-  ...(durationMs === undefined ? {} : { durationMs }),
-})
+/**
+ * Uploads: up to `IN_FLIGHT` requests at once, each of one artifact while
+ * few wait, and of a batch once more than `BATCH_OVER` do.
+ */
+class Lane<T, R> {
+  private readonly waiting: Waiting<T, R>[] = []
+  private open = 0
+
+  constructor(
+    /** Takes the batch from the front of `waiting`: at least one. */
+    private readonly take: (waiting: Waiting<T, R>[]) => Waiting<T, R>[],
+    private readonly send: (batch: Waiting<T, R>[]) => Promise<void>,
+  ) {}
+
+  push(item: T): Promise<R> {
+    const { promise, resolve, reject } = Promise.withResolvers<R>()
+    this.waiting.push({ item, resolve, reject })
+    this.pump()
+    return promise
+  }
+
+  private pump(): void {
+    while (this.open < IN_FLIGHT && this.waiting.length > 0) {
+      const batch =
+        this.waiting.length > BATCH_OVER ? this.take(this.waiting) : this.waiting.splice(0, 1)
+      this.open++
+      void this.send(batch)
+        .catch((err: unknown) => {
+          for (const w of batch) w.reject(err)
+        })
+        .finally(() => {
+          this.open--
+          this.pump()
+        })
+    }
+  }
+}
+
+/** The batch limits a server named on a check (`x-vx-max-*`). */
+interface Limits {
+  readonly maxBatchArtifacts: number
+  readonly maxUploadBytes: number
+}
 
 /**
- * The seam: `has` is HEAD, `hasMany` the batch query, `get`/`put`
- * carry `x-artifact-duration`. A refused token (401/403) throws once, for core to
- * report, and turns the layer off for the run; an upload's 403 turns off
- * uploads alone (a read token).
+ * The front of `waiting` within the server's `limits`, at least one; one
+ * alone while the server has named none.
+ */
+function takeBatch<T, R>(
+  waiting: Waiting<T, R>[],
+  limits: Limits | undefined,
+  size: (item: T) => number,
+): Waiting<T, R>[] {
+  if (limits === undefined) return waiting.splice(0, 1)
+  let n = 0
+  let bytes = 0
+  while (n < waiting.length && n < limits.maxBatchArtifacts) {
+    const s = size(waiting[n]!.item)
+    if (n > 0 && bytes + s > limits.maxUploadBytes) break
+    bytes += s
+    n++
+  }
+  return waiting.splice(0, Math.max(1, n))
+}
+
+/**
+ * The seam over vx-cache v1. `has` and `hasMany` are `check`, `get` a
+ * download and `put` an upload, alone or in a batch (`Lane`). A
+ * refused token (401/403) throws once, for core to report, and turns the
+ * layer off for the run; an upload's 403 turns off writes alone (a job
+ * that reads only).
  */
 export class VxCacheLayer implements RemoteCacheLayer {
   readonly endpoint: string
@@ -135,6 +198,18 @@ export class VxCacheLayer implements RemoteCacheLayer {
   private writesRefused = false
   /** Headers every read carries: the refs it may be answered from. */
   reads: Record<string, string> = {}
+  /** The batch limits the server named on its last check; none until then, so nothing is guessed. */
+  private limits: Limits | undefined
+  /** Where the layer says what is no failure of a request: core's `ctx.warn`. */
+  warn: (message: string) => void = () => {}
+  private limitsMissing = false
+  /** Timings not yet sent: each upload's line carries them, and `flushTimings` the rest. */
+  private pending: Timing[] = []
+
+  private readonly uploads = new Lane<{ hash: string; body: Blob }, void>(
+    (w) => takeBatch(w, this.limits, (x) => x.body.size),
+    (batch) => this.upload(batch),
+  )
 
   constructor(
     private readonly config: Required<VxCacheOptions>,
@@ -148,33 +223,31 @@ export class VxCacheLayer implements RemoteCacheLayer {
   /** The token a run running its tasks here lent (`CacheContext.lent`). */
   lent: (() => string | undefined) | undefined
 
-  /** The job's own OIDC token: with `oidc`, on GitHub Actions. */
-  private get ownOidc(): boolean {
-    const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: auth } = this.env
-    return this.config.oidc && !!url && !!auth
+  /** On GitHub Actions with `id-token: write`: the job's token is asked for. */
+  private get github(): boolean {
+    return !!this.env.ACTIONS_ID_TOKEN_REQUEST_URL && !!this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
   }
 
   /**
-   * The bearer: the job's OIDC token with `oidc` on GitHub Actions, asked
-   * again a minute before it ends, else `token`. A token GitHub would not
-   * give throws once, and the layer turns off.
-   * A token the run lent beats both: a job of another workflow writes
-   * nowhere the run reads.
+   * The bearer: a token the run lent, else the job's GitHub OIDC token for
+   * the server's origin, asked again a minute before it ends, else
+   * `VX_CACHE_TOKEN` (GitLab's `id_tokens`). A lent token beats the job's
+   * own: a job of another workflow writes nowhere the run reads. A token
+   * GitHub would not give throws once, and the layer turns off.
    */
   private async bearer(marginMs = 60_000): Promise<string> {
     const lent = this.lent?.()
-    if (!this.ownOidc) return this.config.token !== '' ? this.config.token : (lent ?? '')
     if (lent !== undefined) return lent
-    const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: auth } = this.env
+    if (!this.github) return this.env.VX_CACHE_TOKEN ?? ''
     if (this.idToken !== undefined && Date.now() < this.idToken.exp - marginMs) {
       return this.idToken.jwt
     }
-    const ask = new URL(url!)
+    const ask = new URL(this.env.ACTIONS_ID_TOKEN_REQUEST_URL!)
     ask.searchParams.set('audience', new URL(this.config.url).origin)
     let jwt: unknown
     try {
       const res = await this.fetchImpl(ask, {
-        headers: { authorization: `bearer ${auth!}` },
+        headers: { authorization: `bearer ${this.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN!}` },
         signal: deadline(this.config.timeoutMs),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -191,26 +264,23 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   /**
-   * This job's OIDC token, for a job that runs this run's tasks
+   * This job's token, for a job that runs this run's tasks
    * (`RemoteCacheLayer.lend`): its writes land where this run reads them.
-   * Asked again when it ends within five minutes. A static token, or one
-   * lent to this job, is never lent.
+   * GitHub's is asked again when it ends within five minutes. A token lent
+   * to this job is never lent on.
    */
   async lend(): Promise<LentAccess | undefined> {
-    if (!this.ownOidc || this.lent?.() !== undefined) return undefined
+    if (this.lent?.() !== undefined) return undefined
     const jwt = await this.bearer(LEND_MARGIN_MS)
-    return { token: jwt, expiresAt: this.idToken!.exp - LEND_MARGIN_MS }
-  }
-
-  /** Whether the run history is kept: `history` in the options. */
-  get history(): boolean {
-    return this.config.history
+    if (jwt === '') return undefined
+    const exp = this.github ? this.idToken!.exp : expiryOf(jwt)
+    return { token: jwt, ...(exp === 0 ? {} : { expiresAt: exp - LEND_MARGIN_MS }) }
   }
 
   private async request(
-    method: string,
     path: string,
     init: {
+      method?: string
       body?: Blob | string
       headers?: Record<string, string>
       timeoutMs?: number
@@ -218,7 +288,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     } = {},
   ): Promise<Response | undefined> {
     const res = await this.fetchImpl(`${this.config.url}${path}`, {
-      method,
+      method: init.method ?? 'POST',
       headers: { authorization: `Bearer ${await this.bearer()}`, ...init.headers },
       ...(init.body === undefined ? {} : { body: init.body }),
       signal: deadline(init.timeoutMs ?? this.config.timeoutMs),
@@ -226,9 +296,10 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (init.write === true && res.status === 403) {
       const first = !this.writesRefused
       this.writesRefused = true
+      this.pending = []
       if (!first) return undefined
       throw new Error(
-        `${(await refusal(res)).message}: the write was refused (a read token); writes off for this run, reads go on`,
+        `${(await refusal(res)).message}: the write was refused (this job reads only); writes off for this run, reads go on`,
       )
     }
     if (res.status === 401 || res.status === 403) {
@@ -242,248 +313,309 @@ export class VxCacheLayer implements RemoteCacheLayer {
     return res
   }
 
-  async has(hash: string): Promise<ArtifactInfo | null> {
-    if (this.disabled) return null
-    const res = await this.request('HEAD', `/v1/artifacts/${hash}`, { headers: this.reads })
-    if (res === undefined || res.status === 404) return null
-    if (res.status !== 200) throw new Error(`HTTP ${res.status}`)
-    return infoOf(
-      durationOf(res.headers.get('content-length')),
-      durationOf(res.headers.get('x-artifact-duration')),
-    )
+  private json(path: string, body: unknown, write = false): Promise<Response | undefined> {
+    return this.request(path, {
+      body: JSON.stringify(body),
+      headers: { 'content-type': 'application/json', ...(write ? {} : this.reads) },
+      ...(write ? { write, timeoutMs: this.config.uploadTimeoutMs } : {}),
+    })
   }
 
-  async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null> {
+  async has(hash: string): Promise<ArtifactInfo | null> {
+    return (await this.hasMany([hash])).get(hash) ?? null
+  }
+
+  async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo>> {
     if (this.disabled) return new Map()
     const parts = await Promise.all(
       Array.from({ length: Math.ceil(hashes.length / QUERY_MAX) }, (_, i) =>
-        this.query(hashes.slice(i * QUERY_MAX, (i + 1) * QUERY_MAX)),
+        this.check(hashes.slice(i * QUERY_MAX, (i + 1) * QUERY_MAX)),
       ),
     )
     return new Map(parts.flatMap((p) => [...p]))
   }
 
-  private async query(keys: readonly string[]): Promise<Map<string, ArtifactInfo>> {
-    const res = await this.request('POST', '/v1/artifacts', {
-      body: JSON.stringify({ hashes: keys }),
-      headers: { 'content-type': 'application/json', ...this.reads },
-    })
+  /** `POST /v1/artifacts/check`: each held hash's size. */
+  private async check(hashes: readonly string[]): Promise<Map<string, ArtifactInfo>> {
+    const res = await this.json('/v1/artifacts/check', { hashes })
     if (res === undefined) return new Map()
     if (res.status !== 200) throw await refusal(res)
+    this.readLimits(res)
     const body = (await res.json()) as unknown
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-      throw new Error('the batch query answered no object')
+      throw new Error('the check answered no object')
     }
     const held = new Map<string, ArtifactInfo>()
-    for (const key of keys) {
-      const v = (body as Record<string, { size?: unknown; taskDurationMs?: unknown }>)[key]
-      // `null`: not held; `{ error }`: unknown, read as a miss.
-      if (typeof v !== 'object' || v === null || typeof v.size !== 'number') continue
-      const num = (n: unknown) => (typeof n === 'number' && n >= 0 ? n : undefined)
-      held.set(key, infoOf(num(v.size), num(v.taskDurationMs)))
+    for (const hash of hashes) {
+      const size = (body as Record<string, { size?: unknown } | null>)[hash]?.size
+      if (typeof size !== 'number' || size < 0) continue
+      held.set(hash, { size })
     }
     return held
   }
 
-  async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null> {
+  /** A check's `x-vx-max-*` headers; missing or bad, said once, and uploads stay one at a time. */
+  private readLimits(res: Response): void {
+    const read = (name: string): number | undefined => {
+      const n = Number(res.headers.get(name) ?? NaN)
+      return Number.isSafeInteger(n) && n > 0 ? n : undefined
+    }
+    const maxBatchArtifacts = read('x-vx-max-batch-artifacts')
+    const maxUploadBytes = read('x-vx-max-upload-bytes')
+    if (maxBatchArtifacts !== undefined && maxUploadBytes !== undefined) {
+      this.limits = { maxBatchArtifacts, maxUploadBytes }
+    } else if (!this.limitsMissing) {
+      this.limitsMissing = true
+      this.warn(
+        `[vx] vx-cache: the check (HTTP ${res.status}) named no batch limits (x-vx-max-batch-artifacts, x-vx-max-upload-bytes); uploads go one at a time`,
+      )
+    }
+  }
+
+  async get(hash: string): Promise<{ body: Response; durationMs: undefined } | null> {
     if (this.disabled) return null
-    const res = await this.request('GET', `/v1/artifacts/${hash}`, { headers: this.reads })
+    const res = await this.request(`/v1/artifacts/download/${hash}`, {
+      method: 'GET',
+      headers: this.reads,
+    })
     if (res === undefined) return null
     if (res.status === 404) {
       await res.body?.cancel()
       return null
     }
     if (res.status !== 200) throw await refusal(res)
-    return { body: res, durationMs: durationOf(res.headers.get('x-artifact-duration')) }
-  }
-
-  async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
-    if (this.disabled || this.writesRefused) return
-    const res = await this.request('PUT', `/v1/artifacts/${hash}`, {
-      body,
-      headers: {
-        'content-type': 'application/octet-stream',
-        'content-length': String(body.size),
-        'x-artifact-duration': String(Math.max(0, Math.round(meta.durationMs))),
-      },
-      timeoutMs: this.config.uploadTimeoutMs,
-      write: true,
-    })
-    if (res === undefined) return
-    // 202 (or the spec's 200): stored, or already held.
-    if (!res.ok) throw await refusal(res)
-  }
-
-  /** `POST /v1/runs`: one run and its tasks, in the token's scope. */
-  async putRun(run: {
-    id: string
-    startedAt: number
-    durationMs: number
-    tasks: readonly RunTask[]
-  }): Promise<void> {
-    if (this.disabled || this.writesRefused) return
-    const res = await this.request('POST', '/v1/runs', {
-      body: JSON.stringify(run),
-      headers: { 'content-type': 'application/json' },
-      timeoutMs: this.config.uploadTimeoutMs,
-      write: true,
-    })
-    if (res === undefined) return
-    if (!res.ok) throw await refusal(res)
+    return { body: res, durationMs: undefined }
   }
 
   /**
-   * Each task's median duration over its newest runs in the read scopes
-   * (`POST /v1/tasks/query`), failed runs left out; a task no run holds
-   * is absent.
+   * An artifact over the server's upload limit is not sent: it is said,
+   * and the task's timing still goes.
    */
-  async medians(tasks: readonly string[]): Promise<Map<string, number>> {
+  async put(hash: string, body: Blob, _meta: { durationMs: number }): Promise<void> {
+    if (this.disabled || this.writesRefused) return
+    const max = this.limits?.maxUploadBytes
+    if (max !== undefined && body.size > max) {
+      this.warn(
+        `[vx] vx-cache: ${hash} is ${body.size} bytes, over the server's upload limit of ${max}: not uploaded`,
+      )
+      return
+    }
+    await this.uploads.push({ hash, body })
+  }
+
+  /**
+   * A batch of more than `BATCH_OVER` asks `check` first and sends only the
+   * missing; fewer go straight, and the server answers an upload of held
+   * ones before reading its bytes. The pending timings ride along.
+   */
+  private async upload(batch: Waiting<{ hash: string; body: Blob }, void>[]): Promise<void> {
+    let send = batch
+    if (batch.length > BATCH_OVER) {
+      const held = await this.check(batch.map((w) => w.item.hash))
+      send = batch.filter((w) => !held.has(w.item.hash))
+      for (const w of batch) if (held.has(w.item.hash)) w.resolve()
+      if (send.length === 0) return
+    }
+    const timings = this.pending.splice(0, LINE_TIMINGS_MAX)
+    const line = JSON.stringify({
+      artifacts: send.map((w) => ({ hash: w.item.hash, size: w.item.body.size })),
+      ...(timings.length === 0 ? {} : { timings }),
+    })
+    try {
+      const res = await this.request('/v1/artifacts/upload', {
+        body: new Blob([`${line}\n`, ...send.map((w) => w.item.body)]),
+        headers: { 'content-type': BATCH_TYPE },
+        timeoutMs: this.config.uploadTimeoutMs,
+        write: true,
+      })
+      if (res !== undefined && !res.ok) throw await refusal(res)
+    } catch (err) {
+      if (!this.writesRefused) this.pending.unshift(...timings)
+      throw err
+    }
+    for (const w of send) w.resolve()
+  }
+
+  /** Keeps a timing for the next upload's line, or `flushTimings`. */
+  addTiming(t: Timing): void {
+    if (!this.disabled && !this.writesRefused) this.pending.push(t)
+  }
+
+  /** `POST /v1/timings/upload`: the timings no upload carried. */
+  async flushTimings(): Promise<void> {
+    while (this.pending.length > 0 && !this.disabled && !this.writesRefused) {
+      const timings = this.pending.splice(0, TIMINGS_MAX)
+      const res = await this.json('/v1/timings/upload', { timings }, true)
+      if (res !== undefined && !res.ok) throw await refusal(res)
+    }
+  }
+
+  /**
+   * `POST /v1/timings/query`: each hash's newest timings, trusted first,
+   * then the read refs in order. A hash none holds is absent.
+   */
+  async timings(hashes: readonly string[]): Promise<Map<string, Timing[]>> {
     if (this.disabled) return new Map()
     const parts = await Promise.all(
-      Array.from({ length: Math.ceil(tasks.length / TASKS_MAX) }, async (_, i) => {
-        const res = await this.request('POST', '/v1/tasks/query', {
-          body: JSON.stringify({ tasks: tasks.slice(i * TASKS_MAX, (i + 1) * TASKS_MAX) }),
-          headers: { 'content-type': 'application/json', ...this.reads },
-        })
+      Array.from({ length: Math.ceil(hashes.length / QUERY_MAX) }, async (_, i) => {
+        const asked = hashes.slice(i * QUERY_MAX, (i + 1) * QUERY_MAX)
+        const res = await this.json('/v1/timings/query', { hashes: asked, limit: TIMINGS_LIMIT })
         if (res === undefined) return []
         if (res.status !== 200) throw await refusal(res)
-        const body = (await res.json()) as { tasks?: unknown }
-        if (typeof body.tasks !== 'object' || body.tasks === null) {
-          throw new Error('the history query answered no `tasks` object')
+        const body = (await res.json()) as { timings?: unknown }
+        if (typeof body.timings !== 'object' || body.timings === null) {
+          throw new Error('the timings query answered no `timings` object')
         }
-        return Object.entries(body.tasks as Record<string, unknown>)
+        return Object.entries(body.timings as Record<string, unknown>)
       }),
     )
-    const out = new Map<string, number>()
-    for (const [task, records] of parts.flat()) {
-      if (!Array.isArray(records)) continue
-      const ms = records
-        .filter((r: { exitCode?: unknown }) => r?.exitCode === undefined || r.exitCode === 0)
-        .map((r: { durationMs?: unknown }) => r.durationMs)
-        .filter((n): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0)
-        .sort((a, b) => a - b)
-      if (ms.length > 0) out.set(task, ms[Math.floor(ms.length / 2)]!)
+    const out = new Map<string, Timing[]>()
+    for (const [hash, list] of parts.flat()) {
+      if (!Array.isArray(list) || list.length === 0) continue
+      out.set(
+        hash,
+        list.map((t: { durationMs: number; cores: number | null; rssBytes: number | null }) => ({
+          hash,
+          durationMs: t.durationMs,
+          ...(t.cores === null ? {} : { cores: t.cores }),
+          ...(t.rssBytes === null ? {} : { rssBytes: t.rssBytes }),
+        })),
+      )
     }
     return out
   }
 }
 
-/**
- * A task's record for the run history, or undefined for one that ran
- * nothing (a group, a skip, a stop). A hit's duration is the run that
- * produced it, the cost an order must plan for.
- */
-function runTask(
-  node: TaskNode,
-  o: TaskOutcome,
-  startedAt: number | undefined,
-): RunTask | undefined {
-  if (node.config.exec?.command === undefined) return undefined
-  const cached = o.status === 'cache-hit' || o.status === 'cache-hit-remote'
-  if (!cached && o.status !== 'success' && o.status !== 'failed') return undefined
-  const durationMs = cached ? o.storedDurationMs : o.durationMs
-  if (durationMs === undefined) return undefined
+/** A task the run ran and that succeeded, as the server keeps its timing; else undefined. */
+function timingOf(o: TaskOutcome, hash: string | undefined): Timing | undefined {
+  if (hash === undefined || o.status !== 'success') return undefined
+  const durationMs = Math.max(0, Math.round(o.durationMs))
+  // The cores it kept busy, as core's own history reads them.
+  const cores =
+    o.cpuMs === undefined || o.durationMs <= 0
+      ? undefined
+      : o.cpuMs / (o.durationMs * (o.cpuShare ?? 1))
   return {
-    task: node.id,
-    ...(o.hash === undefined ? {} : { key: o.hash }),
-    durationMs: Math.max(0, Math.round(durationMs)),
-    exitCode: o.exitCode,
-    cached,
-    ...(startedAt === undefined ? {} : { startedAt: Math.max(0, Math.round(startedAt)) }),
+    hash,
+    durationMs,
+    ...(cores === undefined ? {} : { cores }),
+    ...(o.peakRssBytes === undefined ? {} : { rssBytes: o.peakRssBytes }),
   }
 }
 
-/**
- * Options over `VX_CACHE_URL` / `VX_CACHE_TOKEN`; `undefined` = not
- * configured. With `oidc` on GitHub Actions the job's token stands in for
- * `token`; `lent`: a run lent this job a token, which serves without either.
- */
+/** A task's timings as one forecast: the median duration, the mean cores, the largest peak. */
+function forecastOf(list: readonly Timing[]): { ms: number; needs: TaskResources } {
+  const ms = list.map((t) => t.durationMs).sort((a, b) => a - b)
+  const cores = list.flatMap((t) => (t.cores === undefined ? [] : [t.cores]))
+  const rss = list.flatMap((t) => (t.rssBytes === undefined ? [] : [t.rssBytes]))
+  const p50 = ms[Math.floor(ms.length / 2)]!
+  return {
+    ms: p50,
+    needs: {
+      p50DurationMs: p50,
+      ...(cores.length === 0
+        ? {}
+        : { maxCpuParallelism: cores.reduce((a, b) => a + b, 0) / cores.length }),
+      ...(rss.length === 0 ? {} : { maxPeakRssBytes: Math.max(...rss) }),
+    },
+  }
+}
+
+/** Options over `VX_CACHE_URL`; `undefined`: no server named. */
 export function resolveVxCacheConfig(
   options: VxCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
-  lent = false,
 ): Required<VxCacheOptions> | undefined {
   const url = (options.url ?? env.VX_CACHE_URL)?.replace(/\/+$/, '')
-  const oidc = options.oidc ?? false
-  const idToken = oidc && !!env.ACTIONS_ID_TOKEN_REQUEST_URL && !!env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
-  const token = options.token ?? env.VX_CACHE_TOKEN ?? ''
-  if (url === undefined || url === '' || (token === '' && !idToken && !lent)) return undefined
+  if (url === undefined || url === '') return undefined
   if (!/^https?:\/\//.test(url)) throw new Error(`vxCache(): url must be http(s), got ${url}`)
   return {
     url,
-    token,
     timeoutMs: options.timeoutMs ?? 30_000,
     uploadTimeoutMs: options.uploadTimeoutMs ?? 60_000,
-    history: options.history ?? true,
-    oidc,
   }
+}
+
+/** Whether this job has a CI token to send: GitHub's, GitLab's `VX_CACHE_TOKEN`, or one a run lent. */
+export function hasCiToken(env: Record<string, string | undefined>, lent: boolean): boolean {
+  return (
+    lent ||
+    (!!env.ACTIONS_ID_TOKEN_REQUEST_URL && !!env.ACTIONS_ID_TOKEN_REQUEST_TOKEN) ||
+    !!env.VX_CACHE_TOKEN
+  )
 }
 
 /**
  * Declare in `.vx/workspace.ts`; the local store stays the floor beneath it:
  *
  * ```ts
- * plugins: [vxCache({ url: 'https://cache.example.com' })] // token: VX_CACHE_TOKEN
+ * plugins: [vxCache({ url: 'https://cache.example.com' })]
  * ```
  */
 export function vxCache(options: VxCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('vxCache()', options, KEYS)
-  // One layer per run, shared by its hooks: the refs `cache` names reach
-  // the history query, and a refused token is said once.
+  // One layer per run, shared by its hooks.
   let layer: VxCacheLayer | undefined
-  const layerOf = (lent = false): VxCacheLayer | undefined => {
-    if (layer !== undefined) return layer
-    const config = resolveVxCacheConfig(options, Bun.env, lent)
-    return config === undefined ? undefined : (layer = new VxCacheLayer(config))
-  }
-  let run:
-    | {
-        startedAt: number
-        started: Map<string, number>
-        tasks: RunTask[]
-        warn: (m: string) => void
-      }
-    | undefined
+  /** The run times its tasks: it was lent no token, so it is not running another run's. */
+  let times = false
+  let warn: ((m: string) => void) | undefined
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
       layer = undefined
-      const env = Bun.env
+      const config = resolveVxCacheConfig(options)
+      if (config === undefined) return undefined
       const lent = ctx.lent?.() !== undefined
-      if (
-        options.oidc &&
-        !lent &&
-        env.GITHUB_ACTIONS === 'true' &&
-        !env.ACTIONS_ID_TOKEN_REQUEST_URL
-      ) {
+      if (!hasCiToken(Bun.env, lent)) {
         ctx.warn(
-          '[vx] vx-cache: oidc is on, but this job gets no OIDC token: give it `permissions: id-token: write`',
+          Bun.env.GITHUB_ACTIONS === 'true'
+            ? '[vx] vx-cache: this job gets no OIDC token: give it `permissions: id-token: write`; remote cache off for this run'
+            : '[vx] vx-cache: serves CI jobs only (no CI token here); remote cache off for this run',
         )
+        return undefined
       }
-      const l = layerOf(lent)
-      if (l !== undefined) {
-        l.reads = readScopes(ctx.refs)
-        l.lent = ctx.lent
-      }
-      return l
+      layer = new VxCacheLayer(config)
+      layer.reads = readScopes(ctx.refs)
+      layer.lent = ctx.lent
+      layer.warn = ctx.warn
+      times = !lent
+      return layer
     },
     // The run never waits for the server: it starts on the baseline order,
-    // and the critical path re-ranks what has not started when it lands.
+    // and the critical path re-ranks what has not started when the timings
+    // land in local history, where every reader of it finds them.
     schedule(nodes, ctx) {
-      const l = layerOf()
-      if (l === undefined || !l.history) return undefined
-      const ids: string[] = []
-      for (const n of nodes.values()) if (n.config.exec?.command !== undefined) ids.push(n.id)
-      if (ids.length === 0) return undefined
+      const l = layer
+      if (l === undefined) return undefined
+      const defs = taskDefinitions(nodes.values())
+      if (defs.size === 0) return undefined
       ctx.refine(
-        l.medians(ids).then(
-          (p50s) =>
-            p50s.size === 0
-              ? undefined
-              : criticalPath(
-                  [...nodes.values()],
-                  new Map([...p50s].map(([id, p50DurationMs]) => [id, { p50DurationMs }])),
-                  {},
-                ),
+        l.timings([...defs.values()]).then(
+          async (byHash) => {
+            const timings = new Map<string, number>()
+            const needs = new Map<string, TaskResources>()
+            for (const [id, def] of defs) {
+              const list = byHash.get(def)
+              if (list === undefined) continue
+              const f = forecastOf(list)
+              timings.set(id, f.ms)
+              needs.set(id, f.needs)
+            }
+            if (timings.size === 0) return undefined
+            const history = new LocalHistoryProvider(
+              ctx.localCache.dbHandle(),
+              undefined,
+              ctx.branch,
+              defs,
+            )
+            // One import per answer: a run that read the same keeps no more.
+            const sha = `vx-cache:${Bun.hash(JSON.stringify([...byHash])).toString(16)}`
+            if (!history.hasImported(sha)) history.importTimings(sha, timings, needs, defs)
+            return criticalPath(
+              [...nodes.values()],
+              await history.resourcesFor([...defs.keys()]),
+              {},
+            )
+          },
           (err: unknown) => {
             ctx.warn(
               `[vx] vx-cache: ordering stays on the baseline: ${err instanceof Error ? err.message : String(err)}`,
@@ -494,42 +626,24 @@ export function vxCache(options: VxCacheOptions = {}): VxPlugin {
       )
       return undefined
     },
-    // A CI run's timings are the history: a laptop's would mix in its own
-    // machine, and a read token there would be refused on every run.
     setup(ctx) {
-      const l = layerOf()
-      run = undefined
-      if (l === undefined || !l.history || !ctx.ci) return
-      const r = (run = {
-        startedAt: Date.now(),
-        started: new Map<string, number>(),
-        tasks: [] as RunTask[],
-        warn: ctx.warn,
-      })
-      ctx.on('onRunStart', (info) => {
-        if (info.startedAtMs !== undefined) r.startedAt = info.startedAtMs
-      })
-      ctx.on('onTaskStart', (node) => void r.started.set(node.id, Date.now()))
-      ctx.on('onTaskComplete', (node, outcome) => {
-        const at = r.started.get(node.id)
-        const t = runTask(node, outcome, at === undefined ? undefined : at - r.startedAt)
-        if (t !== undefined) r.tasks.push(t)
+      warn = ctx.warn
+      const l = layer
+      if (l === undefined || !times) return
+      ctx.on('onTaskComplete', (node: TaskNode, outcome: TaskOutcome) => {
+        const def = taskDefinitions([node]).get(node.id)
+        const t = timingOf(outcome, def)
+        if (t !== undefined) l.addTiming(t)
       })
     },
-    async teardown(report) {
-      const r = run
-      run = undefined
-      if (r === undefined || report === undefined || r.tasks.length === 0) return
+    async teardown() {
+      const l = layer
+      if (l === undefined) return
       try {
-        await layer?.putRun({
-          id: report.runId,
-          startedAt: r.startedAt,
-          durationMs: Math.max(0, Date.now() - r.startedAt),
-          tasks: r.tasks,
-        })
+        await l.flushTimings()
       } catch (err) {
-        r.warn(
-          `[vx] vx-cache: the run history was not written: ${err instanceof Error ? err.message : String(err)}`,
+        warn?.(
+          `[vx] vx-cache: the timings were not written: ${err instanceof Error ? err.message : String(err)}`,
         )
       }
     },

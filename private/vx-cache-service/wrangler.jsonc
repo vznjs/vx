@@ -5,17 +5,16 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
-  // Plain vars, never secrets (owner, 2026-10-23). No static token: CI
-  // jobs sign in with their OIDC token. TRUST: only ci.yml's own runs of
+  // Plain vars, never secrets (owner, 2026-10-23). CI jobs sign in with
+  // their OIDC token. TRUST: only ci.yml's own runs of
   // main write what every run reads. vx-worker.yml is left out: it may be
   // dispatched on main to run a fork PR's code. Any other job of this repo
   // writes its branch's scope.
   "vars": {
-    "TOKENS": "",
     "TRUST": "[{\"iss\":\"https://token.actions.githubusercontent.com\",\"repository_id\":\"1235245958\",\"workflow_ref\":\"vznjs/vx/.github/workflows/ci.yml@*\",\"event_name\":[\"push\",\"merge_group\"],\"ref\":[\"refs/heads/main\",\"refs/heads/gh-readonly-queue/main/*\"],\"ref_protected\":\"true\"}]",
   },
   // Daily eviction: main's artifacts after 30 days, a branch's after 7,
-  // runs after 90 (TRUSTED_DAYS, BRANCH_DAYS, RUN_DAYS).
+  // timings after 30 (TRUSTED_DAYS, BRANCH_DAYS, TIMING_DAYS).
   "triggers": { "crons": ["17 3 * * *"] },
   // Made on the first deploy when absent (README).
   "d1_databases": [{ "binding": "DB", "database_name": "vx-cache" }],

@@ -5,14 +5,12 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
-  // Who may read and write: read:<sha256> / write:<sha256>, space separated,
-  // each the SHA-256 of a token. Hashes, not tokens: no secret. Empty, every
-  // static token is refused with "set TOKENS". TRUST: CI OIDC trust rules,
-  // a JSON list (README.md § CI tokens); AUDIENCE: the aud a CI token
-  // names, unset the Worker's own origin.
-  "vars": { "TOKENS": "", "TRUST": "" },
-  // Daily eviction (src/evict.ts): TRUSTED_DAYS, BRANCH_DAYS and RUN_DAYS
-  // vars set how long each keeps (default 30, 7, 90). Free plan: 5 crons.
+  // TRUST: the CI OIDC trust rules, a JSON list (README.md § CI tokens);
+  // empty, every request is refused with "set TRUST". AUDIENCE: the aud a
+  // CI token names, unset the Worker's own origin.
+  "vars": { "TRUST": "" },
+  // Daily eviction (src/evict.ts): TRUSTED_DAYS, BRANCH_DAYS and TIMING_DAYS
+  // vars set how long each keeps (default 30, 7, 30). Free plan: 5 crons.
   "triggers": { "crons": ["17 3 * * *"] },
   "d1_databases": [{ "binding": "DB", "database_name": "vx-cache" }],
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],

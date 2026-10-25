@@ -3,20 +3,18 @@
 // takes its rows with SKIP LOCKED, and the server keeps no node's state,
 // so nodes come and go freely.
 
-import { type ArtifactRow, type RunRow, type Store, TRUSTED } from './store.js'
+import { type ArtifactRow, timingOf, type Store, TRUSTED } from './store.js'
 
 const SCHEMA = [
-  `CREATE TABLE IF NOT EXISTS artifacts (ns TEXT NOT NULL, key TEXT NOT NULL, scope TEXT NOT NULL, blob TEXT NOT NULL, size BIGINT NOT NULL, duration_ms BIGINT NOT NULL, tag TEXT, sha TEXT, dirty_hash TEXT, created_at BIGINT NOT NULL, PRIMARY KEY (ns, key, scope))`,
-  `CREATE INDEX IF NOT EXISTS artifacts_created ON artifacts (created_at)`,
-  `CREATE TABLE IF NOT EXISTS runs (ns TEXT NOT NULL, scope TEXT NOT NULL, started_at BIGINT NOT NULL, id TEXT NOT NULL, duration_ms BIGINT NOT NULL, task_count INTEGER NOT NULL, failed_count INTEGER NOT NULL, tasks JSONB NOT NULL, created_at BIGINT NOT NULL, PRIMARY KEY (ns, scope, started_at, id))`,
-  `CREATE INDEX IF NOT EXISTS runs_created ON runs (created_at)`,
+  `CREATE TABLE IF NOT EXISTS artifacts (repo TEXT NOT NULL, key TEXT NOT NULL, scope TEXT NOT NULL, size BIGINT NOT NULL, created_at BIGINT NOT NULL, PRIMARY KEY (repo, key, scope))`,
+  `CREATE TABLE IF NOT EXISTS timings (repo TEXT NOT NULL, hash TEXT NOT NULL, scope TEXT NOT NULL, created_at BIGINT NOT NULL, duration_ms BIGINT NOT NULL, cores DOUBLE PRECISION, rss_bytes BIGINT, PRIMARY KEY (repo, hash, scope, created_at))`,
 ]
 
 /** Any constant: nodes making the tables at once take turns on it. */
 const SCHEMA_LOCK = 0x76_78_63_61
 
 // BIGINT reads back as a string; these columns are milliseconds and bytes, exact as doubles.
-const ARTIFACT = `key, scope, blob, size::float8 AS size, duration_ms::float8 AS duration_ms, tag, sha, dirty_hash`
+const ARTIFACT = `key, scope, size::float8 AS size`
 
 /** `url`: `postgres://user:pass@host:5432/db`. */
 export function postgresStore(url: string): Store & { close(): Promise<void> } {
@@ -31,77 +29,39 @@ export function postgresStore(url: string): Store & { close(): Promise<void> } {
         await tx.unsafe(`SELECT pg_advisory_xact_lock(${SCHEMA_LOCK})`)
         for (const s of SCHEMA) await tx.unsafe(s)
       }),
-    artifacts: (ns, keys, scopes) =>
+    artifacts: (repo, keys, scopes) =>
       q<ArtifactRow>(
-        `SELECT ${ARTIFACT} FROM artifacts WHERE ns = $1 AND key IN (SELECT jsonb_array_elements_text(($2::text)::jsonb)) AND scope IN (SELECT jsonb_array_elements_text(($3::text)::jsonb))`,
-        [ns, JSON.stringify(keys), JSON.stringify(scopes)],
+        `SELECT ${ARTIFACT} FROM artifacts WHERE repo = $1 AND key IN (SELECT jsonb_array_elements_text(($2::text)::jsonb)) AND scope IN (SELECT jsonb_array_elements_text(($3::text)::jsonb))`,
+        [repo, JSON.stringify(keys), JSON.stringify(scopes)],
       ),
-    held: async (ns, key, scope) =>
-      (
-        await q(`SELECT 1 FROM artifacts WHERE ns = $1 AND key = $2 AND scope = $3`, [
-          ns,
-          key,
-          scope,
-        ])
-      ).length > 0,
     addArtifact: async (r) =>
       (
         await q(
-          `INSERT INTO artifacts (ns, key, scope, blob, size, duration_ms, tag, sha, dirty_hash, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING RETURNING 1`,
-          [
-            r.ns,
-            r.key,
-            r.scope,
-            r.blob,
-            r.size,
-            r.duration_ms,
-            r.tag,
-            r.sha,
-            r.dirty_hash,
-            r.created_at,
-          ],
+          `INSERT INTO artifacts (repo, key, scope, size, created_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING RETURNING 1`,
+          [r.repo, r.key, r.scope, r.size, r.created_at],
         )
       ).length > 0,
-    addRun: async (r) =>
+    addTimings: async (repo, scope, createdAt, timings) => {
+      await q(
+        `INSERT INTO timings (repo, hash, scope, created_at, duration_ms, cores, rss_bytes) SELECT $1, e ->> 'hash', $2, $3, (e ->> 'durationMs')::bigint, (e ->> 'cores')::float8, (e ->> 'rssBytes')::bigint FROM jsonb_array_elements(($4::text)::jsonb) e ON CONFLICT DO NOTHING`,
+        [repo, scope, createdAt, JSON.stringify(timings)],
+      )
+    },
+    timings: async (repo, hashes, scopes, limit) =>
       (
-        await q(
-          `INSERT INTO runs (ns, scope, started_at, id, duration_ms, task_count, failed_count, tasks, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, ($8::text)::jsonb, $9) ON CONFLICT DO NOTHING RETURNING 1`,
-          [
-            r.ns,
-            r.scope,
-            r.started_at,
-            r.id,
-            r.duration_ms,
-            r.task_count,
-            r.failed_count,
-            r.tasks,
-            r.created_at,
-          ],
+        await q<Parameters<typeof timingOf>[0]>(
+          `SELECT d.hash, c.scope, s.duration_ms::float8 AS duration_ms, s.cores, s.rss_bytes::float8 AS rss_bytes FROM jsonb_array_elements_text(($2::text)::jsonb) d(hash) CROSS JOIN jsonb_array_elements_text(($3::text)::jsonb) c(scope) CROSS JOIN LATERAL (SELECT created_at, duration_ms, cores, rss_bytes FROM timings WHERE repo = $1 AND hash = d.hash AND scope = c.scope ORDER BY created_at DESC LIMIT $4) s ORDER BY s.created_at DESC`,
+          [repo, JSON.stringify(hashes), JSON.stringify(scopes), limit],
         )
-      ).length > 0,
-    runs: (ns, scopes, limit) =>
-      q<RunRow>(
-        `SELECT id, scope, started_at::float8 AS started_at, duration_ms::float8 AS duration_ms, task_count, failed_count FROM runs WHERE ns = $1 AND scope IN (SELECT jsonb_array_elements_text(($2::text)::jsonb)) ORDER BY started_at DESC, id LIMIT $3`,
-        [ns, JSON.stringify(scopes), limit],
-      ),
-    samples: (ns, scopes, tasks, limit, scanned) =>
-      q(
-        `SELECT run, scope, task FROM (SELECT r.id AS run, r.scope AS scope, r.started_at AS at, t.value::text AS task, ROW_NUMBER() OVER (PARTITION BY t.value ->> 'task' ORDER BY r.started_at DESC, r.id) AS n FROM (SELECT id, scope, started_at, tasks FROM runs WHERE ns = $1 AND scope IN (SELECT jsonb_array_elements_text(($2::text)::jsonb)) ORDER BY started_at DESC, id LIMIT $5) r, jsonb_array_elements(r.tasks) t WHERE t.value ->> 'task' IN (SELECT jsonb_array_elements_text(($3::text)::jsonb))) s WHERE n <= $4 ORDER BY at DESC, run`,
-        [ns, JSON.stringify(scopes), JSON.stringify(tasks), limit, scanned],
-      ),
+      ).map(timingOf),
     // SKIP LOCKED: nodes sweeping at once each take rows no other took.
     takeExpired: (trustedBefore, branchBefore, limit) =>
       q(
-        `DELETE FROM artifacts WHERE (ns, key, scope) IN (SELECT ns, key, scope FROM artifacts WHERE created_at < CASE WHEN scope = $1 THEN $2::bigint ELSE $3::bigint END LIMIT $4 FOR UPDATE SKIP LOCKED) RETURNING blob`,
+        `DELETE FROM artifacts WHERE (repo, key, scope) IN (SELECT repo, key, scope FROM artifacts WHERE created_at < CASE WHEN scope = $1 THEN $2::bigint ELSE $3::bigint END LIMIT $4 FOR UPDATE SKIP LOCKED) RETURNING repo, ${ARTIFACT}`,
         [TRUSTED, trustedBefore, branchBefore, limit],
       ),
-    dropRuns: async (before, limit) =>
-      (
-        await q(
-          `DELETE FROM runs WHERE (ns, scope, started_at, id) IN (SELECT ns, scope, started_at, id FROM runs WHERE created_at < $1 LIMIT $2 FOR UPDATE SKIP LOCKED) RETURNING 1`,
-          [before, limit],
-        )
-      ).length,
+    dropTimings: async (before) =>
+      (await q(`DELETE FROM timings WHERE created_at < $1 RETURNING 1`, [before])).length,
     close: () => sql.close(),
   }
 }

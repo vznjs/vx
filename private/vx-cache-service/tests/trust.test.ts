@@ -10,7 +10,7 @@ const GITHUB = 'https://token.actions.githubusercontent.com'
 const AUD = 'https://vx-cache.exelord.workers.dev'
 const config = Bun.JSONC.parse(
   readFileSync(path.join(import.meta.dir, '..', 'wrangler.jsonc'), 'utf8'),
-) as { vars: { TOKENS: string; TRUST: string } }
+) as { vars: { TRUST: string } }
 
 let access: (claims: JWTPayload) => Promise<string | undefined>
 
@@ -37,15 +37,14 @@ beforeAll(async () => {
       .setIssuedAt()
       .setExpirationTime('5m')
       .sign(privateKey)
-    return (await auth(token, new Request(`${AUD}/v1/artifacts/status`))).write
+    const req = new Request(`${AUD}/v1/artifacts/check`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    return (await auth(req)).write
   }
 })
 
 const CI = 'vznjs/vx/.github/workflows/ci.yml@refs/heads/main'
-
-it('holds no token, only TRUST', () => {
-  expect(config.vars.TOKENS).toBe('')
-})
 
 it("writes trusted from ci.yml's push to main, and a branch's own scope from its PR", async () => {
   const main = { workflow_ref: CI, ref: 'refs/heads/main', ref_protected: 'true' }

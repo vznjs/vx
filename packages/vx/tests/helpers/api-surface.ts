@@ -60,8 +60,10 @@ function stripComments(src: string): string {
   return out
 }
 
-/** Bracket depth change over a comment-free line, strings skipped. */
+/** Bracket depth change over a code line, strings skipped; a doc comment's line has none. */
 function depthDelta(line: string): number {
+  // Prose: an apostrophe there is no string, and a bracket no bracket.
+  if (/^\s*(\/\*\*|\*)/.test(line)) return 0
   let d = 0
   for (let i = 0; i < line.length; i++) {
     const c = line[i]!
