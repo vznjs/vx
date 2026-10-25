@@ -12,7 +12,7 @@ repository writes its branch's scope (`wrangler.jsonc`).
 Workers Builds deploys it on each push to `main` that touches it:
 
 - Root directory: `private/vx-cache-service`
-- Build command: `bun install --frozen-lockfile`
+- Build command: none (Workers Builds installs the dependencies)
 - Deploy command: `bunx wrangler deploy`
 - Watch paths: `packages/vx-cache-server/*`, `private/vx-cache-service/*`, `bun.lock`
 
