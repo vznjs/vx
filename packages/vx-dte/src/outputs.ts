@@ -29,6 +29,7 @@ export async function outputFiles(
           // A literal output names a file: its prefix is that file. ENOTDIR
           // also means a FILE above it (`dist/x.js` with `dist` a file): no
           // path there, and clearing one threw (2026-10-25).
+          // quiet: a path that is not there is no output
           if (err.code === 'ENOTDIR' && wanted(rel) && (await lstat(at).catch(() => null))) add(rel)
           return []
         },
