@@ -33,7 +33,7 @@ import path from 'node:path'
 import { criticalPath } from './critical-path.js'
 import type { HistoryRow } from './history-view.js'
 
-export { criticalPathPriorities } from './critical-path.js'
+export { criticalPath, criticalPathPriorities } from './critical-path.js'
 
 export interface ScheduleHistoryOptions {
   /** How many recent invocations to learn from. Default 20. */

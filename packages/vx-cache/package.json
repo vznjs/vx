@@ -27,7 +27,8 @@
     "bun": ">=1.4.4"
   },
   "//": [
-    "@vzn/vx-cache-server: the tests run the plugin against the real server, in process."
+    "@vzn/vx-cache-server: the tests run the plugin against the real server, in process.",
+    "@vzn/vx-schedule-history: one critical-path score for the order, whoever learned the timings."
   ],
   "devDependencies": {
     "@types/bun": "^1.4.0",
@@ -36,5 +37,8 @@
   },
   "peerDependencies": {
     "@vzn/vx": "*"
+  },
+  "dependencies": {
+    "@vzn/vx-schedule-history": "workspace:*"
   }
 }
