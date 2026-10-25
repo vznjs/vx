@@ -40,7 +40,7 @@ beforeAll(async () => {
   iss = await issuer()
   mf = await start({
     MAX_UPLOAD_BYTES: String(MAX),
-    MAX_CHECK_HASHES: '1000',
+    MAX_CHECK_HASHES: '40',
     TRUST: JSON.stringify(TRUST),
   })
   base = await mf.ready
@@ -48,11 +48,10 @@ beforeAll(async () => {
 
 afterAll(() => mf.dispose())
 
-// MAX_CHECK_HASHES 1000 is clamped to what a request's 50 subrequests fit.
 conformance('Workers with R2', {
   base: () => base.href,
   sign: (job) => iss.sign(JOBS[job], AUD),
-  maxCheckHashes: 48,
+  maxCheckHashes: 40,
   maxUploadBytes: MAX,
 })
 
@@ -63,11 +62,6 @@ it('refuses every request, saying why, while TRUST or a limit is unset or wrong'
       { TRUST: '[{"iss":"https://gitlab.com"}]' },
       500,
       'TRUST: rule 0: names no project_id (one repository, no *)',
-    ],
-    [
-      { TRUST: JSON.stringify(TRUST), MAX_UPLOAD_BYTES: '104857601' },
-      500,
-      'MAX_UPLOAD_BYTES: at most 104857600: Workers take a body of 100 MB',
     ],
     [
       { TRUST: JSON.stringify(TRUST), MAX_CHECK_HASHES: '0' },

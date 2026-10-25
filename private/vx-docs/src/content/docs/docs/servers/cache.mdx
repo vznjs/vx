@@ -29,15 +29,13 @@ bunx wrangler deploy
 ```
 
 On the first deploy, wrangler creates the R2 bucket `wrangler.jsonc`
-names (`vx-cache`). The server fits Workers' free plan. A request makes at
-most 50 subrequests, each lookup's cache match among them, so a check
-makes up to 48 lookups. A higher
-setting is lowered, and `/v1/capabilities` says so. By default a check
-makes 6, one round of the calls a Worker request has waiting at once:
-the client sends its chunks at once. A download is read
-through the data center's cache: after R2 serves an artifact once, that
-data center answers it without R2. A request body is at most 100 MB. R2's
-free plan holds 10 GB.
+names (`vx-cache`). By default a check makes 6 lookups, one round of
+the calls a Worker request has waiting at once, and the client sends
+its checks at once: the fastest way. Each lookup is one subrequest, so
+a higher `MAX_CHECK_HASHES` must fit your plan, as `MAX_UPLOAD_BYTES`
+must fit its request body. A download is read through the data
+center's cache: after R2 serves an artifact once, that data center
+answers it without R2.
 
 </TabItem>
 <TabItem label="Bun">

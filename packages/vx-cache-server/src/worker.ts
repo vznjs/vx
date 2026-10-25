@@ -1,6 +1,6 @@
 // `vx-cache-server` on Cloudflare Workers: artifacts in R2, nothing else.
 // `wrangler.jsonc` deploys it; TRUST, AUDIENCE and the limits are vars in
-// it. It fits the free plan (README.md § On Cloudflare Workers).
+// it (README.md § On Cloudflare Workers).
 
 import { type Authorize, oidcAuth, parseTrust } from '@vzn/vx-devtools'
 import { errorJson, Refusal } from './protocol.js'
@@ -84,16 +84,6 @@ function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): 
   }
 }
 
-/** The largest request body Workers take on the free plan. */
-const WORKERS_BODY_BYTES = 100 * 1024 * 1024
-/**
- * Subrequests one request may make on the free plan, a Workers Cache
- * match included (measured, 2026-10-25: the 51st threw), less the token
- * check's 2 fetches. A check makes one match per lookup (hash × scope),
- * so its limit is clamped to fit it; R2's own 1000 calls are then never
- * reached.
- */
-const SUBREQUESTS = 50 - 2
 /**
  * A check's lookups by default: a Worker request has 6 calls waiting on R2
  * at once and queues the rest, so a check of 6 answers in one round and a
@@ -105,19 +95,12 @@ const SUBREQUESTS = 50 - 2
  */
 const CHECK_LOOKUPS = 6
 
-/** The limits as set, clamped to what one Worker request can make. */
+/**
+ * The limits as set, unclamped: a plan's limits are the operator's to set
+ * (M, 2026-10-25: never optimize for the free plan).
+ */
 function workerLimits(env: Env): Limits {
-  const set = { ...DEFAULT_LIMITS, maxCheckHashes: CHECK_LOOKUPS, ...limitsFrom(env) }
-  const limits = {
-    maxCheckHashes: Math.min(set.maxCheckHashes, SUBREQUESTS),
-    maxUploadBytes: set.maxUploadBytes,
-  }
-  if (limits.maxUploadBytes > WORKERS_BODY_BYTES) {
-    throw new Error(
-      `MAX_UPLOAD_BYTES: at most ${WORKERS_BODY_BYTES}: Workers take a body of 100 MB`,
-    )
-  }
-  return limits
+  return { ...DEFAULT_LIMITS, maxCheckHashes: CHECK_LOOKUPS, ...limitsFrom(env) }
 }
 
 /** What a request shares per isolate and settings. */

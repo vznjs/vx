@@ -105,14 +105,13 @@ bunx wrangler deploy
 ```
 
 Wrangler makes the R2 bucket `wrangler.jsonc` names on the first deploy.
-It fits Workers' free plan: a request makes at most 50 subrequests, each
-lookup's Workers Cache match among them, so a check makes up to 48
-lookups (a higher setting is lowered, and
-capabilities say so). By default a check makes 6: a Worker request has 6
-calls waiting on R2 at once and queues the rest, so a check of 6
-answers in one round (6 heads 64 ms, 24 341 ms, 134 1.1 to 1.4 s,
-2026-10-25) and a client sends its chunks at once; a request body is at most 100 MB. R2's free plan
-holds 10 GB. A download is read through the data center's cache: an
+By default a check makes 6 lookups: a Worker request has 6 calls
+waiting at once and queues the rest, so checks of 6 sent at once are
+the fastest (from a GitHub runner, 134 hashes: 168 to 216 ms, against
+1.9 s for one check of 134, 2026-10-25). Each lookup is one subrequest
+(a cache match), so a higher `MAX_CHECK_HASHES` must fit your plan's
+subrequests a request, and `MAX_UPLOAD_BYTES` your plan's request body.
+The server lowers neither. A download is read through the data center's cache: an
 artifact never changes, so after R2 serves it once, that data center
 answers it without R2 (free on every plan).
 

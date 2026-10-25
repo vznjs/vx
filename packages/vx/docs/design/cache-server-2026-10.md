@@ -33,8 +33,8 @@ scopes }` (M: "checks can ask many scopes"), up to `maxCheckHashes`
   client sends chunks at once.
 - Shipped: limits an operator sets (`MAX_CHECK_HASHES`,
   `MAX_UPLOAD_BYTES`), named on every check and
-  at `/v1/capabilities`. Workers lowers them to what one request's 1000
-  calls to R2 and 100 MB body fit.
+  at `/v1/capabilities`; the server never lowers them to a plan's (M,
+  2026-10-25: never optimize for the free plan).
 - Shipped: Turbo's shape where it fits (M, 2026-10-25: keep to the
   standard, differ only where it blocks us): `{ code, message }` errors,
   hex hashes, our own `/v1`. Batches and exact scoped keys are ours:

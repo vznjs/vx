@@ -104,8 +104,7 @@ An operator sets each; `GET /v1/capabilities` names them:
 { "maxCheckHashes": 500, "maxUploadBytes": 100000000 }
 ```
 
-A backend may lower one to what it can serve: Workers' free plan makes
-50 subrequests a request and takes a 100 MB body.
+A client keeps to the limits the server names.
 
 ## Errors
 
