@@ -88,7 +88,7 @@ flowchart TB
 Adapters start workers: `github()`, `gitlab()`, `local()` (git
 worktrees) and `docker()`.
 
-## The relay stores no message
+## The relay stores nothing
 
 [`@vzn/vx-dte-server`](https://github.com/vznjs/vx/tree/main/packages/vx-dte-server)
 depends only on [`jose`](https://github.com/panva/jose) and speaks

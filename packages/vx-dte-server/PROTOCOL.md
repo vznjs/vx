@@ -52,7 +52,10 @@ One request is HTTP, a websocket upgrade of `GET
 - A session lives while its host does. The host's `leave` is its final
   call: it closes the session at once, and the relay keeps nothing of it.
   A host whose socket dropped without it has the grace (§ Liveness) to
-  dial again; the session waits for it, and closes when the grace passes.
+  dial again; the session waits for it. When the grace passes, the relay
+  forgets the session and closes each peer's socket with no code: the
+  host may still join it again, and a peer's redial, closed `4404`, joins
+  again too.
 
 ## The host's key
 
@@ -123,9 +126,9 @@ The relay itself sends, `"from": "relay"`:
   `info` as its join said, then forgotten;
 - to the host, `{ "type": "left", "id" }` when a peer leaves, or its
   grace passes with no socket;
-- to every peer, `{ "type": "closed" }` when the session closes. A peer on
-  a socket is told and let go; one with no socket gets `4404` when it
-  opens one.
+- to every peer, `{ "type": "closed" }` when the host leaves: the
+  session is over. A peer on a socket is told and let go; one with no
+  socket gets `4404` when it opens one.
 
 ## Sockets
 
@@ -184,7 +187,13 @@ session id cannot open or join it.
 
 ## What the relay knows
 
-Only what routing needs, and no longer:
+A relay stores nothing. It writes no message, participant or session to
+any file, database, key-value store or alarm: what it knows lives in
+memory and in its open sockets, and a restart forgets it. Its host and
+peers carry a session across one by joining it again. The one thing a
+relay may cache is an issuer's published public keys (§ Tokens).
+
+It holds only what routing needs, and no longer:
 
 - A session is a SHA-256 of its id and its tokens' issuer and claims: no
   name says whose it is. A token is checked, never kept.
@@ -193,8 +202,5 @@ Only what routing needs, and no longer:
 - A closed session is gone at once; while open, each participant's role
   is kept, and when a socket dropped. A relay restart keeps a session whose
   host's socket, or a peer's naming that host, it kept; one whose host's
-  socket it did not keep waits the grace from the restart. A relay with
-  storage keeps each participant's id, role and drop time there while it
-  takes part, so a restart that dropped every socket keeps its sessions:
-  each participant dials back within the grace from the restart.
+  socket it did not keep waits the grace from the restart.
 - It logs nothing. It still sees each message's size, time and recipient.

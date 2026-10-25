@@ -1,23 +1,12 @@
-// The relay on Bun.serve, its participants' websockets included. With a
-// `state` file it keeps who takes part there (one row each, never a
-// message), so a restart within the grace keeps the runs it carried.
+// The relay on Bun.serve, its participants' websockets included.
 
-import { Database } from 'bun:sqlite'
 import type { ServerWebSocket } from 'bun'
-import {
-  createRelay,
-  type RelayOptions,
-  type RelaySocket,
-  type RelayStore,
-  type Stored,
-} from './relay.js'
+import { createRelay, type RelayOptions, type RelaySocket } from './relay.js'
 
 export interface ServeOptions extends Pick<RelayOptions, 'verify' | 'heartbeatMs'> {
   hostname: string
   /** `0` picks a free port. */
   port: number
-  /** A SQLite file that keeps who takes part across a restart; absent, runs live in memory. */
-  state?: string | undefined
 }
 
 export interface RelayServer {
@@ -31,30 +20,10 @@ interface Held {
   socket?: RelaySocket
 }
 
-/** Rows in `file`: what a restart reads back, and where the relay writes. */
-function openState(file: string): { stored: Stored[]; store: RelayStore; close(): void } {
-  const db = new Database(file, { create: true, strict: true })
-  db.run('PRAGMA journal_mode = WAL')
-  db.run('CREATE TABLE IF NOT EXISTS participants (k TEXT PRIMARY KEY, row TEXT NOT NULL)')
-  const rows = db.query<{ row: string }, []>('SELECT row FROM participants').all()
-  const put = db.query('INSERT OR REPLACE INTO participants (k, row) VALUES ($k, $row)')
-  const del = db.query('DELETE FROM participants WHERE k = $k')
-  return {
-    stored: rows.map(({ row }) => JSON.parse(row) as Stored),
-    store: {
-      put: (p) => void put.run({ k: `${p.key}/${p.id}`, row: JSON.stringify(p) }),
-      delete: (key, id) => void del.run({ k: `${key}/${id}` }),
-    },
-    close: () => db.close(),
-  }
-}
-
 export function serveRelay(opts: ServeOptions): RelayServer {
   let server: Bun.Server<Held> | undefined
-  const state = opts.state === undefined ? undefined : openState(opts.state)
   const relay = createRelay({
     ...opts,
-    ...(state === undefined ? {} : { stored: state.stored, store: state.store }),
     upgrade: (key, id, req, protocol) => {
       const headers = protocol === undefined ? {} : { 'sec-websocket-protocol': protocol }
       if (!server!.upgrade(req, { data: { key, id }, headers })) {
@@ -101,7 +70,6 @@ export function serveRelay(opts: ServeOptions): RelayServer {
     url: `http://${host}:${server.port}`,
     async stop() {
       await server.stop(true)
-      state?.close()
     },
   }
 }

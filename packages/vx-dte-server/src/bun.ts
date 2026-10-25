@@ -1,13 +1,12 @@
 #!/usr/bin/env -S bun --no-env-file --no-install
-// `bunx @vzn/vx-dte-server`: the relay on Bun (PROTOCOL.md); runs live in
-// memory, or with `--state`, in a file a restart reads back.
+// `bunx @vzn/vx-dte-server`: the relay on Bun, runs in memory (PROTOCOL.md).
 
 import { parseArgs } from 'node:util'
 import { createVerifier, parseAllow } from './oidc.js'
 import { serveRelay } from './serve.js'
 
-const USAGE = `usage: vx-dte-server --allow <issuer:owner/repo:workflow>... --audience <aud> [--port 8080] [--host 0.0.0.0] [--state <file>]
-       vx-dte-server --no-auth [--port 8080] [--state <file>]   (loopback only)`
+const USAGE = `usage: vx-dte-server --allow <issuer:owner/repo:workflow>... --audience <aud> [--port 8080] [--host 0.0.0.0]
+       vx-dte-server --no-auth [--port 8080]   (loopback only)`
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost'])
 
@@ -19,7 +18,6 @@ function main(argv: string[]): void {
       audience: { type: 'string' },
       port: { type: 'string', default: '8080' },
       host: { type: 'string' },
-      state: { type: 'string' },
       'no-auth': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
@@ -45,7 +43,6 @@ function main(argv: string[]): void {
     hostname: host,
     port,
     verify: noAuth ? undefined : createVerifier({ allow, audience: values.audience! }),
-    state: values.state,
   })
   console.log(`vx-dte-server on ${server.url}`)
   const stop = (): void => {
