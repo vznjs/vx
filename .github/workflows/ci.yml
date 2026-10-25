@@ -95,10 +95,10 @@ jobs:
       - run: bun packages/vx/src/bin.ts lock --check
       # A PR that changes the relay runs on its own code: Workers Builds'
       # Preview of the head's relay; main waits for the relay's deploy
-      # (private/vx-dte-relay-worker/preview.ts).
+      # (private/vx-dte-service/preview.ts).
       - if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
         id: relay
-        run: bun private/vx-dte-relay-worker/preview.ts
+        run: bun private/vx-dte-service/preview.ts
       # The Pages deploy is a task of the run (@vzn/vx-docs#deploy.pages,
       # owner, 2026-10-24). GitHub hands the job's runtime token, which
       # uploads the site's artifact, only to JavaScript actions: this hands

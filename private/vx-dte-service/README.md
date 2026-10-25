@@ -1,15 +1,18 @@
-# @vzn/vx-dte-relay-worker
+# @vzn/vx-dte-service
 
 vznjs's own relay: [`@vzn/vx-dte-server`](../../packages/vx-dte-server)'s worker,
 deployed with this repo's settings, `ALLOW` included, so the relay package
 stays generic.
 
+The Worker keeps the name `vx-dte-relay` (`wrangler.jsonc`), so its URL,
+`https://vx-dte-relay.exelord.workers.dev`, is the one `dte({ relay })` names.
+
 Workers Builds deploys it on each push to `main` that touches the relay:
 
-- Root directory: `private/vx-dte-relay-worker`
+- Root directory: `private/vx-dte-service`
 - Build command: `bun install --frozen-lockfile`
 - Deploy command: `bunx wrangler deploy`
-- Watch paths: `packages/vx-dte-server/*`, `private/vx-dte-relay-worker/*`, `bun.lock`
+- Watch paths: `packages/vx-dte-server/*`, `private/vx-dte-service/*`, `bun.lock`
 - Non-production branches: on, preview command `bunx wrangler preview`
 
 A pull request that touches those paths gets a Preview of its commit, and

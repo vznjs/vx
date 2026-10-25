@@ -200,8 +200,8 @@
         "@vzn/vx-schedule-history": "workspace:*",
       },
     },
-    "private/vx-dte-relay-worker": {
-      "name": "@vzn/vx-dte-relay-worker",
+    "private/vx-dte-service": {
+      "name": "@vzn/vx-dte-service",
       "version": "0.0.0",
       "dependencies": {
         "@vzn/vx-dte-server": "workspace:*",
@@ -774,9 +774,9 @@
 
     "@vzn/vx-dte": ["@vzn/vx-dte@workspace:packages/vx-dte"],
 
-    "@vzn/vx-dte-relay-worker": ["@vzn/vx-dte-relay-worker@workspace:private/vx-dte-relay-worker"],
-
     "@vzn/vx-dte-server": ["@vzn/vx-dte-server@workspace:packages/vx-dte-server"],
+
+    "@vzn/vx-dte-service": ["@vzn/vx-dte-service@workspace:private/vx-dte-service"],
 
     "@vzn/vx-lockfile": ["@vzn/vx-lockfile@workspace:packages/vx-lockfile"],
 

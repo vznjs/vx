@@ -106,7 +106,7 @@ describe('ci.yml', () => {
   // 2026-10-25). Before the run, on a PR only.
   it('points a PR’s run at the relay Preview, and main’s at its deploy, before it runs', () => {
     const steps = doc.jobs['linux']!.steps!
-    const at = steps.findIndex((s) => s.run === 'bun private/vx-dte-relay-worker/preview.ts')
+    const at = steps.findIndex((s) => s.run === 'bun private/vx-dte-service/preview.ts')
     expect(steps[at]?.if).toBe(
       "github.event_name == 'pull_request' || github.ref == 'refs/heads/main'",
     )
