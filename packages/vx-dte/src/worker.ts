@@ -33,9 +33,11 @@ import { childrenCpuMs, describeCpu, readPs, topBetween } from './cpu-account.js
 import {
   HELD_EVERY,
   HOST_ENV,
+  PART_LISTS,
   type Load,
   type WorkerInfo,
   type RunOrder,
+  type ToOrchestrator,
   type ToWorker,
   type WiredResult,
 } from './messages.js'
@@ -170,13 +172,14 @@ export async function runWorker(opts: {
         present.set(k, Promise.resolve())
         holds.set(k, names(m.project, m.outputs))
       }
-    await me.send('orchestrator', {
+    const end: ToOrchestrator = {
       type: 'end',
       task: m.task,
       key: keys.at(-1)!,
       result,
       load: frame(),
-    })
+    }
+    for (const part of parts(end)) await me.send('orchestrator', part)
   }
 
   // A message the relay would not take is said, each kind once (2026-10-23):
@@ -891,3 +894,36 @@ const esc = (p: string): string => JSON.stringify(p).slice(1, -1)
 
 /** Makes each bind that is missing here: the empty files it made, to take back. */
 const gb = (n: number): string => `${(n / 1e9).toFixed(1)} GB`
+
+/** The most of a result one send carries: a relay frame is 1 MiB, which sealing grows by a third. */
+const PART_BYTES = 256 * 1024
+
+/**
+ * `end` as its sends: itself when it fits one frame, else its long lists
+ * first, in parts that each fit, and then the rest of it.
+ */
+function parts(end: Extract<ToOrchestrator, { type: 'end' }>): ToOrchestrator[] {
+  if (JSON.stringify(end).length <= PART_BYTES) return [end]
+  const out: ToOrchestrator[] = []
+  const result: Record<string, unknown> = { ...end.result }
+  for (const list of PART_LISTS) {
+    const items = end.result[list] as readonly unknown[] | undefined
+    if (items === undefined) continue
+    delete result[list]
+    let piece: unknown[] = []
+    let bytes = 0
+    for (const item of items) {
+      const size = JSON.stringify(item).length + 1
+      if (piece.length > 0 && bytes + size > PART_BYTES) {
+        out.push({ type: 'part', task: end.task, [list]: piece })
+        piece = []
+        bytes = 0
+      }
+      piece.push(item)
+      bytes += size
+    }
+    if (piece.length > 0) out.push({ type: 'part', task: end.task, [list]: piece })
+  }
+  out.push({ ...end, result: result as WiredResult })
+  return out
+}
