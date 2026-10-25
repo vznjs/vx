@@ -90,9 +90,7 @@ describe('the relay a PR’s run uses', () => {
     const d = deps(['packages/vx-dte-server/src/relay.ts'], [async () => []], {
       a: { runs: await check('completed', 'success', earlier)(), since: ['packages/vx-dte/a.ts'] },
     })
-    expect(await relayFor('vx-dte', DEPLOYED, d)).toBe(
-      'https://earlier-vx-dte.exelord.workers.dev',
-    )
+    expect(await relayFor('vx-dte', DEPLOYED, d)).toBe('https://earlier-vx-dte.exelord.workers.dev')
     expect(d.slept).toBe(0)
   })
 
@@ -129,9 +127,7 @@ describe('the relay a PR’s run uses', () => {
   })
 
   it('serves the Preview its check names beside the deployed Worker', () => {
-    expect(previewUrl(SUMMARY, DEPLOYED)).toBe(
-      'https://feat-relay-vx-dte.exelord.workers.dev',
-    )
+    expect(previewUrl(SUMMARY, DEPLOYED)).toBe('https://feat-relay-vx-dte.exelord.workers.dev')
     const production = SUMMARY.replace('/previews/feat-relay', '')
     expect(previewUrl(production, DEPLOYED)).toBeUndefined()
   })
