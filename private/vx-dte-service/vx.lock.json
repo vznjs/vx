@@ -103,9 +103,7 @@
       ],
       "inputs": {
         "files": [
-          "*.ts",
           "tests/**",
-          "README.md",
           "wrangler.jsonc",
           "package.json"
         ]

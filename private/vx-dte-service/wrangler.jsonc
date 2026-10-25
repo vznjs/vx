@@ -26,9 +26,9 @@
     "head_sampling_rate": 0.1,
     "issues": { "enabled": true },
   },
-  // A branch's Preview (preview.ts): Previews inherit no production
-  // setting, so the same ALLOW and the binding the code reads. Each gets
-  // its own Durable Object namespace.
+  // A branch's Preview (private/vx-servers/worker-url.ts): Previews
+  // inherit no production setting, so the same ALLOW and the binding the
+  // code reads. Each gets its own Durable Object namespace.
   "previews": {
     "vars": {
       "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml https://token.actions.githubusercontent.com:vznjs/vx:vx-worker.yml",

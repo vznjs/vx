@@ -4,20 +4,12 @@ export function github(options?: GithubPluginOptions): VxPlugin | undefined
 export function gitlab(options?: GitlabPluginOptions): VxPlugin | undefined
 == function renderJobSummary (src/index.ts)
 export function renderJobSummary(summary: RunSummaryRecord, title?: string): string
-== type FetchFn (src/checks.ts)
-export type FetchFn = (
-  url: string,
-  init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal },
-) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>
 == type GithubPluginOptions (src/plugin.ts)
 export interface GithubPluginOptions {
   summaryFile?: string
   title?: string
-  checks?: boolean
-  checkName?: string
   cacheScope?: boolean
   append?: (file: string, markdown: string) => Promise<void>
-  fetchFn?: FetchFn
   sizeOf?: (file: string) => Promise<number>
 }
 == type GitlabPluginOptions (src/gitlab.ts)

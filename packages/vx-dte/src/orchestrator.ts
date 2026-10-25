@@ -352,6 +352,14 @@ export class Orchestrator {
         return o.root
       }
     })()
+    // Leases ran on while either side was away, as a relay restarted: what
+    // a worker holds is still its own, not run again elsewhere (owner,
+    // 2026-10-25: "make sure on rejoin we don't repeat work").
+    o.me.resumed((peer) => {
+      for (const a of this.workers.values())
+        if (peer === undefined || a.id === peer)
+          for (const j of a.busy.values()) if (j.leaseUntil !== undefined) this.lease(j)
+    })
     this.loop = this.listen()
   }
 
@@ -1004,6 +1012,8 @@ export class Orchestrator {
 
   /** Each task whose worker's lease on it ended goes back. */
   private expire(): void {
+    // With no socket no `held` arrives: the leases wait for it (`resumed`).
+    if (!this.o.me.online) return
     const now = performance.now()
     const back: Job[] = []
     for (const a of this.workers.values())

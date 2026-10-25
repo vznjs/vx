@@ -1,6 +1,6 @@
 // Every run evaluates `.vx/workspace.ts`, so what this package loads at
 // import is paid by every run: off Actions only the entry loads, and the
-// sink and the Checks API client load only where a summary file is set.
+// sink and the summary renderer load only where a summary file is set.
 import path from 'node:path'
 import { expect, it } from 'bun:test'
 
@@ -27,11 +27,11 @@ process.env.GITHUB_ACTIONS = 'true'
 const p = m.github({})
 p.telemetry({ warn() {} })
 const before = [...seen].sort()
-m.github({ summaryFile: '/dev/null', checks: false }).telemetry({ warn() {} })
+m.github({ summaryFile: '/dev/null' }).telemetry({ warn() {} })
 console.log('SEEN ' + JSON.stringify({ off, before, after: [...seen].sort() }))
 `
 
-it('off CI only the entry loads; a run with no summary file loads no sink, renderer or Checks API client', async () => {
+it('off CI only the entry loads; a run with no summary file loads no sink or renderer', async () => {
   // On an Actions runner the variables are set: drop them so the probe declines.
   const { GITHUB_STEP_SUMMARY: _, GITLAB_CI: __, ...withoutSummary } = process.env
   const proc = Bun.spawn(
@@ -53,5 +53,5 @@ it('off CI only the entry loads; a run with no summary file loads no sink, rende
   expect(off).toEqual(['index.ts'])
   expect(before).toEqual(['cache-scope.ts', 'index.ts', 'plugin.ts'])
   // The control: a summary file does load the sink, so the probe sees a load.
-  expect(after).toEqual([...before, 'checks.ts', 'sink.ts', 'summary.ts'].sort())
+  expect(after).toEqual([...before, 'sink.ts', 'summary.ts'].sort())
 })

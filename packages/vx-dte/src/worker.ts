@@ -539,6 +539,9 @@ export async function runWorker(opts: {
             else await floor.rearm(m.sandboxes)
           }
           for (const t of m.tasks) {
+            // One it runs already, sent again (its lease ended while the
+            // relay was away): it is not run twice.
+            if (running.has(t.task)) continue
             const deps = ahead.get(t.task)
             ahead.delete(t.task)
             start(deps === undefined ? t : { ...t, deps: [...deps, ...t.deps] })

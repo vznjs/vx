@@ -13,7 +13,6 @@ import { github } from '../src/plugin.js'
 import { GithubSummarySink } from '../src/sink.js'
 import { MAX_JOB_SUMMARY_BYTES } from '../src/summary.js'
 import { renderJobSummary } from '../src/summary.js'
-import type { FetchFn } from '../src/checks.js'
 
 /**
  * Put `process.env` back IN PLACE: assigning a fresh object detaches it
@@ -313,7 +312,6 @@ describe('github() activation', () => {
     const writes: Array<[string, string]> = []
     const sink = github({
       summaryFile: '/tmp/sumfile.md',
-      checks: false,
       append: async (f, md) => void writes.push([f, md]),
     })!.telemetry!(ctx) as GithubSummarySink
     expect(sink).toBeInstanceOf(GithubSummarySink)
@@ -326,8 +324,7 @@ describe('github() activation', () => {
   })
 
   it('what it appends is bounded by GitHub’s 1 MiB job-summary cap', async () => {
-    // The Checks payload has been clamped since it was written; the FILE was
-    // not, and GitHub rejects a step summary past 1 MiB outright — so an
+    // GitHub rejects a step summary past 1 MiB outright — so an
     // unbounded page costs the whole summary, not its tail. At the measured
     // ~55 bytes a row that is ~19 000 tasks, which this repo's own bench
     // generates (5 000 projects × four tasks), so it is reachable
@@ -335,7 +332,6 @@ describe('github() activation', () => {
     const writes: string[] = []
     const sink = github({
       summaryFile: '/tmp/sumfile.md',
-      checks: false,
       append: async (_f, md) => void writes.push(md),
     })!.telemetry!(ctx) as GithubSummarySink
     const many = Array.from({ length: 25_000 }, (_, i) =>
@@ -362,7 +358,7 @@ describe('github() activation', () => {
         const file = path.join(dir, `summary-${already}.md`)
         await writeFile(file, 'x'.repeat(already))
         const warns: string[] = []
-        const sink = github({ summaryFile: file, checks: false })!.telemetry!({
+        const sink = github({ summaryFile: file })!.telemetry!({
           ...ctx,
           warn: (m: string) => warns.push(m),
         }) as GithubSummarySink
@@ -394,9 +390,7 @@ describe('github() activation', () => {
       const run = async (before: string): Promise<string> => {
         const file = path.join(dir, `s-${before.length}.md`)
         await writeFile(file, before)
-        const sink = github({ summaryFile: file, checks: false })!.telemetry!(
-          ctx,
-        ) as GithubSummarySink
+        const sink = github({ summaryFile: file })!.telemetry!(ctx) as GithubSummarySink
         sink.onRunSummary!(summary([task({})]))
         await sink.flush!()
         return (await readFile(file, 'utf8')).split('\n').slice(0, 2).join('\n')
@@ -414,7 +408,6 @@ describe('github() activation', () => {
     const writes: string[] = []
     const sink = github({
       summaryFile: '/tmp/sumfile.md',
-      checks: false,
       append: async (_f, md) => void writes.push(md),
     })!.telemetry!(ctx) as GithubSummarySink
     sink.onRunSummary!(summary([task({}), task({ taskId: 'b#build' })]))
@@ -427,7 +420,6 @@ describe('github() activation', () => {
     const writes: string[] = []
     const sink = github({
       summaryFile: '/tmp/sumfile.md',
-      checks: false,
       append: async (_f, md) => void writes.push(md),
     })!.telemetry!(ctx) as GithubSummarySink
     await sink.flush!()
@@ -457,7 +449,7 @@ describe('vx run with github() — the composition proof', () => {
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
         localWorkspaceSource(
-          [`github({ summaryFile: ${JSON.stringify(summaryFile)}, checks: false })`],
+          [`github({ summaryFile: ${JSON.stringify(summaryFile)} })`],
           `import { github } from ${JSON.stringify(GITHUB_INDEX)}\n`,
         ),
       )
@@ -484,294 +476,9 @@ describe('vx run with github() — the composition proof', () => {
   })
 })
 
-describe('Checks API', () => {
-  const ctx = { workspaceRoot: '/w', cacheDir: '/c', warn: () => undefined }
-  const ENV = {
-    GITHUB_TOKEN: 't0ken',
-    GITHUB_REPOSITORY: 'vznjs/vx',
-    GITHUB_SHA: 'abc123',
-  }
-
-  it('a failed summary write still posts the check run', async () => {
-    // The two outputs are independent, and the plugin already says so in one
-    // direction: it declines the CHECK without a token while keeping the
-    // summary. The reverse has to hold, or a full disk on the runner silently
-    // costs the PR its check — the more visible of the two artifacts.
-    const saved = {
-      t: process.env['GITHUB_TOKEN'],
-      r: process.env['GITHUB_REPOSITORY'],
-      s: process.env['GITHUB_SHA'],
-    }
-    process.env['GITHUB_TOKEN'] = 't0ken'
-    process.env['GITHUB_REPOSITORY'] = 'vznjs/vx'
-    process.env['GITHUB_SHA'] = 'abc123'
-    const warns: string[] = []
-    const posted: string[] = []
-    try {
-      const sink = github({
-        summaryFile: '/tmp/sumfile.md',
-        append: async () => {
-          throw new Error('ENOSPC: no space left on device')
-        },
-        fetchFn: async (url: string) => {
-          posted.push(url)
-          return { ok: true, status: 201, text: async () => '' }
-        },
-      })!.telemetry!({ ...ctx, warn: (m: string) => warns.push(m) }) as GithubSummarySink
-      sink.onRunSummary!(summary([task({})]))
-      await sink.flush!()
-    } finally {
-      for (const [k, v] of [
-        ['GITHUB_TOKEN', saved.t],
-        ['GITHUB_REPOSITORY', saved.r],
-        ['GITHUB_SHA', saved.s],
-      ] as const) {
-        if (v === undefined) delete process.env[k]
-        else process.env[k] = v
-      }
-    }
-    expect(posted.length).toBe(1)
-    expect(warns.some((w) => w.includes('ENOSPC'))).toBe(true)
-  })
-
-  // Item 928: fetch refuses a token no header can carry and QUOTES it in the
-  // error the check-run warning printed.
-  it('a GITHUB_TOKEN no header can carry skips the check-run, and is not printed', async () => {
-    const saved = {
-      t: process.env['GITHUB_TOKEN'],
-      r: process.env['GITHUB_REPOSITORY'],
-      s: process.env['GITHUB_SHA'],
-    }
-    process.env['GITHUB_TOKEN'] = 'ghs_SECRET\nline2'
-    process.env['GITHUB_REPOSITORY'] = 'vznjs/vx'
-    process.env['GITHUB_SHA'] = 'abc123'
-    const warns: string[] = []
-    const posted: string[] = []
-    try {
-      const sink = github({
-        summaryFile: '/tmp/sumfile.md',
-        append: async () => {},
-        fetchFn: async (url: string) => {
-          posted.push(url)
-          return { ok: true, status: 201, text: async () => '' }
-        },
-      })!.telemetry!({ ...ctx, warn: (m: string) => warns.push(m) }) as GithubSummarySink
-      sink.onRunSummary!(summary([task({})]))
-      await sink.flush!()
-    } finally {
-      for (const [k, v] of [
-        ['GITHUB_TOKEN', saved.t],
-        ['GITHUB_REPOSITORY', saved.r],
-        ['GITHUB_SHA', saved.s],
-      ] as const) {
-        if (v === undefined) delete process.env[k]
-        else process.env[k] = v
-      }
-    }
-    expect({ posted, warns }).toEqual({
-      posted: [],
-      warns: [
-        'vx-ci: GITHUB_TOKEN holds a line break or NUL, which no HTTP header can carry — no check-run will be created (the token is not printed)',
-      ],
-    })
-  })
-
-  it('resolveCheckRunEnv needs all three vars and defaults the API url', async () => {
-    const { resolveCheckRunEnv } = await import('../src/checks.js')
-    expect(resolveCheckRunEnv({})).toBeNull()
-    expect(resolveCheckRunEnv({ ...ENV, GITHUB_TOKEN: '' })).toBeNull()
-    // An EMPTY var is as absent as a missing one, and all three have to agree.
-    // Only the token was checked for it, so an empty repository POSTed to
-    // `/repos//check-runs` and an empty sha POSTed `head_sha: ''` — a 404 or
-    // 422 warning instead of a clean decline.
-    expect(resolveCheckRunEnv({ ...ENV, GITHUB_REPOSITORY: '' })).toBeNull()
-    expect(resolveCheckRunEnv({ ...ENV, GITHUB_SHA: '' })).toBeNull()
-    expect(resolveCheckRunEnv(ENV)).toEqual({
-      token: 't0ken',
-      repository: 'vznjs/vx',
-      sha: 'abc123',
-      apiUrl: 'https://api.github.com',
-    })
-    expect(resolveCheckRunEnv({ ...ENV, GITHUB_API_URL: 'https://ghe.corp/api/v3' })!.apiUrl).toBe(
-      'https://ghe.corp/api/v3',
-    )
-    // Item 924: an empty one is absent too, not a relative URL.
-    expect(resolveCheckRunEnv({ ...ENV, GITHUB_API_URL: '' })!.apiUrl).toBe(
-      'https://api.github.com',
-    )
-  })
-
-  // Item 924: the cut was in UTF-16 units and could split an emoji into a
-  // lone surrogate; the cap is held in UTF-8 bytes, on a character boundary.
-  it('the check-run clamp cuts on a character and fits the cap in bytes', async () => {
-    const { clampSummary } = await import('../src/checks.js')
-    for (let pad = 0; pad < 4; pad++) {
-      const clamped = clampSummary('x'.repeat(pad) + '🛑'.repeat(40_000))
-      expect({
-        wellFormed: !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
-          clamped,
-        ),
-        replaced: clamped.includes('\uFFFD'),
-        fits: Buffer.byteLength(clamped, 'utf8') <= 65_535,
-        tell: clamped.endsWith('(65535-char Checks API limit)'),
-      }).toEqual({ wellFormed: true, replaced: false, fits: true, tell: true })
-    }
-  })
-
-  it('payload: conclusion follows exitOk; summary is the job markdown; 65535 cap holds', async () => {
-    const { buildCheckRunPayload, clampSummary } = await import('../src/checks.js')
-    const s = summary([task({}), task({ taskId: 'b#x', status: 'failed', exitCode: 3 })])
-    const payload = buildCheckRunPayload({ summary: s, markdown: '# md', name: 'vx', sha: 'abc' })
-    expect(payload['conclusion']).toBe('failure')
-    expect(payload['head_sha']).toBe('abc')
-    expect((payload['output'] as { title: string }).title).toBe('1 failed')
-    const ok = buildCheckRunPayload({
-      summary: summary([task({})]),
-      markdown: 'm',
-      name: 'vx',
-      sha: 'a',
-    })
-    expect(ok['conclusion']).toBe('success')
-    const clamped = clampSummary('x'.repeat(70_000))
-    expect(clamped.length).toBeLessThanOrEqual(65_535)
-    expect(clamped).toContain('truncated by @vzn/vx-ci')
-  })
-
-  it('payload: a stopped run with nothing failed is cancelled, not a failure', async () => {
-    // A cancelled CI job reaches the flush since item 849; aborted tasks are
-    // not in `tasks`, so the count is the only word of them (item 851).
-    const { buildCheckRunPayload } = await import('../src/checks.js')
-    const stopped = buildCheckRunPayload({
-      summary: summary([task({})], { exitOk: false, abortedCount: 2 }),
-      markdown: 'm',
-      name: 'vx',
-      sha: 'a',
-    })
-    expect(stopped['conclusion']).toBe('cancelled')
-    expect((stopped['output'] as { title: string }).title).toBe('cancelled · 2 aborted')
-    // A failure beside the aborts is still a failure.
-    const both = buildCheckRunPayload({
-      summary: summary([task({ status: 'failed', exitCode: 1 })], { abortedCount: 2 }),
-      markdown: 'm',
-      name: 'vx',
-      sha: 'a',
-    })
-    expect(both['conclusion']).toBe('failure')
-    // And a failed run with no aborts and nothing failed stays a failure.
-    const neither = buildCheckRunPayload({
-      summary: summary([task({})], { exitOk: false }),
-      markdown: 'm',
-      name: 'vx',
-      sha: 'a',
-    })
-    expect(neither['conclusion']).toBe('failure')
-    const md = renderJobSummary(summary([task({})], { exitOk: false, abortedCount: 2 }))
-    expect(md).toContain('## ⏹️ vx run')
-    expect(md).toContain('**2** aborted')
-    expect(renderJobSummary(summary([task({})], { exitOk: false }))).toContain('## ❌ vx run')
-  })
-
-  it('flush POSTs one completed check-run through the injected transport', async () => {
-    const calls: Array<{ url: string; body: string; auth: string | undefined }> = []
-    const prev = { ...process.env }
-    Object.assign(process.env, ENV)
-    try {
-      const sink = github({
-        summaryFile: '/tmp/sum.md',
-        append: async () => undefined,
-        fetchFn: async (url, init) => {
-          calls.push({ url, body: init.body, auth: init.headers['authorization'] })
-          return { ok: true, status: 201, text: async () => '' }
-        },
-      })!.telemetry!(ctx) as GithubSummarySink
-      sink.onRunSummary!(summary([task({})]))
-      expect(calls.length).toBe(0) // prompt-return contract
-      await sink.flush!()
-      expect(calls.length).toBe(1)
-      expect(calls[0]!.url).toBe('https://api.github.com/repos/vznjs/vx/check-runs')
-      expect(calls[0]!.auth).toBe('Bearer t0ken')
-      const body = JSON.parse(calls[0]!.body) as Record<string, unknown>
-      expect(body['status']).toBe('completed')
-      expect(body['conclusion']).toBe('success')
-      expect((body['output'] as { summary: string }).summary).toContain('a#build')
-    } finally {
-      restoreEnv(prev)
-    }
-  })
-
-  // Core abandons a flush at its deadline, but a request still in flight
-  // kept `vx run` alive against a hanging API until the CI job's own
-  // timeout (item 1055). The POST carries core's deadline signal.
-  it('the check-run POST ends when core’s flush deadline aborts', async () => {
-    const warns: string[] = []
-    const prev = { ...process.env }
-    Object.assign(process.env, ENV)
-    try {
-      const sink = github({
-        summaryFile: '/tmp/sum.md',
-        append: async () => undefined,
-        fetchFn: (_url, init) =>
-          // As `fetch` does: an aborted signal rejects at once, a later
-          // abort when it lands; without one the request never answers.
-          new Promise((_resolve, reject) => {
-            if (init.signal?.aborted === true) reject(new Error('aborted'))
-            init.signal?.addEventListener('abort', () => reject(new Error('aborted')))
-          }),
-      })!.telemetry!({ ...ctx, warn: (m: string) => void warns.push(m) }) as GithubSummarySink
-      sink.onRunSummary!(summary([task({})]))
-      const deadline = new AbortController()
-      const flushed = sink.flush!(deadline.signal)
-      deadline.abort()
-      await flushed
-      expect(warns.length).toBe(1)
-    } finally {
-      restoreEnv(prev)
-    }
-  })
-
-  it('a failing POST warns and never throws — observability cannot break a run', async () => {
-    const warns: string[] = []
-    const prev = { ...process.env }
-    Object.assign(process.env, ENV)
-    try {
-      const sink = github({
-        summaryFile: '/tmp/sum.md',
-        append: async () => undefined,
-        fetchFn: async () => ({ ok: false, status: 403, text: async () => 'nope' }),
-      })!.telemetry!({ ...ctx, warn: (m: string) => void warns.push(m) }) as GithubSummarySink
-      sink.onRunSummary!(summary([task({})]))
-      await sink.flush!() // must resolve
-      expect(warns.length).toBe(1)
-      expect(warns[0]).toContain('403')
-      expect(warns[0]).toContain('checks: write')
-    } finally {
-      restoreEnv(prev)
-    }
-  })
-
-  it('checks: true without the env warns at activation; default silently skips', async () => {
-    const prev = { ...process.env }
-    delete process.env['GITHUB_TOKEN']
-    delete process.env['GITHUB_REPOSITORY']
-    delete process.env['GITHUB_SHA']
-    try {
-      const warns: string[] = []
-      const wctx = { ...ctx, warn: (m: string) => void warns.push(m) }
-      void github({ summaryFile: '/tmp/s.md', checks: true })!.telemetry!(wctx)
-      expect(warns.length).toBe(1)
-      expect(warns[0]).toContain('no check-run will be created')
-      void github({ summaryFile: '/tmp/s.md' })!.telemetry!(wctx)
-      expect(warns.length).toBe(1) // default: silent skip
-    } finally {
-      restoreEnv(prev)
-    }
-  })
-})
-
 // Item 806's sweep: each row fails with one line of src/ undone.
 describe('every output the vx-ci sweep found unheld', () => {
   const ctx = { workspaceRoot: '/w', cacheDir: '/c', warn: () => undefined }
-  const ENV = { GITHUB_TOKEN: 't0ken', GITHUB_REPOSITORY: 'vznjs/vx', GITHUB_SHA: 'abc123' }
   const row = (md: string, id: string) => md.split('\n').find((l) => l.startsWith(`| ${id} |`))
 
   it('the job summary is clamped in BYTES, on a character boundary', async () => {
@@ -806,17 +513,6 @@ describe('every output the vx-ci sweep found unheld', () => {
         overCap: Buffer.byteLength(written, 'utf8') > MAX_JOB_SUMMARY_BYTES,
       }).toEqual({ prefix, replaced: false, overCap: false })
     }
-  })
-
-  it('each clamp keeps a page of exactly its cap whole and cuts one past it', async () => {
-    const { clampJobSummary } = await import('../src/summary.js')
-    const { clampSummary } = await import('../src/checks.js')
-    const atJob = 'x'.repeat(MAX_JOB_SUMMARY_BYTES)
-    expect(clampJobSummary(atJob)).toBe(atJob)
-    expect(clampJobSummary(`${atJob}x`)).toContain('truncated by @vzn/vx-ci')
-    const atCheck = 'x'.repeat(65_535)
-    expect(clampSummary(atCheck)).toBe(atCheck)
-    expect(clampSummary(`${atCheck}x`)).toContain('truncated by @vzn/vx-ci')
   })
 
   it.each([
@@ -905,153 +601,6 @@ describe('every output the vx-ci sweep found unheld', () => {
     expect(md).toContain('- **a#\\~x\\~\\&lt;** — exit 1')
   })
 
-  it('the check-run payload: its times, its title in both numbers, its summary clamped', async () => {
-    const { buildCheckRunPayload } = await import('../src/checks.js')
-    const s = summary([task({})], { startedAt: 1_000, endedAt: 61_000 })
-    const payload = buildCheckRunPayload({
-      summary: s,
-      markdown: 'y'.repeat(70_000),
-      name: 'vx',
-      sha: 'a',
-    })
-    expect([payload['started_at'], payload['completed_at']]).toEqual([
-      '1970-01-01T00:00:01.000Z',
-      '1970-01-01T00:01:01.000Z',
-    ])
-    const output = payload['output'] as { title: string; summary: string }
-    expect(output.title).toBe('1 task · 0 cached')
-    expect(output.summary.length).toBeLessThanOrEqual(65_535)
-    const two = buildCheckRunPayload({
-      summary: summary([task({}), task({ taskId: 'b#x', status: 'cache-hit', restored: true })]),
-      markdown: 'm',
-      name: 'vx',
-      sha: 'a',
-    })
-    expect((two['output'] as { title: string }).title).toBe(
-      '2 tasks · 1 cached (0 up-to-date, 1 restored)',
-    )
-  })
-
-  it('the POST sends exactly the API headers; a body is cut to 200 chars; an unreadable one still warns', async () => {
-    const { postCheckRun } = await import('../src/checks.js')
-    const env = { token: 't', repository: 'o/r', sha: 's', apiUrl: 'https://api' }
-    const seen: Record<string, string>[] = []
-    const warns: string[] = []
-    await postCheckRun({
-      env,
-      payload: {},
-      fetchFn: async (_url, init) => {
-        seen.push(init.headers)
-        return { ok: false, status: 500, text: async () => 'e'.repeat(300) }
-      },
-      warn: (m) => warns.push(m),
-    })
-    expect(seen[0]).toEqual({
-      authorization: 'Bearer t',
-      accept: 'application/vnd.github+json',
-      'content-type': 'application/json',
-      'x-github-api-version': '2022-11-28',
-      'user-agent': 'vzn-vx-ci',
-    })
-    await postCheckRun({
-      env,
-      payload: {},
-      fetchFn: async () => ({
-        ok: false,
-        status: 502,
-        text: async () => {
-          throw new Error('socket closed')
-        },
-      }),
-      warn: (m) => warns.push(m),
-    })
-    expect(warns).toEqual([
-      `vx-ci: check-run POST failed (500): ${'e'.repeat(200)}`,
-      'vx-ci: check-run POST failed (502): ',
-    ])
-  })
-
-  // F-29: one 503 from GitHub cost the run its check.
-  it('a 503 or a dropped connection is retried; a 400 is not', async () => {
-    const { postCheckRun } = await import('../src/checks.js')
-    const env = { token: 't', repository: 'o/r', sha: 's', apiUrl: 'https://api' }
-    const warns: string[] = []
-    const through = async (answers: (number | 'drop')[]) => {
-      let calls = 0
-      await postCheckRun({
-        env,
-        payload: {},
-        fetchFn: async () => {
-          const a = answers[calls++] ?? 201
-          if (a === 'drop') throw new Error('connection reset')
-          return { ok: a < 300, status: a, text: async () => '' }
-        },
-        warn: (m) => warns.push(m),
-      })
-      return calls
-    }
-    expect([await through([503]), await through(['drop']), await through([400]), warns]).toEqual([
-      2,
-      2,
-      1,
-      ['vx-ci: check-run POST failed (400): '],
-    ])
-  })
-
-  // F-46: the deadline passed during the wait, the next POST threw an
-  // AbortError, and the warning named it instead of GitHub's 502.
-  // The abort is armed by the first POST, so it lands in the 200 ms wait: a
-  // 50 ms timer from the call's start could beat that POST (M-39).
-  it('a deadline during the wait ends the retries and warns the 502', async () => {
-    const { postCheckRun } = await import('../src/checks.js')
-    const warns: string[] = []
-    let calls = 0
-    const deadline = new AbortController()
-    let abortedAt = 0
-    await postCheckRun({
-      env: { token: 't', repository: 'o/r', sha: 's', apiUrl: 'https://api' },
-      payload: {},
-      fetchFn: async (_url, init) => {
-        calls++
-        if (init.signal?.aborted === true) throw new DOMException('aborted', 'AbortError')
-        if (calls === 1)
-          setTimeout(() => {
-            abortedAt = Date.now()
-            deadline.abort()
-          }, 0)
-        return { ok: false, status: 502, text: async () => 'bad gateway' }
-      },
-      warn: (m) => warns.push(m),
-      signal: deadline.signal,
-    })
-    expect([calls, warns]).toEqual([1, ['vx-ci: check-run POST failed (502): bad gateway']])
-    // Slept out, the wait ends ~200 ms after the abort.
-    expect(Date.now() - abortedAt).toBeLessThan(150)
-  })
-
-  it('a refused certificate is not retried; its message is warned (F-40)', async () => {
-    const { postCheckRun } = await import('../src/checks.js')
-    const warns: string[] = []
-    let calls = 0
-    await postCheckRun({
-      env: { token: 't', repository: 'o/r', sha: 's', apiUrl: 'https://ghes' },
-      payload: {},
-      fetchFn: async () => {
-        calls++
-        throw Object.assign(new TypeError('unable to verify the first certificate'), {
-          code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
-        })
-      },
-      warn: (m) => warns.push(m),
-    })
-    expect([calls, warns]).toEqual([
-      1,
-      [
-        "vx-ci: check-run POST failed: unable to verify the first certificate — for a host behind a private CA, set NODE_EXTRA_CA_CERTS to its CA's PEM file",
-      ],
-    ])
-  })
-
   it('an empty GITHUB_STEP_SUMMARY declines like a missing one', () => {
     const prev = { ...process.env }
     process.env['GITHUB_STEP_SUMMARY'] = ''
@@ -1061,47 +610,11 @@ describe('every output the vx-ci sweep found unheld', () => {
       restoreEnv(prev)
     }
   })
-
-  it('`checks: false` posts nothing with the env present; `checkName` and `title` are used', async () => {
-    const prev = { ...process.env }
-    Object.assign(process.env, ENV)
-    try {
-      const bodies: string[] = []
-      const writes: string[] = []
-      const fetchFn = async (_url: string, init: { body: string }) => {
-        bodies.push(init.body)
-        return { ok: true, status: 201, text: async () => '' }
-      }
-      const off = github({
-        summaryFile: '/tmp/s.md',
-        checks: false,
-        append: async () => undefined,
-        fetchFn,
-      })!.telemetry!(ctx) as GithubSummarySink
-      off.onRunSummary!(summary([task({})]))
-      await off.flush!()
-      expect(bodies).toEqual([])
-      const named = github({
-        summaryFile: '/tmp/s.md',
-        checkName: 'vx / ci',
-        title: 'nightly',
-        append: async (_f, md) => void writes.push(md),
-        fetchFn,
-      })!.telemetry!(ctx) as GithubSummarySink
-      named.onRunSummary!(summary([task({})]))
-      await named.flush!()
-      expect((JSON.parse(bodies[0]!) as { name: string }).name).toBe('vx / ci')
-      expect(writes[0]!.startsWith('## ✅ nightly\n')).toBe(true)
-    } finally {
-      restoreEnv(prev)
-    }
-  })
 })
 
 // F-6: the mutation sweep of vx-ci (147 mutants, 31 real survivors).
 describe('what the F-6 sweep found unheld', () => {
   const ctx = { workspaceRoot: '/w', cacheDir: '/c', warn: () => undefined }
-  const ENV = { GITHUB_TOKEN: 't0ken', GITHUB_REPOSITORY: 'vznjs/vx', GITHUB_SHA: 'abc123' }
   const durationOf = (ms: number): string =>
     renderJobSummary(summary([task({ durationMs: ms })]), 'vx run')
       .split('\n')
@@ -1143,7 +656,6 @@ describe('what the F-6 sweep found unheld', () => {
     const writes: string[] = []
     try {
       const sink = github({
-        checks: false,
         append: async (f) => void writes.push(f),
       })!.telemetry!(ctx) as GithubSummarySink
       sink.onRunSummary!(summary([task({})]))
@@ -1152,112 +664,6 @@ describe('what the F-6 sweep found unheld', () => {
       restoreEnv(prev)
     }
     expect(writes).toEqual(['/tmp/from-env.md'])
-  })
-
-  it('each of the three vars missing declines the check-run', async () => {
-    const { resolveCheckRunEnv } = await import('../src/checks.js')
-    const without = (k: keyof typeof ENV) => {
-      const e: Record<string, string> = { ...ENV }
-      delete e[k]
-      return resolveCheckRunEnv(e)
-    }
-    expect([without('GITHUB_TOKEN'), without('GITHUB_REPOSITORY'), without('GITHUB_SHA')]).toEqual([
-      null,
-      null,
-      null,
-    ])
-  })
-
-  const postWith = async (token: string, fetchFn: FetchFn): Promise<string[]> => {
-    const prev = { ...process.env }
-    Object.assign(process.env, ENV, { GITHUB_TOKEN: token })
-    const warns: string[] = []
-    try {
-      const sink = github({
-        summaryFile: '/tmp/sum.md',
-        append: async () => undefined,
-        fetchFn,
-      })!.telemetry!({ ...ctx, warn: (m: string) => void warns.push(m) }) as GithubSummarySink
-      sink.onRunSummary!(summary([task({})]))
-      await sink.flush!()
-    } finally {
-      restoreEnv(prev)
-    }
-    return warns
-  }
-
-  it('the POST is a POST, named `vx`, on the built commit', async () => {
-    const sent: Array<{ method: string; name: unknown; sha: unknown }> = []
-    await postWith('t0ken', async (_url, init) => {
-      const body = JSON.parse(init.body) as Record<string, unknown>
-      sent.push({ method: init.method, name: body['name'], sha: body['head_sha'] })
-      return { ok: true, status: 201, text: async () => '' }
-    })
-    expect(sent).toEqual([{ method: 'POST', name: 'vx', sha: 'abc123' }])
-  })
-
-  it('a transport that throws warns once, naming why', async () => {
-    const warns = await postWith('t0ken', async () => {
-      throw new Error('ECONNREFUSED')
-    })
-    expect(warns).toEqual(['vx-ci: check-run POST failed: ECONNREFUSED'])
-  })
-
-  it('a token with CR, NUL or past Latin-1 is refused unprinted; a trailing newline is not', async () => {
-    const posts: string[] = []
-    const ok = async () => {
-      posts.push('posted')
-      return { ok: true, status: 201, text: async () => '' }
-    }
-    const refused = (fault: string) => [
-      `vx-ci: GITHUB_TOKEN holds ${fault}, which no HTTP header can carry — no check-run will be created (the token is not printed)`,
-    ]
-    expect([
-      await postWith('ghs_S3CRET\rx', ok),
-      await postWith('ghs_S3CRET\0x', ok),
-      await postWith('ghs_S3CRET€', ok),
-      await postWith('ghs_S3CRET\n', ok),
-      posts,
-    ]).toEqual([
-      refused('a line break or NUL'),
-      refused('a line break or NUL'),
-      refused('a character past Latin-1'),
-      [],
-      ['posted'],
-    ])
-  })
-})
-
-// F-13: GitHub answers a rate limit with 403 as often as 429, and every
-// such run was told to check its workflow's `checks: write`.
-describe('a rate-limited check-run POST', () => {
-  it('names the rate limit, not the permission; a plain 403 still names the permission', async () => {
-    const { postCheckRun } = await import('../src/checks.js')
-    const warnFor = async (status: number, body: string): Promise<string[]> => {
-      const warns: string[] = []
-      await postCheckRun({
-        env: { token: 't', repository: 'o/r', sha: 's', apiUrl: 'https://api.test' },
-        payload: {},
-        fetchFn: async () => ({ ok: false, status, text: async () => body }),
-        warn: (m) => void warns.push(m),
-      })
-      return warns
-    }
-    expect([
-      await warnFor(403, 'You have exceeded a secondary rate limit.'),
-      await warnFor(429, 'slow down'),
-      await warnFor(403, 'Resource not accessible by integration'),
-    ]).toEqual([
-      [
-        'vx-ci: check-run POST failed (403) — rate-limited by GitHub; this run has no check: You have exceeded a secondary rate limit.',
-      ],
-      [
-        'vx-ci: check-run POST failed (429) — rate-limited by GitHub; this run has no check: slow down',
-      ],
-      [
-        'vx-ci: check-run POST failed (403) — does the workflow grant `permissions: checks: write`?: Resource not accessible by integration',
-      ],
-    ])
   })
 })
 
@@ -1350,7 +756,6 @@ describe('the summary, as its second sweep found it unheld', () => {
       const files: string[] = []
       const sink = github({
         summaryFile: '/tmp/from-option.md',
-        checks: false,
         append: async (f) => void files.push(f),
       })!.telemetry!(ctx) as GithubSummarySink
       sink.onRunSummary!(summary([task({})]))
@@ -1367,139 +772,12 @@ describe('the summary, as its second sweep found it unheld', () => {
     try {
       const file = path.join(dir, 's.md')
       await writeFile(file, 'x')
-      const sink = github({ summaryFile: file, checks: false })!.telemetry!(
-        ctx,
-      ) as GithubSummarySink
+      const sink = github({ summaryFile: file })!.telemetry!(ctx) as GithubSummarySink
       sink.onRunSummary!(summary([task({})]))
       await sink.flush!()
       expect((await readFile(file, 'utf8')).startsWith('x\n## ✅ vx run')).toBe(true)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
-  })
-})
-
-// F-58: a mutation sweep of checks.ts (150 mutants, 30 real survivors)
-// found these unheld.
-describe('the check run, as its second sweep found it unheld', () => {
-  const env = { token: 't', repository: 'o/r', sha: 'a'.repeat(40), apiUrl: 'https://api' }
-  /** Answers in turn ('drop' throws, a string throws with that code); the calls' times. */
-  const post = async (
-    answers: (number | 'drop' | { code: string })[],
-    over: { apiUrl?: string; signal?: AbortSignal; onCall?: () => void } = {},
-  ) => {
-    const { postCheckRun } = await import('../src/checks.js')
-    const warns: string[] = []
-    const urls: string[] = []
-    const at: number[] = []
-    await postCheckRun({
-      env: { ...env, ...(over.apiUrl === undefined ? {} : { apiUrl: over.apiUrl }) },
-      payload: {},
-      fetchFn: async (url, init) => {
-        urls.push(url)
-        at.push(Date.now())
-        over.onCall?.()
-        if (init.signal?.aborted === true) throw new DOMException('aborted', 'AbortError')
-        const a = answers[urls.length - 1] ?? 201
-        if (a === 'drop') throw new Error('connection reset')
-        if (typeof a === 'object') throw Object.assign(new TypeError('refused'), a)
-        return { ok: a < 300, status: a, text: async () => '' }
-      },
-      warn: (m) => warns.push(m),
-      ...(over.signal === undefined ? {} : { signal: over.signal }),
-    })
-    return { warns, urls, at }
-  }
-
-  it('the POST goes to the API url it is given', async () => {
-    const { urls } = await post([], { apiUrl: 'https://ghe.corp/api/v3' })
-    expect(urls).toEqual(['https://ghe.corp/api/v3/repos/o/r/check-runs'])
-  })
-
-  it('502 and 504 are retried; 500, 429 and 403 are not', async () => {
-    const calls = async (status: number) => (await post([status])).urls.length
-    expect([
-      await calls(502),
-      await calls(504),
-      await calls(500),
-      await calls(429),
-      await calls(403),
-    ]).toEqual([2, 2, 1, 1, 1])
-  })
-
-  it('three blips: three tries, 200 then 800 ms apart', async () => {
-    const { at, warns } = await post([503, 503, 503])
-    expect([at.length, at[1]! - at[0]! >= 190, at[2]! - at[1]! >= 790, warns.length]).toEqual([
-      3,
-      true,
-      true,
-      1,
-    ])
-  }, 10_000)
-
-  it('each CERT refusal is tried once and warns with the NODE_EXTRA_CA_CERTS hint', async () => {
-    const hint = " — for a host behind a private CA, set NODE_EXTRA_CA_CERTS to its CA's PEM file"
-    const got = []
-    for (const code of [
-      'SELF_SIGNED_CERT_IN_CHAIN',
-      'DEPTH_ZERO_SELF_SIGNED_CERT',
-      'CERT_HAS_EXPIRED',
-    ]) {
-      const r = await post([{ code }])
-      got.push([r.urls.length, r.warns])
-    }
-    expect(got).toEqual(
-      Array.from({ length: 3 }, () => [1, [`vx-ci: check-run POST failed: refused${hint}`]]),
-    )
-  })
-
-  it('a drop, then the deadline during the wait: one warning, at once', async () => {
-    const deadline = new AbortController()
-    let abortedAt = 0
-    // Armed by the first POST, so it lands in the wait (M-39).
-    const onCall = () =>
-      setTimeout(() => {
-        abortedAt = Date.now()
-        deadline.abort()
-      }, 0)
-    const r = await post(['drop'], { signal: deadline.signal, onCall })
-    expect([r.warns, Date.now() - abortedAt < 150]).toEqual([
-      ['vx-ci: check-run POST failed: the flush deadline passed before it could be retried'],
-      true,
-    ])
-  })
-
-  it('a page under 65535 units but over 65535 bytes is clamped, and keeps all it can', async () => {
-    const { clampSummary } = await import('../src/checks.js')
-    const bytes = (s: string) => new TextEncoder().encode(s).byteLength
-    const wide = clampSummary('€'.repeat(30_000))
-    expect([
-      wide.includes('truncated by @vzn/vx-ci'),
-      bytes(wide) <= 65_535,
-      bytes(wide) >= 65_535 - 2,
-      bytes(clampSummary('x'.repeat(70_000))),
-    ]).toEqual([true, true, true, 65_535])
-  })
-
-  it('the sha is kept whole', async () => {
-    const { resolveCheckRunEnv } = await import('../src/checks.js')
-    const sha = 'f'.repeat(40)
-    expect(
-      resolveCheckRunEnv({ GITHUB_TOKEN: 't', GITHUB_REPOSITORY: 'o/r', GITHUB_SHA: sha })!.sha,
-    ).toBe(sha)
-  })
-
-  it('one aborted task and nothing failed is cancelled', async () => {
-    const { buildCheckRunPayload } = await import('../src/checks.js')
-    const p = buildCheckRunPayload({
-      summary: summary([task({})], { exitOk: false, abortedCount: 1, failedCount: 0 }),
-      markdown: 'm',
-      name: 'vx',
-      sha: 'a',
-    })
-    expect([p['conclusion'], (p['output'] as { title: string }).title]).toEqual([
-      'cancelled',
-      'cancelled · 1 aborted',
-    ])
   })
 })

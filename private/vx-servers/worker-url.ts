@@ -1,12 +1,12 @@
-// The relay a pull request's DTE run uses, or another of our Workers (the
-// cache server): `preview.ts [service dir] [env naming its URL]`, by
-// default this one and VX_DTE_RELAY. Workers Builds makes a Preview of a
-// Worker for a branch whose push touches its watch paths (its README),
-// from that commit's code: such a PR's run must use it, since its client
-// and the deployed Worker may speak different protocols. Any other PR
-// keeps the deployed one (owner, 2026-10-25: only when the PR affects
-// it). A push to main that changes it waits for its deploy. CI runs it
-// before the run; it outputs `url` when the run is to use the Preview.
+// The URL a CI run uses for one of our Workers (the DTE relay, the cache
+// server): `worker-url.ts <service dir> <env naming its URL>`. Workers
+// Builds makes a Preview of a Worker for a branch whose push touches its
+// watch paths (its README), from that commit's code: such a PR's run must
+// use it, since its client and the deployed Worker may speak different
+// protocols. Any other PR keeps the deployed one (owner, 2026-10-25: only
+// when the PR affects it). A push to main that changes it waits for its
+// deploy; any other push returns at once. CI runs it before the run; it
+// outputs `url` when the run is to use the Preview.
 
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -59,8 +59,8 @@ const POLL_MS = 5_000
 
 /**
  * The newest check of `name` on the PR's commits whose build is of the
- * head's relay: Workers Builds skips a push that changes no watch path
- * (#4333's 67a4c46), so the head's relay may be an earlier commit's build.
+ * head's Worker: Workers Builds skips a push that changes no watch path
+ * (#4333's 67a4c46), so the head's Worker may be an earlier commit's build.
  */
 async function build(
   name: string,
@@ -81,11 +81,11 @@ async function build(
 /**
  * The Preview URL the run is to use, or undefined to keep `deployed`,
  * the Worker's own URL. Waits for the Workers Builds check of `worker`
- * that built the head's relay; a failed or missing build fails, naming why.
+ * that built the head's Worker; a failed or missing build fails, naming why.
  * On `main`, that build deploys the Worker itself: the run waits for it,
  * as one that dialed first met the old relay (0dccec2, 38 s early).
  */
-export async function relayFor(
+export async function workerUrl(
   worker: string,
   watch: readonly string[],
   deployed: string,
@@ -127,8 +127,10 @@ if (import.meta.main) {
     VX_PR_HEAD: pr,
     GITHUB_SHA: pushed,
   } = process.env
-  const dir = path.resolve(process.argv[2] ?? import.meta.dir)
-  const urlEnv = process.argv[3] ?? 'VX_DTE_RELAY'
+  const [, , service, urlEnv] = process.argv
+  if (!service || !urlEnv)
+    throw new Error('usage: worker-url.ts <service dir> <env naming its URL>')
+  const dir = path.resolve(service)
   const deployed = process.env[urlEnv]
   const head = pr || pushed
   if (!repo || !out || !token || !head || !deployed)
@@ -153,7 +155,7 @@ if (import.meta.main) {
     commits: { sha: string }[]
     files?: { filename: string }[]
   }
-  const url = await relayFor(
+  const url = await workerUrl(
     worker,
     watch,
     deployed,

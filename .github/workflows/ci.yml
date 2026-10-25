@@ -88,28 +88,36 @@ jobs:
     steps:
       # One commit: --affected and vx-history's timings import fetch
       # the merge-base themselves, commits and trees only; main needs none.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
-      - run: bun install --frozen-lockfile
-      - run: bun packages/vx/src/bin.ts lock --check
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Check vx.lock.json
+        run: bun packages/vx/src/bin.ts lock --check
       # A PR that changes the relay runs on its own code: Workers Builds'
-      # Preview of the head's relay; main waits for the relay's deploy
-      # (private/vx-dte-service/preview.ts).
-      - if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+      # Preview of the head's relay. A push to main that changes it waits
+      # for its deploy. Any other run keeps the deployed relay
+      # (private/vx-servers/worker-url.ts).
+      - name: Pick the relay
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
         id: relay
-        run: bun private/vx-dte-service/preview.ts
+        run: bun private/vx-servers/worker-url.ts private/vx-dte-service VX_DTE_RELAY
       # The cache server the same way: a PR that changes it reads and
       # writes its Preview, handed to the workers (.vx/workspace.ts).
-      - if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+      - name: Pick the cache server
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
         id: cache
-        run: bun private/vx-dte-service/preview.ts private/vx-cache-service VX_CACHE_URL
+        run: bun private/vx-servers/worker-url.ts private/vx-cache-service VX_CACHE_URL
       # The Pages deploy is a task of the run (@vzn/vx-docs#deploy.pages,
       # owner, 2026-10-24). GitHub hands the job's runtime token, which
       # uploads the site's artifact, only to JavaScript actions: this hands
       # it to the run, whose env isolation passes it to that task alone.
-      - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Hand the Pages token to the run
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
@@ -122,21 +130,24 @@ jobs:
       # platform's own tests on Mac workers included, and main's `release`
       # adds the release binaries, their launch checks, the release notes
       # and the site's deploy.
-      - env:
+      - name: vx run
+        env:
           VX_DTE_RELAY: ${{ steps.relay.outputs.url || env.VX_DTE_RELAY }}
           VX_CACHE_URL: ${{ steps.cache.outputs.url || env.VX_CACHE_URL }}
         run: bun packages/vx/src/bin.ts run --profile=profile.json ci ${{ github.event_name == 'push' && 'release' || '' }} ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
       # The run in time (--profile): every worker's tasks on their own
       # lanes (@vzn/vx-dte), opened in https://ui.perfetto.dev; the job
       # summary links it.
-      - if: always()
+      - name: Upload the run profile
+        if: always()
         id: trace
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: profile
           path: profile.json
           if-no-files-found: ignore
-      - if: always() && steps.trace.outputs.artifact-url != ''
+      - name: Link the run profile
+        if: always() && steps.trace.outputs.artifact-url != ''
         env:
           URL: ${{ steps.trace.outputs.artifact-url }}
         run: echo "[Run profile]($URL), opened in https://ui.perfetto.dev" >> "$GITHUB_STEP_SUMMARY"
@@ -154,15 +165,21 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       VX_REQUIRE_SANDBOX: '1'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
-      - run: bun install --frozen-lockfile
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Restore the sandbox packages
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/vx/setup-debs
           key: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}
           restore-keys: vx-setup-debs-${{ runner.os }}-${{ runner.arch }}-
-      - run: bun packages/vx/src/bin.ts setup github
-      - run: bun packages/vx/src/bin.ts run check.perf ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
+      - name: Set up the sandbox
+        run: bun packages/vx/src/bin.ts setup github
+      - name: vx run check.perf
+        run: bun packages/vx/src/bin.ts run check.perf ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}

@@ -3,7 +3,6 @@ README.md
 index.ts
 package.json
 src/cache-scope.ts
-src/checks.ts
 src/gitlab.ts
 src/index.ts
 src/plugin.ts

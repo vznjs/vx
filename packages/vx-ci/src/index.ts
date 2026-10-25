@@ -34,7 +34,3 @@ export function gitlab(options?: GitlabPluginOptions): VxPlugin | undefined {
 export function renderJobSummary(summary: RunSummaryRecord, title?: string): string {
   return (load('./summary.js') as typeof import('./summary.js')).renderJobSummary(summary, title)
 }
-
-// The Checks API helpers are the plugin's own; only the transport type
-// the options name is public (1.0 freezes what this file exports).
-export { type FetchFn } from './checks.js'

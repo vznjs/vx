@@ -291,6 +291,10 @@ export function sealOrchestrator(
   return {
     id: me.id,
     heartbeatMs: me.heartbeatMs,
+    get online() {
+      return me.online
+    },
+    resumed: (f) => me.resumed(f),
     async send(to, body) {
       const s = sessions.get(to)
       if (s === undefined) throw new Error(`no session with ${to}`)
@@ -382,6 +386,10 @@ export async function sealWorker(
   return {
     id: me.id,
     heartbeatMs: me.heartbeatMs,
+    get online() {
+      return me.online
+    },
+    resumed: (f) => me.resumed(f),
     async send(to, body) {
       if (session === undefined) throw new Error('no session with the orchestrator yet')
       await me.send(to, await session.seal(body))

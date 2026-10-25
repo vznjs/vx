@@ -44,7 +44,7 @@ export default defineProject({
       },
     },
 
-    // preview.ts: which relay a PR's DTE run uses.
+    // wrangler.jsonc's Preview settings.
     test: {
       description: 'bun test',
       exec: {
@@ -54,7 +54,7 @@ export default defineProject({
         sandbox: { allow: { read: ['**/*'] } },
       },
       dependsOn: ['install'],
-      inputs: { files: ['*.ts', 'tests/**', 'README.md', 'wrangler.jsonc', 'package.json'] },
+      inputs: { files: ['tests/**', 'wrangler.jsonc', 'package.json'] },
       cache: {
         outputs: { files: [] },
       },

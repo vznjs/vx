@@ -9,8 +9,7 @@
     "monorepo",
     "github-actions",
     "gitlab-ci",
-    "job-summary",
-    "checks"
+    "job-summary"
   ],
   "type": "module",
   "main": "./src/index.ts",

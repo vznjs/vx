@@ -18,7 +18,7 @@ Workers Builds deploys it on each push to `main` that touches it:
 - Non-production branches: on, preview command `bunx wrangler preview`
 
 A pull request that touches those paths gets a Preview of its commit,
-and its run uses it (`private/vx-dte-service/preview.ts`, a CI step,
+and its run uses it (`private/vx-servers/worker-url.ts`, a CI step,
 handed to the workers as `VX_CACHE_URL`): the PR's client and the
 deployed server may speak different protocols. A push to main that
 changes the server waits for its deploy. `wrangler.jsonc`'s `previews`

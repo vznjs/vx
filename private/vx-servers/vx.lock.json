@@ -7,9 +7,44 @@
     },
     "ci": {
       "dependsOn": [
+        "lint.oxlint",
         "lint.oxfmt",
+        "test",
         "test.live"
       ]
+    },
+    "lint.oxlint": {
+      "description": "oxlint with tsgolint-backed type-aware checks",
+      "exec": {
+        "command": "oxlint --type-aware --type-check",
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "*.ts",
+          "tests/**",
+          "package.json",
+          ".oxlintrc.json",
+          "tsconfig.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
     },
     "lint.oxfmt": {
       "description": "oxfmt --check (no rewrite; CI-safe)",
@@ -41,6 +76,39 @@
         }
       }
     },
+    "test": {
+      "description": "bun test",
+      "exec": {
+        "command": "bun test --only-failures",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "*.ts",
+          "tests/**",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
     "test.live": {
       "description": "docker compose up, each server answering, then a clean stop",
       "exec": {
@@ -52,7 +120,7 @@
       "inputs": {
         "files": [
           "compose.yaml",
-          "tests/**",
+          "tests/smoke.sh",
           "package.json"
         ],
         "workspaceFiles": [

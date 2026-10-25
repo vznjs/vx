@@ -107,7 +107,7 @@ What vx can do, not what it is limited to. Declared in `.vx/workspace.ts`; witho
 | [`@vzn/vx-reapi`](packages/vx-reapi)                   | Remote cache and remote execution over Bazel's REAPI (NativeLink, BuildBuddy)   |
 | [`@vzn/vx-lockfile`](packages/vx-lockfile)             | Key each project on its own lockfile slice: pnpm, bun, npm, yarn                |
 | [`@vzn/vx-otel`](packages/vx-otel)                     | OpenTelemetry traces, metrics and logs, no SDK                                  |
-| [`@vzn/vx-ci`](packages/vx-ci)                         | GitHub Actions job summary and Checks API                                       |
+| [`@vzn/vx-ci`](packages/vx-ci)                         | GitHub Actions job summary                                                      |
 | [`@vzn/vx-history`](packages/vx-history)               | Schedule by the critical path learned from past runs                            |
 | [`@vzn/vx-cache`](packages/vx-cache)                   | Remote cache for CI jobs, on a vx cache server                                  |
 | [`@vzn/vx-cache-server`](packages/vx-cache-server)     | The cache server you host: Bun or Docker with S3, or Workers with R2            |

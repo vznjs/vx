@@ -46,19 +46,15 @@ Set `ALLOW` in `wrangler.jsonc`'s `vars` first.
 `src/worker.ts` is the same relay as the one on Bun. Each run is one
 Durable Object, so its sockets meet in one place. Participants hold
 websockets, which the object hibernates between messages: the run is kept
-in their attachments. A deploy, or Cloudflare's own runtime update,
-restarts every object and drops every socket, so each participant is
-also one stored row (its id, role and when its socket dropped; never a
-message): each dials back within the grace and its run goes on. An alarm
-lets go of one that never does, and of its row. It counts no heartbeat: a
-peer quiet on a socket that never closed is its peers' to lose. Issuers' keys
+in their attachments, and the object writes no storage. It sets no alarm and counts no heartbeat: a
+socket's close loses its participant, and a peer quiet on a socket that
+never closed is its peers' to lose. Issuers' keys
 are read once per isolate and held ten minutes in the data center's
 cache, so a run's object does not fetch them again; a token naming a key
 they lack is checked against a fresh read.
 It fits Workers' free plan: each participant joins on the socket it
 opens, one request, and its websocket messages count 20 to one Durable
-Object request, against 100 000 a day; it writes about two rows a
-participant (joined, gone), against 100 000 a day.
+Object request, against 100 000 a day; it writes no row.
 `wrangler.jsonc` sets the rest; change a value there, in the repository
 the button made, or in the Worker's settings in the Cloudflare dashboard:
 
@@ -77,7 +73,7 @@ Or as a container, built from this directory:
 
 ```sh
 docker build -t vx-dte-server packages/vx-dte-server
-docker run -p 8080:8080 -v vx-dte:/state vx-dte-server --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com --state /state/relay.db
+docker run -p 8080:8080 vx-dte-server --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com
 ```
 
 All vx servers at once, this relay with its state on a volume included:
@@ -91,18 +87,13 @@ All vx servers at once, this relay with its state on a volume included:
   job asks its ID token for.
 - `--port` (default 8080) and `--host` (default `0.0.0.0`) set where it
   listens.
-- `--state <file>` keeps who takes part in a SQLite file (one row each,
-  never a message), so a restart within the 10 s grace keeps the runs
-  it was carrying: each side dials back. The image's `/state` is the
-  place for a volume.
 - `--no-auth` admits every request. Use it only to try `@vzn/vx-dte`
   locally: it listens on loopback only.
 
-CI builds this image and carries one run through it, and one across
-`docker restart` (`test.live`).
+CI builds this image and carries one run through it (`test.live`).
 
-Without `--state`, runs live in memory, and restarting the relay ends
-the runs it was carrying.
+Runs live in memory. A restarted relay forgets the runs it was carrying,
+and vx-dte joins each again.
 Participants hold websockets here too, so a message reaches its receiver
 the moment it is sent.
 
@@ -127,15 +118,11 @@ The same relay as a `fetch` handler, to mount in a server of your own
   plus the hooks a host of websockets drives (`src/worker.ts` is their
   user): the options `sockets`, the `[Kept, RelaySocket]` pairs a host
   kept across a restart, from which the sessions are rebuilt (PROTOCOL.md
-  § What the relay knows), `store`, a `RelayStore` (`{ put, delete }`) where the relay
-  keeps each participant while it is one, `stored`, the `Stored` rows it held,
-  read back after a restart that dropped every socket, and `upgrade`, which answers a `socket`
+  § What the relay knows), and `upgrade`, which answers a `socket`
   request; and the methods `attach` and `detach` (its socket closed: the
   participant is gone unless it dials again within `graceMs`), which hand the relay a participant's
-  `RelaySocket` (`{ send, close }`), `frame`, which returns the
-  answer to send down the socket, or `undefined` for none, and `expire`,
-  which lets go of those whose grace ended (true while one still waits:
-  a host's alarm). `attach`
+  `RelaySocket` (`{ send, close }`), and `frame`, which returns the
+  answer to send down the socket, or `undefined` for none. `attach`
   returns the `Kept` its host keeps with the socket (a Durable Object's
   attachment: session, id, role, the host's key, and a peer's host's id), or
   `false`. A host closes a socket `attach` refuses
@@ -143,8 +130,7 @@ The same relay as a `fetch` handler, to mount in a server of your own
   (PROTOCOL.md § Sockets).
 - `serveRelay(options: ServeOptions): RelayServer` serves the relay on
   `Bun.serve`, websockets included. `ServeOptions` is
-  `{ hostname, port, verify?, heartbeatMs?, state? }` (`state`: the
-  `--state` file), and a `RelayServer` is
+  `{ hostname, port, verify?, heartbeatMs? }`, and a `RelayServer` is
   `{ url, stop() }`.
 - `createProver(): Promise<Prover>` makes the host's key for one
   session (PROTOCOL.md § The host's key). A `Prover` is

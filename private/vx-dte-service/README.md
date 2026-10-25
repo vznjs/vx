@@ -16,7 +16,7 @@ Workers Builds deploys it on each push to `main` that touches the relay:
 - Non-production branches: on, preview command `bunx wrangler preview`
 
 A pull request that touches those paths gets a Preview of its commit, and
-its DTE run uses it (`preview.ts`, a CI step): the PR's client and the
+its DTE run uses it (`private/vx-servers/worker-url.ts`, a CI step): the PR's client and the
 deployed relay may speak different protocols. A push that changes no
 watched path gets no build; its run uses the newest Preview of the same
 relay code. A push to main that changes the relay waits for its deploy.

@@ -13,9 +13,7 @@ const cacheUrl = process.env['VX_CACHE_URL'] || 'https://vx-cache.exelord.worker
 export default defineWorkspace({
   plugins: [
     bun(),
-    // The report is the job summary only, no check run beside the jobs
-    // (owner, 2026-10-23).
-    github({ checks: false }),
+    github(),
     // Our own servers (private/vx-cache-service, private/vx-history-service):
     // CI jobs sign in with their OIDC token, so off CI both stay local.
     vxCache({ url: cacheUrl }),

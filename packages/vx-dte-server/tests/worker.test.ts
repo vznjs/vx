@@ -8,7 +8,7 @@ import worker, {
   type DurableObjectState,
   type Env,
 } from '../src/worker.js'
-import { sessionKey, type Kept, type Stored } from '../src/relay.js'
+import { sessionKey, type Kept } from '../src/relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const A = '00000000-0000-4000-8000-000000000001'
@@ -23,25 +23,11 @@ Object.assign(globalThis, {
   caches: { default: { match: async () => undefined, put: async () => {} } },
 })
 
-/** An object's state: its sockets, its stored rows, and the alarms it set. */
-function state(
-  sockets: ReturnType<DurableObjectState['getWebSockets']> = [],
-  rows = new Map<string, Stored>(),
-): DurableObjectState & { rows: Map<string, Stored>; alarms: number[] } {
-  const alarms: number[] = []
+/** An object's state with no websocket. */
+function state(): DurableObjectState {
   return {
-    rows,
-    alarms,
     acceptWebSocket: () => {},
-    getWebSockets: () => sockets,
-    storage: {
-      kv: {
-        put: (k, v) => void rows.set(k, v),
-        delete: (k) => rows.delete(k),
-        list: () => rows.entries(),
-      },
-      setAlarm: async (at) => void alarms.push(at),
-    },
+    getWebSockets: () => [],
   }
 }
 
@@ -141,7 +127,7 @@ it('refuses every join with a 403 while ALLOW admits no one, waking no object', 
   }
 })
 
-// Hibernated, an object is built again from its sockets.
+// Hibernated, an object is built again from its sockets: it writes no storage.
 it('rebuilds a run from its sockets’ attachments when it wakes', () => {
   const pushed = new Map<string, unknown[]>()
   const sock = (kept: Kept) => {
@@ -157,38 +143,13 @@ it('rebuilds a run from its sockets’ attachments when it wakes', () => {
   const o = sock({ key: 'k', id: 'o', role: 'host', cert: 'c' })
   const a = sock({ key: 'k', id: 'a', role: 'peer' })
   const env: Env = { RELAY: namespace(() => env), ALLOW: `${ISS}:o/r:.gitlab-ci.yml` }
-  const run = new RelayRun(state([o, a]), env)
+  const run = new RelayRun({ acceptWebSocket: () => {}, getWebSockets: () => [o, a] }, env)
   run.webSocketMessage(a, JSON.stringify({ sends: [{ to: 'host', body: 'hi' }] }))
   run.webSocketMessage(o, JSON.stringify({ sends: [{ to: 'a', body: 'go' }] }))
   expect([pushed.get('o'), pushed.get('a')]).toEqual([
     [{ messages: [{ from: 'a', body: 'hi' }] }],
     [{ messages: [{ from: 'host', body: 'go' }] }],
   ])
-})
-
-// A deploy restarts an object with no socket: who takes part is in its
-// rows. One that never dials back is let go by the alarm, row and all.
-it('keeps its stored participants a grace past a restart, then lets them go', () => {
-  const env: Env = { RELAY: namespace(() => env), ALLOW: `${ISS}:o/r:.gitlab-ci.yml` }
-  const rows = new Map<string, Stored>([
-    ['k/o', { key: 'k', id: 'o', role: 'host', cert: 'c' }],
-    ['k/a', { key: 'k', id: 'a', role: 'peer', host: 'o' }],
-  ])
-  const s = state([], rows)
-  const before = Date.now()
-  const run = new RelayRun(s, env)
-  // Each dropped by the restart, from now: its grace is written, and an alarm set.
-  expect([...rows.values()].map((r) => r.droppedAt! >= before)).toEqual([true, true])
-  expect(s.alarms).toHaveLength(1)
-  // Before the grace ends, the alarm keeps them and comes again.
-  run.alarm()
-  expect([rows.size, s.alarms.length]).toEqual([2, 2])
-  for (const r of rows.values()) r.droppedAt = Date.now() - 11_000
-  // A new object reads the rows as stored; past the grace, the host's
-  // going ends the run.
-  const later = state([], rows)
-  new RelayRun(later, env).alarm()
-  expect([rows.size, later.alarms]).toEqual([0, []])
 })
 
 // A socket `attach` closed (gone, or refused) keeps no attachment: its
@@ -204,7 +165,7 @@ it('closes a socket that kept nothing as gone, and ignores its frames and close'
     deserializeAttachment: () => null,
   }
   // Woken with it among its sockets, as after hibernation.
-  const run = new RelayRun(state([gone]), env)
+  const run = new RelayRun({ acceptWebSocket: () => {}, getWebSockets: () => [gone] }, env)
   expect(closed).toEqual([4404])
   run.webSocketMessage(gone, '{"n":1,"leave":true}')
   run.webSocketClose(gone)

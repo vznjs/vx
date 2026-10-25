@@ -9,9 +9,17 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-ci: drop the check run; github() writes the job summary only
+
+github() no longer takes checks, checkName or fetchFn, and @vzn/vx-ci no longer exports FetchFn.
+
 ## vx-ci: github() and gitlab() name the refs a remote reads
 
 cacheRefs takes the plugin's refs; without github() or gitlab(), CI reads git's branch and the default branch only.
+
+## vx-dte-server: store nothing
+
+--state is gone from vx-dte-server, and RelayStore, Stored, `store` and `stored` from its API: the relay stores nothing. Deploy it with a vx-dte that rejoins a run after a relay restart.
 
 ## vx-cache-server: speak Turbo's routes, cache downloads per DC
 

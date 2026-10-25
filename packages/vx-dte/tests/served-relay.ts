@@ -1,6 +1,7 @@
 // The relay on Bun.serve with its participants' sockets, for tests that
 // reach into it: `tap` sees (and may change) each frame a participant
-// sends, and `restart` loses every run, as a host restart does.
+// sends, `restart` loses every run, as a host restart does, and `refuse`
+// answers 503 to the requests it matches, as a relay still coming up.
 
 import { createRelay, type Relay, type RelayOptions } from '@vzn/vx-dte-server'
 
@@ -23,6 +24,8 @@ export function servedRelay(
   url: string
   /** Each request's `sec-websocket-extensions`: what its client offered. */
   offered: (string | null)[]
+  /** Requests it matches are answered 503 until it is set again. */
+  refuse: ((req: Request) => boolean) | undefined
   restart(): void
   stop(): Promise<void>
 } {
@@ -38,11 +41,13 @@ export function servedRelay(
     })
   let relay = make()
   const offered: (string | null)[] = []
+  let refuse: ((req: Request) => boolean) | undefined
   server = Bun.serve<Held>({
     port: 0,
     hostname: '127.0.0.1',
     fetch: (r) => {
       offered.push(r.headers.get('sec-websocket-extensions'))
+      if (refuse?.(r) === true) return new Response('coming up', { status: 503 })
       return relay.fetch(r)
     },
     websocket: {
@@ -71,6 +76,12 @@ export function servedRelay(
     },
     url: `http://127.0.0.1:${server.port}`,
     offered,
+    get refuse() {
+      return refuse
+    },
+    set refuse(f) {
+      refuse = f
+    },
     restart() {
       relay = make()
       for (const ws of open) ws.close()
