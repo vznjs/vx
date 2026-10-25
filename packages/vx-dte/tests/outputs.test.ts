@@ -12,7 +12,7 @@ await mock.module('node:fs/promises', () => ({
     return realReaddir(dir, opts)
   },
 }))
-const { outputFiles } = await import('../src/outputs.js')
+const { leftUnder, outputFiles } = await import('../src/outputs.js')
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vx-dte-outputs-'))
 afterAll(() => fs.rm(root, { recursive: true, force: true }))
@@ -48,4 +48,21 @@ it('names no file under a path that is a file', async () => {
   expect(
     await outputFiles(root, 'q', { files: ['dist/index.js', 'bin'], workspaceFiles: [] }),
   ).toEqual(['q/bin'])
+})
+
+it('sorts the files under outputs into stale and an upstream’s in time linear in them', () => {
+  const under = Array.from({ length: 40_000 }, (_, i) => `web/.next/chunks/${i}.js`)
+  under.push('web/.next/BUILD_ID', 'web/.next/kept.txt', 'web/.next/sub/x.js', 'web/.next/lib/a.js')
+  const start = process.cpuUsage()
+  const { cleared, held } = leftUnder(
+    under,
+    new Set(['web/.next/kept.txt']),
+    ['web/.next/sub'],
+    [(f) => f.startsWith('web/.next/lib/')],
+  )
+  const { user, system } = process.cpuUsage(start)
+  expect(held).toEqual(['web/.next/lib/a.js'])
+  expect(cleared).toHaveLength(40_001)
+  expect(cleared.at(-1)).toBe('web/.next/BUILD_ID')
+  expect((user + system) / 1000).toBeLessThan(500)
 })
