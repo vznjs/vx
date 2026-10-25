@@ -9,6 +9,7 @@
 
 import {
   type ArtifactInfo,
+  criticalPath,
   definePlugin,
   type LentAccess,
   LocalHistoryProvider,
@@ -21,7 +22,6 @@ import {
   taskDefinitions,
   type VxPlugin,
 } from '@vzn/vx'
-import { criticalPath } from '@vzn/vx-schedule-history'
 
 export interface VxCacheOptions {
   /** The server's base URL (`https://cache.example.com`), or `VX_CACHE_URL`. */

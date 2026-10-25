@@ -535,6 +535,23 @@ export interface ConfigContext extends WorkspaceHookContext {
 }
 ```
 
+## `criticalPath`
+
+function · `src/graph/critical-path.ts`
+
+For each node, the expected remaining critical-path duration: its own p50
+plus the maximum over its dependents. A node with no history takes its
+assumed duration if one was given, else the workspace median; an empty
+history takes a flat default.
+
+```ts
+export function criticalPath(
+  nodes: readonly TaskNode[],
+  history: ReadonlyMap<string, { readonly p50DurationMs?: number | undefined }>,
+  assume: Readonly<Record<string, number>> = {},
+): ReadonlyMap<string, number>
+```
+
 ## `currentBranch`
 
 function · `src/orchestrator/run-context.ts`

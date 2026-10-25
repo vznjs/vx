@@ -5,18 +5,6 @@ export function admits(
   reservations: ReadonlyMap<string, ResourceEstimate>,
   budgets: Budgets,
 ): boolean
-== function criticalPath (src/critical-path.ts)
-export function criticalPath(
-  nodes: readonly TaskNode[],
-  history: ReadonlyMap<string, TaskResources>,
-  assume: Readonly<Record<string, number>>,
-): ReadonlyMap<string, number>
-== function criticalPathPriorities (src/critical-path.ts)
-export function criticalPathPriorities(
-  nodes: readonly TaskNode[],
-  history: HistoryTable,
-  assume: Readonly<Record<string, number>> = {},
-): ReadonlyMap<string, number>
 == function resourceEstimates (src/index.ts)
 export function resourceEstimates(
   nodes: ReadonlyMap<string, TaskNode>,
