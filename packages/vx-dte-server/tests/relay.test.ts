@@ -1,8 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
   createProver,
   createRelay,
+  PROOF_HEADER,
   serveRelay,
   type Prover,
   type RelayOptions,
@@ -784,6 +787,74 @@ it('the Bun entry serves the protocol, without auth on loopback only', async () 
     proc.kill()
     await proc.exited
   }
+})
+
+// A restart dropped every socket, and a relay that kept its runs in
+// memory alone met each redial with 4404: the run ended. With a state
+// file, each participant dials back by its id and the run goes on.
+it('keeps a run across a restart with a state file, not without one', async () => {
+  const file = path.join(await mkdtemp(path.join(tmpdir(), 'vx-dte-state-')), 'relay.db')
+  const dial = async (url: string, p: string, headers: Record<string, string> = {}) => {
+    const ws = new WebSocket(new URL(p, url).href.replace(/^http/, 'ws'), {
+      headers,
+      protocols: ['switchboard.v1'],
+    } as never)
+    const frames: any[] = []
+    let wake: (() => void) | undefined
+    ws.onmessage = (e) => {
+      frames.push(JSON.parse(String(e.data)))
+      wake?.()
+    }
+    let closed: number | undefined
+    ws.onclose = (e) => {
+      closed = e.code
+      wake?.()
+    }
+    await new Promise((r) => (ws.onopen = r))
+    const next = async (): Promise<any> => {
+      while (frames.length === 0) {
+        if (closed !== undefined) return { closed }
+        await new Promise<void>((r) => (wake = r))
+      }
+      return frames.shift()
+    }
+    return { ws, next }
+  }
+  const restarts = async (state: string | undefined): Promise<unknown> => {
+    const run = crypto.randomUUID()
+    const prover = await createProver()
+    let server = serveRelay({ hostname: '127.0.0.1', port: 0, state })
+    const at = (q: string) => `/v1/sessions/${run}/socket?${q}`
+    const hostAt = at(
+      `join=${encodeURIComponent(JSON.stringify({ role: 'host', key: prover.key }))}`,
+    )
+    const host = await dial(server.url, hostAt, {
+      [PROOF_HEADER]: await prover.proof('GET', hostAt, ''),
+    })
+    const o = (await host.next()).joined.id as string
+    const peer = await dial(server.url, at(`join=${encodeURIComponent('{"role":"peer"}')}`))
+    const a = (await peer.next()).joined.id as string
+    await host.next()
+    const port = Number(new URL(server.url).port)
+    await server.stop()
+    server = serveRelay({ hostname: '127.0.0.1', port, state })
+    try {
+      const back = at(`id=${o}`)
+      const again = await dial(server.url, back, {
+        [PROOF_HEADER]: await prover.proof('GET', back, ''),
+      })
+      const b = await dial(server.url, at(`id=${a}`))
+      b.ws.send(JSON.stringify({ n: 1, sends: [{ to: 'host', body: 'hi' }] }))
+      const first = await b.next()
+      return first.close === undefined ? [first, await again.next()] : first
+    } finally {
+      await server.stop()
+    }
+  }
+  expect(await restarts(undefined)).toEqual({ close: 4404, error: 'gone' })
+  const kept = (await restarts(file)) as any[]
+  expect(kept[0]).toEqual({ n: 1 })
+  expect(kept[1]).toEqual({ messages: [{ from: expect.any(String), body: 'hi' }] })
 })
 
 let served: RelayServer | undefined

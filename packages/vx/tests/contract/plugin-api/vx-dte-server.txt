@@ -91,6 +91,7 @@ export interface RelayStore {
 export interface ServeOptions extends Pick<RelayOptions, 'verify' | 'heartbeatMs'> {
   hostname: string
   port: number
+  state?: string | undefined
 }
 == type Stored (src/relay.ts)
 export interface Stored extends Kept {

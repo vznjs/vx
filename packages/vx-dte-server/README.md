@@ -77,7 +77,7 @@ Or as a container, built from this directory:
 
 ```sh
 docker build -t vx-dte-server packages/vx-dte-server
-docker run -p 8080:8080 vx-dte-server --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com
+docker run -p 8080:8080 -v vx-dte:/state vx-dte-server --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com --state /state/relay.db
 ```
 
 - `--allow <issuer:owner/repo:workflow>`, repeated, is an `ALLOW` entry
@@ -87,12 +87,18 @@ docker run -p 8080:8080 vx-dte-server --allow https://gitlab.com:group/app:.gitl
   job asks its ID token for.
 - `--port` (default 8080) and `--host` (default `0.0.0.0`) set where it
   listens.
+- `--state <file>` keeps who takes part in a SQLite file (one row each,
+  never a message), so a restart within the 10 s grace keeps the runs
+  it was carrying: each side dials back. The image's `/state` is the
+  place for a volume.
 - `--no-auth` admits every request. Use it only to try `@vzn/vx-dte`
   locally: it listens on loopback only.
 
-CI builds this image and carries one run through it (`test.live`).
+CI builds this image and carries one run through it, and one across
+`docker restart` (`test.live`).
 
-Runs live in memory. Restarting the relay ends the runs it was carrying.
+Without `--state`, runs live in memory, and restarting the relay ends
+the runs it was carrying.
 Participants hold websockets here too, so a message reaches its receiver
 the moment it is sent.
 
@@ -133,7 +139,8 @@ The same relay as a `fetch` handler, to mount in a server of your own
   (PROTOCOL.md § Sockets).
 - `serveRelay(options: ServeOptions): RelayServer` serves the relay on
   `Bun.serve`, websockets included. `ServeOptions` is
-  `{ hostname, port, verify?, heartbeatMs? }`, and a `RelayServer` is
+  `{ hostname, port, verify?, heartbeatMs?, state? }` (`state`: the
+  `--state` file), and a `RelayServer` is
   `{ url, stop() }`.
 - `createProver(): Promise<Prover>` makes the host's key for one
   session (PROTOCOL.md § The host's key). A `Prover` is

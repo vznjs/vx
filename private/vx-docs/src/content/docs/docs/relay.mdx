@@ -124,8 +124,10 @@ anywhere your CI can reach.
   your [remote cache](../remote-cache/).
 - On Cloudflare each run is one Durable Object, and the relay fits the
   free plan: websocket messages count 20 to one Durable Object request,
-  against 100,000 a day, and it writes no row. On Bun and Docker runs
-  live in memory, and a restart ends the runs it was carrying.
+  against 100,000 a day, and it writes about two rows a worker. A
+  deploy keeps the runs in flight: each side dials back. On Bun and
+  Docker runs live in memory unless `--state <file>` keeps them, so a
+  restart keeps the runs it was carrying.
 - The wire is [Switchboard v1](../../switchboard/), an open protocol: any
   server that speaks it can stand in for this relay.
 - `AUDIENCE` (Cloudflare) is unset by default: tokens must name the URL
