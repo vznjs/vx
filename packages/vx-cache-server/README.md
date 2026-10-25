@@ -113,7 +113,8 @@ a request body is at most 100 MB. R2's free plan holds 10 GB.
 
 The bucket's own lifecycle rule expires artifacts, by age since they
 were written; the server runs no sweep. An artifact's object name is
-`<issuer>/<id>/<scope>/<hash>`, the first three each hashed, so one rule
+`<issuer>/<id>/<scope>/<hash>`, the first three each hashed (a client
+sends a scope as its ref's hash, never the ref), so one rule
 for the whole bucket is the one there is, for example 7 days:
 
 ```sh
@@ -139,9 +140,9 @@ over a bucket of your own (`src/index.ts`):
   (`{ maxCheckKeys, maxBatchArtifacts, maxUploadBytes }`) over
   `DEFAULT_LIMITS`.
 - `blobName(issuer, id, scope, hash)` is an artifact's object name,
-  `<issuer>/<id>/<scope>/<hash>`, the first three each the first 128
-  bits of their SHA-256 in hex, so a ref's slashes or any byte stay one
-  segment.
+  `<issuer>/<id>/<scope>/<hash>`, issuer and id each the first 128 bits
+  of their SHA-256 in hex and `scope` the ref's hash as a client sends
+  it (PROTOCOL.md § Keys), so no segment is a plain value.
 - `TRUST` and the CI token check are [`@vzn/vx-devtools`](https://github.com/vznjs/vx/tree/main/packages/vx-devtools)'s,
   the check every vx server shares.
 - `SCOPE_HEADER` (`x-vx-scope`) and `LIMIT_HEADERS` are the header names

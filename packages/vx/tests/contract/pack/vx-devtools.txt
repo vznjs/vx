@@ -2,5 +2,6 @@ LICENSE
 README.md
 index.ts
 package.json
+src/hash-part.ts
 src/index.ts
 src/oidc.ts

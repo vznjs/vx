@@ -25,6 +25,10 @@ export interface Target {
   readonly maxUploadBytes: number
 }
 
+/** A ref's scope on the wire, by an implementation apart from the server's. */
+export const scopeOf = (ref: string): string =>
+  new Bun.CryptoHasher('sha256').update(ref).digest('hex').slice(0, 32)
+
 /** A fresh key per call: every target is shared by the whole suite. */
 const key = (): string => crypto.randomUUID().replaceAll('-', '')
 
@@ -65,8 +69,8 @@ export function conformance(name: string, target: Target): void {
       headers: { 'content-type': 'application/json' },
       token,
     })
-  const MAIN = 'refs/heads/main'
-  const FEATURE = 'refs/heads/feature'
+  const MAIN = scopeOf('refs/heads/main')
+  const FEATURE = scopeOf('refs/heads/feature')
   /** One artifact's bytes, read from `scope`. */
   const get = (k: string, scope = MAIN) =>
     call(`/v1/artifacts/download/${k}`, { headers: { 'x-vx-scope': scope } })
@@ -263,12 +267,13 @@ export function conformance(name: string, target: Target): void {
       expect([await text(k), await text(k, FEATURE)]).toEqual(['main', 'branch'])
     })
 
-    it('reads only the exact ref named, and refuses a read naming no ref', async () => {
+    it("reads only the exact ref named, and refuses a read naming no ref's hash", async () => {
       const k = key()
       await put(k, 'abc')
-      expect((await get(k, 'refs/heads/gh-readonly-queue/main/pr-1')).status).toBe(404)
+      expect((await get(k, scopeOf('refs/heads/gh-readonly-queue/main/pr-1'))).status).toBe(404)
       expect((await call(`/v1/artifacts/download/${k}`)).status).toBe(400)
-      for (const bad of ['heads/x', 'refs/', 'refs/a b']) {
+      // A plain ref never goes on the wire: it is refused, not hashed.
+      for (const bad of ['refs/heads/main', MAIN.toUpperCase(), MAIN.slice(1)]) {
         expect([bad, (await get(k, bad)).status]).toEqual([bad, 400])
       }
     })

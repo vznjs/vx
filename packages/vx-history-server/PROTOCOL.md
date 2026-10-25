@@ -17,8 +17,12 @@ Every request carries `Authorization: Bearer <token>`, a CI job's OIDC
 token, checked as `@vzn/vx-devtools` checks it (the same rules as
 vx-cache-server's `TRUST`): its issuer and repository id are what it
 reads and writes; it writes its branch (`refs/heads/<branch>`), and one
-on a ref a rule protects that matches no rule reads only. A row is keyed
-by issuer, repository id, scope and task hash.
+on a ref a rule protects that matches no rule reads only. A scope is its
+ref's hash: the first 128 bits of the SHA-256 of its UTF-8, 32 lowercase
+hex digits; no ref goes on the wire plain, and the server hashes the
+token's ref the same way for a write. A row is keyed by issuer,
+repository id, scope and task hash, the first three stored hashed,
+never plain.
 
 ## Upload
 
@@ -41,8 +45,8 @@ the row's. A row not reported for `TIMING_DAYS` (30) is deleted.
 ## Query
 
 `POST /v1/timings/query` with
-`{ "scopes": ["refs/heads/feature", "refs/heads/main"], "hashes": [ … ] }`,
-1 to 8 refs and up to 10 000 hashes: each hash's row in the first scope
+`{ "scopes": [<hash of refs/heads/feature>, <hash of refs/heads/main>], "hashes": [ … ] }`,
+1 to 8 scopes and up to 10 000 hashes: each hash's row in the first scope
 named that holds one. A hash none holds is
 absent. The numbers are the scheduler's as they are:
 

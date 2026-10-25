@@ -2,6 +2,10 @@
 // definition (M, 2026-10-25, the cache's key), already the
 // numbers a scheduler asks for (M, 2026-10-25: a history, not a log). Each
 // report folds into its row in one statement, so racing jobs lose nothing.
+// A row holds the issuer and id hashed (`hashPart`) and the scope as the
+// ref's hash a client sends: never a plain value.
+
+import { hashPart } from '@vzn/vx-devtools'
 
 /** A SQLite database, as bun:sqlite and D1 both serve one. */
 export interface Db {
@@ -66,9 +70,9 @@ WHERE issuer = ?1 AND repo_id = ?2 AND scope IN (SELECT value FROM json_each(?3)
 
 export interface Store {
   init(): Promise<void>
-  /** Folds each report into its row of `scope`. */
+  /** Folds each report into its row of `scope` (a ref's hash). */
   fold(repo: Repo, scope: string, now: number, reports: readonly Report[]): Promise<void>
-  /** Each hash's row in the first of `scopes` that holds one. */
+  /** Each hash's row in the first of `scopes` (refs' hashes) that holds one. */
   read(
     repo: Repo,
     scopes: readonly string[],
@@ -78,12 +82,15 @@ export interface Store {
   sweep(before: number): Promise<number>
 }
 
+const keyOf = (repo: Repo): Promise<[string, string]> =>
+  Promise.all([hashPart(repo.issuer), hashPart(repo.id)])
+
 export function sqliteStore(db: Db): Store {
   return {
     init: async () => void (await db.run(SCHEMA, [])),
     async fold(repo, scope, now, reports) {
       if (reports.length > 0)
-        await db.run(FOLD, [repo.issuer, repo.id, scope, now, JSON.stringify(reports)])
+        await db.run(FOLD, [...(await keyOf(repo)), scope, now, JSON.stringify(reports)])
     },
     async read(repo, scopes, hashes) {
       const rows = await db.all<{
@@ -93,7 +100,7 @@ export function sqliteStore(db: Db): Store {
         cores: number | null
         rss_bytes: number | null
         runs: number
-      }>(READ, [repo.issuer, repo.id, JSON.stringify(scopes), JSON.stringify(hashes)])
+      }>(READ, [...(await keyOf(repo)), JSON.stringify(scopes), JSON.stringify(hashes)])
       // A hash's row in the earliest scope asked wins.
       rows.sort((a, b) => scopes.indexOf(b.scope) - scopes.indexOf(a.scope))
       return new Map(

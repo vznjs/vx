@@ -1,5 +1,5 @@
 // @vzn/vx-devtools: code vx's servers and plugins share, never core. First,
-// the CI token check. It imports only
+// the CI token check, and the hash a server stores in place of a token's values. It imports only
 // jose, so a server on Workers bundles it alone.
 
 export {
@@ -11,3 +11,4 @@ export {
   Refusal,
   type TrustRule,
 } from './oidc.js'
+export { hashPart } from './hash-part.js'

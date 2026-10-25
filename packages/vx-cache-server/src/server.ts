@@ -3,7 +3,7 @@
 // an artifact is one object, named by its issuer, repository id, scope and
 // hash, and a read names the exact scope it wants (M, 2026-10-25).
 
-import { type Access, type Authorize, Refusal } from '@vzn/vx-devtools'
+import { type Access, type Authorize, hashPart, Refusal } from '@vzn/vx-devtools'
 import { BATCH_TYPE, errorJson, isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
 import { blobName, type Blobs } from './store.js'
 
@@ -54,17 +54,8 @@ const LINE_PER_ARTIFACT = 160
 /** The largest first line an upload of `n` artifacts has. */
 export const lineBytes = (n: number): number => n * LINE_PER_ARTIFACT + 64
 
-const REF = /^refs\/\S{1,500}$/
-
-/** `x-vx-scope`: the ref percent-encoded, as a header carries bytes and a branch name any UTF-8. */
-function decodeScope(header: string | null): string | null {
-  if (header === null) return null
-  try {
-    return decodeURIComponent(header)
-  } catch {
-    throw new Refusal(400, `${SCOPE_HEADER}: a ref, percent-encoded`)
-  }
-}
+/** A scope on the wire: its ref's `hashPart`, so no ref is ever sent or stored plain (M, 2026-10-25). */
+const SCOPE = /^[0-9a-f]{32}$/
 
 export function createCacheServer(opts: ServerOptions): (req: Request) => Promise<Response> {
   const { blobs, authorize } = opts
@@ -73,17 +64,20 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     Object.entries(LIMIT_HEADERS).map(([k, h]) => [h, String(limits[k as keyof Limits])]),
   )
 
-  /** The scope a client names: any ref, read as it is. */
-  const scopeOf = (ref: unknown): string => {
-    if (typeof ref !== 'string' || !REF.test(ref)) throw new Refusal(400, 'scope: a ref, refs/...')
-    return ref
+  /** The scope a client names: a ref's hash, read as it is. */
+  const scopeOf = (scope: unknown): string => {
+    if (typeof scope !== 'string' || !SCOPE.test(scope)) {
+      throw new Refusal(400, "scope: a ref's hash, 32 hex digits (PROTOCOL.md § Keys)")
+    }
+    return scope
   }
   const nameOf = (access: Access, scope: string, hash: string): Promise<string> =>
     blobName(access.issuer, access.id, scope, hash)
 
-  const writeScope = (access: Access): string => {
+  /** The token's own scope, the one place it writes. */
+  const writeScope = (access: Access): Promise<string> => {
     if (access.write === undefined) throw new Refusal(403, 'this token reads only')
-    return access.write
+    return hashPart(access.write)
   }
 
   /** `{ keys: [{ scope, hash }] }`, up to `max`: each as the object it names. */
@@ -107,7 +101,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   async function artifact(req: Request, hash: string): Promise<Response> {
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
-    const scope = scopeOf(decodeScope(req.headers.get(SCOPE_HEADER)))
+    const scope = scopeOf(req.headers.get(SCOPE_HEADER))
     const blob = await blobs.get(await nameOf(access, scope, hash))
     if (blob === null) return errorJson(404, 'no artifact under this key')
     return new Response(blob.body, {
@@ -167,7 +161,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
    */
   async function upload(req: Request): Promise<Response> {
     const access = await authorize(req)
-    const scope = writeScope(access)
+    const scope = await writeScope(access)
     if (!(req.headers.get('content-type') ?? '').startsWith(BATCH_TYPE)) {
       throw new Refusal(400, `the body is ${BATCH_TYPE}`)
     }
@@ -236,7 +230,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   async function put(req: Request, hash: string): Promise<Response> {
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
-    const name = await nameOf(access, writeScope(access), hash)
+    const name = await nameOf(access, await writeScope(access), hash)
     const length = contentLength(req)
     if (length > limits.maxUploadBytes) {
       throw new Refusal(413, `an upload is at most ${limits.maxUploadBytes} bytes`)

@@ -4,7 +4,7 @@ export const blobName = async (
   id: string,
   scope: string,
   hash: string,
-): Promise<string> => `${await partOf(issuer)}/${await partOf(id)}/${await partOf(scope)}/${hash}`
+): Promise<string> => `${await hashPart(issuer)}/${await hashPart(id)}/${scope}/${hash}`
 == const DEFAULT_LIMITS (src/server.ts)
 export const DEFAULT_LIMITS: Limits = {
   maxCheckKeys: 500,

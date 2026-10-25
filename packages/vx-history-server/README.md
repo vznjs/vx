@@ -22,7 +22,8 @@ Every request carries a CI job's own OIDC token, checked by `@vzn/vx-devtools`,
 under `TRUST` rules as [`@vzn/vx-cache-server`'s](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server#ci-tokens):
 a job writes its branch's scope, a ref a rule protects only a job
 matching the rule, and another repository is refused. A query names its
-scopes in order: `vxHistory()` asks its branch's rows, then the default
+scopes in order, each its ref's hash (no ref goes on the wire or into a
+row plain): `vxHistory()` asks its branch's rows, then the default
 branch's. `AUDIENCE` is the `aud` a
 token must name, by default the origin the server is reached at.
 
@@ -71,7 +72,8 @@ The same server as a `fetch` handler, over storage of your own
 - `sqliteStore(db: Db)` is the `Store` over a SQLite `Db`
   (`{ all(sql, params), run(sql, params) }`), as bun:sqlite and D1 are.
   A `Store` folds `Report`s and reads `Timing`s, each of a `Repo`
-  (`{ issuer, id }`, as the token names it) and a scope.
+  (`{ issuer, id }`, as the token names it, stored hashed) and a scope
+  (a ref's hash).
 - `WEIGHT` (0.3) and `RSS_DECAY` (0.9) are the fold's constants;
   `MAX_UPLOAD_TIMINGS`, `MAX_QUERY_HASHES` and `MAX_QUERY_SCOPES` its
   limits; `errorJson`

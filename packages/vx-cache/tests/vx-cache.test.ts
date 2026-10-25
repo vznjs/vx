@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { oidcAuth } from '@vzn/vx-devtools'
+import { hashPart, oidcAuth } from '@vzn/vx-devtools'
 import { createCacheServer } from '@vzn/vx-cache-server'
 import type { JWTPayload } from 'jose'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
@@ -88,7 +88,8 @@ describe('VxCacheLayer', () => {
   })
   afterAll(() => srv.stop())
 
-  it("uploads, checks and downloads one artifact, asking each ref's exact key", async () => {
+  it("uploads, checks and downloads one artifact, asking each ref's exact key, hashed", async () => {
+    const [f, main] = [await hashPart('refs/heads/f'), await hashPart(MAIN)]
     const c = layer(srv.url, write, ['refs/heads/f', MAIN])
     expect(await c.has('aa11')).toBeNull()
     await c.put('aa11', new Blob(['hello']), { durationMs: 1 })
@@ -96,16 +97,18 @@ describe('VxCacheLayer', () => {
     expect(await c.has('aa11')).toEqual({ size: 5 })
     expect(JSON.parse(srv.seen[before]!.body)).toEqual({
       keys: [
-        { scope: 'refs/heads/f', hash: 'aa11' },
-        { scope: MAIN, hash: 'aa11' },
+        { scope: f, hash: 'aa11' },
+        { scope: main, hash: 'aa11' },
       ],
     })
     expect(await c.hasMany(['aa11', 'bb22'])).toEqual(new Map([['aa11', { size: 5 }]]))
     // The download names the ref the check found it under.
     const got = await c.get('aa11')
-    expect([await got!.body.text(), srv.seen.at(-1)!.scope]).toEqual(['hello', MAIN])
+    expect([await got!.body.text(), srv.seen.at(-1)!.scope]).toEqual(['hello', main])
     expect(await c.get('bb22')).toBeNull()
-    expect(srv.seen.slice(-2).map((r) => r.scope)).toEqual(['refs/heads/f', MAIN])
+    expect(srv.seen.slice(-2).map((r) => r.scope)).toEqual([f, main])
+    // No ref goes on the wire plain (M, 2026-10-25).
+    expect(srv.seen.filter((r) => `${r.body} ${r.scope}`.includes('refs/'))).toEqual([])
   })
 
   it('uploads an artifact held in a file whole', async () => {
