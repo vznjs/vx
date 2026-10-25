@@ -357,7 +357,12 @@ add` under a clean filter (`core.autocrlf=true`, a `text` rule)
     its project, and a target git cannot diff (outside the workspace,
     git-ignored) on every run; `vx watch` arms each link's target and
     names the link when it changes (`linked-inputs.ts`). Nx does not
-    enter a linked directory; vx does, since the task reads it.
+    enter a linked directory; vx does, since the task reads it. A glob
+    whose static directory passes through a link (`lib/**` over
+    `lib -> ../shared`) takes the link as an input: git lists a linked
+    directory as the link alone, so the glob matched nothing and an
+    edit behind it was a hit (2026-10-25). A `**` glob does not enter
+    one it meets.
 
 The composition is seed-chained (`xxh3(part, prevDigest)`) with a
 label prefix per field, so two different field layouts can't collide.

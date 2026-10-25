@@ -149,6 +149,26 @@ it('rebuilds a run from its sockets’ attachments when it wakes', () => {
   ])
 })
 
+// A socket `attach` closed (gone, or refused) keeps no attachment: its
+// close threw in the object (main 8d0619f's redial, 2026-10-24).
+it('closes a socket that kept nothing as gone, and ignores its frames and close', () => {
+  const env: Env = { RELAY: namespace(() => env), ALLOW: `${ISS}:o/r:.gitlab-ci.yml` }
+  const closed: (number | undefined)[] = []
+  const gone = {
+    send() {},
+    accept() {},
+    close: (code?: number) => void closed.push(code),
+    serializeAttachment() {},
+    deserializeAttachment: () => null,
+  }
+  // Woken with it among its sockets, as after hibernation.
+  const run = new RelayRun({ acceptWebSocket: () => {}, getWebSockets: () => [gone] }, env)
+  expect(closed).toEqual([4404])
+  run.webSocketMessage(gone, '{"n":1,"leave":true}')
+  run.webSocketClose(gone)
+  run.webSocketError(gone)
+})
+
 it('will not start without ALLOW, or with an entry it cannot read', () => {
   const none: Env = { RELAY: namespace(() => none), ALLOW: ' ' }
   expect(() => new RelayRun(state(), none)).toThrow('vx-dte-relay: set ALLOW')

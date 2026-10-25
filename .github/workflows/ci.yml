@@ -63,6 +63,8 @@ jobs:
       pages: write
       # release.sync gives each GitHub release its post's body.
       contents: write
+      # The relay's Workers Builds check names a PR's Preview.
+      checks: read
     env:
       VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
       GITHUB_TOKEN: ${{ github.token }}
@@ -91,6 +93,11 @@ jobs:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
       - run: bun packages/vx/src/bin.ts lock --check
+      # A PR that changes the relay runs on its own code: Workers Builds'
+      # Preview of the head commit (private/vx-dte-relay-worker/preview.ts).
+      - if: github.event_name == 'pull_request'
+        id: relay
+        run: bun private/vx-dte-relay-worker/preview.ts
       # The Pages deploy is a task of the run (@vzn/vx-docs#deploy.pages,
       # owner, 2026-10-24). GitHub hands the job's runtime token, which
       # uploads the site's artifact, only to JavaScript actions: this hands
@@ -108,7 +115,9 @@ jobs:
       # platform's own tests on Mac workers included, and main's `release`
       # adds the release binaries, their launch checks, the release notes
       # and the site's deploy.
-      - run: bun packages/vx/src/bin.ts run --profile=profile.json ci ${{ github.event_name == 'push' && 'release' || '' }} ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
+      - env:
+          VX_DTE_RELAY: ${{ steps.relay.outputs.url || env.VX_DTE_RELAY }}
+        run: bun packages/vx/src/bin.ts run --profile=profile.json ci ${{ github.event_name == 'push' && 'release' || '' }} ${{ github.event_name == 'pull_request' && '--affected' || '--all' }}
       # The run in time (--profile): every worker's tasks on their own
       # lanes (@vzn/vx-dte), opened in https://ui.perfetto.dev; the job
       # summary links it.
