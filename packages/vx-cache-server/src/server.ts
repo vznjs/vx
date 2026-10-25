@@ -228,6 +228,32 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     return new Response(null, { status: 204 })
   }
 
+  /**
+   * One artifact, its bytes the whole body (Turbo's `PUT /v8/artifacts/<hash>`):
+   * they reach the bucket without passing through this code, where a
+   * batch's are split, so a large artifact costs no CPU here.
+   */
+  async function put(req: Request, hash: string): Promise<Response> {
+    if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
+    const access = await authorize(req)
+    const name = await nameOf(access, writeScope(access), hash)
+    const length = contentLength(req)
+    if (length > limits.maxUploadBytes) {
+      throw new Refusal(413, `an upload is at most ${limits.maxUploadBytes} bytes`)
+    }
+    if ((await blobs.size(name)) !== null) {
+      await req.body?.cancel()
+      return new Response(null, { status: 204 })
+    }
+    try {
+      await blobs.put(name, req.body ?? new Blob([]).stream(), length)
+    } catch (err) {
+      if (err instanceof Refusal) throw err
+      throw new Refusal(502, `the bucket refused the artifact: ${message(err)}`)
+    }
+    return new Response(null, { status: 204 })
+  }
+
   return async (req) => {
     const url = new URL(req.url)
     try {
@@ -249,6 +275,10 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       }
       if (path === '/v1/artifacts/check') {
         return req.method === 'POST' ? await check(req) : notAllowed('POST')
+      }
+      if (path.startsWith('/v1/artifacts/') && !path.slice('/v1/artifacts/'.length).includes('/')) {
+        const hash = path.slice('/v1/artifacts/'.length)
+        return req.method === 'PUT' ? await put(req, hash) : notAllowed('PUT')
       }
       if (path.startsWith('/v1/artifacts/download/')) {
         const hash = path.slice('/v1/artifacts/download/'.length)
