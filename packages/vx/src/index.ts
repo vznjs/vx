@@ -205,6 +205,9 @@ export { executorFallback, hostPlatform, sampleTrees, type TreeUsage } from './e
 // trailing comment or a template literal's closing newline lost the args
 // there while the local floor kept them (X-112).
 export { withForwardArgs } from './exec/index.js'
+// A task's output both streams in the order written, bounded as core's
+// capture is: what a worker saves through `TaskArtifacts` (`@vzn/vx-dte`).
+export { BoundedCapture, type CapturedChunk } from './exec/index.js'
 // Core's local executor, sandbox included, for a plugin that runs tasks
 // itself: `@vzn/vx-dte`'s orchestrator and its workers.
 export { localFloor, type LocalFloor } from './orchestrator/index.js'

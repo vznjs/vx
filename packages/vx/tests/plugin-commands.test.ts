@@ -148,7 +148,7 @@ describe('plugin commands', () => {
                await ctx.artifacts.save('00000000000000aa', {
                  id: 'app#build', projectDir: ctx.workspaceRoot, command: 'true',
                  outputs: { files: [], workspaceFiles: [] },
-               }, { stdout: 'ran', stderr: '', durationMs: 1 })
+               }, { output: [{ text: 'ran', err: false }], durationMs: 1 })
                globalThis.__vxCmd = new TextDecoder().decode(await ctx.cache.get('seed'))
                return 0
              } } } }`,

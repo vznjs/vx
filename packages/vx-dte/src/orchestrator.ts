@@ -17,6 +17,7 @@ import {
   UserError,
   withForwardArgs,
   type CacheFacts,
+  type CapturedChunk,
   type ExecuteRequest,
   type ExecuteResult,
   type MachineReport,
@@ -204,8 +205,7 @@ function parts<T extends { order: unknown }>(orders: readonly T[], max: number):
 }
 
 /** A task's end when its run stopped it before it began anywhere. */
-const stopped = (): ExecuteResult =>
-  result({ exitCode: 130, signal: 'SIGTERM', durationMs: 0 }, { stdout: '', stderr: '' })
+const stopped = (): ExecuteResult => result({ exitCode: 130, signal: 'SIGTERM', durationMs: 0 }, [])
 
 export class Orchestrator {
   private readonly workers = new Map<string, Worker>()
@@ -921,8 +921,9 @@ export class Orchestrator {
         if (typeof f === 'string' && !f.split('/').includes('..') && ours(f))
           await rm(path.join(this.o.root, f), { force: true })
     }
-    if (log.stdout !== '') job.req.onStdout(log.stdout)
-    if (log.stderr !== '') job.req.onStderr(log.stderr)
+    // In the order the task wrote it: replayed a stream at a time, an error
+    // line came after the stdout that followed it (2026-10-25).
+    for (const c of log) (c.err ? job.req.onStderr : job.req.onStdout)(c.text)
     job.resolve({
       ...result(head, log),
       ...(deferred
@@ -1746,10 +1747,15 @@ export class Orchestrator {
   lost: string | undefined
 }
 
-function result(r: WiredResult, log: { stdout: string; stderr: string }): ExecuteResult {
+function result(r: WiredResult, log: readonly CapturedChunk[]): ExecuteResult {
   const { cpuShare: _, removed: __, unread: ___, ...rest } = r
   const violations = (r.violations ?? []).map((v) => ({ ...v, timestamp: new Date(v.timestamp) }))
-  return { ...rest, ...log, violations, outputs: { kind: 'disk' } }
+  const of = (err: boolean) =>
+    log
+      .filter((c) => c.err === err)
+      .map((c) => c.text)
+      .join('')
+  return { ...rest, stdout: of(false), stderr: of(true), violations, outputs: { kind: 'disk' } }
 }
 
 /**

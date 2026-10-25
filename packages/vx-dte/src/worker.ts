@@ -11,6 +11,7 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   answerRuntime,
+  BoundedCapture,
   hostPlatform,
   localFloor,
   machineMemoryBytes,
@@ -22,6 +23,7 @@ import {
   isUserError,
   UserError,
   type CacheFacts,
+  type CapturedChunk,
   type ExecuteRequest,
   type LocalFloor,
   type TaskArtifacts,
@@ -120,10 +122,10 @@ export async function runWorker(opts: {
     m: RunOrder,
     key: string,
     others: ReadonlySet<string> | undefined,
-    res: WiredResult & { stdout: string; stderr: string },
+    res: WiredResult & { output: CapturedChunk[] },
     bare = false,
   ): Promise<void> => {
-    const { stdout, stderr, ...result } = res
+    const { output, ...result } = res
     // Forced: the key keeps an entry it holds, so the run's machines restore
     // the fresh bytes under the run key.
     const keys = !bare && m.fresh === true && key === m.key ? [key, m.runKey] : [key]
@@ -140,8 +142,7 @@ export async function runWorker(opts: {
             ...(others === undefined || others.size === 0 ? {} : { others }),
           },
           {
-            stdout,
-            stderr,
+            output,
             durationMs: res.durationMs,
             ...(res.cpuMs === undefined ? {} : { cpuMs: res.cpuMs }),
             ...(res.peakRssBytes === undefined ? {} : { peakRssBytes: res.peakRssBytes }),
@@ -157,7 +158,7 @@ export async function runWorker(opts: {
         m,
         m.runKey,
         undefined,
-        { ...res, exitCode: 1, stderr: `${stderr}${err.message}\n` },
+        { ...res, exitCode: 1, output: [...output, { text: `${err.message}\n`, err: true }] },
         true,
       )
     }
@@ -243,8 +244,7 @@ export async function runWorker(opts: {
         await reply(m, m.runKey, undefined, {
           exitCode: 1,
           durationMs: 0,
-          stdout: '',
-          stderr: `${differs}\n`,
+          output: [{ text: `${differs}\n`, err: true }],
           violations: [],
         })
         return
@@ -276,8 +276,14 @@ export async function runWorker(opts: {
           // a worker that never came (2026-10-24).
           if (!isUserError(err)) throw err
           ui.print('err', ui.status('error', m.task, err.message))
-          const res = { exitCode: 1, durationMs: 0, stdout: '', violations: [], unread: [d.key] }
-          await reply(m, m.runKey, undefined, { ...res, stderr: `${err.message}\n` }, true)
+          const res = { exitCode: 1, durationMs: 0, violations: [], unread: [d.key] }
+          await reply(
+            m,
+            m.runKey,
+            undefined,
+            { ...res, output: [{ text: `${err.message}\n`, err: true }] },
+            true,
+          )
           return
         }
       }
@@ -321,6 +327,7 @@ export async function runWorker(opts: {
                 : new Set(m.sandbox.keyed.map((k) => path.join(opts.root, k))),
               m.nested.map((n) => path.join(opts.root, n)),
             )
+      const output = new BoundedCapture()
       const req: ExecuteRequest = {
         taskId: m.task,
         workspaceRoot: opts.root,
@@ -329,9 +336,12 @@ export async function runWorker(opts: {
         cwd: path.join(opts.root, m.cwd),
         env: localEnv(m.env, root, opts.root),
         envDefine: {},
-        capture: { stdout: true, stderr: true },
-        onStdout: () => {},
-        onStderr: () => {},
+        // Both streams as one capture, in the order written, as core keeps a
+        // run's: kept apart, a hit replayed every stdout line before the
+        // stderr between them (2026-10-25).
+        capture: { stdout: false, stderr: false },
+        onStdout: (t) => output.push(t),
+        onStderr: (t) => output.push(t, true),
         signal: stop.signal,
         onSpawn: (pid) => trees.watch(m.task, pid),
         outputs: m.outputs,
@@ -361,7 +371,12 @@ export async function runWorker(opts: {
       floor ??= localFloor()
       ui.print('out', ui.status('info', m.task, ui.dim('running')))
       const crowd = load.mark()
-      const { outputs: _, ...res } = await floor.execute(req).finally(() => trees.drop(m.task))
+      const {
+        outputs: _,
+        stdout: _o,
+        stderr: _e,
+        ...res
+      } = await floor.execute(req).finally(() => trees.drop(m.task))
       tasksCpuMs += res.cpuMs ?? 0
       const cpuShare = load.shareSince(
         crowd,
@@ -424,6 +439,7 @@ export async function runWorker(opts: {
           : m.runKey
       await reply(m, key, others, {
         ...res,
+        output: output.chunks(),
         violations: back,
         ...(cpuShare === undefined ? {} : { cpuShare }),
         ...(changed.length === 0 ? {} : { changed }),

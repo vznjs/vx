@@ -404,6 +404,8 @@ use your own instead.
   restores its output, never its files. Under `--cache-download=toplevel`
   or `none`, a task's files it defers land here only if a task here needs
   them.
+- A task's output replays here as its worker read it: stdout and stderr
+  in the order the task wrote them, bounded as core bounds a run's.
 - A task runs with the orchestrator's environment under the worker's
   root. `HOME`, `TMPDIR`, `USER` and the like are the worker's own, unless
   the task's `env.define` sets them.

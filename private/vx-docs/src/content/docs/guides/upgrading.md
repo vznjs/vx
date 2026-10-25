@@ -9,7 +9,11 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## vx-dte: gitlab() triggers each worker's pipeline from the run
+## vx-dte: replay a worker's output in the order it was written
+
+ArtifactRun takes `output` (CapturedChunk[]) in place of `stdout`/`stderr`; TaskArtifacts.restore and output resolve CapturedChunk[]. BoundedCapture and CapturedChunk are exported.
+
+## vx-dte: add vx dte init; gitlab() triggers worker pipelines
 
 gitlab() takes no include and vx dte plan is gone: run vx dte init to write the new .gitlab-ci.yml, give each size a max, and drop VX_DTE_GITLAB_TOKEN.
 
