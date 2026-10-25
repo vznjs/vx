@@ -28,6 +28,7 @@ specifier — enforced by `tests/package-boundaries.unsafe.test.ts`):
 | `private/vx-bench`             | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                                |
 | `private/vx-plugin-examples`   | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                          |
 | `private/vx-dte-service`       | vznjs's own relay deploy: `@vzn/vx-dte-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                                  |
+| `private/vx-cache-service`     | vznjs's own cache server deploy: `@vzn/vx-cache-server`'s worker with this repo's `TRUST`, built by Workers Builds (private)                                                         |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the public API (55 runtime symbols, a deliberate

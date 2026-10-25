@@ -1,0 +1,25 @@
+{
+  "name": "@vzn/vx-cache-service",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "vznjs's own cache server: @vzn/vx-cache-server's worker under this repo's Cloudflare settings, built by Workers Builds.",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4"
+  },
+  "//": [
+    "@vzn/vx-cache-server: the worker this deploys, unchanged.",
+    "wrangler: Workers Builds deploys src/worker.ts with it by wrangler.jsonc.",
+    "@vzn/vx: vx.config.ts; @types/bun and jose: tests/trust.test.ts signs GitHub-shaped tokens."
+  ],
+  "dependencies": {
+    "@vzn/vx-cache-server": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "@vzn/vx": "workspace:*",
+    "jose": "6.2.13",
+    "wrangler": "4.149.0"
+  }
+}
