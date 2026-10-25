@@ -37,7 +37,7 @@ it('declaring the plugin does not load the history table', async () => {
   expect({ code, err: code === 0 ? '' : err }).toEqual({ code: 0, err: '' })
   const line = out.split('\n').find((l) => l.startsWith('SEEN ')) ?? 'SEEN {}'
   const { before, after } = JSON.parse(line.slice(5)) as { before: string[]; after: string[] }
-  expect(before).toEqual(['critical-path.ts', 'index.ts'])
+  expect(before).toEqual(['index.ts'])
   // The control: the probe sees the table's module load.
-  expect(after).toEqual(['critical-path.ts', 'history-view.ts', 'index.ts'])
+  expect(after).toEqual(['history-view.ts', 'index.ts'])
 })

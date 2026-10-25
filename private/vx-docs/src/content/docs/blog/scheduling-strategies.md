@@ -174,7 +174,7 @@ export default { plugins: [scheduleHistoryPlugin()] }
 ```
 
 It learns from the last 20 local runs. A plugin can also read timings
-from a shared store and rank with the exported `criticalPathPriorities`.
+from a shared store and rank with core's `criticalPath`.
 
 <small>How we measured: every task is a `sleep` · linux x64, 4 cores, Bun 1.4.2 · vx `a85223a`, one cold run (`--force`) per row · 2026-10-09 · rules other than the default and history are small `schedule` plugins · Cases 1 and 2 end in one group task, so "most direct dependents" ties and falls back to ready order · each history arm starts empty</small>
 

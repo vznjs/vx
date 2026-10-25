@@ -35,9 +35,6 @@
     "packages/vx-cache": {
       "name": "@vzn/vx-cache",
       "version": "0.0.0",
-      "dependencies": {
-        "@vzn/vx-schedule-history": "workspace:*",
-      },
       "devDependencies": {
         "@types/bun": "^1.4.0",
         "@vzn/vx": "workspace:*",

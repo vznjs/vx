@@ -1,9 +1,9 @@
-// The critical-path score, apart from the plugin that feeds it to the
-// scheduler. It imports only types, so the Learn page's scheduler simulator
-// (through private/vx-bench/schedule-policy.ts) bundles it for the browser
-// without the rest of `@vzn/vx`.
+// The critical-path score a `schedule` plugin feeds the scheduler, from
+// whatever timings it learned. It imports only types, so the Learn page's
+// scheduler simulator (through private/vx-bench/schedule-policy.ts) bundles
+// it for the browser without the rest of `@vzn/vx`.
 
-import type { HistoryTable, TaskNode, TaskResources } from '@vzn/vx'
+import type { TaskNode } from './task-graph.js'
 
 /** Default duration when neither task history nor a workspace median exists. */
 const DEFAULT_DURATION_MS = 1000
@@ -14,19 +14,10 @@ const DEFAULT_DURATION_MS = 1000
  * assumed duration if one was given, else the workspace median; an empty
  * history takes a flat default.
  */
-export function criticalPathPriorities(
-  nodes: readonly TaskNode[],
-  history: HistoryTable,
-  assume: Readonly<Record<string, number>> = {},
-): ReadonlyMap<string, number> {
-  return criticalPath(nodes, history, assume)
-}
-
-/** `criticalPathPriorities` over the p50s alone: the plugin reads no rates. */
 export function criticalPath(
   nodes: readonly TaskNode[],
-  history: ReadonlyMap<string, TaskResources>,
-  assume: Readonly<Record<string, number>>,
+  history: ReadonlyMap<string, { readonly p50DurationMs?: number | undefined }>,
+  assume: Readonly<Record<string, number>> = {},
 ): ReadonlyMap<string, number> {
   const p50s: number[] = []
   for (const h of history.values()) {
