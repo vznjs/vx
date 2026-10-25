@@ -1,0 +1,170 @@
+---
+title: History server
+description: Host @vzn/vx-history-server, the task timings vxHistory() orders CI runs by, on Workers, Bun or Docker.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+
+`@vzn/vx-history-server` keeps how long each task takes, how many cores
+it keeps busy and its peak memory, so a fresh CI runner orders its run by
+them from the first task. It is a history, not a log: one row per task
+and branch, and each report folds into it. It speaks the
+[vx-history protocol](https://github.com/vznjs/vx/blob/main/packages/vx-history-server/PROTOCOL.md)
+(`/v1`). `vxHistory()` from `@vzn/vx-history` points vx at it.
+
+## Deploy
+
+<Tabs syncKey="server-host">
+<TabItem label="Cloudflare Workers">
+
+The timings go in D1. From `packages/vx-history-server` in a checkout of
+the vx repository, with `TRUST` filled in `wrangler.jsonc`:
+
+```sh
+bun install
+bunx wrangler login
+bunx wrangler deploy
+```
+
+On the first deploy, wrangler creates the D1 database `wrangler.jsonc`
+names (`vx-history`), bound as `DB`. A report is one statement, so a
+10 000-task upload fits the free plan.
+
+</TabItem>
+<TabItem label="Bun">
+
+The timings go in one SQLite file:
+
+```sh
+TRUST='[…]' bun packages/vx-history-server/src/bun.ts --db vx-history.sqlite --port 8080
+```
+
+`--db` (default `vx-history.sqlite`), `--port` (default 8080) and
+`--host` (default `0.0.0.0`) set the file and where it listens.
+
+</TabItem>
+<TabItem label="Docker">
+
+From the root of the vx repository:
+
+```sh
+docker build -f packages/vx-history-server/Dockerfile -t vx-history-server .
+docker run -p 8080:8080 -v vx-history:/data -e TRUST='[…]' vx-history-server
+```
+
+The database is `/data/vx-history.sqlite`, on the volume. Or run it with
+the other two servers using
+[Docker Compose](../#all-three-with-docker-compose): the `history`
+service, on port 8082.
+
+</TabItem>
+</Tabs>
+
+Put TLS in front of it: a CI token is a bearer token.
+
+## Settings
+
+| Setting | Default | What it sets |
+| --- | --- | --- |
+| `TRUST` | empty: refuse all | the repositories it serves and the jobs that write protected refs ([`TRUST`](../#trust-who-reads-and-who-writes)) |
+| `AUDIENCE` | the origin it is reached at | the `aud` a CI token must name |
+| `TIMING_DAYS` | 30 | days a task's row outlives its last report |
+
+On Workers, each setting is a var in `wrangler.jsonc`.
+
+## What it keeps
+
+One row per issuer, repository id, scope (the branch) and task
+definition hash. The first three are stored as the first 128 bits of
+their SHA-256, in hex, with no secret key, so the database names no repository or branch. A task's definition is its command and `env.define`: a
+task whose command changed starts a new row, and editing its inputs or
+deps keeps the old one. Each report folds into its row in one statement,
+so two jobs reporting at once lose nothing:
+
+- `durationMs` and `cores`: `old × 0.7 + new × 0.3`. A task that got
+  slower is followed within about three runs, and one outlier moves it
+  30%.
+- `rssBytes`: `max(new, old × 0.9)`. A reservation needs the peak, and
+  the decay lets a task that shrank come down.
+- `runs`: how many reports made the row.
+
+No run's log, list of runs or raw sample is kept. A row not reported for
+`TIMING_DAYS` is deleted: the first upload of each day sweeps.
+
+## Point vx at it: `vxHistory()`
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+import { vxHistory } from '/path/to/vx/packages/vx-history/src/index.ts'
+
+export default defineWorkspace({
+  plugins: [vxHistory({ server: 'https://history.example.com' })], // or VX_HISTORY_URL
+})
+```
+
+<Aside title="Not on npm yet">
+  Until `@vzn/vx-history` is on npm, import it from a checkout of the vx
+  repository, as above.
+</Aside>
+
+Each run asks the server for its tasks' rows, its branch's first, then
+the default branch's. It starts on its local history and re-ranks the
+tasks not yet started when the rows land; it never waits for them. At its
+end it uploads the timings of the tasks it ran, once. In a
+[distributed run](../../distributed-runs/), the orchestrator uploads them,
+each worker's measurements included.
+
+Each CI job needs a token for the server's origin:
+
+<Tabs syncKey="ci">
+<TabItem label="GitHub Actions">
+
+```yaml title=".github/workflows/ci.yml"
+permissions:
+  contents: read
+  id-token: write
+```
+
+</TabItem>
+<TabItem label="GitLab CI">
+
+```yaml title=".gitlab-ci.yml"
+vx:
+  id_tokens:
+    VX_HISTORY_TOKEN:
+      aud: https://history.example.com
+```
+
+</TabItem>
+</Tabs>
+
+A refusal is said with the server's words. A CI job with no token says
+so once, and off CI there is no token: the run orders by local history
+alone. The plugin's other options (`assume`, `window`, reservations)
+are on its [reference page](../../../plugins/vx-history/).
+
+<Aside>
+  The server only orders runs. A wrong or missing row never changes what
+  runs or what is cached.
+</Aside>
+
+## API
+
+All under `/v1`
+([PROTOCOL.md](https://github.com/vznjs/vx/blob/main/packages/vx-history-server/PROTOCOL.md)):
+
+| Route | Does |
+| --- | --- |
+| `POST /v1/timings/upload` | `{ timings: [{ hash, durationMs, cores?, rssBytes? }] }`, up to 10 000, each folded into the token's scope; `204` |
+| `POST /v1/timings/query` | `{ scopes, hashes }`, 1 to 8 refs and up to 10 000 hashes: each hash's row in the first scope that holds one |
+| `GET /v1/capabilities` | `{ maxUploadTimings, maxQueryHashes, maxQueryScopes }` |
+
+A query answers `{ timings: { <hash>: { durationMs, cores, rssBytes, runs } } }`;
+a hash no scope holds is absent. Every refusal is `{ code, message }`.
+
+To mount it in a server of your own,
+`createHistoryServer({ store, authorize, timingDays? })` returns a
+`fetch` handler, and `sqliteStore(db)` keeps the rows in any SQLite that
+bun:sqlite or D1 serves. The
+[README](https://github.com/vznjs/vx/tree/main/packages/vx-history-server#api)
+lists the whole API.

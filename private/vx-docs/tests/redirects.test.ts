@@ -116,6 +116,7 @@ const MERGED: Record<string, string> = {
   'guides/running-tasks/': 'docs/running-tasks/',
   'guides/remote-caching/': 'docs/remote-cache/',
   'guides/remote-execution/': 'docs/remote-execution/',
+  'docs/relay/': 'docs/servers/dte/',
   'guides/extensibility/': 'docs/plugins/',
   'guides/otel-bridge/': 'docs/plugins/#opentelemetry',
   'guides/mcp/': 'docs/agents/',

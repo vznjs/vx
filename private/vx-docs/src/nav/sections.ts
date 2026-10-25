@@ -67,9 +67,17 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
         { label: 'Sandboxing', link: '/docs/sandboxing/' },
         { label: 'CI', link: '/docs/ci/' },
         { label: 'Distributed runs', link: '/docs/distributed-runs/' },
-        { label: 'Deploy a relay', link: '/docs/relay/' },
         { label: 'Remote cache', link: '/docs/remote-cache/' },
         { label: 'Remote execution', link: '/docs/remote-execution/' },
+      ],
+    },
+    {
+      label: 'Servers',
+      items: [
+        { label: 'Servers', link: '/docs/servers/' },
+        { label: 'Cache server', link: '/docs/servers/cache/' },
+        { label: 'History server', link: '/docs/servers/history/' },
+        { label: 'DTE server', link: '/docs/servers/dte/' },
       ],
     },
     {
