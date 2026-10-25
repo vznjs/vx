@@ -8,21 +8,17 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # checkout; naming any permission drops the rest
+      contents: read
     steps:
-      - uses: actions/checkout@v4 # one commit: --affected fetches its base
+      - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      # A lock that no longer matches the configs fails here, before any task.
+      # Fails if someone changed a vx.config.ts and did not run vx lock.
       - run: bun vx lock --check
-      # main runs everything and fills the cache every pull request
-      # reads; a pull request runs only what it changed, and what depends on it.
+      # main runs every task. A pull request runs only the projects it
+      # changed and the projects that depend on them.
       - run: >
           bun vx run ci
           ${{ github.event_name == 'pull_request'
             && '--affected'
             || '--all' }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }} # the PR check
-          VX_REAPI_ENDPOINT: ${{ vars.VX_REAPI_ENDPOINT }}
-          REAPI_TOKEN: ${{ secrets.REAPI_TOKEN }} # read-write

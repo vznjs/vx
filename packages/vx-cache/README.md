@@ -6,12 +6,15 @@ Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 runs, on a server you host that speaks the vx-cache protocol, such as
 [`@vzn/vx-cache-server`](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server).
 The local cache stays first; the server is asked on a local miss, and
-each miss's artifact is uploaded to it. Until it is on npm, import it
-from a checkout of this repo:
+each miss's artifact is uploaded to it.
+
+```sh
+bun add -d @vzn/vx-cache
+```
 
 ```ts
 // .vx/workspace.ts
-import { vxCache } from '/path/to/vx/packages/vx-cache/src/index.ts'
+import { vxCache } from '@vzn/vx-cache'
 
 export default {
   plugins: [

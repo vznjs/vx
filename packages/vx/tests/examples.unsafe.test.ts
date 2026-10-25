@@ -235,10 +235,10 @@ describe('examples/turbo', () => {
 
 // The CI guide's workflow, step by step, as GitHub would run it: a push to
 // main and a pull request, each with the env the runner sets. No remote is
-// configured, so reapi() declines: the local cache never knows a scope
+// configured: the local cache never knows a scope
 // (owner, 2026-10-17), so one disk is one pool for every ref.
 describe('examples/ci', () => {
-  const root = fixture('ci', ['vx', 'vx-ci', 'vx-reapi'])
+  const root = fixture('ci', ['vx', 'vx-ci'])
   const workflow = readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8')
   const event = path.join(path.dirname(root), `${path.basename(root)}-event.json`)
   writeFileSync(event, JSON.stringify({ repository: { default_branch: 'main' } }))

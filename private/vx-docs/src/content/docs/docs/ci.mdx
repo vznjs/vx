@@ -1,17 +1,58 @@
 ---
 title: CI
-description: Run vx on GitHub Actions or GitLab CI, test only what a change affects, and report results.
+description: Run vx on GitHub Actions or GitLab CI, and test only what a pull request changed.
 # The job summary sample below carries its own headings; a table of contents
 # would list them as this page's sections.
 tableOfContents: false
 ---
 
-On CI, `main` runs every task and fills a shared cache. A pull request runs
-only what it changed, and reuses the rest.
+On CI, vx does two things. A push to `main` runs every task. A pull
+request runs only the projects it changed and the projects that depend
+on them.
+
+This page sets that up on GitHub Actions. You need no server and no
+token, only a repository where `vx run` already works on your machine
+([Quickstart](../../quickstart/)).
 
 ## GitHub Actions
 
-### 1. Add the workflow
+### 1. Install the CI plugin
+
+```sh
+bun add -d @vzn/vx-ci
+```
+
+### 2. Declare it
+
+`vx init` already wrote `.vx/workspace.ts` with your lockfile's plugin.
+Add `github()` beside it:
+
+```ts
+// .vx/workspace.ts
+import { defineWorkspace } from '@vzn/vx/config'
+import { github } from '@vzn/vx-ci'
+import { bun } from '@vzn/vx-lockfile'
+
+export default defineWorkspace({
+  plugins: [
+    // Reads bun.lock, so `^build` builds a package's dependencies first.
+    bun(),
+    // On GitHub Actions: the job summary, and the pull request's base for
+    // --affected. Anywhere else it does nothing.
+    github(),
+  ],
+})
+```
+
+Then update the lock and commit:
+
+```sh
+vx lock
+git add .vx package.json bun.lock
+git commit -m "ci: run vx on GitHub Actions"
+```
+
+### 3. Add the workflow
 
 ```yaml
 # .github/workflows/ci.yml
@@ -24,67 +65,32 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # checkout; naming any permission drops the rest
+      contents: read
     steps:
-      - uses: actions/checkout@v4 # one commit: --affected fetches its base
+      - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      # A lock that no longer matches the configs fails here, before any task.
+      # Fails if someone changed a vx.config.ts and did not run vx lock.
       - run: bun vx lock --check
-      # main runs everything and fills the cache every pull request
-      # reads; a pull request runs only what it changed, and what depends on it.
+      # main runs every task. A pull request runs only the projects it
+      # changed and the projects that depend on them.
       - run: >
           bun vx run ci
           ${{ github.event_name == 'pull_request'
             && '--affected'
             || '--all' }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }} # the PR check
-          VX_REAPI_ENDPOINT: ${{ vars.VX_REAPI_ENDPOINT }}
-          REAPI_TOKEN: ${{ secrets.REAPI_TOKEN }} # read-write
 ```
 
-A task that declares `exec.sandbox` needs the OS sandbox on the runner:
-add `- run: vx setup github` after the install
-([vx-ci](../../plugins/vx-ci/#the-sandbox-runtime-vx-setup)).
+`ci` is a task you define in your `vx.config.ts`, usually a group that
+depends on your `build`, `test` and `lint` tasks
+([Tasks](../tasks/)). Any task name works.
 
-### 2. Declare the plugins
+### 4. Push
 
-```ts
-// .vx/workspace.ts
-import { defineWorkspace } from '@vzn/vx/config'
-import { github } from '@vzn/vx-ci'
-import { bun } from '@vzn/vx-lockfile'
-import { reapi } from '@vzn/vx-reapi'
+Open a pull request: its run builds and tests only what it changed.
+After it merges, the run on `main` runs everything.
 
-const token = process.env.REAPI_TOKEN
-
-export default defineWorkspace({
-  plugins: [
-    // The package edges `^build` follows, from bun.lock.
-    bun(),
-    // On Actions: the job summary, the PR check, and the PR's base for --affected.
-    github(),
-    // The shared cache, here a Bazel REAPI server; turboCache() or nxCache()
-    // fit the same slot. With no VX_REAPI_ENDPOINT it declines and vx
-    // caches on this machine alone.
-    reapi({ headers: token ? { authorization: `Bearer ${token}` } : {} }),
-  ],
-})
-```
-
-### 3. Push
-
-`main` runs `--all` and fills the cache; a pull request runs what it
-changed and what depends on that. Both files are
-[`examples/ci`](https://github.com/vznjs/vx/tree/main/examples/ci), and
-vx's own CI runs them on every commit.
-
-To spread the run over more runners, add
-[`dte()`](../distributed-runs/).
-
-`github()` writes this job summary and a PR check (the check needs
-`GITHUB_TOKEN`). Off Actions it declines.
+Each run writes a summary on the workflow run's page:
 
 > ## ❌ vx run
 >
@@ -104,43 +110,59 @@ To spread the run over more runners, add
 >
 > <sub>vx 0.0.21 · `vx run ci --all` · 3/5 passed · 1 up-to-date · 1 restored</sub>
 
-A failure on inputs that passed before is marked flaky:
+A task that fails on inputs it passed on before is marked flaky in the
+log:
 
 ```
  ◼︎   4.21s failed  miss     web#test flaky - passed 3× before
 ```
 
-### When to run vx lock
+### When to run `vx lock`
 
-Runs read configs from `.vx/projects.lock.json`, not from your files.
-Run `vx lock` and commit the lock after you edit a `vx.config.ts` or
-`.vx/workspace.ts`, a file a config imports, or your dependencies.
-`vx lock --check` fails on any difference, naming the project, so it is
-the workflow's first step.
+Every run reads `.vx/projects.lock.json`, not your `vx.config.ts` files.
+After you edit a `vx.config.ts`, `.vx/workspace.ts`, a file a config
+imports, or your dependencies, run `vx lock` and commit the lock.
+`vx lock --check` is the workflow's first vx step: it fails, naming the
+project, when someone forgot.
+
+### Sandboxed tasks
+
+A task that declares `exec.sandbox` needs the OS sandbox on the runner.
+Add `- run: bun vx setup github` after `bun install`
+([vx-ci](../../plugins/vx-ci/#the-sandbox-runtime-vx-setup)).
 
 ### Common problems
 
-- **`--affected has no base here`.** The clone has no base branch and no `origin` to fetch it from. Set `baseBranch`, or pass `--affected=<ref>`.
-- **`nothing affected since <ref>` on every push.** `origin/main` on a push to `main` is the commit itself. Run `--all` on `main`: the cache skips what did not change, and the checkout needs no history.
-- **The whole log lands in the job summary.** Don't redirect vx's output there; declare `github()` from `@vzn/vx-ci`, which writes the summary.
+- **`--affected has no base here`.** The clone has no base branch and no `origin` to fetch it from. Set `baseBranch` in `.vx/workspace.ts`, or pass `--affected=<ref>`.
+- **`nothing affected since <ref>` on every push.** On a push to `main`, `origin/main` is the commit itself. Run `--all` on `main`, as the workflow above does: the cache skips what did not change.
+- **The whole log lands in the job summary.** Don't redirect vx's output into `$GITHUB_STEP_SUMMARY`. `github()` writes the summary.
 
 ---
 
 ## GitLab CI
 
-`gitlab()` from `@vzn/vx-ci` gives a merge request its diff base for
-`--affected` and scopes plugin cache entries by branch:
+Declare `gitlab()` instead of `github()`:
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
 import { gitlab } from '@vzn/vx-ci'
+import { bun } from '@vzn/vx-lockfile'
 
-export default defineWorkspace({ plugins: [gitlab()] })
+export default defineWorkspace({ plugins: [bun(), gitlab()] })
 ```
 
-`gitlab({ cacheScope: false })` turns the scoping off. It writes no merge
-request comments yet. `vx setup gitlab`, a `script` line before vx runs,
-installs the OS sandbox for tasks that declare `exec.sandbox`
-([vx-ci](../../plugins/vx-ci/#the-sandbox-runtime-vx-setup)).
+Run the same two lines as the GitHub workflow: `bun vx lock --check`,
+then `bun vx run ci`, with `--affected` in a merge request pipeline and
+`--all` on the default branch. In a merge request, `gitlab()` gives
+`--affected` the request's diff base. Both plugins do nothing outside
+their own CI, so you can declare both. For sandboxed tasks, run
+`bun vx setup gitlab` before vx.
 
-See [Remote cache](../remote-cache/) to share results between machines.
+---
+
+## Next
+
+- [Remote cache](../remote-cache/): let every runner reuse what another
+  one built.
+- [Distributed runs](../distributed-runs/): spread one run over many
+  runners.
