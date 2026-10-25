@@ -1409,6 +1409,35 @@ it('a task whose command ended keeps its lease while its worker holds it, and a 
   }
 })
 
+// An additive task rewrites its upstream's file: restored after it, the
+// upstream put the old bytes back (2026-10-25).
+it('an order lists each dependency after its own dependencies', async () => {
+  const cached = (id: string, deps: string[] = []) =>
+    [
+      id,
+      {
+        id,
+        deps,
+        projectDir: '/ws/a',
+        config: { cache: { outputs: { files: ['dist/**'] } } },
+      } as unknown as TaskNode,
+    ] as const
+  const h = await harness(
+    new Map([cached('one'), cached('two', ['one']), cached('three', ['two', 'one'])]),
+    undefined,
+    undefined,
+    (id) => `k-${id}`,
+  )
+  try {
+    const a = await h.worker(1)
+    void h.o.execute(h.req('three', 'k-three'))
+    expect(await a.batches()).toEqual([['three']])
+    expect(a.orders[0]!.deps.map((d) => d.task)).toEqual(['one', 'two'])
+  } finally {
+    await h.stop()
+  }
+})
+
 // M, 2026-10-21: files go through the cache, the relay carries only
 // orders and status.
 it('an order names its key and each dependency’s; the result comes back by the key its worker saved', async () => {
@@ -1453,8 +1482,8 @@ it('an order names its key and each dependency’s; the result comes back by the
     expect(await a.batches()).toEqual([['app']])
     // Named though it holds them: the worker restores each key once.
     expect(a.orders.find((o) => o.task === 'app')!.deps.map((d) => [d.task, d.key])).toEqual([
-      ['mid', runKey(R, 'mid')],
       ['lib', 'k-lib-hit'],
+      ['mid', runKey(R, 'mid')],
     ])
     const b = await h.worker(1)
     await Bun.sleep(50)
@@ -1462,8 +1491,8 @@ it('an order names its key and each dependency’s; the result comes back by the
     void h.o.execute(h.req('top', 'k-top'))
     expect(await b.batches()).toEqual([['top']])
     expect(b.orders[0]!.deps.map((d) => [d.task, d.key])).toEqual([
-      ['mid', runKey(R, 'mid')],
       ['lib', 'k-lib-hit'],
+      ['mid', runKey(R, 'mid')],
     ])
     // The hit, held here, put where workers read before its first order;
     // the key a worker saved is there already.
