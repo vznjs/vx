@@ -1281,6 +1281,28 @@ it('reports a worker still there at the summary online until then', async () => 
   }
 })
 
+// A worker whose upload failed (a remote's 500) was told to share a remote
+// it already shared (2026-10-25).
+it('a task whose entry reached no cache this machine reads names the upload first', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.worker(1)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.say({ type: 'end', task: 't1', key: 'k-t1', result: { exitCode: 0, durationMs: 1 } })
+    expect(
+      await t1.then(
+        () => '',
+        (e: Error) => e.message,
+      ),
+    ).toBe(
+      "t1: worker#1 ran it, and no cache this machine reads holds its entry: worker#1's upload failed (its log says why), or the workers and this machine share no remote cache the workers write",
+    )
+  } finally {
+    await h.stop()
+  }
+})
+
 it('a worker that could not run a task it began gets no more; two such fail it', async () => {
   const h = await harness(new Map([node('t1'), node('t2')]))
   try {

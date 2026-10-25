@@ -896,7 +896,7 @@ export class Orchestrator {
     if (log === null) {
       job.reject(
         new Error(
-          `${task}: ${a.label} saved it where this machine cannot read it: give the workers and this machine a remote cache they write, or one store`,
+          `${task}: ${a.label} ran it, and no cache this machine reads holds its entry: ${a.label}'s upload failed (its log says why), or the workers and this machine share no remote cache the workers write`,
         ),
       )
       return
