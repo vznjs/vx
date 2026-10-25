@@ -1769,10 +1769,10 @@ function nestedIn(nodes: ReadonlyMap<string, TaskNode>, dir: string, root: strin
   return [...out].sort()
 }
 
-/** `tree`'s files under `root`, relative to it; undefined when git cannot list it. */
 /** A tree's file paths, and its submodules' (gitlinks). */
 type Tree = { files: Set<string>; links: string[] }
 
+/** `tree`'s files and submodules under `root`, relative to it; undefined when git cannot list it. */
 async function listTree(root: string, tree: string): Promise<Tree | undefined> {
   const p = Bun.spawn(['git', 'ls-tree', '-r', '-z', tree], {
     cwd: root,
