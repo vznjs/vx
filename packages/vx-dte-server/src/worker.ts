@@ -237,7 +237,9 @@ export class RelayRun {
     // One `attach` closed as gone kept nothing: its close threw (main
     // 8d0619f's redial, 2026-10-24).
     const kept = ws.deserializeAttachment()
-    if (kept !== null && this.relay.detach(kept.key, kept.id, ws)) this.arm()
+    if (kept === null) return
+    this.relay.detach(kept.key, kept.id, ws)
+    if (this.relay.expire()) this.arm()
   }
 
   webSocketError(ws: Socket): void {

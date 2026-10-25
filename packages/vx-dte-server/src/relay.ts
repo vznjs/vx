@@ -133,11 +133,8 @@ export interface Relay {
    * relay has closed it, saying why.
    */
   attach(key: string, id: string, socket: RelaySocket): Kept | false
-  /**
-   * The participant's socket closed: gone, unless it dials again within
-   * `graceMs`. True if it is now waiting for that redial.
-   */
-  detach(key: string, id: string, socket: RelaySocket): boolean
+  /** The participant's socket closed: gone, unless it dials again within `graceMs`. */
+  detach(key: string, id: string, socket: RelaySocket): void
   /**
    * Lets go of each participant whose redial did not come within
    * `graceMs`; true while one is still waiting for its own.
@@ -618,7 +615,7 @@ export function createRelay(opts: RelayOptions): Relay {
     detach(key, id, socket) {
       const session = sessions.get(key)
       const p = session?.byId.get(id)
-      if (session === undefined || p === undefined || p.socket !== socket) return false
+      if (session === undefined || p === undefined || p.socket !== socket) return
       p.socket = undefined
       // Only `leave` ends a participant at once (owner, 2026-10-25): one
       // whose socket dropped dials again within `graceMs`, and its session,
@@ -628,7 +625,6 @@ export function createRelay(opts: RelayOptions): Relay {
       // probes it).
       p.droppedAt = Date.now()
       persist(session, p)
-      return true
     },
     expire() {
       let waiting = false

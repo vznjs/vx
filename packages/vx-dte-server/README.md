@@ -117,12 +117,11 @@ The same relay as a `fetch` handler, to mount in a server of your own
   plus the hooks a host of websockets drives (`src/worker.ts` is their
   user): the options `sockets`, the `[Kept, RelaySocket]` pairs a host
   kept across a restart, from which the sessions are rebuilt (PROTOCOL.md
-  § What the relay knows), `store` (`{ put, delete }`), where the relay
-  keeps each participant while it is one, `stored`, what `store` held,
+  § What the relay knows), `store`, a `RelayStore` (`{ put, delete }`) where the relay
+  keeps each participant while it is one, `stored`, the `Stored` rows it held,
   read back after a restart that dropped every socket, and `upgrade`, which answers a `socket`
   request; and the methods `attach` and `detach` (its socket closed: the
-  participant is gone unless it dials again within `graceMs`; true while
-  it may), which hand the relay a participant's
+  participant is gone unless it dials again within `graceMs`), which hand the relay a participant's
   `RelaySocket` (`{ send, close }`), `frame`, which returns the
   answer to send down the socket, or `undefined` for none, and `expire`,
   which lets go of those whose grace ended (true while one still waits:

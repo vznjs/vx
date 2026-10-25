@@ -58,7 +58,7 @@ export interface Prover {
 export interface Relay {
   fetch(req: Request): Promise<Response>
   attach(key: string, id: string, socket: RelaySocket): Kept | false
-  detach(key: string, id: string, socket: RelaySocket): boolean
+  detach(key: string, id: string, socket: RelaySocket): void
   expire(): boolean
   frame(key: string, id: string, text: string, socket?: RelaySocket): string | undefined
 }
