@@ -1,14 +1,20 @@
 ---
-title: Deploy a relay
-description: Host the relay a distributed run's workers meet at, and point dte() at it.
+title: DTE server
+description: Host @vzn/vx-dte-server, the relay a distributed run's workers meet at, on Workers, Bun or Docker, and point dte() at it.
 ---
 
 import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components'
 
-A [distributed run](../distributed-runs/) needs a relay: CI runners take
-no inbound connection, so the run and its workers all dial out to it. You
-host your own. It runs on Cloudflare's free plan, or on Bun or Docker
-anywhere your CI can reach.
+`@vzn/vx-dte-server` is the relay a [distributed run](../../distributed-runs/)
+needs: CI runners take no inbound connection, so the run and its workers
+all dial out to it, and it passes their messages on. You host your own.
+It runs on Cloudflare's free plan, or on Bun or Docker anywhere your CI
+can reach. It keeps no secret and stores no file.
+
+<Aside title="Not on npm yet">
+  Until `@vzn/vx-dte` and `@vzn/vx-dte-server` are on npm, run them from a
+  checkout of the vx repository.
+</Aside>
 
 <Steps>
 
@@ -54,11 +60,15 @@ anywhere your CI can reach.
 
    ```sh
    docker build -t vx-dte-server packages/vx-dte-server
-   docker run -p 8080:8080 vx-dte-server \
+   docker run -p 8080:8080 -v vx-dte:/state vx-dte-server \
      --allow https://token.actions.githubusercontent.com:acme/app:ci.yml \
      --allow https://token.actions.githubusercontent.com:acme/app:vx-worker.yml \
-     --audience https://relay.example.com
+     --audience https://relay.example.com --state /state/relay.db
    ```
+
+   Or run it with the other two servers using
+   [Docker Compose](../#all-three-with-docker-compose): the `dte`
+   service, on port 8080, with `DTE_ALLOW` and `DTE_AUDIENCE`.
 
    </TabItem>
    </Tabs>
@@ -89,7 +99,7 @@ anywhere your CI can reach.
 3. **Check it answers.** A request with no token is refused by name:
 
    ```sh
-   curl https://relay.example.com/v1/runs/$(uuidgen)/socket
+   curl https://relay.example.com/v1/sessions/$(uuidgen)/socket
    ```
 
    ```text
@@ -121,17 +131,50 @@ anywhere your CI can reach.
 ## What to know
 
 - The relay carries orders and status, never files: outputs go through
-  your [remote cache](../remote-cache/).
+  your [remote cache](../../remote-cache/).
 - On Cloudflare each run is one Durable Object, and the relay fits the
   free plan: websocket messages count 20 to one Durable Object request,
   against 100,000 a day, and it writes about two rows a worker. A
   deploy keeps the runs in flight: each side dials back. On Bun and
   Docker runs live in memory unless `--state <file>` keeps them, so a
   restart keeps the runs it was carrying.
-- The wire is [Switchboard v1](../../switchboard/), an open protocol: any
+- The wire is [Switchboard v1](../../../switchboard/), an open protocol: any
   server that speaks it can stand in for this relay.
 - `AUDIENCE` (Cloudflare) is unset by default: tokens must name the URL
   the relay is reached at. Set it only when they name another one.
+- A run is bound to the issuer and repository that started it
+  (`repository_id` on GitHub, `project_id` on GitLab): a worker of another repository cannot
+  join it, even one `ALLOW` admits.
+- A participant whose socket drops may dial back within 10 s. A run ends
+  when the orchestrator leaves, or drops and does not dial back in time.
+- On Bun, 10 000 sockets over 100 runs take 41 MB over an idle relay
+  (measured 2026-10-24, 4 cores).
 
-See [`@vzn/vx-dte-server`](https://github.com/vznjs/vx/tree/main/packages/vx-dte-server)
-for every option and the API to mount it in a server of your own.
+## Settings
+
+| Setting | Cloudflare | Bun and Docker | What it sets |
+| --- | --- | --- | --- |
+| who may take part | `ALLOW` var | `--allow`, repeated | `issuer:owner/repo:workflow` entries |
+| audience | `AUDIENCE` var, unset: the relay's URL | `--audience` | the `aud` every token must name |
+| state | Durable Object storage | `--state <file>`, unset: memory | the runs a restart keeps |
+| listen | | `--port` (8080), `--host` (`0.0.0.0`) | where it listens |
+
+## Point vx at it: `dte()`
+
+`dte({ relay, workers, adapter })` from `@vzn/vx-dte` sends the run's
+tasks to workers your CI starts. The adapter starts them: `github()`,
+`gitlab()`, `docker()`, or `local()` (workers in git worktrees, to try it
+on one machine). `vx dte init` writes the run's workflow and the
+workers' (`ci.yml` and `vx-worker.yml` on GitHub). The
+[distributed runs page](../../distributed-runs/) walks through a run.
+
+## API
+
+The routes are [Switchboard v1](../../../switchboard/): one websocket per
+participant, `GET /v1/sessions/<session>/socket`, with the subprotocol
+`switchboard.v1` and the job's OIDC token as a bearer token. To mount the
+relay in a server of your own, `createRelay()` returns a `fetch` handler,
+`serveRelay()` serves it on `Bun.serve`, and `createVerifier()` checks the
+CI tokens against `parseAllow(ALLOW)`. The
+[README](https://github.com/vznjs/vx/tree/main/packages/vx-dte-server#api)
+lists the whole API.

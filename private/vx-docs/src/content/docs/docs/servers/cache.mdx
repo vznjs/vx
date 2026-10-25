@@ -1,0 +1,195 @@
+---
+title: Cache server
+description: Host @vzn/vx-cache-server, the remote cache vxCache() reads and writes, on Workers, Bun or Docker.
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components'
+
+`@vzn/vx-cache-server` is a remote cache for CI jobs. It keeps task
+artifacts in one bucket and nothing else: no database and no state on
+the node. It speaks the [vx-cache protocol](https://github.com/vznjs/vx/blob/main/packages/vx-cache-server/PROTOCOL.md)
+(`/v1`). `vxCache()` from `@vzn/vx-cache` points vx at it.
+
+vx asks its local cache first and the server on a local miss. Every
+miss's artifact is uploaded in the background. A down server or a
+refused token reads as a miss, never as a failure.
+
+## Deploy
+
+<Tabs syncKey="server-host">
+<TabItem label="Cloudflare Workers">
+
+The artifacts go in R2. From `packages/vx-cache-server` in a checkout of
+the vx repository, with `TRUST` filled in `wrangler.jsonc`:
+
+```sh
+bun install
+bunx wrangler login
+bunx wrangler deploy
+```
+
+On the first deploy, wrangler creates the R2 bucket `wrangler.jsonc`
+names (`vx-cache`). The server fits Workers' free plan. A request makes at
+most 1000 calls to R2, so a check reads up to 990 keys, and an upload or a
+batch download carries up to 330 artifacts. A higher setting is lowered,
+and `/v1/capabilities` says so. A request body is at most 100 MB. R2's
+free plan holds 10 GB.
+
+</TabItem>
+<TabItem label="Bun">
+
+The artifacts go in any S3-compatible bucket:
+
+```sh
+TRUST='[…]' \
+S3_BUCKET=vx-cache S3_ENDPOINT=https://s3.example.com \
+S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… \
+bun packages/vx-cache-server/src/bun.ts --port 8080
+```
+
+`--port` (default 8080) and `--host` (default `0.0.0.0`) set where it
+listens. A node keeps no state of its own, so any number of nodes can
+share one bucket behind a load balancer.
+
+</TabItem>
+<TabItem label="Docker">
+
+From the root of the vx repository:
+
+```sh
+docker build -f packages/vx-cache-server/Dockerfile -t vx-cache-server .
+docker run -p 8080:8080 -e TRUST='[…]' -e S3_BUCKET=… -e S3_ENDPOINT=… \
+  -e S3_ACCESS_KEY_ID=… -e S3_SECRET_ACCESS_KEY=… vx-cache-server
+```
+
+Or run it with the other two servers using
+[Docker Compose](../#all-three-with-docker-compose): the `cache`
+service, on port 8081.
+
+</TabItem>
+</Tabs>
+
+Put TLS in front of it: a CI token is a bearer token.
+
+## Settings
+
+| Setting | Default | What it sets |
+| --- | --- | --- |
+| `TRUST` | empty: refuse all | the repositories it serves and the jobs that write protected refs ([`TRUST`](../#trust-who-reads-and-who-writes)) |
+| `AUDIENCE` | the origin it is reached at | the `aud` a CI token must name |
+| `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | | the bucket (Bun and Docker), as Bun's S3 client reads them |
+| `MAX_CHECK_KEYS` | 500 | the keys one check may name |
+| `MAX_BATCH_ARTIFACTS` | 100 | the artifacts one upload or batch download may carry |
+| `MAX_UPLOAD_BYTES` | 100 MB | the largest upload, its artifacts together |
+
+On Workers, each setting is a var in `wrangler.jsonc`. Every check
+answer names the limits (`x-vx-max-*` headers), and so does
+`GET /v1/capabilities`. Clients batch only within those limits.
+
+## Scopes and keys
+
+The server answers by the token's rules ([`TRUST`](../#trust-who-reads-and-who-writes)):
+a job reads its repository and writes only its own branch's scope. A
+key is `{ scope, hash }`, where `scope` is a ref. A read is exact: it
+names each scope it wants. `vxCache()` asks for its branch, then the
+branch it merges into, then the default branch, and the first scope that
+holds the hash answers.
+
+An artifact's object name in the bucket is:
+
+```text
+<hash(issuer)>/<hash(repository id)>/<hash(scope)>/<hash>
+```
+
+Each of the first three parts is the first 128 bits of its SHA-256, in
+hex, so a ref's slashes stay inside one segment. One repository never
+reads another's artifacts. An artifact is never rewritten: a second
+upload of a key that is already held keeps the first bytes.
+
+## Expiry
+
+Artifacts expire by age since they were written, through the bucket's
+own lifecycle rule. The server runs no sweep. One rule covers the whole
+bucket, for example 7 days on R2:
+
+```sh
+bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 7
+```
+
+On S3 the same rule goes in the bucket's lifecycle configuration. A run
+that misses an expired artifact runs the task and stores it again.
+
+## Point vx at it: `vxCache()`
+
+```ts title=".vx/workspace.ts"
+import { defineWorkspace } from '@vzn/vx/config'
+import { vxCache } from '/path/to/vx/packages/vx-cache/src/index.ts'
+
+export default defineWorkspace({
+  plugins: [vxCache({ url: 'https://cache.example.com' })], // or VX_CACHE_URL
+})
+```
+
+<Aside title="Not on npm yet">
+  Until `@vzn/vx-cache` is on npm, import it from a checkout of the vx
+  repository, as above.
+</Aside>
+
+`vxCache({ url?, timeoutMs?, uploadTimeoutMs? })`:
+
+- `url` is the server's base URL, or `VX_CACHE_URL`.
+- `timeoutMs` (default 30 000) bounds each read and check, and
+  `uploadTimeoutMs` (default 60 000) bounds each upload.
+
+Each CI job needs a token for the server's origin:
+
+<Tabs syncKey="ci">
+<TabItem label="GitHub Actions">
+
+```yaml title=".github/workflows/ci.yml"
+permissions:
+  contents: read
+  id-token: write
+```
+
+The plugin asks GitHub for the token itself, and asks again before it
+expires. A job without `id-token: write` warns and runs without the
+remote cache.
+
+</TabItem>
+<TabItem label="GitLab CI">
+
+```yaml title=".gitlab-ci.yml"
+vx:
+  id_tokens:
+    VX_CACHE_TOKEN:
+      aud: https://cache.example.com
+```
+
+</TabItem>
+</Tabs>
+
+Off CI there is no token: the plugin says so once and the run stays
+local. A refused token is said once and turns the remote off for the
+run. A refused write (a job that only reads) turns off writes alone. In a
+[distributed run](../../distributed-runs/), the run lends its token to its
+workers, so they read and write the scopes the run reads.
+
+## API
+
+The protocol's routes, all under `/v1`
+([PROTOCOL.md](https://github.com/vznjs/vx/blob/main/packages/vx-cache-server/PROTOCOL.md)):
+
+| Route | Does |
+| --- | --- |
+| `GET /v1/artifacts/download/<hash>` | one artifact's bytes, its scope in `x-vx-scope` |
+| `POST /v1/artifacts/download` | many artifacts in one answer |
+| `POST /v1/artifacts/upload` | 1 to `maxBatchArtifacts` artifacts, to the token's scope |
+| `POST /v1/artifacts/check` | which keys are held, and their sizes |
+| `GET /v1/capabilities` | the limits |
+
+Any server that speaks the protocol can stand in for this one. To mount
+this one in a server of your own, `createCacheServer({ blobs, authorize, limits? })`
+returns a `fetch` handler over a bucket of your own. The
+[README](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server#api)
+lists the whole API.

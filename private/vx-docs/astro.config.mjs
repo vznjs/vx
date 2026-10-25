@@ -42,6 +42,7 @@ export default defineConfig({
   // the Guide linked. Astro puts the base on the old path but not on the
   // target.
   redirects: {
+    '/docs/relay/': `${root}docs/servers/dte/`,
     '/introduction/': `${root}quickstart/`,
     '/features/fastest/': `${root}features/benchmarks/`,
     '/features/vx-prune/': `${root}features/`,

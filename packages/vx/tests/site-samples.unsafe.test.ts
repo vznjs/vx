@@ -1491,18 +1491,27 @@ describe('the README and the Docs say which packages npm has', () => {
   // Both once told readers to install plugins npm answered 404 for (J-93),
   // under a note that said so; every plugin has been published since 0.0.484,
   // and a note left behind would send a reader away from a working install.
-  it("the README's plugin table is every public package but @vzn/vx", () => {
+  // A private package (vx-dte, private until npm has it) is listed too, its
+  // row saying so (owner, 2026-10-25: "vx-dte is missing in readme").
+  it("the README's plugin table is every package but @vzn/vx, each private one marked", () => {
     const packagesDir = path.resolve(import.meta.dir, '..', '..')
-    const shipped = readdirSync(packagesDir)
+    const all = readdirSync(packagesDir)
       .map((d) => path.join(packagesDir, d, 'package.json'))
       .filter((f) => existsSync(f))
       .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string; private?: boolean })
-      .filter((m) => m.private !== true && m.name !== '@vzn/vx')
-      .map((m) => m.name)
-      .sort()
+      .filter((m) => m.name !== '@vzn/vx')
     const readme = readFileSync(path.resolve(packagesDir, '..', 'README.md'), 'utf8')
-    const rows = [...readme.matchAll(/^\| \[`(@vzn\/[\w-]+)`\]/gm)].map((m) => m[1]!)
-    expect([...rows].sort()).toEqual(shipped)
+    const rows = new Map(
+      [...readme.matchAll(/^\| \[`(@vzn\/[\w-]+)`\].*$/gm)].map((m) => [m[1]!, m[0]]),
+    )
+    expect([...rows.keys()].sort()).toEqual(all.map((m) => m.name).sort())
+    const marked = [...rows].filter(([, row]) => row.includes('not on npm yet')).map(([n]) => n)
+    expect(marked.sort()).toEqual(
+      all
+        .filter((m) => m.private === true)
+        .map((m) => m.name)
+        .sort(),
+    )
   })
   // Found, not listed: a page that installs, runs or imports a plugin is
   // where a stale "not on npm yet" would sit (J2-25 found two unlisted).

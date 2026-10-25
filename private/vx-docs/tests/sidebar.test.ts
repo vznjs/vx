@@ -37,14 +37,17 @@ const DOCS_PAGES: [string, string][] = [
   ['Sandboxing', 'docs/sandboxing/'],
   ['CI', 'docs/ci/'],
   ['Distributed runs', 'docs/distributed-runs/'],
-  ['Deploy a relay', 'docs/relay/'],
   ['Remote cache', 'docs/remote-cache/'],
   ['Remote execution', 'docs/remote-execution/'],
+  ['Servers', 'docs/servers/'],
+  ['Cache server', 'docs/servers/cache/'],
+  ['History server', 'docs/servers/history/'],
+  ['DTE server', 'docs/servers/dte/'],
   ['Plugins', 'docs/plugins/'],
   ['Write a plugin', 'docs/writing-plugins/'],
   ['AI agents', 'docs/agents/'],
 ]
-const DOCS_GROUPS = ['Get started', 'Configure', 'Run', 'Extend']
+const DOCS_GROUPS = ['Get started', 'Configure', 'Run', 'Servers', 'Extend']
 const GUIDES_GROUPS = ['Get started', 'Caching', 'Running', 'CI', 'Debugging']
 const REFERENCE_GROUPS = ['CLI', 'Config', 'Benchmarks', 'Compare', 'Plugins', 'Protocols']
 const INTERNALS_TOP = ['overview/', 'architecture/', 'optimizations/', 'patterns/', 'flows/']

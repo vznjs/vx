@@ -1,0 +1,100 @@
+---
+title: Servers
+description: The three servers vx's plugins talk to, which you host, and the CI token rules they share.
+---
+
+vx runs and caches on its own. Three servers add what one machine
+cannot. You host each one, on Cloudflare Workers, Bun or Docker:
+
+| Server | Holds | Its plugin | Page |
+| --- | --- | --- | --- |
+| [`@vzn/vx-cache-server`](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server) | task artifacts, in one S3 or R2 bucket | `vxCache()`, [`@vzn/vx-cache`](https://github.com/vznjs/vx/tree/main/packages/vx-cache) | [Cache server](cache/) |
+| [`@vzn/vx-history-server`](https://github.com/vznjs/vx/tree/main/packages/vx-history-server) | task timings, one SQLite or D1 row per task | `vxHistory()`, [`@vzn/vx-history`](https://github.com/vznjs/vx/tree/main/packages/vx-history) | [History server](history/) |
+| [`@vzn/vx-dte-server`](https://github.com/vznjs/vx/tree/main/packages/vx-dte-server) | nothing: it relays a distributed run's messages | `dte()`, [`@vzn/vx-dte`](https://github.com/vznjs/vx/tree/main/packages/vx-dte) | [DTE server](dte/) |
+
+No server stores a secret. Every request carries the CI job's own OIDC
+token (GitHub Actions or GitLab CI), and the token decides what the
+request may do. Off CI there is no token, so the plugins run locally.
+
+## All three with Docker Compose
+
+[`private/vx-servers/compose.yaml`](https://github.com/vznjs/vx/blob/main/private/vx-servers/compose.yaml)
+builds and runs the three from a checkout of the vx repository:
+
+```sh
+cd private/vx-servers
+docker compose up -d                 # all three
+docker compose up -d cache history   # only the ones you need
+```
+
+| Service | Port | Settings it reads |
+| --- | --- | --- |
+| `dte` | 8080 (`DTE_PORT`) | `DTE_ALLOW`, `DTE_AUDIENCE` |
+| `cache` | 8081 (`CACHE_PORT`) | `TRUST`, `AUDIENCE`, `S3_*`, `MAX_*` |
+| `history` | 8082 (`HISTORY_PORT`) | `TRUST`, `AUDIENCE`, `TIMING_DAYS` |
+
+Settings come from your shell or a `.env` file next to `compose.yaml`.
+The relay keeps its runs in the `dte` volume, and the history server keeps
+its SQLite file in the `history` volume. Put TLS in front of each server:
+a CI token is a bearer token.
+
+## `TRUST`: who reads and who writes
+
+The cache and history servers share one token check
+([`@vzn/vx-devtools`](https://github.com/vznjs/vx/tree/main/packages/vx-devtools)).
+`TRUST` is a JSON list of rules. Each rule names:
+
+- `iss`, the issuer: `https://token.actions.githubusercontent.com` or
+  your GitLab's URL;
+- the repository by an id that a rename keeps: `repository_id` on
+  GitHub, `project_id` on GitLab;
+- the refs it protects: `ref` on GitHub, `ref_path` on GitLab;
+- any other claim the writing job must hold.
+
+A value is a string, where `*` matches anything, or a list of strings.
+
+```json
+[
+  {
+    "iss": "https://token.actions.githubusercontent.com",
+    "repository_id": "123456789",
+    "event_name": ["push", "merge_group"],
+    "ref": ["refs/heads/main", "refs/heads/gh-readonly-queue/main/*"],
+    "ref_protected": "true"
+  },
+  {
+    "iss": "https://gitlab.com",
+    "project_id": "4567",
+    "ref_path": "refs/heads/main",
+    "ref_protected": "true",
+    "pipeline_source": ["push", "schedule"]
+  }
+]
+```
+
+What a token may do:
+
+- **Its repository only.** It reads and writes the repository it names.
+  A repository no rule names is refused (`403`). With `TRUST` empty,
+  every request is refused: `the server trusts no CI: set TRUST`.
+- **It writes its own branch only.** A job writes the scope of its own
+  ref: on GitHub a pull request's head branch, else `ref`; on GitLab
+  `ref_path`. No header or client option can change that.
+- **Protected refs.** A ref a rule names, such as `refs/heads/main`, is
+  protected. Only a job that matches every claim of the rule writes it.
+  Any other job on that ref only reads, so a main run never reads a
+  write it did not make.
+- **No tiers.** A scope is a ref and nothing more. A read names the
+  scopes it wants, in order, own branch first, and the server answers from
+  the first one that holds the key.
+
+Always name `event_name`. `pull_request_target` and `issue_comment` runs
+carry main's `ref` while they run a pull request's code. A merge queue's
+runs write their queue ref before their code lands, and queued code is
+approved code.
+
+`AUDIENCE` is the `aud` a token must name. By default it is the origin
+the server is reached at, which is what the plugins ask GitHub for.
+
+The relay takes CI tokens too, with its own list, `ALLOW`
+([DTE server](dte/#settings)).

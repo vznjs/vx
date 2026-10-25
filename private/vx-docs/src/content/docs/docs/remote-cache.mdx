@@ -19,6 +19,20 @@ flowchart LR
 ```
 
 <Tabs>
+  <TabItem label="vx cache server">
+    ```ts title=".vx/workspace.ts"
+    import { defineWorkspace } from '@vzn/vx/config'
+    import { vxCache } from '/path/to/vx/packages/vx-cache/src/index.ts'
+
+    export default defineWorkspace({
+      plugins: [vxCache({ url: 'https://cache.example.com' })], // or VX_CACHE_URL
+    })
+    ```
+
+    [`@vzn/vx-cache-server`](../servers/cache/), which you host on Workers,
+    Bun or Docker. No token is stored: each CI job proves itself with its
+    OIDC token.
+  </TabItem>
   <TabItem label="Bazel REAPI">
     ```ts title=".vx/workspace.ts"
     import { defineWorkspace } from '@vzn/vx/config'
