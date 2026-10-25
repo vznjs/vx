@@ -1100,6 +1100,7 @@ describe('the plugins guide names the remote seam core defines', () => {
       'has',
       'hasMany',
       'lend',
+      'missing',
       'open',
       'put',
     ])

@@ -411,8 +411,8 @@ Return core's `RemoteCacheLayer` from the `cache` hook: `has`, `get` and
 remote lacks, else what it knows: `{ size, durationMs }` or `{}`. Write
 `hasMany` only when your wire answers many keys in one call. An entry is
 immutable: a `put` of a key the remote holds keeps the stored bytes.
-Core calls the optional `missing(hash)` before a `put` of a key the run
-found in no remote: check nothing first.
+Core calls the optional `missing` with a key the run found in no remote
+before its `put`: check nothing first.
 
 vx asks the local cache first, then each remote in `plugins` order, under
 `--cache-policy`. A remote error is a miss and one warning. Core bounds
