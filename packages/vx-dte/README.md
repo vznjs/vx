@@ -74,7 +74,7 @@ open it first or join it; vx and the relay refuse any other. `local()` starts ea
 git worktree of the tracked files as they are, uncommitted changes
 included (untracked files are not: a task that keys one fails), at the
 workspace's place in it (a workspace in a subdirectory of its repository too),
-saving to the run's store, a relative `cache.dir` too. When a worker fails, its row names
+saving to the run's store (a relative `cache.dir` or `--cache-dir` too). When a worker fails, its row names
 the error line and the log that holds its whole stderr. At the run's end,
 or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
 a detached shell removes them and prunes git's records.
@@ -85,7 +85,7 @@ checkout (mounted read-only) into its own filesystem at its tracked
 files as they are, uncommitted changes too, runs
 `prepare`, then the workspace's own `node_modules/.bin/vx dte worker`, so
 the image needs Bun and git, and `prepare` installs vx. This machine's store
-(`~/.vx`) and a cache dir the workspace names (`cache.dir`, `VX_CACHE_DIR`)
+(`~/.vx`) and a cache dir the workspace names (`cache.dir`, `VX_CACHE_DIR`, `--cache-dir`)
 are mounted at their own paths, and the
 clone keeps this checkout's `origin`, so the workers save where the run
 reads, as `local()`'s do; no remote is needed. On Linux a container runs

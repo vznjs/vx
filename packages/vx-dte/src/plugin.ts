@@ -1,3 +1,4 @@
+import path from 'node:path'
 import {
   definePlugin,
   hostPlatform,
@@ -51,7 +52,7 @@ export interface WorkerSpawn {
   readonly commit: string
   /**
    * The run's cache directory, absolute, when the workspace names one
-   * (`cache.dir`, `VX_CACHE_DIR`): an adapter starting workers on this
+   * (`cache.dir`, `VX_CACHE_DIR`, `--cache-dir`): an adapter starting workers on this
    * machine points them at it, where the run reads what they save.
    */
   readonly cacheDir?: string
@@ -495,7 +496,11 @@ export function dte(options: DteOptions) {
           id,
           workspaceRoot: ctx.workspaceRoot,
           commit,
-          ...(namesCache || process.env['VX_CACHE_DIR'] ? { cacheDir: ctx.cacheDir } : {}),
+          ...(namesCache ||
+          process.env['VX_CACHE_DIR'] ||
+          ctx.cacheDir !== path.join(ctx.workspaceRoot, '.vx', 'cache')
+            ? { cacheDir: ctx.cacheDir }
+            : {}),
           env: {
             VX_DTE_RUN: run,
             VX_DTE_WORKER: id,

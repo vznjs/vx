@@ -199,6 +199,12 @@ it('saves where the run reads under a relative cache.dir', async () => {
   expect(await readFile(path.join(root, 'a/out/a.txt'), 'utf8')).toBe('made\n')
 }, 60_000)
 
+it('saves where the run reads under --cache-dir', async () => {
+  const run = vx(['run', 'a#gen', '--cache-dir', '.vx/elsewhere'], 'e2e-flag', { VX_CACHE_DIR: '' })
+  const out = run.stdout.toString() + run.stderr.toString()
+  expect([run.exitCode, out]).toEqual([0, expect.stringContaining('local 1↑')])
+}, 60_000)
+
 // `--force` reads no hit, but a worker's entry is the run's own work: it
 // came back unreadable and every task failed.
 // The run in time (owner, 2026-10-23): --profile holds the workers' lanes.
