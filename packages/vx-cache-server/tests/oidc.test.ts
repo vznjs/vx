@@ -7,6 +7,7 @@ import { exportJWK, generateKeyPair, type JWTPayload, SignJWT } from 'jose'
 import { parseTokens, sha256, tokenAuth } from '../src/auth.js'
 import { anyAuth, oidcAuth, parseTrust } from '../src/oidc.js'
 import { createCacheServer } from '../src/server.js'
+import { sqliteStore } from '../src/store.js'
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
 const AUD = 'https://cache.example.com'
@@ -47,12 +48,12 @@ beforeAll(async () => {
       get: async (name) => (blobs.has(name) ? new Blob([blobs.get(name)!]) : null),
       delete: async (name) => void blobs.delete(name),
     },
-    db: {
+    store: sqliteStore({
       all: async <T>(sql: string, p: readonly unknown[]) =>
         db.query(sql).all(...(p as never[])) as T[],
       run: async (sql, p) => db.query(sql).run(...(p as never[])).changes,
       batch: async (s) => s.forEach((x) => db.run(x)),
-    },
+    }),
     authorize: anyAuth(
       tokenAuth(parseTokens(`read:${await sha256(READ)}`)),
       oidcAuth({

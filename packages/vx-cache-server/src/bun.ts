@@ -1,6 +1,7 @@
 #!/usr/bin/env -S bun --no-env-file --no-install
 // `vx-cache-server` on Bun: blobs in an S3-compatible bucket, the rest in a
-// SQLite file (PROTOCOL.md, README.md).
+// SQLite file for one node, or Postgres for any number of nodes sharing
+// the bucket (PROTOCOL.md, README.md).
 
 import { Database } from 'bun:sqlite'
 import { parseArgs } from 'node:util'
@@ -9,9 +10,11 @@ import { evict, retentionFrom } from './evict.js'
 import { anyAuth, oidcAuth, parseTrust } from './oidc.js'
 import { Refusal } from './protocol.js'
 import { createCacheServer, DEFAULT_MAX_ARTIFACT_BYTES } from './server.js'
-import type { Blobs, Db } from './store.js'
+import { postgresStore } from './postgres.js'
+import { type Blobs, type Db, sqliteStore, type Store } from './store.js'
 
-const USAGE = `usage: vx-cache-server [--db vx-cache.sqlite] [--port 8080] [--host 0.0.0.0]
+const USAGE = `usage: vx-cache-server [--db vx-cache.sqlite | --db postgres://…] [--port 8080] [--host 0.0.0.0]
+  --db            a SQLite file (one node), or a Postgres URL any number of nodes share
   TOKENS          who may read and write: read:<sha256> write:<sha256>, space separated
   TRUST           CI OIDC trust rules, a JSON list (README.md § CI tokens)
   AUDIENCE        the aud a CI token names (default: the origin it was sent to)
@@ -125,9 +128,11 @@ function main(argv: string[]): void {
     fail((err as Error).message)
   }
   const blobs = s3Blobs(new Bun.S3Client({ bucket: env.S3_BUCKET }))
-  const db = sqliteDb(values.db)
+  const store: Store = /^postgres(ql)?:\/\//.test(values.db)
+    ? postgresStore(values.db)
+    : sqliteStore(sqliteDb(values.db))
   const sweep = (): void => {
-    evict(db, blobs, retention).then(
+    evict(store, blobs, retention).then(
       ({ artifacts, runs }) => {
         if (artifacts + runs > 0) console.log(`evicted ${artifacts} artifacts, ${runs} runs`)
       },
@@ -138,7 +143,7 @@ function main(argv: string[]): void {
   const sweeping = setInterval(sweep, 3_600_000)
   const handle = createCacheServer({
     blobs,
-    db,
+    store,
     authorize: anyAuth(
       tokenAuth(parseTokens(env.TOKENS ?? '')),
       trust.length === 0

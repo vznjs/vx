@@ -7,7 +7,7 @@ import { evict, retentionFrom } from './evict.js'
 import { anyAuth, oidcAuth, parseTrust } from './oidc.js'
 import { errorJson, Refusal } from './protocol.js'
 import { createCacheServer } from './server.js'
-import type { Blobs, Db } from './store.js'
+import { type Blobs, type Db, sqliteStore } from './store.js'
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
 interface D1Statement {
@@ -91,7 +91,11 @@ let made: { key: string; handle: (req: Request) => Promise<Response> } | undefin
 export default {
   // The Cron Trigger `wrangler.jsonc` names: what outlived its retention goes.
   async scheduled(_controller: unknown, env: Env): Promise<void> {
-    const { artifacts, runs } = await evict(d1Db(env.DB), r2Blobs(env.BLOBS), retentionFrom(env))
+    const { artifacts, runs } = await evict(
+      sqliteStore(d1Db(env.DB)),
+      r2Blobs(env.BLOBS),
+      retentionFrom(env),
+    )
     console.log(`vx-cache-server: evicted ${artifacts} artifacts, ${runs} runs`)
   },
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -117,7 +121,7 @@ export default {
         key,
         handle: createCacheServer({
           blobs: r2Blobs(env.BLOBS),
-          db: d1Db(env.DB),
+          store: sqliteStore(d1Db(env.DB)),
           authorize: anyAuth(
             tokenAuth(tokens),
             trust.length === 0

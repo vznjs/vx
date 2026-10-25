@@ -5,7 +5,7 @@ import { expect, it } from 'bun:test'
 import { parseTokens, sha256, tokenAuth } from '../src/auth.js'
 import { evict, retentionFrom } from '../src/evict.js'
 import { createCacheServer } from '../src/server.js'
-import type { Db } from '../src/store.js'
+import { type Db, sqliteStore } from '../src/store.js'
 
 const DAY = 86_400_000
 const NOW = 1_800_000_000_000
@@ -19,6 +19,7 @@ async function store() {
     run: async (sql, p) => sqlite.query(sql).run(...(p as never[])).changes,
     batch: async (s) => s.forEach((x) => sqlite.run(x)),
   }
+  const store = sqliteStore(db)
   const objects = new Map<string, string>()
   const blobs = {
     async put(name: string, body: ReadableStream<Uint8Array>) {
@@ -30,7 +31,7 @@ async function store() {
   let clock = NOW
   const handle = createCacheServer({
     blobs,
-    db,
+    store,
     authorize: tokenAuth(parseTokens(`write:${await sha256(WRITE)}`)),
     now: () => clock,
   })
@@ -43,7 +44,7 @@ async function store() {
         headers: { authorization: `Bearer ${WRITE}`, 'content-length': String(key.length) },
       }),
     )
-  return { db, blobs, objects, sqlite, at, put, handle }
+  return { store, blobs, objects, sqlite, at, put, handle }
 }
 
 it('evicts each scope by its own age, the row and then its blob, and old runs', async () => {
@@ -61,10 +62,10 @@ it('evicts each scope by its own age, the row and then its blob, and old runs', 
     ['bcee', 3],
   ] as const) {
     s.sqlite.run(
-      `INSERT INTO artifacts (ns, key, scope, size, duration_ms, created_at) VALUES ('default', ?, 'refs/heads/f', 1, 1, ?)`,
-      [key, NOW - days * DAY],
+      `INSERT INTO artifacts (ns, key, scope, blob, size, duration_ms, created_at) VALUES ('default', ?1, 'refs/heads/f', ?2, 1, 1, ?3)`,
+      [key, `v1/default/refs%2Fheads%2Ff/${key}/w`, NOW - days * DAY],
     )
-    s.objects.set(`v1/default/refs%2Fheads%2Ff/${key}`, key)
+    s.objects.set(`v1/default/refs%2Fheads%2Ff/${key}/w`, key)
   }
   for (const days of [91, 5]) {
     s.at(days)
@@ -81,12 +82,12 @@ it('evicts each scope by its own age, the row and then its blob, and old runs', 
       }),
     )
   }
-  expect(await evict(s.db, s.blobs, retentionFrom({}), NOW)).toEqual({ artifacts: 2, runs: 1 })
+  expect(await evict(s.store, s.blobs, retentionFrom({}), NOW)).toEqual({ artifacts: 2, runs: 1 })
   expect(s.sqlite.query('SELECT key FROM artifacts ORDER BY key').values().flat()).toEqual([
     'bcee',
     'cee9',
   ])
-  expect([...s.objects.keys()].sort()).toEqual([
+  expect([...s.objects.keys()].sort().map((k) => k.replace(/\/[^/]+$/, ''))).toEqual([
     'v1/default/refs%2Fheads%2Ff/bcee',
     'v1/default/trusted/cee9',
   ])
@@ -95,12 +96,12 @@ it('evicts each scope by its own age, the row and then its blob, and old runs', 
 
 it('sweeps more than one pass of rows, and makes the tables a first sweep needs', async () => {
   const s = await store()
-  expect(await evict(s.db, s.blobs, retentionFrom({}), NOW)).toEqual({ artifacts: 0, runs: 0 })
+  expect(await evict(s.store, s.blobs, retentionFrom({}), NOW)).toEqual({ artifacts: 0, runs: 0 })
   s.at(40)
   for (let i = 0; i < 450; i++) await s.put(`f${i}`)
-  expect((await evict(s.db, s.blobs, retentionFrom({ TRUSTED_DAYS: '35' }), NOW)).artifacts).toBe(
-    450,
-  )
+  expect(
+    (await evict(s.store, s.blobs, retentionFrom({ TRUSTED_DAYS: '35' }), NOW)).artifacts,
+  ).toBe(450)
   expect(s.objects.size).toBe(0)
 })
 

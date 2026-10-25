@@ -8,7 +8,7 @@ task artifacts and each run's task timings, and speaks the
 for artifacts, under `/v1`, plus run history. Two backends answer alike:
 
 - **Bun**, with any S3-compatible bucket for artifacts and a SQLite file
-  for the rest.
+  for the rest, or Postgres for any number of nodes behind one balancer.
 - **Cloudflare Workers**, with R2 for artifacts and D1 for the rest.
 
 It is not on npm yet. `vxCache()`
@@ -80,6 +80,13 @@ bun packages/vx-cache-server/src/bun.ts --db /var/lib/vx-cache.sqlite --port 808
 
 S3 settings are those Bun's S3 client reads (`S3_REGION` too). `TRUST`
 and `AUDIENCE` are read from the environment too.
+
+A SQLite file serves one node. For many, give each the same bucket and
+one Postgres, `--db postgres://user:pass@host:5432/db`, through Bun's own
+client. A node keeps no state of its own: an upload writes a blob no
+other write names and commits it with one insert, so racing uploads of a
+hash keep one whole artifact, and nodes sweeping at once each take other
+rows.
 `MAX_ARTIFACT_BYTES` caps an artifact (default 100 MB).
 
 ## On Cloudflare Workers
@@ -127,10 +134,9 @@ over storage of your own (`src/index.ts`):
 
 - `createCacheServer(options: ServerOptions)` returns
   `(req: Request) => Promise<Response>`. `ServerOptions` is
-  `{ blobs, db, authorize, maxArtifactBytes?, now? }`: `blobs` is a
+  `{ blobs, store, authorize, maxArtifactBytes?, now? }`: `blobs` is a
   `Blobs` bucket (`{ put(name, body, size), get(name), delete(name) }`),
-  `db` a SQLite `Db`
-  (`{ all(sql, params), run(sql, params), batch(statements) }`), `authorize` an `Authorize`, which maps a request
+  `store` a `Store`, `authorize` an `Authorize`, which maps a request
   to its `Access` (`{ ns, write? }`: the namespace it reads, and the scope
   it may write) or throws; `maxArtifactBytes` caps a PUT (default 100 MB)
   and `now` is the clock, for tests.
@@ -142,7 +148,16 @@ over storage of your own (`src/index.ts`):
   `tokens`.
 - `parseTokens(list)` reads `TOKENS` into a map, and `tokenAuth(tokens)`
   makes the `Authorize` that checks a bearer token against it.
-- `evict(db, blobs, retention, now?)` deletes what outlived its
+- A `Store` is the database the server asks: `init()`, then reads and
+  inserts of `ArtifactRow`s (`NewArtifact` adds the namespace and time)
+  and `RunRow`s (`NewRun` adds the tasks), history `samples`, and the
+  sweep's `takeExpired` and `dropRuns`; each write one statement, so
+  nodes share it.
+- `sqliteStore(db)` is the `Store` over a SQLite `Db`
+  (`{ all(sql, params), run(sql, params), batch(statements) }`), as
+  bun:sqlite and D1 are; `postgresStore(url)` the one over Postgres, which
+  many nodes share.
+- `evict(store, blobs, retention, now?)` deletes what outlived its
   `Retention` (`{ trustedDays, branchDays, runDays }`), and
   `retentionFrom(env)` reads it from `TRUSTED_DAYS`, `BRANCH_DAYS` and
   `RUN_DAYS`.

@@ -18,11 +18,11 @@ import {
   TAG_HEADER,
   TAG_MAX,
 } from './protocol.js'
-import { blobName, type Blobs, type Db, findArtifacts, SCHEMA, TRUSTED } from './store.js'
+import { blobName, type Blobs, firstScopes, type Store, TRUSTED } from './store.js'
 
 export interface ServerOptions {
   blobs: Blobs
-  db: Db
+  store: Store
   authorize: Authorize
   /** The largest artifact a PUT may store, in bytes. */
   maxArtifactBytes?: number
@@ -47,12 +47,12 @@ const MAX_LISTED_RUNS = 100
 const DEFAULT_LISTED_RUNS = 20
 
 export function createCacheServer(opts: ServerOptions): (req: Request) => Promise<Response> {
-  const { blobs, db, authorize } = opts
+  const { blobs, store, authorize } = opts
   const maxArtifactBytes = opts.maxArtifactBytes ?? DEFAULT_MAX_ARTIFACT_BYTES
   const now = opts.now ?? Date.now
   let ready: Promise<void> | undefined
   const schema = (): Promise<void> => {
-    ready ??= db.batch(SCHEMA).catch((err: unknown) => {
+    ready ??= store.init().catch((err: unknown) => {
       ready = undefined
       throw err
     })
@@ -75,11 +75,9 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     const access = await authorize(req)
     await schema()
     if (req.method === 'PUT') return put(req, access, key)
-    const row = (await findArtifacts(db, access.ns, [key], readScopes(req))).get(key)
-    const body =
-      row === undefined
-        ? null
-        : await (req.method === 'GET' ? blobs.get(blobName(access.ns, row.scope, key)) : '')
+    const scopes = readScopes(req)
+    const row = firstScopes(await store.artifacts(access.ns, [key], scopes), scopes).get(key)
+    const body = row === undefined ? null : await (req.method === 'GET' ? blobs.get(row.blob) : '')
     if (row === undefined || body === null) {
       return req.method === 'HEAD'
         ? new Response(null, { status: 404 })
@@ -124,17 +122,14 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       { urls: [new URL(`/v1/artifacts/${key}`, req.url).href] },
       { status: 202 },
     )
-    const held = await db.all(`SELECT 1 FROM artifacts WHERE ns = ?1 AND key = ?2 AND scope = ?3`, [
-      access.ns,
-      key,
-      scope,
-    ])
     // Immutable: the stored bytes stay, and this upload is not read.
-    if (held.length > 0) {
+    if (await store.held(access.ns, key, scope)) {
       await req.body?.cancel()
       return stored
     }
-    const name = blobName(access.ns, scope, key)
+    // Its own blob: a racing PUT of the key, on this node or another, never
+    // writes over the bytes the row names.
+    const name = blobName(access.ns, scope, key, crypto.randomUUID())
     try {
       await blobs.put(name, req.body ?? new Blob([]).stream(), size)
     } catch (err) {
@@ -143,11 +138,26 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       if (err instanceof Refusal) throw err
       throw new Refusal(502, `the bucket refused the artifact: ${message(err)}`)
     }
-    // The row is the commit: a blob no row names is never read.
-    await db.run(
-      `INSERT OR IGNORE INTO artifacts (ns, key, scope, size, duration_ms, tag, sha, dirty_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
-      [access.ns, key, scope, size, durationMs, tag, sha, dirty, now()],
-    )
+    // The row is the commit: a blob no row names is never read. A racing
+    // PUT's row came first: this blob is the one left over.
+    const made = await store.addArtifact({
+      ns: access.ns,
+      key,
+      scope,
+      blob: name,
+      size,
+      duration_ms: durationMs,
+      tag,
+      sha,
+      dirty_hash: dirty,
+      created_at: now(),
+    })
+    if (!made) {
+      // The client is answered either way; a blob no row names is never read.
+      await blobs.delete(name).catch((err: unknown) => {
+        console.error(`left over blob ${name} not deleted: ${message(err)}`)
+      })
+    }
     return stored
   }
 
@@ -163,7 +173,8 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       throw new Refusal(400, `hashes: up to ${MAX_QUERY_KEYS} hex hashes`)
     }
     await schema()
-    const found = await findArtifacts(db, access.ns, hashes as string[], readScopes(req))
+    const scopes = readScopes(req)
+    const found = firstScopes(await store.artifacts(access.ns, hashes as string[], scopes), scopes)
     // Turbo's spec: every hash asked, `null` when none is held.
     const out: Record<string, { size: number; taskDurationMs: number; tag?: string } | null> = {}
     for (const h of hashes as string[]) {
@@ -195,38 +206,25 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     const run = parseRun(await readJson(req, MAX_RUN_BYTES))
     await schema()
     const failed = run.tasks.filter((t) => t.exitCode !== undefined && t.exitCode !== 0).length
-    const changed = await db.run(
-      `INSERT OR IGNORE INTO runs (ns, scope, started_at, id, duration_ms, task_count, failed_count, tasks, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
-      [
-        access.ns,
-        scope,
-        run.startedAt,
-        run.id,
-        run.durationMs,
-        run.tasks.length,
-        failed,
-        JSON.stringify(run.tasks),
-        now(),
-      ],
-    )
-    return new Response(null, { status: changed > 0 ? 201 : 200 })
+    const made = await store.addRun({
+      ns: access.ns,
+      scope,
+      started_at: run.startedAt,
+      id: run.id,
+      duration_ms: run.durationMs,
+      task_count: run.tasks.length,
+      failed_count: failed,
+      tasks: JSON.stringify(run.tasks),
+      created_at: now(),
+    })
+    return new Response(null, { status: made ? 201 : 200 })
   }
 
   async function listRuns(req: Request, url: URL): Promise<Response> {
     const access = await authorize(req)
     const limit = numberParam(url, 'limit', DEFAULT_LISTED_RUNS, MAX_LISTED_RUNS)
     await schema()
-    const rows = await db.all<{
-      id: string
-      scope: string
-      started_at: number
-      duration_ms: number
-      task_count: number
-      failed_count: number
-    }>(
-      `SELECT id, scope, started_at, duration_ms, task_count, failed_count FROM runs WHERE ns = ?1 AND scope IN (SELECT value FROM json_each(?2)) ORDER BY started_at DESC, id LIMIT ?3`,
-      [access.ns, JSON.stringify(readScopes(req)), limit],
-    )
+    const rows = await store.runs(access.ns, readScopes(req), limit)
     return Response.json({
       runs: rows.map((r) => ({
         id: r.id,
@@ -251,9 +249,12 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       throw new Refusal(400, `limit: 1 to ${MAX_SAMPLES}`)
     }
     await schema()
-    const rows = await db.all<{ run: string; scope: string; task: string }>(
-      `SELECT run, scope, task FROM (SELECT r.id AS run, r.scope AS scope, r.started_at AS at, t.value AS task, ROW_NUMBER() OVER (PARTITION BY json_extract(t.value, '$.task') ORDER BY r.started_at DESC, r.id) AS n FROM (SELECT id, scope, started_at, tasks FROM runs WHERE ns = ?1 AND scope IN (SELECT value FROM json_each(?2)) ORDER BY started_at DESC, id LIMIT ${SCANNED_RUNS}) r, json_each(r.tasks) t WHERE json_extract(t.value, '$.task') IN (SELECT value FROM json_each(?3))) WHERE n <= ?4 ORDER BY at DESC, run`,
-      [access.ns, JSON.stringify(readScopes(req)), JSON.stringify(tasks), limit],
+    const rows = await store.samples(
+      access.ns,
+      readScopes(req),
+      tasks as string[],
+      limit,
+      SCANNED_RUNS,
     )
     const out: Record<string, unknown[]> = {}
     for (const t of tasks as string[]) out[t] = []

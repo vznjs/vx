@@ -7,7 +7,7 @@ import path from 'node:path'
 import { parseTokens, sha256, tokenAuth } from '../src/auth.js'
 import { s3Blobs, sqliteDb } from '../src/bun.js'
 import { createCacheServer } from '../src/server.js'
-import { findArtifacts, SCHEMA } from '../src/store.js'
+import { firstScopes, sqliteStore } from '../src/store.js'
 import { conformance } from './conformance.js'
 import { fakeS3, type FakeS3 } from './fake-s3.js'
 
@@ -25,7 +25,7 @@ beforeAll(async () => {
     blobs: s3Blobs(
       new Bun.S3Client({ endpoint: s3.url, bucket: 'b', accessKeyId: 'a', secretAccessKey: 's' }),
     ),
-    db: sqliteDb(path.join(dir, 'db.sqlite')),
+    store: sqliteStore(sqliteDb(path.join(dir, 'db.sqlite'))),
     authorize: tokenAuth(parseTokens(`read:${await sha256(READ)} write:${await sha256(WRITE)}`)),
     maxArtifactBytes: MAX,
   })
@@ -45,7 +45,7 @@ conformance('Bun with S3', {
   maxArtifactBytes: MAX,
 })
 
-it('names blobs by namespace, scope and key, and reads no blob for a HEAD', async () => {
+it('names blobs by namespace, scope, key and write, and reads no blob for a HEAD', async () => {
   const k = 'abc123'
   const auth = { authorization: `Bearer ${WRITE}` }
   await fetch(new URL(`/v1/artifacts/${k}`, server.url), {
@@ -53,7 +53,9 @@ it('names blobs by namespace, scope and key, and reads no blob for a HEAD', asyn
     body: 'x',
     headers: auth,
   })
-  expect([...s3.objects.keys()]).toContain(`/b/v1/default/trusted/${k}`)
+  expect([...s3.objects.keys()].filter((n) => n.startsWith(`/b/v1/default/trusted/${k}/`))).toEqual(
+    [expect.stringMatching(/^\/b\/v1\/default\/trusted\/abc123\/[0-9a-f-]{36}$/)],
+  )
   const before = s3.log.length
   await fetch(new URL(`/v1/artifacts/${k}`, server.url), { method: 'HEAD', headers: auth })
   expect(s3.log.slice(before)).toEqual([])
@@ -61,22 +63,25 @@ it('names blobs by namespace, scope and key, and reads no blob for a HEAD', asyn
 
 it('answers each key from the first scope that holds it, in the order sent', async () => {
   const db = sqliteDb(':memory:')
-  await db.batch(SCHEMA)
+  const store = sqliteStore(db)
+  await store.init()
   const add = (key: string, scope: string, size: number) =>
     db.run(
-      'INSERT INTO artifacts (ns, key, scope, size, duration_ms, created_at) VALUES (?1, ?2, ?3, ?4, 0, 0)',
-      ['n', key, scope, size],
+      'INSERT INTO artifacts (ns, key, scope, blob, size, duration_ms, created_at) VALUES (?1, ?2, ?3, ?4, ?5, 0, 0)',
+      ['n', key, scope, `${key}/${scope}`, size],
     )
   await add('a', 'trusted', 1)
   await add('a', 'refs/heads/f', 2)
   await add('b', 'trusted', 3)
   await add('c', 'refs/heads/other', 4)
-  const found = await findArtifacts(db, 'n', ['a', 'b', 'c'], ['refs/heads/f', 'trusted'])
+  const find = async (keys: string[], scopes: string[]) =>
+    firstScopes(await store.artifacts('n', keys, scopes), scopes)
+  const found = await find(['a', 'b', 'c'], ['refs/heads/f', 'trusted'])
   expect([...found].map(([k, r]) => [k, r.scope, r.size])).toEqual([
     ['a', 'refs/heads/f', 2],
     ['b', 'trusted', 3],
   ])
-  const trustedFirst = await findArtifacts(db, 'n', ['a'], ['trusted', 'refs/heads/f'])
+  const trustedFirst = await find(['a'], ['trusted', 'refs/heads/f'])
   expect(trustedFirst.get('a')?.size).toBe(1)
 })
 
@@ -93,7 +98,8 @@ it('answers 404 for an artifact whose blob the bucket dropped', async () => {
     body: 'abc',
     headers: auth,
   })
-  s3.objects.delete(`/b/v1/default/trusted/${k}`)
+  for (const n of s3.objects.keys())
+    if (n.startsWith(`/b/v1/default/trusted/${k}/`)) s3.objects.delete(n)
   const res = await fetch(new URL(`/v1/artifacts/${k}`, server.url), { headers: auth })
   expect(res.status).toBe(404)
 })

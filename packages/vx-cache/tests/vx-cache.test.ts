@@ -12,6 +12,7 @@ import {
   oidcAuth,
   parseTokens,
   parseTrust,
+  sqliteStore,
   tokenAuth,
 } from '@vzn/vx-cache-server'
 import { exportJWK, generateKeyPair, SignJWT } from 'jose'
@@ -37,12 +38,12 @@ function server(maxArtifactBytes = 1 << 20) {
       get: async (name) => (blobs.has(name) ? new Blob([blobs.get(name)!]) : null),
       delete: async (name) => void blobs.delete(name),
     },
-    db: {
+    store: sqliteStore({
       all: async <T>(sql: string, p: readonly unknown[]) =>
         db.query(sql).all(...(p as never[])) as T[],
       run: async (sql, p) => db.query(sql).run(...(p as never[])).changes,
       batch: async (s) => s.forEach((x) => db.run(x)),
-    },
+    }),
     authorize: tokenAuth(parseTokens(`read:${sha(READ)} write:${sha(WRITE)}`)),
     maxArtifactBytes,
   })
@@ -190,12 +191,12 @@ describe('oidc', () => {
         get: async () => null,
         delete: async () => {},
       },
-      db: {
+      store: sqliteStore({
         all: async <T>(sql: string, p: readonly unknown[]) =>
           db.query(sql).all(...(p as never[])) as T[],
         run: async (sql, p) => db.query(sql).run(...(p as never[])).changes,
         batch: async (s) => s.forEach((x) => db.run(x)),
-      },
+      }),
       authorize: anyAuth(
         tokenAuth(parseTokens(`read:${sha(READ)}`)),
         oidcAuth({
