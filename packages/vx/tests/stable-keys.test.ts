@@ -11,7 +11,11 @@
 // cases covered it, and both accumulators survived the whole suite).
 
 import { describe, expect, it } from 'bun:test'
-import { dependsOnSiblingOutputs, workspaceInputsReach } from '../src/orchestrator/stable-keys.js'
+import {
+  dependsOnSiblingOutputs,
+  gatedOutputs,
+  workspaceInputsReach,
+} from '../src/orchestrator/stable-keys.js'
 import type { TaskNode } from '../src/graph/index.js'
 
 const node = (
@@ -215,5 +219,62 @@ describe('workspaceInputsReach — a workspace reader against its producers', ()
     // The other clauses are untouched: same-project producer, workspace-output producer.
     expect(dependsOnSiblingOutputs(reader, new Set(['A']), false, dirs)).toBe(true)
     expect(dependsOnSiblingOutputs(reader, new Set(['B']), true, dirs)).toBe(true)
+  })
+})
+
+describe('gatedOutputs — the outputs a same-project reader reaches', () => {
+  const task = (id: string, inputs: string[], outputs: string[]): [string, TaskNode] => [
+    id,
+    {
+      id,
+      projectName: 'p',
+      projectDir: '/w/p',
+      config: {
+        exec: { command: 'true' },
+        inputs: { files: inputs },
+        cache: { outputs: { files: outputs } },
+      },
+    } as unknown as TaskNode,
+  ]
+
+  it('finds what testing every output against every reader finds', () => {
+    let seed = 7
+    const r = (n: number) => (seed = (seed * 1103515245 + 12345) % 2147483648) % n
+    const seg = ['a', 'b', 'a-b', 'a.b', '*', '**', 'c']
+    const glob = () =>
+      [['a', 'b', 'c', 'd'][r(4)], ...Array.from({ length: r(3) }, () => seg[r(seg.length)])].join(
+        '/',
+      )
+    const nodes = new Map([
+      ...Array.from({ length: 50 }, (_, i) => task(`p#o${i}`, [], [glob()])),
+      ...Array.from({ length: 3 }, (_, i) =>
+        task(`p#r${i}`, r(2) === 0 ? [glob(), glob()] : [glob()], []),
+      ),
+    ])
+    const all = [...nodes.values()].flatMap((n) => n.config.cache!.outputs.files)
+    const want = new Set<string>()
+    for (const n of nodes.values())
+      for (const o of n.config.inputs!.files!.length === 0 ? [] : all) {
+        const head = o
+          .split('/')
+          .filter((s, i, a) => a.slice(0, i + 1).every((x) => !/[*?[{]/.test(x)))
+          .join('/')
+        if (workspaceInputsReach(n.config.inputs!.files!, [head])) want.add(o)
+      }
+    const got = new Set([...gatedOutputs(nodes, '/w').values()].map((o) => o.glob))
+    expect([...got].toSorted()).toEqual([...want].toSorted())
+    expect(want.size).toBeLessThan(new Set(all).size)
+  })
+
+  it('reads 6000 readers in one project in well under a second of CPU', () => {
+    const nodes = new Map(
+      Array.from({ length: 6000 }, (_, i) => task(`p#t${i}`, ['src/**'], [`out/d${i}/**`])),
+    )
+    const t = process.cpuUsage()
+    expect(gatedOutputs(nodes, '/w').size).toBe(0)
+    const { user, system } = process.cpuUsage(t)
+    // Testing each output against each reader: 36 million pairs, ~2.7 s
+    // (2026-10-25: 9000 tasks in one project spent 6 s here).
+    expect((user + system) / 1000).toBeLessThan(1000)
   })
 })
