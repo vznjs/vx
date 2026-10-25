@@ -42,7 +42,7 @@ import {
   type ToWorker,
   type WiredResult,
 } from './messages.js'
-import { names, outputFiles } from './outputs.js'
+import { leftUnder, names, outputFiles } from './outputs.js'
 import { snapshot } from './tree.js'
 import { sealWorker, type Proof } from './seal.js'
 import { join, RelayError, unsent as unsentBy } from './wire.js'
@@ -330,20 +330,11 @@ export async function runWorker(opts: {
       // its upstream's tree) found the files it builds on gone.
       const upstream = m.deps.map((d) => names(d.project, d.outputs))
       const under = await outputFiles(opts.root, m.project, m.outputs)
-      const cleared = under.filter(
-        (f) =>
-          !tracked.has(f) &&
-          !m.nested.some((n) => f.startsWith(`${n}/`)) &&
-          !upstream.some((held) => held(f)),
-      )
+      const { cleared, held: upstreams } = leftUnder(under, tracked, m.nested, upstream)
       // An upstream's file it leaves as it found it is not its entry's: one
       // saved there replayed the upstream's old bytes over its new ones on
       // a hit that did not fold the upstream's key (2026-10-24).
-      const found = await stamps(
-        under
-          .filter((f) => !cleared.includes(f) && upstream.some((held) => held(f)))
-          .map((f) => path.join(opts.root, f)),
-      )
+      const found = await stamps(upstreams.map((f) => path.join(opts.root, f)))
       for (const [key, held] of holds)
         if (cleared.some(held)) {
           present.delete(key)
