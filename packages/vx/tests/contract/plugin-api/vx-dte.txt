@@ -43,6 +43,7 @@ export interface DteOptions {
 == type DteSetup (src/init.ts)
 export interface DteSetup {
   readonly workspaceRoot: string
+  readonly dir: string
   readonly relay?: string
   readonly sizes: readonly {
     readonly name: string

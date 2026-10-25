@@ -15,6 +15,8 @@ export type PackageManager = 'bun' | 'pnpm' | 'yarn' | 'npm'
 /** What `vx dte init` hands an adapter that writes CI files. */
 export interface DteSetup {
   readonly workspaceRoot: string
+  /** The workspace's directory in its repository, '' at its root: where the CI's commands run. */
+  readonly dir: string
   /** The relay `dte()` names, if any. */
   readonly relay?: string
   /** `dte()`'s sizes in declared order, with the platform each names. */
@@ -177,9 +179,13 @@ export function githubInit(options: GithubOptions, setup: DteSetup): DteInit {
       options.runsOn?.[s.name] ?? RUNNERS[s.platform ?? 'linux-x64'],
     ]),
   )
+  // A workspace in a subdirectory: CI files live at the repository's root,
+  // and their commands run in the workspace.
+  const inDir =
+    setup.dir === '' ? '' : `    defaults:\n      run:\n        working-directory: ${setup.dir}\n`
   const install = [
     ...(setup.manager === 'pnpm'
-      ? ['      - uses: pnpm/action-setup@v4']
+      ? [pnpmAction(setup.dir)]
       : [
           '      # Every project: only pnpm selects by a git diff, as',
           '      # `pnpm install --frozen-lockfile --filter "...[origin/main]"`',
@@ -211,7 +217,7 @@ jobs:
     name: \${{ matrix.worker }}
     runs-on: \${{ fromJSON('${JSON.stringify(runners)}')[inputs.size] }}
     timeout-minutes: 30
-    strategy:
+${inDir}    strategy:
       fail-fast: false
       matrix:
         worker: \${{ fromJSON(inputs.workers) }}
@@ -247,7 +253,7 @@ jobs:
   vx:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
+${inDir}    permissions:
       contents: read
       # The relay and the workers: each side proves itself by its OIDC token.
       id-token: write
@@ -259,7 +265,7 @@ jobs:
       # One commit: --affected fetches its base itself.
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-${rootInstall(setup.manager).join('\n')}
+${rootInstall(setup.manager, setup.dir).join('\n')}
       - run: ${vx} lock --check
 ${
   named
@@ -294,12 +300,19 @@ function both(tasks: string, flag: string): string {
 const GITHUB_ISSUER = 'https://token.actions.githubusercontent.com'
 
 /** The run's job needs vx and the plugins only: no task runs there. */
-function rootInstall(manager: DteSetup['manager']): string[] {
+function rootInstall(manager: DteSetup['manager'], dir: string): string[] {
   if (manager === 'bun') return ["      - run: bun install --frozen-lockfile --filter './'"]
   return [
-    ...(manager === 'pnpm' ? ['      - uses: pnpm/action-setup@v4'] : []),
+    ...(manager === 'pnpm' ? [pnpmAction(dir)] : []),
     ...installLines(manager).map((l) => `      - run: ${l}`),
   ]
+}
+
+/** pnpm's setup step, which reads the pnpm version from the workspace's `package.json`. */
+function pnpmAction(dir: string): string {
+  return dir === ''
+    ? '      - uses: pnpm/action-setup@v4'
+    : `      - uses: pnpm/action-setup@v4\n        with: { package_json_file: ${dir}/package.json }`
 }
 
 /**
@@ -320,6 +333,8 @@ export function gitlabInit(options: GitlabOptions, setup: DteSetup): DteInit {
       ? ["bun install --frozen-lockfile --filter './'"]
       : installLines(setup.manager)
   const lines = (l: readonly string[]): string => l.map((x) => `    - ${x}`).join('\n')
+  // A workspace in a subdirectory: the job's commands run in it.
+  const cd = setup.dir === '' ? [] : [`cd ${quoted(setup.dir)}`]
   const workers = setup.sizes.map((s) => {
     const tags = options.tags?.[s.name]
     if (tags !== undefined && (!Array.isArray(tags) || tags.some((t) => typeof t !== 'string')))
@@ -369,7 +384,7 @@ vx:
       variables: { VX_TASKS: '${both(setup.tasks.main, '--all')}' }
   id_tokens: { VX_DTE_TOKEN: { aud: ${relay} } }
   before_script:
-${lines(root)}
+${lines([...cd, ...root])}
   script:
     - ${vx} lock --check
     - ${vx} run $VX_TASKS
@@ -381,7 +396,7 @@ ${lines(root)}
   before_script:
     - git fetch -q --depth 1 origin $VX_DTE_SHA
     - git checkout -q FETCH_HEAD
-${lines(installLines(setup.manager))}
+${lines([...cd, ...installLines(setup.manager)])}
   script: [${vx} dte worker]
 ${workers.join('')}`.replace(/\n+$/, '\n')
   return {

@@ -239,8 +239,16 @@ export function dte(options: DteOptions) {
       return 0
     }
     const { askTasks, managerOf, originOf, writeInit } = await import('./init.js')
+    // CI reads its files at the repository's root; a workspace in a
+    // subdirectory got them in its own, which no CI reads (2026-10-25).
+    const git = (arg: string): string =>
+      Bun.spawnSync(['git', 'rev-parse', arg], { cwd: root, stderr: 'ignore' })
+        .stdout.toString()
+        .trim()
+    const top = git('--show-toplevel') || root
     const files = await adapter.init({
       workspaceRoot: root,
+      dir: git('--show-prefix').replace(/\/$/, ''),
       ...(options.relay !== undefined ? { relay: options.relay } : {}),
       sizes: sizes.map((s) => ({
         name: s.name,
@@ -257,7 +265,7 @@ export function dte(options: DteOptions) {
       for (const line of files.next) out(line)
       return 0
     }
-    return writeInit(root, files, args.includes('--force'), out)
+    return writeInit(top, files, args.includes('--force'), out)
   }
 
   return definePlugin(import.meta, {

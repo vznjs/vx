@@ -203,7 +203,9 @@ jobs:
 and prints what is left: a relay that admits them (its `ALLOW`, and how
 to deploy one), a shared remote cache, the commit. In a terminal it asks
 what main runs and what a pull request runs (main's by default); without
-one it names none, and the run fails, listing the tasks, until you do. Each size runs on
+one it names none, and the run fails, listing the tasks, until you do. A
+workspace in a subdirectory of its repository gets them at the repository's
+root, its jobs running in that directory. Each size runs on
 its platform's GitHub-hosted runner (`ubuntu-latest` for none named,
 `ubuntu-24.04-arm`, `macos-latest`, `macos-15-intel`), or on the label
 `github({ runsOn: { small: 'ubuntu-latest-16-cores' } })` names, as
@@ -714,7 +716,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   `VX_DTE_WORKER` (its name). It is
   described only by the cores and memory its machine reports. It exits 0
   when the run ended before it joined.
-- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn) }`; `init` gets a `DteSetup` (workspace root, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset.
+- `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn) }`; `init` gets a `DteSetup` (workspace root, its directory in the repository, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset.
   `WorkerSpawn` is `{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, commit, env }`,
   with `memory` in bytes and `max` its size's (`Infinity` uncapped),
   where `id` is the worker's name (`small#2`, numbered within its size), `commit` the
