@@ -89,7 +89,7 @@ builds and runs all three (`docker compose up -d`).
 ## Limits
 
 `MAX_CHECK_KEYS` (default 500), `MAX_BATCH_ARTIFACTS` (default 100) and
-`MAX_UPLOAD_BYTES` (default 100 MB, an upload's artifacts together) set
+`MAX_UPLOAD_BYTES` (default 100 MB, one artifact) set
 the limits. Every check names them to clients (`x-vx-max-*`), and
 `GET /v1/capabilities` too.
 
@@ -105,15 +105,16 @@ bunx wrangler deploy
 
 Wrangler makes the R2 bucket `wrangler.jsonc` names on the first deploy.
 It fits Workers' free plan: a request makes at most 1000 calls to R2, so
-a check reads up to 990 keys and an upload or batch download carries up
-to 330 artifacts (a higher setting is lowered, and capabilities say so);
+a check reads up to 990 keys and a batch download carries up to 495
+artifacts (a higher setting is lowered, and capabilities say so);
 a request body is at most 100 MB. R2's free plan holds 10 GB.
 
 ## Expiry
 
 The bucket's own lifecycle rule expires artifacts, by age since they
 were written; the server runs no sweep. An artifact's object name is
-`<issuer>/<id>/<scope>/<hash>`, the first three each hashed, so one rule
+`<issuer>/<id>/<scope>/<hash>`, the first three each hashed (a client
+sends a scope as its ref's hash, never the ref), so one rule
 for the whole bucket is the one there is, for example 7 days:
 
 ```sh
@@ -139,9 +140,9 @@ over a bucket of your own (`src/index.ts`):
   (`{ maxCheckKeys, maxBatchArtifacts, maxUploadBytes }`) over
   `DEFAULT_LIMITS`.
 - `blobName(issuer, id, scope, hash)` is an artifact's object name,
-  `<issuer>/<id>/<scope>/<hash>`, the first three each the first 128
-  bits of their SHA-256 in hex, so a ref's slashes or any byte stay one
-  segment.
+  `<issuer>/<id>/<scope>/<hash>`, issuer and id each the first 128 bits
+  of their SHA-256 in hex and `scope` the ref's hash as a client sends
+  it (PROTOCOL.md § Keys), so no segment is a plain value.
 - `TRUST` and the CI token check are [`@vzn/vx-devtools`](https://github.com/vznjs/vx/tree/main/packages/vx-devtools)'s,
   the check every vx server shares.
 - `SCOPE_HEADER` (`x-vx-scope`) and `LIMIT_HEADERS` are the header names

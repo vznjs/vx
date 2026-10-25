@@ -1,7 +1,7 @@
 // The vx-history protocol, v1 (PROTOCOL.md), as one fetch handler over a
 // `Store`: Bun and Workers serve the same one.
 
-import { type Authorize, Refusal } from '@vzn/vx-devtools'
+import { type Authorize, hashPart, Refusal } from '@vzn/vx-devtools'
 import type { Report, Store } from './store.js'
 
 /** Reports one upload folds in: a run's tasks. */
@@ -21,6 +21,9 @@ export interface ServerOptions {
   /** Milliseconds since the epoch; tests move the clock. */
   readonly now?: () => number
 }
+
+/** A scope on the wire: its ref's `hashPart`, so no ref is ever sent or stored plain (M, 2026-10-25). */
+const SCOPE = /^[0-9a-f]{32}$/
 
 export function createHistoryServer(opts: ServerOptions): (req: Request) => Promise<Response> {
   const { store, authorize } = opts
@@ -43,7 +46,7 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
     if (access.write === undefined) throw new Refusal(403, 'this token reads only')
     const reports = parseReports(await readJson(req, MAX_UPLOAD_TIMINGS * 200))
     await schema()
-    await store.fold(access, access.write, now(), reports)
+    await store.fold(access, await hashPart(access.write), now(), reports)
     return new Response(null, { status: 204 })
   }
 
@@ -56,9 +59,9 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
       !Array.isArray(scopes) ||
       scopes.length === 0 ||
       scopes.length > MAX_QUERY_SCOPES ||
-      !scopes.every((s) => typeof s === 'string' && /^refs\/\S+$/.test(s) && s.length <= MAX_STRING)
+      !scopes.every((s) => typeof s === 'string' && SCOPE.test(s))
     ) {
-      throw new Refusal(400, `scopes: 1 to ${MAX_QUERY_SCOPES} refs, refs/...`)
+      throw new Refusal(400, `scopes: 1 to ${MAX_QUERY_SCOPES} refs' hashes, 32 hex digits each`)
     }
     if (
       !Array.isArray(hashes) ||

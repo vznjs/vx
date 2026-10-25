@@ -4,7 +4,7 @@
 
 import { Refusal } from '@vzn/vx-devtools'
 
-/** The ref a single download reads: `GET /v1/artifacts/download/<hash>`. */
+/** The scope (a ref's hash) a single download reads: `GET /v1/artifacts/download/<hash>`. */
 export const SCOPE_HEADER = 'x-vx-scope'
 
 /**
@@ -17,7 +17,7 @@ export const LIMIT_HEADERS = {
   maxUploadBytes: 'x-vx-max-upload-bytes',
 } as const
 
-/** A batch upload's body: a JSON line, then the artifacts' bytes. */
+/** A batch download's body: a JSON line, then the artifacts' bytes. */
 export const BATCH_TYPE = 'application/vnd.vx-cache.batch'
 
 /** An artifact's hash, as Turbo's spec has it (hex), and at most 128 long. */

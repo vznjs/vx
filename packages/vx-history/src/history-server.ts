@@ -131,7 +131,7 @@ export class HistoryServer {
     return this.limits
   }
 
-  /** Each held hash's numbers in the first of `scopes` (refs) holding it. */
+  /** Each held hash's numbers in the first of `scopes` (refs' hashes) holding it. */
   async query(
     scopes: readonly string[],
     hashes: readonly string[],

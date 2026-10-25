@@ -4,6 +4,10 @@
 
 import { beforeAll, describe, expect, it } from 'bun:test'
 
+/** A ref's scope on the wire, by an implementation apart from the server's. */
+export const scopeOf = (ref: string): string =>
+  new Bun.CryptoHasher('sha256').update(ref).digest('hex').slice(0, 32)
+
 export interface Target {
   /** The server's URL. */
   base(): string
@@ -36,7 +40,11 @@ export function conformance(name: string, target: Target): void {
     )
   const upload = (timings: unknown[], token = tokens.main) =>
     post('/v1/timings/upload', { timings }, token)
-  const query = async (hashes: string[], scopes = ['refs/heads/main'], token = tokens.read) =>
+  const query = async (
+    hashes: string[],
+    scopes = [scopeOf('refs/heads/main')],
+    token = tokens.read,
+  ) =>
     (
       (await (await post('/v1/timings/query', { scopes, hashes }, token)).json()) as {
         timings: Record<string, unknown>
@@ -87,12 +95,12 @@ export function conformance(name: string, target: Target): void {
       ])
       await query([a, b])
       await upload([{ hash: a, durationMs: 99 }], tokens.branch)
-      const both = ['refs/heads/feature', 'refs/heads/main']
+      const both = [scopeOf('refs/heads/feature'), scopeOf('refs/heads/main')]
       expect(await query([a, b], both)).toMatchObject({
         [a]: { durationMs: 99 },
         [b]: { durationMs: 20 },
       })
-      expect((await query([a, b], ['refs/heads/feature']))[b]).toBeUndefined()
+      expect((await query([a, b], [scopeOf('refs/heads/feature')]))[b]).toBeUndefined()
       expect((await query([a], [...both].reverse()))[a]).toMatchObject({ durationMs: 10 })
       expect(await query([hash()])).toEqual({})
     })
@@ -115,9 +123,11 @@ export function conformance(name: string, target: Target): void {
       }
     })
 
-    it('refuses a query without ref scopes, or with too many scopes or hashes', async () => {
-      const main = ['refs/heads/main']
-      for (const scopes of [undefined, [], ['main'], 'refs/heads/main', Array(9).fill(main[0])]) {
+    it("refuses a query without refs' hashes, or with too many scopes or hashes", async () => {
+      const main = [scopeOf('refs/heads/main')]
+      // A plain ref never goes on the wire: it is refused, not hashed.
+      const plain = [['refs/heads/main'], [main[0]!.toUpperCase()]]
+      for (const scopes of [undefined, [], ...plain, main[0], Array(9).fill(main[0])]) {
         expect((await post('/v1/timings/query', { scopes, hashes: ['a'] })).status).toBe(400)
       }
       const many = Array.from({ length: 10_001 }, (_, i) => String(i))

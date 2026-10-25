@@ -19,6 +19,8 @@ option.
 - `parseTrust(json)` reads `TRUST` into `TrustRule`s; `oidcAuth(options)` is the `Authorize` checking a request's CI token against
   them (its options an `OidcOptions`), answering its `Access` or throwing a `Refusal` (`status` and what
   to fix).
+- `hashPart(text)` is what a server stores in place of an issuer, a repository id or a scope: the first
+  128 bits of its SHA-256 in hex (Web Crypto, so Bun and Workers agree), never the plain value.
 
 ```ts
 export class Refusal extends Error {

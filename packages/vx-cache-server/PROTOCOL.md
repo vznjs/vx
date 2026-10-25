@@ -10,7 +10,6 @@ server may serve both.
 | `GET /v1/artifacts/download/<hash>` | one artifact's bytes                      |
 | `POST /v1/artifacts/download`       | many artifacts' bytes in one answer       |
 | `PUT /v1/artifacts/<hash>`          | one artifact's bytes                      |
-| `POST /v1/artifacts/upload`         | 1 to `maxBatchArtifacts` artifacts        |
 | `POST /v1/artifacts/check`          | which exact keys are held, and their size |
 | `GET /v1/capabilities`              | the server's limits                       |
 
@@ -18,8 +17,9 @@ server may serve both.
 
 The server never reads a hash or an artifact's bytes. It only stores
 them and compares hashes for equality, so a client may send them
-encrypted (a keyed hash for names, a cipher for bytes). Refs stay plain:
-the server matches them against CI tokens, which name them anyway.
+encrypted (a keyed hash for names, a cipher for bytes). No ref goes on
+the wire plain: a scope is its ref's hash (§ Keys), and the server
+hashes the token's ref the same way to find where a write goes.
 
 ## Tokens
 
@@ -44,8 +44,9 @@ request: `401`, `the server trusts no CI: set TRUST`.
 ## Keys
 
 An artifact lives in one scope, and a key names both: `{ scope, hash }`.
-`scope` is a ref, `refs/...` (up to 500 characters). `hash` is 1 to 128
-hex digits. A read is exact: the server answers the scope named and no
+`scope` is a ref's hash: the first 128 bits of the SHA-256 of its UTF-8
+(`refs/heads/main`), 32 lowercase hex digits; a plain ref is `400`.
+`hash` is 1 to 128 hex digits. A read is exact: the server answers the scope named and no
 other, so a client that wants its branch's work and then main's asks
 for both keys. Every read names a scope.
 
@@ -53,10 +54,8 @@ An artifact is immutable. A server may expire one at any time: a
 download after a check that held it may miss, which a client reads as a
 miss.
 
-`GET /v1/artifacts/download/<hash>` with `x-vx-scope: <ref>`, the ref's
-UTF-8 percent-encoded (`encodeURI`), as a header carries bytes and a
-branch name any UTF-8: `200` with the bytes (`application/octet-stream`,
-`Content-Length`), or `404`.
+`GET /v1/artifacts/download/<hash>` with `x-vx-scope: <scope>`: `200`
+with the bytes (`application/octet-stream`, `Content-Length`), or `404`.
 
 `POST /v1/artifacts/check` with `{ "keys": [{ "scope", "hash" }, …] }`,
 up to `maxCheckKeys`: `{ "sizes": [<size> | null, …] }`, one per key in
@@ -75,7 +74,7 @@ line is JSON naming each held key with its size, in the order asked,
 and its bytes follow in that order; a key it does not name is not held:
 
 ```
-{"artifacts":[{"scope":"refs/heads/main","hash":"8f1c","size":4200}]}\n
+{"artifacts":[{"scope":"f921bd05e68b03740c450e565e0e6173","hash":"8f1c","size":4200}]}\n
 <4200 bytes>
 ```
 
@@ -83,29 +82,13 @@ and its bytes follow in that order; a key it does not name is not held:
 `PUT /v8/artifacts/<hash>`), with `Content-Length`: the body is the
 artifact's bytes, stored in the token's scope. One the scope already
 holds keeps its bytes, answered before they are read. `204`; past
-`maxUploadBytes`, `413`.
+`maxUploadBytes`, `413`. A client may `check` first to skip what is
+held.
 
-`POST /v1/artifacts/upload` (a token that writes),
-`Content-Type: application/vnd.vx-cache.batch` with `Content-Length`: a
-line naming 1 to `maxBatchArtifacts` artifacts, each hash once, then
-their bytes. They go to the token's scope:
-
-```
-{"artifacts":[{"hash":"8f1c","size":4200}]}\n
-<4200 bytes>
-```
-
-An artifact the write's scope already holds keeps its bytes, and its bytes here are skipped; when every one is held the
-server answers before reading them. `204`. Together they are at most
-`maxUploadBytes` (`413` past it). A `Content-Length` that is not the
-line's bytes and the sizes it names is `400`.
-
-A client sends one or two uploads waiting at once as they are, and asks
-`check` before an upload of more, sending only what is missing. It
-batches only within the limits a check named, and before one has, not at
-all. An artifact alone goes by `PUT`: a batch's bytes pass through the
-server's code to be split, which on Workers costs CPU by the byte (a
-40 MB batch ran out of it), while a `PUT`'s reach the bucket untouched.
+Uploads go one artifact at a time: there is no batch upload. A batch's
+bytes pass through the server's code to be split, which on Workers costs
+CPU by the byte (a 40 MB one ran out of it), while a `PUT`'s reach the
+bucket untouched.
 
 ## Limits
 

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { oidcAuth } from '@vzn/vx-devtools'
+import { hashPart, oidcAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { type Issuer, issuer, trustOf } from './issuer.js'
@@ -53,7 +53,10 @@ describe('HistoryServer', () => {
       '/v1/capabilities',
       '/v1/timings/upload',
     ])
-    const got = await client.query(['refs/heads/feature', 'refs/heads/main'], ['a1', 'none'])
+    const got = await client.query(
+      [await hashPart('refs/heads/feature'), await hashPart('refs/heads/main')],
+      ['a1', 'none'],
+    )
     expect(got).toEqual(new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000 }]]))
   })
 
@@ -113,7 +116,8 @@ describe('vx run with vxHistory({ server })', () => {
     await run({ cwd: root, tasks: ['build'], handleSignals: false })
     const query = seen.slice(mid).find((r) => r.path === '/v1/timings/query')
     expect(JSON.parse(query!.body)).toEqual({
-      scopes: ['refs/heads/main'],
+      // The ref's hash, never the ref (M, 2026-10-25).
+      scopes: [await hashPart('refs/heads/main')],
       hashes: [sent[0]!.hash],
     })
   })
