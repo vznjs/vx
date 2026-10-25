@@ -7,7 +7,22 @@ export default defineProject({
     },
 
     ci: {
-      dependsOn: ['lint.oxfmt', 'test.live'],
+      dependsOn: ['lint.oxlint', 'lint.oxfmt', 'test', 'test.live'],
+    },
+
+    'lint.oxlint': {
+      description: 'oxlint with tsgolint-backed type-aware checks',
+      exec: {
+        command: 'oxlint --type-aware --type-check',
+        sandbox: { allow: { read: ['**/*'], systemInfo: ['vfs.disk-space'] } },
+      },
+      dependsOn: ['install'],
+      inputs: {
+        files: ['*.ts', 'tests/**', 'package.json', '.oxlintrc.json', 'tsconfig.json'],
+      },
+      cache: {
+        outputs: { files: [] },
+      },
     },
 
     'lint.oxfmt': {
@@ -25,6 +40,22 @@ export default defineProject({
       },
     },
 
+    // worker-url.ts: which relay and cache server a CI run uses.
+    test: {
+      description: 'bun test',
+      exec: {
+        command: 'bun test --only-failures',
+        // Bun's transpiler cache writes under HOME, outside the sandbox's grants.
+        env: { define: { BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0' } },
+        sandbox: { allow: { read: ['**/*'] } },
+      },
+      dependsOn: ['install'],
+      inputs: { files: ['*.ts', 'tests/**', 'package.json'] },
+      cache: {
+        outputs: { files: [] },
+      },
+    },
+
     // compose.yaml up, each server answering, a clean stop. No sandbox:
     // it reaches the Docker daemon.
     'test.live': {
@@ -32,7 +63,7 @@ export default defineProject({
       exec: { command: 'sh tests/smoke.sh' },
       dependsOn: ['install'],
       inputs: {
-        files: ['compose.yaml', 'tests/**'],
+        files: ['compose.yaml', 'tests/smoke.sh'],
         workspaceFiles: [
           'packages/vx-dte-server/Dockerfile',
           'packages/vx-dte-server/package.json',
