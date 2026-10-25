@@ -512,7 +512,7 @@ file records), items 719–743 in
       longer throw on a missing `got.txt`; it reads as `<no got.txt>`.
       A mutant that forwards SIGTERM for SIGINT printed the whole
       picture.
-805.  DONE (2026-09-25, sweep of `@vzn/vx-schedule-history`). First pass:
+805.  DONE (2026-09-25, sweep of `@vzn/vx-history`). First pass:
       35 mutations over the package's three suites, 20 caught, 15
       survived. The survivors pointed at three defects, fixed:
       - The history memo was dead weight. Core calls `schedule` once

@@ -398,7 +398,7 @@ task picked`; neither prints a stack. Row in
   (`npx vx run …`, `bunx @vzn/vx run …` with nothing installed); a bare
   `vx` only with no runner. From `npm_config_user_agent`, probed per
   runner (plain `bun file.ts` sets none).
-- E-70 — `vx history --format json` (@vzn/vx-schedule-history) gets
+- E-70 — `vx history --format json` (@vzn/vx-history) gets
   `schemas/history.json`: the plugin's suite holds its keys to its
   types, core's unsafe suite the printed output to it; the plugin's
   test key folds `schemas/**`.

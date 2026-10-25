@@ -218,7 +218,7 @@ what shipped and the numbers behind it. Items 1–64 are in
       diagram nor the table, and `teardown` rode inside `setup`'s row —
       the shape PR #487 found in what-vx-is on the same list. Its table
       is now the list in the list's own order, pinned to it, and
-      `@vzn/vx-schedule-history` is named on both the stages it fills.
+      `@vzn/vx-history` is named on both the stages it fills.
       the-sandbox named two of the three binaries the Linux runtime
       requires (`rg` expands its mandatory deny globs; the runtime's own
       error has named all three since item 246, and its docblock records
@@ -332,7 +332,7 @@ what shipped and the numbers behind it. Items 1–64 are in
       that mentions `RemoteCacheLayer` is refused the words "three-call"
       (STATUS, which quotes the old wording, and the generated copies
       are skipped by name and by their generated mark). The plugins
-      guide's own roster named `@vzn/vx-schedule-history` on `schedule`
+      guide's own roster named `@vzn/vx-history` on `schedule`
       alone where it fills three — `schedule`, `admit` and `commands`
       (`vx history`) — the same omission item 343 fixed on
       pipeline-with-seams, and extensibility's `commands` row said

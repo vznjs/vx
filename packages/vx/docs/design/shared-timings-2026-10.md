@@ -7,7 +7,7 @@ setting; every refusal is silent), and only CI on `defaultBranch` writes
 
 ## Problem
 
-`@vzn/vx-schedule-history` orders by learned durations. A fresh CI runner
+`@vzn/vx-history` orders by learned durations. A fresh CI runner
 or a new clone has none, so its first run orders blind. `file` (timings-file.ts)
 carries them, but only through a CI cache step the user wires by hand.
 

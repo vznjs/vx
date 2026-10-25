@@ -210,4 +210,4 @@ The score is core's `criticalPath(nodes, history, assume?)` (`@vzn/vx`), which a
 
 ## History
 
-Core's opt-in `predictive` mode until 2026-09-02, then core's one bundled plugin (`@vzn/vx/plugins/schedule-history`) until 2026-09-10, when it moved here so core ships no plugin at all; `@vzn/vx-schedule-history` until 2026-10-25.
+Core's opt-in `predictive` mode until 2026-09-02, then core's one bundled plugin (`@vzn/vx/plugins/schedule-history`) until 2026-09-10, when it moved here so core ships no plugin at all.

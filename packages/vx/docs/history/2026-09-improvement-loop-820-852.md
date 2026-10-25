@@ -206,7 +206,7 @@ file records), items 719–743 in
       file no sweep had named (780–797); `vx-lockfile`'s four parsers (798–799, 802–803); the
       upstream-ledger rows, the large-upload ceiling and `setpriv`
       refuted (800–801); Next 23's signal rows made to say what they saw
-      (804); `vx-schedule-history`, `vx-github`, `vx-otel` and `vx-mcp`
+      (804); `vx-history`, `vx-github`, `vx-otel` and `vx-mcp`
       (805–808); `vx-migrate` end to end (809–817); and `vx-reapi`'s cache
       layer and plugin (818–819). Next trim when the loop passes forty.
 

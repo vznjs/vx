@@ -245,7 +245,7 @@ prune` all match. Fixed: the Run blocks used bare `vx`, which a local
   `none`. vx-github: the Checks API cap is bytes; the summary follows
   what the step already wrote. vx-lockfile: install names key bun and
   npm only; berry folds `__metadata`'s `version` and `cacheKey`;
-  `--affected` narrows only at `scope: 'project'`. vx-schedule-history:
+  `--affected` narrows only at `scope: 'project'`. vx-history:
   vx's CI assumes four tasks; `criticalPathPriorities` takes `assume`.
   vx-mcp: four methods (`ping`). vx-reapi: resolver-target endpoints,
   `tls: false` beats a PEM, ~51% (not 45) for 390 → 590 ms (README and

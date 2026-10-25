@@ -260,7 +260,7 @@
   nested project is refused (probed); the baseline writes its own
   `TMPDIR`; a denied read is reported only where strace attaches.
 - **J-49** architecture.md and patterns.md against source (patterns
-  held): vx-otel exports logs, vx-schedule-history fills `commands`
+  held): vx-otel exports logs, vx-history fills `commands`
   (`vx history`), and `workspaceScripts()` (N-5) joins the plugin
   tables; N-5 also made `--from scripts` valid, so J-39's `vx init`
   line was corrected in turn.
@@ -432,7 +432,7 @@
 - **E** `bin.ts` dynamically imports `./index.js` (a `bin → index` edge
   the matrix does not grant), and `tests/module-boundaries.test.ts`
   scans only static `from` specifiers, so the law cannot see it.
-- **G** `vx-schedule-history/src/index.ts:37-39` says the reservation
+- **G** `vx-history/src/index.ts:37-39` says the reservation
   includes "the most CPU parallelism seen, rounded to a core"; its
   README says cores are never learned, only declared.
 - **E** `vx completions` scrapes every `--word` from a verb's help cut: `watch` completes only the flags it refuses, `show`/`info` get `--run --list`, `lock` gets `--frozen` (cli/completions.ts:14-18).
@@ -626,7 +626,7 @@ extra` ignores the extra argument and exits 0 where every other verb
 - **J-84** J-72's lead: `unsupportedBunMessage` is the gate's `check.bun` refusal, not a `bin.ts` warning (its doc, the test header and `bun-floor.ts` said bin.ts warns); `gitSpawnRefusal` names no watch judgement; stale test titles in `framed-output` and vx-migrate's cache suites.
 - **J-86** The J-80 walk's lead: four comments said `network: true` allows every domain or skips the proxy (`sandbox-request.ts`, `config.ts`'s `SandboxAllow.network`, `sandbox-runtime.ts`'s header and `initSandbox`). The proxy is the run's and filters every sandboxed task against the union of declared lists, so `true` adds none, as schema.md says. Comments only.
 - **J-87** J-70's and the J-80 walk's source-comment leads, which `api.md` renders: `VxPlugin` named a `src/plugins/`, "no fallback outside the list" (the local floor) and a bare `{ name, setup }` plugin the loader refuses; the pipeline note said core re-validates after the last plugin (after each); `splitTaskId` called a `#` in a task name legal (`taskNameProblem` refuses it); `CachePolicy` said only the artifact path is gated (the local axes gate config evaluations and file-hash writes too); `CacheLayer` called `Cache` "the local v10 implementation"; `has()` and plan.ts called the remote probe an HTTP HEAD (the layer decides). `api.md` regenerated. Already gone: `cache?` "first non-undefined wins", "one `git` spawn per run".
-- **J-85** Three J leads that still stood: `vx-reapi`'s doc comment said a remote hit is consulted first (`LayeredCache.get` reads local first); `init.ts`'s header said Turbo and Nx are not read (`vx init` there writes the `turbo()` / `nx()` workspace file, E-73); `vx help` showed `vx why [TASK | PKG#TASK]` though the target is required (now `(TASK | PKG#TASK)`, as `cli.md`). Checked and already closed: the prepare.ts tripwire, plugin.ts resources, the cache.ts stdout, execute-task's second hash, vx-schedule-history's cores and the SandboxConfig glob comments, `output_dirs` in the reset's DROP list, and `vx cache prune` creating `.vx/cache` (it creates none). A `vx run` that fails planning still creates `.vx/`; `cli.md` claims nothing of `run` there.
+- **J-85** Three J leads that still stood: `vx-reapi`'s doc comment said a remote hit is consulted first (`LayeredCache.get` reads local first); `init.ts`'s header said Turbo and Nx are not read (`vx init` there writes the `turbo()` / `nx()` workspace file, E-73); `vx help` showed `vx why [TASK | PKG#TASK]` though the target is required (now `(TASK | PKG#TASK)`, as `cli.md`). Checked and already closed: the prepare.ts tripwire, plugin.ts resources, the cache.ts stdout, execute-task's second hash, vx-history's cores and the SandboxConfig glob comments, `output_dirs` in the reset's DROP list, and `vx cache prune` creating `.vx/cache` (it creates none). A `vx run` that fails planning still creates `.vx/`; `cli.md` claims nothing of `run` there.
 - **J-88** `site-links.test.ts` pinned the built feeds to `blog/rss.xml` and the two sitemaps, but starlight-blog also writes `blog/rss/<YYYY-MM>.xml` for each UTC month before the build's that holds a post, so `@vzn/vx-docs#test` went red on main when September ended (2026-10-01). The expected set now adds those months, read from the posts' own dates; their links are checked like every feed's.
 - **J-89** The CI guide's remote-cache section named only `--cache=local:rw,remote:r` for a job that must not write; since L-34 the plugins honour Turbo's `TURBO_REMOTE_CACHE_READ_ONLY` / `TURBO_CACHE` and Nx's `NX_SKIP_REMOTE_CACHE`, and a fork's pull request is the case that needs it. One sentence added, and the same in `security.md`'s remote-cache trust paragraph.
 - **J-92** The plugins guide told readers to `npm install -D @vzn/vx-mcp` and `bun add -d @vzn/vx-otel`, but only `@vzn/vx` is on npm (`npm view` answers 404 for all seven plugins; STATUS's Releases paragraph holds the owner step). One note under "Plugins that ship". Row (`site-samples` › its table is every public package but @vzn/vx, and the npm note counts them).

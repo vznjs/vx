@@ -1,6 +1,6 @@
 # Resource reservations learned from history (2026-09)
 
-**Status: shipped 2026-09-12 — core has an `admit` stage and no notion of resources; `@vzn/vx-schedule-history` learns each task's reservation from what its past executions used and packs them. Step 2, the producing execution's usage carried on the cache artifact, shipped the same day.**
+**Status: shipped 2026-09-12 — core has an `admit` stage and no notion of resources; `@vzn/vx-history` learns each task's reservation from what its past executions used and packs them. Step 2, the producing execution's usage carried on the cache artifact, shipped the same day.**
 
 ## Why
 
@@ -71,7 +71,7 @@ footprint needs.
 
 ## What the plugin does
 
-`@vzn/vx-schedule-history` reads the history once per run, in
+`@vzn/vx-history` reads the history once per run, in
 `schedule` (the read it already made for durations), and derives each
 task's reservation:
 
@@ -184,7 +184,7 @@ min 1840 / med 1862 vs 1760 / 1792 — a tie inside the spread.
 - `tests/history.test.ts`: the maxima come from successful executions in
   the window; a failed row's usage and a hit's zeros are ignored; a task
   that never reported answers undefined.
-- `@vzn/vx-schedule-history/tests/resource-estimates.test.ts`: rounding,
+- `@vzn/vx-history/tests/resource-estimates.test.ts`: rounding,
   headroom, the two thresholds, declared-wins, the packing rule.
 - `schedule-history-e2e.test.ts`: two ~200 MB tasks under
   `memory: 512` and two workers overlap on the first run and serialize

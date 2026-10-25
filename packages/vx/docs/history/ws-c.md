@@ -1658,7 +1658,7 @@ restored from cache.
 Probes (2026-10-03), clean, scheduler and retries: at two workers a
 3 s task beside four 0.5 s ones runs last under core's structural rank
 (4.0 s; by design, `architecture.md`: durations are the
-\`@vzn/vx-schedule-history\` plugin's), and first with that plugin
+\`@vzn/vx-history\` plugin's), and first with that plugin
 (3.0 s, the optimum); a task past its \`exec.timeout\` fails as timed
 out, its dependant is skipped and named, a sibling runs; under
 \`retries\` a failed attempt's stray output is cleaned before the next

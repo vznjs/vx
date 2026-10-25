@@ -356,17 +356,17 @@
     },
     {
       "id": "@vzn/vx-dte#install",
-      "deps": ["@vzn/vx#build", "@vzn/vx-dte-relay#build"],
+      "deps": ["@vzn/vx#build", "@vzn/vx-dte-server#build"],
       "exec": false,
       "cache": false
     },
     {
-      "id": "@vzn/vx-dte-relay#build",
-      "deps": ["@vzn/vx#build", "@vzn/vx-dte-relay#source"],
+      "id": "@vzn/vx-dte-server#build",
+      "deps": ["@vzn/vx#build", "@vzn/vx-dte-server#source"],
       "exec": false,
       "cache": false
     },
-    { "id": "@vzn/vx-dte-relay#source", "deps": [], "exec": true, "cache": true },
+    { "id": "@vzn/vx-dte-server#source", "deps": [], "exec": true, "cache": true },
     {
       "id": "@vzn/vx-dte#lint.oxfmt",
       "deps": ["@vzn/vx-dte#install"],
@@ -375,33 +375,38 @@
     },
     { "id": "@vzn/vx-dte#test", "deps": ["@vzn/vx-dte#install"], "exec": true, "cache": true },
     {
-      "id": "@vzn/vx-dte-relay#ci",
-      "deps": ["@vzn/vx-dte-relay#lint", "@vzn/vx-dte-relay#test"],
+      "id": "@vzn/vx-dte-server#ci",
+      "deps": ["@vzn/vx-dte-server#lint", "@vzn/vx-dte-server#test"],
       "exec": false,
       "cache": false
     },
     {
-      "id": "@vzn/vx-dte-relay#lint",
-      "deps": ["@vzn/vx-dte-relay#lint.oxfmt", "@vzn/vx-dte-relay#lint.oxlint"],
+      "id": "@vzn/vx-dte-server#lint",
+      "deps": ["@vzn/vx-dte-server#lint.oxfmt", "@vzn/vx-dte-server#lint.oxlint"],
       "exec": false,
       "cache": false
     },
     {
-      "id": "@vzn/vx-dte-relay#lint.oxlint",
-      "deps": ["@vzn/vx-dte-relay#install"],
-      "exec": true,
-      "cache": true
-    },
-    { "id": "@vzn/vx-dte-relay#install", "deps": ["@vzn/vx#build"], "exec": false, "cache": false },
-    {
-      "id": "@vzn/vx-dte-relay#lint.oxfmt",
-      "deps": ["@vzn/vx-dte-relay#install"],
+      "id": "@vzn/vx-dte-server#lint.oxlint",
+      "deps": ["@vzn/vx-dte-server#install"],
       "exec": true,
       "cache": true
     },
     {
-      "id": "@vzn/vx-dte-relay#test",
-      "deps": ["@vzn/vx-dte-relay#install"],
+      "id": "@vzn/vx-dte-server#install",
+      "deps": ["@vzn/vx#build"],
+      "exec": false,
+      "cache": false
+    },
+    {
+      "id": "@vzn/vx-dte-server#lint.oxfmt",
+      "deps": ["@vzn/vx-dte-server#install"],
+      "exec": true,
+      "cache": true
+    },
+    {
+      "id": "@vzn/vx-dte-server#test",
+      "deps": ["@vzn/vx-dte-server#install"],
       "exec": true,
       "cache": true
     },

@@ -1,4 +1,4 @@
-# Workstream G — adoption (`vx-migrate`, `vx-lockfile`, `vx-schedule-history`)
+# Workstream G — adoption (`vx-migrate`, `vx-lockfile`, `vx-history`)
 
 ## Leads (review of 2026-09-27)
 
@@ -146,7 +146,7 @@ collapsed: create-t3-turbo 25 of 25 tasks and astro 122 of 122 agree.
 test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   lead 4). Rows (`turbo-map-sweep.test.ts` › a task `command`): seven,
   red without the fix; the `rust`-only map is the control.
-- **G-3.** `vx-schedule-history`'s docs say what the plugin packs (lead
+- **G-3.** `vx-history`'s docs say what the plugin packs (lead
   routed by J). The `resources` docstring said a reservation holds "the
   most CPU parallelism seen, rounded to a core", and the README's
   `vx history` sample showed a learned row reserving `· 2 cores`; cores
@@ -156,7 +156,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   over the history it shows, reservations taken through
   `resourceEstimates` and `withDeclared` — red on the old sample and on
   `· 2 cores` alone.
-- **G-4.** `vx-schedule-history`'s number options are checked. A NaN
+- **G-4.** `vx-history`'s number options are checked. A NaN
   `memory` (`Number(process.env.X)`, X unset) fitted no reservation,
   so every task that reserved memory waited for an idle machine and
   the run went serial with no word; a NaN `headroom` dropped every
@@ -324,7 +324,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   guards). `pnpm.ts` (34): 30 caught, 4 equivalent (the trailing-null
   filter, the lockfile version the rest already carries, the absolute
   and own-key lookups the version fallback covers).
-- **G-19.** A mutation sweep of `vx-schedule-history`'s
+- **G-19.** A mutation sweep of `vx-history`'s
   `critical-path.ts` (15 mutants): 13 caught. Held now: a history entry
   with no p50 (runs, but every one a cache hit) stays out of the
   workspace median; counted as 0 it pulled the median down and every
@@ -332,7 +332,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   (`schedule-history.test` › a history entry with no p50 does not enter
   the workspace median), red without the guard. Equivalent: `left <= 0`
   (an upstream outside the run has no node to release).
-- **G-20.** `vx-schedule-history` checks declared `reservations`. A
+- **G-20.** `vx-history` checks declared `reservations`. A
   NaN axis (`memory: Number(process.env.X)`, X unset) held its task
   alone and summed into what runs, so every reserving task beside it
   waited: the run went serial and said nothing (G-4's class, the
@@ -427,7 +427,7 @@ test check-types --dry=json` (43 tasks; the 75 left are Cargo crates,
   mappers' reads, and the lockfile plugins' patches, are keyed. A
   re-sweep of `nxCache()` after G-23's rewrite: 28 mutants, all caught.
 - **G-30.** A sweep of G-20's reservation checks in
-  `vx-schedule-history` (10 mutants): 7 caught, 3 survived. Two were
+  `vx-history` (10 mutants): 7 caught, 3 survived. Two were
   live and are now held by the G-20 row: a NaN `cpus` beside a valid
   `memory` reserves no cores (the row had only a negative one, which
   admits either way), and a `null` entry is neither a crash nor a
