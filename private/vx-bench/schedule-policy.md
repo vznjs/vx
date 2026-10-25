@@ -2,7 +2,7 @@
 
 The generator is back (item 669): `schedule-policy.ts` simulates
 `runGraph`'s exec tier on a virtual clock, ranked by the REAL
-`criticalPathPriorities` (`@vzn/vx-schedule-history`) merged over core's
+core's `criticalPath` merged over core's
 `computeReverseDepCount` by core's `mergePriorities`.
 `tests/schedule-policy.test.ts` pins it on hand-computed schedules and
 replays its fixtures through the real `runGraph` on a virtual clock (the

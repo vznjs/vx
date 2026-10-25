@@ -131,6 +131,12 @@ export default { name: 'k', tasks: {
   both: { dependsOn: ['one', 'two'], exec: { command: 'cat one.txt two.txt' } },
 } }
 `,
+    // Tasks big enough that their peak memory is measured, one after another.
+    'm/vx.config.mjs': `const t = (dependsOn) => ({ dependsOn, exec: { command: ${JSON.stringify(
+      `${process.execPath} -e "const b = Buffer.alloc(64 * 2 ** 20, 1); await Bun.sleep(300); console.log(b[0])"`,
+    )} } })
+export default { name: 'm', tasks: { m1: t([]), m2: t([]), m3: t(['m1', 'm2']) } }
+`,
     // Wide, then a two-task lull, then wide again.
     'c/vx.config.mjs': `const t = (dependsOn) => ({ exec: { command: 'sleep 0.3' }, dependsOn })
 export default { name: 'c', tasks: {
@@ -197,6 +203,58 @@ it('a task reads the files of uncached tasks that ran on other workers', async (
   const run = vx(['run', 'k#both'], 'e2e-kept')
   const out = run.stdout.toString() + run.stderr.toString()
   expect([run.exitCode, out]).toEqual([0, expect.stringContaining('one\ntwo\n')])
+}, 60_000)
+
+// Timings are the orchestrator's to report: each task's, as its worker
+// measured it, reaches the plugins there once, and a worker hands none to
+// its own (M, 2026-10-25). A history plugin uploads them once, at the end.
+it('only the orchestrator reports timings: every task a worker ran, once, as the worker measured it', async () => {
+  const log = path.join(root, 'timings.log')
+  const dir = path.join(root, 'timings')
+  await mkdir(dir, { recursive: true })
+  await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'timings' }))
+  const ws = path.join(root, '.vx/workspace.mjs')
+  const text = await readFile(ws, 'utf8')
+  const line = (body: string) =>
+    `appendFileSync(${JSON.stringify(log)}, JSON.stringify({ cwd: process.cwd(), ${body} }) + '\\n')`
+  await writeFile(
+    ws,
+    `import { appendFileSync } from 'node:fs'
+import { definePlugin } from ${JSON.stringify(path.resolve(import.meta.dir, '../../vx/src/index.ts'))}
+const timings = definePlugin({ dir: ${JSON.stringify(dir)} }, {
+  setup(ctx) {
+    ctx.on('onTaskComplete', (n, o) => ${line('id: n.id, status: o.status, durationMs: o.durationMs, cpuMs: o.cpuMs, rss: o.peakRssBytes, where: o.where')})
+  },
+  teardown() { ${line('flush: true')} },
+})
+` + text.replace('plugins: [', 'plugins: [timings, '),
+  )
+  const git = (...a: string[]) => Bun.spawnSync(['git', ...a], { cwd: root })
+  git('add', '-A')
+  git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'timings')
+  const run = vx(['run', 'm#m3'], 'e2e-timings')
+  expect([run.exitCode, run.stderr.toString()]).toEqual([0, expect.any(String)])
+  const rows = (await readFile(log, 'utf8'))
+    .trim()
+    .split('\n')
+    .map((l) => JSON.parse(l) as Record<string, unknown>)
+  const real = await realpath(root)
+  expect(rows.every((r) => r['cwd'] === real || r['cwd'] === root)).toBe(true)
+  expect(rows.filter((r) => r['flush'] === true)).toHaveLength(1)
+  const tasks = rows.filter((r) => r['id'] !== undefined)
+  expect(
+    tasks
+      .map((r) => r['id'])
+      .map(String)
+      .toSorted((a, b) => a.localeCompare(b)),
+  ).toEqual(['m#m1', 'm#m2', 'm#m3'])
+  for (const r of tasks) {
+    expect(r['status']).toBe('success')
+    expect(r['where']).toMatch(/^small#\d+$/)
+    expect(r['durationMs'] as number).toBeGreaterThanOrEqual(250)
+    expect(typeof r['cpuMs']).toBe('number')
+    expect(typeof r['rss']).toBe('number')
+  }
 }, 60_000)
 
 // 2026-10-25: a `cache.dir` the workspace names, relative, named each

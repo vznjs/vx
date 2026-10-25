@@ -7,8 +7,7 @@
 //   bun private/vx-bench/schedule-policy.ts [--md] [--seeds N]
 //
 // A deterministic discrete-event simulation of `runGraph`'s exec tier.
-// The priorities are the REAL ones: `criticalPathPriorities` from the
-// plugin, merged over core's `computeReverseDepCount` by core's own
+// The priorities are the REAL ones: core's `criticalPath`, merged over core's `computeReverseDepCount` by core's own
 // `mergePriorities`. Only the dispatch loop is mirrored from
 // `packages/vx/src/graph/scheduler.ts`, and `tests/schedule-policy.test.ts`
 // replays the fixtures through the real `runGraph` on a virtual clock to
@@ -32,7 +31,7 @@ import type { HistoryTable, TaskHistory, TaskNode } from '@vzn/vx'
 // Source files, not the packages' entry points: the sim must rank exactly
 // as core and the plugin rank, and either entry point loads all of core.
 import { computeReverseDepCount, mergePriorities } from '../../packages/vx/src/graph/priorities.js'
-import { criticalPathPriorities } from '../../packages/vx-schedule-history/src/critical-path.js'
+import { criticalPath } from '../../packages/vx/src/graph/critical-path.js'
 
 export type Policy = 'count' | 'median' | 'unknown-first' | 'oracle'
 export const POLICIES: readonly Policy[] = ['count', 'median', 'unknown-first', 'oracle']
@@ -110,16 +109,16 @@ export function pluginPriorities(
     if (policy === 'oracle' || !unknown.has(t.id)) history.set(t.id, known(t.dur))
   }
   const table: HistoryTable = history
-  if (policy !== 'unknown-first') return criticalPathPriorities(list, table)
+  if (policy !== 'unknown-first') return criticalPath(list, table)
   const zero: Record<string, number> = {}
   for (const id of unknown) zero[id] = 0
   let longestKnown = 0
-  for (const v of criticalPathPriorities(list, table, zero).values()) {
+  for (const v of criticalPath(list, table, zero).values()) {
     if (v > longestKnown) longestKnown = v
   }
   const assume: Record<string, number> = {}
   for (const id of unknown) assume[id] = longestKnown + 1
-  return criticalPathPriorities(list, table, assume)
+  return criticalPath(list, table, assume)
 }
 
 /** The ranking `runGraph` derives from `pluginPriorities`: core's merge over core's baseline. */

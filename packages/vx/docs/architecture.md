@@ -31,7 +31,7 @@ specifier — enforced by `tests/package-boundaries.unsafe.test.ts`):
 | `private/vx-cache-service`     | vznjs's own cache server deploy: `@vzn/vx-cache-server`'s worker with this repo's `TRUST`, built by Workers Builds (private)                                                         |
 
 Core never imports a sibling package. The integrations reach core
-through two seams: the public API (55 runtime symbols, a deliberate
+through two seams: the public API (56 runtime symbols, a deliberate
 snapshot) and the plugin capabilities (below).
 
 ## Module map
