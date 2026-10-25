@@ -40,7 +40,7 @@ const hashOf = (text: string): string =>
   new Bun.CryptoHasher('sha256').update(text).digest('hex').slice(0, 32)
 
 /** Whether this job has a token: GitHub's OIDC endpoint, or GitLab's `VX_HISTORY_TOKEN`. */
-export const hasToken = (env: Record<string, string | undefined>): boolean =>
+const hasToken = (env: Record<string, string | undefined>): boolean =>
   (!!env.ACTIONS_ID_TOKEN_REQUEST_URL && !!env.ACTIONS_ID_TOKEN_REQUEST_TOKEN) ||
   !!env.VX_HISTORY_TOKEN
 
