@@ -9,13 +9,13 @@ export interface FakeS3 {
   stop(): Promise<void>
 }
 
-export function fakeS3(): FakeS3 {
+export function fakeS3(port = 0): FakeS3 {
   const objects = new Map<string, Uint8Array>()
   const uploads = new Map<string, Map<number, Uint8Array>>()
   const log: string[] = []
   let next = 0
   const server = Bun.serve({
-    port: 0,
+    port,
     hostname: '127.0.0.1',
     async fetch(req) {
       const url = new URL(req.url)

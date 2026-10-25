@@ -19,7 +19,7 @@ export default defineProject({
     },
 
     ci: {
-      dependsOn: ['lint', 'test'],
+      dependsOn: ['lint', 'test', 'test.live'],
     },
 
     lint: {
@@ -80,6 +80,19 @@ export default defineProject({
       },
       dependsOn: ['install'],
       inputs: { files: ['src/**', 'tests/**', 'package.json'] },
+      cache: {
+        outputs: { files: [] },
+      },
+    },
+
+    'test.live': {
+      description: 'docker build, then the conformance suite through the container',
+      exec: { command: 'sh tests/docker/smoke.sh' },
+      dependsOn: ['install'],
+      inputs: {
+        files: ['Dockerfile', 'src/**', 'tests/**'],
+        workspaceFiles: ['packages/vx-devtools/package.json', 'packages/vx-devtools/src/**'],
+      },
       cache: {
         outputs: { files: [] },
       },

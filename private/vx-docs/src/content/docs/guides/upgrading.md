@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-cache-server: one bucket, no database, exact-key reads
+
+vx-cache-server drops its database (--db, Postgres, D1), the timings routes and the sweep (TRUSTED_DAYS, BRANCH_DAYS, TIMING_DAYS): set bucket lifecycle rules instead. /v1/artifacts/check and the batch download take { keys: [{ scope, hash }] }, a single download names its ref in x-vx-scope, and x-artifact-read-scopes is gone. vxCache() no longer keeps timings or orders tasks: declare vxHistory() for that.
+
 ## vx-devtools: move the CI token check into @vzn/vx-devtools
 
 @vzn/vx-cache-server no longer exports oidcAuth, parseTrust, Access, Authorize, OidcOptions or TrustRule; import them from @vzn/vx-devtools.

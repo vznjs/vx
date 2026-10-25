@@ -2,24 +2,17 @@
 // the vx-cache protocol (`@vzn/vx-cache-server`, its PROTOCOL.md, /v1).
 // Nothing is on by default: declare it in `.vx/workspace.ts` with the
 // server's URL. It serves CI jobs only: every request carries the job's
-// OIDC token, and off CI it declines with one note. It also keeps the
-// timings a scheduler needs: each task a run ran is timed on the server,
-// and every run orders its tasks by the critical path those timings give.
+// OIDC token, and off CI it declines with one note. Every read names
+// exact keys: the run's branch, then the branches it reads after it.
 // Imports core only through `@vzn/vx`.
 
 import {
   type ArtifactInfo,
-  criticalPath,
   definePlugin,
   type LentAccess,
-  LocalHistoryProvider,
   type PluginOptionKinds,
   refuseUnknownOptions,
   type RemoteCacheLayer,
-  type TaskNode,
-  type TaskOutcome,
-  type TaskResources,
-  taskDefinitions,
   type VxPlugin,
 } from '@vzn/vx'
 
@@ -38,17 +31,6 @@ const KEYS: PluginOptionKinds<VxCacheOptions> = {
   uploadTimeoutMs: 'number',
 }
 
-/** What a run that ran a task learned of it: what the server keeps. */
-export interface Timing {
-  /** The task's definition hash (`taskDefinitions`). */
-  hash: string
-  durationMs: number
-  /** CPU cores it kept busy on average. */
-  cores?: number
-  /** Its peak memory. */
-  rssBytes?: number
-}
-
 /** A JWT's `exp`, in ms, or 0 when it has none. */
 function expiryOf(jwt: string): number {
   try {
@@ -65,35 +47,11 @@ function expiryOf(jwt: string): number {
 
 /** A lent token ending sooner than this is asked again first, so a request never carries a spent one. */
 const LEND_MARGIN_MS = 5 * 60_000
-/** Hashes one check or timings query carries (the server's cap). */
-const QUERY_MAX = 1000
 /** Uploads open at once; more wait. */
 const IN_FLIGHT = 4
 /** Waiting uploads go as one batch only when more than this many wait. */
 const BATCH_OVER = 2
-/** Timings one upload's line carries (the server's cap). */
-const LINE_TIMINGS_MAX = 1000
-/** Timings one `POST /v1/timings/upload` carries (the server's cap). */
-const TIMINGS_MAX = 20_000
-/** Timings asked per task: the newest few, trusted first. */
-const TIMINGS_LIMIT = 5
-/** Refs one read names (the protocol's cap). */
-const READ_SCOPES_MAX = 8
-/** A ref the header carries: printable ASCII, at most 255 long (PROTOCOL.md). */
-const SENDABLE_REF = /^refs\/[ -~]{1,250}$/
 const BATCH_TYPE = 'application/vnd.vx-cache.batch'
-
-/**
- * `x-artifact-read-scopes`: an RFC 8941 list of strings. A ref it cannot
- * carry (a UTF-8 branch name) is left out: the server refuses the whole
- * header, and every read with it (2026-10-25).
- */
-function readScopes(refs: readonly string[]): Record<string, string> {
-  const list = refs.filter((r) => SENDABLE_REF.test(r)).slice(0, READ_SCOPES_MAX)
-  return list.length === 0
-    ? {}
-    : { 'x-artifact-read-scopes': list.map((r) => `"${r.replace(/[\\"]/g, '\\$&')}"`).join(', ') }
-}
 
 /** A refusal, named by its status and the server's own `message`. */
 async function refusal(res: Response): Promise<Error> {
@@ -164,10 +122,32 @@ class Lane<T, R> {
   }
 }
 
-/** The batch limits a server named on a check (`x-vx-max-*`). */
+/** The limits a server names at `/v1/capabilities` and on each check (`x-vx-max-*`). */
 interface Limits {
+  readonly maxCheckKeys: number
   readonly maxBatchArtifacts: number
   readonly maxUploadBytes: number
+}
+
+const LIMIT_HEADERS: Record<keyof Limits, string> = {
+  maxCheckKeys: 'x-vx-max-check-keys',
+  maxBatchArtifacts: 'x-vx-max-batch-artifacts',
+  maxUploadBytes: 'x-vx-max-upload-bytes',
+}
+
+const count = (n: unknown): number | undefined =>
+  typeof n === 'number' && Number.isSafeInteger(n) && n > 0 ? n : undefined
+
+/** Each limit, or undefined when one is missing or bad. */
+function limitsOf(read: (k: keyof Limits) => unknown): Limits | undefined {
+  const maxCheckKeys = count(read('maxCheckKeys'))
+  const maxBatchArtifacts = count(read('maxBatchArtifacts'))
+  const maxUploadBytes = count(read('maxUploadBytes'))
+  return maxCheckKeys === undefined ||
+    maxBatchArtifacts === undefined ||
+    maxUploadBytes === undefined
+    ? undefined
+    : { maxCheckKeys, maxBatchArtifacts, maxUploadBytes }
 }
 
 /**
@@ -193,24 +173,26 @@ function takeBatch<T, R>(
 
 /**
  * The seam over vx-cache v1. `has` and `hasMany` are `check`, `get` a
- * download and `put` an upload, alone or in a batch (`Lane`). A
- * refused token (401/403) throws once, for core to report, and turns the
- * layer off for the run; an upload's 403 turns off writes alone (a job
- * that reads only).
+ * download and `put` an upload, alone or in a batch (`Lane`). Every read
+ * names exact `{ scope, hash }` keys, one per ref the run reads, and the
+ * first ref holding a hash answers it. A refused token (401/403) throws
+ * once, for core to report, and turns the layer off for the run; an
+ * upload's 403 turns off writes alone (a job that reads only).
  */
 export class VxCacheLayer implements RemoteCacheLayer {
   readonly endpoint: string
   private disabled = false
   private writesRefused = false
-  /** Headers every read carries: the refs it may be answered from. */
-  reads: Record<string, string> = {}
-  /** The batch limits the server named on its last check; none until then, so nothing is guessed. */
+  /** The refs a read names, in order: the first holding a hash answers it. */
+  refs: readonly string[] = []
+  /** The ref a check found each hash under, which its download names. */
+  private readonly found = new Map<string, string>()
+  /** The limits the server named, at `/v1/capabilities` and on its last check; nothing is guessed. */
   private limits: Limits | undefined
+  private asked: Promise<Limits | undefined> | undefined
   /** Where the layer says what is no failure of a request: core's `ctx.warn`. */
   warn: (message: string) => void = () => {}
   private limitsMissing = false
-  /** Timings not yet sent: each upload's line carries them, and `flushTimings` the rest. */
-  private pending: Timing[] = []
 
   private readonly uploads = new Lane<{ hash: string; body: Blob }, void>(
     (w) => takeBatch(w, this.limits, (x) => x.body.size),
@@ -302,7 +284,6 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (init.write === true && res.status === 403) {
       const first = !this.writesRefused
       this.writesRefused = true
-      this.pending = []
       if (!first) return undefined
       throw new Error(
         `${(await refusal(res)).message}: the write was refused (this job reads only); writes off for this run, reads go on`,
@@ -319,11 +300,46 @@ export class VxCacheLayer implements RemoteCacheLayer {
     return res
   }
 
-  private json(path: string, body: unknown, write = false): Promise<Response | undefined> {
+  private json(path: string, body: unknown): Promise<Response | undefined> {
     return this.request(path, {
       body: JSON.stringify(body),
-      headers: { 'content-type': 'application/json', ...(write ? {} : this.reads) },
-      ...(write ? { write, timeoutMs: this.config.uploadTimeoutMs } : {}),
+      headers: { 'content-type': 'application/json' },
+    })
+  }
+
+  /**
+   * The server's limits: `/v1/capabilities`, asked once and kept, then
+   * whatever each check names. Unnamed, said once: checks go one ref's
+   * key at a time and uploads one artifact at a time.
+   */
+  private async limitsNow(): Promise<Limits | undefined> {
+    if (this.limits !== undefined) return this.limits
+    this.asked ??= (async () => {
+      const res = await this.request('/v1/capabilities', { method: 'GET' })
+      if (res === undefined) return undefined
+      if (res.status !== 200) throw await refusal(res)
+      const body = (await res.json()) as Record<string, unknown> | null
+      const named = limitsOf((k) => body?.[k])
+      if (named === undefined) this.limitsUnnamed(`/v1/capabilities (HTTP ${res.status})`)
+      return named
+    })()
+    this.limits ??= await this.asked
+    return this.limits
+  }
+
+  private limitsUnnamed(where: string): void {
+    if (this.limitsMissing) return
+    this.limitsMissing = true
+    this.warn(
+      `[vx] vx-cache: ${where} named no limits (maxCheckKeys, maxBatchArtifacts, maxUploadBytes); checks and uploads go one at a time`,
+    )
+  }
+
+  /** Starts asking for the limits, so the first check need not wait for them. */
+  start(): void {
+    this.limitsNow().catch(() => {
+      // quiet here: the first check asks again and reports what it gets
+      this.asked = undefined
     })
   }
 
@@ -332,71 +348,63 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo>> {
-    if (this.disabled) return new Map()
+    if (this.disabled || this.refs.length === 0) return new Map()
+    const keys = hashes.flatMap((hash) => this.refs.map((scope) => ({ scope, hash })))
+    const per = (await this.limitsNow())?.maxCheckKeys ?? 1
     const parts = await Promise.all(
-      Array.from({ length: Math.ceil(hashes.length / QUERY_MAX) }, (_, i) =>
-        this.check(hashes.slice(i * QUERY_MAX, (i + 1) * QUERY_MAX)),
+      Array.from({ length: Math.ceil(keys.length / per) }, (_, i) =>
+        this.check(keys.slice(i * per, (i + 1) * per)),
       ),
     )
-    return new Map(parts.flatMap((p) => [...p]))
-  }
-
-  /** `POST /v1/artifacts/check`: each held hash's size. */
-  private async check(hashes: readonly string[]): Promise<Map<string, ArtifactInfo>> {
-    const res = await this.json('/v1/artifacts/check', { hashes })
-    if (res === undefined) return new Map()
-    if (res.status !== 200) throw await refusal(res)
-    this.readLimits(res)
-    const body = (await res.json()) as unknown
-    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-      throw new Error('the check answered no object')
-    }
+    const sizes = parts.flat()
     const held = new Map<string, ArtifactInfo>()
-    for (const hash of hashes) {
-      const size = (body as Record<string, { size?: unknown } | null>)[hash]?.size
-      if (typeof size !== 'number' || size < 0) continue
+    // Keys go hash by hash, each in the refs' order: the first held wins.
+    for (const [i, { scope, hash }] of keys.entries()) {
+      const size = sizes[i]
+      if (held.has(hash) || typeof size !== 'number' || size < 0) continue
       held.set(hash, { size })
+      this.found.set(hash, scope)
     }
     return held
   }
 
-  /** A check's `x-vx-max-*` headers; missing or bad, said once, and uploads stay one at a time. */
-  private readLimits(res: Response): void {
-    const read = (name: string): number | undefined => {
-      const n = Number(res.headers.get(name) ?? NaN)
-      return Number.isSafeInteger(n) && n > 0 ? n : undefined
-    }
-    const maxBatchArtifacts = read('x-vx-max-batch-artifacts')
-    const maxUploadBytes = read('x-vx-max-upload-bytes')
-    if (maxBatchArtifacts !== undefined && maxUploadBytes !== undefined) {
-      this.limits = { maxBatchArtifacts, maxUploadBytes }
-    } else if (!this.limitsMissing) {
-      this.limitsMissing = true
-      this.warn(
-        `[vx] vx-cache: the check (HTTP ${res.status}) named no batch limits (x-vx-max-batch-artifacts, x-vx-max-upload-bytes); uploads go one at a time`,
-      )
-    }
-  }
-
-  async get(hash: string): Promise<{ body: Response; durationMs: undefined } | null> {
-    if (this.disabled) return null
-    const res = await this.request(`/v1/artifacts/download/${hash}`, {
-      method: 'GET',
-      headers: this.reads,
-    })
-    if (res === undefined) return null
-    if (res.status === 404) {
-      await res.body?.cancel()
-      return null
-    }
+  /** `POST /v1/artifacts/check`: each key's size, or null, in order. */
+  private async check(keys: readonly { scope: string; hash: string }[]): Promise<unknown[]> {
+    const res = await this.json('/v1/artifacts/check', { keys })
+    if (res === undefined) return []
     if (res.status !== 200) throw await refusal(res)
-    return { body: res, durationMs: undefined }
+    const named = limitsOf((k) => Number(res.headers.get(LIMIT_HEADERS[k]) ?? NaN))
+    if (named === undefined) this.limitsUnnamed(`the check (HTTP ${res.status})`)
+    else this.limits = named
+    const body = (await res.json()) as { sizes?: unknown } | null
+    if (!Array.isArray(body?.sizes) || body.sizes.length !== keys.length) {
+      throw new Error('the check answered no `sizes` list, one per key')
+    }
+    return body.sizes
   }
 
-  /**
-   * An artifact over the server's upload limit is not sent: it is said,
-   * and the task's timing still goes.
-   */
+  /** The ref a check found it under, else each ref in order until one holds it. */
+  async get(hash: string): Promise<{ body: Response; durationMs: undefined } | null> {
+    const at = this.found.get(hash)
+    for (const scope of at === undefined ? this.refs : [at]) {
+      if (this.disabled) return null
+      const res = await this.request(`/v1/artifacts/download/${hash}`, {
+        method: 'GET',
+        // A header carries bytes, a branch name any UTF-8 (#4439).
+        headers: { 'x-vx-scope': encodeURI(scope) },
+      })
+      if (res === undefined) return null
+      if (res.status === 404) {
+        await res.body?.cancel()
+        continue
+      }
+      if (res.status !== 200) throw await refusal(res)
+      return { body: res, durationMs: undefined }
+    }
+    return null
+  }
+
+  /** An artifact over the server's upload limit is not sent: it is said. */
   async put(hash: string, body: Blob, _meta: { durationMs: number }): Promise<void> {
     if (this.disabled || this.writesRefused) return
     const max = this.limits?.maxUploadBytes
@@ -412,118 +420,27 @@ export class VxCacheLayer implements RemoteCacheLayer {
   /**
    * A batch of more than `BATCH_OVER` asks `check` first and sends only the
    * missing; fewer go straight, and the server answers an upload of held
-   * ones before reading its bytes. The pending timings ride along.
+   * ones before reading its bytes.
    */
   private async upload(batch: Waiting<{ hash: string; body: Blob }, void>[]): Promise<void> {
     let send = batch
     if (batch.length > BATCH_OVER) {
-      const held = await this.check(batch.map((w) => w.item.hash))
+      const held = await this.hasMany(batch.map((w) => w.item.hash))
       send = batch.filter((w) => !held.has(w.item.hash))
       for (const w of batch) if (held.has(w.item.hash)) w.resolve()
       if (send.length === 0) return
     }
-    const timings = this.pending.splice(0, LINE_TIMINGS_MAX)
     const line = JSON.stringify({
       artifacts: send.map((w) => ({ hash: w.item.hash, size: w.item.body.size })),
-      ...(timings.length === 0 ? {} : { timings }),
     })
-    try {
-      const res = await this.request('/v1/artifacts/upload', {
-        body: new Blob([`${line}\n`, ...send.map((w) => w.item.body)]),
-        headers: { 'content-type': BATCH_TYPE },
-        timeoutMs: this.config.uploadTimeoutMs,
-        write: true,
-      })
-      if (res !== undefined && !res.ok) throw await refusal(res)
-    } catch (err) {
-      if (!this.writesRefused) this.pending.unshift(...timings)
-      throw err
-    }
+    const res = await this.request('/v1/artifacts/upload', {
+      body: new Blob([`${line}\n`, ...send.map((w) => w.item.body)]),
+      headers: { 'content-type': BATCH_TYPE },
+      timeoutMs: this.config.uploadTimeoutMs,
+      write: true,
+    })
+    if (res !== undefined && !res.ok) throw await refusal(res)
     for (const w of send) w.resolve()
-  }
-
-  /** Keeps a timing for the next upload's line, or `flushTimings`. */
-  addTiming(t: Timing): void {
-    if (!this.disabled && !this.writesRefused) this.pending.push(t)
-  }
-
-  /** `POST /v1/timings/upload`: the timings no upload carried. */
-  async flushTimings(): Promise<void> {
-    while (this.pending.length > 0 && !this.disabled && !this.writesRefused) {
-      const timings = this.pending.splice(0, TIMINGS_MAX)
-      const res = await this.json('/v1/timings/upload', { timings }, true)
-      if (res !== undefined && !res.ok) throw await refusal(res)
-    }
-  }
-
-  /**
-   * `POST /v1/timings/query`: each hash's newest timings, trusted first,
-   * then the read refs in order. A hash none holds is absent.
-   */
-  async timings(hashes: readonly string[]): Promise<Map<string, Timing[]>> {
-    if (this.disabled) return new Map()
-    const parts = await Promise.all(
-      Array.from({ length: Math.ceil(hashes.length / QUERY_MAX) }, async (_, i) => {
-        const asked = hashes.slice(i * QUERY_MAX, (i + 1) * QUERY_MAX)
-        const res = await this.json('/v1/timings/query', { hashes: asked, limit: TIMINGS_LIMIT })
-        if (res === undefined) return []
-        if (res.status !== 200) throw await refusal(res)
-        const body = (await res.json()) as { timings?: unknown }
-        if (typeof body.timings !== 'object' || body.timings === null) {
-          throw new Error('the timings query answered no `timings` object')
-        }
-        return Object.entries(body.timings as Record<string, unknown>)
-      }),
-    )
-    const out = new Map<string, Timing[]>()
-    for (const [hash, list] of parts.flat()) {
-      if (!Array.isArray(list) || list.length === 0) continue
-      out.set(
-        hash,
-        list.map((t: { durationMs: number; cores: number | null; rssBytes: number | null }) => ({
-          hash,
-          durationMs: t.durationMs,
-          ...(t.cores === null ? {} : { cores: t.cores }),
-          ...(t.rssBytes === null ? {} : { rssBytes: t.rssBytes }),
-        })),
-      )
-    }
-    return out
-  }
-}
-
-/** A task the run ran and that succeeded, as the server keeps its timing; else undefined. */
-function timingOf(o: TaskOutcome, hash: string | undefined): Timing | undefined {
-  if (hash === undefined || o.status !== 'success') return undefined
-  const durationMs = Math.max(0, Math.round(o.durationMs))
-  // The cores it kept busy, as core's own history reads them.
-  const cores =
-    o.cpuMs === undefined || o.durationMs <= 0
-      ? undefined
-      : o.cpuMs / (o.durationMs * (o.cpuShare ?? 1))
-  return {
-    hash,
-    durationMs,
-    ...(cores === undefined ? {} : { cores }),
-    ...(o.peakRssBytes === undefined ? {} : { rssBytes: o.peakRssBytes }),
-  }
-}
-
-/** A task's timings as one forecast: the median duration, the mean cores, the largest peak. */
-function forecastOf(list: readonly Timing[]): { ms: number; needs: TaskResources } {
-  const ms = list.map((t) => t.durationMs).sort((a, b) => a - b)
-  const cores = list.flatMap((t) => (t.cores === undefined ? [] : [t.cores]))
-  const rss = list.flatMap((t) => (t.rssBytes === undefined ? [] : [t.rssBytes]))
-  const p50 = ms[Math.floor(ms.length / 2)]!
-  return {
-    ms: p50,
-    needs: {
-      p50DurationMs: p50,
-      ...(cores.length === 0
-        ? {}
-        : { maxCpuParallelism: cores.reduce((a, b) => a + b, 0) / cores.length }),
-      ...(rss.length === 0 ? {} : { maxPeakRssBytes: Math.max(...rss) }),
-    },
   }
 }
 
@@ -560,14 +477,8 @@ export function hasCiToken(env: Record<string, string | undefined>, lent: boolea
  */
 export function vxCache(options: VxCacheOptions = {}): VxPlugin {
   refuseUnknownOptions('vxCache()', options, KEYS)
-  // One layer per run, shared by its hooks.
-  let layer: VxCacheLayer | undefined
-  /** The run times its tasks: it was lent no token, so it is not running another run's. */
-  let times = false
-  let warn: ((m: string) => void) | undefined
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
-      layer = undefined
       const config = resolveVxCacheConfig(options)
       if (config === undefined) return undefined
       const lent = ctx.lent?.() !== undefined
@@ -579,79 +490,18 @@ export function vxCache(options: VxCacheOptions = {}): VxPlugin {
         )
         return undefined
       }
-      layer = new VxCacheLayer(config)
-      layer.reads = readScopes(ctx.refs)
+      if (ctx.refs.length === 0) {
+        ctx.warn(
+          '[vx] vx-cache: the run reads no ref, so it names no key; remote cache off for this run',
+        )
+        return undefined
+      }
+      const layer = new VxCacheLayer(config)
+      layer.refs = [...new Set(ctx.refs)]
       layer.lent = ctx.lent
       layer.warn = ctx.warn
-      times = !lent
+      layer.start()
       return layer
-    },
-    // The run never waits for the server: it starts on the baseline order,
-    // and the critical path re-ranks what has not started when the timings
-    // land in local history, where every reader of it finds them.
-    schedule(nodes, ctx) {
-      const l = layer
-      if (l === undefined) return undefined
-      const defs = taskDefinitions(nodes.values())
-      if (defs.size === 0) return undefined
-      ctx.refine(
-        l.timings([...defs.values()]).then(
-          async (byHash) => {
-            const timings = new Map<string, number>()
-            const needs = new Map<string, TaskResources>()
-            for (const [id, def] of defs) {
-              const list = byHash.get(def)
-              if (list === undefined) continue
-              const f = forecastOf(list)
-              timings.set(id, f.ms)
-              needs.set(id, f.needs)
-            }
-            if (timings.size === 0) return undefined
-            const history = new LocalHistoryProvider(
-              ctx.localCache.dbHandle(),
-              undefined,
-              ctx.branch,
-              defs,
-            )
-            // One import per answer: a run that read the same keeps no more.
-            const sha = `vx-cache:${Bun.hash(JSON.stringify([...byHash])).toString(16)}`
-            if (!history.hasImported(sha)) history.importTimings(sha, timings, needs, defs)
-            return criticalPath(
-              [...nodes.values()],
-              await history.resourcesFor([...defs.keys()]),
-              {},
-            )
-          },
-          (err: unknown) => {
-            ctx.warn(
-              `[vx] vx-cache: ordering stays on the baseline: ${err instanceof Error ? err.message : String(err)}`,
-            )
-            return undefined
-          },
-        ),
-      )
-      return undefined
-    },
-    setup(ctx) {
-      warn = ctx.warn
-      const l = layer
-      if (l === undefined || !times) return
-      ctx.on('onTaskComplete', (node: TaskNode, outcome: TaskOutcome) => {
-        const def = taskDefinitions([node]).get(node.id)
-        const t = timingOf(outcome, def)
-        if (t !== undefined) l.addTiming(t)
-      })
-    },
-    async teardown() {
-      const l = layer
-      if (l === undefined) return
-      try {
-        await l.flushTimings()
-      } catch (err) {
-        warn?.(
-          `[vx] vx-cache: the timings were not written: ${err instanceof Error ? err.message : String(err)}`,
-        )
-      }
     },
   })
 }

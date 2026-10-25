@@ -1,90 +1,44 @@
-== const READ_SCOPES_HEADER (src/protocol.ts)
-export const READ_SCOPES_HEADER = 'x-artifact-read-scopes'
+== const blobName (src/store.ts)
+export const blobName = (repo: string, scope: string, hash: string): string =>
+  scope === TRUSTED
+    ? `trusted/${encodeURIComponent(repo)}/${hash}`
+    : `branch/${encodeURIComponent(repo)}/${encodeURIComponent(scope)}/${hash}`
+== const DEFAULT_LIMITS (src/server.ts)
+export const DEFAULT_LIMITS: Limits = {
+  maxCheckKeys: 500,
+  maxBatchArtifacts: 100,
+  maxUploadBytes: 100_000_000,
+}
+== const LIMIT_HEADERS (src/protocol.ts)
+export const LIMIT_HEADERS = {
+  maxCheckKeys: 'x-vx-max-check-keys',
+  maxBatchArtifacts: 'x-vx-max-batch-artifacts',
+  maxUploadBytes: 'x-vx-max-upload-bytes',
+} as const
+== const SCOPE_HEADER (src/protocol.ts)
+export const SCOPE_HEADER = 'x-vx-scope'
 == function createCacheServer (src/server.ts)
 export function createCacheServer(opts: ServerOptions): (req: Request) => Promise<Response>
-== function evict (src/evict.ts)
-export async function evict(
-  store: Store,
-  blobs: Blobs,
-  r: Required<Retention>,
-  now: number = Date.now(),
-): Promise<{ artifacts: number; timings: number }>
-== function postgresStore (src/postgres.ts)
-export function postgresStore(url: string): Store & { close(): Promise<void> }
-== function retentionFrom (src/evict.ts)
-export function retentionFrom(env: object): Required<Retention>
-== function sqliteStore (src/store.ts)
-export function sqliteStore(db: Db): Store
-== type ArtifactRow (src/store.ts)
-export interface ArtifactRow {
-  key: string
-  scope: string
-  size: number
+== type Blob (src/store.ts)
+export interface Blob {
+  readonly body: ReadableStream<Uint8Array>
+  readonly size: number
 }
 == type Blobs (src/store.ts)
 export interface Blobs {
   put(name: string, body: ReadableStream<Uint8Array>, size: number): Promise<void>
-  get(name: string): Promise<ReadableStream<Uint8Array> | Blob | null>
-  delete(name: string): Promise<void>
+  get(name: string): Promise<Blob | null>
+  size(name: string): Promise<number | null>
 }
-== type Db (src/store.ts)
-export interface Db {
-  all<T>(sql: string, params: readonly unknown[]): Promise<T[]>
-  run(sql: string, params: readonly unknown[]): Promise<number>
-  batch(statements: readonly string[]): Promise<void>
-}
-== type NewArtifact (src/store.ts)
-export interface NewArtifact extends ArtifactRow {
-  repo: string
-  created_at: number
-}
-== type Retention (src/evict.ts)
-export interface Retention {
-  readonly trustedDays?: number
-  readonly branchDays?: number
-  readonly timingDays?: number
+== type Limits (src/server.ts)
+export interface Limits {
+  readonly maxCheckKeys: number
+  readonly maxBatchArtifacts: number
+  readonly maxUploadBytes: number
 }
 == type ServerOptions (src/server.ts)
 export interface ServerOptions {
   blobs: Blobs
-  store: Store
   authorize: Authorize
-  maxUploadBytes?: number
-  now?: () => number
-}
-== type Store (src/store.ts)
-export interface Store {
-  init(): Promise<void>
-  artifacts(
-    repo: string,
-    keys: readonly string[],
-    scopes: readonly string[],
-  ): Promise<ArtifactRow[]>
-  addArtifact(row: NewArtifact): Promise<boolean>
-  dropArtifact(repo: string, row: ArtifactRow): Promise<void>
-  addTimings(
-    repo: string,
-    scope: string,
-    createdAt: number,
-    timings: readonly Timing[],
-  ): Promise<void>
-  timings(
-    repo: string,
-    hashes: readonly string[],
-    scopes: readonly string[],
-    limit: number,
-  ): Promise<(Timing & { scope: string })[]>
-  takeExpired(
-    trustedBefore: number,
-    branchBefore: number,
-    limit: number,
-  ): Promise<(ArtifactRow & { repo: string })[]>
-  dropTimings(before: number): Promise<number>
-}
-== type Timing (src/store.ts)
-export interface Timing {
-  hash: string
-  durationMs: number
-  cores: number | null
-  rssBytes: number | null
+  limits?: Partial<Limits>
 }
