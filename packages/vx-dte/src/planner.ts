@@ -6,7 +6,7 @@
 // a TETRIS game. every time we get new data we refine next step").
 
 import type { TaskNode } from '@vzn/vx'
-import { assign, ordered, type Bin, type Need } from './dispatch.js'
+import { assign, kindOf, ordered, type Ask, type Bin, type Need } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 
 /**
@@ -297,7 +297,23 @@ function play(
       ends.push([Math.max(0, r.endsIn), s, r.cores, r.memory, r.id])
     }
   })
-  const ready = tasks.filter((t) => waits.get(t.id) === 0)
+  // Ready tasks, ordered again only once one joins (`graphene`: or
+  // leaves): each step sorted every ready task, and a run of 9000 spent
+  // its orchestrator planning (2026-10-25).
+  let ready = new Ready([])
+  let joining = tasks.filter((t) => waits.get(t.id) === 0)
+  let readyCount = joining.length
+  const spent = new Set<string>()
+  // Ready tasks by what they need: no ready task needs less than the
+  // least of these, and a pass ends once no slot takes that.
+  const needs = new Map<string, { cores: number; memory: number; n: number }>()
+  const count = (t: PlanTask, by: number): void => {
+    const k = kindOf(t)
+    const e = needs.get(k)
+    if (e === undefined) needs.set(k, { cores: t.cores, memory: t.memory, n: by })
+    else if ((e.n += by) === 0) needs.delete(k)
+  }
+  for (const t of joining) count(t, 1)
   const widest = Math.max(1, ...workers.map((w) => w.cores))
   let left = tasks.length
   let now = 0
@@ -305,27 +321,33 @@ function play(
   // When each platform's last task ends.
   const byPlatform = new Map<string | undefined, number>()
   for (;;) {
-    const order = ordered(
-      ready.map((t) => t.id),
-      how.order,
-      tailOf,
-      (id) => byId.get(id)!,
-      widest,
-    )
-    ready.splice(0, ready.length, ...order.map((id) => byId.get(id)!))
+    if (joining.length > 0 || ready.stale) {
+      const order = ordered(
+        [...ready.live(), ...joining].map((t) => t.id),
+        how.order,
+        tailOf,
+        (id) => byId.get(id)!,
+        widest,
+      )
+      ready = new Ready(order.map((id) => byId.get(id)!))
+      joining = []
+    }
     const joined = slots.filter((s) => s.at <= now)
     // A task that filled a size waits for a bigger one still to join.
     const later = (above: { cores: number; memory: number }): boolean =>
       slots.some((s) => s.at > now && (s.cores > above.cores || s.memory > above.memory))
-    const to = assign(
-      ready.map((t) => ({ id: t.id, need: t })),
-      joined,
-      later,
-      how.place,
-    )
+    const to = assign(ready.asks(spent), joined, later, how.place, {
+      floor: floorOf(needs.values()),
+      kinds: needs.size,
+      spent,
+    })
+    // `graphene` ranks against the longest chain still ready.
+    if (to.size > 0 && how.order === 'graphene') ready.stale = true
     for (const [id, best] of to) {
       const t = byId.get(id)!
-      ready.splice(ready.indexOf(t), 1)
+      ready.taken.add(id)
+      readyCount--
+      count(t, -1)
       best.first ??= now
       const end = now + (t.ms ?? UNKNOWN_MS)
       ends.push([end, best, Math.min(t.cores, best.cores), Math.min(t.memory, best.memory), t.id])
@@ -334,7 +356,7 @@ function play(
     }
     const first = (): Map<string, number> =>
       new Map(slots.flatMap((s) => (s.first === undefined ? [] : [[s.id, s.first] as const])))
-    if (left === 0 && ready.length === 0) return { end: last, first: first(), ends: byPlatform }
+    if (left === 0 && readyCount === 0) return { end: last, first: first(), ends: byPlatform }
     // The next moment anything changes: a task ends or a worker joins.
     let next = Infinity
     for (const e of ends) next = Math.min(next, e[0])
@@ -357,7 +379,11 @@ function play(
       for (const d of dependants.get(id) ?? []) {
         const n = waits.get(d)! - 1
         waits.set(d, n)
-        if (n === 0) ready.push(byId.get(d)!)
+        if (n === 0) {
+          joining.push(byId.get(d)!)
+          readyCount++
+          count(byId.get(d)!, 1)
+        }
       }
     }
   }
@@ -680,4 +706,93 @@ function backlog(
   ]
   const end = simulate(tasks, kept, how)
   return { start, release, endsInMs: end, boundMs: end, againInMs: undefined }
+}
+
+/**
+ * Ready tasks in the order `ordered` gave, by kind (`kindOf`): `assign`
+ * reads them in that order, a kind it found spent skipped in one jump,
+ * where it read every ready task each step (2026-10-25).
+ */
+class Ready {
+  private readonly kinds = new Map<string, PlanTask[]>()
+  private readonly rank = new Map<string, number>()
+  /** Each kind's first task not taken. */
+  private readonly head = new Map<string, number>()
+  /** Given a worker since ordered. */
+  readonly taken = new Set<string>()
+  /** Order it again before the next step. */
+  stale = false
+
+  constructor(private readonly order: readonly PlanTask[]) {
+    order.forEach((t, i) => {
+      this.rank.set(t.id, i)
+      const k = kindOf(t)
+      const q = this.kinds.get(k)
+      if (q === undefined) this.kinds.set(k, [t])
+      else q.push(t)
+    })
+  }
+
+  live(): PlanTask[] {
+    return this.order.filter((t) => !this.taken.has(t.id))
+  }
+
+  /** In order, past each kind in `spent` as `assign` reads it then. */
+  *asks(spent: ReadonlySet<string>): Generator<Ask> {
+    const at = new Map<string, number>()
+    let cursor = -1
+    for (;;) {
+      let next: PlanTask | undefined
+      let nextKind = ''
+      let nextRank = Infinity
+      for (const [k, q] of this.kinds) {
+        if (spent.has(k)) continue
+        let i = at.get(k) ?? this.headOf(k, q)
+        if (i < q.length && this.rank.get(q[i]!.id)! <= cursor) i = this.after(q, i, cursor)
+        while (i < q.length && this.taken.has(q[i]!.id)) i++
+        at.set(k, i)
+        const r = i < q.length ? this.rank.get(q[i]!.id)! : Infinity
+        if (r < nextRank) {
+          next = q[i]
+          nextKind = k
+          nextRank = r
+        }
+      }
+      if (next === undefined) return
+      at.set(nextKind, at.get(nextKind)! + 1)
+      cursor = nextRank
+      yield { id: next.id, need: next, kind: nextKind }
+    }
+  }
+
+  private headOf(k: string, q: readonly PlanTask[]): number {
+    let h = this.head.get(k) ?? 0
+    while (h < q.length && this.taken.has(q[h]!.id)) h++
+    this.head.set(k, h)
+    return h
+  }
+
+  /** The first index from `i` in `q` ranked past `cursor`. */
+  private after(q: readonly PlanTask[], i: number, cursor: number): number {
+    let hi = q.length
+    while (i < hi) {
+      const mid = (i + hi) >> 1
+      if (this.rank.get(q[mid]!.id)! <= cursor) i = mid + 1
+      else hi = mid
+    }
+    return i
+  }
+}
+
+function floorOf(needs: Iterable<{ cores: number; memory: number }>): {
+  cores: number
+  memory: number
+} {
+  let cores = Infinity
+  let memory = Infinity
+  for (const n of needs) {
+    cores = Math.min(cores, n.cores)
+    memory = Math.min(memory, n.memory)
+  }
+  return { cores, memory }
 }

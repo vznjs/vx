@@ -364,3 +364,22 @@ it('asks the fewest of each size, not the shortest prefix of the turns', () => {
   const p = plan(tasks, [], sizes, WARM)
   expect(p.start.map((s) => s.name).sort()).toEqual(['mac', 'mac', 'small'])
 })
+
+// 2026-10-25: a run of 9000 tasks failed every one: each plan read every
+// ready task at each step of its play-out, and the orchestrator, planning,
+// stopped answering its workers. A complexity guard: timed in CPU, not wall.
+it('plans 9000 ready tasks of mixed needs in seconds of CPU, not minutes', () => {
+  const tasks: PlanTask[] = Array.from({ length: 9000 }, (_, i) => ({
+    id: `t${i}`,
+    cores: [0.25, 0.7, 1, 1.5][i % 4]!,
+    memory: 0,
+    ms: 100 + (i % 7) * 30,
+    deps: [],
+  }))
+  tasks.push({ id: 'final', cores: 1, memory: 0, ms: 100, deps: tasks.map((t) => t.id) })
+  const sizes = Array.from({ length: 3 }, () => ({ name: 'small', cpu: 2, memory: 8e9, max: 3 }))
+  const start = process.cpuUsage()
+  plan(tasks, [], sizes, 3000)
+  const { user, system } = process.cpuUsage(start)
+  expect((user + system) / 1000).toBeLessThan(5000)
+})
