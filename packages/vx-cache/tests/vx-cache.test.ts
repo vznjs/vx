@@ -16,7 +16,7 @@ import {
   issuer,
   READ_JOB,
   TRUST,
-  TRUSTED_JOB,
+  MAIN_JOB,
 } from '../../vx-cache-server/tests/issuer.js'
 import { memBlobs } from '../../vx-cache-server/tests/mem-blobs.js'
 import { hasCiToken, resolveVxCacheConfig, vxCache, VxCacheLayer } from '../src/index.js'
@@ -84,7 +84,7 @@ describe('VxCacheLayer', () => {
   let read = ''
   beforeAll(async () => {
     srv = server(64)
-    ;[write, read] = await Promise.all([srv.token(TRUSTED_JOB), srv.token(READ_JOB)])
+    ;[write, read] = await Promise.all([srv.token(MAIN_JOB), srv.token(READ_JOB)])
   })
   afterAll(() => srv.stop())
 
@@ -106,6 +106,14 @@ describe('VxCacheLayer', () => {
     expect([await got!.body.text(), srv.seen.at(-1)!.scope]).toEqual(['hello', MAIN])
     expect(await c.get('bb22')).toBeNull()
     expect(srv.seen.slice(-2).map((r) => r.scope)).toEqual(['refs/heads/f', MAIN])
+  })
+
+  it('uploads an artifact held in a file whole', async () => {
+    const file = path.join(await mkdtemp(path.join(tmpdir(), 'vx-cache-')), 'a.tar')
+    await Bun.write(file, 'from a file')
+    const c = layer(srv.url, write)
+    await c.put('f11e', Bun.file(file), { durationMs: 1 })
+    expect(await (await c.get('f11e'))!.body.text()).toBe('from a file')
   })
 
   it("asks the server's limits once, then checks in chunks of its maxCheckKeys", async () => {
@@ -276,7 +284,7 @@ describe('lend', () => {
     let lifetime = '10m'
     const asked: string[] = []
     // The run's job is a push to main; the other job's a dispatch on main.
-    const claims: Record<string, JWTPayload> = { run: TRUSTED_JOB, other: READ_JOB }
+    const claims: Record<string, JWTPayload> = { run: MAIN_JOB, other: READ_JOB }
     const github = Bun.serve({
       port: 0,
       hostname: '127.0.0.1',
@@ -374,7 +382,7 @@ describe('vx run with vxCache()', () => {
     // This job's CI token, whatever CI runs these tests.
     delete Bun.env.ACTIONS_ID_TOKEN_REQUEST_URL
     delete Bun.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
-    Bun.env.VX_CACHE_TOKEN = await srv.token(TRUSTED_JOB)
+    Bun.env.VX_CACHE_TOKEN = await srv.token(MAIN_JOB)
     root = await mkdtemp(path.join(tmpdir(), 'vx-cache-'))
     await mkdir(path.join(root, 'pkg', 'src'), { recursive: true })
     await writeFile(path.join(root, 'pkg', 'src', 'app.js'), 'console.log("app")\n')

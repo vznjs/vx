@@ -7,15 +7,16 @@
 import { beforeAll, describe, expect, it } from 'bun:test'
 import { upload as uploadInit } from './upload.js'
 
-export type Job = 'trusted' | 'read' | 'branch' | 'stranger'
+export type Job = 'main' | 'read' | 'branch' | 'stranger'
 
 export interface Target {
   /** The server's URL. */
   base(): string
   /**
-   * A token for the server of a job that writes trusted, one that only
-   * reads, one that writes its branch (`refs/heads/feature`), or a trusted
-   * job of a repository the server does not serve.
+   * A token for the server of a job that writes main (a ref a trust rule
+   * protects), one on main that only reads, one that writes its branch
+   * (`refs/heads/feature`), or a main job of a repository the server
+   * does not serve.
    */
   sign(job: Job): Promise<string>
   /** The limits it was given. */
@@ -34,7 +35,7 @@ export function conformance(name: string, target: Target): void {
   beforeAll(async () => {
     ;[read, write, branch] = await Promise.all([
       target.sign('read'),
-      target.sign('trusted'),
+      target.sign('main'),
       target.sign('branch'),
     ])
   })
@@ -250,20 +251,15 @@ export function conformance(name: string, target: Target): void {
       expect((await put(k, 'branch', branch)).status).toBe(204)
       expect((await get(k)).status).toBe(404)
       expect(await text(k, FEATURE)).toBe('branch')
-      // Exact: trusted bytes never answer for the branch, nor the branch's for trusted.
-      await put(k, 'trusted')
-      expect([await text(k), await text(k, FEATURE)]).toEqual(['trusted', 'branch'])
-      // A branch's upload of what trusted holds is skipped.
-      const t = key()
-      await put(t, 'trusted')
-      expect((await put(t, 'branch', branch)).status).toBe(204)
-      expect((await get(t, FEATURE)).status).toBe(404)
+      // Exact: main's bytes never answer for the branch, nor the branch's for main.
+      await put(k, 'main')
+      expect([await text(k), await text(k, FEATURE)]).toEqual(['main', 'branch'])
     })
 
-    it('reads a ref a trust rule names as trusted, and refuses a read naming no ref', async () => {
+    it('reads only the exact ref named, and refuses a read naming no ref', async () => {
       const k = key()
       await put(k, 'abc')
-      expect(await text(k, 'refs/heads/gh-readonly-queue/main/pr-1')).toBe('abc')
+      expect((await get(k, 'refs/heads/gh-readonly-queue/main/pr-1')).status).toBe(404)
       expect((await call(`/v1/artifacts/download/${k}`)).status).toBe(400)
       for (const bad of ['heads/x', 'refs/', 'refs/a b']) {
         expect([bad, (await get(k, bad)).status]).toEqual([bad, 400])

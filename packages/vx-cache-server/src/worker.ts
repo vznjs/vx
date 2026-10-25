@@ -20,7 +20,7 @@ declare const FixedLengthStream: new (length: number) => {
 
 export interface Env {
   readonly BLOBS: R2Bucket
-  /** The CI repositories served and the jobs trusted (`parseTrust`), a JSON list. */
+  /** The CI repositories served and the refs they protect (`parseTrust`), a JSON list. */
   readonly TRUST?: string
   /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
   readonly AUDIENCE?: string

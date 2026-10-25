@@ -18,21 +18,20 @@ option.
 
 - `parseTrust(json)` reads `TRUST` into `TrustRule`s; `oidcAuth(options)` is the `Authorize` checking a request's CI token against
   them (its options an `OidcOptions`), answering its `Access` or throwing a `Refusal` (`status` and what
-  to fix). `TRUSTED` is the scope a trusted job writes.
+  to fix).
 
 ```ts
 export class Refusal extends Error {
   readonly status: number
 }
-export const TRUSTED: 'trusted'
 export interface TrustRule {
   readonly iss: string
   readonly [claim: string]: string | readonly string[]
 }
 export interface Access {
-  readonly repo: string
+  readonly issuer: string
+  readonly id: string
   readonly write?: string
-  readonly trustedRef: (ref: string) => boolean
 }
 export type Authorize = (req: Request) => Promise<Access>
 export interface OidcOptions {
@@ -50,10 +49,9 @@ export function oidcAuth(opts: OidcOptions): Authorize
 - jose checks the JWT: `RS256`, the signature against the issuer's keys
   (found through its `/.well-known/openid-configuration`, kept and
   refetched by `createRemoteJWKSet`), `aud`, `exp` and `nbf` within 60 s.
-- The repository is the token's `repository_id` (GitHub) or `project_id`
-  (GitLab). One no rule names is `403`.
-- A token matching a rule of its repository writes `TRUSTED`. Any other
-  writes its branch (a pull request's head branch on GitHub, else `ref`;
-  GitLab's `ref_path`), unless a rule trusts that ref: then it reads only.
-- `trustedRef(ref)` says whether a rule trusts a ref, so a read of it reads
-  the trusted scope.
+- The repository is the token's issuer (`iss` without its scheme) and its
+  `repository_id` (GitHub) or `project_id` (GitLab). One no rule names is
+  `403`.
+- A token writes its branch (a pull request's head branch on GitHub, else
+  `ref`; GitLab's `ref_path`). A ref a rule names is protected: a token on
+  it that matches no rule reads only.

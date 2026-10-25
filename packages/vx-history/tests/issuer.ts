@@ -19,8 +19,8 @@ export function trustOf(): TrustRule[] {
 export interface Issuer {
   /** Serves the issuer's discovery document and keys, as `OidcOptions.fetchJson`. */
   fetchJson(url: string): Promise<unknown>
-  /** A token of repository 42 for `aud`: trusted, or reading only. */
-  sign(job: 'trusted' | 'read', aud: string): Promise<string>
+  /** A token of repository 42 for `aud`: of main, or reading only. */
+  sign(job: 'main' | 'read', aud: string): Promise<string>
 }
 
 export async function issuer(): Promise<Issuer> {
@@ -33,7 +33,7 @@ export async function issuer(): Promise<Issuer> {
       new SignJWT({
         repository_id: REPO,
         ref: 'refs/heads/main',
-        event_name: job === 'trusted' ? 'push' : 'workflow_dispatch',
+        event_name: job === 'main' ? 'push' : 'workflow_dispatch',
       })
         .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
         .setIssuer(ISS)

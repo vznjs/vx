@@ -61,7 +61,7 @@ namespace), or none.
 
 Task keys carry no branch (2026-10-20): the server decides both halves.
 A write lands where the CI OIDC token, checked against the server's
-trust policy, allows it: trusted, the token's own branch, or nowhere.
+trust policy, allows it: the token's own branch, or nowhere.
 No header, key or client option changes that. `turboCache()` only
 steers reads: it names the run's refs (`x-artifact-read-scopes`), or
 keys each entry on its ref (`scope: 'key'`) for a server that ignores

@@ -25,8 +25,8 @@ on:
 # a default token may hold write access (L-29).
 permissions:
   contents: read
-  # The remote cache's token: turboCache({ oidc }) exchanges the job's OIDC
-  # token with Vercel, no long-lived secret (.vx/workspace.ts).
+  # vxCache() and vxHistory() sign in to our servers with the job's OIDC
+  # token, no long-lived secret (.vx/workspace.ts).
   id-token: write
 
 # A newer push to the same PR supersedes an older run, which is cancelled:
@@ -66,7 +66,7 @@ jobs:
       # The relay's Workers Builds check names a PR's Preview.
       checks: read
     env:
-      VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
+      VX_DTE_RELAY: https://vx-dte.exelord.workers.dev
       GITHUB_TOKEN: ${{ github.token }}
       GH_TOKEN: ${{ github.token }}
       # An unavailable OS sandbox, reftable, tag history, native watcher

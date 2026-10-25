@@ -9,6 +9,5 @@ export {
   type OidcOptions,
   parseTrust,
   Refusal,
-  TRUSTED,
   type TrustRule,
 } from './oidc.js'

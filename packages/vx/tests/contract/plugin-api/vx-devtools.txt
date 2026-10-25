@@ -5,17 +5,15 @@ export class Refusal extends Error {
     message: string,
   )
 }
-== const TRUSTED (src/oidc.ts)
-export const TRUSTED = 'trusted'
 == function oidcAuth (src/oidc.ts)
 export function oidcAuth(opts: OidcOptions): Authorize
 == function parseTrust (src/oidc.ts)
 export function parseTrust(json: string): TrustRule[]
 == type Access (src/oidc.ts)
 export interface Access {
-  readonly repo: string
+  readonly issuer: string
+  readonly id: string
   readonly write?: string
-  readonly trustedRef: (ref: string) => boolean
 }
 == type Authorize (src/oidc.ts)
 export type Authorize = (req: Request) => Promise<Access>

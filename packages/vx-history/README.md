@@ -38,7 +38,8 @@ A recorded p50 always wins over an assumption, and assumptions never feed the wo
 On a CI job with a token (GitHub's OIDC token, which needs
 `permissions: id-token: write`, or a GitLab `id_tokens` entry
 `VX_HISTORY_TOKEN` with the server's origin as `aud`), each run asks it
-for its tasks' numbers, by task definition, its branch's then trusted's.
+for its tasks' numbers, by task definition, its branch's then the
+default branch's.
 The run starts on its local history and re-ranks the tasks not yet
 started when they land; it never waits for them. At its end it sends the
 timings of the tasks it ran, once: under DTE that is the orchestrator,
