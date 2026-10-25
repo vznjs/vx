@@ -194,7 +194,10 @@ describe('VxCacheLayer', () => {
     c.addTiming({ hash: 'test', durationMs: 50 })
     await c.flushTimings()
     expect(srv.seen.at(-1)!.path).toBe('/v1/timings/upload')
-    expect(await layer(srv.url, read).timings(['build', 'test', 'none'])).toEqual(
+    const got = await layer(srv.url, read).timings(['build', 'test', 'none'])
+    // Both builds can land in one millisecond, which orders them no way.
+    got.get('build')?.sort((x, y) => y.durationMs - x.durationMs)
+    expect(got).toEqual(
       new Map([
         [
           'build',
