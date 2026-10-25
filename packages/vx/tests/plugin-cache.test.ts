@@ -160,7 +160,7 @@ describe('ctx.cache', () => {
     expect(text(await c.get('x'))).toBe('timings')
   })
 
-  // A cold CI run (`local:w,remote:w`) still plans on the shared timings:
+  // A cold CI run (`local:w,remote:w`) still reads a plugin's entries:
   // only artifacts are cold (2026-10-24).
   it('a cold policy, writing only, still reads and probes a remote entry', async () => {
     const remote = wire({ batch: true })

@@ -81,9 +81,8 @@ describe('ci.yml', () => {
     expect(doc.jobs['linux']!.if).toStartWith("github.event.action != 'closed' && ")
   })
 
-  // Shallow, a run found no merge-base and so no measured needs, and every
-  // shard booked a whole worker at ~25% CPU (2026-10-22). The run fetches
-  // its merge-base now (mergeBaseWith), so the checkout is one commit.
+  // The run fetches a merge-base itself when it needs one (--affected,
+  // reachMergeBase), so the checkout is one commit.
   it('checks the run out at one commit: the run fetches its merge-base', () => {
     expect(checkout(doc.jobs['linux'])?.with).toBeUndefined()
   })

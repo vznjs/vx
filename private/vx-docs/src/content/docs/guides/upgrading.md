@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-history: drop timings shared through the remote cache
+
+vxHistory() no longer writes or reads timings through the remote cache (ctx.cache); share them with a history server.
+
 ## vx-devtools: name the repository on every request; public reads
 
 vxCache() requires issuer and repository, as does vxHistory() with a server; x-artifact-scope and x-artifact-max-* are vx-scope and vx-max-*; Access.issuer keeps its scheme, so stored keys move.

@@ -96,9 +96,8 @@ the default branch's newest imported timing, else the median of the last
 five on any branch, else none. A timing from a crowded worker (`cpuShare`
 < 1) is the time the task would take alone, so a plan does not carry the
 crowd of the run it learned from. An import (`importTimings`, by
-`@vzn/vx-history` from the workspace's cache, design
-`design/shared-timings-2026-10.md`) is rows tagged `remote` with the
-commit, unique per (commit, task), so a repeat import from any worktree
+`@vzn/vx-history` from its history server) is rows tagged `remote` with
+the commit, unique per (commit, task), so a repeat import from any worktree
 adds nothing; a store with no import pays one probe of that partial
 index, never a query per task. `resourcesFor` gives a task with no run
 in its window the newest imported row's need, so a fresh machine packs
