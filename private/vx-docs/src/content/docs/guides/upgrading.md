@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte-server: store nothing
+
+--state is gone from vx-dte-server, and RelayStore, Stored, `store` and `stored` from its API: the relay stores nothing. Deploy it with a vx-dte that rejoins a run after a relay restart.
+
 ## vx-cache-server: speak Turbo's routes, cache downloads per DC
 
 GET /v1/artifacts/download/<hash> is GET /v1/artifacts/<hash>, POST /v1/artifacts/check is POST /v1/artifacts, x-vx-scope is x-artifact-scope, x-vx-max-* is x-artifact-max-*, the check takes { hashes, scopes } and answers { <hash>: { size, scope } | null }, MAX_CHECK_KEYS / maxCheckKeys are MAX_CHECK_HASHES / maxCheckHashes (lookups, 6 by default on Workers); POST /v1/artifacts/download, MAX_BATCH_ARTIFACTS, maxBatchArtifacts and x-vx-max-batch-artifacts are gone. Deploy the server and vxCache() together.

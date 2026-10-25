@@ -184,6 +184,11 @@ export interface OrchestratorOptions {
  * window a remote exchanges a new one (turboCache's is five minutes).
  */
 const RELEND_MS = 4 * 60_000
+/**
+ * A lent token already inside that window is lent again no sooner: one
+ * lent as it ended relent at once, in a loop (vx-cache, 2026-10-25).
+ */
+const RELEND_FLOOR_MS = 30_000
 
 /**
  * A batch's orders past this go in another: the relay takes a body of
@@ -347,6 +352,14 @@ export class Orchestrator {
         return o.root
       }
     })()
+    // Leases ran on while either side was away, as a relay restarted: what
+    // a worker holds is still its own, not run again elsewhere (owner,
+    // 2026-10-25: "make sure on rejoin we don't repeat work").
+    o.me.resumed((peer) => {
+      for (const a of this.workers.values())
+        if (peer === undefined || a.id === peer)
+          for (const j of a.busy.values()) if (j.leaseUntil !== undefined) this.lease(j)
+    })
     this.loop = this.listen()
   }
 
@@ -424,7 +437,9 @@ export class Orchestrator {
               for (const a of this.workers.values()) this.post(a, { type: 'cache', cache })
             })
           },
-          Math.max(0, f.expiresAt - Date.now() - RELEND_MS),
+          f.expiresAt - Date.now() > RELEND_MS
+            ? f.expiresAt - Date.now() - RELEND_MS
+            : RELEND_FLOOR_MS,
         )
         this.relend.unref()
       },
@@ -997,6 +1012,8 @@ export class Orchestrator {
 
   /** Each task whose worker's lease on it ended goes back. */
   private expire(): void {
+    // With no socket no `held` arrives: the leases wait for it (`resumed`).
+    if (!this.o.me.online) return
     const now = performance.now()
     const back: Job[] = []
     for (const a of this.workers.values())
