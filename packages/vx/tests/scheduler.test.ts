@@ -1579,6 +1579,26 @@ describe('runGraph — an admission policy over the count limit (`admit`)', () =
     expect(looks).toBeLessThan(ids.length * 3)
   })
 
+  it('a full pool is not scanned either: each ready task is looked at O(1) times', async () => {
+    const ids = Array.from({ length: 200 }, (_, i) => `p${i}#run`)
+    let looks = 0
+    const exclusive = new (class extends Set<string> {
+      override has(id: string): boolean {
+        looks++
+        return super.has(id)
+      }
+    })()
+    const out = await runGraph({
+      nodes: nodes(...ids.map((id) => node(id))),
+      concurrency: 2,
+      poolOf: () => ({ name: 'remote', capacity: 2 }),
+      exclusive,
+      execute: async (n) => success(n),
+    })
+    expect(out.size).toBe(ids.length)
+    expect(looks).toBeLessThan(ids.length * 3)
+  })
+
   it('two tasks the policy fits together run concurrently', async () => {
     const peak = await peakOf({
       ids: ['a#run', 'b#run'],
