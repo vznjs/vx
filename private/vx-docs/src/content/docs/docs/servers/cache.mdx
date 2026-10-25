@@ -3,7 +3,7 @@ title: Cache server
 description: Host @vzn/vx-cache-server, the remote cache vxCache() reads and writes, on Workers, Bun or Docker.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components'
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components'
 
 `@vzn/vx-cache-server` is the remote cache you host. It keeps task
 results in one bucket, Cloudflare R2 or any S3 bucket, and nothing
@@ -113,6 +113,22 @@ On Workers each lookup is one subrequest, so a higher
 ```sh
 bun add -d @vzn/vx-cache @vzn/vx-ci
 ```
+
+<Aside title="Not on npm yet">
+
+`@vzn/vx-cache` ships to npm with the next release. Until then, link it from a
+checkout of the vx repository. The vx you run must come from the same
+checkout:
+
+```sh
+git clone https://github.com/vznjs/vx ~/vx
+cd ~/vx && bun install
+(cd packages/vx && bun link) && (cd packages/vx-cache && bun link)
+cd ~/your-repo
+bun link --save @vzn/vx @vzn/vx-cache
+```
+
+</Aside>
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'

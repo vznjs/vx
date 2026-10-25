@@ -91,6 +91,22 @@ it in and deploy again.
 bun add -d @vzn/vx-cache @vzn/vx-ci
 ```
 
+<Aside title="Not on npm yet">
+
+`@vzn/vx-cache` ships to npm with the next release. Until then, link it from a
+checkout of the vx repository. The vx you run must come from the same
+checkout:
+
+```sh
+git clone https://github.com/vznjs/vx ~/vx
+cd ~/vx && bun install
+(cd packages/vx && bun link) && (cd packages/vx-cache && bun link)
+cd ~/your-repo
+bun link --save @vzn/vx @vzn/vx-cache
+```
+
+</Aside>
+
 ```ts title=".vx/workspace.ts" ins={2,3,9-14}
 import { defineWorkspace } from '@vzn/vx/config'
 import { vxCache } from '@vzn/vx-cache'
