@@ -110,13 +110,12 @@ export function localFloor(
           await serve(spec, req.workspaceRoot)
         } catch (err) {
           const why = err instanceof Error ? err.message : String(err)
-          return {
-            exitCode: 1,
-            durationMs: 0,
-            stdout: '',
-            stderr: `${spec.taskId}, which ${req.taskId} depends on, did not start: ${why}\n`,
-            violations: [],
-          }
+          const text = `${spec.taskId}, which ${req.taskId} depends on, did not start: ${why}\n`
+          // Through `onStderr` too, as a spawn failure's text goes: a worker
+          // ships only what its callbacks heard, and a dependant failed
+          // "exit 1, 0ms" with no word of why (CI, 2026-10-25).
+          req.onStderr(text)
+          return { exitCode: 1, durationMs: 0, stdout: '', stderr: text, violations: [] }
         }
       }
       if (req.sandbox !== undefined) await armer?.arm()

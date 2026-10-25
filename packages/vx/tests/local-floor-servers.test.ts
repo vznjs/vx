@@ -47,3 +47,37 @@ it('starts a server two shards on one machine depend on once, for both', async (
     await floor.close()
   }
 }, 20_000)
+
+it('says why a server did not start through the stream a worker ships', async () => {
+  dir = await mkdtemp(path.join(os.tmpdir(), 'vx-floor-srv-'))
+  const floor = localFloor()
+  const heard: string[] = []
+  try {
+    const r = await floor.execute({
+      taskId: 's#live',
+      workspaceRoot: dir,
+      outputs: { files: [], workspaceFiles: [] },
+      command: 'true',
+      forwardArgs: [],
+      cwd: dir,
+      env: { PATH: process.env['PATH'] },
+      envDefine: {},
+      capture: { stdout: false, stderr: false },
+      onStdout: () => {},
+      onStderr: (t) => heard.push(t),
+      servers: [
+        {
+          taskId: 's#srv',
+          command: 'exit 3',
+          cwd: dir,
+          env: { PATH: process.env['PATH'] },
+          readyWhen: 'up',
+        },
+      ],
+    })
+    expect(r.exitCode).toBe(1)
+    expect(heard.join('')).toContain('s#srv, which s#live depends on, did not start')
+  } finally {
+    await floor.close()
+  }
+}, 20_000)
