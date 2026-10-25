@@ -5,6 +5,8 @@ export class Refusal extends Error {
     message: string,
   )
 }
+== function hashPart (src/hash-part.ts)
+export function hashPart(text: string): Promise<string>
 == function oidcAuth (src/oidc.ts)
 export function oidcAuth(opts: OidcOptions): Authorize
 == function parseTrust (src/oidc.ts)

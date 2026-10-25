@@ -4,7 +4,7 @@
 
 import { Refusal } from '@vzn/vx-devtools'
 
-/** The ref a single download reads: `GET /v1/artifacts/download/<hash>`. */
+/** The scope (a ref's hash) a single download reads: `GET /v1/artifacts/download/<hash>`. */
 export const SCOPE_HEADER = 'x-vx-scope'
 
 /**

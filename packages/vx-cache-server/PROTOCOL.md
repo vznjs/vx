@@ -18,8 +18,9 @@ server may serve both.
 
 The server never reads a hash or an artifact's bytes. It only stores
 them and compares hashes for equality, so a client may send them
-encrypted (a keyed hash for names, a cipher for bytes). Refs stay plain:
-the server matches them against CI tokens, which name them anyway.
+encrypted (a keyed hash for names, a cipher for bytes). No ref goes on
+the wire plain: a scope is its ref's hash (§ Keys), and the server
+hashes the token's ref the same way to find where a write goes.
 
 ## Tokens
 
@@ -44,8 +45,9 @@ request: `401`, `the server trusts no CI: set TRUST`.
 ## Keys
 
 An artifact lives in one scope, and a key names both: `{ scope, hash }`.
-`scope` is a ref, `refs/...` (up to 500 characters). `hash` is 1 to 128
-hex digits. A read is exact: the server answers the scope named and no
+`scope` is a ref's hash: the first 128 bits of the SHA-256 of its UTF-8
+(`refs/heads/main`), 32 lowercase hex digits; a plain ref is `400`.
+`hash` is 1 to 128 hex digits. A read is exact: the server answers the scope named and no
 other, so a client that wants its branch's work and then main's asks
 for both keys. Every read names a scope.
 
@@ -53,10 +55,8 @@ An artifact is immutable. A server may expire one at any time: a
 download after a check that held it may miss, which a client reads as a
 miss.
 
-`GET /v1/artifacts/download/<hash>` with `x-vx-scope: <ref>`, the ref's
-UTF-8 percent-encoded (`encodeURI`), as a header carries bytes and a
-branch name any UTF-8: `200` with the bytes (`application/octet-stream`,
-`Content-Length`), or `404`.
+`GET /v1/artifacts/download/<hash>` with `x-vx-scope: <scope>`: `200`
+with the bytes (`application/octet-stream`, `Content-Length`), or `404`.
 
 `POST /v1/artifacts/check` with `{ "keys": [{ "scope", "hash" }, …] }`,
 up to `maxCheckKeys`: `{ "sizes": [<size> | null, …] }`, one per key in
@@ -75,7 +75,7 @@ line is JSON naming each held key with its size, in the order asked,
 and its bytes follow in that order; a key it does not name is not held:
 
 ```
-{"artifacts":[{"scope":"refs/heads/main","hash":"8f1c","size":4200}]}\n
+{"artifacts":[{"scope":"f921bd05e68b03740c450e565e0e6173","hash":"8f1c","size":4200}]}\n
 <4200 bytes>
 ```
 

@@ -314,8 +314,11 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         let late = false
         stopImport = () => (late = true)
         const main = options.defaultBranch ?? DEFAULT_BRANCH
-        // The branch's own numbers first, then the default branch's.
-        const scopes = [...new Set([ctx.branch ?? main, main])].map((b) => `refs/heads/${b}`)
+        // The branch's own numbers first, then the default branch's, each
+        // ref sent as its hash, never plain (M, 2026-10-25).
+        const scopes = [...new Set([ctx.branch ?? main, main])].map((b) =>
+          new Bun.CryptoHasher('sha256').update(`refs/heads/${b}`).digest('hex').slice(0, 32),
+        )
         const weights = (async () => {
           const hashes = [...new Set(ids.flatMap((id) => defs.get(id) ?? []))]
           const got = await server.query(scopes, hashes)

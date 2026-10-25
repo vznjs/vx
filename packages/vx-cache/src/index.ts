@@ -53,6 +53,10 @@ const IN_FLIGHT = 4
 const BATCH_OVER = 2
 const BATCH_TYPE = 'application/vnd.vx-cache.batch'
 
+/** A ref's scope on the wire: its SHA-256's first 128 bits in hex, never the ref (M, 2026-10-25). */
+const scopeOf = (ref: string): string =>
+  new Bun.CryptoHasher('sha256').update(ref).digest('hex').slice(0, 32)
+
 /** A refusal, named by its status and the server's own `message`. */
 async function refusal(res: Response): Promise<Error> {
   let said = ''
@@ -349,7 +353,8 @@ export class VxCacheLayer implements RemoteCacheLayer {
 
   async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo>> {
     if (this.disabled || this.refs.length === 0) return new Map()
-    const keys = hashes.flatMap((hash) => this.refs.map((scope) => ({ scope, hash })))
+    const scopes = this.refs.map(scopeOf)
+    const keys = hashes.flatMap((hash) => scopes.map((scope) => ({ scope, hash })))
     const per = (await this.limitsNow())?.maxCheckKeys ?? 1
     const parts = await Promise.all(
       Array.from({ length: Math.ceil(keys.length / per) }, (_, i) =>
@@ -383,15 +388,14 @@ export class VxCacheLayer implements RemoteCacheLayer {
     return body.sizes
   }
 
-  /** The ref a check found it under, else each ref in order until one holds it. */
+  /** The scope a check found it under, else each ref's in order until one holds it. */
   async get(hash: string): Promise<{ body: Response; durationMs: undefined } | null> {
     const at = this.found.get(hash)
-    for (const scope of at === undefined ? this.refs : [at]) {
+    for (const scope of at === undefined ? this.refs.map(scopeOf) : [at]) {
       if (this.disabled) return null
       const res = await this.request(`/v1/artifacts/download/${hash}`, {
         method: 'GET',
-        // A header carries bytes, a branch name any UTF-8 (#4439).
-        headers: { 'x-vx-scope': encodeURI(scope) },
+        headers: { 'x-vx-scope': scope },
       })
       if (res === undefined) return null
       if (res.status === 404) {

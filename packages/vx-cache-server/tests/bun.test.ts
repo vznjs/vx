@@ -5,7 +5,7 @@ import { oidcAuth } from '@vzn/vx-devtools'
 import { s3Blobs } from '../src/bun.js'
 import { blobName } from '../src/store.js'
 import { createCacheServer, limitsFrom } from '../src/server.js'
-import { conformance } from './conformance.js'
+import { conformance, scopeOf } from './conformance.js'
 import { fakeS3, type FakeS3 } from './fake-s3.js'
 import { type Issuer, issuer, JOBS, TRUST, MAIN_JOB } from './issuer.js'
 import { upload } from './upload.js'
@@ -45,28 +45,29 @@ conformance('Bun with S3', {
 it('names an object <issuer>/<id>/<scope>/<hash>, each hashed, and checks it with one HEAD', async () => {
   const k = 'abc123'
   await fetch(new URL('/v1/artifacts/upload', server.url), upload([[k, 'x']], token))
-  const name = await blobName('token.actions.githubusercontent.com', '42', 'refs/heads/main', k)
-  expect(name).toMatch(/^[0-9a-f]{32}\/[0-9a-f]{32}\/[0-9a-f]{32}\/abc123$/)
+  const main = scopeOf('refs/heads/main')
+  const name = await blobName('token.actions.githubusercontent.com', '42', main, k)
+  // The write's scope is its token's ref hashed by the server, as a client hashes it.
+  expect(name).toBe(
+    `${scopeOf('token.actions.githubusercontent.com')}/${scopeOf('42')}/${main}/abc123`,
+  )
+  expect([...s3.objects.keys()].join()).not.toMatch(/refs|github|\/42\//)
   expect(s3.objects.get(`/b/${name}`)).toEqual(new TextEncoder().encode('x'))
   const before = s3.log.length
   const res = await fetch(new URL('/v1/artifacts/check', server.url), {
     method: 'POST',
-    body: JSON.stringify({ keys: [{ scope: 'refs/heads/main', hash: k }] }),
+    body: JSON.stringify({ keys: [{ scope: main, hash: k }] }),
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
   })
   expect(await res.json()).toEqual({ sizes: [1] })
   expect(s3.log.slice(before).map((l) => l.split('?')[0])).toEqual([`HEAD /b/${name}`])
 })
 
-it('names each scope apart, whatever bytes its ref holds', async () => {
-  const names = await Promise.all(
-    ['refs/heads/a/b', 'refs/heads/a%2Fb', 'refs/heads/ünï', 'refs/heads/a'].map((s) =>
-      blobName('i', '1', s, 'f'),
-    ),
-  )
-  expect(new Set(names).size).toBe(4)
-  expect(await blobName('j', '1', 'refs/heads/a', 'f')).not.toBe(names[3])
-  expect(await blobName('i', '2', 'refs/heads/a', 'f')).not.toBe(names[3])
+it('names each repository apart', async () => {
+  const a = scopeOf('refs/heads/a')
+  const name = await blobName('i', '1', a, 'f')
+  expect(await blobName('j', '1', a, 'f')).not.toBe(name)
+  expect(await blobName('i', '2', a, 'f')).not.toBe(name)
 })
 
 it('reads the limits from the environment, and refuses one that is not a count', () => {

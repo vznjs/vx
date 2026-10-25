@@ -3,6 +3,8 @@
 // issuer, repository id, scope and hash and whose size is the bucket's
 // own, so any number of nodes share a bucket and nothing else.
 
+import { hashPart } from '@vzn/vx-devtools'
+
 /** A blob's bytes and its size, as the bucket holds them. */
 export interface Blob {
   readonly body: ReadableStream<Uint8Array>
@@ -21,34 +23,13 @@ export interface Blobs {
 
 /**
  * An artifact's object name, `<issuer>/<id>/<scope>/<hash>` (M,
- * 2026-10-25), the first three each hashed (`partOf`) so a ref's slashes
- * or any byte stay one segment. The server knows no tier, and a name
- * tells nothing of what it holds.
+ * 2026-10-25): issuer and id each hashed (`hashPart`), `scope` the ref's
+ * hash the client sent, so no segment is a plain value and a ref's slashes
+ * or any byte stay one segment. The server knows no tier.
  */
 export const blobName = async (
   issuer: string,
   id: string,
   scope: string,
   hash: string,
-): Promise<string> => `${await partOf(issuer)}/${await partOf(id)}/${await partOf(scope)}/${hash}`
-
-const parts = new Map<string, Promise<string>>()
-
-/**
- * One name segment: SHA-256's first 128 bits in hex. Web Crypto, so Bun
- * and Workers name alike; a few strings recur per node, so each is
- * hashed once.
- */
-function partOf(text: string): Promise<string> {
-  let got = parts.get(text)
-  if (got === undefined) {
-    if (parts.size >= 10_000) parts.clear()
-    got = crypto.subtle
-      .digest('SHA-256', new TextEncoder().encode(text))
-      .then((d) =>
-        [...new Uint8Array(d, 0, 16)].map((b) => b.toString(16).padStart(2, '0')).join(''),
-      )
-    parts.set(text, got)
-  }
-  return got
-}
+): Promise<string> => `${await hashPart(issuer)}/${await hashPart(id)}/${scope}/${hash}`

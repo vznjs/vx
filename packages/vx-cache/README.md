@@ -47,8 +47,8 @@ refused write (a job that reads only) turns off writes alone. Any other
 refusal is a warning naming the server's own words, and the task reads
 as a miss.
 
-Every read names exact keys, `{ scope, hash }`: one per ref the run
-reads (its branch, then the branch it merges into, then the default
+Every read names exact keys, `{ scope, hash }`, the scope its ref's
+hash (no ref goes on the wire plain): one per ref the run reads (its branch, then the branch it merges into, then the default
 branch), and the first ref holding a hash answers it. A run that reads
 no ref says so and stays local. The run asks the server's limits once
 (`/v1/capabilities`) and checks in chunks of its `maxCheckKeys`. One or

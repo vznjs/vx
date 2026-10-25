@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it } from 'bun:test'
 import { exportJWK, generateKeyPair, type JWTPayload, SignJWT } from 'jose'
 import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
 import { createCacheServer } from '../src/server.js'
+import { scopeOf } from './conformance.js'
 import { memBlobs } from './mem-blobs.js'
 import { upload } from './upload.js'
 
@@ -53,10 +54,10 @@ beforeAll(async () => {
 
 const put = (token: string, key: string) =>
   handle(new Request(`${AUD}/v1/artifacts/upload`, upload([[key, 'x']], token)))
-const status = (key: string, scope = 'refs/heads/main') =>
+const status = (key: string, ref = 'refs/heads/main') =>
   handle(
     new Request(`${AUD}/v1/artifacts/download/${key}`, {
-      headers: { authorization: `Bearer ${read}`, 'x-vx-scope': scope },
+      headers: { authorization: `Bearer ${read}`, 'x-vx-scope': scopeOf(ref) },
     }),
   ).then(async (r) => (await r.arrayBuffer(), r.status))
 const detail = async (res: Response) =>
