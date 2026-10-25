@@ -266,6 +266,12 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number>
 export function branchCacheScope(repo: string, branch: string): string
 == function code (src/util/ui.ts)
 export function code(frame: string): Block
+== function criticalPath (src/graph/critical-path.ts)
+export function criticalPath(
+  nodes: readonly TaskNode[],
+  history: ReadonlyMap<string, { readonly p50DurationMs?: number | undefined }>,
+  assume: Readonly<Record<string, number>> = {},
+): ReadonlyMap<string, number>
 == function currentBranch (src/orchestrator/run-context.ts)
 export function currentBranch(
   workspaceRoot: string,
