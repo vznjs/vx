@@ -36,8 +36,8 @@ token (GitHub Actions, GitLab CI): there is no other. Its signature,
 alone decides what it reads and where it writes, by the server's trust
 rules:
 
-- Its issuer and repository id (`repository_id` on GitHub, `project_id`
-  on GitLab) are the repository it reads and writes; one no rule names
+- Its issuer and repository name (`repository` on GitHub, `project_path`
+  on GitLab, `org/name`, any case) are the repository it reads and writes; one no rule names
   is `403`. A repository's artifacts are never another's.
 - It writes its branch's scope: on GitHub a pull request's head branch
   (`refs/heads/<head_ref>`), a merge queue's run

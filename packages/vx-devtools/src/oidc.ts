@@ -27,8 +27,8 @@ export class Refusal extends Error {
 }
 
 /**
- * One rule of `TRUST`: the issuer, the repository's id claim
- * (`repository_id` on GitHub, `project_id` elsewhere), and the other
+ * One rule of `TRUST`: the issuer, the repository's name claim
+ * (`repository` on GitHub, `project_path` elsewhere), and the other
  * claims a job's token must hold to write the refs the rule names, each a
  * string (`*` matches any run of characters) or a list of them.
  */
@@ -44,8 +44,11 @@ export interface Access {
    * it signs the token, so two platforms' repositories never meet.
    */
   readonly issuer: string
-  /** The repository's id at that issuer (`repository_id`, `project_id`): a rename keeps it. */
-  readonly id: string
+  /**
+   * The repository at that issuer, lowercased: `org/name` (`repository`,
+   * GitLab's `project_path`, M 2026-10-25), what a checkout's origin names.
+   */
+  readonly repository: string
   /** The token's own ref: the one scope it writes and deletes. */
   readonly write?: string
 }
@@ -54,12 +57,12 @@ export type Authorize = (req: Request) => Promise<Access>
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
 
-/** The claim naming a token's repository by an id that a rename keeps. */
-const repoClaimOf = (iss: string): string => (iss === GITHUB ? 'repository_id' : 'project_id')
+/** The claim naming a token's repository, `org/name`. */
+const repoClaimOf = (iss: string): string => (iss === GITHUB ? 'repository' : 'project_path')
 /** The claim naming the ref a token's job runs on. */
 const refClaimOf = (iss: string): string => (iss === GITHUB ? 'ref' : 'ref_path')
 
-/** `TRUST`: a JSON list of rules, each with `iss` and its repository id claim. */
+/** `TRUST`: a JSON list of rules, each with `iss` and its repository name claim. */
 export function parseTrust(json: string): TrustRule[] {
   if (json.trim() === '') return []
   const rules: unknown = JSON.parse(json)
@@ -110,9 +113,10 @@ const globOf = (pattern: string): RegExp =>
       .join('.*')}$`,
   )
 
-/** Whether every claim a rule names holds one of its values. */
+/** Whether every other claim a rule names holds one of its values (the repository is matched before). */
 function matches(rule: TrustRule, claims: JWTPayload): boolean {
   for (const [claim, want] of Object.entries(rule)) {
+    if (claim === repoClaimOf(rule.iss)) continue
     const v = claims[claim]
     if (typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'boolean') return false
     const got = String(v)
@@ -212,10 +216,14 @@ export function oidcAuth(opts: OidcOptions): Authorize {
       throw refusal(err)
     }
     const claim = repoClaimOf(iss)
-    const id = String(claims[claim])
-    const ofRepo = opts.trust.filter((r) => r.iss === iss && r[claim] === id)
-    if (ofRepo.length === 0) throw new Refusal(403, `${claim} ${id} is not in this server's TRUST`)
-    const repo = { issuer: iss.replace(/^https?:\/\//, '').replace(/\/$/, ''), id }
+    // GitHub and GitLab names ignore case; a checkout's origin may spell it either way.
+    const repository = String(claims[claim]).toLowerCase()
+    const ofRepo = opts.trust.filter(
+      (r) => r.iss === iss && String(r[claim]).toLowerCase() === repository,
+    )
+    if (ofRepo.length === 0)
+      throw new Refusal(403, `${claim} ${repository} is not in this server's TRUST`)
+    const repo = { issuer: iss.replace(/^https?:\/\//, '').replace(/\/$/, ''), repository }
     const branch = branchOf(iss, claims)
     if (branch === undefined) return repo
     if (ofRepo.some((r) => matches(r, claims))) return { ...repo, write: branch }

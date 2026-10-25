@@ -22,7 +22,7 @@ console.log(
   JSON.stringify([
     {
       iss,
-      project_id: '42',
+      project_path: '42',
       pipeline_source: 'push',
       ref_path: ['refs/heads/main', 'refs/heads/gh-readonly-queue/main/*'],
     },

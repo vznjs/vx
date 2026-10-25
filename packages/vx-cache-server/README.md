@@ -30,7 +30,7 @@ scope, never another's.
 - A job of another repository is refused.
 
 `TRUST` is a JSON list of rules. Each names the issuer (`iss`), the
-repository's id (`repository_id` on GitHub, `project_id` on GitLab), the
+repository's name (`repository` on GitHub, `project_path` on GitLab: `org/name`, any case), the
 refs it protects (`ref`, `ref_path` on GitLab) and any other claim the
 job writing them holds. A value is a string (`*` matches anything) or a
 list of them. With `TRUST` empty, every request is refused. For example:
@@ -39,14 +39,14 @@ list of them. With `TRUST` empty, every request is refused. For example:
 [
   {
     "iss": "https://token.actions.githubusercontent.com",
-    "repository_id": "123456789",
+    "repository": "acme/app",
     "event_name": ["push", "merge_group"],
     "ref": ["refs/heads/main", "refs/heads/gh-readonly-queue/main/*"],
     "ref_protected": "true"
   },
   {
     "iss": "https://gitlab.com",
-    "project_id": "4567",
+    "project_path": "acme/web",
     "ref_path": "refs/heads/main",
     "ref_protected": "true",
     "pipeline_source": ["push", "schedule"]
@@ -141,8 +141,8 @@ over a bucket of your own (`src/index.ts`):
   `{ blobs, authorize, limits? }`: `blobs` is a `Blobs` bucket
   (`{ put(name, body, size), get(name), size(name) }`, `get` answering a
   `Blob`, `{ body, size }`), `authorize` an `Authorize`, which maps a
-  request to its `Access` (`{ issuer, id, write? }`: the token's issuer and
-  repository id, which it reads, and the scope it may write) or throws, and `limits` any of `Limits`
+  request to its `Access` (`{ issuer, repository, write? }`: the token's issuer and
+  repository name, which it reads, and the scope it may write) or throws, and `limits` any of `Limits`
   (`{ maxCheckHashes, maxUploadBytes }`) over
   `DEFAULT_LIMITS`.
 - `blobName(issuer, id, scope, hash)` is an artifact's object name,

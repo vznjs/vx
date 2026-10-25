@@ -1,7 +1,7 @@
 // A CI OIDC issuer for the tests: an issuer URL, its keys served without a
 // network (or, for the container, on loopback), and tokens signed for any
-// claims. GitHub's URL reads `repository_id` and `ref`; any other GitLab's
-// `project_id` and `ref_path`.
+// claims. GitHub's URL reads `repository` and `ref`; any other GitLab's
+// `project_path` and `ref_path`.
 
 import { exportJWK, generateKeyPair, type JWK, type JWTPayload, SignJWT } from 'jose'
 import { parseTrust, type TrustRule } from '@vzn/vx-devtools'
@@ -16,7 +16,7 @@ export function trustOf(iss: string = GITHUB): TrustRule[] {
     JSON.stringify([
       {
         iss,
-        [github ? 'repository_id' : 'project_id']: REPO,
+        [github ? 'repository' : 'project_path']: REPO,
         [github ? 'event_name' : 'pipeline_source']: 'push',
         [github ? 'ref' : 'ref_path']: 'refs/heads/main',
       },
@@ -39,8 +39,8 @@ export async function issuer(iss: string = GITHUB): Promise<Issuer> {
   const github = iss === GITHUB
   const claims = (ref: string, push: boolean): JWTPayload =>
     github
-      ? { repository_id: REPO, ref, event_name: push ? 'push' : 'workflow_dispatch' }
-      : { project_id: REPO, ref_path: ref, pipeline_source: push ? 'push' : 'web' }
+      ? { repository: REPO, ref, event_name: push ? 'push' : 'workflow_dispatch' }
+      : { project_path: REPO, ref_path: ref, pipeline_source: push ? 'push' : 'web' }
   const jobs = {
     main: claims('refs/heads/main', true),
     branch: claims('refs/heads/feature', true),

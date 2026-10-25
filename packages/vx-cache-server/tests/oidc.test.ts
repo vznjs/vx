@@ -14,7 +14,8 @@ const trust = parseTrust(
   JSON.stringify([
     {
       iss: GITHUB,
-      repository_id: '42',
+      // A name, matched whatever its case (M, 2026-10-25: org/name, not id).
+      repository: 'Acme/App',
       event_name: ['push', 'merge_group'],
       ref: ['refs/heads/main', 'refs/heads/gh-readonly-queue/main/*'],
       ref_protected: 'true',
@@ -30,7 +31,7 @@ beforeAll(async () => {
   const { privateKey, publicKey } = await generateKeyPair('RS256')
   const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }
   sign = (claims, aud = AUD) =>
-    new SignJWT({ repository_id: '42', ...claims })
+    new SignJWT({ repository: 'acme/app', ...claims })
       .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
       .setIssuer(GITHUB)
       .setAudience(aud)
@@ -121,9 +122,9 @@ describe('CI OIDC tokens', () => {
   })
 
   it('refuses another repository, another audience and a forged signature', async () => {
-    expect(await detail(await put(await sign({ ...MAIN, repository_id: '9' }), 'd4'))).toEqual([
+    expect(await detail(await put(await sign({ ...MAIN, repository: '9' }), 'd4'))).toEqual([
       403,
-      "repository_id 9 is not in this server's TRUST",
+      "repository 9 is not in this server's TRUST",
     ])
     expect(await detail(await put(await sign(MAIN, 'https://elsewhere'), 'd4'))).toEqual([
       401,

@@ -1,6 +1,6 @@
 // vx-cache v1 (PROTOCOL.md) over any `Blobs` bucket: one fetch handler
 // the Bun server, the Worker and the Docker image all serve. No database:
-// an artifact is one object, named by its issuer, repository id, scope and
+// an artifact is one object, named by its issuer, repository name, scope and
 // hash, and a read names the exact scope it wants (M, 2026-10-25).
 
 import { type Access, type Authorize, hashPart, Refusal } from '@vzn/vx-devtools'
@@ -66,7 +66,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     return scope
   }
   const nameOf = (access: Access, scope: string, hash: string): Promise<string> =>
-    blobName(access.issuer, access.id, scope, hash)
+    blobName(access.issuer, access.repository, scope, hash)
 
   /** The token's own scope, the one place it writes. */
   const writeScope = (access: Access): Promise<string> => {

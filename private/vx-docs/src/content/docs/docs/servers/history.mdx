@@ -74,7 +74,7 @@ On Workers, each setting is a var in `wrangler.jsonc`.
 
 ## What it keeps
 
-One row per issuer, repository id, scope (the branch) and task
+One row per issuer, repository name, scope (the branch) and task
 definition hash. The first three are stored as the first 128 bits of
 their SHA-256, in hex, with no secret key, so the database names no repository or branch. A task's definition is its command and `env.define`: a
 task whose command changed starts a new row, and editing its inputs or

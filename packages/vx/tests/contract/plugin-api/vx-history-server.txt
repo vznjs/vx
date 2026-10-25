@@ -22,7 +22,7 @@ export interface Db {
 == type Repo (src/store.ts)
 export interface Repo {
   readonly issuer: string
-  readonly id: string
+  readonly repository: string
 }
 == type Report (src/store.ts)
 export interface Report {

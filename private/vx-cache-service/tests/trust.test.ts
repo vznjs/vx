@@ -27,7 +27,7 @@ beforeAll(async () => {
   })
   access = async (claims) => {
     const token = await new SignJWT({
-      repository_id: '1235245958',
+      repository: 'vznjs/vx',
       ref_protected: 'false',
       ...claims,
     })
