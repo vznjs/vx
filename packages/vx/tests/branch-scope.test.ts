@@ -92,7 +92,17 @@ it("a plugin's trusted run has no scope, whatever git names", async () => {
     trusted: true,
     base: 'b4',
   })
-  expect(await facts('{ trusted: true }', "{ scope: 'a/b:c' }")).toEqual({ scope: 'a/b:c' })
+  expect(await facts('{ trusted: true }', "{ scope: 'a/b:c' }")).toEqual({ scope: 'a/b:c' }) // A plugin names the refs a remote reads (M, 2026-10-25); a later one wins.
+  expect(
+    await facts(
+      "{ refs: ['refs/heads/a', 'refs/heads/a', 'refs/heads/main'] }",
+      "{ refs: ['refs/heads/main'] }",
+    ),
+  ).toEqual({ refs: ['refs/heads/main'] })
+  await expect(facts("{ refs: ['main'] }")).rejects.toThrow(
+    'setBranch: refs must be a list of refs',
+  )
+  await expect(facts("{ refs: 'refs/heads/main' }")).rejects.toThrow('setBranch: refs')
 })
 
 it("VX_CACHE_SCOPE beats a plugin's scope, which beats git's; git's needs a cache plugin", () => {

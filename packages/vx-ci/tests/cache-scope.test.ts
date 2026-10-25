@@ -25,6 +25,7 @@ afterAll(() => rm(dir, { recursive: true, force: true }))
 const ACTIONS_KEYS = [
   'GITHUB_ACTIONS',
   'GITHUB_HEAD_REF',
+  'GITHUB_BASE_REF',
   'GITHUB_REF',
   'GITHUB_REF_NAME',
   'GITHUB_REPOSITORY',
@@ -35,6 +36,7 @@ const ACTIONS_KEYS = [
 async function branchOf(
   env: Record<string, string>,
   options: Parameters<typeof github>[0] = {},
+  baseBranch?: string,
 ): Promise<BranchFacts> {
   const saved = ACTIONS_KEYS.map((k) => [k, process.env[k]] as const)
   for (const k of ACTIONS_KEYS) delete process.env[k]
@@ -42,10 +44,11 @@ async function branchOf(
   const facts: BranchFacts = {}
   try {
     // Off Actions the factory is undefined: nothing to name.
-    await github(options)?.config!(
-      {},
-      { workspaceRoot: dir, warn: () => {}, setBranch: (f) => Object.assign(facts, f) },
-    )
+    await github(options)?.config!(baseBranch === undefined ? {} : { baseBranch }, {
+      workspaceRoot: dir,
+      warn: () => {},
+      setBranch: (f) => Object.assign(facts, f),
+    })
     return facts
   } finally {
     for (const [k, v] of saved) {
@@ -77,7 +80,7 @@ async function event(payload: object): Promise<string> {
 }
 
 it('a push to the default branch keeps the default keys', async () => {
-  expect(await branchOf(actions('refs/heads/main', 'main'))).toEqual({})
+  expect(await branchOf(actions('refs/heads/main', 'main'))).toEqual({ refs: ['refs/heads/main'] })
 })
 
 it("a pull request writes to its head branch's scope, as a push to it does, and names its base", async () => {
@@ -91,11 +94,20 @@ it("a pull request writes to its head branch's scope, as a push to it does, and 
   const pr = {
     ...actions('refs/pull/42/merge', '42/merge'),
     GITHUB_HEAD_REF: 'feat/x',
+    GITHUB_BASE_REF: 'release',
     GITHUB_EVENT_PATH: file,
   }
-  expect(await branchOf(pr)).toEqual({ scope: 'vznjs/vx:feat/x', base: 'abc123' })
+  expect(await branchOf(pr)).toEqual({
+    scope: 'vznjs/vx:feat/x',
+    base: 'abc123',
+    refs: ['refs/heads/feat/x', 'refs/heads/release', 'refs/heads/main'],
+  })
   expect(await branchOf(actions('refs/heads/feat/x', 'feat/x'))).toEqual({
     scope: 'vznjs/vx:feat/x',
+    refs: ['refs/heads/feat/x', 'refs/heads/main'],
+  })
+  expect(await branchOf(actions('refs/heads/feat/x', 'feat/x'), {}, 'trunk')).toMatchObject({
+    refs: ['refs/heads/feat/x', 'refs/heads/trunk'],
   })
 })
 
@@ -152,16 +164,31 @@ it("an event that runs in main's context for a pull request is the PR's", async 
 
 // Owner, 2026-10-18: a merge queue builds what is about to land on main,
 // so it reads and writes the default keys; its queue branch is a scope
-// nobody reads.
-it("a merge queue's run is trusted: no scope, compared with the queue's base", async () => {
-  const ref = 'refs/heads/gh-readonly-queue/main/pr-7-abc'
+// nobody reads. M, 2026-10-25: it reads its base branch only.
+it("a merge queue's run is trusted: no scope, compared with the queue's base, reading only it", async () => {
+  const sha = 'a'.repeat(40)
+  const ref = `refs/heads/gh-readonly-queue/release/pr-7-${sha}`
+  const queue = async (payload: object) =>
+    branchOf(
+      {
+        ...actions(ref, `gh-readonly-queue/release/pr-7-${sha}`),
+        GITHUB_EVENT_NAME: 'merge_group',
+        GITHUB_EVENT_PATH: await event(payload),
+      },
+      {},
+      'trunk',
+    )
   expect(
-    await branchOf({
-      ...actions(ref, 'gh-readonly-queue/main/pr-7-abc'),
-      GITHUB_EVENT_NAME: 'merge_group',
-      GITHUB_EVENT_PATH: await event({ merge_group: { base_sha: 'b4se', head_ref: ref } }),
+    await queue({
+      merge_group: { base_sha: 'b4se', base_ref: 'refs/heads/release', head_ref: ref },
     }),
-  ).toEqual({ trusted: true, base: 'b4se' })
+  ).toEqual({ trusted: true, base: 'b4se', refs: ['refs/heads/release'] })
+  // No base_ref in the event: the queue ref names it.
+  expect(await queue({ merge_group: { base_sha: 'b4se' } })).toEqual({
+    trusted: true,
+    base: 'b4se',
+    refs: ['refs/heads/release'],
+  })
 })
 
 it('an unknown default branch gets its own scope', async () => {

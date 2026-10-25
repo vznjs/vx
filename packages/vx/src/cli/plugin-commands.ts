@@ -169,7 +169,7 @@ async function verbCache(
     cacheDir: ws.cacheDir,
     warn,
     scope,
-    refs: cacheRefs(ws.workspaceRoot, configuredBaseBranch(ws.workspaceConfig)),
+    refs: cacheRefs(ws.workspaceRoot, configuredBaseBranch(ws.workspaceConfig), ws.branch.refs),
     localCache,
     policy: VERB_POLICY,
     remotes,
@@ -229,7 +229,9 @@ async function verbArtifacts(
     cacheDir: ws.cacheDir,
     warn,
     scope,
-    refs: facts?.()?.refs ?? cacheRefs(ws.workspaceRoot, configuredBaseBranch(ws.workspaceConfig)),
+    refs:
+      facts?.()?.refs ??
+      cacheRefs(ws.workspaceRoot, configuredBaseBranch(ws.workspaceConfig), ws.branch.refs),
     localCache,
     policy,
     remotes,

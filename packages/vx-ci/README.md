@@ -84,6 +84,14 @@ keys only what plugins store themselves (`ctx.cache`, run records):
 task keys never carry it, and the cache server decides from the CI OIDC
 token where a task's entry lands. `VX_CACHE_SCOPE` overrides it.
 
+It also names the refs a remote cache reads, in order (`refs`): the
+run's own branch (a pull request's head, else `GITHUB_REF`), then the
+branch it merges into (`GITHUB_BASE_REF`), then the default branch (the
+workspace's `baseBranch`, else the event's). A merge queue's run reads
+only its base branch (`merge_group.base_ref`, else the queue ref's
+`<base>`): it is about to become that branch, and the server writes its
+entries there.
+
 ## GitLab CI
 
 ```ts
@@ -106,7 +114,11 @@ fork's `CI_MERGE_REQUEST_SOURCE_PROJECT_PATH`) and its diff base
 (`CI_MERGE_REQUEST_DIFF_BASE_SHA`), the base of a bare `--affected`.
 A merge train's pipeline (`CI_MERGE_REQUEST_EVENT_TYPE=merge_train`)
 builds what lands on the target, so it is trusted: no scope. As on
-Actions, the scope keys only plugin entries. `gitlab({ cacheScope: false })` (`GitlabPluginOptions`) turns it off;
+Actions, the scope keys only plugin entries. A remote reads the tag, else
+the merge request's source branch, else `CI_COMMIT_REF_NAME`, then the
+target (`CI_MERGE_REQUEST_TARGET_BRANCH_NAME`), then the default branch
+(`baseBranch`, else `CI_DEFAULT_BRANCH`); a merge train reads only its
+target. `gitlab({ cacheScope: false })` (`GitlabPluginOptions`) turns it off;
 `VX_CACHE_SCOPE` overrides it. Anywhere else `gitlab()` returns
 `undefined`, so declaring both plugins is safe. Merge request comments
 and reports are not part of it yet.

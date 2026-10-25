@@ -530,6 +530,7 @@ export interface BranchFacts {
   scope?: string
   base?: string
   trusted?: boolean
+  refs?: readonly string[]
 }
 == type CacheConfig (src/config.ts)
 export interface CacheConfig {
