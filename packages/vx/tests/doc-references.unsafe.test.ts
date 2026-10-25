@@ -93,7 +93,7 @@ function siteSource(urlPath: string): string | undefined {
     return existsSync(built) ? built : path.join(CORE_DOCS, `${split[1]}.md`)
   }
   // import-docs writes the relay's protocol spec as `switchboard/`.
-  if (page === 'switchboard') return path.join(repo, 'packages', 'vx-dte-relay', 'PROTOCOL.md')
+  if (page === 'switchboard') return path.join(repo, 'packages', 'vx-dte-server', 'PROTOCOL.md')
   // And each published plugin's README as `plugins/<package>/`.
   const plugin = /^plugins\/(vx-[\w-]+)$/.exec(page)
   if (plugin) return path.join(repo, 'packages', plugin[1]!, 'README.md')

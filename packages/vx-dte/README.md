@@ -16,12 +16,12 @@ it (an OIDC exchange's token, never a stored secret) when it has none of
 its own.
 
 Workers and the orchestrator meet at a relay
-([`@vzn/vx-dte-relay`](../vx-dte-relay/README.md)), since CI runners
+([`@vzn/vx-dte-server`](../vx-dte-server/README.md)), since CI runners
 take no inbound connection. It speaks the
-[Switchboard protocol](../vx-dte-relay/PROTOCOL.md): the run is a
+[Switchboard protocol](../vx-dte-server/PROTOCOL.md): the run is a
 session, its id the run id, the orchestrator its host and each worker a
 peer. Host your own: its
-[README](../vx-dte-relay/README.md) has a Deploy to Cloudflare button,
+[README](../vx-dte-server/README.md) has a Deploy to Cloudflare button,
 which asks only for the repositories whose runs it carries.
 
 A run id is a channel. Workers join it before or after the orchestrator
@@ -152,7 +152,7 @@ export default defineWorkspace({ plugins: [dte({ relay: 'http://127.0.0.1:8080' 
 ```
 
 ```sh
-bun /path/to/vx/packages/vx-dte-relay/src/bun.ts --no-auth --port 8080   # the relay
+bun /path/to/vx/packages/vx-dte-server/src/bun.ts --no-auth --port 8080   # the relay
 export VX_DTE_SECRET=$(openssl rand -base64 32)                          # in each terminal: the same one
 export VX_DTE_RUN=$(uuidgen)                                             # in each terminal: the same one
 vx dte worker                                                             # a worker, as many as you like
@@ -794,5 +794,5 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   of its own on loopback. `LocalOptions` is `{ prepare? }`: a shell line
   each worktree runs before its worker starts.
 
-`@vzn/vx-dte-relay` is a dependency for `local()`'s and `docker()`'s relay, loaded only
+`@vzn/vx-dte-server` is a dependency for `local()`'s and `docker()`'s relay, loaded only
 when a distributed run starts.

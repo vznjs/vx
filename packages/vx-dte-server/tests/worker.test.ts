@@ -174,10 +174,10 @@ it('closes a socket that kept nothing as gone, and ignores its frames and close'
 
 it('will not start without ALLOW, or with an entry it cannot read', () => {
   const none: Env = { RELAY: namespace(() => none), ALLOW: ' ' }
-  expect(() => new RelayRun(state(), none)).toThrow('vx-dte-relay: set ALLOW')
+  expect(() => new RelayRun(state(), none)).toThrow('vx-dte-server: set ALLOW')
   const bad: Env = { RELAY: namespace(() => bad), ALLOW: 'o/r' }
   expect(() => new RelayRun(state(), bad)).toThrow(
-    'vx-dte-relay: ALLOW: o/r is not issuer:owner/repo:workflow',
+    'vx-dte-server: ALLOW: o/r is not issuer:owner/repo:workflow',
   )
 })
 

@@ -1,1 +1,1 @@
-export { default, RelayRun } from '@vzn/vx-dte-relay/worker'
+export { default, RelayRun } from '@vzn/vx-dte-server/worker'

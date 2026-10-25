@@ -3,18 +3,18 @@
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
-  "description": "vznjs's own relay deploy: @vzn/vx-dte-relay's worker under this repo's Cloudflare settings, built by Workers Builds.",
+  "description": "vznjs's own relay deploy: @vzn/vx-dte-server's worker under this repo's Cloudflare settings, built by Workers Builds.",
   "type": "module",
   "engines": {
     "bun": ">=1.4"
   },
   "//": [
-    "@vzn/vx-dte-relay: the worker this deploys, unchanged.",
+    "@vzn/vx-dte-server: the worker this deploys, unchanged.",
     "wrangler: Workers Builds deploys src/worker.ts with it by wrangler.jsonc.",
     "@vzn/vx: vx.config.ts; @types/bun: tests and preview.ts."
   ],
   "dependencies": {
-    "@vzn/vx-dte-relay": "workspace:*"
+    "@vzn/vx-dte-server": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.4.0",

@@ -344,7 +344,7 @@ it('fails a task that fails on its worker, with its output', () => {
 }, 60_000)
 
 it('runs on a worker started by hand, with no adapter, under one name on both sides', async () => {
-  const { serveRelay } = await import('@vzn/vx-dte-relay')
+  const { serveRelay } = await import('@vzn/vx-dte-server')
   const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
   const url = relay.url
   try {
@@ -398,7 +398,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)} })] }
 // A CI step that started a worker before the run began (github()'s
 // adopt): the run counts it against its size's max and starts no other.
 it('runs on a worker the adapter adopted, and starts none of its own', async () => {
-  const { serveRelay } = await import('@vzn/vx-dte-relay')
+  const { serveRelay } = await import('@vzn/vx-dte-server')
   const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
   const url = relay.url
   const spawns = path.join(root, 'spawns.log')
@@ -453,7 +453,7 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)}, workers: { small
 // ci.yml's mac and arm sizes name no platform and join a run on Linux: a
 // size that names none takes whatever worker joins it.
 it('runs on a worker of another platform when its size names none', async () => {
-  const { serveRelay } = await import('@vzn/vx-dte-relay')
+  const { serveRelay } = await import('@vzn/vx-dte-server')
   const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
   const url = relay.url
   try {

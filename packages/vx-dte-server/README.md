@@ -1,4 +1,4 @@
-# @vzn/vx-dte-relay
+# @vzn/vx-dte-server
 
 Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 
@@ -18,7 +18,7 @@ server that speaks it can take its place, and any tool can use it.
 
 ### On Cloudflare Workers
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vznjs/vx/tree/main/packages/vx-dte-server)
 
 The button copies this directory into a new repository of yours and
 deploys it. It asks for one var, `ALLOW`: who may take part, space
@@ -29,7 +29,7 @@ jobs of `.github/workflows/ci.yml` in `vznjs/vx`;
 `https://gitlab.com:group/project:.gitlab-ci.yml` a GitLab project's.
 Repeat an entry for each repository and workflow, the orchestrator's and
 the workers'. Every other token is refused. The relay's URL is the Cloudflare Worker's URL, such
-as `https://vx-dte-relay.<you>.workers.dev`. Name it as `relay` in
+as `https://vx-dte-server.<you>.workers.dev`. Name it as `relay` in
 `dte()`.
 
 Or deploy from this directory with Cloudflare's
@@ -66,14 +66,14 @@ the button made, or in the Worker's settings in the Cloudflare dashboard:
 It is not on npm yet. From a checkout of this repo:
 
 ```sh
-bun packages/vx-dte-relay/src/bun.ts --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com --port 8080
+bun packages/vx-dte-server/src/bun.ts --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com --port 8080
 ```
 
 Or as a container, built from this directory:
 
 ```sh
-docker build -t vx-dte-relay packages/vx-dte-relay
-docker run -p 8080:8080 vx-dte-relay --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com
+docker build -t vx-dte-server packages/vx-dte-server
+docker run -p 8080:8080 vx-dte-server --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com
 ```
 
 - `--allow <issuer:owner/repo:workflow>`, repeated, is an `ALLOW` entry

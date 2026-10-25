@@ -17,16 +17,16 @@ anywhere your CI can reach.
    <Tabs syncKey="relay-host">
    <TabItem label="Cloudflare (button)">
 
-   [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay)
+   [Deploy to Cloudflare](https://deploy.workers.cloudflare.com/?url=https://github.com/vznjs/vx/tree/main/packages/vx-dte-server)
 
    The button copies the relay into a new repository of yours and deploys
    it. It asks for one var, `ALLOW` (step 2). The relay's URL is the
-   Worker's, such as `https://vx-dte-relay.<you>.workers.dev`.
+   Worker's, such as `https://vx-dte-server.<you>.workers.dev`.
 
    </TabItem>
    <TabItem label="Cloudflare (wrangler)">
 
-   From `packages/vx-dte-relay` in a checkout of the vx repository, with
+   From `packages/vx-dte-server` in a checkout of the vx repository, with
    `ALLOW` filled in `wrangler.jsonc`'s `vars` first:
 
    ```sh
@@ -41,7 +41,7 @@ anywhere your CI can reach.
    From a checkout of the vx repository:
 
    ```sh
-   bun packages/vx-dte-relay/src/bun.ts \
+   bun packages/vx-dte-server/src/bun.ts \
      --allow https://token.actions.githubusercontent.com:acme/app:ci.yml \
      --allow https://token.actions.githubusercontent.com:acme/app:vx-worker.yml \
      --audience https://relay.example.com --port 8080
@@ -53,8 +53,8 @@ anywhere your CI can reach.
    <TabItem label="Docker">
 
    ```sh
-   docker build -t vx-dte-relay packages/vx-dte-relay
-   docker run -p 8080:8080 vx-dte-relay \
+   docker build -t vx-dte-server packages/vx-dte-server
+   docker run -p 8080:8080 vx-dte-server \
      --allow https://token.actions.githubusercontent.com:acme/app:ci.yml \
      --allow https://token.actions.githubusercontent.com:acme/app:vx-worker.yml \
      --audience https://relay.example.com
@@ -131,5 +131,5 @@ anywhere your CI can reach.
 - `AUDIENCE` (Cloudflare) is unset by default: tokens must name the URL
   the relay is reached at. Set it only when they name another one.
 
-See [`@vzn/vx-dte-relay`](https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay)
+See [`@vzn/vx-dte-server`](https://github.com/vznjs/vx/tree/main/packages/vx-dte-server)
 for every option and the API to mount it in a server of your own.

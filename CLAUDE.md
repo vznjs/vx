@@ -33,7 +33,7 @@ Decision drivers, in order: **performance, modularity, extensibility.**
 No cloud or dashboard ships in this repo; the seams exist so someone can
 build those on top. The one exception is `@vzn/vx-dte` (owner, 2026-10-21):
 one run spread over workers the user's own CI spawns, through a relay
-(`@vzn/vx-dte-relay`) anyone can host. `@vzn/vx-reapi` is the proof
+(`@vzn/vx-dte-server`) anyone can host. `@vzn/vx-reapi` is the proof
 the seams are wide enough. Pre-alpha, owner-delegated: you own it, ship it.
 
 ## Stack
@@ -93,7 +93,7 @@ packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fi
 private/vx-docs         Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts
 packages/vx-dte         distributed runs: `dte()` executor + `vx dte worker` over the relay, `local()` adapter
                         (workers in git worktrees). Private until npm has it
-packages/vx-dte-relay   the reference relay of `@vzn/vx-dte` (PROTOCOL.md): passes a run's messages, storing none, behind CI
+packages/vx-dte-server  the reference relay of `@vzn/vx-dte` (PROTOCOL.md): passes a run's messages, storing none, behind CI
                         OIDC tokens; imports only jose, not even core. Private until npm has it
 private/vx-bench        synthetic workspace generator + runners (vx / turbo / nx)
 skills/vx/SKILL.md      the agent skill, where `npx skills add vznjs/vx` finds it (.claude/skills are
@@ -146,7 +146,7 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   by `--platform`). The unsafe shards of both, `@vzn/vx-reapi#test` and
   `@vzn/vx-reapi#test.live` (which dial service containers on the host's
   loopback, unreachable from a Linux sandbox's network namespace), its
-  `services.cache` / `services.exec` (Docker), `@vzn/vx-dte-relay#test.live`
+  `services.cache` / `services.exec` (Docker), `@vzn/vx-dte-server#test.live`
   (builds and runs the relay's image), `@vzn/vx-migrate#nx.install`
   (the npm registry), `check.sandbox-canary` and
   `check.build-cold` (each drives the sandbox itself, on a Mac worker) are
