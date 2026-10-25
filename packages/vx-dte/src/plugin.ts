@@ -125,6 +125,8 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   headers: 'object',
 }
 
+const USAGE = 'Usage: vx dte worker | vx dte init [--dry] [--force]'
+
 /** `headers` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
 function proxyHeaders(headers: DteOptions['headers']): Record<string, string> {
   const out: Record<string, string> = {}
@@ -307,10 +309,13 @@ export function dte(options: DteOptions) {
         description:
           'dte init: write the CI of a distributed run; dte worker: run tasks for a distributed run',
         async run(argv, ctx) {
-          if (argv[0] === 'init') return init(argv.slice(1), ctx)
-          if (argv[0] !== 'worker' || argv.length > 1) {
-            throw new UserError('Usage: vx dte worker | vx dte init [--dry] [--force]')
+          // Asked for, the usage is an answer: `vx dte --help` exited 1 (2026-10-26).
+          if (argv.some((a) => a === '--help' || a === '-h') || argv[0] === 'help') {
+            process.stdout.write(`${USAGE}\n`)
+            return 0
           }
+          if (argv[0] === 'init') return init(argv.slice(1), ctx)
+          if (argv[0] !== 'worker' || argv.length > 1) throw new UserError(USAGE)
           const run = runOf()
           const relay = process.env['VX_DTE_RELAY'] ?? options.relay
           if (run === undefined || relay === undefined) {

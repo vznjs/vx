@@ -290,3 +290,28 @@ it('writes the tasks asked for: main with --all, a change request with --affecte
   expect(gl).toContain('  script: [bun vx dte worker]\n')
   expect(gl).not.toContain('Name the tasks')
 })
+
+it('vx dte --help prints the usage and exits 0', async () => {
+  await mkdir(path.join(root, '.vx'))
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+  await writeFile(
+    path.join(root, '.vx/workspace.mjs'),
+    `import { dte, local } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, adapter: local() })] }
+`,
+  )
+  Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
+  for (const args of [['--help'], ['-h'], ['help'], ['init', '--help'], ['worker', '-h']]) {
+    const r = Bun.spawnSync([process.execPath, CORE_BIN, 'dte', ...args], {
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect([args, r.exitCode, r.stdout.toString()]).toEqual([
+      args,
+      0,
+      'Usage: vx dte worker | vx dte init [--dry] [--force]\n',
+    ])
+  }
+})
