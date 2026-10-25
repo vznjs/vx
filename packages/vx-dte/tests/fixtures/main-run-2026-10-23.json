@@ -193,19 +193,19 @@
     },
     {
       "id": "@vzn/vx-bench#install",
-      "deps": ["@vzn/vx#build", "@vzn/vx-schedule-history#build"],
+      "deps": ["@vzn/vx#build", "@vzn/vx-history#build"],
       "exec": false,
       "cache": false
     },
     {
-      "id": "@vzn/vx-schedule-history#build",
-      "deps": ["@vzn/vx#build", "@vzn/vx-schedule-history#source"],
+      "id": "@vzn/vx-history#build",
+      "deps": ["@vzn/vx#build", "@vzn/vx-history#source"],
       "exec": false,
       "cache": false
     },
     { "id": "@vzn/vx#build", "deps": ["@vzn/vx#source"], "exec": false, "cache": false },
     { "id": "@vzn/vx#source", "deps": [], "exec": true, "cache": true },
-    { "id": "@vzn/vx-schedule-history#source", "deps": [], "exec": true, "cache": true },
+    { "id": "@vzn/vx-history#source", "deps": [], "exec": true, "cache": true },
     {
       "id": "@vzn/vx-bench#lint.oxfmt",
       "deps": ["@vzn/vx-bench#install"],
@@ -267,7 +267,7 @@
         "@vzn/vx-lockfile#build",
         "@vzn/vx-otel#build",
         "@vzn/vx-reapi#build",
-        "@vzn/vx-schedule-history#build"
+        "@vzn/vx-history#build"
       ],
       "exec": false,
       "cache": false
@@ -574,38 +574,38 @@
     },
     { "id": "@vzn/vx-reapi#test", "deps": ["@vzn/vx-reapi#install"], "exec": true, "cache": true },
     {
-      "id": "@vzn/vx-schedule-history#ci",
-      "deps": ["@vzn/vx-schedule-history#lint", "@vzn/vx-schedule-history#test"],
+      "id": "@vzn/vx-history#ci",
+      "deps": ["@vzn/vx-history#lint", "@vzn/vx-history#test"],
       "exec": false,
       "cache": false
     },
     {
-      "id": "@vzn/vx-schedule-history#lint",
-      "deps": ["@vzn/vx-schedule-history#lint.oxfmt", "@vzn/vx-schedule-history#lint.oxlint"],
+      "id": "@vzn/vx-history#lint",
+      "deps": ["@vzn/vx-history#lint.oxfmt", "@vzn/vx-history#lint.oxlint"],
       "exec": false,
       "cache": false
     },
     {
-      "id": "@vzn/vx-schedule-history#lint.oxlint",
-      "deps": ["@vzn/vx-schedule-history#install"],
+      "id": "@vzn/vx-history#lint.oxlint",
+      "deps": ["@vzn/vx-history#install"],
       "exec": true,
       "cache": true
     },
     {
-      "id": "@vzn/vx-schedule-history#install",
+      "id": "@vzn/vx-history#install",
       "deps": ["@vzn/vx#build"],
       "exec": false,
       "cache": false
     },
     {
-      "id": "@vzn/vx-schedule-history#lint.oxfmt",
-      "deps": ["@vzn/vx-schedule-history#install"],
+      "id": "@vzn/vx-history#lint.oxfmt",
+      "deps": ["@vzn/vx-history#install"],
       "exec": true,
       "cache": true
     },
     {
-      "id": "@vzn/vx-schedule-history#test",
-      "deps": ["@vzn/vx-schedule-history#install"],
+      "id": "@vzn/vx-history#test",
+      "deps": ["@vzn/vx-history#install"],
       "exec": true,
       "cache": true
     },

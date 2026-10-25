@@ -764,22 +764,19 @@ export default defineWorkspace({
     category: 'extend',
     hook: 'The slow task stops starting last.',
     body: [
-      '`@vzn/vx-schedule-history` learns task durations from your local run history and starts the longest remaining chain first. Short tasks fill the gaps.',
+      '`@vzn/vx-history` learns task durations from your local run history and starts the longest remaining chain first. Short tasks fill the gaps.',
       "A fresh CI runner or a new branch reads the default branch's timings from your remote cache. `assume` names durations for the tasks nothing has timed yet.",
     ],
     example: {
       lang: 'ts',
-      code: workspace(
-        '@vzn/vx-schedule-history',
-        "scheduleHistoryPlugin({ assume: { 'docs#build': 30_000 } })",
-      ),
+      code: workspace('@vzn/vx-history', "vxHistory({ assume: { 'docs#build': 30_000 } })"),
     },
     image: 'critical-path.png',
     imageAlt: 'The longest chain of tasks scheduled first.',
     docs: { label: 'Keys and order', href: 'docs/writing-plugins/#keys-and-order' },
     deepDive: {
-      label: '@vzn/vx-schedule-history',
-      href: 'https://github.com/vznjs/vx/tree/main/packages/vx-schedule-history',
+      label: '@vzn/vx-history',
+      href: 'https://github.com/vznjs/vx/tree/main/packages/vx-history',
     },
   },
 ]

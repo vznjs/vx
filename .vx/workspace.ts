@@ -1,7 +1,7 @@
 import { defineWorkspace } from '@vzn/vx'
 import { github } from '@vzn/vx-ci'
 import { dte, github as githubWorkers } from '@vzn/vx-dte'
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { vxHistory } from '@vzn/vx-history'
 import { bun } from '@vzn/vx-lockfile'
 import { turboCache } from '@vzn/vx-migrate'
 
@@ -16,7 +16,7 @@ export default defineWorkspace({
     // Vercel's Remote Cache. On GitHub Actions the job's OIDC token buys a
     // short-lived one; elsewhere the token comes from the OS keychain.
     turboCache({ teamSlug: 'exelord', oidc: true }),
-    scheduleHistoryPlugin(),
+    vxHistory(),
     // CI's one run over workers (ci.yml `linux`, vx-worker.yml);
     // a run with no VX_DTE_RUN, as on a laptop, is not distributed.
     dte({

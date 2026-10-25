@@ -757,7 +757,7 @@ next?".
   gates on the worker count and asks the `admit` stage for anything
   finer; it holds no per-task cores or megabytes, no config field for
   them, no budget flag. What a task needs is learned from what it used
-  (`@vzn/vx-schedule-history`), or declared to that plugin. Item 157.
+  (`@vzn/vx-history`), or declared to that plugin. Item 157.
 - **No first-party technology plugins (owner, 2026-09-10).** A plugin
   that gives packages tasks from a framework's config (`vite()`,
   `next()`, …) is the community's to write on the `project` stage; core

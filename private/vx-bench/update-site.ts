@@ -198,7 +198,7 @@ Same repo, same hardware, same commands, every tool at concurrency ${d.concurren
 config: Turborepo ${turbo.version} (\`turbo.json\`), Nx ${nx.version} (\`nx:run-commands\` targets,
 \`^\` inputs, \`.env\` loading off), Vite Task (\`vp run\`, vite-plus ${vt.version}, tasks in each \`vite.config.ts\`).
 vx runs from a \`vx lock\` snapshot, as every vx run does, and orders tasks with
-\`scheduleHistoryPlugin({ file: 'vx-timings.json' })\`, from timings an earlier
+\`vxHistory({ file: 'vx-timings.json' })\`, from timings an earlier
 run recorded; cache wipes keep that file, as CI caches it. This machine: ${d.machine}.
 \`bun private/vx-bench/compare.ts 3\`; the committed
 \`private/vx-bench/RESULTS.md\` / \`private/vx-bench/results.json\` are this run.

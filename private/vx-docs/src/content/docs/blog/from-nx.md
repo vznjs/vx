@@ -15,7 +15,7 @@ resolves. Targets that Nx plugins infer come along.
 ```sh frame="terminal"
 $ bunx @vzn/vx-migrate
   from      nx graph
-  ran       bun add -d @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history
+  ran       bun add -d @vzn/vx @vzn/vx-lockfile @vzn/vx-history
   tasks     2 clean
   files     libs/ui/vx.config.ts
             apps/web/vx.config.ts
@@ -76,13 +76,13 @@ To check first, `bunx @vzn/vx init --keep` writes only this:
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { nx } from '@vzn/vx-migrate'
 import { npm } from '@vzn/vx-lockfile'
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { vxHistory } from '@vzn/vx-history'
 
 export default {
   plugins: [
     nx(),
     npm(),
-    scheduleHistoryPlugin(),
+    vxHistory(),
   ],
 } satisfies WorkspaceConfig
 ```

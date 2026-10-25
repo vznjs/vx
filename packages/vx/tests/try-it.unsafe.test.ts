@@ -191,12 +191,12 @@ case "$2" in --file=*) f="\${2#--file=}"; mkdir -p "$(dirname "$f")"; cp "$(dirn
 // the workspace file declares the npm lockfile's plugin, never turbo() or nx().
 const NATIVE = `import type { WorkspaceConfig } from '@vzn/vx/config'
 import { npm } from '@vzn/vx-lockfile'
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { vxHistory } from '@vzn/vx-history'
 
 export default {
   plugins: [
     npm(),
-    scheduleHistoryPlugin(),
+    vxHistory(),
   ],
 } satisfies WorkspaceConfig
 `

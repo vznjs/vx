@@ -11,14 +11,14 @@ const seen = []
 Bun.plugin({
   name: 'seen',
   setup(b) {
-    b.onLoad({ filter: /\\/vx-schedule-history\\/src\\/[^/]+\\.ts$/ }, (a) => {
+    b.onLoad({ filter: /\\/vx-history\\/src\\/[^/]+\\.ts$/ }, (a) => {
       seen.push(a.path.split('/').pop())
       return { contents: readFileSync(a.path, 'utf8'), loader: 'ts' }
     })
   },
 })
 const m = await import(process.argv[1])
-m.scheduleHistoryPlugin()
+m.vxHistory()
 const before = [...seen].sort()
 await import(process.argv[1].replace('index.ts', 'history-view.ts'))
 console.log('SEEN ' + JSON.stringify({ before, after: [...seen].sort() }))

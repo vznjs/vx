@@ -79,7 +79,7 @@ A missing key costs nothing more. A key it has costs one download.
 ## One request per plugin read
 
 Plugins keep entries in the same cache, like the timings
-`@vzn/vx-schedule-history` learns. `ctx.cache.get`, `has` and `hasMany`
+`@vzn/vx-history` learns. `ctx.cache.get`, `has` and `hasMany`
 each make one request.
 
 Settings: [schema](../../schema/). Flags: [CLI reference](../../cli/).

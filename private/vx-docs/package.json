@@ -21,6 +21,6 @@
     "@vzn/vx-lockfile": "workspace:*",
     "@vzn/vx-otel": "workspace:*",
     "@vzn/vx-reapi": "workspace:*",
-    "@vzn/vx-schedule-history": "workspace:*"
+    "@vzn/vx-history": "workspace:*"
   }
 }

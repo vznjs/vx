@@ -6,10 +6,10 @@ authors:
 tags:
   - plugins
   - performance
-excerpt: '@vzn/vx-schedule-history starts the longest chain first and keeps memory-hungry tasks apart, using times and memory from your past runs.'
+excerpt: '@vzn/vx-history starts the longest chain first and keeps memory-hungry tasks apart, using times and memory from your past runs.'
 ---
 
-`@vzn/vx-schedule-history` learns from your past runs. It starts the
+`@vzn/vx-history` learns from your past runs. It starts the
 longest chain first, and keeps memory-hungry tasks from starting
 together. After a few runs:
 
@@ -52,9 +52,9 @@ flowchart LR
 ```ts
 // .vx/workspace.ts
 import { defineWorkspace } from '@vzn/vx/config'
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { vxHistory } from '@vzn/vx-history'
 
-export default defineWorkspace({ plugins: [scheduleHistoryPlugin()] })
+export default defineWorkspace({ plugins: [vxHistory()] })
 ```
 
 It reads the last 20 runs from the cache database, once per run. If the
@@ -68,7 +68,7 @@ early, not last on an idle machine. A fresh CI runner has no history,
 so `assume` names tasks you know are slow:
 
 ```ts
-scheduleHistoryPlugin({ assume: { '@demo/docs#build': 30_000 } })
+vxHistory({ assume: { '@demo/docs#build': 30_000 } })
 ```
 
 A recorded median always beats an assumption. To carry history between
@@ -88,5 +88,5 @@ hand for tasks with no history yet.
 The plugin only orders and admits. It never changes what runs or a
 task's key.
 Every option is in the
-[vx-schedule-history README](https://github.com/vznjs/vx/tree/main/packages/vx-schedule-history#readme).
+[vx-history README](https://github.com/vznjs/vx/tree/main/packages/vx-history#readme).
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

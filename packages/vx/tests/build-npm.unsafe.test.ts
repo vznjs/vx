@@ -114,7 +114,7 @@ describe('the published plugin packages', async () => {
         '@vzn/vx-migrate',
         '@vzn/vx-otel',
         '@vzn/vx-reapi',
-        '@vzn/vx-schedule-history',
+        '@vzn/vx-history',
       ]),
     )
   })

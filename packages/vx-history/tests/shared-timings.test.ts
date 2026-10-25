@@ -14,7 +14,7 @@ import {
   type PluginCache,
   type TaskNode,
 } from '@vzn/vx'
-import { scheduleHistoryPlugin } from '../src/index.js'
+import { vxHistory } from '../src/index.js'
 import { exportTimings, importTimings, parseTimings } from '../src/shared-timings.js'
 
 const GIT_ENV = {
@@ -144,7 +144,7 @@ function node(id: string): TaskNode {
 
 /** What an import said: a test that expects a warning reads it; the rest expect none. */
 let said: string[] = []
-const triedFile = (): string => path.join(root, '.vx', 'cache', 'schedule-history-base')
+const triedFile = (): string => path.join(root, '.vx', 'cache', 'history-base')
 
 /** One run of the plugin's hooks, as core calls them: setup, schedule, teardown. */
 async function runPlugin(
@@ -163,7 +163,7 @@ async function runPlugin(
     ran?: string[]
   },
 ): Promise<ReadonlyMap<string, number> | undefined> {
-  const plugin = scheduleHistoryPlugin({ resources: false })
+  const plugin = vxHistory({ resources: false })
   const completed: ((...a: unknown[]) => void)[] = []
   const base = {
     workspaceRoot: root,
@@ -664,7 +664,7 @@ describe('shared timings', () => {
     })
     expect(imported).toBe(false)
     expect(said.splice(0)).toEqual([
-      '[vx] schedule-history: the shared timings could not be read: HTTP 403: forbidden',
+      '[vx] vx-history: the shared timings could not be read: HTTP 403: forbidden',
     ])
   })
 
@@ -684,7 +684,7 @@ describe('shared timings', () => {
       branch: false,
     })
     expect(said.splice(0)).toEqual([
-      `[vx] schedule-history: ${a.slice(0, 12)}'s shared timings are unreadable (18 B: past 1048576 B or not a timings blob)`,
+      `[vx] vx-history: ${a.slice(0, 12)}'s shared timings are unreadable (18 B: past 1048576 B or not a timings blob)`,
     ])
   })
 
@@ -695,7 +695,7 @@ describe('shared timings', () => {
     timed('main', 'p#x', 10)
     await runPlugin(shared, { ci: true, branch: 'main', ids: ['p#x'] })
     expect(said.splice(0)).toEqual([
-      '[vx] schedule-history: the shared timings were not written: HTTP 507: quota exceeded',
+      '[vx] vx-history: the shared timings were not written: HTTP 507: quota exceeded',
     ])
   })
 

@@ -1290,16 +1290,16 @@ describe.each(['pnpm', 'bun'])(
 )
 
 describe('the plugins guide rosters every hook a shipped plugin fills', () => {
-  it('@vzn/vx-schedule-history is named on all three of its hooks', () => {
+  it('@vzn/vx-history is named on all three of its hooks', () => {
     const src = readFileSync(
-      path.resolve(import.meta.dir, '..', '..', 'vx-schedule-history', 'src', 'index.ts'),
+      path.resolve(import.meta.dir, '..', '..', 'vx-history', 'src', 'index.ts'),
       'utf8',
     )
     for (const hook of ['async schedule(', 'hooks.admit =', 'commands: {']) {
       expect(src).toContain(hook)
     }
     const page = readFileSync(path.join(DOCS, 'docs', 'plugins.mdx'), 'utf8').replace(/\s+/g, ' ')
-    expect(page).toContain('`@vzn/vx-schedule-history` fills three at once')
+    expect(page).toContain('`@vzn/vx-history` fills three at once')
     for (const hook of ['`schedule`', '`admit`', '`commands`']) expect(page).toContain(hook)
   })
   // An install of any plugin answered 404 while the guide told readers to
@@ -2348,7 +2348,7 @@ describe('every plugin README names each option its factory takes', () => {
     ['vx-otel', 'vx-otel/src/plugin.ts', 'OtelPluginOptions', []],
     ['vx-ci', 'vx-ci/src/plugin.ts', 'GithubPluginOptions', []],
     ['vx-reapi', 'vx-reapi/src/index.ts', 'ReapiPluginOptions', ['instanceName', 'headers', 'tls']],
-    ['vx-schedule-history', 'vx-schedule-history/src/index.ts', 'ScheduleHistoryOptions', []],
+    ['vx-history', 'vx-history/src/index.ts', 'VxHistoryOptions', []],
     ['vx-lockfile', 'vx-lockfile/src/index.ts', 'LockfileOptions', []],
   ]
   it.each(cases)('%s', (pkg, file, iface, inherited) => {

@@ -2019,7 +2019,7 @@ interface CacheSettings {
   tasks wait on directly (Nx's rule). `ready-order`: the one that became
   ready first (Turbo's rule). Each loses some graph shape the others win
   (`blog/scheduling-strategies`). A `schedule` plugin's weights
-  (`@vzn/vx-schedule-history`) still sort first, and the strategy breaks
+  (`@vzn/vx-history`) still sort first, and the strategy breaks
   their ties. The default costs what it did; another strategy is
   computed only when named. Any other value is refused. Never folded
   into a cache key.
@@ -2121,7 +2121,7 @@ to <reader>'s inputs.<field>, or depend on <writer> and leave it out of
   around the run, and CLI `commands` (`{ verb: { description, run } }`,
   consulted for a verb core does not know). First-party plugins:
   `@vzn/vx-otel`, `@vzn/vx-ci`, `@vzn/vx-reapi`, `@vzn/vx-lockfile`,
-  `@vzn/vx-schedule-history`, `@vzn/vx-migrate`. A
+  `@vzn/vx-history`, `@vzn/vx-migrate`. A
   plugin that declines every capability (`otel()` with no OTLP endpoint
   configured) costs nothing — a run with no active plugin is
   byte-identical to one with none declared. Plugins observe, route and

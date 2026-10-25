@@ -339,10 +339,8 @@ describe('vx migrate (turbo)', () => {
     expect(ws).toContain("import type { WorkspaceConfig } from '@vzn/vx/config'")
     expect(ws).not.toContain('defineWorkspace')
     // No lockfile and no .github/workflows here: the history plugin alone.
-    expect([...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1])).toEqual([
-      'scheduleHistoryPlugin',
-    ])
-    expect(ws).toContain("import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'")
+    expect([...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1])).toEqual(['vxHistory'])
+    expect(ws).toContain("import { vxHistory } from '@vzn/vx-history'")
     expect(ws).toContain('} satisfies WorkspaceConfig')
   })
 
@@ -758,7 +756,7 @@ describe('vx migrate (lerna)', () => {
           ws.includes("import { nx } from '@vzn/vx-migrate'"),
           [...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1]),
           await Bun.file(path.join(root, 'packages', 'pkg-a', 'vx.config.ts')).exists(),
-        ]).toEqual([0, '', true, ['nx', 'scheduleHistoryPlugin'], false])
+        ]).toEqual([0, '', true, ['nx', 'vxHistory'], false])
       } finally {
         await rm(root, { recursive: true, force: true })
       }

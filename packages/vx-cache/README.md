@@ -66,7 +66,7 @@ token leaves the timings to the run that lent it.
 Every run asks for each task's newest timings, trusted first, and puts
 them in the local history, where the scheduler and any plugin reading it
 (`onRefine`) find them. It orders ready tasks by the longest remaining
-chain, as `@vzn/vx-schedule-history` does. The run never waits for the
+chain, as `@vzn/vx-history` does. The run never waits for the
 answer: it starts on core's own order and re-ranks the tasks not yet
 started when the timings land. Declare one of the two, not both.
 

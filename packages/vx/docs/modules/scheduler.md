@@ -282,7 +282,7 @@ When `priorities` is passed, `mergePriorities` scales those weights
 (by 2^20) to sort above the baseline for every covered node, with the
 baseline as the tie-break inside the override set. Nothing in core
 computes one; it is the seam a scheduling-policy plugin
-(`@vzn/vx-schedule-history`) feeds.
+(`@vzn/vx-history`) feeds.
 
 ## Failure isolation
 

@@ -283,7 +283,7 @@ const fmtMs = (ms: number): string => formatElapsed(ms, true)
 /**
  * What an executed task used — its peak RSS and its CPU parallelism (CPU
  * time over wall time) — as the runner recorded them. This is the number
- * `@vzn/vx-schedule-history` reserves from, so the replay shows it where
+ * `@vzn/vx-history` reserves from, so the replay shows it where
  * a developer can read it; a hit spent nothing and shows nothing.
  */
 function fmtUsage(t: {

@@ -160,7 +160,7 @@ export interface VxPlugin {
    * hold no local resources: never asked, never in `ctx.running`. When
    * several plugins answer, all must admit. Core keeps no notion of what a task needs: a plugin that
    * packs memory or CPU learns or declares the numbers itself
-   * (`@vzn/vx-schedule-history` packs what past executions used).
+   * (`@vzn/vx-history` packs what past executions used).
    */
   admit?(task: TaskNode, ctx: AdmitContext): boolean
 

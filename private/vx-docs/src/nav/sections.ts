@@ -185,7 +185,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
         { label: '@vzn/vx-migrate', link: '/plugins/vx-migrate/' },
         { label: '@vzn/vx-otel', link: '/plugins/vx-otel/' },
         { label: '@vzn/vx-reapi', link: '/plugins/vx-reapi/' },
-        { label: '@vzn/vx-schedule-history', link: '/plugins/vx-schedule-history/' },
+        { label: '@vzn/vx-history', link: '/plugins/vx-history/' },
       ],
     },
     {

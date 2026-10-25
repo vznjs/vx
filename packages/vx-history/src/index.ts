@@ -33,7 +33,7 @@ import type { CommandContext } from '@vzn/vx'
 import path from 'node:path'
 import type { HistoryRow } from './history-view.js'
 
-export interface ScheduleHistoryOptions {
+export interface VxHistoryOptions {
   /** How many recent invocations to learn from. Default 20. */
   readonly window?: number
   /**
@@ -94,7 +94,7 @@ const DEFAULT_BRANCH = 'main'
 
 // Each option is read in ONE place that a run's hooks and `vx history`
 // share: two copies of each let either drift unseen (item 805).
-const windowOf = (options: ScheduleHistoryOptions): number =>
+const windowOf = (options: VxHistoryOptions): number =>
   usable(options.window, true) ? options.window : DEFAULT_WINDOW
 
 /**
@@ -111,7 +111,7 @@ function usable(v: unknown, integer = false): v is number {
 }
 
 /** One warning naming every number option that is not one, and the default it runs on. */
-function numberWarnings(options: ScheduleHistoryOptions, warn: (m: string) => void): void {
+function numberWarnings(options: VxHistoryOptions, warn: (m: string) => void): void {
   const bad: string[] = []
   const check = (name: string, v: unknown, fallback: string, integer = false): void => {
     if (v !== undefined && !usable(v, integer)) {
@@ -138,7 +138,7 @@ function numberWarnings(options: ScheduleHistoryOptions, warn: (m: string) => vo
     }
   }
   if (bad.length > 0) {
-    warn(`[vx] schedule-history: ignores ${bad.join(', ')} — each must be a finite number above 0`)
+    warn(`[vx] vx-history: ignores ${bad.join(', ')} — each must be a finite number above 0`)
   }
 }
 
@@ -150,7 +150,7 @@ function numberWarnings(options: ScheduleHistoryOptions, warn: (m: string) => vo
  * nothing, named by `numberWarnings`.
  */
 function declaredOf(
-  options: ScheduleHistoryOptions,
+  options: VxHistoryOptions,
 ): Readonly<Record<string, ResourceEstimate>> | undefined {
   if (options.reservations === undefined) return undefined
   const out: Record<string, ResourceEstimate> = {}
@@ -163,7 +163,7 @@ function declaredOf(
   return out
 }
 
-const headroomOf = (options: ScheduleHistoryOptions): number => {
+const headroomOf = (options: VxHistoryOptions): number => {
   const h = options.resources === false ? undefined : options.resources?.headroom
   return usable(h) ? h : DEFAULT_HEADROOM
 }
@@ -172,7 +172,7 @@ const headroomOf = (options: ScheduleHistoryOptions): number => {
 const readHistory = (
   cache: Cache,
   ids: readonly string[],
-  options: ScheduleHistoryOptions,
+  options: VxHistoryOptions,
   branch: string | null,
   defs: ReadonlyMap<string, string>,
 ): Promise<ReadonlyMap<string, TaskResources>> =>
@@ -182,14 +182,14 @@ const readHistory = (
 const reservationsFor = (
   ids: Iterable<string>,
   table: ReadonlyMap<string, TaskResources>,
-  options: ScheduleHistoryOptions,
+  options: VxHistoryOptions,
 ): ReadonlyMap<string, ResourceEstimate> =>
   withDeclared(
     options.resources !== false ? estimatesFor(ids, table, headroomOf(options)) : new Map(),
     declaredOf(options),
   )
 
-const memoryBudgetMb = (options: ScheduleHistoryOptions): number =>
+const memoryBudgetMb = (options: VxHistoryOptions): number =>
   usable(options.memory) ? options.memory : Math.floor(machineMemoryBytes() / MB)
 
 /**
@@ -200,7 +200,7 @@ const memoryBudgetMb = (options: ScheduleHistoryOptions): number =>
  * dropped by name, as a broken history read costs only the ordering.
  */
 function assumptions(
-  options: ScheduleHistoryOptions,
+  options: VxHistoryOptions,
   warn: (m: string) => void,
 ): Readonly<Record<string, number>> {
   const ok: Record<string, number> = {}
@@ -211,14 +211,14 @@ function assumptions(
   }
   if (bad.length > 0) {
     warn(
-      `[vx] schedule-history: assume ignores ${bad.map((id) => JSON.stringify(id)).join(', ')} — each must be a finite number of ms`,
+      `[vx] vx-history: assume ignores ${bad.map((id) => JSON.stringify(id)).join(', ')} — each must be a finite number of ms`,
     )
   }
   return ok
 }
 
-/** Each option `ScheduleHistoryOptions` names, with its kind: derived from the type, so the two cannot drift. */
-const SCHEDULE_HISTORY_KEYS: PluginOptionKinds<ScheduleHistoryOptions> = {
+/** Each option `VxHistoryOptions` names, with its kind: derived from the type, so the two cannot drift. */
+const VX_HISTORY_KEYS: PluginOptionKinds<VxHistoryOptions> = {
   window: 'number',
   resources: 'any',
   memory: 'number',
@@ -228,8 +228,8 @@ const SCHEDULE_HISTORY_KEYS: PluginOptionKinds<ScheduleHistoryOptions> = {
   defaultBranch: 'string',
 }
 
-export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxPlugin {
-  refuseUnknownOptions('scheduleHistoryPlugin()', options, SCHEDULE_HISTORY_KEYS)
+export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
+  refuseUnknownOptions('vxHistory()', options, VX_HISTORY_KEYS)
   // `'any'` above lets `null` through, and every run then failed in
   // `schedule` reading `null.headroom`.
   const { resources } = options
@@ -239,7 +239,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
     (resources === null || typeof resources !== 'object' || Array.isArray(resources))
   ) {
     throw new UserError(
-      `scheduleHistoryPlugin() option "resources" must be false or an object, got ${JSON.stringify(resources) ?? String(resources)}`,
+      `vxHistory() option "resources" must be false or an object, got ${JSON.stringify(resources) ?? String(resources)}`,
     )
   }
   const hooks: Parameters<typeof definePlugin>[1] = {
@@ -289,7 +289,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
         // Failing open: a broken history read costs the ordering and the
         // learned reservations, never the run.
         ctx.warn(
-          `[vx] schedule-history: ordering falls back to the baseline: ${err instanceof Error ? err.message : String(err)}`,
+          `[vx] vx-history: ordering falls back to the baseline: ${err instanceof Error ? err.message : String(err)}`,
         )
         return undefined
       }
@@ -310,7 +310,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
             cache: ctx.cache,
             provider,
             ids,
-            triedFile: path.join(ctx.cacheDir, 'schedule-history-base'),
+            triedFile: path.join(ctx.cacheDir, 'history-base'),
             branch: ctx.branch !== null && ctx.branch !== (options.defaultBranch ?? DEFAULT_BRANCH),
             stopped,
             warn: ctx.warn,
@@ -319,7 +319,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
         })().catch((err: unknown) => {
           // A hint: a failed import orders the run without it, and says so.
           ctx.warn(
-            `[vx] schedule-history: the shared timings were not applied: ${err instanceof Error ? err.message : String(err)}`,
+            `[vx] vx-history: the shared timings were not applied: ${err instanceof Error ? err.message : String(err)}`,
           )
           return undefined
         })
@@ -417,7 +417,7 @@ export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxP
         // A hint: the next commit's runs walk back to an older blob, and the
         // runs it would have measured read as unmeasured, so it is said.
         out.warn(
-          `[vx] schedule-history: the shared timings were not written: ${err instanceof Error ? err.message : String(err)}`,
+          `[vx] vx-history: the shared timings were not written: ${err instanceof Error ? err.message : String(err)}`,
         )
       }
     }
@@ -560,7 +560,7 @@ function fitsAxis(cost: number, reserved: number, holders: number, budget: numbe
 async function historyCmd(
   argv: readonly string[],
   ctx: CommandContext,
-  options: ScheduleHistoryOptions,
+  options: VxHistoryOptions,
 ): Promise<number> {
   let format: 'pretty' | 'json' = 'pretty'
   for (let i = 0; i < argv.length; i++) {
@@ -568,7 +568,7 @@ async function historyCmd(
     // A plugin verb owns its help; completions offer `--help` for every verb.
     if (a === '--help' || a === '-h') {
       process.stdout.write(
-        'Usage: vx history [--format pretty|json]\n\nWhat schedule-history learned per task (p50, peak RSS, CPU parallelism) and the reservation it packs.\n',
+        'Usage: vx history [--format pretty|json]\n\nWhat vx-history learned per task (p50, peak RSS, CPU parallelism) and the reservation it packs.\n',
       )
       return 0
     }
