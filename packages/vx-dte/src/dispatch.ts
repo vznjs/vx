@@ -61,6 +61,13 @@ export interface Ask {
   readonly need: Need
   /** Its dependencies, all the way up: a worker holding them is preferred. */
   readonly up?: Iterable<string>
+  /** Names its need: asks of one kind fit and fail alike (`kindOf`). */
+  readonly kind?: string
+}
+
+/** What `Ask.kind` names: every field of a need `assign` reads. */
+export function kindOf(need: Need): string {
+  return `${need.cores}\0${need.memory}\0${need.above?.cores}\0${need.above?.memory}\0${need.platform}`
 }
 
 /**
@@ -86,23 +93,45 @@ export function fits(bin: Bin, need: Need): boolean {
  * bigger one only, unless none is or `waits(above)` says one is coming.
  * The first that fits nowhere but an empty bin holds the one using least: no task after it goes there, or later tasks fill it again and
  * again (check.bun, the gate of 56 tasks, waited 50 s on main 871ffba).
- * Bins' `used` and `running` count what is given.
+ * Bins' `used` and `running` count what is given. `all`, what the asks
+ * need all told (the least of each, and how many kinds), ends the pass
+ * once no bin takes the least or every kind failed since the last given:
+ * the rest change nothing.
  */
 export function assign<B extends Bin>(
-  asks: readonly Ask[],
+  asks: Iterable<Ask>,
   bins: readonly B[],
   waits: (above: NonNullable<Need['above']>) => boolean = () => false,
   place: Strategy['place'] = 'best-fit',
+  all?: {
+    readonly floor: { readonly cores: number; readonly memory: number }
+    readonly kinds: number
+    /** Where it keeps the kinds spent, for the asks to skip them as it reads. */
+    readonly spent?: Set<string>
+  },
 ): Map<string, B> {
   const out = new Map<string, B>()
   const held = new Set<B>()
+  // Kinds that failed and held nothing since a bin was last given a task:
+  // until one is, each ask of them fails alike.
+  const spent = all?.spent ?? new Set<string>()
+  spent.clear()
   for (const ask of asks) {
+    if (
+      all !== undefined &&
+      (spent.size >= all.kinds || !bins.some((b) => !held.has(b) && fits(b, all.floor)))
+    )
+      break
+    if (ask.kind !== undefined && spent.has(ask.kind)) continue
     const { need } = ask
     const bigger = (b: B): boolean =>
       need.above === undefined || b.cores > need.above.cores || b.memory > need.above.memory
     const of = need.platform === undefined ? bins : bins.filter((b) => b.platform === need.platform)
     const anyBigger = of.some(bigger)
-    if (!anyBigger && need.above !== undefined && waits(need.above)) continue
+    if (!anyBigger && need.above !== undefined && waits(need.above)) {
+      if (ask.kind !== undefined) spent.add(ask.kind)
+      continue
+    }
     const pool = anyBigger ? of.filter(bigger) : of
     const up = ask.up === undefined ? [] : [...ask.up]
     let best: B | undefined
@@ -130,8 +159,10 @@ export function assign<B extends Bin>(
         if (soonest === undefined || b.used.cores < soonest.used.cores) soonest = b
       }
       if (soonest !== undefined) held.add(soonest)
+      else if (ask.kind !== undefined) spent.add(ask.kind)
       continue
     }
+    spent.clear()
     out.set(ask.id, best)
     best.used.cores += Math.min(need.cores, best.cores)
     best.used.memory += Math.min(need.memory, best.memory)
