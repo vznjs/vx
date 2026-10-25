@@ -246,6 +246,58 @@ describe('VxCacheLayer', () => {
   })
 })
 
+describe('download deadline', () => {
+  /** A server sending `chunks` bytes `gapMs` apart, then going quiet when `stallAfter` were sent. */
+  function slow(chunks: number, gapMs: number, stallAfter = Infinity) {
+    return Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: () => {
+        let sent = 0
+        return new Response(
+          new ReadableStream({
+            async pull(out) {
+              if (sent === stallAfter) return new Promise<void>(() => {})
+              await Bun.sleep(gapMs)
+              out.enqueue(new Uint8Array([97]))
+              if (++sent === chunks) out.close()
+            },
+          }),
+        )
+      },
+    })
+  }
+  const slowLayer = (url: string) => {
+    const c = new VxCacheLayer(
+      { url, timeoutMs: 200, uploadTimeoutMs: 200, headers: {}, issuer: GITHUB, repository: REPO },
+      fetch,
+      { VX_CACHE_TOKEN: 't' },
+    )
+    c.refs = [MAIN]
+    return c
+  }
+
+  it('lets a body arriving at a steady pace outlast the deadline', async () => {
+    const s = slow(8, 60)
+    try {
+      const got = await slowLayer(s.url.href.replace(/\/$/, '')).get('aa')
+      expect(await got!.body.text()).toBe('a'.repeat(8))
+    } finally {
+      await s.stop(true)
+    }
+  })
+
+  it('ends a body that stops arriving', async () => {
+    const s = slow(8, 20, 2)
+    try {
+      const got = await slowLayer(s.url.href.replace(/\/$/, '')).get('aa')
+      expect(got!.body.text()).rejects.toThrow('no bytes for 200 ms')
+    } finally {
+      await s.stop(true)
+    }
+  })
+})
+
 describe('GitHub OIDC', () => {
   it("asks the job's token for the server's origin, and its branch's writes land there", async () => {
     const srv = server()

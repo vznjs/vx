@@ -25,7 +25,7 @@ export interface VxCacheOptions {
   issuer: string
   /** The repository at that issuer, `org/name`. */
   repository: string
-  /** Per-request deadline for reads and queries (default 30 s). */
+  /** Per-request deadline for reads and queries (default 30 s); a download's bounds its answer, then each gap between its bytes. */
   timeoutMs?: number
   /** … and for an upload (default 60 s). */
   uploadTimeoutMs?: number
@@ -110,6 +110,37 @@ function deadline(ms: number): AbortSignal {
   const controller = new AbortController()
   setTimeout(() => controller.abort(new Error(`no answer within ${ms} ms`)), ms).unref()
   return controller.signal
+}
+
+/**
+ * A download's deadline: `ms` for the answer, then `ms` between its body's
+ * bytes. A whole-body deadline failed a big artifact still arriving at a
+ * steady pace (a 30 s cut, CI 2026-10-25); core judges whether running
+ * the task beats the rest of the wait.
+ */
+function streamed(res: Response, controller: AbortController, ms: number): Response {
+  if (res.body === null) return res
+  let timer: Timer | undefined
+  const rearm = () => {
+    clearTimeout(timer)
+    timer = setTimeout(() => controller.abort(new Error(`no bytes for ${ms} ms`)), ms)
+    timer.unref()
+  }
+  rearm()
+  const body = res.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, out) {
+        rearm()
+        out.enqueue(chunk)
+      },
+      flush: () => clearTimeout(timer),
+    }),
+  )
+  return new Response(body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers: res.headers,
+  })
 }
 
 /**
@@ -277,10 +308,16 @@ export class VxCacheLayer implements RemoteCacheLayer {
       headers?: Record<string, string>
       timeoutMs?: number
       write?: boolean
+      /** A body read at its own pace: the deadline then bounds the gaps between its bytes. */
+      streamed?: boolean
     } = {},
   ): Promise<Response | undefined> {
     const bearer = await this.bearer()
-    const res = await this.fetchImpl(`${this.config.url}${path}`, {
+    const ms = init.timeoutMs ?? this.config.timeoutMs
+    const controller = new AbortController()
+    const answer = setTimeout(() => controller.abort(new Error(`no answer within ${ms} ms`)), ms)
+    answer.unref()
+    let res = await this.fetchImpl(`${this.config.url}${path}`, {
       method: init.method ?? 'POST',
       headers: {
         ...this.config.headers,
@@ -289,8 +326,12 @@ export class VxCacheLayer implements RemoteCacheLayer {
         ...init.headers,
       },
       ...(init.body === undefined ? {} : { body: init.body }),
-      signal: deadline(init.timeoutMs ?? this.config.timeoutMs),
+      signal: controller.signal,
     })
+    if (init.streamed === true) {
+      clearTimeout(answer)
+      res = streamed(res, controller, ms)
+    }
     if (init.write === true && res.status === 403) {
       const first = !this.writesRefused
       this.writesRefused = true
@@ -433,6 +474,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
       const res = await this.request(`/v1/artifacts/${hash}`, {
         method: 'GET',
         headers: { 'vx-scope': scope },
+        streamed: true,
       })
       if (res === undefined) return null
       if (res.status === 404) {
