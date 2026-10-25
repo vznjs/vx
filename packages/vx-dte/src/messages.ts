@@ -5,12 +5,12 @@
 import type { CacheFacts, CapturedChunk, ExecuteResult, SandboxConfig } from '@vzn/vx'
 
 /**
- * A worker says what it holds every this many heartbeats. Each says is a
- * relay message its host bills; at one per heartbeat they were most of a
- * run's traffic (2026-10-22), and the relay's own heartbeat finds a dead
- * worker sooner.
+ * A worker says what it holds every this many heartbeats, and a task's
+ * lease is three of them. Every heartbeat (M, 2026-10-25: the fastest, not
+ * a free plan's message count): a task its worker dropped while alive
+ * goes back in 15 s, not 90.
  */
-export const HELD_EVERY = 6
+export const HELD_EVERY = 1
 
 /** A worker's `join` info. */
 export interface WorkerInfo {
