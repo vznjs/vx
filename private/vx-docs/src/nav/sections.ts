@@ -188,6 +188,10 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
         { label: '@vzn/vx-schedule-history', link: '/plugins/vx-schedule-history/' },
       ],
     },
+    {
+      label: 'Protocols',
+      items: [{ label: 'Switchboard', link: '/switchboard/' }],
+    },
     { label: 'Glossary', link: '/glossary/' },
   ],
 }

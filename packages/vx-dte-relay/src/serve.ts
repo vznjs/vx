@@ -24,8 +24,9 @@ export function serveRelay(opts: ServeOptions): RelayServer {
   let server: Bun.Server<Held> | undefined
   const relay = createRelay({
     ...opts,
-    upgrade: (key, id, req) => {
-      if (!server!.upgrade(req, { data: { key, id } })) {
+    upgrade: (key, id, req, protocol) => {
+      const headers = protocol === undefined ? {} : { 'sec-websocket-protocol': protocol }
+      if (!server!.upgrade(req, { data: { key, id }, headers })) {
         return Response.json({ error: 'not a websocket' }, { status: 426 })
       }
       // Bun answers the upgrade itself and ignores this.

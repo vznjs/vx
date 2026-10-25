@@ -8,7 +8,7 @@ import worker, {
   type DurableObjectState,
   type Env,
 } from '../src/worker.js'
-import { runKey, type Kept } from '../src/relay.js'
+import { sessionKey, type Kept } from '../src/relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const A = '00000000-0000-4000-8000-000000000001'
@@ -54,7 +54,7 @@ function namespace(env: () => Env): DurableObjectNamespace & { made: string[] } 
 const join = (env: Env, run: string, token?: string, origin = 'https://relay.example.com') =>
   worker.fetch(
     // No upgrade: Bun makes no 101, and each refusal here comes before one.
-    new Request(`${origin}/v1/runs/${run}/socket?join=${encodeURIComponent('{"role":"worker"}')}`, {
+    new Request(`${origin}/sessions/${run}/socket?join=${encodeURIComponent('{"role":"peer"}')}`, {
       headers: token === undefined ? {} : { authorization: `Bearer ${token}` },
     }),
     env,
@@ -67,7 +67,7 @@ it('routes each run to its own object, which checks tokens', async () => {
   expect((await join(env, A)).status).toBe(401)
   expect((await join(env, A)).status).toBe(401)
   expect((await join(env, B)).status).toBe(401)
-  expect(ns.made).toEqual([await runKey(A, undefined), await runKey(B, undefined)])
+  expect(ns.made).toEqual([await sessionKey(A, undefined), await sessionKey(B, undefined)])
   const res = await worker.fetch(new Request('https://relay.example.com/health'), env)
   expect([res.status, await res.json()]).toEqual([404, { error: 'no such route' }])
 })
@@ -81,7 +81,7 @@ it('gives the same run id of two repositories two objects', async () => {
   await join(env, R, unsigned(1))
   await join(env, R, unsigned(2))
   await join(env, R, unsigned(1))
-  const run = (project: string) => runKey(R, { iss: 'https://gitlab.com', run: [project] })
+  const run = (project: string) => sessionKey(R, { iss: 'https://gitlab.com', run: [project] })
   expect(ns.made).toEqual([await run('1'), await run('2')])
 })
 
@@ -137,15 +137,15 @@ it('rebuilds a run from its sockets’ attachments when it wakes', () => {
       deserializeAttachment: () => kept,
     }
   }
-  const o = sock({ key: 'k', id: 'o', role: 'orchestrator', cert: 'c' })
-  const a = sock({ key: 'k', id: 'a', role: 'worker' })
+  const o = sock({ key: 'k', id: 'o', role: 'host', cert: 'c' })
+  const a = sock({ key: 'k', id: 'a', role: 'peer' })
   const env: Env = { RELAY: namespace(() => env), ALLOW: `${ISS}:o/r:.gitlab-ci.yml` }
   const run = new RelayRun({ acceptWebSocket: () => {}, getWebSockets: () => [o, a] }, env)
-  run.webSocketMessage(a, JSON.stringify({ sends: [{ to: 'orchestrator', body: 'hi' }] }))
+  run.webSocketMessage(a, JSON.stringify({ sends: [{ to: 'host', body: 'hi' }] }))
   run.webSocketMessage(o, JSON.stringify({ sends: [{ to: 'a', body: 'go' }] }))
   expect([pushed.get('o'), pushed.get('a')]).toEqual([
     [{ messages: [{ from: 'a', body: 'hi' }] }],
-    [{ messages: [{ from: 'orchestrator', body: 'go' }] }],
+    [{ messages: [{ from: 'host', body: 'go' }] }],
   ])
 })
 

@@ -126,6 +126,8 @@ anywhere your CI can reach.
   free plan: websocket messages count 20 to one Durable Object request,
   against 100,000 a day, and it writes no row. On Bun and Docker runs
   live in memory, and a restart ends the runs it was carrying.
+- The wire is [Switchboard v1](../../switchboard/), an open protocol: any
+  server that speaks it can stand in for this relay.
 - `AUDIENCE` (Cloudflare) is unset by default: tokens must name the URL
   the relay is reached at. Set it only when they name another one.
 

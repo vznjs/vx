@@ -1,10 +1,10 @@
-// The relay of PROTOCOL.md: pushes each message between one orchestrator
-// and its workers down the receiver's socket, or drops it; only its own
-// notices wait. A relay restart ends the runs it carried, unless its host
+// The relay of PROTOCOL.md: pushes each message between one host
+// and its peers down the receiver's socket, or drops it; only its own
+// notices wait. A relay restart ends the sessions it carried, unless its host
 // hands back the sockets it kept (a Durable Object's, across hibernation),
 // each with what `attach` gave it to keep.
-// It knows as little as routing needs: a run is a hash, bodies and an
-// worker's info are its peers' ciphertext, and no body is ever stored.
+// It knows as little as routing needs: a session is a hash, bodies and a
+// peer's info are its peers' ciphertext, and no body is ever stored.
 
 import { TokenError, type VerifiedToken } from './oidc.js'
 import { importKey, PROOF_HEADER, proofText, verifyProof } from './proof.js'
@@ -23,26 +23,51 @@ export interface RelayOptions {
   heartbeatMs?: number
   /**
    * The sockets its host kept across a restart, each with what `attach`
-   * gave it to keep: the runs are rebuilt from them, and a run whose
-   * orchestrator's socket is not among them is over.
+   * gave it to keep: the sessions are rebuilt from them, and a session whose
+   * host's socket is not among them is over.
    */
   sockets?: Iterable<readonly [Kept, RelaySocket]> | undefined
   /**
    * Answers a participant's `socket` request: the host accepts the
    * websocket and `attach`es it. A participant speaks only over it.
    */
-  upgrade: (key: string, id: string, req: Request) => Response
+  upgrade: (key: string, id: string, req: Request, protocol?: string) => Response
+}
+
+/** The websocket subprotocol a version of PROTOCOL.md is offered and chosen as. */
+const PROTOCOL = 'switchboard.v'
+/** The versions this relay speaks, oldest first. */
+const VERSIONS = [1]
+const SUPPORTED = `supported: ${PROTOCOL}${VERSIONS[0]}-v${VERSIONS.at(-1)}`
+
+/**
+ * The subprotocol a socket request is answered with: the highest version
+ * both speak, else the first it offered, so its client reads the 4406
+ * refusal (one answered with no subprotocol, or another, fails unread).
+ */
+export function negotiate(req: Request): { protocol?: string; version?: number } {
+  const offered = (req.headers.get('sec-websocket-protocol') ?? '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter((t) => t !== '')
+  let version: number | undefined
+  for (const t of offered) {
+    const v = t.startsWith(PROTOCOL) ? Number(t.slice(PROTOCOL.length)) : NaN
+    if (VERSIONS.includes(v) && (version === undefined || v > version)) version = v
+  }
+  if (version !== undefined) return { protocol: `${PROTOCOL}${version}`, version }
+  return offered[0] === undefined ? {} : { protocol: offered[0] }
 }
 
 /**
  * What a host keeps with a participant's socket (a Durable Object's
- * attachment, at most 2 KiB) so a restart rebuilds its run: no message.
+ * attachment, at most 2 KiB) so a restart rebuilds its session: no message.
  */
 export interface Kept {
   key: string
   id: string
-  role: 'orchestrator' | 'worker'
-  /** The orchestrator's: its run's `cert`. */
+  role: 'host' | 'peer'
+  /** The host's: its session's `cert`. */
   cert?: string
 }
 
@@ -61,7 +86,7 @@ export const GONE = refusedWith(404)
 /**
  * Close `socket` with `code`, said first in a frame (`{ "close": code,
  * "error"? }`, 0 for none): Bun 1.4.4's client fires its close only once
- * the host ends TCP too, and workerd never did, so a lost worker heard
+ * the host ends TCP too, and workerd never did, so a lost peer heard
  * 4404 10 s late, at its own redial limit (PR #4171, 2026-10-23). A
  * refusal's code is 4000 plus its HTTP status, its `reason` the error.
  */
@@ -98,8 +123,8 @@ interface Message {
 
 interface Participant {
   id: string
-  role: 'orchestrator' | 'worker'
-  /** A worker's, until the orchestrator is told it joined. */
+  role: 'host' | 'peer'
+  /** A peer's, until the host is told it joined. */
   info: unknown
   /** The relay's own notices it could not push yet. */
   queue: Message[]
@@ -108,20 +133,20 @@ interface Participant {
   hello?: string
 }
 
-interface Run {
+interface Session {
   key: string
   closed: boolean
-  orchestrator?: Participant
+  host?: Participant
   byId: Map<string, Participant>
-  /** The public key its orchestrator joined with; only its holder acts as it. */
+  /** The public key its host joined with; only its holder acts as it. */
   cert?: string
   certKey?: Promise<CryptoKey>
   /** Proof nonces seen, and when: each is taken once. */
   nonces?: Map<string, number>
 }
 
-/** A random (v4) UUID: no one can guess a run id to open it first or join it. */
-const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+/** A random (v4) UUID: no one can guess a session id to open it first or join it. */
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const MAX_BODY = 1 << 20
 /** How far a proof's time may be from the relay's: a CI runner's clock drifts. */
 const PROOF_SKEW_MS = 2 * 60_000
@@ -139,7 +164,7 @@ const errorBody = (err: HttpError | TokenError): object => ({ error: err.message
 
 export function createRelay(opts: RelayOptions): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 5_000
-  const runs = new Map<string, Run>()
+  const sessions = new Map<string, Session>()
 
   /**
    * Down the participant's socket, or nowhere: a participant's message the
@@ -148,7 +173,7 @@ export function createRelay(opts: RelayOptions): Relay {
    * relay's own notices (`notice`: joined, lost, closed) have no sender to
    * resend them, so they wait for the next socket.
    */
-  const deliver = (run: Run, p: Participant, m: Message, notice = false): void => {
+  const deliver = (session: Session, p: Participant, m: Message, notice = false): void => {
     if (p.socket !== undefined && p.queue.length === 0) {
       try {
         p.socket.send(JSON.stringify({ messages: [m] }))
@@ -174,7 +199,7 @@ export function createRelay(opts: RelayOptions): Relay {
   }
 
   /** `socket` reaches the participant: what queued for it goes down it. */
-  const plug = (run: Run, p: Participant, socket: RelaySocket): void => {
+  const plug = (session: Session, p: Participant, socket: RelaySocket): void => {
     p.socket = socket
     if (p.hello !== undefined) {
       try {
@@ -201,23 +226,23 @@ export function createRelay(opts: RelayOptions): Relay {
     return messages
   }
 
-  const close = (run: Run): void => {
-    run.closed = true
-    for (const p of [...run.byId.values()]) {
-      if (p.role !== 'worker') continue
-      deliver(run, p, { from: 'relay', body: { type: 'closed' } }, true)
-      drop(run, p, false)
+  const close = (session: Session): void => {
+    session.closed = true
+    for (const p of [...session.byId.values()]) {
+      if (p.role !== 'peer') continue
+      deliver(session, p, { from: 'relay', body: { type: 'closed' } }, true)
+      drop(session, p, false)
     }
-    // A run is live while its orchestrator is, and only a live one is kept:
-    // a worker that comes or calls after it learns it at once (owner,
+    // A session is live while its host is, and only a live one is kept:
+    // a peer that comes or calls after it learns it at once (owner,
     // 2026-10-23: "job is live, or it isnt"). Kept closed, or opened by a
-    // worker alone, a run held a late worker's runner ten minutes.
-    forget(run)
+    // peer alone, a session held a late peer's runner ten minutes.
+    forget(session)
   }
 
-  /** `tell`: the orchestrator hears its worker was lost (not when it removed it). */
-  const drop = (run: Run, p: Participant, tell = true): void => {
-    if (!run.byId.delete(p.id)) return
+  /** `tell`: the host hears its peer was lost (not when it removed it). */
+  const drop = (session: Session, p: Participant, tell = true): void => {
+    if (!session.byId.delete(p.id)) return
     const left = drain(p)
     if (!tell) {
       // What queued, its `refused` among it, before the socket closes.
@@ -229,113 +254,127 @@ export function createRelay(opts: RelayOptions): Relay {
     }
     // Its socket learns it is gone by the close code; its next socket, from `socket`.
     if (p.socket !== undefined) closeSocket(p.socket, GONE, 'gone')
-    if (p.role === 'orchestrator') {
-      close(run)
+    if (p.role === 'host') {
+      close(session)
       return
     }
-    if (tell && run.orchestrator !== undefined && !run.closed) {
-      deliver(run, run.orchestrator, { from: 'relay', body: { type: 'lost', id: p.id } }, true)
+    if (tell && session.host !== undefined && !session.closed) {
+      deliver(session, session.host, { from: 'relay', body: { type: 'left', id: p.id } }, true)
     }
   }
 
-  /** The orchestrator takes a worker it did not admit off the run. */
-  const removeWorker = (run: Run, p: Participant, worker: unknown): void => {
-    const a = typeof worker === 'string' ? run.byId.get(worker) : undefined
-    if (p.role !== 'orchestrator') throw new HttpError(403, 'only the orchestrator removes')
-    if (a === undefined || a.role !== 'worker') throw new HttpError(404, 'unknown worker')
-    drop(run, a, false)
+  /** The host takes a peer it did not admit off the session. */
+  const removePeer = (session: Session, p: Participant, peer: unknown): void => {
+    const a = typeof peer === 'string' ? session.byId.get(peer) : undefined
+    if (p.role !== 'host') throw new HttpError(403, 'only the host removes')
+    if (a === undefined || a.role !== 'peer') throw new HttpError(404, 'unknown peer')
+    drop(session, a, false)
   }
 
-  /** A closed run's participants, and what it knew of its orchestrator. */
-  const empty = (run: Run): void => {
-    for (const p of run.byId.values()) drain(p)
-    run.byId.clear()
-    delete run.orchestrator
-    delete run.cert
-    delete run.certKey
-    delete run.nonces
+  /** A closed session's participants, and what it knew of its host. */
+  const empty = (session: Session): void => {
+    for (const p of session.byId.values()) drain(p)
+    session.byId.clear()
+    delete session.host
+    delete session.cert
+    delete session.certKey
+    delete session.nonces
   }
 
-  const forget = (run: Run): void => {
-    runs.delete(run.key)
-    empty(run)
+  const forget = (session: Session): void => {
+    sessions.delete(session.key)
+    empty(session)
   }
 
-  if (opts.sockets !== undefined) restore(opts.sockets, runs)
+  if (opts.sockets !== undefined) restore(opts.sockets, sessions)
 
-  /** The orchestrator's request is signed by the key it joined with, at most once. */
-  const prove = async (run: Run, req: Request, url: URL, body: string, cert = run.cert) => {
+  /** The host's request is signed by the key it joined with, at most once. */
+  const prove = async (
+    session: Session,
+    req: Request,
+    url: URL,
+    body: string,
+    cert = session.cert,
+  ) => {
     const m = /^(\d+)\.([\w-]{16,64})\.([\w-]+)$/.exec(req.headers.get(PROOF_HEADER) ?? '')
     if (m === null || cert === undefined) {
-      throw new HttpError(403, 'not signed by the run’s orchestrator key')
+      throw new HttpError(403, 'not signed by the session’s host key')
     }
     const [, ts, nonce, sig] = m as unknown as [string, string, string, string]
     const now = Date.now()
-    const nonces = (run.nonces ??= new Map())
+    const nonces = (session.nonces ??= new Map())
     for (const [n, at] of nonces) if (now - at > 2 * PROOF_SKEW_MS) nonces.delete(n)
     if (Math.abs(now - Number(ts)) > PROOF_SKEW_MS || nonces.has(nonce)) {
-      throw new HttpError(403, 'not signed by the run’s orchestrator key')
+      throw new HttpError(403, 'not signed by the session’s host key')
     }
     // Taken before the await, so a replay sent alongside finds it taken.
     nonces.set(nonce, now)
-    const key = cert === run.cert ? (run.certKey ??= importKey(cert)) : importKey(cert)
+    const key = cert === session.cert ? (session.certKey ??= importKey(cert)) : importKey(cert)
     const signed = proofText(req.method, url.pathname + url.search, Number(ts), nonce, body)
     if (!(await verifyProof(await key, sig, signed))) {
-      throw new HttpError(403, 'not signed by the run’s orchestrator key')
+      throw new HttpError(403, 'not signed by the session’s host key')
     }
   }
 
-  const participant = (run: Run, id: unknown): Participant => {
-    const p = typeof id === 'string' ? run.byId.get(id) : undefined
+  const participant = (session: Session, id: unknown): Participant => {
+    const p = typeof id === 'string' ? session.byId.get(id) : undefined
     if (p === undefined) throw new HttpError(404, 'unknown id')
     return p
   }
 
-  const join = (run: Run, body: { role?: unknown; info?: unknown; key?: unknown }): Participant => {
+  const join = (
+    session: Session,
+    body: { role?: unknown; info?: unknown; key?: unknown },
+  ): Participant => {
     const role = body.role
-    if (role !== 'orchestrator' && role !== 'worker') {
-      throw new HttpError(400, 'role is orchestrator or worker')
+    if (role !== 'host' && role !== 'peer') {
+      throw new HttpError(400, 'role is host or peer')
     }
-    if (role === 'orchestrator' && run.orchestrator !== undefined) {
-      throw new HttpError(409, 'the run has an orchestrator')
+    if (role === 'host' && session.host !== undefined) {
+      throw new HttpError(409, 'the session has a host')
     }
     const p: Participant = {
       id: crypto.randomUUID().replaceAll('-', ''),
       role,
-      // No one reads the orchestrator's.
-      info: role === 'worker' ? (body.info ?? null) : null,
+      // No one reads the host's.
+      info: role === 'peer' ? (body.info ?? null) : null,
       queue: [],
     }
-    run.byId.set(p.id, p)
-    if (p.role === 'orchestrator') {
-      run.orchestrator = p
-      run.cert = body.key as string
-      for (const a of run.byId.values()) if (a.role === 'worker') deliver(run, p, joined(a), true)
-    } else if (run.orchestrator !== undefined) deliver(run, run.orchestrator, joined(p), true)
+    session.byId.set(p.id, p)
+    if (p.role === 'host') {
+      session.host = p
+      session.cert = body.key as string
+      for (const a of session.byId.values())
+        if (a.role === 'peer') deliver(session, p, joined(a), true)
+    } else if (session.host !== undefined) deliver(session, session.host, joined(p), true)
     return p
   }
 
-  const send = (run: Run, from: Participant, body: { to?: unknown; body?: unknown }): void => {
+  const send = (
+    session: Session,
+    from: Participant,
+    body: { to?: unknown; body?: unknown },
+  ): void => {
     const to =
-      from.role === 'worker'
-        ? body.to === 'orchestrator'
-          ? run.orchestrator
+      from.role === 'peer'
+        ? body.to === 'host'
+          ? session.host
           : undefined
         : typeof body.to === 'string'
-          ? run.byId.get(body.to)
+          ? session.byId.get(body.to)
           : undefined
     if (to === undefined || to === from) throw new HttpError(404, 'unknown to')
-    deliver(run, to, {
-      from: from.role === 'orchestrator' ? 'orchestrator' : from.id,
+    deliver(session, to, {
+      from: from.role === 'host' ? 'host' : from.id,
       body: body.body,
     })
   }
 
-  const live = (key: string): Run => {
-    const run = runs.get(key)
-    if (run === undefined) missing()
-    if (run.closed) throw new HttpError(410, 'run closed')
-    return run
+  const live = (key: string): Session => {
+    const session = sessions.get(key)
+    if (session === undefined) missing()
+    if (session.closed) throw new HttpError(410, 'session closed')
+    return session
   }
 
   /** Refusals of socket requests, by the id their host attaches the socket as. */
@@ -345,45 +384,51 @@ export function createRelay(opts: RelayOptions): Relay {
    * A participant speaks only over its socket, and joins as it opens one
    * (`socket?join=`): one request a participant on a host that bills each.
    */
-  const handle = async (req: Request): Promise<Response> => {
+  const handle = async (
+    req: Request,
+    protocol: string | undefined,
+    version: number | undefined,
+  ) => {
     const url = new URL(req.url)
-    const m = /^\/v1\/runs\/([^/]+)\/socket$/.exec(url.pathname)
+    const m = /^\/sessions\/([^/]+)\/socket$/.exec(url.pathname)
     if (m === null) throw new HttpError(404, 'no such route')
-    const runId = m[1]!
-    if (!RUN_ID.test(runId)) throw new HttpError(400, 'run id is not a random UUID')
+    const sessionId = m[1]!
+    if (!SESSION_ID.test(sessionId)) throw new HttpError(400, 'session id is not a random UUID')
     if (req.method !== 'GET') throw new HttpError(405, 'wrong method')
     const token = await authorize(req, opts.verify)
-    // A run is its id within its repository, so another tenant that learns
+    // A session is its id within its repository, so another tenant that learns
     // an id cannot open it first.
-    const key = await runKey(runId, token)
+    const key = await sessionKey(sessionId, token)
     if (req.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
       throw new HttpError(426, 'not a websocket')
     }
+    if (version === undefined) throw new HttpError(406, SUPPORTED)
     const asked = url.searchParams.get('join')
     if (asked !== null) {
       if (asked.length > MAX_BODY) throw new HttpError(413, 'join over 1 MiB')
       const p = await enter(key, req, url, parse(asked))
       p.hello = JSON.stringify({ joined: { id: p.id, heartbeatMs } })
-      return opts.upgrade(key, p.id, req)
+      return opts.upgrade(key, p.id, req, protocol)
     }
-    const run = runs.get(key)
+    const session = sessions.get(key)
     const id = url.searchParams.get('id') ?? ''
     // One the relay lost or let go learns it from the close code (GONE)
     // `attach` closes the socket with.
-    if (run === undefined || run.closed || !run.byId.has(id)) return opts.upgrade(key, id, req)
-    // As the orchestrator: signed by the key it joined with.
-    if (participant(run, id).role === 'orchestrator') await prove(run, req, url, '')
-    return opts.upgrade(key, id, req)
+    if (session === undefined || session.closed || !session.byId.has(id))
+      return opts.upgrade(key, id, req, protocol)
+    // As the host: signed by the key it joined with.
+    if (participant(session, id).role === 'host') await prove(session, req, url, '')
+    return opts.upgrade(key, id, req, protocol)
   }
 
-  /** Joins `body` to the run `key`, by the socket that carries it, signed in its query. */
+  /** Joins `body` to the session `key`, by the socket that carries it, signed in its query. */
   const enter = async (
     key: string,
     req: Request,
     url: URL,
     body: Record<string, unknown>,
   ): Promise<Participant> => {
-    if (body['role'] === 'orchestrator') {
+    if (body['role'] === 'host') {
       if (
         typeof body['key'] !== 'string' ||
         !(await importKey(body['key']).then(
@@ -391,31 +436,32 @@ export function createRelay(opts: RelayOptions): Relay {
           () => false,
         ))
       ) {
-        throw new HttpError(400, 'an orchestrator joins with key: its P-256 public key')
+        throw new HttpError(400, 'a host joins with key: its P-256 public key')
       }
     }
-    if (body['role'] !== 'orchestrator' && body['role'] !== 'worker') {
-      throw new HttpError(400, 'role is orchestrator or worker')
+    if (body['role'] !== 'host' && body['role'] !== 'peer') {
+      throw new HttpError(400, 'role is host or peer')
     }
-    const run = runs.get(key)
-    if (body['role'] === 'worker') {
-      // Its orchestrator starts it: a worker finds it live, or leaves.
-      if (run === undefined || run.closed) throw new HttpError(410, 'no live run')
-      return join(run, body)
+    const session = sessions.get(key)
+    if (body['role'] === 'peer') {
+      // Its host starts it: a peer finds it live, or leaves.
+      if (session === undefined || session.closed) throw new HttpError(410, 'no live session')
+      return join(session, body)
     }
-    if (run !== undefined) throw new HttpError(409, 'the run has an orchestrator')
-    const fresh: Run = { key, closed: false, byId: new Map() }
+    if (session !== undefined) throw new HttpError(409, 'the session has a host')
+    const fresh: Session = { key, closed: false, byId: new Map() }
     await prove(fresh, req, url, '', body['key'] as string)
-    // Another orchestrator may have joined while the key was checked.
-    if (runs.has(key)) throw new HttpError(409, 'the run has an orchestrator')
-    runs.set(key, fresh)
+    // Another host may have joined while the key was checked.
+    if (sessions.has(key)) throw new HttpError(409, 'the session has a host')
+    sessions.set(key, fresh)
     return join(fresh, body)
   }
 
   return {
     async fetch(req) {
+      const { protocol, version } = negotiate(req)
       try {
-        return await handle(req)
+        return await handle(req, protocol, version)
       } catch (err) {
         if (!(err instanceof HttpError || err instanceof TokenError)) throw err
         // A failed upgrade tells a client nothing it can read: a socket
@@ -423,7 +469,7 @@ export function createRelay(opts: RelayOptions): Relay {
         if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
           const id = `refused-${crypto.randomUUID()}`
           refusals.set(id, err)
-          return opts.upgrade('', id, req)
+          return opts.upgrade('', id, req, protocol)
         }
         return Response.json(errorBody(err), { status: err.status })
       }
@@ -435,9 +481,9 @@ export function createRelay(opts: RelayOptions): Relay {
         closeSocket(socket, refusedWith(refused.status), refused.message)
         return false
       }
-      const run = runs.get(key)
-      const p = run?.closed === false ? run.byId.get(id) : undefined
-      if (run === undefined || p === undefined) {
+      const session = sessions.get(key)
+      const p = session?.closed === false ? session.byId.get(id) : undefined
+      if (session === undefined || p === undefined) {
         closeSocket(socket, GONE, 'gone')
         return false
       }
@@ -445,31 +491,35 @@ export function createRelay(opts: RelayOptions): Relay {
       // redial whose old close it never ran) attached the last; a push
       // failing on a stale one unplugged it, and the live one, its pings
       // answered by the host, never heard again: main 32f73ed's
-      // orchestrator waited 13 min on results queued here (2026-10-23).
+      // host waited 13 min on results queued here (2026-10-23).
       // Closed, the other's client dials again and gets what queued.
-      if (p.socket !== undefined && p.socket !== socket) {
+      const earlier = p.socket
+      // Plugged first: Bun runs the earlier socket's close handler inside
+      // its close(), and that detach lost the participant (a redial on
+      // the Bun relay ended its peer).
+      plug(session, p, socket)
+      if (earlier !== undefined && earlier !== socket) {
         try {
-          closeSocket(p.socket)
+          closeSocket(earlier)
         } catch {}
       }
-      plug(run, p, socket)
       return {
         key,
         id,
         role: p.role,
-        ...(p.role === 'orchestrator' && run.cert !== undefined ? { cert: run.cert } : {}),
+        ...(p.role === 'host' && session.cert !== undefined ? { cert: session.cert } : {}),
       }
     },
     detach(key, id, socket) {
-      const run = runs.get(key)
-      const p = run?.byId.get(id)
+      const session = sessions.get(key)
+      const p = session?.byId.get(id)
       if (p === undefined || p.socket !== socket) return
       p.socket = undefined
       // Liveness is the connection (owner, 2026-10-23): its socket closed,
-      // it is gone, and the orchestrator's workers go with it at once. A
+      // it is gone, and the host's peers go with it at once. A
       // peer quiet on a socket that never closed (no TCP end, no close) is
       // its peers' to lose (vx-dte probes it): the relay keeps no timer.
-      drop(run!, p)
+      drop(session!, p)
     },
     frame(key, id, text, socket) {
       let n: unknown = null
@@ -495,23 +545,23 @@ export function createRelay(opts: RelayOptions): Relay {
         if (typeof body !== 'object' || body === null || Array.isArray(body))
           throw new HttpError(400, 'frame is not a JSON object')
         n = body.n ?? null
-        const run = live(key)
-        const p = participant(run, id)
+        const session = live(key)
+        const p = participant(session, id)
         // It spoke down this socket, so this socket reaches it: one its
         // host let go or never restored as its own left it deaf while its
-        // pings were answered, and 13baaf6's orchestrator heard nothing
+        // pings were answered, and 13baaf6's host heard nothing
         // for 8 min (2026-10-23). Not closing the other: a host may hand
         // the same socket as another object.
-        if (socket !== undefined && p.socket !== socket) plug(run, p, socket)
-        if (body.leave === true) drop(run, p)
-        else if (body.remove !== undefined) removeWorker(run, p, body.remove)
+        if (socket !== undefined && p.socket !== socket) plug(session, p, socket)
+        if (body.leave === true) drop(session, p)
+        else if (body.remove !== undefined) removePeer(session, p, body.remove)
         else if (Array.isArray(body.sends)) {
           // Several sends in one frame: one message the host bills, each answered.
           const results = body.sends.map((one: { to?: unknown; body?: unknown }) => {
             try {
               if (typeof one !== 'object' || one === null)
                 throw new HttpError(400, 'a send is an object')
-              send(run, p, one)
+              send(session, p, one)
               return null
             } catch (err) {
               if (!(err instanceof HttpError)) throw err
@@ -531,7 +581,7 @@ export function createRelay(opts: RelayOptions): Relay {
   }
 }
 
-/** Tells the orchestrator `a` joined, and forgets what it said. */
+/** Tells the host `a` joined, and forgets what it said. */
 const joined = (a: Participant): Message => {
   const info = a.info
   a.info = null
@@ -539,16 +589,19 @@ const joined = (a: Participant): Message => {
 }
 
 /**
- * Runs as their sockets kept them. A run without its orchestrator's
+ * Sessions as their sockets kept them. A session without its host's
  * socket is over (liveness is the connection), as is a socket kept by an
  * older relay: each is closed as gone. Of a participant's several, the
  * last is its socket.
  */
-function restore(sockets: Iterable<readonly [Kept, RelaySocket]>, runs: Map<string, Run>): void {
+function restore(
+  sockets: Iterable<readonly [Kept, RelaySocket]>,
+  sessions: Map<string, Session>,
+): void {
   const all = [...sockets]
   for (const [k] of all) {
-    if (k?.role !== 'orchestrator' || runs.has(k.key)) continue
-    runs.set(k.key, {
+    if (k?.role !== 'host' || sessions.has(k.key)) continue
+    sessions.set(k.key, {
       key: k.key,
       closed: false,
       byId: new Map(),
@@ -556,12 +609,12 @@ function restore(sockets: Iterable<readonly [Kept, RelaySocket]>, runs: Map<stri
     })
   }
   for (const [k, socket] of all) {
-    const run = k?.role === undefined ? undefined : runs.get(k.key)
-    if (run === undefined) {
+    const session = k?.role === undefined ? undefined : sessions.get(k.key)
+    if (session === undefined) {
       closeSocket(socket, GONE, 'gone')
       continue
     }
-    const before = run.byId.get(k.id)
+    const before = session.byId.get(k.id)
     if (before?.socket !== undefined) closeSocket(before.socket)
     const p: Participant = before ?? {
       id: k.id,
@@ -570,21 +623,24 @@ function restore(sockets: Iterable<readonly [Kept, RelaySocket]>, runs: Map<stri
       queue: [],
     }
     p.socket = socket
-    run.byId.set(k.id, p)
-    if (k.role === 'orchestrator') run.orchestrator = p
+    session.byId.set(k.id, p)
+    if (k.role === 'host') session.host = p
   }
 }
 
 function missing(): never {
-  throw new HttpError(404, 'unknown run')
+  throw new HttpError(404, 'unknown session')
 }
 
 /**
- * The run's name: a SHA-256 of its id and the issuer and run claims of its
+ * The session's name: a SHA-256 of its id and the issuer and session claims of its
  * tokens, so neither storage nor a Durable Object's name says whose it is.
  */
-export async function runKey(runId: string, token: VerifiedToken | undefined): Promise<string> {
-  const name = token === undefined ? runId : [token.iss, ...token.run, runId].join('\0')
+export async function sessionKey(
+  sessionId: string,
+  token: VerifiedToken | undefined,
+): Promise<string> {
+  const name = token === undefined ? sessionId : [token.iss, ...token.run, sessionId].join('\0')
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(name))
   return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }

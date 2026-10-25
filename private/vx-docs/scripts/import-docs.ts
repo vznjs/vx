@@ -505,7 +505,7 @@ function pluginPackages(packagesDir: string): string[] {
  * the package never disagree. A relative link points into the repo, which
  * the site does not serve, so it opens on GitHub.
  */
-function transformReadme(dir: string, content: string): string {
+function transformReadme(dir: string, content: string, file = 'README.md'): string {
   const repoBase = `packages/${dir}/`
   const lines = content.replace(/\r\n/g, '\n').split('\n')
   const h1 = lines.findIndex((l) => /^#\s+/.test(l))
@@ -539,7 +539,7 @@ function transformReadme(dir: string, content: string): string {
   })
   const fm = ['---', GENERATED_MARK, `title: ${yaml(title)}`]
   if (description) fm.push(`description: ${yaml(description)}`)
-  fm.push(`editUrl: ${yaml(`https://github.com/vznjs/vx/edit/main/${repoBase}README.md`)}`)
+  fm.push(`editUrl: ${yaml(`https://github.com/vznjs/vx/edit/main/${repoBase}${file}`)}`)
   fm.push('---', '')
   return `${fm.join('\n')}${body.join('\n').replace(/^\n+/, '')}`
 }
@@ -676,7 +676,13 @@ export async function importDocs(
     const readme = await Bun.file(path.join(packagesDir, dir, 'README.md')).text()
     await Bun.write(path.join(outDir, 'plugins', `${dir}.md`), transformReadme(dir, readme))
   }
-  return sources.length + plugins.length
+  // The relay's protocol, whose source ships beside the relay.
+  const switchboard = await Bun.file(path.join(packagesDir, 'vx-dte-relay', 'PROTOCOL.md')).text()
+  await Bun.write(
+    path.join(outDir, 'switchboard.md'),
+    transformReadme('vx-dte-relay', switchboard, 'PROTOCOL.md'),
+  )
+  return sources.length + plugins.length + 1
 }
 
 if (import.meta.main) {
