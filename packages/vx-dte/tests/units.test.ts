@@ -2834,7 +2834,8 @@ it('reads memory as bytes or with a unit', () => {
     bytes('1.5 gb'),
     bytes('8'),
     bytes(0),
-  ]).toEqual([8e9, 512 * 1024 ** 2, 1024, 1.5e9, undefined, undefined])
+    bytes('0GB'),
+  ]).toEqual([8e9, 512 * 1024 ** 2, 1024, 1.5e9, undefined, undefined, undefined])
 })
 
 const refusal = (make: () => unknown): string => {
