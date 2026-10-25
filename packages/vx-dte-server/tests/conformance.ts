@@ -1,7 +1,7 @@
 // The Switchboard conformance suite (PROTOCOL.md): what any relay that
 // speaks switchboard.v1 does, over real websockets. Each relay this
-// package ships runs it: Bun (relay.test.ts) and workerd
-// (worker-sockets.test.ts).
+// package ships runs it: Bun (relay.test.ts), workerd
+// (worker-sockets.test.ts) and the Docker image (docker/smoke.sh).
 
 import { describe, expect, it } from 'bun:test'
 import { createProver, PROOF_HEADER } from '../src/index.js'

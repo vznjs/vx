@@ -1,7 +1,8 @@
 #!/bin/sh
 # The relay's image, built and run as `docker run` would, then one run
 # carried through it: an orchestrator and a worker join over sockets and
-# each hears the other. Host networking: --no-auth binds loopback only.
+# each hears the other, then the conformance suite every relay passes, then
+# a clean stop. Host networking: --no-auth binds loopback only.
 set -eu
 cd "$(dirname "$0")/../.."
 tag="vx-dte-server-smoke:$$"
@@ -19,4 +20,16 @@ if [ -z "$ready" ]; then
   docker logs "$name" >&2 || true
   exit 1
 fi
-VX_DTE_RELAY_SMOKE="http://127.0.0.1:$port" bun tests/docker/smoke.ts
+export VX_DTE_RELAY_SMOKE="http://127.0.0.1:$port"
+bun tests/docker/smoke.ts
+bun test ./tests/docker/conformance.docker.ts
+# `docker stop` sends SIGTERM: the relay ends at once and cleanly, never
+# killed after Docker's 10 s grace.
+started=$(date +%s)
+docker stop "$name" >/dev/null
+code=$(docker inspect -f '{{.State.ExitCode}}' "$name" 2>/dev/null || echo gone)
+if [ $(( $(date +%s) - started )) -ge 5 ]; then
+  echo "vx-dte-server smoke: docker stop took $(( $(date +%s) - started )) s" >&2
+  exit 1
+fi
+echo "vx-dte-server smoke: stopped cleanly ($code)"
