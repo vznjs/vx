@@ -137,7 +137,7 @@ function client(opts: Partial<RelayOptions> = {}, provers = new Map<string, Prov
     attach(await keyOf(run, token), id) !== false
   /** `id`'s socket closed, as its host reports it. */
   const cut = async (run: string, id: string, token?: string): Promise<void> =>
-    relay.detach(await keyOf(run, token), id, sockets.get(id)!)
+    void relay.detach(await keyOf(run, token), id, sockets.get(id)!)
   /** What reached `id`'s socket since, its socket plugged in first if it has none. */
   const poll = async (run: string, id: string, token?: string): Promise<any[]> => {
     if (!inboxes.has(id)) await plug(run, id, token)

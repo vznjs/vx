@@ -58,7 +58,8 @@ export interface Prover {
 export interface Relay {
   fetch(req: Request): Promise<Response>
   attach(key: string, id: string, socket: RelaySocket): Kept | false
-  detach(key: string, id: string, socket: RelaySocket): void
+  detach(key: string, id: string, socket: RelaySocket): boolean
+  expire(): boolean
   frame(key: string, id: string, text: string, socket?: RelaySocket): string | undefined
 }
 == type RelayOptions (src/relay.ts)
@@ -67,6 +68,8 @@ export interface RelayOptions {
   heartbeatMs?: number
   graceMs?: number
   sockets?: Iterable<readonly [Kept, RelaySocket]> | undefined
+  stored?: Iterable<Stored> | undefined
+  store?: RelayStore | undefined
   upgrade: (key: string, id: string, req: Request, protocol?: string) => Response
 }
 == type RelayServer (src/serve.ts)
@@ -79,10 +82,19 @@ export interface RelaySocket {
   send(text: string): void
   close(code?: number, reason?: string): void
 }
+== type RelayStore (src/relay.ts)
+export interface RelayStore {
+  put(p: Stored): void
+  delete(key: string, id: string): void
+}
 == type ServeOptions (src/serve.ts)
 export interface ServeOptions extends Pick<RelayOptions, 'verify' | 'heartbeatMs'> {
   hostname: string
   port: number
+}
+== type Stored (src/relay.ts)
+export interface Stored extends Kept {
+  droppedAt?: number
 }
 == type VerifiedToken (src/oidc.ts)
 export interface VerifiedToken {

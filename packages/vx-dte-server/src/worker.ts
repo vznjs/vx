@@ -1,8 +1,10 @@
 // The relay on Cloudflare Workers: each run is one Durable Object, so one
 // run's sockets meet in one place. Participants hold websockets the object
-// hibernates between messages: its state is in their attachments, and it
-// writes no storage. It keeps no alarm: a socket's close loses its
-// participant.
+// hibernates between messages, each with its attachment. A deploy (or the
+// runtime's own update) restarts the object and drops every socket,
+// attachments and all, so who takes part is also stored, one row each,
+// written as it joins, drops or leaves: never a message. An alarm lets go
+// of the participants that never dialed back, and so of their rows.
 // `wrangler.jsonc` deploys it; ALLOW is a var in it.
 
 import { claimedRun, createVerifier, parseAllow } from './oidc.js'
@@ -15,6 +17,7 @@ import {
   sessionKey,
   type Kept,
   type Relay,
+  type Stored,
 } from './relay.js'
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
@@ -37,6 +40,15 @@ interface Socket {
 export interface DurableObjectState {
   acceptWebSocket(ws: Socket): void
   getWebSockets(): Socket[]
+  storage: {
+    /** A SQLite-backed object's synchronous key-value API. */
+    kv: {
+      put(key: string, value: Stored): void
+      delete(key: string): boolean
+      list(): Iterable<[string, Stored]>
+    }
+    setAlarm(at: number): Promise<void>
+  }
 }
 declare const caches: {
   default: {
@@ -143,11 +155,16 @@ export default {
   },
 }
 
+/** How long a dropped participant may dial back (the relay's default `graceMs`). */
+const GRACE_MS = 10_000
+
 /** One run's relay. */
 export class RelayRun {
   private readonly relay: Relay
+  private readonly state: DurableObjectState
 
   constructor(state: DurableObjectState, env: Env) {
+    this.state = state
     let allow: ReturnType<typeof parseAllow>
     try {
       allow = parseAllow(env.ALLOW ?? '')
@@ -168,6 +185,12 @@ export class RelayRun {
     }
     this.relay = createRelay({
       verify: (token, req) => verifierOf(env.AUDIENCE || new URL(req.url).origin)(token),
+      graceMs: GRACE_MS,
+      stored: [...state.storage.kv.list()].map(([, v]) => v),
+      store: {
+        put: (p) => state.storage.kv.put(`${p.key}/${p.id}`, p),
+        delete: (key, id) => void state.storage.kv.delete(`${key}/${id}`),
+      },
       // One `attach` closed kept nothing: it is gone.
       sockets: state.getWebSockets().flatMap((ws) => {
         const kept = ws.deserializeAttachment()
@@ -182,6 +205,16 @@ export class RelayRun {
         return upgraded(pair[0], protocol)
       },
     })
+    if (this.relay.expire()) this.arm()
+  }
+
+  /** Wakes the object when a dropped participant's grace ends, even if no one calls. */
+  private arm(): void {
+    void this.state.storage.setAlarm(Date.now() + GRACE_MS + 1_000)
+  }
+
+  alarm(): void {
+    if (this.relay.expire()) this.arm()
   }
 
   fetch(req: Request): Promise<Response> {
@@ -204,7 +237,7 @@ export class RelayRun {
     // One `attach` closed as gone kept nothing: its close threw (main
     // 8d0619f's redial, 2026-10-24).
     const kept = ws.deserializeAttachment()
-    if (kept !== null) this.relay.detach(kept.key, kept.id, ws)
+    if (kept !== null && this.relay.detach(kept.key, kept.id, ws)) this.arm()
   }
 
   webSocketError(ws: Socket): void {
