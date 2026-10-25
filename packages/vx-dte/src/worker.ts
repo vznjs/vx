@@ -246,7 +246,11 @@ export async function runWorker(opts: {
         p = answerRuntime(r.command, path.join(opts.root, dir), opts.root, r.workspace === true)
         probes.set(k, p)
       }
-      const mine = await p
+      // Its checkout root read as the run's: a path under it names the same
+      // file there, as the task's env does. Compared raw, a probe of a
+      // workspace tool's path failed every task on a worker checked out
+      // elsewhere (2026-10-25).
+      const mine = swapRoots(await p, [[opts.root, root]])
       if (mine !== r.output)
         return `\`${r.command}\` answers ${JSON.stringify(mine)} on this worker, ${JSON.stringify(r.output)} on the run's machine, whose answer its key holds`
     }
