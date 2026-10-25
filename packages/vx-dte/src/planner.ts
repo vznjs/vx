@@ -6,7 +6,7 @@
 // a TETRIS game. every time we get new data we refine next step").
 
 import type { TaskNode } from '@vzn/vx'
-import { assign, kindOf, ordered, type Ask, type Bin, type Need } from './dispatch.js'
+import { assign, dead, kindOf, ordered, type Ask, type Bin, type Bounds, type Need } from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 
 /**
@@ -304,14 +304,25 @@ function play(
   let joining = tasks.filter((t) => waits.get(t.id) === 0)
   let readyCount = joining.length
   const spent = new Set<string>()
+  const bounds: Bounds = { done: false, open: true, free: 0, cores: 0, memory: 0 }
   // Ready tasks by what they need: no ready task needs less than the
   // least of these, and a pass ends once no slot takes that.
   const needs = new Map<string, { cores: number; memory: number; n: number }>()
+  // Their least, read again only once a kind on it leaves: each step read
+  // every kind, and 9000 kinds made it quadratic (2026-10-25).
+  let floor: { cores: number; memory: number } | undefined
   const count = (t: PlanTask, by: number): void => {
     const k = kindOf(t)
     const e = needs.get(k)
-    if (e === undefined) needs.set(k, { cores: t.cores, memory: t.memory, n: by })
-    else if ((e.n += by) === 0) needs.delete(k)
+    if (e === undefined) {
+      needs.set(k, { cores: t.cores, memory: t.memory, n: by })
+      if (floor !== undefined)
+        floor = { cores: Math.min(floor.cores, t.cores), memory: Math.min(floor.memory, t.memory) }
+    } else if ((e.n += by) === 0) {
+      needs.delete(k)
+      if (floor !== undefined && (e.cores <= floor.cores || e.memory <= floor.memory))
+        floor = undefined
+    }
   }
   for (const t of joining) count(t, 1)
   const widest = Math.max(1, ...workers.map((w) => w.cores))
@@ -336,10 +347,11 @@ function play(
     // A task that filled a size waits for a bigger one still to join.
     const later = (above: { cores: number; memory: number }): boolean =>
       slots.some((s) => s.at > now && (s.cores > above.cores || s.memory > above.memory))
-    const to = assign(ready.asks(spent), joined, later, how.place, {
-      floor: floorOf(needs.values()),
+    const to = assign(ready.asks(spent, bounds, needs.size), joined, later, how.place, {
+      floor: (floor ??= floorOf(needs.values())),
       kinds: needs.size,
       spent,
+      bounds,
     })
     // `graphene` ranks against the longest chain still ready.
     if (to.size > 0 && how.order === 'graphene') ready.stale = true
@@ -725,6 +737,8 @@ class Ready {
   private readonly head = new Map<string, number>()
   /** Given a worker since ordered. */
   readonly taken = new Set<string>()
+  /** No task before this place in `order` is left: a pass began at 0 and read 9000 taken ones (2026-10-25). */
+  private lo = 0
   /** Order it again before the next step. */
   stale = false
 
@@ -744,14 +758,18 @@ class Ready {
   }
 
   /** In order, past each kind in `spent` as `assign` reads it then. */
-  *asks(spent: ReadonlySet<string>): Generator<Ask> {
+  *asks(spent: Set<string>, bounds?: Bounds, kinds?: number): Generator<Ask> {
     // Measured needs are unrounded, so kinds can be as many as tasks: a
     // jump across every kind then cost more than a read of every task.
     if (this.kinds.size > MAX_JUMP_KINDS) {
-      for (let i = 0; i < this.order.length; i++) {
+      while (this.lo < this.order.length && this.taken.has(this.order[this.lo]!.id)) this.lo++
+      for (let i = this.lo; i < this.order.length; i++) {
         const t = this.order[i]!
         const kind = this.kindAt[i]!
-        if (!this.taken.has(t.id) && !spent.has(kind)) yield { id: t.id, need: t, kind }
+        if (this.taken.has(t.id) || spent.has(kind)) continue
+        if (bounds?.done === true || (kinds !== undefined && spent.size >= kinds)) return
+        if (bounds !== undefined && dead(t, bounds)) spent.add(kind)
+        else yield { id: t.id, need: t, kind }
       }
       return
     }
