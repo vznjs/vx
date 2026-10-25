@@ -89,14 +89,15 @@ export default { name: 's', tasks: {
 } }
 `,
     // Keys that fold a runtime probe: one every machine answers alike, one
-    // the worker's worktree answers otherwise.
+    // naming a path under the checkout root, and one the worker's worktree
+    // answers otherwise.
     'r/vx.config.mjs': `const log = ${JSON.stringify(path.join(root, 'probed.log'))}
 const t = (probe) => ({
   exec: { command: 'echo "$PWD" >> ' + log },
   inputs: { files: ['vx.config.mjs'], runtime: [probe] },
   cache: { outputs: { files: [] } },
 })
-export default { name: 'r', tasks: { same: t('echo 1.4.2'), here: t('pwd') } }
+export default { name: 'r', tasks: { same: t('echo 1.4.2'), root: t('pwd'), here: t('git rev-parse --git-dir') } }
 `,
     // Tasks core pins to the machine that runs \`vx run\`, each saying where it ran.
     'p/vx.config.mjs': `const log = ${JSON.stringify(path.join(root, 'pinned.log'))}
@@ -320,10 +321,20 @@ it('runs a task whose key folds a runtime probe on a worker that answers it alik
   expect(ran[0]).not.toBe(path.join(root, 'r'))
 }, 60_000)
 
+// 2026-10-25: a path under the worker's root failed the task, though it
+// names the same file there as the key's answer does here.
+it('runs a task whose runtime probe answers a path under the checkout root', () => {
+  const r = vx(['run', 'r#root'], 'e2e-probe')
+  expect([r.exitCode, r.stdout.toString() + r.stderr.toString()]).toEqual([0, expect.anything()])
+}, 60_000)
+
 it('fails a task on a worker whose runtime probe answers otherwise', () => {
   const r = vx(['run', 'r#here'], 'e2e-probe')
   const out = r.stdout.toString() + r.stderr.toString()
-  expect([r.exitCode, out]).toEqual([1, expect.stringContaining('`pwd` answers')])
+  expect([r.exitCode, out]).toEqual([
+    1,
+    expect.stringContaining('`git rev-parse --git-dir` answers'),
+  ])
 }, 60_000)
 
 it('fails a task that fails on its worker, with its output', () => {

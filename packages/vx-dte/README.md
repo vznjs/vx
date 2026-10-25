@@ -438,7 +438,9 @@ use your own instead.
   never does (owner, 2026-10-22).
 - A task whose key folds a runtime probe (`inputs.runtime`, such as
   `bun --version`) runs on a worker, which answers the probe first and
-  fails the task when it answers otherwise than this machine did.
+  fails the task when it answers otherwise than this machine did. A path
+  under the worker's checkout root reads as the same path under this
+  machine's, as the task's environment does.
 - No task runs on the orchestrator, only cache hits restore there
   (owner, 2026-10-24): a task with `exec.remote: false`, an interactive
   one and their dependants run on workers too (the executor is
