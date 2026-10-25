@@ -16,7 +16,7 @@ import {
   type TaskOutcome,
   type VxPlugin,
 } from '@vzn/vx'
-import { criticalPathPriorities } from '@vzn/vx-schedule-history'
+import { criticalPath } from '@vzn/vx-schedule-history'
 
 export interface VxCacheOptions {
   /** The server's base URL (`https://cache.example.com`), or `VX_CACHE_URL`. */
@@ -372,9 +372,10 @@ export function vxCache(options: VxCacheOptions = {}): VxPlugin {
           (p50s) =>
             p50s.size === 0
               ? undefined
-              : criticalPathPriorities(
+              : criticalPath(
                   [...nodes.values()],
                   new Map([...p50s].map(([id, p50DurationMs]) => [id, { p50DurationMs }])),
+                  {},
                 ),
           (err: unknown) => {
             ctx.warn(

@@ -63,7 +63,7 @@ as the item it describes.
 - Shipped: `vxCache()` writes a CI run's task timings after it (a hit
   records its producing run's duration) and orders every run by the
   critical path the server's timings give, through `ctx.refine`, so no run
-  waits on the server. The score is `@vzn/vx-schedule-history`'s.
+  waits on the server. The score is `@vzn/vx-schedule-history`'s `criticalPath`.
 - Planned: eviction on a Cron Trigger (Workers' free plan has five) and a
   timer on Bun, by age per scope.
 - Planned (with the server): flaky-task reruns and a dashboard, both read
