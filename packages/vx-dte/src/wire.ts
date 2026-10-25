@@ -479,9 +479,9 @@ export async function join(
       waiters.add(done)
     })
   /** Down the open socket; one that closes under it is redialed and asked again. */
-  const over = async (down: (s: Socket) => Promise<void>): Promise<void> => {
+  const over = async (down: (s: Socket) => Promise<void>, signal?: AbortSignal): Promise<void> => {
     for (;;) {
-      const s = await live()
+      const s = await live(signal)
       try {
         await down(s)
         return
@@ -523,15 +523,23 @@ export async function join(
       await over((s) => s.request({ remove: worker }))
     },
     async leave() {
-      left = true
-      clearTimeout(redial)
       clearInterval(listening)
       clearTimeout(acking)
+      // The final call (owner, 2026-10-25): the relay keeps one whose socket
+      // dropped for its redial, so only `leave` ends it, and a host's
+      // session, at once. A socket that drops under it is dialed again
+      // for it. The relay drops it and closes the socket: that is its answer.
+      if (ended === undefined) {
+        const said = over(
+          (s) => s.request({ leave: true }),
+          AbortSignal.timeout(replyMs(heartbeatMs)),
+        )
+        // quiet: leaving: the socket's close is the answer either way
+        await said.catch(() => undefined)
+      }
+      left = true
+      clearTimeout(redial)
       const s = socket
-      // The relay drops it and closes the socket, which is its answer. With
-      // no socket, the relay loses this participant as one gone silent.
-      // quiet: leaving: the socket's close is the answer either way
-      if (s?.open === true) await s.request({ leave: true }).catch(() => undefined)
       // One the relay's close frame dropped may still be in its handshake:
       // Bun 1.4.4 fires the close only after it.
       await Promise.all([(s ?? dropped)?.close(), dialing])

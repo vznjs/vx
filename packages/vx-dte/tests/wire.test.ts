@@ -293,21 +293,46 @@ it('keeps its quiet socket while a new one fails to open, so the relay keeps it'
   await o.leave()
 })
 
-// Liveness is the connection (owner, 2026-10-23): a socket whose close
-// the relay hears is its participant gone, at once.
-it('is lost the moment its socket closes: the orchestrator hears it, the worker ends', async () => {
+/** What `p` hears next: a poll returns empty after a quiet heartbeat. */
+async function heard(p: { poll(): Promise<unknown[]> }): Promise<unknown[]> {
+  for (;;) {
+    const m = await p.poll()
+    if (m.length > 0) return m
+  }
+}
+
+// Only `leave` ends a participant at once (owner, 2026-10-25): one whose
+// socket dropped dials again and is still in the run.
+it('keeps a worker whose socket dropped, by its redial; one that leaves is lost at once', async () => {
   const { url, open } = sockets(500)
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
   for (const w of open) if (w.data.id === a.id) w.close()
+  await o.send(a.id, 'still yours')
+  expect(await heard(a)).toEqual([{ from: 'orchestrator', body: 'still yours' }])
+  await a.leave()
   expect(await o.poll()).toEqual([{ from: 'relay', body: { type: 'lost', id: a.id } }])
+  await o.leave()
+})
+
+// Main 8d0619f: its orchestrator's socket ended 1006 3 s in, and its
+// redial found the run closed: "relay: unknown id" (2026-10-24).
+it('keeps the run through its orchestrator’s dropped socket: both carry on', async () => {
+  const { url, open } = sockets(500)
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
+  await o.poll()
+  for (const w of open) if (w.data.id === o.id) w.close()
+  await a.send('orchestrator', 'result')
+  expect(await heard(o)).toEqual([{ from: a.id, body: 'result' }])
+  await o.send(a.id, 'next')
+  expect(await heard(a)).toEqual([{ from: 'orchestrator', body: 'next' }])
+  await o.leave()
   const polls = async (): Promise<never> => {
     for (;;) await a.poll()
   }
-  // Refused its redial, or (a slow host) its orchestrator quiet since it joined.
-  await expect(polls()).rejects.toThrow(/relay: (unknown id|the orchestrator went silent)/)
-  await o.leave()
+  await expect(polls()).rejects.toThrow('relay: the run is closed')
 })
 
 it('dials its socket again after one the relay never heard close, and gets what was sent meanwhile, sent again', async () => {
@@ -548,12 +573,27 @@ it('a worker ends when its orchestrator’s relay answers nothing, the run’s c
   const o = await join(url, R2, 'orchestrator', null, undefined)
   const a = await join(url, R2, 'worker', null, undefined)
   await o.poll()
-  drop(o.id, 'frames')
+  drop(o.id, 'frames', true)
   await o.leave()
   const polls = async (): Promise<never> => {
     for (;;) await a.poll()
   }
   await expect(polls()).rejects.toThrow('relay: the orchestrator went silent')
+}, 10_000)
+
+// The final call: a `leave` whose socket answers nothing goes again on a
+// new one, so its run's close reaches its workers.
+it('says its leave again on a new socket when the first answers nothing', async () => {
+  const { url, drop } = dropping()
+  const o = await join(url, R2, 'orchestrator', null, undefined)
+  const a = await join(url, R2, 'worker', null, undefined)
+  await o.poll()
+  drop(o.id, 'frames')
+  await o.leave()
+  const polls = async (): Promise<never> => {
+    for (;;) await a.poll()
+  }
+  await expect(polls()).rejects.toThrow('relay: the run is closed')
 }, 5_000)
 
 // A relay that held a poll left the run waiting on Bun's own five-minute

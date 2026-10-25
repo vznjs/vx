@@ -127,15 +127,47 @@ export function conformance(name: string, target: Target): void {
       expect((await s.host()).first).toEqual({ close: 4409, error: 'the session has a host' })
     })
 
-    it('tells the host a peer left the moment its socket closes', async () => {
+    it('tells the host a peer left the moment it leaves', async () => {
+      const s = session()
+      const h = await s.host()
+      const p = await s.peer()
+      await h.next()
+      p.send({ n: 1, leave: true })
+      expect(await h.next()).toEqual({
+        messages: [{ from: 'relay', body: { type: 'left', id: p.id } }],
+      })
+    })
+
+    // Main 8d0619f's host socket ended 1006 3 s in, and its redial 350 ms
+    // on found the session closed (2026-10-24): only `leave` ends one at once.
+    it('keeps a session through its host’s dropped socket, for the host’s redial', async () => {
+      const s = session()
+      const h = await s.host()
+      const p = await s.peer()
+      await h.next()
+      h.ws.close()
+      p.send({ n: 1, sends: [{ to: 'host', body: 'while away' }] })
+      expect(await p.next()).toEqual({ n: 1 })
+      const path = `/sessions/${s.id}/socket?id=${h.id}`
+      const again = await dial(path, { [PROOF_HEADER]: await h.prover.proof('GET', path, '') })
+      again.send({ n: 1, sends: [{ to: p.id, body: 'back' }] })
+      expect(await again.next()).toEqual({ n: 1 })
+      expect(await p.next()).toEqual({ messages: [{ from: 'host', body: 'back' }] })
+      p.send({ n: 2, sends: [{ to: 'host', body: 'heard' }] })
+      expect(await p.next()).toEqual({ n: 2 })
+      expect(await again.next()).toEqual({ messages: [{ from: p.id, body: 'heard' }] })
+    })
+
+    it('keeps a peer through its dropped socket, for its redial', async () => {
       const s = session()
       const h = await s.host()
       const p = await s.peer()
       await h.next()
       p.ws.close()
-      expect(await h.next()).toEqual({
-        messages: [{ from: 'relay', body: { type: 'left', id: p.id } }],
-      })
+      const again = await dial(`/sessions/${s.id}/socket?id=${p.id}`)
+      h.send({ n: 1, sends: [{ to: p.id, body: 'still yours' }] })
+      expect(await h.next()).toEqual({ n: 1 })
+      expect(await again.next()).toEqual({ messages: [{ from: 'host', body: 'still yours' }] })
     })
 
     it('lets the host remove a peer, and only the host', async () => {
