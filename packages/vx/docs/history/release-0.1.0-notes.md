@@ -185,7 +185,7 @@ where 0.0.22 says "another nightly".
 - **The seven plugin packages are on npm for the first time**, published
   with every release at the core's version and peer-pinned to it:
   `@vzn/vx-migrate`, `@vzn/vx-lockfile`, `@vzn/vx-reapi`, `@vzn/vx-otel`,
-  `@vzn/vx-github`, `@vzn/vx-mcp` and `@vzn/vx-history`. Until
+  `@vzn/vx-github`, `@vzn/vx-mcp` and `@vzn/vx-schedule-history`. Until
   now `bunx @vzn/vx-migrate` named a package the registry did not have.
 - `@vzn/vx-migrate`: Nx's runtime input maps to `cache.inputs.runtime`,
   `project:target` to `project#target`, a package `turbo.json` merges over
