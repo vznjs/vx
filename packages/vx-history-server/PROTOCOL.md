@@ -37,7 +37,11 @@ its row of the token's scope:
   within about three runs, and one outlier moves it 30%.
 - `rssBytes`: `max(new, old × 0.9)`. A reservation needs the peak; the
   decay lets a task that shrank come down.
-- `runs`: how many reports made the row.
+- `runs`: how many reports moved the row.
+
+A report that would not move the row (`durationMs` and `cores` within
+5%, no new `rssBytes` peak) is not written, unless the row is a day old:
+each write costs, and the fold would move it under 1.5%.
 
 The first report sets the row; one without `cores` or `rssBytes` keeps
 the row's. A row not reported for `TIMING_DAYS` (30) is deleted.

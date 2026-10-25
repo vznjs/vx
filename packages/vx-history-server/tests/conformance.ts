@@ -69,6 +69,19 @@ export function conformance(name: string, target: Target): void {
       })
     })
 
+    it('skips a write that would not move the row', async () => {
+      const h = hash()
+      await upload([{ hash: h, durationMs: 1000, cores: 2, rssBytes: 1000 }])
+      // Within 5%, no new memory peak: the row stays as it was.
+      expect(
+        (await upload([{ hash: h, durationMs: 1040, cores: 2.05, rssBytes: 900 }])).status,
+      ).toBe(204)
+      expect((await query([h]))[h]).toEqual({ durationMs: 1000, cores: 2, rssBytes: 1000, runs: 1 })
+      // A new peak alone moves it.
+      await upload([{ hash: h, durationMs: 1000, cores: 2, rssBytes: 1100 }])
+      expect((await query([h]))[h]).toEqual({ durationMs: 1000, cores: 2, rssBytes: 1100, runs: 2 })
+    })
+
     it('keeps cores and memory when a report omits them', async () => {
       const h = hash()
       await upload([{ hash: h, durationMs: 100 }])

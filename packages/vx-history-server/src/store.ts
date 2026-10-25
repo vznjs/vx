@@ -41,6 +41,16 @@ export const WEIGHT = 0.3
 /** Peak memory keeps the larger of the new peak and the old one decayed by this: a reservation needs the peak. */
 export const RSS_DECAY = 0.9
 
+/**
+ * A report within this share of the row (and no new memory peak) leaves
+ * it as it is, unless the row is a day old: the fold would move it under
+ * 1.5%, and each write is billed (D1's free plan: 100k rows a day). The
+ * day keeps a reported task's row past the sweep; `runs` counts the
+ * reports that moved it.
+ */
+const NOISE = 0.05
+const DAY_MS = 86_400_000
+
 /** A repository: its token's issuer and its id there. */
 export interface Repo {
   readonly issuer: string
@@ -62,7 +72,11 @@ ON CONFLICT (issuer, repo_id, scope, hash) DO UPDATE SET
   rss_bytes = CASE WHEN excluded.rss_bytes IS NULL THEN rss_bytes WHEN rss_bytes IS NULL THEN excluded.rss_bytes
     ELSE max(excluded.rss_bytes, CAST(rss_bytes * ${RSS_DECAY} AS INTEGER)) END,
   runs = runs + 1,
-  updated_at = excluded.updated_at`
+  updated_at = excluded.updated_at
+WHERE abs(excluded.duration_ms - duration_ms) > duration_ms * ${NOISE}
+  OR (excluded.cores IS NOT NULL AND (cores IS NULL OR abs(excluded.cores - cores) > cores * ${NOISE}))
+  OR (excluded.rss_bytes IS NOT NULL AND (rss_bytes IS NULL OR excluded.rss_bytes > rss_bytes))
+  OR excluded.updated_at - updated_at >= ${DAY_MS}`
 
 /** The rows of `scopes` for the hashes asked; a hash the first scope lacks reads the next. */
 const READ = `SELECT hash, scope, duration_ms, cores, rss_bytes, runs FROM task_timings
