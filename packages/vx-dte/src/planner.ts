@@ -128,7 +128,11 @@ export function tailsMs(
 ): (id: string) => number {
   const dependants = new Map<string, string[]>()
   for (const [id, n] of nodes)
-    for (const d of n.deps) dependants.set(d, [...(dependants.get(d) ?? []), id])
+    for (const d of n.deps) {
+      const list = dependants.get(d)
+      if (list === undefined) dependants.set(d, [id])
+      else list.push(id)
+    }
   const tail = new Map<string, number>()
   const visit = (id: string): number => {
     const known = tail.get(id)
@@ -272,7 +276,11 @@ function play(
     for (const d of t.deps)
       if (byId.has(d) || runningIds.has(d)) {
         n++
-        dependants.set(d, [...(dependants.get(d) ?? []), t.id])
+        // Pushed, not copied: copying made one install under 9000 tasks
+        // 40 million copies a play (2026-10-25).
+        const list = dependants.get(d)
+        if (list === undefined) dependants.set(d, [t.id])
+        else list.push(t.id)
       }
     waits.set(t.id, n)
   }
