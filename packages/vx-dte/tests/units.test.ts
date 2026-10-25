@@ -533,6 +533,27 @@ it('a worker reads the cache as the run does, and is lent its remotes’ access 
   }
 })
 
+it('a lent token already ended is not lent again at once, in a loop', async () => {
+  const h = await harness(new Map())
+  try {
+    let asked = 0
+    // Each ask lends a token that ends as it is lent.
+    Object.defineProperty(h.cache, 'facts', {
+      get: () => (
+        asked++,
+        { refs: ['refs/heads/main'], lent: { '@vzn/vx-cache': 't' }, expiresAt: Date.now() }
+      ),
+    })
+    const a = await h.worker(2)
+    await a.poll()
+    await Bun.sleep(200)
+    // Unfloored: 176 asks in 200 ms, each sent to every worker.
+    expect(asked).toBe(1)
+  } finally {
+    await h.stop()
+  }
+})
+
 const node = (id: string, deps: string[] = []) =>
   [id, { id, deps, projectDir: '/ws', config: {} } as unknown as TaskNode] as const
 
