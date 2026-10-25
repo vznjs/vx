@@ -710,6 +710,19 @@ it('says no worker started once a run that needed none is over', async () => {
   ])
 })
 
+it('says a worker that never joined did not, once the run is over', async () => {
+  const h = await harness(new Map([node('t1')]))
+  h.o.spawned('small#1', { size: 'small', cpu: 1, memory: 1 })
+  const row = () =>
+    h.o
+      .footer()
+      .map(([, line]) => ui.inline(line, { enabled: false }))
+      .find((r) => r.includes('small#1'))
+  expect(row()).toContain('starting')
+  await h.stop()
+  expect(row()).toContain('not joined  the run ended first')
+})
+
 // M, 2026-10-23: "a generated Chrome profile with all workers and tasks
 // they executed in time so you could debug better".
 it('profiles the run: each worker’s tasks on their own lanes, the run’s waits and restores', async () => {
