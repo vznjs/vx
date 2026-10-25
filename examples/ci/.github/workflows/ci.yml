@@ -9,7 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read # checkout; naming any permission drops the rest
-      checks: write # the PR check github() posts
     steps:
       - uses: actions/checkout@v4 # one commit: --affected fetches its base
       - uses: oven-sh/setup-bun@v2

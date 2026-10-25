@@ -88,12 +88,10 @@ describe('ci.yml', () => {
     expect(checkout(doc.jobs['linux'])?.with).toBeUndefined()
   })
 
-  // The run's report is the job summary, not a check run of its own beside
-  // the jobs (owner, 2026-10-23), so no job grants checks: write. The run
-  // reads them: the relay's Preview is named by its Workers Builds check.
-  it('posts no check run: the report is the job summary', () => {
-    const ws = readFileSync(path.join(dir, '..', '..', '.vx', 'workspace.ts'), 'utf8')
-    expect(ws).toContain('github({ checks: false })')
+  // The run's report is the job summary; github() posts no check run (M,
+  // 2026-10-25), so no job grants checks: write. The run reads them: the
+  // relay's Preview is named by its Workers Builds check.
+  it('grants no checks: write: the report is the job summary', () => {
     expect(
       Object.entries(doc.jobs).flatMap(([id, j]) =>
         j.permissions?.['checks'] === undefined ? [] : [[id, j.permissions['checks']]],

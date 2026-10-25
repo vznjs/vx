@@ -76,7 +76,7 @@ packages/vx/            @vzn/vx core (src/ + tests/ + docs/); paths below relati
   index.ts              root shim (Bun's compiled binary ignores the exports map)
 packages/vx-reapi       Bazel REAPI plugin: remote cache + remote execution
 packages/vx-otel        OpenTelemetry telemetry plugin (no SDK dep)
-packages/vx-ci      GitHub Actions job summary + Checks API plugin
+packages/vx-ci      GitHub Actions job summary plugin
 packages/vx-migrate     adoption, one package (2026-09-11): `turbo()` runs a Turbo repo unchanged (turbo.json +
                         scripts → tasks via the `project` stage; owns the mapper the CLI renders from),
                         `nx()` runs an Nx repo unchanged (2026-09-22: the resolved graph → tasks; executor

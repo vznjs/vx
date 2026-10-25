@@ -335,7 +335,7 @@ upstream repos.
   of them.
 - `vx init` (scripts → configs), `vx why`, `vx last`,
   `--cache-download`, remote execution through `@vzn/vx-reapi`,
-  `@vzn/vx-ci` (job summary + check run), the `vx-history` plugin (critical-path
+  `@vzn/vx-ci` (job summary), the `vx-history` plugin (critical-path
   priorities from recorded durations).
 - npm distribution as per-platform binary packages plus a launcher,
   signed on macOS.
@@ -442,7 +442,7 @@ Things `@vzn/vx` does that the others don't:
 - **A versioned telemetry contract + plugin seam.** `TelemetryRecord`
   / `RunSummaryRecord` (TELEMETRY_SCHEMA_VERSION) is one neutral
   export shape every sink reads — OTel (`@vzn/vx-otel`), the GitHub
-  job summary and check run (`@vzn/vx-ci`), or a custom sink —
+  job summary (`@vzn/vx-ci`), or a custom sink —
   observe-only by construction, zero cost when unused.
 - **Bun-native everything, and none of it the user's concern.**
   `Bun.spawn` for child rusage capture, `bun:sqlite`, `Bun.YAML`,

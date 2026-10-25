@@ -53,7 +53,7 @@ it), the `TaskExecutor` contract for an executor.
 | `@vzn/vx-history`  | `schedule` `admit` `commands`     | order ready tasks by the critical path learned from run history; pack the reservations learned from what they used; `vx history` shows both |
 | `@vzn/vx-reapi`    | `executor`, `cache`               | Bazel REAPI: remote execution and remote cache                                                                                              |
 | `@vzn/vx-otel`     | `telemetry`                       | OpenTelemetry export, no SDK dependency                                                                                                     |
-| `@vzn/vx-ci`       | `telemetry`                       | GitHub Actions job summary and Checks API                                                                                                   |
+| `@vzn/vx-ci`       | `telemetry`                       | GitHub Actions job summary                                                                                                                  |
 | `@vzn/vx-migrate`  | `project`, `fingerprint`, `cache` | `turbo()` / `nx()`: such a repo under vx with nothing written (`nx-exec` runs Nx executors); `turboCache()` / `nxCache()`: the wires        |
 | `@vzn/vx-lockfile` | `fingerprint`, `key`              | `bun()` `pnpm()` `npm()` `yarn()`: the lockfile keyed per project — one install re-keys only the projects it reaches                        |
 | `@vzn/vx-dte`      | `executor` `schedule` `commands`  | one run spread over workers the CI starts, through a relay; `vx dte worker`; `local()` workers in git worktrees                             |

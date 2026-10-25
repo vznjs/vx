@@ -212,9 +212,8 @@ function invocationMask(nodes: Iterable<TaskNode>): (command: string) => string 
 /**
  * The command line a run hands to its telemetry sinks, with what follows
  * `--` counted, not quoted. Those are the task's arguments,
- * often a token (`-- --token=…`), and the line reached an OTLP span, the
- * GitHub job summary and a check-run posted over the API verbatim (item
- * 1057). Local history (`vx last`) keeps the whole line, on this machine.
+ * often a token (`-- --token=…`), and the line reached an OTLP span and
+ * the GitHub job summary verbatim (item 1057). Local history (`vx last`) keeps the whole line, on this machine.
  */
 export function invocationCommand(argv: readonly string[]): string {
   const sep = argv.indexOf('--')

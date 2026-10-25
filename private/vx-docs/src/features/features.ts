@@ -634,10 +634,9 @@ export default defineProject({
     slug: 'github-ci',
     title: 'Results on GitHub',
     category: 'ci',
-    hook: 'Every run on GitHub Actions writes a job summary and a check.',
+    hook: 'Every run on GitHub Actions writes a job summary.',
     body: [
       '`@vzn/vx-ci` adds one block to the workflow page for every `vx run`: the verdict, tasks, cache hits and duration, with failures first and their exit codes.',
-      'With a `checks: write` permission it also posts Checks API results, so the outcome is on the pull request, not buried in logs.',
     ],
     example: { lang: 'ts', code: workspace('@vzn/vx-ci', 'github()') },
     image: 'github-ci.png',

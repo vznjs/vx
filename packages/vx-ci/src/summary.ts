@@ -87,7 +87,7 @@ export function clampJobSummary(markdown: string, room = MAX_JOB_SUMMARY_BYTES):
 }
 
 /** Cuts `text` to `maxBytes` of UTF-8, `suffix` included, never splitting a character. */
-export function truncateUtf8(text: string, maxBytes: number, suffix: string): string {
+function truncateUtf8(text: string, maxBytes: number, suffix: string): string {
   // The cap is BYTES, and the page is not ASCII: every status label is an
   // emoji (4 bytes, 2 UTF-16 units) and every separator a `·` or a `—`
   // (2 and 3 bytes, 1 unit). Measured in `.length`, a clamped page of those
