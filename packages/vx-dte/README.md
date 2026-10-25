@@ -705,7 +705,12 @@ real time in the run summary and the footer's `ideal` line, and
 ## API
 
 - `dte(options: DteOptions)` is the plugin. `DteOptions` is
-  `{ workers?, adapter?, relay?, local?, token?, scheduler?, unmeasured? }`:
+  `{ workers?, adapter?, relay?, local?, token?, scheduler?, unmeasured?, headers? }`.
+  `headers` go on every dial to the relay, the orchestrator's and each
+  worker's (redials too), for a proxy in front of it, such as a
+  Cloudflare Access service token (`{ 'CF-Access-Client-Id':
+process.env.CF_ACCESS_CLIENT_ID, … }`); an unset value is left out, and
+  `authorization` stays the token's. The rest:
   - `workers` names each `WorkerSize`, `{ cpu, memory, max?, platform? }`: its cores
     and memory (bytes, or `'8GB'`, `'512MiB'`), which the run counts on
     when it starts one, until the worker reports what its machine has,

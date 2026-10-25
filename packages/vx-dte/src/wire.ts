@@ -181,9 +181,11 @@ export async function join(
   info: unknown,
   /** A function is asked again for a token about to expire: GitHub's last 5 minutes. */
   token: string | undefined | (() => Promise<string | undefined>),
+  /** `dte({ headers })`: on every dial, the redials included. */
+  extra: Readonly<Record<string, string>> = {},
 ): Promise<Participant> {
   const base = `${relay.replace(/\/+$/, '')}/v1/sessions/${encodeURIComponent(run)}/`
-  const auth = bearer(token)
+  const auth = bearer(token, extra)
   // The orchestrator signs each request by a key the relay keeps from its join.
   const prover =
     role === 'orchestrator' ? await (await import('@vzn/vx-dte-server')).createProver() : undefined
@@ -692,6 +694,7 @@ export async function join(
 /** A token more than a minute from its `exp` is used again. */
 function bearer(
   token: string | undefined | (() => Promise<string | undefined>),
+  extra: Readonly<Record<string, string>>,
 ): () => Promise<Record<string, string>> {
   let held: { value: string | undefined; until: number } | undefined
   return async () => {
@@ -700,7 +703,7 @@ function bearer(
       const value = await token()
       held = { value, until: expiry(value) - 60_000 }
     }
-    const headers: Record<string, string> = { 'content-type': 'application/json' }
+    const headers: Record<string, string> = { ...extra, 'content-type': 'application/json' }
     if (held.value !== undefined) headers['authorization'] = `Bearer ${held.value}`
     return headers
   }

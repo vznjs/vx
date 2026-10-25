@@ -498,7 +498,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     })
   }
   // An injected remote is no plugin's: nothing reads refs for it.
-  const refs = options.remoteCache ? [] : cacheRefs(workspaceRoot, baseBranch)
+  const refs = options.remoteCache ? [] : cacheRefs(workspaceRoot, baseBranch, branchFacts.refs)
   try {
     cache = options.remoteCache
       ? new LayeredCache(localCache, remotes, options.uploadConcurrency)

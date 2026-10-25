@@ -558,39 +558,17 @@ describe('normalizeRemoteUrl — a port is only a port when a protocol said so',
 describe('cacheRefs', () => {
   const none = '/nonexistent-vx-root'
 
-  it('a GitHub PR lists its head branch, then its base', () => {
-    const env = {
+  // M, 2026-10-25: CI's refs are its plugin's (github(), gitlab()); core
+  // reads no CI env for them, so a queue or train reads only what its
+  // plugin names.
+  it("a plugin's refs win, and core reads no CI env", () => {
+    const queue = {
       GITHUB_ACTIONS: 'true',
-      GITHUB_REF: 'refs/pull/12/merge',
+      GITHUB_REF: `refs/heads/gh-readonly-queue/main/pr-7-${'a'.repeat(40)}`,
       GITHUB_HEAD_REF: 'feature',
-      GITHUB_BASE_REF: 'main',
     }
-    expect(cacheRefs(none, 'main', env)).toEqual(['refs/heads/feature', 'refs/heads/main'])
-  })
-
-  it('a merge queue reads its base branch', () => {
-    const env = {
-      GITHUB_ACTIONS: 'true',
-      GITHUB_REF: 'refs/heads/gh-readonly-queue/main/pr-7-0123abcd',
-    }
-    expect(cacheRefs(none, 'trunk', env)).toEqual([
-      'refs/heads/gh-readonly-queue/main/pr-7-0123abcd',
-      'refs/heads/main',
-      'refs/heads/trunk',
-    ])
-  })
-
-  it('a GitLab MR lists its source branch, then its target; a tag names the tag', () => {
-    const mr = {
-      GITLAB_CI: 'true',
-      CI_COMMIT_REF_NAME: 'feature',
-      CI_MERGE_REQUEST_TARGET_BRANCH_NAME: 'main',
-    }
-    expect(cacheRefs(none, 'main', mr)).toEqual(['refs/heads/feature', 'refs/heads/main'])
-    expect(cacheRefs(none, 'main', { GITLAB_CI: 'true', CI_COMMIT_TAG: 'v1' })).toEqual([
-      'refs/tags/v1',
-      'refs/heads/main',
-    ])
+    expect(cacheRefs(none, 'main', ['refs/heads/main'], queue)).toEqual(['refs/heads/main'])
+    expect(cacheRefs(none, 'main', undefined, queue)).toEqual(['refs/heads/main'])
   })
 
   describe('locally', () => {
@@ -615,8 +593,11 @@ describe('cacheRefs', () => {
     })
 
     it('reads the current branch from git, then the default branch', () => {
-      expect(cacheRefs(dir, 'main', {})).toEqual(['refs/heads/feature', 'refs/heads/main'])
-      expect(cacheRefs(dir, 'feature', {})).toEqual(['refs/heads/feature'])
+      expect(cacheRefs(dir, 'main', undefined, {})).toEqual([
+        'refs/heads/feature',
+        'refs/heads/main',
+      ])
+      expect(cacheRefs(dir, 'feature', undefined, {})).toEqual(['refs/heads/feature'])
     })
   })
 })

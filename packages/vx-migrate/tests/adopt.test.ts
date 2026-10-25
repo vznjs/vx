@@ -390,6 +390,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
       const { root, env } = await solidShaped()
       try {
         await mkdir(path.join(root, '.github', 'workflows'), { recursive: true })
+        await writeFile(path.join(root, '.gitlab-ci.yml'), 'test:\n  script: vx run test\n')
         const r = await migrate(root, env, ['--keep'])
         const ws = await readFile(path.join(root, '.vx/workspace.ts'), 'utf8')
         expect([
@@ -397,13 +398,13 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           await calls(root),
           ws.includes("import { turbo } from '@vzn/vx-migrate'"),
           [...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1]),
-          ws.includes("import { github } from '@vzn/vx-ci'"),
+          ws.includes("import { github } from '@vzn/vx-ci'\nimport { gitlab } from '@vzn/vx-ci'"),
           await Bun.file(path.join(root, 'packages', 'lib', 'vx.config.ts')).exists(),
         ]).toEqual([
           0,
           'add -D -w @vzn/vx @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-history @vzn/vx-ci\n',
           true,
-          ['turbo', 'pnpm', 'vxHistory', 'github'],
+          ['turbo', 'pnpm', 'vxHistory', 'github', 'gitlab'],
           true,
           false,
         ])

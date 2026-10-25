@@ -43,9 +43,9 @@ export function gitlab(options: GitlabPluginOptions = {}): VxPlugin | undefined 
           ),
       },
     },
-    config(_workspace, ctx) {
+    config(workspace, ctx) {
       if (options.cacheScope === false) return
-      ctx.setBranch(gitlabBranch(process.env))
+      ctx.setBranch(gitlabBranch(process.env, workspace.baseBranch))
     },
   })
 }
@@ -56,9 +56,39 @@ export function gitlab(options: GitlabPluginOptions = {}): VxPlugin | undefined 
  * `CI_MERGE_REQUEST_SOURCE_PROJECT_PATH`) and its diff base; a merge
  * train's pipeline builds what lands on the target, so it is trusted; a
  * branch or tag pipeline names its ref, none on the default branch.
+ * `refs`, what a remote reads (M, 2026-10-25): a merge train's only its
+ * target branch; any other its own ref (the tag, else a merge request's
+ * source branch, else the branch), then
+ * a merge request's target, then the default branch.
  */
-function gitlabBranch(env: Readonly<Record<string, string | undefined>>): BranchFacts {
+function gitlabBranch(
+  env: Readonly<Record<string, string | undefined>>,
+  baseBranch?: string,
+): BranchFacts {
   const value = (key: string): string | undefined => env[key] || undefined
+  const head = (b: string | undefined) => (b === undefined ? undefined : `refs/heads/${b}`)
+  const tag = value('CI_COMMIT_TAG')
+  const target = head(value('CI_MERGE_REQUEST_TARGET_BRANCH_NAME'))
+  const train = value('CI_MERGE_REQUEST_EVENT_TYPE') === 'merge_train'
+  const refs = [
+    ...new Set(
+      (train
+        ? [target]
+        : [
+            tag !== undefined
+              ? `refs/tags/${tag}`
+              : head(value('CI_MERGE_REQUEST_SOURCE_BRANCH_NAME') ?? value('CI_COMMIT_REF_NAME')),
+            target,
+            head(baseBranch ?? value('CI_DEFAULT_BRANCH')),
+          ]
+      ).filter((r): r is string => r !== undefined),
+    ),
+  ]
+  const facts = scopeOf(value)
+  return refs.length === 0 ? facts : { ...facts, refs }
+}
+
+function scopeOf(value: (key: string) => string | undefined): BranchFacts {
   const base = value('CI_MERGE_REQUEST_DIFF_BASE_SHA')
   const withBase = (facts: BranchFacts): BranchFacts =>
     base === undefined ? facts : { ...facts, base }

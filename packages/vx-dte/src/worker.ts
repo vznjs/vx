@@ -55,6 +55,8 @@ export async function runWorker(opts: {
   id?: string
   root: string
   token: () => Promise<string | undefined>
+  /** `dte({ headers })`, on every dial. */
+  headers?: Readonly<Record<string, string>>
   /** What admits it to the orchestrator's session: the run's key, or its CI identity. */
   proof: Proof
   /** The workspace's cache read under the facts it is handed (`CommandContext.artifactsFor`). */
@@ -87,7 +89,7 @@ export async function runWorker(opts: {
   let me
   try {
     me = await sealWorker(
-      (signed) => join(opts.relay, opts.run, 'worker', signed, opts.token),
+      (signed) => join(opts.relay, opts.run, 'worker', signed, opts.token, opts.headers),
       opts.run,
       opts.proof,
       { ...info },

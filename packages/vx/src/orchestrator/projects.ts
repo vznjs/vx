@@ -80,12 +80,20 @@ export async function loadWorkspacePlugins(
       delete branch.trusted
     }
     if (facts.base !== undefined) branch.base = facts.base
+    if (facts.refs !== undefined) {
+      if (!Array.isArray(facts.refs) || facts.refs.some((r) => !isRef(r)))
+        throw new UserError('setBranch: refs must be a list of refs, each starting "refs/"')
+      branch.refs = [...new Set(facts.refs)]
+    }
   }
   await applyConfigHooks(plugins, workspaceConfig, { workspaceRoot, warn, setBranch }, (plugin) =>
     validateWorkspace(workspaceConfig, `.vx/workspace (after plugin '${plugin.name}')`),
   )
   return { workspaceConfig, plugins, branch }
 }
+
+const isRef = (r: unknown): boolean =>
+  typeof r === 'string' && r.startsWith('refs/') && !/[\s\0]/.test(r)
 
 /**
  * The enumeration a discovery's `discover` hooks shared, by the array it

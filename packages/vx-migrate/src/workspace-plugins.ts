@@ -26,6 +26,9 @@ export function workspacePlugins(root: string, runner?: 'turbo' | 'nx'): Workspa
   out.push({ pkg: '@vzn/vx-history', factory: 'vxHistory' })
   if (existsSync(path.join(root, '.github', 'workflows')))
     out.push({ pkg: '@vzn/vx-ci', factory: 'github' })
+  // A remote cache on CI reads the refs only these name (M, 2026-10-25).
+  if (existsSync(path.join(root, '.gitlab-ci.yml')))
+    out.push({ pkg: '@vzn/vx-ci', factory: 'gitlab' })
   return out
 }
 

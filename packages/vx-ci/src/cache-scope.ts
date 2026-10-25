@@ -18,14 +18,52 @@ import { type BranchFacts, branchCacheScope } from '@vzn/vx'
  * A merge queue's run (`merge_group`) is trusted (owner, 2026-10-18): no
  * scope, compared with `merge_group.base_sha`.
  * `base`: a pull request's base commit (`pull_request.base.sha`), what its
- * merge checkout is compared with, no git call needed.
+ * merge checkout is compared with, no git call needed. `refs`: what a
+ * remote reads (`githubRefs`).
  */
 export async function githubBranch(
   env: Readonly<Record<string, string | undefined>>,
+  baseBranch?: string,
 ): Promise<BranchFacts> {
   if (env['GITHUB_ACTIONS'] !== 'true') return {}
-  const ref = env['GITHUB_REF'] ?? ''
   const event = await eventOf(env['GITHUB_EVENT_PATH'])
+  const refs = githubRefs(env, event, baseBranch)
+  const facts = scopeOf(env, event)
+  return refs.length === 0 ? facts : { ...facts, refs }
+}
+
+/** The queue ref GitHub names a merge queue's run: `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`. */
+const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-9a-f]{64})$/
+
+/**
+ * The refs an Actions run reads, in order (M, 2026-10-25): a merge
+ * queue's run only its base branch, the code it is about to become; any
+ * other its own branch (a pull request's head, else `GITHUB_REF`), then
+ * the branch it merges into, then the default branch (`baseBranch`, else
+ * the event's).
+ */
+function githubRefs(
+  env: Readonly<Record<string, string | undefined>>,
+  event: ActionsEvent | undefined,
+  baseBranch: string | undefined,
+): string[] {
+  const head = (b: string | undefined) => (b === undefined ? undefined : `refs/heads/${b}`)
+  const ref = stringOf(env['GITHUB_REF'])
+  if (env['GITHUB_EVENT_NAME'] === 'merge_group') {
+    const base = stringOf(event?.merge_group?.base_ref) ?? head(QUEUE.exec(ref ?? '')?.[1])
+    return base === undefined ? [] : [base]
+  }
+  const own = head(stringOf(env['GITHUB_HEAD_REF'])) ?? ref
+  const into = head(stringOf(env['GITHUB_BASE_REF']))
+  const trunk = head(baseBranch ?? stringOf(event?.repository?.default_branch))
+  return [...new Set([own, into, trunk].filter((r): r is string => r !== undefined))]
+}
+
+function scopeOf(
+  env: Readonly<Record<string, string | undefined>>,
+  event: ActionsEvent | undefined,
+): BranchFacts {
+  const ref = env['GITHUB_REF'] ?? ''
   if (env['GITHUB_EVENT_NAME'] === 'merge_group') {
     const base = stringOf(event?.merge_group?.base_sha)
     return { trusted: true, ...(base !== undefined ? { base } : {}) }
@@ -60,7 +98,7 @@ interface ActionsEvent {
     base?: { sha?: unknown }
   }
   issue?: { number?: unknown; pull_request?: unknown }
-  merge_group?: { base_sha?: unknown }
+  merge_group?: { base_sha?: unknown; base_ref?: unknown }
   workflow_run?: {
     event?: unknown
     head_branch?: unknown

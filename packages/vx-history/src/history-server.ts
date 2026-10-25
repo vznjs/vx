@@ -85,6 +85,22 @@ interface Limits {
   readonly maxQueryHashes: number
 }
 
+/** `vxHistory({ serverHeaders })` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
+export function proxyHeaders(
+  headers: Record<string, string | undefined> | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    if (value === undefined) continue
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
+      throw new Error(`vxHistory(): serverHeaders cannot set "${name}"`)
+    if (typeof value !== 'string' || /[\r\n\0]/.test(value))
+      throw new Error(`vxHistory(): header "${name}" must be one line of text`)
+    out[name] = value
+  }
+  return out
+}
+
 export class HistoryServer {
   private token: Promise<string> | undefined
   private held: { jwt: string; exp: number } | undefined
@@ -94,6 +110,7 @@ export class HistoryServer {
     readonly url: string,
     private readonly env: Record<string, string | undefined> = Bun.env,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly headers: Readonly<Record<string, string>> = {},
   ) {}
 
   /**
@@ -129,6 +146,7 @@ export class HistoryServer {
     const res = await this.fetchImpl(`${this.url}${path}`, {
       method: body === undefined ? 'GET' : 'POST',
       headers: {
+        ...this.headers,
         authorization: `Bearer ${await this.bearer()}`,
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       },

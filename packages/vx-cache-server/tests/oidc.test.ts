@@ -88,6 +88,26 @@ describe('CI OIDC tokens', () => {
     expect(await status('b2', 'refs/heads/feature')).toBe(200)
   })
 
+  it("a merge queue's token writes its base branch, and only by matching a rule", async () => {
+    const SHA = 'a'.repeat(40)
+    const queue = {
+      event_name: 'merge_group',
+      ref: `refs/heads/gh-readonly-queue/main/pr-12-${SHA}`,
+      ref_protected: 'true',
+    }
+    expect((await put(await sign(queue), 'e5')).status).toBe(204)
+    expect(await status('e5')).toBe(200)
+    // Another event on the same ref matches no rule: main is protected.
+    expect(
+      (await put(await sign({ ...queue, event_name: 'workflow_dispatch' }), 'e6')).status,
+    ).toBe(403)
+    // Only the exact pattern is stripped.
+    const near = { ...queue, ref: 'refs/heads/gh-readonly-queue/main/pr-12-xyz' }
+    expect((await put(await sign(near), 'e7')).status).toBe(204)
+    expect(await status('e7')).toBe(404)
+    expect(await status('e7', near.ref)).toBe(200)
+  })
+
   it('a job matching no rule on a protected ref writes nothing', async () => {
     const res = await put(await sign({ ...MAIN, event_name: 'workflow_dispatch' }), 'c3')
     expect(await detail(res)).toEqual([403, 'this token reads only'])

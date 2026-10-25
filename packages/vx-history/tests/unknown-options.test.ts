@@ -15,7 +15,7 @@ const refusal = (make: () => unknown): string => {
 
 it('a misspelt option is refused, naming the nearest one', () => {
   expect(refusal(() => vxHistory({ windw: 5 } as never))).toBe(
-    'vxHistory() has unknown option "windw" (allowed: assume, defaultBranch, file, memory, reservations, resources, server, window) \u2014 did you mean window?',
+    'vxHistory() has unknown option "windw" (allowed: assume, defaultBranch, file, memory, reservations, resources, server, serverHeaders, window) \u2014 did you mean window?',
   )
 })
 

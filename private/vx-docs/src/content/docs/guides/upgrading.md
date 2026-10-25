@@ -13,6 +13,10 @@ first; its text is that footer: what changed and what to do.
 
 github() no longer takes checks, checkName or fetchFn, and @vzn/vx-ci no longer exports FetchFn.
 
+## vx-ci: github() and gitlab() name the refs a remote reads
+
+cacheRefs takes the plugin's refs; without github() or gitlab(), CI reads git's branch and the default branch only.
+
 ## vx-dte-server: store nothing
 
 --state is gone from vx-dte-server, and RelayStore, Stored, `store` and `stored` from its API: the relay stores nothing. Deploy it with a vx-dte that rejoins a run after a relay restart.

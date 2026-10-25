@@ -47,6 +47,10 @@ with each worker's measurements. A refusal is said with the server's
 words, and a CI job with no token says so once (on GitHub Actions,
 `GITHUB_ACTIONS`, naming the permission). With a server the cache blobs below are neither read nor written;
 off CI there is no token, and the run orders by local history alone.
+`serverHeaders` are sent on every request to the server, for a proxy in
+front of it (a Cloudflare Access service token:
+`{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID, … }`); an
+unset value is left out, and `authorization` stays the CI token's.
 
 ```ts
 export default { plugins: [vxHistory({ server: 'https://history.example.com' })] }

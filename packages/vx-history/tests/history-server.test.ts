@@ -11,7 +11,7 @@ import { hashPart, oidcAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { type Issuer, issuer, trustOf } from './issuer.js'
-import { HistoryServer, serverUrlOf } from '../src/history-server.js'
+import { HistoryServer, proxyHeaders, serverUrlOf } from '../src/history-server.js'
 
 let iss: Issuer
 let srv: Bun.Server<undefined>
@@ -101,6 +101,29 @@ describe('HistoryServer', () => {
     } finally {
       setSystemTime()
     }
+  })
+
+  // M, 2026-10-25: a proxy in front of the server (an Access service token).
+  it('sends serverHeaders on every request, never over the CI token', async () => {
+    const seen: Headers[] = []
+    const fake = (async (_u: string, init: RequestInit) => {
+      seen.push(new Headers(init.headers))
+      return new Response(JSON.stringify({ maxQueryHashes: 10, maxQueryScopes: 2, rows: [] }))
+    }) as unknown as typeof fetch
+    const headers = proxyHeaders({ 'CF-Access-Client-Id': 'id', 'X-Unset': undefined })
+    expect(headers).toEqual({ 'CF-Access-Client-Id': 'id' })
+    const client = new HistoryServer(
+      'https://h.example',
+      { VX_HISTORY_TOKEN: 'jwt' },
+      fake,
+      headers,
+    )
+    await client.query(['0'.repeat(32)], ['a']).catch(() => {})
+    expect(seen.length).toBeGreaterThan(0)
+    for (const h of seen)
+      expect([h.get('cf-access-client-id'), h.get('authorization')]).toEqual(['id', 'Bearer jwt'])
+    for (const bad of [{ Authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
+      expect(() => proxyHeaders(bad)).toThrow('vxHistory(): ')
   })
 
   it('reads the URL over VX_HISTORY_URL', () => {

@@ -94,6 +94,13 @@ export interface VxHistoryOptions {
    * `defaultBranch` blobs are then neither read nor written.
    */
   readonly server?: string
+  /**
+   * Headers every request to `server` carries, for a proxy in front of it
+   * (`{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }`, an
+   * Access service token, M 2026-10-25). An unset value is left out;
+   * `authorization` stays the CI token's.
+   */
+  readonly serverHeaders?: Record<string, string | undefined>
 }
 
 // The provider's own default (50) serves `--dry` predictions; an ordering
@@ -236,6 +243,7 @@ const VX_HISTORY_KEYS: PluginOptionKinds<VxHistoryOptions> = {
   file: 'string',
   defaultBranch: 'string',
   server: 'string',
+  serverHeaders: 'object',
 }
 
 export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
@@ -391,7 +399,9 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     if ((options.server ?? Bun.env.VX_HISTORY_URL ?? '') === '') return undefined
     const m = await import('./history-server.js')
     const url = m.serverUrlOf(options.server)
-    return url === undefined || !m.hasToken(Bun.env) ? undefined : new m.HistoryServer(url)
+    return url === undefined || !m.hasToken(Bun.env)
+      ? undefined
+      : new m.HistoryServer(url, Bun.env, fetch, m.proxyHeaders(options.serverHeaders))
   }
   // What the run sends the history server at its end, by task definition.
   let reported: { timings: Map<string, ServerTiming>; warn: (m: string) => void } | undefined
