@@ -839,8 +839,9 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     this.absent.add(hash)
   }
 
-  async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
-    if (this.disabled || this.writesRefused) return
+  async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void | false> {
+    // Nothing sent, so no upload is counted.
+    if (this.disabled || this.writesRefused) return false
     if (!this.absent.has(hash)) {
       // Part of the upload, so under its deadline. Any answer but 200 or 404
       // uploads: a lost store costs more. A server the HEAD cannot reach
@@ -849,7 +850,8 @@ export class TurboRemoteCache implements RemoteCacheLayer {
         headers: this.reads,
         timeoutMs: this.config.uploadTimeoutMs,
       })
-      if (head === undefined || head.status === 200) return
+      if (head === undefined) return false
+      if (head.status === 200) return
       if (head.status === 404) this.absent.add(hash)
     }
     const headers: Record<string, string> = {
@@ -865,7 +867,7 @@ export class TurboRemoteCache implements RemoteCacheLayer {
       headers,
       timeoutMs: this.config.uploadTimeoutMs,
     })
-    if (res === undefined) return
+    if (res === undefined) return false
     // Turbo's client takes any 2xx (`error_for_status`); a server's 201 or
     // 204 stored the artifact and was counted a failed upload.
     if (!res.ok) throw await refusal(res)

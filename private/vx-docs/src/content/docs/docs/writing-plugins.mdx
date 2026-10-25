@@ -412,7 +412,8 @@ remote lacks, else what it knows: `{ size, durationMs }` or `{}`. Write
 `hasMany` only when your wire answers many keys in one call. An entry is
 immutable: a `put` of a key the remote holds keeps the stored bytes.
 Core calls the optional `missing` with a key the run found in no remote
-before its `put`: check nothing first.
+before its `put`: check nothing first. A `put` that sends nothing (no
+token, writes off) resolves `false`, so the run counts no upload.
 
 vx asks the local cache first, then each remote in `plugins` order, under
 `--cache-policy`. A remote error is a miss and one warning. Core bounds

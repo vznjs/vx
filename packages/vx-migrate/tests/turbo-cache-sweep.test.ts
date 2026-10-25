@@ -402,7 +402,7 @@ describe('a read-only token or server', () => {
     await expect(c.put('aa', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
       'HTTP 403: the upload was refused (a read-only token or server); uploads off for this run, reads go on',
     )
-    expect(await c.put('bb', new Blob(['x']), { durationMs: 1 })).toBeUndefined()
+    expect(await c.put('bb', new Blob(['x']), { durationMs: 1 })).toBe(false)
     stored = true
     expect(await c.has('aa')).not.toBeNull()
     expect(await (await c.get('aa'))!.body.text()).toBe('bytes')

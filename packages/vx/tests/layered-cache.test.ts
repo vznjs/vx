@@ -264,6 +264,22 @@ describe('LayeredCache', () => {
     expect(await layered.uploaded('h-refused')).toBe(false)
   })
 
+  // A CI job whose token the server refused said "remote 1↑" though its
+  // remote was off and sent nothing (found 2026-10-25 on a fresh repo).
+  it('counts no upload a remote put declined with false', async () => {
+    const layered = makeLayered()
+    const put = remote.layer.put.bind(remote.layer)
+    remote.layer.put = async () => false
+    await saveSample(layered, 'h-declined')
+    await layered.drainUploads()
+    expect(local.uploads).toMatchObject({ count: 0, bytes: 0, failed: 0 })
+    expect(await layered.uploaded('h-declined')).toBe(false)
+    remote.layer.put = put
+    await saveSample(layered, 'h-sent')
+    await layered.drainUploads()
+    expect(local.uploads.count).toBe(1)
+  })
+
   it('get() returns local entry without touching remote when local has it', async () => {
     await saveSample(local, 'h-local')
 
