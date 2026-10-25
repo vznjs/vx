@@ -9,6 +9,7 @@
 import {
   type ArtifactInfo,
   definePlugin,
+  type LentAccess,
   type PluginOptionKinds,
   refuseUnknownOptions,
   type RemoteCacheLayer,
@@ -70,6 +71,8 @@ export interface RunTask {
   startedAt?: number
 }
 
+/** A lent token ending sooner than this is asked again first, so a request never carries a spent one. */
+const LEND_MARGIN_MS = 5 * 60_000
 /** Hashes one batch query carries (the server's cap). */
 const QUERY_MAX = 1000
 /** Tasks one history query carries (the protocol's cap). */
@@ -141,23 +144,37 @@ export class VxCacheLayer implements RemoteCacheLayer {
     this.endpoint = config.url
   }
 
-  private idToken: { jwt: string; until: number } | undefined
+  private idToken: { jwt: string; exp: number } | undefined
+  /** The token a run running its tasks here lent (`CacheContext.lent`). */
+  lent: (() => string | undefined) | undefined
+
+  /** The job's own OIDC token: with `oidc`, on GitHub Actions. */
+  private get ownOidc(): boolean {
+    const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: auth } = this.env
+    return this.config.oidc && !!url && !!auth
+  }
 
   /**
    * The bearer: the job's OIDC token with `oidc` on GitHub Actions, asked
    * again a minute before it ends, else `token`. A token GitHub would not
    * give throws once, and the layer turns off.
+   * A token the run lent beats both: a job of another workflow writes
+   * nowhere the run reads.
    */
-  private async bearer(): Promise<string> {
+  private async bearer(marginMs = 60_000): Promise<string> {
+    const lent = this.lent?.()
+    if (!this.ownOidc) return this.config.token !== '' ? this.config.token : (lent ?? '')
+    if (lent !== undefined) return lent
     const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: auth } = this.env
-    if (!this.config.oidc || !url || !auth) return this.config.token
-    if (this.idToken !== undefined && Date.now() < this.idToken.until) return this.idToken.jwt
-    const ask = new URL(url)
+    if (this.idToken !== undefined && Date.now() < this.idToken.exp - marginMs) {
+      return this.idToken.jwt
+    }
+    const ask = new URL(url!)
     ask.searchParams.set('audience', new URL(this.config.url).origin)
     let jwt: unknown
     try {
       const res = await this.fetchImpl(ask, {
-        headers: { authorization: `bearer ${auth}` },
+        headers: { authorization: `bearer ${auth!}` },
         signal: deadline(this.config.timeoutMs),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -169,8 +186,20 @@ export class VxCacheLayer implements RemoteCacheLayer {
         `GitHub's OIDC endpoint: ${err instanceof Error ? err.message : String(err)}; remote cache off for this run`,
       )
     }
-    this.idToken = { jwt, until: expiryOf(jwt) - 60_000 }
+    this.idToken = { jwt, exp: expiryOf(jwt) }
     return jwt
+  }
+
+  /**
+   * This job's OIDC token, for a job that runs this run's tasks
+   * (`RemoteCacheLayer.lend`): its writes land where this run reads them.
+   * Asked again when it ends within five minutes. A static token, or one
+   * lent to this job, is never lent.
+   */
+  async lend(): Promise<LentAccess | undefined> {
+    if (!this.ownOidc || this.lent?.() !== undefined) return undefined
+    const jwt = await this.bearer(LEND_MARGIN_MS)
+    return { token: jwt, expiresAt: this.idToken!.exp - LEND_MARGIN_MS }
   }
 
   /** Whether the run history is kept: `history` in the options. */
@@ -367,17 +396,18 @@ function runTask(
 /**
  * Options over `VX_CACHE_URL` / `VX_CACHE_TOKEN`; `undefined` = not
  * configured. With `oidc` on GitHub Actions the job's token stands in for
- * `token`.
+ * `token`; `lent`: a run lent this job a token, which serves without either.
  */
 export function resolveVxCacheConfig(
   options: VxCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
+  lent = false,
 ): Required<VxCacheOptions> | undefined {
   const url = (options.url ?? env.VX_CACHE_URL)?.replace(/\/+$/, '')
   const oidc = options.oidc ?? false
   const idToken = oidc && !!env.ACTIONS_ID_TOKEN_REQUEST_URL && !!env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
   const token = options.token ?? env.VX_CACHE_TOKEN ?? ''
-  if (url === undefined || url === '' || (token === '' && !idToken)) return undefined
+  if (url === undefined || url === '' || (token === '' && !idToken && !lent)) return undefined
   if (!/^https?:\/\//.test(url)) throw new Error(`vxCache(): url must be http(s), got ${url}`)
   return {
     url,
@@ -401,9 +431,9 @@ export function vxCache(options: VxCacheOptions = {}): VxPlugin {
   // One layer per run, shared by its hooks: the refs `cache` names reach
   // the history query, and a refused token is said once.
   let layer: VxCacheLayer | undefined
-  const layerOf = (): VxCacheLayer | undefined => {
+  const layerOf = (lent = false): VxCacheLayer | undefined => {
     if (layer !== undefined) return layer
-    const config = resolveVxCacheConfig(options)
+    const config = resolveVxCacheConfig(options, Bun.env, lent)
     return config === undefined ? undefined : (layer = new VxCacheLayer(config))
   }
   let run:
@@ -418,13 +448,22 @@ export function vxCache(options: VxCacheOptions = {}): VxPlugin {
     cache(ctx): RemoteCacheLayer | undefined {
       layer = undefined
       const env = Bun.env
-      if (options.oidc && env.GITHUB_ACTIONS === 'true' && !env.ACTIONS_ID_TOKEN_REQUEST_URL) {
+      const lent = ctx.lent?.() !== undefined
+      if (
+        options.oidc &&
+        !lent &&
+        env.GITHUB_ACTIONS === 'true' &&
+        !env.ACTIONS_ID_TOKEN_REQUEST_URL
+      ) {
         ctx.warn(
           '[vx] vx-cache: oidc is on, but this job gets no OIDC token: give it `permissions: id-token: write`',
         )
       }
-      const l = layerOf()
-      if (l !== undefined) l.reads = readScopes(ctx.refs)
+      const l = layerOf(lent)
+      if (l !== undefined) {
+        l.reads = readScopes(ctx.refs)
+        l.lent = ctx.lent
+      }
       return l
     },
     // The run never waits for the server: it starts on the baseline order,

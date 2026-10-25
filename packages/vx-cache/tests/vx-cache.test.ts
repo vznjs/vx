@@ -233,6 +233,95 @@ describe('oidc', () => {
   })
 })
 
+describe('lend', () => {
+  it("lends the run's token to another job, whose writes land where the run reads", async () => {
+    const { privateKey, publicKey } = await generateKeyPair('RS256')
+    const jwk = { ...(await exportJWK(publicKey)), kid: 'k', alg: 'RS256' }
+    const iss = 'https://token.actions.githubusercontent.com'
+    let lifetime = '10m'
+    const asked: string[] = []
+    // The run's job is a push to main; the other job's a dispatch on main.
+    const claims: Record<string, object> = {
+      run: { event_name: 'push', ref: 'refs/heads/main' },
+      other: { event_name: 'workflow_dispatch', ref: 'refs/heads/main' },
+    }
+    const github = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: async (req) => {
+        const job = req.headers.get('authorization')!.slice('bearer '.length)
+        asked.push(job)
+        const value = await new SignJWT({ repository_id: '42', ...claims[job] })
+          .setProtectedHeader({ alg: 'RS256', kid: 'k' })
+          .setIssuer(iss)
+          .setAudience(new URL(req.url).searchParams.get('audience')!)
+          .setExpirationTime(lifetime)
+          .sign(privateKey)
+        return Response.json({ value })
+      },
+    })
+    const db = new Database(':memory:', { strict: true })
+    const handle = createCacheServer({
+      blobs: { put: async () => {}, get: async () => null, delete: async () => {} },
+      store: sqliteStore({
+        all: async <T>(sql: string, p: readonly unknown[]) =>
+          db.query(sql).all(...(p as never[])) as T[],
+        run: async (sql, p) => db.query(sql).run(...(p as never[])).changes,
+        batch: async (s) => s.forEach((x) => db.run(x)),
+      }),
+      authorize: anyAuth(
+        tokenAuth(parseTokens(`read:${sha(READ)}`)),
+        oidcAuth({
+          trust: parseTrust(
+            JSON.stringify([
+              { iss, repository_id: '42', ref: 'refs/heads/main', event_name: 'push' },
+            ]),
+          ),
+          fetchJson: async (url) =>
+            url.endsWith('configuration') ? { jwks_uri: `${iss}/keys` } : { keys: [jwk] },
+        }),
+      ),
+    })
+    const srv = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (req) => handle(req as never) })
+    const url = srv.url.href.replace(/\/$/, '')
+    const envOf = (job: string) => ({
+      ACTIONS_ID_TOKEN_REQUEST_URL: github.url.href,
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: job,
+    })
+    const on = (job: string) =>
+      new VxCacheLayer(resolveVxCacheConfig({ url, oidc: true }, envOf(job))!, fetch, envOf(job))
+    try {
+      const run = on('run')
+      const lent = await run.lend()
+      expect(lent?.token.split('.')).toHaveLength(3)
+      expect(lent!.expiresAt! - Date.now()).toBeGreaterThan(4 * 60_000)
+      expect(await layer(url, WRITE).lend()).toBeUndefined()
+
+      // Its own token reads only: main's ref from a workflow no rule trusts.
+      await expect(on('other').put('a1', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
+        'writes off for this run',
+      )
+      const other = on('other')
+      other.lent = () => lent!.token
+      await other.put('a2', new Blob(['y']), { durationMs: 1 })
+      expect(await layer(url, READ).has('a2')).toEqual({ size: 1, durationMs: 1 })
+      expect(await other.lend()).toBeUndefined()
+      // No token of its own: the lent one serves.
+      expect(resolveVxCacheConfig({ url }, {}, true)?.url).toBe(url)
+
+      // A token ending within five minutes is asked again before it is lent.
+      lifetime = '4m'
+      const short = on('run')
+      await short.lend()
+      await short.lend()
+      expect(asked.filter((j) => j === 'run')).toHaveLength(3)
+    } finally {
+      await srv.stop(true)
+      await github.stop(true)
+    }
+  })
+})
+
 describe('resolveVxCacheConfig', () => {
   it('reads options over VX_CACHE_URL and VX_CACHE_TOKEN, and declines without both', () => {
     expect(resolveVxCacheConfig({}, {})).toBeUndefined()
