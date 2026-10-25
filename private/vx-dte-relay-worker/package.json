@@ -10,12 +10,15 @@
   },
   "//": [
     "@vzn/vx-dte-relay: the worker this deploys, unchanged.",
-    "wrangler: Workers Builds deploys src/worker.ts with it by wrangler.jsonc."
+    "wrangler: Workers Builds deploys src/worker.ts with it by wrangler.jsonc.",
+    "@vzn/vx: vx.config.ts; @types/bun: tests and preview.ts."
   ],
   "dependencies": {
     "@vzn/vx-dte-relay": "workspace:*"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "@vzn/vx": "workspace:*",
     "wrangler": "4.149.0"
   }
 }

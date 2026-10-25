@@ -14,7 +14,29 @@
     "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }],
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RelayRun"] }],
-  // Every invocation's outcome, CPU and wall time in Workers Logs: two
-  // relay stalls (2026-10-24, 00:47 and 01:03 UTC) left no record to read.
-  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  // Every invocation's outcome, CPU and wall time in Workers Logs, and its
+  // exceptions grouped in Issues: two relay stalls (2026-10-24, 00:47 and
+  // 01:03 UTC) threw nothing and left no record to read. A run is about
+  // 120 requests, far inside the free plan's daily events.
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "issues": { "enabled": true },
+  },
+  // A branch's Preview (preview.ts): Previews inherit no production
+  // setting, so the same ALLOW and the binding the code reads. Each gets
+  // its own Durable Object namespace.
+  "previews": {
+    "vars": {
+      "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml https://token.actions.githubusercontent.com:vznjs/vx:vx-worker.yml",
+    },
+    "durable_objects": {
+      "bindings": [{ "name": "RELAY", "class_name": "RelayRun" }],
+    },
+    "observability": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "issues": { "enabled": true },
+    },
+  },
 }

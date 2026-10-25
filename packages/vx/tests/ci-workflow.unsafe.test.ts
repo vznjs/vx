@@ -11,6 +11,7 @@ import { describe, expect, it } from 'bun:test'
 const dir = path.resolve(import.meta.dir, '..', '..', '..', '.github', 'workflows')
 
 interface Step {
+  id?: string
   uses?: string
   run?: string
   if?: string
@@ -88,13 +89,31 @@ describe('ci.yml', () => {
   })
 
   // The run's report is the job summary, not a check run of its own beside
-  // the jobs (owner, 2026-10-23), so no job grants checks: write.
+  // the jobs (owner, 2026-10-23), so no job grants checks: write. The run
+  // reads them: the relay's Preview is named by its Workers Builds check.
   it('posts no check run: the report is the job summary', () => {
     const ws = readFileSync(path.join(dir, '..', '..', '.vx', 'workspace.ts'), 'utf8')
     expect(ws).toContain('github({ checks: false })')
     expect(
-      Object.entries(doc.jobs).filter(([, j]) => j.permissions?.['checks'] !== undefined),
-    ).toEqual([])
+      Object.entries(doc.jobs).flatMap(([id, j]) =>
+        j.permissions?.['checks'] === undefined ? [] : [[id, j.permissions['checks']]],
+      ),
+    ).toEqual([['linux', 'read']])
+  })
+
+  // A PR that changes the relay runs on its own relay code, Workers Builds'
+  // Preview of its commit; the rest keep the deployed one (owner,
+  // 2026-10-25). Before the run, on a PR only.
+  it('points a PR’s run at the relay Preview before it runs', () => {
+    const steps = doc.jobs['linux']!.steps!
+    const at = steps.findIndex((s) => s.run === 'bun private/vx-dte-relay-worker/preview.ts')
+    expect(steps[at]?.if).toBe("github.event_name == 'pull_request'")
+    const run = steps.find((s) => s.run?.includes('bin.ts run ') === true)!
+    expect(at).toBeLessThan(steps.indexOf(run))
+    expect(steps[at]?.id).toBe('relay')
+    expect(run.env).toEqual({
+      VX_DTE_RELAY: '${{ steps.relay.outputs.url || env.VX_DTE_RELAY }}',
+    })
   })
 
   // Nothing runs on a distributed run's orchestrator (owner, 2026-10-22):
