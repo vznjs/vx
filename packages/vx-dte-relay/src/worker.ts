@@ -6,7 +6,15 @@
 // `wrangler.jsonc` deploys it; ALLOW is a var in it.
 
 import { claimedRun, createVerifier, parseAllow } from './oidc.js'
-import { closeSocket, createRelay, refusedWith, runKey, type Kept, type Relay } from './relay.js'
+import {
+  closeSocket,
+  createRelay,
+  GONE,
+  refusedWith,
+  runKey,
+  type Kept,
+  type Relay,
+} from './relay.js'
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
 interface DurableObjectId {}
@@ -22,7 +30,8 @@ interface Socket {
   send(text: string): void
   close(code?: number, reason?: string): void
   serializeAttachment(v: Kept): void
-  deserializeAttachment(): Kept
+  /** Null on one `attach` closed: it kept nothing. */
+  deserializeAttachment(): Kept | null
 }
 export interface DurableObjectState {
   acceptWebSocket(ws: Socket): void
@@ -149,7 +158,12 @@ export class RelayRun {
     }
     this.relay = createRelay({
       verify: (token, req) => verifierOf(env.AUDIENCE || new URL(req.url).origin)(token),
-      sockets: state.getWebSockets().map((ws) => [ws.deserializeAttachment(), ws] as const),
+      // One `attach` closed kept nothing: it is gone.
+      sockets: state.getWebSockets().flatMap((ws) => {
+        const kept = ws.deserializeAttachment()
+        if (kept === null) closeSocket(ws, GONE, 'gone')
+        return kept === null ? [] : [[kept, ws] as const]
+      }),
       upgrade: (key, id) => {
         const pair = new WebSocketPair()
         state.acceptWebSocket(pair[1])
@@ -165,7 +179,9 @@ export class RelayRun {
   }
 
   webSocketMessage(ws: Socket, message: string | ArrayBuffer): void {
-    const { key, id } = ws.deserializeAttachment()
+    const kept = ws.deserializeAttachment()
+    if (kept === null) return
+    const { key, id } = kept
     const text = typeof message === 'string' ? message : new TextDecoder().decode(message)
     const answer = this.relay.frame(key, id, text, ws)
     // A `leave` closed the socket it came down: its close is the answer.
@@ -175,8 +191,10 @@ export class RelayRun {
   }
 
   webSocketClose(ws: Socket): void {
-    const { key, id } = ws.deserializeAttachment()
-    this.relay.detach(key, id, ws)
+    // One `attach` closed as gone kept nothing: its close threw (main
+    // 8d0619f's redial, 2026-10-24).
+    const kept = ws.deserializeAttachment()
+    if (kept !== null) this.relay.detach(kept.key, kept.id, ws)
   }
 
   webSocketError(ws: Socket): void {
