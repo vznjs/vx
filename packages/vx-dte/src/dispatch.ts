@@ -63,6 +63,10 @@ export interface Ask {
   readonly up?: Iterable<string>
   /** Names its need: asks of one kind fit and fail alike (`kindOf`). */
   readonly kind?: string
+  /** The one bin that may take it: it holds files no cache does. */
+  readonly only?: string
+  /** A bin that may not take it. */
+  readonly avoid?: string
 }
 
 /** What `Ask.kind` names: every field of a need `assign` reads. */
@@ -133,7 +137,12 @@ export function assign<B extends Bin>(
     const { need } = ask
     const bigger = (b: B): boolean =>
       need.above === undefined || b.cores > need.above.cores || b.memory > need.above.memory
-    const of = need.platform === undefined ? bins : bins.filter((b) => b.platform === need.platform)
+    const allowed =
+      ask.only === undefined && ask.avoid === undefined
+        ? bins
+        : bins.filter((b) => (ask.only === undefined || b.id === ask.only) && b.id !== ask.avoid)
+    const of =
+      need.platform === undefined ? allowed : allowed.filter((b) => b.platform === need.platform)
     const anyBigger = of.some(bigger)
     if (!anyBigger && need.above !== undefined && waits(need.above)) {
       if (ask.kind !== undefined) spent.add(ask.kind)

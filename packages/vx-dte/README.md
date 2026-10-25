@@ -463,10 +463,13 @@ use your own instead.
 - A worker restores, by key, the declared outputs of every task the one
   it runs depends on, each after its own dependencies (an additive task's
   rewrite of an upstream file stands), unless it ran or restored them before. Files a task
-  writes without declaring them stay on the worker, and so do all of an
-  uncached task's, which declares none: a dependant on another worker does
-  not see them, so a generator its dependants read declares
-  `cache.outputs`. Before a task runs, its
+  writes without declaring them stay on the worker. An uncached task
+  declares none, so no cache carries its files: its dependants go to the
+  worker it ran on, unless it is sandboxed with no write grant and so
+  leaves no file. One waits there up to 10 s; past that, with that worker
+  gone or of another platform, or with its uncached upstreams on two
+  workers, the upstream runs again where the dependant can go, and the
+  dependant follows it. Before a task runs, its
   worker removes the files under its outputs that an earlier task left,
   except committed files, nested projects' files, and its dependencies'
   outputs (an additive task builds on its upstream's tree). An upstream's

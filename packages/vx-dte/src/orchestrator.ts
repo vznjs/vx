@@ -71,7 +71,16 @@ interface Job {
   startedAt?: number
   /** When its worker said its command ended: it saves since. */
   ranAt?: number
+  /** When it first waited on the worker holding an upstream's files (`kept`). */
+  pinnedAt?: number
+  /** Its upstreams already ran again for it: it waits on their worker however long. */
+  fellBack?: true
+  /** An uncached task run again for a dependant (`kept`): its result is the run's alone. */
+  again?: { readonly only?: string; readonly avoid?: string }
 }
+
+/** The longest a task waits on the worker holding its upstream's files before they are made again (M, 2026-10-23: 10 s on any wait). */
+const PIN_WAIT_MS = 10_000
 
 /** No task began or ended this long: the run says what it waits on, each time again. */
 const STALL_MS = 60_000
@@ -163,6 +172,8 @@ export interface OrchestratorOptions {
   readonly warn?: (message: string) => void
   /** Default `STALL_MS`. */
   readonly stallMs?: number
+  /** How long a task waits on the worker holding its upstream's files (`PIN_WAIT_MS`). */
+  readonly pinWaitMs?: number
 }
 
 /**
@@ -267,6 +278,16 @@ export class Orchestrator {
   private readonly late = new Set<string>()
   /** A failed start was given another worker (`failed`). */
   private restarts = 0
+  /**
+   * Each uncached task a worker ran: its files are there alone, so its
+   * dependants go there (M, 2026-10-25). An uncached task declares no
+   * outputs, and a dependant elsewhere did not find them (#4407).
+   */
+  private readonly kept = new Map<string, { worker: string; req: ExecuteRequest; need: Need }>()
+  /** Of `kept`, those running again for a dependant. */
+  private readonly remaking = new Set<string>()
+  /** Of `kept`, those that failed running again: their dependants fail, saying why. */
+  private readonly unmade = new Map<string, string>()
   /** The tasks core's probe found in no cache (`demand`): a worker uploads theirs asking nothing first. */
   missed: ReadonlySet<string> = new Set()
   private pumping = false
@@ -484,17 +505,21 @@ export class Orchestrator {
       }
     })
     const nodes = this.o.nodes()
-    const to = assign(
-      queue.map((job) => ({
-        id: job.req.taskId,
-        need: this.booking(job.need),
-        up: upstream(nodes, job.req.taskId),
-      })),
-      bins,
-      (above) => this.bigger(above),
-      how.place,
-    )
+    const asks = []
+    const placed: Job[] = []
     for (const job of queue) {
+      const up = upstream(nodes, job.req.taskId)
+      const pin = this.pin(job, up)
+      if (pin === 'done') continue
+      if (pin === 'wait') {
+        left.push(job)
+        continue
+      }
+      placed.push(job)
+      asks.push({ id: job.req.taskId, need: this.booking(job.need), up, ...pin })
+    }
+    const to = assign(asks, bins, (above) => this.bigger(above), how.place)
+    for (const job of placed) {
       const a = to.get(job.req.taskId)?.a
       if (a === undefined) {
         left.push(job)
@@ -524,6 +549,106 @@ export class Orchestrator {
     }
     this.queue.push(...left)
     for (const [a, jobs] of batches) this.send(a, jobs)
+  }
+
+  /**
+   * Where `job` may go, as its upstreams' files no cache holds lie (`kept`):
+   * on the worker holding them, waiting there up to `PIN_WAIT_MS`. Past
+   * that, with that worker gone, or with them on more than one, each
+   * upstream not on the worker holding most runs again where the job may
+   * go, and the job waits for it. `'wait'`: not yet; `'done'`: it failed.
+   */
+  private pin(
+    job: Job,
+    up: ReadonlySet<string>,
+  ): 'wait' | 'done' | { only?: string; avoid?: string } {
+    if (job.again !== undefined) {
+      const { only } = job.again
+      const waited = performance.now() - (job.pinnedAt ?? performance.now())
+      const there = only === undefined || this.workers.get(only)?.faulty === false
+      return there && waited < this.pinWaitMs ? job.again : {}
+    }
+    const held = new Map<string, string[]>()
+    for (const id of up) {
+      const why = this.unmade.get(id)
+      if (why !== undefined) {
+        job.resolve(result({ exitCode: 1, durationMs: 0 }, [{ text: `${why}\n`, err: true }]))
+        return 'done'
+      }
+      if (this.remaking.has(id)) return 'wait'
+      const k = this.kept.get(id)
+      if (k === undefined) continue
+      const on = held.get(k.worker)
+      if (on === undefined) held.set(k.worker, [id])
+      else on.push(id)
+    }
+    if (held.size === 0) return {}
+    const now = performance.now()
+    if (job.pinnedAt === undefined) {
+      job.pinnedAt = now
+      setTimeout(() => this.pumpSoon(), this.pinWaitMs + 50).unref?.()
+    }
+    // A worker of another platform cannot take it: they run again on one that can.
+    const platform = job.need.platform
+    const live = [...held].filter(([w]) => {
+      const a = this.workers.get(w)
+      return a?.faulty === false && (platform === undefined || a.platform === platform)
+    })
+    live.sort((x, y) => y[1].length - x[1].length)
+    const target = live[0]?.[0]
+    if (target !== undefined && held.size === 1) {
+      if (job.fellBack === true || now - job.pinnedAt < this.pinWaitMs) return { only: target }
+      // Its worker stayed full: they run again on another, and it follows.
+      this.remake(held.get(target)!, { avoid: target })
+    } else
+      for (const [w, ids] of held)
+        if (w !== target) this.remake(ids, target === undefined ? { platform } : { only: target })
+    job.fellBack = true
+    delete job.pinnedAt
+    return 'wait'
+  }
+
+  private get pinWaitMs(): number {
+    return this.o.pinWaitMs ?? PIN_WAIT_MS
+  }
+
+  /** `ids`, uncached tasks that ran, run again where `where` says, for a dependant. */
+  private remake(
+    ids: readonly string[],
+    where: { only?: string; avoid?: string; platform?: string | undefined },
+  ): void {
+    for (const id of ids) {
+      const k = this.kept.get(id)
+      if (k === undefined || this.remaking.has(id)) continue
+      this.remaking.add(id)
+      this.kept.delete(id)
+      const done = (why: string | undefined): void => {
+        this.remaking.delete(id)
+        if (why !== undefined) this.unmade.set(id, why)
+        this.pumpSoon()
+      }
+      this.pumpSoon()
+      this.queue.unshift({
+        req: k.req,
+        need: where.platform === undefined ? k.need : { ...k.need, platform: where.platform },
+        queuedAt: performance.now(),
+        pinnedAt: performance.now(),
+        again: {
+          ...(where.only === undefined ? {} : { only: where.only }),
+          ...(where.avoid === undefined ? {} : { avoid: where.avoid }),
+        },
+        resolve: (r) =>
+          done(
+            r.exitCode === 0 ? undefined : `${id} ran again for it and failed (exit ${r.exitCode})`,
+          ),
+        reject: (err) =>
+          done(
+            `${id} ran again for it and failed: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+      })
+      if (where.only !== undefined || where.avoid !== undefined)
+        setTimeout(() => this.pumpSoon(), this.pinWaitMs + 50).unref?.()
+    }
   }
 
   /**
@@ -938,8 +1063,11 @@ export class Orchestrator {
       this.needMs += Math.min(job.need.cores, a.cores) * ms
     }
     this.savedAs.set(task, key)
-    this.pumpSoon()
     const node = this.o.nodes()?.get(task)
+    if (node !== undefined && leaves(node) && head.exitCode === 0)
+      this.kept.set(task, { worker: a.id, req: job.req, need: job.need })
+    this.pumpSoon()
+    if (job.again !== undefined) return job.resolve(result(head, []))
     const restore = () =>
       this.o.artifacts.restore(key, {
         id: task,
@@ -1925,6 +2053,18 @@ function sandboxConfigs(nodes: ReadonlyMap<string, TaskNode> | undefined): Sandb
     if (s !== undefined) seen.set(JSON.stringify(s), s)
   }
   return [...seen.values()]
+}
+
+/**
+ * An uncached task that may leave files its dependants read: no cache
+ * carries them. A sandboxed one writes only where its grants say; with
+ * none (a gate like a lint or a version check) it leaves nothing, and
+ * pinning every dependant to its worker held a run's shards on one.
+ */
+function leaves(node: TaskNode): boolean {
+  if (node.config.cache !== undefined) return false
+  const sandbox = node.config.exec?.sandbox
+  return sandbox === undefined || (sandbox.allow?.write?.length ?? 0) > 0
 }
 
 /**
