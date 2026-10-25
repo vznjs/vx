@@ -146,7 +146,7 @@ export default defineProject({
               '../../packages/vx/docs/**',
               '../../packages/vx-*/README.md',
               '../../packages/vx-*/package.json',
-              '../../packages/vx-dte-relay/PROTOCOL.md',
+              '../../packages/vx-dte-server/PROTOCOL.md',
             ],
             write: ['src/content/docs/**'],
             systemInfo: ['vfs.disk-space'],
@@ -159,7 +159,7 @@ export default defineProject({
           'packages/vx/docs/**',
           'packages/vx-*/README.md',
           'packages/vx-*/package.json',
-          'packages/vx-dte-relay/PROTOCOL.md',
+          'packages/vx-dte-server/PROTOCOL.md',
         ],
       },
       cache: {

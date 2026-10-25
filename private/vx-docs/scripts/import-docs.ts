@@ -677,10 +677,10 @@ export async function importDocs(
     await Bun.write(path.join(outDir, 'plugins', `${dir}.md`), transformReadme(dir, readme))
   }
   // The relay's protocol, whose source ships beside the relay.
-  const switchboard = await Bun.file(path.join(packagesDir, 'vx-dte-relay', 'PROTOCOL.md')).text()
+  const switchboard = await Bun.file(path.join(packagesDir, 'vx-dte-server', 'PROTOCOL.md')).text()
   await Bun.write(
     path.join(outDir, 'switchboard.md'),
-    transformReadme('vx-dte-relay', switchboard, 'PROTOCOL.md'),
+    transformReadme('vx-dte-server', switchboard, 'PROTOCOL.md'),
   )
   return sources.length + plugins.length + 1
 }

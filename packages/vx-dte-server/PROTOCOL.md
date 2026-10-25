@@ -8,7 +8,7 @@ peer, a peer talks only to the host, and the relay passes each message on
 without reading it. What host and peers say to each other is their own
 protocol, versioned on its own.
 
-`@vzn/vx-dte-relay` is one relay that speaks it (on Bun and on Cloudflare
+`@vzn/vx-dte-server` is one relay that speaks it (on Bun and on Cloudflare
 Workers); any server that does can stand in for it.
 
 ## Versions
@@ -141,7 +141,7 @@ socket a push failed on with no code.
 
 Only `leave` ends a participant at once. One whose socket closed
 without it, the host too, may dial again by its `id` for a grace, 10 s
-on `@vzn/vx-dte-relay`, and is gone when the grace passes with no socket:
+on `@vzn/vx-dte-server`, and is gone when the grace passes with no socket:
 a peer as if it left, the host closing its session. The relay keeps no
 timer and counts no heartbeat: it finds a grace passed as the session is
 next used. A client whose socket drops dials again, and says its `leave`
@@ -173,7 +173,7 @@ A request that is no upgrade is answered its status and `{ "error" }`.
 
 ## Tokens
 
-The relay checks the bearer token. `@vzn/vx-dte-relay` takes CI OIDC
+The relay checks the bearer token. `@vzn/vx-dte-server` takes CI OIDC
 tokens: their signature by the issuer's published keys
 (`<iss>/.well-known/openid-configuration`, then `jwks_uri`; RS256), `exp`
 and `nbf`, an issuer it trusts, an `aud` naming its audience, and a

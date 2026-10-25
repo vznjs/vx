@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { expect, it } from 'bun:test'
 import type { TaskNode } from '@vzn/vx'
-import { serveRelay } from '@vzn/vx-dte-relay'
+import { serveRelay } from '@vzn/vx-dte-server'
 import { dte } from '../src/index.js'
 
 // Main 49adc41, 2026-10-23: the first ask came before `schedule` read

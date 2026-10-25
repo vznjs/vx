@@ -152,9 +152,9 @@ export class RelayRun {
     try {
       allow = parseAllow(env.ALLOW ?? '')
     } catch (err) {
-      throw new Error(`vx-dte-relay: ALLOW: ${(err as Error).message}`)
+      throw new Error(`vx-dte-server: ALLOW: ${(err as Error).message}`)
     }
-    if (allow.length === 0) throw new Error('vx-dte-relay: set ALLOW')
+    if (allow.length === 0) throw new Error('vx-dte-server: set ALLOW')
     // The worker's URL is not known before its first deploy; a token for
     // another one is not meant for this relay.
     const verifierOf = (audience: string): ReturnType<typeof createVerifier> => {

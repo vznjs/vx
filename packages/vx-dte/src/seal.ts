@@ -95,7 +95,7 @@ export function githubProof(fetchJson?: (url: string) => Promise<unknown>): Proo
       return oidcToken(url, bearer, aud(parts))
     },
     async check(token, parts) {
-      const { createVerifier } = await import('@vzn/vx-dte-relay')
+      const { createVerifier } = await import('@vzn/vx-dte-server')
       // A read of GitHub's keys that failed is no check: refused as one, a
       // keys outage read "its key is not the run's" (2026-10-23).
       let unread: unknown

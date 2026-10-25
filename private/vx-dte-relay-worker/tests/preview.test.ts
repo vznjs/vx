@@ -63,7 +63,7 @@ describe('the relay a PR’s run uses', () => {
 
   it('is the Preview of the head commit once its build ends', async () => {
     const d = deps(
-      ['packages/vx-dte-relay/src/relay.ts'],
+      ['packages/vx-dte-server/src/relay.ts'],
       [async () => [], check('in_progress'), check('completed', 'success')],
     )
     expect(await relayFor('vx-dte-relay', DEPLOYED, d)).toBe(
@@ -87,7 +87,7 @@ describe('the relay a PR’s run uses', () => {
   // with no build may run on an earlier commit's (#4333's 67a4c46 waited 5 min).
   it('is an earlier commit’s Preview when the relay has not changed since', async () => {
     const earlier = SUMMARY.replace('/previews/feat-relay', '/previews/earlier')
-    const d = deps(['packages/vx-dte-relay/src/relay.ts'], [async () => []], {
+    const d = deps(['packages/vx-dte-server/src/relay.ts'], [async () => []], {
       a: { runs: await check('completed', 'success', earlier)(), since: ['packages/vx-dte/a.ts'] },
     })
     expect(await relayFor('vx-dte-relay', DEPLOYED, d)).toBe(
@@ -99,7 +99,7 @@ describe('the relay a PR’s run uses', () => {
   it('waits for the head’s build when an earlier one built other relay code', async () => {
     const earlier = SUMMARY.replace('/previews/feat-relay', '/previews/earlier')
     const d = deps(
-      ['packages/vx-dte-relay/src/relay.ts'],
+      ['packages/vx-dte-server/src/relay.ts'],
       [async () => [], check('completed', 'success')],
       { a: { runs: await check('completed', 'success', earlier)(), since: ['bun.lock'] } },
     )
@@ -113,7 +113,7 @@ describe('the relay a PR’s run uses', () => {
   it('keeps the deployed relay on main once its deploy of the commit ends', async () => {
     const production = SUMMARY.replace('/previews/feat-relay', '')
     const d = deps(
-      ['packages/vx-dte-relay/src/relay.ts'],
+      ['packages/vx-dte-server/src/relay.ts'],
       [
         async () => [],
         check('in_progress', null, production),
@@ -142,7 +142,7 @@ describe('the relay a PR’s run uses', () => {
     const readme = readFileSync(path.join(dir, 'README.md'), 'utf8')
     const line = readme.split('\n').find((l) => l.startsWith('- Watch paths:'))!
     expect([...line.matchAll(/`([^`]+)`/g)].map((m) => m[1]!.replace(/\*$/, ''))).toEqual(WATCH)
-    expect(watched(['packages/vx-dte-relay-x/a'])).toBe(false)
+    expect(watched(['packages/vx-dte-server-x/a'])).toBe(false)
   })
 
   // A Preview inherits no production setting.

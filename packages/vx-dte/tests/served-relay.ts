@@ -2,7 +2,7 @@
 // reach into it: `tap` sees (and may change) each frame a participant
 // sends, and `restart` loses every run, as a host restart does.
 
-import { createRelay, type Relay, type RelayOptions } from '@vzn/vx-dte-relay'
+import { createRelay, type Relay, type RelayOptions } from '@vzn/vx-dte-server'
 
 type Held = {
   key: string

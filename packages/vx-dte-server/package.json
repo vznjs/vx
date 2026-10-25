@@ -1,5 +1,5 @@
 {
-  "name": "@vzn/vx-dte-relay",
+  "name": "@vzn/vx-dte-server",
   "version": "0.0.0",
   "license": "MIT",
   "private": true,
@@ -14,7 +14,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "bin": {
-    "vx-dte-relay": "./src/bun.ts"
+    "vx-dte-server": "./src/bun.ts"
   },
   "scripts": {
     "deploy": "wrangler deploy"

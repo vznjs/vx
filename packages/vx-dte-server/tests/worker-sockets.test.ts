@@ -27,7 +27,7 @@ const jwk = await crypto.subtle.exportKey('jwk', pair.publicKey)
 const b64 = (v: unknown): string => Buffer.from(JSON.stringify(v)).toString('base64url')
 const head = `${b64({ alg: 'RS256', kid: 'k1' })}.${b64({
   iss: ISS,
-  aud: 'vx-dte-relay',
+  aud: 'vx-dte-server',
   exp: Date.now() / 1000 + 600,
   project_id: 1,
   project_path: 'o/r',
@@ -52,7 +52,7 @@ beforeAll(async () => {
       script: await built.outputs[0]!.text(),
       compatibilityDate: '2026-10-01',
       durableObjects: { RELAY: { className: 'RelayRun', useSQLite: true } },
-      bindings: { ALLOW: `${ISS}:o/r:.gitlab-ci.yml`, AUDIENCE: 'vx-dte-relay' },
+      bindings: { ALLOW: `${ISS}:o/r:.gitlab-ci.yml`, AUDIENCE: 'vx-dte-server' },
       outboundService: (req: Request) => {
         fetched.push(req.url)
         return new URL(req.url).pathname === '/jwks'

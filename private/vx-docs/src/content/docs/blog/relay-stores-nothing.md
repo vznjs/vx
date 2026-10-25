@@ -70,12 +70,12 @@ sockets. What a woken object needs rides on each socket. A join costs
 one request, and every 20 websocket messages count as one more.
 
 ```sh frame="terminal"
-docker build -t vx-dte-relay packages/vx-dte-relay
-docker run -p 8080:8080 vx-dte-relay --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com
+docker build -t vx-dte-server packages/vx-dte-server
+docker run -p 8080:8080 vx-dte-server --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com
 ```
 
 The container is the same relay on Bun. CI builds the image and carries
 a run through it (`test.live`).
 
-[Relay README](https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay) ·
+[Relay README](https://github.com/vznjs/vx/tree/main/packages/vx-dte-server) ·
 more at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

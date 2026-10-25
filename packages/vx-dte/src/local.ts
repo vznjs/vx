@@ -189,7 +189,7 @@ export function errorLine(text: string): string {
 
 /** A relay of the run's own on loopback, with no auth: only this machine reaches it. */
 export async function loopbackRelay(): Promise<{ url: string; stop(): void }> {
-  const { serveRelay } = await import('@vzn/vx-dte-relay')
+  const { serveRelay } = await import('@vzn/vx-dte-server')
   const server = serveRelay({ hostname: '127.0.0.1', port: 0 })
   return {
     url: server.url,
