@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte-relay: serve the relay API under /v1/
+
+the relay's socket is at /v1/sessions/<session>/socket; deploy the relay and vx-dte together.
+
 ## vx-dte-relay: speak the Switchboard protocol, v1
 
 the relay and vx-dte speak switchboard.v1 only; deploy them together. Kept.role is 'host' | 'peer', PROOF_HEADER is 'relay-proof', and upgrade takes the agreed protocol.

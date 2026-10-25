@@ -26,10 +26,14 @@ otherwise) and closes the socket `4406`, reason `supported:
 switchboard.v<lowest>-v<highest>`. A request offering none is refused the
 same way. This document is `switchboard.v1`.
 
+The path names the API version apart from the protocol's: every route is
+under `/v1/`. A change to the routes ships under `/v2/`, beside `/v1/` for
+as long as the relay keeps it, while the messages keep their subprotocol.
+
 ## Sessions
 
 One request is HTTP, a websocket upgrade of `GET
-<relay>/sessions/<session>/socket`. `<session>` is the session id, a random
+<relay>/v1/sessions/<session>/socket`. `<session>` is the session id, a random
 (v4) UUID, so no one can guess it; another answers `400`, another path
 `404`, another method `405`, a request that is no upgrade `426`. It carries
 `Authorization: Bearer <token>` (§ Tokens).

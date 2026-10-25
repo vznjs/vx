@@ -53,14 +53,14 @@ export function conformance(name: string, target: Target): void {
     const id = crypto.randomUUID()
     const host = async (key?: Awaited<ReturnType<typeof createProver>>, protocols = [V1]) => {
       const prover = key ?? (await createProver())
-      const path = `/sessions/${id}/socket?join=${encodeURIComponent(JSON.stringify({ role: 'host', key: prover.key }))}`
+      const path = `/v1/sessions/${id}/socket?join=${encodeURIComponent(JSON.stringify({ role: 'host', key: prover.key }))}`
       const s = await dial(path, { [PROOF_HEADER]: await prover.proof('GET', path, '') }, protocols)
       const first = await s.next()
       return { ...s, first, id: first.joined?.id as string, prover }
     }
     const peer = async (info?: unknown) => {
       const s = await dial(
-        `/sessions/${id}/socket?join=${encodeURIComponent(JSON.stringify({ role: 'peer', info }))}`,
+        `/v1/sessions/${id}/socket?join=${encodeURIComponent(JSON.stringify({ role: 'peer', info }))}`,
       )
       const first = await s.next()
       return { ...s, first, id: first.joined?.id as string }
@@ -120,7 +120,7 @@ export function conformance(name: string, target: Target): void {
       const s = session()
       expect((await s.peer()).first).toEqual({ close: 4410, error: 'no live session' })
       const unsigned = await dial(
-        `/sessions/${s.id}/socket?join=${encodeURIComponent(JSON.stringify({ role: 'host', key: (await createProver()).key }))}`,
+        `/v1/sessions/${s.id}/socket?join=${encodeURIComponent(JSON.stringify({ role: 'host', key: (await createProver()).key }))}`,
       )
       expect((await unsigned.next()).close).toBe(4403)
       await s.host()
@@ -148,7 +148,7 @@ export function conformance(name: string, target: Target): void {
       h.ws.close()
       p.send({ n: 1, sends: [{ to: 'host', body: 'while away' }] })
       expect(await p.next()).toEqual({ n: 1 })
-      const path = `/sessions/${s.id}/socket?id=${h.id}`
+      const path = `/v1/sessions/${s.id}/socket?id=${h.id}`
       const again = await dial(path, { [PROOF_HEADER]: await h.prover.proof('GET', path, '') })
       again.send({ n: 1, sends: [{ to: p.id, body: 'back' }] })
       expect(await again.next()).toEqual({ n: 1 })
@@ -164,7 +164,7 @@ export function conformance(name: string, target: Target): void {
       const p = await s.peer()
       await h.next()
       p.ws.close()
-      const again = await dial(`/sessions/${s.id}/socket?id=${p.id}`)
+      const again = await dial(`/v1/sessions/${s.id}/socket?id=${p.id}`)
       h.send({ n: 1, sends: [{ to: p.id, body: 'still yours' }] })
       expect(await h.next()).toEqual({ n: 1 })
       expect(await again.next()).toEqual({ messages: [{ from: 'host', body: 'still yours' }] })
@@ -196,11 +196,11 @@ export function conformance(name: string, target: Target): void {
       const h = await s.host()
       const p = await s.peer()
       await h.next()
-      const again = await dial(`/sessions/${s.id}/socket?id=${p.id}`)
+      const again = await dial(`/v1/sessions/${s.id}/socket?id=${p.id}`)
       h.send({ n: 1, sends: [{ to: p.id, body: 'here' }] })
       expect(await h.next()).toEqual({ n: 1 })
       expect(await again.next()).toEqual({ messages: [{ from: 'host', body: 'here' }] })
-      const stranger = await dial(`/sessions/${s.id}/socket?id=nobody`)
+      const stranger = await dial(`/v1/sessions/${s.id}/socket?id=nobody`)
       expect(await stranger.next()).toEqual({ close: 4404, error: 'gone' })
     })
 

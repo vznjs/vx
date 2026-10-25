@@ -3,8 +3,9 @@
 // (README), from that commit's code: such a PR's run must use it, since
 // its client and the deployed relay may speak different protocols. Any
 // other PR keeps the deployed relay (owner, 2026-10-25: only when the PR
-// affects the relay). CI runs it before the run; it outputs `url` when
-// the run is to use the Preview.
+// affects the relay). A push to main that changes the relay waits for its
+// deploy. CI runs it before the run; it outputs `url` when the run is to
+// use the Preview.
 
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -72,11 +73,14 @@ async function build(name: string, deps: PreviewDeps): Promise<CheckRun | undefi
  * The Preview URL the run is to use, or undefined to keep `deployed`,
  * the Worker's own URL. Waits for the Workers Builds check of `worker`
  * that built the head's relay; a failed or missing build fails, naming why.
+ * On `main`, that build deploys the Worker itself: the run waits for it,
+ * as one that dialed first met the old relay (0dccec2, 38 s early).
  */
 export async function relayFor(
   worker: string,
   deployed: string,
   deps: PreviewDeps,
+  main = false,
 ): Promise<string | undefined> {
   if (!watched(await deps.changed())) return undefined
   const name = `Workers Builds: ${worker}`
@@ -85,6 +89,7 @@ export async function relayFor(
     const run = await build(name, deps)
     if (run?.status === 'completed') {
       if (run.conclusion !== 'success') throw new Error(`${name} ended ${run.conclusion}`)
+      if (main) return undefined
       const url = previewUrl(run.output?.summary ?? '', deployed)
       if (url === undefined) throw new Error(`${name} names no Preview`)
       return url
@@ -109,11 +114,15 @@ if (import.meta.main) {
     GITHUB_REPOSITORY: repo,
     GITHUB_OUTPUT: out,
     GH_TOKEN: token,
-    VX_PR_HEAD: head,
+    VX_PR_HEAD: pr,
+    GITHUB_SHA: pushed,
     VX_DTE_RELAY: deployed,
   } = process.env
+  const head = pr || pushed
   if (!repo || !out || !token || !head || !deployed)
-    throw new Error('needs GITHUB_REPOSITORY, GITHUB_OUTPUT, GH_TOKEN, VX_PR_HEAD and VX_DTE_RELAY')
+    throw new Error(
+      'needs GITHUB_REPOSITORY, GITHUB_OUTPUT, GH_TOKEN, VX_PR_HEAD or GITHUB_SHA, and VX_DTE_RELAY',
+    )
   const wrangler = await Bun.file(path.join(import.meta.dir, 'wrangler.jsonc')).text()
   const worker = /"name":\s*"([^"]+)"/.exec(wrangler)![1]!
   const api = async <T>(route: string): Promise<T> => {
@@ -123,34 +132,41 @@ if (import.meta.main) {
     if (!res.ok) throw new Error(`${route}: HTTP ${res.status}`)
     return (await res.json()) as T
   }
-  // The checkout is the PR's merge commit, one deep: its first parent is the
-  // base. One deep, the parent is not here; the commit still names it.
+  // The checkout is the PR's merge commit, or main's pushed one, one deep:
+  // its first parent is the base. One deep, the parent is not here; the
+  // commit still names it.
   const base = /^parent ([0-9a-f]+)$/m.exec(await git('cat-file', '-p', 'HEAD'))![1]!
   interface Compare {
     commits: { sha: string }[]
     files?: { filename: string }[]
   }
-  const url = await relayFor(worker, deployed, {
-    async changed() {
-      await git('fetch', '-q', '--depth=1', 'origin', base)
-      return (await git('diff', '--name-only', base, 'HEAD')).split('\n').filter((f) => f !== '')
+  const url = await relayFor(
+    worker,
+    deployed,
+    {
+      async changed() {
+        await git('fetch', '-q', '--depth=1', 'origin', base)
+        return (await git('diff', '--name-only', base, 'HEAD')).split('\n').filter((f) => f !== '')
+      },
+      async commits() {
+        if (!pr) return [head]
+        const { commits } = await api<Compare>(`compare/${base}...${head}`)
+        return commits.map((c) => c.sha).toReversed()
+      },
+      async checks(sha) {
+        return (await api<{ check_runs: CheckRun[] }>(`commits/${sha}/check-runs?per_page=100`))
+          .check_runs
+      },
+      async since(sha) {
+        return ((await api<Compare>(`compare/${sha}...${head}`)).files ?? []).map((f) => f.filename)
+      },
+      sleep: (ms) => Bun.sleep(ms),
+      now: () => Date.now(),
     },
-    async commits() {
-      const { commits } = await api<Compare>(`compare/${base}...${head}`)
-      return commits.map((c) => c.sha).toReversed()
-    },
-    async checks(sha) {
-      return (await api<{ check_runs: CheckRun[] }>(`commits/${sha}/check-runs?per_page=100`))
-        .check_runs
-    },
-    async since(sha) {
-      return ((await api<Compare>(`compare/${sha}...${head}`)).files ?? []).map((f) => f.filename)
-    },
-    sleep: (ms) => Bun.sleep(ms),
-    now: () => Date.now(),
-  })
+    !pr,
+  )
   if (url !== undefined) {
     await appendFile(out, `url=${url}\n`)
     console.log(`relay: ${worker}'s Preview of this commit, ${url}`)
-  } else console.log('relay: the deployed one (this PR changes no watched path)')
+  } else console.log(`relay: the deployed one${pr ? '' : ", with this commit's relay"}`)
 }

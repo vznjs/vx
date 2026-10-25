@@ -54,7 +54,7 @@ function client(opts: Partial<RelayOptions> = {}, provers = new Map<string, Prov
     }
     const method = body === undefined ? 'GET' : 'POST'
     const text = body === undefined ? '' : JSON.stringify(body)
-    const path = `/sessions/${run}/${verb}${query}`
+    const path = `/v1/sessions/${run}/${verb}${query}`
     const req = new Request(`http://relay${path}`, {
       method,
       headers: {
@@ -256,20 +256,20 @@ describe('the relay carries one run between its orchestrator and workers', () =>
     const other = await createProver()
     const status = async (req: Request) => (await c.open(req)).status
     const socket = (proof?: string) =>
-      new Request(`http://relay/sessions/${R}/socket?id=${o}`, {
+      new Request(`http://relay/v1/sessions/${R}/socket?id=${o}`, {
         headers: {
           upgrade: 'websocket',
           'sec-websocket-protocol': 'switchboard.v1',
           ...(proof === undefined ? {} : { 'relay-proof': proof }),
         },
       })
-    const path = `/sessions/${R}/socket?id=${o}`
+    const path = `/v1/sessions/${R}/socket?id=${o}`
     const replayed = await owner.proof('GET', path, '')
     // A key not the run's signs nothing as its orchestrator, nor claims the run again.
     expect([
       await status(socket()),
       await status(socket(await other.proof('GET', path, ''))),
-      await status(socket(await owner.proof('GET', `/sessions/${R}/socket?id=${a}`, ''))),
+      await status(socket(await owner.proof('GET', `/v1/sessions/${R}/socket?id=${a}`, ''))),
       await status(socket(replayed)),
       await status(socket(replayed)),
       (await c.call(R, 'join', { role: 'host' })).status,
@@ -297,7 +297,7 @@ describe('the relay carries one run between its orchestrator and workers', () =>
       },
     })
     const open = async (body: object, prover?: Prover) => {
-      const path = `/sessions/${R}/socket?join=${encodeURIComponent(JSON.stringify(body))}`
+      const path = `/v1/sessions/${R}/socket?join=${encodeURIComponent(JSON.stringify(body))}`
       const proof = prover && (await prover.proof('GET', path, ''))
       return relay.fetch(
         new Request(`http://relay${path}`, {
@@ -384,7 +384,7 @@ describe('the relay carries one run between its orchestrator and workers', () =>
       JSON.stringify({ role: 'host', key: (await createProver()).key }),
     )
     const forged = await c.open(
-      new Request(`http://relay/sessions/${R}/socket?join=${join}`, {
+      new Request(`http://relay/v1/sessions/${R}/socket?join=${join}`, {
         headers: {
           upgrade: 'websocket',
           'sec-websocket-protocol': 'switchboard.v1',
@@ -399,7 +399,7 @@ describe('the relay carries one run between its orchestrator and workers', () =>
     // Only `socket` is HTTP: the rest goes down it, the join too.
     for (const verb of ['join', 'send', 'poll', 'leave', 'remove']) {
       const res = await c.relay.fetch(
-        new Request(`http://relay/sessions/${R}/${verb}`, { method: 'POST', body: '{}' }),
+        new Request(`http://relay/v1/sessions/${R}/${verb}`, { method: 'POST', body: '{}' }),
       )
       expect([res.status, await res.json()]).toEqual([404, { error: 'no such route' }])
     }
@@ -772,7 +772,7 @@ it('the Bun entry serves the protocol, without auth on loopback only', async () 
     const url = /http:\/\/\S+/.exec(line)![0]
     // Refused, its socket is let in and closed saying why: a failed upgrade says nothing.
     const join = encodeURIComponent(JSON.stringify({ role: 'peer' }))
-    const ws = new WebSocket(`${url.replace(/^http/, 'ws')}/sessions/${R}/socket?join=${join}`, [
+    const ws = new WebSocket(`${url.replace(/^http/, 'ws')}/v1/sessions/${R}/socket?join=${join}`, [
       'switchboard.v1',
     ])
     const first = await new Promise<unknown>((resolve) => {
