@@ -1,17 +1,18 @@
 ---
-title: 'A DTE relay that stores nothing'
+title: 'A DTE relay that stores no message'
 date: 2026-10-24T16:00:00Z
 authors:
   - vzn
 tags:
   - execution
   - ci
-excerpt: "vx DTE's relay keeps no message, no timer and no storage row. It passes frames between sockets, and the two ends make sure each one lands."
+excerpt: "vx DTE's relay keeps no message. It passes frames between sockets, and the two ends make sure each one lands."
 ---
 
 The relay behind [vx DTE](../one-run-on-your-own-runners/) keeps no
-message, sets no timer and writes no storage row. A quiet run of four
-sockets sends 60 frames through it in ten heartbeats.
+message. It stores only who takes part, one row each, so a restart keeps
+the run. A quiet run of four sockets sends 60 frames through it in ten
+heartbeats.
 
 ```mermaid
 flowchart LR
@@ -66,16 +67,18 @@ every worker's closes too.
 ## Free on Cloudflare, or one container
 
 On Cloudflare the run is one Durable Object, there only to hold its
-sockets. What a woken object needs rides on each socket. A join costs
-one request, and every 20 websocket messages count as one more.
+sockets. What a woken object needs rides on each socket, and who takes
+part is one row each, so a deploy keeps the run. A join costs one
+request, and every 20 websocket messages count as one more.
 
 ```sh frame="terminal"
 docker build -t vx-dte-server packages/vx-dte-server
 docker run -p 8080:8080 vx-dte-server --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com
 ```
 
-The container is the same relay on Bun. CI builds the image and carries
-a run through it (`test.live`).
+The container is the same relay on Bun. With `--state` on a volume, a
+restart keeps its runs too. CI builds the image and carries a run
+through it and across `docker restart` (`test.live`).
 
 [Relay README](https://github.com/vznjs/vx/tree/main/packages/vx-dte-server) ·
 more at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

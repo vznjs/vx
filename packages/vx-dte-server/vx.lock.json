@@ -152,7 +152,7 @@
       }
     },
     "test.live": {
-      "description": "docker build, then one run and the conformance suite through the container",
+      "description": "docker build, then one run, the conformance suite and a restart through the container",
       "exec": {
         "command": "sh tests/docker/smoke.sh"
       },
