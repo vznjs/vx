@@ -60,3 +60,22 @@ It fits Workers' free plan:
   parses their tasks, so the Worker stays inside its 10 ms of CPU.
 - A request body is at most 100 MB on the free plan, which is the default
   `MAX_ARTIFACT_BYTES`. R2's free plan holds 10 GB.
+
+## API
+
+The same server as a `fetch` handler, to mount in a server of your own,
+over storage of your own (`src/index.ts`):
+
+- `createCacheServer(options: ServerOptions)` returns
+  `(req: Request) => Promise<Response>`. `ServerOptions` is
+  `{ blobs, db, authorize, maxArtifactBytes?, now? }`: `blobs` is a
+  `Blobs` bucket (`{ put(name, body, size), get(name), delete(name) }`),
+  `db` a SQLite `Db`
+  (`{ all(sql, params), run(sql, params), batch(statements) }`), `authorize` an `Authorize`, which maps a request
+  to its `Access` (`{ ns, write? }`: the namespace it reads, and the scope
+  it may write) or throws; `maxArtifactBytes` caps a PUT (default 100 MB)
+  and `now` is the clock, for tests.
+- `parseTokens(list)` reads `TOKENS` into a map, and `tokenAuth(tokens)`
+  makes the `Authorize` that checks a bearer token against it.
+- `DURATION_HEADER` (`vx-duration`) and `READ_SCOPES_HEADER`
+  (`vx-read-scopes`) are the header names (PROTOCOL.md).
