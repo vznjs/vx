@@ -1544,30 +1544,6 @@ export const MORE: readonly Feature[] = [
     },
   },
   {
-    slug: 'pr-check-run',
-    title: 'Results on the pull request',
-    category: 'ci',
-    hook: 'A check run on the commit carries the run summary, failures first.',
-    body: [
-      'Reviewers should not have to open a CI log to see what failed. With `@vzn/vx-ci`, vx posts a check run with the summary: tasks, cache hits, failures and their output.',
-      'It is on by default when a token is there; `checks: false` turns it off.',
-    ],
-    example: {
-      lang: 'ts',
-      code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { github } from '@vzn/vx-ci'\n\nexport default defineWorkspace({\n  plugins: [github({ checks: true })],\n})",
-    },
-    image: 'pr-check-run.png',
-    imageAlt: 'A vx check run on a pull request.',
-    docs: {
-      label: 'CI and remote',
-      href: 'docs/ci/',
-    },
-    deepDive: {
-      label: 'Your run, on the pull request',
-      href: 'blog/results-on-github/',
-    },
-  },
-  {
     slug: 'ref-cache-scope',
     title: 'Cache scope from the branch',
     category: 'ci',

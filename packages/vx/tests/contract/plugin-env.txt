@@ -9,7 +9,6 @@
 @vzn/vx-ci CI_PROJECT_DIR
 @vzn/vx-ci CI_PROJECT_PATH
 @vzn/vx-ci GITHUB_ACTIONS
-@vzn/vx-ci GITHUB_API_URL
 @vzn/vx-ci GITHUB_EVENT_NAME
 @vzn/vx-ci GITHUB_EVENT_PATH
 @vzn/vx-ci GITHUB_HEAD_REF
@@ -17,9 +16,7 @@
 @vzn/vx-ci GITHUB_REF
 @vzn/vx-ci GITHUB_REF_NAME
 @vzn/vx-ci GITHUB_REPOSITORY
-@vzn/vx-ci GITHUB_SHA
 @vzn/vx-ci GITHUB_STEP_SUMMARY
-@vzn/vx-ci GITHUB_TOKEN
 @vzn/vx-ci GITLAB_CI
 @vzn/vx-ci RUNNER_ARCH
 @vzn/vx-ci RUNNER_OS

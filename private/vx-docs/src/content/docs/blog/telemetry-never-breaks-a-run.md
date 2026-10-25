@@ -67,7 +67,7 @@ names itself.
 
 - **`@vzn/vx-otel`** sends OTLP traces, metrics and logs with no
   OpenTelemetry SDK. Each task's span goes out as the task ends.
-- **`@vzn/vx-ci`** writes a GitHub job summary and a check run.
+- **`@vzn/vx-ci`** writes a GitHub job summary.
 
 A remote cache follows the same rule. An error or timeout is a miss and
 a warning, and the run goes on.

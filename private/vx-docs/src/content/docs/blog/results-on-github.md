@@ -1,12 +1,12 @@
 ---
-title: 'Your run, on the pull request'
+title: 'Your run, on GitHub'
 date: 2026-10-09T04:40:00Z
 authors:
   - vzn
 tags:
   - ci
   - plugins
-excerpt: 'Add one plugin line and every vx run shows up on GitHub: a job summary with failures first, and a check on the commit.'
+excerpt: 'Add one plugin line and every vx run shows up on GitHub: a job summary with failures first.'
 ---
 
 Add one line and every `vx run` shows up on GitHub, failures first. No
@@ -27,7 +27,6 @@ too.
 ```mermaid
 flowchart LR
   R[vx run on Actions] --> S[job summary]
-  R -->|GITHUB_TOKEN| C[check on the commit]
   R --> B[PR base commit for --affected]
 ```
 
@@ -56,12 +55,6 @@ This is what the plugin wrote for a run where one task failed:
 
 A killed task reads `exit 137 (128 + SIGKILL)`. A timeout reads
 `timed out, exit 143`. Each failure names the tasks it blocked.
-
-## A check on the commit
-
-With `GITHUB_TOKEN` in the job, the plugin also posts a check run with
-the same summary, next to the commit and the pull request. It is named
-`vx` unless you pass `checkName`.
 
 ## A cache a pull request cannot poison
 
