@@ -31,6 +31,7 @@ import {
 } from '@vzn/vx'
 import { childrenCpuMs, describeCpu, readPs, topBetween } from './cpu-account.js'
 import {
+  bytesOf,
   HELD_EVERY,
   HOST_ENV,
   PART_LISTS,
@@ -942,7 +943,7 @@ function pieces(output: readonly CapturedChunk[]): CapturedChunk[] {
  * first, in parts that each fit, and then the rest of it.
  */
 function parts(end: Extract<ToOrchestrator, { type: 'end' }>): ToOrchestrator[] {
-  if (JSON.stringify(end).length <= PART_BYTES) return [end]
+  if (bytesOf(end) <= PART_BYTES) return [end]
   const out: ToOrchestrator[] = []
   const result: Record<string, unknown> = { ...end.result }
   for (const list of PART_LISTS) {
@@ -952,7 +953,7 @@ function parts(end: Extract<ToOrchestrator, { type: 'end' }>): ToOrchestrator[] 
     let piece: unknown[] = []
     let bytes = 0
     for (const item of items) {
-      const size = JSON.stringify(item).length + 1
+      const size = bytesOf(item) + 1
       if (piece.length > 0 && bytes + size > PART_BYTES) {
         out.push({ type: 'part', task: end.task, [list]: piece })
         piece = []

@@ -26,6 +26,7 @@ import {
   type TaskNode,
 } from '@vzn/vx'
 import {
+  bytesOf,
   HELD_EVERY,
   HOST_ENV,
   PART_LISTS,
@@ -206,7 +207,7 @@ function parts<T extends { order: unknown }>(orders: readonly T[], max: number):
   let part: T[] = []
   let bytes = 0
   for (const o of orders) {
-    const size = JSON.stringify(o.order).length
+    const size = bytesOf(o.order)
     if (part.length > 0 && bytes + size > max) {
       out.push(part)
       part = []
@@ -225,7 +226,7 @@ function chunks<T>(items: readonly T[], max: number): T[][] {
   let piece: T[] = []
   let bytes = 0
   for (const item of items) {
-    const size = JSON.stringify(item).length + 1
+    const size = bytesOf(item) + 1
     if (piece.length > 0 && bytes + size > max) {
       out.push(piece)
       piece = []
@@ -889,7 +890,7 @@ export class Orchestrator {
           // dependencies was refused, 413) sends its deps ahead.
           const tasks: RunOrder[] = []
           for (const { order } of part) {
-            if (JSON.stringify(order).length <= BATCH_BYTES) {
+            if (bytesOf(order) <= BATCH_BYTES) {
               tasks.push(order)
               continue
             }
@@ -897,7 +898,7 @@ export class Orchestrator {
               const ahead = { type: 'deps', task: order.task, deps } satisfies ToWorker
               await this.o.me.send(a.id, ahead)
               a.usage.messagesIn++
-              a.usage.bytesIn += JSON.stringify(ahead).length
+              a.usage.bytesIn += bytesOf(ahead)
             }
             tasks.push({ ...order, deps: [] })
           }
@@ -910,7 +911,7 @@ export class Orchestrator {
           } satisfies ToWorker
           await this.o.me.send(a.id, batch)
           a.usage.messagesIn++
-          a.usage.bytesIn += JSON.stringify(batch).length
+          a.usage.bytesIn += bytesOf(batch)
           for (const { job } of part) this.lease(job)
         }
       })
@@ -1397,7 +1398,7 @@ export class Orchestrator {
           this.pumpSoon()
         } else if (m.type === 'part') {
           a.usage.messagesOut++
-          a.usage.bytesOut += JSON.stringify(m).length
+          a.usage.bytesOut += bytesOf(m)
           const k = `${from}\0${m.task}`
           const held = this.parts.get(k) ?? {}
           for (const list of PART_LISTS) {
@@ -1407,7 +1408,7 @@ export class Orchestrator {
           this.parts.set(k, held)
         } else if (m.type === 'end') {
           a.usage.messagesOut++
-          a.usage.bytesOut += JSON.stringify(m).length
+          a.usage.bytesOut += bytesOf(m)
           const k = `${from}\0${m.task}`
           const held = this.parts.get(k)
           this.parts.delete(k)
