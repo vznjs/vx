@@ -398,7 +398,7 @@ describe('vx-migrate on a pnpm Turbo repo with no vx installed', () => {
           await calls(root),
           ws.includes("import { turbo } from '@vzn/vx-migrate'"),
           [...ws.matchAll(/^ {4}(\w+)\(\),$/gm)].map((m) => m[1]),
-          ws.includes("import { github, gitlab } from '@vzn/vx-ci'"),
+          ws.includes("import { github } from '@vzn/vx-ci'\nimport { gitlab } from '@vzn/vx-ci'"),
           await Bun.file(path.join(root, 'packages', 'lib', 'vx.config.ts')).exists(),
         ]).toEqual([
           0,

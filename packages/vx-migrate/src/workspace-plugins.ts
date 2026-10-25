@@ -37,11 +37,8 @@ export function undeclared(text: string, plugins: readonly WorkspacePlugin[]): W
   return plugins.filter((p) => !new RegExp(`\\b${p.factory}\\s*\\(`).test(text))
 }
 
-/** One line per package: `github()` and `gitlab()` share `@vzn/vx-ci`. */
 function importLines(plugins: readonly WorkspacePlugin[]): string[] {
-  const by = new Map<string, string[]>()
-  for (const p of plugins) by.set(p.pkg, [...(by.get(p.pkg) ?? []), p.factory])
-  return [...by].map(([pkg, names]) => `import { ${names.join(', ')} } from '${pkg}'`)
+  return plugins.map((p) => `import { ${p.factory} } from '${p.pkg}'`)
 }
 
 function entries(plugins: readonly WorkspacePlugin[], indent: string): string[] {
