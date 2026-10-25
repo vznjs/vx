@@ -48,7 +48,8 @@ as a miss.
 
 Every read names the run's refs in `x-artifact-read-scopes` (its branch,
 then the branch it merges into), so the server answers from the closest
-one first. One check covers up to 1000 hashes. One or two uploads waiting
+one first. A ref the header cannot carry (a non-ASCII branch name) is
+left out, and the read goes on from the others. One check covers up to 1000 hashes. One or two uploads waiting
 at once go as they are; more go as one batch of the missing, checked
 first, within the limits the server names on each check. Until a check
 has named them, or when one names none (said once), uploads go one at a

@@ -79,11 +79,17 @@ const TIMINGS_MAX = 20_000
 const TIMINGS_LIMIT = 5
 /** Refs one read names (the protocol's cap). */
 const READ_SCOPES_MAX = 8
+/** A ref the header carries: printable ASCII, at most 255 long (PROTOCOL.md). */
+const SENDABLE_REF = /^refs\/[ -~]{1,250}$/
 const BATCH_TYPE = 'application/vnd.vx-cache.batch'
 
-/** `x-artifact-read-scopes`: an RFC 8941 list of strings. */
+/**
+ * `x-artifact-read-scopes`: an RFC 8941 list of strings. A ref it cannot
+ * carry (a UTF-8 branch name) is left out: the server refuses the whole
+ * header, and every read with it (2026-10-25).
+ */
 function readScopes(refs: readonly string[]): Record<string, string> {
-  const list = refs.slice(0, READ_SCOPES_MAX)
+  const list = refs.filter((r) => SENDABLE_REF.test(r)).slice(0, READ_SCOPES_MAX)
   return list.length === 0
     ? {}
     : { 'x-artifact-read-scopes': list.map((r) => `"${r.replace(/[\\"]/g, '\\$&')}"`).join(', ') }
