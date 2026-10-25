@@ -54,6 +54,12 @@ function relay() {
 
 /** A send as the relay carries it: numbered by the wire, its body sealed. */
 type Envelope = { body: { body: { seal: string[] } } }
+/** Random text: a body is compressed before it is sealed, and this one barely shrinks. */
+const noise = (n: number): string =>
+  Buffer.from(crypto.getRandomValues(new Uint8Array(n)))
+    .toString('base64')
+    .slice(0, n)
+
 const sealOf = (send: string): string[] => (JSON.parse(send) as Envelope).body.body.seal
 
 async function until(p: Participant, n = 1): Promise<RelayMessage[]> {
@@ -108,7 +114,7 @@ it('pads each body to its size class, so the relay learns no size within one', a
   await o.send(a.id, { type: 'welcome' })
   await until(a)
   const sent = r.bodies.length
-  for (const task of ['a', 'a'.repeat(150), 'a'.repeat(300), 'a'.repeat(100_000)]) {
+  for (const task of ['a', noise(150), noise(600), noise(100_000)]) {
     await a.send('orchestrator', { type: 'start', task })
     expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'start', task }])
   }
@@ -118,6 +124,21 @@ it('pads each body to its size class, so the relay learns no size within one', a
   expect(sizes[2]).toBeGreaterThan(sizes[1]!)
   // Past one transport message, whole ones: 100 000 bytes fill two.
   expect(sealOf(r.bodies.at(-1)!)).toHaveLength(2)
+})
+
+it('compresses a body before it seals it, which no relay can after', async () => {
+  const { r, o, a } = await pair()
+  await until(o)
+  await o.send(a.id, { type: 'welcome' })
+  await until(a)
+  const sent = r.bodies.length
+  const log = 'PASS tests/a.test.ts\n'.repeat(5_000)
+  await a.send('orchestrator', { type: 'done', log })
+  expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'done', log }])
+  // 105 000 bytes of JSON, sealed in the smallest class.
+  const seal = sealOf(r.bodies[sent]!)
+  expect(seal).toHaveLength(1)
+  expect(JSON.stringify(seal).length).toBeLessThan(1_000)
 })
 
 it('refuses a worker with another secret, and a worker refuses an orchestrator with another', async () => {
@@ -202,18 +223,19 @@ it('loses a worker whose body the relay spliced from two, each part sealed', asy
   await until(o)
   await o.send(a.id, { type: 'welcome', name: 'worker#1' })
   await until(a)
-  // Over 64 KiB: two parts each. Both strings, so a splice still parses.
-  await a.send('orchestrator', 'a'.repeat(70_000))
+  // Over 64 KiB compressed: two parts each.
+  const body = noise(100_000)
+  await a.send('orchestrator', body)
   const first = sealOf(r.bodies.at(-1)!)
   expect(first).toHaveLength(2)
-  expect((await until(o)).map((m) => m.body)).toEqual(['a'.repeat(70_000)])
+  expect((await until(o)).map((m) => m.body)).toEqual([body])
   // A fresh first part, then the delivered body's second: only the first was checked.
   r.tamperNext((b) => {
     const send = JSON.parse(b) as Envelope
     send.body.body.seal = [send.body.body.seal[0]!, first[1]!]
     return JSON.stringify(send)
   })
-  await a.send('orchestrator', 'b'.repeat(70_000))
+  await a.send('orchestrator', noise(100_000))
   expect((await until(o)).map((m) => m.body)).toEqual([{ type: 'lost', id: a.id }])
 })
 

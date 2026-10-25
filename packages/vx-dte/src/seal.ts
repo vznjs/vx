@@ -165,10 +165,10 @@ class Session {
   ) {}
 
   async seal(body: unknown): Promise<{ seal: string[] }> {
-    const json = text.encode(JSON.stringify(body))
-    // Trailing spaces: JSON.parse reads past them.
-    const bytes = new Uint8Array(padded(json.length)).fill(0x20)
-    bytes.set(json)
+    const plain = squeeze(text.encode(JSON.stringify(body)))
+    // Trailing spaces: JSON.parse reads past them, and `unsqueeze` stops before them.
+    const bytes = new Uint8Array(padded(plain.length)).fill(0x20)
+    bytes.set(plain)
     const out: string[] = []
     const ad = bodyAd(this.sent, Math.ceil(bytes.length / MAX_PLAINTEXT))
     for (let at = 0; at === 0 || at < bytes.length; at += MAX_PLAINTEXT) {
@@ -199,12 +199,37 @@ class Session {
       const plain: Uint8Array[] = []
       for (const p of parts) plain.push(await this.rx.decrypt(p.n, ad, unb64(p.c)))
       for (const p of parts) this.seen.add(p.n)
-      return JSON.parse(Buffer.concat(plain).toString())
+      return JSON.parse(unsqueeze(Buffer.concat(plain)).toString())
       // quiet: a body that does not open is the relay's tampering, which the caller says
     } catch {
       return undefined
     }
   }
+}
+
+/** Leads a compressed body: no JSON starts with it. */
+const ZSTD = 0
+
+/**
+ * A body over the smallest size class, zstd-compressed before it is sealed:
+ * once sealed it is random bytes no relay or socket compression shrinks.
+ * The padding still hides its size within a class.
+ */
+function squeeze(json: Uint8Array): Uint8Array {
+  if (json.length <= 256) return json
+  const z = Bun.zstdCompressSync(json)
+  if (z.length + 5 >= json.length) return json
+  const out = new Uint8Array(z.length + 5)
+  out[0] = ZSTD
+  new DataView(out.buffer).setUint32(1, z.length)
+  out.set(z, 5)
+  return out
+}
+
+function unsqueeze(plain: Uint8Array): Uint8Array {
+  if (plain[0] !== ZSTD) return plain
+  const n = new DataView(plain.buffer, plain.byteOffset).getUint32(1)
+  return Bun.zstdDecompressSync(plain.subarray(5, 5 + n))
 }
 
 /** What each part of one body is sealed to: its first nonce and how many parts. */
