@@ -588,7 +588,12 @@ export class Orchestrator {
       job.pinnedAt = now
       setTimeout(() => this.pumpSoon(), this.pinWaitMs + 50).unref?.()
     }
-    const live = [...held].filter(([w]) => this.workers.get(w)?.faulty === false)
+    // A worker of another platform cannot take it: they run again on one that can.
+    const platform = job.need.platform
+    const live = [...held].filter(([w]) => {
+      const a = this.workers.get(w)
+      return a?.faulty === false && (platform === undefined || a.platform === platform)
+    })
     live.sort((x, y) => y[1].length - x[1].length)
     const target = live[0]?.[0]
     if (target !== undefined && held.size === 1) {
@@ -597,7 +602,7 @@ export class Orchestrator {
       this.remake(held.get(target)!, { avoid: target })
     } else
       for (const [w, ids] of held)
-        if (w !== target) this.remake(ids, target === undefined ? {} : { only: target })
+        if (w !== target) this.remake(ids, target === undefined ? { platform } : { only: target })
     job.fellBack = true
     delete job.pinnedAt
     return 'wait'
@@ -608,7 +613,10 @@ export class Orchestrator {
   }
 
   /** `ids`, uncached tasks that ran, run again where `where` says, for a dependant. */
-  private remake(ids: readonly string[], where: { only?: string; avoid?: string }): void {
+  private remake(
+    ids: readonly string[],
+    where: { only?: string; avoid?: string; platform?: string | undefined },
+  ): void {
     for (const id of ids) {
       const k = this.kept.get(id)
       if (k === undefined || this.remaking.has(id)) continue
@@ -622,10 +630,13 @@ export class Orchestrator {
       this.pumpSoon()
       this.queue.unshift({
         req: k.req,
-        need: k.need,
+        need: where.platform === undefined ? k.need : { ...k.need, platform: where.platform },
         queuedAt: performance.now(),
         pinnedAt: performance.now(),
-        again: where,
+        again: {
+          ...(where.only === undefined ? {} : { only: where.only }),
+          ...(where.avoid === undefined ? {} : { avoid: where.avoid }),
+        },
         resolve: (r) =>
           done(
             r.exitCode === 0 ? undefined : `${id} ran again for it and failed (exit ${r.exitCode})`,
@@ -1053,7 +1064,7 @@ export class Orchestrator {
     }
     this.savedAs.set(task, key)
     const node = this.o.nodes()?.get(task)
-    if (node !== undefined && node.config.cache === undefined && head.exitCode === 0)
+    if (node !== undefined && leaves(node) && head.exitCode === 0)
       this.kept.set(task, { worker: a.id, req: job.req, need: job.need })
     this.pumpSoon()
     if (job.again !== undefined) return job.resolve(result(head, []))
@@ -2050,6 +2061,18 @@ function sandboxConfigs(nodes: ReadonlyMap<string, TaskNode> | undefined): Sandb
  * additive task's rewrite of its upstream's file was undone by the
  * upstream's restore, and its dependants read the old bytes (2026-10-25).
  */
+/**
+ * An uncached task that may leave files its dependants read: no cache
+ * carries them. A sandboxed one writes only where its grants say; with
+ * none (a gate like a lint or a version check) it leaves nothing, and
+ * pinning every dependant to its worker held a run's shards on one.
+ */
+function leaves(node: TaskNode): boolean {
+  if (node.config.cache !== undefined) return false
+  const sandbox = node.config.exec?.sandbox
+  return sandbox === undefined || (sandbox.allow?.write?.length ?? 0) > 0
+}
+
 function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string): Set<string> {
   const seen = new Set<string>()
   const out = new Set<string>()

@@ -1747,6 +1747,59 @@ it('an uncached task made again for its dependant and failing fails the dependan
   }
 })
 
+// Every test shard depends, through install, on an uncached sandboxed
+// version check: pinned to its worker, the run's mac shards waited on a
+// linux worker for 12 minutes (#4425's CI). A sandbox with no write grant
+// leaves no file, so nothing follows it.
+it('an uncached sandboxed task with no write grant leaves nothing: its dependant goes anywhere', async () => {
+  const gate = (id: string) =>
+    [
+      id,
+      {
+        id,
+        deps: [],
+        projectDir: '/ws',
+        config: { exec: { command: 'x', sandbox: { allow: { read: ['.'] } } } },
+      },
+    ] as unknown as readonly [string, TaskNode]
+  const h = await harness(new Map([gate('g'), node('x'), node('u', ['g'])]))
+  try {
+    const a = await h.worker(1, 'a')
+    const g = h.o.execute(h.req('g'))
+    expect(await a.batches()).toEqual([['g']])
+    await a.finish('g', runKey(R, 'g'))
+    await g
+    void h.o.execute(h.req('x'))
+    expect(await a.batches()).toEqual([['x']])
+    const b = await h.worker(1, 'b')
+    void h.o.execute(h.req('u'))
+    expect(await b.batches()).toEqual([['u']])
+  } finally {
+    await h.stop()
+  }
+})
+
+it('an uncached task’s dependant on another platform has it made again on a worker of that one', async () => {
+  const h = await harness(new Map([node('g'), node('u', ['g'])]))
+  try {
+    const linux = await h.worker(2, 'l', 'linux-x64')
+    const g = h.o.execute({ ...h.req('g'), platform: 'linux-x64' })
+    expect(await linux.batches()).toEqual([['g']])
+    await linux.finish('g', runKey(R, 'g'))
+    await g
+    const mac = await h.worker(2, 'm', 'darwin-arm64')
+    await Bun.sleep(50)
+    const u = h.o.execute({ ...h.req('u'), platform: 'darwin-arm64' })
+    expect(await mac.batches()).toEqual([['g']])
+    await mac.finish('g', runKey(R, 'g', 1))
+    expect(await mac.batches()).toEqual([['u']])
+    await mac.finish('u', runKey(R, 'u'))
+    expect((await u).exitCode).toBe(0)
+  } finally {
+    await h.stop()
+  }
+})
+
 it('a cached task’s dependant goes wherever it fits: a cache carries its outputs', async () => {
   const cached = (id: string, deps: string[] = []) =>
     [
