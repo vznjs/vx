@@ -549,6 +549,9 @@ not:
                      actual 10c/32G
 ```
 
+A run over that started none (every task a hit) says
+`workers   none started: no task needed one`.
+
 Under each worker, and `local`, the footer then spells out what it did:
 its time online, busy and idle; its CPU peak and average in cores and
 the cores the run booked for the tasks it was running, on average (a

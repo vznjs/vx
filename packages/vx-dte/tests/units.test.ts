@@ -700,6 +700,15 @@ it('says each worker’s machine busy average from the loads it sent', async () 
   expect(rows.find((r) => r.includes('used avg'))).toContain('· machine avg 3.0 ·')
 })
 
+it('says no worker started once a run that needed none is over', async () => {
+  const h = await harness(new Map([node('t1')]))
+  expect(h.o.footer()).toEqual([])
+  await h.stop()
+  expect(h.o.footer().map(([k, line]) => [k, ui.inline(line, { enabled: false })])).toEqual([
+    ['workers', 'none started: no task needed one'],
+  ])
+})
+
 // M, 2026-10-23: "a generated Chrome profile with all workers and tasks
 // they executed in time so you could debug better".
 it('profiles the run: each worker’s tasks on their own lanes, the run’s waits and restores', async () => {
