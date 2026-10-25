@@ -206,6 +206,25 @@ function parts<T extends { order: unknown }>(orders: readonly T[], max: number):
   return out
 }
 
+/** `items` in runs of at most `max` bytes of JSON. */
+function chunks<T>(items: readonly T[], max: number): T[][] {
+  const out: T[][] = []
+  let piece: T[] = []
+  let bytes = 0
+  for (const item of items) {
+    const size = JSON.stringify(item).length + 1
+    if (piece.length > 0 && bytes + size > max) {
+      out.push(piece)
+      piece = []
+      bytes = 0
+    }
+    piece.push(item)
+    bytes += size
+  }
+  if (piece.length > 0) out.push(piece)
+  return out
+}
+
 /** A task's end when its run stopped it before it began anywhere. */
 const stopped = (): ExecuteResult => result({ exitCode: 130, signal: 'SIGTERM', durationMs: 0 }, [])
 
@@ -719,11 +738,27 @@ export class Orchestrator {
     a.chain = a.chain
       .then(async () => {
         for (const [i, part] of parts(orders, BATCH_BYTES).entries()) {
+          // An order too long for a frame (a task of thousands of
+          // dependencies was refused, 413) sends its deps ahead.
+          const tasks: RunOrder[] = []
+          for (const { order } of part) {
+            if (JSON.stringify(order).length <= BATCH_BYTES) {
+              tasks.push(order)
+              continue
+            }
+            for (const deps of chunks(order.deps, BATCH_BYTES)) {
+              const ahead = { type: 'deps', task: order.task, deps } satisfies ToWorker
+              await this.o.me.send(a.id, ahead)
+              a.usage.messagesIn++
+              a.usage.bytesIn += JSON.stringify(ahead).length
+            }
+            tasks.push({ ...order, deps: [] })
+          }
           const batch = {
             type: 'batch',
             root: this.o.root,
             realRoot: this.realRoot,
-            tasks: part.map((o) => o.order),
+            tasks,
             ...(sandboxes === undefined || i > 0 ? {} : { sandboxes }),
           } satisfies ToWorker
           await this.o.me.send(a.id, batch)

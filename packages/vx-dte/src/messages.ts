@@ -106,6 +106,8 @@ export type ToWorker =
       /** The run's sandboxed tasks' `exec.sandbox`, in a worker's first batch that has a sandboxed task. */
       sandboxes?: SandboxConfig[]
     }
+  /** Part of an order's `deps`, ahead of the batch whose order was too long for one frame. */
+  | { type: 'deps'; task: string; deps: DepOrder[] }
   | { type: 'cancel'; task: string }
   /**
    * It was taken into the run, under the name the run's output gives it,

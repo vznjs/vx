@@ -34,6 +34,7 @@ import {
   HELD_EVERY,
   HOST_ENV,
   PART_LISTS,
+  type DepOrder,
   type Load,
   type WorkerInfo,
   type RunOrder,
@@ -99,6 +100,8 @@ export async function runWorker(opts: {
   let facts: CacheFacts | undefined
   const artifacts = opts.artifacts(() => facts)
   const running = new Map<string, AbortController>()
+  /** Each order's deps sent ahead of its batch, until the batch comes. */
+  const ahead = new Map<string, DepOrder[]>()
   const work = new Set<Promise<void>>()
   let root = opts.root
   let realRoot = opts.root
@@ -518,6 +521,8 @@ export async function runWorker(opts: {
               ['machine', `${cores} cores · ${gb(memory)}`],
             ]),
           )
+        } else if (m.type === 'deps') {
+          ahead.set(m.task, [...(ahead.get(m.task) ?? []), ...m.deps])
         } else if (m.type === 'cancel') {
           running.get(m.task)?.abort()
         } else if (m.type === 'batch') {
@@ -528,7 +533,11 @@ export async function runWorker(opts: {
             if (floor === undefined) floor = localFloor(m.sandboxes)
             else await floor.rearm(m.sandboxes)
           }
-          for (const t of m.tasks) start(t)
+          for (const t of m.tasks) {
+            const deps = ahead.get(t.task)
+            ahead.delete(t.task)
+            start(deps === undefined ? t : { ...t, deps: [...deps, ...t.deps] })
+          }
         }
       }
     }
