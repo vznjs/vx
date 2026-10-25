@@ -13,7 +13,7 @@ import {
 } from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
-import { bytes, homeOf, needOf } from '../src/plugin.js'
+import { bytes, homeOf, needOf, pace } from '../src/plugin.js'
 import type { Platform } from '@vzn/vx'
 import {
   type CacheFacts,
@@ -3424,4 +3424,27 @@ it('restores the deps sent ahead of an order with its own', async () => {
   } finally {
     await served.stop()
   }
+})
+
+// 2026-10-25: planned after each task's end, 2000 tasks made 1281 plans,
+// half the orchestrator's CPU, and its relay found the workers lost.
+it('plans at most once a tick, and waits ten times a plan after it', async () => {
+  let runs = 0
+  const p = pace(() => {
+    runs++
+    const until = performance.now() + 20
+    while (performance.now() < until);
+  })
+  const end = performance.now() + 300
+  while (performance.now() < end) {
+    p.soon()
+    p.soon()
+    await Bun.sleep(5)
+  }
+  // Each run of 20 ms waits 200 ms: two in 300 ms, three at most.
+  expect(runs).toBeGreaterThanOrEqual(1)
+  expect(runs).toBeLessThanOrEqual(3)
+  const before = runs
+  p.now()
+  expect(runs).toBe(before + 1)
 })
