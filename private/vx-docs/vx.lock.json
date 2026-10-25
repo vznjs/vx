@@ -199,7 +199,7 @@
               "**/*",
               "../../packages/vx/src/**",
               "../../packages/vx-ci/src/**",
-              "../../packages/vx-schedule-history/src/**",
+              "../../packages/vx-history/src/**",
               "../../packages/vx/tests/config.test.ts",
               "../../packages/vx/tests/sandbox-runtime.unsafe.test.ts",
               "../../packages/vx/tests/task-hash-derive.test.ts",

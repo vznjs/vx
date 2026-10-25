@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-history: rename vx-schedule-history to vx-history
+
+@vzn/vx-schedule-history is @vzn/vx-history: scheduleHistoryPlugin() is vxHistory(), ScheduleHistoryOptions is VxHistoryOptions, and its notes say "[vx] vx-history:".
+
 ## graph: move criticalPath into core
 
 @vzn/vx-schedule-history no longer exports criticalPath or criticalPathPriorities; import criticalPath from @vzn/vx.

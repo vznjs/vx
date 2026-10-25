@@ -16,7 +16,7 @@ const FACTORIES: Record<string, string[]> = {
   'vx-reapi': ['reapi'],
   'vx-migrate': ['turbo', 'nx', 'turboCache', 'nxCache'],
   'vx-lockfile': ['pnpm', 'bun', 'npm', 'yarn'],
-  'vx-schedule-history': ['scheduleHistoryPlugin'],
+  'vx-history': ['vxHistory'],
   'vx-otel': ['otel'],
   'vx-ci': ['github'],
 }

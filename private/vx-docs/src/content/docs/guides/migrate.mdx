@@ -49,7 +49,7 @@ starts at the [quickstart](../../quickstart/).
 
 `vx init` installs `@vzn/vx` globally and in the repo, then declares what
 the repo needs in `.vx/workspace.ts`: its lockfile plugin,
-`scheduleHistoryPlugin()`, and `github()` when `.github/workflows` exists.
+`vxHistory()`, and `github()` when `.github/workflows` exists.
 `--native` (the default without a terminal) writes configs; `--keep` maps
 the old config live instead ([check the mapping first](#check-the-mapping-first)).
 `--no-install` leaves `package.json` alone.
@@ -71,13 +71,13 @@ repo.
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { turbo } from '@vzn/vx-migrate'
 import { npm } from '@vzn/vx-lockfile'
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { vxHistory } from '@vzn/vx-history'
 
 export default {
   plugins: [
     turbo(),
     npm(),
-    scheduleHistoryPlugin(),
+    vxHistory(),
   ],
 } satisfies WorkspaceConfig
 ```
@@ -87,7 +87,7 @@ $ bunx @vzn/vx init --keep
 
 ─ vx-migrate 0.0.637 ─────────────────────────────────────────
   from      turbo.json, run by turbo() from @vzn/vx-migrate
-  ran       npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history
+  ran       npm install -D @vzn/vx-lockfile @vzn/vx-history
   files     .vx/workspace.ts
   lock      0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)
   note      a temporary start: vx init --native writes native config
@@ -218,13 +218,13 @@ maps the same way. `bunx @vzn/vx init --keep` writes only this
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { nx } from '@vzn/vx-migrate'
 import { npm } from '@vzn/vx-lockfile'
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { vxHistory } from '@vzn/vx-history'
 
 export default {
   plugins: [
     nx(),
     npm(),
-    scheduleHistoryPlugin(),
+    vxHistory(),
   ],
 } satisfies WorkspaceConfig
 ```
@@ -234,7 +234,7 @@ $ bunx @vzn/vx init --keep
 
 ─ vx-migrate 0.0.637 ─────────────────────────────────────────
   from      nx.json, run by nx() from @vzn/vx-migrate
-  ran       npm install -D @vzn/vx-lockfile @vzn/vx-schedule-history
+  ran       npm install -D @vzn/vx-lockfile @vzn/vx-history
   files     .vx/workspace.ts
             .vx/.gitignore
   lock      0 project configs → .vx/projects.lock.json (no vx.config, so not locked: app, lib)

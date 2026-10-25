@@ -111,7 +111,7 @@ and the run's lock. `vx show`, `vx info`, `vx watch`'s config sweep, the
 picker and the CLI's selection pass read the lock too, through
 `cli/workspace-config.ts` (`closure: false`; no lock is `NO_LOCK`) or
 the doctor's own load (no lock counts zero). `loadResolvedProjects` is
-the same read for an embedder — `@vzn/vx-schedule-history` calls it,
+the same read for an embedder — `@vzn/vx-history` calls it,
 and `@vzn/vx` exports it — with discovery and the plugin load folded
 in: `scope` is every project or a list of names, no closure.
 

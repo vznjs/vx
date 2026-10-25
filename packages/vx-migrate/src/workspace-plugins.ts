@@ -23,7 +23,7 @@ export function workspacePlugins(root: string, runner?: 'turbo' | 'nx'): Workspa
     out.push({ pkg: '@vzn/vx-migrate', factory: REMOTE_CACHE[runner] })
   const lock = lockfilePlugin(root)
   if (lock !== undefined) out.push({ pkg: '@vzn/vx-lockfile', factory: lock.factory })
-  out.push({ pkg: '@vzn/vx-schedule-history', factory: 'scheduleHistoryPlugin' })
+  out.push({ pkg: '@vzn/vx-history', factory: 'vxHistory' })
   if (existsSync(path.join(root, '.github', 'workflows')))
     out.push({ pkg: '@vzn/vx-ci', factory: 'github' })
   return out

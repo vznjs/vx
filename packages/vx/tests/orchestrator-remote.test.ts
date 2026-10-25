@@ -1526,7 +1526,7 @@ describe("orchestrator e2e: a remote hit carries the producing execution's usage
         expect(hit.peakRssBytes).toBeUndefined()
         expect(hit.cpuMs).toBeUndefined()
 
-        // What `@vzn/vx-schedule-history` reads on this runner's NEXT run.
+        // What `@vzn/vx-history` reads on this runner's NEXT run.
         const local = new Cache(path.join(fixture.root, '.vx', 'cache'))
         try {
           const table = await new LocalHistoryProvider(local.dbHandle()).loadFor(['app#build'])

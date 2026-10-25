@@ -1,6 +1,6 @@
 // A plugin verb's `--format json` is held like core's read verbs
 // (`cli-json-schemas.test.ts`): `vx history` from
-// @vzn/vx-schedule-history prints what `schemas/history.json` in that
+// @vzn/vx-history prints what `schemas/history.json` in that
 // package says — every output conforms and every declared field is
 // printed. The plugin's own `tests/history-schema.test.ts` holds each
 // object's keys to its source type. Unsafe: it reads another package,
@@ -14,7 +14,7 @@ import { declaredPaths, validate } from './helpers/json-schema.js'
 import { addProject, makeWorkspace } from './helpers/workspace.js'
 
 const BIN = path.resolve(import.meta.dir, 'helpers', 'vx-locked.ts')
-const PLUGIN = path.resolve(import.meta.dir, '..', '..', 'vx-schedule-history')
+const PLUGIN = path.resolve(import.meta.dir, '..', '..', 'vx-history')
 const TIMEOUT = 60_000
 
 let root: string
@@ -33,9 +33,9 @@ beforeAll(async () => {
   // A declared reservation names both axes, so a row carries each field.
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
-    `import { scheduleHistoryPlugin } from ${JSON.stringify(path.join(PLUGIN, 'src', 'index.ts'))}
+    `import { vxHistory } from ${JSON.stringify(path.join(PLUGIN, 'src', 'index.ts'))}
 export default {
-  plugins: [scheduleHistoryPlugin({ reservations: { 'app#build': { cpus: 2, memory: 512 } } })],
+  plugins: [vxHistory({ reservations: { 'app#build': { cpus: 2, memory: 512 } } })],
 }
 `,
   )

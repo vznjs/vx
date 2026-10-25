@@ -14,7 +14,7 @@
   "devDependencies": {
     "@types/bun": "^1.4.0",
     "@vzn/vx": "workspace:*",
-    "@vzn/vx-schedule-history": "workspace:*",
+    "@vzn/vx-history": "workspace:*",
     "turbo": "2.11.7"
   }
 }

@@ -1911,7 +1911,7 @@ workflow `npm.yml`, environment left blank. Do this for `@vzn/vx`,
 `@vzn/vx-darwin-x64`, `@vzn/vx-darwin-arm64`, `@vzn/vx-linux-x64`,
 `@vzn/vx-linux-arm64` and the six plugins: `@vzn/vx-ci`,
 `@vzn/vx-lockfile`, `@vzn/vx-migrate`, `@vzn/vx-otel`,
-`@vzn/vx-reapi` and `@vzn/vx-schedule-history`.
+`@vzn/vx-reapi` and `@vzn/vx-history`.
 
 Each platform package carries `LICENSE` and `THIRD_PARTY_NOTICES.txt`:
 the binary embeds Bun and npm code whose licenses must travel with it.
@@ -2668,7 +2668,7 @@ unreported`: the sandbox still enforces, but a task that tolerates a
   process may use — the CPU count, capped by the cgroup CPU quota a
   container runs under (`8 — the CPU count`, `2 — cgroup CPU quota 2 of
 8 cores`). `memory` is what a memory-packing policy budgets
-  (`@vzn/vx-schedule-history`): the machine's total, capped by the
+  (`@vzn/vx-history`): the machine's total, capped by the
   cgroup limit — inside a container the raw numbers are the host's,
   and the doctor is where to see which one a run reads.
 - `flaky tasks` is the standing list a run's flaky notes add to:
@@ -2967,7 +2967,7 @@ with `--stats`.
 when, duration, branch @ sha, CI, task/hit/failure counts) and a
 per-task table — status, id, duration, cache key, and for a task that
 executed, what it used (peak RSS and CPU parallelism, `312 MB · 1.4×
-cpu`: the runner's own record, and the number `@vzn/vx-schedule-history`
+cpu`: the runner's own record, and the number `@vzn/vx-history`
 reserves from; a hit spent nothing and shows nothing, and a task lighter
 than vx itself shows its CPU only) — failures first, each as the frame
 read it, `failed (exit 137)`, with the signal an exit above 128 stands
@@ -3175,7 +3175,7 @@ The plugin's name is its package name, which `definePlugin` reads from
 local store, then each remote the workspace's cache plugins supply,
 under the run's scope), read-only, opened on first use.
 
-(`@vzn/vx-schedule-history` ships exactly this: `vx history`, what it
+(`@vzn/vx-history` ships exactly this: `vx history`, what it
 learned per task and the reservation its `admit` hook packs.) The dispatcher tries core's verbs
 first and consults plugins only for a word core does not know, loading
 the workspace config from the cwd to find them (outside a workspace the

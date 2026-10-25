@@ -1,5 +1,5 @@
 // HistoryTable + HistoryProvider — historical run data the `schedule`
-// plugin (`@vzn/vx-schedule-history`, and its `vx history` verb) and
+// plugin (`@vzn/vx-history`, and its `vx history` verb) and
 // `--dry`'s time prediction read.
 //
 // The data has been in cache.db.runs since schema v11; what's new is

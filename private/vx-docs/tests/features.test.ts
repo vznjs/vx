@@ -169,7 +169,7 @@ describe('the feature data', () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-feature-examples-'))
     try {
       await symlink(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'), 'dir')
-      const plugins = ['vx-ci', 'vx-lockfile', 'vx-otel', 'vx-reapi', 'vx-schedule-history']
+      const plugins = ['vx-ci', 'vx-lockfile', 'vx-otel', 'vx-reapi', 'vx-history']
       await writeFile(
         path.join(dir, 'tsconfig.json'),
         JSON.stringify({

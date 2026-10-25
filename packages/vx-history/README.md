@@ -1,6 +1,6 @@
-# @vzn/vx-schedule-history
+# @vzn/vx-history
 
-Website: <https://vznjs.github.io/vx/> · this plugin: <https://vznjs.github.io/vx/plugins/vx-schedule-history/> · source: <https://github.com/vznjs/vx>
+Website: <https://vznjs.github.io/vx/> · this plugin: <https://vznjs.github.io/vx/plugins/vx-history/> · source: <https://github.com/vznjs/vx>
 
 History-based scheduling for [`@vzn/vx`](https://vznjs.github.io/vx/): a `schedule` plugin that orders ready tasks by their expected REMAINING critical-path duration — a task's own p50 plus the longest chain of dependents behind it — learned from the workspace's local run history. Zero dependencies.
 
@@ -9,23 +9,23 @@ A task's p50 is the median of its last five timings on the current branch, else 
 ## Usage
 
 ```sh
-bun add -d @vzn/vx @vzn/vx-schedule-history
+bun add -d @vzn/vx @vzn/vx-history
 ```
 
 ```ts
 // .vx/workspace.ts
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { vxHistory } from '@vzn/vx-history'
 
-export default { plugins: [scheduleHistoryPlugin()] }
+export default { plugins: [vxHistory()] }
 ```
 
-`scheduleHistoryPlugin({ window?, assume?, file?, defaultBranch?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
+`vxHistory({ window?, assume?, file?, defaultBranch?, resources?, memory?, reservations? })` learns from the last `window` invocations (default 20) through core's `LocalHistoryProvider` over the cache's own SQLite handle. With one worker and two chains of identical shape, the chain history says is slow starts first; with no history yet, the scheduler's structural order stands.
 
 `assume` is for the run that has no history: a fresh CI runner. It names durations (task id → ms) for tasks the history has not seen, so a long leaf task — a docs build, a cross-compile — starts first instead of last:
 
 ```ts
 export default {
-  plugins: [scheduleHistoryPlugin({ assume: { '@vzn/vx-docs#build': 30_000 } })],
+  plugins: [vxHistory({ assume: { '@vzn/vx-docs#build': 30_000 } })],
 }
 ```
 
@@ -93,7 +93,7 @@ file git does not ignore warns.
 
 ```ts
 export default {
-  plugins: [scheduleHistoryPlugin({ file: '.vx-timings.json' })],
+  plugins: [vxHistory({ file: '.vx-timings.json' })],
 }
 ```
 
@@ -135,7 +135,7 @@ next run without ever having executed it.
 
 ```ts
 plugins: [
-  scheduleHistoryPlugin({
+  vxHistory({
     // MB. The default is the machine's total capped by the cgroup limit; set it to budget below either.
     memory: 8192,
     resources: { headroom: 1.5 },
@@ -182,11 +182,11 @@ the job of `exec.timeout` and the OS. Design:
 
 - It is an ORDERING hint over the scheduler's structural baseline (how many tasks wait on each one, directly or through others), merged as `VxPlugin.schedule` returns it: task id → weight. It never changes what runs, only which ready task runs first.
 - Cache hits are not modelled as zero-cost: predicting cache state needs the key and a probe, which the scheduler handles at run time (a confirmed hit is backfill, never a critical-path task). The estimate is "what if everything ran", which is exactly the case where order matters.
-- It fails open: a broken history read warns (`[vx] schedule-history: ordering falls back to the baseline`) and leaves the baseline order and only the declared reservations. Observability never breaks a run.
+- It fails open: a broken history read warns (`[vx] vx-history: ordering falls back to the baseline`) and leaves the baseline order and only the declared reservations. Observability never breaks a run.
 - Cost: one history read per run, serving both hooks, paid only by workspaces that declare the plugin. Core applies no plugin by default.
 
-The score is core's `criticalPath(nodes, history, assume?)` (`@vzn/vx`), which any `schedule` plugin may call. `resourceEstimates(nodes, history, headroom)`, `withDeclared(learned, declared)` and `admits(id, running, reservations, budgets)` are exported for tests and for policies that want the same scoring over another history source, with the types `ScheduleHistoryOptions`, `ResourceEstimate` and `Budgets`.
+The score is core's `criticalPath(nodes, history, assume?)` (`@vzn/vx`), which any `schedule` plugin may call. `resourceEstimates(nodes, history, headroom)`, `withDeclared(learned, declared)` and `admits(id, running, reservations, budgets)` are exported for tests and for policies that want the same scoring over another history source, with the types `VxHistoryOptions`, `ResourceEstimate` and `Budgets`.
 
 ## History
 
-Core's opt-in `predictive` mode until 2026-09-02, then core's one bundled plugin (`@vzn/vx/plugins/schedule-history`) until 2026-09-10, when it moved here so core ships no plugin at all.
+Core's opt-in `predictive` mode until 2026-09-02, then core's one bundled plugin (`@vzn/vx/plugins/schedule-history`) until 2026-09-10, when it moved here so core ships no plugin at all; `@vzn/vx-schedule-history` until 2026-10-25.

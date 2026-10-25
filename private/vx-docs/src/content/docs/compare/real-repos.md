@@ -57,7 +57,7 @@ overhead.
 
 Run 2026-10-09 on linux x64, 4 cores: vx 0.0.634 configured by
 `vx init --native` plus the
-[history scheduler](../../plugins/vx-schedule-history/) reading task
+[history scheduler](../../plugins/vx-history/) reading task
 timings saved from one earlier run; Turborepo 2.5.8 (create-t3-turbo)
 and 2.9.14 (react-email) with the daemon off; pnpm 12.4.2. 10 workers
 each, best of three interleaved runs. Every run is in

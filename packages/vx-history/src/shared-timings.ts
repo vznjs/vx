@@ -319,7 +319,7 @@ export async function importTimings(args: ImportArgs): Promise<boolean> {
       // failure (the run's database closed under it) is no news.
       if (late) return false
       args.warn(
-        `[vx] schedule-history: the shared timings could not be read: ${err instanceof Error ? err.message : String(err)}`,
+        `[vx] vx-history: the shared timings could not be read: ${err instanceof Error ? err.message : String(err)}`,
       )
       return false
     }
@@ -382,7 +382,7 @@ function keep(args: ImportArgs, sha: string, blob: Uint8Array | null): boolean {
   if (parsed === null) {
     if (blob !== null)
       args.warn(
-        `[vx] schedule-history: ${sha.slice(0, 12)}'s shared timings are unreadable (${blob.byteLength} B: past ${MAX_BLOB_BYTES} B or not a timings blob)`,
+        `[vx] vx-history: ${sha.slice(0, 12)}'s shared timings are unreadable (${blob.byteLength} B: past ${MAX_BLOB_BYTES} B or not a timings blob)`,
       )
     return false
   }

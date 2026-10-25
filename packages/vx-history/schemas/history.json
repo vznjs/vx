@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "vx history --format json",
-  "description": "What @vzn/vx-schedule-history learned per task, and the reservation it packs.",
+  "description": "What @vzn/vx-history learned per task, and the reservation it packs.",
   "type": "object",
   "additionalProperties": false,
   "required": ["window", "budgets", "tasks"],

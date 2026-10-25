@@ -34,7 +34,7 @@ that is cheaper.
 
 Ready tasks sit in a binary max-heap, most work below first. When a task
 finishes, vx counts down its direct dependents and pushes the ones that
-hit zero. Nothing rescans the graph. `@vzn/vx-schedule-history` swaps
+hit zero. Nothing rescans the graph. `@vzn/vx-history` swaps
 the count for durations learned from past runs.
 
 ## Restores never take a build's slot
@@ -47,7 +47,7 @@ task whose key must wait for an upstream joins neither tier.
 ## Memory limits come from a plugin
 
 Core limits only the worker count. The `admit` stage can hold a ready
-task. `@vzn/vx-schedule-history` learns each task's peak memory and
+task. `@vzn/vx-history` learns each task's peak memory and
 packs tasks against the machine's RAM.
 
 Reference: [Architecture](../../architecture/). More at

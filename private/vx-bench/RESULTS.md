@@ -5,7 +5,7 @@
 - **Workspace:** 1,601 projects, 9,603 tasks: 29 levels × 50 libs and 100 apps, 50 terminal libs at level 15, one `e2e` on every edge, five core libs ~400 projects each use (private/vx-bench/shape.ts).
 - **Tasks:** `installDeps` (^build, no command), `build`, `lint`, `test` (after installDeps), `publish` (after build), `typecheck` (^build). Each sleeps: build 300 ms, lint 75 ms, test 150 ms, publish 30 ms, typecheck 150 ms. `build` writes dist/index.js from 20 source files and 200 KB of seeded incompressible bytes. Identical commands in every runner.
 - **Concurrency:** 10 for every runner. **Reps:** cold 1, the rest median of 7.
-- **vx:** compiled binary from a `vx lock` snapshot, as every run does. Uses `scheduleHistoryPlugin({ file: 'vx-timings.json' })`, its timings recorded by an earlier, untimed run; cache wipes keep that file.
+- **vx:** compiled binary from a `vx lock` snapshot, as every run does. Uses `vxHistory({ file: 'vx-timings.json' })`, its timings recorded by an earlier, untimed run; cache wipes keep that file.
 - **Git:** default config for every runner (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`); the bench host's own sets `core.checkstat=minimal`, under which vx hashes every input from disk.
 - **Host:** Linux 6.18.44-fc-v153 · 4 cores · linux/x64
 - **Date:** 2026-10-23
