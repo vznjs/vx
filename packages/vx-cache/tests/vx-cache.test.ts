@@ -473,6 +473,32 @@ describe('config', () => {
     }
   })
 
+  // The second failed ask of the limits was kept: every later check threw
+  // it, though the server was back (2026-10-26).
+  it('asks the limits again after each failed ask, and reads once the server is back', async () => {
+    const srv = server()
+    try {
+      let down = 2
+      const flaky: typeof fetch = Object.assign(
+        (input: string | URL | Request, init?: RequestInit) =>
+          (input instanceof Request ? input.url : input.toString()).endsWith('/v1/capabilities') &&
+          down-- > 0
+            ? Promise.resolve(new Response('restarting', { status: 503 }))
+            : fetch(input, init),
+        { preconnect: fetch.preconnect },
+      )
+      const token = await srv.token(MAIN_JOB)
+      await layer(srv.url, token).put('ab13', new Blob(['x']), { durationMs: 1 })
+      const c = layer(srv.url, token, [MAIN], flaky)
+      c.start()
+      await Bun.sleep(50)
+      await expect(c.has('ab13')).rejects.toThrow('HTTP 503: restarting')
+      expect(await c.has('ab13')).toEqual({ size: 1 })
+    } finally {
+      await srv.stop()
+    }
+  })
+
   // The layer asks for the limits as it starts, before any check: a
   // refusal there turned the remote off and was never said.
   it('says a refusal met while it starts, at the first check', async () => {

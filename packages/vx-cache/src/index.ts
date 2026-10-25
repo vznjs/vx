@@ -365,7 +365,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
    */
   private async limitsNow(): Promise<Limits | undefined> {
     if (this.limits !== undefined) return this.limits
-    this.asked ??= (async () => {
+    const asked = (this.asked ??= (async () => {
       const res = await this.request('/v1/capabilities', { method: 'GET' })
       if (res === undefined) return undefined
       if (res.status !== 200) throw await refusal(res)
@@ -373,8 +373,13 @@ export class VxCacheLayer implements RemoteCacheLayer {
       const named = limitsOf((k) => body?.[k])
       if (named === undefined) this.limitsUnnamed(`/v1/capabilities (HTTP ${res.status})`)
       return named
-    })()
-    this.limits ??= await this.asked
+    })())
+    // A failed ask is asked again by the next check: kept, two failures
+    // while a server restarted failed every read of the run (2026-10-26).
+    asked.catch(() => {
+      if (this.asked === asked) this.asked = undefined
+    })
+    this.limits ??= await asked
     return this.limits
   }
 
@@ -399,7 +404,6 @@ export class VxCacheLayer implements RemoteCacheLayer {
   /** Starts asking for the limits, so the first check need not wait for them. */
   start(): void {
     this.limitsNow().catch((err: unknown) => {
-      this.asked = undefined
       // A refusal turned the layer off, and is said only once: the first
       // check says it. Anything else, the first check asks again and says.
       if (this.disabled) this.unsaid = err instanceof Error ? err : new Error(String(err))
