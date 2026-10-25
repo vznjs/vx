@@ -124,26 +124,30 @@ export async function runWorker(opts: {
     bare = false,
   ): Promise<void> => {
     const { stdout, stderr, ...result } = res
+    // Forced: the key keeps an entry it holds, so the run's machines restore
+    // the fresh bytes under the run key.
+    const keys = !bare && m.fresh === true && key === m.key ? [key, m.runKey] : [key]
     try {
-      await artifacts.save(
-        key,
-        {
-          id: m.task,
-          projectDir: path.join(opts.root, m.project),
-          command: m.command,
-          outputs: bare ? { files: [], workspaceFiles: [] } : m.outputs,
-          nestedProjectDirs: m.nested.map((n) => path.join(opts.root, n)),
-          ...(others === undefined || others.size === 0 ? {} : { others }),
-        },
-        {
-          stdout,
-          stderr,
-          durationMs: res.durationMs,
-          ...(res.cpuMs === undefined ? {} : { cpuMs: res.cpuMs }),
-          ...(res.peakRssBytes === undefined ? {} : { peakRssBytes: res.peakRssBytes }),
-          env: m.env,
-        },
-      )
+      for (const k of keys)
+        await artifacts.save(
+          k,
+          {
+            id: m.task,
+            projectDir: path.join(opts.root, m.project),
+            command: m.command,
+            outputs: bare ? { files: [], workspaceFiles: [] } : m.outputs,
+            nestedProjectDirs: m.nested.map((n) => path.join(opts.root, n)),
+            ...(others === undefined || others.size === 0 ? {} : { others }),
+          },
+          {
+            stdout,
+            stderr,
+            durationMs: res.durationMs,
+            ...(res.cpuMs === undefined ? {} : { cpuMs: res.cpuMs }),
+            ...(res.peakRssBytes === undefined ? {} : { peakRssBytes: res.peakRssBytes }),
+            env: m.env,
+          },
+        )
     } catch (err) {
       // Its outputs refused (a link out of its project): the task fails, as
       // core fails it, not this worker. Taken as a fault, it failed every
@@ -157,11 +161,18 @@ export async function runWorker(opts: {
         true,
       )
     }
-    if (result.exitCode === 0) {
-      present.set(key, Promise.resolve())
-      holds.set(key, names(m.project, m.outputs))
-    }
-    await me.send('orchestrator', { type: 'end', task: m.task, key, result, load: frame() })
+    if (result.exitCode === 0)
+      for (const k of keys) {
+        present.set(k, Promise.resolve())
+        holds.set(k, names(m.project, m.outputs))
+      }
+    await me.send('orchestrator', {
+      type: 'end',
+      task: m.task,
+      key: keys.at(-1)!,
+      result,
+      load: frame(),
+    })
   }
 
   // A message the relay would not take is said, each kind once (2026-10-23):

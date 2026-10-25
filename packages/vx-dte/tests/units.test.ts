@@ -1595,6 +1595,93 @@ it('an order names every dependency, held by its worker or not', async () => {
   }
 })
 
+// Under `--force` a held key kept its entry, and the orchestrator restored
+// the bytes the run bypassed over the ones its worker built (2026-10-25).
+it('a forced run’s order is fresh, and its worker saves a success under the run key too', async () => {
+  const h = await harness(new Map([node('t')]))
+  try {
+    const a = await h.worker(1)
+    void h.o.execute({ ...h.req('t', 'k-t'), refresh: true } as ExecuteRequest)
+    expect(await a.batches()).toEqual([['t']])
+    expect(a.orders[0]).toMatchObject({ key: 'k-t', fresh: true })
+  } finally {
+    await h.stop()
+  }
+  const root = await tmp()
+  const served = servedRelay()
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const saved: string[] = []
+    const artifacts: TaskArtifacts = {
+      async save(key) {
+        saved.push(key)
+      },
+      async output() {
+        return null
+      },
+      async share() {
+        return false
+      },
+      async resend() {
+        return false
+      },
+      async restore() {
+        return null
+      },
+    }
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => artifacts,
+    })
+    const order: RunOrder = {
+      task: 't',
+      key: 'k-t',
+      runKey: runKey(R, 't'),
+      fresh: true,
+      deps: [],
+      nested: [],
+      command: 'true',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    }
+    let ended: string | undefined
+    for (let i = 0; i < 100 && ended === undefined; i++)
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string; key?: string }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 2,
+            memory: 1e9,
+          })
+          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+        } else if (m.type === 'end') {
+          ended = m.key
+          await o.send(from, { type: 'exit' })
+        }
+      }
+    expect(await code).toBe(0)
+    expect(saved).toEqual(['k-t', runKey(R, 't')])
+    expect(ended).toBe(runKey(R, 't'))
+  } finally {
+    await served.stop()
+  }
+})
+
 // Two tasks begun together needing one dependency: the one whose order
 // did not carry it ran before the other had restored it (2026-10-22).
 it('a worker restores a dependency once, before any task that needs it runs', async () => {

@@ -631,6 +631,9 @@ export class Orchestrator {
           // Unsaved: under the run's own key, as an uncached task's.
           ...(req.cacheKey === undefined || req.unsaved === true ? {} : { key: req.cacheKey }),
           runKey: runKey(this.o.run, req.taskId, this.sends(req.taskId)),
+          // A held key keeps its entry, and restored here it replaced the
+          // forced run's fresh bytes with the ones it bypassed (2026-10-25).
+          ...(req.refresh === true ? { fresh: true as const } : {}),
           deps,
           nested: node === undefined ? [] : nestedIn(nodes!, node.projectDir, this.o.root),
           command: withForwardArgs(req.command, req.forwardArgs),

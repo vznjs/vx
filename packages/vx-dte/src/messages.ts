@@ -45,6 +45,12 @@ export interface RunOrder {
   key?: string
   /** What anything else is saved under: no hit ever serves it. */
   runKey: string
+  /**
+   * The run reads no cache (`--force`): a success is saved under `key`, which
+   * keeps an entry it holds, and under `runKey`, whose fresh bytes this run's
+   * machines restore.
+   */
+  fresh?: true
   /** The tasks it depends on, transitively, whose files the worker does not hold yet. */
   deps: DepOrder[]
   /** Workspace-relative projects inside `project`, whose files are not its outputs. */
