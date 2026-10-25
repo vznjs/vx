@@ -64,7 +64,7 @@ it('refuses every request, saying why, until TOKENS is set right', async () => {
     const other = await start({ TOKENS: tokens! })
     try {
       const res = await fetch(new URL('/v1/artifacts/abc', await other.ready))
-      expect([res.status, ((await res.json()) as { detail: string }).detail]).toEqual([
+      expect([res.status, ((await res.json()) as { message: string }).message]).toEqual([
         tokens === '' ? 401 : 500,
         detail as string,
       ])
@@ -78,7 +78,7 @@ it('refuses every request, saying why, while TRUST is wrong', async () => {
   const other = await start({ TOKENS: '', TRUST: '[{"iss":"https://gitlab.com"}]' })
   try {
     const res = await fetch(new URL('/v1/artifacts/abc', await other.ready))
-    expect([res.status, ((await res.json()) as { detail: string }).detail]).toEqual([
+    expect([res.status, ((await res.json()) as { message: string }).message]).toEqual([
       500,
       'TRUST: rule 0: names no project_id (one repository, no *)',
     ])
@@ -93,19 +93,19 @@ it("runs the Cron Trigger's eviction in workerd, over D1 and R2", async () => {
   try {
     const at = await other.ready
     const auth = { authorization: `Bearer ${WRITE}` }
-    await fetch(new URL('/v1/artifacts/evict1', at), { method: 'PUT', body: 'x', headers: auth })
+    await fetch(new URL('/v1/artifacts/e71c71', at), { method: 'PUT', body: 'x', headers: auth })
     await Bun.sleep(200)
     // miniflare's own types name a Fetcher and an R2 bucket it does not export.
     const worker = (await other.getWorker()) as unknown as {
       scheduled(o: { cron: string }): Promise<{ outcome: string }>
     }
     expect((await worker.scheduled({ cron: '17 3 * * *' })).outcome).toBe('ok')
-    const res = await fetch(new URL('/v1/artifacts/evict1', at), { method: 'HEAD', headers: auth })
+    const res = await fetch(new URL('/v1/artifacts/e71c71', at), { method: 'HEAD', headers: auth })
     expect(res.status).toBe(404)
     const bucket = (await other.getR2Bucket('BLOBS')) as unknown as {
       head(key: string): Promise<unknown>
     }
-    expect(await bucket.head('v1/default/trusted/evict1')).toBeNull()
+    expect(await bucket.head('v1/default/trusted/e71c71')).toBeNull()
   } finally {
     await other.dispose()
   }

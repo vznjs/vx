@@ -81,18 +81,18 @@ const head = (key: string, refs?: string) =>
       method: 'HEAD',
       headers: {
         authorization: `Bearer ${READ}`,
-        ...(refs === undefined ? {} : { 'vx-read-scopes': refs }),
+        ...(refs === undefined ? {} : { 'x-artifact-read-scopes': refs }),
       },
     }),
   ).then((r) => r.status)
 const detail = async (res: Response) =>
-  [res.status, ((await res.json()) as { detail: string }).detail] as const
+  [res.status, ((await res.json()) as { message: string }).message] as const
 
 const MAIN = { event_name: 'push', ref: 'refs/heads/main', ref_protected: 'true' }
 
 describe('CI OIDC tokens', () => {
   it('a token matching a rule writes trusted, which every read sees', async () => {
-    expect((await put(await sign(MAIN), 'a1')).status).toBe(201)
+    expect((await put(await sign(MAIN), 'a1')).status).toBe(202)
     expect(await head('a1')).toBe(200)
   })
 
@@ -103,7 +103,7 @@ describe('CI OIDC tokens', () => {
       head_ref: 'feature',
       ref_protected: 'false',
     })
-    expect((await put(pr, 'b2')).status).toBe(201)
+    expect((await put(pr, 'b2')).status).toBe(202)
     expect(await head('b2')).toBe(404)
     expect(await head('b2', '"refs/heads/feature", "refs/heads/main"')).toBe(200)
   })

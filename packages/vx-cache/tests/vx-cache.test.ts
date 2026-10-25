@@ -76,7 +76,7 @@ describe('VxCacheLayer', () => {
 
   it('stores, probes and reads an artifact with its duration, naming the read refs', async () => {
     const c = layer(srv.url, WRITE)
-    c.reads = { 'vx-read-scopes': '"refs/heads/f", "refs/heads/main"' }
+    c.reads = { 'x-artifact-read-scopes': '"refs/heads/f", "refs/heads/main"' }
     expect(await c.has('aa11')).toBeNull()
     await c.put('aa11', new Blob(['hello']), { durationMs: 1234.4 })
     expect(await c.has('aa11')).toEqual({ size: 5, durationMs: 1234 })
@@ -88,16 +88,20 @@ describe('VxCacheLayer', () => {
     expect(await c.get('bb22')).toBeNull()
     const reads = srv.seen.filter((r) => r.method !== 'PUT')
     expect(
-      reads.every((r) => r.headers.get('vx-read-scopes') === '"refs/heads/f", "refs/heads/main"'),
+      reads.every(
+        (r) => r.headers.get('x-artifact-read-scopes') === '"refs/heads/f", "refs/heads/main"',
+      ),
     ).toBe(true)
   })
 
   it('asks more than 1000 keys in queries of at most 1000', async () => {
     const before = srv.seen.length
-    const keys = Array.from({ length: 2500 }, (_, i) => `k${i}`)
+    const keys = Array.from({ length: 2500 }, (_, i) => i.toString(16))
     expect((await layer(srv.url, READ).hasMany(keys))!.size).toBe(0)
     const sizes = await Promise.all(
-      srv.seen.slice(before).map(async (r) => ((await r.json()) as { keys: string[] }).keys.length),
+      srv.seen
+        .slice(before)
+        .map(async (r) => ((await r.json()) as { hashes: string[] }).hashes.length),
     )
     expect(sizes.sort((a, b) => b - a)).toEqual([1000, 1000, 500])
   })
@@ -219,7 +223,7 @@ describe('oidc', () => {
       expect(asked).toEqual([`bearer gh ${new URL(url).origin}`])
       const reader = layer(url, READ)
       expect(await reader.has('f1')).toBeNull()
-      reader.reads = { 'vx-read-scopes': '"refs/heads/feat"' }
+      reader.reads = { 'x-artifact-read-scopes': '"refs/heads/feat"' }
       expect(await reader.has('f1')).toEqual({ size: 1, durationMs: 1 })
     } finally {
       await srv.stop(true)

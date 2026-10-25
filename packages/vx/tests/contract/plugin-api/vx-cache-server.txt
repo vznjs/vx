@@ -1,7 +1,7 @@
 == const DURATION_HEADER (src/protocol.ts)
-export const DURATION_HEADER = 'vx-duration'
+export const DURATION_HEADER = 'x-artifact-duration'
 == const READ_SCOPES_HEADER (src/protocol.ts)
-export const READ_SCOPES_HEADER = 'vx-read-scopes'
+export const READ_SCOPES_HEADER = 'x-artifact-read-scopes'
 == function anyAuth (src/oidc.ts)
 export function anyAuth(
   tokens: Authorize,

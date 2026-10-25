@@ -5,14 +5,20 @@ speaks it on Bun and on Cloudflare Workers; any server that does can take
 its place. Every route sits under `/v1`: a later version gets its own
 prefix, and a server may serve both.
 
+The artifact routes are Turbo's remote cache API
+([spec](https://turborepo.com/api/remote-cache-spec)) under `/v1` in place
+of `/v8`: the same routes, headers, bodies and status codes. Only what
+that API cannot say is ours: run history, CI tokens and read scopes.
+§ Where it differs from Turbo lists every difference and why.
+
 ## Opaque strings, plain numbers
 
 The server never reads a string a client sends. It only stores it and
-compares it for equality: artifact keys, run ids, task names, artifact
+compares it for equality: artifact hashes, run ids, task names, artifact
 bytes. A client may send them encrypted (a keyed hash for names, a cipher
 for bytes) and the server works the same. Numbers (sizes, durations,
 times, exit codes) stay plain so the server can sort and query them.
-Refs in `Vx-Read-Scopes` stay plain too: the server matches them against
+Refs in `x-artifact-read-scopes` stay plain too: the server matches them against
 CI tokens, which name them anyway.
 
 ## Tokens
@@ -36,31 +42,35 @@ trust rules:
 ## Scopes
 
 An artifact or run lives in one scope. A read walks the refs named in
-`Vx-Read-Scopes`, in order, then the trusted scope, and the first scope
+`x-artifact-read-scopes`, in order, then the trusted scope, and the first scope
 that holds a key answers it. The header is an RFC 8941 list of strings,
 each `refs/...`, at most 8:
 
 ```
-Vx-Read-Scopes: "refs/heads/feature", "refs/heads/main"
+x-artifact-read-scopes: "refs/heads/feature", "refs/heads/main"
 ```
 
 Absent, a read sees the trusted scope only. Any other value is `400`.
 
 ## Artifacts
 
-A key is 1 to 128 of `[A-Za-z0-9_-]`. An artifact is immutable. A
-server may evict one at any time: a `GET` after a `HEAD` or a query that
-held it may be `404`, which a client reads as a miss.
+A hash is 1 to 128 hex digits. An artifact is immutable. A server may
+evict one at any time: a `GET` after a `HEAD` or a query that held it may
+be `404`, which a client reads as a miss. `teamId` and `slug` query
+parameters are taken and ignored: the token names the namespace.
 
-| Request                    | Answer                                                                                                                                                               |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HEAD /v1/artifacts/<key>` | `200` with `Content-Length` and `Vx-Duration`, or `404`. Reads no blob.                                                                                              |
-| `GET /v1/artifacts/<key>`  | `200` with the bytes (`application/octet-stream`), `Content-Length` and `Vx-Duration`, or `404`.                                                                     |
-| `PUT /v1/artifacts/<key>`  | The bytes, with `Content-Length` (`411` without) and `Vx-Duration`. `201` stored; `200` already held (the stored bytes stay, the body is not read); `413` too large. |
-| `POST /v1/artifacts/query` | `{ "keys": [<key>, …] }`, up to 1000 → `{ "artifacts": { <key>: { "size", "durationMs" } } }`, held keys only.                                                       |
+| Request                     | Answer                                                                                                                                                                                                                             |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HEAD /v1/artifacts/<hash>` | `200` with `Content-Length`, `x-artifact-duration` and, when stored, `x-artifact-sha` and `x-artifact-dirty-hash`; or `404`. Reads no blob.                                                                                        |
+| `GET /v1/artifacts/<hash>`  | `200` with the bytes (`application/octet-stream`), those headers and, when stored, `x-artifact-tag`; or `404`.                                                                                                                     |
+| `PUT /v1/artifacts/<hash>`  | The bytes, with `Content-Length` (`400` without) and optional `x-artifact-duration`, `x-artifact-tag` (at most 600), `x-artifact-sha`, `x-artifact-dirty-hash`. `202` with `{ "urls": [<this artifact's URL>] }`; `413` too large. |
+| `POST /v1/artifacts`        | `{ "hashes": [<hash>, …] }`, up to 1000 → `{ <hash>: { "size", "taskDurationMs", "tag"? } \| null }`, one entry per hash.                                                                                                          |
+| `GET /v1/artifacts/status`  | `{ "status": "enabled" }`.                                                                                                                                                                                                         |
+| `POST /v1/artifacts/events` | Turbo's list of cache events: `200`, and dropped.                                                                                                                                                                                  |
 
-`Vx-Duration` is how long the task that made the artifact took, in whole
-milliseconds; a PUT without it stores 0.
+`x-artifact-duration` is how long the task that made the artifact took,
+in whole milliseconds; a PUT without it stores 0. A second PUT of a hash
+already held answers `202` too, and the stored bytes stay.
 
 ## Run history
 
@@ -122,13 +132,31 @@ A task no run holds answers `[]`.
 
 ## Errors
 
-Every refusal is `application/problem+json` (RFC 9457), with `status` and
-a `detail` saying what to fix:
+Every refusal is Turbo's spec's `Error`, `application/json`, its
+`message` saying what to fix:
 
 ```json
-{ "type": "about:blank", "title": "Forbidden", "status": 403, "detail": "this token reads only" }
+{ "code": "forbidden", "message": "this token reads only" }
 ```
 
-A JSON body without `Content-Type: application/json` is `415`; an unknown
+A JSON body without `Content-Type: application/json` is `400`; an unknown
 route `404`; a route's wrong method `405` with `Allow`. A HEAD answers the
 status alone.
+
+## Where it differs from Turbo
+
+Each is where Turbo's API cannot say what vx needs:
+
+- **`/v1`, not `/v8`.** Our own versioning: this protocol is not Vercel's
+  API at version 8.
+- **`x-artifact-read-scopes`.** Turbo has one shared scope; vx keeps a
+  branch's writes apart from main's (§ Scopes). A client that sends no
+  header reads the trusted scope, as with Turbo.
+- **CI OIDC tokens and `403` on a write.** Turbo leaves tokens to the
+  server; ours decide where a write lands (§ Tokens).
+- **Run history**, `/v1/runs` and `/v1/tasks/query`: Turbo has none.
+- **`413`** for an artifact over the server's limit: Turbo's spec names no
+  limit, and Workers' free plan takes a body of at most 100 MB.
+- **At most 1000 hashes per batch query**, and a hash at most 128 long:
+  the spec sets no bound, and a request must have one.
+- **Events are dropped**: vx keeps run history instead.

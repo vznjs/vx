@@ -15,14 +15,14 @@ as the item it describes.
   and Workers with R2 and D1. One conformance suite
   (`tests/conformance.ts`) runs against both; the Worker runs in workerd
   (miniflare), the bucket is an in-memory S3 that Bun's own client talks to.
-- Shipped: our own wire, versioned by path (`/v1/...`, PROTOCOL.md), not
-  Turbo's. Standard parts where one exists: RFC 9457 problem details for
-  every refusal, RFC 8941 lists for `Vx-Read-Scopes`, `Content-Length`,
-  `411`/`413`/`415`, no `X-` prefixes.
-- Shipped: the headers vx's remotes use today, renamed:
-  `x-artifact-duration` → `Vx-Duration`, `x-artifact-read-scopes` →
-  `Vx-Read-Scopes`. The batch probe is `POST /v1/artifacts/query`, up
-  to 1000 keys (Vercel's stops at 100).
+- Shipped: Turbo's remote cache API for artifacts (M, 2026-10-25: keep
+  to the standard, differ only where it blocks us), under our own `/v1`
+  in place of `/v8`: the same routes, `x-artifact-*` headers, bodies,
+  status codes and `{ code, message }` errors. Ours only where Turbo has
+  nothing: `x-artifact-read-scopes` (an RFC 8941 list), CI OIDC tokens,
+  run history. PROTOCOL.md § Where it differs from Turbo lists each.
+  The first cut (`Vx-Duration`, `POST /v1/artifacts/query`, RFC 9457)
+  was its own wire and is gone, with no shim.
 - Shipped: a row is the commit. A PUT stores the blob, then its row; a
   blob no row names is never read. HEAD and the batch probe read only the
   database. An artifact is immutable: a second PUT is `200` and its body
@@ -42,7 +42,7 @@ as the item it describes.
   lookups and history queries do), and an authenticated cipher over each
   artifact's bytes. Numbers stay plain: the server sorts and aggregates
   them for history.
-- Refs in `Vx-Read-Scopes` stay plain: the server matches them against CI
+- Refs in `x-artifact-read-scopes` stay plain: the server matches them against CI
   tokens, which name them.
 
 ## Access
@@ -61,7 +61,7 @@ as the item it describes.
 
 - Shipped: `vxCache()` (`@vzn/vx-cache`), the client plugin: a remote for
   core's cache seam, every read naming the run's refs in
-  `Vx-Read-Scopes`. Tested against the real server, in process.
+  `x-artifact-read-scopes`. Tested against the real server, in process.
 - Shipped: `vxCache()` writes a CI run's task timings after it (a hit
   records its producing run's duration) and orders every run by the
   critical path the server's timings give, through `ctx.refine`, so no run

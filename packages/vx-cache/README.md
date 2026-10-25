@@ -38,9 +38,9 @@ remote off for the run; a read token's refused write turns off writes
 alone. Any other refusal is a warning naming the server's own words, and
 the task reads as a miss.
 
-Every read names the run's refs in `Vx-Read-Scopes` (its branch, then
+Every read names the run's refs in `x-artifact-read-scopes` (its branch, then
 the branch it merges into), so a server that keeps branches apart answers
-from the closest one first. One existence query covers up to 1000 keys.
+from the closest one first. One batch query covers up to 1000 hashes.
 
 ## Run history
 

@@ -70,29 +70,29 @@ export interface RunTask {
   startedAt?: number
 }
 
-/** Keys one existence query carries (the protocol's cap). */
+/** Hashes one batch query carries (the server's cap). */
 const QUERY_MAX = 1000
 /** Tasks one history query carries (the protocol's cap). */
 const TASKS_MAX = 1000
 /** Refs one read names (the protocol's cap). */
 const READ_SCOPES_MAX = 8
 
-/** `Vx-Read-Scopes`: an RFC 8941 list of strings. */
+/** `x-artifact-read-scopes`: an RFC 8941 list of strings. */
 function readScopes(refs: readonly string[]): Record<string, string> {
   const list = refs.slice(0, READ_SCOPES_MAX)
   return list.length === 0
     ? {}
-    : { 'vx-read-scopes': list.map((r) => `"${r.replace(/[\\"]/g, '\\$&')}"`).join(', ') }
+    : { 'x-artifact-read-scopes': list.map((r) => `"${r.replace(/[\\"]/g, '\\$&')}"`).join(', ') }
 }
 
-/** A refusal, named by its status and the server's own `detail` (RFC 9457). */
+/** A refusal, named by its status and the server's own `message` (Turbo's spec's `Error`). */
 async function refusal(res: Response): Promise<Error> {
   let said = ''
   try {
     const text = (await res.text()).slice(0, 2048)
     try {
-      const detail = (JSON.parse(text) as { detail?: unknown }).detail
-      said = typeof detail === 'string' ? detail : text
+      const message = (JSON.parse(text) as { message?: unknown }).message
+      said = typeof message === 'string' ? message : text
     } catch {
       said = text
     }
@@ -121,8 +121,8 @@ const infoOf = (size: number | undefined, durationMs: number | undefined): Artif
 })
 
 /**
- * The seam: `has` is HEAD, `hasMany` the existence query, `get`/`put`
- * carry `Vx-Duration`. A refused token (401/403) throws once, for core to
+ * The seam: `has` is HEAD, `hasMany` the batch query, `get`/`put`
+ * carry `x-artifact-duration`. A refused token (401/403) throws once, for core to
  * report, and turns the layer off for the run; an upload's 403 turns off
  * uploads alone (a read token).
  */
@@ -220,7 +220,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (res.status !== 200) throw new Error(`HTTP ${res.status}`)
     return infoOf(
       durationOf(res.headers.get('content-length')),
-      durationOf(res.headers.get('vx-duration')),
+      durationOf(res.headers.get('x-artifact-duration')),
     )
   }
 
@@ -235,22 +235,23 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   private async query(keys: readonly string[]): Promise<Map<string, ArtifactInfo>> {
-    const res = await this.request('POST', '/v1/artifacts/query', {
-      body: JSON.stringify({ keys }),
+    const res = await this.request('POST', '/v1/artifacts', {
+      body: JSON.stringify({ hashes: keys }),
       headers: { 'content-type': 'application/json', ...this.reads },
     })
     if (res === undefined) return new Map()
     if (res.status !== 200) throw await refusal(res)
-    const body = (await res.json()) as { artifacts?: unknown }
-    if (typeof body.artifacts !== 'object' || body.artifacts === null) {
-      throw new Error('the existence query answered no `artifacts` object')
+    const body = (await res.json()) as unknown
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      throw new Error('the batch query answered no object')
     }
     const held = new Map<string, ArtifactInfo>()
     for (const key of keys) {
-      const v = (body.artifacts as Record<string, { size?: unknown; durationMs?: unknown }>)[key]
-      if (typeof v !== 'object' || v === null) continue
+      const v = (body as Record<string, { size?: unknown; taskDurationMs?: unknown }>)[key]
+      // `null`: not held; `{ error }`: unknown, read as a miss.
+      if (typeof v !== 'object' || v === null || typeof v.size !== 'number') continue
       const num = (n: unknown) => (typeof n === 'number' && n >= 0 ? n : undefined)
-      held.set(key, infoOf(num(v.size), num(v.durationMs)))
+      held.set(key, infoOf(num(v.size), num(v.taskDurationMs)))
     }
     return held
   }
@@ -264,7 +265,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
       return null
     }
     if (res.status !== 200) throw await refusal(res)
-    return { body: res, durationMs: durationOf(res.headers.get('vx-duration')) }
+    return { body: res, durationMs: durationOf(res.headers.get('x-artifact-duration')) }
   }
 
   async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
@@ -274,13 +275,13 @@ export class VxCacheLayer implements RemoteCacheLayer {
       headers: {
         'content-type': 'application/octet-stream',
         'content-length': String(body.size),
-        'vx-duration': String(Math.max(0, Math.round(meta.durationMs))),
+        'x-artifact-duration': String(Math.max(0, Math.round(meta.durationMs))),
       },
       timeoutMs: this.config.uploadTimeoutMs,
       write: true,
     })
     if (res === undefined) return
-    // 201 stored, 200 already held: either way the server has it.
+    // 202 (or the spec's 200): stored, or already held.
     if (!res.ok) throw await refusal(res)
   }
 

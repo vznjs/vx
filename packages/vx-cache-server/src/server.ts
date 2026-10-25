@@ -1,16 +1,22 @@
 // vx-cache v1 (PROTOCOL.md) over any Blobs and Db: one fetch handler that
-// the Bun server and the Worker both serve.
+// the Bun server and the Worker both serve. Artifacts speak Turbo's remote
+// cache API under `/v1`; run history is ours.
 
 import type { Access, Authorize } from './auth.js'
 import {
+  DIRTY_HASH_HEADER,
   DURATION_HEADER,
   isCount,
+  isHash,
   isKey,
   isOpaque,
   parseReadScopes,
-  problem,
+  errorJson,
   READ_SCOPES_HEADER,
   Refusal,
+  SHA_HEADER,
+  TAG_HEADER,
+  TAG_MAX,
 } from './protocol.js'
 import { blobName, type Blobs, type Db, findArtifacts, SCHEMA, TRUSTED } from './store.js'
 
@@ -26,7 +32,7 @@ export interface ServerOptions {
 
 /** Workers' free plan takes a request body up to 100 MB. */
 export const DEFAULT_MAX_ARTIFACT_BYTES = 100_000_000
-/** Keys one existence query may name. */
+/** Hashes one batch query may name (Turbo's spec sets none; Vercel's is 100). */
 const MAX_QUERY_KEYS = 1000
 /** A run's record, as JSON. */
 const MAX_RUN_BYTES = 1 << 20
@@ -65,7 +71,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   }
 
   async function artifact(req: Request, key: string): Promise<Response> {
-    if (!isKey(key)) throw new Refusal(400, 'a key is 1 to 128 of [A-Za-z0-9_-]')
+    if (!isHash(key)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
     await schema()
     if (req.method === 'PUT') return put(req, access, key)
@@ -77,21 +83,24 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     if (row === undefined || body === null) {
       return req.method === 'HEAD'
         ? new Response(null, { status: 404 })
-        : problem(404, 'no artifact under this key')
+        : errorJson(404, 'no artifact under this key')
     }
-    return new Response(req.method === 'HEAD' ? null : body, {
-      headers: {
-        'content-length': String(row.size),
-        'content-type': 'application/octet-stream',
-        [DURATION_HEADER]: String(row.duration_ms),
-      },
-    })
+    const headers: Record<string, string> = {
+      'content-length': String(row.size),
+      'content-type': 'application/octet-stream',
+      [DURATION_HEADER]: String(row.duration_ms),
+    }
+    // The spec's HEAD answers no tag: it is read with the bytes it signs.
+    if (row.tag !== null && req.method === 'GET') headers[TAG_HEADER] = row.tag
+    if (row.sha !== null) headers[SHA_HEADER] = row.sha
+    if (row.dirty_hash !== null) headers[DIRTY_HASH_HEADER] = row.dirty_hash
+    return new Response(req.method === 'HEAD' ? null : body, { headers })
   }
 
   async function put(req: Request, access: Access, key: string): Promise<Response> {
     const scope = writeScope(access)
     const length = req.headers.get('content-length')
-    if (length === null) throw new Refusal(411, 'a PUT names its Content-Length')
+    if (length === null) throw new Refusal(400, 'a PUT names its Content-Length')
     const size = Number(length)
     if (!isCount(size)) throw new Refusal(400, 'Content-Length is not a byte count')
     if (size > maxArtifactBytes) {
@@ -102,6 +111,19 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     if (!isCount(durationMs) || durationHeader === '') {
       throw new Refusal(400, `${DURATION_HEADER} is not whole milliseconds`)
     }
+    const text = (header: string, max: number): string | null => {
+      const v = req.headers.get(header)
+      if (v !== null && v.length > max)
+        throw new Refusal(400, `${header} is at most ${max} characters`)
+      return v === '' ? null : v
+    }
+    const tag = text(TAG_HEADER, TAG_MAX)
+    const sha = text(SHA_HEADER, 512)
+    const dirty = text(DIRTY_HASH_HEADER, 512)
+    const stored = Response.json(
+      { urls: [new URL(`/v1/artifacts/${key}`, req.url).href] },
+      { status: 202 },
+    )
     const held = await db.all(`SELECT 1 FROM artifacts WHERE ns = ?1 AND key = ?2 AND scope = ?3`, [
       access.ns,
       key,
@@ -110,7 +132,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     // Immutable: the stored bytes stay, and this upload is not read.
     if (held.length > 0) {
       await req.body?.cancel()
-      return new Response(null, { status: 200 })
+      return stored
     }
     const name = blobName(access.ns, scope, key)
     try {
@@ -123,28 +145,48 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     }
     // The row is the commit: a blob no row names is never read.
     await db.run(
-      `INSERT OR IGNORE INTO artifacts (ns, key, scope, size, duration_ms, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
-      [access.ns, key, scope, size, durationMs, now()],
+      `INSERT OR IGNORE INTO artifacts (ns, key, scope, size, duration_ms, tag, sha, dirty_hash, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
+      [access.ns, key, scope, size, durationMs, tag, sha, dirty, now()],
     )
-    return new Response(null, { status: 201 })
+    return stored
   }
 
   async function queryArtifacts(req: Request): Promise<Response> {
     const access = await authorize(req)
     const body = await readJson(req, MAX_QUERY_KEYS * 160)
-    const keys = field(body, 'keys')
+    const hashes = field(body, 'hashes')
     if (
-      !Array.isArray(keys) ||
-      keys.length > MAX_QUERY_KEYS ||
-      !keys.every((k) => typeof k === 'string' && isKey(k))
+      !Array.isArray(hashes) ||
+      hashes.length > MAX_QUERY_KEYS ||
+      !hashes.every((k) => typeof k === 'string' && isHash(k))
     ) {
-      throw new Refusal(400, `keys: up to ${MAX_QUERY_KEYS} keys`)
+      throw new Refusal(400, `hashes: up to ${MAX_QUERY_KEYS} hex hashes`)
     }
     await schema()
-    const found = await findArtifacts(db, access.ns, keys as string[], readScopes(req))
-    const artifacts: Record<string, { size: number; durationMs: number }> = {}
-    for (const [key, row] of found) artifacts[key] = { size: row.size, durationMs: row.duration_ms }
-    return Response.json({ artifacts })
+    const found = await findArtifacts(db, access.ns, hashes as string[], readScopes(req))
+    // Turbo's spec: every hash asked, `null` when none is held.
+    const out: Record<string, { size: number; taskDurationMs: number; tag?: string } | null> = {}
+    for (const h of hashes as string[]) {
+      const row = found.get(h)
+      out[h] =
+        row === undefined
+          ? null
+          : {
+              size: row.size,
+              taskDurationMs: row.duration_ms,
+              ...(row.tag === null ? {} : { tag: row.tag }),
+            }
+    }
+    return Response.json(out)
+  }
+
+  /** Turbo's analytics events: taken and dropped, the run history is what vx keeps. */
+  async function events(req: Request): Promise<Response> {
+    await authorize(req)
+    if (!Array.isArray(await readJson(req, 1 << 20))) {
+      throw new Refusal(400, 'the body is a list of events')
+    }
+    return new Response(null, { status: 200 })
   }
 
   async function recordRun(req: Request): Promise<Response> {
@@ -226,8 +268,16 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     const url = new URL(req.url)
     try {
       const path = url.pathname
-      if (path === '/v1/artifacts/query') {
+      if (path === '/v1/artifacts') {
         return req.method === 'POST' ? await queryArtifacts(req) : notAllowed('POST')
+      }
+      if (path === '/v1/artifacts/status') {
+        if (req.method !== 'GET') return notAllowed('GET')
+        await authorize(req)
+        return Response.json({ status: 'enabled' })
+      }
+      if (path === '/v1/artifacts/events') {
+        return req.method === 'POST' ? await events(req) : notAllowed('POST')
       }
       if (path.startsWith('/v1/artifacts/')) {
         const key = path.slice('/v1/artifacts/'.length)
@@ -242,22 +292,22 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       if (path === '/v1/tasks/query') {
         return req.method === 'POST' ? await queryTasks(req) : notAllowed('POST')
       }
-      return problem(404, 'no such route')
+      return errorJson(404, 'no such route')
     } catch (err) {
       if (err instanceof Refusal) {
         return req.method === 'HEAD'
           ? new Response(null, { status: err.status })
-          : problem(err.status, err.message)
+          : errorJson(err.status, err.message)
       }
       // Never swallowed: the client warns with what the server says.
       console.error(err)
-      return problem(500, message(err))
+      return errorJson(500, message(err))
     }
   }
 }
 
 const notAllowed = (allow: string): Response => {
-  const res = problem(405, `this route takes ${allow}`)
+  const res = errorJson(405, `this route takes ${allow}`)
   res.headers.set('allow', allow)
   return res
 }
@@ -266,7 +316,7 @@ const message = (err: unknown): string => (err instanceof Error ? err.message : 
 
 async function readJson(req: Request, max: number): Promise<unknown> {
   if (!/^application\/json\b/i.test(req.headers.get('content-type') ?? '')) {
-    throw new Refusal(415, 'the body is application/json')
+    throw new Refusal(400, 'the body is application/json')
   }
   if (Number(req.headers.get('content-length') ?? 0) > max) {
     throw new Refusal(413, `the body is at most ${max} bytes`)
