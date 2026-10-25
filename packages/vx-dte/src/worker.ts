@@ -800,7 +800,8 @@ function unchanged(
   return out
 }
 
-async function changedTracked(
+/** Tracked files under the task's project it changed, workspace-relative, its outputs and nested projects' aside. */
+export async function changedTracked(
   root: string,
   base: string,
   m: RunOrder,
@@ -812,6 +813,10 @@ async function changedTracked(
       'diff',
       '--name-only',
       '-z',
+      // Paths as the run names them: repo-relative, a workspace in a
+      // subdirectory matched no keyed file, and core saved the rewrite
+      // under its key (2026-10-25).
+      '--relative',
       '--no-renames',
       base,
       '--',
