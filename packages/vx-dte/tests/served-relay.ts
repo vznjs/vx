@@ -18,7 +18,14 @@ export function answer(ws: { send(text: string): unknown }, text: string | undef
 export function servedRelay(
   opts: Omit<RelayOptions, 'upgrade'> = {},
   tap?: (frame: string) => string,
-): { readonly relay: Relay; url: string; restart(): void; stop(): Promise<void> } {
+): {
+  readonly relay: Relay
+  url: string
+  /** Each request's `sec-websocket-extensions`: what its client offered. */
+  offered: (string | null)[]
+  restart(): void
+  stop(): Promise<void>
+} {
   let server: Bun.Server<Held> | undefined
   const open = new Set<Bun.ServerWebSocket<Held>>()
   const make = () =>
@@ -30,10 +37,14 @@ export function servedRelay(
       },
     })
   let relay = make()
+  const offered: (string | null)[] = []
   server = Bun.serve<Held>({
     port: 0,
     hostname: '127.0.0.1',
-    fetch: (r) => relay.fetch(r),
+    fetch: (r) => {
+      offered.push(r.headers.get('sec-websocket-extensions'))
+      return relay.fetch(r)
+    },
     websocket: {
       open(ws) {
         open.add(ws)
@@ -59,6 +70,7 @@ export function servedRelay(
       return relay
     },
     url: `http://127.0.0.1:${server.port}`,
+    offered,
     restart() {
       relay = make()
       for (const ws of open) ws.close()
