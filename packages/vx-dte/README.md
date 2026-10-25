@@ -76,9 +76,12 @@ naming its nonce `n` (Noise §11.4, since a relay may reorder); each is
 sealed with associated data `<first n>.<parts>` of its body, so no part
 opens in another body. A body whose first nonce was seen before is a
 replay and is dropped; one that does not open loses its sender. The
-plaintext is JSON padded with trailing spaces to its size class, a power
-of two from 256 bytes, then whole transport messages, so the relay learns
-no size within a class. Inside, each send is numbered and acknowledged
+plaintext is JSON, or over 256 bytes and smaller so, a `0` byte, the
+zstd frame's length (4 bytes, big-endian) and the frame: compressed
+before sealing, since no relay or socket compresses what is sealed. It
+is padded with trailing spaces to its size class, a power of two from
+256 bytes, then whole transport messages, so the relay learns no size
+within a class. Inside, each send is numbered and acknowledged
 end to end, and a quiet peer probed (Switchboard § Delivery, § Liveness).
 
 ## Try it

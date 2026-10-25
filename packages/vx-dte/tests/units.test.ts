@@ -2601,7 +2601,10 @@ it('a batch past the relay’s body limit goes in parts', async () => {
   try {
     const a = await h.worker(3)
     await Bun.sleep(50)
-    const env = { BIG: 'x'.repeat(400_000) }
+    // Random, so it is past the limit compressed too.
+    const env = {
+      BIG: Buffer.from(crypto.getRandomValues(new Uint8Array(300_000))).toString('base64'),
+    }
     for (const id of ['t1', 't2', 't3']) void h.o.execute({ ...h.req(id), env })
     const got: string[] = []
     for (let i = 0; i < 5 && got.length < 3; i++) got.push(...(await a.batches()).flat())
