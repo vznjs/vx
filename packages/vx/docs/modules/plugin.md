@@ -163,8 +163,9 @@ export interface BranchFacts {
   scope?: string // the cache scope, `<owner>/<repo>:<branch>`; VX_CACHE_SCOPE beats it
   base?: string // the commit a bare --affected and the scope split diff from
   trusted?: boolean // no scope, whatever git names: only the default keys (a merge queue)
+  refs?: readonly string[] // the refs a remote reads, in order; unset, git's (cacheRefs)
 }
 export interface ConfigContext extends WorkspaceHookContext {
-  setBranch(facts: BranchFacts): void // a later plugin's field wins; a bad scope is refused
+  setBranch(facts: BranchFacts): void // a later plugin's field wins; a bad scope or ref is refused
 }
 ```

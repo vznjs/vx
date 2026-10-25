@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-ci: github() and gitlab() name the refs a remote reads
+
+cacheRefs takes the plugin's refs; without github() or gitlab(), CI reads git's branch and the default branch only.
+
 ## vx-cache-server: speak Turbo's routes, cache downloads per DC
 
 GET /v1/artifacts/download/<hash> is GET /v1/artifacts/<hash>, POST /v1/artifacts/check is POST /v1/artifacts, x-vx-scope is x-artifact-scope, x-vx-max-* is x-artifact-max-*, the check takes { hashes, scopes } and answers { <hash>: { size, scope } | null }, MAX_CHECK_KEYS / maxCheckKeys are MAX_CHECK_HASHES / maxCheckHashes (lookups, 6 by default on Workers); POST /v1/artifacts/download, MAX_BATCH_ARTIFACTS, maxBatchArtifacts and x-vx-max-batch-artifacts are gone. Deploy the server and vxCache() together.
