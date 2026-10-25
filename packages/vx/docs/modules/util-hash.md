@@ -15,7 +15,12 @@ digest (feed-forward): a chain carries 64 bits of state, and a seed of
 ```ts
 export function xxh3(input: string | Uint8Array, seed?: bigint): bigint
 export function xxh3hex(input: string | Uint8Array, seed?: bigint): string // 16-hex, zero-padded
+export function keysSorted<T>(v: T): T // itself when every object's keys are sorted, else a sorted copy
 ```
+
+`keysSorted` is what a task config's key hashes (`task-hash.ts`) and what
+`vx lock` writes, so the order a file or a plugin spells keys in moves no
+key, and a config read from the lock costs a check, not a copy.
 
 ## Invariants
 
@@ -36,3 +41,4 @@ read (pinned, so an upgrade that changes it is a decision), a
 birthday-found pair of states sharing a low half kept apart after a
 common tail, and 2^17 `Cache.key` calls over one env value with no two
 keys equal; both collision rows are red without the feed-forward.
+`tests/task-hash.test.ts`: a config keys alike whatever its key order.
