@@ -339,6 +339,54 @@ export async function deriveStableKeys(args: DeriveStableKeysArgs): Promise<Stab
 }
 
 /**
+ * A project's positive outputs indexed by literal head, so a reader finds
+ * the ones its inputs reach (`workspaceInputsReach`: a head equal to, above
+ * or below an input's) without testing each: one project of 9000 tasks
+ * tested 81 million pairs, 6 s of a plan (2026-10-25).
+ */
+class ProjectOutputs {
+  private readonly globs: string[] = []
+  private readonly byHead = new Map<string, number[]>()
+  private sorted: string[] | undefined
+
+  add(glob: string, head: string): void {
+    const key = head === '.' ? '' : head
+    let at = this.byHead.get(key)
+    if (at === undefined) this.byHead.set(key, (at = []))
+    at.push(this.globs.length)
+    this.globs.push(glob)
+    this.sorted = undefined
+  }
+
+  /** The globs `inputs` reach, in the order they were added. */
+  reachedBy(inputs: readonly string[]): string[] {
+    const hit = new Set<number>()
+    const take = (head: string) => {
+      for (const i of this.byHead.get(head) ?? []) hit.add(i)
+    }
+    for (const raw of inputs) {
+      if (raw.startsWith('!')) continue
+      take('')
+      const p = literalPrefix(raw)
+      if (p === '') return [...this.globs]
+      for (let at = p.indexOf('/'); at !== -1; at = p.indexOf('/', at + 1)) take(p.slice(0, at))
+      take(p)
+      const sorted = (this.sorted ??= [...this.byHead.keys()].sort())
+      const from = `${p}/`
+      let lo = 0
+      let hi = sorted.length
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        if (sorted[mid]! < from) lo = mid + 1
+        else hi = mid
+      }
+      for (let i = lo; i < sorted.length && sorted[i]!.startsWith(from); i++) take(sorted[i]!)
+    }
+    return [...hit].sort((a, b) => a - b).map((i) => this.globs[i]!)
+  }
+}
+
+/**
  * The same-project outputs a reader's inputs reach, root-relative, each with
  * its project dir and project-relative glob: the outputs the gate would key
  * a reader late over, unless git ignores them (`askIgnoredOutputs`).
@@ -350,14 +398,13 @@ export function gatedOutputs(
   const out = new Map<string, { projectDir: string; glob: string }>()
   // Each project's positive outputs with their literal heads, read once:
   // 1,000 projects' tasks spent 5-8 ms here re-splitting the same globs.
-  const outputsOf = new Map<string, { glob: string; head: string }[]>()
+  const outputsOf = new Map<string, ProjectOutputs>()
   for (const n of nodes.values()) {
     const files = n.config.cache?.outputs.files
     if (files === undefined || files.length === 0) continue
-    let list = outputsOf.get(n.projectName)
-    if (list === undefined) outputsOf.set(n.projectName, (list = []))
-    for (const glob of files)
-      if (!glob.startsWith('!')) list.push({ glob, head: literalPrefix(glob) })
+    let po = outputsOf.get(n.projectName)
+    if (po === undefined) outputsOf.set(n.projectName, (po = new ProjectOutputs()))
+    for (const glob of files) if (!glob.startsWith('!')) po.add(glob, literalPrefix(glob))
   }
   if (outputsOf.size === 0) return out
   for (const n of nodes.values()) {
@@ -366,8 +413,7 @@ export function gatedOutputs(
     if (inputs === undefined || outputs === undefined || isGroupTask(n)) continue
     let back: string[] | undefined
     let rel: string | undefined
-    for (const { glob: o, head } of outputs) {
-      if (!workspaceInputsReach(inputs, [head])) continue
+    for (const o of outputs.reachedBy(inputs)) {
       rel ??= relPosix(workspaceRoot, n.projectDir)
       back ??= inputs.filter((g) => g.startsWith('!')).map((g) => g.slice(1))
       const rooted = rel === '' ? o : `${rel}/${o}`
