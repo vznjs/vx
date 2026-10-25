@@ -1,9 +1,9 @@
 import { defineWorkspace } from '@vzn/vx'
 import { github } from '@vzn/vx-ci'
+import { vxCache } from '@vzn/vx-cache'
 import { dte, github as githubWorkers } from '@vzn/vx-dte'
 import { vxHistory } from '@vzn/vx-history'
 import { bun } from '@vzn/vx-lockfile'
-import { turboCache } from '@vzn/vx-migrate'
 
 const relay = process.env['VX_DTE_RELAY']
 
@@ -13,10 +13,10 @@ export default defineWorkspace({
     // The report is the job summary only, no check run beside the jobs
     // (owner, 2026-10-23).
     github({ checks: false }),
-    // Vercel's Remote Cache. On GitHub Actions the job's OIDC token buys a
-    // short-lived one; elsewhere the token comes from the OS keychain.
-    turboCache({ teamSlug: 'exelord', oidc: true }),
-    vxHistory(),
+    // Our own servers (private/vx-cache-service, private/vx-history-service):
+    // CI jobs sign in with their OIDC token, so off CI both stay local.
+    vxCache({ url: 'https://vx-cache.exelord.workers.dev' }),
+    vxHistory({ server: 'https://vx-history.exelord.workers.dev' }),
     // CI's one run over workers (ci.yml `linux`, vx-worker.yml);
     // a run with no VX_DTE_RUN, as on a laptop, is not distributed.
     dte({
