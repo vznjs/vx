@@ -708,6 +708,9 @@ function backlog(
   return { start, release, endsInMs: end, boundMs: end, againInMs: undefined }
 }
 
+/** The most kinds `Ready.asks` jumps across; past it, it reads every task. */
+const MAX_JUMP_KINDS = 32
+
 /**
  * Ready tasks in the order `ordered` gave, by kind (`kindOf`): `assign`
  * reads them in that order, a kind it found spent skipped in one jump,
@@ -715,6 +718,8 @@ function backlog(
  */
 class Ready {
   private readonly kinds = new Map<string, PlanTask[]>()
+  /** Each task's kind, by its place in `order`. */
+  private readonly kindAt: string[] = []
   private readonly rank = new Map<string, number>()
   /** Each kind's first task not taken. */
   private readonly head = new Map<string, number>()
@@ -727,6 +732,7 @@ class Ready {
     order.forEach((t, i) => {
       this.rank.set(t.id, i)
       const k = kindOf(t)
+      this.kindAt.push(k)
       const q = this.kinds.get(k)
       if (q === undefined) this.kinds.set(k, [t])
       else q.push(t)
@@ -739,6 +745,16 @@ class Ready {
 
   /** In order, past each kind in `spent` as `assign` reads it then. */
   *asks(spent: ReadonlySet<string>): Generator<Ask> {
+    // Measured needs are unrounded, so kinds can be as many as tasks: a
+    // jump across every kind then cost more than a read of every task.
+    if (this.kinds.size > MAX_JUMP_KINDS) {
+      for (let i = 0; i < this.order.length; i++) {
+        const t = this.order[i]!
+        const kind = this.kindAt[i]!
+        if (!this.taken.has(t.id) && !spent.has(kind)) yield { id: t.id, need: t, kind }
+      }
+      return
+    }
     const at = new Map<string, number>()
     let cursor = -1
     for (;;) {
