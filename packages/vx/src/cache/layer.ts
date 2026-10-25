@@ -648,6 +648,11 @@ export interface CacheLayer {
    */
   resend?(hash: string): Promise<boolean>
   /**
+   * Whether a remote this run writes took entry `hash` when `save` uploaded
+   * it, or already held it; undefined when this run sent it to none.
+   */
+  uploaded?(hash: string): Promise<boolean | undefined>
+  /**
    * Optional batched `get` (same answers, fewer round trips). The
    * short-circuit probe uses it when a layer offers one; a layer without it
    * is probed hash by hash. `ctx` is each hash's `get` context.

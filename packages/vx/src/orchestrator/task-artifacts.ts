@@ -81,6 +81,12 @@ export interface TaskArtifacts {
    * which another machine of the run found corrupt. True when one took it.
    */
   resend(key: string): Promise<boolean>
+  /**
+   * Whether a remote the workspace writes took entry `key` when `save`
+   * uploaded it; undefined when it writes none. Another machine of the
+   * run reads the remotes alone, so false there means only this one has it.
+   */
+  uploaded?(key: string): Promise<boolean | undefined>
 }
 
 export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArtifacts {
@@ -133,6 +139,7 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
 
     share: (key) => cache.share?.(key) ?? Promise.resolve(false),
     resend: (key) => cache.resend?.(key) ?? Promise.resolve(false),
+    uploaded: (key) => cache.uploaded?.(key) ?? Promise.resolve(undefined),
   }
 }
 

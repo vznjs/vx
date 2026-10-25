@@ -251,6 +251,19 @@ describe('LayeredCache', () => {
     expect(await local.get('h-rem-err')).not.toBeNull()
   })
 
+  // A distributed run's worker told the orchestrator its task was saved
+  // though no remote took the upload, and the run failed restoring it
+  // (M, 2026-10-25): the worker now asks.
+  it('uploaded() says whether a remote took what save() sent', async () => {
+    const layered = makeLayered()
+    expect(await layered.uploaded('h-up')).toBeUndefined()
+    await saveSample(layered, 'h-up')
+    expect(await layered.uploaded('h-up')).toBe(true)
+    remote.failAll = true
+    await saveSample(layered, 'h-refused')
+    expect(await layered.uploaded('h-refused')).toBe(false)
+  })
+
   it('get() returns local entry without touching remote when local has it', async () => {
     await saveSample(local, 'h-local')
 

@@ -203,6 +203,8 @@ export class LayeredCache implements CacheLayer {
   readonly hasRemote = true
 
   private readonly lanes: readonly RemoteLane[]
+  /** Each key `save` uploaded: whether a remote took it (`uploaded`). */
+  private readonly sent = new Map<string, Promise<boolean>>()
 
   /**
    * In-flight remote pulls keyed by hash. `prefetch` and `get` both go
@@ -606,6 +608,7 @@ export class LayeredCache implements CacheLayer {
         packed = await this.local.packArtifactBytes(args)
       } catch (err) {
         for (const lane of writable) lane.report('upload', hash, err)
+        this.sent.set(hash, Promise.resolve(false))
         return
       }
     }
@@ -613,8 +616,17 @@ export class LayeredCache implements CacheLayer {
       packed !== undefined
         ? Promise.resolve({ body: new Blob([packed]) })
         : this.local.pinArtifact(hash)
-    for (const lane of writable)
-      void lane.upload(hash, durationMs, body, this.local.uploads, args.absent === true)
+    const sent = writable.map((lane) =>
+      lane.upload(hash, durationMs, body, this.local.uploads, args.absent === true),
+    )
+    this.sent.set(
+      hash,
+      Promise.all(sent).then((held) => held.includes(true)),
+    )
+  }
+
+  uploaded(hash: string): Promise<boolean | undefined> {
+    return this.sent.get(hash) ?? Promise.resolve(undefined)
   }
 
   /**

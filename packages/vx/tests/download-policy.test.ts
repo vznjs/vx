@@ -380,6 +380,7 @@ interface Fake {
   materialized: string[]
   failMaterialize?: boolean
   failProducer?: boolean
+  deferAlways?: boolean
 }
 
 /**
@@ -393,6 +394,7 @@ async function fixture(
     failMaterialize?: boolean
     failProducer?: boolean
     chain?: boolean
+    deferAlways?: boolean
   } = {},
 ): Promise<{
   root: string
@@ -481,7 +483,7 @@ async function fixture(
                  return { exitCode: 7, durationMs: 1, stdout: '', stderr: 'boom', violations: [] }
                }
                const base = { exitCode: 0, durationMs: 1, stdout: '', stderr: '', violations: [] }
-               if (req.download === 'deferred') {
+               if (req.download === 'deferred' || fake.deferAlways === true) {
                  return { ...base, outputs: { kind: 'deferred', materialize: async () => {
                    fake.materialized.push(req.taskId)
                    if (fake.failMaterialize === true) throw new Error('blob evicted from CAS')
@@ -505,6 +507,7 @@ async function fixture(
     materialized: [],
     ...(opts.failMaterialize === true ? { failMaterialize: true } : {}),
     ...(opts.failProducer === true ? { failProducer: true } : {}),
+    ...(opts.deferAlways === true ? { deferAlways: true } : {}),
   }
   return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) }
 }
@@ -960,6 +963,45 @@ describe('--cache-download end to end', () => {
       expect(await readFile(path.join(a.root, 'packages', 'pkg-a', 'out', 'gen.txt'), 'utf8')).toBe(
         'GENERATED',
       )
+    } finally {
+      a.cleanup()
+    }
+  })
+
+  // A distributed run's worker whose upload no remote took holds the files
+  // alone: saved from this disk, the entry held whatever stale files lay
+  // here (M, 2026-10-25).
+  it('an executor that cannot bring the files here answers deferred to an eager request: nothing saved', async () => {
+    const a = await fixture({ deferAlways: true, failMaterialize: true })
+    try {
+      const stale = path.join(a.root, 'packages', 'pkg-a', 'out', 'gen.txt')
+      await mkdir(path.dirname(stale), { recursive: true })
+      await writeFile(stale, 'STALE')
+      const lines: string[] = []
+      const r = await run({
+        cwd: a.root,
+        tasks: ['gen'],
+        projects: ['pkg-a'],
+        log: {
+          status: (l: string) => lines.push(l),
+          error: () => undefined,
+        } as unknown as NonNullable<Parameters<typeof run>[0]['log']>,
+        handleSignals: false,
+      })
+      expect(r.ok).toBe(true)
+      expect(r.outcomes[0]!.outputs).toBe('deferred')
+      expect(lines.filter((l) => l.includes('left outputs remote'))).toEqual([
+        '  Deferred: left outputs remote: pkg-a#gen',
+      ])
+      const again = await run({
+        cwd: a.root,
+        tasks: ['use'],
+        projects: ['pkg-b'],
+        log: silent(),
+        handleSignals: false,
+      })
+      expect(fake().executed).toEqual(['pkg-a#gen', 'pkg-a#gen'])
+      expect(again.outcomes.find((o) => o.node.id === 'pkg-b#use')!.status).toBe('failed')
     } finally {
       a.cleanup()
     }
