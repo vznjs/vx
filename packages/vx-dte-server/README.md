@@ -80,6 +80,10 @@ docker build -t vx-dte-server packages/vx-dte-server
 docker run -p 8080:8080 -v vx-dte:/state vx-dte-server --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com --state /state/relay.db
 ```
 
+All vx servers at once, this relay with its state on a volume included:
+[`private/vx-servers/compose.yaml`](../../private/vx-servers/compose.yaml)
+(`docker compose up`).
+
 - `--allow <issuer:owner/repo:workflow>`, repeated, is an `ALLOW` entry
   (above). GitLab names a project by its full path,
   `group/subgroup/project`.
