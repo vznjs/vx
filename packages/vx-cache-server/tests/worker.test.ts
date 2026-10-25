@@ -48,11 +48,11 @@ beforeAll(async () => {
 
 afterAll(() => mf.dispose())
 
-// MAX_CHECK_HASHES 1000 is clamped to what a request's 1000 service calls fit.
+// MAX_CHECK_HASHES 1000 is clamped to what a request's 50 subrequests fit.
 conformance('Workers with R2', {
   base: () => base.href,
   sign: (job) => iss.sign(JOBS[job], AUD),
-  maxCheckHashes: 990,
+  maxCheckHashes: 48,
   maxUploadBytes: MAX,
 })
 

@@ -30,7 +30,8 @@ bunx wrangler deploy
 
 On the first deploy, wrangler creates the R2 bucket `wrangler.jsonc`
 names (`vx-cache`). The server fits Workers' free plan. A request makes at
-most 1000 calls to R2, so a check makes up to 990 lookups. A higher
+most 50 subrequests, each lookup's cache match among them, so a check
+makes up to 48 lookups. A higher
 setting is lowered, and `/v1/capabilities` says so. By default a check
 makes 6, one round of the calls a Worker request has waiting at once:
 the client sends its chunks at once. A download is read

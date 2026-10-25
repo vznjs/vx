@@ -105,8 +105,9 @@ bunx wrangler deploy
 ```
 
 Wrangler makes the R2 bucket `wrangler.jsonc` names on the first deploy.
-It fits Workers' free plan: a request makes at most 1000 calls to R2, so
-a check makes up to 990 lookups (a higher setting is lowered, and
+It fits Workers' free plan: a request makes at most 50 subrequests, each
+lookup's Workers Cache match among them, so a check makes up to 48
+lookups (a higher setting is lowered, and
 capabilities say so). By default a check makes 6: a Worker request has 6
 calls waiting on R2 at once and queues the rest, so a check of 6
 answers in one round (6 heads 64 ms, 24 341 ms, 134 1.1 to 1.4 s,

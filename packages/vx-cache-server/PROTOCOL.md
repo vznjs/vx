@@ -105,7 +105,7 @@ An operator sets each; `GET /v1/capabilities` names them:
 ```
 
 A backend may lower one to what it can serve: Workers' free plan makes
-1000 calls to R2 a request and takes a 100 MB body.
+50 subrequests a request and takes a 100 MB body.
 
 ## Errors
 

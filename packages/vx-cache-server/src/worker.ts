@@ -87,15 +87,21 @@ function r2Blobs(bucket: R2Bucket, cache: Promise<WorkersCache>, ctx: Context): 
 /** The largest request body Workers take on the free plan. */
 const WORKERS_BODY_BYTES = 100 * 1024 * 1024
 /**
- * Calls to Cloudflare's services one request may make on the free plan.
- * A check makes one per lookup (hash × scope), so its limit is clamped to fit it.
+ * Subrequests one request may make on the free plan, a Workers Cache
+ * match included (measured, 2026-10-25: the 51st threw), less the token
+ * check's 2 fetches. A check makes one match per lookup (hash × scope),
+ * so its limit is clamped to fit it; R2's own 1000 calls are then never
+ * reached.
  */
-const SERVICE_CALLS = 1000
+const SUBREQUESTS = 50 - 2
 /**
  * A check's lookups by default: a Worker request has 6 calls waiting on R2
  * at once and queues the rest, so a check of 6 answers in one round and a
  * client sends many at once (measured, 2026-10-25: 6 heads 64 ms, 24 341
- * ms, 134 1.1-1.4 s). A list is no way round it: a scope may hold billions.
+ * ms, 134 1.1-1.4 s; from a GitHub runner, 134 hashes, half held: 23
+ * checks of 6 at once 168-216 ms median, 134 single lookups 246-349 ms,
+ * one check of 134 1.9 s). A list is no way round it: a scope may hold
+ * billions.
  */
 const CHECK_LOOKUPS = 6
 
@@ -103,7 +109,7 @@ const CHECK_LOOKUPS = 6
 function workerLimits(env: Env): Limits {
   const set = { ...DEFAULT_LIMITS, maxCheckHashes: CHECK_LOOKUPS, ...limitsFrom(env) }
   const limits = {
-    maxCheckHashes: Math.min(set.maxCheckHashes, SERVICE_CALLS - 10),
+    maxCheckHashes: Math.min(set.maxCheckHashes, SUBREQUESTS),
     maxUploadBytes: set.maxUploadBytes,
   }
   if (limits.maxUploadBytes > WORKERS_BODY_BYTES) {
