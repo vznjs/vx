@@ -46,15 +46,19 @@ Set `ALLOW` in `wrangler.jsonc`'s `vars` first.
 `src/worker.ts` is the same relay as the one on Bun. Each run is one
 Durable Object, so its sockets meet in one place. Participants hold
 websockets, which the object hibernates between messages: the run is kept
-in their attachments, and the object writes no storage. It sets no alarm and counts no heartbeat: a
-socket's close loses its participant, and a peer quiet on a socket that
-never closed is its peers' to lose. Issuers' keys
+in their attachments. A deploy, or Cloudflare's own runtime update,
+restarts every object and drops every socket, so each participant is
+also one stored row (its id, role and when its socket dropped; never a
+message): each dials back within the grace and its run goes on. An alarm
+lets go of one that never does, and of its row. It counts no heartbeat: a
+peer quiet on a socket that never closed is its peers' to lose. Issuers' keys
 are read once per isolate and held ten minutes in the data center's
 cache, so a run's object does not fetch them again; a token naming a key
 they lack is checked against a fresh read.
 It fits Workers' free plan: each participant joins on the socket it
 opens, one request, and its websocket messages count 20 to one Durable
-Object request, against 100 000 a day; it writes no row.
+Object request, against 100 000 a day; it writes about two rows a
+participant (joined, gone), against 100 000 a day.
 `wrangler.jsonc` sets the rest; change a value there, in the repository
 the button made, or in the Worker's settings in the Cloudflare dashboard:
 
@@ -113,11 +117,15 @@ The same relay as a `fetch` handler, to mount in a server of your own
   plus the hooks a host of websockets drives (`src/worker.ts` is their
   user): the options `sockets`, the `[Kept, RelaySocket]` pairs a host
   kept across a restart, from which the sessions are rebuilt (PROTOCOL.md
-  § What the relay knows), and `upgrade`, which answers a `socket`
+  § What the relay knows), `store`, a `RelayStore` (`{ put, delete }`) where the relay
+  keeps each participant while it is one, `stored`, the `Stored` rows it held,
+  read back after a restart that dropped every socket, and `upgrade`, which answers a `socket`
   request; and the methods `attach` and `detach` (its socket closed: the
   participant is gone unless it dials again within `graceMs`), which hand the relay a participant's
-  `RelaySocket` (`{ send, close }`), and `frame`, which returns the
-  answer to send down the socket, or `undefined` for none. `attach`
+  `RelaySocket` (`{ send, close }`), `frame`, which returns the
+  answer to send down the socket, or `undefined` for none, and `expire`,
+  which lets go of those whose grace ended (true while one still waits:
+  a host's alarm). `attach`
   returns the `Kept` its host keeps with the socket (a Durable Object's
   attachment: session, id, role, the host's key, and a peer's host's id), or
   `false`. A host closes a socket `attach` refuses
