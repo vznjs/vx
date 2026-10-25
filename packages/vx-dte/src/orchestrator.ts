@@ -184,6 +184,11 @@ export interface OrchestratorOptions {
  * window a remote exchanges a new one (turboCache's is five minutes).
  */
 const RELEND_MS = 4 * 60_000
+/**
+ * A lent token already inside that window is lent again no sooner: one
+ * lent as it ended relent at once, in a loop (vx-cache, 2026-10-25).
+ */
+const RELEND_FLOOR_MS = 30_000
 
 /**
  * A batch's orders past this go in another: the relay takes a body of
@@ -424,7 +429,9 @@ export class Orchestrator {
               for (const a of this.workers.values()) this.post(a, { type: 'cache', cache })
             })
           },
-          Math.max(0, f.expiresAt - Date.now() - RELEND_MS),
+          f.expiresAt - Date.now() > RELEND_MS
+            ? f.expiresAt - Date.now() - RELEND_MS
+            : RELEND_FLOOR_MS,
         )
         this.relend.unref()
       },
