@@ -406,3 +406,17 @@ it('plans 9000 ready tasks each of its own need in seconds of CPU', () => {
   expect((user + system) / 1000).toBeLessThan(8000)
   // CPU is the guard; the wall clock of a loaded runner is not (2.2 s here, over 5 s on CI).
 }, 60_000)
+
+// 2026-10-25: each play-out copied a task's dependant list to add one,
+// so one install under 9000 tasks was 40 million copies a play, and a
+// plan 9.5 s of CPU. A complexity guard: timed in CPU, not wall.
+it('plans 9000 tasks behind one install in seconds of CPU', () => {
+  const tasks: PlanTask[] = [{ id: 'install', cores: 1, memory: 0, ms: 30_000, deps: [] }]
+  for (let i = 0; i < 9000; i++)
+    tasks.push({ id: `t${i}`, cores: 1, memory: 0, ms: 500, deps: ['install'] })
+  const sizes = candidates([{ ...small, max: 20 }], new Map(), [], tasks.length)
+  const start = process.cpuUsage()
+  plan(tasks, [], sizes, WARM)
+  const { user, system } = process.cpuUsage(start)
+  expect((user + system) / 1000).toBeLessThan(5000)
+}, 60_000)
