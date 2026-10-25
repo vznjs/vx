@@ -77,9 +77,9 @@ it('reads the limits from the environment, and refuses one that is not a count',
   )
 })
 
-it('streams a 100 MB batch of 40 artifacts both ways, its memory flat', async () => {
+it('streams a 400 MB batch of 40 artifacts both ways, its memory flat', async () => {
   const N = 40
-  const SIZE = 2_500_000
+  const SIZE = 10_000_000
   const piece = new Uint8Array(64 * 1024).fill(7)
   /** `size` bytes made as they are read: none held. */
   const made = (size: number) => {
@@ -158,9 +158,10 @@ it('streams a 100 MB batch of 40 artifacts both ways, its memory flat', async ()
     expect(n).toBeGreaterThan(N * SIZE)
     const mb = (x: number) => Math.round(x / 1e6)
     console.log(
-      `100 MB batch: upload ${Math.round(t1 - t0)} ms, download ${Math.round(t2 - t1)} ms, peak rss +${mb(peak - base)} MB`,
+      `400 MB batch: upload ${Math.round(t1 - t0)} ms, download ${Math.round(t2 - t1)} ms, peak rss +${mb(peak - base)} MB`,
     )
-    expect(peak - base).toBeLessThan(64e6)
+    // Held whole, it would be 400 MB each way.
+    expect(peak - base).toBeLessThan(150e6)
   } finally {
     await srv.stop(true)
   }

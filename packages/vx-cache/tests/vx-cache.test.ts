@@ -133,28 +133,23 @@ describe('VxCacheLayer', () => {
     expect(sizes.sort((a, b) => b - a)).toEqual([500, 500, 200, 1])
   })
 
-  it('sends more than two waiting uploads as one batch of the missing, checked first', async () => {
+  it('sends a putMany of more than two as one batch of the missing, checked first', async () => {
     await layer(srv.url, write).put('e0', new Blob(['held']), { durationMs: 1 })
     const c = layer(srv.url, write)
     // The server's limits, named on every check, which a run asks first.
     await c.hasMany(['0'])
     const before = srv.seen.length
-    // Four go at once, each alone; the three left wait, and go together.
-    const keys = ['e1', 'e2', 'e3', 'e4', 'e5', 'e0', 'e6']
-    await Promise.all(keys.map((k) => c.put(k, new Blob([k]), { durationMs: 1 })))
+    const keys = ['e1', 'e0', 'e2']
+    await c.putMany(keys.map((hash) => ({ hash, body: new Blob([hash]) })))
     const seen = srv.seen.slice(before).map((r) => [r.path, artifacts(r.body) ?? keysOf(r.body)])
-    // Requests land in any order; the batch's check comes before its upload.
-    expect(seen.filter(([, list]) => list!.length === 1)).toEqual(
-      ['e1', 'e2', 'e3', 'e4'].map((k) => ['/v1/artifacts/upload', [k]]),
-    )
-    expect(seen.filter(([, list]) => list!.length > 1)).toEqual([
-      ['/v1/artifacts/check', ['e5', 'e0', 'e6']],
-      ['/v1/artifacts/upload', ['e5', 'e6']],
+    expect(seen).toEqual([
+      ['/v1/artifacts/check', ['e1', 'e0', 'e2']],
+      ['/v1/artifacts/upload', ['e1', 'e2']],
     ])
-    for (const k of keys.slice(0, 5)) expect(await (await c.get(k))!.body.text()).toBe(k)
+    for (const k of ['e1', 'e2']) expect(await (await c.get(k))!.body.text()).toBe(k)
   })
 
-  it('sends one or two waiting uploads alone, unchecked', async () => {
+  it('sends each put at once in an upload of its own, unchecked', async () => {
     const c = layer(srv.url, write)
     await c.hasMany(['0'])
     const before = srv.seen.length

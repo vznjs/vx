@@ -51,11 +51,11 @@ Every read names exact keys, `{ scope, hash }`, the scope its ref's
 hash (no ref goes on the wire plain): one per ref the run reads (its branch, then the branch it merges into, then the default
 branch), and the first ref holding a hash answers it. A run that reads
 no ref says so and stays local. The run asks the server's limits once
-(`/v1/capabilities`) and checks in chunks of its `maxCheckKeys`. One or
-two uploads waiting at once go as they are; more go as one batch of the
-missing, checked first, within the limits the server named. While it
-names none (said once), checks and uploads go one at a time: no limit
-is guessed. An artifact over the server's upload limit is not sent: it
+(`/v1/capabilities`) and checks in chunks of its `maxCheckKeys`. Each artifact uploads at
+once in an upload of its own; `putMany` sends many as batches within
+the server's limits, checked first when more than two. While the server
+names no limits (said once), checks go one key at a time: no limit is
+guessed. An artifact over the server's upload limit is not sent: it
 is said once.
 
 Task timings are not this plugin's: `@vzn/vx-history` keeps them.
