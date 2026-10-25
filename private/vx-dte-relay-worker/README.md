@@ -14,6 +14,8 @@ Workers Builds deploys it on each push to `main` that touches the relay:
 
 A pull request that touches those paths gets a Preview of its commit, and
 its DTE run uses it (`preview.ts`, a CI step): the PR's client and the
-deployed relay may speak different protocols. `wrangler.jsonc`'s
+deployed relay may speak different protocols. A push that changes no
+watched path gets no build; its run uses the newest Preview of the same
+relay code. `wrangler.jsonc`'s
 `previews` block repeats `ALLOW` and the binding, since a Preview inherits
 neither. Other PRs keep the deployed relay.
