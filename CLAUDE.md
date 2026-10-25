@@ -103,6 +103,7 @@ packages/vx-dte         distributed runs: `dte()` executor + `vx dte worker` ove
 packages/vx-dte-server  the reference relay of `@vzn/vx-dte` (PROTOCOL.md): passes a run's messages, storing none, behind CI
                         OIDC tokens; imports only jose, not even core. Private until npm has it
 private/vx-bench        synthetic workspace generator + runners (vx / turbo / nx)
+private/vx-servers      compose.yaml: the dte, cache and history servers' images in one file
 skills/vx/SKILL.md      the agent skill, where `npx skills add vznjs/vx` finds it (.claude/skills are
                         `metadata.internal`, so that command offers nothing else; tests/skills-install.unsafe.test.ts)
 packages/vx/docs        source of truth: STATUS.md, architecture, caching, cli, schema, modules/, design/;
@@ -155,7 +156,8 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   loopback, unreachable from a Linux sandbox's network namespace), its
   `services.cache` / `services.exec` (Docker), `@vzn/vx-dte-server#test.live`
   (builds and runs the relay's image), `@vzn/vx-cache-server#test.live` and
-  `@vzn/vx-history-server#test.live` (each builds and runs its image), `@vzn/vx-migrate#nx.install`
+  `@vzn/vx-history-server#test.live` (each builds and runs its image),
+  `@vzn/vx-servers#test.live` (brings up the compose file of all three), `@vzn/vx-migrate#nx.install`
   (the npm registry), `check.sandbox-canary` and
   `check.build-cold` (each drives the sandbox itself, on a Mac worker) are
   the ONLY tasks in the whole repo with no `exec.sandbox`.

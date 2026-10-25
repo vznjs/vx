@@ -81,6 +81,9 @@ docker run -p 8080:8080 -e TRUST='[…]' -e S3_BUCKET=… -e S3_ENDPOINT=… \
   -e S3_ACCESS_KEY_ID=… -e S3_SECRET_ACCESS_KEY=… vx-cache-server
 ```
 
+With vx's other servers: [`compose.yaml`](https://github.com/vznjs/vx/blob/main/private/vx-servers/compose.yaml)
+builds and runs all three (`docker compose up -d`).
+
 ## Limits
 
 `MAX_CHECK_KEYS` (default 500), `MAX_BATCH_ARTIFACTS` (default 100) and

@@ -1,0 +1,89 @@
+{
+  "tasks": {
+    "install": {
+      "dependsOn": [
+        "^build"
+      ]
+    },
+    "ci": {
+      "dependsOn": [
+        "lint.oxfmt",
+        "test.live"
+      ]
+    },
+    "lint.oxfmt": {
+      "description": "oxfmt --check (no rewrite; CI-safe)",
+      "exec": {
+        "command": "oxfmt --check .",
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space"
+            ]
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "**/*",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.live": {
+      "description": "docker compose up, each server answering, then a clean stop",
+      "exec": {
+        "command": "sh tests/smoke.sh"
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "compose.yaml",
+          "tests/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx-dte-server/Dockerfile",
+          "packages/vx-dte-server/package.json",
+          "packages/vx-dte-server/index.ts",
+          "packages/vx-dte-server/PROTOCOL.md",
+          "packages/vx-dte-server/src/**",
+          "packages/vx-cache-server/Dockerfile",
+          "packages/vx-cache-server/src/**",
+          "packages/vx-history-server/Dockerfile",
+          "packages/vx-history-server/src/**",
+          "packages/vx-devtools/package.json",
+          "packages/vx-devtools/src/**"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": {
+        "files": [
+          "**"
+        ]
+      }
+    }
+  }
+}

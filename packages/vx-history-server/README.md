@@ -45,6 +45,9 @@ docker run -p 8080:8080 -v vx-history:/data -e TRUST='[…]' vx-history-server
 
 The database is `/data/vx-history.sqlite`.
 
+With vx's other servers: [`compose.yaml`](https://github.com/vznjs/vx/blob/main/private/vx-servers/compose.yaml)
+builds and runs all three (`docker compose up -d`).
+
 ## On Cloudflare Workers
 
 From this directory, with `TRUST` filled in `wrangler.jsonc`:
