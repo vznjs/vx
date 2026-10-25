@@ -1596,7 +1596,10 @@ export class Orchestrator {
    * and `ideal`, the run's `idealMs`, asked once it ended.
    */
   footer(ideal?: () => number | undefined): [string, ui.Inline][] {
-    if (this.spawnedAt.size === 0 && this.workers.size === 0 && this.gone.length === 0) return []
+    // Over with none, it says so: core's own `N workers` (this machine's
+    // pool) read as the run's when no task needed one (2026-10-25).
+    if (this.spawnedAt.size === 0 && this.workers.size === 0 && this.gone.length === 0)
+      return this.ended ? [['workers', ui.dim('none started: no task needed one')]] : []
     const gone = new Set(this.gone)
     const all = [...this.workers.values(), ...this.gone]
     const joined = new Set(all.map((a) => a.label))

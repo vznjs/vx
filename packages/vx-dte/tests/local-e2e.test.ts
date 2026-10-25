@@ -175,8 +175,10 @@ it('runs a task on a worker with its dependency’s outputs, and brings its outp
   const second = vx(['run', 'b#use'], 'e2e-2')
   expect(second.exitCode).toBe(0)
   expect(second.stdout.toString()).toContain('local 2✓')
-  // Nothing to run: no worker starts.
-  expect(second.stdout.toString()).not.toMatch(/^ {2}workers /m)
+  // Nothing to run: no worker starts, and the footer says so, not this
+  // machine's pool as `N workers`.
+  expect(second.stdout.toString()).toMatch(/^ {2}workers +none started: no task needed one$/m)
+  expect(second.stdout.toString()).not.toMatch(/\d+ workers? ·/)
 }, 60_000)
 
 // `--force` reads no hit, but a worker's entry is the run's own work: it
