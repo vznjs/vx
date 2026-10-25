@@ -35,14 +35,14 @@ interface Held {
 function openState(file: string): { stored: Stored[]; store: RelayStore; close(): void } {
   const db = new Database(file, { create: true, strict: true })
   db.run('PRAGMA journal_mode = WAL')
-  db.run('CREATE TABLE IF NOT EXISTS participants (k TEXT PRIMARY KEY, v TEXT NOT NULL)')
-  const rows = db.query<{ v: string }, []>('SELECT v FROM participants').all()
-  const put = db.query('INSERT OR REPLACE INTO participants (k, v) VALUES ($k, $v)')
+  db.run('CREATE TABLE IF NOT EXISTS participants (k TEXT PRIMARY KEY, row TEXT NOT NULL)')
+  const rows = db.query<{ row: string }, []>('SELECT row FROM participants').all()
+  const put = db.query('INSERT OR REPLACE INTO participants (k, row) VALUES ($k, $row)')
   const del = db.query('DELETE FROM participants WHERE k = $k')
   return {
-    stored: rows.map((r) => JSON.parse(r.v) as Stored),
+    stored: rows.map(({ row }) => JSON.parse(row) as Stored),
     store: {
-      put: (p) => void put.run({ k: `${p.key}/${p.id}`, v: JSON.stringify(p) }),
+      put: (p) => void put.run({ k: `${p.key}/${p.id}`, row: JSON.stringify(p) }),
       delete: (key, id) => void del.run({ k: `${key}/${id}` }),
     },
     close: () => db.close(),

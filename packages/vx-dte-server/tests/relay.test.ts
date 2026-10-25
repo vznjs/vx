@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
   createProver,
@@ -791,10 +793,7 @@ it('the Bun entry serves the protocol, without auth on loopback only', async () 
 // memory alone met each redial with 4404: the run ended. With a state
 // file, each participant dials back by its id and the run goes on.
 it('keeps a run across a restart with a state file, not without one', async () => {
-  const file = path.join(
-    await import('node:fs/promises').then((fs) => fs.mkdtemp('/tmp/vx-dte-state-')),
-    'relay.db',
-  )
+  const file = path.join(await mkdtemp(path.join(tmpdir(), 'vx-dte-state-')), 'relay.db')
   const dial = async (url: string, p: string, headers: Record<string, string> = {}) => {
     const ws = new WebSocket(new URL(p, url).href.replace(/^http/, 'ws'), {
       headers,
