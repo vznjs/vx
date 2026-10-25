@@ -1858,12 +1858,35 @@ export function runKey(run: string, task: string, send = 0): string {
 }
 
 /** The projects inside `dir`, workspace-relative. */
-function nestedIn(nodes: ReadonlyMap<string, TaskNode>, dir: string, root: string): string[] {
-  const out = new Set<string>()
-  for (const n of nodes.values())
-    if (n.projectDir.startsWith(dir + path.sep)) out.add(path.relative(root, n.projectDir))
-  return [...out].sort()
+/**
+ * The projects inside `dir`, root-relative, once per graph and project:
+ * read for each order, a run of 9000 tasks walked every task 9000 times
+ * (2026-10-25).
+ */
+export function nestedIn(
+  nodes: ReadonlyMap<string, TaskNode>,
+  dir: string,
+  root: string,
+): string[] {
+  let of = nested.get(nodes)
+  if (of === undefined) {
+    of = { dirs: [...new Set([...nodes.values()].map((n) => n.projectDir))], by: new Map() }
+    nested.set(nodes, of)
+  }
+  let out = of.by.get(dir)
+  if (out === undefined) {
+    out = of.dirs
+      .filter((d) => d.startsWith(dir + path.sep))
+      .map((d) => path.relative(root, d))
+      .sort()
+    of.by.set(dir, out)
+  }
+  return [...out]
 }
+const nested = new WeakMap<
+  ReadonlyMap<string, TaskNode>,
+  { dirs: string[]; by: Map<string, readonly string[]> }
+>()
 
 /** A tree's file paths, and its submodules' (gitlinks). */
 type Tree = { files: Set<string>; links: string[] }

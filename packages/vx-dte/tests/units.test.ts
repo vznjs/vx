@@ -23,7 +23,7 @@ import {
   type TaskNode,
   ui,
 } from '@vzn/vx'
-import { Orchestrator, runKey } from '../src/orchestrator.js'
+import { nestedIn, Orchestrator, runKey } from '../src/orchestrator.js'
 import { assign, fits, type Need } from '../src/dispatch.js'
 import { names, outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
@@ -3424,4 +3424,26 @@ it('restores the deps sent ahead of an order with its own', async () => {
   } finally {
     await served.stop()
   }
+})
+
+// 2026-10-25: read for each order, a run of 9000 tasks walked every task
+// 9000 times to find the projects nested in each one's.
+it('finds the projects nested in a task’s once per graph and project', () => {
+  let walks = 0
+  const nodes = new (class extends Map<string, TaskNode> {
+    override values(): MapIterator<TaskNode> {
+      walks++
+      return super.values()
+    }
+  })()
+  for (const [id, dir] of [
+    ['a#x', '/r/a'],
+    ['a#y', '/r/a'],
+    ['b#x', '/r/a/b'],
+    ['c#x', '/r/c'],
+  ] as const)
+    nodes.set(id, { projectDir: dir } as unknown as TaskNode)
+  for (let i = 0; i < 100; i++) expect(nestedIn(nodes, '/r/a', '/r')).toEqual(['a/b'])
+  expect(nestedIn(nodes, '/r/c', '/r')).toEqual([])
+  expect(walks).toBe(1)
 })
