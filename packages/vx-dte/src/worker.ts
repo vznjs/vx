@@ -40,6 +40,7 @@ import {
   type WiredResult,
 } from './messages.js'
 import { names, outputFiles } from './outputs.js'
+import { snapshot } from './tree.js'
 import { sealWorker, type Proof } from './seal.js'
 import { join, RelayError, unsent as unsentBy } from './wire.js'
 
@@ -55,9 +56,11 @@ export async function runWorker(opts: {
   /** The workspace's cache read under the facts it is handed (`CommandContext.artifactsFor`). */
   artifacts: (facts: () => CacheFacts | undefined) => TaskArtifacts
 }): Promise<number> {
-  const tree = Bun.spawnSync(['git', 'rev-parse', 'HEAD^{tree}'], { cwd: opts.root })
-    .stdout.toString()
-    .trim()
+  // The tracked files as they are, as the run snapshots its own: HEAD's
+  // tree let in a checkout whose prepare rewrote a tracked file, and the
+  // task built from it was saved under the clean key (2026-10-25).
+  const base = await snapshot(opts.root)
+  const tree = base.tree
   // Never an output, as core never cleans one: the checkout is the run's
   // commit, so this is the run's tracked set.
   const tracked = new Set(
@@ -420,7 +423,7 @@ export async function runWorker(opts: {
       // it; this entry is withheld for any. Nor for an additive task that
       // removed an upstream's file: a hit left the file in place, and core
       // saves none once this machine removes it too (2026-10-24).
-      const changed = await changedTracked(opts.root, m, names(m.project, m.outputs))
+      const changed = await changedTracked(opts.root, base.commit, m, names(m.project, m.outputs))
       const now = await stamps([...found.keys()])
       const others = unchanged(found, now)
       const removed = [...found.keys()]
@@ -799,6 +802,7 @@ function unchanged(
 
 async function changedTracked(
   root: string,
+  base: string,
   m: RunOrder,
   output: (file: string) => boolean,
 ): Promise<string[]> {
@@ -809,7 +813,7 @@ async function changedTracked(
       '--name-only',
       '-z',
       '--no-renames',
-      'HEAD',
+      base,
       '--',
       m.project === '' ? '.' : m.project,
     ],
