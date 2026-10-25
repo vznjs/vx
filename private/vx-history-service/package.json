@@ -1,0 +1,26 @@
+{
+  "name": "@vzn/vx-history-service",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "vznjs's own history server: @vzn/vx-history-server's worker under this repo's Cloudflare settings, built by Workers Builds.",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4"
+  },
+  "//": [
+    "@vzn/vx-history-server: the worker this deploys, unchanged.",
+    "wrangler: Workers Builds deploys src/worker.ts with it by wrangler.jsonc.",
+    "@vzn/vx: vx.config.ts; @types/bun, @vzn/vx-devtools and jose: tests/trust.test.ts checks GitHub-shaped tokens against TRUST."
+  ],
+  "dependencies": {
+    "@vzn/vx-history-server": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "@vzn/vx": "workspace:*",
+    "@vzn/vx-devtools": "workspace:*",
+    "jose": "6.2.13",
+    "wrangler": "4.149.0"
+  }
+}

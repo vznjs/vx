@@ -433,8 +433,17 @@ export class VxCacheLayer implements RemoteCacheLayer {
     const line = JSON.stringify({
       artifacts: send.map((w) => ({ hash: w.item.hash, size: w.item.body.size })),
     })
+    // Bun drops a file-backed Blob nested in another (1.4.4): its bytes
+    // are read, or the body falls short of the Content-Length it names.
+    const parts = await Promise.all(
+      send.map(async (w) =>
+        (w.item.body as { name?: unknown }).name === undefined
+          ? w.item.body
+          : await w.item.body.bytes(),
+      ),
+    )
     const res = await this.request('/v1/artifacts/upload', {
-      body: new Blob([`${line}\n`, ...send.map((w) => w.item.body)]),
+      body: new Blob([`${line}\n`, ...parts]),
       headers: { 'content-type': BATCH_TYPE },
       timeoutMs: this.config.uploadTimeoutMs,
       write: true,

@@ -7,6 +7,7 @@
       "devDependencies": {
         "@types/bun": "1.4.4",
         "@vzn/vx": "workspace:*",
+        "@vzn/vx-cache": "workspace:*",
         "@vzn/vx-ci": "workspace:*",
         "@vzn/vx-dte": "workspace:*",
         "@vzn/vx-history": "workspace:*",
@@ -253,6 +254,20 @@
       "devDependencies": {
         "@types/bun": "^1.4.0",
         "@vzn/vx": "workspace:*",
+        "wrangler": "4.149.0",
+      },
+    },
+    "private/vx-history-service": {
+      "name": "@vzn/vx-history-service",
+      "version": "0.0.0",
+      "dependencies": {
+        "@vzn/vx-history-server": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+        "@vzn/vx-devtools": "workspace:*",
+        "jose": "6.2.13",
         "wrangler": "4.149.0",
       },
     },
@@ -836,6 +851,8 @@
     "@vzn/vx-history": ["@vzn/vx-history@workspace:packages/vx-history"],
 
     "@vzn/vx-history-server": ["@vzn/vx-history-server@workspace:packages/vx-history-server"],
+
+    "@vzn/vx-history-service": ["@vzn/vx-history-service@workspace:private/vx-history-service"],
 
     "@vzn/vx-lockfile": ["@vzn/vx-lockfile@workspace:packages/vx-lockfile"],
 
