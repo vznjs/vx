@@ -6,8 +6,8 @@ server package stays generic. It runs on Workers' free plan, with R2
 alone.
 
 No static token: CI jobs sign in with their OIDC token. Only `ci.yml`'s
-runs of `main` write what every run reads; any other job of this
-repository writes its branch's scope (`wrangler.jsonc`).
+runs of `main` write `main`'s scope, which every run reads after its own;
+any other job of this repository writes its branch's scope (`wrangler.jsonc`).
 
 Workers Builds deploys it on each push to `main` that touches it:
 
@@ -17,4 +17,5 @@ Workers Builds deploys it on each push to `main` that touches it:
 - Watch paths: `packages/vx-cache-server/*`, `private/vx-cache-service/*`, `bun.lock`
 
 The first deploy makes the R2 bucket `vx-cache` when it does not exist.
-Its lifecycle rules expire `trusted/` after 30 days and `branch/` after 2 (M, 2026-10-25: no cache for closed PRs).
+One lifecycle rule expires every object 7 days after its upload: names are
+hashed, so no prefix tells `main` from a branch (M, 2026-10-25).

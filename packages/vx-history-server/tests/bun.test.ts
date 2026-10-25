@@ -38,9 +38,12 @@ it('folds a thousand tasks in one statement, and sweeps what was not reported', 
   const store = sqliteStore(sqliteDb(path.join(dir, 'sweep.sqlite')))
   await store.init()
   const reports = Array.from({ length: 1000 }, (_, i) => ({ hash: `t${i}`, durationMs: i }))
-  await store.fold('42', 'trusted', 1, reports)
-  await store.fold('42', 'trusted', 5, reports.slice(0, 10))
-  expect((await store.read('42', ['trusted'], ['t999'])).get('t999')).toEqual({
+  const repo = { issuer: 'i', id: '42' }
+  await store.fold(repo, 'refs/heads/main', 1, reports)
+  await store.fold(repo, 'refs/heads/main', 5, reports.slice(0, 10))
+  const other = { issuer: 'j', id: '42' }
+  expect((await store.read(other, ['refs/heads/main'], ['t999'])).size).toBe(0)
+  expect((await store.read(repo, ['refs/heads/main'], ['t999'])).get('t999')).toEqual({
     durationMs: 999,
     cores: null,
     rssBytes: null,

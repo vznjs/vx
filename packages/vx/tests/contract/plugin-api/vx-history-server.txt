@@ -1,5 +1,7 @@
 == const MAX_QUERY_HASHES (src/server.ts)
 export const MAX_QUERY_HASHES = 10_000
+== const MAX_QUERY_SCOPES (src/server.ts)
+export const MAX_QUERY_SCOPES = 8
 == const MAX_UPLOAD_TIMINGS (src/server.ts)
 export const MAX_UPLOAD_TIMINGS = 10_000
 == const RSS_DECAY (src/store.ts)
@@ -16,6 +18,11 @@ export function sqliteStore(db: Db): Store
 export interface Db {
   all<T>(sql: string, params: readonly unknown[]): Promise<T[]>
   run(sql: string, params: readonly unknown[]): Promise<number>
+}
+== type Repo (src/store.ts)
+export interface Repo {
+  readonly issuer: string
+  readonly id: string
 }
 == type Report (src/store.ts)
 export interface Report {
@@ -34,9 +41,9 @@ export interface ServerOptions {
 == type Store (src/store.ts)
 export interface Store {
   init(): Promise<void>
-  fold(repo: string, scope: string, now: number, reports: readonly Report[]): Promise<void>
+  fold(repo: Repo, scope: string, now: number, reports: readonly Report[]): Promise<void>
   read(
-    repo: string,
+    repo: Repo,
     scopes: readonly string[],
     hashes: readonly string[],
   ): Promise<Map<string, Timing>>

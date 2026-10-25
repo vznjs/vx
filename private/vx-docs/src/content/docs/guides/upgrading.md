@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-cache-server: name objects by issuer, id, scope and hash
+
+the trusted scope is gone. Cache objects and history rows live under new names; old ones are no longer read. Access drops repo and trustedRef; the history query takes `scopes`, not `scope`.
+
 ## vx-cache-server: one bucket, no database, exact-key reads
 
 vx-cache-server drops its database (--db, Postgres, D1), the timings routes and the sweep (TRUSTED_DAYS, BRANCH_DAYS, TIMING_DAYS): set bucket lifecycle rules instead. /v1/artifacts/check and the batch download take { keys: [{ scope, hash }] }, a single download names its ref in x-vx-scope, and x-artifact-read-scopes is gone. vxCache() no longer keeps timings or orders tasks: declare vxHistory() for that.

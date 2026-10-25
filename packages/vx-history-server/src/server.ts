@@ -1,13 +1,15 @@
 // The vx-history protocol, v1 (PROTOCOL.md), as one fetch handler over a
 // `Store`: Bun and Workers serve the same one.
 
-import { type Authorize, Refusal, TRUSTED } from '@vzn/vx-devtools'
+import { type Authorize, Refusal } from '@vzn/vx-devtools'
 import type { Report, Store } from './store.js'
 
 /** Reports one upload folds in: a run's tasks. */
 export const MAX_UPLOAD_TIMINGS = 10_000
 /** Hashes one query names. */
 export const MAX_QUERY_HASHES = 10_000
+/** Scopes one query names, read in order. */
+export const MAX_QUERY_SCOPES = 8
 const MAX_STRING = 512
 const DAY_MS = 86_400_000
 
@@ -29,7 +31,11 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
       ready = undefined
       throw err
     }))
-  const capabilities = { maxUploadTimings: MAX_UPLOAD_TIMINGS, maxQueryHashes: MAX_QUERY_HASHES }
+  const capabilities = {
+    maxUploadTimings: MAX_UPLOAD_TIMINGS,
+    maxQueryHashes: MAX_QUERY_HASHES,
+    maxQueryScopes: MAX_QUERY_SCOPES,
+  }
 
   // The fold is one upsert, a few ms for a thousand tasks: done inline (M, 2026-10-25).
   async function upload(req: Request): Promise<Response> {
@@ -37,17 +43,22 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
     if (access.write === undefined) throw new Refusal(403, 'this token reads only')
     const reports = parseReports(await readJson(req, MAX_UPLOAD_TIMINGS * 200))
     await schema()
-    await store.fold(access.repo, access.write, now(), reports)
+    await store.fold(access, access.write, now(), reports)
     return new Response(null, { status: 204 })
   }
 
   async function query(req: Request): Promise<Response> {
     const access = await authorize(req)
     const body = await readJson(req, MAX_QUERY_HASHES * 600 + 1000)
-    const scope = field(body, 'scope')
+    const scopes = field(body, 'scopes')
     const hashes = field(body, 'hashes')
-    if (typeof scope !== 'string' || !/^refs\/\S+$/.test(scope) || scope.length > MAX_STRING) {
-      throw new Refusal(400, 'scope: a ref, refs/...')
+    if (
+      !Array.isArray(scopes) ||
+      scopes.length === 0 ||
+      scopes.length > MAX_QUERY_SCOPES ||
+      !scopes.every((s) => typeof s === 'string' && /^refs\/\S+$/.test(s) && s.length <= MAX_STRING)
+    ) {
+      throw new Refusal(400, `scopes: 1 to ${MAX_QUERY_SCOPES} refs, refs/...`)
     }
     if (
       !Array.isArray(hashes) ||
@@ -56,10 +67,8 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
     ) {
       throw new Refusal(400, `hashes: a list of up to ${MAX_QUERY_HASHES} strings`)
     }
-    // A branch with no row for a task reads trusted (main's); a trusted ref is trusted.
-    const scopes = access.trustedRef(scope) ? [TRUSTED] : [scope, TRUSTED]
     await schema()
-    const rows = await store.read(access.repo, scopes, hashes as string[])
+    const rows = await store.read(access, scopes as string[], hashes as string[])
     return Response.json({ timings: Object.fromEntries(rows) })
   }
 

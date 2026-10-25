@@ -1,5 +1,5 @@
 // wrangler.jsonc's TRUST, as GitHub's tokens meet it: only ci.yml's runs
-// of main write the trusted scope.
+// of main write main's scope, and a branch writes its own.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { beforeAll, expect, it } from 'bun:test'
@@ -46,9 +46,9 @@ beforeAll(async () => {
 
 const CI = 'vznjs/vx/.github/workflows/ci.yml@refs/heads/main'
 
-it("writes trusted from ci.yml's push to main, and a branch's own scope from its PR", async () => {
+it("writes main from ci.yml's push to main, and a branch's own scope from its PR", async () => {
   const main = { workflow_ref: CI, ref: 'refs/heads/main', ref_protected: 'true' }
-  expect(await access({ ...main, event_name: 'push' })).toBe('trusted')
+  expect(await access({ ...main, event_name: 'push' })).toBe('refs/heads/main')
   expect(
     await access({
       workflow_ref: 'vznjs/vx/.github/workflows/ci.yml@refs/pull/7/merge',

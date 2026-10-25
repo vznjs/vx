@@ -28,15 +28,14 @@ token (GitHub Actions, GitLab CI): there is no other. Its signature,
 alone decides what it reads and where it writes, by the server's trust
 rules:
 
-- Its repository id (`repository_id` on GitHub, `project_id` on GitLab)
-  is the repository it reads and writes; one no rule names is `403`. A
-  repository's artifacts are never another's.
-- A token that matches one of its repository's rules writes **trusted**.
-- Any other writes its branch's scope: on GitHub a pull request's head
-  branch (`refs/heads/<head_ref>`), else its `ref`; on GitLab its
-  `ref_path`. A branch a rule trusts (`refs/heads/main`) is never one:
-  such a token reads only (a write is `403`), so main's runs never read
-  an untrusted write.
+- Its issuer and repository id (`repository_id` on GitHub, `project_id`
+  on GitLab) are the repository it reads and writes; one no rule names
+  is `403`. A repository's artifacts are never another's.
+- It writes its branch's scope: on GitHub a pull request's head branch
+  (`refs/heads/<head_ref>`), else its `ref`; on GitLab its `ref_path`.
+- A ref a rule names (`refs/heads/main`) is protected: a token on it that
+  matches no rule reads only (a write is `403`), so main's runs never
+  read a write they did not make.
 
 A missing or bad token is `401`. A server with no rules refuses every
 request: `401`, `the server trusts no CI: set TRUST`.
@@ -44,10 +43,9 @@ request: `401`, `the server trusts no CI: set TRUST`.
 ## Keys
 
 An artifact lives in one scope, and a key names both: `{ scope, hash }`.
-`scope` is a ref, `refs/...` (up to 500 characters); a ref a trust rule
-names (`refs/heads/main`) is the trusted scope. `hash` is 1 to 128 hex
-digits. A read is exact: the server answers the scope named and no
-other, so a client that wants its branch's work and then trusted asks
+`scope` is a ref, `refs/...` (up to 500 characters). `hash` is 1 to 128
+hex digits. A read is exact: the server answers the scope named and no
+other, so a client that wants its branch's work and then main's asks
 for both keys. Every read names a scope.
 
 An artifact is immutable. A server may expire one at any time: a
@@ -90,8 +88,7 @@ their bytes. They go to the token's scope:
 <4200 bytes>
 ```
 
-An artifact the write's scope or the trusted scope already holds keeps
-its bytes, and its bytes here are skipped; when every one is held the
+An artifact the write's scope already holds keeps its bytes, and its bytes here are skipped; when every one is held the
 server answers before reading them. `204`. Together they are at most
 `maxUploadBytes` (`413` past it). A `Content-Length` that is not the
 line's bytes and the sizes it names is `400`.
