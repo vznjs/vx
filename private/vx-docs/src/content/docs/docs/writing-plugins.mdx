@@ -411,6 +411,8 @@ Return core's `RemoteCacheLayer` from the `cache` hook: `has`, `get` and
 remote lacks, else what it knows: `{ size, durationMs }` or `{}`. Write
 `hasMany` only when your wire answers many keys in one call. An entry is
 immutable: a `put` of a key the remote holds keeps the stored bytes.
+Core calls the optional `missing` with a key the run found in no remote
+before its `put`: check nothing first.
 
 vx asks the local cache first, then each remote in `plugins` order, under
 `--cache-policy`. A remote error is a miss and one warning. Core bounds
@@ -435,8 +437,13 @@ class AcmeRemote implements RemoteCacheLayer {
     if (!res.ok) throw new Error(`HTTP ${res.status}`) // a throw is a miss
     return { body: res, durationMs: undefined } // streamed to disk
   }
+  private readonly absent = new Set<string>()
+  missing(hash: string) {
+    this.absent.add(hash) // the run found it in no remote: no need to ask
+  }
   async put(hash: string, body: Blob) {
-    if ((await this.has(hash)) !== null) return // an entry is immutable; this server would overwrite
+    // An entry is immutable, and this server would overwrite: ask first.
+    if (!this.absent.has(hash) && (await this.has(hash)) !== null) return
     const res = await fetch(`${this.endpoint}/${hash}`, { method: 'PUT', body, signal: deadline() })
     if (!res.ok) throw new Error(`HTTP ${res.status}`) // fetch resolves on a 500
   }

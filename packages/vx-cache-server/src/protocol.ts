@@ -2,30 +2,29 @@
 // what a request carries. Every string a client sends is opaque to the
 // server, which only compares it, so a client can send it encrypted.
 
-/** The producing task's duration in whole milliseconds, on an artifact's PUT and its reads. */
-export const DURATION_HEADER = 'x-artifact-duration'
-/** The client's signature of an artifact, stored and returned as sent. */
-export const TAG_HEADER = 'x-artifact-tag'
-/** The commit, and the hash of uncommitted changes, an artifact was made at: stored and returned. */
-export const SHA_HEADER = 'x-artifact-sha'
-export const DIRTY_HASH_HEADER = 'x-artifact-dirty-hash'
 /** The refs whose scopes a read walks, in order, before the trusted scope. */
 export const READ_SCOPES_HEADER = 'x-artifact-read-scopes'
 
+/**
+ * The limits a server sets, as headers on every `/v1/artifacts/check`
+ * answer: a client batches only by what it was told.
+ */
+export const LIMIT_HEADERS = {
+  maxBatchArtifacts: 'x-vx-max-batch-artifacts',
+  maxUploadBytes: 'x-vx-max-upload-bytes',
+} as const
+
+/** A batch upload's body: a JSON line, then the artifacts' bytes. */
+export const BATCH_TYPE = 'application/vnd.vx-cache.batch'
+
 /** An artifact's hash, as Turbo's spec has it (hex), and at most 128 long. */
 const HASH = /^[a-fA-F0-9]{1,128}$/
-/** A key a history record carries: any opaque id. */
-const KEY = /^[\w-]{1,128}$/
-/** A string a history record carries: printable, bounded. */
+/** A string a timing carries: bounded, and only compared. */
 const OPAQUE_MAX = 512
-/** Turbo's spec caps `x-artifact-tag` at 600. */
-export const TAG_MAX = 600
 export const MAX_READ_SCOPES = 8
 const REF_MAX = 255
 
 export const isHash = (s: string): boolean => HASH.test(s)
-
-export const isKey = (s: string): boolean => KEY.test(s)
 
 export const isOpaque = (s: unknown): s is string =>
   typeof s === 'string' && s.length > 0 && s.length <= OPAQUE_MAX

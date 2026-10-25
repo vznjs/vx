@@ -4,14 +4,13 @@
 import { Database } from 'bun:sqlite'
 import { beforeAll, describe, expect, it } from 'bun:test'
 import { exportJWK, generateKeyPair, type JWTPayload, SignJWT } from 'jose'
-import { parseTokens, sha256, tokenAuth } from '../src/auth.js'
-import { anyAuth, oidcAuth, parseTrust } from '../src/oidc.js'
+import { oidcAuth, parseTrust } from '../src/oidc.js'
 import { createCacheServer } from '../src/server.js'
 import { sqliteStore } from '../src/store.js'
+import { upload } from './upload.js'
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
 const AUD = 'https://cache.example.com'
-const READ = 'read-token'
 const trust = parseTrust(
   JSON.stringify([
     {
@@ -26,6 +25,7 @@ const trust = parseTrust(
 
 let sign: (claims: JWTPayload, aud?: string) => Promise<string>
 let handle: (req: Request) => Promise<Response>
+let read: string
 
 beforeAll(async () => {
   const { privateKey, publicKey } = await generateKeyPair('RS256')
@@ -54,38 +54,29 @@ beforeAll(async () => {
       run: async (sql, p) => db.query(sql).run(...(p as never[])).changes,
       batch: async (s) => s.forEach((x) => db.run(x)),
     }),
-    authorize: anyAuth(
-      tokenAuth(parseTokens(`read:${await sha256(READ)}`)),
-      oidcAuth({
-        trust,
-        audience: AUD,
-        fetchJson: async (url) =>
-          url.endsWith('/.well-known/openid-configuration')
-            ? { jwks_uri: `${GITHUB}/keys` }
-            : { keys: [jwk] },
-      }),
-    ),
+    authorize: oidcAuth({
+      trust,
+      audience: AUD,
+      fetchJson: async (url) =>
+        url.endsWith('/.well-known/openid-configuration')
+          ? { jwks_uri: `${GITHUB}/keys` }
+          : { keys: [jwk] },
+    }),
   })
+  read = await sign({ event_name: 'workflow_dispatch', ref: 'refs/heads/main' })
 })
 
 const put = (token: string, key: string) =>
+  handle(new Request(`${AUD}/v1/artifacts/upload`, upload([[key, 'x']], token)))
+const status = (key: string, refs?: string) =>
   handle(
-    new Request(`${AUD}/v1/artifacts/${key}`, {
-      method: 'PUT',
-      body: 'x',
-      headers: { authorization: `Bearer ${token}`, 'content-length': '1' },
-    }),
-  )
-const head = (key: string, refs?: string) =>
-  handle(
-    new Request(`${AUD}/v1/artifacts/${key}`, {
-      method: 'HEAD',
+    new Request(`${AUD}/v1/artifacts/download/${key}`, {
       headers: {
-        authorization: `Bearer ${READ}`,
+        authorization: `Bearer ${read}`,
         ...(refs === undefined ? {} : { 'x-artifact-read-scopes': refs }),
       },
     }),
-  ).then((r) => r.status)
+  ).then(async (r) => (await r.arrayBuffer(), r.status))
 const detail = async (res: Response) =>
   [res.status, ((await res.json()) as { message: string }).message] as const
 
@@ -93,8 +84,8 @@ const MAIN = { event_name: 'push', ref: 'refs/heads/main', ref_protected: 'true'
 
 describe('CI OIDC tokens', () => {
   it('a token matching a rule writes trusted, which every read sees', async () => {
-    expect((await put(await sign(MAIN), 'a1')).status).toBe(202)
-    expect(await head('a1')).toBe(200)
+    expect((await put(await sign(MAIN), 'a1')).status).toBe(204)
+    expect(await status('a1')).toBe(200)
   })
 
   it("a pull request's token writes its head branch, read only by naming it", async () => {
@@ -104,9 +95,9 @@ describe('CI OIDC tokens', () => {
       head_ref: 'feature',
       ref_protected: 'false',
     })
-    expect((await put(pr, 'b2')).status).toBe(202)
-    expect(await head('b2')).toBe(404)
-    expect(await head('b2', '"refs/heads/feature", "refs/heads/main"')).toBe(200)
+    expect((await put(pr, 'b2')).status).toBe(204)
+    expect(await status('b2')).toBe(404)
+    expect(await status('b2', '"refs/heads/feature", "refs/heads/main"')).toBe(200)
   })
 
   it("an untrusted job on a trusted ref writes nothing: main's reads would find it first", async () => {
@@ -118,7 +109,7 @@ describe('CI OIDC tokens', () => {
       ref: 'refs/pull/8/merge',
     })
     expect((await put(pr, 'c3')).status).toBe(403)
-    expect(await head('c3', '"refs/heads/main"')).toBe(404)
+    expect(await status('c3', '"refs/heads/main"')).toBe(404)
   })
 
   it('refuses another repository, another audience and a forged signature', async () => {
@@ -155,5 +146,21 @@ describe('parseTrust', () => {
     expect(() =>
       parseTrust(`[{"iss":"${GITHUB}","repository_id":"4","ref":"r","event_name":[]}]`),
     ).toThrow('rule 0: event_name is not a string or a list of them')
+    // One id under two issuers would share one repository's rows.
+    expect(() =>
+      parseTrust(
+        `[{"iss":"${GITHUB}","repository_id":"4","ref":"r"},{"iss":"https://gitlab.com","project_id":"4","ref_path":"r"}]`,
+      ),
+    ).toThrow(`${GITHUB} and https://gitlab.com both name repository 4`)
+  })
+
+  it('refuses every request while it trusts no CI', async () => {
+    const none = createCacheServer({
+      blobs: { put: async () => {}, get: async () => null, delete: async () => {} },
+      store: sqliteStore({ all: async () => [], run: async () => 0, batch: async () => {} }),
+      authorize: oidcAuth({ trust: [] }),
+    })
+    const res = await none(new Request(`${AUD}/v1/artifacts/download/abc`))
+    expect(await detail(res)).toEqual([401, 'the server trusts no CI: set TRUST'])
   })
 })

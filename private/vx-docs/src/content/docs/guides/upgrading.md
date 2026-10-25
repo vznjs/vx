@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-cache-server: OIDC only, task timings, batch uploads
+
+the routes are GET /v1/artifacts/download/<hash>, POST /v1/artifacts/download, /upload and /check, POST /v1/timings/upload and /query, and GET /v1/capabilities; PUT, HEAD, /v1/runs and /v1/tasks/query are gone. TOKENS and RUN_DAYS are gone (TIMING_DAYS keeps timings), MAX_ARTIFACT_BYTES is MAX_UPLOAD_BYTES (maxUploadBytes), every request needs a CI OIDC token, and vxCache() drops token, history and oidc and serves CI jobs only. Deploy the server and vxCache() together on an empty database and bucket.
+
 ## vx-cache-server: run many Bun nodes over one Postgres
 
 createCacheServer() and evict() take a Store (sqliteStore(db) or postgresStore(url)) in place of a Db, and artifacts gain a blob column: start on an empty database and bucket.

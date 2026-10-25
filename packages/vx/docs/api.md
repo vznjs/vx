@@ -121,6 +121,7 @@ export interface ArtifactRun {
   readonly cpuMs?: number
   readonly peakRssBytes?: number
   readonly env?: Readonly<Record<string, string | undefined>>
+  readonly absent?: boolean
 }
 ```
 
@@ -404,6 +405,7 @@ export interface CacheLayer {
     workspaceOutputFiles?: string[]
     workspaceRoot?: string
     inputComponents?: readonly TaskInputRow[]
+    absent?: boolean
   }): Promise<void>
   ingest(hash: string, body: Blob | Response, meta: IngestMeta): Promise<void>
   recordRunBundle(bundle: { runs: readonly RunRecord[]; invocation: InvocationRecord }): void
@@ -2096,6 +2098,7 @@ export interface RemoteCacheLayer {
   hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+  missing?(hash: string): void
 }
 ```
 

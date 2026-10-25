@@ -1770,6 +1770,102 @@ it('a cached task’s dependant goes wherever it fits: a cache carries its outpu
   }
 })
 
+// A worker asked the remote before each upload (a HEAD per task on
+// turboCache()), though the run's probe had found the key in no cache:
+// requests the Vercel free tier's 300 a minute refused (M, 2026-10-25).
+it('a worker uploads a key the run found missing, and its run key, asking the remote nothing first', async () => {
+  const h = await harness(new Map([node('t'), node('u')]))
+  try {
+    const a = await h.worker(2)
+    h.o.missed = new Set(['t'])
+    void h.o.execute(h.req('t', 'k-t'))
+    void h.o.execute(h.req('u', 'k-u'))
+    expect((await a.batches()).flat().sort()).toEqual(['t', 'u'])
+    const of = (id: string) => a.orders.find((o) => o.task === id)
+    expect(of('t')?.absent).toBe(true)
+    expect(of('u')?.absent).toBeUndefined()
+  } finally {
+    await h.stop()
+  }
+  const root = await tmp()
+  const served = servedRelay()
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const saved: [string, boolean | undefined][] = []
+    const artifacts: TaskArtifacts = {
+      async save(key, _task, run) {
+        saved.push([key, run.absent])
+      },
+      async output() {
+        return null
+      },
+      async share() {
+        return false
+      },
+      async resend() {
+        return false
+      },
+      async restore() {
+        return null
+      },
+    }
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => artifacts,
+    })
+    const order = (task: string, command: string, absent: boolean): RunOrder => ({
+      task,
+      key: `k-${task}`,
+      runKey: runKey(R, task),
+      ...(absent ? { absent: true as const } : {}),
+      deps: [],
+      nested: [],
+      command,
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    })
+    const tasks = [order('t', 'true', true), order('u', 'true', false), order('v', 'exit 1', false)]
+    let ended = 0
+    for (let i = 0; i < 100 && ended < tasks.length; i++)
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 3,
+            memory: 1e9,
+          })
+          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks })
+        } else if (m.type === 'end' && ++ended === tasks.length)
+          await o.send(from, { type: 'exit' })
+      }
+    expect(await code).toBe(0)
+    expect(new Map(saved)).toEqual(
+      new Map<string, boolean | undefined>([
+        ['k-t', true],
+        ['k-u', undefined],
+        [runKey(R, 'v'), true],
+      ]),
+    )
+  } finally {
+    await served.stop()
+  }
+})
+
 // Under `--force` a held key kept its entry, and the orchestrator restored
 // the bytes the run bypassed over the ones its worker built (2026-10-25).
 it('a forced run’s order is fresh, and its worker saves a success under the run key too', async () => {

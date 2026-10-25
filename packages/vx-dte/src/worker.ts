@@ -155,6 +155,8 @@ export async function runWorker(opts: {
             ...(res.cpuMs === undefined ? {} : { cpuMs: res.cpuMs }),
             ...(res.peakRssBytes === undefined ? {} : { peakRssBytes: res.peakRssBytes }),
             env: m.env,
+            // The run's own key is this run's alone; `key` as the probe found it.
+            ...(k === m.runKey || (k === m.key && m.absent === true) ? { absent: true } : {}),
           },
         )
     } catch (err) {

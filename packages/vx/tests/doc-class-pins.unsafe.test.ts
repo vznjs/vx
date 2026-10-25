@@ -94,7 +94,7 @@ function handAuthoredDocs(): string[] {
 }
 
 describe('no page still calls the remote seam a three-call one', () => {
-  it('every hand-authored page that names the seam names its six methods', () => {
+  it('every hand-authored page that names the seam names its seven methods', () => {
     // Item 346 fixed remote-caching.md and never grepped the class: the same
     // sentence sat on extensibility.md, plugins.md and architecture.md
     // (item 349, 2026-09-19). This pin is the grep.
@@ -104,7 +104,7 @@ describe('no page still calls the remote seam a three-call one', () => {
     )
     const decl = /export interface RemoteCacheLayer \{([\s\S]*?)\n\}/.exec(src)
     const methods = [...decl![1]!.matchAll(/^  (\w+)\??\(/gm)].map((m) => m[1]!)
-    expect(methods.length).toBe(6)
+    expect(methods.length).toBe(7)
     const roots = [DOCS, path.resolve(import.meta.dir, '..', 'docs')]
     const pages: string[] = []
     const walk = (dir: string): void => {

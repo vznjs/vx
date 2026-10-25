@@ -352,12 +352,14 @@ export class RemoteLane {
   /**
    * Queue a PUT in this remote's bounded pool; `body` is asked for when the
    * job starts. Resolves true once this remote holds `hash`: put now, or held already.
+   * `absent`: no remote held it when the run asked, so none is asked again.
    */
   upload(
     hash: string,
     durationMs: number,
     body: () => Promise<{ body: Blob; release?: () => Promise<void> }>,
     tally: { count: number; bytes: number; ms: number; failed: number },
+    absent = false,
   ): Promise<boolean> {
     const key = this.trafficOf(hash)
     key.uploading++
@@ -369,14 +371,17 @@ export class RemoteLane {
       try {
         if (this.stopped) return
         // A key whose bytes here did not read back is sent over them.
-        if (!this.distrusted.has(hash)) {
+        const distrusted = this.distrusted.has(hash)
+        const known = !distrusted && (absent || this.absent.has(hash))
+        if (!distrusted) {
           if (this.held.has(hash)) return void (holds = true)
-          if (!this.read && (await this.holds(hash))) return void (holds = true)
+          if (!known && !this.read && (await this.holds(hash))) return void (holds = true)
         }
         if (this.stopped) return
         const start = performance.now()
         const got = await body()
         release = got.release
+        if (known) this.remote.missing?.(hash)
         await this.remote.put(hash, got.body, { durationMs })
         holds = true
         tally.count++

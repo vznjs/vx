@@ -1,12 +1,12 @@
-// CI OIDC tokens (PROTOCOL.md § Tokens): a job's token decides where it
-// writes, never a header or a client option. A token of a repository that
+// CI OIDC tokens (PROTOCOL.md § Tokens), the only tokens the server takes:
+// a job's token names its repository and decides where it writes, never a
+// header or a client option. A token of a repository that
 // `TRUST` names matching one of its rules writes the trusted scope; any
 // other of that repository writes its own branch's; any other repository
 // is refused. The JWT itself is jose's to check: signature, algorithm,
 // audience and times.
 
 import { createLocalJWKSet, decodeJwt, errors, jwtVerify, type JWTPayload } from 'jose'
-import type { Access, Authorize } from './auth.js'
 import { Refusal } from './protocol.js'
 import { TRUSTED } from './store.js'
 
@@ -14,17 +14,25 @@ import { TRUSTED } from './store.js'
  * One rule of `TRUST`: the issuer, the repository's id claim
  * (`repository_id` on GitHub, `project_id` elsewhere), and any other
  * claims a trusted job's token holds, each a string (`*` matches any run
- * of characters) or a list of them. `ns` is the namespace the repository's
- * artifacts and runs live in (default `default`, the static tokens' own).
+ * of characters) or a list of them.
  */
 export interface TrustRule {
   readonly iss: string
-  readonly ns?: string
-  readonly [claim: string]: string | readonly string[] | undefined
+  readonly [claim: string]: string | readonly string[]
 }
 
+/** What a request may do: its repository's data, and write to `write` when set. */
+export interface Access {
+  /** The repository's id claim: every row and blob lives under it. */
+  readonly repo: string
+  readonly write?: string
+  /** Whether `ref` is one a trust rule of the repository names: a read of it reads trusted. */
+  readonly trustedRef: (ref: string) => boolean
+}
+
+export type Authorize = (req: Request) => Promise<Access>
+
 const GITHUB = 'https://token.actions.githubusercontent.com'
-const NS = 'default'
 
 /** The claim naming a token's repository by an id that a rename keeps. */
 const repoClaimOf = (iss: string): string => (iss === GITHUB ? 'repository_id' : 'project_id')
@@ -36,7 +44,7 @@ export function parseTrust(json: string): TrustRule[] {
   if (json.trim() === '') return []
   const rules: unknown = JSON.parse(json)
   if (!Array.isArray(rules)) throw new Error('not a JSON list of rules')
-  return rules.map((r: unknown, i) => {
+  const parsed = rules.map((r: unknown, i) => {
     const at = `rule ${i}`
     if (typeof r !== 'object' || r === null || Array.isArray(r))
       throw new Error(`${at}: not an object`)
@@ -45,13 +53,12 @@ export function parseTrust(json: string): TrustRule[] {
       const ok =
         typeof v === 'string' ||
         (claim !== 'iss' &&
-          claim !== 'ns' &&
           Array.isArray(v) &&
           v.length > 0 &&
           v.every((x) => typeof x === 'string'))
       if (!ok)
         throw new Error(
-          `${at}: ${claim} is not a string${claim === 'iss' || claim === 'ns' ? '' : ' or a list of them'}`,
+          `${at}: ${claim} is not a string${claim === 'iss' ? '' : ' or a list of them'}`,
         )
     }
     if (typeof rule['iss'] !== 'string' || !rule['iss'].startsWith('https://')) {
@@ -68,6 +75,19 @@ export function parseTrust(json: string): TrustRule[] {
     }
     return rule as TrustRule
   })
+  // A repository's rows live under its id alone: two issuers' repositories
+  // of one id would read each other's.
+  for (const a of parsed) {
+    const other = parsed.find(
+      (b) => b.iss !== a.iss && b[repoClaimOf(b.iss)] === a[repoClaimOf(a.iss)],
+    )
+    if (other !== undefined) {
+      throw new Error(
+        `${a.iss} and ${other.iss} both name repository ${String(a[repoClaimOf(a.iss)])}`,
+      )
+    }
+  }
+  return parsed
 }
 
 const globOf = (pattern: string): RegExp =>
@@ -81,7 +101,6 @@ const globOf = (pattern: string): RegExp =>
 /** Whether every claim a rule names holds one of its values. */
 function matches(rule: TrustRule, claims: JWTPayload): boolean {
   for (const [claim, want] of Object.entries(rule)) {
-    if (claim === 'ns' || want === undefined) continue
     const v = claims[claim]
     if (typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'boolean') return false
     const got = String(v)
@@ -121,8 +140,8 @@ const LEEWAY_S = 60
 /** An unknown `kid` refetches an issuer's keys at most this often. */
 const REFETCH_MS = 60_000
 
-/** The `Access` a verified CI token has; a refused one throws a 401 or 403. */
-export function oidcAuth(opts: OidcOptions): (token: string, req: Request) => Promise<Access> {
+/** The `Access` a request's verified CI token has; a refused one throws a 401 or 403. */
+export function oidcAuth(opts: OidcOptions): Authorize {
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
   type KeySet = ReturnType<typeof createLocalJWKSet>
@@ -150,7 +169,11 @@ export function oidcAuth(opts: OidcOptions): (token: string, req: Request) => Pr
     ).payload
   }
 
-  return async (token, req) => {
+  return async (req) => {
+    if (opts.trust.length === 0) throw new Refusal(401, 'the server trusts no CI: set TRUST')
+    const bearer = /^Bearer\s+(\S+)$/i.exec(req.headers.get('authorization') ?? '')
+    if (bearer === null) throw new Refusal(401, 'no bearer token')
+    const token = bearer[1]!
     let iss: unknown
     try {
       iss = decodeJwt(token).iss
@@ -181,33 +204,19 @@ export function oidcAuth(opts: OidcOptions): (token: string, req: Request) => Pr
     const ofRepo = opts.trust.filter((r) => r.iss === iss && r[id] === repo)
     if (ofRepo.length === 0) throw new Refusal(403, `${id} ${repo} is not in this server's TRUST`)
     const trusted = ofRepo.find((r) => matches(r, claims))
-    if (trusted !== undefined) return { ns: trusted.ns ?? NS, write: TRUSTED }
-    const branch = branchOf(iss, claims)
-    const ns = ofRepo[0]!.ns ?? NS
-    // A trusted ref's scope is never an untrusted token's: main's runs
-    // name refs/heads/main first, and would read it before trusted.
+    // A trusted ref is read as trusted, and is never an untrusted token's
+    // scope: what main reads, only a trusted job writes.
     const refClaim = refClaimOf(iss)
     const trustedRef = (ref: string): boolean =>
       ofRepo.some((r) => {
         const want = r[refClaim]!
         return (typeof want === 'string' ? [want] : want).some((w) => globOf(w).test(ref))
       })
-    return branch === undefined || trustedRef(branch) ? { ns } : { ns, write: branch }
-  }
-}
-
-/**
- * Static tokens and CI tokens behind one `Authorize`: a bearer that is a
- * JWT (three dot-separated parts) is a CI token, any other a static one.
- */
-export function anyAuth(
-  tokens: Authorize,
-  oidc: ((token: string, req: Request) => Promise<Access>) | undefined,
-): Authorize {
-  if (oidc === undefined) return tokens
-  return async (req) => {
-    const m = /^Bearer\s+(\S+)$/i.exec(req.headers.get('authorization') ?? '')
-    return m !== null && m[1]!.split('.').length === 3 ? oidc(m[1]!, req) : tokens(req)
+    if (trusted !== undefined) return { repo, write: TRUSTED, trustedRef }
+    const branch = branchOf(iss, claims)
+    return branch === undefined || trustedRef(branch)
+      ? { repo, trustedRef }
+      : { repo, write: branch, trustedRef }
   }
 }
 
