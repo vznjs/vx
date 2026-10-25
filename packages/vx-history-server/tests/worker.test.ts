@@ -50,7 +50,7 @@ conformance('Workers with D1', {
   repository: REPO,
 })
 
-it('refuses every request, saying why, while TRUST or TIMING_DAYS is unset or wrong', async () => {
+it('refuses every request, saying why, while TRUST, TIMING_DAYS or READ_ACCESS is unset or wrong', async () => {
   for (const [bindings, status, message] of [
     [{ TRUST: '' }, 401, 'the server trusts no CI: set TRUST'],
     [
@@ -62,6 +62,11 @@ it('refuses every request, saying why, while TRUST or TIMING_DAYS is unset or wr
       { TRUST: JSON.stringify(trustOf()), TIMING_DAYS: '0' },
       500,
       'TIMING_DAYS: a whole number of days, got 0',
+    ],
+    [
+      { TRUST: JSON.stringify(trustOf()), READ_ACCESS: 'yes' },
+      500,
+      'READ_ACCESS: public, or unset, not yes',
     ],
   ] as const) {
     const other = await start(bindings)

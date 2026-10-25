@@ -184,9 +184,9 @@ export class HistoryServer {
     return res
   }
 
-  /** `/v1/capabilities`, asked once: nothing is guessed. */
+  /** `/v1/capabilities`, asked once a run, and again after a failed ask: nothing is guessed. */
   private limitsNow(): Promise<Limits> {
-    this.limits ??= (async () => {
+    const asked = (this.limits ??= (async () => {
       const body = (await (await this.call('/v1/capabilities')).json()) as Partial<Limits> | null
       const n = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 0)
       const limits = {
@@ -197,8 +197,11 @@ export class HistoryServer {
         throw new Error('/v1/capabilities named no maxUploadTimings or maxQueryHashes')
       }
       return limits
-    })()
-    return this.limits
+    })())
+    asked.catch(() => {
+      if (this.limits === asked) this.limits = undefined
+    })
+    return asked
   }
 
   /** Each held hash's numbers in the first of `scopes` (refs' hashes) holding it. */

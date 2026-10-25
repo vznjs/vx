@@ -55,11 +55,15 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const key = [env.TRUST, env.AUDIENCE, env.READ_ACCESS, env.TIMING_DAYS].join('\0')
     if (made?.key !== key) {
-      let trust
+      let authorize
       let timingDays
       try {
-        trust = parseTrust(env.TRUST ?? '')
         timingDays = timingDaysOf(env.TIMING_DAYS)
+        authorize = oidcAuth({
+          trust: parseTrust(env.TRUST ?? ''),
+          readAccess: env.READ_ACCESS,
+          ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
+        })
       } catch (err) {
         return errorJson(500, (err as Error).message)
       }
@@ -67,11 +71,7 @@ export default {
         key,
         handle: createHistoryServer({
           store: sqliteStore(d1Db(env.DB)),
-          authorize: oidcAuth({
-            trust,
-            readAccess: env.READ_ACCESS,
-            ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
-          }),
+          authorize,
           ...(timingDays === undefined ? {} : { timingDays }),
         }),
       }

@@ -73,3 +73,42 @@ it('stores the issuer, repository id and scope hashed, never plain', async () =>
     (await store.read(repo, [scopeOf('refs/heads/a'), MAIN], ['t'])).get('t')?.durationMs,
   ).toBe(5)
 })
+
+it('answers an upload it folded even when the sweep after it fails, and sweeps on the next', async () => {
+  const store = sqliteStore(sqliteDb(path.join(dir, 'sweep-fails.sqlite')))
+  let sweeps = 0
+  const errors: unknown[] = []
+  const logged = console.error
+  console.error = (...args: unknown[]) => void errors.push(args.join(' '))
+  const handle = createHistoryServer({
+    store: {
+      ...store,
+      sweep: async (before) => {
+        if (++sweeps === 1) throw new Error('the database is busy')
+        return store.sweep(before)
+      },
+    },
+    authorize: oidcAuth({ trust: trustOf(), fetchJson: iss.fetchJson }),
+  })
+  const upload = async () =>
+    handle(
+      new Request('http://127.0.0.1/v1/timings/upload', {
+        method: 'POST',
+        body: JSON.stringify({ timings: [{ hash: 't', durationMs: 5 }] }),
+        headers: {
+          authorization: `Bearer ${await iss.sign('main', 'http://127.0.0.1')}`,
+          'content-type': 'application/json',
+          'vx-issuer': scopeOf(GITHUB),
+          'vx-repository': scopeOf(REPO),
+        },
+      }),
+    )
+  try {
+    expect((await upload()).status).toBe(204)
+    expect((await upload()).status).toBe(204)
+  } finally {
+    console.error = logged
+  }
+  expect(sweeps).toBe(2)
+  expect(errors).toEqual(['vx-history-server: the sweep: Error: the database is busy'])
+})

@@ -57,7 +57,7 @@ conformance('Workers with R2', {
   maxUploadBytes: MAX,
 })
 
-it('refuses every request, saying why, while TRUST or a limit is unset or wrong', async () => {
+it('refuses every request, saying why, while TRUST, a limit or READ_ACCESS is unset or wrong', async () => {
   for (const [bindings, status, detail] of [
     [{ TRUST: '' }, 401, 'the server trusts no CI: set TRUST'],
     [
@@ -69,6 +69,11 @@ it('refuses every request, saying why, while TRUST or a limit is unset or wrong'
       { TRUST: JSON.stringify(TRUST), MAX_CHECK_HASHES: '0' },
       500,
       'MAX_CHECK_HASHES: not a whole number above 0: 0',
+    ],
+    [
+      { TRUST: JSON.stringify(TRUST), READ_ACCESS: 'yes' },
+      500,
+      'READ_ACCESS: public, or unset, not yes',
     ],
   ] as const) {
     const other = await start(bindings)

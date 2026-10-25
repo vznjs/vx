@@ -126,20 +126,18 @@ export default {
       } catch (err) {
         return errorJson(500, `TRUST: ${(err as Error).message}`)
       }
+      let authorize
       try {
         limits = workerLimits(env)
-      } catch (err) {
-        return errorJson(500, (err as Error).message)
-      }
-      made = {
-        key,
-        authorize: oidcAuth({
+        authorize = oidcAuth({
           trust,
           readAccess: env.READ_ACCESS,
           ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
-        }),
-        limits,
+        })
+      } catch (err) {
+        return errorJson(500, (err as Error).message)
       }
+      made = { key, authorize, limits }
     }
     // The bucket and cache are this request's: a Worker's I/O objects do not outlive it.
     return createCacheServer({
