@@ -4,8 +4,8 @@ vznjs's own relay: [`@vzn/vx-dte-server`](../../packages/vx-dte-server)'s worker
 deployed with this repo's settings, `ALLOW` included, so the relay package
 stays generic.
 
-The Worker keeps the name `vx-dte-relay` (`wrangler.jsonc`), so its URL,
-`https://vx-dte-relay.exelord.workers.dev`, is the one `dte({ relay })` names.
+The Worker is named `vx-dte` (`wrangler.jsonc`), so its URL,
+`https://vx-dte.exelord.workers.dev`, is the one `dte({ relay })` names.
 
 Workers Builds deploys it on each push to `main` that touches the relay:
 

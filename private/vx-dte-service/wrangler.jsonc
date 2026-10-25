@@ -1,7 +1,7 @@
-// vznjs's relay, https://vx-dte-relay.exelord.workers.dev, which ci.yml
+// vznjs's relay, https://vx-dte.exelord.workers.dev, which ci.yml
 // names. Workers Builds deploys it from main.
 {
-  "name": "vx-dte-relay",
+  "name": "vx-dte",
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,

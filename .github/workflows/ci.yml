@@ -66,7 +66,7 @@ jobs:
       # The relay's Workers Builds check names a PR's Preview.
       checks: read
     env:
-      VX_DTE_RELAY: https://vx-dte-relay.exelord.workers.dev
+      VX_DTE_RELAY: https://vx-dte.exelord.workers.dev
       GITHUB_TOKEN: ${{ github.token }}
       GH_TOKEN: ${{ github.token }}
       # An unavailable OS sandbox, reftable, tag history, native watcher
