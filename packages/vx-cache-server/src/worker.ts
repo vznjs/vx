@@ -4,7 +4,7 @@
 
 import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
 import { errorJson, Refusal } from './protocol.js'
-import { createCacheServer, DEFAULT_LIMITS, type Limits, lineBytes, limitsFrom } from './server.js'
+import { createCacheServer, DEFAULT_LIMITS, type Limits, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
 
 /** The parts of the Workers runtime this file uses, so it needs no types package. */
@@ -53,8 +53,8 @@ function r2Blobs(bucket: R2Bucket): Blobs {
 const WORKERS_BODY_BYTES = 100 * 1024 * 1024
 /**
  * Calls to Cloudflare's services one request may make on the free plan.
- * A check makes one per key, a batch download two per artifact and an
- * upload up to three, so each limit is clamped to fit it.
+ * A check makes one per key and a batch download two per artifact, so
+ * each limit is clamped to fit it.
  */
 const SERVICE_CALLS = 1000
 
@@ -63,12 +63,12 @@ function workerLimits(env: Env): Limits {
   const set = { ...DEFAULT_LIMITS, ...limitsFrom(env) }
   const limits = {
     maxCheckKeys: Math.min(set.maxCheckKeys, SERVICE_CALLS - 10),
-    maxBatchArtifacts: Math.min(set.maxBatchArtifacts, Math.floor((SERVICE_CALLS - 10) / 3)),
+    maxBatchArtifacts: Math.min(set.maxBatchArtifacts, Math.floor((SERVICE_CALLS - 10) / 2)),
     maxUploadBytes: set.maxUploadBytes,
   }
-  if (limits.maxUploadBytes + lineBytes(limits.maxBatchArtifacts) > WORKERS_BODY_BYTES) {
+  if (limits.maxUploadBytes > WORKERS_BODY_BYTES) {
     throw new Error(
-      `MAX_UPLOAD_BYTES: at most ${WORKERS_BODY_BYTES - lineBytes(limits.maxBatchArtifacts)}: Workers take a body of 100 MB`,
+      `MAX_UPLOAD_BYTES: at most ${WORKERS_BODY_BYTES}: Workers take a body of 100 MB`,
     )
   }
   return limits

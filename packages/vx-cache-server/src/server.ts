@@ -11,9 +11,9 @@ import { blobName, type Blobs } from './store.js'
 export interface Limits {
   /** Exact `{ scope, hash }` pairs one check names. */
   readonly maxCheckKeys: number
-  /** Artifacts one upload or batch download carries. */
+  /** Artifacts one batch download carries. */
   readonly maxBatchArtifacts: number
-  /** The largest upload, in bytes: its artifacts together, the line aside. */
+  /** The largest upload, in bytes: one artifact. */
   readonly maxUploadBytes: number
 }
 
@@ -48,11 +48,6 @@ export function limitsFrom(env: object): Partial<Limits> {
   }
   return out
 }
-
-/** Bytes one line of an upload names per artifact, at most. */
-const LINE_PER_ARTIFACT = 160
-/** The largest first line an upload of `n` artifacts has. */
-export const lineBytes = (n: number): number => n * LINE_PER_ARTIFACT + 64
 
 /** A scope on the wire: its ref's `hashPart`, so no ref is ever sent or stored plain (M, 2026-10-25). */
 const SCOPE = /^[0-9a-f]{32}$/
@@ -154,78 +149,11 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
   }
 
   /**
-   * An upload: a JSON line naming each artifact's hash and size, then their
-   * bytes in that order, stored in the token's scope. One the scope
-   * already holds is skipped, and when every one is, the answer comes
-   * before the bytes are read.
-   */
-  async function upload(req: Request): Promise<Response> {
-    const access = await authorize(req)
-    const scope = await writeScope(access)
-    if (!(req.headers.get('content-type') ?? '').startsWith(BATCH_TYPE)) {
-      throw new Refusal(400, `the body is ${BATCH_TYPE}`)
-    }
-    const maxLine = lineBytes(limits.maxBatchArtifacts)
-    const length = contentLength(req)
-    if (length > limits.maxUploadBytes + maxLine) {
-      throw new Refusal(413, `an upload is at most ${limits.maxUploadBytes} bytes`)
-    }
-    const body = parts(req.body ?? new Blob([]).stream())
-    const head = await body.line(maxLine)
-    let index: unknown
-    try {
-      index = JSON.parse(head.text)
-    } catch {
-      throw new Refusal(400, 'the first line is not JSON')
-    }
-    const list = field(index, 'artifacts')
-    const bad = (): never => {
-      throw new Refusal(
-        400,
-        `artifacts: 1 to ${limits.maxBatchArtifacts} of { hash, size }, each hash once`,
-      )
-    }
-    if (!Array.isArray(list) || list.length === 0 || list.length > limits.maxBatchArtifacts) bad()
-    const items = (list as unknown[]).map((x) => {
-      const hash = field(x, 'hash')
-      const size = field(x, 'size')
-      if (typeof hash !== 'string' || !isHash(hash) || !isCount(size)) bad()
-      return { hash: hash as string, size: size as number }
-    })
-    if (new Set(items.map((i) => i.hash)).size !== items.length) bad()
-    const total = items.reduce((n, i) => n + i.size, 0)
-    if (total > limits.maxUploadBytes) {
-      throw new Refusal(413, `an upload is at most ${limits.maxUploadBytes} bytes`)
-    }
-    if (head.bytes + total !== length) {
-      throw new Refusal(400, 'Content-Length is not the line and the sizes it names')
-    }
-    const held = await Promise.all(
-      items.map(async (i) => (await blobs.size(await nameOf(access, scope, i.hash))) !== null),
-    )
-    if (held.every(Boolean)) {
-      await body.cancel()
-      return new Response(null, { status: 204 })
-    }
-    for (const [n, i] of items.entries()) {
-      if (held[n]) {
-        await body.skip(i.size)
-        continue
-      }
-      try {
-        await blobs.put(await nameOf(access, scope, i.hash), body.next(i.size), i.size)
-      } catch (err) {
-        if (err instanceof Refusal) throw err
-        throw new Refusal(502, `the bucket refused the artifact: ${message(err)}`)
-      }
-    }
-    return new Response(null, { status: 204 })
-  }
-
-  /**
-   * One artifact, its bytes the whole body (Turbo's `PUT /v8/artifacts/<hash>`):
-   * they reach the bucket without passing through this code, where a
-   * batch's are split, so a large artifact costs no CPU here.
+   * An upload: one artifact, its bytes the whole body (Turbo's
+   * `PUT /v8/artifacts/<hash>`), stored in the token's scope. They reach
+   * the bucket without passing through this code, so a large one costs
+   * no CPU here (M, 2026-10-25: no batch upload; a batch is split by this
+   * code, and on Workers a 40 MB one ran out of CPU).
    */
   async function put(req: Request, hash: string): Promise<Response> {
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
@@ -263,9 +191,6 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       }
       if (path === '/v1/artifacts/download') {
         return req.method === 'POST' ? await download(req) : notAllowed('POST')
-      }
-      if (path === '/v1/artifacts/upload') {
-        return req.method === 'POST' ? await upload(req) : notAllowed('POST')
       }
       if (path === '/v1/artifacts/check') {
         return req.method === 'POST' ? await check(req) : notAllowed('POST')
@@ -318,63 +243,6 @@ function contentLength(req: Request): number {
   const size = Number(length)
   if (!isCount(size)) throw new Refusal(400, 'Content-Length is not a byte count')
   return size
-}
-
-/** A body read as a first line, then parts of known sizes, in order. */
-function parts(body: ReadableStream<Uint8Array>) {
-  const reader = body.getReader()
-  let rest: Uint8Array | undefined
-  const chunk = async (): Promise<Uint8Array | undefined> => {
-    if (rest !== undefined) {
-      const r = rest
-      rest = undefined
-      return r
-    }
-    const { done, value } = await reader.read()
-    return done ? undefined : value
-  }
-  const short = () => new Refusal(400, 'the body ended before the sizes its line names')
-  const next = (size: number): ReadableStream<Uint8Array> => {
-    let left = size
-    return new ReadableStream<Uint8Array>({
-      async pull(c) {
-        if (left === 0) return c.close()
-        const got = await chunk()
-        if (got === undefined) return c.error(short())
-        const take = got.length > left ? got.subarray(0, left) : got
-        if (got.length > left) rest = got.subarray(left)
-        left -= take.length
-        c.enqueue(take)
-        if (left === 0) c.close()
-      },
-    })
-  }
-  return {
-    /** The first line, without its `\n`, and its bytes with it. */
-    async line(max: number): Promise<{ text: string; bytes: number }> {
-      const seen: Uint8Array[] = []
-      let n = 0
-      for (;;) {
-        const got = await chunk()
-        if (got === undefined) throw new Refusal(400, 'the body has no first line')
-        const at = got.indexOf(10)
-        if (at >= 0) {
-          seen.push(got.subarray(0, at))
-          if (at + 1 < got.length) rest = got.subarray(at + 1)
-          const text = new TextDecoder().decode(Buffer.concat(seen))
-          return { text, bytes: n + at + 1 }
-        }
-        seen.push(got)
-        n += got.length
-        if (n > max) throw new Refusal(413, `the first line is at most ${max} bytes`)
-      }
-    },
-    next,
-    async skip(size: number): Promise<void> {
-      for await (const _ of next(size));
-    },
-    cancel: () => reader.cancel(),
-  }
 }
 
 const field = (body: unknown, name: string): unknown =>
