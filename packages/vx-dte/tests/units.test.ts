@@ -30,7 +30,7 @@ import { Usage } from '../src/usage.js'
 import { planTasks, tailsMs } from '../src/planner.js'
 import { join, RelayError } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
-import type { RunOrder } from '../src/messages.js'
+import type { RunOrder, ToWorker } from '../src/messages.js'
 import { servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
@@ -3307,6 +3307,118 @@ it('fails a task on its own error and keeps the worker', async () => {
     }
     expect(seen).not.toContain('fault')
     expect(Object.fromEntries(ends)).toEqual({ t1: 1, t2: 0 })
+    await raw.leave()
+    expect(await code).toBe(0)
+  } finally {
+    await served.stop()
+  }
+})
+
+// 2026-10-25: a task of 9000 dependencies made an order over the relay's
+// 1 MiB frame; the send was refused (413) and the task failed. Its deps go
+// ahead in parts, joined by the worker.
+it('sends an order too long for one frame with its deps ahead, all of them arriving', async () => {
+  const ids = Array.from({ length: 9000 }, (_, i) => `some/long-dependency-task-name#build-${i}`)
+  const out = { files: ['out/**'] }
+  const nodes = new Map<string, TaskNode>(
+    [...ids, 'final'].map((id) => [
+      id,
+      {
+        id,
+        deps: id === 'final' ? ids : [],
+        projectDir: '/ws',
+        config: { cache: { outputs: out } },
+      } as unknown as TaskNode,
+    ]),
+  )
+  const h = await harness(nodes, undefined, undefined, (id) => `k-${id}`)
+  try {
+    const a = await h.worker(1)
+    void h.o.execute(h.req('final', 'k-final'))
+    const deps: string[] = []
+    let batch: RunOrder[] | undefined
+    for (let i = 0; i < 50 && batch === undefined; i++)
+      for (const { body } of await a.poll()) {
+        const m = body as ToWorker
+        if (m.type === 'deps') deps.push(...m.deps.map((d) => d.task))
+        if (m.type === 'batch') batch = m.tasks
+      }
+    expect(batch?.map((o) => [o.task, o.deps.length])).toEqual([['final', 0]])
+    expect(deps).toEqual(ids)
+  } finally {
+    await h.stop()
+  }
+}, 30_000)
+
+it('restores the deps sent ahead of an order with its own', async () => {
+  const root = await tmp()
+  const served = servedRelay()
+  const restored: string[] = []
+  try {
+    const raw = await join(served.url, R, 'orchestrator', null, undefined)
+    const o = sealOrchestrator(raw, R, secretProof('s'))
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => ({
+        async save() {},
+        async output() {
+          return null
+        },
+        async share() {
+          return false
+        },
+        async resend() {
+          return false
+        },
+        async restore(key) {
+          restored.push(key)
+          return []
+        },
+      }),
+    })
+    const dep = (i: number) => ({
+      task: `d${i}`,
+      key: `k-d${i}`,
+      project: '',
+      outputs: { files: ['out/**'], workspaceFiles: [] },
+    })
+    const order: RunOrder = {
+      task: 't',
+      runKey: runKey(R, 't'),
+      deps: [dep(3)],
+      nested: [],
+      command: 'true',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    }
+    let ended = false
+    for (let i = 0; i < 100 && !ended; i++)
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string }
+        if (from === 'relay' && m.type === 'joined') {
+          const w = m.id!
+          await o.send(w, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 1,
+            memory: 1e9,
+          })
+          await o.send(w, { type: 'deps', task: 't', deps: [dep(1)] })
+          await o.send(w, { type: 'deps', task: 't', deps: [dep(2)] })
+          await o.send(w, { type: 'batch', root, realRoot: root, tasks: [order] })
+        } else if (m.type === 'end') ended = true
+      }
+    expect(ended).toBe(true)
+    expect(restored.toSorted()).toEqual(['k-d1', 'k-d2', 'k-d3'])
     await raw.leave()
     expect(await code).toBe(0)
   } finally {
