@@ -2,6 +2,7 @@ import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../config.js'
 import {
   asTrees,
   braceAlternatives,
+  GLOB_WILDCARDS,
   checkIgnoreSync,
   ignoreProbes,
   isLiteralPattern,
@@ -1055,8 +1056,15 @@ function segmentMeet(x: string, y: string): string | null {
       .replace(/\*+/g, star)
       .replace(/\?/g, 'x')
       .replace(/\[[!^]?(.)[^\]]*\]/g, '$1')
-  const head = (seg: string): string => seg.slice(0, seg.search(/[*?[]|$/))
-  const tail = (seg: string): string => seg.slice(seg.search(/[^*?\]]*$/))
+  const head = (seg: string): string => {
+    const at = seg.search(GLOB_WILDCARDS)
+    return at === -1 ? seg : seg.slice(0, at)
+  }
+  const tail = (seg: string): string => {
+    let at = seg.length
+    while (at > 0 && !GLOB_WILDCARDS.test(seg[at - 1]!)) at--
+    return seg.slice(at)
+  }
   const gx = new Bun.Glob(x)
   const gy = new Bun.Glob(y)
   for (const c of [
