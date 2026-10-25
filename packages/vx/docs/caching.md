@@ -55,7 +55,9 @@ over (in order):
 3. **Task config hash** — `xxh3(JSON.stringify(hashableConfig(node.config)))`
    of the _evaluated_ task config. The projection is one field wide:
    `exec.remote` is dropped, because it says WHERE a task runs and not
-   what it does (§ What's NOT in the key). Captures:
+   what it does (§ What's NOT in the key). `vx lock` writes each task's
+   keys sorted, so the order a config spells them in moves no key.
+   Captures:
    - `exec` block (command, env declarations, timeout, persistent).
    - `dependsOn` and `inputs.tasks` declarations.
    - `cache.outputs.files`, `inputs.files`, `inputs.env`,

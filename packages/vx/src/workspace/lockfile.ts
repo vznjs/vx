@@ -152,6 +152,29 @@ function validatedDigest(body: string): string {
   return xxh3(`vx-lock-valid-v3\0${VERSION}\0${body}`).toString(16)
 }
 
+/**
+ * Each task's config with its keys sorted, all the way down: a key hashes
+ * the config's JSON, and the order a file spells its keys in says nothing.
+ * Moving `cache` above `exec`, or a `define` listed in another order,
+ * missed every key of the task (2026-10-25). Sorted here, a run pays
+ * nothing; the tasks keep their order, which `vx show` lists them in.
+ */
+function taskKeysSorted(key: string, value: unknown): unknown {
+  if (key !== 'tasks' || value === null || typeof value !== 'object' || Array.isArray(value))
+    return value
+  const tasks: Record<string, unknown> = {}
+  for (const [name, task] of Object.entries(value)) tasks[name] = sortedDeep(task)
+  return tasks
+}
+
+function sortedDeep(v: unknown): unknown {
+  if (v === null || typeof v !== 'object') return v
+  if (Array.isArray(v)) return v.map(sortedDeep)
+  const out: Record<string, unknown> = {}
+  for (const k of Object.keys(v).sort()) out[k] = sortedDeep((v as Record<string, unknown>)[k])
+  return out
+}
+
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void> {
   // Written beside its name and renamed over it: `Bun.write` truncates in
   // place, so a run, or `vx watch` woken by the write
@@ -163,7 +186,7 @@ export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
     // Minified: the file only vx reads, and it loads faster than pretty
     // JSON (measured, 10k projects: 15.6 ms against 22.5 ms). `vx.lock.json`
     // beside each config is the copy for people.
-    const body = JSON.stringify({ version: lock.version, projects: lock.projects })
+    const body = JSON.stringify({ version: lock.version, projects: lock.projects }, taskKeysSorted)
     await Bun.write(tmp, `${body.slice(0, -1)},"validated":"${validatedDigest(body)}"}\n`)
     await rename(tmp, file)
   } catch (err) {
