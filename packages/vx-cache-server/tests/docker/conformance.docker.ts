@@ -28,7 +28,6 @@ conformance('the Docker image', {
       .setIssuedAt()
       .setExpirationTime('1h')
       .sign(await key),
-  maxCheckKeys: 500,
-  maxBatchArtifacts: 100,
+  maxCheckHashes: 500,
   maxUploadBytes: 7 * 1024 * 1024,
 })

@@ -45,7 +45,7 @@ function server(maxUploadBytes = 1 << 20) {
         method: req.method,
         path: new URL(req.url).pathname,
         body: text.split('\n')[0]!,
-        scope: req.headers.get('x-vx-scope'),
+        scope: req.headers.get('x-artifact-scope'),
       })
       return handle(req as never)
     },
@@ -64,9 +64,8 @@ const MAIN = 'refs/heads/main'
 
 /** Requests land in any order: sorted by what they say. */
 const byJson = (a: unknown, b: unknown) => JSON.stringify(a).localeCompare(JSON.stringify(b))
-/** A check's keys, as `scope hash`. */
-const keysOf = (body: string) =>
-  (JSON.parse(body) as { keys: { scope: string; hash: string }[] }).keys.map((k) => k.hash)
+/** A check's hashes. */
+const keysOf = (body: string) => (JSON.parse(body) as { hashes: string[] }).hashes
 
 /** A layer whose job's token is `token`, as GitLab's `VX_CACHE_TOKEN` carries it, reading `refs`. */
 function layer(url: string, token: string, refs: string[] = [MAIN], fetchImpl = fetch) {
@@ -94,12 +93,10 @@ describe('VxCacheLayer', () => {
     await c.put('aa11', new Blob(['hello']), { durationMs: 1 })
     const before = srv.seen.length
     expect(await c.has('aa11')).toEqual({ size: 5 })
-    expect(JSON.parse(srv.seen[before]!.body)).toEqual({
-      keys: [
-        { scope: f, hash: 'aa11' },
-        { scope: main, hash: 'aa11' },
-      ],
-    })
+    // Turbo's batch query, every ref's scope in one, in order.
+    expect(srv.seen.slice(before).map((r) => JSON.parse(r.body))).toEqual([
+      { hashes: ['aa11'], scopes: [f, main] },
+    ])
     expect(await c.hasMany(['aa11', 'bb22'])).toEqual(new Map([['aa11', { size: 5 }]]))
     // The download names the ref the check found it under.
     const got = await c.get('aa11')
@@ -118,7 +115,7 @@ describe('VxCacheLayer', () => {
     expect(await (await c.get('f11e'))!.body.text()).toBe('from a file')
   })
 
-  it("asks the server's limits once, then checks in chunks of its maxCheckKeys", async () => {
+  it("asks the server's limits once, then checks in chunks of its maxCheckHashes", async () => {
     const before = srv.seen.length
     const keys = Array.from({ length: 1200 }, (_, i) => i.toString(16))
     const c = layer(srv.url, read)
@@ -126,9 +123,7 @@ describe('VxCacheLayer', () => {
     await c.hasMany(['0'])
     const seen = srv.seen.slice(before)
     expect(seen.filter((r) => r.path === '/v1/capabilities')).toHaveLength(1)
-    const sizes = seen
-      .filter((r) => r.path === '/v1/artifacts/check')
-      .map((r) => keysOf(r.body).length)
+    const sizes = seen.filter((r) => r.path === '/v1/artifacts').map((r) => keysOf(r.body).length)
     expect(sizes.sort((a, b) => b - a)).toEqual([500, 500, 200, 1])
   })
 
@@ -158,7 +153,7 @@ describe('VxCacheLayer', () => {
     for (const k of keys) expect(await (await c.get(k))!.body.text()).toBe(k)
   })
 
-  it('checks one key at a time while the server names no limits, and says so once', async () => {
+  it('checks one hash at a time while the server names no limits, and says so once', async () => {
     const said: string[] = []
     // A server whose answers lose the limits.
     const stripped: typeof fetch = Object.assign(
@@ -167,7 +162,7 @@ describe('VxCacheLayer', () => {
         if (new URL(input instanceof Request ? input.url : input).pathname === '/v1/capabilities')
           return Response.json({})
         const headers = new Headers(res.headers)
-        headers.delete('x-vx-max-check-keys')
+        headers.delete('x-artifact-max-check-hashes')
         return new Response(res.body, { status: res.status, headers })
       },
       { preconnect: fetch.preconnect },
@@ -177,10 +172,10 @@ describe('VxCacheLayer', () => {
     const before = srv.seen.length
     await c.hasMany(['c1', 'c2', 'c3'])
     await c.hasMany(['c4', 'c5'])
-    const checks = srv.seen.slice(before).filter((r) => r.path === '/v1/artifacts/check')
+    const checks = srv.seen.slice(before).filter((r) => r.path === '/v1/artifacts')
     expect(checks.map((r) => keysOf(r.body).length)).toEqual([1, 1, 1, 1, 1])
     expect(said).toEqual([
-      '[vx] vx-cache: /v1/capabilities (HTTP 200) named no limits (maxCheckKeys, maxUploadBytes); checks go one key at a time',
+      '[vx] vx-cache: /v1/capabilities (HTTP 200) named no limits (maxCheckHashes, maxUploadBytes); checks go one hash at a time',
     ])
   })
 

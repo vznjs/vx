@@ -4,22 +4,19 @@
 // hash, and a read names the exact scope it wants (M, 2026-10-25).
 
 import { type Access, type Authorize, hashPart, Refusal } from '@vzn/vx-devtools'
-import { BATCH_TYPE, errorJson, isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
+import { errorJson, isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
 import { blobName, type Blobs } from './store.js'
 
 /** What an operator may set; each defaults, and a backend may cap them. */
 export interface Limits {
-  /** Exact `{ scope, hash }` pairs one check names. */
-  readonly maxCheckKeys: number
-  /** Artifacts one batch download carries. */
-  readonly maxBatchArtifacts: number
+  /** The lookups one check makes: its hashes times its scopes. */
+  readonly maxCheckHashes: number
   /** The largest upload, in bytes: one artifact. */
   readonly maxUploadBytes: number
 }
 
 export const DEFAULT_LIMITS: Limits = {
-  maxCheckKeys: 500,
-  maxBatchArtifacts: 100,
+  maxCheckHashes: 500,
   maxUploadBytes: 100_000_000,
 }
 
@@ -30,12 +27,11 @@ export interface ServerOptions {
 }
 
 const VARS = {
-  maxCheckKeys: 'MAX_CHECK_KEYS',
-  maxBatchArtifacts: 'MAX_BATCH_ARTIFACTS',
+  maxCheckHashes: 'MAX_CHECK_HASHES',
   maxUploadBytes: 'MAX_UPLOAD_BYTES',
 } as const
 
-/** `MAX_CHECK_KEYS`, `MAX_BATCH_ARTIFACTS` and `MAX_UPLOAD_BYTES` from the environment, each a whole number above 0. */
+/** `MAX_CHECK_HASHES` and `MAX_UPLOAD_BYTES` from the environment, each a whole number above 0. */
 export function limitsFrom(env: object): Partial<Limits> {
   const out: Partial<Record<keyof Limits, number>> = {}
   for (const [field, name] of Object.entries(VARS) as [keyof Limits, string][]) {
@@ -48,6 +44,9 @@ export function limitsFrom(env: object): Partial<Limits> {
   }
   return out
 }
+
+/** A held artifact's bytes never change (M, 2026-10-25). */
+const IMMUTABLE = 'private, max-age=31536000, immutable'
 
 /** A scope on the wire: its ref's `hashPart`, so no ref is ever sent or stored plain (M, 2026-10-25). */
 const SCOPE = /^[0-9a-f]{32}$/
@@ -75,22 +74,24 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     return hashPart(access.write)
   }
 
-  /** `{ keys: [{ scope, hash }] }`, up to `max`: each as the object it names. */
-  async function keysOf(req: Request, access: Access, max: number) {
-    const keys = field(await readJson(req, max * 600 + 100), 'keys')
-    if (!Array.isArray(keys) || keys.length > max) {
-      throw new Refusal(400, `keys: up to ${max} of { scope, hash }`)
+  /**
+   * `{ hashes, scopes }`: Turbo's batch query, with the scopes to read in
+   * the order to read them; up to `max` lookups, hashes times scopes.
+   */
+  async function queryOf(req: Request, max: number) {
+    const body = await readJson(req, max * 140 + 100)
+    const hashes = field(body, 'hashes')
+    const scopes = field(body, 'scopes')
+    if (!Array.isArray(hashes) || !hashes.every((h) => typeof h === 'string' && isHash(h))) {
+      throw new Refusal(400, 'hashes: a list of 1 to 128 hex digits each')
     }
-    return Promise.all(
-      keys.map(async (k: unknown) => {
-        const hash = field(k, 'hash')
-        if (typeof hash !== 'string' || !isHash(hash)) {
-          throw new Refusal(400, 'keys[].hash: 1 to 128 hex digits')
-        }
-        const scope = scopeOf(field(k, 'scope'))
-        return { scope, hash, name: await nameOf(access, scope, hash) }
-      }),
-    )
+    if (!Array.isArray(scopes) || scopes.length === 0) {
+      throw new Refusal(400, "scopes: a list of refs' hashes, in the order to read them")
+    }
+    if (hashes.length * scopes.length > max) {
+      throw new Refusal(400, `hashes × scopes: up to ${max} lookups`)
+    }
+    return { hashes: hashes as string[], scopes: scopes.map(scopeOf) }
   }
 
   async function artifact(req: Request, hash: string): Promise<Response> {
@@ -100,52 +101,44 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     const blob = await blobs.get(await nameOf(access, scope, hash))
     if (blob === null) return errorJson(404, 'no artifact under this key')
     return new Response(blob.body, {
-      headers: { 'content-length': String(blob.size), 'content-type': 'application/octet-stream' },
+      headers: {
+        'content-length': String(blob.size),
+        'content-type': 'application/octet-stream',
+        // An artifact never changes under its key; private: its token chose the repository.
+        'cache-control': IMMUTABLE,
+      },
     })
   }
 
-  // One exact lookup per key, all at once: no fallback chain.
+  /** Turbo's `HEAD /v8/artifacts/<hash>`: whether the scope named holds it, and its size, with no bytes. */
+  async function exists(req: Request, hash: string): Promise<Response> {
+    if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
+    const access = await authorize(req)
+    const scope = scopeOf(req.headers.get(SCOPE_HEADER))
+    const size = await blobs.size(await nameOf(access, scope, hash))
+    if (size === null) return new Response(null, { status: 404 })
+    return new Response(null, {
+      headers: { 'content-length': String(size), 'cache-control': IMMUTABLE },
+    })
+  }
+
+  // Every lookup at once, each exact: a hash answers the first scope
+  // asked that holds it, and names it, for the download to read.
   async function check(req: Request): Promise<Response> {
     const access = await authorize(req)
-    const keys = await keysOf(req, access, limits.maxCheckKeys)
-    const sizes = await Promise.all(keys.map((k) => blobs.size(k.name)))
-    return Response.json({ sizes }, { headers: limitHeaders })
-  }
-
-  /**
-   * A batch download: a JSON line naming each held artifact's scope, hash
-   * and size, in the order asked, then their bytes in that order. One the
-   * bucket lost after its line was sent ends the body short.
-   */
-  async function download(req: Request): Promise<Response> {
-    const access = await authorize(req)
-    const keys = await keysOf(req, access, limits.maxBatchArtifacts)
-    const found = await Promise.all(keys.map((k) => blobs.size(k.name)))
-    const held = keys.flatMap((k, i) => {
-      const size = found[i]
-      return size === null || size === undefined ? [] : [{ ...k, size }]
-    })
-    const line = new TextEncoder().encode(
-      `${JSON.stringify({ artifacts: held.map(({ scope, hash, size }) => ({ scope, hash, size })) })}\n`,
+    const { hashes, scopes } = await queryOf(req, limits.maxCheckHashes)
+    const sizes = await Promise.all(
+      hashes.map((hash) =>
+        Promise.all(scopes.map(async (s) => blobs.size(await nameOf(access, s, hash)))),
+      ),
     )
-    async function* bytes(): AsyncGenerator<Uint8Array> {
-      yield line
-      for (const k of held) {
-        const blob = await blobs.get(k.name)
-        if (blob === null) throw new Error(`the artifact ${k.hash} is gone`)
-        yield* blob.body
-      }
-    }
-    const it = bytes()
-    const body = new ReadableStream<Uint8Array>({
-      async pull(c) {
-        const { done, value } = await it.next()
-        if (done) c.close()
-        else c.enqueue(value)
-      },
-      cancel: async () => void (await it.return(undefined)),
-    })
-    return new Response(body, { headers: { 'content-type': BATCH_TYPE } })
+    const held = Object.fromEntries(
+      hashes.map((hash, i) => {
+        const at = sizes[i]!.findIndex((size) => size !== null)
+        return [hash, at < 0 ? null : { size: sizes[i]![at], scope: scopes[at] }]
+      }),
+    )
+    return Response.json(held, { headers: limitHeaders })
   }
 
   /**
@@ -189,19 +182,14 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
         await authorize(req)
         return Response.json(limits)
       }
-      if (path === '/v1/artifacts/download') {
-        return req.method === 'POST' ? await download(req) : notAllowed('POST')
-      }
-      if (path === '/v1/artifacts/check') {
+      if (path === '/v1/artifacts') {
         return req.method === 'POST' ? await check(req) : notAllowed('POST')
       }
       if (path.startsWith('/v1/artifacts/') && !path.slice('/v1/artifacts/'.length).includes('/')) {
         const hash = path.slice('/v1/artifacts/'.length)
-        return req.method === 'PUT' ? await put(req, hash) : notAllowed('PUT')
-      }
-      if (path.startsWith('/v1/artifacts/download/')) {
-        const hash = path.slice('/v1/artifacts/download/'.length)
-        return req.method === 'GET' ? await artifact(req, hash) : notAllowed('GET')
+        if (req.method === 'GET') return await artifact(req, hash)
+        if (req.method === 'HEAD') return await exists(req, hash)
+        return req.method === 'PUT' ? await put(req, hash) : notAllowed('GET, HEAD, PUT')
       }
       return errorJson(404, 'no such route')
     } catch (err) {

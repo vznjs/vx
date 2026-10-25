@@ -37,7 +37,7 @@ beforeAll(async () => {
       .setIssuedAt()
       .setExpirationTime('5m')
       .sign(privateKey)
-    const req = new Request(`${AUD}/v1/artifacts/check`, {
+    const req = new Request(`${AUD}/v1/artifacts`, {
       headers: { authorization: `Bearer ${token}` },
     })
     return (await auth(req)).write

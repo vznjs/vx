@@ -5,13 +5,20 @@ and on Cloudflare Workers; any server that does can take its place.
 Every route sits under `/v1`: a later version gets its own prefix, and a
 server may serve both.
 
-| Route                               | What it does                              |
-| ----------------------------------- | ----------------------------------------- |
-| `GET /v1/artifacts/download/<hash>` | one artifact's bytes                      |
-| `POST /v1/artifacts/download`       | many artifacts' bytes in one answer       |
-| `PUT /v1/artifacts/<hash>`          | one artifact's bytes                      |
-| `POST /v1/artifacts/check`          | which exact keys are held, and their size |
-| `GET /v1/capabilities`              | the server's limits                       |
+Turbo's routes (`/v8/artifacts`), under `/v1`:
+
+| Route                       | What it does                             |
+| --------------------------- | ---------------------------------------- |
+| `GET /v1/artifacts/<hash>`  | one artifact's bytes                     |
+| `HEAD /v1/artifacts/<hash>` | whether it is held, and its size         |
+| `PUT /v1/artifacts/<hash>`  | one artifact's bytes                     |
+| `POST /v1/artifacts`        | which of many hashes are held, and sizes |
+| `GET /v1/capabilities`      | the server's limits                      |
+
+Where it differs from Turbo: a read names its scopes (§ Keys), since an
+artifact lives in its branch's scope; the CI token
+names the repository, so `teamId` and `slug` are refused; there is no
+events route.
 
 ## Opaque strings
 
@@ -46,36 +53,34 @@ request: `401`, `the server trusts no CI: set TRUST`.
 An artifact lives in one scope, and a key names both: `{ scope, hash }`.
 `scope` is a ref's hash: the first 128 bits of the SHA-256 of its UTF-8
 (`refs/heads/main`), 32 lowercase hex digits; a plain ref is `400`.
+`GET` and `HEAD` name one scope in `x-artifact-scope`; a check names
+its scopes in its body.
 `hash` is 1 to 128 hex digits. A read is exact: the server answers the scope named and no
 other, so a client that wants its branch's work and then main's asks
-for both keys. Every read names a scope.
+for both. Every read names a scope.
 
 An artifact is immutable. A server may expire one at any time: a
 download after a check that held it may miss, which a client reads as a
 miss.
 
-`GET /v1/artifacts/download/<hash>` with `x-vx-scope: <scope>`: `200`
-with the bytes (`application/octet-stream`, `Content-Length`), or `404`.
+`GET /v1/artifacts/<hash>` (as Turbo's `GET /v8/artifacts/<hash>`) with
+`x-artifact-scope: <scope>`: `200` with the bytes (`application/octet-stream`,
+`Content-Length`, `Cache-Control: private, max-age=31536000, immutable`:
+the bytes under a key never change), or `404`. `HEAD` is the same with
+no bytes.
 
-`POST /v1/artifacts/check` with `{ "keys": [{ "scope", "hash" }, …] }`,
-up to `maxCheckKeys`: `{ "sizes": [<size> | null, …] }`, one per key in
-the order sent. Every answer names the server's limits, which a client
-batches by:
-
-```
-x-vx-max-check-keys: 500
-x-vx-max-batch-artifacts: 100
-x-vx-max-upload-bytes: 100000000
-```
-
-`POST /v1/artifacts/download` with the same `{ "keys": […] }`, up to
-`maxBatchArtifacts`: an `application/vnd.vx-cache.batch` body. Its first
-line is JSON naming each held key with its size, in the order asked,
-and its bytes follow in that order; a key it does not name is not held:
+`POST /v1/artifacts` (Turbo's batch query) with `{ "hashes": [<hash>,
+…], "scopes": [<scope>, …] }`, the scopes in the order to read them, up
+to `maxCheckHashes` lookups (hashes × scopes): `{ "<hash>": { "size":
+<bytes>, "scope": <scope> } | null, … }`, one per hash, naming the first
+scope asked that holds it, which its download names. Each lookup is
+exact, and its time does not grow with what a scope holds. Every answer
+names the server's limits, which a client chunks its checks by, sending
+the chunks at once:
 
 ```
-{"artifacts":[{"scope":"f921bd05e68b03740c450e565e0e6173","hash":"8f1c","size":4200}]}\n
-<4200 bytes>
+x-artifact-max-check-hashes: 500
+x-artifact-max-upload-bytes: 100000000
 ```
 
 `PUT /v1/artifacts/<hash>` (a token that writes, as Turbo's
@@ -85,17 +90,18 @@ holds keeps its bytes, answered before they are read. `204`; past
 `maxUploadBytes`, `413`. A client may `check` first to skip what is
 held.
 
-Uploads go one artifact at a time: there is no batch upload. A batch's
-bytes pass through the server's code to be split, which on Workers costs
-CPU by the byte (a 40 MB one ran out of it), while a `PUT`'s reach the
-bucket untouched.
+Downloads and uploads go one artifact at a time, many at once: there is
+no batch of either (M, 2026-10-25: "use the put and get"). A batch's
+bytes pass through the server's code, which on Workers costs CPU by the
+byte (a 40 MB one ran out of it), and its artifacts arrive one after
+another; a `GET`'s and a `PUT`'s bytes pass untouched, in parallel.
 
 ## Limits
 
 An operator sets each; `GET /v1/capabilities` names them:
 
 ```json
-{ "maxCheckKeys": 500, "maxBatchArtifacts": 100, "maxUploadBytes": 100000000 }
+{ "maxCheckHashes": 500, "maxUploadBytes": 100000000 }
 ```
 
 A backend may lower one to what it can serve: Workers' free plan makes
