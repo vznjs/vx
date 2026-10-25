@@ -2,7 +2,7 @@
 // (the relay never reads it): orders and status only. Every task's files
 // and output go through the workspace's cache, by the keys these name.
 
-import type { CacheFacts, ExecuteResult, SandboxConfig } from '@vzn/vx'
+import type { CacheFacts, CapturedChunk, ExecuteResult, SandboxConfig } from '@vzn/vx'
 
 /**
  * A worker says what it holds every this many heartbeats. Each says is a
@@ -166,7 +166,7 @@ export type ToOrchestrator =
   | ({ type: 'part'; task: string } & Partial<Pick<WiredResult, PartList>>)
 
 /** The lists a long result sends ahead of its `end`, in parts. */
-export const PART_LISTS = ['violations', 'changed', 'removed'] as const
+export const PART_LISTS = ['violations', 'changed', 'removed', 'output'] as const
 export type PartList = (typeof PART_LISTS)[number]
 
 /** A result as JSON carries it: its output stays in the cache entry, and a violation's time is a string. */
@@ -178,6 +178,13 @@ export type WiredResult = Omit<ExecuteResult, 'violations' | 'outputs' | 'stdout
   removed?: string[]
   /** Dependency keys whose remote copy did not read back: this machine sends its own over them. */
   unread?: string[]
+  /**
+   * No remote took its entry's upload (too big, a 429): its files are on
+   * that worker alone, and its output comes here in `output`.
+   */
+  unshared?: true
+  /** Its output, both streams in the order written, when `unshared`. */
+  output?: CapturedChunk[]
 }
 
 /**

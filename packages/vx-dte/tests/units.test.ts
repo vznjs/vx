@@ -30,7 +30,7 @@ import { Usage } from '../src/usage.js'
 import { planTasks, tailsMs } from '../src/planner.js'
 import { join, RelayError } from '../src/wire.js'
 import { sealOrchestrator, secretProof } from '../src/seal.js'
-import type { RunOrder, ToWorker } from '../src/messages.js'
+import type { RunOrder, ToWorker, WiredResult } from '../src/messages.js'
 import { servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
@@ -1770,6 +1770,48 @@ it('a cached task’s dependant goes wherever it fits: a cache carries its outpu
   }
 })
 
+// A worker whose upload no remote took (too big, a 429) said it was saved,
+// and the run failed restoring it (M, 2026-10-25): its files stay there,
+// its dependants go there, and its output comes with its `end`.
+it('a task no remote took the upload of: its output comes with it, its dependant follows it', async () => {
+  const cached = (id: string, deps: string[] = []) =>
+    [
+      id,
+      { id, deps, projectDir: '/ws', config: { cache: { outputs: { files: ['out/**'] } } } },
+    ] as unknown as readonly [string, TaskNode]
+  const h = await harness(new Map([cached('g'), cached('x'), cached('u', ['g'])]))
+  try {
+    const a = await h.worker(1, 'a')
+    const g = h.o.execute(h.req('g', 'k-g'))
+    expect(await a.batches()).toEqual([['g']])
+    await a.finish('g', 'k-g', {
+      exitCode: 0,
+      durationMs: 1,
+      unshared: true,
+      output: [
+        { text: 'built\n', err: false },
+        { text: 'warned\n', err: true },
+      ],
+    })
+    const got = await g
+    expect([got.stdout, got.stderr]).toEqual(['built\n', 'warned\n'])
+    if (got.outputs?.kind !== 'deferred') throw new Error('expected deferred outputs')
+    await expect(got.outputs.materialize()).rejects.toThrow('g: its files are on worker#1 alone')
+    void h.o.execute(h.req('x', 'k-x'))
+    expect(await a.batches()).toEqual([['x']])
+    const b = await h.worker(1, 'b')
+    const u = h.o.execute(h.req('u', 'k-u'))
+    await Bun.sleep(100)
+    await a.finish('x')
+    expect(await a.batches()).toEqual([['u']])
+    await a.finish('u')
+    expect((await u).exitCode).toBe(0)
+    expect(b.orders).toEqual([])
+  } finally {
+    await h.stop()
+  }
+})
+
 // A worker asked the remote before each upload (a HEAD per task on
 // turboCache()), though the run's probe had found the key in no cache:
 // requests the Vercel free tier's 300 a minute refused (M, 2026-10-25).
@@ -1861,6 +1903,86 @@ it('a worker uploads a key the run found missing, and its run key, asking the re
         [runKey(R, 'v'), true],
       ]),
     )
+  } finally {
+    await served.stop()
+  }
+})
+
+it('a worker says which task no remote took the upload of, sending its output with it', async () => {
+  const root = await tmp()
+  const served = servedRelay()
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const artifacts: TaskArtifacts = {
+      async save() {},
+      async output() {
+        return null
+      },
+      async share() {
+        return false
+      },
+      async resend() {
+        return false
+      },
+      async restore() {
+        return null
+      },
+      async uploaded(key) {
+        return key === 'k-t' ? false : key === 'k-u' ? true : undefined
+      },
+    }
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => artifacts,
+    })
+    const order = (task: string): RunOrder => ({
+      task,
+      key: `k-${task}`,
+      runKey: runKey(R, task),
+      deps: [],
+      nested: [],
+      command: `echo ${task}`,
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    })
+    const tasks = [order('t'), order('u'), order('v')]
+    const ends = new Map<string, WiredResult>()
+    for (let i = 0; i < 100 && ends.size < tasks.length; i++)
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string; task?: string; result?: WiredResult }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 3,
+            memory: 1e9,
+          })
+          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks })
+        } else if (m.type === 'end') {
+          ends.set(m.task!, m.result!)
+          if (ends.size === tasks.length) await o.send(from, { type: 'exit' })
+        }
+      }
+    expect(await code).toBe(0)
+    expect([ends.get('t')?.unshared, ends.get('t')?.output]).toEqual([
+      true,
+      [{ text: 't\n', err: false }],
+    ])
+    for (const t of ['u', 'v'])
+      expect([ends.get(t)?.unshared, ends.get(t)?.output]).toEqual([undefined, undefined])
   } finally {
     await served.stop()
   }

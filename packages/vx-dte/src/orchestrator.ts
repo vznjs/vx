@@ -1053,7 +1053,10 @@ export class Orchestrator {
     }
     this.savedAs.set(task, key)
     const node = this.o.nodes()?.get(task)
-    if (node !== undefined && node.config.cache === undefined && head.exitCode === 0)
+    // No remote took its upload (too big, a 429): its files are there
+    // alone, as an uncached task's are, and its output came with its `end`.
+    const unshared = head.unshared === true
+    if (head.exitCode === 0 && (unshared || node?.config.cache === undefined))
       this.kept.set(task, { worker: a.id, req: job.req, need: job.need })
     this.pumpSoon()
     if (job.again !== undefined) return job.resolve(result(head, []))
@@ -1070,7 +1073,11 @@ export class Orchestrator {
     // `--cache-download=none` every file of the run came home (2026-10-24).
     const deferred = job.req.remoteOnly !== true && job.req.download === 'deferred'
     const log = await (
-      job.req.remoteOnly === true || deferred ? this.o.artifacts.output(key) : restore()
+      unshared
+        ? Promise.resolve(wiredLog(head.output))
+        : job.req.remoteOnly === true || deferred
+          ? this.o.artifacts.output(key)
+          : restore()
     ).catch((err: unknown) => {
       job.reject(err)
       return undefined
@@ -1093,7 +1100,7 @@ export class Orchestrator {
     }
     // An upstream's file the task removed there is gone here too: a restore
     // lays files, never removes one, and this disk is what core saves from.
-    if (head.removed !== undefined && job.req.remoteOnly !== true && !deferred) {
+    if (head.removed !== undefined && job.req.remoteOnly !== true && !deferred && !unshared) {
       const ours = names(
         path.relative(this.o.root, node?.projectDir ?? job.req.cwd),
         job.req.outputs,
@@ -1107,17 +1114,29 @@ export class Orchestrator {
     for (const c of log) (c.err ? job.req.onStderr : job.req.onStdout)(c.text)
     job.resolve({
       ...result(head, log),
-      ...(deferred
+      ...(unshared
         ? {
             outputs: {
               kind: 'deferred' as const,
-              materialize: async () => {
-                if ((await restore()) === null)
-                  throw new Error(`${task}'s entry ${key} is in no cache this machine reads`)
-              },
+              materialize: () =>
+                Promise.reject(
+                  new UserError(
+                    `${task}: its files are on ${a.label} alone: no remote cache took its upload (its log says why)`,
+                  ),
+                ),
             },
           }
-        : {}),
+        : deferred
+          ? {
+              outputs: {
+                kind: 'deferred' as const,
+                materialize: async () => {
+                  if ((await restore()) === null)
+                    throw new Error(`${task}'s entry ${key} is in no cache this machine reads`)
+                },
+              },
+            }
+          : {}),
       where: a.label,
       machine: {
         cores: a.reported.cores,
@@ -1954,7 +1973,7 @@ export class Orchestrator {
 }
 
 function result(r: WiredResult, log: readonly CapturedChunk[]): ExecuteResult {
-  const { cpuShare: _, removed: __, unread: ___, ...rest } = r
+  const { cpuShare: _, removed: __, unread: ___, unshared: ____, output: _____, ...rest } = r
   const violations = (r.violations ?? []).map((v) => ({ ...v, timestamp: new Date(v.timestamp) }))
   const of = (err: boolean) =>
     log
@@ -1962,6 +1981,18 @@ function result(r: WiredResult, log: readonly CapturedChunk[]): ExecuteResult {
       .map((c) => c.text)
       .join('')
   return { ...rest, stdout: of(false), stderr: of(true), violations, outputs: { kind: 'disk' } }
+}
+
+/** A worker's `output`, read at the boundary: its chunks of text. */
+function wiredLog(output: unknown): CapturedChunk[] {
+  return Array.isArray(output)
+    ? output
+        .filter(
+          (c): c is CapturedChunk =>
+            typeof c === 'object' && c !== null && typeof c.text === 'string',
+        )
+        .map((c) => ({ text: c.text, err: c.err === true }))
+    : []
 }
 
 /**

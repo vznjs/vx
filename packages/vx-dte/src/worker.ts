@@ -172,6 +172,13 @@ export async function runWorker(opts: {
         true,
       )
     }
+    // No remote took it: the orchestrator reads the remotes alone, so its
+    // dependants come here and its output goes with the `end` (M, 2026-10-25).
+    const saved = keys.at(-1)!
+    const wired: WiredResult =
+      (await artifacts.uploaded?.(saved)) === false
+        ? { ...result, unshared: true, output: pieces(output) }
+        : result
     if (result.exitCode === 0)
       for (const k of keys) {
         present.set(k, Promise.resolve())
@@ -180,8 +187,8 @@ export async function runWorker(opts: {
     const end: ToOrchestrator = {
       type: 'end',
       task: m.task,
-      key: keys.at(-1)!,
-      result,
+      key: saved,
+      result: wired,
       load: frame(),
     }
     for (const part of parts(end)) await me.send('orchestrator', part)
@@ -926,6 +933,18 @@ const gb = (n: number): string => `${(n / 1e9).toFixed(1)} GB`
 
 /** The most of a result one send carries: a relay frame is 1 MiB, which sealing grows by a third. */
 const PART_BYTES = 256 * 1024
+
+/** `output` cut so each chunk fits a part, escaped as JSON grows it up to six times. */
+function pieces(output: readonly CapturedChunk[]): CapturedChunk[] {
+  const most = PART_BYTES / 8
+  return output.flatMap((c) => {
+    if (c.text.length <= most) return [c]
+    const cut: CapturedChunk[] = []
+    for (let i = 0; i < c.text.length; i += most)
+      cut.push({ ...c, text: c.text.slice(i, i + most) })
+    return cut
+  })
+}
 
 /**
  * `end` as its sends: itself when it fits one frame, else its long lists
