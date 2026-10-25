@@ -429,6 +429,10 @@ use your own instead.
   write its outputs, one a stopped run cancelled), and one that left a tracked file under its project
   changed on its worker (a formatter's input), which this machine never
   sees: core withholds its own save when the key read that file, and says so.
+- Under `--force`, a success is saved under its key (which keeps an entry
+  it already holds, as core does) and under the run's key, which this
+  machine and the dependants' workers restore: the bytes this run built,
+  never the entry it bypassed.
 - A worker whose tracked files differ from the orchestrator's (another
   tree) is refused.
 - A task whose key folds a file the run's commit lacks (untracked, or
