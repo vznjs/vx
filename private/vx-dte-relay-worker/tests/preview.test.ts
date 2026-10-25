@@ -7,6 +7,8 @@ import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
 import { previewUrl, relayFor, watched, WATCH, type PreviewDeps } from '../preview.ts'
 
+type CheckRun = Awaited<ReturnType<PreviewDeps['checks']>>[number]
+
 const dir = path.resolve(import.meta.dir, '..')
 
 // Workers Builds' check on a branch's commit (#4397's, 2026-10-25).
@@ -16,13 +18,21 @@ const SUMMARY = [
 ].join('\n')
 const DEPLOYED = 'https://vx-dte-relay.exelord.workers.dev'
 
-function deps(changed: string[], runs: PreviewDeps['checks'][]): PreviewDeps & { slept: number } {
+/** A PR whose head's check runs are `runs`, poll by poll, after `older` commits' (newest first). */
+function deps(
+  changed: string[],
+  runs: (() => Promise<CheckRun[]>)[],
+  older: Record<string, { runs: CheckRun[]; since: string[] }> = {},
+): PreviewDeps & { slept: number } {
   let t = 0
   let i = 0
   const d = {
     slept: 0,
     changed: async () => changed,
-    checks: () => runs[Math.min(i++, runs.length - 1)]!(),
+    commits: async () => ['head', ...Object.keys(older)],
+    checks: async (sha: string) =>
+      sha === 'head' ? runs[Math.min(i++, runs.length - 1)]!() : older[sha]!.runs,
+    since: async (sha: string) => older[sha]!.since,
     sleep: async (ms: number) => {
       d.slept++
       t += ms
@@ -69,8 +79,34 @@ describe('the relay a PR’s run uses', () => {
     )
     const none = deps(['private/vx-dte-relay-worker/wrangler.jsonc'], [async () => []])
     await expect(relayFor('vx-dte-relay', DEPLOYED, none)).rejects.toThrow(
-      'Workers Builds: vx-dte-relay: no check on the head commit after 5 min',
+      'Workers Builds: vx-dte-relay: no build of the head after 5 min',
     )
+  })
+
+  // Workers Builds skips a push that changes no watch path, so a head
+  // with no build may run on an earlier commit's (#4333's 67a4c46 waited 5 min).
+  it('is an earlier commit’s Preview when the relay has not changed since', async () => {
+    const earlier = SUMMARY.replace('/previews/feat-relay', '/previews/earlier')
+    const d = deps(['packages/vx-dte-relay/src/relay.ts'], [async () => []], {
+      a: { runs: await check('completed', 'success', earlier)(), since: ['packages/vx-dte/a.ts'] },
+    })
+    expect(await relayFor('vx-dte-relay', DEPLOYED, d)).toBe(
+      'https://earlier-vx-dte-relay.exelord.workers.dev',
+    )
+    expect(d.slept).toBe(0)
+  })
+
+  it('waits for the head’s build when an earlier one built other relay code', async () => {
+    const earlier = SUMMARY.replace('/previews/feat-relay', '/previews/earlier')
+    const d = deps(
+      ['packages/vx-dte-relay/src/relay.ts'],
+      [async () => [], check('completed', 'success')],
+      { a: { runs: await check('completed', 'success', earlier)(), since: ['bun.lock'] } },
+    )
+    expect(await relayFor('vx-dte-relay', DEPLOYED, d)).toBe(
+      'https://feat-relay-vx-dte-relay.exelord.workers.dev',
+    )
+    expect(d.slept).toBe(1)
   })
 
   it('serves the Preview its check names beside the deployed Worker', () => {

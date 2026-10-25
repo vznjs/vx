@@ -38,8 +38,12 @@ interface CheckRun {
 export interface PreviewDeps {
   /** The files the PR changes. */
   changed: () => Promise<string[]>
-  /** The check runs on the PR's head commit. */
-  checks: () => Promise<CheckRun[]>
+  /** The PR's commits, its head first. */
+  commits: () => Promise<string[]>
+  /** The check runs on `sha`. */
+  checks: (sha: string) => Promise<CheckRun[]>
+  /** The files that differ between `sha` and the head commit. */
+  since: (sha: string) => Promise<string[]>
   sleep: (ms: number) => Promise<void>
   now: () => number
 }
@@ -48,9 +52,26 @@ const WAIT_MS = 5 * 60_000
 const POLL_MS = 5_000
 
 /**
+ * The newest check of `name` on the PR's commits whose build is of the
+ * head's relay: Workers Builds skips a push that changes no watch path
+ * (#4333's 67a4c46), so the head's relay may be an earlier commit's build.
+ */
+async function build(name: string, deps: PreviewDeps): Promise<CheckRun | undefined> {
+  const commits = await deps.commits()
+  for (const sha of commits) {
+    const run = (await deps.checks(sha)).find(
+      (r) => r.app?.slug === 'cloudflare-workers-and-pages' && r.name === name,
+    )
+    if (run === undefined) continue
+    return sha === commits[0] || !watched(await deps.since(sha)) ? run : undefined
+  }
+  return undefined
+}
+
+/**
  * The Preview URL the run is to use, or undefined to keep `deployed`,
- * the Worker's own URL. Waits for the Workers Builds check of `worker` on the head
- * commit; a failed or missing build fails, naming why.
+ * the Worker's own URL. Waits for the Workers Builds check of `worker`
+ * that built the head's relay; a failed or missing build fails, naming why.
  */
 export async function relayFor(
   worker: string,
@@ -61,9 +82,7 @@ export async function relayFor(
   const name = `Workers Builds: ${worker}`
   const end = deps.now() + WAIT_MS
   for (;;) {
-    const run = (await deps.checks()).find(
-      (r) => r.app?.slug === 'cloudflare-workers-and-pages' && r.name === name,
-    )
+    const run = await build(name, deps)
     if (run?.status === 'completed') {
       if (run.conclusion !== 'success') throw new Error(`${name} ended ${run.conclusion}`)
       const url = previewUrl(run.output?.summary ?? '', deployed)
@@ -72,7 +91,7 @@ export async function relayFor(
     }
     if (deps.now() >= end)
       throw new Error(
-        `${name}: ${run === undefined ? 'no check' : run.status} on the head commit after ${WAIT_MS / 60_000} min`,
+        `${name}: ${run === undefined ? 'no build of the head' : run.status} after ${WAIT_MS / 60_000} min`,
       )
     await deps.sleep(POLL_MS)
   }
@@ -97,21 +116,35 @@ if (import.meta.main) {
     throw new Error('needs GITHUB_REPOSITORY, GITHUB_OUTPUT, GH_TOKEN, VX_PR_HEAD and VX_DTE_RELAY')
   const wrangler = await Bun.file(path.join(import.meta.dir, 'wrangler.jsonc')).text()
   const worker = /"name":\s*"([^"]+)"/.exec(wrangler)![1]!
+  const api = async <T>(route: string): Promise<T> => {
+    const res = await fetch(`https://api.github.com/repos/${repo}/${route}`, {
+      headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json' },
+    })
+    if (!res.ok) throw new Error(`${route}: HTTP ${res.status}`)
+    return (await res.json()) as T
+  }
+  // The checkout is the PR's merge commit, one deep: its first parent is the
+  // base. One deep, the parent is not here; the commit still names it.
+  const base = /^parent ([0-9a-f]+)$/m.exec(await git('cat-file', '-p', 'HEAD'))![1]!
+  interface Compare {
+    commits: { sha: string }[]
+    files?: { filename: string }[]
+  }
   const url = await relayFor(worker, deployed, {
-    // The checkout is the PR's merge commit, one deep: its first parent is the base.
     async changed() {
-      // One deep, the parent is not here; the commit still names it.
-      const base = /^parent ([0-9a-f]+)$/m.exec(await git('cat-file', '-p', 'HEAD'))![1]!
       await git('fetch', '-q', '--depth=1', 'origin', base)
       return (await git('diff', '--name-only', base, 'HEAD')).split('\n').filter((f) => f !== '')
     },
-    async checks() {
-      const res = await fetch(
-        `https://api.github.com/repos/${repo}/commits/${head}/check-runs?per_page=100`,
-        { headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json' } },
-      )
-      if (!res.ok) throw new Error(`check runs: HTTP ${res.status}`)
-      return ((await res.json()) as { check_runs: CheckRun[] }).check_runs
+    async commits() {
+      const { commits } = await api<Compare>(`compare/${base}...${head}`)
+      return commits.map((c) => c.sha).toReversed()
+    },
+    async checks(sha) {
+      return (await api<{ check_runs: CheckRun[] }>(`commits/${sha}/check-runs?per_page=100`))
+        .check_runs
+    },
+    async since(sha) {
+      return ((await api<Compare>(`compare/${sha}...${head}`)).files ?? []).map((f) => f.filename)
     },
     sleep: (ms) => Bun.sleep(ms),
     now: () => Date.now(),

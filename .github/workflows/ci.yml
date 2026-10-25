@@ -94,7 +94,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun packages/vx/src/bin.ts lock --check
       # A PR that changes the relay runs on its own code: Workers Builds'
-      # Preview of the head commit (private/vx-dte-relay-worker/preview.ts).
+      # Preview of the head's relay (private/vx-dte-relay-worker/preview.ts).
       - if: github.event_name == 'pull_request'
         id: relay
         run: bun private/vx-dte-relay-worker/preview.ts
