@@ -51,6 +51,13 @@ const WORKER_PROBE_BEATS = 1.6
  * (4 s on the default).
  */
 const LOST_BEATS = 1.9
+/**
+ * A relay that forgot this participant (a restart: it stores nothing) is
+ * joined again for this many heartbeats; the orchestrator joins as the
+ * run's host again, a worker as itself (owner, 2026-10-25: "If they can't
+ * rejoin for 2 heartbeats, it's over").
+ */
+const REJOIN_BEATS = 2
 /** What a probe delivers: nothing. */
 const PROBED = Symbol('probe')
 /** A frame of several sends stays under this, half the relay's 1 MiB body limit. */
@@ -187,8 +194,39 @@ export async function join(
   }
   let id = ''
   let heartbeatMs = 0
-  const dial = async () =>
-    connect(base, `id=${id}`, await headers('GET', `${base}socket?id=${id}`, ''), heartbeatMs)
+  /** The relay's id for this participant now: a rejoin gets a new one, `id` stays the first. */
+  let current = ''
+  /** Joining again until then: the relay forgot this participant. */
+  let rejoinBy: number | undefined
+  const dial = async () => {
+    if (rejoinBy === undefined)
+      return connect(
+        base,
+        `id=${current}`,
+        await headers('GET', `${base}socket?id=${current}`, ''),
+        heartbeatMs,
+      )
+    // A worker names the id it first had: the orchestrator still holds it
+    // by that one, and nobody else knows it (PROTOCOL.md: a secret).
+    const again = role === 'orchestrator' ? asked : { ...asked, info: { rejoin: id } }
+    const q = `join=${encodeURIComponent(JSON.stringify(again))}`
+    const s = await connect(base, q, await headers('GET', `${base}socket?${q}`, ''))
+    if (s?.joined !== undefined) {
+      current = s.joined.id
+      joins.add(s)
+    }
+    return s
+  }
+  /**
+   * Sockets that joined: one the relay closes 4404 let this participant go
+   * (removed, refused), where one dialed by its id was forgotten, by a
+   * restart, and joins again.
+   */
+  const joins = new WeakSet<Socket>()
+  /** The orchestrator's workers that joined again: their relay id now, by the id it holds them by. */
+  const relayIds = new Map<string, string>()
+  /** And back: the id it holds a worker by, by its relay id now. */
+  const heldIds = new Map<string, string>()
   /** What the sockets brought and nobody took yet, kept across redials. */
   const inbox: RelayMessage[] = []
   /**
@@ -243,7 +281,7 @@ export async function join(
   const heard = new Map<string, number>()
   /** `quiet`: an ack, a probe or a resend, which waits on no answer: the relay says only a failure. */
   const put = (to: string, frame: object, quiet = true): Promise<void> =>
-    over((s) => s.send(to, frame, quiet))
+    over((s) => s.send(relayIds.get(to) ?? to, frame, quiet))
   const settle = (from: string, acked: number): void => {
     const o = outbox.get(from)
     if (o !== undefined) for (const seq of o.unacked.keys()) if (seq <= acked) o.unacked.delete(seq)
@@ -254,45 +292,78 @@ export async function join(
     for (const m of messages) {
       const body = m.body
       if (m.from === 'relay') {
-        const notice = body as { type?: unknown; id?: unknown }
-        if (notice?.type === 'lost' && typeof notice.id === 'string') forget(notice.id)
-        if (notice?.type === 'joined' && typeof notice.id === 'string')
+        const notice = body as { type?: unknown; id?: unknown; info?: unknown }
+        if (notice?.type === 'joined' && typeof notice.id === 'string') {
+          const was = (notice.info as { rejoin?: unknown } | null | undefined)?.rejoin
+          if (typeof was === 'string') {
+            rejoined(notice.id, was)
+            continue
+          }
           heard.set(notice.id, performance.now())
+        }
+        if (notice?.type === 'lost' && typeof notice.id === 'string') {
+          const held = heldIds.get(notice.id) ?? notice.id
+          forget(held)
+          out.push({ from: m.from, body: { ...notice, id: held } })
+          continue
+        }
         out.push(m)
         continue
       }
-      if (heard.has(m.from)) heard.set(m.from, performance.now())
-      if (isAcked(body)) settle(m.from, body.acked)
+      const from = heldIds.get(m.from) ?? m.from
+      if (heard.has(from)) heard.set(from, performance.now())
+      if (isAcked(body)) settle(from, body.acked)
       else if (isProbe(body)) {
-        if (body.acked !== undefined) settle(m.from, body.acked)
-        const t = taken.get(m.from) ?? { upTo: 0, ahead: new Map() }
-        taken.set(m.from, t)
+        if (body.acked !== undefined) settle(from, body.acked)
+        const t = taken.get(from) ?? { upTo: 0, ahead: new Map() }
+        taken.set(from, t)
         if (body.seq > t.upTo) t.ahead.set(body.seq, PROBED)
         while (t.ahead.has(t.upTo + 1)) {
           const next = t.ahead.get(++t.upTo)
           t.ahead.delete(t.upTo)
-          if (next !== PROBED) out.push({ from: m.from, body: next })
+          if (next !== PROBED) out.push({ from, body: next })
         }
-        ack(m.from, true)
+        ack(from, true)
       } else if (isNumbered(body)) {
-        if (body.acked !== undefined) settle(m.from, body.acked)
-        let t = taken.get(m.from)
-        if (t === undefined) taken.set(m.from, (t = { upTo: 0, ahead: new Map() }))
+        if (body.acked !== undefined) settle(from, body.acked)
+        let t = taken.get(from)
+        if (t === undefined) taken.set(from, (t = { upTo: 0, ahead: new Map() }))
         if (body.seq > t.upTo) t.ahead.set(body.seq, body.body)
         while (t.ahead.has(t.upTo + 1)) {
           const next = t.ahead.get(++t.upTo)
           t.ahead.delete(t.upTo)
-          if (next !== PROBED) out.push({ from: m.from, body: next })
+          if (next !== PROBED) out.push({ from, body: next })
         }
-        ack(m.from)
-      } else out.push(m)
+        ack(from)
+      } else out.push({ from, body })
     }
     return out
+  }
+  /**
+   * A worker joined again, as `relayId`, naming `was`, the id this side
+   * holds it by: the run goes on with it, and what it missed goes again.
+   * One this side does not hold is let go.
+   */
+  const rejoined = (relayId: string, was: string): void => {
+    if (role !== 'orchestrator' || !heard.has(was)) {
+      // quiet: let go, its socket's 4404 ends it
+      over((s) => s.request({ remove: relayId })).catch(() => undefined)
+      return
+    }
+    const old = relayIds.get(was)
+    if (old !== undefined) heldIds.delete(old)
+    relayIds.set(was, relayId)
+    heldIds.set(relayId, was)
+    heard.set(was, performance.now())
+    resend(0, was)
   }
   const forget = (peer: string): void => {
     heard.delete(peer)
     outbox.delete(peer)
     taken.delete(peer)
+    const now = relayIds.get(peer)
+    relayIds.delete(peer)
+    if (now !== undefined) heldIds.delete(now)
   }
   /**
    * Only a quiet peer is probed: the orchestrator a worker quiet
@@ -301,6 +372,8 @@ export async function join(
    * one probe and its ack. Either loses a peer quiet `LOST_BEATS`.
    */
   const listen = (): void => {
+    // With no socket nobody is heard: the redial or rejoin decides.
+    if (socket?.open !== true) return
     resend(heartbeatMs)
     const now = performance.now()
     // With no peer, the relay is asked instead: a frame it answers.
@@ -330,10 +403,11 @@ export async function join(
       }
     }
   }
-  /** Sends again what waited `ms` unacknowledged; all of it, at 0. */
-  const resend = (ms: number): void => {
+  /** Sends again what waited `ms` unacknowledged, to `only` or to all; all of it, at 0. */
+  const resend = (ms: number, only?: string): void => {
     const now = performance.now()
     for (const [to, o] of outbox) {
+      if (only !== undefined && to !== only) continue
       for (const [seq, u] of o.unacked) {
         if (now - u.at < ms) continue
         u.at = now
@@ -362,6 +436,8 @@ export async function join(
     )
   }
   ;({ id, heartbeatMs } = socket.joined!)
+  current = id
+  joins.add(socket)
   let failures = 0
   /** When the socket was last open: dials past `REPLY_MS` from it give up. */
   let lostAt: number | undefined
@@ -369,6 +445,8 @@ export async function join(
   /** A redial in flight, which `leave` waits out: its socket closes before the process exits. */
   let dialing: Promise<void> | undefined
   let left = false
+  /** Its `leave` said: the relay's 4404 is that answer, not a restart. */
+  let leaving = false
   /** Why no socket is dialed again: the relay closed the run or forgot this participant. */
   let ended: RelayError | undefined
   /** Woken when a socket opens, brings messages or ends. */
@@ -401,7 +479,8 @@ export async function join(
     s.onClose = (code, why) => {
       // The relay closes the socket of a participant it lost or let go, or
       // refused (4000 plus the status).
-      if (code === GONE) end(new RelayError(404, 'relay: unknown id'))
+      if (code === GONE && (joins.has(s) || leaving)) end(new RelayError(404, 'relay: unknown id'))
+      else if (code === GONE) rejoinBy ??= performance.now() + REJOIN_BEATS * heartbeatMs
       else if ((refusal(code) ?? 500) < 500) end(new RelayError(code - 4000, `relay: ${why}`))
       if (code === NOT_PROTOCOL) end(new RelayError(502, `relay: ${why}`))
       if (socket === s) socket = undefined
@@ -410,8 +489,13 @@ export async function join(
       nudge()
     }
     inbox.push(...take(s.inbox.splice(0)))
-    // A new socket: what the old one may have dropped goes again.
-    if (adopted) resend(0)
+    // A new socket: what the old one may have dropped goes again, and
+    // nobody could be heard while there was none.
+    if (adopted) {
+      const now = performance.now()
+      for (const peer of heard.keys()) heard.set(peer, now)
+      resend(0)
+    }
     adopted = true
     nudge()
   }
@@ -422,8 +506,20 @@ export async function join(
     const ms = Math.random() * Math.min(heartbeatMs / 2, FIRST_REDIAL_MS * 2 ** failures)
     redial = setTimeout(() => {
       dialing = dial()
-        // quiet: a failed redial dials again; past REPLY_MS the wait throws
-        .catch(() => undefined)
+        .catch((err: unknown) => {
+          // A join refused for good ends it; one before the orchestrator
+          // is back (410), or a fault, is tried again.
+          if (
+            rejoinBy !== undefined &&
+            err instanceof RelayError &&
+            err.status !== 409 &&
+            err.status !== 410 &&
+            err.status < 500
+          )
+            end(err)
+          // quiet: a failed redial dials again; past REPLY_MS the wait throws
+          return undefined
+        })
         .then(async (s) => {
           redial = undefined
           dialing = undefined
@@ -438,9 +534,20 @@ export async function join(
     if (s?.open === true) {
       failures = 0
       lostAt = undefined
+      rejoinBy = undefined
       adopt(s)
-    } else if (s?.code === GONE) end(new RelayError(404, 'relay: unknown id'))
-    else if (++failures > RETRIES) end(new RelayError(404, `relay: no socket in ${RETRIES} dials`))
+    } else if (rejoinBy !== undefined) {
+      if (performance.now() < rejoinBy) again()
+      else
+        end(
+          new RelayError(404, `relay: unknown id, not joined again in ${REJOIN_BEATS} heartbeats`),
+        )
+    } else if (s?.code === GONE) {
+      // The relay forgot it: a restart, as it stores nothing.
+      rejoinBy = performance.now() + REJOIN_BEATS * heartbeatMs
+      again()
+    } else if (++failures > RETRIES)
+      end(new RelayError(404, `relay: no socket in ${RETRIES} dials`))
     else if (performance.now() - lostAt! >= REPLY_MS)
       end(new RelayError(404, `relay: no socket in ${REPLY_MS / 1000} s`))
     else again()
@@ -500,9 +607,25 @@ export async function join(
       if (o === undefined) outbox.set(to, (o = { next: 0, unacked: new Map() }))
       const seq = ++o.next
       o.unacked.set(seq, { body, at: performance.now() })
+      // With no socket, as while the relay restarts, it waits in the outbox
+      // for the next: the caller goes on (owner, 2026-10-25: "they just
+      // continue uninterrupted").
+      const s = socket
+      if (s?.open !== true && ended === undefined) {
+        again()
+        return
+      }
       try {
-        await put(to, { seq, body, ...owed(to) } satisfies Numbered, false)
+        if (s?.open !== true) throw ended!
+        await s.send(relayIds.get(to) ?? to, { seq, body, ...owed(to) } satisfies Numbered)
       } catch (err) {
+        // Closed under it: it goes again on the next socket.
+        if (!(err instanceof RelayError)) return
+        // To a peer this side holds that the relay does not know now, as
+        // while it joins again: it goes again when that one is back, and
+        // its loss is said apart.
+        if (err instanceof RelayError && err.status === 404 && ended === undefined && heard.has(to))
+          return
         // Refused: the caller hears it; nothing waits on an ack.
         o.unacked.delete(seq)
         throw err
@@ -519,10 +642,12 @@ export async function join(
       return []
     },
     async remove(worker) {
+      const now = relayIds.get(worker) ?? worker
       forget(worker)
-      await over((s) => s.request({ remove: worker }))
+      await over((s) => s.request({ remove: now }))
     },
     async leave() {
+      leaving = true
       clearInterval(listening)
       clearTimeout(acking)
       // The final call (owner, 2026-10-25): the relay keeps one whose socket

@@ -348,6 +348,99 @@ it('keeps the run through its orchestrator’s dropped socket: both carry on', a
   await expect(polls()).rejects.toThrow('relay: the run is closed')
 })
 
+// A relay stores nothing (owner, 2026-10-25: "no storage on relay"): a
+// restart forgets every run. The orchestrator joins again as its host, each
+// worker joins again naming the id it had, and the run goes on: "offline
+// orchestrator or relay does not matter to the system".
+it('carries a run across a relay restart: both join again, and what was sent meanwhile arrives', async () => {
+  const served = servedRelay({ heartbeatMs: 500 })
+  try {
+    const o = await join(served.url, R2, 'orchestrator', null, undefined)
+    const a = await join(served.url, R2, 'worker', { size: 'small' }, undefined)
+    expect(await o.poll()).toEqual([
+      { from: 'relay', body: { type: 'joined', id: a.id, info: { size: 'small' } } },
+    ])
+    served.restart()
+    await a.send('orchestrator', 'ran while it was down')
+    await o.send(a.id, 'next')
+    expect(await heard(o)).toEqual([{ from: a.id, body: 'ran while it was down' }])
+    expect(await heard(a)).toEqual([{ from: 'orchestrator', body: 'next' }])
+    // Again, past a second restart, by the same id.
+    served.restart()
+    await o.send(a.id, 'still yours')
+    expect(await heard(a)).toEqual([{ from: 'orchestrator', body: 'still yours' }])
+    await a.leave()
+    expect(await heard(o)).toEqual([{ from: 'relay', body: { type: 'lost', id: a.id } }])
+    await o.leave()
+  } finally {
+    await served.stop()
+  }
+})
+
+// The worker comes back first: the relay has no run until its orchestrator
+// opens it again (410), and the worker keeps asking.
+it('a worker that joins again before its orchestrator waits for it, within two heartbeats', async () => {
+  const served = servedRelay({ heartbeatMs: 500 })
+  try {
+    const o = await join(served.url, R2, 'orchestrator', null, undefined)
+    const a = await join(served.url, R2, 'worker', null, undefined)
+    await o.poll()
+    const host = (r: Request): boolean => decodeURIComponent(r.url).includes('"role":"host"')
+    served.refuse = host
+    served.restart()
+    await a.send('orchestrator', 'done')
+    await Bun.sleep(400)
+    served.refuse = undefined
+    expect(await heard(o)).toEqual([{ from: a.id, body: 'done' }])
+    await a.leave()
+    await o.leave()
+  } finally {
+    await served.stop()
+  }
+})
+
+// "If they can't rejoin for 2 heartbeats, it's over" (owner, 2026-10-25).
+it('a worker whose orchestrator does not come back ends two heartbeats after the restart', async () => {
+  const served = servedRelay({ heartbeatMs: 500 })
+  try {
+    const o = await join(served.url, R2, 'orchestrator', null, undefined)
+    const a = await join(served.url, R2, 'worker', null, undefined)
+    await o.poll()
+    served.refuse = (r) => decodeURIComponent(r.url).includes('"role":"host"')
+    const t0 = performance.now()
+    served.restart()
+    const polls = async (): Promise<never> => {
+      for (;;) await a.poll()
+    }
+    await expect(polls()).rejects.toThrow('relay: unknown id, not joined again in 2 heartbeats')
+    expect(performance.now() - t0).toBeLessThan(2_500)
+    await expect(o.poll()).rejects.toThrow()
+  } finally {
+    await served.stop()
+  }
+})
+
+// A worker the run no longer holds (lost, removed) that joins again is let go.
+it('lets go of a worker that joins again naming an id it does not hold', async () => {
+  const served = servedRelay({ heartbeatMs: 500 })
+  try {
+    const o = await join(served.url, R2, 'orchestrator', null, undefined)
+    const a = await join(served.url, R2, 'worker', null, undefined)
+    await o.poll()
+    served.restart()
+    // As if lost while it was down: the orchestrator holds it no more.
+    await o.remove(a.id).catch(() => undefined)
+    const polls = async (): Promise<never> => {
+      for (;;) await a.poll()
+    }
+    await expect(polls()).rejects.toThrow('relay: unknown id')
+    expect(await o.poll()).toEqual([])
+    await o.leave()
+  } finally {
+    await served.stop()
+  }
+})
+
 it('dials its socket again after one the relay never heard close, and gets what was sent meanwhile, sent again', async () => {
   const { url, open, host } = sockets(500)
   const o = await join(url, R2, 'orchestrator', null, undefined)
@@ -675,9 +768,10 @@ it('dials again through a relay fault shorter than three heartbeats', async () =
   await o.poll()
   fail = true
   held.get(a.id)!.close()
+  // Sent with no socket, it waits for the next: the worker goes on.
   await a.send('orchestrator', 'once')
+  expect(await heard(o)).toEqual([{ from: a.id, body: 'once' }])
   expect(faults).toBe(4)
-  expect(await o.poll()).toEqual([{ from: a.id, body: 'once' }])
   await a.leave()
   await o.leave()
 })

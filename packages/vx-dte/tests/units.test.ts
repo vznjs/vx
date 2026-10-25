@@ -204,11 +204,11 @@ it('a worker late for a run that ended exits 0', async () => {
   }
 })
 
-// A relay restart, or silence past three heartbeats, loses the worker: its
-// next poll answers 404. The run gave its tasks to others; the worker's CI
-// job is no failure (mac#1 on #3895).
+// A relay restart its orchestrator does not join again within two
+// heartbeats loses the worker. The run gave its tasks to others; the
+// worker's CI job is no failure (mac#1 on #3895).
 it('a worker the relay lost exits 0', async () => {
-  const served = servedRelay()
+  const served = servedRelay({ heartbeatMs: 500 })
   const url = served.url
   try {
     const o = await join(url, R, 'orchestrator', null, undefined)
@@ -221,7 +221,69 @@ it('a worker the relay lost exits 0', async () => {
       artifacts: () => fakeArtifacts().artifacts,
     })
     for (let i = 0; i < 50 && (await o.poll()).length === 0; i++);
+    served.refuse = (r) => decodeURIComponent(r.url).includes('"role":"host"')
     served.restart()
+    expect(await code).toBe(0)
+  } finally {
+    await served.stop()
+  }
+})
+
+// The relay restarts, storing nothing, while a worker runs a task, and the
+// orchestrator is back only a heartbeat later: the task's end still
+// arrives, and the run never noticed (owner, 2026-10-25: "offline
+// orchestrator or relay does not matter to the system").
+it('a task a worker runs across a relay restart and its orchestrator’s absence ends as if neither happened', async () => {
+  const root = await tmp()
+  const served = servedRelay({ heartbeatMs: 500 })
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => fakeArtifacts().artifacts,
+    })
+    const order: RunOrder = {
+      task: 't',
+      key: 'k-t',
+      runKey: runKey(R, 't'),
+      deps: [],
+      nested: [],
+      command: 'sleep 1.5',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    }
+    const seen: string[] = []
+    for (let i = 0; i < 100 && !seen.includes('end'); i++)
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string }
+        if (from === 'relay') {
+          seen.push(m.type)
+          if (m.type !== 'joined') continue
+          await o.send(m.id!, { type: 'welcome', name: 'a', cache: { refs: [], lent: {} } })
+          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+          continue
+        }
+        seen.push(m.type)
+        if (m.type === 'start') {
+          served.refuse = (r) => decodeURIComponent(r.url).includes('"role":"host"')
+          served.restart()
+          setTimeout(() => (served.refuse = undefined), 500)
+        }
+        if (m.type === 'end') await o.send(from, { type: 'exit' })
+      }
+    expect(seen.filter((t) => t !== 'held')).toEqual(['joined', 'start', 'ran', 'end'])
     expect(await code).toBe(0)
   } finally {
     await served.stop()
