@@ -3443,6 +3443,80 @@ it('sends a result too long for one relay frame in parts, all of it arriving', a
   }
 }, 60_000)
 
+// Parts were cut by UTF-16 length, not bytes: a part of CJK output
+// sealed past the relay's 1 MiB and its result never arrived (2026-10-25).
+it('sends a long non-ASCII output in parts the relay takes', async () => {
+  const root = await tmp()
+  await writeFile(path.join(root, 'log.txt'), '漢字の出力です。'.repeat(80_000))
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: root })
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  const served = servedRelay()
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      // Shared with no remote: its output goes with its `end`.
+      artifacts: () => ({ ...fakeArtifacts().artifacts, uploaded: async () => false }),
+    })
+    const order: RunOrder = {
+      task: 'log',
+      runKey: runKey(R, 'log'),
+      deps: [],
+      nested: [],
+      command: 'cat log.txt',
+      cwd: '',
+      project: '',
+      env: { PATH: process.env['PATH'] ?? '' },
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    }
+    let text = ''
+    let ended = false
+    for (let i = 0; i < 400 && !ended; i++)
+      for (const { from, body } of await o.poll()) {
+        const m = body as {
+          type: string
+          id?: string
+          output?: { text: string }[]
+          result?: { output?: { text: string }[] }
+        }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 2,
+            memory: 1e9,
+          })
+          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+        } else if (m.type === 'part') {
+          text += (m.output ?? []).map((c) => c.text).join('')
+        } else if (m.type === 'end') {
+          text += (m.result?.output ?? []).map((c) => c.text).join('')
+          ended = true
+          await o.send(from, { type: 'exit' })
+        }
+      }
+    expect(ended).toBe(true)
+    expect(text).toHaveLength(640_000)
+    expect(await code).toBe(0)
+  } finally {
+    await served.stop()
+  }
+}, 60_000)
+
 it('takes a result’s parts ahead of its end as one result', async () => {
   const h = await harness(new Map([node('t')]))
   try {

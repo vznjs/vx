@@ -165,6 +165,13 @@ export type ToOrchestrator =
    */
   | ({ type: 'part'; task: string } & Partial<Pick<WiredResult, PartList>>)
 
+/**
+ * A message's JSON in UTF-8 bytes, what a relay frame holds: counted in
+ * UTF-16 units, a part of CJK output sealed past the relay's 1 MiB and its
+ * result never arrived (2026-10-25).
+ */
+export const bytesOf = (body: unknown): number => Buffer.byteLength(JSON.stringify(body))
+
 /** The lists a long result sends ahead of its `end`, in parts. */
 export const PART_LISTS = ['violations', 'changed', 'removed', 'output'] as const
 export type PartList = (typeof PART_LISTS)[number]
