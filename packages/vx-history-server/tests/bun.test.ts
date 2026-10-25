@@ -41,7 +41,9 @@ it('folds a thousand tasks in one statement, and sweeps what was not reported', 
   const reports = Array.from({ length: 1000 }, (_, i) => ({ hash: `t${i}`, durationMs: i }))
   const repo = { issuer: 'i', id: '42' }
   await store.fold(repo, MAIN, 1, reports)
+  // The same numbers a day later: written again only for the sweep's sake.
   await store.fold(repo, MAIN, 5, reports.slice(0, 10))
+  await store.fold(repo, MAIN, 86_400_001, reports.slice(0, 10))
   const other = { issuer: 'j', id: '42' }
   expect((await store.read(other, [MAIN], ['t999'])).size).toBe(0)
   expect((await store.read(repo, [MAIN], ['t999'])).get('t999')).toEqual({
@@ -50,7 +52,7 @@ it('folds a thousand tasks in one statement, and sweeps what was not reported', 
     rssBytes: null,
     runs: 1,
   })
-  expect(await store.sweep(2)).toBe(990)
+  expect(await store.sweep(5)).toBe(990)
 })
 
 it('stores the issuer, repository id and scope hashed, never plain', async () => {
