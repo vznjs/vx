@@ -26,8 +26,9 @@ decides where the job writes: its own branch's scope, never another's.
 
 - A ref a rule names (`refs/heads/main`) is protected: only a job
   matching the rule writes it. Any other job on it only reads.
-- Any other job of the same repository writes its branch's own scope:
-  a pull request's runs reuse each other's work, never main's runs.
+- Any other job of the same repository writes its branch's own scope,
+  which only runs of that branch read: a pull request's work never
+  reaches main's runs.
 - A job of another repository is refused.
 
 `TRUST` is a JSON list of rules. Each names the issuer (`iss`), the
@@ -56,8 +57,9 @@ list of them. With `TRUST` empty, every request is refused. For example:
 ```
 
 Name `event_name`: `pull_request_target` and `issue_comment` runs carry
-main's `ref` while running a pull request's code. A merge queue's runs
-write their queue ref before their code lands; queued code is approved code.
+main's `ref` while running a pull request's code. A merge queue's run
+(`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`) writes its base
+branch's scope before its code lands: queued code is trusted code.
 `AUDIENCE` is the `aud` a token must name, by default the origin the
 server is reached at, which is what `vxCache()` asks GitHub for.
 `READ_ACCESS=public` lets a request with no token read a repository
@@ -123,12 +125,12 @@ answers it without R2 (free on every plan).
 
 The bucket's own lifecycle rule expires artifacts, by age since they
 were written; the server runs no sweep. An artifact's object name is
-`<issuer>/<id>/<scope>/<hash>`, the first three each hashed (a client
-sends a scope as its ref's hash, never the ref), so one rule
-for the whole bucket is the one there is, for example 7 days:
+`<issuer>/<repository>/<scope>/<hash>`, the first three each hashed (a
+client sends a scope as its ref's hash, never the ref), so one rule
+for the whole bucket is the one there is, for example 1 day:
 
 ```sh
-bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 7
+bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 1
 ```
 
 On S3 the same rule goes in the bucket's lifecycle configuration. A
@@ -149,8 +151,8 @@ over a bucket of your own (`src/index.ts`):
   repository name, which it reads, and the scope it may write) or throws, and `limits` any of `Limits`
   (`{ maxCheckHashes, maxUploadBytes }`) over
   `DEFAULT_LIMITS`.
-- `blobName(issuer, id, scope, hash)` is an artifact's object name,
-  `<issuer>/<id>/<scope>/<hash>`, issuer and id each the first 128 bits
+- `blobName(issuer, repository, scope, hash)` is an artifact's object name,
+  `<issuer>/<repository>/<scope>/<hash>`, issuer and repository each the first 128 bits
   of their SHA-256 in hex and `scope` the ref's hash as a client sends
   it (PROTOCOL.md § Keys), so no segment is a plain value.
 - `TRUST` and the CI token check are [`@vzn/vx-devtools`](https://github.com/vznjs/vx/tree/main/packages/vx-devtools)'s,

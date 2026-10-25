@@ -96,10 +96,12 @@ No run's log, list of runs or raw sample is kept. A row not reported for
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
+import { github } from '/path/to/vx/packages/vx-ci/src/index.ts'
 import { vxHistory } from '/path/to/vx/packages/vx-history/src/index.ts'
 
 export default defineWorkspace({
   plugins: [
+    github(), // on CI, names the refs a run reads; gitlab() on GitLab
     vxHistory({
       server: 'https://history.example.com', // or VX_HISTORY_URL
       issuer: 'https://token.actions.githubusercontent.com',
@@ -118,8 +120,10 @@ export default defineWorkspace({
 (`org/name` there) are required with a server: every request names both
 by their hashes, and the server refuses a token of another repository.
 
-Each run asks the server for its tasks' rows, its branch's first, then
-the default branch's. It starts on its local history and re-ranks the
+Each run asks the server for its tasks' rows in the refs it reads, as
+`vxCache()` does: its branch, then the branch it merges into, then the
+default branch. `defaultBranch` instead reads its branch, then that
+branch. It starts on its local history and re-ranks the
 tasks not yet started when the rows land; it never waits for them. At its
 end it uploads the timings of the tasks it ran, once. In a
 [distributed run](../../distributed-runs/), the orchestrator uploads them,

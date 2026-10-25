@@ -14,7 +14,9 @@ cannot. You host each one, on Cloudflare Workers, Bun or Docker:
 
 No server stores a secret. Every request carries the CI job's own OIDC
 token (GitHub Actions or GitLab CI), and the token decides what the
-request may do. Off CI there is no token, so the plugins run locally.
+request may do. Off CI there is no token: a run reads from a server
+with `READ_ACCESS=public` and writes nothing; any other server refuses
+it, said once, and the run stays local.
 
 ## All three with Docker Compose
 
