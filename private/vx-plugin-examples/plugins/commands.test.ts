@@ -22,12 +22,14 @@ const ctx = {
     restore: async () => null,
     output: async () => null,
     share: async () => false,
+    resend: async () => false,
   },
   artifactsFor: () => ({
     save: async () => {},
     restore: async () => null,
     output: async () => null,
     share: async () => false,
+    resend: async () => false,
   }),
 }
 
