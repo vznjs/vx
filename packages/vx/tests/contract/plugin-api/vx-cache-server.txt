@@ -2,10 +2,19 @@
 export const DURATION_HEADER = 'vx-duration'
 == const READ_SCOPES_HEADER (src/protocol.ts)
 export const READ_SCOPES_HEADER = 'vx-read-scopes'
+== function anyAuth (src/oidc.ts)
+export function anyAuth(
+  tokens: Authorize,
+  oidc: ((token: string, req: Request) => Promise<Access>) | undefined,
+): Authorize
 == function createCacheServer (src/server.ts)
 export function createCacheServer(opts: ServerOptions): (req: Request) => Promise<Response>
+== function oidcAuth (src/oidc.ts)
+export function oidcAuth(opts: OidcOptions): (token: string, req: Request) => Promise<Access>
 == function parseTokens (src/auth.ts)
 export function parseTokens(list: string): Map<string, Access>
+== function parseTrust (src/oidc.ts)
+export function parseTrust(json: string): TrustRule[]
 == function tokenAuth (src/auth.ts)
 export function tokenAuth(tokens: ReadonlyMap<string, Access>): Authorize
 == type Access (src/auth.ts)
@@ -27,6 +36,13 @@ export interface Db {
   run(sql: string, params: readonly unknown[]): Promise<number>
   batch(statements: readonly string[]): Promise<void>
 }
+== type OidcOptions (src/oidc.ts)
+export interface OidcOptions {
+  readonly trust: readonly TrustRule[]
+  readonly audience?: string
+  readonly fetchJson?: (url: string) => Promise<unknown>
+  readonly now?: () => number
+}
 == type ServerOptions (src/server.ts)
 export interface ServerOptions {
   blobs: Blobs
@@ -34,4 +50,10 @@ export interface ServerOptions {
   authorize: Authorize
   maxArtifactBytes?: number
   now?: () => number
+}
+== type TrustRule (src/oidc.ts)
+export interface TrustRule {
+  readonly iss: string
+  readonly ns?: string
+  readonly [claim: string]: string | readonly string[] | undefined
 }

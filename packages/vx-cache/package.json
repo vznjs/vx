@@ -28,12 +28,14 @@
   },
   "//": [
     "@vzn/vx-cache-server: the tests run the plugin against the real server, in process.",
-    "@vzn/vx-schedule-history: one critical-path score for the order, whoever learned the timings."
+    "@vzn/vx-schedule-history: one critical-path score for the order, whoever learned the timings.",
+    "jose: the tests sign the CI tokens the server checks."
   ],
   "devDependencies": {
     "@types/bun": "^1.4.0",
     "@vzn/vx": "workspace:*",
-    "@vzn/vx-cache-server": "workspace:*"
+    "@vzn/vx-cache-server": "workspace:*",
+    "jose": "6.2.13"
   },
   "peerDependencies": {
     "@vzn/vx": "*"

@@ -6,7 +6,13 @@ export class VxCacheLayer implements RemoteCacheLayer {
   constructor(
     private readonly config: Required<VxCacheOptions>,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly env: Record<string, string | undefined> = Bun.env,
   )
+  /**
+   * The bearer: the job's OIDC token with `oidc` on GitHub Actions, asked
+   * again a minute before it ends, else `token`. A token GitHub would not
+   * give throws once, and the layer turns off.
+   */
   /** Whether the run history is kept: `history` in the options. */
   get history(): boolean
   async has(hash: string): Promise<ArtifactInfo | null>
@@ -50,4 +56,5 @@ export interface VxCacheOptions {
   timeoutMs?: number
   uploadTimeoutMs?: number
   history?: boolean
+  oidc?: boolean
 }

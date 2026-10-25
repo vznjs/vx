@@ -42,6 +42,7 @@
         "@types/bun": "^1.4.0",
         "@vzn/vx": "workspace:*",
         "@vzn/vx-cache-server": "workspace:*",
+        "jose": "6.2.13",
       },
       "peerDependencies": {
         "@vzn/vx": "*",
@@ -52,6 +53,9 @@
       "version": "0.0.0",
       "bin": {
         "vx-cache-server": "./src/bun.ts",
+      },
+      "dependencies": {
+        "jose": "6.2.13",
       },
       "devDependencies": {
         "@types/bun": "^1.4.0",

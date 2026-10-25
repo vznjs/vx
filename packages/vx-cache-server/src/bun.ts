@@ -5,12 +5,15 @@
 import { Database } from 'bun:sqlite'
 import { parseArgs } from 'node:util'
 import { parseTokens, tokenAuth } from './auth.js'
+import { anyAuth, oidcAuth, parseTrust } from './oidc.js'
 import { Refusal } from './protocol.js'
 import { createCacheServer, DEFAULT_MAX_ARTIFACT_BYTES } from './server.js'
 import type { Blobs, Db } from './store.js'
 
 const USAGE = `usage: vx-cache-server [--db vx-cache.sqlite] [--port 8080] [--host 0.0.0.0]
   TOKENS          who may read and write: read:<sha256> write:<sha256>, space separated
+  TRUST           CI OIDC trust rules, a JSON list (README.md § CI tokens)
+  AUDIENCE        the aud a CI token names (default: the origin it was sent to)
   S3_BUCKET       the bucket; S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID and
                   S3_SECRET_ACCESS_KEY as Bun's S3 client reads them
   MAX_ARTIFACT_BYTES  the largest artifact stored (default ${DEFAULT_MAX_ARTIFACT_BYTES})`
@@ -106,10 +109,21 @@ function main(argv: string[]): void {
   if (max !== undefined && !(Number.isSafeInteger(max) && max > 0)) {
     fail(`MAX_ARTIFACT_BYTES: not a byte count: ${env.MAX_ARTIFACT_BYTES}`)
   }
+  let trust
+  try {
+    trust = parseTrust(env.TRUST ?? '')
+  } catch (err) {
+    fail(`TRUST: ${(err as Error).message}`)
+  }
   const handle = createCacheServer({
     blobs: s3Blobs(new Bun.S3Client({ bucket: env.S3_BUCKET })),
     db: sqliteDb(values.db),
-    authorize: tokenAuth(parseTokens(env.TOKENS ?? '')),
+    authorize: anyAuth(
+      tokenAuth(parseTokens(env.TOKENS ?? '')),
+      trust.length === 0
+        ? undefined
+        : oidcAuth({ trust, ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}) }),
+    ),
     ...(max === undefined ? {} : { maxArtifactBytes: max }),
   })
   const server = Bun.serve({

@@ -49,11 +49,13 @@ as the item it describes.
 
 - Shipped: static bearer tokens, listed by SHA-256 in `TOKENS` (no
   secret in the config). A write token writes the trusted scope.
-- Planned: CI OIDC tokens, as the relay checks them (`jose`): a token
-  matching the server's trust rules writes trusted, any other of the same
-  repository writes its own branch's scope, and reads walk
-  `Vx-Read-Scopes` (the ref-scope design, `cache-scope-by-ref`). Each
-  repository is its own namespace (the `ns` column exists already).
+- Shipped: CI OIDC tokens, checked with `jose` as the relay does: a token
+  matching a `TRUST` rule writes trusted, any other of the same repository
+  its own branch's scope, another repository nothing. A branch a rule
+  trusts is never an untrusted write's scope, since a read naming it
+  walks it before trusted. A rule's `ns` keeps repositories apart.
+  `vxCache({ oidc: true })` sends GitHub's token; GitLab's `id_tokens`
+  is `VX_CACHE_TOKEN`.
 
 ## Next
 

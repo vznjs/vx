@@ -29,6 +29,12 @@ export interface VxCacheOptions {
   uploadTimeoutMs?: number
   /** Write CI runs' task timings and order tasks by them (default true). */
   history?: boolean
+  /**
+   * On GitHub Actions, send the job's OIDC token (for the server's origin
+   * as audience) in place of `token`, so the server decides where it
+   * writes: trusted, or the job's branch (default false).
+   */
+  oidc?: boolean
 }
 
 const KEYS: PluginOptionKinds<VxCacheOptions> = {
@@ -37,6 +43,21 @@ const KEYS: PluginOptionKinds<VxCacheOptions> = {
   timeoutMs: 'number',
   uploadTimeoutMs: 'number',
   history: 'boolean',
+  oidc: 'boolean',
+}
+
+/** A JWT's `exp`, in ms, or 0 when it has none. */
+function expiryOf(jwt: string): number {
+  try {
+    const exp = (
+      JSON.parse(atob(jwt.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/'))) as {
+        exp?: unknown
+      }
+    ).exp
+    return typeof exp === 'number' ? exp * 1000 : 0
+  } catch {
+    return 0
+  }
 }
 
 /** One task of a run, as `POST /v1/runs` takes it. */
@@ -115,8 +136,41 @@ export class VxCacheLayer implements RemoteCacheLayer {
   constructor(
     private readonly config: Required<VxCacheOptions>,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly env: Record<string, string | undefined> = Bun.env,
   ) {
     this.endpoint = config.url
+  }
+
+  private idToken: { jwt: string; until: number } | undefined
+
+  /**
+   * The bearer: the job's OIDC token with `oidc` on GitHub Actions, asked
+   * again a minute before it ends, else `token`. A token GitHub would not
+   * give throws once, and the layer turns off.
+   */
+  private async bearer(): Promise<string> {
+    const { ACTIONS_ID_TOKEN_REQUEST_URL: url, ACTIONS_ID_TOKEN_REQUEST_TOKEN: auth } = this.env
+    if (!this.config.oidc || !url || !auth) return this.config.token
+    if (this.idToken !== undefined && Date.now() < this.idToken.until) return this.idToken.jwt
+    const ask = new URL(url)
+    ask.searchParams.set('audience', new URL(this.config.url).origin)
+    let jwt: unknown
+    try {
+      const res = await this.fetchImpl(ask, {
+        headers: { authorization: `bearer ${auth}` },
+        signal: deadline(this.config.timeoutMs),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      jwt = ((await res.json()) as { value?: unknown }).value
+      if (typeof jwt !== 'string' || jwt === '') throw new Error('no token in its answer')
+    } catch (err) {
+      this.disabled = true
+      throw new Error(
+        `GitHub's OIDC endpoint: ${err instanceof Error ? err.message : String(err)}; remote cache off for this run`,
+      )
+    }
+    this.idToken = { jwt, until: expiryOf(jwt) - 60_000 }
+    return jwt
   }
 
   /** Whether the run history is kept: `history` in the options. */
@@ -136,7 +190,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
   ): Promise<Response | undefined> {
     const res = await this.fetchImpl(`${this.config.url}${path}`, {
       method,
-      headers: { authorization: `Bearer ${this.config.token}`, ...init.headers },
+      headers: { authorization: `Bearer ${await this.bearer()}`, ...init.headers },
       ...(init.body === undefined ? {} : { body: init.body }),
       signal: deadline(init.timeoutMs ?? this.config.timeoutMs),
     })
@@ -309,14 +363,20 @@ function runTask(
   }
 }
 
-/** Options over `VX_CACHE_URL` / `VX_CACHE_TOKEN`; `undefined` = not configured. */
+/**
+ * Options over `VX_CACHE_URL` / `VX_CACHE_TOKEN`; `undefined` = not
+ * configured. With `oidc` on GitHub Actions the job's token stands in for
+ * `token`.
+ */
 export function resolveVxCacheConfig(
   options: VxCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
 ): Required<VxCacheOptions> | undefined {
   const url = (options.url ?? env.VX_CACHE_URL)?.replace(/\/+$/, '')
-  const token = options.token ?? env.VX_CACHE_TOKEN
-  if (url === undefined || url === '' || token === undefined || token === '') return undefined
+  const oidc = options.oidc ?? false
+  const idToken = oidc && !!env.ACTIONS_ID_TOKEN_REQUEST_URL && !!env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
+  const token = options.token ?? env.VX_CACHE_TOKEN ?? ''
+  if (url === undefined || url === '' || (token === '' && !idToken)) return undefined
   if (!/^https?:\/\//.test(url)) throw new Error(`vxCache(): url must be http(s), got ${url}`)
   return {
     url,
@@ -324,6 +384,7 @@ export function resolveVxCacheConfig(
     timeoutMs: options.timeoutMs ?? 30_000,
     uploadTimeoutMs: options.uploadTimeoutMs ?? 60_000,
     history: options.history ?? true,
+    oidc,
   }
 }
 
@@ -355,6 +416,12 @@ export function vxCache(options: VxCacheOptions = {}): VxPlugin {
   return definePlugin(import.meta, {
     cache(ctx): RemoteCacheLayer | undefined {
       layer = undefined
+      const env = Bun.env
+      if (options.oidc && env.GITHUB_ACTIONS === 'true' && !env.ACTIONS_ID_TOKEN_REQUEST_URL) {
+        ctx.warn(
+          '[vx] vx-cache: oidc is on, but this job gets no OIDC token: give it `permissions: id-token: write`',
+        )
+      }
       const l = layerOf()
       if (l !== undefined) l.reads = readScopes(ctx.refs)
       return l

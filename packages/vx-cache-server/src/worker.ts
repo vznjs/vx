@@ -1,8 +1,9 @@
 // `vx-cache-server` on Cloudflare Workers: blobs in R2, the rest in D1.
-// `wrangler.jsonc` deploys it; TOKENS is a var in it. It fits the free
+// `wrangler.jsonc` deploys it; TOKENS, TRUST and AUDIENCE are vars in it. It fits the free
 // plan (README.md § Workers' free plan).
 
 import { parseTokens, tokenAuth } from './auth.js'
+import { anyAuth, oidcAuth, parseTrust } from './oidc.js'
 import { problem, Refusal } from './protocol.js'
 import { createCacheServer } from './server.js'
 import type { Blobs, Db } from './store.js'
@@ -32,6 +33,10 @@ export interface Env {
   readonly BLOBS: R2Bucket
   /** Who may read and write (`parseTokens`): `read:<sha256>` / `write:<sha256>`, space separated. */
   readonly TOKENS?: string
+  /** CI OIDC trust rules (`parseTrust`), a JSON list. */
+  readonly TRUST?: string
+  /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
+  readonly AUDIENCE?: string
   /** The largest artifact stored, in bytes. */
   readonly MAX_ARTIFACT_BYTES?: string
 }
@@ -80,13 +85,19 @@ let made: { key: string; handle: (req: Request) => Promise<Response> } | undefin
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
-    const key = `${env.TOKENS ?? ''}\0${env.MAX_ARTIFACT_BYTES ?? ''}`
+    const key = [env.TOKENS, env.TRUST, env.AUDIENCE, env.MAX_ARTIFACT_BYTES].join('\0')
     if (made?.key !== key) {
       let tokens
       try {
         tokens = parseTokens(env.TOKENS ?? '')
       } catch (err) {
         return problem(500, `TOKENS: ${(err as Error).message}`)
+      }
+      let trust
+      try {
+        trust = parseTrust(env.TRUST ?? '')
+      } catch (err) {
+        return problem(500, `TRUST: ${(err as Error).message}`)
       }
       const max = env.MAX_ARTIFACT_BYTES === undefined ? undefined : Number(env.MAX_ARTIFACT_BYTES)
       if (max !== undefined && !(Number.isSafeInteger(max) && max > 0)) {
@@ -97,7 +108,12 @@ export default {
         handle: createCacheServer({
           blobs: r2Blobs(env.BLOBS),
           db: d1Db(env.DB),
-          authorize: tokenAuth(tokens),
+          authorize: anyAuth(
+            tokenAuth(tokens),
+            trust.length === 0
+              ? undefined
+              : oidcAuth({ trust, ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}) }),
+          ),
           ...(max === undefined ? {} : { maxArtifactBytes: max }),
         }),
       }

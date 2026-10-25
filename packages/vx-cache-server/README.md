@@ -10,8 +10,9 @@ task artifacts and each run's task timings, and speaks the
   for the rest.
 - **Cloudflare Workers**, with R2 for artifacts and D1 for the rest.
 
-It is not on npm yet. The `vxCache()` plugin that points `vx` at it comes
-next; until then it is the server and its protocol.
+It is not on npm yet. `vxCache()`
+([`@vzn/vx-cache`](https://github.com/vznjs/vx/tree/main/packages/vx-cache))
+points `vx` at it.
 
 ## Tokens
 
@@ -24,6 +25,49 @@ token=$(openssl rand -hex 32)
 printf %s "$token" | sha256sum   # → write:<this hash> in TOKENS
 ```
 
+## CI tokens
+
+With `TRUST` set, a CI job sends its own OIDC token instead of a stored
+secret (`vxCache({ oidc: true })` on GitHub; on GitLab an `id_tokens`
+entry named `VX_CACHE_TOKEN`). The token decides where the job writes:
+
+- A job matching a rule writes the trusted scope, which every run reads.
+- Any other job of the same repository writes its branch's own scope:
+  a pull request's runs reuse each other's work, never main's runs.
+- A job of another repository is refused.
+
+`TRUST` is a JSON list of rules. Each names the issuer (`iss`), the
+repository's id (`repository_id` on GitHub, `project_id` on GitLab), the
+refs it trusts (`ref`, `ref_path` on GitLab) and any other claim the
+trusted job's token holds. A value is a string (`*` matches anything) or a
+list of them; `ns` keeps a repository apart (default `default`, the static
+tokens' own):
+
+```json
+[
+  {
+    "iss": "https://token.actions.githubusercontent.com",
+    "repository_id": "123456789",
+    "event_name": ["push", "merge_group"],
+    "ref": ["refs/heads/main", "refs/heads/gh-readonly-queue/main/*"],
+    "ref_protected": "true"
+  },
+  {
+    "iss": "https://gitlab.com",
+    "project_id": "4567",
+    "ref_path": "refs/heads/main",
+    "ref_protected": "true",
+    "pipeline_source": ["push", "schedule"]
+  }
+]
+```
+
+Name `event_name`: `pull_request_target` and `issue_comment` runs carry
+main's `ref` while running a pull request's code. A merge queue's runs
+write trusted before their code lands; queued code is approved code.
+`AUDIENCE` is the `aud` a token must name, by default the origin the
+server is reached at, which is what `vxCache()` asks GitHub for.
+
 ## On Bun
 
 ```sh
@@ -33,12 +77,13 @@ S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… \
 bun packages/vx-cache-server/src/bun.ts --db /var/lib/vx-cache.sqlite --port 8080
 ```
 
-S3 settings are those Bun's S3 client reads (`S3_REGION` too).
+S3 settings are those Bun's S3 client reads (`S3_REGION` too). `TRUST`
+and `AUDIENCE` are read from the environment too.
 `MAX_ARTIFACT_BYTES` caps an artifact (default 100 MB).
 
 ## On Cloudflare Workers
 
-From this directory, with `TOKENS` filled in `wrangler.jsonc`:
+From this directory, with `TOKENS` or `TRUST` filled in `wrangler.jsonc`:
 
 ```sh
 bun install
@@ -75,6 +120,12 @@ over storage of your own (`src/index.ts`):
   to its `Access` (`{ ns, write? }`: the namespace it reads, and the scope
   it may write) or throws; `maxArtifactBytes` caps a PUT (default 100 MB)
   and `now` is the clock, for tests.
+- `parseTrust(json)` reads `TRUST` into `TrustRule`s, and `oidcAuth(options)`
+  checks a CI token against them. Its `OidcOptions` are `trust` (the
+  rules), `audience` (the `aud`; default the origin a request reached),
+  `fetchJson` (reads an issuer's keys) and `now` (the clock, for tests).
+  `anyAuth(tokens, oidc)` sends a JWT bearer to `oidc`, any other to
+  `tokens`.
 - `parseTokens(list)` reads `TOKENS` into a map, and `tokenAuth(tokens)`
   makes the `Authorize` that checks a bearer token against it.
 - `DURATION_HEADER` (`vx-duration`) and `READ_SCOPES_HEADER`
