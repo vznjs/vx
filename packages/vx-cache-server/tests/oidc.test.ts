@@ -1,12 +1,11 @@
 // CI OIDC tokens: the token alone decides where a write lands (PROTOCOL.md
 // § Tokens), against keys served without a network.
 
-import { Database } from 'bun:sqlite'
 import { beforeAll, describe, expect, it } from 'bun:test'
 import { exportJWK, generateKeyPair, type JWTPayload, SignJWT } from 'jose'
 import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
 import { createCacheServer } from '../src/server.js'
-import { sqliteStore } from '../src/store.js'
+import { memBlobs } from './mem-blobs.js'
 import { upload } from './upload.js'
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
@@ -38,22 +37,8 @@ beforeAll(async () => {
       .setIssuedAt()
       .setExpirationTime('5m')
       .sign(privateKey)
-  const db = new Database(':memory:', { strict: true })
-  const blobs = new Map<string, Uint8Array>()
   handle = createCacheServer({
-    blobs: {
-      async put(name, body) {
-        blobs.set(name, new Uint8Array(await new Response(body).arrayBuffer()))
-      },
-      get: async (name) => (blobs.has(name) ? new Blob([blobs.get(name)!]) : null),
-      delete: async (name) => void blobs.delete(name),
-    },
-    store: sqliteStore({
-      all: async <T>(sql: string, p: readonly unknown[]) =>
-        db.query(sql).all(...(p as never[])) as T[],
-      run: async (sql, p) => db.query(sql).run(...(p as never[])).changes,
-      batch: async (s) => s.forEach((x) => db.run(x)),
-    }),
+    blobs: memBlobs(),
     authorize: oidcAuth({
       trust,
       audience: AUD,
@@ -68,13 +53,10 @@ beforeAll(async () => {
 
 const put = (token: string, key: string) =>
   handle(new Request(`${AUD}/v1/artifacts/upload`, upload([[key, 'x']], token)))
-const status = (key: string, refs?: string) =>
+const status = (key: string, scope = 'refs/heads/main') =>
   handle(
     new Request(`${AUD}/v1/artifacts/download/${key}`, {
-      headers: {
-        authorization: `Bearer ${read}`,
-        ...(refs === undefined ? {} : { 'x-artifact-read-scopes': refs }),
-      },
+      headers: { authorization: `Bearer ${read}`, 'x-vx-scope': scope },
     }),
   ).then(async (r) => (await r.arrayBuffer(), r.status))
 const detail = async (res: Response) =>
@@ -97,7 +79,7 @@ describe('CI OIDC tokens', () => {
     })
     expect((await put(pr, 'b2')).status).toBe(204)
     expect(await status('b2')).toBe(404)
-    expect(await status('b2', '"refs/heads/feature", "refs/heads/main"')).toBe(200)
+    expect(await status('b2', 'refs/heads/feature')).toBe(200)
   })
 
   it("an untrusted job on a trusted ref writes nothing: main's reads would find it first", async () => {
@@ -109,7 +91,7 @@ describe('CI OIDC tokens', () => {
       ref: 'refs/pull/8/merge',
     })
     expect((await put(pr, 'c3')).status).toBe(403)
-    expect(await status('c3', '"refs/heads/main"')).toBe(404)
+    expect(await status('c3')).toBe(404)
   })
 
   it('refuses another repository, another audience and a forged signature', async () => {
@@ -130,8 +112,7 @@ describe('CI OIDC tokens', () => {
 describe('a server that trusts no CI', () => {
   it('refuses every request while it trusts no CI', async () => {
     const none = createCacheServer({
-      blobs: { put: async () => {}, get: async () => null, delete: async () => {} },
-      store: sqliteStore({ all: async () => [], run: async () => 0, batch: async () => {} }),
+      blobs: memBlobs(),
       authorize: oidcAuth({ trust: [] }),
     })
     const res = await none(new Request(`${AUD}/v1/artifacts/download/abc`))

@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "license": "MIT",
   "private": true,
-  "description": "A cache and run-history server for vx that you host: on Bun with an S3-compatible bucket, or on Cloudflare Workers with D1 and R2.",
+  "description": "A remote cache server for vx that you host: on Bun or Docker with an S3-compatible bucket, or on Cloudflare Workers with R2.",
   "keywords": [
     "vx",
     "remote-cache",
@@ -31,6 +31,7 @@
   "files": [
     "index.ts",
     "src",
+    "Dockerfile",
     "PROTOCOL.md",
     "wrangler.jsonc",
     "README.md"
@@ -43,7 +44,7 @@
     "@vzn/vx: vx.config.ts's core; `*`, not workspace:, which npm refuses when a deploy installs this directory alone.",
     "@vzn/vx-devtools: checks the CI tokens, the check vx's servers share (it imports only jose); `*` for the same reason.",
     "jose: the tests sign the CI tokens the server checks.",
-    "miniflare: tests/worker.test.ts runs src/worker.ts in workerd with D1 and R2, as Workers deploy it."
+    "miniflare: tests/worker.test.ts runs src/worker.ts in workerd with R2, as Workers deploy it."
   ],
   "devDependencies": {
     "@types/bun": "^1.4.0",

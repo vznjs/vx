@@ -1,74 +1,62 @@
 # The vx cache server (`@vzn/vx-cache-server`), 2026-10
 
-A server anyone hosts that keeps vx's artifacts and run history, so a
-fresh CI runner or a new branch starts warm and knows how long each task
-takes. It is optional: a workspace that declares no plugin for it never
-talks to it, and Turbo-wire, Nx-wire and REAPI remotes stay. Each item
-below is marked shipped or planned, and this page changes in the same PR
-as the item it describes.
+A server anyone hosts that keeps vx's artifacts, so a fresh CI runner or
+a new branch starts warm. It is optional: a workspace that declares no
+plugin for it never talks to it, and Turbo-wire, Nx-wire and REAPI
+remotes stay. Each item below is marked shipped or planned, and this
+page changes in the same PR as the item it describes.
 
 ## Shape
 
-- Shipped: one fetch handler (`src/server.ts`) over two seams, `Blobs`
-  and `Db`, so both backends share every route and query: Bun with an
-  S3-compatible bucket (Bun's S3 client) and a SQLite file (bun:sqlite),
-  and Workers with R2 and D1. One conformance suite
-  (`tests/conformance.ts`) runs against both; the Worker runs in workerd
-  (miniflare), the bucket is an in-memory S3 that Bun's own client talks to.
-- Shipped: Turbo's remote cache API for artifacts (M, 2026-10-25: keep
-  to the standard, differ only where it blocks us), under our own `/v1`
-  in place of `/v8`: the same routes, `x-artifact-*` headers, bodies,
-  status codes and `{ code, message }` errors. Ours only where Turbo has
-  nothing: `x-artifact-read-scopes` (an RFC 8941 list), CI OIDC tokens,
-  run history. PROTOCOL.md § Where it differs from Turbo lists each.
-  The first cut (`Vx-Duration`, `POST /v1/artifacts/query`, RFC 9457)
-  was its own wire and is gone, with no shim.
-- Shipped: a row is the commit. A PUT stores the blob, then its row; a
-  blob no row names is never read. HEAD and the batch probe read only the
-  database. An artifact is immutable: a second PUT is `200` and its body
-  unread.
-- Shipped: run history is one row per run, its tasks one JSON column; a
-  task query reads the newest 100 runs with `json_each` and a window per
-  task. One row per task would cost D1's free plan a row write per task
-  (100 000 a day), and a query parsing runs in the Worker its 10 ms of
-  CPU.
+- Shipped: one fetch handler (`src/server.ts`) over one seam, `Blobs`,
+  so every backend shares every route: Bun with an S3-compatible bucket
+  (Bun's S3 client), the same server as a Docker image, and Workers with
+  R2. One conformance suite (`tests/conformance.ts`) runs against each;
+  the Worker runs in workerd (miniflare), the image in Docker, and the
+  bucket is an in-memory S3 that Bun's own client talks to.
+- Shipped: no database (M, 2026-10-25). An artifact is one object named
+  `trusted/<repo>/<hash>` or `branch/<repo>/<ref>/<hash>`; its size is
+  the bucket's metadata, and a put replaces a name whole, so racing
+  uploads keep one whole artifact and nodes share nothing but the bucket.
+  Expiry is the bucket's lifecycle rules, one per prefix (trusted 30
+  days, a branch 7); the server sweeps nothing.
+- Shipped: every read names exact `{ scope, hash }` keys (M, 2026-10-25:
+  the whole point of scope is exact keys). A check takes up to
+  `maxCheckKeys` (default 500) and answers their sizes in order; a batch
+  download takes the same keys. There is no layered walk on the server:
+  a client wanting its branch's work, then trusted, asks for both keys.
+- Shipped: limits an operator sets (`MAX_CHECK_KEYS`,
+  `MAX_BATCH_ARTIFACTS`, `MAX_UPLOAD_BYTES`), named on every check and
+  at `/v1/capabilities`. Workers lowers them to what one request's 1000
+  calls to R2 and 100 MB body fit.
+- Shipped: Turbo's shape where it fits (M, 2026-10-25: keep to the
+  standard, differ only where it blocks us): `{ code, message }` errors,
+  hex hashes, our own `/v1`. Batches and exact scoped keys are ours:
+  Turbo has neither.
+- Shipped: task timings left for `@vzn/vx-history-server` (M,
+  2026-10-25): this server keeps artifacts only.
 
 ## Encryption (planned, no format change)
 
-- The server compares strings and never reads them: keys, run ids, task
-  names and bytes are opaque (PROTOCOL.md § Opaque strings). End-to-end
-  encryption is then the client's alone: a workspace key the server never
-  sees, an HMAC of each key and task name (equality still works, so
-  lookups and history queries do), and an authenticated cipher over each
-  artifact's bytes. Numbers stay plain: the server sorts and aggregates
-  them for history.
-- Refs in `x-artifact-read-scopes` stay plain: the server matches them against CI
-  tokens, which name them.
+- The server compares hashes and never reads them or the bytes
+  (PROTOCOL.md § Opaque strings). End-to-end encryption is then the
+  client's alone: a workspace key the server never sees, an HMAC of each
+  hash (equality still works, so lookups do), and an authenticated
+  cipher over each artifact's bytes.
+- Refs stay plain: the server matches them against CI tokens, which name
+  them.
 
 ## Access
 
-- Shipped: static bearer tokens, listed by SHA-256 in `TOKENS` (no
-  secret in the config). A write token writes the trusted scope.
-- Shipped: CI OIDC tokens, checked with `jose` as the relay does: a token
-  matching a `TRUST` rule writes trusted, any other of the same repository
-  its own branch's scope, another repository nothing. A branch a rule
-  trusts is never an untrusted write's scope, since a read naming it
-  walks it before trusted. A rule's `ns` keeps repositories apart.
-  `vxCache({ oidc: true })` sends GitHub's token; GitLab's `id_tokens`
-  is `VX_CACHE_TOKEN`.
+- Shipped: CI OIDC tokens only (`@vzn/vx-devtools`, shared with vx's other
+  servers): a token matching a `TRUST` rule writes trusted, any other of
+  the same repository its own branch's scope, another repository
+  nothing. A branch a rule trusts reads trusted and is never an untrusted
+  write's scope.
 
 ## Next
 
 - Shipped: `vxCache()` (`@vzn/vx-cache`), the client plugin: a remote for
-  core's cache seam, every read naming the run's refs in
-  `x-artifact-read-scopes`. Tested against the real server, in process.
-- Shipped: `vxCache()` writes a CI run's task timings after it (a hit
-  records its producing run's duration) and orders every run by the
-  critical path the server's timings give, through `ctx.refine`, so no run
-  waits on the server. The score is `@vzn/vx-schedule-history`'s `criticalPath`.
-- Shipped: eviction by age since the write, per scope (trusted 30 days,
-  a branch 7, runs 90), on a daily Cron Trigger (Workers' free plan has
-  five) and an hourly timer on Bun. Not by last read: that would cost a
-  D1 row write per hit.
-- Planned (with the server): flaky-task reruns and a dashboard, both read
-  from the run history.
+  core's cache seam that asks for the run's refs' exact keys, its branch
+  then trusted.
+- Planned: a storage cap, by a daily list of the bucket.

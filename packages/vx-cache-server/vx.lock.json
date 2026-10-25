@@ -37,7 +37,8 @@
     "ci": {
       "dependsOn": [
         "lint",
-        "test"
+        "test",
+        "test.live"
       ]
     },
     "lint": {
@@ -142,6 +143,32 @@
           "src/**",
           "tests/**",
           "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.live": {
+      "description": "docker build, then the conformance suite through the container",
+      "exec": {
+        "command": "sh tests/docker/smoke.sh"
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "Dockerfile",
+          "src/**",
+          "tests/**",
+          "package.json"
+        ],
+        "workspaceFiles": [
+          "packages/vx-devtools/package.json",
+          "packages/vx-devtools/src/**"
         ]
       },
       "cache": {

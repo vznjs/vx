@@ -3,6 +3,7 @@
 
 import { exportJWK, generateKeyPair, type JWK, type JWTPayload, SignJWT } from 'jose'
 import { parseTrust, type TrustRule } from '@vzn/vx-devtools'
+import type { Job } from './conformance.js'
 
 export const GITHUB = 'https://token.actions.githubusercontent.com'
 export const REPO = '42'
@@ -25,6 +26,13 @@ export const TRUSTED_JOB = { ref: 'refs/heads/main', event_name: 'push' }
 export const READ_JOB = { ref: 'refs/heads/main', event_name: 'workflow_dispatch' }
 /** Claims of a job that writes its branch's scope. */
 export const BRANCH_JOB = { ref: 'refs/heads/feature', event_name: 'push' }
+/** Each job the conformance suite asks for, as GitHub's claims. */
+export const JOBS: Record<Job, JWTPayload> = {
+  trusted: TRUSTED_JOB,
+  read: READ_JOB,
+  branch: BRANCH_JOB,
+  stranger: { ...TRUSTED_JOB, repository_id: '7' },
+}
 
 export interface Issuer {
   readonly jwks: { keys: JWK[] }

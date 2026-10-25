@@ -90,13 +90,13 @@ packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fi
                         task on its project's own dependency closure; --affected follows. Parsers over core's
                         `lockfileClaim` (orchestrator/lockfile-claim.ts: memo, per-run gate, --affected diff).
                         This repo declares bun()
-packages/vx-cache-server  a cache + task-timings server anyone hosts (PROTOCOL.md, /v1): Bun + S3 + SQLite, or Workers +
-                        R2 + D1, one handler, one conformance suite. Private until npm has it
+packages/vx-cache-server  a cache server anyone hosts (PROTOCOL.md, /v1): one bucket, no database; Bun or Docker + S3,
+                        or Workers + R2, one handler, one conformance suite. Private until npm has it
 packages/vx-devtools    code vx's servers and plugins share, never core (M, 2026-10-25: core has nothing to do with
                         OIDC): first the CI OIDC token check (TRUST, oidcAuth), only jose. Private until npm has it
 packages/vx-history-server  the task timings vx-history reads, one folded row per task (PROTOCOL.md, /v1): Bun +
                         SQLite, Workers + D1, or Docker. Private until npm has it
-packages/vx-cache       vxCache(): the remote cache and task timings (critical-path order), CI jobs only, over vx-cache-server's /v1 wire. Private until npm has it
+packages/vx-cache       vxCache(): the remote cache, CI jobs only, over vx-cache-server's /v1 wire. Private until npm has it
 private/vx-docs         Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts
 packages/vx-dte         distributed runs: `dte()` executor + `vx dte worker` over the relay, `local()` adapter
                         (workers in git worktrees). Private until npm has it
@@ -154,8 +154,8 @@ packages import core only via `@vzn/vx` (`tests/package-boundaries.unsafe.test.t
   `@vzn/vx-reapi#test.live` (which dial service containers on the host's
   loopback, unreachable from a Linux sandbox's network namespace), its
   `services.cache` / `services.exec` (Docker), `@vzn/vx-dte-server#test.live`
-  (builds and runs the relay's image), `@vzn/vx-history-server#test.live`
-  (builds and runs its image), `@vzn/vx-migrate#nx.install`
+  (builds and runs the relay's image), `@vzn/vx-cache-server#test.live` and
+  `@vzn/vx-history-server#test.live` (each builds and runs its image), `@vzn/vx-migrate#nx.install`
   (the npm registry), `check.sandbox-canary` and
   `check.build-cold` (each drives the sandbox itself, on a Mac worker) are
   the ONLY tasks in the whole repo with no `exec.sandbox`.

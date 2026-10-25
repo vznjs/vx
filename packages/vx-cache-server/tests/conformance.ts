@@ -1,20 +1,26 @@
 // The vx-cache v1 conformance suite (PROTOCOL.md): what any server that
 // speaks it answers. Each backend this package ships runs it: Bun with an
-// S3 bucket (bun.test.ts), many Bun nodes over Postgres (nodes.test.ts) and
-// workerd with D1 and R2 (worker.test.ts). Every request carries a CI
+// S3 bucket (bun.test.ts), workerd with R2 (worker.test.ts) and the Docker
+// image (docker/smoke.sh). Every request carries a CI
 // OIDC token from tests/issuer.ts, whose TRUST the target serves.
 
 import { beforeAll, describe, expect, it } from 'bun:test'
-import type { JWTPayload } from 'jose'
-import { BRANCH_JOB, READ_JOB, TRUSTED_JOB } from './issuer.js'
 import { upload as uploadInit } from './upload.js'
+
+export type Job = 'trusted' | 'read' | 'branch' | 'stranger'
 
 export interface Target {
   /** The server's URL. */
   base(): string
-  /** A token of `claims` for the server. */
-  sign(claims: JWTPayload): Promise<string>
-  /** The largest artifact it stores. */
+  /**
+   * A token for the server of a job that writes trusted, one that only
+   * reads, one that writes its branch (`refs/heads/feature`), or a trusted
+   * job of a repository the server does not serve.
+   */
+  sign(job: Job): Promise<string>
+  /** The limits it was given. */
+  readonly maxCheckKeys: number
+  readonly maxBatchArtifacts: number
   readonly maxUploadBytes: number
 }
 
@@ -27,9 +33,9 @@ export function conformance(name: string, target: Target): void {
   let branch = ''
   beforeAll(async () => {
     ;[read, write, branch] = await Promise.all([
-      target.sign(READ_JOB),
-      target.sign(TRUSTED_JOB),
-      target.sign(BRANCH_JOB),
+      target.sign('read'),
+      target.sign('trusted'),
+      target.sign('branch'),
     ])
   })
   const call = (path: string, init: RequestInit & { token?: string | null } = {}) => {
@@ -38,25 +44,32 @@ export function conformance(name: string, target: Target): void {
     if (token !== null) headers.set('authorization', `Bearer ${token}`)
     return fetch(new URL(path, target.base()), { ...rest, headers })
   }
-  const upload = (
-    items: [string, Blob | Uint8Array | string][],
-    token = write,
-    timings?: unknown[],
-  ) => {
-    const { headers, ...init } = uploadInit(items, token, timings)
+  const upload = (items: [string, Blob | Uint8Array | string][], token = write) => {
+    const { headers, ...init } = uploadInit(items, token)
     delete headers.authorization
     return call('/v1/artifacts/upload', { ...init, headers, token })
   }
   const put = (k: string, body: Blob | Uint8Array | string, token = write) =>
     upload([[k, body]], token)
-  const json = (path: string, body: unknown, token = read, headers: Record<string, string> = {}) =>
+  const json = (path: string, body: unknown, token = read) =>
     call(path, {
       method: 'POST',
       body: JSON.stringify(body),
-      headers: { 'content-type': 'application/json', ...headers },
+      headers: { 'content-type': 'application/json' },
       token,
     })
-  const scopes = (value: string) => ({ 'x-artifact-read-scopes': value })
+  const MAIN = 'refs/heads/main'
+  const FEATURE = 'refs/heads/feature'
+  /** One artifact's bytes, read from `scope`. */
+  const get = (k: string, scope = MAIN) =>
+    call(`/v1/artifacts/download/${k}`, { headers: { 'x-vx-scope': scope } })
+  const text = async (k: string, scope = MAIN) => (await get(k, scope)).text()
+  const sizes = async (keys: [string, string][]) =>
+    (
+      (await (
+        await json('/v1/artifacts/check', { keys: keys.map(([scope, hash]) => ({ scope, hash })) })
+      ).json()) as { sizes: (number | null)[] }
+    ).sizes
 
   describe(`${name} speaks vx-cache v1`, () => {
     it('refuses a request with no CI token, a bad one or one of another repository', async () => {
@@ -66,7 +79,7 @@ export function conformance(name: string, target: Target): void {
         expect(res.headers.get('content-type')).toStartWith('application/json')
         expect(await res.json()).toEqual({ code: 'unauthorized', message: expect.any(String) })
       }
-      const other = await target.sign({ ...TRUSTED_JOB, repository_id: '7' })
+      const other = await target.sign('stranger')
       expect((await call(`/v1/artifacts/download/${key()}`, { token: other })).status).toBe(403)
     })
 
@@ -77,7 +90,7 @@ export function conformance(name: string, target: Target): void {
 
     it('stores an artifact once and reads it back', async () => {
       const k = key()
-      const missing = await call(`/v1/artifacts/download/${k}`)
+      const missing = await get(k)
       expect([missing.status, await missing.json()]).toEqual([
         404,
         { code: 'not_found', message: 'no artifact under this key' },
@@ -85,7 +98,7 @@ export function conformance(name: string, target: Target): void {
       expect((await put(k, 'first')).status).toBe(204)
       // Immutable: a second upload keeps the stored bytes.
       expect((await put(k, 'second')).status).toBe(204)
-      const got = await call(`/v1/artifacts/download/${k}`)
+      const got = await get(k)
       expect([
         got.status,
         got.headers.get('content-type'),
@@ -122,7 +135,7 @@ export function conformance(name: string, target: Target): void {
         signal: AbortSignal.timeout(5_000),
       } as RequestInit)
       expect(res.status).toBe(204)
-      expect(await (await call(`/v1/artifacts/download/${a}`)).text()).toBe('held')
+      expect(await text(a)).toBe('held')
     })
 
     it('stores many artifacts of one upload, skipping the bytes of held ones', async () => {
@@ -134,7 +147,6 @@ export function conformance(name: string, target: Target): void {
         [c, new Uint8Array(70_000).fill(7)],
       ])
       expect(res.status).toBe(204)
-      const text = async (k: string) => (await call(`/v1/artifacts/download/${k}`)).text()
       expect([await text(a), await text(b), (await text(c)).length]).toEqual([
         'first',
         'held',
@@ -145,13 +157,13 @@ export function conformance(name: string, target: Target): void {
     it('stores an empty artifact and one of many megabytes', async () => {
       const empty = key()
       expect((await put(empty, new Uint8Array(0))).status).toBe(204)
-      expect(await (await call(`/v1/artifacts/download/${empty}`)).text()).toBe('')
+      expect(await text(empty)).toBe('')
       const big = key()
       const bytes = crypto.getRandomValues(new Uint8Array(65_536)).map((_, i) => i)
       const body = new Uint8Array(6 * 1024 * 1024)
       for (let i = 0; i < body.length; i += bytes.length) body.set(bytes, i)
       expect((await put(big, body)).status).toBe(204)
-      const got = new Uint8Array(await (await call(`/v1/artifacts/download/${big}`)).arrayBuffer())
+      const got = new Uint8Array(await (await get(big)).arrayBuffer())
       expect(Bun.hash(got)).toBe(Bun.hash(body))
     })
 
@@ -160,11 +172,10 @@ export function conformance(name: string, target: Target): void {
         const k = key()
         const bodies = ['a', 'b', 'bb'.repeat(500), 'cc'.repeat(500), 'd'.repeat(70_000)]
         await Promise.all(bodies.map((b) => put(k, b)))
-        const text = await (await call(`/v1/artifacts/download/${k}`)).text()
-        expect(bodies).toContain(text)
-        // The row's size is the blob's.
-        const res = await json('/v1/artifacts/check', { hashes: [k] })
-        expect(await res.json()).toEqual({ [k]: { size: text.length } })
+        const got = await text(k)
+        expect(bodies).toContain(got)
+        // The size a check names is the bytes'.
+        expect(await sizes([[MAIN, k]])).toEqual([got.length])
       }
     })
 
@@ -199,180 +210,102 @@ export function conformance(name: string, target: Target): void {
       ])
     })
 
-    it('names its limits on every check, and all of them at /v1/capabilities', async () => {
-      const res = await json('/v1/artifacts/check', { hashes: [] })
+    it('names its limits on every check, and at /v1/capabilities', async () => {
+      const res = await json('/v1/artifacts/check', { keys: [] })
       const limits = {
-        maxBatchArtifacts: 100,
+        maxCheckKeys: target.maxCheckKeys,
+        maxBatchArtifacts: target.maxBatchArtifacts,
         maxUploadBytes: target.maxUploadBytes,
       }
       expect([
+        Number(res.headers.get('x-vx-max-check-keys')),
         Number(res.headers.get('x-vx-max-batch-artifacts')),
         Number(res.headers.get('x-vx-max-upload-bytes')),
       ]).toEqual(Object.values(limits))
-      const caps = await call('/v1/capabilities')
-      expect(await caps.json()).toEqual({
-        ...limits,
-        maxUploadTimings: 1000,
-        maxCheckHashes: 1000,
-        maxTimingsUploaded: 20_000,
-        maxQueryHashes: 1000,
-        maxQueryLimit: 20,
-      })
+      expect(await (await call('/v1/capabilities')).json()).toEqual(limits)
       expect((await call('/v1/capabilities', { token: null })).status).toBe(401)
     })
 
-    it('answers every hash of a batch lookup, null for one it does not hold', async () => {
+    it('answers each exact key of a check in order, null for one it does not hold', async () => {
       const [a, b] = [key(), key()]
       await put(a, 'abc')
-      const res = await json('/v1/artifacts/check', { hashes: [a, b] })
-      expect(await res.json()).toEqual({ [a]: { size: 3 }, [b]: null })
-      expect((await json('/v1/artifacts/check', { hashes: Array(1001).fill(a) })).status).toBe(400)
-      expect((await json('/v1/artifacts/check', { hashes: ['a-b'] })).status).toBe(400)
-      const plain = await call('/v1/artifacts/check', {
-        method: 'POST',
-        body: '{"hashes":[]}',
-      })
+      expect(
+        await sizes([
+          [MAIN, a],
+          [MAIN, b],
+          [FEATURE, a],
+        ]),
+      ).toEqual([3, null, null])
+      const many = Array(target.maxCheckKeys + 1).fill({ scope: MAIN, hash: a })
+      expect((await json('/v1/artifacts/check', { keys: many })).status).toBe(400)
+      for (const bad of [{ scope: MAIN, hash: 'a-b' }, { hash: a }, { scope: 'main', hash: a }]) {
+        expect((await json('/v1/artifacts/check', { keys: [bad] })).status).toBe(400)
+      }
+      const plain = await call('/v1/artifacts/check', { method: 'POST', body: '{"keys":[]}' })
       expect(plain.status).toBe(400)
     })
 
-    it("writes a branch's job to its branch, read only by a run naming that ref", async () => {
+    it("writes a branch's job to its branch, read only by naming that ref", async () => {
       const k = key()
       expect((await put(k, 'branch', branch)).status).toBe(204)
-      expect((await call(`/v1/artifacts/download/${k}`)).status).toBe(404)
-      const named = await call(`/v1/artifacts/download/${k}`, {
-        headers: scopes('"refs/heads/feature", "refs/heads/main"'),
-      })
-      expect([named.status, await named.text()]).toEqual([200, 'branch'])
-      // Its own scope first, then trusted.
+      expect((await get(k)).status).toBe(404)
+      expect(await text(k, FEATURE)).toBe('branch')
+      // Exact: trusted bytes never answer for the branch, nor the branch's for trusted.
       await put(k, 'trusted')
-      expect(await (await call(`/v1/artifacts/download/${k}`)).text()).toBe('trusted')
-      const first = await call(`/v1/artifacts/download/${k}`, {
-        headers: scopes('"refs/heads/feature"'),
-      })
-      expect(await first.text()).toBe('branch')
+      expect([await text(k), await text(k, FEATURE)]).toEqual(['trusted', 'branch'])
+      // A branch's upload of what trusted holds is skipped.
+      const t = key()
+      await put(t, 'trusted')
+      expect((await put(t, 'branch', branch)).status).toBe(204)
+      expect((await get(t, FEATURE)).status).toBe(404)
     })
 
-    it('reads a ref a trust rule names as trusted, and refuses a bad list', async () => {
+    it('reads a ref a trust rule names as trusted, and refuses a read naming no ref', async () => {
       const k = key()
       await put(k, 'abc')
-      const scoped = (value: string) =>
-        call(`/v1/artifacts/download/${k}`, { headers: scopes(value) })
-      expect((await scoped('"refs/heads/gh-readonly-queue/main/pr-1"')).status).toBe(200)
-      for (const bad of ['refs/heads/x', '"heads/x"', '"refs/x', '"refs/x" "refs/y"']) {
-        expect([bad, (await scoped(bad)).status]).toEqual([bad, 400])
+      expect(await text(k, 'refs/heads/gh-readonly-queue/main/pr-1')).toBe('abc')
+      expect((await call(`/v1/artifacts/download/${k}`)).status).toBe(400)
+      for (const bad of ['heads/x', 'refs/', 'refs/a b']) {
+        expect([bad, (await get(k, bad)).status]).toEqual([bad, 400])
       }
-      const nine = Array.from({ length: 9 }, (_, i) => `"refs/heads/${i}"`).join(', ')
-      expect((await scoped(nine)).status).toBe(400)
     })
 
-    it('keeps timings and answers the newest, trusted first, then the refs in order', async () => {
-      const h = key()
-      const timing = (durationMs: number) => ({ hash: h, durationMs, cores: 1.5, rssBytes: 1000 })
-      for (const ms of [10, 20, 30]) {
-        expect((await json('/v1/timings/upload', { timings: [timing(ms)] }, write)).status).toBe(
-          204,
-        )
-        // A timing's time is the server's: the next write is a later one.
-        await Bun.sleep(5)
-      }
-      expect((await json('/v1/timings/upload', { timings: [timing(99)] }, branch)).status).toBe(204)
-      const ask = async (body: unknown, headers: Record<string, string> = {}) =>
-        ((await (await json('/v1/timings/query', body, read, headers)).json()) as any).timings
-      const ms = (list: { durationMs: number }[]) => list.map((s) => s.durationMs)
-      expect(ms((await ask({ hashes: [h] }))[h])).toEqual([30, 20, 10])
-      expect((await ask({ hashes: [h], limit: 1 }))[h]).toEqual([
-        { durationMs: 30, cores: 1.5, rssBytes: 1000 },
-      ])
-      const both = await ask({ hashes: [h, 'none'], limit: 4 }, scopes('"refs/heads/feature"'))
-      expect([ms(both[h]), both['none']]).toEqual([[30, 20, 10, 99], []])
-    })
-
-    // One line carries a task's timings from two runs, and two writes can
-    // share a millisecond: keyed by the time alone, all but one were dropped
-    // and a run read half its history (2026-10-25).
-    it("keeps each of a task's timings written in one millisecond", async () => {
-      const h = key()
-      const res = await json(
-        '/v1/timings/upload',
-        {
-          timings: [
-            { hash: h, durationMs: 100 },
-            { hash: h, durationMs: 200 },
-          ],
-        },
-        write,
-      )
-      expect(res.status).toBe(204)
-      const got = await json('/v1/timings/query', { hashes: [h] })
-      const ms = (((await got.json()) as any).timings[h] as { durationMs: number }[]).map(
-        (t) => t.durationMs,
-      )
-      expect(ms.sort((x, y) => x - y)).toEqual([100, 200])
-    })
-
-    it('keeps the timings an upload carries, also when it answers before the bytes', async () => {
-      const [a, h1, h2] = [key(), key(), key()]
-      const res = await upload([[a, 'x']], write, [{ hash: h1, durationMs: 7 }])
-      expect(res.status).toBe(204)
-      // Held: answered early, and its timings kept.
-      expect((await upload([[a, 'x']], write, [{ hash: h2, durationMs: 9 }])).status).toBe(204)
-      const got = await json('/v1/timings/query', { hashes: [h1, h2] })
-      expect(((await got.json()) as any).timings).toEqual({
-        [h1]: [{ durationMs: 7, cores: null, rssBytes: null }],
-        [h2]: [{ durationMs: 9, cores: null, rssBytes: null }],
-      })
-      const bad = await upload([[key(), 'x']], write, [{ hash: h1 }])
-      expect(bad.status).toBe(400)
-    })
-
-    it('refuses timings from a read-only token and timings that are not some', async () => {
-      const ok = { hash: 'a', durationMs: 1 }
-      expect((await json('/v1/timings/upload', { timings: [ok] })).status).toBe(403)
-      for (const [bad, detail] of [
-        [{ ...ok, hash: '' }, 'timings[0].hash: a string of up to 512 characters'],
-        [{ ...ok, durationMs: 1.5 }, 'timings[0].durationMs: whole milliseconds'],
-        [{ ...ok, cores: -1 }, 'timings[0].cores: a number of cores'],
-        [{ ...ok, rssBytes: 'x' }, 'timings[0].rssBytes: a byte count'],
-      ] as const) {
-        const res = await json('/v1/timings/upload', { timings: [bad] }, write)
-        expect([res.status, await res.json()]).toEqual([
-          400,
-          { code: 'bad_request', message: detail },
-        ])
-      }
-      expect((await json('/v1/timings/query', { hashes: ['a'], limit: 21 })).status).toBe(400)
-      expect((await json('/v1/timings/query', { hashes: [1] })).status).toBe(400)
-    })
-
-    it('downloads many artifacts in one answer, the held ones in the order asked', async () => {
+    it('downloads many exact keys in one answer, the held ones in the order asked', async () => {
       const [a, b, c] = [key(), key(), key()]
       await upload([
         [a, 'first'],
         [c, new Uint8Array(70_000).fill(7)],
       ])
-      const res = await json('/v1/artifacts/download', { hashes: [c, b, a] })
+      await put(b, 'mine', branch)
+      const keys = [
+        { scope: MAIN, hash: c },
+        { scope: MAIN, hash: b },
+        { scope: FEATURE, hash: b },
+        { scope: MAIN, hash: a },
+      ]
+      const res = await json('/v1/artifacts/download', { keys })
       expect(res.headers.get('content-type')).toBe('application/vnd.vx-cache.batch')
       const bytes = new Uint8Array(await res.arrayBuffer())
       const nl = bytes.indexOf(10)
       expect(JSON.parse(new TextDecoder().decode(bytes.subarray(0, nl)))).toEqual({
         artifacts: [
-          { hash: c, size: 70_000 },
-          { hash: a, size: 5 },
+          { scope: MAIN, hash: c, size: 70_000 },
+          { scope: FEATURE, hash: b, size: 4 },
+          { scope: MAIN, hash: a, size: 5 },
         ],
       })
-      expect(bytes.length).toBe(nl + 1 + 70_005)
+      expect(bytes.length).toBe(nl + 1 + 70_009)
       expect(bytes.subarray(nl + 1, nl + 70_001).every((x) => x === 7)).toBe(true)
-      expect(new TextDecoder().decode(bytes.subarray(nl + 70_001))).toBe('first')
-      expect((await json('/v1/artifacts/download', { hashes: Array(101).fill(a) })).status).toBe(
-        400,
-      )
+      expect(new TextDecoder().decode(bytes.subarray(nl + 70_001))).toBe('minefirst')
+      const many = Array(target.maxBatchArtifacts + 1).fill({ scope: MAIN, hash: a })
+      expect((await json('/v1/artifacts/download', { keys: many })).status).toBe(400)
     })
 
     it('answers an unknown route 404 and a wrong method 405', async () => {
       expect((await call('/v2/artifacts/abc')).status).toBe(404)
       const head = await call(`/v1/artifacts/download/${key()}`, { method: 'HEAD' })
       expect([head.status, head.headers.get('allow')]).toEqual([405, 'GET'])
-      const res = await call('/v1/timings/query', { method: 'DELETE' })
+      const res = await call('/v1/artifacts/check', { method: 'DELETE' })
       expect([res.status, res.headers.get('allow')]).toEqual([405, 'POST'])
     })
   })

@@ -1,11 +1,10 @@
-// src/worker.ts in workerd, the runtime Workers deploy to, with D1 and R2.
+// src/worker.ts in workerd, the runtime Workers deploy to, with R2.
 
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import path from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
 import { conformance } from './conformance.js'
-import { GITHUB, type Issuer, issuer, TRUST, TRUSTED_JOB } from './issuer.js'
-import { upload } from './upload.js'
+import { GITHUB, type Issuer, issuer, JOBS, TRUST } from './issuer.js'
 
 const MAX = 7 * 1024 * 1024
 /** The Worker's own origin, its tokens' audience. */
@@ -26,7 +25,6 @@ async function start(bindings: Record<string, string>): Promise<Miniflare> {
       modules: true,
       script: await built.outputs[0]!.text(),
       compatibilityDate: '2026-10-01',
-      d1Databases: ['DB'],
       r2Buckets: ['BLOBS'],
       bindings: { AUDIENCE: AUD, ...bindings },
       // The issuer's keys, served to the Worker's fetch without a network.
@@ -40,19 +38,26 @@ async function start(bindings: Record<string, string>): Promise<Miniflare> {
 
 beforeAll(async () => {
   iss = await issuer()
-  mf = await start({ MAX_UPLOAD_BYTES: String(MAX), TRUST: JSON.stringify(TRUST) })
+  mf = await start({
+    MAX_UPLOAD_BYTES: String(MAX),
+    MAX_BATCH_ARTIFACTS: '1000',
+    TRUST: JSON.stringify(TRUST),
+  })
   base = await mf.ready
 })
 
 afterAll(() => mf.dispose())
 
-conformance('Workers with D1 and R2', {
+// MAX_BATCH_ARTIFACTS 1000 is clamped to what a request's 1000 service calls fit.
+conformance('Workers with R2', {
   base: () => base.href,
-  sign: (claims) => iss.sign(claims, AUD),
+  sign: (job) => iss.sign(JOBS[job], AUD),
+  maxCheckKeys: 500,
+  maxBatchArtifacts: 330,
   maxUploadBytes: MAX,
 })
 
-it('refuses every request, saying why, while TRUST or MAX_UPLOAD_BYTES is unset or wrong', async () => {
+it('refuses every request, saying why, while TRUST or a limit is unset or wrong', async () => {
   for (const [bindings, status, detail] of [
     [{ TRUST: '' }, 401, 'the server trusts no CI: set TRUST'],
     [
@@ -63,7 +68,12 @@ it('refuses every request, saying why, while TRUST or MAX_UPLOAD_BYTES is unset 
     [
       { TRUST: JSON.stringify(TRUST), MAX_UPLOAD_BYTES: '104857600' },
       500,
-      'MAX_UPLOAD_BYTES: at most 104241600: Workers take a body of 100 MB',
+      'MAX_UPLOAD_BYTES: at most 104841536: Workers take a body of 100 MB',
+    ],
+    [
+      { TRUST: JSON.stringify(TRUST), MAX_CHECK_KEYS: '0' },
+      500,
+      'MAX_CHECK_KEYS: not a whole number above 0: 0',
     ],
   ] as const) {
     const other = await start(bindings)
@@ -76,30 +86,5 @@ it('refuses every request, saying why, while TRUST or MAX_UPLOAD_BYTES is unset 
     } finally {
       await other.dispose()
     }
-  }
-})
-
-it("runs the Cron Trigger's eviction in workerd, over D1 and R2", async () => {
-  // A retention of about 0.1 s: what was written before the sweep is old.
-  const other = await start({ TRUST: JSON.stringify(TRUST), TRUSTED_DAYS: '0.000001' })
-  try {
-    const at = await other.ready
-    const token = await iss.sign(TRUSTED_JOB, AUD)
-    const auth = { authorization: `Bearer ${token}` }
-    await fetch(new URL('/v1/artifacts/upload', at), upload([['e71c71', 'x']], token))
-    await Bun.sleep(200)
-    // miniflare's own types name a Fetcher and an R2 bucket it does not export.
-    const worker = (await other.getWorker()) as unknown as {
-      scheduled(o: { cron: string }): Promise<{ outcome: string }>
-    }
-    expect((await worker.scheduled({ cron: '17 3 * * *' })).outcome).toBe('ok')
-    const res = await fetch(new URL('/v1/artifacts/download/e71c71', at), { headers: auth })
-    expect(res.status).toBe(404)
-    const bucket = (await other.getR2Bucket('BLOBS')) as unknown as {
-      head(key: string): Promise<unknown>
-    }
-    expect(await bucket.head('v1/42/trusted/e71c71/1')).toBeNull()
-  } finally {
-    await other.dispose()
   }
 })

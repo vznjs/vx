@@ -1,47 +1,20 @@
 == class VxCacheLayer (src/index.ts)
 export class VxCacheLayer implements RemoteCacheLayer {
   readonly endpoint: string
-  /** Headers every read carries: the refs it may be answered from. */
-  reads: Record<string, string>
-  /** The batch limits the server named on its last check; none until then, so nothing is guessed. */
-  /** Where the layer says what is no failure of a request: core's `ctx.warn`. */
+  refs: readonly string[]
   warn: (message: string) => void = () => {}
-  /** Timings not yet sent: each upload's line carries them, and `flushTimings` the rest. */
   constructor(
     private readonly config: Required<VxCacheOptions>,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly env: Record<string, string | undefined> = Bun.env,
   )
-  /** The token a run running its tasks here lent (`CacheContext.lent`). */
   lent: (() => string | undefined) | undefined
-  /** On GitHub Actions with `id-token: write`: the job's token is asked for. */
-  /**
-   * The bearer: a token the run lent, else the job's GitHub OIDC token for
-   * the server's origin, asked again a minute before it ends, else
-   * `VX_CACHE_TOKEN` (GitLab's `id_tokens`). A lent token beats the job's
-   * own: a job of another workflow writes nowhere the run reads. A token
-   * GitHub would not give throws once, and the layer turns off.
-   */
-  /**
-   * This job's token, for a job that runs this run's tasks
-   * (`RemoteCacheLayer.lend`): its writes land where this run reads them.
-   * GitHub's is asked again when it ends within five minutes. A token lent
-   * to this job is never lent on.
-   */
   async lend(): Promise<LentAccess | undefined>
+  start(): void
   async has(hash: string): Promise<ArtifactInfo | null>
   async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo>>
-  /** `POST /v1/artifacts/check`: each held hash's size. */
-  /** A check's `x-vx-max-*` headers; missing or bad, said once, and uploads stay one at a time. */
   async get(hash: string): Promise<{ body: Response; durationMs: undefined } | null>
-  /**
-   * An artifact over the server's upload limit is not sent: it is said,
-   * and the task's timing still goes.
-   */
   async put(hash: string, body: Blob, _meta: { durationMs: number }): Promise<void>
-  addTiming(t: Timing): void
-  async flushTimings(): Promise<void>
-  async timings(hashes: readonly string[]): Promise<Map<string, Timing[]>>
 }
 == function hasCiToken (src/index.ts)
 export function hasCiToken(env: Record<string, string | undefined>, lent: boolean): boolean
@@ -52,13 +25,6 @@ export function resolveVxCacheConfig(
 ): Required<VxCacheOptions> | undefined
 == function vxCache (src/index.ts)
 export function vxCache(options: VxCacheOptions = {}): VxPlugin
-== type Timing (src/index.ts)
-export interface Timing {
-  hash: string
-  durationMs: number
-  cores?: number
-  rssBytes?: number
-}
 == type VxCacheOptions (src/index.ts)
 export interface VxCacheOptions {
   url?: string

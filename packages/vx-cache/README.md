@@ -46,38 +46,24 @@ refused write (a job that reads only) turns off writes alone. Any other
 refusal is a warning naming the server's own words, and the task reads
 as a miss.
 
-Every read names the run's refs in `x-artifact-read-scopes` (its branch,
-then the branch it merges into), so the server answers from the closest
-one first. A ref the header cannot carry (a non-ASCII branch name) is
-left out, and the read goes on from the others. One check covers up to 1000 hashes. One or two uploads waiting
-at once go as they are; more go as one batch of the missing, checked
-first, within the limits the server names on each check. Until a check
-has named them, or when one names none (said once), uploads go one at a
-time: no limit is guessed. An artifact over the server's upload limit
-is not sent: it is said once, and its task's timing still goes.
+Every read names exact keys, `{ scope, hash }`: one per ref the run
+reads (its branch, then the branch it merges into, then the default
+branch), and the first ref holding a hash answers it. A run that reads
+no ref says so and stays local. The run asks the server's limits once
+(`/v1/capabilities`) and checks in chunks of its `maxCheckKeys`. One or
+two uploads waiting at once go as they are; more go as one batch of the
+missing, checked first, within the limits the server named. While it
+names none (said once), checks and uploads go one at a time: no limit
+is guessed. An artifact over the server's upload limit is not sent: it
+is said once.
 
-## Timings
-
-For each task a run ran and that succeeded, `vxCache()` keeps a timing
-on the server: its duration, the CPU cores it kept busy and its peak
-memory, named by a hash of the task's definition. Timings ride along
-with the next upload, and the rest go at the run's end. A run lent a
-token leaves the timings to the run that lent it.
-
-Every run asks for each task's newest timings, trusted first, and puts
-them in the local history, where the scheduler and any plugin reading it
-(`onRefine`) find them. It orders ready tasks by the longest remaining
-chain, as `@vzn/vx-history` does. The run never waits for the
-answer: it starts on core's own order and re-ranks the tasks not yet
-started when the timings land. Declare one of the two, not both.
+Task timings are not this plugin's: `@vzn/vx-history` keeps them.
 
 ## API
 
 - `vxCache(options?: VxCacheOptions)` is the plugin; `VxCacheOptions` is the options above.
-- `VxCacheLayer` is its remote cache layer (core's `RemoteCacheLayer`).
-  Its `addTiming(timing)` keeps a `Timing` for the next upload,
-  `flushTimings()` writes the rest, and `timings(hashes)` reads each
-  hash's newest.
+- `VxCacheLayer` is its remote cache layer (core's `RemoteCacheLayer`),
+  reading the refs in its `refs`.
 - `resolveVxCacheConfig(options, env)` is the settings it runs with, or
   `undefined` with no URL, and `hasCiToken(env, lent)` whether a job has
   a token to send.

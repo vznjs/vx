@@ -1,5 +1,5 @@
 // vx-cache-server on Cloudflare Workers (src/worker.ts): `bunx wrangler
-// deploy` from this directory. Blobs live in R2, the rest in D1.
+// deploy` from this directory. Artifacts live in R2, and nothing else.
 {
   "name": "vx-cache-server",
   "main": "src/worker.ts",
@@ -7,11 +7,9 @@
   "workers_dev": true,
   // TRUST: the CI OIDC trust rules, a JSON list (README.md § CI tokens);
   // empty, every request is refused with "set TRUST". AUDIENCE: the aud a
-  // CI token names, unset the Worker's own origin.
+  // CI token names, unset the Worker's own origin. MAX_CHECK_KEYS,
+  // MAX_BATCH_ARTIFACTS and MAX_UPLOAD_BYTES set the limits (PROTOCOL.md).
   "vars": { "TRUST": "" },
-  // Daily eviction (src/evict.ts): TRUSTED_DAYS, BRANCH_DAYS and TIMING_DAYS
-  // vars set how long each keeps (default 30, 7, 30). Free plan: 5 crons.
-  "triggers": { "crons": ["17 3 * * *"] },
-  "d1_databases": [{ "binding": "DB", "database_name": "vx-cache" }],
+  // Expiry is the bucket's lifecycle rules (README.md § Expiry).
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],
 }
