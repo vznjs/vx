@@ -176,6 +176,10 @@ const RELEND_MS = 4 * 60_000
  * 1 MiB at most, and sealing it grows it by a third.
  */
 const BATCH_BYTES = 512 * 1024
+/** How many times this machine reads a worker's entry before it calls it missing. */
+const READS = 3
+/** The wait before the second read; each later one waits as many more. */
+const READ_GAP_MS = 1_000
 /** A worker that ran this many tasks or fewer names them in the summary. */
 const FEW = 2
 /** The unmeasured tasks the summary names; the rest it counts. */
@@ -912,12 +916,20 @@ export class Orchestrator {
     // deferred one's land only if a task here needs them: under
     // `--cache-download=none` every file of the run came home (2026-10-24).
     const deferred = job.req.remoteOnly !== true && job.req.download === 'deferred'
-    const log = await (
-      job.req.remoteOnly === true || deferred ? this.o.artifacts.output(key) : restore()
-    ).catch((err: unknown) => {
-      job.reject(err)
-      return undefined
-    })
+    const read = () =>
+      (job.req.remoteOnly === true || deferred ? this.o.artifacts.output(key) : restore()).catch(
+        (err: unknown) => {
+          job.reject(err)
+          return undefined
+        },
+      )
+    // A remote's one failed read (a 502, warned) failed a task its worker
+    // ran and saved (2026-10-25): read again, a second apart and more.
+    let log = await read()
+    for (let i = 1; log === null && i < READS; i++) {
+      await Bun.sleep(i * READ_GAP_MS)
+      log = await read()
+    }
     this.trace.slice({
       track: ORCHESTRATOR,
       name: task,
@@ -929,7 +941,7 @@ export class Orchestrator {
     if (log === null) {
       job.reject(
         new Error(
-          `${task}: ${a.label} ran it, and no cache this machine reads holds its entry: ${a.label}'s upload failed (its log says why), or the workers and this machine share no remote cache the workers write`,
+          `${task}: ${a.label} ran it, and no cache this machine reads holds its entry: ${a.label}'s upload failed (its log says why), each read here failed (warned above), or the workers and this machine share no remote cache the workers write`,
         ),
       )
       return

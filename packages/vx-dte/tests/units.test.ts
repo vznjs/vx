@@ -1327,8 +1327,28 @@ it('a task whose entry reached no cache this machine reads names the upload firs
         (e: Error) => e.message,
       ),
     ).toBe(
-      "t1: worker#1 ran it, and no cache this machine reads holds its entry: worker#1's upload failed (its log says why), or the workers and this machine share no remote cache the workers write",
+      "t1: worker#1 ran it, and no cache this machine reads holds its entry: worker#1's upload failed (its log says why), each read here failed (warned above), or the workers and this machine share no remote cache the workers write",
     )
+  } finally {
+    await h.stop()
+  }
+})
+
+// A remote's one failed read (a 502) after its worker saved the entry
+// failed a task the worker had run (2026-10-25).
+it('reads a worker’s entry again when a read finds nothing', async () => {
+  const h = await harness(new Map([node('t1')]))
+  try {
+    const a = await h.worker(1)
+    const read = h.store.artifacts.restore
+    let reads = 0
+    h.store.artifacts.restore = (key, task) =>
+      ++reads === 1 ? Promise.resolve(null) : read(key, task)
+    const t1 = h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.finish('t1')
+    expect((await t1).exitCode).toBe(0)
+    expect(reads).toBe(2)
   } finally {
     await h.stop()
   }

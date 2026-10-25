@@ -409,6 +409,8 @@ use your own instead.
   them.
 - A task's output replays here as its worker read it: stdout and stderr
   in the order the task wrote them, bounded as core bounds a run's.
+- A worker's entry this machine cannot read (a remote's failed read, warned)
+  is read twice more, one and then two seconds later, before its task fails.
 - A result too long for one relay frame (thousands of sandbox violations,
   or of files a formatter changed) is sent in parts, none of it dropped.
 - A task runs with the orchestrator's environment under the worker's
