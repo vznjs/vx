@@ -29,7 +29,7 @@ beforeAll(async () => {
 /** The server over a Map bucket: what the wire sees is the server's own. */
 function server(maxUploadBytes = 1 << 20) {
   const blobs = new Map<string, Uint8Array>()
-  const seen: { method: string; path: string; body: string; scope: string | null }[] = []
+  const seen: { path: string; body: string; scope: string | null }[] = []
   const handle = createCacheServer({
     blobs: memBlobs(blobs),
     authorize: oidcAuth({ trust: TRUST, fetchJson: (u) => iss.fetchJson(u) }),
@@ -42,7 +42,6 @@ function server(maxUploadBytes = 1 << 20) {
       // The line alone: an upload's bytes follow it.
       const text = await req.clone().text()
       seen.push({
-        method: req.method,
         path: new URL(req.url).pathname,
         body: text.split('\n')[0]!,
         scope: req.headers.get('x-vx-scope'),
@@ -62,12 +61,6 @@ function server(maxUploadBytes = 1 << 20) {
 
 const MAIN = 'refs/heads/main'
 
-/** Requests land in any order: sorted by what they say. */
-const byJson = (a: unknown, b: unknown) => JSON.stringify(a).localeCompare(JSON.stringify(b))
-/** A check's keys, as `scope hash`. */
-const keysOf = (body: string) =>
-  (JSON.parse(body) as { keys: { scope: string; hash: string }[] }).keys.map((k) => k.hash)
-
 /** A layer whose job's token is `token`, as GitLab's `VX_CACHE_TOKEN` carries it, reading `refs`. */
 function layer(url: string, token: string, refs: string[] = [MAIN], fetchImpl = fetch) {
   const c = new VxCacheLayer({ url, timeoutMs: 5_000, uploadTimeoutMs: 5_000 }, fetchImpl, {
@@ -76,6 +69,14 @@ function layer(url: string, token: string, refs: string[] = [MAIN], fetchImpl = 
   c.refs = refs
   return c
 }
+
+const artifacts = (body: string) =>
+  (JSON.parse(body) as { artifacts?: { hash: string }[] }).artifacts?.map((a) => a.hash)
+/** Requests land in any order: sorted by what they say. */
+const byJson = (a: unknown, b: unknown) => JSON.stringify(a).localeCompare(JSON.stringify(b))
+/** A check's keys, as `scope hash`. */
+const keysOf = (body: string) =>
+  (JSON.parse(body) as { keys: { scope: string; hash: string }[] }).keys.map((k) => k.hash)
 
 describe('VxCacheLayer', () => {
   let srv: ReturnType<typeof server>
@@ -132,33 +133,38 @@ describe('VxCacheLayer', () => {
     expect(sizes.sort((a, b) => b - a)).toEqual([500, 500, 200, 1])
   })
 
-  it('uploads each artifact alone by PUT, at most four at once', async () => {
-    let open = 0
-    let most = 0
-    const counted: typeof fetch = Object.assign(
-      async (input: string | URL | Request, init?: RequestInit) => {
-        if (init?.method === 'PUT') most = Math.max(most, ++open)
-        try {
-          return await fetch(input, init)
-        } finally {
-          if (init?.method === 'PUT') open--
-        }
-      },
-      { preconnect: fetch.preconnect },
-    )
-    const c = layer(srv.url, write, [MAIN], counted)
+  it('sends more than two waiting uploads as one batch of the missing, checked first', async () => {
+    await layer(srv.url, write).put('e0', new Blob(['held']), { durationMs: 1 })
+    const c = layer(srv.url, write)
+    // The server's limits, named on every check, which a run asks first.
+    await c.hasMany(['0'])
     const before = srv.seen.length
-    const keys = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7']
+    // Four go at once, each alone; the three left wait, and go together.
+    const keys = ['e1', 'e2', 'e3', 'e4', 'e5', 'e0', 'e6']
     await Promise.all(keys.map((k) => c.put(k, new Blob([k]), { durationMs: 1 })))
-    const seen = srv.seen.slice(before).filter((r) => r.path !== '/v1/capabilities')
-    expect(seen.map((r) => [r.method, r.path]).sort(byJson)).toEqual(
-      keys.map((k) => ['PUT', `/v1/artifacts/${k}`]),
+    const seen = srv.seen.slice(before).map((r) => [r.path, artifacts(r.body) ?? keysOf(r.body)])
+    // Requests land in any order; the batch's check comes before its upload.
+    expect(seen.filter(([, list]) => list!.length === 1)).toEqual(
+      ['e1', 'e2', 'e3', 'e4'].map((k) => ['/v1/artifacts/upload', [k]]),
     )
-    expect(most).toBe(4)
-    for (const k of keys) expect(await (await c.get(k))!.body.text()).toBe(k)
+    expect(seen.filter(([, list]) => list!.length > 1)).toEqual([
+      ['/v1/artifacts/check', ['e5', 'e0', 'e6']],
+      ['/v1/artifacts/upload', ['e5', 'e6']],
+    ])
+    for (const k of keys.slice(0, 5)) expect(await (await c.get(k))!.body.text()).toBe(k)
   })
 
-  it('checks one key at a time while the server names no limits, and says so once', async () => {
+  it('sends one or two waiting uploads alone, unchecked', async () => {
+    const c = layer(srv.url, write)
+    await c.hasMany(['0'])
+    const before = srv.seen.length
+    const keys = ['f1', 'f2', 'f3', 'f4', 'f5', 'f6']
+    await Promise.all(keys.map((k) => c.put(k, new Blob([k]), { durationMs: 1 })))
+    const seen = srv.seen.slice(before).map((r) => [r.path, artifacts(r.body)])
+    expect(seen.sort(byJson)).toEqual(keys.map((k) => ['/v1/artifacts/upload', [k]]))
+  })
+
+  it('batches nothing while the server names no limits, and says so once', async () => {
     const said: string[] = []
     // A server whose answers lose the limits.
     const stripped: typeof fetch = Object.assign(
@@ -167,7 +173,7 @@ describe('VxCacheLayer', () => {
         if (new URL(input instanceof Request ? input.url : input).pathname === '/v1/capabilities')
           return Response.json({})
         const headers = new Headers(res.headers)
-        headers.delete('x-vx-max-check-keys')
+        headers.delete('x-vx-max-batch-artifacts')
         return new Response(res.body, { status: res.status, headers })
       },
       { preconnect: fetch.preconnect },
@@ -175,12 +181,20 @@ describe('VxCacheLayer', () => {
     const c = layer(srv.url, write, [MAIN], stripped)
     c.warn = (m) => said.push(m)
     const before = srv.seen.length
-    await c.hasMany(['c1', 'c2', 'c3'])
-    await c.hasMany(['c4', 'c5'])
-    const checks = srv.seen.slice(before).filter((r) => r.path === '/v1/artifacts/check')
-    expect(checks.map((r) => keysOf(r.body).length)).toEqual([1, 1, 1, 1, 1])
+    const keys = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7']
+    await Promise.all(keys.map((k) => c.put(k, new Blob([k]), { durationMs: 1 })))
+    await c.hasMany(['c1', 'c2'])
+    await Promise.all(
+      ['c8', 'c9', 'ca', 'cb', 'cc'].map((k) => c.put(k, new Blob([k]), { durationMs: 1 })),
+    )
+    expect(
+      srv.seen
+        .slice(before)
+        .filter((r) => r.path !== '/v1/capabilities')
+        .every((r) => (artifacts(r.body) ?? keysOf(r.body)).length === 1),
+    ).toBe(true)
     expect(said).toEqual([
-      '[vx] vx-cache: /v1/capabilities (HTTP 200) named no limits (maxCheckKeys, maxUploadBytes); checks go one key at a time',
+      '[vx] vx-cache: /v1/capabilities (HTTP 200) named no limits (maxCheckKeys, maxBatchArtifacts, maxUploadBytes); checks and uploads go one at a time',
     ])
   })
 
@@ -423,6 +437,6 @@ describe('vx run with vxCache()', () => {
     expect(await Bun.file(path.join(root, 'pkg', 'dist', 'app.js')).text()).toBe(
       'console.log("app")\n',
     )
-    expect(srv.seen.slice(before).filter((r) => r.method === 'PUT')).toEqual([])
+    expect(srv.seen.slice(before).map((r) => r.path)).not.toContain('/v1/artifacts/upload')
   })
 })

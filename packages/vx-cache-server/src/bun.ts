@@ -5,7 +5,7 @@
 import { parseArgs } from 'node:util'
 import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
 import { Refusal } from './protocol.js'
-import { createCacheServer, DEFAULT_LIMITS, limitsFrom } from './server.js'
+import { createCacheServer, DEFAULT_LIMITS, lineBytes, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
 
 const USAGE = `usage: vx-cache-server [--port 8080] [--host 0.0.0.0]
@@ -15,8 +15,8 @@ const USAGE = `usage: vx-cache-server [--port 8080] [--host 0.0.0.0]
   S3_BUCKET       the bucket; S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID and
                   S3_SECRET_ACCESS_KEY as Bun's S3 client reads them
   MAX_CHECK_KEYS       keys one check names (default ${DEFAULT_LIMITS.maxCheckKeys})
-  MAX_BATCH_ARTIFACTS  artifacts one batch download carries (default ${DEFAULT_LIMITS.maxBatchArtifacts})
-  MAX_UPLOAD_BYTES     the largest upload, one artifact (default ${DEFAULT_LIMITS.maxUploadBytes})`
+  MAX_BATCH_ARTIFACTS  artifacts one upload or batch download carries (default ${DEFAULT_LIMITS.maxBatchArtifacts})
+  MAX_UPLOAD_BYTES     the largest upload, its artifacts together (default ${DEFAULT_LIMITS.maxUploadBytes})`
 
 /**
  * An S3-compatible bucket through Bun's S3 client. Reads go through a
@@ -103,7 +103,7 @@ function main(argv: string[]): void {
   const server = Bun.serve({
     hostname: values.host,
     port,
-    maxRequestBodySize: limits.maxUploadBytes,
+    maxRequestBodySize: limits.maxUploadBytes + lineBytes(limits.maxBatchArtifacts),
     fetch: handle,
   })
   console.log(`vx-cache-server on ${server.url.href}`)

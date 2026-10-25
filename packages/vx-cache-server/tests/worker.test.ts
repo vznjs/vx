@@ -3,8 +3,9 @@
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import path from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
-import { conformance } from './conformance.js'
+import { conformance, scopeOf } from './conformance.js'
 import { GITHUB, type Issuer, issuer, JOBS, TRUST } from './issuer.js'
+import { upload } from './upload.js'
 
 const MAX = 7 * 1024 * 1024
 /** The Worker's own origin, its tokens' audience. */
@@ -53,7 +54,7 @@ conformance('Workers with R2', {
   base: () => base.href,
   sign: (job) => iss.sign(JOBS[job], AUD),
   maxCheckKeys: 500,
-  maxBatchArtifacts: 495,
+  maxBatchArtifacts: 330,
   maxUploadBytes: MAX,
 })
 
@@ -66,9 +67,9 @@ it('refuses every request, saying why, while TRUST or a limit is unset or wrong'
       'TRUST: rule 0: names no project_id (one repository, no *)',
     ],
     [
-      { TRUST: JSON.stringify(TRUST), MAX_UPLOAD_BYTES: '104857601' },
+      { TRUST: JSON.stringify(TRUST), MAX_UPLOAD_BYTES: '104857600' },
       500,
-      'MAX_UPLOAD_BYTES: at most 104857600: Workers take a body of 100 MB',
+      'MAX_UPLOAD_BYTES: at most 104841536: Workers take a body of 100 MB',
     ],
     [
       { TRUST: JSON.stringify(TRUST), MAX_CHECK_KEYS: '0' },
@@ -87,4 +88,28 @@ it('refuses every request, saying why, while TRUST or a limit is unset or wrong'
       await other.dispose()
     }
   }
+})
+
+it("answers a read from the data center's cache once R2 served it", async () => {
+  const token = await iss.sign(JOBS.main, AUD)
+  const k = 'cafe01'
+  const up = await fetch(
+    new URL('/v1/artifacts/upload', base),
+    upload([[k, 'cached bytes']], token),
+  )
+  expect(up.status).toBe(204)
+  const get = () =>
+    fetch(new URL(`/v1/artifacts/download/${k}`, base), {
+      headers: { authorization: `Bearer ${token}`, 'x-vx-scope': scopeOf('refs/heads/main') },
+    })
+  expect(await (await get()).text()).toBe('cached bytes')
+  // The copy is stored after the answer (waitUntil).
+  await Bun.sleep(200)
+  const bucket = (await mf.getR2Bucket('BLOBS')) as unknown as {
+    list(): Promise<{ objects: { key: string }[] }>
+    delete(keys: string[]): Promise<void>
+  }
+  await bucket.delete((await bucket.list()).objects.map((o) => o.key))
+  const res = await get()
+  expect([res.status, await res.text()]).toEqual([200, 'cached bytes'])
 })

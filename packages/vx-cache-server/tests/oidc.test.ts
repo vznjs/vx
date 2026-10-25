@@ -7,6 +7,7 @@ import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
 import { createCacheServer } from '../src/server.js'
 import { scopeOf } from './conformance.js'
 import { memBlobs } from './mem-blobs.js'
+import { upload } from './upload.js'
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
 const AUD = 'https://cache.example.com'
@@ -52,13 +53,7 @@ beforeAll(async () => {
 })
 
 const put = (token: string, key: string) =>
-  handle(
-    new Request(`${AUD}/v1/artifacts/${key}`, {
-      method: 'PUT',
-      body: 'x',
-      headers: { authorization: `Bearer ${token}`, 'content-length': '1' },
-    }),
-  )
+  handle(new Request(`${AUD}/v1/artifacts/upload`, upload([[key, 'x']], token)))
 const status = (key: string, ref = 'refs/heads/main') =>
   handle(
     new Request(`${AUD}/v1/artifacts/download/${key}`, {

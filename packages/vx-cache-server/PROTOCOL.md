@@ -9,7 +9,7 @@ server may serve both.
 | ----------------------------------- | ----------------------------------------- |
 | `GET /v1/artifacts/download/<hash>` | one artifact's bytes                      |
 | `POST /v1/artifacts/download`       | many artifacts' bytes in one answer       |
-| `PUT /v1/artifacts/<hash>`          | one artifact's bytes                      |
+| `POST /v1/artifacts/upload`         | 1 to `maxBatchArtifacts` artifacts        |
 | `POST /v1/artifacts/check`          | which exact keys are held, and their size |
 | `GET /v1/capabilities`              | the server's limits                       |
 
@@ -78,17 +78,30 @@ and its bytes follow in that order; a key it does not name is not held:
 <4200 bytes>
 ```
 
-`PUT /v1/artifacts/<hash>` (a token that writes, as Turbo's
-`PUT /v8/artifacts/<hash>`), with `Content-Length`: the body is the
-artifact's bytes, stored in the token's scope. One the scope already
-holds keeps its bytes, answered before they are read. `204`; past
-`maxUploadBytes`, `413`. A client may `check` first to skip what is
-held.
+`POST /v1/artifacts/upload` (a token that writes),
+`Content-Type: application/vnd.vx-cache.batch` with `Content-Length`: a
+line naming 1 to `maxBatchArtifacts` artifacts, each hash once, then
+their bytes. They go to the token's scope:
 
-Uploads go one artifact at a time: there is no batch upload. A batch's
-bytes pass through the server's code to be split, which on Workers costs
-CPU by the byte (a 40 MB one ran out of it), while a `PUT`'s reach the
-bucket untouched.
+```
+{"artifacts":[{"hash":"8f1c","size":4200}]}\n
+<4200 bytes>
+```
+
+An artifact the write's scope already holds keeps its bytes, and its bytes here are skipped; when every one is held the
+server answers before reading them. `204`. Together they are at most
+`maxUploadBytes` (`413` past it). A `Content-Length` that is not the
+line's bytes and the sizes it names is `400`.
+
+Every upload is a batch, of one artifact or more. A client asks `check`
+before an upload of more than two, sending only what is missing, and
+batches only within the limits a check named.
+
+A server never copies bytes through its own code a few at a time: on
+Workers that costs CPU by the byte (a 40 MB upload split so ran out of
+it). The reference server reads each artifact of an upload in pieces of
+up to 1 MiB (105 ms of CPU for 43 MB in 40 artifacts) and pipes each of
+a batch download's bodies whole (1 ms for 43 MB).
 
 ## Limits
 
