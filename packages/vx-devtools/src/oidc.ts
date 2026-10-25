@@ -79,7 +79,12 @@ export function parseTrust(json: string): TrustRule[] {
           `${at}: ${claim} is not a string${claim === 'iss' ? '' : ' or a list of them'}`,
         )
     }
-    if (typeof rule['iss'] !== 'string' || !rule['iss'].startsWith('https://')) {
+    // Loopback over plain HTTP too: a server's own tests (its container's)
+    // run an issuer beside it, and no one else reaches that address.
+    if (
+      typeof rule['iss'] !== 'string' ||
+      !/^(https:\/\/|http:\/\/127\.0\.0\.1[:/])/.test(rule['iss'])
+    ) {
       throw new Error(`${at}: iss is not an https:// issuer`)
     }
     const id = repoClaimOf(rule['iss'])

@@ -1,0 +1,75 @@
+// `vx-history-server` on Cloudflare Workers, the timings in D1.
+// `wrangler.jsonc` deploys it; TRUST, AUDIENCE and TIMING_DAYS are vars in
+// it.
+
+import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
+import { timingDaysOf } from './days.js'
+import { createHistoryServer, errorJson } from './server.js'
+import { type Db, sqliteStore } from './store.js'
+
+/** The parts of the Workers runtime this file uses, so it needs no types package. */
+interface D1Statement {
+  bind(...values: unknown[]): D1Statement
+  all<T>(): Promise<{ results: T[] }>
+  run(): Promise<{ meta: { changes: number } }>
+}
+export interface D1Database {
+  prepare(sql: string): D1Statement
+}
+
+export interface Env {
+  readonly DB: D1Database
+  /** The CI repositories served and the jobs trusted (`parseTrust`), a JSON list. */
+  readonly TRUST?: string
+  /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
+  readonly AUDIENCE?: string
+  /** Days a task's timings outlive its last report (default 30). */
+  readonly TIMING_DAYS?: string
+}
+
+function d1Db(d1: D1Database): Db {
+  return {
+    all: async <T>(sql: string, params: readonly unknown[]) =>
+      (
+        await d1
+          .prepare(sql)
+          .bind(...params)
+          .all<T>()
+      ).results,
+    run: async (sql, params) =>
+      (
+        await d1
+          .prepare(sql)
+          .bind(...params)
+          .run()
+      ).meta.changes,
+  }
+}
+
+/** One handler per isolate and settings: the schema is made once per isolate. */
+let made: { key: string; handle: (req: Request) => Promise<Response> } | undefined
+
+export default {
+  async fetch(req: Request, env: Env): Promise<Response> {
+    const key = [env.TRUST, env.AUDIENCE, env.TIMING_DAYS].join('\0')
+    if (made?.key !== key) {
+      let trust
+      let timingDays
+      try {
+        trust = parseTrust(env.TRUST ?? '')
+        timingDays = timingDaysOf(env.TIMING_DAYS)
+      } catch (err) {
+        return errorJson(500, (err as Error).message)
+      }
+      made = {
+        key,
+        handle: createHistoryServer({
+          store: sqliteStore(d1Db(env.DB)),
+          authorize: oidcAuth({ trust, ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}) }),
+          ...(timingDays === undefined ? {} : { timingDays }),
+        }),
+      }
+    }
+    return made.handle(req)
+  },
+}

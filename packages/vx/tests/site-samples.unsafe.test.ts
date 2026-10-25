@@ -1038,7 +1038,7 @@ describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
     }
     // vx#check.build-cold and vx#check.sandbox-canary (each drives the
     // sandbox itself), vx#test.bun.unsafe's and vx#test.platform.unsafe's
-    // shards, vx-dte-server#test.live (Docker), vx-migrate#nx.install,
+    // shards, vx-dte-server#test.live and vx-history-server#test.live (Docker), vx-migrate#nx.install,
     // vx-reapi#test, #test.live and its two services. If none are found the reader is broken, not the docs.
     expect(found.sort()).toEqual(
       [
@@ -1053,6 +1053,7 @@ describe('the tasks that decline the sandbox (CLAUDE.md)', () => {
           (_, k) => `vx#test.platform.unsafe.shard-${k + 1}`,
         ),
         'vx-dte-server#test.live',
+        'vx-history-server#test.live',
         'vx-migrate#nx.install',
         'vx-reapi#services.cache',
         'vx-reapi#services.exec',

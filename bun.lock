@@ -126,6 +126,23 @@
         "@vzn/vx": "*",
       },
     },
+    "packages/vx-history-server": {
+      "name": "@vzn/vx-history-server",
+      "version": "0.0.0",
+      "bin": {
+        "vx-history-server": "./src/bun.ts",
+      },
+      "dependencies": {
+        "@vzn/vx-devtools": "*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "*",
+        "jose": "6.2.13",
+        "miniflare": "5.20261019.1-beta",
+        "wrangler": "4.149.0",
+      },
+    },
     "packages/vx-lockfile": {
       "name": "@vzn/vx-lockfile",
       "version": "0.0.0",
@@ -807,6 +824,8 @@
     "@vzn/vx-dte-service": ["@vzn/vx-dte-service@workspace:private/vx-dte-service"],
 
     "@vzn/vx-history": ["@vzn/vx-history@workspace:packages/vx-history"],
+
+    "@vzn/vx-history-server": ["@vzn/vx-history-server@workspace:packages/vx-history-server"],
 
     "@vzn/vx-lockfile": ["@vzn/vx-lockfile@workspace:packages/vx-lockfile"],
 

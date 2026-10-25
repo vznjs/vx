@@ -1,0 +1,59 @@
+{
+  "name": "@vzn/vx-history-server",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "description": "The task timings a vx scheduler asks for, one folded row per task, that you host: on Bun with SQLite, on Cloudflare Workers with D1, or as a Docker image.",
+  "keywords": [
+    "vx",
+    "scheduler",
+    "history-server"
+  ],
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "bin": {
+    "vx-history-server": "./src/bun.ts"
+  },
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./worker": {
+      "types": "./src/worker.ts",
+      "import": "./src/worker.ts"
+    }
+  },
+  "files": [
+    "index.ts",
+    "src",
+    "PROTOCOL.md",
+    "wrangler.jsonc",
+    "Dockerfile",
+    "README.md"
+  ],
+  "engines": {
+    "bun": ">=1.4.4"
+  },
+  "//": [
+    "@vzn/vx: vx.config.ts's core; `*`, not workspace:, which npm refuses when a deploy installs this directory alone.",
+    "@vzn/vx-devtools: checks the CI tokens, the check vx's servers share (it imports only jose); `*` for the same reason.",
+    "wrangler: deploys src/worker.ts by wrangler.jsonc.",
+    "jose: the tests sign the CI tokens the server checks.",
+    "miniflare: tests/worker.test.ts runs src/worker.ts in workerd with D1, as Workers deploy it."
+  ],
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "@vzn/vx": "*",
+    "jose": "6.2.13",
+    "miniflare": "5.20261019.1-beta",
+    "wrangler": "4.149.0"
+  },
+  "dependencies": {
+    "@vzn/vx-devtools": "*"
+  }
+}
