@@ -15,7 +15,7 @@
   },
   // Expiry: one bucket lifecycle rule, every object after 7 days
   // (README): names are hashed, so no prefix tells main from a branch.
-  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache-enam" }],
+  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
@@ -28,7 +28,7 @@
     "vars": {
       "TRUST": "[{\"iss\":\"https://token.actions.githubusercontent.com\",\"repository_id\":\"1235245958\",\"workflow_ref\":\"vznjs/vx/.github/workflows/ci.yml@*\",\"event_name\":[\"push\",\"merge_group\",\"workflow_dispatch\"],\"ref\":[\"refs/heads/main\",\"refs/heads/gh-readonly-queue/main/*\"],\"ref_protected\":\"true\"}]",
     },
-    "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache-enam" }],
+    "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],
     "observability": {
       "enabled": true,
       "head_sampling_rate": 1,
