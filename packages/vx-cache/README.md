@@ -29,7 +29,8 @@ Every request carries the CI job's own OIDC token, and the server's
 
 - On GitHub Actions the job's token is asked for the server's origin,
   and asked again before it ends. The job needs
-  `permissions: id-token: write`.
+  `permissions: id-token: write`; without it (`GITHUB_ACTIONS` is set
+  but no token comes), the plugin warns and runs without the cache.
 - On GitLab, name an `id_tokens` entry `VX_CACHE_TOKEN` with the
   server's origin as `aud`.
 
