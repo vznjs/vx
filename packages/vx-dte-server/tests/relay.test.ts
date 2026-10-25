@@ -331,10 +331,10 @@ describe('the relay carries one run between its orchestrator and workers', () =>
     ])
     const [oSaw, wSaw] = [pushed.get(o)!, pushed.get(w)!]
     expect(oSaw).toEqual([
-      { joined: { id: o, heartbeatMs: 5000 } },
+      { joined: { id: o, heartbeatMs: 2000 } },
       { messages: [{ from: 'relay', body: { type: 'joined', id: w, info: { size: 'small' } } }] },
     ])
-    expect(wSaw).toEqual([{ joined: { id: w, heartbeatMs: 5000 } }])
+    expect(wSaw).toEqual([{ joined: { id: w, heartbeatMs: 2000 } }])
     // Its frames go as any participant's.
     const k = await sessionKey(R, undefined)
     expect(relay.frame(k, w, JSON.stringify({ n: 1, sends: [{ to: 'host', body: 'hi' }] }))).toBe(

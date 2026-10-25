@@ -198,7 +198,7 @@ class HttpError extends Error {
 const errorBody = (err: HttpError | TokenError): object => ({ error: err.message })
 
 export function createRelay(opts: RelayOptions): Relay {
-  const heartbeatMs = opts.heartbeatMs ?? 5_000
+  const heartbeatMs = opts.heartbeatMs ?? 2_000
   const graceMs = opts.graceMs ?? 10_000
   const sessions = new Map<string, Session>()
 
