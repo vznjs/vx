@@ -1,0 +1,5 @@
+LICENSE
+README.md
+index.ts
+package.json
+src/index.ts
