@@ -61,8 +61,8 @@ const put = (token: string, key: string) =>
   )
 const status = (key: string, ref = 'refs/heads/main') =>
   handle(
-    new Request(`${AUD}/v1/artifacts/download/${key}`, {
-      headers: { authorization: `Bearer ${read}`, 'x-vx-scope': scopeOf(ref) },
+    new Request(`${AUD}/v1/artifacts/${key}`, {
+      headers: { authorization: `Bearer ${read}`, 'x-artifact-scope': scopeOf(ref) },
     }),
   ).then(async (r) => (await r.arrayBuffer(), r.status))
 const detail = async (res: Response) =>
@@ -121,7 +121,7 @@ describe('a server that trusts no CI', () => {
       blobs: memBlobs(),
       authorize: oidcAuth({ trust: [] }),
     })
-    const res = await none(new Request(`${AUD}/v1/artifacts/download/abc`))
+    const res = await none(new Request(`${AUD}/v1/artifacts/abc`))
     expect(await detail(res)).toEqual([401, 'the server trusts no CI: set TRUST'])
   })
 })

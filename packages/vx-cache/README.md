@@ -47,15 +47,17 @@ refused write (a job that reads only) turns off writes alone. Any other
 refusal is a warning naming the server's own words, and the task reads
 as a miss.
 
-Every read names exact keys, `{ scope, hash }`, the scope its ref's
-hash (no ref goes on the wire plain): one per ref the run reads (its branch, then the branch it merges into, then the default
-branch), and the first ref holding a hash answers it. A run that reads
+Every read names scopes, each a ref's hash (no ref goes on the wire
+plain). A check names the run's refs in order (its branch, then the
+branch it merges into, then the default branch), and the first ref
+holding a hash answers it; its download names that ref. A run that reads
 no ref says so and stays local. The run asks the server's limits once
-(`/v1/capabilities`) and checks in chunks of its `maxCheckKeys`. Each
+(`/v1/capabilities`) and checks in chunks of its `maxCheckHashes`
+lookups, all at once. Each
 upload is one artifact by `PUT`, up to four at once: its bytes reach the
 bucket untouched by the server's code (a batch, split by that code, ran
 out of Workers' CPU). While the server names no limits (said once),
-checks go one key at a time: no limit is guessed. An artifact over the server's upload limit is not sent: it
+checks go one hash at a time: no limit is guessed. An artifact over the server's upload limit is not sent: it
 is said once.
 
 Task timings are not this plugin's: `@vzn/vx-history` keeps them.

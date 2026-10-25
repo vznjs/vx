@@ -14,8 +14,7 @@ const USAGE = `usage: vx-cache-server [--port 8080] [--host 0.0.0.0]
   AUDIENCE        the aud a CI token names (default: the origin it was sent to)
   S3_BUCKET       the bucket; S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID and
                   S3_SECRET_ACCESS_KEY as Bun's S3 client reads them
-  MAX_CHECK_KEYS       keys one check names (default ${DEFAULT_LIMITS.maxCheckKeys})
-  MAX_BATCH_ARTIFACTS  artifacts one batch download carries (default ${DEFAULT_LIMITS.maxBatchArtifacts})
+  MAX_CHECK_HASHES       keys one check names (default ${DEFAULT_LIMITS.maxCheckHashes})
   MAX_UPLOAD_BYTES     the largest upload, one artifact (default ${DEFAULT_LIMITS.maxUploadBytes})`
 
 /**

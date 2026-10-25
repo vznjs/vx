@@ -6,6 +6,9 @@ import { vxHistory } from '@vzn/vx-history'
 import { bun } from '@vzn/vx-lockfile'
 
 const relay = process.env['VX_DTE_RELAY']
+// A PR that changes the cache server runs on its Preview (ci.yml), and
+// hands it to the workers.
+const cacheUrl = process.env['VX_CACHE_URL'] || 'https://vx-cache.exelord.workers.dev'
 
 export default defineWorkspace({
   plugins: [
@@ -15,7 +18,7 @@ export default defineWorkspace({
     github({ checks: false }),
     // Our own servers (private/vx-cache-service, private/vx-history-service):
     // CI jobs sign in with their OIDC token, so off CI both stay local.
-    vxCache({ url: 'https://vx-cache.exelord.workers.dev' }),
+    vxCache({ url: cacheUrl }),
     vxHistory({ server: 'https://vx-history.exelord.workers.dev' }),
     // CI's one run over workers (ci.yml `linux`, vx-worker.yml);
     // a run with no VX_DTE_RUN, as on a laptop, is not distributed.
@@ -34,7 +37,7 @@ export default defineWorkspace({
         arm: { max: 1, cpu: 4, memory: '16GB', platform: 'linux-arm64' },
         mac: { max: 4, cpu: 3, memory: '7GB', platform: 'darwin-arm64' },
       },
-      adapter: githubWorkers(),
+      adapter: githubWorkers({ env: { VX_CACHE_URL: cacheUrl } }),
     }),
   ],
 })

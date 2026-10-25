@@ -21,4 +21,18 @@
     "head_sampling_rate": 1,
     "issues": { "enabled": true },
   },
+  // A PR that changes the server runs on Workers Builds' Preview of its
+  // commit (README), which inherits no production setting: the same
+  // TRUST and bucket, so a PR reads main's artifacts as the deployed one.
+  "previews": {
+    "vars": {
+      "TRUST": "[{\"iss\":\"https://token.actions.githubusercontent.com\",\"repository_id\":\"1235245958\",\"workflow_ref\":\"vznjs/vx/.github/workflows/ci.yml@*\",\"event_name\":[\"push\",\"merge_group\"],\"ref\":[\"refs/heads/main\",\"refs/heads/gh-readonly-queue/main/*\"],\"ref_protected\":\"true\"}]",
+    },
+    "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache-enam" }],
+    "observability": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "issues": { "enabled": true },
+    },
+  },
 }

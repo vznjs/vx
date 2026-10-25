@@ -29,11 +29,13 @@ bunx wrangler deploy
 ```
 
 On the first deploy, wrangler creates the R2 bucket `wrangler.jsonc`
-names (`vx-cache`). The server fits Workers' free plan. A request makes at
-most 1000 calls to R2, so a check reads up to 990 keys, and a batch
-download carries up to 495 artifacts. A higher setting is lowered,
-and `/v1/capabilities` says so. A request body is at most 100 MB. R2's
-free plan holds 10 GB.
+names (`vx-cache`). By default a check makes 6 lookups, one round of
+the calls a Worker request has waiting at once, and the client sends
+its checks at once: the fastest way. Each lookup is one subrequest, so
+a higher `MAX_CHECK_HASHES` must fit your plan, as `MAX_UPLOAD_BYTES`
+must fit its request body. A download is read through the data
+center's cache: after R2 serves an artifact once, that data center
+answers it without R2.
 
 </TabItem>
 <TabItem label="Bun">
@@ -78,14 +80,13 @@ Put TLS in front of it: a CI token is a bearer token.
 | `TRUST` | empty: refuse all | the repositories it serves and the jobs that write protected refs ([`TRUST`](../#trust-who-reads-and-who-writes)) |
 | `AUDIENCE` | the origin it is reached at | the `aud` a CI token must name |
 | `S3_BUCKET`, `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | | the bucket (Bun and Docker), as Bun's S3 client reads them |
-| `MAX_CHECK_KEYS` | 500 | the keys one check may name |
-| `MAX_BATCH_ARTIFACTS` | 100 | the artifacts one batch download may carry |
+| `MAX_CHECK_HASHES` | 500 (6 on Workers) | the lookups (hashes × scopes) one check may make |
 | `MAX_UPLOAD_BYTES` | 100 MB | the largest upload, one artifact |
 
 On Workers, each setting is a var in `wrangler.jsonc`. Every check
-answer names the limits (`x-vx-max-*` headers), and so does
-`GET /v1/capabilities`. Clients batch only within those limits. Uploads
-go one artifact at a time.
+answer names the limits (`x-artifact-max-*` headers), and so does
+`GET /v1/capabilities`. Clients check hashes in chunks within those
+limits. Downloads and uploads go one artifact at a time, many at once.
 
 ## Scopes and keys
 
@@ -96,9 +97,9 @@ bits of the ref's SHA-256, as 32 lowercase hex characters
 (`refs/heads/main` is `f921bd05e68b03740c450e565e0e6173`). A plain ref is
 refused with `400`, so no ref crosses the wire. A write names no scope:
 the server hashes the token's ref the same way. A read is exact: it
-names each scope it wants. `vxCache()` asks for its branch, then the
+names each scope it wants. A check names `vxCache()`'s branch, then the
 branch it merges into, then the default branch, and the first scope that
-holds the hash answers.
+holds the hash answers; the download names that scope (`x-artifact-scope`).
 
 An artifact's object name in the bucket is:
 
@@ -183,15 +184,15 @@ workers, so they read and write the scopes the run reads.
 
 ## API
 
-The protocol's routes, all under `/v1`
+Turbo's routes under `/v1`, each read naming its scope
 ([PROTOCOL.md](https://github.com/vznjs/vx/blob/main/packages/vx-cache-server/PROTOCOL.md)):
 
 | Route | Does |
 | --- | --- |
-| `GET /v1/artifacts/download/<hash>` | one artifact's bytes, its scope in `x-vx-scope` |
-| `POST /v1/artifacts/download` | many artifacts in one answer |
+| `GET /v1/artifacts/<hash>` | one artifact's bytes, its scope in `x-artifact-scope` |
+| `HEAD /v1/artifacts/<hash>` | whether the scope holds it, and its size |
 | `PUT /v1/artifacts/<hash>` | one artifact's bytes, to the token's scope |
-| `POST /v1/artifacts/check` | which keys are held, and their sizes |
+| `POST /v1/artifacts` | `{ hashes, scopes }`: each hash's size and the first scope holding it |
 | `GET /v1/capabilities` | the limits |
 
 Any server that speaks the protocol can stand in for this one. To mount

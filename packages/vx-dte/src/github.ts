@@ -15,9 +15,19 @@ export interface GithubOptions {
   readonly workflow?: string
   /** The runner label of each size, by size name, which `vx dte init` writes; absent, its platform's GitHub-hosted runner. */
   readonly runsOn?: Readonly<Record<string, string>>
+  /**
+   * Variables the run hands its workers, as the workflow's `env` input (a
+   * JSON object): a value the run's job decides, such as a server's URL
+   * for this commit. An undefined one is left out.
+   */
+  readonly env?: Readonly<Record<string, string | undefined>>
 }
 
-const KEYS: PluginOptionKinds<GithubOptions> = { workflow: 'string', runsOn: 'object' }
+const KEYS: PluginOptionKinds<GithubOptions> = {
+  workflow: 'string',
+  runsOn: 'object',
+  env: 'object',
+}
 
 /** In `RUNNER_TEMP`: one dispatched workflow run's API path per line. */
 const RUNS_FILE = 'vx-dte-runs'
@@ -36,6 +46,7 @@ const WATCH_MAX_MS = 10_000
 export function github(options: GithubOptions = {}): DteAdapter {
   refuseUnknownOptions('github()', options, KEYS)
   const workflow = options.workflow ?? 'vx-worker.yml'
+  const handed = handedEnv(options.env ?? {})
   // The workers one demand starts, by size: one dispatch each.
   const waves = new Map<string, WorkerSpawn[]>()
   // The workflow runs dispatched, and the dispatches still in flight: a
@@ -163,6 +174,7 @@ export function github(options: GithubOptions = {}): DteAdapter {
             sha,
             size,
             workers: JSON.stringify(workers.map((a) => a.id)),
+            ...(options.env === undefined ? {} : { env: handed }),
           },
         }),
       })
@@ -269,4 +281,21 @@ export async function githubRelayToken(relay: string): Promise<string | undefine
       `dte(): ${err instanceof Error ? err.message : String(err)} (for the relay)`,
     )
   })
+}
+
+/**
+ * `env` as the workflow's input: each name a variable's, each value one
+ * line, since the workflow writes each as a line of `GITHUB_ENV`.
+ */
+function handedEnv(env: Readonly<Record<string, string | undefined>>): string {
+  const out: Record<string, string> = {}
+  for (const [name, value] of Object.entries(env)) {
+    if (value === undefined) continue
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || typeof value !== 'string' || /[\r\n]/.test(value))
+      throw new UserError(
+        `github(): env ${JSON.stringify(name)}: a variable's name, and a string of one line`,
+      )
+    out[name] = value
+  }
+  return JSON.stringify(out)
 }

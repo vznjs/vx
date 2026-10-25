@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import { previewUrl, relayFor, watched, WATCH, type PreviewDeps } from '../preview.ts'
+import { previewUrl, relayFor, watched, watchOf, type PreviewDeps } from '../preview.ts'
 
 type CheckRun = Awaited<ReturnType<PreviewDeps['checks']>>[number]
 
@@ -17,6 +17,7 @@ const SUMMARY = [
   'Script: [vx-dte](https://dash.cloudflare.com/40b1/workers/services/view/vx-dte/production)',
 ].join('\n')
 const DEPLOYED = 'https://vx-dte.exelord.workers.dev'
+const WATCH = watchOf(readFileSync(path.join(dir, 'README.md'), 'utf8'))
 
 /** A PR whose head's check runs are `runs`, poll by poll, after `older` commits' (newest first). */
 function deps(
@@ -58,7 +59,7 @@ const check =
 describe('the relay a PR’s run uses', () => {
   it('is the deployed one when the PR changes no watched path, asked nothing', async () => {
     const d = deps(['packages/vx/src/index.ts'], [() => Promise.reject(new Error('asked'))])
-    expect(await relayFor('vx-dte', DEPLOYED, d)).toBeUndefined()
+    expect(await relayFor('vx-dte', WATCH, DEPLOYED, d)).toBeUndefined()
   })
 
   it('is the Preview of the head commit once its build ends', async () => {
@@ -66,7 +67,7 @@ describe('the relay a PR’s run uses', () => {
       ['packages/vx-dte-server/src/relay.ts'],
       [async () => [], check('in_progress'), check('completed', 'success')],
     )
-    expect(await relayFor('vx-dte', DEPLOYED, d)).toBe(
+    expect(await relayFor('vx-dte', WATCH, DEPLOYED, d)).toBe(
       'https://feat-relay-vx-dte.exelord.workers.dev',
     )
     expect(d.slept).toBe(2)
@@ -74,11 +75,11 @@ describe('the relay a PR’s run uses', () => {
 
   it('fails on a failed build, and on none within the wait, naming it', async () => {
     const failed = deps(['bun.lock'], [check('completed', 'failure')])
-    await expect(relayFor('vx-dte', DEPLOYED, failed)).rejects.toThrow(
+    await expect(relayFor('vx-dte', WATCH, DEPLOYED, failed)).rejects.toThrow(
       'Workers Builds: vx-dte ended failure',
     )
     const none = deps(['private/vx-dte-service/wrangler.jsonc'], [async () => []])
-    await expect(relayFor('vx-dte', DEPLOYED, none)).rejects.toThrow(
+    await expect(relayFor('vx-dte', WATCH, DEPLOYED, none)).rejects.toThrow(
       'Workers Builds: vx-dte: no build of the head after 5 min',
     )
   })
@@ -90,7 +91,9 @@ describe('the relay a PR’s run uses', () => {
     const d = deps(['packages/vx-dte-server/src/relay.ts'], [async () => []], {
       a: { runs: await check('completed', 'success', earlier)(), since: ['packages/vx-dte/a.ts'] },
     })
-    expect(await relayFor('vx-dte', DEPLOYED, d)).toBe('https://earlier-vx-dte.exelord.workers.dev')
+    expect(await relayFor('vx-dte', WATCH, DEPLOYED, d)).toBe(
+      'https://earlier-vx-dte.exelord.workers.dev',
+    )
     expect(d.slept).toBe(0)
   })
 
@@ -101,7 +104,7 @@ describe('the relay a PR’s run uses', () => {
       [async () => [], check('completed', 'success')],
       { a: { runs: await check('completed', 'success', earlier)(), since: ['bun.lock'] } },
     )
-    expect(await relayFor('vx-dte', DEPLOYED, d)).toBe(
+    expect(await relayFor('vx-dte', WATCH, DEPLOYED, d)).toBe(
       'https://feat-relay-vx-dte.exelord.workers.dev',
     )
     expect(d.slept).toBe(1)
@@ -118,10 +121,10 @@ describe('the relay a PR’s run uses', () => {
         check('completed', 'success', production),
       ],
     )
-    expect(await relayFor('vx-dte', DEPLOYED, d, true)).toBeUndefined()
+    expect(await relayFor('vx-dte', WATCH, DEPLOYED, d, true)).toBeUndefined()
     expect(d.slept).toBe(2)
     const failed = deps(['bun.lock'], [check('completed', 'failure', production)])
-    await expect(relayFor('vx-dte', DEPLOYED, failed, true)).rejects.toThrow(
+    await expect(relayFor('vx-dte', WATCH, DEPLOYED, failed, true)).rejects.toThrow(
       'Workers Builds: vx-dte ended failure',
     )
   })
@@ -135,10 +138,9 @@ describe('the relay a PR’s run uses', () => {
   // Workers Builds builds what its watch paths match, and the run waits for
   // that build: a path one names and the other does not hangs or skips.
   it('watches what the README says Workers Builds watches', () => {
-    const readme = readFileSync(path.join(dir, 'README.md'), 'utf8')
-    const line = readme.split('\n').find((l) => l.startsWith('- Watch paths:'))!
-    expect([...line.matchAll(/`([^`]+)`/g)].map((m) => m[1]!.replace(/\*$/, ''))).toEqual(WATCH)
-    expect(watched(['packages/vx-dte-server-x/a'])).toBe(false)
+    expect(WATCH).toEqual(['packages/vx-dte-server/', 'private/vx-dte-service/', 'bun.lock'])
+    expect(watched(WATCH, ['packages/vx-dte-server-x/a'])).toBe(false)
+    expect(() => watchOf('# no line')).toThrow('the README names no `- Watch paths:`')
   })
 
   // A Preview inherits no production setting.

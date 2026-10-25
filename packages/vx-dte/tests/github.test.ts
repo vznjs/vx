@@ -83,6 +83,39 @@ it('dispatches one workflow run per size for the workers one demand starts', asy
   }
 })
 
+it('hands its workers the variables env names, as the env input', async () => {
+  const bodies: { inputs: Record<string, string> }[] = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    async fetch(req) {
+      bodies.push((await req.json()) as { inputs: Record<string, string> })
+      return new Response(null, { status: 204 })
+    },
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+    GITHUB_REF_NAME: 'main',
+    GITHUB_SHA: 'abc123',
+  })
+  try {
+    void github({ env: { VX_CACHE_URL: 'https://preview.test', UNSET: undefined } }).spawn(
+      spawn('small#1', 'small'),
+    )
+    await Bun.sleep(100)
+    expect(bodies[0]!.inputs['env']).toBe('{"VX_CACHE_URL":"https://preview.test"}')
+  } finally {
+    await server.stop(true)
+  }
+  // A value of two lines would write a second variable.
+  expect(() => github({ env: { VX_CACHE_URL: 'a\nNODE_OPTIONS=x' } })).toThrow(
+    `github(): env "VX_CACHE_URL": a variable's name, and a string of one line`,
+  )
+  expect(() => github({ env: { 'A-B': 'x' } })).toThrow('github(): env "A-B"')
+})
+
 it('says why for each worker of a dispatch GitHub refused', async () => {
   const server = Bun.serve({
     port: 0,

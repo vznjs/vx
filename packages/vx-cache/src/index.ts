@@ -3,7 +3,7 @@
 // Nothing is on by default: declare it in `.vx/workspace.ts` with the
 // server's URL. It serves CI jobs only: every request carries the job's
 // OIDC token, and off CI it declines with one note. Every read names
-// exact keys: the run's branch, then the branches it reads after it.
+// exact scopes: the run's branch, then the branches it reads after it.
 // Imports core only through `@vzn/vx`.
 
 import {
@@ -82,7 +82,7 @@ function deadline(ms: number): AbortSignal {
 /**
  * Uploads: up to `IN_FLIGHT` at once, each one artifact by `PUT`, whose
  * bytes reach the bucket untouched (M, 2026-10-25: no batch upload; a
- * batch is split by the server's code, which on Workers costs CPU by the
+ * batch passes through the server's code, which on Workers costs CPU by the
  * byte, and a 40 MB one ran out of it).
  */
 class Lane<T> {
@@ -112,15 +112,15 @@ class Lane<T> {
   }
 }
 
-/** The limits a server names at `/v1/capabilities` and on each check (`x-vx-max-*`). */
+/** The limits a server names at `/v1/capabilities` and on each check (`x-artifact-max-*`). */
 interface Limits {
-  readonly maxCheckKeys: number
+  readonly maxCheckHashes: number
   readonly maxUploadBytes: number
 }
 
 const LIMIT_HEADERS: Record<keyof Limits, string> = {
-  maxCheckKeys: 'x-vx-max-check-keys',
-  maxUploadBytes: 'x-vx-max-upload-bytes',
+  maxCheckHashes: 'x-artifact-max-check-hashes',
+  maxUploadBytes: 'x-artifact-max-upload-bytes',
 }
 
 const count = (n: unknown): number | undefined =>
@@ -128,18 +128,18 @@ const count = (n: unknown): number | undefined =>
 
 /** Each limit, or undefined when one is missing or bad. */
 function limitsOf(read: (k: keyof Limits) => unknown): Limits | undefined {
-  const maxCheckKeys = count(read('maxCheckKeys'))
+  const maxCheckHashes = count(read('maxCheckHashes'))
   const maxUploadBytes = count(read('maxUploadBytes'))
-  return maxCheckKeys === undefined || maxUploadBytes === undefined
+  return maxCheckHashes === undefined || maxUploadBytes === undefined
     ? undefined
-    : { maxCheckKeys, maxUploadBytes }
+    : { maxCheckHashes, maxUploadBytes }
 }
 
 /**
  * The seam over vx-cache v1. `has` and `hasMany` are `check`, `get` a
- * download and `put` an upload by `PUT` (`Lane`). Every read
- * names exact `{ scope, hash }` keys, one per ref the run reads, and the
- * first ref holding a hash answers it. A refused token (401/403) throws
+ * download and `put` an upload by `PUT` (`Lane`). A check names the
+ * scope of each ref the run reads, in order, and the first holding a hash
+ * answers it; a download names the scope its check found. A refused token (401/403) throws
  * once, for core to report, and turns the layer off for the run; an
  * upload's 403 turns off writes alone (a job that reads only).
  */
@@ -270,8 +270,8 @@ export class VxCacheLayer implements RemoteCacheLayer {
 
   /**
    * The server's limits: `/v1/capabilities`, asked once and kept, then
-   * whatever each check names. Unnamed, said once: checks go one ref's
-   * key at a time.
+   * whatever each check names. Unnamed, said once: checks go one hash at
+   * a time.
    */
   private async limitsNow(): Promise<Limits | undefined> {
     if (this.limits !== undefined) return this.limits
@@ -292,7 +292,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (this.limitsMissing) return
     this.limitsMissing = true
     this.warn(
-      `[vx] vx-cache: ${where} named no limits (maxCheckKeys, maxUploadBytes); checks go one key at a time`,
+      `[vx] vx-cache: ${where} named no limits (maxCheckHashes, maxUploadBytes); checks go one hash at a time`,
     )
   }
 
@@ -308,41 +308,58 @@ export class VxCacheLayer implements RemoteCacheLayer {
     return (await this.hasMany([hash])).get(hash) ?? null
   }
 
+  /** One check of the run's refs' scopes, in order: each hash answers the first that holds it. */
   async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo>> {
-    if (this.disabled || this.refs.length === 0) return new Map()
+    const held = new Map<string, ArtifactInfo>()
+    if (this.disabled || this.refs.length === 0) return held
     const scopes = this.refs.map(scopeOf)
-    const keys = hashes.flatMap((hash) => scopes.map((scope) => ({ scope, hash })))
-    const per = (await this.limitsNow())?.maxCheckKeys ?? 1
+    const ask = [...new Set(hashes)]
+    const max = (await this.limitsNow())?.maxCheckHashes ?? scopes.length
+    const per = Math.max(1, Math.floor(max / scopes.length))
     const parts = await Promise.all(
-      Array.from({ length: Math.ceil(keys.length / per) }, (_, i) =>
-        this.check(keys.slice(i * per, (i + 1) * per)),
+      Array.from({ length: Math.ceil(ask.length / per) }, (_, i) =>
+        this.check(scopes, ask.slice(i * per, (i + 1) * per)),
       ),
     )
-    const sizes = parts.flat()
-    const held = new Map<string, ArtifactInfo>()
-    // Keys go hash by hash, each in the refs' order: the first held wins.
-    for (const [i, { scope, hash }] of keys.entries()) {
-      const size = sizes[i]
-      if (held.has(hash) || typeof size !== 'number' || size < 0) continue
-      held.set(hash, { size })
-      this.found.set(hash, scope)
-    }
+    for (const part of parts)
+      for (const [hash, { size, scope }] of part) {
+        held.set(hash, { size })
+        this.found.set(hash, scope)
+      }
     return held
   }
 
-  /** `POST /v1/artifacts/check`: each key's size, or null, in order. */
-  private async check(keys: readonly { scope: string; hash: string }[]): Promise<unknown[]> {
-    const res = await this.json('/v1/artifacts/check', { keys })
-    if (res === undefined) return []
+  /** `POST /v1/artifacts` (Turbo's batch query): the size and scope of each hash held. */
+  private async check(
+    scopes: readonly string[],
+    hashes: readonly string[],
+  ): Promise<Map<string, { size: number; scope: string }>> {
+    const res = await this.json('/v1/artifacts', { hashes, scopes })
+    if (res === undefined) return new Map()
     if (res.status !== 200) throw await refusal(res)
     const named = limitsOf((k) => Number(res.headers.get(LIMIT_HEADERS[k]) ?? NaN))
     if (named === undefined) this.limitsUnnamed(`the check (HTTP ${res.status})`)
     else this.limits = named
-    const body = (await res.json()) as { sizes?: unknown } | null
-    if (!Array.isArray(body?.sizes) || body.sizes.length !== keys.length) {
-      throw new Error('the check answered no `sizes` list, one per key')
+    const body = (await res.json()) as Record<string, unknown> | null
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      throw new Error('the check answered no object of hashes')
     }
-    return body.sizes
+    const out = new Map<string, { size: number; scope: string }>()
+    for (const hash of hashes) {
+      const info = body[hash]
+      if (info === null) continue
+      const { size, scope } = (info ?? {}) as { size?: unknown; scope?: unknown }
+      if (
+        typeof size !== 'number' ||
+        !(size >= 0) ||
+        typeof scope !== 'string' ||
+        !scopes.includes(scope)
+      ) {
+        throw new Error(`the check answered no size and scope asked, or null, for ${hash}`)
+      }
+      out.set(hash, { size, scope })
+    }
+    return out
   }
 
   /** The scope a check found it under, else each ref's in order until one holds it. */
@@ -350,9 +367,9 @@ export class VxCacheLayer implements RemoteCacheLayer {
     const at = this.found.get(hash)
     for (const scope of at === undefined ? this.refs.map(scopeOf) : [at]) {
       if (this.disabled) return null
-      const res = await this.request(`/v1/artifacts/download/${hash}`, {
+      const res = await this.request(`/v1/artifacts/${hash}`, {
         method: 'GET',
-        headers: { 'x-vx-scope': scope },
+        headers: { 'x-artifact-scope': scope },
       })
       if (res === undefined) return null
       if (res.status === 404) {

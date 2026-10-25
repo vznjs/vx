@@ -206,6 +206,8 @@ on:
       sha: { required: true }
       size: { required: true }
       workers: { required: true }
+      # The variables github({ env }) hands the workers, as a JSON object.
+      env: { required: false, default: '{}' }
 
 permissions:
   contents: read
@@ -228,6 +230,9 @@ ${inDir}    strategy:
     steps:
       - uses: actions/checkout@v4
         with: { ref: '\${{ inputs.sha }}' }
+      - env: { HANDED: '\${{ inputs.env }}' }
+        run: |
+          jq -r 'to_entries[] | if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.value | type == "string") and (.value | test("[\\r\\n]") | not) then "\\(.key)=\\(.value)" else error("env \\(.key): a name, and a string of one line") end' <<<"$HANDED" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@v2
 ${install.join('\n')}
       - run: ${vxCommand(setup.manager)} dte worker

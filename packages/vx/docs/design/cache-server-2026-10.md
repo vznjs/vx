@@ -21,15 +21,20 @@ page changes in the same PR as the item it describes.
   uploads keep one whole artifact and nodes share nothing but the bucket.
   Expiry is one bucket lifecycle rule by age; the server sweeps nothing,
   and no prefix tells main from a branch.
-- Shipped: every read names exact `{ scope, hash }` keys (M, 2026-10-25:
-  the whole point of scope is exact keys). A check takes up to
-  `maxCheckKeys` (default 500) and answers their sizes in order; a batch
-  download takes the same keys. There is no layered walk on the server:
-  a client wanting its branch's work, then main's, asks for both keys.
-- Shipped: limits an operator sets (`MAX_CHECK_KEYS`,
-  `MAX_BATCH_ARTIFACTS`, `MAX_UPLOAD_BYTES`), named on every check and
-  at `/v1/capabilities`. Workers lowers them to what one request's 1000
-  calls to R2 and 100 MB body fit.
+- Shipped: every read names exact scopes (M, 2026-10-25: the whole
+  point of scope is exact keys) on Turbo's routes (M, 2026-10-25: "use
+  turbo"): `GET`, `HEAD` and `PUT /v1/artifacts/<hash>`, a download's
+  scope in `x-artifact-scope`, and `POST /v1/artifacts` with `{ hashes,
+scopes }` (M: "checks can ask many scopes"), up to `maxCheckHashes`
+  lookups, answering each hash's `{ size, scope }`, the first scope
+  asked that holds it, or null. One exact head per lookup: a list of a
+  scope reads every name in it, and a scope may hold billions (M). A
+  Worker checks 6 by default, one round of its waiting calls, and the
+  client sends chunks at once.
+- Shipped: limits an operator sets (`MAX_CHECK_HASHES`,
+  `MAX_UPLOAD_BYTES`), named on every check and
+  at `/v1/capabilities`; the server never lowers them to a plan's (M,
+  2026-10-25: never optimize for the free plan).
 - Shipped: Turbo's shape where it fits (M, 2026-10-25: keep to the
   standard, differ only where it blocks us): `{ code, message }` errors,
   hex hashes, our own `/v1`. Batches and exact scoped keys are ours:
