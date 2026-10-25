@@ -66,6 +66,20 @@ async function refusal(res: Response): Promise<Error> {
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
 }
 
+/** A JWT's `exp` in ms; 0 when it names none. */
+function expiryOf(jwt: string): number {
+  try {
+    const exp = (
+      JSON.parse(Buffer.from(jwt.split('.')[1] ?? '', 'base64url').toString()) as {
+        exp?: unknown
+      }
+    ).exp
+    return typeof exp === 'number' ? exp * 1000 : 0
+  } catch {
+    return 0
+  }
+}
+
 interface Limits {
   readonly maxUploadTimings: number
   readonly maxQueryHashes: number
@@ -73,6 +87,7 @@ interface Limits {
 
 export class HistoryServer {
   private token: Promise<string> | undefined
+  private held: { jwt: string; exp: number } | undefined
   private limits: Promise<Limits> | undefined
 
   constructor(
@@ -81,11 +96,19 @@ export class HistoryServer {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  /** The job's token: GitHub's OIDC token for the server's origin, else `VX_HISTORY_TOKEN`; asked once a run. */
+  /**
+   * The job's token: GitHub's OIDC token for the server's origin, asked
+   * again a minute before it ends (it lives minutes, a run can outlive it),
+   * else `VX_HISTORY_TOKEN`.
+   */
   private bearer(): Promise<string> {
+    const held = this.held
+    if (held !== undefined && (held.exp === 0 || Date.now() < held.exp - 60_000)) {
+      return Promise.resolve(held.jwt)
+    }
     this.token ??= (async () => {
       const ask = this.env.ACTIONS_ID_TOKEN_REQUEST_URL
-      if (ask === undefined || ask === '') return this.env.VX_HISTORY_TOKEN ?? ''
+      if (ask === undefined || ask === '') return { jwt: this.env.VX_HISTORY_TOKEN ?? '', exp: 0 }
       const u = new URL(ask)
       u.searchParams.set('audience', new URL(this.url).origin)
       const res = await this.fetchImpl(u, {
@@ -95,8 +118,10 @@ export class HistoryServer {
       if (!res.ok) throw new Error(`GitHub's OIDC endpoint: ${(await refusal(res)).message}`)
       const jwt = ((await res.json()) as { value?: unknown }).value
       if (typeof jwt !== 'string' || jwt === '') throw new Error("GitHub's OIDC endpoint: no token")
-      return jwt
+      return { jwt, exp: expiryOf(jwt) }
     })()
+      .then((t) => (this.held = t).jwt)
+      .finally(() => (this.token = undefined))
     return this.token
   }
 
