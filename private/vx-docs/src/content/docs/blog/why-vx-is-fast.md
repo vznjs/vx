@@ -6,18 +6,18 @@ authors:
 tags:
   - performance
   - internals
-excerpt: 'With nothing changed, vx adds 720 ms to a 9,603-task run, with no daemon. Five design choices make that number.'
+excerpt: 'With nothing changed, vx adds 799 ms to a 9,603-task run, with no daemon. Five design choices make that number.'
 ---
 
-With nothing changed, vx adds **720 ms** to a 9,603-task run. No daemon
+With nothing changed, vx adds **799 ms** to a 9,603-task run. No daemon
 keeps it warm.
 
 | Time added over the ideal run, 1,601 projects, 9,603 tasks | vx      | Turborepo | Nx         | Vite Task |
 | ---------------------------------------------------------- | ------- | --------- | ---------- | --------- |
-| Nothing changed                                            | 720 ms  | 1.05 s    | 26.21 s    | 12.89 s   |
-| Nothing changed, outputs restored                          | 1.72 s  | 2.45 s    | 29.40 s    | 13.48 s   |
-| Cold build                                                 | 9.27 s  | 11.05 s   | 5 min 1 s  | 9.89 s    |
-| Cold build: CPU the runner burns                           | 49.58 s | 1 min 30 s | 7 min 43 s | 29.74 s  |
+| Nothing changed                                            | 799 ms  | 927 ms    | 24.15 s    | 12.07 s   |
+| Nothing changed, outputs restored                          | 1.28 s  | 2.01 s    | 24.45 s    | 11.86 s   |
+| Cold build                                                 | 7.57 s  | 9.63 s   | 3 min 6 s  | 9.01 s    |
+| Cold build: CPU the runner burns                           | 36.64 s | 1 min 12 s | 5 min 34 s | 25.32 s  |
 
 <small>Synthetic monorepo, 1,601 projects, 30 levels · linux x64, 4 cores, concurrency 10 · vx `0be036747`, Turborepo 2.11.10, Nx 24.0.1, Vite Task (vite-plus) 1.4.0, native configs · 2026-10-23 · [benchmarks](../../benchmarks/)</small>
 

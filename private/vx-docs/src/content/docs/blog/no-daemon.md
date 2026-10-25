@@ -6,17 +6,17 @@ authors:
 tags:
   - design
   - performance
-excerpt: 'vx has no background process watching your files. A run with nothing to do takes 720 ms on 9,603 tasks, and it can never act on a stale view of the tree.'
+excerpt: 'vx has no background process watching your files. A run with nothing to do takes 799 ms on 9,603 tasks, and it can never act on a stale view of the tree.'
 ---
 
 vx runs no background process. When nothing changed, a run over 9,603
-tasks still finishes in 720 ms.
+tasks still finishes in 799 ms.
 
 | Runner    | Nothing changed | Daemon              |
 | --------- | --------------- | ------------------- |
-| vx        | 720 ms          | none                |
-| Turborepo | 1.05 s          | not for `turbo run` |
-| Nx        | 26.21 s         | off, as in CI       |
+| vx        | 799 ms          | none                |
+| Turborepo | 927 ms          | not for `turbo run` |
+| Nx        | 24.15 s         | off, as in CI       |
 
 <small>Synthetic monorepo, 1,601 projects, 9,603 tasks · linux x64, 4 cores, concurrency 10 · vx 0be036747, Turborepo 2.11.10, Nx 24.0.1 · 2026-10-23 · [benchmarks](../../benchmarks/)</small>
 
@@ -53,7 +53,7 @@ clean tree is keyed with no read of a source file
 `vx.config.ts` is evaluated. A hit on an up-to-date tree only checks that
 the outputs are there ([how](../strict-output-ownership/)).
 
-That is the 720 ms. Nothing stays running after it, and a run in a
+That is the 799 ms. Nothing stays running after it, and a run in a
 terminal, in CI or in a container gives the same answer.
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

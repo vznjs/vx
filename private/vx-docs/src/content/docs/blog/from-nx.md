@@ -130,8 +130,8 @@ any target Nx marks `continuous`.
 
 | 9,603 tasks, native config | vx | Nx 24.0.1 |
 | --- | --- | --- |
-| Nothing changed | 720 ms | 26.21 s |
-| Cold build: CPU the runner burns | 49.58 s | 7 min 43 s |
+| Nothing changed | 799 ms | 24.15 s |
+| Cold build: CPU the runner burns | 36.64 s | 5 min 34 s |
 
 <small>Synthetic monorepo, 1,601 projects · linux x64, 4 cores, concurrency 10 · vx `0be036747` · 2026-10-23 · [benchmarks](../../benchmarks/)</small>
 

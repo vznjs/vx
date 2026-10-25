@@ -14,10 +14,10 @@ time each runner adds on top of the tasks, on one 9,603-task graph:
 
 | Runner    | Cold build overhead | Nothing changed | Cold build CPU |
 | --------- | ------------------- | --------------- | -------------- |
-| vx        | **9.27 s** | **720 ms** | 49.58 s |
-| Turborepo | 11.05 s | 1.05 s | 1 min 30 s |
-| Nx        | 5 min 1 s | 26.21 s | 7 min 43 s |
-| Vite Task | 9.89 s | 12.89 s | 29.74 s |
+| vx        | **7.57 s** | **799 ms** | 36.64 s |
+| Turborepo | 9.63 s | 927 ms | 1 min 12 s |
+| Nx        | 3 min 6 s | 24.15 s | 5 min 34 s |
+| Vite Task | 9.01 s | 12.07 s | 25.32 s |
 
 <small>Synthetic monorepo, 1,601 projects, 9,603 tasks, 30 levels · build 300 ms, test and typecheck 150 ms, lint 75 ms, publish 30 ms · linux x64, 4 cores, concurrency 10 · vx 0be036747, Turborepo 2.11.10, Nx 24.0.1, Vite Task 1.4.0 · 2026-10-23</small>
 
