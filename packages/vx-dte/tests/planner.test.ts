@@ -122,8 +122,12 @@ it('lets an idle worker go only when one started in its place would be in time',
     task('a', 300_000),
     ...Array.from({ length: 8 }, (_, i) => task(`w${i}`, 30_000, ['a'])),
   ]
-  const p = plan(late, [worker('busy', { idle: false }), worker('idle')], [], WARM)
-  expect(p.release).toEqual(['idle'])
+  const lull = [worker('busy', { idle: false }), worker('idle', { size: 'small' })]
+  expect(plan(late, lull, [small], WARM).release).toEqual(['idle'])
+  // With its size's starts spent, none could: it stays (fuzz, 2026-10-25).
+  const kept = plan(late, lull, [], WARM)
+  expect(kept.release).toEqual([])
+  expect(kept.endsInMs).toBe(330_000)
   // With nothing left, every idle one goes.
   expect(plan([], two, [], WARM).release).toEqual(['idle'])
 })
