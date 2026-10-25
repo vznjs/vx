@@ -77,6 +77,8 @@ interface Job {
   fellBack?: true
   /** An uncached task run again for a dependant (`kept`): its result is the run's alone. */
   again?: { readonly only?: string; readonly avoid?: string }
+  /** Its upstreams, once the graph named it: walked again at every pump, 8000 queued spent 5 ms a pump on it (2026-10-25). */
+  up?: Set<string>
 }
 
 /** The longest a task waits on the worker holding its upstream's files before they are made again (M, 2026-10-23: 10 s on any wait). */
@@ -507,8 +509,15 @@ export class Orchestrator {
     const nodes = this.o.nodes()
     const asks = []
     const placed: Job[] = []
+    // The least any ask needs: once no worker takes it, the pass ends. Each
+    // pump read every queued task, 8000 of them a pump (2026-10-25).
+    const floor = { cores: Infinity, memory: Infinity }
     for (const job of queue) {
-      const up = upstream(nodes, job.req.taskId)
+      const up =
+        job.up ??
+        (nodes?.has(job.req.taskId) === true
+          ? (job.up = upstream(nodes, job.req.taskId))
+          : upstream(nodes, job.req.taskId))
       const pin = this.pin(job, up)
       if (pin === 'done') continue
       if (pin === 'wait') {
@@ -516,9 +525,15 @@ export class Orchestrator {
         continue
       }
       placed.push(job)
-      asks.push({ id: job.req.taskId, need: this.booking(job.need), up, ...pin })
+      const need = this.booking(job.need)
+      floor.cores = Math.min(floor.cores, need.cores)
+      floor.memory = Math.min(floor.memory, need.memory)
+      asks.push({ id: job.req.taskId, need, up, ...pin })
     }
-    const to = assign(asks, bins, (above) => this.bigger(above), how.place)
+    const to = assign(asks, bins, (above) => this.bigger(above), how.place, {
+      floor,
+      kinds: Infinity,
+    })
     for (const job of placed) {
       const a = to.get(job.req.taskId)?.a
       if (a === undefined) {
@@ -568,6 +583,8 @@ export class Orchestrator {
       const there = only === undefined || this.workers.get(only)?.faulty === false
       return there && waited < this.pinWaitMs ? job.again : {}
     }
+    // Nothing kept or made again: no upstream can pin it.
+    if (this.kept.size === 0 && this.remaking.size === 0 && this.unmade.size === 0) return {}
     const held = new Map<string, string[]>()
     for (const id of up) {
       const why = this.unmade.get(id)

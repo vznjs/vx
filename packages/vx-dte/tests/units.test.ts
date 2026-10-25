@@ -536,6 +536,27 @@ it('a worker reads the cache as the run does, and is lent its remotes’ access 
 const node = (id: string, deps: string[] = []) =>
   [id, { id, deps, projectDir: '/ws', config: {} } as unknown as TaskNode] as const
 
+// Each pump walked every queued task's upstreams and asked every worker of
+// each: 2000 queued down one chain spent 4 million walks a pump (2026-10-25).
+it('pumps a long queue in time that does not grow with its upstreams', async () => {
+  const ids = Array.from({ length: 2000 }, (_, i) => `t${i}`)
+  const h = await harness(new Map(ids.map((id, i) => node(id, i === 0 ? [] : [`t${i - 1}`]))))
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    for (const id of ids) void h.o.execute(h.req(id))
+    expect((await a.batches()).flat()).toHaveLength(1)
+    const pump = (): void => (h.o as unknown as { pump(): void }).pump()
+    pump()
+    const start = process.cpuUsage()
+    for (let i = 0; i < 20; i++) pump()
+    const { user, system } = process.cpuUsage(start)
+    expect((user + system) / 1000).toBeLessThan(1000)
+  } finally {
+    await h.stop()
+  }
+})
+
 // M, 2026-10-23: "we should not send tasks in batches unless we are 100%
 // sure ... they can fit". Main bf77a58: small#3's load read low while 38
 // test shards began, so it took them all on 4 cores, 28 failed, and the 5
