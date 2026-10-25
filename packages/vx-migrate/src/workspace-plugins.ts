@@ -26,6 +26,9 @@ export function workspacePlugins(root: string, runner?: 'turbo' | 'nx'): Workspa
   out.push({ pkg: '@vzn/vx-history', factory: 'vxHistory' })
   if (existsSync(path.join(root, '.github', 'workflows')))
     out.push({ pkg: '@vzn/vx-ci', factory: 'github' })
+  // A remote cache on CI reads the refs only these name (M, 2026-10-25).
+  if (existsSync(path.join(root, '.gitlab-ci.yml')))
+    out.push({ pkg: '@vzn/vx-ci', factory: 'gitlab' })
   return out
 }
 
@@ -34,8 +37,11 @@ export function undeclared(text: string, plugins: readonly WorkspacePlugin[]): W
   return plugins.filter((p) => !new RegExp(`\\b${p.factory}\\s*\\(`).test(text))
 }
 
+/** One line per package: `github()` and `gitlab()` share `@vzn/vx-ci`. */
 function importLines(plugins: readonly WorkspacePlugin[]): string[] {
-  return plugins.map((p) => `import { ${p.factory} } from '${p.pkg}'`)
+  const by = new Map<string, string[]>()
+  for (const p of plugins) by.set(p.pkg, [...(by.get(p.pkg) ?? []), p.factory])
+  return [...by].map(([pkg, names]) => `import { ${names.join(', ')} } from '${pkg}'`)
 }
 
 function entries(plugins: readonly WorkspacePlugin[], indent: string): string[] {

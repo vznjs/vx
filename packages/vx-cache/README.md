@@ -49,7 +49,9 @@ as a miss.
 
 Every read names scopes, each a ref's hash (no ref goes on the wire
 plain). A check names the run's refs in order (its branch, then the
-branch it merges into, then the default branch), and the first ref
+branch it merges into, then the default branch; on CI `github()` or
+`gitlab()` from `@vzn/vx-ci` names them, so declare it too: without it
+a run reads git's branch and the default branch only), and the first ref
 holding a hash answers it; its download names that ref. A run that reads
 no ref says so and stays local. The run asks the server's limits once
 (`/v1/capabilities`) and checks in chunks of its `maxCheckHashes`
