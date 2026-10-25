@@ -56,6 +56,8 @@ export interface Store {
   ): Promise<ArtifactRow[]>
   /** True when this insert made the row; false when one was already held. */
   addArtifact(row: NewArtifact): Promise<boolean>
+  /** Deletes `row` of `repo`, if still held at its size. */
+  dropArtifact(repo: string, row: ArtifactRow): Promise<void>
   /** One statement: a hash already timed at `createdAt` keeps its timing. */
   addTimings(
     repo: string,
@@ -148,6 +150,12 @@ export function sqliteStore(db: Db): Store {
         `INSERT INTO artifacts (repo, key, scope, size, created_at) VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT DO NOTHING`,
         [r.repo, r.key, r.scope, r.size, r.created_at],
       )) > 0,
+    dropArtifact: async (repo, r) => {
+      await db.run(
+        `DELETE FROM artifacts WHERE repo = ?1 AND key = ?2 AND scope = ?3 AND size = ?4`,
+        [repo, r.key, r.scope, r.size],
+      )
+    },
     // `WHERE true`: SQLite reads an upsert's SELECT without one as a join.
     addTimings: async (repo, scope, createdAt, timings) => {
       await db.run(
