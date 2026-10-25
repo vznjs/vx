@@ -5,7 +5,7 @@
 import { afterEach, expect, it } from 'bun:test'
 import { createRelay, serveRelay, TokenError, type RelayServer } from '@vzn/vx-dte-server'
 import { join, RelayError, unsent } from '../src/wire.js'
-import { answer } from './served-relay.js'
+import { answer, servedRelay } from './served-relay.js'
 
 /** Run ids: random UUIDs, as the relay takes. */
 const R = '00000000-0000-4000-8000-000000000001'
@@ -51,6 +51,19 @@ it('talks over the socket the relay offers: sends, removes and leaves, polling n
   await o.leave()
   // Each joins on the socket it opens: one request a participant, none of it HTTP.
   expect(asked).toEqual([])
+})
+
+// M, 2026-10-25: "We don't need double compressed". Each body is zstd'd
+// before it is sealed, so the socket offers no deflate.
+it('offers the relay no socket compression', async () => {
+  const s = servedRelay()
+  try {
+    const o = await join(s.url, R, 'orchestrator', null, undefined)
+    await o.leave()
+    expect(s.offered).toEqual([null])
+  } finally {
+    await s.stop()
+  }
 })
 
 it('learns from its socket’s close that the relay let it go, asking HTTP nothing', async () => {

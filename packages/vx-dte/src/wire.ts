@@ -642,6 +642,9 @@ async function connect(
   const ws = new WebSocket(`${base.replace(/^http/, 'ws')}socket?${query}`, {
     headers,
     protocols: [PROTOCOL],
+    // Each body is zstd-compressed before it is sealed, and sealed bytes do
+    // not compress: deflate would cost both ends CPU for base64's overhead.
+    perMessageDeflate: false,
   } as unknown as string[])
   // An upgrade the relay holds is a dial that failed, as a request past two heartbeats.
   const wait = heartbeatMs === undefined ? REPLY_MS : replyMs(heartbeatMs)
