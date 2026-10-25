@@ -52,7 +52,10 @@ One request is HTTP, a websocket upgrade of `GET
 - A session lives while its host does. The host's `leave` is its final
   call: it closes the session at once, and the relay keeps nothing of it.
   A host whose socket dropped without it has the grace (§ Liveness) to
-  dial again; the session waits for it, and closes when the grace passes.
+  dial again; the session waits for it. When the grace passes, the relay
+  forgets the session and closes each peer's socket with no code: the
+  host may still join it again, and a peer's redial, closed `4404`, joins
+  again too.
 
 ## The host's key
 
@@ -123,9 +126,9 @@ The relay itself sends, `"from": "relay"`:
   `info` as its join said, then forgotten;
 - to the host, `{ "type": "left", "id" }` when a peer leaves, or its
   grace passes with no socket;
-- to every peer, `{ "type": "closed" }` when the session closes. A peer on
-  a socket is told and let go; one with no socket gets `4404` when it
-  opens one.
+- to every peer, `{ "type": "closed" }` when the host leaves: the
+  session is over. A peer on a socket is told and let go; one with no
+  socket gets `4404` when it opens one.
 
 ## Sockets
 

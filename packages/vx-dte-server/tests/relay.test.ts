@@ -525,7 +525,7 @@ describe('a host that keeps runs and holds websockets', () => {
     expect([got.get(a), codes.get(a)]).toEqual([[{ from: 'host', body: 'back' }], []])
   })
 
-  it('ends a kept run whose orchestrator’s socket was not kept once its grace passes, and closes an older relay’s', async () => {
+  it('ends a kept run whose orchestrator’s socket was not kept once its grace passes, letting its workers redial, and closes an older relay’s', async () => {
     const before = client()
     const o = await before.join(R, 'host')
     const a = await before.join(R, 'peer')
@@ -541,7 +541,7 @@ describe('a host that keeps runs and holds websockets', () => {
     kept.set(o1, { key: kept.get(o1)!.key, id: o1 })
     const { sockets, codes } = restarted(kept)
     const after = client({ sockets, graceMs: 0 })
-    expect([codes.get(a), codes.get(o1)]).toEqual([[GONE], [GONE]])
+    expect([codes.get(a), codes.get(o1)]).toEqual([[undefined], [GONE]])
     expect((await after.call(R, 'join', { role: 'peer' })).status).toBe(410)
   })
 
@@ -637,7 +637,9 @@ describe('a host that keeps runs and holds websockets', () => {
 
   // Owner, 2026-10-25: an orchestrator that dropped without its final
   // `leave` dials again; only once its grace passes is the run over.
-  it('closes the run once its orchestrator’s dropped socket has not come back in its grace', async () => {
+  // Its host may still join again (vx-dte rejoins a session the relay
+  // forgot): its peers are let go to redial, not told it is over.
+  it('closes the run once its orchestrator’s dropped socket has not come back in its grace, letting its workers redial', async () => {
     const c = client({ graceMs: 50 })
     const o = await c.join(R, 'host')
     const a = await c.join(R, 'peer')
@@ -650,8 +652,9 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(await c.poll(R, a)).toEqual([])
     await Bun.sleep(60)
     c.relay.frame(K, a, JSON.stringify({ sends: [] }))
-    expect(await c.poll(R, a)).toEqual([{ from: 'relay', body: { type: 'closed' } }])
-    expect(c.closes.get(a)).toEqual([GONE])
+    expect(await c.poll(R, a)).toEqual([])
+    expect(c.closes.get(a)).toEqual([undefined])
+    expect(await c.plug(R, a)).toBe(false)
     expect((await c.call(R, 'join', { role: 'peer' })).status).toBe(410)
   })
 

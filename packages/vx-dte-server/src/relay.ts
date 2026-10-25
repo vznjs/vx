@@ -238,10 +238,21 @@ export function createRelay(opts: RelayOptions): Relay {
     return messages
   }
 
-  const close = (session: Session): void => {
+  /**
+   * `lost`: its host's grace passed, so it may still join again (a relay
+   * restart forgot it, or its network dropped): each peer's socket closes
+   * with no code, and its redial learns the session is gone and joins
+   * again. Only a host's `leave` tells its peers `closed`, the end.
+   */
+  const close = (session: Session, lost = false): void => {
     session.closed = true
     for (const p of [...session.byId.values()]) {
       if (p.role !== 'peer') continue
+      if (lost) {
+        session.byId.delete(p.id)
+        if (p.socket !== undefined) closeSocket(p.socket)
+        continue
+      }
       deliver(session, p, { from: 'relay', body: { type: 'closed' } }, true)
       drop(session, p, false)
     }
@@ -252,8 +263,11 @@ export function createRelay(opts: RelayOptions): Relay {
     forget(session)
   }
 
-  /** `tell`: the host hears its peer was lost (not when it removed it). */
-  const drop = (session: Session, p: Participant, tell = true): void => {
+  /**
+   * `tell`: the host hears its peer was lost (not when it removed it).
+   * `lost`: its grace passed with no redial, rather than a `leave`.
+   */
+  const drop = (session: Session, p: Participant, tell = true, lost = false): void => {
     if (!session.byId.delete(p.id)) return
     const left = drain(p)
     if (!tell) {
@@ -267,7 +281,7 @@ export function createRelay(opts: RelayOptions): Relay {
     // Its socket learns it is gone by the close code; its next socket, from `socket`.
     if (p.socket !== undefined) closeSocket(p.socket, GONE, 'gone')
     if (p.role === 'host') {
-      close(session)
+      close(session, lost)
       return
     }
     if (tell && session.host !== undefined && !session.closed) {
@@ -284,7 +298,7 @@ export function createRelay(opts: RelayOptions): Relay {
     const now = Date.now()
     for (const p of [...session.byId.values()]) {
       if (session.closed) return
-      if (p.droppedAt !== undefined && now - p.droppedAt >= graceMs) drop(session, p)
+      if (p.droppedAt !== undefined && now - p.droppedAt >= graceMs) drop(session, p, true, true)
     }
   }
 
