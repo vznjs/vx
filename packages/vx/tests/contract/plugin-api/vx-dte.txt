@@ -94,6 +94,7 @@ export interface WorkerSpawn {
   readonly index: number
   readonly id: string
   readonly workspaceRoot: string
+  readonly commit: string
   readonly env: Readonly<Record<string, string>>
   readonly exited: (reason: string) => void
 }

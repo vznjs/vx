@@ -701,10 +701,11 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   described only by the cores and memory its machine reports. It exits 0
   when the run ended before it joined.
 - `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn) }`; `init` gets a `DteSetup` (workspace root, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset.
-  `WorkerSpawn` is `{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, env }`,
+  `WorkerSpawn` is `{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, commit, env }`,
   with `memory` in bytes and `max` its size's (`Infinity` uncapped),
-  where `id` is the worker's name (`small#2`, numbered within its size) and `env` holds the three
-  variables the worker reads.
+  where `id` is the worker's name (`small#2`, numbered within its size), `commit` the
+  tracked files as the run saw them at its start (uncommitted changes included), whose
+  tree a worker must check out, and `env` holds the three variables the worker reads.
 - `docker(options: DockerOptions)` starts workers as containers and a relay
   of its own on loopback. `DockerOptions` is `{ image, prepare? }`.
 - `github(options?: GithubOptions)` dispatches workers as matrix jobs of

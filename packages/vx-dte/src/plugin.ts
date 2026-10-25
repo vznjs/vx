@@ -47,6 +47,8 @@ export interface WorkerSpawn {
   /** Its name in the run's output and its own (`small#2`, numbered within its size), which it reports back on joining. */
   readonly id: string
   readonly workspaceRoot: string
+  /** The commit of the tracked files as the run saw them at its start, whose tree a worker must check out. */
+  readonly commit: string
   /** What the worker's `vx dte worker` reads: `VX_DTE_RUN`, `VX_DTE_WORKER` (`id`), `VX_DTE_RELAY`, `VX_DTE_SECRET` (the run’s). */
   readonly env: Readonly<Record<string, string>>
   /** Says the worker's job or process ended, a success too, and why (its exit, its last stderr line). */
@@ -396,7 +398,7 @@ export function dte(options: DteOptions) {
         else secret = seal.runSecret()
       }
       proof ??= seal.secretProof(secret!)
-      const { tree } = await snapshot(ctx.workspaceRoot)
+      const { commit, tree } = await snapshot(ctx.workspaceRoot)
       if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
       const need = (id: string): Need => booked(needOf(peaks.get(id), unmeasured), how.book)
       // The run plans again on it, now when `now`; set once the plan is.
@@ -472,6 +474,7 @@ export function dte(options: DteOptions) {
           index: n,
           id,
           workspaceRoot: ctx.workspaceRoot,
+          commit,
           env: {
             VX_DTE_RUN: run,
             VX_DTE_WORKER: id,

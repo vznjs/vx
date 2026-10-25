@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { local } from '../src/index.ts'
+import { snapshot } from '../src/tree.ts'
 
 const DTE = path.resolve(import.meta.dir, '..', 'src', 'index.ts')
 const CORE_BIN = path.resolve(import.meta.dir, '../../vx/src/bin.ts')
@@ -899,6 +900,39 @@ it('saves no entry under its key for a task that changed its input on its worker
   expect([again.exitCode, again.stdout.toString().includes('small#')]).toEqual([0, true])
 }, 60_000)
 
+// local() took a snapshot of its own at its first worker, after a hit had
+// restored a committed file: another tree, and every worker was refused
+// (2026-10-25).
+it('local() checks out the run’s commit, not the tree as it is at its first worker', async () => {
+  const { commit } = await snapshot(root)
+  await writeFile(path.join(root, 'package.json'), '{"name":"changed"}')
+  const a = local()
+  await a.relay!()
+  await a.spawn({
+    run: crypto.randomUUID(),
+    relay: '',
+    size: 'small',
+    max: 1,
+    cpu: 1,
+    memory: 1e9,
+    index: 1,
+    id: 'small#1',
+    workspaceRoot: root,
+    commit,
+    env: {},
+    exited: () => {},
+  })
+  const list = Bun.spawnSync(['git', 'worktree', 'list', '--porcelain'], { cwd: root })
+  const dir = list.stdout
+    .toString()
+    .match(/^worktree (.+)$/gm)![1]!
+    .slice('worktree '.length)
+  expect(await readFile(path.join(dir, 'package.json'), 'utf8')).toBe(
+    JSON.stringify({ name: 'ws', private: true }),
+  )
+  await a.close!()
+}, 60_000)
+
 // `vx watch` runs again in one process: a `local()` the last run closed
 // started no worker, and the run's tasks were aborted (2026-10-24).
 it('local() starts workers again after a run closed it', async () => {
@@ -916,6 +950,7 @@ it('local() starts workers again after a run closed it', async () => {
     index: 1,
     id: 'small#1',
     workspaceRoot: root,
+    commit: (await snapshot(root)).commit,
     env: {},
     exited: () => {},
   })

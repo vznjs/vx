@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { WorkerSpawn } from '../src/index.js'
 import { docker } from '../src/index.js'
+import { snapshot } from '../src/tree.ts'
 
 const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-docker-'))
 // docker() mounts ~/.vx: a home of its own, as a sandboxed suite may not
@@ -62,6 +63,7 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work
       run: 'r1',
       relay: 'http://127.0.0.1:1',
       workspaceRoot: root,
+      commit: (await snapshot(root)).commit,
       env: {},
       exited: (why) => exited.push(why),
     } as WorkerSpawn)
@@ -113,6 +115,7 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work
       run,
       relay: 'http://127.0.0.1:1',
       workspaceRoot: root,
+      commit: (await snapshot(root)).commit,
       env: {},
       exited: () => {},
     } as WorkerSpawn)
@@ -158,6 +161,7 @@ it('says why a worker’s container ended before it joined', async () => {
       run: 'r1',
       relay: 'http://127.0.0.1:1',
       workspaceRoot: root,
+      commit: (await snapshot(root)).commit,
       env: {},
       exited: exited.resolve,
     } as WorkerSpawn)
@@ -207,6 +211,7 @@ printf '%s' "$last" | sed "s#/src#$src#g; s#\\(/tmp\\)\\{0,1\\}/work#${dir}/work
       run: 'r1',
       relay: 'http://127.0.0.1:1',
       workspaceRoot: root,
+      commit: (await snapshot(root)).commit,
       env: {},
       exited: () => {},
     } as WorkerSpawn)
@@ -254,6 +259,7 @@ it('on Linux, a container runs as this user, so what it writes in the store is t
       run: 'r1',
       relay: 'http://127.0.0.1:1',
       workspaceRoot: root,
+      commit: (await snapshot(root)).commit,
       env: {},
       exited: () => {},
     } as WorkerSpawn)
