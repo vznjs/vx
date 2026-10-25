@@ -41,6 +41,14 @@ export function postgresStore(url: string): Store & { close(): Promise<void> } {
           [r.repo, r.key, r.scope, r.size, r.created_at],
         )
       ).length > 0,
+    dropArtifact: async (repo, r) => {
+      await q(`DELETE FROM artifacts WHERE repo = $1 AND key = $2 AND scope = $3 AND size = $4`, [
+        repo,
+        r.key,
+        r.scope,
+        r.size,
+      ])
+    },
     addTimings: async (repo, scope, createdAt, timings) => {
       await q(
         `INSERT INTO timings (repo, hash, scope, created_at, duration_ms, cores, rss_bytes) SELECT $1, e ->> 'hash', $2, $3, (e ->> 'durationMs')::bigint, (e ->> 'cores')::float8, (e ->> 'rssBytes')::bigint FROM jsonb_array_elements(($4::text)::jsonb) e ON CONFLICT DO NOTHING`,

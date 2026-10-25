@@ -116,3 +116,34 @@ it('reads TRUSTED_DAYS, BRANCH_DAYS and TIMING_DAYS, and refuses what is not day
     'TIMING_DAYS: not a number of days above 0: 0',
   )
 })
+
+it('drops a row whose blob is gone when a read finds it, so the next job writes it again', async () => {
+  const s = await store()
+  const get = (path: string, body?: unknown) =>
+    s.handle(
+      new Request(`http://s${path}`, {
+        method: body === undefined ? 'GET' : 'POST',
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        headers: { authorization: `Bearer ${s.write}`, 'content-type': 'application/json' },
+      }),
+    )
+  const check = async (key: string) =>
+    ((await (await get('/v1/artifacts/check', { hashes: [key] })).json()) as object)[key as never]
+  // A sweep's blob delete after a job wrote the key again, or a failed upload's
+  // cleanup of the name a racing one committed: the row outlives its blob.
+  for (const [k, read] of [
+    ['ab01', (k: string) => get(`/v1/artifacts/download/${k}`)],
+    [
+      'ab02',
+      (k: string) =>
+        get('/v1/artifacts/download', { hashes: [k] }).then((r) => r.text().catch(() => '')),
+    ],
+  ] as const) {
+    await s.put(k)
+    s.objects.clear()
+    await read(k)
+    expect(await check(k)).toBeNull()
+    expect((await s.put(k)).status).toBe(204)
+    expect(await (await get(`/v1/artifacts/download/${k}`)).text()).toBe(k)
+  }
+})

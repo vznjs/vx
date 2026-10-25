@@ -14,7 +14,15 @@ import {
   READ_SCOPES_HEADER,
   Refusal,
 } from './protocol.js'
-import { blobName, type Blobs, firstScopes, type Timing, type Store, TRUSTED } from './store.js'
+import {
+  type ArtifactRow,
+  blobName,
+  type Blobs,
+  firstScopes,
+  type Timing,
+  type Store,
+  TRUSTED,
+} from './store.js'
 
 export interface ServerOptions {
   blobs: Blobs
@@ -95,11 +103,23 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     const scopes = readScopes(req, access)
     const row = firstScopes(await store.artifacts(access.repo, [key], scopes), scopes).get(key)
     const body = row === undefined ? null : await blobs.get(blobName(access.repo, row))
+    if (row !== undefined && body === null) await lost(access.repo, row)
     if (row === undefined || body === null) return errorJson(404, 'no artifact under this key')
     return new Response(body, {
       headers: { 'content-length': String(row.size), 'content-type': 'application/octet-stream' },
     })
   }
+
+  /**
+   * A row whose blob is gone: a sweep deleted the blob of a key written
+   * again meanwhile, or a failed upload deleted the name a racing one
+   * committed. Held, every check answers it and no job writes it again
+   * until it expires, and every batch naming it is cut short.
+   */
+  const lost = (repo: string, row: ArtifactRow) =>
+    store.dropArtifact(repo, row).catch((err: unknown) => {
+      console.error(`row of ${row.key} with no blob not dropped: ${message(err)}`)
+    })
 
   /**
    * The keys of `keys` a write to `scope` need not send: held there, or
@@ -237,7 +257,10 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       yield line
       for (const row of rows) {
         const blob = await blobs.get(blobName(repo, row))
-        if (blob === null) throw new Error(`blob of ${row.key} is gone`)
+        if (blob === null) {
+          await lost(repo, row)
+          throw new Error(`blob of ${row.key} is gone`)
+        }
         yield* blob instanceof Blob ? blob.stream() : blob
       }
     }
