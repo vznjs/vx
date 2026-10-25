@@ -2,7 +2,15 @@ import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'bun:test'
-import { crowdShare, loadMeter, localEnv, runWorker, swapRoots, treeMeter } from '../src/worker.js'
+import {
+  changedTracked,
+  crowdShare,
+  loadMeter,
+  localEnv,
+  runWorker,
+  swapRoots,
+  treeMeter,
+} from '../src/worker.js'
 import { docker, dte, local } from '../src/index.js'
 import { errorLine } from '../src/local.js'
 import { bytes, homeOf, needOf } from '../src/plugin.js'
@@ -17,7 +25,7 @@ import {
 } from '@vzn/vx'
 import { Orchestrator, runKey } from '../src/orchestrator.js'
 import { assign, fits, type Need } from '../src/dispatch.js'
-import { outputFiles } from '../src/outputs.js'
+import { names, outputFiles } from '../src/outputs.js'
 import { Usage } from '../src/usage.js'
 import { planTasks, tailsMs } from '../src/planner.js'
 import { join, RelayError } from '../src/wire.js'
@@ -2944,6 +2952,27 @@ it('fails a task whose key folds a file the run’s tree lacks, naming it', asyn
   } finally {
     await served.stop()
   }
+})
+
+// A workspace in a repository subdirectory: git named the file from the
+// repository's root, which matched no keyed file, and core saved a task's
+// rewrite of its own input under its key (2026-10-25).
+it('names a tracked file a task changed as the workspace does, in a repository subdirectory', async () => {
+  const repo = await tmp()
+  const ws = path.join(repo, 'ws')
+  await mkdir(path.join(ws, 'a/gen'), { recursive: true })
+  await writeFile(path.join(ws, 'a/in.txt'), '1\n')
+  await writeFile(path.join(ws, 'a/gen/g.txt'), '1\n')
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: repo })
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  await writeFile(path.join(ws, 'a/in.txt'), '2\n')
+  await writeFile(path.join(ws, 'a/gen/g.txt'), '2\n')
+  const outputs = { files: ['gen/**'], workspaceFiles: [] }
+  const m = { project: 'a', nested: [], outputs } as unknown as RunOrder
+  expect(await changedTracked(ws, 'HEAD', m, names('a', outputs))).toEqual(['a/in.txt'])
 })
 
 // A worker checkout whose prepare rewrote a tracked file joined on HEAD's
