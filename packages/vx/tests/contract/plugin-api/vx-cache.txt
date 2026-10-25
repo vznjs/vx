@@ -1,0 +1,28 @@
+== class VxCacheLayer (src/index.ts)
+export class VxCacheLayer implements RemoteCacheLayer {
+  readonly endpoint: string
+  /** Headers every read carries: the refs it may be answered from. */
+  reads: Record<string, string>
+  constructor(
+    private readonly config: Required<VxCacheOptions>,
+    private readonly fetchImpl: typeof fetch = fetch,
+  )
+  async has(hash: string): Promise<ArtifactInfo | null>
+  async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
+  async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null>
+  async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+}
+== function resolveVxCacheConfig (src/index.ts)
+export function resolveVxCacheConfig(
+  options: VxCacheOptions,
+  env: Record<string, string | undefined> = Bun.env,
+): Required<VxCacheOptions> | undefined
+== function vxCache (src/index.ts)
+export function vxCache(options: VxCacheOptions = {}): VxPlugin
+== type VxCacheOptions (src/index.ts)
+export interface VxCacheOptions {
+  url?: string
+  token?: string
+  timeoutMs?: number
+  uploadTimeoutMs?: number
+}

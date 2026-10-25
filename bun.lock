@@ -32,6 +32,18 @@
         "@types/bun": "^1.4.0",
       },
     },
+    "packages/vx-cache": {
+      "name": "@vzn/vx-cache",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+        "@vzn/vx-cache-server": "workspace:*",
+      },
+      "peerDependencies": {
+        "@vzn/vx": "*",
+      },
+    },
     "packages/vx-cache-server": {
       "name": "@vzn/vx-cache-server",
       "version": "0.0.0",
@@ -745,6 +757,8 @@
 
     "@vzn/vx-bench": ["@vzn/vx-bench@workspace:private/vx-bench"],
 
+    "@vzn/vx-cache": ["@vzn/vx-cache@workspace:packages/vx-cache"],
+
     "@vzn/vx-cache-server": ["@vzn/vx-cache-server@workspace:packages/vx-cache-server"],
 
     "@vzn/vx-ci": ["@vzn/vx-ci@workspace:packages/vx-ci"],
@@ -753,9 +767,9 @@
 
     "@vzn/vx-dte": ["@vzn/vx-dte@workspace:packages/vx-dte"],
 
-    "@vzn/vx-dte-server": ["@vzn/vx-dte-server@workspace:packages/vx-dte-server"],
-
     "@vzn/vx-dte-relay-worker": ["@vzn/vx-dte-relay-worker@workspace:private/vx-dte-relay-worker"],
+
+    "@vzn/vx-dte-server": ["@vzn/vx-dte-server@workspace:packages/vx-dte-server"],
 
     "@vzn/vx-lockfile": ["@vzn/vx-lockfile@workspace:packages/vx-lockfile"],
 
