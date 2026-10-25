@@ -792,21 +792,6 @@ it('the Bun entry serves the protocol, without auth on loopback only', async () 
 // A restart dropped every socket, and a relay that kept its runs in
 // memory alone met each redial with 4404: the run ended. With a state
 // file, each participant dials back by its id and the run goes on.
-it('compresses its sockets, as Workers do', async () => {
-  const server = serveRelay({ hostname: '127.0.0.1', port: 0 })
-  try {
-    const ws = new WebSocket(
-      `${server.url.replace(/^http/, 'ws')}/v1/sessions/${crypto.randomUUID()}/socket?id=x`,
-      { protocols: ['switchboard.v1'] } as never,
-    )
-    await new Promise((r) => (ws.onopen = r))
-    expect(ws.extensions).toStartWith('permessage-deflate')
-    ws.close()
-  } finally {
-    await server.stop()
-  }
-})
-
 it('keeps a run across a restart with a state file, not without one', async () => {
   const file = path.join(await mkdtemp(path.join(tmpdir(), 'vx-dte-state-')), 'relay.db')
   const dial = async (url: string, p: string, headers: Record<string, string> = {}) => {

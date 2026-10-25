@@ -70,9 +70,6 @@ export function serveRelay(opts: ServeOptions): RelayServer {
     idleTimeout: 60,
     fetch: (req) => relay.fetch(req),
     websocket: {
-      // Frames are JSON whose bodies may be sealed base64, which deflate
-      // still shrinks by about a quarter; Workers negotiate it too.
-      perMessageDeflate: true,
       // A socket with no frame in three heartbeats has no peer listening
       // either (each probes a quiet one within two): closed, it loses its
       // participant, as a half-open one on no other host would be.
