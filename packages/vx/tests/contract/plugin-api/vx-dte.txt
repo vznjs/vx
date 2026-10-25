@@ -39,6 +39,7 @@ export interface DteOptions {
   readonly token?: () => string | undefined | Promise<string | undefined>
   readonly scheduler?: Partial<Strategy>
   readonly unmeasured?: { readonly cpu: number; readonly memory: number | string }
+  readonly headers?: Readonly<Record<string, string | undefined>>
 }
 == type DteSetup (src/init.ts)
 export interface DteSetup {

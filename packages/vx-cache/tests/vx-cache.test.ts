@@ -69,9 +69,13 @@ const keysOf = (body: string) => (JSON.parse(body) as { hashes: string[] }).hash
 
 /** A layer whose job's token is `token`, as GitLab's `VX_CACHE_TOKEN` carries it, reading `refs`. */
 function layer(url: string, token: string, refs: string[] = [MAIN], fetchImpl = fetch) {
-  const c = new VxCacheLayer({ url, timeoutMs: 5_000, uploadTimeoutMs: 5_000 }, fetchImpl, {
-    VX_CACHE_TOKEN: token,
-  })
+  const c = new VxCacheLayer(
+    { url, timeoutMs: 5_000, uploadTimeoutMs: 5_000, headers: {} },
+    fetchImpl,
+    {
+      VX_CACHE_TOKEN: token,
+    },
+  )
   c.refs = refs
   return c
 }
@@ -320,12 +324,37 @@ describe('lend', () => {
 })
 
 describe('config', () => {
+  // M, 2026-10-25: a proxy in front of the server (an Access service token).
+  it('sends its headers on every request to the server, never over the CI token', async () => {
+    const seen: Headers[] = []
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      seen.push(new Headers(init.headers))
+      return new Response('{}', { status: 404 })
+    }) as unknown as typeof fetch
+    const config = resolveVxCacheConfig(
+      { url: 'https://c.example', headers: { 'CF-Access-Client-Id': 'id', 'X-Unset': undefined } },
+      {},
+    )!
+    expect(config.headers).toEqual({ 'CF-Access-Client-Id': 'id' })
+    const c = new VxCacheLayer(config, fetchImpl, { VX_CACHE_TOKEN: 'jwt' })
+    c.refs = [MAIN]
+    await c.has('0123456789abcdef').catch(() => {})
+    expect(seen.length).toBeGreaterThan(0)
+    for (const h of seen)
+      expect([h.get('cf-access-client-id'), h.get('authorization')]).toEqual(['id', 'Bearer jwt'])
+    for (const bad of [{ authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
+      expect(() => resolveVxCacheConfig({ url: 'https://c.example', headers: bad }, {})).toThrow(
+        'vxCache(): header',
+      )
+  })
+
   it('reads the URL over VX_CACHE_URL, and a CI token from GitHub, GitLab or a lending run', () => {
     expect(resolveVxCacheConfig({}, {})).toBeUndefined()
     expect(resolveVxCacheConfig({}, { VX_CACHE_URL: 'https://c.example/' })).toEqual({
       url: 'https://c.example',
       timeoutMs: 30_000,
       uploadTimeoutMs: 60_000,
+      headers: {},
     })
     expect(() => resolveVxCacheConfig({ url: 'c.example' }, {})).toThrow(
       'vxCache(): url must be http(s), got c.example',

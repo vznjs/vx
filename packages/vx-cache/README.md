@@ -16,11 +16,17 @@ import { vxCache } from '/path/to/vx/packages/vx-cache/src/index.ts'
 export default { plugins: [vxCache({ url: 'https://cache.example.com' })] }
 ```
 
-`vxCache({ url?, timeoutMs?, uploadTimeoutMs? })`:
+`vxCache({ url?, timeoutMs?, uploadTimeoutMs?, headers? })`:
 
 - `url` is the server's base URL, or `VX_CACHE_URL`.
 - `timeoutMs` (default 30 000) bounds each read and query, and
   `uploadTimeoutMs` (default 60 000) each upload.
+- `headers` are sent on every request to the server, for a proxy in
+  front of it, such as a Cloudflare Access service token:
+  `headers: { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID,
+'CF-Access-Client-Secret': process.env.CF_ACCESS_CLIENT_SECRET }`. An
+  unset value is left out; `authorization` stays the CI token's. A DTE
+  worker sends them too, so give its job the same secrets.
 
 ## CI only
 
@@ -69,6 +75,7 @@ Task timings are not this plugin's: `@vzn/vx-history` keeps them.
 - `vxCache(options?: VxCacheOptions)` is the plugin; `VxCacheOptions` is the options above.
 - `VxCacheLayer` is its remote cache layer (core's `RemoteCacheLayer`),
   reading the refs in its `refs`.
-- `resolveVxCacheConfig(options, env)` is the settings it runs with, or
+- `resolveVxCacheConfig(options, env)` is the settings it runs with
+  (`ResolvedVxCacheConfig`: every option set, `headers` checked), or
   `undefined` with no URL, and `hasCiToken(env, lent)` whether a job has
   a token to send.

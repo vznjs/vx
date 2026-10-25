@@ -105,6 +105,14 @@ export interface DteOptions {
    * it runs on any free core.
    */
   readonly unmeasured?: { readonly cpu: number; readonly memory: number | string }
+  /**
+   * Headers every dial to the relay carries, the orchestrator's and each
+   * worker's, for a proxy in front of it (`{ 'CF-Access-Client-Id':
+   * process.env.CF_ACCESS_CLIENT_ID }`, an Access service token, M
+   * 2026-10-25). An unset value is left out; `authorization` stays the
+   * token's.
+   */
+  readonly headers?: Readonly<Record<string, string | undefined>>
 }
 
 const KEYS: PluginOptionKinds<DteOptions> = {
@@ -114,10 +122,26 @@ const KEYS: PluginOptionKinds<DteOptions> = {
   token: 'function',
   scheduler: 'object',
   unmeasured: 'object',
+  headers: 'object',
+}
+
+/** `headers` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
+function proxyHeaders(headers: DteOptions['headers']): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    if (value === undefined) continue
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
+      throw new UserError(`dte(): headers cannot set "${name}"`)
+    if (typeof value !== 'string' || /[\r\n\0]/.test(value))
+      throw new UserError(`dte(): header "${name}" must be one line of text`)
+    out[name] = value
+  }
+  return out
 }
 
 export function dte(options: DteOptions) {
   refuseUnknownOptions('dte()', options, KEYS)
+  const headers = proxyHeaders(options.headers)
   const how: Strategy = { ...DEFAULT_STRATEGY }
   for (const [layer, choice] of Object.entries(options.scheduler ?? {})) {
     const choices = STRATEGIES[layer as keyof Strategy] as readonly string[] | undefined
@@ -311,6 +335,7 @@ export function dte(options: DteOptions) {
             ...(id === undefined || id === '' ? {} : { id }),
             root: ctx.workspaceRoot,
             token: () => token(relay),
+            headers,
             proof: secret === undefined ? seal.githubProof() : seal.secretProof(secret),
             artifacts: ctx.artifactsFor,
           })
@@ -426,7 +451,7 @@ export function dte(options: DteOptions) {
       let onChange = (_now?: boolean): void => {}
       const o = new Orchestrator({
         me: seal.sealOrchestrator(
-          await join(relay, run, 'orchestrator', null, () => token(relay)),
+          await join(relay, run, 'orchestrator', null, () => token(relay), headers),
           run,
           proof,
           ctx.warn,

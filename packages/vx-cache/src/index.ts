@@ -23,12 +23,20 @@ export interface VxCacheOptions {
   timeoutMs?: number
   /** … and for an upload (default 60 s). */
   uploadTimeoutMs?: number
+  /**
+   * Headers every request to the server carries, for a proxy in front of
+   * it (`{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }`, an
+   * Access service token, M 2026-10-25). An unset value is left out;
+   * `authorization` stays the CI token's.
+   */
+  headers?: Record<string, string | undefined>
 }
 
 const KEYS: PluginOptionKinds<VxCacheOptions> = {
   url: 'string',
   timeoutMs: 'number',
   uploadTimeoutMs: 'number',
+  headers: 'object',
 }
 
 /** A JWT's `exp`, in ms, or 0 when it has none. */
@@ -49,6 +57,23 @@ function expiryOf(jwt: string): number {
 const LEND_MARGIN_MS = 5 * 60_000
 /** Uploads open at once; more wait. */
 const IN_FLIGHT = 4
+
+/** `headers` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
+function proxyHeaders(
+  factory: string,
+  headers: Record<string, string | undefined> | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    if (value === undefined) continue
+    if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
+      throw new Error(`${factory}: headers cannot set "${name}"`)
+    if (typeof value !== 'string' || /[\r\n\0]/.test(value))
+      throw new Error(`${factory}: header "${name}" must be one line of text`)
+    out[name] = value
+  }
+  return out
+}
 
 /** A ref's scope on the wire: its SHA-256's first 128 bits in hex, never the ref (M, 2026-10-25). */
 const scopeOf = (ref: string): string =>
@@ -161,7 +186,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
   private readonly uploads = new Lane<{ hash: string; body: Blob }>((item) => this.upload(item))
 
   constructor(
-    private readonly config: Required<VxCacheOptions>,
+    private readonly config: ResolvedVxCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly env: Record<string, string | undefined> = Bun.env,
   ) {
@@ -241,7 +266,11 @@ export class VxCacheLayer implements RemoteCacheLayer {
   ): Promise<Response | undefined> {
     const res = await this.fetchImpl(`${this.config.url}${path}`, {
       method: init.method ?? 'POST',
-      headers: { authorization: `Bearer ${await this.bearer()}`, ...init.headers },
+      headers: {
+        ...this.config.headers,
+        authorization: `Bearer ${await this.bearer()}`,
+        ...init.headers,
+      },
       ...(init.body === undefined ? {} : { body: init.body }),
       signal: deadline(init.timeoutMs ?? this.config.timeoutMs),
     })
@@ -415,7 +444,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
 export function resolveVxCacheConfig(
   options: VxCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
-): Required<VxCacheOptions> | undefined {
+): ResolvedVxCacheConfig | undefined {
   const url = (options.url ?? env.VX_CACHE_URL)?.replace(/\/+$/, '')
   if (url === undefined || url === '') return undefined
   if (!/^https?:\/\//.test(url)) throw new Error(`vxCache(): url must be http(s), got ${url}`)
@@ -423,7 +452,12 @@ export function resolveVxCacheConfig(
     url,
     timeoutMs: options.timeoutMs ?? 30_000,
     uploadTimeoutMs: options.uploadTimeoutMs ?? 60_000,
+    headers: proxyHeaders('vxCache()', options.headers),
   }
+}
+
+export interface ResolvedVxCacheConfig extends Required<Omit<VxCacheOptions, 'headers'>> {
+  readonly headers: Readonly<Record<string, string>>
 }
 
 /** Whether this job has a CI token to send: GitHub's, GitLab's `VX_CACHE_TOKEN`, or one a run lent. */

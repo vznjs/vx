@@ -108,6 +108,8 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
   }
   /** Whose ping each was. */
   const pings: string[] = []
+  /** Each dial's request headers. */
+  const dials: Headers[] = []
   /**
    * While `refusing`, the host answers each new dial 503, as one overloaded.
    * Once `forget` is set, the next participant to dial is refused for good.
@@ -146,6 +148,7 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
     hostname: '127.0.0.1',
     port: 0,
     fetch: (r) => {
+      dials.push(r.headers)
       if (r.url.includes('socket?join=') && host.failJoins > 0) {
         host.failJoins--
         return new Response(null, { status: 500 })
@@ -198,6 +201,7 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
     answers,
     pings,
     host,
+    dials,
   }
 }
 
@@ -327,6 +331,23 @@ it('keeps a worker whose socket dropped, by its redial; one that leaves is lost 
   await a.leave()
   expect(await o.poll()).toEqual([{ from: 'relay', body: { type: 'lost', id: a.id } }])
   await o.leave()
+})
+
+// M, 2026-10-25: a proxy in front of the relay (an Access service token).
+it('carries dte({ headers }) on every dial, its redial too, never over the token', async () => {
+  const { url, open, dials } = sockets(500)
+  const extra = { 'CF-Access-Client-Id': 'id' }
+  const o = await join(url, R2, 'orchestrator', null, 'jwt', extra)
+  const a = await join(url, R2, 'worker', null, 'jwt', extra)
+  await o.poll()
+  for (const w of open) if (w.data.id === a.id) w.close()
+  await o.send(a.id, 'still yours')
+  expect(await heard(a)).toEqual([{ from: 'orchestrator', body: 'still yours' }])
+  await a.leave()
+  await o.leave()
+  expect(dials.length).toBeGreaterThanOrEqual(3)
+  for (const h of dials)
+    expect([h.get('cf-access-client-id'), h.get('authorization')]).toEqual(['id', 'Bearer jwt'])
 })
 
 // Main 8d0619f: its orchestrator's socket ended 1006 3 s in, and its

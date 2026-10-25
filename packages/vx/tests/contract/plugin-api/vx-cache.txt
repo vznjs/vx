@@ -4,7 +4,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
   refs: readonly string[]
   warn: (message: string) => void = () => {}
   constructor(
-    private readonly config: Required<VxCacheOptions>,
+    private readonly config: ResolvedVxCacheConfig,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly env: Record<string, string | undefined> = Bun.env,
   )
@@ -22,12 +22,17 @@ export function hasCiToken(env: Record<string, string | undefined>, lent: boolea
 export function resolveVxCacheConfig(
   options: VxCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
-): Required<VxCacheOptions> | undefined
+): ResolvedVxCacheConfig | undefined
 == function vxCache (src/index.ts)
 export function vxCache(options: VxCacheOptions = {}): VxPlugin
+== type ResolvedVxCacheConfig (src/index.ts)
+export interface ResolvedVxCacheConfig extends Required<Omit<VxCacheOptions, 'headers'>> {
+  readonly headers: Readonly<Record<string, string>>
+}
 == type VxCacheOptions (src/index.ts)
 export interface VxCacheOptions {
   url?: string
   timeoutMs?: number
   uploadTimeoutMs?: number
+  headers?: Record<string, string | undefined>
 }

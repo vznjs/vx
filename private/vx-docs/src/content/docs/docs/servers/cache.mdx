@@ -142,11 +142,17 @@ export default defineWorkspace({
   repository, as above.
 </Aside>
 
-`vxCache({ url?, timeoutMs?, uploadTimeoutMs? })`:
+`vxCache({ url?, timeoutMs?, uploadTimeoutMs?, headers? })`:
 
 - `url` is the server's base URL, or `VX_CACHE_URL`.
 - `timeoutMs` (default 30 000) bounds each read and check, and
   `uploadTimeoutMs` (default 60 000) bounds each upload.
+- `headers` are sent on every request to the server, for a proxy in
+  front of it, such as a Cloudflare Access service token:
+  `headers: { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID,
+  'CF-Access-Client-Secret': process.env.CF_ACCESS_CLIENT_SECRET }`. An
+  unset value is left out; `authorization` stays the CI token's. A DTE
+  worker sends them too, so give its job the same secrets.
 
 Each CI job needs a token for the server's origin:
 
