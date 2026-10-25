@@ -301,12 +301,17 @@ describe('lend', () => {
       expect(await layer(srv.url, await srv.token(READ_JOB)).has('a2')).toEqual({ size: 1 })
       expect(await other.lend()).toBeUndefined()
 
+      // GitHub's own lifetime: lent with its real end, so the run lends
+      // again minutes later, not at once.
+      lifetime = '5m'
+      expect((await on('run').lend())!.expiresAt! - Date.now()).toBeGreaterThan(4 * 60_000)
+
       // A token ending within five minutes is asked again before it is lent.
       lifetime = '4m'
       const short = on('run')
       await short.lend()
       await short.lend()
-      expect(asked.filter((j) => j === 'run')).toHaveLength(3)
+      expect(asked.filter((j) => j === 'run')).toHaveLength(4)
     } finally {
       await srv.stop()
       await github.stop(true)

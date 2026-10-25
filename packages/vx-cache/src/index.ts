@@ -223,7 +223,10 @@ export class VxCacheLayer implements RemoteCacheLayer {
     const jwt = await this.bearer(LEND_MARGIN_MS)
     if (jwt === '') return undefined
     const exp = this.github ? this.idToken!.exp : expiryOf(jwt)
-    return { token: jwt, ...(exp === 0 ? {} : { expiresAt: exp - LEND_MARGIN_MS }) }
+    // Its real end: the run lends again a few minutes before it (vx-dte's
+    // RELEND_MS). Less a margin, GitHub's five-minute token ended as it was
+    // lent, and the run lent again at once, in a loop.
+    return { token: jwt, ...(exp === 0 ? {} : { expiresAt: exp }) }
   }
 
   private async request(
