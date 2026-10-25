@@ -60,6 +60,8 @@ export interface TaskArtifacts {
   share(key: string): Promise<boolean>
   // This machine's entry sent over the remotes' copy another machine found corrupt.
   resend(key: string): Promise<boolean>
+  // Whether a remote it writes took what `save` uploaded; undefined when it writes none.
+  uploaded?(key: string): Promise<boolean | undefined>
 }
 // What a machine that runs the run's tasks reads its cache under
 // (`ExecutorContext.cacheFacts`, `CommandContext.artifactsFor`).

@@ -219,7 +219,8 @@ export interface ExecuteResult extends RunResult {
    * existed. `deferred` means they are NOT on disk and `materialize()`
    * fetches them; core calls it lazily, at most once, and then saves an
    * ordinary cache entry, so a deferred task leaves no permanent third
-   * state behind.
+   * state behind. An executor may answer `deferred` to an `eager` request
+   * too, when it cannot bring them here: core saves nothing from this disk.
    */
   readonly outputs?: { kind: 'disk' } | { kind: 'deferred'; materialize: () => Promise<void> }
   /**

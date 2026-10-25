@@ -1303,7 +1303,11 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
   let movedFails: string | undefined
   let own: Awaited<ReturnType<typeof ownOutputs>>
   let saved = false
-  if (effectiveExitCode === 0 && willSave && deferralRequested) {
+  if (
+    effectiveExitCode === 0 &&
+    willSave &&
+    (deferralRequested || result.outputs?.kind === 'deferred')
+  ) {
     // The outputs never landed here: no artifact, no rows. A partial local
     // record (a row with no artifact) is exactly the corrupt-entry shape
     // `restoreOutputs` refuses, so writing none is the only clean answer.
@@ -1545,9 +1549,7 @@ async function executeCachedTask(args: ExecuteArgs): Promise<TaskOutcome> {
           ...(result.machine.cpuShare === undefined ? {} : { cpuShare: result.machine.cpuShare }),
         }
       : {}),
-    ...(deferralRequested && result.outputs?.kind === 'deferred'
-      ? { outputs: 'deferred' as const }
-      : {}),
+    ...(result.outputs?.kind === 'deferred' ? { outputs: 'deferred' as const } : {}),
     wallclockStartNs,
     wallclockEndNs,
     ...(finalViolations.length > 0

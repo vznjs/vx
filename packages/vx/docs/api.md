@@ -373,6 +373,7 @@ export interface CacheLayer {
   getSaved?(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   share?(hash: string): Promise<boolean>
   resend?(hash: string): Promise<boolean>
+  uploaded?(hash: string): Promise<boolean | undefined>
   getMany?(
     hashes: readonly string[],
     ctx?: (hash: string) => CacheGetContext,
@@ -2702,6 +2703,7 @@ export interface TaskArtifacts {
   output(key: string): Promise<CapturedChunk[] | null>
   share(key: string): Promise<boolean>
   resend(key: string): Promise<boolean>
+  uploaded?(key: string): Promise<boolean | undefined>
 }
 ```
 
