@@ -32,7 +32,7 @@ export interface TrustRule {
 }
 export interface Access {
   readonly issuer: string
-  readonly id: string
+  readonly repository: string
   readonly write?: string
 }
 export type Authorize = (req: Request) => Promise<Access>
@@ -41,6 +41,7 @@ export interface OidcOptions {
   readonly audience?: string
   readonly fetchJson?: (url: string) => Promise<unknown>
   readonly now?: () => number
+  readonly readAccess?: string
 }
 export function parseTrust(json: string): TrustRule[]
 export function oidcAuth(opts: OidcOptions): Authorize
@@ -51,10 +52,16 @@ export function oidcAuth(opts: OidcOptions): Authorize
 - jose checks the JWT: `RS256`, the signature against the issuer's keys
   (found through its `/.well-known/openid-configuration`, kept and
   refetched by `createRemoteJWKSet`), `aud`, `exp` and `nbf` within 60 s.
-- The repository is the token's issuer (`iss` without its scheme) and its
-  name, `org/name` lowercased: `repository` (GitHub) or `project_path`
-  (GitLab), what a checkout's origin names (M, 2026-10-25). One no rule
-  names is `403`.
+- Every request names its repository: `vx-issuer` and `vx-repository`,
+  the `hashPart`s of the issuer's URL (no trailing slash) and of its
+  `org/name` lowercased; one missing or not a hash is `400`.
+- The token's repository is its issuer and its name, `org/name`
+  lowercased: `repository` (GitHub) or `project_path` (GitLab), what a
+  checkout's origin names (M, 2026-10-25). One no rule names is `403`, and
+  so is one other than the request names.
+- With `readAccess: 'public'` (`READ_ACCESS`), a request with no token
+  reads the repository it names when a rule names it (else `403`), and
+  writes nothing. Any other value than `public` or unset throws.
 - A token writes its branch (a pull request's head branch on GitHub, a
   merge queue's base branch for a `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`
   ref, else `ref`; GitLab's `ref_path`). A ref a rule names is protected: a token on

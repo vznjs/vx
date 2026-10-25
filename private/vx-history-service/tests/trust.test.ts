@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { beforeAll, expect, it } from 'bun:test'
-import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
+import { hashPart, oidcAuth, parseTrust } from '@vzn/vx-devtools'
 import { exportJWK, generateKeyPair, type JWTPayload, SignJWT } from 'jose'
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
@@ -38,7 +38,12 @@ beforeAll(async () => {
       .setExpirationTime('5m')
       .sign(privateKey)
     const req = new Request(`${AUD}/v1/timings/query`, {
-      headers: { authorization: `Bearer ${token}` },
+      headers: {
+        authorization: `Bearer ${token}`,
+        // What .vx/workspace.ts names: our repository at GitHub, hashed.
+        'vx-issuer': await hashPart(GITHUB),
+        'vx-repository': await hashPart('vznjs/vx'),
+      },
     })
     return (await auth(req)).write
   }

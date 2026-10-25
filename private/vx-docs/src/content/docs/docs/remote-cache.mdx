@@ -25,7 +25,13 @@ flowchart LR
     import { vxCache } from '/path/to/vx/packages/vx-cache/src/index.ts'
 
     export default defineWorkspace({
-      plugins: [vxCache({ url: 'https://cache.example.com' })], // or VX_CACHE_URL
+      plugins: [
+        vxCache({
+          url: 'https://cache.example.com', // or VX_CACHE_URL
+          issuer: 'https://token.actions.githubusercontent.com',
+          repository: 'acme/app',
+        }),
+      ],
     })
     ```
 

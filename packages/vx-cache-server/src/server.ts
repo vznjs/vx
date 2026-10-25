@@ -70,7 +70,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
 
   /** The token's own scope, the one place it writes. */
   const writeScope = (access: Access): Promise<string> => {
-    if (access.write === undefined) throw new Refusal(403, 'this token reads only')
+    if (access.write === undefined) throw new Refusal(403, 'this request reads only')
     return hashPart(access.write)
   }
 

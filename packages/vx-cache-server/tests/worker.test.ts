@@ -4,7 +4,7 @@ import { afterAll, beforeAll, expect, it } from 'bun:test'
 import path from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
 import { conformance, scopeOf } from './conformance.js'
-import { GITHUB, type Issuer, issuer, JOBS, TRUST } from './issuer.js'
+import { GITHUB, type Issuer, issuer, JOBS, NAMED, REPO, TRUST } from './issuer.js'
 
 const MAX = 7 * 1024 * 1024
 /** The Worker's own origin, its tokens' audience. */
@@ -51,6 +51,8 @@ afterAll(() => mf.dispose())
 conformance('Workers with R2', {
   base: () => base.href,
   sign: (job) => iss.sign(JOBS[job], AUD),
+  issuer: GITHUB,
+  repository: REPO,
   maxCheckHashes: 40,
   maxUploadBytes: MAX,
 })
@@ -89,14 +91,15 @@ it("answers a read from the data center's cache once R2 served it", async () => 
   const put = await fetch(url, {
     method: 'PUT',
     body: 'cached',
-    headers: { authorization: await auth('main') },
+    headers: { ...NAMED, authorization: await auth('main') },
   })
   expect(put.status).toBe(204)
   const read = async () =>
     fetch(url, {
       headers: {
+        ...NAMED,
         authorization: await auth('read'),
-        'x-artifact-scope': scopeOf('refs/heads/main'),
+        'vx-scope': scopeOf('refs/heads/main'),
       },
     })
   const first = await read()
@@ -117,18 +120,22 @@ it("answers a read from the data center's cache once R2 served it", async () => 
   // A check and a HEAD answer from it too.
   const head = await fetch(url, {
     method: 'HEAD',
-    headers: { authorization: await auth('read'), 'x-artifact-scope': scopeOf('refs/heads/main') },
+    headers: {
+      ...NAMED,
+      authorization: await auth('read'),
+      'vx-scope': scopeOf('refs/heads/main'),
+    },
   })
   expect([head.status, head.headers.get('content-length')]).toEqual([200, '6'])
   const check = await fetch(new URL('/v1/artifacts', base), {
     method: 'POST',
     body: JSON.stringify({ hashes: [hash], scopes: [scopeOf('refs/heads/main')] }),
-    headers: { authorization: await auth('read'), 'content-type': 'application/json' },
+    headers: { ...NAMED, authorization: await auth('read'), 'content-type': 'application/json' },
   })
   expect(await check.json()).toEqual({ [hash]: { size: 6, scope: scopeOf('refs/heads/main') } })
   // The token is still checked first: no token, no bytes.
   expect(
-    (await fetch(url, { headers: { 'x-artifact-scope': scopeOf('refs/heads/main') } })).status,
+    (await fetch(url, { headers: { ...NAMED, 'vx-scope': scopeOf('refs/heads/main') } })).status,
   ).toBe(401)
 })
 
@@ -136,7 +143,7 @@ it('checks 6 lookups by default: one round of the calls a request has waiting', 
   const other = await start({ TRUST: JSON.stringify(TRUST) })
   try {
     const res = await fetch(new URL('/v1/capabilities', await other.ready), {
-      headers: { authorization: `Bearer ${await iss.sign(JOBS.read, AUD)}` },
+      headers: { ...NAMED, authorization: `Bearer ${await iss.sign(JOBS.read, AUD)}` },
     })
     expect(((await res.json()) as { maxCheckHashes: number }).maxCheckHashes).toBe(6)
   } finally {

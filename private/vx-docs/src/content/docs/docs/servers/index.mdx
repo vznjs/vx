@@ -30,8 +30,8 @@ docker compose up -d cache history   # only the ones you need
 | Service | Port | Settings it reads |
 | --- | --- | --- |
 | `dte` | 8080 (`DTE_PORT`) | `DTE_ALLOW`, `DTE_AUDIENCE` |
-| `cache` | 8081 (`CACHE_PORT`) | `TRUST`, `AUDIENCE`, `S3_*`, `MAX_*` |
-| `history` | 8082 (`HISTORY_PORT`) | `TRUST`, `AUDIENCE`, `TIMING_DAYS` |
+| `cache` | 8081 (`CACHE_PORT`) | `TRUST`, `AUDIENCE`, `READ_ACCESS`, `S3_*`, `MAX_*` |
+| `history` | 8082 (`HISTORY_PORT`) | `TRUST`, `AUDIENCE`, `READ_ACCESS`, `TIMING_DAYS` |
 
 Settings come from your shell or a `.env` file next to `compose.yaml`.
 The relay keeps its runs in the `dte` volume, and the history server keeps
@@ -100,6 +100,12 @@ checks on the pull request, before it is queued.
 
 `AUDIENCE` is the `aud` a token must name. By default it is the origin
 the server is reached at, which is what the plugins ask GitHub for.
+
+Every request names its issuer and repository, hashed: the plugins send
+what `vxCache({ issuer, repository })` and `vxHistory({ issuer,
+repository })` declare, and a token of another repository is refused.
+`READ_ACCESS=public` lets a request with no token, such as a laptop's,
+read a repository `TRUST` names; it writes nothing.
 
 The relay takes CI tokens too, with its own list, `ALLOW`
 ([DTE server](dte/#settings)).

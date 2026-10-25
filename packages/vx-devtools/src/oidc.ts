@@ -1,12 +1,16 @@
 // CI OIDC tokens, the only tokens vx's servers take (@vzn/vx-cache-server,
 // @vzn/vx-history-server): a job's token names its repository and the one
-// scope it writes, its own ref, never a header or a client option. The
+// scope it writes, its own ref, never a header or a client option. Every
+// request names its issuer and repository by their hashes (M, 2026-10-25:
+// the user names them, no client guesses), which a token must match;
+// `READ_ACCESS=public` lets a request with no token read one TRUST names. The
 // servers know no tier (M, 2026-10-25): a scope is an opaque ref. A ref a
 // `TRUST` rule names is protected: only a token matching a rule writes it,
 // so a pull request never writes main's. Any other repository is refused.
 // The JWT itself is jose's to check: signature, algorithm, audience and
 // times.
 
+import { hashPart } from './hash-part.js'
 import {
   createRemoteJWKSet,
   customFetch,
@@ -40,7 +44,7 @@ export interface TrustRule {
 /** What a request may do: read its repository's scopes, and write `write` when set. */
 export interface Access {
   /**
-   * The token's issuer without its scheme (`token.actions.githubusercontent.com`):
+   * The issuer, as its tokens name it (`https://token.actions.githubusercontent.com`):
    * it signs the token, so two platforms' repositories never meet.
    */
   readonly issuer: string
@@ -49,13 +53,18 @@ export interface Access {
    * GitLab's `project_path`, M 2026-10-25), what a checkout's origin names.
    */
   readonly repository: string
-  /** The token's own ref: the one scope it writes and deletes. */
+  /** The token's own ref: the one scope it writes. */
   readonly write?: string
 }
 
 export type Authorize = (req: Request) => Promise<Access>
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
+
+/** The headers naming a request's issuer and repository, each its `hashPart`. */
+const ISSUER_HEADER = 'vx-issuer'
+const REPOSITORY_HEADER = 'vx-repository'
+const PART = /^[0-9a-f]{32}$/
 
 /** The claim naming a token's repository, `org/name`. */
 const repoClaimOf = (iss: string): string => (iss === GITHUB ? 'repository' : 'project_path')
@@ -156,6 +165,8 @@ export interface OidcOptions {
   readonly fetchJson?: (url: string) => Promise<unknown>
   /** Seconds since the epoch; tests move the clock. */
   readonly now?: () => number
+  /** `READ_ACCESS`: `public` lets a request with no token read a repository TRUST names. */
+  readonly readAccess?: string | undefined
 }
 
 /** Clock skew a token's `exp` / `nbf` may be off by. */
@@ -163,6 +174,24 @@ const LEEWAY_S = 60
 
 /** The `Access` a request's verified CI token has; a refused one throws a 401 or 403. */
 export function oidcAuth(opts: OidcOptions): Authorize {
+  if (opts.readAccess !== undefined && opts.readAccess !== '' && opts.readAccess !== 'public')
+    throw new Error(`READ_ACCESS: public, or unset, not ${opts.readAccess}`)
+  const open = opts.readAccess === 'public'
+  // The repositories TRUST names, by their hashes: what a public read may name.
+  let named: Promise<Map<string, Access>> | undefined
+  const trusted = () =>
+    (named ??= Promise.all(
+      opts.trust.map(async (r) => {
+        const repo = {
+          issuer: issuerOf(r.iss),
+          repository: String(r[repoClaimOf(r.iss)]).toLowerCase(),
+        }
+        return [`${await hashPart(repo.issuer)}/${await hashPart(repo.repository)}`, repo] as [
+          string,
+          Access,
+        ]
+      }),
+    ).then((pairs) => new Map(pairs)))
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
   // jose keeps each issuer's keys, and refetches them for a key it lacks.
@@ -188,8 +217,20 @@ export function oidcAuth(opts: OidcOptions): Authorize {
 
   return async (req) => {
     if (opts.trust.length === 0) throw new Refusal(401, 'the server trusts no CI: set TRUST')
+    const asked = `${req.headers.get(ISSUER_HEADER)}/${req.headers.get(REPOSITORY_HEADER)}`
+    if (!asked.split('/').every((p) => PART.test(p)))
+      throw new Refusal(
+        400,
+        `${ISSUER_HEADER} and ${REPOSITORY_HEADER}: the issuer's and the repository's hashes (PROTOCOL.md § Keys)`,
+      )
     const bearer = /^Bearer\s+(\S+)$/i.exec(req.headers.get('authorization') ?? '')
-    if (bearer === null) throw new Refusal(401, 'no bearer token')
+    if (bearer === null) {
+      if (!open) throw new Refusal(401, 'no bearer token')
+      const repo = (await trusted()).get(asked)
+      if (repo === undefined)
+        throw new Refusal(403, "the repository named is not in this server's TRUST")
+      return repo
+    }
     const token = bearer[1]!
     let iss: unknown
     try {
@@ -223,7 +264,12 @@ export function oidcAuth(opts: OidcOptions): Authorize {
     )
     if (ofRepo.length === 0)
       throw new Refusal(403, `${claim} ${repository} is not in this server's TRUST`)
-    const repo = { issuer: iss.replace(/^https?:\/\//, '').replace(/\/$/, ''), repository }
+    const repo = { issuer: issuerOf(iss), repository }
+    if (`${await hashPart(repo.issuer)}/${await hashPart(repository)}` !== asked)
+      throw new Refusal(
+        403,
+        `the token is of ${claim} ${repository} at ${repo.issuer}, not the repository named`,
+      )
     const branch = branchOf(iss, claims)
     if (branch === undefined) return repo
     if (ofRepo.some((r) => matches(r, claims))) return { ...repo, write: branch }
@@ -235,6 +281,9 @@ export function oidcAuth(opts: OidcOptions): Authorize {
     return isProtected ? repo : { ...repo, write: branch }
   }
 }
+
+/** An issuer as a key names it: its URL, no trailing slash. */
+const issuerOf = (iss: string): string => iss.replace(/\/$/, '')
 
 /** What jose's refusal of a token says. */
 function refusal(err: unknown): Refusal {

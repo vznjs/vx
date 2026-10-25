@@ -1,7 +1,9 @@
 // The client of a vx-history server (`@vzn/vx-history-server`, its
 // PROTOCOL.md): each task's numbers asked once a run, and the run's own
-// timings sent once at its end. CI jobs only: every request carries the
-// job's OIDC token. A refusal is never swallowed: it is said with the
+// timings sent once at its end. Every request names the issuer and
+// repository the workspace declares, by their hashes; a CI job's carries
+// its OIDC token, and with no token a run only reads (a server with
+// `READ_ACCESS=public`). A refusal is never swallowed: it is said with the
 // server's status and words.
 
 import type { TaskOutcome } from '@vzn/vx'
@@ -27,8 +29,18 @@ export function serverUrlOf(
   return url
 }
 
+/** The issuer and repository a workspace names, as a key names them: the issuer's URL with no trailing slash, `org/name` lowercased. */
+export interface Named {
+  readonly issuer: string
+  readonly repository: string
+}
+
+/** A value on the wire: its SHA-256's first 128 bits in hex, never the value (M, 2026-10-25). */
+const hashOf = (text: string): string =>
+  new Bun.CryptoHasher('sha256').update(text).digest('hex').slice(0, 32)
+
 /** Whether this job has a token: GitHub's OIDC endpoint, or GitLab's `VX_HISTORY_TOKEN`. */
-export const hasToken = (env: Record<string, string | undefined>): boolean =>
+const hasToken = (env: Record<string, string | undefined>): boolean =>
   (!!env.ACTIONS_ID_TOKEN_REQUEST_URL && !!env.ACTIONS_ID_TOKEN_REQUEST_TOKEN) ||
   !!env.VX_HISTORY_TOKEN
 
@@ -106,12 +118,26 @@ export class HistoryServer {
   private held: { jwt: string; exp: number } | undefined
   private limits: Promise<Limits> | undefined
 
+  private readonly headers: Readonly<Record<string, string>>
+
   constructor(
     readonly url: string,
+    named: Named,
     private readonly env: Record<string, string | undefined> = Bun.env,
     private readonly fetchImpl: typeof fetch = fetch,
-    private readonly headers: Readonly<Record<string, string>> = {},
-  ) {}
+    headers: Readonly<Record<string, string>> = {},
+  ) {
+    this.headers = {
+      ...headers,
+      'vx-issuer': hashOf(named.issuer),
+      'vx-repository': hashOf(named.repository),
+    }
+  }
+
+  /** Whether the run has a token to send: with none it reads only. */
+  get writes(): boolean {
+    return hasToken(this.env)
+  }
 
   /**
    * The job's token: GitHub's OIDC token for the server's origin, asked
@@ -143,11 +169,12 @@ export class HistoryServer {
   }
 
   private async call(path: string, body?: unknown): Promise<Response> {
+    const bearer = this.writes ? await this.bearer() : ''
     const res = await this.fetchImpl(`${this.url}${path}`, {
       method: body === undefined ? 'GET' : 'POST',
       headers: {
         ...this.headers,
-        authorization: `Bearer ${await this.bearer()}`,
+        ...(bearer === '' ? {} : { authorization: `Bearer ${bearer}` }),
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),

@@ -68,6 +68,7 @@ Put TLS in front of it: a CI token is a bearer token.
 | --- | --- | --- |
 | `TRUST` | empty: refuse all | the repositories it serves and the jobs that write protected refs ([`TRUST`](../#trust-who-reads-and-who-writes)) |
 | `AUDIENCE` | the origin it is reached at | the `aud` a CI token must name |
+| `READ_ACCESS` | unset: a token for every request | `public`: a request with no token reads a repository `TRUST` names, and writes nothing |
 | `TIMING_DAYS` | 30 | days a task's row outlives its last report |
 
 On Workers, each setting is a var in `wrangler.jsonc`.
@@ -98,7 +99,13 @@ import { defineWorkspace } from '@vzn/vx/config'
 import { vxHistory } from '/path/to/vx/packages/vx-history/src/index.ts'
 
 export default defineWorkspace({
-  plugins: [vxHistory({ server: 'https://history.example.com' })], // or VX_HISTORY_URL
+  plugins: [
+    vxHistory({
+      server: 'https://history.example.com', // or VX_HISTORY_URL
+      issuer: 'https://token.actions.githubusercontent.com',
+      repository: 'acme/app',
+    }),
+  ],
 })
 ```
 
@@ -106,6 +113,10 @@ export default defineWorkspace({
   Until `@vzn/vx-history` is on npm, import it from a checkout of the vx
   repository, as above.
 </Aside>
+
+`issuer` (the CI issuer's URL, as its tokens name it) and `repository`
+(`org/name` there) are required with a server: every request names both
+by their hashes, and the server refuses a token of another repository.
 
 Each run asks the server for its tasks' rows, its branch's first, then
 the default branch's. It starts on its local history and re-ranks the
@@ -139,8 +150,8 @@ vx:
 </Tabs>
 
 A refusal is said with the server's words. A CI job with no token says
-so once, and off CI there is no token: the run orders by local history
-alone. The plugin's other options (`assume`, `window`, reservations)
+so once. With no token (off CI) a run reads only, from a server with
+`READ_ACCESS=public`, and uploads nothing. The plugin's other options (`assume`, `window`, reservations)
 are on its [reference page](../../../plugins/vx-history/).
 
 <Aside>

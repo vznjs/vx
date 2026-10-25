@@ -39,4 +39,6 @@ export interface VxHistoryOptions {
   readonly defaultBranch?: string
   readonly server?: string
   readonly serverHeaders?: Record<string, string | undefined>
+  readonly issuer?: string
+  readonly repository?: string
 }

@@ -9,7 +9,7 @@ import { sqliteDb } from '../src/bun.js'
 import { createHistoryServer } from '../src/server.js'
 import { sqliteStore } from '../src/store.js'
 import { conformance, scopeOf } from './conformance.js'
-import { type Issuer, issuer, trustOf } from './issuer.js'
+import { GITHUB, type Issuer, issuer, REPO, trustOf } from './issuer.js'
 
 const MAIN = scopeOf('refs/heads/main')
 let server: Bun.Server<undefined>
@@ -33,6 +33,8 @@ afterAll(async () => {
 conformance('Bun with SQLite', {
   base: () => server.url.href,
   sign: (job) => iss.sign(job, server.url.origin),
+  issuer: GITHUB,
+  repository: REPO,
 })
 
 it('folds a thousand tasks in one statement, and sweeps what was not reported', async () => {

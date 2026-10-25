@@ -32,7 +32,7 @@ import {
 import type { CommandContext } from '@vzn/vx'
 import path from 'node:path'
 import type { HistoryRow } from './history-view.js'
-import type { HistoryServer, ServerTiming } from './history-server.js'
+import type { HistoryServer, Named, ServerTiming } from './history-server.js'
 
 export interface VxHistoryOptions {
   /** How many recent invocations to learn from. Default 20. */
@@ -101,6 +101,14 @@ export interface VxHistoryOptions {
    * `authorization` stays the CI token's.
    */
   readonly serverHeaders?: Record<string, string | undefined>
+  /**
+   * The CI issuer whose tokens `server` takes, as they name it
+   * (`https://token.actions.githubusercontent.com`), and the repository at
+   * it, `org/name`: required with a server. Every request names them by
+   * their hashes (M, 2026-10-25: the user names them, nothing guesses).
+   */
+  readonly issuer?: string
+  readonly repository?: string
 }
 
 // The provider's own default (50) serves `--dry` predictions; an ordering
@@ -244,10 +252,27 @@ const VX_HISTORY_KEYS: PluginOptionKinds<VxHistoryOptions> = {
   defaultBranch: 'string',
   server: 'string',
   serverHeaders: 'object',
+  issuer: 'string',
+  repository: 'string',
+}
+
+/** `vxHistory({ issuer, repository })`, checked; the server's requests name them. */
+function namedOf(issuer: unknown, repository: unknown): Named {
+  if (typeof issuer !== 'string' || !/^https?:\/\/\S+$/.test(issuer))
+    throw new UserError(
+      `vxHistory(): issuer must be the CI issuer's URL (https://token.actions.githubusercontent.com), got ${String(issuer)}`,
+    )
+  if (typeof repository !== 'string' || !/^[^/\s]+(\/[^/\s]+)+$/.test(repository))
+    throw new UserError(`vxHistory(): repository must be org/name, got ${String(repository)}`)
+  return { issuer: issuer.replace(/\/$/, ''), repository: repository.toLowerCase() }
 }
 
 export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   refuseUnknownOptions('vxHistory()', options, VX_HISTORY_KEYS)
+  const named =
+    options.server === undefined && options.issuer === undefined && options.repository === undefined
+      ? undefined
+      : namedOf(options.issuer, options.repository)
   // `'any'` above lets `null` through, and every run then failed in
   // `schedule` reading `null.headroom`.
   const { resources } = options
@@ -399,9 +424,10 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     if ((options.server ?? Bun.env.VX_HISTORY_URL ?? '') === '') return undefined
     const m = await import('./history-server.js')
     const url = m.serverUrlOf(options.server)
-    return url === undefined || !m.hasToken(Bun.env)
-      ? undefined
-      : new m.HistoryServer(url, Bun.env, fetch, m.proxyHeaders(options.serverHeaders))
+    if (url === undefined) return undefined
+    // VX_HISTORY_URL alone: the workspace names no repository to ask for.
+    if (named === undefined) return undefined
+    return new m.HistoryServer(url, named, Bun.env, fetch, m.proxyHeaders(options.serverHeaders))
   }
   // What the run sends the history server at its end, by task definition.
   let reported: { timings: Map<string, ServerTiming>; warn: (m: string) => void } | undefined
@@ -437,7 +463,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   let fileWarn: { root: string; warn: (m: string) => void } | undefined
   hooks.setup = async (ctx) => {
     remote ??= await serverOf()
-    if (remote !== undefined) {
+    if (remote?.writes === true) {
       const { timingOf: timing } = await import('./history-server.js')
       // Only the run that ran the tasks hears them: under DTE, the
       // orchestrator, with each worker's measurements.
@@ -449,11 +475,16 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         const t = timing(outcome)
         if (def !== undefined && t !== undefined) timings.set(def, t)
       })
-    } else if (ctx.ci && (options.server ?? Bun.env.VX_HISTORY_URL ?? '') !== '') {
+    } else if (remote !== undefined) {
+      if (ctx.ci)
+        ctx.warn(
+          Bun.env.GITHUB_ACTIONS === 'true'
+            ? '[vx] vx-history: this job gets no OIDC token for the history server (give it `permissions: id-token: write`): it reads only'
+            : '[vx] vx-history: no CI token for the history server (name an id_tokens entry VX_HISTORY_TOKEN): it reads only',
+        )
+    } else if ((options.server ?? Bun.env.VX_HISTORY_URL ?? '') !== '') {
       ctx.warn(
-        Bun.env.GITHUB_ACTIONS === 'true'
-          ? '[vx] vx-history: this job gets no OIDC token for the history server: give it `permissions: id-token: write`'
-          : '[vx] vx-history: no CI token for the history server: name an id_tokens entry VX_HISTORY_TOKEN',
+        '[vx] vx-history: VX_HISTORY_URL names a server, but vxHistory() names no issuer and repository: the server is not asked',
       )
     }
     // A branch's write lands under its scope (M, 2026-10-18), for its next

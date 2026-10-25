@@ -6,6 +6,7 @@ import { exportJWK, generateKeyPair, type JWTPayload, SignJWT } from 'jose'
 import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
 import { createCacheServer } from '../src/server.js'
 import { scopeOf } from './conformance.js'
+import { NAMED } from './issuer.js'
 import { memBlobs } from './mem-blobs.js'
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
@@ -57,13 +58,13 @@ const put = (token: string, key: string) =>
     new Request(`${AUD}/v1/artifacts/${key}`, {
       method: 'PUT',
       body: 'x',
-      headers: { authorization: `Bearer ${token}`, 'content-length': '1' },
+      headers: { ...NAMED, authorization: `Bearer ${token}`, 'content-length': '1' },
     }),
   )
 const status = (key: string, ref = 'refs/heads/main') =>
   handle(
     new Request(`${AUD}/v1/artifacts/${key}`, {
-      headers: { authorization: `Bearer ${read}`, 'x-artifact-scope': scopeOf(ref) },
+      headers: { ...NAMED, authorization: `Bearer ${read}`, 'vx-scope': scopeOf(ref) },
     }),
   ).then(async (r) => (await r.arrayBuffer(), r.status))
 const detail = async (res: Response) =>
@@ -111,7 +112,7 @@ describe('CI OIDC tokens', () => {
 
   it('a job matching no rule on a protected ref writes nothing', async () => {
     const res = await put(await sign({ ...MAIN, event_name: 'workflow_dispatch' }), 'c3')
-    expect(await detail(res)).toEqual([403, 'this token reads only'])
+    expect(await detail(res)).toEqual([403, 'this request reads only'])
     const pr = await sign({
       event_name: 'pull_request',
       head_ref: 'main',
@@ -126,6 +127,21 @@ describe('CI OIDC tokens', () => {
       403,
       "repository 9 is not in this server's TRUST",
     ])
+    // A token of a repository TRUST names, sent naming another.
+    const named = { ...NAMED, 'vx-repository': scopeOf('acme/other') }
+    const res = await handle(
+      new Request(`${AUD}/v1/artifacts/d4`, {
+        headers: {
+          ...named,
+          authorization: `Bearer ${await sign(MAIN)}`,
+          'vx-scope': scopeOf('refs/heads/main'),
+        },
+      }),
+    )
+    expect(await detail(res)).toEqual([
+      403,
+      'the token is of repository acme/app at https://token.actions.githubusercontent.com, not the repository named',
+    ])
     expect(await detail(await put(await sign(MAIN, 'https://elsewhere'), 'd4'))).toEqual([
       401,
       'wrong audience',
@@ -133,6 +149,47 @@ describe('CI OIDC tokens', () => {
     const [h, p] = (await sign(MAIN)).split('.')
     const forged = `${h}.${p}.${'A'.repeat(342)}`
     expect(await detail(await put(forged, 'd4'))).toEqual([401, 'bad signature'])
+  })
+})
+
+describe('READ_ACCESS=public', () => {
+  const open = (readAccess?: string) =>
+    createCacheServer({
+      blobs: memBlobs(),
+      authorize: oidcAuth({ trust, readAccess, fetchJson: async () => ({}) }),
+    })
+  const tokenless = (
+    h: (req: Request) => Promise<Response>,
+    named: Record<string, string>,
+    init: RequestInit = {},
+  ) =>
+    h(
+      new Request(`${AUD}/v1/artifacts/f1`, {
+        ...init,
+        headers: {
+          ...named,
+          'vx-scope': scopeOf('refs/heads/main'),
+          ...(init.headers as Record<string, string>),
+        },
+      }),
+    )
+
+  it('reads a repository TRUST names with no token, and writes nothing', async () => {
+    const h = open('public')
+    expect((await tokenless(h, NAMED)).status).toBe(404)
+    const write = await tokenless(h, NAMED, {
+      method: 'PUT',
+      body: 'x',
+      headers: { 'content-length': '1' },
+    })
+    expect(await detail(write)).toEqual([403, 'this request reads only'])
+    const other = await tokenless(h, { ...NAMED, 'vx-repository': scopeOf('acme/other') })
+    expect(await detail(other)).toEqual([403, "the repository named is not in this server's TRUST"])
+  })
+
+  it('takes no tokenless read unless set, and no value but public', async () => {
+    expect(await detail(await tokenless(open(), NAMED))).toEqual([401, 'no bearer token'])
+    expect(() => open('yes')).toThrow('READ_ACCESS: public, or unset, not yes')
   })
 })
 

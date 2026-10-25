@@ -1,5 +1,5 @@
 // A GitHub OIDC issuer for the tests: its keys served without a network,
-// and tokens of repository 42 signed for any job. Its own, not the
+// and tokens of acme/app signed for any job. Its own, not the
 // server's test helper: a package that lints this one's tests through its
 // node_modules link cannot reach a sibling's tests (vx-bench).
 
@@ -7,9 +7,11 @@ import { exportJWK, generateKeyPair, SignJWT } from 'jose'
 import { parseTrust, type TrustRule } from '@vzn/vx-devtools'
 
 const ISS = 'https://token.actions.githubusercontent.com'
-const REPO = '42'
+const REPO = 'acme/app'
+/** The repository the TRUST serves, as a workspace names it. */
+export const NAMED = { issuer: ISS, repository: REPO }
 
-/** Trusts main's pushes of repository 42. */
+/** Trusts main's pushes of acme/app. */
 export function trustOf(): TrustRule[] {
   return parseTrust(
     JSON.stringify([{ iss: ISS, repository: REPO, event_name: 'push', ref: 'refs/heads/main' }]),
@@ -19,7 +21,7 @@ export function trustOf(): TrustRule[] {
 export interface Issuer {
   /** Serves the issuer's discovery document and keys, as `OidcOptions.fetchJson`. */
   fetchJson(url: string): Promise<unknown>
-  /** A token of repository 42 for `aud`: of main, or reading only. */
+  /** A token of acme/app for `aud`: of main, or reading only. */
   sign(job: 'main' | 'read', aud: string): Promise<string>
 }
 

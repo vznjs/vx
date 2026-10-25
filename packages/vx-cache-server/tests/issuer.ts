@@ -3,10 +3,12 @@
 
 import { exportJWK, generateKeyPair, type JWK, type JWTPayload, SignJWT } from 'jose'
 import { parseTrust, type TrustRule } from '@vzn/vx-devtools'
-import type { Job } from './conformance.js'
+import { type Job, scopeOf } from './conformance.js'
 
 export const GITHUB = 'https://token.actions.githubusercontent.com'
 export const REPO = 'acme/app'
+/** The headers naming acme/app at GitHub, as every request names its repository. */
+export const NAMED = { 'vx-issuer': scopeOf(GITHUB), 'vx-repository': scopeOf(REPO) }
 
 /** Trusts main's pushes and its merge queue, of acme/app. */
 export const TRUST: readonly TrustRule[] = parseTrust(

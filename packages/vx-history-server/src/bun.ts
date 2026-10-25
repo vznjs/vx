@@ -13,6 +13,7 @@ const USAGE = `usage: vx-history-server [--db vx-history.sqlite] [--port 8080] [
   TRUST        the CI repositories it serves and the jobs it trusts, a JSON list
                (README.md § CI tokens); only their OIDC tokens are taken
   AUDIENCE     the aud a CI token names (default: the origin it was sent to)
+  READ_ACCESS  public: a request with no token reads a repository TRUST names
   TIMING_DAYS  days a task's timings outlive its last report (default 30)`
 
 /** A SQLite file through bun:sqlite. */
@@ -55,7 +56,11 @@ function main(argv: string[]): void {
   }
   const handle = createHistoryServer({
     store: sqliteStore(sqliteDb(values.db)),
-    authorize: oidcAuth({ trust, ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}) }),
+    authorize: oidcAuth({
+      trust,
+      readAccess: env.READ_ACCESS,
+      ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
+    }),
     ...(timingDays === undefined ? {} : { timingDays }),
   })
   const server = Bun.serve({ hostname: values.host, port, fetch: handle })
