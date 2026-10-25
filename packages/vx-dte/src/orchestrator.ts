@@ -1857,7 +1857,6 @@ export function runKey(run: string, task: string, send = 0): string {
   return Bun.hash.xxHash3(id).toString(16).padStart(16, '0')
 }
 
-/** The projects inside `dir`, workspace-relative. */
 /**
  * The projects inside `dir`, root-relative, once per graph and project:
  * read for each order, a run of 9000 tasks walked every task 9000 times
