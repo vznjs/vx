@@ -82,3 +82,33 @@ it('reads the limits from the environment, and refuses one that is not a count',
     'MAX_CHECK_HASHES: not a whole number above 0: 1.5',
   )
 })
+
+// A truncated upload stored would be a wrong artifact under a right key:
+// the worst a cache does.
+it('refuses a body of another length than its Content-Length, and stores nothing', async () => {
+  const before = s3.objects.size
+  for (const [body, length, said] of [
+    ['abc', '5', 'the body is 3 bytes, not 5'],
+    ['abcdef', '2', 'the body is longer than 2 bytes'],
+  ] as const) {
+    const res = await createCacheServer({
+      blobs: s3Blobs(
+        new Bun.S3Client({ endpoint: s3.url, bucket: 'b', accessKeyId: 'a', secretAccessKey: 's' }),
+      ),
+      authorize: oidcAuth({ trust: TRUST, fetchJson: iss.fetchJson }),
+    })(
+      new Request(`http://x.test/v1/artifacts/fe${length}`, {
+        method: 'PUT',
+        body: new Blob([body]).stream(),
+        headers: {
+          ...NAMED,
+          authorization: `Bearer ${await iss.sign(MAIN_JOB, 'http://x.test')}`,
+          'content-length': length,
+        },
+        duplex: 'half',
+      } as RequestInit),
+    )
+    expect([res.status, ((await res.json()) as { message: string }).message]).toEqual([400, said])
+  }
+  expect(s3.objects.size).toBe(before)
+})
