@@ -48,7 +48,9 @@ Absent, a read sees the trusted scope only. Any other value is `400`.
 
 ## Artifacts
 
-A key is 1 to 128 of `[A-Za-z0-9_-]`. An artifact is immutable.
+A key is 1 to 128 of `[A-Za-z0-9_-]`. An artifact is immutable. A
+server may evict one at any time: a `GET` after a `HEAD` or a query that
+held it may be `404`, which a client reads as a miss.
 
 | Request                    | Answer                                                                                                                                                               |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

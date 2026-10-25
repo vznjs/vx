@@ -66,7 +66,9 @@ as the item it describes.
   records its producing run's duration) and orders every run by the
   critical path the server's timings give, through `ctx.refine`, so no run
   waits on the server. The score is `@vzn/vx-schedule-history`'s `criticalPath`.
-- Planned: eviction on a Cron Trigger (Workers' free plan has five) and a
-  timer on Bun, by age per scope.
+- Shipped: eviction by age since the write, per scope (trusted 30 days,
+  a branch 7, runs 90), on a daily Cron Trigger (Workers' free plan has
+  five) and an hourly timer on Bun. Not by last read: that would cost a
+  D1 row write per hit.
 - Planned (with the server): flaky-task reruns and a dashboard, both read
   from the run history.

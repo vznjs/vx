@@ -5,6 +5,7 @@
 import { Database } from 'bun:sqlite'
 import { parseArgs } from 'node:util'
 import { parseTokens, tokenAuth } from './auth.js'
+import { evict, retentionFrom } from './evict.js'
 import { anyAuth, oidcAuth, parseTrust } from './oidc.js'
 import { Refusal } from './protocol.js'
 import { createCacheServer, DEFAULT_MAX_ARTIFACT_BYTES } from './server.js'
@@ -16,7 +17,9 @@ const USAGE = `usage: vx-cache-server [--db vx-cache.sqlite] [--port 8080] [--ho
   AUDIENCE        the aud a CI token names (default: the origin it was sent to)
   S3_BUCKET       the bucket; S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID and
                   S3_SECRET_ACCESS_KEY as Bun's S3 client reads them
-  MAX_ARTIFACT_BYTES  the largest artifact stored (default ${DEFAULT_MAX_ARTIFACT_BYTES})`
+  MAX_ARTIFACT_BYTES  the largest artifact stored (default ${DEFAULT_MAX_ARTIFACT_BYTES})
+  TRUSTED_DAYS, BRANCH_DAYS, RUN_DAYS  days the trusted scope, a branch's scope and
+                  the run history keep what they hold (default 30, 7, 90); swept hourly`
 
 /** A SQLite file through bun:sqlite. */
 export function sqliteDb(path: string): Db {
@@ -115,9 +118,27 @@ function main(argv: string[]): void {
   } catch (err) {
     fail(`TRUST: ${(err as Error).message}`)
   }
+  let retention
+  try {
+    retention = retentionFrom(env)
+  } catch (err) {
+    fail((err as Error).message)
+  }
+  const blobs = s3Blobs(new Bun.S3Client({ bucket: env.S3_BUCKET }))
+  const db = sqliteDb(values.db)
+  const sweep = (): void => {
+    evict(db, blobs, retention).then(
+      ({ artifacts, runs }) => {
+        if (artifacts + runs > 0) console.log(`evicted ${artifacts} artifacts, ${runs} runs`)
+      },
+      (err: unknown) => console.error(`eviction failed: ${String(err)}`),
+    )
+  }
+  sweep()
+  const sweeping = setInterval(sweep, 3_600_000)
   const handle = createCacheServer({
-    blobs: s3Blobs(new Bun.S3Client({ bucket: env.S3_BUCKET })),
-    db: sqliteDb(values.db),
+    blobs,
+    db,
     authorize: anyAuth(
       tokenAuth(parseTokens(env.TOKENS ?? '')),
       trust.length === 0
@@ -134,6 +155,7 @@ function main(argv: string[]): void {
   })
   console.log(`vx-cache-server on ${server.url.href}`)
   const stop = (): void => {
+    clearInterval(sweeping)
     void server.stop().then(() => process.exit(0))
   }
   process.on('SIGINT', stop)
