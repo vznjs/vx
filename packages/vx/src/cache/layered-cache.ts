@@ -188,9 +188,14 @@ export interface RemoteCacheLayer {
    * artifact, so a plugin that streams it never holds it whole, and every
    * read of it sees the same bytes. An entry is immutable: a `put` of a
    * key the remote holds keeps the stored bytes. Core never asks `has`
-   * first; a wire that would overwrite checks inside.
+   * first; a wire that would overwrite checks inside, unless told `missing`.
    */
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+  /**
+   * The run found `hash` in no remote, and a `put` of it follows: a wire
+   * that checks before it overwrites can skip that request.
+   */
+  missing?(hash: string): void
 }
 
 export class LayeredCache implements CacheLayer {
@@ -608,7 +613,8 @@ export class LayeredCache implements CacheLayer {
       packed !== undefined
         ? Promise.resolve({ body: new Blob([packed]) })
         : this.local.pinArtifact(hash)
-    for (const lane of writable) void lane.upload(hash, durationMs, body, this.local.uploads)
+    for (const lane of writable)
+      void lane.upload(hash, durationMs, body, this.local.uploads, args.absent === true)
   }
 
   /**

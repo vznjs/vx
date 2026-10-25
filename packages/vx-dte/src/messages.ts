@@ -51,6 +51,8 @@ export interface RunOrder {
    * machines restore.
    */
   fresh?: true
+  /** The run's probe found `key` in no cache: its upload asks the remote nothing first. */
+  absent?: true
   /** The tasks it depends on, transitively, whose files the worker does not hold yet. */
   deps: DepOrder[]
   /** Workspace-relative projects inside `project`, whose files are not its outputs. */

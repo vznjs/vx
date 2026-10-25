@@ -701,6 +701,7 @@ export function dte(options: DteOptions) {
         running: (id) => o.where(id),
         demand(remaining, misses) {
           if (pending === undefined) o.probed(remaining.size, misses.size)
+          o.missed = misses
           pending = remaining
           sure = misses
           if (misses.size > 0) missed = true

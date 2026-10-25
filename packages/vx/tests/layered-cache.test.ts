@@ -208,6 +208,41 @@ describe('LayeredCache', () => {
     expect(remote.store.get('h-save')!.byteLength).toBeGreaterThan(0)
   })
 
+  // A DTE worker HEADed each upload of a key the run had found in no cache
+  // (turboCache()), and a write-only lane asked `has` too (M, 2026-10-25).
+  for (const read of [true, false])
+    it(`save({ absent }) tells the remote the key is missing and asks no has (read ${read})`, async () => {
+      const told: string[] = []
+      const layered = layeredOver(
+        local,
+        {
+          ...remote.layer,
+          missing(hash) {
+            told.push(hash)
+          },
+        },
+        { policy: { localRead: true, localWrite: true, remoteRead: read, remoteWrite: true } },
+      )
+      const outFile = path.join(projectDir, 'dist', 'absent.txt')
+      await mkdir(path.dirname(outFile), { recursive: true })
+      await writeFile(outFile, 'x')
+      const entry = { taskId: 'pkg#build', command: 'c', durationMs: 1, stdout: '' }
+      await layered.save({
+        hash: 'h-absent',
+        projectDir,
+        outputFiles: [outFile],
+        entry,
+        absent: true,
+      })
+      await layered.drainUploads()
+      expect(remote.heads).toBe(0)
+      await layered.save({ hash: 'h-asked', projectDir, outputFiles: [outFile], entry })
+      await layered.drainUploads()
+      expect(remote.heads).toBe(read ? 0 : 1)
+      expect(told).toEqual(['h-absent'])
+      expect(remote.puts).toBe(2)
+    })
+
   it('save() does not fail when the remote rejects', async () => {
     remote.failAll = true
     const layered = makeLayered()
