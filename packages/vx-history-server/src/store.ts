@@ -1,4 +1,4 @@
-// What the server keeps: one row per issuer, repository id, scope and task
+// What the server keeps: one row per issuer, repository name, scope and task
 // definition (M, 2026-10-25, the cache's key), already the
 // numbers a scheduler asks for (M, 2026-10-25: a history, not a log). Each
 // report folds into its row in one statement, so racing jobs lose nothing.
@@ -51,10 +51,10 @@ export const RSS_DECAY = 0.9
 const NOISE = 0.05
 const DAY_MS = 86_400_000
 
-/** A repository: its token's issuer and its id there. */
+/** A repository: its token's issuer and its `org/name` there (stored hashed, in `repo_id`). */
 export interface Repo {
   readonly issuer: string
-  readonly id: string
+  readonly repository: string
 }
 
 const SCHEMA = `CREATE TABLE IF NOT EXISTS task_timings (issuer TEXT NOT NULL, repo_id TEXT NOT NULL, scope TEXT NOT NULL, hash TEXT NOT NULL, duration_ms INTEGER NOT NULL, cores REAL, rss_bytes INTEGER, runs INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (issuer, repo_id, scope, hash)) WITHOUT ROWID`
@@ -97,7 +97,7 @@ export interface Store {
 }
 
 const keyOf = (repo: Repo): Promise<[string, string]> =>
-  Promise.all([hashPart(repo.issuer), hashPart(repo.id)])
+  Promise.all([hashPart(repo.issuer), hashPart(repo.repository)])
 
 export function sqliteStore(db: Db): Store {
   return {

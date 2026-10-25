@@ -46,8 +46,9 @@ The cache and history servers share one token check
 
 - `iss`, the issuer: `https://token.actions.githubusercontent.com` or
   your GitLab's URL;
-- the repository by an id that a rename keeps: `repository_id` on
-  GitHub, `project_id` on GitLab;
+- the repository by name, `org/name` in any case: `repository` on
+  GitHub, `project_path` on GitLab (a renamed repository starts a cold
+  cache);
 - the refs it protects: `ref` on GitHub, `ref_path` on GitLab;
 - any other claim the writing job must hold.
 
@@ -57,14 +58,14 @@ A value is a string, where `*` matches anything, or a list of strings.
 [
   {
     "iss": "https://token.actions.githubusercontent.com",
-    "repository_id": "123456789",
+    "repository": "acme/app",
     "event_name": ["push", "merge_group"],
     "ref": ["refs/heads/main", "refs/heads/gh-readonly-queue/main/*"],
     "ref_protected": "true"
   },
   {
     "iss": "https://gitlab.com",
-    "project_id": "4567",
+    "project_path": "acme/web",
     "ref_path": "refs/heads/main",
     "ref_protected": "true",
     "pipeline_source": ["push", "schedule"]

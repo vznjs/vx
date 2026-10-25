@@ -15,13 +15,13 @@ const claims = {
   main: { ref_path: 'refs/heads/main', pipeline_source: 'push' },
   branch: { ref_path: 'refs/heads/feature', pipeline_source: 'push' },
   read: { ref_path: 'refs/heads/main', pipeline_source: 'web' },
-  stranger: { ref_path: 'refs/heads/main', pipeline_source: 'push', project_id: '7' },
+  stranger: { ref_path: 'refs/heads/main', pipeline_source: 'push', project_path: '7' },
 }
 
 conformance('the Docker image', {
   base: () => env('VX_CACHE_SMOKE'),
   sign: async (job) =>
-    new SignJWT({ project_id: '42', ...claims[job] })
+    new SignJWT({ project_path: '42', ...claims[job] })
       .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
       .setIssuer(env('VX_CACHE_ISSUER'))
       .setAudience(new URL(env('VX_CACHE_SMOKE')).origin)

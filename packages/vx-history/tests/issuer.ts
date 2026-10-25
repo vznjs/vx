@@ -12,7 +12,7 @@ const REPO = '42'
 /** Trusts main's pushes of repository 42. */
 export function trustOf(): TrustRule[] {
   return parseTrust(
-    JSON.stringify([{ iss: ISS, repository_id: REPO, event_name: 'push', ref: 'refs/heads/main' }]),
+    JSON.stringify([{ iss: ISS, repository: REPO, event_name: 'push', ref: 'refs/heads/main' }]),
   )
 }
 
@@ -31,7 +31,7 @@ export async function issuer(): Promise<Issuer> {
       url.endsWith('/.well-known/openid-configuration') ? { jwks_uri: `${ISS}/keys` } : jwks,
     sign: (job, aud) =>
       new SignJWT({
-        repository_id: REPO,
+        repository: REPO,
         ref: 'refs/heads/main',
         event_name: job === 'main' ? 'push' : 'workflow_dispatch',
       })

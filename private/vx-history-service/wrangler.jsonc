@@ -10,7 +10,7 @@
   // rows. vx-worker.yml is left out: it may be dispatched on main to run a
   // fork PR's code. Any other job of this repo writes its branch's rows.
   "vars": {
-    "TRUST": "[{\"iss\":\"https://token.actions.githubusercontent.com\",\"repository_id\":\"1235245958\",\"workflow_ref\":\"vznjs/vx/.github/workflows/ci.yml@*\",\"event_name\":[\"push\",\"merge_group\",\"workflow_dispatch\"],\"ref\":[\"refs/heads/main\",\"refs/heads/gh-readonly-queue/main/*\"],\"ref_protected\":\"true\"}]",
+    "TRUST": "[{\"iss\":\"https://token.actions.githubusercontent.com\",\"repository\":\"vznjs/vx\",\"workflow_ref\":\"vznjs/vx/.github/workflows/ci.yml@*\",\"event_name\":[\"push\",\"merge_group\",\"workflow_dispatch\"],\"ref\":[\"refs/heads/main\",\"refs/heads/gh-readonly-queue/main/*\"],\"ref_protected\":\"true\"}]",
   },
   "d1_databases": [
     {

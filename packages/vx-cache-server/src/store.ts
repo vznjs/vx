@@ -1,6 +1,6 @@
 // Where a server keeps what it is sent: one bucket (S3 or R2), no
 // database (M, 2026-10-25). An artifact is one object whose name is its
-// issuer, repository id, scope and hash and whose size is the bucket's
+// issuer, repository name, scope and hash and whose size is the bucket's
 // own, so any number of nodes share a bucket and nothing else.
 
 import { hashPart } from '@vzn/vx-devtools'

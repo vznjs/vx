@@ -6,14 +6,14 @@ import { parseTrust, type TrustRule } from '@vzn/vx-devtools'
 import type { Job } from './conformance.js'
 
 export const GITHUB = 'https://token.actions.githubusercontent.com'
-export const REPO = '42'
+export const REPO = 'acme/app'
 
-/** Trusts main's pushes and its merge queue, of repository 42. */
+/** Trusts main's pushes and its merge queue, of acme/app. */
 export const TRUST: readonly TrustRule[] = parseTrust(
   JSON.stringify([
     {
       iss: GITHUB,
-      repository_id: REPO,
+      repository: REPO,
       event_name: ['push', 'merge_group'],
       ref: ['refs/heads/main', 'refs/heads/gh-readonly-queue/main/*'],
     },
@@ -31,14 +31,14 @@ export const JOBS: Record<Job, JWTPayload> = {
   main: MAIN_JOB,
   read: READ_JOB,
   branch: BRANCH_JOB,
-  stranger: { ...MAIN_JOB, repository_id: '7' },
+  stranger: { ...MAIN_JOB, repository: 'acme/other' },
 }
 
 export interface Issuer {
   readonly jwks: { keys: JWK[] }
   /** Serves the issuer's discovery document and keys, as `OidcOptions.fetchJson`. */
   fetchJson(url: string): Promise<unknown>
-  /** A token of repository 42 (unless `claims` names another) for `aud`. */
+  /** A token of acme/app (unless `claims` names another) for `aud`. */
   sign(claims: JWTPayload, aud: string, lifetime?: string): Promise<string>
 }
 
@@ -50,7 +50,7 @@ export async function issuer(): Promise<Issuer> {
     fetchJson: async (url) =>
       url.endsWith('/.well-known/openid-configuration') ? { jwks_uri: `${GITHUB}/keys` } : jwks,
     sign: (claims, aud, lifetime = '1h') =>
-      new SignJWT({ repository_id: REPO, ...claims })
+      new SignJWT({ repository: REPO, ...claims })
         .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
         .setIssuer(GITHUB)
         .setAudience(aud)

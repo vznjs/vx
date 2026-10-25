@@ -54,7 +54,7 @@ it('refuses every request, saying why, while TRUST or TIMING_DAYS is unset or wr
     [
       { TRUST: '[{"iss":"https://gitlab.com"}]' },
       500,
-      'rule 0: names no project_id (one repository, no *)',
+      'rule 0: names no project_path (one repository, no *)',
     ],
     [
       { TRUST: JSON.stringify(trustOf()), TIMING_DAYS: '0' },

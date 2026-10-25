@@ -41,7 +41,7 @@ conformance('Bun with S3', {
   ...LIMITS,
 })
 
-it('names an object <issuer>/<id>/<scope>/<hash>, each hashed, and checks one HEAD per hash and scope', async () => {
+it('names an object <issuer>/<repository>/<scope>/<hash>, each hashed, and checks one HEAD per hash and scope', async () => {
   const k = 'abc123'
   await fetch(new URL(`/v1/artifacts/${k}`, server.url), {
     method: 'PUT',
@@ -49,12 +49,12 @@ it('names an object <issuer>/<id>/<scope>/<hash>, each hashed, and checks one HE
     headers: { authorization: `Bearer ${token}` },
   })
   const main = scopeOf('refs/heads/main')
-  const name = await blobName('token.actions.githubusercontent.com', '42', main, k)
+  const name = await blobName('token.actions.githubusercontent.com', 'acme/app', main, k)
   // The write's scope is its token's ref hashed by the server, as a client hashes it.
   expect(name).toBe(
-    `${scopeOf('token.actions.githubusercontent.com')}/${scopeOf('42')}/${main}/abc123`,
+    `${scopeOf('token.actions.githubusercontent.com')}/${scopeOf('acme/app')}/${main}/abc123`,
   )
-  expect([...s3.objects.keys()].join()).not.toMatch(/refs|github|\/42\//)
+  expect([...s3.objects.keys()].join()).not.toMatch(/refs|github|acme/)
   expect(s3.objects.get(`/b/${name}`)).toEqual(new TextEncoder().encode('x'))
   const before = s3.log.length
   const check = async (hashes: string[]) =>

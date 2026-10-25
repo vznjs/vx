@@ -61,7 +61,7 @@ it('refuses every request, saying why, while TRUST or a limit is unset or wrong'
     [
       { TRUST: '[{"iss":"https://gitlab.com"}]' },
       500,
-      'TRUST: rule 0: names no project_id (one repository, no *)',
+      'TRUST: rule 0: names no project_path (one repository, no *)',
     ],
     [
       { TRUST: JSON.stringify(TRUST), MAX_CHECK_HASHES: '0' },

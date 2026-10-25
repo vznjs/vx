@@ -9,13 +9,17 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-devtools: name a repository by org/name, not its id
+
+a TRUST rule names repository (GitHub) or project_path (GitLab) in place of repository_id or project_id, and Access carries repository in place of id. Stored keys change, so the cache and history start cold.
+
+## vx-ci: a merge queue or train reads and writes its base branch
+
+cacheRefs takes the plugin's refs; without github() or gitlab(), CI reads git's branch and the default branch only.
+
 ## vx-ci: drop the check run; github() writes the job summary only
 
 github() no longer takes checks, checkName or fetchFn, and @vzn/vx-ci no longer exports FetchFn.
-
-## vx-ci: github() and gitlab() name the refs a remote reads
-
-cacheRefs takes the plugin's refs; without github() or gitlab(), CI reads git's branch and the default branch only.
 
 ## vx-dte-server: store nothing
 

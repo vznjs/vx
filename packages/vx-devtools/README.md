@@ -19,7 +19,7 @@ option.
 - `parseTrust(json)` reads `TRUST` into `TrustRule`s; `oidcAuth(options)` is the `Authorize` checking a request's CI token against
   them (its options an `OidcOptions`), answering its `Access` or throwing a `Refusal` (`status` and what
   to fix).
-- `hashPart(text)` is what a server stores in place of an issuer, a repository id or a scope: the first
+- `hashPart(text)` is what a server stores in place of an issuer, a repository name or a scope: the first
   128 bits of its SHA-256 in hex (Web Crypto, so Bun and Workers agree), never the plain value.
 
 ```ts
@@ -52,8 +52,9 @@ export function oidcAuth(opts: OidcOptions): Authorize
   (found through its `/.well-known/openid-configuration`, kept and
   refetched by `createRemoteJWKSet`), `aud`, `exp` and `nbf` within 60 s.
 - The repository is the token's issuer (`iss` without its scheme) and its
-  `repository_id` (GitHub) or `project_id` (GitLab). One no rule names is
-  `403`.
+  name, `org/name` lowercased: `repository` (GitHub) or `project_path`
+  (GitLab), what a checkout's origin names (M, 2026-10-25). One no rule
+  names is `403`.
 - A token writes its branch (a pull request's head branch on GitHub, a
   merge queue's base branch for a `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`
   ref, else `ref`; GitLab's `ref_path`). A ref a rule names is protected: a token on

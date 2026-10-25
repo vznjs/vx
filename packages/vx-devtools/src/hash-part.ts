@@ -1,4 +1,4 @@
-// What a server stores in place of an issuer, a repository id or a scope
+// What a server stores in place of an issuer, a repository name or a scope
 // (M, 2026-10-25: "issuer and scope should be hashed"): a cache object's
 // name and a history row hold no plain value of a token's.
 
