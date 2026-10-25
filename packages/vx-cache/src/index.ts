@@ -262,6 +262,15 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (this.idToken !== undefined && Date.now() < this.idToken.exp - marginMs) {
       return this.idToken.jwt
     }
+    // One ask for the requests that need it at once: each asked its own,
+    // a check and two uploads three (2026-10-26).
+    this.asking ??= this.askGithub().finally(() => (this.asking = undefined))
+    return this.asking
+  }
+
+  private asking: Promise<string> | undefined
+
+  private async askGithub(): Promise<string> {
     const ask = new URL(this.env.ACTIONS_ID_TOKEN_REQUEST_URL!)
     ask.searchParams.set('audience', new URL(this.config.url).origin)
     let jwt: unknown

@@ -328,6 +328,40 @@ describe('GitHub OIDC', () => {
       await github.stop(true)
     }
   })
+
+  // Each request the run starts at once asked GitHub for its own token: the
+  // limits, the first checks and four uploads were six asks (2026-10-26).
+  it('asks GitHub once for requests that need a token at the same time', async () => {
+    const srv = server()
+    let asked = 0
+    const github = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: async (req) => {
+        asked++
+        const audience = new URL(req.url).searchParams.get('audience')!
+        return Response.json({ value: await iss.sign(BRANCH_JOB, audience) })
+      },
+    })
+    try {
+      const env = {
+        ACTIONS_ID_TOKEN_REQUEST_URL: github.url.href,
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'gh',
+      }
+      const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, env)!, fetch, env)
+      c.refs = ['refs/heads/feature']
+      c.start()
+      await Promise.all([
+        c.has('a1'),
+        c.put('a2', new Blob(['x']), { durationMs: 1 }),
+        c.put('a3', new Blob(['y']), { durationMs: 1 }),
+      ])
+      expect(asked).toBe(1)
+    } finally {
+      await srv.stop()
+      await github.stop(true)
+    }
+  })
 })
 
 describe('lend', () => {
