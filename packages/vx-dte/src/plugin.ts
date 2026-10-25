@@ -833,7 +833,9 @@ export function bytes(v: unknown): number | undefined {
   if (typeof v !== 'string') return undefined
   const m = /^\s*(\d+(?:\.\d+)?)\s*([a-z]+)\s*$/i.exec(v)
   const unit = m === null ? undefined : UNITS[m[2]!.toUpperCase()]
-  return unit === undefined ? undefined : Number(m![1]) * unit
+  const n = unit === undefined ? 0 : Number(m![1]) * unit
+  // `'0GB'` is no more a size than `0`: a worker of no memory fits nothing beside.
+  return n > 0 ? n : undefined
 }
 
 /** A random (v4) UUID, as the relay takes: a run id no one can guess. */
