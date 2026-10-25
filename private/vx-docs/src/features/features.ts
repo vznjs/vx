@@ -637,6 +637,7 @@ export default defineProject({
     hook: 'Every run on GitHub Actions writes a job summary.',
     body: [
       '`@vzn/vx-ci` adds one block to the workflow page for every `vx run`: the verdict, tasks, cache hits and duration, with failures first and their exit codes.',
+      'It needs no token and no permission: the runner gives every step a summary file, and off Actions the plugin does nothing.',
     ],
     example: { lang: 'ts', code: workspace('@vzn/vx-ci', 'github()') },
     image: 'github-ci.png',
