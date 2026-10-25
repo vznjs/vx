@@ -1,7 +1,7 @@
 // A distributed run end to end on `local()`: the workers are processes in
 // their own git worktrees, joined through the adapter's loopback relay.
 
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
@@ -933,6 +933,53 @@ it('local() checks out the run’s commit, not the tree as it is at its first wo
     JSON.stringify({ name: 'ws', private: true }),
   )
   await a.close!()
+}, 60_000)
+
+// From the worktree's root, a workspace in a subdirectory of its
+// repository had no `.vx/workspace` above: every worker exited
+// `unknown command: dte` (2026-10-25).
+it('local() starts a worker at the workspace’s place in its repository', async () => {
+  const repo = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-sub-'))
+  const said = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-pwd-'))
+  try {
+    const ws = path.join(repo, 'ws')
+    await mkdir(ws, { recursive: true })
+    await writeFile(path.join(ws, 'package.json'), '{}')
+    const git = (...a: string[]) => Bun.spawnSync(['git', ...a], { cwd: repo })
+    git('init', '-q')
+    git('add', '-A')
+    git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'i')
+    const a = local({ prepare: `pwd -P > ${JSON.stringify(path.join(said, 'pwd'))}; exit 1` })
+    await a.relay!()
+    await Promise.resolve(
+      a.spawn({
+        run: crypto.randomUUID(),
+        relay: '',
+        size: 'small',
+        max: 1,
+        cpu: 1,
+        memory: 1e9,
+        index: 1,
+        id: 'small#1',
+        workspaceRoot: ws,
+        commit: (await snapshot(ws)).commit,
+        env: {},
+        exited: () => {},
+      }),
+    ).catch(() => {})
+    const list = git('worktree', 'list', '--porcelain')
+    const dir = list.stdout
+      .toString()
+      .match(/^worktree (.+)$/gm)![1]!
+      .slice('worktree '.length)
+    expect((await readFile(path.join(said, 'pwd'), 'utf8')).trim()).toBe(
+      await realpath(path.join(dir, 'ws')),
+    )
+    await a.close!()
+  } finally {
+    await rm(repo, { recursive: true, force: true })
+    await rm(said, { recursive: true, force: true })
+  }
 }, 60_000)
 
 // `vx watch` runs again in one process: a `local()` the last run closed

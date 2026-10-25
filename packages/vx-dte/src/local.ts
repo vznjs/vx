@@ -86,6 +86,15 @@ export function local(options: LocalOptions = {}): DteAdapter {
         )
         if (add.code !== 0) throw new Error(`git worktree add: ${errorLine(add.err)}`)
         trees.push({ root: a.workspaceRoot, dir })
+        // The workspace's own place in the checkout: from the worktree's
+        // root, a workspace in a subdirectory of its repository had no
+        // `.vx/workspace` above, and every worker exited (2026-10-25).
+        const prefix = Bun.spawn(['git', 'rev-parse', '--show-prefix'], {
+          cwd: a.workspaceRoot,
+          stdout: 'pipe',
+          stderr: 'ignore',
+        })
+        const at = path.join(dir, (await new Response(prefix.stdout).text()).trim())
         const env: Record<string, string | undefined> = { ...process.env, ...a.env }
         // A relative cache dir would name each worktree's own store, where
         // the run cannot read what the worker saved.
@@ -99,12 +108,12 @@ export function local(options: LocalOptions = {}): DteAdapter {
           env['VX_CACHE_DIR'] = path.resolve(a.workspaceRoot, cacheDir)
         }
         if (options.prepare !== undefined && !closed) {
-          const p = await run(['sh', '-c', options.prepare], dir, env)
+          const p = await run(['sh', '-c', options.prepare], at, env)
           if (p.code !== 0 && !closed)
             throw new Error(await why(`prepare exited ${p.code}`, a.id, p.err))
         }
         if (closed) return
-        void run([...vx(), 'dte', 'worker'], dir, env, false).then(async (r) => {
+        void run([...vx(), 'dte', 'worker'], at, env, false).then(async (r) => {
           if (!closed) a.exited(await why(`exited ${r.code}`, a.id, r.err))
         })
       })()
