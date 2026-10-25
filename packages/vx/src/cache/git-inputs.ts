@@ -551,10 +551,32 @@ export class GitFilesCache extends Map<string, readonly string[]> {
     const snap = this.get(projectDir)
     if (snap === undefined) return undefined
     const pending = this.changed.get(projectDir)
-    if (pending !== undefined && pending.some((p) => inputGlobs.some((g) => g.match(p)))) {
-      return undefined
-    }
+    if (pending !== undefined && this.pendingMatch(pending, inputGlobs)) return undefined
     return snap
+  }
+
+  /**
+   * How far each glob has read a `changed` list, -1 once it matched: the
+   * list only grows until a reset replaces it, so each glob reads each path
+   * once. Every task asked again from the start: 9000 tasks writing into
+   * one project cost 10 s of reads (2026-10-25).
+   */
+  private readonly read = new WeakMap<readonly string[], Map<Bun.Glob, number>>()
+
+  private pendingMatch(pending: readonly string[], globs: readonly Bun.Glob[]): boolean {
+    let upTo = this.read.get(pending)
+    if (upTo === undefined) this.read.set(pending, (upTo = new Map()))
+    for (const g of globs) {
+      let i = upTo.get(g) ?? 0
+      if (i < 0) return true
+      for (; i < pending.length; i++)
+        if (g.match(pending[i]!)) {
+          upTo.set(g, -1)
+          return true
+        }
+      upTo.set(g, i)
+    }
+    return false
   }
 
   override set(key: string, value: readonly string[]): this {
