@@ -2,20 +2,12 @@
 // of its commit, and any other PR on the deployed relay (owner,
 // 2026-10-25): its client and the deployed relay may speak different
 // protocols (Switchboard v1, #4333).
-//
-// `.unsafe`: it reads private/vx-dte-relay-worker, outside this project.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'bun:test'
-import {
-  previewUrl,
-  relayFor,
-  watched,
-  WATCH,
-  type PreviewDeps,
-} from '../../../private/vx-dte-relay-worker/preview.ts'
+import { previewUrl, relayFor, watched, WATCH, type PreviewDeps } from '../preview.ts'
 
-const dir = path.resolve(import.meta.dir, '..', '..', '..', 'private', 'vx-dte-relay-worker')
+const dir = path.resolve(import.meta.dir, '..')
 
 // Workers Builds' check on a branch's commit (#4397's, 2026-10-25).
 const SUMMARY = [

@@ -175,6 +175,8 @@
         "@vzn/vx-dte-relay": "workspace:*",
       },
       "devDependencies": {
+        "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
         "wrangler": "4.149.0",
       },
     },
