@@ -59,7 +59,10 @@ export function conformance(name: string, target: Target): void {
         'x-artifact-sha': 'abc123',
         'x-artifact-dirty-hash': 'def456',
       })
-      const urls = { urls: [new URL(`/v1/artifacts/${k}`, target.base()).href] }
+      // The node that answered: the URL's path is the artifact's.
+      const urls = {
+        urls: [expect.stringMatching(new RegExp(`^https?://[^/]+/v1/artifacts/${k}$`))],
+      }
       expect([first.status, await first.json()]).toEqual([202, urls])
       // Immutable: a second PUT keeps the stored bytes.
       const again = await put(k, 'second', { 'x-artifact-duration': '1' })
@@ -93,6 +96,20 @@ export function conformance(name: string, target: Target): void {
       expect((await put(big, body)).status).toBe(202)
       const got = new Uint8Array(await (await call(`/v1/artifacts/${big}`)).arrayBuffer())
       expect(Bun.hash(got)).toBe(Bun.hash(body))
+    })
+
+    it('keeps one whole artifact when writes of the same hash race, from any node', async () => {
+      for (let round = 0; round < 5; round++) {
+        const k = key()
+        const bodies = ['a', 'bb'.repeat(500), 'ccc'.repeat(3000), 'd'.repeat(70_000)]
+        await Promise.all(bodies.map((b) => put(k, b)))
+        const got = await call(`/v1/artifacts/${k}`)
+        const text = await got.text()
+        expect(bodies).toContain(text)
+        // The row's size is the blob's: a GET may stream chunked, a HEAD names it.
+        const head = await call(`/v1/artifacts/${k}`, { method: 'HEAD' })
+        expect(head.headers.get('content-length')).toBe(String(text.length))
+      }
     })
 
     it('refuses a write by a read token, a hash that is not hex and an artifact too large', async () => {
