@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, expect, it } from 'bun:test'
 import { resolveOutputs, resolveOutputTree } from '../src/cache/index.js'
+import { relPosix } from '../src/util/index.js'
 
 const root = await mkdtemp(path.join(os.tmpdir(), 'vx-scan-root-'))
 afterAll(() => rm(root, { recursive: true, force: true }))
@@ -13,7 +14,7 @@ async function scanned<T>(projectDir: string, f: () => Promise<T>): Promise<[T, 
   const from: string[] = []
   Bun.Glob.prototype.scanSync = function (this: Bun.Glob, opts) {
     const cwd = typeof opts === 'string' ? opts : (opts?.cwd ?? '.')
-    from.push(path.relative(projectDir, cwd))
+    from.push(relPosix(projectDir, cwd))
     return native.call(this, opts as never)
   }
   try {
@@ -41,10 +42,10 @@ it('scans an output glob from its static directory, finding what the walk from t
   // The walk from the project read all 20 dirs per task, twice per miss:
   // 2.3 ms a scan beside 9000 (2026-10-25).
   expect(from.toSorted()).toEqual(['out', 'out/d3'])
-  expect(files.files.map((f) => path.relative(p, f)).toSorted()).toEqual(
+  expect(files.files.map((f) => relPosix(p, f)).toSorted()).toEqual(
     ['out/d3/.hid/x', ...Array.from({ length: 20 }, (_, i) => `out/d${i}/v.js`)].toSorted(),
   )
-  expect(files.emptyDirs.map((f) => path.relative(p, f))).toEqual(['out/d3/empty'])
+  expect(files.emptyDirs.map((f) => relPosix(p, f))).toEqual(['out/d3/empty'])
 })
 
 it('enters a static directory reached through a link, as the walk from the project did', async () => {
@@ -56,5 +57,5 @@ it('enters a static directory reached through a link, as the walk from the proje
     resolveOutputs({ projectDir: p, outputs: ['out/**/*.js'], nestedProjectDirs: [] }),
   )
   expect(from).toEqual(['out'])
-  expect(files.map((f) => path.relative(p, f))).toEqual(['out/a.js'])
+  expect(files.map((f) => relPosix(p, f))).toEqual(['out/a.js'])
 })

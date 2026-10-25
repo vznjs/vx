@@ -2166,9 +2166,8 @@ async function scanUnion(
   for (const pattern of patterns) {
     if (absentPrefix(cwd, pattern)) continue
     const from = scanRoot(cwd, pattern)
+    if (from === null) continue
     if (from === undefined) for (const rel of globFor(pattern).scanSync(opts)) take(rel)
-    // Nothing lies under a file: a literal's `<file>/**` tree.
-    else if (statSync(from.dir, { throwIfNoEntry: false })?.isDirectory() !== true) continue
     else
       for (const rel of globFor(from.rest).scanSync({ ...opts, cwd: from.dir }))
         take(`${from.prefix}/${rel}`)
@@ -2180,17 +2179,29 @@ async function scanUnion(
  * Where `pattern`'s scan can start: its static directory, with the rest of
  * the pattern to match there. `Bun.Glob` walks the whole of `cwd` whatever
  * the prefix: `out/d1/**` beside 9000 sibling dirs cost 2.3 ms a scan, twice
- * per miss (2026-10-25). Undefined (scan from `cwd`) for no prefix or an
- * escape. A prefix through a link is entered either way.
+ * per miss (2026-10-25). Null when the prefix is a file, which nothing lies
+ * under (a literal's `<file>/**` tree). Undefined (scan from `cwd`) for no
+ * prefix, an escape, or a prefix that does not stat (a dangling link, a
+ * cycle), whose refusals the walk from `cwd` names. A prefix through a
+ * link is entered either way.
  */
 function scanRoot(
   cwd: string,
   pattern: string,
-): { prefix: string; rest: string; dir: string } | undefined {
+): { prefix: string; rest: string; dir: string } | null | undefined {
   const prefix = staticPrefix(pattern)
   if (prefix === '.' || prefix.includes('\\') || path.isAbsolute(prefix)) return undefined
   if (!pattern.startsWith(`${prefix}/`) || prefix.split('/').includes('..')) return undefined
-  return { prefix, rest: pattern.slice(prefix.length + 1), dir: path.join(cwd, prefix) }
+  const dir = path.join(cwd, prefix)
+  let st
+  try {
+    st = statSync(dir, { throwIfNoEntry: false })
+  } catch {
+    return undefined
+  }
+  if (st === undefined) return undefined
+  if (!st.isDirectory()) return null
+  return { prefix, rest: pattern.slice(prefix.length + 1), dir }
 }
 
 /**
