@@ -16,6 +16,8 @@ Workers Builds deploys it on each push to `main` that touches it:
 - Deploy command: `bunx wrangler deploy`
 - Watch paths: `packages/vx-cache-server/*`, `private/vx-cache-service/*`, `bun.lock`
 
-The first deploy makes the R2 bucket `vx-cache` when it does not exist.
+The R2 bucket is `vx-cache-enam`, made with the `enam` location hint (M,
+2026-10-25): our runners reach Cloudflare across the US, most from the
+east and centre. A bucket's location is fixed when it is made.
 One lifecycle rule expires every object 7 days after its upload: names are
 hashed, so no prefix tells `main` from a branch (M, 2026-10-25).

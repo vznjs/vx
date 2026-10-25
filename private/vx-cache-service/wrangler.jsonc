@@ -15,7 +15,7 @@
   },
   // Expiry: one bucket lifecycle rule, every object after 7 days
   // (README): names are hashed, so no prefix tells main from a branch.
-  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],
+  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache-enam" }],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
