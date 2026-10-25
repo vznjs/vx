@@ -550,7 +550,7 @@ export const CHOICES: readonly Choice[] = [
     cells: {
       vx: {
         chose:
-          'By default, the task with the most tasks waiting on it. @vzn/vx-schedule-history ranks by the remaining critical path learned from past runs. Cache restores get their own lane.',
+          'By default, the task with the most tasks waiting on it. @vzn/vx-history ranks by the remaining critical path learned from past runs. Cache restores get their own lane.',
         buys: 'A documented order that works on the first run, and a better one once there is history.',
         costs:
           'The default cannot see that a task is long. The plugin needs history and must be declared; it runs on one machine.',

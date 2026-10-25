@@ -1,6 +1,6 @@
 // `--dry` asks the history for p50s alone (`p50sFor`), one query over the
 // window's executed successes instead of `loadFor`'s rates and resource
-// joins; schedule-history asks for p50s and resource maxima
+// joins; vx-history asks for p50s and resource maxima
 // (`resourcesFor`). These rows hold each to `loadFor`'s answer for every task.
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

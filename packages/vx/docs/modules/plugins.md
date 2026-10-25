@@ -17,13 +17,13 @@ Every plugin is a package a workspace declares:
 
 ```ts
 // .vx/workspace.ts
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { vxHistory } from '@vzn/vx-history'
 
-export default { plugins: [scheduleHistoryPlugin()] }
+export default { plugins: [vxHistory()] }
 ```
 
 `src/plugins/` no longer exists. Its last occupant, the history-based
-scheduler, moved to `@vzn/vx-schedule-history` on 2026-09-10; it had been
+scheduler, moved to `@vzn/vx-history` on 2026-09-10; it had been
 core's opt-in `predictive` mode until 2026-09-02 and a subpath export of
 core until the move. What core keeps is what a plugin needs from the
 façade: `LocalHistoryProvider` and the `HistoryTable` types for a
@@ -48,15 +48,15 @@ it), the `TaskExecutor` contract for an executor.
 
 ## The packages
 
-| Package                    | Seam                              | What it does                                                                                                                                |
-| -------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@vzn/vx-schedule-history` | `schedule` `admit` `commands`     | order ready tasks by the critical path learned from run history; pack the reservations learned from what they used; `vx history` shows both |
-| `@vzn/vx-reapi`            | `executor`, `cache`               | Bazel REAPI: remote execution and remote cache                                                                                              |
-| `@vzn/vx-otel`             | `telemetry`                       | OpenTelemetry export, no SDK dependency                                                                                                     |
-| `@vzn/vx-ci`               | `telemetry`                       | GitHub Actions job summary and Checks API                                                                                                   |
-| `@vzn/vx-migrate`          | `project`, `fingerprint`, `cache` | `turbo()` / `nx()`: such a repo under vx with nothing written (`nx-exec` runs Nx executors); `turboCache()` / `nxCache()`: the wires        |
-| `@vzn/vx-lockfile`         | `fingerprint`, `key`              | `bun()` `pnpm()` `npm()` `yarn()`: the lockfile keyed per project — one install re-keys only the projects it reaches                        |
-| `@vzn/vx-dte`              | `executor` `schedule` `commands`  | one run spread over workers the CI starts, through a relay; `vx dte worker`; `local()` workers in git worktrees                             |
+| Package            | Seam                              | What it does                                                                                                                                |
+| ------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@vzn/vx-history`  | `schedule` `admit` `commands`     | order ready tasks by the critical path learned from run history; pack the reservations learned from what they used; `vx history` shows both |
+| `@vzn/vx-reapi`    | `executor`, `cache`               | Bazel REAPI: remote execution and remote cache                                                                                              |
+| `@vzn/vx-otel`     | `telemetry`                       | OpenTelemetry export, no SDK dependency                                                                                                     |
+| `@vzn/vx-ci`       | `telemetry`                       | GitHub Actions job summary and Checks API                                                                                                   |
+| `@vzn/vx-migrate`  | `project`, `fingerprint`, `cache` | `turbo()` / `nx()`: such a repo under vx with nothing written (`nx-exec` runs Nx executors); `turboCache()` / `nxCache()`: the wires        |
+| `@vzn/vx-lockfile` | `fingerprint`, `key`              | `bun()` `pnpm()` `npm()` `yarn()`: the lockfile keyed per project — one install re-keys only the projects it reaches                        |
+| `@vzn/vx-dte`      | `executor` `schedule` `commands`  | one run spread over workers the CI starts, through a relay; `vx dte worker`; `local()` workers in git worktrees                             |
 
 ## Tests
 

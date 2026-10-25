@@ -96,7 +96,7 @@ the default branch's newest imported timing, else the median of the last
 five on any branch, else none. A timing from a crowded worker (`cpuShare`
 < 1) is the time the task would take alone, so a plan does not carry the
 crowd of the run it learned from. An import (`importTimings`, by
-`@vzn/vx-schedule-history` from the workspace's cache, design
+`@vzn/vx-history` from the workspace's cache, design
 `design/shared-timings-2026-10.md`) is rows tagged `remote` with the
 commit, unique per (commit, task), so a repeat import from any worktree
 adds nothing; a store with no import pays one probe of that partial
@@ -139,7 +139,7 @@ first run would have read every task unmeasured. `tests/history-definition.test.
   predicts the run's wall-clock, through `p50sFor` when the provider has
   it: the executed successes' durations alone, 4 ms against `loadFor`'s
   38 at 27,000 rows (its rates and per-hit entry join read every row).
-- `@vzn/vx-schedule-history` (opt-in): the `schedule` stage's
+- `@vzn/vx-history` (opt-in): the `schedule` stage's
   priorities and reservations, over a 20-invocation window by default,
   through `resourcesFor`: the executed successes grouped alone and the
   hits as distinct keys, each joined to its entry once. 148 ms against
@@ -197,7 +197,7 @@ stay exact). Measured 2026-09-09 at 116k rows, 1,000 pairs, window 50:
   `resourcesFor` times a task with no forecast by its hits' producers,
   the longest: a task made on a branch that main only restores has no
   timing of its own anywhere.
-  `@vzn/vx-schedule-history` turns them into the reservations its
+  `@vzn/vx-history` turns them into the reservations its
   `admit` hook packs (`docs/design/resource-estimates-2026-09.md`).
 
 ## The per-run surfaces (`failure-mode.ts`)

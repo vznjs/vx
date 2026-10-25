@@ -27,14 +27,14 @@ Every task runs in all three. Only the order changes. The file saves
 ## Turn it on
 
 ```ts title=".vx/workspace.ts"
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { vxHistory } from '@vzn/vx-history'
 
 export default {
-  plugins: [scheduleHistoryPlugin({ file: '.vx-timings.json' })],
+  plugins: [vxHistory({ file: '.vx-timings.json' })],
 }
 ```
 
-`@vzn/vx-schedule-history` starts the longest chain first. vx reads the
+`@vzn/vx-history` starts the longest chain first. vx reads the
 file before it orders the run, and writes each task's median time after:
 
 ```json

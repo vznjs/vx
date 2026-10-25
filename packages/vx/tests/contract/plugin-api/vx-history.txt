@@ -11,8 +11,8 @@ export function resourceEstimates(
   history: HistoryTable,
   headroom = DEFAULT_HEADROOM,
 ): ReadonlyMap<string, ResourceEstimate>
-== function scheduleHistoryPlugin (src/index.ts)
-export function scheduleHistoryPlugin(options: ScheduleHistoryOptions = {}): VxPlugin
+== function vxHistory (src/index.ts)
+export function vxHistory(options: VxHistoryOptions = {}): VxPlugin
 == function withDeclared (src/index.ts)
 export function withDeclared(
   learned: ReadonlyMap<string, ResourceEstimate>,
@@ -28,8 +28,8 @@ export interface ResourceEstimate {
   readonly cpus?: number
   readonly memory?: number
 }
-== type ScheduleHistoryOptions (src/index.ts)
-export interface ScheduleHistoryOptions {
+== type VxHistoryOptions (src/index.ts)
+export interface VxHistoryOptions {
   readonly window?: number
   readonly resources?: false | { readonly headroom?: number }
   readonly memory?: number

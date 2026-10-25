@@ -1501,7 +1501,7 @@ stamped now and every later hit restored it again, and the third wrote
 a header the reader refused, so its task never saved. `exec` (`{ cpuMs?, peakRssBytes? }`,
 2026-09-12) is what the PRODUCING execution used: it rides the artifact
 so a machine that never ran the task — a fresh runner on a remote hit —
-still learns what the task needs (`@vzn/vx-schedule-history` packs on
+still learns what the task needs (`@vzn/vx-history` packs on
 it), every wire ships the bytes verbatim, and an artifact without it
 reads as before. The ingest side takes the numbers only as plain
 non-negative numbers; anything else in a foreign sidecar is dropped.

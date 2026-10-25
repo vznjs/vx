@@ -101,14 +101,14 @@ More: [Quickstart](https://vznjs.github.io/vx/quickstart/) ·
 
 What vx can do, not what it is limited to. Declared in `.vx/workspace.ts`; without any, vx runs and caches locally.
 
-| Package                                                    | What it adds                                                                  |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| [`@vzn/vx-migrate`](packages/vx-migrate)                   | Migrate from Turbo or Nx: write native configs, keep its remote cache         |
-| [`@vzn/vx-reapi`](packages/vx-reapi)                       | Remote cache and remote execution over Bazel's REAPI (NativeLink, BuildBuddy) |
-| [`@vzn/vx-lockfile`](packages/vx-lockfile)                 | Key each project on its own lockfile slice: pnpm, bun, npm, yarn              |
-| [`@vzn/vx-otel`](packages/vx-otel)                         | OpenTelemetry traces, metrics and logs, no SDK                                |
-| [`@vzn/vx-ci`](packages/vx-ci)                             | GitHub Actions job summary and Checks API                                     |
-| [`@vzn/vx-schedule-history`](packages/vx-schedule-history) | Schedule by the critical path learned from past runs                          |
+| Package                                    | What it adds                                                                  |
+| ------------------------------------------ | ----------------------------------------------------------------------------- |
+| [`@vzn/vx-migrate`](packages/vx-migrate)   | Migrate from Turbo or Nx: write native configs, keep its remote cache         |
+| [`@vzn/vx-reapi`](packages/vx-reapi)       | Remote cache and remote execution over Bazel's REAPI (NativeLink, BuildBuddy) |
+| [`@vzn/vx-lockfile`](packages/vx-lockfile) | Key each project on its own lockfile slice: pnpm, bun, npm, yarn              |
+| [`@vzn/vx-otel`](packages/vx-otel)         | OpenTelemetry traces, metrics and logs, no SDK                                |
+| [`@vzn/vx-ci`](packages/vx-ci)             | GitHub Actions job summary and Checks API                                     |
+| [`@vzn/vx-history`](packages/vx-history)   | Schedule by the critical path learned from past runs                          |
 
 Distributed runs: [`@vzn/vx-dte`](packages/vx-dte) spreads one run over workers your own CI
 starts, through a relay you host (not on npm yet).

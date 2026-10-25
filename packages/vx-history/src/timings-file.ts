@@ -1,4 +1,4 @@
-// The timings file `file` names: what schedule-history learned, as one JSON
+// The timings file `file` names: what vx-history learned, as one JSON
 // file a CI cache carries between runners. `{ version, tasks: { id: ms } }`,
 // keys sorted so an unchanged history writes the same bytes.
 
@@ -15,7 +15,7 @@ export function readTimings(file: string, warn: (m: string) => void): Record<str
     text = readFileSync(file, 'utf8')
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {}
-    warn(`[vx] schedule-history: timings file ${file} not read: ${(err as Error).message}`)
+    warn(`[vx] vx-history: timings file ${file} not read: ${(err as Error).message}`)
     return {}
   }
   let parsed: unknown
@@ -32,7 +32,7 @@ export function readTimings(file: string, warn: (m: string) => void): Record<str
     Array.isArray(tasks)
   ) {
     warn(
-      `[vx] schedule-history: timings file ${file} ignored: not { "version": ${VERSION}, "tasks": { id: ms } }`,
+      `[vx] vx-history: timings file ${file} ignored: not { "version": ${VERSION}, "tasks": { id: ms } }`,
     )
     return {}
   }
@@ -88,6 +88,6 @@ export function warnUnignored(file: string, root: string, warn: (m: string) => v
   // 0: ignored; 128: no repository or git refused, which says nothing of it.
   if (p.exitCode !== 1) return
   warn(
-    `[vx] schedule-history: timings file ${rel} is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore`,
+    `[vx] vx-history: timings file ${rel} is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore`,
   )
 }

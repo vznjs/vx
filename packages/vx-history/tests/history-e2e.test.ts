@@ -27,7 +27,7 @@ let root: string
  * ever goes missing again, that is the canary, not this.
  */
 beforeEach(async () => {
-  root = await mkdtemp(path.join(os.tmpdir(), 'vx-schedule-history-'))
+  root = await mkdtemp(path.join(os.tmpdir(), 'vx-history-'))
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
   await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
   Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
@@ -78,7 +78,7 @@ function silent(): Logger & { started: string[] } {
   } as Logger & { started: string[] }
 }
 
-describe('schedule-history plugin end to end', () => {
+describe('vx-history plugin end to end', () => {
   it(
     'orders by the critical path learned from this workspace’s own run history',
     async () => {
@@ -96,8 +96,8 @@ describe('schedule-history plugin end to end', () => {
       )
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
-          localWorkspaceSource(['scheduleHistoryPlugin()']),
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource(['vxHistory()']),
       )
       // Run 1 records the durations (no history yet → insertion order).
       const first = silent()
@@ -133,8 +133,8 @@ describe('schedule-history plugin end to end', () => {
       await pkg('b', hog)
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
-          localWorkspaceSource(['scheduleHistoryPlugin({ memory: 512 })']),
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource(['vxHistory({ memory: 512 })']),
       )
       const spans = (log: ReturnType<typeof timed>): boolean => {
         const [x, y] = [log.spans.get('a#build')!, log.spans.get('b#build')!]
@@ -181,9 +181,9 @@ describe('schedule-history plugin end to end', () => {
       await pkg('c', "export default { tasks: { build: { exec: { command: 'true' } } } }\n")
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           localWorkspaceSource([
-            "scheduleHistoryPlugin({ memory: 4096, reservations: { 'c#build': { memory: 1024, cpus: 2 } } })",
+            "vxHistory({ memory: 4096, reservations: { 'c#build': { memory: 1024, cpus: 2 } } })",
           ]),
       )
       const r1 = await run({
@@ -279,9 +279,9 @@ describe('schedule-history plugin end to end', () => {
       )
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           localWorkspaceSource([
-            'scheduleHistoryPlugin({ window: 1, resources: { headroom: 2 }, memory: 8192 })',
+            'vxHistory({ window: 1, resources: { headroom: 2 }, memory: 8192 })',
           ]),
       )
       for (let i = 0; i < 2; i++) {
@@ -313,8 +313,8 @@ describe('schedule-history plugin end to end', () => {
       // learned, and the budget says where it came from.
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
-          localWorkspaceSource(['scheduleHistoryPlugin({ resources: false })']),
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource(['vxHistory({ resources: false })']),
       )
       const off = Bun.spawnSync({
         cmd: [process.execPath, CORE_BIN, 'history', '--format', 'json'],
@@ -344,8 +344,8 @@ describe('schedule-history plugin end to end', () => {
       )
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
-          localWorkspaceSource(["scheduleHistoryPlugin({ assume: { 'b#build': 30000 } })"]),
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          localWorkspaceSource(["vxHistory({ assume: { 'b#build': 30000 } })"]),
       )
       const first = silent()
       const summary = await run({
@@ -373,9 +373,9 @@ describe('schedule-history plugin end to end', () => {
       )
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           localWorkspaceSource([
-            'scheduleHistoryPlugin({ memory: Number(undefined), resources: { headroom: Number(undefined) } })',
+            'vxHistory({ memory: Number(undefined), resources: { headroom: Number(undefined) } })',
           ]),
       )
       const r1 = await run({ cwd: root, tasks: ['build'], log: silent(), handleSignals: false })
@@ -395,7 +395,7 @@ describe('schedule-history plugin end to end', () => {
         Math.ceil((a.maxPeakRssBytes * 1.25) / (1024 * 1024) / 64) * 64,
       )
       expect(json.stderr.toString()).toContain(
-        '[vx] schedule-history: ignores memory NaN (using what this process may use), resources.headroom NaN (using 1.25) — each must be a finite number above 0',
+        '[vx] vx-history: ignores memory NaN (using what this process may use), resources.headroom NaN (using 1.25) — each must be a finite number above 0',
       )
     },
     TIMEOUT,
@@ -416,9 +416,9 @@ describe('schedule-history plugin end to end', () => {
       )
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
           localWorkspaceSource([
-            "scheduleHistoryPlugin({ assume: { 'a#build': Number(undefined), 'a#test': '50000', 'b#build': 30000 } })",
+            "vxHistory({ assume: { 'a#build': Number(undefined), 'a#test': '50000', 'b#build': 30000 } })",
           ]),
       )
       const lines: string[] = []
@@ -432,8 +432,8 @@ describe('schedule-history plugin end to end', () => {
       })
       expect(summary.ok).toBe(true)
       expect(log.started[0]).toBe('b#build')
-      expect(lines.filter((l) => l.includes('schedule-history'))).toEqual([
-        '[vx] schedule-history: assume ignores "a#build", "a#test" — each must be a finite number of ms',
+      expect(lines.filter((l) => l.includes('vx-history'))).toEqual([
+        '[vx] vx-history: assume ignores "a#build", "a#test" — each must be a finite number of ms',
       ])
     },
     TIMEOUT,
@@ -447,8 +447,8 @@ describe('schedule-history plugin end to end', () => {
       await pkg('a', "export default { tasks: { build: { exec: { command: 'true' } } } }\n")
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
-          'export default { run: { concurrency: 1 }, plugins: [scheduleHistoryPlugin()] }\n',
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          'export default { run: { concurrency: 1 }, plugins: [vxHistory()] }\n',
       )
       // `vx history` reads configs from the lock, as a run does.
       expect(Bun.spawnSync({ cmd: [process.execPath, CORE_BIN, 'lock'], cwd: root }).exitCode).toBe(

@@ -1910,11 +1910,11 @@ export const MORE: readonly Feature[] = [
     hook: 'The history plugin admits tasks by the peak memory they used before, so a run never runs out.',
     body: [
       'Eight test runners at 2 GB each will not fit on a 13 GB runner. Counting cores is not enough.',
-      '`@vzn/vx-schedule-history` remembers each task’s peak memory and starts a task only when its share fits.',
+      '`@vzn/vx-history` remembers each task’s peak memory and starts a task only when its share fits.',
     ],
     example: {
       lang: 'ts',
-      code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'\n\nexport default defineWorkspace({\n  plugins: [scheduleHistoryPlugin()],\n})",
+      code: "// .vx/workspace.ts\nimport { defineWorkspace } from '@vzn/vx/config'\nimport { vxHistory } from '@vzn/vx-history'\n\nexport default defineWorkspace({\n  plugins: [vxHistory()],\n})",
     },
     image: 'memory-admission.png',
     imageAlt: 'Tasks admitted against learned peak memory.',

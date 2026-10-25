@@ -207,13 +207,13 @@ export function oneDatabase(): VxPlugin {
 
 ```ts
 import { defineWorkspace } from '@vzn/vx/config'
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { vxHistory } from '@vzn/vx-history'
 
-export default defineWorkspace({ plugins: [scheduleHistoryPlugin()] })
+export default defineWorkspace({ plugins: [vxHistory()] })
 ```
 
 On CI it keeps timings in the remote cache; with none,
-`scheduleHistoryPlugin({ file: '.vx-timings.json' })` keeps them in a file
+`vxHistory({ file: '.vx-timings.json' })` keeps them in a file
 ([post](../../blog/ci-timings-file/)).
 
 ---

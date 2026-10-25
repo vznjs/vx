@@ -75,7 +75,7 @@ is its package name, read from `import.meta`.
 | --- | --- |
 | `turbo()` (`@vzn/vx-migrate`) | `project`: turbo.json becomes vx tasks |
 | `@vzn/vx-lockfile` | `fingerprint`: keys each task on its own dependencies |
-| `@vzn/vx-schedule-history` | `schedule`, `admit`, `commands` |
+| `@vzn/vx-history` | `schedule`, `admit`, `commands` |
 | `@vzn/vx-reapi` | `executor` and `cache` over Bazel's remote API |
 | `turboCache()`, `nxCache()` | `cache` on Turbo's and Nx's wire |
 | `@vzn/vx-otel`, `@vzn/vx-ci` | `telemetry` |

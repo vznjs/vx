@@ -35,11 +35,11 @@ machine. A plugin that declines a task hands it back to this machine.
 | [`@vzn/vx-reapi`](../../plugins/vx-reapi/)             | `cache`, `executor` ([Remote cache](../remote-cache/), [Remote execution](../remote-execution/)) |
 | [`@vzn/vx-migrate`](../../plugins/vx-migrate/)           | `config`, `discover`, `project`, `fingerprint` (`turbo()`, `nx()`), `cache` (`turboCache()`, `nxCache()`) ([Migrate](../../guides/migrate/)) |
 | [`@vzn/vx-lockfile`](../../plugins/vx-lockfile/)          | `discover`, `project`, `fingerprint`, `key` ([Lockfiles](../lockfiles/)) |
-| [`@vzn/vx-schedule-history`](../../plugins/vx-schedule-history/)  | `schedule`, `admit`, `commands`            |
+| [`@vzn/vx-history`](../../plugins/vx-history/)  | `schedule`, `admit`, `commands`            |
 | [`@vzn/vx-otel`](../../plugins/vx-otel/)              | `telemetry` ([below](#opentelemetry))      |
 | [`@vzn/vx-ci`](../../plugins/vx-ci/)            | `config`, `telemetry`, `commands` ([GitHub Actions](../ci/#github-actions), [GitLab CI](../ci/#gitlab-ci)) |
 
-One plugin can fill several: `@vzn/vx-schedule-history` fills three at once.
+One plugin can fill several: `@vzn/vx-history` fills three at once.
 
 <Aside title="Published plugins">
   Each one's README is in the reference: [Plugins](../../plugins/vx-ci/).

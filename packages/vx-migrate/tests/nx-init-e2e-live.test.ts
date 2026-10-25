@@ -56,9 +56,9 @@ async function linkModules(root: string): Promise<void> {
   for (const [pkg, body] of [
     ['vx-lockfile', `export { manifestEdges as npm } from ${JSON.stringify(edges)}\n`],
     [
-      'vx-schedule-history',
+      'vx-history',
       "import { definePlugin } from '@vzn/vx'\n" +
-        'export const scheduleHistoryPlugin = () => definePlugin(import.meta, { setup() {} })\n',
+        'export const vxHistory = () => definePlugin(import.meta, { setup() {} })\n',
     ],
   ] as const) {
     await mkdir(path.join(to, '@vzn', pkg))

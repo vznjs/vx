@@ -12,7 +12,7 @@ name: npm publish
 # Configure a Trusted Publisher on npmjs.com for EACH of the ELEVEN package
 # names (@vzn/vx, the four @vzn/vx-<target>, and the six plugins the
 # assemble step emits: vx-ci, vx-lockfile, vx-migrate, vx-otel,
-# vx-reapi, vx-schedule-history), linking this repo + this workflow.
+# vx-reapi, vx-history), linking this repo + this workflow.
 #
 # Every step past the setup is a `release.*` vx task (packages/vx/
 # vx.config.ts, scripts/release.ts): CI runs vx tasks, not commands of its

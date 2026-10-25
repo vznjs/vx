@@ -442,7 +442,7 @@ Same repo, same hardware, same commands, every tool at concurrency 10, each in i
 config: Turborepo 2.11.10 (`turbo.json`), Nx 24.0.1 (`nx:run-commands` targets,
 `^` inputs, `.env` loading off), Vite Task (`vp run`, vite-plus 1.4.0, tasks in each `vite.config.ts`).
 vx runs from a `vx lock` snapshot, as every vx run does, and orders tasks with
-`scheduleHistoryPlugin({ file: 'vx-timings.json' })`, from timings an earlier
+`vxHistory({ file: 'vx-timings.json' })`, from timings an earlier
 run recorded; cache wipes keep that file, as CI caches it. This machine: linux x64, 4 cores.
 `bun private/vx-bench/compare.ts 3`; the committed
 `private/vx-bench/RESULTS.md` / `private/vx-bench/results.json` are this run.
@@ -556,7 +556,7 @@ way, is where the same shape is compared against Turborepo and Nx.
 ## Scheduling order (2026-10-09)
 
 Which ready task starts first, measured inside vx: the default order
-(most transitive dependents), the `@vzn/vx-schedule-history` plugin, and
+(most transitive dependents), the `@vzn/vx-history` plugin, and
 three other rules written as measurement-only `schedule` plugins. One
 cold run per row (`--force`), linux x64, 4 cores, Bun 1.4.2, vx from
 source at `main` a85223a. Every task is a `sleep`. Each history arm
@@ -696,7 +696,7 @@ noop 0.22 / 0.24 / 0.23 s, Nx 1.43 / 1.59 / 1.49 s.
 [resend/react-email](https://github.com/resend/react-email) at
 `1531a39` (Turbo 2.9.14, 7 tasks), filter `./packages/*`, 10 workers
 each. vx 0.0.634 configured by `vx init --native`, plus
-`scheduleHistoryPlugin({ file: '.vx-timings.json' })` fed timings from
+`vxHistory({ file: '.vx-timings.json' })` fed timings from
 one earlier untimed run (the file is the only thing kept across the
 cache wipe). Turbo is each repo's own, `--no-daemon`. pnpm 12.4.2,
 Node 22.22, linux x64, 4 cores, 16 GB.

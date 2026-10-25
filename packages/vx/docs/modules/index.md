@@ -6,7 +6,7 @@ The single entry point for `import x from '@vzn/vx'`. Everything in
 this file is the public API; everything else under `src/` is
 internal. This is the **cross-package contract**: the plugin packages
 (`@vzn/vx-reapi`, `@vzn/vx-otel`, `@vzn/vx-ci`,
-`@vzn/vx-migrate`, `@vzn/vx-lockfile`, `@vzn/vx-schedule-history`) and
+`@vzn/vx-migrate`, `@vzn/vx-lockfile`, `@vzn/vx-history`) and
 any third-party plugin import everything they need from here via the
 bare `'@vzn/vx'` specifier — never a deep `src/...` path
 (`tests/package-boundaries.unsafe.test.ts` pins it). The runtime symbol

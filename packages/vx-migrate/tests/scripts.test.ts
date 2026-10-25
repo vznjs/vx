@@ -1407,17 +1407,17 @@ describe('vx init — the generated build is not a cached no-op', () => {
         // The stand-in npm installs nothing, so `next:` installs what is missing.
         expect(r.out.split('\n').slice(2).join('\n')).toBe(
           `  from      ${file}, run by turbo() from @vzn/vx-migrate\n` +
-            '  ran       npm install -D @vzn/vx @vzn/vx-migrate @vzn/vx-schedule-history\n' +
+            '  ran       npm install -D @vzn/vx @vzn/vx-migrate @vzn/vx-history\n' +
             '  files     .vx/workspace.ts\n' +
             '            .vx/.gitignore\n' +
             '  note      a temporary start: vx init --native writes native config\n\n' +
-            '  next      npm install -D @vzn/vx-migrate @vzn/vx-schedule-history && vx lock && vx run compile --all\n',
+            '  next      npm install -D @vzn/vx-migrate @vzn/vx-history && vx lock && vx run compile --all\n',
         )
         expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toBe(
           "import type { WorkspaceConfig } from '@vzn/vx/config'\n" +
             "import { turbo } from '@vzn/vx-migrate'\n" +
-            "import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'\n\n" +
-            'export default {\n  plugins: [\n    turbo(),\n    scheduleHistoryPlugin(),\n  ],\n} satisfies WorkspaceConfig\n',
+            "import { vxHistory } from '@vzn/vx-history'\n\n" +
+            'export default {\n  plugins: [\n    turbo(),\n    vxHistory(),\n  ],\n} satisfies WorkspaceConfig\n',
         )
         expect(existsSync(path.join(root, 'packages', 'app', 'vx.config.ts'))).toBe(false)
       } finally {
@@ -1593,7 +1593,7 @@ describe('vx init — the generated build is not a cached no-op', () => {
       await Bun.write(path.join(root, '.vx/workspace.mjs'), line)
       const gained = await vx(root, ['init', '--keep'])
       expect([row(gained.out, 'config'), row(gained.out, 'note')[1]]).toEqual([
-        ['declared turboCache(), scheduleHistoryPlugin() in .vx/workspace.mjs'],
+        ['declared turboCache(), vxHistory() in .vx/workspace.mjs'],
         'turboCache(): turbo.json names a remoteCache, so vx shares that remote cache (token: the variable, else the OS keychain).',
       ])
       expect(await Bun.file(path.join(root, '.vx/workspace.mjs')).text()).toContain(
@@ -2481,12 +2481,12 @@ describe('vx init declares the lockfile plugin', () => {
           "import type { WorkspaceConfig } from '@vzn/vx/config'\n" +
             "import { turbo } from '@vzn/vx-migrate'\n" +
             "import { yarn } from '@vzn/vx-lockfile'\n" +
-            "import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'\n\n" +
-            'export default {\n  plugins: [\n    turbo(),\n    yarn(),\n    scheduleHistoryPlugin(),\n  ],\n} satisfies WorkspaceConfig\n',
+            "import { vxHistory } from '@vzn/vx-history'\n\n" +
+            'export default {\n  plugins: [\n    turbo(),\n    yarn(),\n    vxHistory(),\n  ],\n} satisfies WorkspaceConfig\n',
         )
         // Installed with yarn (a stand-in that installs nothing), so `next:` installs them.
         expect(row(r.out, 'next')[0]).toStartWith(
-          'yarn add -D @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-schedule-history && vx lock',
+          'yarn add -D @vzn/vx-migrate @vzn/vx-lockfile @vzn/vx-history && vx lock',
         )
       } finally {
         await rm(root, { recursive: true, force: true })

@@ -20,7 +20,7 @@ const REMOTE = [
   /^packages\/vx-dte\/src\/.+\.ts$/,
   /^packages\/vx-otel\/src\/.+\.ts$/,
   /^packages\/vx-ci\/src\/(?:checks|gitlab)\.ts$/,
-  /^packages\/vx-schedule-history\/src\/shared-timings\.ts$/,
+  /^packages\/vx-history\/src\/shared-timings\.ts$/,
 ]
 /** A handler that takes no error: it cannot say one. */
 const DROPS = /\.catch\(\(\) =>|\bcatch \{/

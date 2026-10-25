@@ -1,5 +1,5 @@
 // The CI timings file, measured on real runs: a cold runner with no
-// history, one with `scheduleHistoryPlugin({ file })` carrying the last
+// history, one with `vxHistory({ file })` carrying the last
 // run's timings, and one with this machine's full history. Every task is
 // uncached, so every run executes all of them and only the ORDER differs.
 //
@@ -20,7 +20,7 @@ const PLUGIN = path.resolve(
   '..',
   '..',
   'packages',
-  'vx-schedule-history',
+  'vx-history',
   'src',
   'index.ts',
 )
@@ -72,8 +72,8 @@ async function workspace(root: string, file: boolean): Promise<void> {
   const options = file ? "{ file: 'timings.json' }" : ''
   await Bun.write(
     path.join(root, '.vx/workspace.mjs'),
-    `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN)}\n` +
-      `export default { cacheDir: '.cache', plugins: [scheduleHistoryPlugin(${options})] }\n`,
+    `import { vxHistory } from ${JSON.stringify(PLUGIN)}\n` +
+      `export default { cacheDir: '.cache', plugins: [vxHistory(${options})] }\n`,
   )
 }
 

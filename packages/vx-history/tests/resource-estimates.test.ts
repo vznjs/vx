@@ -6,7 +6,7 @@
 import os from 'node:os'
 import { describe, expect, it, spyOn } from 'bun:test'
 import type { HistoryTable, TaskHistory, TaskNode } from '@vzn/vx'
-import { admits, resourceEstimates, scheduleHistoryPlugin, withDeclared } from '../src/index.js'
+import { admits, resourceEstimates, vxHistory, withDeclared } from '../src/index.js'
 
 const MB = 1024 * 1024
 
@@ -183,12 +183,12 @@ describe('the reservation rules the sweep found unheld', () => {
   })
 
   it('declared reservations install the admit hook with learning off; nothing else does', () => {
-    const declared = scheduleHistoryPlugin({
+    const declared = vxHistory({
       resources: false,
       reservations: { 'a#build': { memory: 100 } },
     })
     expect(typeof declared.admit).toBe('function')
-    expect(scheduleHistoryPlugin({ resources: false }).admit).toBeUndefined()
+    expect(vxHistory({ resources: false }).admit).toBeUndefined()
   })
 
   // Every config evaluation runs the factory (`vx info`, `vx show`, a plan):
@@ -196,7 +196,7 @@ describe('the reservation rules the sweep found unheld', () => {
   it('the memory budget is read on the first admit, once; not by the factory', () => {
     const totalmem = spyOn(os, 'totalmem')
     try {
-      const plugin = scheduleHistoryPlugin()
+      const plugin = vxHistory()
       const declared = totalmem.mock.calls.length
       const admitCtx = { running: [], concurrency: 4 }
       plugin.admit!(node('a#build') as never, admitCtx as never)
@@ -221,7 +221,7 @@ describe('the reservation rules the sweep found unheld', () => {
     }
     for (const memory of [Number(undefined), 0, -1]) {
       warned.length = 0
-      const plugin = scheduleHistoryPlugin({
+      const plugin = vxHistory({
         memory,
         resources: { headroom: Number(undefined) },
         window: 2.5,
@@ -231,7 +231,7 @@ describe('the reservation rules the sweep found unheld', () => {
       expect(plugin.admit!(node('a#build') as never, admitCtx as never)).toBe(true)
       await plugin.schedule!(new Map([['a#build', node('a#build')]]), ctx as never)
       expect(warned[0]).toBe(
-        `[vx] schedule-history: ignores window 2.5 (using 20), memory ${memory} (using what this process may use), resources.headroom NaN (using 1.25) — each must be a finite number above 0`,
+        `[vx] vx-history: ignores window 2.5 (using 20), memory ${memory} (using what this process may use), resources.headroom NaN (using 1.25) — each must be a finite number above 0`,
       )
     }
   })
@@ -248,7 +248,7 @@ describe('the reservation rules the sweep found unheld', () => {
       },
       warn: (m: string) => warned.push(m),
     }
-    const plugin = scheduleHistoryPlugin({
+    const plugin = vxHistory({
       memory: 8192,
       reservations: {
         'a#build': { memory: Number(undefined) },
@@ -272,12 +272,12 @@ describe('the reservation rules the sweep found unheld', () => {
     ]).toEqual([true, true, true, true, true])
     await plugin.schedule!(new Map([['a#build', node('a#build')]]), ctx as never)
     expect(warned[0]).toBe(
-      '[vx] schedule-history: ignores reservations["a#build"].memory NaN (using none), reservations["b#build"].cpus -1 (using none), reservations["d#build"].cpus NaN (using none), reservations["e#build"] null (using none; must be { cpus?, memory? }), reservations["f#build"] 2048 (using none; must be { cpus?, memory? }) — each must be a finite number above 0',
+      '[vx] vx-history: ignores reservations["a#build"].memory NaN (using none), reservations["b#build"].cpus -1 (using none), reservations["d#build"].cpus NaN (using none), reservations["e#build"] null (using none; must be { cpus?, memory? }), reservations["f#build"] 2048 (using none; must be { cpus?, memory? }) — each must be a finite number above 0',
     )
   })
 
   it('a history read that fails costs the ordering, never the run: no weights, one warning', async () => {
-    const plugin = scheduleHistoryPlugin()
+    const plugin = vxHistory()
     const warned: string[] = []
     const ctx = {
       localCache: {
@@ -289,8 +289,6 @@ describe('the reservation rules the sweep found unheld', () => {
     }
     const weights = await plugin.schedule!(new Map([['a#build', node('a#build')]]), ctx as never)
     expect(weights).toBeUndefined()
-    expect(warned).toEqual([
-      '[vx] schedule-history: ordering falls back to the baseline: disk on fire',
-    ])
+    expect(warned).toEqual(['[vx] vx-history: ordering falls back to the baseline: disk on fire'])
   })
 })

@@ -236,8 +236,8 @@ mkdirSync(path.join(bare, 'packages', 'a', 'src'), { recursive: true })
 mkdirSync(path.join(bare, 'node_modules', '@vzn'), { recursive: true })
 symlinkSync(root, path.join(bare, 'node_modules', '@vzn', 'vx'))
 symlinkSync(
-  path.resolve(root, '..', 'vx-schedule-history'),
-  path.join(bare, 'node_modules', '@vzn', 'vx-schedule-history'),
+  path.resolve(root, '..', 'vx-history'),
+  path.join(bare, 'node_modules', '@vzn', 'vx-history'),
 )
 writeFileSync(path.join(bare, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
 writeFileSync(path.join(bare, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
@@ -253,8 +253,8 @@ mkdirSync(path.join(bare, '.vx'), { recursive: true })
 writeFileSync(
   path.join(bare, '.vx/workspace.mjs'),
   `import { defineWorkspace } from '@vzn/vx'
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
-export default defineWorkspace({ plugins: [scheduleHistoryPlugin({ assume: { 'a#build': 1000 } })] })
+import { vxHistory } from '@vzn/vx-history'
+export default defineWorkspace({ plugins: [vxHistory({ assume: { 'a#build': 1000 } })] })
 `,
 )
 writeFileSync(path.join(bare, '.gitignore'), 'node_modules\n.vx/cache/\n')

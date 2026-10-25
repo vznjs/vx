@@ -178,7 +178,7 @@ export default defineProject({
     // links (package.json), whose keys arrive through `install`
     // (`^build` folds each linked package's `source`, item 687): the CI
     // guide's job summary is rendered by `@vzn/vx-ci`, and the plugins
-    // guide's snippets type-check against `@vzn/vx-schedule-history`.
+    // guide's snippets type-check against `@vzn/vx-history`.
     test: {
       description:
         'bun test — the landing, sidebar, redirect, diagram, compare and site-link pins (needs the imported content and dist/)',
@@ -193,7 +193,7 @@ export default defineProject({
               '**/*',
               '../../packages/vx/src/**',
               '../../packages/vx-ci/src/**',
-              '../../packages/vx-schedule-history/src/**',
+              '../../packages/vx-history/src/**',
               ...PROOFS.map((p) => `../../${p}`),
               // reference-pages.test.ts maps the one-page references' ids to their pages.
               '../../packages/vx/docs/cli.md',

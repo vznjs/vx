@@ -24,7 +24,7 @@ $ cat turbo.json
 
 $ bunx @vzn/vx-migrate
   from      turbo.json
-  ran       bun add -d @vzn/vx @vzn/vx-lockfile @vzn/vx-schedule-history
+  ran       bun add -d @vzn/vx @vzn/vx-lockfile @vzn/vx-history
   tasks     5 clean
   files     packages/types/vx.config.ts
             packages/ui/vx.config.ts
@@ -107,13 +107,13 @@ It never overwrites a file without `--force`.
 import type { WorkspaceConfig } from '@vzn/vx/config'
 import { turbo } from '@vzn/vx-migrate'
 import { npm } from '@vzn/vx-lockfile'
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { vxHistory } from '@vzn/vx-history'
 
 export default {
   plugins: [
     turbo(),
     npm(),
-    scheduleHistoryPlugin(),
+    vxHistory(),
   ],
 } satisfies WorkspaceConfig
 ```

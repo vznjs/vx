@@ -1,4 +1,4 @@
-// The critical-path score `schedule` plugins (@vzn/vx-schedule-history,
+// The critical-path score `schedule` plugins (@vzn/vx-history,
 // @vzn/vx-cache) order a run by.
 import { describe, expect, it } from 'bun:test'
 import { criticalPath, type TaskNode } from '../src/graph/index.js'

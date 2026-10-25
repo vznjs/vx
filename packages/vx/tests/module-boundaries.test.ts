@@ -184,7 +184,7 @@ describe('module boundaries', () => {
   })
 
   it('core ships no plugin: src/plugins does not exist', () => {
-    // The last one (schedule-history) became @vzn/vx-schedule-history on
+    // The last one (schedule-history) left as a package on
     // 2026-09-10. A new plugin starts life as a package, never here.
     expect(existsSync(path.join(SRC, 'plugins'))).toBe(false)
   })

@@ -24,7 +24,7 @@ Recorded timings found the best order in every case we measured.
 | Critical path by recorded time | The task at the head of the longest chain in seconds | Yes |
 
 The last one is the
-[`@vzn/vx-schedule-history`](../../plugins/vx-schedule-history/) plugin.
+[`@vzn/vx-history`](../../plugins/vx-history/) plugin.
 It is off by default. With equal tasks, vx's default lands close to
 longest chain first. Real tasks are not equal.
 
@@ -121,7 +121,7 @@ Guessing by task kind would help only the very first run. If you know
 a task is slow, `assume` gives it a duration until history exists:
 
 ```ts
-scheduleHistoryPlugin({ assume: { 'app#typecheck': 60_000 } })
+vxHistory({ assume: { 'app#typecheck': 60_000 } })
 ```
 
 ## On CI
@@ -130,7 +130,7 @@ A CI runner usually starts empty, so every run there is a first run.
 Give the plugin a file and cache it between runs:
 
 ```ts
-scheduleHistoryPlugin({ file: '.vx-timings.json' })
+vxHistory({ file: '.vx-timings.json' })
 ```
 
 The next runner starts with real median times. Local history beats the
@@ -163,14 +163,14 @@ Try `critical-path`.
 ## Turn it on
 
 ```sh
-bun add -d @vzn/vx-schedule-history
+bun add -d @vzn/vx-history
 ```
 
 ```ts
 // .vx/workspace.ts
-import { scheduleHistoryPlugin } from '@vzn/vx-schedule-history'
+import { vxHistory } from '@vzn/vx-history'
 
-export default { plugins: [scheduleHistoryPlugin()] }
+export default { plugins: [vxHistory()] }
 ```
 
 It learns from the last 20 local runs. A plugin can also read timings

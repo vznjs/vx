@@ -12,7 +12,7 @@ The site's Learn page on scheduling (item 685) runs this module in the
 browser: its Gantt charts are `simulate`'s `spans`. So everything the
 module reaches at run time stays platform-free. The ranking comes from
 `packages/vx/src/graph/priorities.ts` and
-`packages/vx-schedule-history/src/critical-path.ts`, which import only
+`packages/vx-history/src/critical-path.ts`, which import only
 types, and the report below runs only under `import.meta.main`.
 
 ```

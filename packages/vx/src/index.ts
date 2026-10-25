@@ -16,7 +16,7 @@ export { UserError, isUserError } from './util/index.js'
 export { PLUGIN_HOOKS, type PluginHook } from './config.js'
 // The machine as this process may use it — cores and memory capped by the
 // cgroup a container runs under. Core's default worker count reads the
-// first; a policy that budgets memory (`@vzn/vx-schedule-history`) reads
+// first; a policy that budgets memory (`@vzn/vx-history`) reads
 // the second, so the cgroup walk has one implementation.
 export { machineMemoryBytes, machineParallelism } from './util/index.js'
 // How core reads a task glob — its spelling, and which characters are
@@ -63,7 +63,7 @@ export { mergeBaseWith } from './workspace/index.js'
 // consumer is re-added when one appears, shaped by its use.
 export { run, planRun, prepareRun } from './orchestrator/index.js'
 // The per-task duration history a `schedule` plugin learns from
-// (`@vzn/vx-schedule-history` does; a plugin package reaches core only
+// (`@vzn/vx-history` does; a plugin package reaches core only
 // through this façade, which is what put these here).
 export { currentBranch } from './orchestrator/index.js'
 export { LocalHistoryProvider } from './history/index.js'
@@ -119,7 +119,7 @@ export { loadProjectConfig } from './workspace/index.js'
 export type { ProjectMeta } from './workspace/index.js'
 // The run path's RESOLVED view — plugin `config` and `project` stages
 // applied — for a reader outside the CLI
-// (`@vzn/vx-schedule-history`, an embedder's task catalog). What `vx show`
+// (`@vzn/vx-history`, an embedder's task catalog). What `vx show`
 // prints.
 export { loadResolvedProjects } from './orchestrator/index.js'
 export type { ProjectEntry } from './workspace/index.js'

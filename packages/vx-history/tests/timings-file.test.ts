@@ -112,8 +112,8 @@ describe('the file between machines', () => {
       )
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
-          "export default { cache: { dir: '.cache' }, plugins: [scheduleHistoryPlugin({ file: 'timings.json' })] }\n",
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          "export default { cache: { dir: '.cache' }, plugins: [vxHistory({ file: 'timings.json' })] }\n",
       )
       const opts = { cwd: root, tasks: ['test'], concurrency: 1, handleSignals: false }
       const file = path.join(root, 'timings.json')
@@ -158,8 +158,8 @@ describe('the file between machines', () => {
       )
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
-          "export default { cache: { dir: '.cache' }, plugins: [scheduleHistoryPlugin({ file: 'timings.json' })] }\n",
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          "export default { cache: { dir: '.cache' }, plugins: [vxHistory({ file: 'timings.json' })] }\n",
       )
       const opts = { cwd: root, tasks: ['build'], handleSignals: false }
       const file = path.join(root, 'timings.json')
@@ -189,8 +189,8 @@ describe('the file between machines', () => {
       )
       await Bun.write(
         path.join(root, '.vx/workspace.mjs'),
-        `import { scheduleHistoryPlugin } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
-          "export default { cache: { dir: '.cache' }, plugins: [scheduleHistoryPlugin({ file: 'timings.json' })] }\n",
+        `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+          "export default { cache: { dir: '.cache' }, plugins: [vxHistory({ file: 'timings.json' })] }\n",
       )
       const opts = { cwd: root, tasks: ['all'], handleSignals: false }
       const file = path.join(root, 'timings.json')
@@ -219,7 +219,7 @@ it('says a timings file git does not ignore re-keys the tasks over it', async ()
   await writeFile(file, '{}')
   warnUnignored(file, root, (m) => said.push(m))
   expect(said).toEqual([
-    '[vx] schedule-history: timings file .vx-timings.json is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore',
+    '[vx] vx-history: timings file .vx-timings.json is not git-ignored, so a task whose inputs cover it re-keys on every rewrite — add it to .gitignore',
   ])
   await writeFile(path.join(root, '.gitignore'), '.vx-timings.json\n')
   warnUnignored(file, root, (m) => said.push(m))

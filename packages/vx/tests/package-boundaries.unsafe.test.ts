@@ -16,7 +16,7 @@
 //         narrowing (a sibling-needed symbol silently un-exported) fails; a
 //         widening is a deliberate decision that updates the snapshot.
 // Rule 4: core ships no plugin — src/plugins does not exist. The last one
-//         (schedule-history) is @vzn/vx-schedule-history since 2026-09-10;
+//         (schedule-history) left as a package on 2026-09-10;
 //         a new plugin starts life as a package.
 // Rule 5: every package's `oxfmt --check .` runs inside the sandbox, and
 //         the sandbox runtime masks `<cwd>/.mcp.json`, `.vscode`, `.idea`
@@ -163,7 +163,7 @@ describe('package boundaries', () => {
       'lockfileClaim',
       'machineMemoryBytes',
       'machineParallelism',
-      // Widened 2026-10-24: `@vzn/vx-schedule-history` finds its merge-base
+      // Widened 2026-10-24: `@vzn/vx-history` finds its merge-base
       // in a one-commit checkout the way `--affected` does.
       'mergeBaseWith',
       'normalizeGlob',

@@ -140,13 +140,13 @@ async function generate(dir: string): Promise<void> {
   // timings file from an earlier run recorded. The file sits outside .vx,
   // so a cache wipe keeps it, as CI caches it between runners.
   // edges.ts stands in for the lockfile plugin: the workspace is never installed.
-  const history = path.join(vxRoot, 'packages', 'vx-schedule-history', 'src', 'index.ts')
+  const history = path.join(vxRoot, 'packages', 'vx-history', 'src', 'index.ts')
   const edges = path.join(vxRoot, 'private', 'vx-bench', 'edges.ts')
   await Bun.write(
     path.join(dir, '.vx/workspace.mjs'),
-    `import { scheduleHistoryPlugin } from ${JSON.stringify(history)}\n` +
+    `import { vxHistory } from ${JSON.stringify(history)}\n` +
       `import { benchEdges } from ${JSON.stringify(edges)}\n` +
-      `export default { plugins: [scheduleHistoryPlugin({ file: 'vx-timings.json' }), benchEdges()] }\n`,
+      `export default { plugins: [vxHistory({ file: 'vx-timings.json' }), benchEdges()] }\n`,
   )
   const turboTask = (t: TaskName) => ({
     dependsOn: [...DEPENDS_ON[t]],
@@ -572,7 +572,7 @@ function markdown(rows: Row[], b: Baseline): string {
 - **Workspace:** ${PROJECTS.length.toLocaleString('en-US')} projects, ${TASKS.toLocaleString('en-US')} tasks: ${LEVELS - 1} levels × ${PER_LEVEL} libs and ${APPS} apps, ${TERMINALS} terminal libs at level 15, one \`e2e\` on every edge, five core libs ~400 projects each use (private/vx-bench/shape.ts).
 - **Tasks:** \`installDeps\` (^build, no command), \`build\`, \`lint\`, \`test\` (after installDeps), \`publish\` (after build), \`typecheck\` (^build). Each sleeps: build ${BUILD_MS} ms, lint ${BUILD_MS / 4} ms, test ${BUILD_MS / 2} ms, publish ${BUILD_MS / 10} ms, typecheck ${BUILD_MS / 2} ms. \`build\` writes dist/index.js from 20 source files and 200 KB of seeded incompressible bytes. Identical commands in every runner.
 - **Concurrency:** ${CONCURRENCY} for every runner. **Reps:** cold ${COLD_REPS}, the rest median of ${REPS}.
-- **vx:** compiled binary from a \`vx lock\` snapshot, as every run does. Uses \`scheduleHistoryPlugin({ file: 'vx-timings.json' })\`, its timings recorded by an earlier, untimed run; cache wipes keep that file.
+- **vx:** compiled binary from a \`vx lock\` snapshot, as every run does. Uses \`vxHistory({ file: 'vx-timings.json' })\`, its timings recorded by an earlier, untimed run; cache wipes keep that file.
 - **Git:** default config for every runner (\`GIT_CONFIG_GLOBAL=/dev/null\`, \`GIT_CONFIG_NOSYSTEM=1\`); the bench host's own sets \`core.checkstat=minimal\`, under which vx hashes every input from disk.
 - **Host:** ${os.type()} ${os.release()} · ${os.cpus().length} cores · ${process.platform}/${process.arch}
 - **Date:** ${new Date().toISOString().slice(0, 10)}

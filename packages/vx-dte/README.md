@@ -630,7 +630,7 @@ missed, how many of them with a measured need (an unmeasured one counts
 as `unmeasured`), and when its plan ended then. The `ideal` line is the run's ideal end
 (below), so every log reads it beside core's `time` row. The first ask
 waits for the needs another plugin fetches (`ctx.refining()`), such as
-`@vzn/vx-schedule-history`'s default-branch timings. The `unmeasured`
+`@vzn/vx-history`'s default-branch timings. The `unmeasured`
 line names the tasks the first ask had no measure of, and a worker that
 ran two tasks or fewer names them on its row. `used avg` is the cores
 its tasks used, `machine avg` the cores its machine was busy on average since
