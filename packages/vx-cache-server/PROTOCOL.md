@@ -21,6 +21,18 @@ Every request carries `Authorization: Bearer <token>`. A read token reads;
 a write token also writes, always to the **trusted** scope. A missing or
 unknown token is `401`; a write by a read token `403`.
 
+A bearer that is a JWT is a CI job's OIDC token (GitHub Actions, GitLab
+CI). Its signature, `RS256`, `exp` and `aud` (the server's own) are
+checked, and the token alone decides where it writes, by the server's
+trust rules:
+
+- A token of a repository no rule names is `403`.
+- A token that matches one of its repository's rules writes **trusted**.
+- Any other writes its branch's scope: on GitHub a pull request's head
+  branch (`refs/heads/<head_ref>`), else its `ref`; on GitLab its
+  `ref_path`. A branch a rule trusts (`refs/heads/main`) is never one:
+  such a token reads only, so main's runs never read an untrusted write.
+
 ## Scopes
 
 An artifact or run lives in one scope. A read walks the refs named in

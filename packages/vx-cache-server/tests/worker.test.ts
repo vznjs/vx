@@ -35,6 +35,14 @@ beforeAll(async () => {
   mf = await start({
     TOKENS: `read:${await sha256(READ)} write:${await sha256(WRITE)}`,
     MAX_ARTIFACT_BYTES: String(MAX),
+    // jose loads in workerd: CI tokens and static ones share one Authorize.
+    TRUST: JSON.stringify([
+      {
+        iss: 'https://token.actions.githubusercontent.com',
+        repository_id: '42',
+        ref: 'refs/heads/main',
+      },
+    ]),
   })
   base = await mf.ready
 })
@@ -63,5 +71,18 @@ it('refuses every request, saying why, until TOKENS is set right', async () => {
     } finally {
       await other.dispose()
     }
+  }
+})
+
+it('refuses every request, saying why, while TRUST is wrong', async () => {
+  const other = await start({ TOKENS: '', TRUST: '[{"iss":"https://gitlab.com"}]' })
+  try {
+    const res = await fetch(new URL('/v1/artifacts/abc', await other.ready))
+    expect([res.status, ((await res.json()) as { detail: string }).detail]).toEqual([
+      500,
+      'TRUST: rule 0: names no project_id (one repository, no *)',
+    ])
+  } finally {
+    await other.dispose()
   }
 })

@@ -16,7 +16,7 @@ import { vxCache } from '/path/to/vx/packages/vx-cache/src/index.ts'
 export default { plugins: [vxCache({ url: 'https://cache.example.com' })] }
 ```
 
-`vxCache({ url?, token?, timeoutMs?, uploadTimeoutMs?, history? })`:
+`vxCache({ url?, token?, timeoutMs?, uploadTimeoutMs?, history?, oidc? })`:
 
 - `url` is the server's base URL, or `VX_CACHE_URL`.
 - `token` is the bearer token every request carries, or `VX_CACHE_TOKEN`.
@@ -25,6 +25,12 @@ export default { plugins: [vxCache({ url: 'https://cache.example.com' })] }
   `uploadTimeoutMs` (default 60 000) each upload.
 - `history` (default `true`) keeps the run history on the server: see
   below. `false` leaves the order and the server's runs alone.
+- `oidc` (default `false`) sends, on GitHub Actions, the job's OIDC token
+  for the server's origin in place of `token`, asked again before it
+  ends. The server's `TRUST` then decides where the job writes: trusted,
+  or its branch. The job needs `permissions: id-token: write`. On GitLab,
+  name an `id_tokens` entry `VX_CACHE_TOKEN` with the server's origin as
+  `aud`; it is the token.
 
 With no URL or no token the plugin declines and the run stays local, so it
 is safe to leave declared. A refused token is said once and turns the

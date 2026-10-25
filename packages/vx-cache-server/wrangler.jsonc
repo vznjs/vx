@@ -7,8 +7,10 @@
   "workers_dev": true,
   // Who may read and write: read:<sha256> / write:<sha256>, space separated,
   // each the SHA-256 of a token. Hashes, not tokens: no secret. Empty, every
-  // request is refused with "set TOKENS".
-  "vars": { "TOKENS": "" },
+  // static token is refused with "set TOKENS". TRUST: CI OIDC trust rules,
+  // a JSON list (README.md § CI tokens); AUDIENCE: the aud a CI token
+  // names, unset the Worker's own origin.
+  "vars": { "TOKENS": "", "TRUST": "" },
   "d1_databases": [{ "binding": "DB", "database_name": "vx-cache" }],
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],
 }

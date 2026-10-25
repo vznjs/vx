@@ -6,7 +6,15 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { createCacheServer, parseTokens, tokenAuth } from '@vzn/vx-cache-server'
+import {
+  anyAuth,
+  createCacheServer,
+  oidcAuth,
+  parseTokens,
+  parseTrust,
+  tokenAuth,
+} from '@vzn/vx-cache-server'
+import { exportJWK, generateKeyPair, SignJWT } from 'jose'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { resolveVxCacheConfig, VxCacheLayer } from '../src/index.js'
 
@@ -50,7 +58,14 @@ function server(maxArtifactBytes = 1 << 20) {
 }
 
 const layer = (url: string, token: string) =>
-  new VxCacheLayer({ url, token, timeoutMs: 5_000, uploadTimeoutMs: 5_000, history: true })
+  new VxCacheLayer({
+    url,
+    token,
+    timeoutMs: 5_000,
+    uploadTimeoutMs: 5_000,
+    history: true,
+    oidc: false,
+  })
 
 describe('VxCacheLayer', () => {
   let srv: ReturnType<typeof server>
@@ -138,6 +153,81 @@ describe('VxCacheLayer', () => {
   })
 })
 
+describe('oidc', () => {
+  it("sends the job's GitHub token for the server's origin, and the server writes its branch", async () => {
+    const { privateKey, publicKey } = await generateKeyPair('RS256')
+    const jwk = { ...(await exportJWK(publicKey)), kid: 'k', alg: 'RS256' }
+    const iss = 'https://token.actions.githubusercontent.com'
+    const asked: string[] = []
+    const github = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch: async (req) => {
+        const audience = new URL(req.url).searchParams.get('audience')!
+        asked.push(`${req.headers.get('authorization')} ${audience}`)
+        const value = await new SignJWT({
+          repository_id: '42',
+          event_name: 'pull_request',
+          ref: 'refs/pull/3/merge',
+          head_ref: 'feat',
+        })
+          .setProtectedHeader({ alg: 'RS256', kid: 'k' })
+          .setIssuer(iss)
+          .setAudience(audience)
+          .setExpirationTime('5m')
+          .sign(privateKey)
+        return Response.json({ value })
+      },
+    })
+    const db = new Database(':memory:', { strict: true })
+    const handle = createCacheServer({
+      blobs: {
+        put: async () => {},
+        get: async () => null,
+        delete: async () => {},
+      },
+      db: {
+        all: async <T>(sql: string, p: readonly unknown[]) =>
+          db.query(sql).all(...(p as never[])) as T[],
+        run: async (sql, p) => db.query(sql).run(...(p as never[])).changes,
+        batch: async (s) => s.forEach((x) => db.run(x)),
+      },
+      authorize: anyAuth(
+        tokenAuth(parseTokens(`read:${sha(READ)}`)),
+        oidcAuth({
+          trust: parseTrust(
+            JSON.stringify([
+              { iss, repository_id: '42', ref: 'refs/heads/main', event_name: 'push' },
+            ]),
+          ),
+          fetchJson: async (url) =>
+            url.endsWith('configuration') ? { jwks_uri: `${iss}/keys` } : { keys: [jwk] },
+        }),
+      ),
+    })
+    const srv = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (req) => handle(req as never) })
+    const url = srv.url.href.replace(/\/$/, '')
+    try {
+      const env = {
+        ACTIONS_ID_TOKEN_REQUEST_URL: github.url.href,
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'gh',
+      }
+      const config = resolveVxCacheConfig({ url, oidc: true }, env)!
+      const c = new VxCacheLayer(config, fetch, env)
+      await c.put('f1', new Blob(['x']), { durationMs: 1 })
+      await c.put('f2', new Blob(['y']), { durationMs: 1 })
+      expect(asked).toEqual([`bearer gh ${new URL(url).origin}`])
+      const reader = layer(url, READ)
+      expect(await reader.has('f1')).toBeNull()
+      reader.reads = { 'vx-read-scopes': '"refs/heads/feat"' }
+      expect(await reader.has('f1')).toEqual({ size: 1, durationMs: 1 })
+    } finally {
+      await srv.stop(true)
+      await github.stop(true)
+    }
+  })
+})
+
 describe('resolveVxCacheConfig', () => {
   it('reads options over VX_CACHE_URL and VX_CACHE_TOKEN, and declines without both', () => {
     expect(resolveVxCacheConfig({}, {})).toBeUndefined()
@@ -150,7 +240,11 @@ describe('resolveVxCacheConfig', () => {
       timeoutMs: 30_000,
       uploadTimeoutMs: 60_000,
       history: true,
+      oidc: false,
     })
+    const gh = { ACTIONS_ID_TOKEN_REQUEST_URL: 'https://gh', ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'b' }
+    expect(resolveVxCacheConfig({ url: 'https://c.example' }, gh)).toBeUndefined()
+    expect(resolveVxCacheConfig({ url: 'https://c.example', oidc: true }, gh)?.token).toBe('')
     expect(() => resolveVxCacheConfig({ url: 'c.example', token: 't' }, {})).toThrow(
       'vxCache(): url must be http(s), got c.example',
     )
