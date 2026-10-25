@@ -1,0 +1,51 @@
+== const MAX_QUERY_HASHES (src/server.ts)
+export const MAX_QUERY_HASHES = 10_000
+== const MAX_UPLOAD_TIMINGS (src/server.ts)
+export const MAX_UPLOAD_TIMINGS = 10_000
+== const RSS_DECAY (src/store.ts)
+export const RSS_DECAY = 0.9
+== const WEIGHT (src/store.ts)
+export const WEIGHT = 0.3
+== function createHistoryServer (src/server.ts)
+export function createHistoryServer(opts: ServerOptions): (req: Request) => Promise<Response>
+== function errorJson (src/server.ts)
+export function errorJson(status: number, message: string): Response
+== function sqliteStore (src/store.ts)
+export function sqliteStore(db: Db): Store
+== type Db (src/store.ts)
+export interface Db {
+  all<T>(sql: string, params: readonly unknown[]): Promise<T[]>
+  run(sql: string, params: readonly unknown[]): Promise<number>
+}
+== type Report (src/store.ts)
+export interface Report {
+  readonly hash: string
+  readonly durationMs: number
+  readonly cores?: number
+  readonly rssBytes?: number
+}
+== type ServerOptions (src/server.ts)
+export interface ServerOptions {
+  readonly store: Store
+  readonly authorize: Authorize
+  readonly timingDays?: number
+  readonly now?: () => number
+}
+== type Store (src/store.ts)
+export interface Store {
+  init(): Promise<void>
+  fold(repo: string, scope: string, now: number, reports: readonly Report[]): Promise<void>
+  read(
+    repo: string,
+    scopes: readonly string[],
+    hashes: readonly string[],
+  ): Promise<Map<string, Timing>>
+  sweep(before: number): Promise<number>
+}
+== type Timing (src/store.ts)
+export interface Timing {
+  readonly durationMs: number
+  readonly cores: number | null
+  readonly rssBytes: number | null
+  readonly runs: number
+}
