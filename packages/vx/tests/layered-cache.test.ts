@@ -627,6 +627,32 @@ describe('LayeredCache', () => {
     expect(await pull).toBe(true)
   })
 
+  it('a get() between a pull writing its row and the pull settling is a remote hit', async () => {
+    // The row lands a tick before the pull settles: a get() then read it
+    // as a local hit, so a remote hit said `cache-hit` (vx-cache's own
+    // run test met it on a fast loopback).
+    await saveSample(makeLayered(), 'h-tick')
+    await wipeLocal()
+    const layered = makeLayered()
+    const written = Promise.withResolvers<void>()
+    const ingest = local.ingest.bind(local)
+    local.ingest = async (...a: Parameters<typeof ingest>) => {
+      const r = await ingest(...a)
+      written.resolve()
+      await Bun.sleep(30)
+      return r
+    }
+    try {
+      const pull = layered.prefetch('h-tick', { taskId: 'pkg#build', command: 'echo produced' })
+      await written.promise
+      const hit = await layered.get('h-tick', { taskId: 'pkg#build', command: 'echo produced' })
+      expect(hit?.source).toBe('remote')
+      expect(await pull).toBe(true)
+    } finally {
+      local.ingest = ingest
+    }
+  })
+
   it('a get() while the batch probe is out GETs at once, not after the probe', async () => {
     // Waiting cost a remote hit two round-trips, the probe then the GET:
     // ~300 ms an up-to-date task on CI.
