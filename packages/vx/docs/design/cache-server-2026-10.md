@@ -15,16 +15,17 @@ page changes in the same PR as the item it describes.
   the Worker runs in workerd (miniflare), the image in Docker, and the
   bucket is an in-memory S3 that Bun's own client talks to.
 - Shipped: no database (M, 2026-10-25). An artifact is one object named
-  `trusted/<repo>/<hash>` or `branch/<repo>/<ref>/<hash>`; its size is
+  `<issuer>/<id>/<scope>/<hash>`, the first three each hashed (M,
+  2026-10-25: nothing else, no tier); its size is
   the bucket's metadata, and a put replaces a name whole, so racing
   uploads keep one whole artifact and nodes share nothing but the bucket.
-  Expiry is the bucket's lifecycle rules, one per prefix (trusted 30
-  days, a branch 7); the server sweeps nothing.
+  Expiry is one bucket lifecycle rule by age; the server sweeps nothing,
+  and no prefix tells main from a branch.
 - Shipped: every read names exact `{ scope, hash }` keys (M, 2026-10-25:
   the whole point of scope is exact keys). A check takes up to
   `maxCheckKeys` (default 500) and answers their sizes in order; a batch
   download takes the same keys. There is no layered walk on the server:
-  a client wanting its branch's work, then trusted, asks for both keys.
+  a client wanting its branch's work, then main's, asks for both keys.
 - Shipped: limits an operator sets (`MAX_CHECK_KEYS`,
   `MAX_BATCH_ARTIFACTS`, `MAX_UPLOAD_BYTES`), named on every check and
   at `/v1/capabilities`. Workers lowers them to what one request's 1000
@@ -49,14 +50,13 @@ page changes in the same PR as the item it describes.
 ## Access
 
 - Shipped: CI OIDC tokens only (`@vzn/vx-devtools`, shared with vx's other
-  servers): a token matching a `TRUST` rule writes trusted, any other of
-  the same repository its own branch's scope, another repository
-  nothing. A branch a rule trusts reads trusted and is never an untrusted
-  write's scope.
+  servers): a token writes its own branch's scope; a ref a `TRUST` rule
+  names is protected, written only by a token matching the rule; another
+  repository gets nothing.
 
 ## Next
 
 - Shipped: `vxCache()` (`@vzn/vx-cache`), the client plugin: a remote for
   core's cache seam that asks for the run's refs' exact keys, its branch
-  then trusted.
+  then main's.
 - Planned: a storage cap, by a daily list of the bucket.

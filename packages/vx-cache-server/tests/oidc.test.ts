@@ -65,7 +65,7 @@ const detail = async (res: Response) =>
 const MAIN = { event_name: 'push', ref: 'refs/heads/main', ref_protected: 'true' }
 
 describe('CI OIDC tokens', () => {
-  it('a token matching a rule writes trusted, which every read sees', async () => {
+  it('a token matching a rule writes the protected ref it runs on', async () => {
     expect((await put(await sign(MAIN), 'a1')).status).toBe(204)
     expect(await status('a1')).toBe(200)
   })
@@ -82,7 +82,7 @@ describe('CI OIDC tokens', () => {
     expect(await status('b2', 'refs/heads/feature')).toBe(200)
   })
 
-  it("an untrusted job on a trusted ref writes nothing: main's reads would find it first", async () => {
+  it('a job matching no rule on a protected ref writes nothing', async () => {
     const res = await put(await sign({ ...MAIN, event_name: 'workflow_dispatch' }), 'c3')
     expect(await detail(res)).toEqual([403, 'this token reads only'])
     const pr = await sign({

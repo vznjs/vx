@@ -1,10 +1,11 @@
 // CI OIDC tokens, the only tokens vx's servers take (@vzn/vx-cache-server,
-// @vzn/vx-history-server): a job's token names its repository and decides
-// where it writes, never a header or a client option. A token of a repository that
-// `TRUST` names matching one of its rules writes the trusted scope; any
-// other of that repository writes its own branch's; any other repository
-// is refused. The JWT itself is jose's to check: signature, algorithm,
-// audience and times.
+// @vzn/vx-history-server): a job's token names its repository and the one
+// scope it writes, its own ref, never a header or a client option. The
+// servers know no tier (M, 2026-10-25): a scope is an opaque ref. A ref a
+// `TRUST` rule names is protected: only a token matching a rule writes it,
+// so a pull request never writes main's. Any other repository is refused.
+// The JWT itself is jose's to check: signature, algorithm, audience and
+// times.
 
 import {
   createRemoteJWKSet,
@@ -25,27 +26,28 @@ export class Refusal extends Error {
   }
 }
 
-/** The scope a token matching a trust rule writes, and every read walks last. */
-export const TRUSTED = 'trusted'
-
 /**
  * One rule of `TRUST`: the issuer, the repository's id claim
- * (`repository_id` on GitHub, `project_id` elsewhere), and any other
- * claims a trusted job's token holds, each a string (`*` matches any run
- * of characters) or a list of them.
+ * (`repository_id` on GitHub, `project_id` elsewhere), and the other
+ * claims a job's token must hold to write the refs the rule names, each a
+ * string (`*` matches any run of characters) or a list of them.
  */
 export interface TrustRule {
   readonly iss: string
   readonly [claim: string]: string | readonly string[]
 }
 
-/** What a request may do: its repository's data, and write to `write` when set. */
+/** What a request may do: read its repository's scopes, and write `write` when set. */
 export interface Access {
-  /** The repository's id claim: every row and blob lives under it. */
-  readonly repo: string
+  /**
+   * The token's issuer without its scheme (`token.actions.githubusercontent.com`):
+   * it signs the token, so two platforms' repositories never meet.
+   */
+  readonly issuer: string
+  /** The repository's id at that issuer (`repository_id`, `project_id`): a rename keeps it. */
+  readonly id: string
+  /** The token's own ref: the one scope it writes and deletes. */
   readonly write?: string
-  /** Whether `ref` is one a trust rule of the repository names: a read of it reads trusted. */
-  readonly trustedRef: (ref: string) => boolean
 }
 
 export type Authorize = (req: Request) => Promise<Access>
@@ -91,25 +93,12 @@ export function parseTrust(json: string): TrustRule[] {
     if (typeof rule[id] !== 'string' || rule[id].includes('*')) {
       throw new Error(`${at}: names no ${id} (one repository, no *)`)
     }
-    // The refs a rule trusts are the ones no untrusted token may write:
-    // a read naming them would find that scope before trusted.
+    // The refs a rule names are the ones only a matching token writes.
     if (rule[refClaimOf(rule['iss'])] === undefined) {
-      throw new Error(`${at}: names no ${refClaimOf(rule['iss'])} (the refs it trusts)`)
+      throw new Error(`${at}: names no ${refClaimOf(rule['iss'])} (the refs it protects)`)
     }
     return rule as TrustRule
   })
-  // A repository's rows live under its id alone: two issuers' repositories
-  // of one id would read each other's.
-  for (const a of parsed) {
-    const other = parsed.find(
-      (b) => b.iss !== a.iss && b[repoClaimOf(b.iss)] === a[repoClaimOf(a.iss)],
-    )
-    if (other !== undefined) {
-      throw new Error(
-        `${a.iss} and ${other.iss} both name repository ${String(a[repoClaimOf(a.iss)])}`,
-      )
-    }
-  }
   return parsed
 }
 
@@ -133,9 +122,9 @@ function matches(rule: TrustRule, claims: JWTPayload): boolean {
 }
 
 /**
- * The scope an untrusted token writes: its branch. A GitHub pull request's
- * run writes its head branch (its `ref` is the merge ref no local run
- * names); any other run its `ref`, GitLab's its `ref_path`.
+ * The scope a token writes: its branch. A GitHub pull request's run writes
+ * its head branch (its `ref` is the merge ref the run's own reads never
+ * name); any other run its `ref`, GitLab's its `ref_path`.
  */
 function branchOf(iss: string, claims: JWTPayload): string | undefined {
   const head = claims['head_ref']
@@ -215,24 +204,20 @@ export function oidcAuth(opts: OidcOptions): Authorize {
     } catch (err) {
       throw refusal(err)
     }
-    const id = repoClaimOf(iss)
-    const repo = String(claims[id])
-    const ofRepo = opts.trust.filter((r) => r.iss === iss && r[id] === repo)
-    if (ofRepo.length === 0) throw new Refusal(403, `${id} ${repo} is not in this server's TRUST`)
-    const trusted = ofRepo.find((r) => matches(r, claims))
-    // A trusted ref is read as trusted, and is never an untrusted token's
-    // scope: what main reads, only a trusted job writes.
-    const refClaim = refClaimOf(iss)
-    const trustedRef = (ref: string): boolean =>
-      ofRepo.some((r) => {
-        const want = r[refClaim]!
-        return (typeof want === 'string' ? [want] : want).some((w) => globOf(w).test(ref))
-      })
-    if (trusted !== undefined) return { repo, write: TRUSTED, trustedRef }
+    const claim = repoClaimOf(iss)
+    const id = String(claims[claim])
+    const ofRepo = opts.trust.filter((r) => r.iss === iss && r[claim] === id)
+    if (ofRepo.length === 0) throw new Refusal(403, `${claim} ${id} is not in this server's TRUST`)
+    const repo = { issuer: iss.replace(/^https?:\/\//, '').replace(/\/$/, ''), id }
     const branch = branchOf(iss, claims)
-    return branch === undefined || trustedRef(branch)
-      ? { repo, trustedRef }
-      : { repo, write: branch, trustedRef }
+    if (branch === undefined) return repo
+    if (ofRepo.some((r) => matches(r, claims))) return { ...repo, write: branch }
+    const refClaim = refClaimOf(iss)
+    const isProtected = ofRepo.some((r) => {
+      const want = r[refClaim]!
+      return (typeof want === 'string' ? [want] : want).some((w) => globOf(w).test(branch))
+    })
+    return isProtected ? repo : { ...repo, write: branch }
   }
 }
 

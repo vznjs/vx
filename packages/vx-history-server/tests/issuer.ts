@@ -29,8 +29,8 @@ export interface Issuer {
   readonly jwks: { keys: JWK[] }
   /** Serves the issuer's discovery document and keys, as `OidcOptions.fetchJson`. */
   fetchJson(url: string): Promise<unknown>
-  /** A token of repository 42 for `aud`: trusted, of `branch`, or reading only. */
-  sign(job: 'trusted' | 'branch' | 'read', aud: string, extra?: JWTPayload): Promise<string>
+  /** A token of repository 42 for `aud`: of main, of `feature`, or reading only. */
+  sign(job: 'main' | 'branch' | 'read', aud: string, extra?: JWTPayload): Promise<string>
 }
 
 export async function issuer(iss: string = GITHUB): Promise<Issuer> {
@@ -42,7 +42,7 @@ export async function issuer(iss: string = GITHUB): Promise<Issuer> {
       ? { repository_id: REPO, ref, event_name: push ? 'push' : 'workflow_dispatch' }
       : { project_id: REPO, ref_path: ref, pipeline_source: push ? 'push' : 'web' }
   const jobs = {
-    trusted: claims('refs/heads/main', true),
+    main: claims('refs/heads/main', true),
     branch: claims('refs/heads/feature', true),
     read: claims('refs/heads/main', false),
   }

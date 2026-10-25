@@ -1,9 +1,9 @@
 // vx-cache v1 (PROTOCOL.md) over any `Blobs` bucket: one fetch handler
 // the Bun server, the Worker and the Docker image all serve. No database:
-// an artifact is one object, named by its repository, scope and hash, and
-// a read names the exact scope it wants (M, 2026-10-25).
+// an artifact is one object, named by its issuer, repository id, scope and
+// hash, and a read names the exact scope it wants (M, 2026-10-25).
 
-import { type Access, type Authorize, Refusal, TRUSTED } from '@vzn/vx-devtools'
+import { type Access, type Authorize, Refusal } from '@vzn/vx-devtools'
 import { BATCH_TYPE, errorJson, isCount, isHash, LIMIT_HEADERS, SCOPE_HEADER } from './protocol.js'
 import { blobName, type Blobs } from './store.js'
 
@@ -73,11 +73,13 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     Object.entries(LIMIT_HEADERS).map(([k, h]) => [h, String(limits[k as keyof Limits])]),
   )
 
-  /** A ref the client names, as the scope it reads: a ref a trust rule names is trusted. */
-  const scopeOf = (ref: unknown, access: Access): string => {
+  /** The scope a client names: any ref, read as it is. */
+  const scopeOf = (ref: unknown): string => {
     if (typeof ref !== 'string' || !REF.test(ref)) throw new Refusal(400, 'scope: a ref, refs/...')
-    return access.trustedRef(ref) ? TRUSTED : ref
+    return ref
   }
+  const nameOf = (access: Access, scope: string, hash: string): Promise<string> =>
+    blobName(access.issuer, access.id, scope, hash)
 
   const writeScope = (access: Access): string => {
     if (access.write === undefined) throw new Refusal(403, 'this token reads only')
@@ -90,22 +92,23 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
     if (!Array.isArray(keys) || keys.length > max) {
       throw new Refusal(400, `keys: up to ${max} of { scope, hash }`)
     }
-    return keys.map((k: unknown) => {
-      const hash = field(k, 'hash')
-      if (typeof hash !== 'string' || !isHash(hash)) {
-        throw new Refusal(400, 'keys[].hash: 1 to 128 hex digits')
-      }
-      // Answered under the ref asked, though a trusted ref reads trusted.
-      const scope = field(k, 'scope') as string
-      return { scope, hash, name: blobName(access.repo, scopeOf(scope, access), hash) }
-    })
+    return Promise.all(
+      keys.map(async (k: unknown) => {
+        const hash = field(k, 'hash')
+        if (typeof hash !== 'string' || !isHash(hash)) {
+          throw new Refusal(400, 'keys[].hash: 1 to 128 hex digits')
+        }
+        const scope = scopeOf(field(k, 'scope'))
+        return { scope, hash, name: await nameOf(access, scope, hash) }
+      }),
+    )
   }
 
   async function artifact(req: Request, hash: string): Promise<Response> {
     if (!isHash(hash)) throw new Refusal(400, 'a hash is 1 to 128 hex digits')
     const access = await authorize(req)
-    const scope = scopeOf(decodeScope(req.headers.get(SCOPE_HEADER)), access)
-    const blob = await blobs.get(blobName(access.repo, scope, hash))
+    const scope = scopeOf(decodeScope(req.headers.get(SCOPE_HEADER)))
+    const blob = await blobs.get(await nameOf(access, scope, hash))
     if (blob === null) return errorJson(404, 'no artifact under this key')
     return new Response(blob.body, {
       headers: { 'content-length': String(blob.size), 'content-type': 'application/octet-stream' },
@@ -158,9 +161,9 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
 
   /**
    * An upload: a JSON line naming each artifact's hash and size, then their
-   * bytes in that order, stored in the token's scope. One the scope or
-   * trusted already holds is skipped, and when every one is, the answer
-   * comes before the bytes are read.
+   * bytes in that order, stored in the token's scope. One the scope
+   * already holds is skipped, and when every one is, the answer comes
+   * before the bytes are read.
    */
   async function upload(req: Request): Promise<Response> {
     const access = await authorize(req)
@@ -204,12 +207,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
       throw new Refusal(400, 'Content-Length is not the line and the sizes it names')
     }
     const held = await Promise.all(
-      items.map(async (i) => {
-        if ((await blobs.size(blobName(access.repo, scope, i.hash))) !== null) return true
-        return (
-          scope !== TRUSTED && (await blobs.size(blobName(access.repo, TRUSTED, i.hash))) !== null
-        )
-      }),
+      items.map(async (i) => (await blobs.size(await nameOf(access, scope, i.hash))) !== null),
     )
     if (held.every(Boolean)) {
       await body.cancel()
@@ -221,7 +219,7 @@ export function createCacheServer(opts: ServerOptions): (req: Request) => Promis
         continue
       }
       try {
-        await blobs.put(blobName(access.repo, scope, i.hash), body.next(i.size), i.size)
+        await blobs.put(await nameOf(access, scope, i.hash), body.next(i.size), i.size)
       } catch (err) {
         if (err instanceof Refusal) throw err
         throw new Refusal(502, `the bucket refused the artifact: ${message(err)}`)

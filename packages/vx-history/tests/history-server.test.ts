@@ -45,7 +45,7 @@ afterAll(() => srv.stop(true))
 
 describe('HistoryServer', () => {
   it('sends timings in uploads of the limit the server names, and reads them back', async () => {
-    const token = await iss.sign('trusted', new URL(url).origin)
+    const token = await iss.sign('main', new URL(url).origin)
     const client = new HistoryServer(url, { VX_HISTORY_TOKEN: token })
     const before = seen.length
     await client.upload(new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000 }]]))
@@ -53,7 +53,7 @@ describe('HistoryServer', () => {
       '/v1/capabilities',
       '/v1/timings/upload',
     ])
-    const got = await client.query('refs/heads/feature', ['a1', 'none'])
+    const got = await client.query(['refs/heads/feature', 'refs/heads/main'], ['a1', 'none'])
     expect(got).toEqual(new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000 }]]))
   })
 
@@ -79,7 +79,7 @@ describe('vx run with vxHistory({ server })', () => {
     delete Bun.env.ACTIONS_ID_TOKEN_REQUEST_URL
     delete Bun.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
     Bun.env.CI = 'true'
-    Bun.env.VX_HISTORY_TOKEN = await iss.sign('trusted', new URL(url).origin)
+    Bun.env.VX_HISTORY_TOKEN = await iss.sign('main', new URL(url).origin)
     root = await mkdtemp(path.join(tmpdir(), 'vx-history-server-'))
     await mkdir(path.join(root, 'pkg'), { recursive: true })
     await writeFile(
@@ -112,6 +112,9 @@ describe('vx run with vxHistory({ server })', () => {
     const mid = seen.length
     await run({ cwd: root, tasks: ['build'], handleSignals: false })
     const query = seen.slice(mid).find((r) => r.path === '/v1/timings/query')
-    expect(JSON.parse(query!.body)).toEqual({ scope: 'refs/heads/main', hashes: [sent[0]!.hash] })
+    expect(JSON.parse(query!.body)).toEqual({
+      scopes: ['refs/heads/main'],
+      hashes: [sent[0]!.hash],
+    })
   })
 })

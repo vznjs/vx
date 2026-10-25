@@ -84,7 +84,7 @@ The cache server says where a write lands:
 
 ```mermaid
 flowchart LR
-  M[main CI] -->|reads + writes| T[(trusted)]
+  M[main CI] -->|reads + writes| T[(main)]
   P[PR CI · feat-x] -->|reads| T
   P -->|reads + writes| S[(feat-x)]
   L[laptop on feat-x] -->|reads| S
@@ -92,9 +92,9 @@ flowchart LR
   style T stroke:#c6f84e,stroke-width:2px
 ```
 
-- The server checks the CI token and sends a write to trusted, the
-  branch's own scope, or nowhere.
-- A read tries the branch's scope first, then trusted.
+- The server checks the CI token and sends a write to the branch's
+  own scope, or nowhere. Only main's CI writes main.
+- A read tries the branch's scope first, then main's.
 - The local cache has no branches, so the same inputs hit locally on
   any branch.
 

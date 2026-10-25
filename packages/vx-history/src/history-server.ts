@@ -131,13 +131,16 @@ export class HistoryServer {
     return this.limits
   }
 
-  /** Each held hash's numbers in `scope` (a ref), else trusted's. */
-  async query(scope: string, hashes: readonly string[]): Promise<Map<string, ServerTiming>> {
+  /** Each held hash's numbers in the first of `scopes` (refs) holding it. */
+  async query(
+    scopes: readonly string[],
+    hashes: readonly string[],
+  ): Promise<Map<string, ServerTiming>> {
     const per = (await this.limitsNow()).maxQueryHashes
     const parts = await Promise.all(
       Array.from({ length: Math.ceil(hashes.length / per) }, async (_, i) => {
         const res = await this.call('/v1/timings/query', {
-          scope,
+          scopes,
           hashes: hashes.slice(i * per, (i + 1) * per),
         })
         const body = (await res.json()) as { timings?: unknown } | null

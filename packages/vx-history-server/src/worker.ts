@@ -19,7 +19,7 @@ export interface D1Database {
 
 export interface Env {
   readonly DB: D1Database
-  /** The CI repositories served and the jobs trusted (`parseTrust`), a JSON list. */
+  /** The CI repositories served and the refs they protect (`parseTrust`), a JSON list. */
   readonly TRUST?: string
   /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
   readonly AUDIENCE?: string

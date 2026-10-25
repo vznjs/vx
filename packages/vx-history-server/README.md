@@ -20,9 +20,10 @@ points vx at it.
 
 Every request carries a CI job's own OIDC token, checked by `@vzn/vx-devtools`,
 under `TRUST` rules as [`@vzn/vx-cache-server`'s](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server#ci-tokens):
-a job matching a rule writes the trusted scope, any other of the
-repository its branch's, another repository is refused. A branch's query
-reads its own rows, then the trusted ones. `AUDIENCE` is the `aud` a
+a job writes its branch's scope, a ref a rule protects only a job
+matching the rule, and another repository is refused. A query names its
+scopes in order: `vxHistory()` asks its branch's rows, then the default
+branch's. `AUDIENCE` is the `aud` a
 token must name, by default the origin the server is reached at.
 
 ## On Bun
@@ -69,7 +70,9 @@ The same server as a `fetch` handler, over storage of your own
   `Authorize` from `@vzn/vx-devtools`.
 - `sqliteStore(db: Db)` is the `Store` over a SQLite `Db`
   (`{ all(sql, params), run(sql, params) }`), as bun:sqlite and D1 are.
-  A `Store` folds `Report`s and reads `Timing`s.
+  A `Store` folds `Report`s and reads `Timing`s, each of a `Repo`
+  (`{ issuer, id }`, as the token names it) and a scope.
 - `WEIGHT` (0.3) and `RSS_DECAY` (0.9) are the fold's constants;
-  `MAX_UPLOAD_TIMINGS` and `MAX_QUERY_HASHES` its limits; `errorJson`
+  `MAX_UPLOAD_TIMINGS`, `MAX_QUERY_HASHES` and `MAX_QUERY_SCOPES` its
+  limits; `errorJson`
   answers a refusal.

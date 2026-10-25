@@ -5,12 +5,14 @@ export {
   createHistoryServer,
   errorJson,
   MAX_QUERY_HASHES,
+  MAX_QUERY_SCOPES,
   MAX_UPLOAD_TIMINGS,
   type ServerOptions,
 } from './server.js'
 export {
   type Db,
   type Report,
+  type Repo,
   RSS_DECAY,
   sqliteStore,
   type Store,

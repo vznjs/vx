@@ -12,7 +12,7 @@ function env(name: string): string {
 
 const key = importPKCS8(await Bun.file(path.join(import.meta.dir, '.key')).text(), 'RS256')
 const claims = {
-  trusted: { ref_path: 'refs/heads/main', pipeline_source: 'push' },
+  main: { ref_path: 'refs/heads/main', pipeline_source: 'push' },
   branch: { ref_path: 'refs/heads/feature', pipeline_source: 'push' },
   read: { ref_path: 'refs/heads/main', pipeline_source: 'web' },
 }

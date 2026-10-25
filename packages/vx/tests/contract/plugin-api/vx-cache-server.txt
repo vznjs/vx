@@ -1,8 +1,10 @@
 == const blobName (src/store.ts)
-export const blobName = (repo: string, scope: string, hash: string): string =>
-  scope === TRUSTED
-    ? `trusted/${encodeURIComponent(repo)}/${hash}`
-    : `branch/${encodeURIComponent(repo)}/${encodeURIComponent(scope)}/${hash}`
+export const blobName = async (
+  issuer: string,
+  id: string,
+  scope: string,
+  hash: string,
+): Promise<string> => `${await partOf(issuer)}/${await partOf(id)}/${await partOf(scope)}/${hash}`
 == const DEFAULT_LIMITS (src/server.ts)
 export const DEFAULT_LIMITS: Limits = {
   maxCheckKeys: 500,

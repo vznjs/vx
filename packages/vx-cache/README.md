@@ -25,7 +25,7 @@ export default { plugins: [vxCache({ url: 'https://cache.example.com' })] }
 ## CI only
 
 Every request carries the CI job's own OIDC token, and the server's
-`TRUST` decides where the job writes: trusted, or its branch.
+`TRUST` decides whether the job writes its own ref or only reads.
 
 - On GitHub Actions the job's token is asked for the server's origin,
   and asked again before it ends. The job needs

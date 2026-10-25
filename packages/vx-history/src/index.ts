@@ -313,10 +313,12 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         const server = remote
         let late = false
         stopImport = () => (late = true)
-        const scope = `refs/heads/${ctx.branch ?? options.defaultBranch ?? DEFAULT_BRANCH}`
+        const main = options.defaultBranch ?? DEFAULT_BRANCH
+        // The branch's own numbers first, then the default branch's.
+        const scopes = [...new Set([ctx.branch ?? main, main])].map((b) => `refs/heads/${b}`)
         const weights = (async () => {
           const hashes = [...new Set(ids.flatMap((id) => defs.get(id) ?? []))]
-          const got = await server.query(scope, hashes)
+          const got = await server.query(scopes, hashes)
           const timings = new Map<string, number>()
           const needs = new Map<string, TaskResources>()
           for (const id of ids) {

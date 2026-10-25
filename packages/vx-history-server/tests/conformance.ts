@@ -7,17 +7,17 @@ import { beforeAll, describe, expect, it } from 'bun:test'
 export interface Target {
   /** The server's URL. */
   base(): string
-  /** A token for the server: trusted (main), of the branch `feature`, or reading only. */
-  sign(job: 'trusted' | 'branch' | 'read'): Promise<string>
+  /** A token for the server: of main (the ref TRUST protects), of `feature`, or reading only. */
+  sign(job: 'main' | 'branch' | 'read'): Promise<string>
 }
 
 /** A fresh task hash per call: every target is shared by the whole suite. */
 const hash = (): string => crypto.randomUUID()
 
 export function conformance(name: string, target: Target): void {
-  const tokens = { trusted: '', branch: '', read: '' }
+  const tokens = { main: '', branch: '', read: '' }
   beforeAll(async () => {
-    for (const job of ['trusted', 'branch', 'read'] as const) tokens[job] = await target.sign(job)
+    for (const job of ['main', 'branch', 'read'] as const) tokens[job] = await target.sign(job)
   })
   const call = (path: string, init: RequestInit = {}, token: string | null = tokens.read) => {
     const headers = new Headers(init.headers)
@@ -34,11 +34,11 @@ export function conformance(name: string, target: Target): void {
       },
       token,
     )
-  const upload = (timings: unknown[], token = tokens.trusted) =>
+  const upload = (timings: unknown[], token = tokens.main) =>
     post('/v1/timings/upload', { timings }, token)
-  const query = async (hashes: string[], scope = 'refs/heads/main', token = tokens.read) =>
+  const query = async (hashes: string[], scopes = ['refs/heads/main'], token = tokens.read) =>
     (
-      (await (await post('/v1/timings/query', { scope, hashes }, token)).json()) as {
+      (await (await post('/v1/timings/query', { scopes, hashes }, token)).json()) as {
         timings: Record<string, unknown>
       }
     ).timings
@@ -79,7 +79,7 @@ export function conformance(name: string, target: Target): void {
       })
     })
 
-    it("reads a branch's row first, then trusted; main reads trusted only", async () => {
+    it('reads each hash from the first scope asked that holds it', async () => {
       const [a, b] = [hash(), hash()]
       await upload([
         { hash: a, durationMs: 10 },
@@ -87,10 +87,13 @@ export function conformance(name: string, target: Target): void {
       ])
       await query([a, b])
       await upload([{ hash: a, durationMs: 99 }], tokens.branch)
-      const feature = await query([a], 'refs/heads/feature')
-      expect(feature[a]).toMatchObject({ durationMs: 99 })
-      expect((await query([a, b], 'refs/heads/feature'))[b]).toMatchObject({ durationMs: 20 })
-      expect((await query([a], 'refs/heads/main'))[a]).toMatchObject({ durationMs: 10 })
+      const both = ['refs/heads/feature', 'refs/heads/main']
+      expect(await query([a, b], both)).toMatchObject({
+        [a]: { durationMs: 99 },
+        [b]: { durationMs: 20 },
+      })
+      expect((await query([a, b], ['refs/heads/feature']))[b]).toBeUndefined()
+      expect((await query([a], [...both].reverse()))[a]).toMatchObject({ durationMs: 10 })
       expect(await query([hash()])).toEqual({})
     })
 
@@ -112,19 +115,20 @@ export function conformance(name: string, target: Target): void {
       }
     })
 
-    it('refuses a query without a ref scope or with too many hashes', async () => {
-      expect((await post('/v1/timings/query', { hashes: ['a'] })).status).toBe(400)
-      expect((await post('/v1/timings/query', { scope: 'main', hashes: ['a'] })).status).toBe(400)
+    it('refuses a query without ref scopes, or with too many scopes or hashes', async () => {
+      const main = ['refs/heads/main']
+      for (const scopes of [undefined, [], ['main'], 'refs/heads/main', Array(9).fill(main[0])]) {
+        expect((await post('/v1/timings/query', { scopes, hashes: ['a'] })).status).toBe(400)
+      }
       const many = Array.from({ length: 10_001 }, (_, i) => String(i))
-      expect(
-        (await post('/v1/timings/query', { scope: 'refs/heads/main', hashes: many })).status,
-      ).toBe(400)
+      expect((await post('/v1/timings/query', { scopes: main, hashes: many })).status).toBe(400)
     })
 
     it('names its limits, refuses no token, a wrong method and an unknown route', async () => {
       expect(await (await call('/v1/capabilities')).json()).toEqual({
         maxUploadTimings: 10_000,
         maxQueryHashes: 10_000,
+        maxQueryScopes: 8,
       })
       expect((await call('/v1/capabilities', {}, null)).status).toBe(401)
       const get = await call('/v1/timings/query')

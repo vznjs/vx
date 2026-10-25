@@ -20,17 +20,19 @@ points `vx` at it.
 Every request carries a CI job's own OIDC token: there are no stored
 tokens (`vxCache()` asks GitHub for it; on GitLab name an `id_tokens`
 entry `VX_CACHE_TOKEN`). The token's repository is what it reads and
-writes, and the token decides where the job writes:
+writes, and the token decides where the job writes: its own branch's
+scope, never another's.
 
-- A job matching a rule writes the trusted scope, which every run reads.
+- A ref a rule names (`refs/heads/main`) is protected: only a job
+  matching the rule writes it. Any other job on it only reads.
 - Any other job of the same repository writes its branch's own scope:
   a pull request's runs reuse each other's work, never main's runs.
 - A job of another repository is refused.
 
 `TRUST` is a JSON list of rules. Each names the issuer (`iss`), the
 repository's id (`repository_id` on GitHub, `project_id` on GitLab), the
-refs it trusts (`ref`, `ref_path` on GitLab) and any other claim the
-trusted job's token holds. A value is a string (`*` matches anything) or a
+refs it protects (`ref`, `ref_path` on GitLab) and any other claim the
+job writing them holds. A value is a string (`*` matches anything) or a
 list of them. With `TRUST` empty, every request is refused. For example:
 
 ```json
@@ -54,7 +56,7 @@ list of them. With `TRUST` empty, every request is refused. For example:
 
 Name `event_name`: `pull_request_target` and `issue_comment` runs carry
 main's `ref` while running a pull request's code. A merge queue's runs
-write trusted before their code lands; queued code is approved code.
+write their queue ref before their code lands; queued code is approved code.
 `AUDIENCE` is the `aud` a token must name, by default the origin the
 server is reached at, which is what `vxCache()` asks GitHub for.
 
@@ -109,17 +111,16 @@ a request body is at most 100 MB. R2's free plan holds 10 GB.
 
 ## Expiry
 
-The bucket's own lifecycle rules expire artifacts, by age since they
-were written; the server runs no sweep. A trusted artifact is
-`trusted/<repo>/<hash>` and a branch's `branch/<repo>/<ref>/<hash>`, so
-one rule per prefix keeps each its own time, for example 30 days and 7:
+The bucket's own lifecycle rule expires artifacts, by age since they
+were written; the server runs no sweep. An artifact's object name is
+`<issuer>/<id>/<scope>/<hash>`, the first three each hashed, so one rule
+for the whole bucket is the one there is, for example 7 days:
 
 ```sh
-bunx wrangler r2 bucket lifecycle add vx-cache trusted trusted/ --expire-days 30
-bunx wrangler r2 bucket lifecycle add vx-cache branches branch/ --expire-days 7
+bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 7
 ```
 
-On S3 the same two rules go in the bucket's lifecycle configuration. A
+On S3 the same rule goes in the bucket's lifecycle configuration. A
 main run that misses an expired artifact runs the task and stores it
 again.
 
@@ -133,12 +134,14 @@ over a bucket of your own (`src/index.ts`):
   `{ blobs, authorize, limits? }`: `blobs` is a `Blobs` bucket
   (`{ put(name, body, size), get(name), size(name) }`, `get` answering a
   `Blob`, `{ body, size }`), `authorize` an `Authorize`, which maps a
-  request to its `Access` (`{ repo, write?, trustedRef }`: the repository
-  it reads, the scope it may write, and whether a ref is one a rule
-  trusts) or throws, and `limits` any of `Limits`
+  request to its `Access` (`{ issuer, id, write? }`: the token's issuer and
+  repository id, which it reads, and the scope it may write) or throws, and `limits` any of `Limits`
   (`{ maxCheckKeys, maxBatchArtifacts, maxUploadBytes }`) over
   `DEFAULT_LIMITS`.
-- `blobName(repo, scope, hash)` is an artifact's object name.
+- `blobName(issuer, id, scope, hash)` is an artifact's object name,
+  `<issuer>/<id>/<scope>/<hash>`, the first three each the first 128
+  bits of their SHA-256 in hex, so a ref's slashes or any byte stay one
+  segment.
 - `TRUST` and the CI token check are [`@vzn/vx-devtools`](https://github.com/vznjs/vx/tree/main/packages/vx-devtools)'s,
   the check every vx server shares.
 - `SCOPE_HEADER` (`x-vx-scope`) and `LIMIT_HEADERS` are the header names
