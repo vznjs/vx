@@ -105,7 +105,10 @@ async function dial(
 /** A participant that joined on its socket, and what that socket said first. */
 const join = async (role: string, run = R) => {
   const body = JSON.stringify(role === 'host' ? { role, key: prover.key } : { role })
-  const s = await dial(`/sessions/${run}/socket?join=${encodeURIComponent(body)}`, role === 'host')
+  const s = await dial(
+    `/v1/sessions/${run}/socket?join=${encodeURIComponent(body)}`,
+    role === 'host',
+  )
   const first = (await s.next()) as { joined?: { id: string }; close?: number; error?: string }
   return { ...s, id: first.joined?.id ?? '', first }
 }
@@ -120,7 +123,7 @@ it('closes a socket of a run or id it does not know as gone, and refuses one wit
   // Said in a frame first: workerd never ends TCP after its close, and Bun
   // 1.4.4's client fires onclose only when it does, 10 s on (PR #4171).
   const closed = async (run: string, id: string): Promise<number> => {
-    const path = `/sessions/${run}/socket?id=${id}`
+    const path = `/v1/sessions/${run}/socket?id=${id}`
     const ws = new WebSocket(new URL(path, base).href.replace(/^http/, 'ws'), {
       headers: auth,
       protocols: ['switchboard.v1'],
@@ -133,7 +136,7 @@ it('closes a socket of a run or id it does not know as gone, and refuses one wit
   }
   expect([await closed(R2, a.id), await closed(R3, 'nobody')]).toEqual([4404, 4404])
   const bare = new WebSocket(
-    new URL(`/sessions/${R3}/socket?id=${a.id}`, base).href.replace(/^http/, 'ws'),
+    new URL(`/v1/sessions/${R3}/socket?id=${a.id}`, base).href.replace(/^http/, 'ws'),
     ['switchboard.v1'],
   )
   const said = await new Promise(
@@ -171,7 +174,7 @@ it('refuses a socket at the door, saying why, when ALLOW admits no run', async (
   try {
     const url = (await closed.ready).href.replace(/^http/, 'ws')
     const ws = new WebSocket(
-      `${url}sessions/${R}/socket?join=${encodeURIComponent('{"role":"peer"}')}`,
+      `${url}v1/sessions/${R}/socket?join=${encodeURIComponent('{"role":"peer"}')}`,
       ['switchboard.v1'],
     )
     const said = await new Promise(

@@ -4,7 +4,7 @@ import { createProver } from '../../src/index.js'
 
 const relay = process.env['VX_DTE_RELAY_SMOKE']!
 const run = crypto.randomUUID()
-const base = `${relay.replace(/^http/, 'ws')}/sessions/${run}/`
+const base = `${relay.replace(/^http/, 'ws')}/v1/sessions/${run}/`
 
 interface Peer {
   id: string
