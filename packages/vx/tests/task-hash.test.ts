@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { computeGroupHash } from '../src/orchestrator/task-hash.js'
+import { computeGroupHash, hashTaskConfig } from '../src/orchestrator/task-hash.js'
 import type { TaskNode, TaskOutcome } from '../src/graph/index.js'
 import { xxh3hex } from '../src/util/index.js'
 
@@ -43,4 +43,22 @@ describe('computeGroupHash', () => {
     expect(withMissing).toBe(xxh3hex('group|p#a:'))
     expect(withMissing).not.toBe(computeGroupHash([]))
   })
+})
+
+// A `project` or `graph` plugin writes a config the lock never sorted: the
+// same task, injected, keyed apart from the one a file declared (2026-10-25).
+it('keys a config whatever order it spells its keys in, all the way down', () => {
+  const a = {
+    exec: { command: 'x', env: { define: { A: '1', B: '2' } } },
+    cache: { outputs: { files: ['dist/**'] } },
+  }
+  const b = {
+    cache: { outputs: { files: ['dist/**'] } },
+    exec: { env: { define: { B: '2', A: '1' } }, command: 'x' },
+  }
+  expect(hashTaskConfig(b as never)).toBe(hashTaskConfig(a as never))
+  // An array keeps its order: it says something.
+  const c = { ...a, cache: { outputs: { files: ['b', 'a'] } } }
+  const d = { ...a, cache: { outputs: { files: ['a', 'b'] } } }
+  expect(hashTaskConfig(c as never)).not.toBe(hashTaskConfig(d as never))
 })

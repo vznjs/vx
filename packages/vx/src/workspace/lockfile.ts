@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
-import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
+import { keysSorted, relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import { VERSION } from '../version.js'
 import { validateProjectConfig } from './config-schema.js'
 import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
@@ -152,6 +152,19 @@ function validatedDigest(body: string): string {
   return xxh3(`vx-lock-valid-v3\0${VERSION}\0${body}`).toString(16)
 }
 
+/**
+ * Each task's config with its keys sorted (`keysSorted`), so a run's key
+ * check finds it sorted and copies nothing. The tasks keep their order,
+ * which `vx show` lists them in.
+ */
+function taskKeysSorted(key: string, value: unknown): unknown {
+  if (key !== 'tasks' || value === null || typeof value !== 'object' || Array.isArray(value))
+    return value
+  const tasks: Record<string, unknown> = {}
+  for (const [name, task] of Object.entries(value)) tasks[name] = keysSorted(task)
+  return tasks
+}
+
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void> {
   // Written beside its name and renamed over it: `Bun.write` truncates in
   // place, so a run, or `vx watch` woken by the write
@@ -163,7 +176,7 @@ export async function writeLockfile(root: string, lock: Lockfile): Promise<void>
     // Minified: the file only vx reads, and it loads faster than pretty
     // JSON (measured, 10k projects: 15.6 ms against 22.5 ms). `vx.lock.json`
     // beside each config is the copy for people.
-    const body = JSON.stringify({ version: lock.version, projects: lock.projects })
+    const body = JSON.stringify({ version: lock.version, projects: lock.projects }, taskKeysSorted)
     await Bun.write(tmp, `${body.slice(0, -1)},"validated":"${validatedDigest(body)}"}\n`)
     await rename(tmp, file)
   } catch (err) {

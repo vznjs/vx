@@ -245,6 +245,28 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
     expect(text.startsWith(`{"version":${LOCKFILE_VERSION},`)).toBe(true)
   })
 
+  // 2026-10-25: a key hashes a task's config JSON, so moving `cache` above
+  // `exec`, or listing a define in another order, missed every key.
+  it("sorts each task's keys, keeping the tasks in their order", async () => {
+    const write = async (tasks: NonNullable<ProjectConfig['tasks']>) => {
+      await writeLockfile(root, { version: LOCKFILE_VERSION, projects: { pkg: entry({ tasks }) } })
+      return Bun.file(lockfilePath(root)).text()
+    }
+    const a = await write({
+      z: { exec: { command: 'x', env: { define: { A: '1', B: '2' } } }, inputs: { files: [] } },
+      a: { exec: { command: 'y' } },
+    })
+    const b = await write({
+      z: { inputs: { files: [] }, exec: { env: { define: { B: '2', A: '1' } }, command: 'x' } },
+      a: { exec: { command: 'y' } },
+    })
+    expect(b).toBe(a)
+    expect(Object.keys((await readLockfile(root))!.projects['pkg']!.config.tasks!)).toEqual([
+      'z',
+      'a',
+    ])
+  })
+
   it('overwrites rather than merging', async () => {
     // `vx lock` re-freezes the whole workspace; a stale project left behind
     // from a previous lock would be executed by a later run.

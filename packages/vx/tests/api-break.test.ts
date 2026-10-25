@@ -122,6 +122,21 @@ describe('contractBreaks', () => {
     ).toEqual(['- run: a task fails=1', '- info=0'])
   })
 
+  it("the lock's `validated` digest is no contract: it moves with any change", () => {
+    const record = 'tests/contract/lock.json'
+    const before = j({ version: 1, projects: { a: { tasks: { t: { c: 1 } } } }, validated: 'x' })
+    const added = j({
+      version: 1,
+      projects: { a: { tasks: { t: { c: 1 }, u: { c: 2 } } } },
+      validated: 'y',
+    })
+    expect(contractBreaks(record, before, added)).toEqual([])
+    expect(contractBreaks(record, before, j({ version: 2, validated: 'x' }))).toEqual([
+      '- version=1',
+      '- projects.a.tasks.t.c=1',
+    ])
+  })
+
   it('a pack list or an answer key list loses a line or an item', () => {
     expect(
       contractBreaks(
