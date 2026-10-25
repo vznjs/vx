@@ -48,7 +48,7 @@ const WORKER_PROBE_BEATS = 1.6
 /**
  * A peer quiet this many is lost: a live one, acking a probe at once, is
  * heard within a round trip of it. Checked each tenth, loss lands by two
- * (10 s on the default).
+ * (4 s on the default).
  */
 const LOST_BEATS = 1.9
 /** What a probe delivers: nothing. */
@@ -84,7 +84,7 @@ const replyMs = (heartbeatMs: number): number =>
   Math.min(Math.max(2 * heartbeatMs, MIN_WAIT_MS), REPLY_MS)
 /**
  * How long a frame waits on its answer: a heartbeat, so a quiet relay asked
- * after one is dead after two, `REPLY_MS` on the default, and this side
+ * after one is dead after two, 4 s on the default, and this side
  * dials again before the relay, losing it after two silent, does.
  */
 const answerMs = (heartbeatMs: number): number =>
@@ -446,7 +446,7 @@ export async function join(
     else again()
   }
   // Every tenth of a heartbeat, so a peer quiet `LOST_BEATS` is lost within
-  // two heartbeats (10 s on the default) of its last word, and what went
+  // two heartbeats (4 s on the default) of its last word, and what went
   // unacknowledged a heartbeat goes again before its receiver loses this.
   const listening = setInterval(listen, heartbeatMs / 10)
   listening.unref()

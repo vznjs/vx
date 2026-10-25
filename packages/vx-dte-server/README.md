@@ -120,7 +120,7 @@ The same relay as a `fetch` handler, to mount in a server of your own
 
 - `createRelay(options?: RelayOptions): Relay`. `RelayOptions` is
   `{ verify?, heartbeatMs?, graceMs? }`: `verify` checks a request's bearer token
-  (none admits every request) and gets the request too, `heartbeatMs` (default 5000) is how often
+  (none admits every request) and gets the request too, `heartbeatMs` (default 2000) is how often
   participants hear from each other, said in each join's answer, and
   `graceMs` (default 10 000) how long a participant whose socket dropped
   without `leave` may dial again before it is gone (PROTOCOL.md § Liveness). A `Relay` is `{ fetch(req) }`,

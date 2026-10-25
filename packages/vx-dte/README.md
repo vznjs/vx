@@ -541,7 +541,7 @@ use your own instead.
   and a worker's when it is done. Either whose socket drops without it
   dials again, 3 times within 10 s, and the relay keeps it, and its run,
   for those 10 s; past them the run is over. A peer quiet on a socket that never
-  closed is lost within two heartbeats (10 s on the default): only a
+  closed is lost within two heartbeats (4 s on the default): only a
   peer heard from for none of a heartbeat and a half is probed (an
   empty numbered send), which it acks at once; either side hearing
   nothing from the other for 1.9 heartbeats loses it, a worker by

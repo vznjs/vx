@@ -73,7 +73,7 @@ export function serveRelay(opts: ServeOptions): RelayServer {
       // A socket with no frame in three heartbeats has no peer listening
       // either (each probes a quiet one within two): closed, it loses its
       // participant, as a half-open one on no other host would be.
-      idleTimeout: Math.max(1, Math.ceil((3 * (opts.heartbeatMs ?? 5_000)) / 1000)),
+      idleTimeout: Math.max(1, Math.ceil((3 * (opts.heartbeatMs ?? 2_000)) / 1000)),
       open(ws: ServerWebSocket<Held>) {
         const { key, id } = ws.data
         ws.data.socket = {

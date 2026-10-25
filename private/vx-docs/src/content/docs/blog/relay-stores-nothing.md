@@ -61,7 +61,7 @@ xychart-beta
 
 When a socket closes, the relay drops its worker at once. A worker that
 goes quiet on an open socket is asked after 1.5 heartbeats. No answer,
-and it is lost in under 10 s. When the orchestrator's socket closes,
+and it is lost in about 4 s. When the orchestrator's socket closes,
 every worker's closes too.
 
 ## Free on Cloudflare, or one container
