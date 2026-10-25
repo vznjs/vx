@@ -133,7 +133,8 @@ over storage of your own (`src/index.ts`):
   or throws; `maxUploadBytes` caps an upload (default 100 MB) and `now`
   is the clock, for tests.
 - `parseTrust(json)` reads `TRUST` into `TrustRule`s, and `oidcAuth(options)`
-  is the `Authorize` that checks a request's CI token against them. Its
+  is the `Authorize` that checks a request's CI token against them; both
+  come from `@vzn/vx/oidc`, the check every vx server shares. Its
   `OidcOptions` are `trust` (the rules), `audience` (the `aud`; default
   the origin a request reached), `fetchJson` (reads an issuer's keys) and
   `now` (the clock, for tests).

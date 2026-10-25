@@ -27,6 +27,7 @@
       },
       "dependencies": {
         "@anthropic-ai/sandbox-runtime": "^0.0.76",
+        "jose": "6.2.13",
       },
       "devDependencies": {
         "@types/bun": "^1.4.0",
@@ -52,11 +53,11 @@
         "vx-cache-server": "./src/bun.ts",
       },
       "dependencies": {
-        "jose": "6.2.13",
+        "@vzn/vx": "*",
       },
       "devDependencies": {
         "@types/bun": "^1.4.0",
-        "@vzn/vx": "*",
+        "jose": "6.2.13",
         "miniflare": "5.20261019.1-beta",
         "wrangler": "4.149.0",
       },

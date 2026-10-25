@@ -40,17 +40,17 @@
   },
   "//": [
     "wrangler: deploys src/worker.ts by wrangler.jsonc.",
-    "@vzn/vx: vx.config.ts's core; `*`, not workspace:, which npm refuses when a deploy installs this directory alone.",
-    "miniflare: tests/worker.test.ts runs src/worker.ts in workerd with D1 and R2, as Workers deploy it.",
-    "jose: checks CI OIDC tokens (signature, algorithm, audience, times), as @vzn/vx-dte-server does; dependency-free, runs in Bun and workerd alike."
+    "@vzn/vx: @vzn/vx/oidc checks the CI tokens (it imports only jose); `*`, not workspace:, which npm refuses when a deploy installs this directory alone.",
+    "jose: the tests sign the CI tokens the server checks.",
+    "miniflare: tests/worker.test.ts runs src/worker.ts in workerd with D1 and R2, as Workers deploy it."
   ],
   "devDependencies": {
     "@types/bun": "^1.4.0",
-    "@vzn/vx": "*",
+    "jose": "6.2.13",
     "miniflare": "5.20261019.1-beta",
     "wrangler": "4.149.0"
   },
   "dependencies": {
-    "jose": "6.2.13"
+    "@vzn/vx": "*"
   }
 }

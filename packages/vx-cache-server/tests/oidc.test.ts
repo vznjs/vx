@@ -4,7 +4,7 @@
 import { Database } from 'bun:sqlite'
 import { beforeAll, describe, expect, it } from 'bun:test'
 import { exportJWK, generateKeyPair, type JWTPayload, SignJWT } from 'jose'
-import { oidcAuth, parseTrust } from '../src/oidc.js'
+import { oidcAuth, parseTrust } from '@vzn/vx/oidc'
 import { createCacheServer } from '../src/server.js'
 import { sqliteStore } from '../src/store.js'
 import { upload } from './upload.js'

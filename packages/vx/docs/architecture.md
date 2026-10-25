@@ -36,7 +36,7 @@ snapshot) and the plugin capabilities (below).
 
 ## Module map
 
-Core is organised as **ten modules** plus five root files. A module
+Core is organised as **eleven modules** plus five root files. A module
 is a directory under `src/` with an `index.ts` contract — cross-module
 imports go through that contract, never into internal files — or a
 single root file when it has no internals to hide. The design and
@@ -55,6 +55,7 @@ migration history live in
 | `report`       | dir + `index.ts`            | the run event bus (`createEventBus`, `WireEvent`), `defaultLogger`, the summary and forecast; renders, never runs                                   |
 | `orchestrator` | dir + `index.ts`            | `run`, `planRun`, `prepareRun`, plugin + telemetry contracts                                                                                        |
 | `cli`          | dir + `index.ts`            | dispatcher (`run(argv)`) + test-facing parser/formatter re-exports                                                                                  |
+| `oidc`         | dir + `index.ts`            | `@vzn/vx/oidc`: `oidcAuth`, `parseTrust`, `Refusal`, `TRUSTED`; the CI tokens vx's servers check, importing only jose                               |
 
 Root files outside the module set: `bin.ts` (shebang entry),
 `index.ts` (public package façade), `settings.ts` (every setting once:

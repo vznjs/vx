@@ -36,6 +36,10 @@
     "./config": {
       "types": "./src/config.ts",
       "import": "./src/config.ts"
+    },
+    "./oidc": {
+      "types": "./src/oidc/index.ts",
+      "import": "./src/oidc/index.ts"
     }
   },
   "bin": {
@@ -46,6 +50,7 @@
     "npm-launcher.sh",
     "index.ts",
     "config",
+    "oidc",
     "src",
     "schemas",
     "README.md"
@@ -53,8 +58,12 @@
   "engines": {
     "bun": ">=1.4.4"
   },
+  "//": [
+    "jose: @vzn/vx/oidc checks CI OIDC tokens for vx's servers (signature, algorithm, audience, times); dependency-free, runs in Bun and workerd alike."
+  ],
   "dependencies": {
-    "@anthropic-ai/sandbox-runtime": "^0.0.76"
+    "@anthropic-ai/sandbox-runtime": "^0.0.76",
+    "jose": "6.2.13"
   },
   "devDependencies": {
     "@types/bun": "^1.4.0"

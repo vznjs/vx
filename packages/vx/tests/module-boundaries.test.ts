@@ -38,6 +38,8 @@ const ALLOWED: Record<string, readonly string[]> = {
   workspace: ['util', 'config', 'version', 'settings', 'handoff'],
   graph: ['util', 'config', 'workspace'],
   cache: ['util', 'config'],
+  // `oidc`: the CI tokens vx's servers check (`@vzn/vx/oidc`); only jose.
+  oidc: [],
   exec: ['util', 'config'],
   // `history`: read-only SQL over what runs left behind; it never runs,
   // renders or writes a run, so it reaches nothing that does.
@@ -103,6 +105,7 @@ const CONTRACTED: readonly string[] = [
   'orchestrator',
   'report',
   'cli',
+  'oidc',
 ]
 
 interface Edge {

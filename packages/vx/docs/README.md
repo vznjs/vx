@@ -205,7 +205,7 @@ If you have ten minutes: read `comparison.md` § Where vx is ahead, then
 A Bun-workspaces monorepo: core `@vzn/vx` is `packages/vx`, and the
 plugins that ship alongside it are its siblings under `packages/`.
 
-Core `src/` is **nine modules** — each directory's `index.ts` is its
+Core `src/` is **ten modules** — each directory's `index.ts` is its
 contract, and cross-module imports go through it only, enforced by
 `tests/module-boundaries.test.ts`:
 
@@ -220,6 +220,7 @@ contract, and cross-module imports go through it only, enforced by
 | `cache/`        | the local store (the floor), the layering, the `RemoteCacheLayer` seam                 |
 | `exec/`         | per-task execution primitives (spawn, env, sandbox), the local executor (the floor)    |
 | `util/`         | small shared helpers                                                                   |
+| `oidc/`         | the CI tokens vx's servers check (`@vzn/vx/oidc`, only jose)                           |
 
 Every source file is documented under [`modules/`](./modules/). Tests live
 in `tests/`. The published plugin packages are `@vzn/vx-reapi` (Bazel

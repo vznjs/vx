@@ -4,6 +4,8 @@
 // no node's state: every write is one idempotent statement, so any number
 // of nodes may share it and its bucket.
 
+import { TRUSTED } from '@vzn/vx/oidc'
+
 /** A bucket of immutable blobs by name. */
 export interface Blobs {
   /** Stores `size` bytes; rejects when the stream ends at another length. */
@@ -84,8 +86,7 @@ export interface Store {
   dropTimings(before: number): Promise<number>
 }
 
-/** The trusted scope: what a trusted CI job stores to, and every read's last. */
-export const TRUSTED = 'trusted'
+export { TRUSTED }
 
 /**
  * A blob's name in the bucket, derived from its row. Two uploads of a key

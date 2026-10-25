@@ -4,6 +4,7 @@ config/index.ts
 index.ts
 launcher.cjs
 launcher.sh
+oidc/index.ts
 package.json
 schemas/cache.json
 schemas/docs.json
@@ -98,6 +99,8 @@ src/history/index.ts
 src/history/metrics.ts
 src/history/miss-reason.ts
 src/index.ts
+src/oidc/index.ts
+src/oidc/oidc.ts
 src/orchestrator/admission.ts
 src/orchestrator/affected-tasks.ts
 src/orchestrator/command-windows.ts

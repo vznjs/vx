@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { beforeAll, expect, it } from 'bun:test'
-import { oidcAuth, parseTrust } from '@vzn/vx-cache-server'
+import { oidcAuth, parseTrust } from '@vzn/vx/oidc'
 import { exportJWK, generateKeyPair, type JWTPayload, SignJWT } from 'jose'
 
 const GITHUB = 'https://token.actions.githubusercontent.com'

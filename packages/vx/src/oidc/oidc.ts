@@ -1,14 +1,32 @@
-// CI OIDC tokens (PROTOCOL.md § Tokens), the only tokens the server takes:
-// a job's token names its repository and decides where it writes, never a
-// header or a client option. A token of a repository that
+// CI OIDC tokens, the only tokens vx's servers take (@vzn/vx-cache-server,
+// @vzn/vx-history-server): a job's token names its repository and decides
+// where it writes, never a header or a client option. A token of a repository that
 // `TRUST` names matching one of its rules writes the trusted scope; any
 // other of that repository writes its own branch's; any other repository
 // is refused. The JWT itself is jose's to check: signature, algorithm,
 // audience and times.
 
-import { createLocalJWKSet, decodeJwt, errors, jwtVerify, type JWTPayload } from 'jose'
-import { Refusal } from './protocol.js'
-import { TRUSTED } from './store.js'
+import {
+  createRemoteJWKSet,
+  customFetch,
+  decodeJwt,
+  errors,
+  jwtVerify,
+  type JWTPayload,
+} from 'jose'
+
+/** A request refused: its HTTP status and what to fix. */
+export class Refusal extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
+/** The scope a token matching a trust rule writes, and every read walks last. */
+export const TRUSTED = 'trusted'
 
 /**
  * One rule of `TRUST`: the issuer, the repository's id claim
@@ -137,36 +155,30 @@ export interface OidcOptions {
 
 /** Clock skew a token's `exp` / `nbf` may be off by. */
 const LEEWAY_S = 60
-/** An unknown `kid` refetches an issuer's keys at most this often. */
-const REFETCH_MS = 60_000
 
 /** The `Access` a request's verified CI token has; a refused one throws a 401 or 403. */
 export function oidcAuth(opts: OidcOptions): Authorize {
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
-  type KeySet = ReturnType<typeof createLocalJWKSet>
-  const keys = new Map<string, { at: number; set: Promise<KeySet> }>()
-  const load = (iss: string) => {
-    const entry = { at: Date.now(), set: loadKeys(iss, fetchJson) }
-    keys.set(iss, entry)
-    // A failed load is not kept: the next token tries again.
-    entry.set.catch(() => keys.get(iss) === entry && keys.delete(iss))
-    return entry
-  }
-  const verify = async (token: string, iss: string, audience: string, fresh: boolean) => {
-    const entry = (fresh ? undefined : keys.get(iss)) ?? load(iss)
-    const set = await entry.set.catch(() => {
+  // jose keeps each issuer's keys, and refetches them for a key it lacks.
+  const keys = new Map<string, Promise<ReturnType<typeof createRemoteJWKSet>>>()
+  const keysOf = (iss: string) => {
+    let set = keys.get(iss)
+    if (set === undefined) {
+      set = fetchJson(`${iss.replace(/\/$/, '')}/.well-known/openid-configuration`).then((c) => {
+        const uri = (c as { jwks_uri?: unknown }).jwks_uri
+        if (typeof uri !== 'string') throw new Error('no jwks_uri')
+        return createRemoteJWKSet(new URL(uri), {
+          [customFetch]: async (url: string) => Response.json(await fetchJson(url)),
+        })
+      })
+      keys.set(iss, set)
+      // A failed discovery is not kept: the next token tries again.
+      set.catch(() => keys.get(iss) === set && keys.delete(iss))
+    }
+    return set.catch(() => {
       throw new Refusal(401, `could not read ${iss}'s keys`)
     })
-    return (
-      await jwtVerify(token, set, {
-        algorithms: ['RS256'],
-        audience,
-        clockTolerance: LEEWAY_S,
-        currentDate: new Date(now() * 1000),
-        requiredClaims: ['exp'],
-      })
-    ).payload
   }
 
   return async (req) => {
@@ -186,16 +198,15 @@ export function oidcAuth(opts: OidcOptions): Authorize {
     const audience = opts.audience ?? new URL(req.url).origin
     let claims: JWTPayload
     try {
-      // A key rotated in since the last read is fetched once a REFETCH_MS.
-      claims = await verify(token, iss, audience, false).catch((err: unknown) => {
-        if (
-          !(err instanceof errors.JWKSNoMatchingKey) ||
-          Date.now() - (keys.get(iss)?.at ?? 0) < REFETCH_MS
-        ) {
-          throw err
-        }
-        return verify(token, iss, audience, true)
-      })
+      claims = (
+        await jwtVerify(token, await keysOf(iss), {
+          algorithms: ['RS256'],
+          audience,
+          clockTolerance: LEEWAY_S,
+          currentDate: new Date(now() * 1000),
+          requiredClaims: ['exp'],
+        })
+      ).payload
     } catch (err) {
       throw refusal(err)
     }
@@ -232,20 +243,6 @@ function refusal(err: unknown): Refusal {
     if (err.claim === 'nbf') return new Refusal(401, 'not yet valid')
   }
   return new Refusal(401, 'not a JWT')
-}
-
-async function loadKeys(
-  iss: string,
-  fetchJson: (url: string) => Promise<unknown>,
-): Promise<ReturnType<typeof createLocalJWKSet>> {
-  const config = (await fetchJson(
-    `${iss.replace(/\/$/, '')}/.well-known/openid-configuration`,
-  )) as {
-    jwks_uri?: unknown
-  }
-  if (typeof config.jwks_uri !== 'string') throw new Error('no jwks_uri')
-  const jwks = (await fetchJson(config.jwks_uri)) as { keys?: unknown }
-  return createLocalJWKSet({ keys: Array.isArray(jwks.keys) ? jwks.keys : [] })
 }
 
 async function defaultFetchJson(url: string): Promise<unknown> {
