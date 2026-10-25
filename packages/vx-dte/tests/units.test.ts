@@ -1387,12 +1387,9 @@ it('a task a worker stops saying it holds goes back when its lease ends', async 
     await Bun.sleep(50)
     void h.o.execute(h.req('t1'))
     expect(await a.batches()).toEqual([['t1']])
-    // One `held` lasts three of its own period, `HELD_EVERY` heartbeats
-    // each: a worker says it that seldom, as each is a relay message billed.
+    // One `held` lasts three heartbeats: a worker says it every one.
     await a.say({ type: 'held', running: ['t1'], queued: [] })
-    // Five heartbeats, polled so the relay keeps it.
-    for (let i = 0; i < 5; i++) await a.poll()
-    expect(h.o.where('t1')).toBe('worker#1')
+    const said = performance.now()
     const b = await h.worker(1)
     // Alive, holding nothing: t1's lease ends and it moves.
     const alive = setInterval(() => void a.say({ type: 'held', running: [], queued: [] }), 50)
@@ -1400,6 +1397,8 @@ it('a task a worker stops saying it holds goes back when its lease ends', async 
       let got: string[][] = []
       for (let i = 0; i < 3 && got.length === 0; i++) got = await b.batches()
       expect(got).toEqual([['t1']])
+      // Six heartbeats a `held`, the lease was 1.8 s here (90 s live).
+      expect(performance.now() - said).toBeLessThan(1_200)
     } finally {
       clearInterval(alive)
     }
@@ -1427,7 +1426,7 @@ it('a task whose command ended keeps its lease while its worker holds it, and a 
     await a.begin('t1')
     await a.say({ type: 'ran', task: 't1' })
     const b = await h.worker(1)
-    // Saving, it still holds t1: past a run's lease (3.6 s here), t1 stays.
+    // Saving, it still holds t1: past a run's lease (0.6 s here), t1 stays.
     const alive = setInterval(() => void a.say({ type: 'held', running: ['t1'] }), beat)
     try {
       expect(await b.batches()).toEqual([])
