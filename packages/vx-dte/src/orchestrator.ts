@@ -1643,7 +1643,14 @@ export class Orchestrator {
     for (const id of this.spawnedAt.keys())
       if (!joined.has(id) && (!this.cancelled.has(id) || this.late.has(id))) {
         const why = this.unstarted.get(id)
-        lines.push(why === undefined ? [id, 'starting', ''] : [id, 'failed', why])
+        // Over, the run waits on none: one still starting then never joined.
+        lines.push(
+          why !== undefined
+            ? [id, 'failed', why]
+            : this.ended
+              ? [id, 'not joined', 'the run ended first']
+              : [id, 'starting', ''],
+        )
       }
     lines.sort((x, y) => x[0].localeCompare(y[0], 'en', { numeric: true }))
     const cancelled = [...this.cancelled].filter(

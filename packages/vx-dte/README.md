@@ -521,7 +521,8 @@ before any worker of that size joins.
 
 The `workers` rows, live while the run goes and again in the footer,
 give each worker its status (`starting`, `online`, `left`, `gone`, or `failed`
-with why, such as `exited 1: Cannot find package '@vzn/vx-dte'`), the tasks it
+with why, such as `exited 1: Cannot find package '@vzn/vx-dte'`; once the
+run is over, one still starting is `not joined`), the tasks it
 has done, failed or had aborted by a stop, and the ones it runs now; while the run goes, those that left
 are one line (`3 workers  left  9 done`). A worker the
 run started is named by its size and the order it was started in; one
