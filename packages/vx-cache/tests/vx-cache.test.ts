@@ -506,13 +506,16 @@ describe('vx run with vxCache()', () => {
   })
 
   it('a miss uploads; with the local cache wiped the next run restores', async () => {
-    const first = await run({ cwd: root, tasks: ['build'], handleSignals: false })
+    // The cache named, so no machine-wide store under HOME survives the wipe
+    // below and answers the second run itself.
+    const cacheDir = path.join(root, '.vx', 'cache')
+    const first = await run({ cwd: root, tasks: ['build'], handleSignals: false, cacheDir })
     expect(first.outcomes.map((o) => o.status)).toEqual(['success'])
     expect(srv.blobs.size).toBe(1)
-    await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
+    await rm(cacheDir, { recursive: true, force: true })
     await rm(path.join(root, 'pkg', 'dist'), { recursive: true, force: true })
     const before = srv.seen.length
-    const second = await run({ cwd: root, tasks: ['build'], handleSignals: false })
+    const second = await run({ cwd: root, tasks: ['build'], handleSignals: false, cacheDir })
     expect(second.outcomes.map((o) => o.status)).toEqual(['cache-hit-remote'])
     expect(await Bun.file(path.join(root, 'pkg', 'dist', 'app.js')).text()).toBe(
       'console.log("app")\n',
