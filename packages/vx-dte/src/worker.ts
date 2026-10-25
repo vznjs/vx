@@ -207,6 +207,20 @@ export async function runWorker(opts: {
     }
     const p = runTask(m, done)
       .catch(async (err: unknown) => {
+        // The task's own error (a sandbox this machine cannot host, an
+        // `exec.sandbox` it refuses) fails it, as core fails it. Taken as a
+        // fault, each worker it reached left the run, and unsandboxed tasks
+        // failed with no worker left (docker(), 2026-10-25).
+        if (isUserError(err)) {
+          ui.print('err', ui.status('error', m.task, err.message))
+          const res = { exitCode: 1, durationMs: 0, violations: [] }
+          const output = [{ text: `${err.message}\n`, err: true }]
+          const told = await reply(m, m.runKey, undefined, { ...res, output }, true).then(
+            () => true,
+            (e: unknown) => ((err = e), false),
+          )
+          if (told) return
+        }
         const reason = err instanceof Error ? err.message : String(err)
         ui.print('err', ui.status('error', m.task, `could not run: ${reason}`))
         await me

@@ -3229,3 +3229,87 @@ it('names the submodule of a keyed file the run’s tree holds only as a gitlink
     await served.stop()
   }
 })
+
+// docker(), 2026-10-25: a worker that cannot host a task's sandbox faulted
+// it, each worker it reached left the run, and unsandboxed tasks failed with
+// no worker left. The task's own error fails the task, as core fails it.
+it('fails a task on its own error and keeps the worker', async () => {
+  const root = await tmp()
+  await mkdir(path.join(root, 'p[1]'))
+  const served = servedRelay()
+  const url = served.url
+  try {
+    const raw = await join(url, R, 'orchestrator', null, undefined)
+    const o = sealOrchestrator(raw, R, secretProof('s'))
+    const code = runWorker({
+      relay: url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => ({
+        async save() {},
+        async output() {
+          return null
+        },
+        async share() {
+          return false
+        },
+        async resend() {
+          return false
+        },
+        async restore() {
+          return null
+        },
+      }),
+    })
+    const order = (task: string, project: string): RunOrder => ({
+      task,
+      runKey: runKey(R, task),
+      deps: [],
+      nested: [],
+      command: 'true',
+      cwd: project,
+      project,
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+      ...(project === '' ? {} : { sandbox: { config: {} } }),
+    })
+    const ends = new Map<string, number>()
+    const seen: string[] = []
+    for (let i = 0; i < 100 && ends.size < 2; i++) {
+      for (const { from, body } of await o.poll()) {
+        const m = body as {
+          type: string
+          id?: string
+          task?: string
+          result?: { exitCode: number }
+        }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 2,
+            memory: 1e9,
+          })
+          await o.send(m.id!, {
+            type: 'batch',
+            root,
+            realRoot: root,
+            tasks: [order('t1', 'p[1]'), order('t2', '')],
+          })
+        } else if (m.type === 'end') ends.set(m.task!, m.result!.exitCode)
+        else seen.push(m.type)
+      }
+    }
+    expect(seen).not.toContain('fault')
+    expect(Object.fromEntries(ends)).toEqual({ t1: 1, t2: 0 })
+    await raw.leave()
+    expect(await code).toBe(0)
+  } finally {
+    await served.stop()
+  }
+})
