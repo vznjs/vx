@@ -9,12 +9,21 @@ export function anyAuth(
 ): Authorize
 == function createCacheServer (src/server.ts)
 export function createCacheServer(opts: ServerOptions): (req: Request) => Promise<Response>
+== function evict (src/evict.ts)
+export async function evict(
+  db: Db,
+  blobs: Blobs,
+  r: Required<Retention>,
+  now: number = Date.now(),
+): Promise<{ artifacts: number; runs: number }>
 == function oidcAuth (src/oidc.ts)
 export function oidcAuth(opts: OidcOptions): (token: string, req: Request) => Promise<Access>
 == function parseTokens (src/auth.ts)
 export function parseTokens(list: string): Map<string, Access>
 == function parseTrust (src/oidc.ts)
 export function parseTrust(json: string): TrustRule[]
+== function retentionFrom (src/evict.ts)
+export function retentionFrom(env: object): Required<Retention>
 == function tokenAuth (src/auth.ts)
 export function tokenAuth(tokens: ReadonlyMap<string, Access>): Authorize
 == type Access (src/auth.ts)
@@ -42,6 +51,12 @@ export interface OidcOptions {
   readonly audience?: string
   readonly fetchJson?: (url: string) => Promise<unknown>
   readonly now?: () => number
+}
+== type Retention (src/evict.ts)
+export interface Retention {
+  readonly trustedDays?: number
+  readonly branchDays?: number
+  readonly runDays?: number
 }
 == type ServerOptions (src/server.ts)
 export interface ServerOptions {

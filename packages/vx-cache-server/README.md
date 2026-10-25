@@ -106,6 +106,19 @@ It fits Workers' free plan:
 - A request body is at most 100 MB on the free plan, which is the default
   `MAX_ARTIFACT_BYTES`. R2's free plan holds 10 GB.
 
+## Eviction
+
+What outlives its retention is deleted, by age since it was written:
+artifacts of the trusted scope after `TRUSTED_DAYS` (default 30), of a
+branch's scope after `BRANCH_DAYS` (default 7), and runs after `RUN_DAYS`
+(default 90). A read does not keep an artifact: counting reads would cost
+D1 a row write per hit. A main run that misses an evicted artifact runs
+the task and stores it again.
+
+On Workers a daily Cron Trigger sweeps (`wrangler.jsonc`; the free plan
+has five); on Bun the server sweeps at start and every hour. One sweep
+deletes up to 800 artifacts, and the next goes on.
+
 ## API
 
 The same server as a `fetch` handler, to mount in a server of your own,
@@ -128,5 +141,9 @@ over storage of your own (`src/index.ts`):
   `tokens`.
 - `parseTokens(list)` reads `TOKENS` into a map, and `tokenAuth(tokens)`
   makes the `Authorize` that checks a bearer token against it.
+- `evict(db, blobs, retention, now?)` deletes what outlived its
+  `Retention` (`{ trustedDays, branchDays, runDays }`), and
+  `retentionFrom(env)` reads it from `TRUSTED_DAYS`, `BRANCH_DAYS` and
+  `RUN_DAYS`.
 - `DURATION_HEADER` (`vx-duration`) and `READ_SCOPES_HEADER`
   (`vx-read-scopes`) are the header names (PROTOCOL.md).

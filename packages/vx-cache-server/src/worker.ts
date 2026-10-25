@@ -3,6 +3,7 @@
 // plan (README.md § Workers' free plan).
 
 import { parseTokens, tokenAuth } from './auth.js'
+import { evict, retentionFrom } from './evict.js'
 import { anyAuth, oidcAuth, parseTrust } from './oidc.js'
 import { problem, Refusal } from './protocol.js'
 import { createCacheServer } from './server.js'
@@ -39,6 +40,10 @@ export interface Env {
   readonly AUDIENCE?: string
   /** The largest artifact stored, in bytes. */
   readonly MAX_ARTIFACT_BYTES?: string
+  /** Days the trusted scope, a branch's scope and the run history keep what they hold. */
+  readonly TRUSTED_DAYS?: string
+  readonly BRANCH_DAYS?: string
+  readonly RUN_DAYS?: string
 }
 
 function d1Db(d1: D1Database): Db {
@@ -84,6 +89,11 @@ function r2Blobs(bucket: R2Bucket): Blobs {
 let made: { key: string; handle: (req: Request) => Promise<Response> } | undefined
 
 export default {
+  // The Cron Trigger `wrangler.jsonc` names: what outlived its retention goes.
+  async scheduled(_controller: unknown, env: Env): Promise<void> {
+    const { artifacts, runs } = await evict(d1Db(env.DB), r2Blobs(env.BLOBS), retentionFrom(env))
+    console.log(`vx-cache-server: evicted ${artifacts} artifacts, ${runs} runs`)
+  },
   async fetch(req: Request, env: Env): Promise<Response> {
     const key = [env.TOKENS, env.TRUST, env.AUDIENCE, env.MAX_ARTIFACT_BYTES].join('\0')
     if (made?.key !== key) {

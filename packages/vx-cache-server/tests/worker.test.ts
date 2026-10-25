@@ -86,3 +86,27 @@ it('refuses every request, saying why, while TRUST is wrong', async () => {
     await other.dispose()
   }
 })
+
+it("runs the Cron Trigger's eviction in workerd, over D1 and R2", async () => {
+  // A retention of about 0.1 s: what was written before the sweep is old.
+  const other = await start({ TOKENS: `write:${await sha256(WRITE)}`, TRUSTED_DAYS: '0.000001' })
+  try {
+    const at = await other.ready
+    const auth = { authorization: `Bearer ${WRITE}` }
+    await fetch(new URL('/v1/artifacts/evict1', at), { method: 'PUT', body: 'x', headers: auth })
+    await Bun.sleep(200)
+    // miniflare's own types name a Fetcher and an R2 bucket it does not export.
+    const worker = (await other.getWorker()) as unknown as {
+      scheduled(o: { cron: string }): Promise<{ outcome: string }>
+    }
+    expect((await worker.scheduled({ cron: '17 3 * * *' })).outcome).toBe('ok')
+    const res = await fetch(new URL('/v1/artifacts/evict1', at), { method: 'HEAD', headers: auth })
+    expect(res.status).toBe(404)
+    const bucket = (await other.getR2Bucket('BLOBS')) as unknown as {
+      head(key: string): Promise<unknown>
+    }
+    expect(await bucket.head('v1/default/trusted/evict1')).toBeNull()
+  } finally {
+    await other.dispose()
+  }
+})
