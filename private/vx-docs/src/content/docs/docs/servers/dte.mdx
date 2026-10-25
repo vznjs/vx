@@ -60,10 +60,10 @@ can reach. It keeps no secret and stores no file.
 
    ```sh
    docker build -t vx-dte-server packages/vx-dte-server
-   docker run -p 8080:8080 -v vx-dte:/state vx-dte-server \
+   docker run -p 8080:8080 vx-dte-server \
      --allow https://token.actions.githubusercontent.com:acme/app:ci.yml \
      --allow https://token.actions.githubusercontent.com:acme/app:vx-worker.yml \
-     --audience https://relay.example.com --state /state/relay.db
+     --audience https://relay.example.com
    ```
 
    Or run it with the other two servers using
@@ -134,10 +134,8 @@ can reach. It keeps no secret and stores no file.
   your [remote cache](../../remote-cache/).
 - On Cloudflare each run is one Durable Object, and the relay fits the
   free plan: websocket messages count 20 to one Durable Object request,
-  against 100,000 a day, and it writes about two rows a worker. A
-  deploy keeps the runs in flight: each side dials back. On Bun and
-  Docker runs live in memory unless `--state <file>` keeps them, so a
-  restart keeps the runs it was carrying.
+  against 100,000 a day, and it writes no row. A deploy, or a restart
+  on Bun and Docker, ends the runs in flight.
 - The wire is [Switchboard v1](../../../switchboard/), an open protocol: any
   server that speaks it can stand in for this relay.
 - `AUDIENCE` (Cloudflare) is unset by default: tokens must name the URL
@@ -156,7 +154,6 @@ can reach. It keeps no secret and stores no file.
 | --- | --- | --- | --- |
 | who may take part | `ALLOW` var | `--allow`, repeated | `issuer:owner/repo:workflow` entries |
 | audience | `AUDIENCE` var, unset: the relay's URL | `--audience` | the `aud` every token must name |
-| state | Durable Object storage | `--state <file>`, unset: memory | the runs a restart keeps |
 | listen | | `--port` (8080), `--host` (`0.0.0.0`) | where it listens |
 
 ## Point vx at it: `dte()`

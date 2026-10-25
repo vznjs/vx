@@ -193,8 +193,5 @@ Only what routing needs, and no longer:
 - A closed session is gone at once; while open, each participant's role
   is kept, and when a socket dropped. A relay restart keeps a session whose
   host's socket, or a peer's naming that host, it kept; one whose host's
-  socket it did not keep waits the grace from the restart. A relay with
-  storage keeps each participant's id, role and drop time there while it
-  takes part, so a restart that dropped every socket keeps its sessions:
-  each participant dials back within the grace from the restart.
+  socket it did not keep waits the grace from the restart.
 - It logs nothing. It still sees each message's size, time and recipient.

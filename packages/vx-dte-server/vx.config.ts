@@ -86,12 +86,10 @@ export default defineProject({
     },
 
     // The image `docker run` serves, built, carrying one run both ways,
-    // passing the conformance suite, keeping a run across `docker restart`
-    // and stopping cleanly.
+    // passing the conformance suite and stopping cleanly.
     // No sandbox: it reaches the Docker daemon.
     'test.live': {
-      description:
-        'docker build, then one run, the conformance suite and a restart through the container',
+      description: 'docker build, then one run and the conformance suite through the container',
       exec: { command: 'sh tests/docker/smoke.sh' },
       dependsOn: ['install'],
       inputs: {

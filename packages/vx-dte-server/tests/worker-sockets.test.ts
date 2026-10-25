@@ -40,28 +40,27 @@ let mf: Miniflare
 let base: URL
 /** The issuer URLs the relay fetched. */
 const fetched: string[] = []
-/** The relay's options: set again, they restart every object, as a deploy does. */
-let options: Parameters<Miniflare['setOptions']>[0]
 beforeAll(async () => {
   const built = await Bun.build({
     entrypoints: [path.join(import.meta.dir, '..', 'src', 'worker.ts')],
     target: 'browser',
     format: 'esm',
   })
-  options = convertV4MiniflareOptions({
-    modules: true,
-    script: await built.outputs[0]!.text(),
-    compatibilityDate: '2026-10-01',
-    durableObjects: { RELAY: { className: 'RelayRun', useSQLite: true } },
-    bindings: { ALLOW: `${ISS}:o/r:.gitlab-ci.yml`, AUDIENCE: 'vx-dte-server' },
-    outboundService: (req: Request) => {
-      fetched.push(req.url)
-      return new URL(req.url).pathname === '/jwks'
-        ? Response.json({ keys: [{ ...jwk, kid: 'k1' }] })
-        : Response.json({ jwks_uri: `${ISS}/jwks` })
-    },
-  })
-  mf = new Miniflare(options)
+  mf = new Miniflare(
+    convertV4MiniflareOptions({
+      modules: true,
+      script: await built.outputs[0]!.text(),
+      compatibilityDate: '2026-10-01',
+      durableObjects: { RELAY: { className: 'RelayRun', useSQLite: true } },
+      bindings: { ALLOW: `${ISS}:o/r:.gitlab-ci.yml`, AUDIENCE: 'vx-dte-server' },
+      outboundService: (req: Request) => {
+        fetched.push(req.url)
+        return new URL(req.url).pathname === '/jwks'
+          ? Response.json({ keys: [{ ...jwk, kid: 'k1' }] })
+          : Response.json({ jwks_uri: `${ISS}/jwks` })
+      },
+    }),
+  )
   base = await mf.ready
 }, 30_000)
 afterAll(() => mf?.dispose())
@@ -154,29 +153,6 @@ it('reads an issuer’s keys once for all the runs it carries', async () => {
   await join('peer', '00000000-0000-4000-8000-000000000005')
   expect(fetched).toEqual([`${ISS}/.well-known/openid-configuration`, `${ISS}/jwks`])
 })
-
-// A deploy (and the runtime's own updates) restarts every object and
-// drops every socket, attachments and all: each run in flight redialed
-// into a relay that no longer knew it, 4404, and ended.
-it('keeps a run its sockets dialed back into after a restart', async () => {
-  const run = '00000000-0000-4000-8000-000000000006'
-  const host = await join('host', run)
-  const a = await join('peer', run)
-  expect(await host.next()).toMatchObject({ messages: [{ body: { type: 'joined', id: a.id } }] })
-  const dropped = (s: { ws: WebSocket }) => new Promise((r) => s.ws.addEventListener('close', r))
-  const both = Promise.all([dropped(host), dropped(a)])
-  // The same port: Miniflare under Bun cannot close the old one's dispatcher.
-  await mf.setOptions({ ...options, port: Number(base.port) })
-  base = await mf.ready
-  await both
-  const again = await dial(`/v1/sessions/${run}/socket?id=${host.id}`, true)
-  const b = await dial(`/v1/sessions/${run}/socket?id=${a.id}`)
-  b.ws.send(JSON.stringify({ n: 1, sends: [{ to: 'host', body: 'hi' }] }))
-  expect(await b.next()).toEqual({ n: 1 })
-  expect(await again.next()).toEqual({ messages: [{ from: a.id, body: 'hi' }] })
-  again.ws.close()
-  b.ws.close()
-}, 30_000)
 
 // Refused before any run's object (ALLOW admits no one), a socket is still
 // let in and closed saying why: the client stops dialing on a 4xx.

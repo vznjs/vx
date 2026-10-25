@@ -3,8 +3,6 @@ export {
   createRelay,
   GONE,
   type Kept,
-  type RelayStore,
-  type Stored,
   type Relay,
   type RelayOptions,
 } from './relay.js'
