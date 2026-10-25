@@ -14,7 +14,7 @@ export function parseTrust(json: string): TrustRule[]
 == type Access (src/oidc.ts)
 export interface Access {
   readonly issuer: string
-  readonly id: string
+  readonly repository: string
   readonly write?: string
 }
 == type Authorize (src/oidc.ts)
