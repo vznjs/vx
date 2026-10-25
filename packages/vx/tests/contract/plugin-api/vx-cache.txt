@@ -8,11 +8,23 @@ export class VxCacheLayer implements RemoteCacheLayer {
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly env: Record<string, string | undefined> = Bun.env,
   )
+  /** The token a run running its tasks here lent (`CacheContext.lent`). */
+  lent: (() => string | undefined) | undefined
+  /** The job's own OIDC token: with `oidc`, on GitHub Actions. */
   /**
    * The bearer: the job's OIDC token with `oidc` on GitHub Actions, asked
    * again a minute before it ends, else `token`. A token GitHub would not
    * give throws once, and the layer turns off.
+   * A token the run lent beats both: a job of another workflow writes
+   * nowhere the run reads.
    */
+  /**
+   * This job's OIDC token, for a job that runs this run's tasks
+   * (`RemoteCacheLayer.lend`): its writes land where this run reads them.
+   * Asked again when it ends within five minutes. A static token, or one
+   * lent to this job, is never lent.
+   */
+  async lend(): Promise<LentAccess | undefined>
   /** Whether the run history is kept: `history` in the options. */
   get history(): boolean
   async has(hash: string): Promise<ArtifactInfo | null>
@@ -37,6 +49,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
 export function resolveVxCacheConfig(
   options: VxCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
+  lent = false,
 ): Required<VxCacheOptions> | undefined
 == function vxCache (src/index.ts)
 export function vxCache(options: VxCacheOptions = {}): VxPlugin

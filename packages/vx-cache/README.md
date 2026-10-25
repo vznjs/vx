@@ -32,6 +32,12 @@ export default { plugins: [vxCache({ url: 'https://cache.example.com' })] }
   name an `id_tokens` entry `VX_CACHE_TOKEN` with the server's origin as
   `aud`; it is the token.
 
+With `oidc`, a run that hands tasks to other jobs lends them its own
+token (core's `lend()`), and they read and write with it: a job started
+from another workflow would carry a token that writes nowhere the run
+reads, or nowhere at all. A job uses a lent token over its own, needs no
+token of its own, and never lends one on.
+
 With no URL or no token the plugin declines and the run stays local, so it
 is safe to leave declared. A refused token is said once and turns the
 remote off for the run; a read token's refused write turns off writes
