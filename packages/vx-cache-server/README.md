@@ -138,8 +138,11 @@ over storage of your own (`src/index.ts`):
   the origin a request reached), `fetchJson` (reads an issuer's keys) and
   `now` (the clock, for tests).
 - A `Store` is the database the server asks: `init()`, then reads and
-  inserts of artifact rows and timings, and the sweep's `takeExpired`
-  and `dropTimings`; each write one statement, so nodes share it.
+  inserts of artifact rows (`ArtifactRow`, `{ key, scope, size }`; a
+  `NewArtifact` adds `repo` and `created_at`) and of `Timing`s
+  (`{ hash, durationMs, cores, rssBytes }`), and the sweep's
+  `takeExpired` and `dropTimings`; each write one statement, so nodes
+  share it.
 - `sqliteStore(db)` is the `Store` over a SQLite `Db`
   (`{ all(sql, params), run(sql, params), batch(statements) }`), as
   bun:sqlite and D1 are; `postgresStore(url)` the one over Postgres, which
