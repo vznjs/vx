@@ -21,7 +21,15 @@ import {
 } from '../cache/index.js'
 import type { InputFile, TaskInputs } from '../exec/index.js'
 import { isGroupTask, type TaskNode, type TaskOutcome } from '../graph/index.js'
-import { isUserError, relPosix, secretMask, span, UserError, xxh3hex } from '../util/index.js'
+import {
+  isUserError,
+  keysSorted,
+  relPosix,
+  secretMask,
+  span,
+  UserError,
+  xxh3hex,
+} from '../util/index.js'
 import { expandGroupUpstream, filterUpstreamHashes } from './upstream.js'
 
 /**
@@ -460,9 +468,12 @@ export function hashTaskConfig(cfg: TaskConfig, hashCache?: HashCache): string {
  * would bump CACHE_VERSION.
  */
 function hashableConfig(cfg: TaskConfig): unknown {
-  if (cfg.exec?.remote === undefined) return cfg
+  // Keys sorted: moving `cache` above `exec`, or a `define` in another
+  // order, missed every key of the task, and a `project` or `graph` plugin
+  // writes a config the lock never sorted (2026-10-25).
+  if (cfg.exec?.remote === undefined) return keysSorted(cfg)
   const { remote: _remote, ...execRest } = cfg.exec
-  return { ...cfg, exec: execRest }
+  return keysSorted({ ...cfg, exec: execRest })
 }
 
 /**

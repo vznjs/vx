@@ -39,6 +39,7 @@ import * as ui from './ui.js'
 export { refusalNotice, sayLine, sayNotice } from './refusal-notice.js'
 export { ui }
 export { xxh3, xxh3hex } from './hash.js'
+export { keysSorted } from './sorted-keys.js'
 export {
   beginRun,
   mark,

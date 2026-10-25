@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs'
 import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import type { ProjectConfig } from '../config.js'
-import { relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
+import { keysSorted, relPosix, UserError, xxh3, xxh3hex } from '../util/index.js'
 import { VERSION } from '../version.js'
 import { validateProjectConfig } from './config-schema.js'
 import { PROJECT_CONFIG_FILENAMES } from './workspace.js'
@@ -153,26 +153,16 @@ function validatedDigest(body: string): string {
 }
 
 /**
- * Each task's config with its keys sorted, all the way down: a key hashes
- * the config's JSON, and the order a file spells its keys in says nothing.
- * Moving `cache` above `exec`, or a `define` listed in another order,
- * missed every key of the task (2026-10-25). Sorted here, a run pays
- * nothing; the tasks keep their order, which `vx show` lists them in.
+ * Each task's config with its keys sorted (`keysSorted`), so a run's key
+ * check finds it sorted and copies nothing. The tasks keep their order,
+ * which `vx show` lists them in.
  */
 function taskKeysSorted(key: string, value: unknown): unknown {
   if (key !== 'tasks' || value === null || typeof value !== 'object' || Array.isArray(value))
     return value
   const tasks: Record<string, unknown> = {}
-  for (const [name, task] of Object.entries(value)) tasks[name] = sortedDeep(task)
+  for (const [name, task] of Object.entries(value)) tasks[name] = keysSorted(task)
   return tasks
-}
-
-function sortedDeep(v: unknown): unknown {
-  if (v === null || typeof v !== 'object') return v
-  if (Array.isArray(v)) return v.map(sortedDeep)
-  const out: Record<string, unknown> = {}
-  for (const k of Object.keys(v).sort()) out[k] = sortedDeep((v as Record<string, unknown>)[k])
-  return out
 }
 
 export async function writeLockfile(root: string, lock: Lockfile): Promise<void> {
