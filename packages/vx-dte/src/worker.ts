@@ -95,8 +95,14 @@ export async function runWorker(opts: {
       { ...info },
     )
   } catch (err) {
-    // The run ended before this worker came up: nothing is left for it.
-    if (err instanceof RelayError && err.status === 410) return 0
+    if (err instanceof RelayError && err.status === 410) {
+      // The run that started this worker ended before it came up: nothing is left for it.
+      if (opts.id !== undefined) return 0
+      // One started by hand came first, or late: an exit 0 left the run waiting on nobody.
+      throw new UserError(
+        `the relay has no live run ${opts.run}: start the run first, then its workers`,
+      )
+    }
     throw err
   }
   // Read as the run reads: its refs, and what its remotes lent.

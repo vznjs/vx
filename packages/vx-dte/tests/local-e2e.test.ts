@@ -470,6 +470,39 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)} })] }
   }
 }, 60_000)
 
+// A worker started by hand before its run exited 0 and said nothing, and
+// the run then waited on no worker (the README starts the worker first,
+// 2026-10-25).
+it('a worker started by hand with no live run says so and fails', async () => {
+  const { serveRelay } = await import('@vzn/vx-dte-server')
+  const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
+  try {
+    await writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { dte } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ relay: ${JSON.stringify(relay.url)} })] }
+`,
+    )
+    const { VX_DTE_RUN: _, VX_DTE_WORKER: __, ...env } = process.env
+    const run = crypto.randomUUID()
+    const worker = Bun.spawn([process.execPath, CORE_BIN, 'dte', 'worker'], {
+      cwd: root,
+      env: { ...env, VX_DTE_RUN: run, VX_DTE_SECRET: 'early-secret', NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const [exited, err] = await Promise.all([worker.exited, new Response(worker.stderr).text()])
+    expect([exited, err]).toEqual([
+      1,
+      expect.stringContaining(
+        `the relay has no live run ${run}: start the run first, then its workers`,
+      ),
+    ])
+  } finally {
+    await relay.stop()
+  }
+}, 30_000)
+
 // A CI step that started a worker before the run began (github()'s
 // adopt): the run counts it against its size's max and starts no other.
 it('runs on a worker the adapter adopted, and starts none of its own', async () => {

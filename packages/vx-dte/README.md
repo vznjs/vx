@@ -158,9 +158,12 @@ export default defineWorkspace({ plugins: [dte({ relay: 'http://127.0.0.1:8080' 
 bun /path/to/vx/packages/vx-dte-server/src/bun.ts --no-auth --port 8080   # the relay
 export VX_DTE_SECRET=$(openssl rand -base64 32)                          # in each terminal: the same one
 export VX_DTE_RUN=$(uuidgen)                                             # in each terminal: the same one
+vx run build --all                                                       # the run, first
 vx dte worker                                                             # a worker, as many as you like
-vx run build --all                                                       # the run
 ```
+
+A worker started before its run finds no run on the relay: it says so
+and exits 1.
 
 A worker prints its name, the run, the relay and its machine, then a row
 as each task starts and ends:
