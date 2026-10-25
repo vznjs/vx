@@ -44,11 +44,12 @@ export async function putRunEntry(
   for (const { remote, write } of remotes) {
     if (!write) continue
     try {
-      await remote.put(key, new Blob([bytes]), {
+      const put = await remote.put(key, new Blob([bytes]), {
         durationMs: 0,
         ...(scope === undefined ? {} : { scope }),
       })
-      kept = true
+      // `false`: the remote sent nothing, so nothing is kept there.
+      if (put !== false) kept = true
     } catch {
       // the other remotes still keep it
     }
