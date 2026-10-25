@@ -488,6 +488,9 @@ export function plan(
       }
     }
   const release: string[] = []
+  // Played with the rest: left out, the next idle one and the plan's end
+  // counted on a worker the run lets go.
+  const standIns: PlanWorker[] = []
   if (best < Infinity) {
     // One starting that the plan ends as well without is cancelled before
     // it joins, last to join first; none is started in its place: a new
@@ -521,9 +524,17 @@ export function plan(
     // the run ends within the margin without it (main e05bd71 let a mac go
     // that way and asked another 4 s later).
     const idle = workers.filter((w) => w.idle).sort((a, b) => b.cores - a.cores)
+    // A stand-in is one of the run's next starts of its size, not kept for
+    // other work. With none (its size's `max` spent: one let go still
+    // counts), the arm worker of a max-1 size went idle between two arm
+    // tasks, was let go, and the second found no worker (fuzz, 2026-10-25).
+    const spare = new Map<string, number>()
+    candidates.forEach((s, i) => {
+      if (!kept.includes(added[i]!)) spare.set(s.name, (spare.get(s.name) ?? 0) + 1)
+    })
     for (const w of idle) {
       const without = kept.filter((k) => k !== w)
-      const next = play(tasks, kept, how).first.get(w.id)
+      const next = play(tasks, [...kept, ...standIns], how).first.get(w.id)
       if (next === undefined) {
         kept = without
         release.push(w.id)
@@ -535,18 +546,22 @@ export function plan(
       // started again at 20.06 (tests/sim.test.ts, a09b987 forecast).
       if (!replaceable) continue
       if (next < 2 * warm(w.size) + MARGIN_MS) continue
+      const left = w.size === undefined ? 0 : (spare.get(w.size) ?? 0)
+      if (left === 0) continue
       const instead = fresh(
         { cpu: w.cores, memory: w.memory, platform: w.platform, size: w.size },
         w.id,
         next,
       )
-      if (simulate(tasks, [...without, instead], how) <= bound) {
+      if (simulate(tasks, [...without, ...standIns, instead], how) <= bound) {
         kept = without
         release.push(w.id)
+        standIns.push(instead)
+        spare.set(w.size!, left - 1)
       }
     }
   }
-  const { end, first } = play(tasks, kept, how)
+  const { end, first } = play(tasks, [...kept, ...standIns], how)
   const start: Size[] = []
   let againInMs: number | undefined
   for (let i = 0; i < n; i++) {

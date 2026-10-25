@@ -568,7 +568,8 @@ started it:
 An idle worker the rest of the run cannot keep busy leaves (`left`): one
 beyond the peak of the cores the remaining tasks keep busy, so a lull
 between two wide parts keeps it. One a remaining task needs for its size
-stays. A lost worker's begun tasks run again on
+stays, and so does one a later task needs when its size's `max` is
+spent, since none could start in its place. A lost worker's begun tasks run again on
 another, and the run starts one in its place. A worker is lost when its
 socket closes, when it stops answering the orchestrator's probes, or at
 once when its adapter sees its process or job end. Workers start at the first
