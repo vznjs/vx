@@ -41,7 +41,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }} # the PR check
           VX_REAPI_ENDPOINT: ${{ vars.VX_REAPI_ENDPOINT }}
-          VX_CACHE_TOKEN: ${{ secrets.VX_CACHE_TOKEN }} # read-write
+          REAPI_TOKEN: ${{ secrets.REAPI_TOKEN }} # read-write
 ```
 
 A task that declares `exec.sandbox` needs the OS sandbox on the runner:
@@ -57,7 +57,7 @@ import { github } from '@vzn/vx-ci'
 import { bun } from '@vzn/vx-lockfile'
 import { reapi } from '@vzn/vx-reapi'
 
-const token = process.env.VX_CACHE_TOKEN
+const token = process.env.REAPI_TOKEN
 
 export default defineWorkspace({
   plugins: [

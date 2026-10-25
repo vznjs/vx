@@ -98,9 +98,11 @@ bits of the ref's SHA-256, as 32 lowercase hex characters
 (`refs/heads/main` is `f921bd05e68b03740c450e565e0e6173`). A plain ref is
 refused with `400`, so no ref crosses the wire. A write names no scope:
 the server hashes the token's ref the same way. A read is exact: it
-names each scope it wants. A check names `vxCache()`'s branch, then the
-branch it merges into, then the default branch, and the first scope that
-holds the hash answers; the download names that scope (`vx-scope`).
+names each scope it wants. A check names the run's refs: its branch,
+then the branch it merges into, then the default branch (on CI,
+`github()` or `gitlab()` names them; without one, git's branch and the
+default branch). The first scope that holds the hash answers, and the
+download names that scope (`vx-scope`).
 
 An artifact's object name in the bucket is:
 
@@ -118,10 +120,10 @@ upload of a key that is already held keeps the first bytes.
 
 Artifacts expire by age since they were written, through the bucket's
 own lifecycle rule. The server runs no sweep. One rule covers the whole
-bucket, for example 7 days on R2:
+bucket, for example 1 day on R2:
 
 ```sh
-bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 7
+bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 1
 ```
 
 On S3 the same rule goes in the bucket's lifecycle configuration. A run
@@ -132,9 +134,11 @@ that misses an expired artifact runs the task and stores it again.
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
 import { vxCache } from '/path/to/vx/packages/vx-cache/src/index.ts'
+import { github } from '/path/to/vx/packages/vx-ci/src/index.ts'
 
 export default defineWorkspace({
   plugins: [
+    github(), // on CI, names the refs a run reads; gitlab() on GitLab
     vxCache({
       url: 'https://cache.example.com', // or VX_CACHE_URL
       issuer: 'https://token.actions.githubusercontent.com',
@@ -147,6 +151,9 @@ export default defineWorkspace({
 <Aside title="Not on npm yet">
   Until `@vzn/vx-cache` is on npm, import it from a checkout of the vx
   repository, as above.
+  Run vx from the same checkout: `bun install` there, then
+  `bun /path/to/vx/packages/vx/src/bin.ts run …` in your repository. A
+  plugin from main does not load into the vx on npm.
 </Aside>
 
 `vxCache({ url?, issuer, repository, timeoutMs?, uploadTimeoutMs?, headers? })`:

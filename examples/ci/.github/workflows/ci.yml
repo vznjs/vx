@@ -25,4 +25,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }} # the PR check
           VX_REAPI_ENDPOINT: ${{ vars.VX_REAPI_ENDPOINT }}
-          VX_CACHE_TOKEN: ${{ secrets.VX_CACHE_TOKEN }} # read-write
+          REAPI_TOKEN: ${{ secrets.REAPI_TOKEN }} # read-write

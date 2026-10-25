@@ -3,7 +3,7 @@ import { github } from '@vzn/vx-ci'
 import { bun } from '@vzn/vx-lockfile'
 import { reapi } from '@vzn/vx-reapi'
 
-const token = process.env.VX_CACHE_TOKEN
+const token = process.env.REAPI_TOKEN
 
 export default defineWorkspace({
   plugins: [
