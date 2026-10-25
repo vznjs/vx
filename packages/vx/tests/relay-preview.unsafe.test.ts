@@ -17,10 +17,12 @@ import {
 
 const dir = path.resolve(import.meta.dir, '..', '..', '..', 'private', 'vx-dte-relay-worker')
 
+// Workers Builds' check on a branch's commit (#4397's, 2026-10-25).
 const SUMMARY = [
-  'Build ID: [b](https://dash.cloudflare.com/acc/workers/services/view/vx-dte-relay/production/builds/b)',
-  'Preview URL: https://feat-relay-vx-dte-relay.exelord.workers.dev',
+  'Build ID: [628c134e](https://dash.cloudflare.com/40b1/workers/services/view/vx-dte-relay/production/previews/feat-relay/builds/628c134e)',
+  'Script: [vx-dte-relay](https://dash.cloudflare.com/40b1/workers/services/view/vx-dte-relay/production)',
 ].join('\n')
+const DEPLOYED = 'https://vx-dte-relay.exelord.workers.dev'
 
 function deps(changed: string[], runs: PreviewDeps['checks'][]): PreviewDeps & { slept: number } {
   let t = 0
@@ -54,7 +56,7 @@ const check =
 describe('the relay a PR’s run uses', () => {
   it('is the deployed one when the PR changes no watched path, asked nothing', async () => {
     const d = deps(['packages/vx/src/index.ts'], [() => Promise.reject(new Error('asked'))])
-    expect(await relayFor('vx-dte-relay', d)).toBeUndefined()
+    expect(await relayFor('vx-dte-relay', DEPLOYED, d)).toBeUndefined()
   })
 
   it('is the Preview of the head commit once its build ends', async () => {
@@ -62,7 +64,7 @@ describe('the relay a PR’s run uses', () => {
       ['packages/vx-dte-relay/src/relay.ts'],
       [async () => [], check('in_progress'), check('completed', 'success')],
     )
-    expect(await relayFor('vx-dte-relay', d)).toBe(
+    expect(await relayFor('vx-dte-relay', DEPLOYED, d)).toBe(
       'https://feat-relay-vx-dte-relay.exelord.workers.dev',
     )
     expect(d.slept).toBe(2)
@@ -70,18 +72,21 @@ describe('the relay a PR’s run uses', () => {
 
   it('fails on a failed build, and on none within the wait, naming it', async () => {
     const failed = deps(['bun.lock'], [check('completed', 'failure')])
-    await expect(relayFor('vx-dte-relay', failed)).rejects.toThrow(
+    await expect(relayFor('vx-dte-relay', DEPLOYED, failed)).rejects.toThrow(
       'Workers Builds: vx-dte-relay ended failure',
     )
     const none = deps(['private/vx-dte-relay-worker/wrangler.jsonc'], [async () => []])
-    await expect(relayFor('vx-dte-relay', none)).rejects.toThrow(
+    await expect(relayFor('vx-dte-relay', DEPLOYED, none)).rejects.toThrow(
       'Workers Builds: vx-dte-relay: no check on the head commit after 5 min',
     )
   })
 
-  it('reads the workers.dev URL, not the dashboard’s', () => {
-    expect(previewUrl(SUMMARY)).toBe('https://feat-relay-vx-dte-relay.exelord.workers.dev')
-    expect(previewUrl('Build ID: https://dash.cloudflare.com/x')).toBeUndefined()
+  it('serves the Preview its check names beside the deployed Worker', () => {
+    expect(previewUrl(SUMMARY, DEPLOYED)).toBe(
+      'https://feat-relay-vx-dte-relay.exelord.workers.dev',
+    )
+    const production = SUMMARY.replace('/previews/feat-relay', '')
+    expect(previewUrl(production, DEPLOYED)).toBeUndefined()
   })
 
   // Workers Builds builds what its watch paths match, and the run waits for

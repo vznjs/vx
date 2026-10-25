@@ -11,6 +11,7 @@ import { describe, expect, it } from 'bun:test'
 const dir = path.resolve(import.meta.dir, '..', '..', '..', '.github', 'workflows')
 
 interface Step {
+  id?: string
   uses?: string
   run?: string
   if?: string
@@ -107,7 +108,12 @@ describe('ci.yml', () => {
     const steps = doc.jobs['linux']!.steps!
     const at = steps.findIndex((s) => s.run === 'bun private/vx-dte-relay-worker/preview.ts')
     expect(steps[at]?.if).toBe("github.event_name == 'pull_request'")
-    expect(at).toBeLessThan(steps.findIndex((s) => s.run?.includes('bin.ts run ') === true))
+    const run = steps.find((s) => s.run?.includes('bin.ts run ') === true)!
+    expect(at).toBeLessThan(steps.indexOf(run))
+    expect(steps[at]?.id).toBe('relay')
+    expect(run.env).toEqual({
+      VX_DTE_RELAY: '${{ steps.relay.outputs.url || env.VX_DTE_RELAY }}',
+    })
   })
 
   // Nothing runs on a distributed run's orchestrator (owner, 2026-10-22):

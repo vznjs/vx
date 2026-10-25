@@ -3,8 +3,8 @@
 // (README), from that commit's code: such a PR's run must use it, since
 // its client and the deployed relay may speak different protocols. Any
 // other PR keeps the deployed relay (owner, 2026-10-25: only when the PR
-// affects the relay). CI runs it before the run; it writes VX_DTE_RELAY
-// to $GITHUB_ENV when the run is to use the Preview.
+// affects the relay). CI runs it before the run; it outputs `url` when
+// the run is to use the Preview.
 
 import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -17,10 +17,14 @@ export function watched(files: readonly string[]): boolean {
   return files.some((f) => WATCH.some((w) => (w.endsWith('/') ? f.startsWith(w) : f === w)))
 }
 
-/** The Preview's own URL in a Workers Builds check run's summary: a workers.dev host, not the dashboard's. */
-export function previewUrl(summary: string): string | undefined {
-  for (const m of summary.matchAll(/https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev\b/g)) return m[0]
-  return undefined
+/**
+ * The Preview's URL, `<preview>-<worker host>`: its check names the
+ * Preview only in its dashboard link (`/previews/<name>/builds/`), and
+ * the Preview is served beside `deployed`, the Worker's own URL.
+ */
+export function previewUrl(summary: string, deployed: string): string | undefined {
+  const name = /\/previews\/([a-z0-9-]+)\/builds\//.exec(summary)?.[1]
+  return name === undefined ? undefined : `https://${name}-${new URL(deployed).host}`
 }
 
 interface CheckRun {
@@ -44,11 +48,15 @@ const WAIT_MS = 5 * 60_000
 const POLL_MS = 5_000
 
 /**
- * The Preview URL the run is to use, or undefined to keep the deployed
- * relay. Waits for the Workers Builds check of `worker` on the head
+ * The Preview URL the run is to use, or undefined to keep `deployed`,
+ * the Worker's own URL. Waits for the Workers Builds check of `worker` on the head
  * commit; a failed or missing build fails, naming why.
  */
-export async function relayFor(worker: string, deps: PreviewDeps): Promise<string | undefined> {
+export async function relayFor(
+  worker: string,
+  deployed: string,
+  deps: PreviewDeps,
+): Promise<string | undefined> {
   if (!watched(await deps.changed())) return undefined
   const name = `Workers Builds: ${worker}`
   const end = deps.now() + WAIT_MS
@@ -58,8 +66,8 @@ export async function relayFor(worker: string, deps: PreviewDeps): Promise<strin
     )
     if (run?.status === 'completed') {
       if (run.conclusion !== 'success') throw new Error(`${name} ended ${run.conclusion}`)
-      const url = previewUrl(run.output?.summary ?? '')
-      if (url === undefined) throw new Error(`${name} names no Preview URL`)
+      const url = previewUrl(run.output?.summary ?? '', deployed)
+      if (url === undefined) throw new Error(`${name} names no Preview`)
       return url
     }
     if (deps.now() >= end)
@@ -80,15 +88,16 @@ async function git(...args: string[]): Promise<string> {
 if (import.meta.main) {
   const {
     GITHUB_REPOSITORY: repo,
-    GITHUB_ENV: out,
+    GITHUB_OUTPUT: out,
     GH_TOKEN: token,
     VX_PR_HEAD: head,
+    VX_DTE_RELAY: deployed,
   } = process.env
-  if (!repo || !out || !token || !head)
-    throw new Error('needs GITHUB_REPOSITORY, GITHUB_ENV, GH_TOKEN and VX_PR_HEAD')
+  if (!repo || !out || !token || !head || !deployed)
+    throw new Error('needs GITHUB_REPOSITORY, GITHUB_OUTPUT, GH_TOKEN, VX_PR_HEAD and VX_DTE_RELAY')
   const wrangler = await Bun.file(path.join(import.meta.dir, 'wrangler.jsonc')).text()
   const worker = /"name":\s*"([^"]+)"/.exec(wrangler)![1]!
-  const url = await relayFor(worker, {
+  const url = await relayFor(worker, deployed, {
     // The checkout is the PR's merge commit, one deep: its first parent is the base.
     async changed() {
       const base = (await git('rev-parse', 'HEAD^1')).trim()
@@ -107,7 +116,7 @@ if (import.meta.main) {
     now: () => Date.now(),
   })
   if (url !== undefined) {
-    await appendFile(out, `VX_DTE_RELAY=${url}\n`)
+    await appendFile(out, `url=${url}\n`)
     console.log(`relay: ${worker}'s Preview of this commit, ${url}`)
   } else console.log('relay: the deployed one (this PR changes no watched path)')
 }
