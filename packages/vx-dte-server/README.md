@@ -112,6 +112,10 @@ more), so it never needs a `--ulimit`. Measured on 4 cores (2026-10-24):
 10,000 sockets over 100 runs take 41 MB over an idle relay (about 4 KB
 each) and 6% of a core idle; with each worker sending one message a
 second (10,000 a second) 43% of a core, every message delivered.
+Sockets negotiate permessage-deflate, as Workers do (2026-10-25): it
+leaves memory at 10,000 sockets unchanged and costs about 2.5x the CPU
+per 4 KB message, measured on a bare Bun server, for frames a quarter
+smaller (each body is sealed, so only its base64 shrinks).
 
 ## API
 
