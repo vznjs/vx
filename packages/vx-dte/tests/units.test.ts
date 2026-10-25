@@ -2946,6 +2946,53 @@ it('fails a task whose key folds a file the run’s tree lacks, naming it', asyn
   }
 })
 
+// A worker checkout whose prepare rewrote a tracked file joined on HEAD's
+// tree, and a task keyed on the file saved bytes built from the rewrite
+// under the clean key: a stale hit on every machine (2026-10-25).
+it('refuses a worker whose checkout changed a tracked file', async () => {
+  const root = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: root })
+      .stdout.toString()
+      .trim()
+  git('init', '-q')
+  await writeFile(path.join(root, 'shared.txt'), 'committed\n')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  await writeFile(path.join(root, 'shared.txt'), 'rewritten\n')
+  const served = servedRelay()
+  try {
+    const o = new Orchestrator({
+      me: sealOrchestrator(
+        await join(served.url, R, 'orchestrator', null, undefined),
+        R,
+        secretProof('s'),
+      ),
+      root,
+      tree: git('rev-parse', 'HEAD^{tree}'),
+      nodes: () => undefined,
+      need: () => ({ cores: 1, memory: 0 }),
+      artifacts: fakeArtifacts().artifacts,
+      cacheFacts: async () => ({ refs: [], lent: {} }),
+      run: R,
+      keyOf: () => undefined,
+    })
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => fakeArtifacts().artifacts,
+    })
+    expect(await Promise.race([code, Bun.sleep(5000).then(() => 'joined')])).toBe(1)
+    await o.close()
+    await code
+  } finally {
+    await served.stop()
+  }
+})
+
 // `inputs.tasks` leaving the upstream out keys its bytes, which its
 // worker restores: such a key was refused (2026-10-25).
 it('takes a key that reads a dependency’s outputs, which its worker restores', async () => {

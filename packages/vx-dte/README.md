@@ -440,7 +440,9 @@ use your own instead.
   machine and the dependants' workers restore: the bytes this run built,
   never the entry it bypassed.
 - A worker whose tracked files differ from the orchestrator's (another
-  tree) is refused.
+  tree, or the same commit with a tracked file changed, such as by a
+  prepare step) is refused. Both sides read their tracked files as they
+  are, so the same change on both is the same tree.
 - A task whose key folds a file the run's commit lacks (untracked, or
   gitignored and named outright, or inside a submodule, whose files the
   commit holds only as a gitlink) fails, naming the file: no worker has it.
