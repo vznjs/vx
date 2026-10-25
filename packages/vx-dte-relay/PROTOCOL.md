@@ -45,8 +45,10 @@ One request is HTTP, a websocket upgrade of `GET
 - The host's join opens the session; a session has one host, and a second
   host's join is refused `409`. A peer's join of a session with no host is
   refused `410`.
-- A session lives while its host does. The host leaving, or its socket
-  closing, closes the session, and the relay keeps nothing of it.
+- A session lives while its host does. The host's `leave` is its final
+  call: it closes the session at once, and the relay keeps nothing of it.
+  A host whose socket dropped without it has the grace (§ Liveness) to
+  dial again; the session waits for it, and closes when the grace passes.
 
 ## The host's key
 
@@ -115,8 +117,8 @@ The relay itself sends, `"from": "relay"`:
 
 - to the host, `{ "type": "joined", "id", "info" }` for each peer, its
   `info` as its join said, then forgotten;
-- to the host, `{ "type": "left", "id" }` when a peer leaves or its
-  socket closes;
+- to the host, `{ "type": "left", "id" }` when a peer leaves, or its
+  grace passes with no socket;
 - to every peer, `{ "type": "closed" }` when the session closes. A peer on
   a socket is told and let go; one with no socket gets `4404` when it
   opens one.
@@ -133,8 +135,13 @@ socket a push failed on with no code.
 
 ## Liveness
 
-Liveness is the connection: a participant whose socket closes is gone at
-once, as if it left. The relay keeps no timer and counts no heartbeat.
+Only `leave` ends a participant at once. One whose socket closed
+without it, the host too, may dial again by its `id` for a grace, 10 s
+on `@vzn/vx-dte-relay`, and is gone when the grace passes with no socket:
+a peer as if it left, the host closing its session. The relay keeps no
+timer and counts no heartbeat: it finds a grace passed as the session is
+next used. A client whose socket drops dials again, and says its `leave`
+again on a new socket if the first dropped under it.
 `heartbeatMs` is how often participants should hear from each other: a
 peer quiet on a socket that never closed is its peers' to lose. The
 clients probe a quiet peer with an empty numbered send, which it
@@ -180,6 +187,7 @@ Only what routing needs, and no longer:
 - A peer's `info` is held until the host is told it joined.
 - A message is pushed or dropped, never held; a notice waits in memory.
 - A closed session is gone at once; while open, each participant's role
-  is kept. A relay restart loses a session whose host's socket it did not
-  keep.
+  is kept, and when a socket dropped. A relay restart keeps a session whose
+  host's socket, or a peer's naming that host, it kept; one whose host's
+  socket it did not keep waits the grace from the restart.
 - It logs nothing. It still sees each message's size, time and recipient.

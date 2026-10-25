@@ -22,9 +22,14 @@ export interface RelayOptions {
    */
   heartbeatMs?: number
   /**
+   * How long a participant whose socket dropped, without `leave`, may dial
+   * again by its `id` before it is gone (default 10 000).
+   */
+  graceMs?: number
+  /**
    * The sockets its host kept across a restart, each with what `attach`
-   * gave it to keep: the sessions are rebuilt from them, and a session whose
-   * host's socket is not among them is over.
+   * gave it to keep: the sessions are rebuilt from them, and a session
+   * none of whose sockets names its host is over.
    */
   sockets?: Iterable<readonly [Kept, RelaySocket]> | undefined
   /**
@@ -67,8 +72,10 @@ export interface Kept {
   key: string
   id: string
   role: 'host' | 'peer'
-  /** The host's: its session's `cert`. */
+  /** Its session's `cert`: a session rebuilt from peers alone still proves its host. */
   cert?: string
+  /** A peer's: its host's `id`, so a restart keeps a session whose host is dialing again. */
+  host?: string
 }
 
 /** A participant's websocket, as its host holds it. */
@@ -107,7 +114,7 @@ export interface Relay {
    * relay has closed it, saying why.
    */
   attach(key: string, id: string, socket: RelaySocket): Kept | false
-  /** The participant's socket closed: it is gone, and its peers are told. */
+  /** The participant's socket closed: gone, unless it dials again within `graceMs`. */
   detach(key: string, id: string, socket: RelaySocket): void
   /**
    * One frame a participant sent down `socket`, which becomes its socket;
@@ -129,6 +136,8 @@ interface Participant {
   /** The relay's own notices it could not push yet. */
   queue: Message[]
   socket?: RelaySocket | undefined
+  /** When its socket dropped with no `leave`: it is gone `graceMs` on. */
+  droppedAt?: number
   /** A participant that joined on its socket: what that socket says first. */
   hello?: string
 }
@@ -164,6 +173,7 @@ const errorBody = (err: HttpError | TokenError): object => ({ error: err.message
 
 export function createRelay(opts: RelayOptions): Relay {
   const heartbeatMs = opts.heartbeatMs ?? 5_000
+  const graceMs = opts.graceMs ?? 10_000
   const sessions = new Map<string, Session>()
 
   /**
@@ -193,6 +203,7 @@ export function createRelay(opts: RelayOptions): Relay {
   const unplug = (p: Participant): void => {
     const s = p.socket
     p.socket = undefined
+    p.droppedAt = Date.now()
     try {
       if (s !== undefined) closeSocket(s)
     } catch {}
@@ -201,6 +212,7 @@ export function createRelay(opts: RelayOptions): Relay {
   /** `socket` reaches the participant: what queued for it goes down it. */
   const plug = (session: Session, p: Participant, socket: RelaySocket): void => {
     p.socket = socket
+    delete p.droppedAt
     if (p.hello !== undefined) {
       try {
         socket.send(p.hello)
@@ -263,6 +275,32 @@ export function createRelay(opts: RelayOptions): Relay {
     }
   }
 
+  /**
+   * Its participants whose sockets dropped `graceMs` ago, and never came
+   * back, are gone: checked as the session is next used, so the relay
+   * keeps no timer. A peer's silence is lost by its host sooner (vx-dte).
+   */
+  const lapse = (session: Session): void => {
+    const now = Date.now()
+    for (const p of [...session.byId.values()]) {
+      if (session.closed) return
+      if (p.droppedAt !== undefined && now - p.droppedAt >= graceMs) drop(session, p)
+    }
+  }
+
+  let swept = 0
+  /**
+   * Every session's lapsed participants, at most once a grace: a session
+   * all of whose sockets dropped is used by no one again, and a relay
+   * that keeps its sessions in memory alone (`serveRelay`) held it.
+   */
+  const sweep = (): void => {
+    const now = Date.now()
+    if (now - swept < graceMs) return
+    swept = now
+    for (const session of [...sessions.values()]) lapse(session)
+  }
+
   /** The host takes a peer it did not admit off the session. */
   const removePeer = (session: Session, p: Participant, peer: unknown): void => {
     const a = typeof peer === 'string' ? session.byId.get(peer) : undefined
@@ -287,6 +325,7 @@ export function createRelay(opts: RelayOptions): Relay {
   }
 
   if (opts.sockets !== undefined) restore(opts.sockets, sessions)
+  for (const session of sessions.values()) lapse(session)
 
   /** The host's request is signed by the key it joined with, at most once. */
   const prove = async (
@@ -389,6 +428,7 @@ export function createRelay(opts: RelayOptions): Relay {
     protocol: string | undefined,
     version: number | undefined,
   ) => {
+    sweep()
     const url = new URL(req.url)
     const m = /^\/sessions\/([^/]+)\/socket$/.exec(url.pathname)
     if (m === null) throw new HttpError(404, 'no such route')
@@ -411,6 +451,7 @@ export function createRelay(opts: RelayOptions): Relay {
       return opts.upgrade(key, p.id, req, protocol)
     }
     const session = sessions.get(key)
+    if (session !== undefined) lapse(session)
     const id = url.searchParams.get('id') ?? ''
     // One the relay lost or let go learns it from the close code (GONE)
     // `attach` closes the socket with.
@@ -442,6 +483,8 @@ export function createRelay(opts: RelayOptions): Relay {
     if (body['role'] !== 'host' && body['role'] !== 'peer') {
       throw new HttpError(400, 'role is host or peer')
     }
+    const found = sessions.get(key)
+    if (found !== undefined) lapse(found)
     const session = sessions.get(key)
     if (body['role'] === 'peer') {
       // Its host starts it: a peer finds it live, or leaves.
@@ -507,7 +550,8 @@ export function createRelay(opts: RelayOptions): Relay {
         key,
         id,
         role: p.role,
-        ...(p.role === 'host' && session.cert !== undefined ? { cert: session.cert } : {}),
+        ...(session.cert !== undefined ? { cert: session.cert } : {}),
+        ...(p.role === 'peer' && session.host !== undefined ? { host: session.host.id } : {}),
       }
     },
     detach(key, id, socket) {
@@ -515,11 +559,13 @@ export function createRelay(opts: RelayOptions): Relay {
       const p = session?.byId.get(id)
       if (p === undefined || p.socket !== socket) return
       p.socket = undefined
-      // Liveness is the connection (owner, 2026-10-23): its socket closed,
-      // it is gone, and the host's peers go with it at once. A
-      // peer quiet on a socket that never closed (no TCP end, no close) is
-      // its peers' to lose (vx-dte probes it): the relay keeps no timer.
-      drop(session!, p)
+      // Only `leave` ends a participant at once (owner, 2026-10-25): one
+      // whose socket dropped dials again within `graceMs`, and its session,
+      // a host's too, waits. Main 8d0619f's host socket ended 1006 and its
+      // redial 350 ms on found the session closed (2026-10-24). A peer
+      // quiet on a socket that never closed is its peers' to lose (vx-dte
+      // probes it).
+      p.droppedAt = Date.now()
     },
     frame(key, id, text, socket) {
       let n: unknown = null
@@ -545,6 +591,8 @@ export function createRelay(opts: RelayOptions): Relay {
         if (typeof body !== 'object' || body === null || Array.isArray(body))
           throw new HttpError(400, 'frame is not a JSON object')
         n = body.n ?? null
+        const found = live(key)
+        lapse(found)
         const session = live(key)
         const p = participant(session, id)
         // It spoke down this socket, so this socket reaches it: one its
@@ -589,10 +637,11 @@ const joined = (a: Participant): Message => {
 }
 
 /**
- * Sessions as their sockets kept them. A session without its host's
- * socket is over (liveness is the connection), as is a socket kept by an
- * older relay: each is closed as gone. Of a participant's several, the
- * last is its socket.
+ * Sessions as their sockets kept them. A session whose host's socket was
+ * not kept waits for its host's redial from now (`graceMs`), if a peer's
+ * socket names it; one none names is over, as is a socket kept by an older
+ * relay: each is closed as gone. Of a participant's several, the last is
+ * its socket.
  */
 function restore(
   sockets: Iterable<readonly [Kept, RelaySocket]>,
@@ -600,13 +649,29 @@ function restore(
 ): void {
   const all = [...sockets]
   for (const [k] of all) {
-    if (k?.role !== 'host' || sessions.has(k.key)) continue
-    sessions.set(k.key, {
-      key: k.key,
-      closed: false,
-      byId: new Map(),
-      ...(k.cert === undefined ? {} : { cert: k.cert }),
-    })
+    const host = k?.role === 'host' ? k.id : k?.host
+    if (host === undefined) continue
+    let session = sessions.get(k.key)
+    if (session === undefined) {
+      session = {
+        key: k.key,
+        closed: false,
+        byId: new Map(),
+        ...(k.cert === undefined ? {} : { cert: k.cert }),
+      }
+      sessions.set(k.key, session)
+    }
+    if (session.host === undefined) {
+      const p: Participant = {
+        id: host,
+        role: 'host',
+        info: null,
+        queue: [],
+        droppedAt: Date.now(),
+      }
+      session.host = p
+      session.byId.set(host, p)
+    }
   }
   for (const [k, socket] of all) {
     const session = k?.role === undefined ? undefined : sessions.get(k.key)
@@ -623,8 +688,8 @@ function restore(
       queue: [],
     }
     p.socket = socket
+    delete p.droppedAt
     session.byId.set(k.id, p)
-    if (k.role === 'host') session.host = p
   }
 }
 
