@@ -132,11 +132,8 @@ over storage of your own (`src/index.ts`):
   reads, the scope it may write, and whether a ref is one a rule trusts)
   or throws; `maxUploadBytes` caps an upload (default 100 MB) and `now`
   is the clock, for tests.
-- `parseTrust(json)` reads `TRUST` into `TrustRule`s, and `oidcAuth(options)`
-  is the `Authorize` that checks a request's CI token against them. Its
-  `OidcOptions` are `trust` (the rules), `audience` (the `aud`; default
-  the origin a request reached), `fetchJson` (reads an issuer's keys) and
-  `now` (the clock, for tests).
+- `TRUST` and the CI token check are [`@vzn/vx-devtools`](https://github.com/vznjs/vx/tree/main/packages/vx-devtools)'s,
+  the check every vx server shares.
 - A `Store` is the database the server asks: `init()`, then reads and
   inserts of artifact rows (`ArtifactRow`, `{ key, scope, size }`; a
   `NewArtifact` adds `repo` and `created_at`) and of `Timing`s

@@ -3,7 +3,7 @@
 // plan (README.md § Workers' free plan).
 
 import { evict, retentionFrom } from './evict.js'
-import { oidcAuth, parseTrust } from './oidc.js'
+import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
 import { errorJson, Refusal } from './protocol.js'
 import { createCacheServer, MAX_BATCH_LINE } from './server.js'
 import { type Blobs, type Db, sqliteStore } from './store.js'

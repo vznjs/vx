@@ -6,7 +6,7 @@
 import { Database } from 'bun:sqlite'
 import { parseArgs } from 'node:util'
 import { evict, retentionFrom } from './evict.js'
-import { oidcAuth, parseTrust } from './oidc.js'
+import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
 import { Refusal } from './protocol.js'
 import { createCacheServer, DEFAULT_MAX_UPLOAD_BYTES, MAX_BATCH_LINE } from './server.js'
 import { postgresStore } from './postgres.js'

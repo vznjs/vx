@@ -1,0 +1,33 @@
+== class Refusal (src/oidc.ts)
+export class Refusal extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  )
+}
+== const TRUSTED (src/oidc.ts)
+export const TRUSTED = 'trusted'
+== function oidcAuth (src/oidc.ts)
+export function oidcAuth(opts: OidcOptions): Authorize
+== function parseTrust (src/oidc.ts)
+export function parseTrust(json: string): TrustRule[]
+== type Access (src/oidc.ts)
+export interface Access {
+  readonly repo: string
+  readonly write?: string
+  readonly trustedRef: (ref: string) => boolean
+}
+== type Authorize (src/oidc.ts)
+export type Authorize = (req: Request) => Promise<Access>
+== type OidcOptions (src/oidc.ts)
+export interface OidcOptions {
+  readonly trust: readonly TrustRule[]
+  readonly audience?: string
+  readonly fetchJson?: (url: string) => Promise<unknown>
+  readonly now?: () => number
+}
+== type TrustRule (src/oidc.ts)
+export interface TrustRule {
+  readonly iss: string
+  readonly [claim: string]: string | readonly string[]
+}

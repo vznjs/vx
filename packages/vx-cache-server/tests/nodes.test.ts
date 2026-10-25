@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { s3Blobs } from '../src/bun.js'
 import { evict } from '../src/evict.js'
-import { oidcAuth } from '../src/oidc.js'
+import { oidcAuth } from '@vzn/vx-devtools'
 import { postgresStore } from '../src/postgres.js'
 import { createCacheServer } from '../src/server.js'
 import { conformance } from './conformance.js'
