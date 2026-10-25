@@ -75,8 +75,8 @@ On Workers, each setting is a var in `wrangler.jsonc`.
 ## What it keeps
 
 One row per issuer, repository id, scope (the branch) and task
-definition hash. The first three are stored as their SHA-256, with no
-secret key, so the database names no repository or branch. A task's definition is its command and `env.define`: a
+definition hash. The first three are stored as the first 128 bits of
+their SHA-256, in hex, with no secret key, so the database names no repository or branch. A task's definition is its command and `env.define`: a
 task whose command changed starts a new row, and editing its inputs or
 deps keeps the old one. Each report folds into its row in one statement,
 so two jobs reporting at once lose nothing:
@@ -95,12 +95,17 @@ No run's log, list of runs or raw sample is kept. A row not reported for
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
-import { vxHistory } from '@vzn/vx-history'
+import { vxHistory } from '/path/to/vx/packages/vx-history/src/index.ts'
 
 export default defineWorkspace({
   plugins: [vxHistory({ server: 'https://history.example.com' })], // or VX_HISTORY_URL
 })
 ```
+
+<Aside title="Not on npm yet">
+  Until `@vzn/vx-history` is on npm, import it from a checkout of the vx
+  repository, as above.
+</Aside>
 
 Each run asks the server for its tasks' rows, its branch's first, then
 the default branch's. It starts on its local history and re-ranks the

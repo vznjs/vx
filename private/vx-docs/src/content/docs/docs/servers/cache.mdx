@@ -101,8 +101,8 @@ An artifact's object name in the bucket is:
 <hash(issuer)>/<hash(repository id)>/<hash(scope)>/<hash>
 ```
 
-Each of the first three parts is its SHA-256 in hex, with no secret
-key, so the bucket names no repository or branch and a ref's slashes stay
+Each of the first three parts is the first 128 bits of its SHA-256, in
+hex (32 characters), with no secret key, so the bucket names no repository or branch and a ref's slashes stay
 inside one segment. One repository never
 reads another's artifacts. An artifact is never rewritten: a second
 upload of a key that is already held keeps the first bytes.
