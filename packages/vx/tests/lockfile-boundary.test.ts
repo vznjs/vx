@@ -248,7 +248,7 @@ describe('writeLockfile — the file is committed, so its shape is a contract', 
   // 2026-10-25: a key hashes a task's config JSON, so moving `cache` above
   // `exec`, or listing a define in another order, missed every key.
   it("sorts each task's keys, keeping the tasks in their order", async () => {
-    const write = async (tasks: ProjectConfig['tasks']) => {
+    const write = async (tasks: NonNullable<ProjectConfig['tasks']>) => {
       await writeLockfile(root, { version: LOCKFILE_VERSION, projects: { pkg: entry({ tasks }) } })
       return Bun.file(lockfilePath(root)).text()
     }
