@@ -348,7 +348,9 @@ export class LayeredCache implements CacheLayer {
     if (localHit) {
       // A prefetch this run may have materialized this entry FROM
       // remote; the local row exists now, but the work was saved by
-      // the remote cache, so the provenance stays 'remote'.
+      // the remote cache, so the provenance stays 'remote'. Its row lands
+      // a tick before the pull settles and says so: wait for that.
+      await this.inflight.get(hash)
       return this.asRemote(hash, localHit)
     }
 
