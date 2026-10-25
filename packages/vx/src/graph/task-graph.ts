@@ -1020,7 +1020,8 @@ function witnessed(a: string, b: string): boolean {
  * is checked whole after.
  */
 function unified(sa: readonly string[], sb: readonly string[]): string | null {
-  if ([...sa, ...sb].some((x) => /[{}()!+@]/.test(x))) return null
+  // A `!` opening a class is the class's; anywhere else, an extglob.
+  if ([...sa, ...sb].some((x) => /[{}()!+@]/.test(x.replaceAll('[!', '[')))) return null
   const memo = new Map<string, string | null>()
   const join = (name: string, rest: string): string => (rest === '' ? name : `${name}/${rest}`)
   const walk = (i: number, j: number): string | null => {
@@ -1030,12 +1031,22 @@ function unified(sa: readonly string[], sb: readonly string[]): string | null {
     let out: string | null = null
     if (i === sa.length && j === sb.length) out = ''
     else if (sa[i] === '**' || sb[j] === '**') {
+      // A last `**` takes one segment at least: `out/**` is not `out`.
+      const lastA = sa[i] === '**' && i === sa.length - 1
+      const lastB = sb[j] === '**' && j === sb.length - 1
       const [wide, x, y, other] = sa[i] === '**' ? [sa, i, j, sb] : [sb, j, i, sa]
-      const skip = wide === sa ? walk(i + 1, j) : walk(i, j + 1)
-      out = skip ?? (sa[i] === '**' && sb[j] === '**' ? walk(i, j + 1) : null)
+      if (lastA && lastB) out = 'x'
+      if (out === null && sa[i] === '**' && !lastA) out = walk(i + 1, j)
+      if (out === null && sb[j] === '**' && !lastB) out = walk(i, j + 1)
       if (out === null && y < other.length && other[y] !== '**') {
         const name = segmentMeet('*', other[y]!)
-        const rest = name === null ? null : wide === sa ? walk(x, y + 1) : walk(y + 1, x)
+        // Having taken one, it may take more or stop.
+        const rest =
+          name === null
+            ? null
+            : wide === sa
+              ? (walk(x, y + 1) ?? walk(x + 1, y + 1))
+              : (walk(y + 1, x) ?? walk(y + 1, x + 1))
         if (name !== null && rest !== null) out = join(name, rest)
       }
     } else if (i < sa.length && j < sb.length) {
@@ -1055,7 +1066,12 @@ function segmentMeet(x: string, y: string): string | null {
     seg
       .replace(/\*+/g, star)
       .replace(/\?/g, 'x')
-      .replace(/\[[!^]?(.)[^\]]*\]/g, '$1')
+      // A negated class takes a name it does not list: `[!a]` is not `a`.
+      .replace(/\[([!^]?)(.)([^\]]*)\]/g, (_, not: string, first: string, more: string) =>
+        not === ''
+          ? first
+          : (['x', 'y', 'z', '0', '_'].find((c) => !`${first}${more}`.includes(c)) ?? first),
+      )
   const head = (seg: string): string => {
     const at = seg.search(GLOB_WILDCARDS)
     return at === -1 ? seg : seg.slice(0, at)
@@ -1074,6 +1090,11 @@ function segmentMeet(x: string, y: string): string | null {
     fill(y, ''),
     head(x) + tail(y),
     head(y) + tail(x),
+    // Each name a class lists, the other's class filled: `[ab]` beside `[!a]` meets at `b`.
+    ...[x, y].flatMap((seg) => {
+      const listed = /\[([^!^\]][^\]]*)\]/.exec(seg)?.[1] ?? ''
+      return listed.split('').map((ch) => fill(seg.replace(/\[[^!^\]][^\]]*\]/, ch), 'x'))
+    }),
   ])
     if (c !== '' && gx.match(c) && gy.match(c)) return c
   return null

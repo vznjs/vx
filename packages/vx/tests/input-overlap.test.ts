@@ -98,7 +98,8 @@ describe('vx lock refuses inputs that read another task’s outputs', () => {
   ]
   for (const [what, inputs, outputs] of refused) {
     it(`refuses ${what}: ${inputs.join()} against ${outputs.join()}`, () => {
-      const graph = app({ build: task(['src/**'], outputs), test: task(inputs, ['out/**']) })
+      // A literal file: `out/**` meets `**/dist/**` at `out/dist/x`, a refusal of its own.
+      const graph = app({ build: task(['src/**'], outputs), test: task(inputs, ['report.txt']) })
       expect(refusal(graph)).toMatch(/^app#test reads .* inputs\.tasks, so its key hashes/)
     })
   }
