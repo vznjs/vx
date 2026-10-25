@@ -7,7 +7,7 @@ import { type ArtifactRow, timingOf, type Store, TRUSTED } from './store.js'
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS artifacts (repo TEXT NOT NULL, key TEXT NOT NULL, scope TEXT NOT NULL, size BIGINT NOT NULL, created_at BIGINT NOT NULL, PRIMARY KEY (repo, key, scope))`,
-  `CREATE TABLE IF NOT EXISTS timings (repo TEXT NOT NULL, hash TEXT NOT NULL, scope TEXT NOT NULL, created_at BIGINT NOT NULL, duration_ms BIGINT NOT NULL, cores DOUBLE PRECISION, rss_bytes BIGINT, PRIMARY KEY (repo, hash, scope, created_at))`,
+  `CREATE TABLE IF NOT EXISTS timings (repo TEXT NOT NULL, hash TEXT NOT NULL, scope TEXT NOT NULL, created_at BIGINT NOT NULL, duration_ms BIGINT NOT NULL, cores DOUBLE PRECISION, rss_bytes BIGINT, PRIMARY KEY (repo, hash, scope, created_at, duration_ms))`,
 ]
 
 /** Any constant: nodes making the tables at once take turns on it. */

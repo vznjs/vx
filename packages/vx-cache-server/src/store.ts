@@ -115,7 +115,7 @@ export function firstScopes(
 // instead, which costs reads (5 000 000 a day).
 const SQLITE_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS artifacts (repo TEXT NOT NULL, key TEXT NOT NULL, scope TEXT NOT NULL, size INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (repo, key, scope)) WITHOUT ROWID`,
-  `CREATE TABLE IF NOT EXISTS timings (repo TEXT NOT NULL, hash TEXT NOT NULL, scope TEXT NOT NULL, created_at INTEGER NOT NULL, duration_ms INTEGER NOT NULL, cores REAL, rss_bytes INTEGER, PRIMARY KEY (repo, hash, scope, created_at)) WITHOUT ROWID`,
+  `CREATE TABLE IF NOT EXISTS timings (repo TEXT NOT NULL, hash TEXT NOT NULL, scope TEXT NOT NULL, created_at INTEGER NOT NULL, duration_ms INTEGER NOT NULL, cores REAL, rss_bytes INTEGER, PRIMARY KEY (repo, hash, scope, created_at, duration_ms)) WITHOUT ROWID`,
 ]
 
 type TimingRow = {

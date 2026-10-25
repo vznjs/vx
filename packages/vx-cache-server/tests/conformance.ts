@@ -287,6 +287,29 @@ export function conformance(name: string, target: Target): void {
       expect([ms(both[h]), both['none']]).toEqual([[30, 20, 10, 99], []])
     })
 
+    // One line carries a task's timings from two runs, and two writes can
+    // share a millisecond: keyed by the time alone, all but one were dropped
+    // and a run read half its history (2026-10-25).
+    it("keeps each of a task's timings written in one millisecond", async () => {
+      const h = key()
+      const res = await json(
+        '/v1/timings/upload',
+        {
+          timings: [
+            { hash: h, durationMs: 100 },
+            { hash: h, durationMs: 200 },
+          ],
+        },
+        write,
+      )
+      expect(res.status).toBe(204)
+      const got = await json('/v1/timings/query', { hashes: [h] })
+      const ms = (((await got.json()) as any).timings[h] as { durationMs: number }[]).map(
+        (t) => t.durationMs,
+      )
+      expect(ms.sort((x, y) => x - y)).toEqual([100, 200])
+    })
+
     it('keeps the timings an upload carries, also when it answers before the bytes', async () => {
       const [a, h1, h2] = [key(), key(), key()]
       const res = await upload([[a, 'x']], write, [{ hash: h1, durationMs: 7 }])
