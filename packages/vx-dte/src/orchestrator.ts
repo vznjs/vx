@@ -309,8 +309,28 @@ export class Orchestrator {
     if (req.inputs !== undefined && req.inputs.files.length > 0) {
       this.inTree ??= listTree(this.o.root, this.o.tree)
       const tree = await this.inTree
+      // A dependency's output is restored there before the task runs: a
+      // key that reads an upstream's bytes (`inputs.tasks` leaving it out)
+      // was refused (2026-10-25).
+      const nodes = this.o.nodes()
+      const restored = [...upstream(nodes, req.taskId)].flatMap((id) => {
+        const n = nodes?.get(id)
+        const outs = n?.config.cache?.outputs
+        return n === undefined || outs === undefined
+          ? []
+          : [
+              names(path.relative(this.o.root, n.projectDir), {
+                files: outs.files,
+                workspaceFiles: outs.workspaceFiles ?? [],
+              }),
+            ]
+      })
       const stray =
-        tree === undefined ? undefined : req.inputs.files.find((f) => !tree.files.has(f.path))
+        tree === undefined
+          ? undefined
+          : req.inputs.files.find(
+              (f) => !tree.files.has(f.path) && !restored.some((made) => made(f.path)),
+            )
       if (stray !== undefined) {
         // A committed submodule's files are not the tree's: its gitlink is.
         const link = tree?.links.find((l) => stray.path.startsWith(`${l}/`))

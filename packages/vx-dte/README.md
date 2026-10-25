@@ -441,6 +441,7 @@ use your own instead.
 - A task whose key folds a file the run's commit lacks (untracked, or
   gitignored and named outright, or inside a submodule, whose files the
   commit holds only as a gitlink) fails, naming the file: no worker has it.
+  A dependency's declared output is not one: its worker restores it first.
 - A task's `exec.timeout` counts from its start on its worker: the wait
   for a worker still booting is not its run (the executor declares
   `timeouts`).

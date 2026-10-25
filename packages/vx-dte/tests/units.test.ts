@@ -2946,6 +2946,67 @@ it('fails a task whose key folds a file the run’s tree lacks, naming it', asyn
   }
 })
 
+// `inputs.tasks` leaving the upstream out keys its bytes, which its
+// worker restores: such a key was refused (2026-10-25).
+it('takes a key that reads a dependency’s outputs, which its worker restores', async () => {
+  const root = await tmp()
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', ...a], { cwd: root })
+      .stdout.toString()
+      .trim()
+  git('init', '-q')
+  await mkdir(path.join(root, 'a/dist'), { recursive: true })
+  await writeFile(path.join(root, 'a/x'), 'x\n')
+  git('add', '-A')
+  git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qm', 'i')
+  await writeFile(path.join(root, 'a/dist/out'), 'built\n')
+  await writeFile(path.join(root, 'a/z'), 'z\n')
+  const node = (id: string, deps: string[], outputs?: string[]) =>
+    [
+      id,
+      {
+        id,
+        deps,
+        projectDir: path.join(root, 'a'),
+        config: outputs === undefined ? {} : { cache: { outputs: { files: outputs } } },
+      } as unknown as TaskNode,
+    ] as const
+  const nodes = new Map([node('a#gen', [], ['dist/**']), node('a#use', ['a#gen'])])
+  const served = servedRelay()
+  try {
+    const o = new Orchestrator({
+      me: await join(served.url, R, 'orchestrator', null, undefined),
+      root,
+      tree: git('rev-parse', 'HEAD^{tree}'),
+      nodes: () => nodes,
+      need: () => ({ cores: 1, memory: 0 }),
+      artifacts: fakeArtifacts().artifacts,
+      cacheFacts: async () => ({ refs: [], lent: {} }),
+      run: R,
+      keyOf: () => undefined,
+    })
+    const req = (...paths: string[]) =>
+      ({
+        taskId: 'a#use',
+        inputs: { files: paths.map((p) => ({ path: p, digest: 'd' })) },
+      }) as unknown as ExecuteRequest
+    const queued = await Promise.race([
+      o.execute(req('a/x', 'a/dist/out')).then(
+        () => 'ran',
+        (err: Error) => err.message,
+      ),
+      Bun.sleep(200).then(() => 'queued'),
+    ])
+    expect(queued).toBe('queued')
+    await expect(o.execute(req('a/x', 'a/z'))).rejects.toThrow(
+      'a#use keys a/z, which is not in the commit',
+    )
+    await o.close()
+  } finally {
+    await served.stop()
+  }
+})
+
 it('names the submodule of a keyed file the run’s tree holds only as a gitlink', async () => {
   const root = await tmp()
   const git = (cwd: string, ...a: string[]) =>
