@@ -1860,8 +1860,8 @@ create a draft release for it, and dispatch `release.yml` (`tag`) and
 A GitHub release publishes everything: `release.yml` builds the four
 binaries, proves the darwin ones on macOS (re-signed ad hoc only where
 macOS refuses one) and attaches them; `npm.yml`
-builds the twelve npm packages (`@vzn/vx`, one per platform, and the
-seven plugin packages) and publishes them with **npm trusted
+builds the fifteen npm packages (`@vzn/vx`, one per platform, and every
+other public package: the plugins, the servers, `@vzn/vx-devtools`) and publishes them with **npm trusted
 publishing** — the job's OIDC token
 is exchanged for a short-lived credential and provenance is attached,
 so no long-lived npm token exists anywhere. Both publish loops skip a

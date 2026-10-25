@@ -38,6 +38,10 @@ machine. A plugin that declines a task hands it back to this machine.
 | [`@vzn/vx-history`](../../plugins/vx-history/)  | `schedule`, `admit`, `commands`            |
 | [`@vzn/vx-otel`](../../plugins/vx-otel/)              | `telemetry` ([below](#opentelemetry))      |
 | [`@vzn/vx-ci`](../../plugins/vx-ci/)            | `config`, `telemetry`, `commands` ([GitHub Actions](../ci/#github-actions), [GitLab CI](../ci/#gitlab-ci)) |
+| [`@vzn/vx-cache`](../../plugins/vx-cache/) | `cache`, on a [`@vzn/vx-cache-server`](../../plugins/vx-cache-server/) |
+| [`@vzn/vx-cache-server`](../../plugins/vx-cache-server/) | none: the cache server you host |
+| [`@vzn/vx-history-server`](../../plugins/vx-history-server/) | none: the timings server `vxHistory()` reads |
+| [`@vzn/vx-devtools`](../../plugins/vx-devtools/) | none: the CI token check the servers share |
 
 One plugin can fill several: `@vzn/vx-history` fills three at once.
 

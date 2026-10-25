@@ -2,10 +2,10 @@
   "name": "@vzn/vx-cache",
   "version": "0.0.0",
   "license": "MIT",
-  "private": true,
   "description": "vxCache(): a vx cache plugin for a server that speaks the vx-cache protocol, such as @vzn/vx-cache-server.",
   "keywords": [
     "vx",
+    "monorepo",
     "vx-plugin",
     "remote-cache"
   ],

@@ -2,10 +2,10 @@
   "name": "@vzn/vx-cache-server",
   "version": "0.0.0",
   "license": "MIT",
-  "private": true,
   "description": "A remote cache server for vx that you host: on Bun or Docker with an S3-compatible bucket, or on Cloudflare Workers with R2.",
   "keywords": [
     "vx",
+    "monorepo",
     "remote-cache",
     "cache-server"
   ],

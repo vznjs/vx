@@ -232,19 +232,33 @@ interface WorkspaceManifest {
   name: string
   private?: boolean
   files?: string[]
+  dependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   scripts?: Record<string, string>
   [field: string]: unknown
 }
 
+/** `deps` with every `@vzn/*` range set to `range`; absent stays absent. */
+function atRelease(
+  deps: Record<string, string> | undefined,
+  range: string,
+): Record<string, string> | undefined {
+  if (!deps) return undefined
+  return Object.fromEntries(
+    Object.entries(deps).map(([name, r]) => [name, name.startsWith('@vzn/') ? range : r]),
+  )
+}
+
 /**
  * Every public workspace package other than `@vzn/vx` — the plugins — as a
  * publishable directory under `<outDir>/plugins/<dir>`. They ship as the
  * TypeScript source Bun runs (no build step), at the release's version, with
- * `@vzn/vx` peer-pinned to the same minor: one release train, so a plugin
- * never meets a core it was not tested against. Discovered, not listed, so a
- * new package cannot be left off the publish.
+ * every `@vzn/*` it declares pinned to that release: one release train, so
+ * a package never meets a core or sibling it was not tested against. A
+ * server or library that never imports core declares no `@vzn/vx` peer and
+ * gets none. Discovered, not listed, so a new package cannot be left off
+ * the publish.
  */
 export async function emitPluginPackages(args: {
   version: string
@@ -277,7 +291,8 @@ export async function emitPluginPackages(args: {
     await writeJson(join(dir, 'package.json'), {
       ...published,
       version,
-      peerDependencies: { ...pkg.peerDependencies, '@vzn/vx': `^${version}` },
+      dependencies: atRelease(pkg.dependencies, version),
+      peerDependencies: atRelease(pkg.peerDependencies, `^${version}`),
       files: [...files, 'LICENSE'],
       repository: { ...REPOSITORY, directory: `packages/${entry.name}` },
       homepage: `${REPO_URL}/tree/main/packages/${entry.name}#readme`,

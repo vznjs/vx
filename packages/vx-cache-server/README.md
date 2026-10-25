@@ -11,7 +11,7 @@ answer alike:
 - **Docker**, the same server as an image (`Dockerfile`).
 - **Cloudflare Workers**, with R2.
 
-It is not on npm yet. `vxCache()`
+`vxCache()`
 ([`@vzn/vx-cache`](https://github.com/vznjs/vx/tree/main/packages/vx-cache))
 points `vx` at it.
 

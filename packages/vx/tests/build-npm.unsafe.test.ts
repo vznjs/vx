@@ -119,14 +119,31 @@ describe('the published plugin packages', async () => {
     )
   })
 
-  it('carry the release version, a peer on the same @vzn/vx and a provenance-ready repository', async () => {
+  // A server declares no @vzn/vx peer: its users install it alone (#4441).
+  const vzn = (m: Record<string, unknown>): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const [kind, field] of [
+      ['dep', 'dependencies'],
+      ['peer', 'peerDependencies'],
+    ] as const) {
+      for (const [dep, r] of Object.entries((m[field] ?? {}) as Record<string, string>))
+        if (dep.startsWith('@vzn/')) out[`${kind} ${dep}`] = `${kind} ${r}`
+    }
+    return out
+  }
+  const source = (dir: string): Record<string, unknown> =>
+    JSON.parse(
+      readFileSync(path.join(REPO, 'packages', path.basename(dir), 'package.json'), 'utf8'),
+    )
+
+  it('carry the release version, every @vzn/* pinned to it and a provenance-ready repository', async () => {
     const shapes: unknown[] = []
     for (const { name, dir } of emitted) {
       const m = (await Bun.file(path.join(dir, 'package.json')).json()) as Record<string, unknown>
       shapes.push({
         name,
         version: m.version,
-        peer: (m.peerDependencies as Record<string, string>)['@vzn/vx'],
+        vzn: vzn(m),
         repository: m.repository,
         dev: m.devDependencies,
       })
@@ -135,7 +152,12 @@ describe('the published plugin packages', async () => {
       emitted.map(({ name, dir }) => ({
         name,
         version: '9.9.9',
-        peer: '^9.9.9',
+        vzn: Object.fromEntries(
+          Object.entries(vzn(source(dir))).map(([dep, r]) => [
+            dep,
+            r.startsWith('peer ') ? 'peer ^9.9.9' : 'dep 9.9.9',
+          ]),
+        ),
         repository: {
           type: 'git',
           url: 'git+https://github.com/vznjs/vx.git',
@@ -144,6 +166,13 @@ describe('the published plugin packages', async () => {
         dev: undefined,
       })),
     )
+    // A floor, so a source that declares nothing cannot agree with it.
+    const shapeOf = (n: string) =>
+      (shapes as Array<{ name: string; vzn: unknown }>).find((s) => s.name === n)?.vzn
+    expect([shapeOf('@vzn/vx-history'), shapeOf('@vzn/vx-cache-server')]).toEqual([
+      { 'peer @vzn/vx': 'peer ^9.9.9' },
+      { 'dep @vzn/vx-devtools': 'dep 9.9.9' },
+    ])
   })
 
   // npm search ranks on description and keywords; the release shipped

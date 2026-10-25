@@ -14,7 +14,7 @@ history, not a log. It speaks the [vx-history protocol](./PROTOCOL.md)
 - **Docker**, the Bun server in an image.
 
 `vxHistory()` ([`@vzn/vx-history`](https://github.com/vznjs/vx/tree/main/packages/vx-history))
-points vx at it. It is not on npm yet.
+points vx at it.
 
 ## CI tokens
 
