@@ -171,6 +171,9 @@ describe('package boundaries', () => {
       // migration time, and asked it with a COPY of core's function. The
       // copy missed items 441 and 442, so the migration reported clean on
       // configs core then refused to load. One rule, one place.
+      // Widened 2026-10-25: a DTE worker walks only the trees a task's
+      // outputs reach, as core's save does.
+      'outputDirPrefixes',
       'outputsOverlap',
       'planRun',
       'prepareRun',

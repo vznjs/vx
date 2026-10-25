@@ -4,7 +4,7 @@
 
 import { readdir } from 'node:fs/promises'
 import path from 'node:path'
-import { restorableOutput } from '@vzn/vx'
+import { outputDirPrefixes, restorableOutput } from '@vzn/vx'
 
 /**
  * The files declared outputs name, workspace-relative: `files` under the
@@ -21,9 +21,14 @@ export async function outputFiles(
     if (globs.length === 0) return
     const wanted = restorableOutput(globs, scope)
     const intoModules = globs.some((g) => g.includes('node_modules'))
+    const add = (rel: string) => found.add(base === '' ? rel : `${base}/${rel}`)
     const walk = async (rel: string): Promise<void> => {
       const entries = await readdir(path.join(root, base, rel), { withFileTypes: true }).catch(
-        () => [],
+        (err: NodeJS.ErrnoException) => {
+          // A literal output names a file: its prefix is that file.
+          if (err.code === 'ENOTDIR' && wanted(rel)) add(rel)
+          return []
+        },
       )
       for (const e of entries) {
         const child = rel === '' ? e.name : `${rel}/${e.name}`
@@ -31,11 +36,15 @@ export async function outputFiles(
           if (e.name === '.git' || (e.name === 'node_modules' && !intoModules)) continue
           await walk(child)
         } else if ((e.isFile() || e.isSymbolicLink()) && wanted(child)) {
-          found.add(base === '' ? child : `${base}/${child}`)
+          add(child)
         }
       }
     }
-    await walk('')
+    // Only the trees the globs can reach: walking the whole project for
+    // each task cost a worker 450 ms a task in a project of 9000 output
+    // dirs (2026-10-25). Root-anchored or escaping globs keep the walk.
+    const dirs = outputDirPrefixes(globs.filter((g) => !g.startsWith('!'))) ?? ['']
+    await Promise.all(dirs.map(walk))
   }
   await scan(project, outputs.files, 'project')
   await scan('', outputs.workspaceFiles, 'workspace')
