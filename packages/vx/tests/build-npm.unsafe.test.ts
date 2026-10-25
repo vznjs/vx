@@ -272,7 +272,14 @@ describe('the published plugin packages', async () => {
       const rel = path.relative(REPO, file)
       for (const m of text.matchAll(COMMAND))
         for (const n of m[0].matchAll(/@vzn\/[a-z0-9-]+/g)) named.set(n[0], rel)
-      for (const m of text.matchAll(IMPORT)) named.set(m[1]!, rel)
+      // A page that links a package from a checkout (`bun link --save`)
+      // says it is not on npm: its import is no install.
+      const linked = new Set(
+        [...text.matchAll(/\bbun link --save\b[^\n`]*/g)].flatMap((m) =>
+          [...m[0].matchAll(/@vzn\/[a-z0-9-]+/g)].map((n) => n[0]),
+        ),
+      )
+      for (const m of text.matchAll(IMPORT)) if (!linked.has(m[1]!)) named.set(m[1]!, rel)
     }
     const unpublished = [...named].filter(([name]) => !published.has(name))
     expect(unpublished).toEqual([])
