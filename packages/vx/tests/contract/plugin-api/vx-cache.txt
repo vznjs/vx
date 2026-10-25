@@ -7,10 +7,25 @@ export class VxCacheLayer implements RemoteCacheLayer {
     private readonly config: Required<VxCacheOptions>,
     private readonly fetchImpl: typeof fetch = fetch,
   )
+  /** Whether the run history is kept: `history` in the options. */
+  get history(): boolean
   async has(hash: string): Promise<ArtifactInfo | null>
   async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   async get(hash: string): Promise<{ body: Response; durationMs: number | undefined } | null>
   async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+  /** `POST /v1/runs`: one run and its tasks, in the token's scope. */
+  async putRun(run: {
+    id: string
+    startedAt: number
+    durationMs: number
+    tasks: readonly RunTask[]
+  }): Promise<void>
+  /**
+   * Each task's median duration over its newest runs in the read scopes
+   * (`POST /v1/tasks/query`), failed runs left out; a task no run holds
+   * is absent.
+   */
+  async medians(tasks: readonly string[]): Promise<Map<string, number>>
 }
 == function resolveVxCacheConfig (src/index.ts)
 export function resolveVxCacheConfig(
@@ -19,10 +34,20 @@ export function resolveVxCacheConfig(
 ): Required<VxCacheOptions> | undefined
 == function vxCache (src/index.ts)
 export function vxCache(options: VxCacheOptions = {}): VxPlugin
+== type RunTask (src/index.ts)
+export interface RunTask {
+  task: string
+  key?: string
+  durationMs: number
+  exitCode: number
+  cached: boolean
+  startedAt?: number
+}
 == type VxCacheOptions (src/index.ts)
 export interface VxCacheOptions {
   url?: string
   token?: string
   timeoutMs?: number
   uploadTimeoutMs?: number
+  history?: boolean
 }

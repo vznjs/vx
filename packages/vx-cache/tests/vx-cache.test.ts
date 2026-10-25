@@ -50,7 +50,7 @@ function server(maxArtifactBytes = 1 << 20) {
 }
 
 const layer = (url: string, token: string) =>
-  new VxCacheLayer({ url, token, timeoutMs: 5_000, uploadTimeoutMs: 5_000 })
+  new VxCacheLayer({ url, token, timeoutMs: 5_000, uploadTimeoutMs: 5_000, history: true })
 
 describe('VxCacheLayer', () => {
   let srv: ReturnType<typeof server>
@@ -90,7 +90,7 @@ describe('VxCacheLayer', () => {
   it('says a read token refused an upload once, and reads on', async () => {
     const c = layer(srv.url, READ)
     expect(c.put('cc33', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
-      'HTTP 403: this token reads only: the upload was refused (a read token); uploads off for this run, reads go on',
+      'HTTP 403: this token reads only: the write was refused (a read token); writes off for this run, reads go on',
     )
     await c.put('dd44', new Blob(['x']), { durationMs: 1 })
     expect(await c.has('aa11')).not.toBeNull()
@@ -112,6 +112,30 @@ describe('VxCacheLayer', () => {
       layer(srv.url, WRITE).put('ee55', new Blob([new Uint8Array(65)]), { durationMs: 1 }),
     ).rejects.toThrow('HTTP 413: an artifact is at most 64 bytes')
   })
+
+  it('writes a run and reads each task back as its median, failures left out', async () => {
+    const c = layer(srv.url, WRITE)
+    const task = (durationMs: number, exitCode = 0) => ({
+      task: 'a#build',
+      durationMs,
+      exitCode,
+      cached: false,
+    })
+    for (const [i, t] of [task(100), task(900, 1), task(300), task(200)].entries()) {
+      await c.putRun({ id: `r${i}`, startedAt: 1_000 + i, durationMs: 1, tasks: [t] })
+    }
+    expect(await c.medians(['a#build', 'b#build'])).toEqual(new Map([['a#build', 200]]))
+  })
+
+  it('says a read token refused a run write once', async () => {
+    const c = layer(srv.url, READ)
+    const run = { id: 'r9', startedAt: 1, durationMs: 1, tasks: [] }
+    expect(c.putRun(run)).rejects.toThrow(
+      'HTTP 403: this token reads only: the write was refused (a read token); writes off for this run, reads go on',
+    )
+    await c.putRun(run)
+    expect((await c.medians(['a#build'])).get('a#build')).toBe(200)
+  })
 })
 
 describe('resolveVxCacheConfig', () => {
@@ -125,6 +149,7 @@ describe('resolveVxCacheConfig', () => {
       token: 't',
       timeoutMs: 30_000,
       uploadTimeoutMs: 60_000,
+      history: true,
     })
     expect(() => resolveVxCacheConfig({ url: 'c.example', token: 't' }, {})).toThrow(
       'vxCache(): url must be http(s), got c.example',
@@ -167,5 +192,26 @@ describe('vx run with vxCache()', () => {
     expect(await Bun.file(path.join(root, 'pkg', 'dist', 'app.js')).text()).toBe(
       'console.log("app")\n',
     )
+  })
+
+  it("a CI run writes its timings, and the next run's order asks for them", async () => {
+    const ci = process.env['CI']
+    process.env['CI'] = 'true'
+    try {
+      await rm(path.join(root, '.vx', 'cache'), { recursive: true, force: true })
+      await writeFile(path.join(root, 'pkg', 'src', 'app.js'), 'console.log("v2")\n')
+      await run({ cwd: root, tasks: ['build'], handleSignals: false })
+      const c = layer(srv.url, READ)
+      expect([...(await c.medians(['pkg#build'])).keys()]).toEqual(['pkg#build'])
+      const before = srv.seen.length
+      await writeFile(path.join(root, 'pkg', 'src', 'app.js'), 'console.log("v3")\n')
+      await run({ cwd: root, tasks: ['build'], handleSignals: false })
+      expect(
+        srv.seen.slice(before).some((r) => new URL(r.url).pathname === '/v1/tasks/query'),
+      ).toBe(true)
+    } finally {
+      if (ci === undefined) delete process.env['CI']
+      else process.env['CI'] = ci
+    }
   })
 })

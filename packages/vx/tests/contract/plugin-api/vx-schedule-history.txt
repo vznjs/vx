@@ -8,7 +8,7 @@ export function admits(
 == function criticalPathPriorities (src/critical-path.ts)
 export function criticalPathPriorities(
   nodes: readonly TaskNode[],
-  history: HistoryTable,
+  history: ReadonlyMap<string, Pick<TaskResources, 'p50DurationMs'>>,
   assume: Readonly<Record<string, number>> = {},
 ): ReadonlyMap<string, number>
 == function resourceEstimates (src/index.ts)
