@@ -28,7 +28,6 @@ export function docker(options: DockerOptions): DteAdapter {
   let relay: { url: string; stop(): void } | undefined
   const workers = new Map<string, ReturnType<typeof Bun.spawn>>()
   const linux = process.platform === 'linux'
-  let tree: Promise<{ commit: string }> | undefined
   let closed = false
   const why = reasons()
 
@@ -36,7 +35,6 @@ export function docker(options: DockerOptions): DteAdapter {
     // Each run asks for one (`vx watch` runs again): a new run, on the tree as it is now.
     async relay() {
       closed = false
-      tree = undefined
       relay = await loopbackRelay()
       return relay.url
     },
@@ -48,10 +46,9 @@ export function docker(options: DockerOptions): DteAdapter {
         return r.stdout.toString().trim()
       }
       const top = git('rev-parse', '--show-toplevel')
-      // The tracked files as the run sees them, uncommitted changes too: a
-      // clone holds only refs, so the commit is fetched by its id.
-      tree ??= import('./tree.js').then((m) => m.snapshot(a.workspaceRoot))
-      const sha = git('rev-parse', (await tree).commit)
+      // The tracked files as the run saw them at its start, uncommitted
+      // changes too: a clone holds only refs, so the commit is fetched by its id.
+      const sha = a.commit
       // git names the real path: through a link (macOS's /tmp) the relative one climbed out.
       const rel = path.relative(top, realpathSync(a.workspaceRoot)) || '.'
       // The store is keyed by the repository's identity, its origin: the

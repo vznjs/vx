@@ -2405,6 +2405,7 @@ it('docker() starts each worker as a container of its size, on a fresh clone', a
       index: 3,
       id: 'small#3',
       workspaceRoot: path.join(link, 'sub'),
+      commit: sha,
       env: { VX_DTE_RUN: R, VX_DTE_WORKER: 'small#3', VX_DTE_RELAY: 'http://127.0.0.1:9' },
       exited: () => {},
     })

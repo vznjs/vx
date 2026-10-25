@@ -20,7 +20,6 @@ export function local(options: LocalOptions = {}): DteAdapter {
   refuseUnknownOptions('local()', options, KEYS)
   let relay: { url: string; stop(): void } | undefined
   let base: Promise<string> | undefined
-  let tree: Promise<{ commit: string }> | undefined
   let closed = false
   const procs = new Set<Bun.Subprocess>()
   /** A worktree add or a prepare: what close stops at once. */
@@ -69,7 +68,6 @@ export function local(options: LocalOptions = {}): DteAdapter {
     // Each run asks for one (`vx watch` runs again): a new run, on the tree as it is now.
     async relay() {
       closed = false
-      tree = undefined
       relay = await loopbackRelay()
       return relay.url
     },
@@ -79,9 +77,11 @@ export function local(options: LocalOptions = {}): DteAdapter {
         base ??= mkdtemp(path.join(os.tmpdir(), 'vx-dte-'))
         const dir = path.join(await base, String(a.index))
         if (closed) return
-        tree ??= import('./tree.js').then((m) => m.snapshot(a.workspaceRoot))
+        // The run's own snapshot: one taken here, after a hit restored a
+        // committed file, was another tree, and every worker was refused
+        // (2026-10-25).
         const add = await run(
-          ['git', 'worktree', 'add', '-q', '--detach', dir, (await tree).commit],
+          ['git', 'worktree', 'add', '-q', '--detach', dir, a.commit],
           a.workspaceRoot,
         )
         if (add.code !== 0) throw new Error(`git worktree add: ${errorLine(add.err)}`)
