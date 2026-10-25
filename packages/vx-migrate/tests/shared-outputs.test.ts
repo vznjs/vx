@@ -107,7 +107,8 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
     // coverage's `coverage/**` only at a `dist` nested in their trees; Turbo
     // caches all three. Each kept task gives the other's tree back with `!`.
     // turbo() adds `**/types` beside `**/types/**`, which meets build's
-    // `dist/**` only at a `types` nested in it.
+    // `dist/**` only at a `types` nested in it, and `**/types/**` meets
+    // `**/dist/**` at `dist/types/x`, which build gives back too.
     const tasks = resolveSharedOutputs([
       task('build', ['dist/**', '**/dist/**', '**/dist'], ['^build']),
       task('types', ['types/**', '**/types/**', '**/types'], ['^types']),
@@ -116,7 +117,19 @@ describe('resolveSharedOutputs — two targets on one output path', () => {
     const outputs = (t: GeneratedTask) =>
       (t.task!['cache'] as { outputs: { files: string[] } } | undefined)?.outputs.files
     expect(tasks.map((t) => [t.name, outputs(t), t.todos.length])).toEqual([
-      ['build', ['dist/**', '**/dist/**', '**/dist', '!types/**', '!**/types', '!coverage/**'], 0],
+      [
+        'build',
+        [
+          'dist/**',
+          '**/dist/**',
+          '**/dist',
+          '!types/**',
+          '!**/types/**',
+          '!**/types',
+          '!coverage/**',
+        ],
+        0,
+      ],
       ['types', ['types/**', '**/types/**', '**/types', '!coverage/**'], 0],
       ['coverage', ['coverage/**', '!**/types'], 0],
     ])

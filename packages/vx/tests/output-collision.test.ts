@@ -820,6 +820,33 @@ describe('the path index finds every pair the rule refuses', () => {
     })
   }
 
+  // Two globs that meet only at a path neither builds filled in alone: each
+  // task cleaned the other's files under a green run (fuzz, 2026-10-25).
+  const met: Array<[string, string]> = [
+    ['build/{a,b}.js', 'build/*.js'],
+    ['dist/{esm,cjs}/**', '**/*.js'],
+    ['out/**', '*/types/*.d.ts'],
+    ['*/dist/**', 'pkg/*/x.js'],
+    ['*.js', '[ab].js'],
+  ]
+  for (const [a, b] of met) {
+    it(`two globs that meet at a path neither builds alone: ${a} against ${b}`, () => {
+      expect([outputsOverlap(a, b), outputsOverlap(b, a)]).toEqual([true, true])
+      expect(() => graph({ app: { a: task([a]), b: task([b]) } })).toThrow(
+        /both declare the output/,
+      )
+    })
+  }
+
+  it('CONTROL: globs that share no path stay apart', () => {
+    for (const [a, b] of [
+      ['dist/{esm,cjs}/**', 'lib/**'],
+      ['build/{a,b}.js', 'build/c.js'],
+      ['dist/*.js', 'dist/*.map'],
+    ])
+      expect([outputsOverlap(a!, b!), outputsOverlap(b!, a!)]).toEqual([false, false])
+  })
+
   it('CONTROL: a literal beside a glob’s head, not under it, is not compared into a refusal', () => {
     expect(() =>
       graph({ app: { a: task(['dist/a/**']), b: task(['dist/ab/c.js', 'dist/b.js']) } }),

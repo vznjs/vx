@@ -987,7 +987,9 @@ function of the cache key.
 ### Additive outputs: two tasks, one tree, an edge between them
 
 Two cached tasks whose declared outputs overlap are refused at graph
-build. By default that holds even when one depends on the other: the
+build: any path both could write counts, so `build/{a,b}.js` meets
+`build/*.js`, and `out/**` meets a glob for each `.d.ts` one level down
+at `out/types/x.d.ts`. By default that holds even when one depends on the other: the
 workspace rule `rules.exclusiveOutputs` (on unless set to `false` in
 `.vx/workspace.ts`, X-53) keeps one path to one task, and its refusal says
 how to turn it off. The shape below is correct, only slower: a stamp

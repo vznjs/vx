@@ -1,6 +1,7 @@
 import type { ProjectConfig, TaskConfig, WorkspaceRules } from '../config.js'
 import {
   asTrees,
+  braceAlternatives,
   checkIgnoreSync,
   ignoreProbes,
   isLiteralPattern,
@@ -931,6 +932,16 @@ export function excludeDependencies(
  * 445). One rule, one place: the copy is gone.
  */
 export function outputsOverlap(rawA: string, rawB: string): boolean {
+  // Each brace alternative on its own: the checks below read a brace as
+  // one opaque segment, so `build/{a,b}.js` met `build/*.js`, and
+  // `dist/{esm,cjs}/**` met `**/*.js`, nowhere (fuzz, 2026-10-25).
+  const as = braceAlternatives(rawA)
+  const bs = braceAlternatives(rawB)
+  if (as.length === 1 && bs.length === 1) return overlapOne(rawA, rawB)
+  return as.some((a) => bs.some((b) => overlapOne(a, b)))
+}
+
+function overlapOne(rawA: string, rawB: string): boolean {
   // A built path proves overlap only between globs as written: a literal's
   // `/**` twin reads it as a directory, and `dist/types.d.ts` met
   // `dist/**/*.js` at `dist/types.d.ts/x.js`, a file no one can write.
@@ -995,7 +1006,69 @@ function witnessed(a: string, b: string): boolean {
       if (candidate !== '' && ga.match(candidate) && gb.match(candidate)) return true
     }
   }
-  return false
+  const met = unified(a.split('/'), b.split('/'))
+  return met !== null && met !== '' && ga.match(met) && gb.match(met)
+}
+
+/**
+ * A path both globs take, built segment by segment, each a name both
+ * segments take, `**` matching a segment of the other or none: `out/**`
+ * beside every `.d.ts` in a `types` directory one level down meets at
+ * `out/types/x.d.ts`, and `*` beside `[ab]` at `a`, paths neither glob
+ * filled alone builds (fuzz, 2026-10-25). Null when none is found; a find
+ * is checked whole after.
+ */
+function unified(sa: readonly string[], sb: readonly string[]): string | null {
+  if ([...sa, ...sb].some((x) => /[{}()!+@]/.test(x))) return null
+  const memo = new Map<string, string | null>()
+  const join = (name: string, rest: string): string => (rest === '' ? name : `${name}/${rest}`)
+  const walk = (i: number, j: number): string | null => {
+    const key = `${i},${j}`
+    if (memo.has(key)) return memo.get(key)!
+    memo.set(key, null)
+    let out: string | null = null
+    if (i === sa.length && j === sb.length) out = ''
+    else if (sa[i] === '**' || sb[j] === '**') {
+      const [wide, x, y, other] = sa[i] === '**' ? [sa, i, j, sb] : [sb, j, i, sa]
+      const skip = wide === sa ? walk(i + 1, j) : walk(i, j + 1)
+      out = skip ?? (sa[i] === '**' && sb[j] === '**' ? walk(i, j + 1) : null)
+      if (out === null && y < other.length && other[y] !== '**') {
+        const name = segmentMeet('*', other[y]!)
+        const rest = name === null ? null : wide === sa ? walk(x, y + 1) : walk(y + 1, x)
+        if (name !== null && rest !== null) out = join(name, rest)
+      }
+    } else if (i < sa.length && j < sb.length) {
+      const name = segmentMeet(sa[i]!, sb[j]!)
+      const rest = name === null ? null : walk(i + 1, j + 1)
+      if (name !== null && rest !== null) out = join(name, rest)
+    }
+    memo.set(key, out)
+    return out
+  }
+  return walk(0, 0)
+}
+
+/** A name both segments take, from each filled in and the one's head joined to the other's tail. */
+function segmentMeet(x: string, y: string): string | null {
+  const fill = (seg: string, star: string): string =>
+    seg
+      .replace(/\*+/g, star)
+      .replace(/\?/g, 'x')
+      .replace(/\[[!^]?(.)[^\]]*\]/g, '$1')
+  const head = (seg: string): string => seg.slice(0, seg.search(/[*?[]|$/))
+  const tail = (seg: string): string => seg.slice(seg.search(/[^*?\]]*$/))
+  const gx = new Bun.Glob(x)
+  const gy = new Bun.Glob(y)
+  for (const c of [
+    fill(x, 'x'),
+    fill(y, 'x'),
+    fill(x, ''),
+    fill(y, ''),
+    head(x) + tail(y),
+    head(y) + tail(x),
+  ])
+    if (c !== '' && gx.match(c) && gy.match(c)) return c
+  return null
 }
 
 /**
@@ -1335,7 +1408,8 @@ function overlapCandidates<T>(
   for (let i = 0; i < tasks.length; i++) {
     const s = sideOf?.(tasks[i]!) === true ? 1 : 0
     side.push(s)
-    for (const tree of asTrees(globsOf(tasks[i]!) ?? [])) {
+    // Each brace alternative, as `outputsOverlap` reads them.
+    for (const tree of asTrees((globsOf(tasks[i]!) ?? []).flatMap(braceAlternatives))) {
       const lit = literalPath(tree)
       if (lit !== null) {
         literals.push([i, lit])
