@@ -87,6 +87,13 @@ describe('HistoryServer', () => {
     expect(client.upload(new Map([['b', { durationMs: 1 }]]))).rejects.toThrow('HTTP 403: ')
   })
 
+  it('says why a read with no token was refused, and what lets it in', async () => {
+    const client = new HistoryServer(url, NAMED, {})
+    await expect(client.query([await hashPart('refs/heads/main')], ['p1'])).rejects.toThrow(
+      'HTTP 401: no bearer token: a read with no CI token was refused (off CI, a server reads only with READ_ACCESS=public)',
+    )
+  })
+
   it("asks GitHub for a new token before the job's ends, once for parallel calls", async () => {
     let asks = 0
     const t0 = Date.now()

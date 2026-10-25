@@ -180,6 +180,13 @@ export class HistoryServer {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: deadline(),
     })
+    if (res.status === 401 && bearer === '') {
+      // Off CI: the bare 401 said nothing of why or what to do (2026-10-26).
+      const err = await refusal(res)
+      throw new Error(
+        `${err.message}: a read with no CI token was refused (off CI, a server reads only with READ_ACCESS=public)`,
+      )
+    }
     if (!res.ok) throw await refusal(res)
     return res
   }
