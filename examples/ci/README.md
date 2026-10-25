@@ -1,7 +1,7 @@
 # vx on GitHub Actions
 
 The starter from `examples/basic`, with the CI setup the
-[CI guide](https://vznjs.github.io/vx/guides/ci/) walks through:
+[CI guide](https://vznjs.github.io/vx/docs/ci/) walks through:
 `.github/workflows/ci.yml` and `.vx/workspace.ts`. Copy it, then:
 
 ```sh

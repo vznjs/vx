@@ -28,8 +28,8 @@ const AMBIENT = [
   '@vzn/vx-migrate',
   '@vzn/vx-ci',
   '@vzn/vx-history',
-  // Not on npm yet: the pages import it from a checkout.
-  '/path/to/vx/packages/vx-dte/src/index.ts',
+  '@vzn/vx-cache',
+  '@vzn/vx-dte',
 ]
 
 // plugins/ is each plugin's README, whose snippets use that plugin's own
