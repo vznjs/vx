@@ -1020,7 +1020,8 @@ function witnessed(a: string, b: string): boolean {
  * is checked whole after.
  */
 function unified(sa: readonly string[], sb: readonly string[]): string | null {
-  if ([...sa, ...sb].some((x) => /[{}()!+@]/.test(x))) return null
+  // A `!` opening a class is the class's; anywhere else, an extglob.
+  if ([...sa, ...sb].some((x) => /[{}()!+@]/.test(x.replaceAll('[!', '[')))) return null
   const memo = new Map<string, string | null>()
   const join = (name: string, rest: string): string => (rest === '' ? name : `${name}/${rest}`)
   const walk = (i: number, j: number): string | null => {
@@ -1065,7 +1066,12 @@ function segmentMeet(x: string, y: string): string | null {
     seg
       .replace(/\*+/g, star)
       .replace(/\?/g, 'x')
-      .replace(/\[[!^]?(.)[^\]]*\]/g, '$1')
+      // A negated class takes a name it does not list: `[!a]` is not `a`.
+      .replace(/\[([!^]?)(.)([^\]]*)\]/g, (_, not: string, first: string, more: string) =>
+        not === ''
+          ? first
+          : (['x', 'y', 'z', '0', '_'].find((c) => !`${first}${more}`.includes(c)) ?? first),
+      )
   const head = (seg: string): string => {
     const at = seg.search(GLOB_WILDCARDS)
     return at === -1 ? seg : seg.slice(0, at)
@@ -1084,6 +1090,11 @@ function segmentMeet(x: string, y: string): string | null {
     fill(y, ''),
     head(x) + tail(y),
     head(y) + tail(x),
+    // Each name a class lists, the other's class filled: `[ab]` beside `[!a]` meets at `b`.
+    ...[x, y].flatMap((seg) => {
+      const listed = /\[([^!^\]][^\]]*)\]/.exec(seg)?.[1] ?? ''
+      return listed.split('').map((ch) => fill(seg.replace(/\[[^!^\]][^\]]*\]/, ch), 'x'))
+    }),
   ])
     if (c !== '' && gx.match(c) && gy.match(c)) return c
   return null
