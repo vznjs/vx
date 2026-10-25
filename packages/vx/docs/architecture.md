@@ -27,7 +27,7 @@ specifier — enforced by `tests/package-boundaries.unsafe.test.ts`):
 | `packages/vx-cache`            | `@vzn/vx-cache` — `vxCache()` cache plugin: a remote cache and run history on a server that speaks `@vzn/vx-cache-server`'s `/v1` wire; private until it is on npm                   |
 | `private/vx-bench`             | synthetic workspace generator + runners for vx / Turbo / Nx (private)                                                                                                                |
 | `private/vx-plugin-examples`   | one runnable plugin for each of nine seams, each run by its tests through `run()` (private)                                                                                          |
-| `private/vx-dte-relay-worker`  | vznjs's own relay deploy: `@vzn/vx-dte-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                                  |
+| `private/vx-dte-service`       | vznjs's own relay deploy: `@vzn/vx-dte-server`'s worker with this repo's `ALLOW`, built by Workers Builds (private)                                                                  |
 
 Core never imports a sibling package. The integrations reach core
 through two seams: the public API (55 runtime symbols, a deliberate

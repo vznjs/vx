@@ -77,7 +77,7 @@ describe('the relay a PR’s run uses', () => {
     await expect(relayFor('vx-dte-relay', DEPLOYED, failed)).rejects.toThrow(
       'Workers Builds: vx-dte-relay ended failure',
     )
-    const none = deps(['private/vx-dte-relay-worker/wrangler.jsonc'], [async () => []])
+    const none = deps(['private/vx-dte-service/wrangler.jsonc'], [async () => []])
     await expect(relayFor('vx-dte-relay', DEPLOYED, none)).rejects.toThrow(
       'Workers Builds: vx-dte-relay: no build of the head after 5 min',
     )
