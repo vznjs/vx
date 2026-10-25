@@ -105,19 +105,21 @@ The same relay as a `fetch` handler, to mount in a server of your own
 (`src/index.ts`):
 
 - `createRelay(options?: RelayOptions): Relay`. `RelayOptions` is
-  `{ verify?, heartbeatMs? }`: `verify` checks a request's bearer token
+  `{ verify?, heartbeatMs?, graceMs? }`: `verify` checks a request's bearer token
   (none admits every request) and gets the request too, `heartbeatMs` (default 5000) is how often
-  participants hear from each other, said in each join's answer. A `Relay` is `{ fetch(req) }`,
+  participants hear from each other, said in each join's answer, and
+  `graceMs` (default 10 000) how long a participant whose socket dropped
+  without `leave` may dial again before it is gone (PROTOCOL.md § Liveness). A `Relay` is `{ fetch(req) }`,
   plus the hooks a host of websockets drives (`src/worker.ts` is their
   user): the options `sockets`, the `[Kept, RelaySocket]` pairs a host
   kept across a restart, from which the sessions are rebuilt (PROTOCOL.md
   § What the relay knows), and `upgrade`, which answers a `socket`
   request; and the methods `attach` and `detach` (its socket closed: the
-  participant is gone), which hand the relay a participant's
+  participant is gone unless it dials again within `graceMs`), which hand the relay a participant's
   `RelaySocket` (`{ send, close }`), and `frame`, which returns the
   answer to send down the socket, or `undefined` for none. `attach`
   returns the `Kept` its host keeps with the socket (a Durable Object's
-  attachment: session, id, role, and the host's key), or
+  attachment: session, id, role, the host's key, and a peer's host's id), or
   `false`. A host closes a socket `attach` refuses
   with `closeSocket(socket, GONE)` (`GONE` is 4404), which says the close in a frame first
   (PROTOCOL.md § Sockets).

@@ -220,16 +220,22 @@ describe('the relay carries one run between its orchestrator and workers', () =>
     expect((await c.call(R, 'join', { role: 'host' })).status).toBe(409)
   })
 
-  it('loses a worker the moment its socket closes, and closes the run when the orchestrator goes', async () => {
-    const c = client()
+  // Owner, 2026-10-25: only `leave` ends a participant at once; one whose
+  // socket dropped may dial again within the grace.
+  it('loses a worker whose socket dropped once its grace passes, and closes the run when the orchestrator leaves', async () => {
+    const c = client({ graceMs: 50 })
     const o = await c.join(R, 'host')
     const a = await c.join(R, 'peer')
     const b = await c.join(R, 'peer')
     await c.poll(R, o)
     await c.poll(R, a)
     await c.poll(R, b)
-    // Liveness is the connection: no timer, no heartbeat the relay counts.
+    // No timer: the next use of the run finds the grace passed.
     await c.cut(R, b)
+    await c.frame(R, o, { sends: [] })
+    expect(await c.poll(R, o)).toEqual([])
+    await Bun.sleep(60)
+    await c.frame(R, o, { sends: [] })
     expect(await c.poll(R, o)).toEqual([{ from: 'relay', body: { type: 'left', id: b } }])
     expect((await c.send(R, o, b, 'gone?')).status).toBe(404)
     expect(await c.plug(R, b)).toBe(false)
@@ -503,7 +509,23 @@ describe('a host that keeps runs and holds websockets', () => {
     expect((await after.call(R, 'join', { role: 'host' }, '', 't')).status).toBe(409)
   })
 
-  it('ends a kept run whose orchestrator’s socket was not kept, and closes an older relay’s', async () => {
+  // A host that dropped as its object hibernated may still dial again:
+  // its peers' sockets name it.
+  it('keeps a run whose orchestrator’s socket was not kept, for its redial', async () => {
+    const before = client()
+    const o = await before.join(R, 'host')
+    const a = await before.join(R, 'peer')
+    for (const id of [o, a]) await before.plug(R, id)
+    const kept = new Map<string, Kept | { key: string; id: string }>(before.kept)
+    kept.delete(o)
+    const { sockets, got, codes } = restarted(kept)
+    const after = client({ sockets }, before.provers)
+    expect(await after.plug(R, o)).toBe(true)
+    await after.send(R, o, a, 'back')
+    expect([got.get(a), codes.get(a)]).toEqual([[{ from: 'host', body: 'back' }], []])
+  })
+
+  it('ends a kept run whose orchestrator’s socket was not kept once its grace passes, and closes an older relay’s', async () => {
     const before = client()
     const o = await before.join(R, 'host')
     const a = await before.join(R, 'peer')
@@ -518,7 +540,7 @@ describe('a host that keeps runs and holds websockets', () => {
     kept.delete(o)
     kept.set(o1, { key: kept.get(o1)!.key, id: o1 })
     const { sockets, codes } = restarted(kept)
-    const after = client({ sockets })
+    const after = client({ sockets, graceMs: 0 })
     expect([codes.get(a), codes.get(o1)]).toEqual([[GONE], [GONE]])
     expect((await after.call(R, 'join', { role: 'peer' })).status).toBe(410)
   })
@@ -613,9 +635,10 @@ describe('a host that keeps runs and holds websockets', () => {
     expect(live.at(-1)).toEqual({ from: 'host', body: 'next' })
   })
 
-  // Owner, 2026-10-23: "if the orchestrator is disconnected we close all agents".
-  it('closes the run the moment its orchestrator’s socket closes', async () => {
-    const c = client()
+  // Owner, 2026-10-25: an orchestrator that dropped without its final
+  // `leave` dials again; only once its grace passes is the run over.
+  it('closes the run once its orchestrator’s dropped socket has not come back in its grace', async () => {
+    const c = client({ graceMs: 50 })
     const o = await c.join(R, 'host')
     const a = await c.join(R, 'peer')
     await c.plug(R, o)
@@ -623,9 +646,29 @@ describe('a host that keeps runs and holds websockets', () => {
     const socket = { send() {}, close() {} }
     expect(c.relay.attach(K, o, socket)).toBeTruthy()
     c.relay.detach(K, o, socket)
+    await c.frame(R, a, { sends: [] })
+    expect(await c.poll(R, a)).toEqual([])
+    await Bun.sleep(60)
+    c.relay.frame(K, a, JSON.stringify({ sends: [] }))
     expect(await c.poll(R, a)).toEqual([{ from: 'relay', body: { type: 'closed' } }])
     expect(c.closes.get(a)).toEqual([GONE])
     expect((await c.call(R, 'join', { role: 'peer' })).status).toBe(410)
+  })
+
+  it('forgets a session all of whose sockets dropped, as another is next asked', async () => {
+    const c = client({ graceMs: 20 })
+    const o = await c.join(R, 'host')
+    const a = await c.join(R, 'peer')
+    await c.plug(R, o)
+    await c.plug(R, a)
+    await c.cut(R, a)
+    await c.cut(R, o)
+    await Bun.sleep(30)
+    await c.join(R1, 'host')
+    expect([await c.plug(R, o), (await c.call(R, 'join', { role: 'peer' })).status]).toEqual([
+      false,
+      410,
+    ])
   })
 
   it('pushes messages down a socket and takes sends from it', async () => {

@@ -522,8 +522,11 @@ use your own instead.
   one asked then would queue behind it. When none is online
   or starting and this machine has no share, the remaining tasks fail
   with `no worker could start`.
-- Liveness is the connection: a socket's close loses its participant at
-  once, and the relay says so. A peer quiet on a socket that never
+- Only `leave` ends a participant at once (owner, 2026-10-25): the
+  orchestrator's at its run's end is the final call that closes the run,
+  and a worker's when it is done. Either whose socket drops without it
+  dials again, 3 times within 10 s, and the relay keeps it, and its run,
+  for those 10 s; past them the run is over. A peer quiet on a socket that never
   closed is lost within two heartbeats (10 s on the default): only a
   peer heard from for none of a heartbeat and a half is probed (an
   empty numbered send), which it acks at once; either side hearing

@@ -39,6 +39,7 @@ export interface Kept {
   id: string
   role: 'host' | 'peer'
   cert?: string
+  host?: string
 }
 == type OidcOptions (src/oidc.ts)
 export interface OidcOptions {
@@ -64,6 +65,7 @@ export interface Relay {
 export interface RelayOptions {
   verify?: ((token: string, req: Request) => Promise<VerifiedToken>) | undefined
   heartbeatMs?: number
+  graceMs?: number
   sockets?: Iterable<readonly [Kept, RelaySocket]> | undefined
   upgrade: (key: string, id: string, req: Request, protocol?: string) => Response
 }
