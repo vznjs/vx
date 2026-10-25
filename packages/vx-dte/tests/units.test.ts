@@ -372,6 +372,10 @@ function fakeArtifacts() {
       shared.push(key)
       return true
     },
+    async resend(key) {
+      shared.push(`${key} again`)
+      return true
+    },
   }
   return { artifacts, saved, restored, shared }
 }
@@ -1464,6 +1468,29 @@ it('saves each send of a task under a run key of its own', async () => {
   }
 })
 
+// A dependency's remote copy that did not read back (a truncated upload)
+// failed its dependant on every worker and every run: the remote said it
+// held the key, so this machine's copy never went over it (2026-10-25).
+it('sends a dependency a worker could not read over the remotes’ copy, and the task again', async () => {
+  const h = await harness(new Map([node('t')]))
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    const ran = h.o.execute(h.req('t'))
+    expect(await a.batches()).toEqual([['t']])
+    const unread = { exitCode: 1, durationMs: 0, unread: ['k-d'] }
+    await a.finish('t', a.orders[0]!.runKey, unread)
+    expect(await a.batches()).toEqual([['t']])
+    expect(h.store.shared).toEqual(['k-d again'])
+    // Sent once: the next fails the task.
+    await a.finish('t', a.orders[1]!.runKey, unread)
+    expect((await ran).exitCode).toBe(1)
+    expect(h.store.shared).toEqual(['k-d again'])
+  } finally {
+    await h.stop()
+  }
+})
+
 // `vx watch` runs again under one run id: its next run sent a task under
 // the last run's run key, which a remote holds the first bytes of
 // (2026-10-24).
@@ -1567,6 +1594,9 @@ it('a worker restores a dependency once, before any task that needs it runs', as
       async share() {
         return false
       },
+      async resend() {
+        return false
+      },
       async restore() {
         restores++
         await Bun.sleep(100)
@@ -1661,6 +1691,9 @@ it('a worker fails a task whose dependency is in no cache it reads, and stays', 
       async share() {
         return false
       },
+      async resend() {
+        return false
+      },
       async restore() {
         return null
       },
@@ -1709,7 +1742,9 @@ it('a worker fails a task whose dependency is in no cache it reads, and stays', 
       }
     }
     expect(await code).toBe(0)
-    expect(got).toMatchObject([{ type: 'end', key: runKey(R, 't1'), result: { exitCode: 1 } }])
+    expect(got).toMatchObject([
+      { type: 'end', key: runKey(R, 't1'), result: { exitCode: 1, unread: ['k-d'] } },
+    ])
     expect(saved).toEqual([runKey(R, 't1')])
   } finally {
     await served.stop()
@@ -1742,6 +1777,9 @@ it('a worker restores a dependency again after a task cleared its files', async 
           return null
         },
         async share() {
+          return false
+        },
+        async resend() {
           return false
         },
         async restore() {
@@ -1943,6 +1981,9 @@ it('a worker whose answer meets a closed run exits 0', async () => {
         async share() {
           return false
         },
+        async resend() {
+          return false
+        },
         async restore() {
           return null
         },
@@ -2016,6 +2057,9 @@ it('a worker begins its next task while the last one saves', async () => {
           return null
         },
         async share() {
+          return false
+        },
+        async resend() {
           return false
         },
         async restore() {

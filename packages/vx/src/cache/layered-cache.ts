@@ -620,10 +620,20 @@ export class LayeredCache implements CacheLayer {
    */
   async share(hash: string): Promise<boolean> {
     for (const lane of this.readable) if ((await lane.has(hash)) !== null) return true
+    return this.upload(hash, false)
+  }
+
+  /** `share`, over a remote copy another machine of the run found corrupt. */
+  resend(hash: string): Promise<boolean> {
+    return this.upload(hash, true)
+  }
+
+  private async upload(hash: string, over: boolean): Promise<boolean> {
     const lanes = this.readable.filter((l) => l.write)
     if (lanes.length === 0) return false
     const entry = await this.local.getIngested(hash)
     if (entry === null) return false
+    if (over) for (const lane of lanes) lane.distrust(hash)
     const held = await Promise.all(
       lanes.map((l) =>
         l.upload(hash, entry.durationMs, () => this.local.pinArtifact(hash), this.local.uploads),

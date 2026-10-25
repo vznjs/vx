@@ -643,6 +643,11 @@ export interface CacheLayer {
    */
   share?(hash: string): Promise<boolean>
   /**
+   * The local entry uploaded over each written remote's copy, which another
+   * machine found corrupt (`TaskArtifacts.resend`). True when one took it.
+   */
+  resend?(hash: string): Promise<boolean>
+  /**
    * Optional batched `get` (same answers, fewer round trips). The
    * short-circuit probe uses it when a layer offers one; a layer without it
    * is probed hash by hash. `ctx` is each hash's `get` context.

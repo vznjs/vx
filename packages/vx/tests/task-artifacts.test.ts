@@ -243,6 +243,33 @@ it('share uploads an entry only this machine holds, and only that one', async ()
   })
 })
 
+// A remote copy that does not read back failed the dependant on every
+// worker, and every run after: the remote said it held the key, so
+// nothing sent this machine's good copy over it.
+it('share sends the entry over a remote copy another machine found corrupt', async () => {
+  const remote = memoryRemote()
+  const here = await machine('here', remote.layer)
+  const task = (root: string) => ({
+    id: 'app#build',
+    projectDir: path.join(root, 'app'),
+    command: 'build',
+    outputs: { files: ['dist/**'], workspaceFiles: [] },
+  })
+  await mkdir(path.join(here.root, 'app', 'dist'), { recursive: true })
+  await writeFile(path.join(here.root, 'app', 'dist', 'out.js'), 'built')
+  await here.artifacts.save(KEY, task(here.root), { stdout: 'ok\n', stderr: '', durationMs: 12 })
+  expect(await here.artifacts.share(KEY)).toBe(true)
+  remote.store.set(KEY, remote.store.get(KEY)!.slice(0, 40))
+  const worker = await machine('worker', remote.layer)
+  expect(await worker.artifacts.restore(KEY, task(worker.root))).toBeNull()
+  expect(await here.artifacts.resend(KEY)).toBe(true)
+  const again = await machine('worker2', remote.layer)
+  expect(await again.artifacts.restore(KEY, task(again.root))).toEqual({
+    stdout: 'ok\n',
+    stderr: '',
+  })
+})
+
 it('share uploads nothing to a remote the run does not write', async () => {
   const remote = memoryRemote()
   const root = path.join(dir, 'ro')

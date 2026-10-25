@@ -23,6 +23,7 @@ const baseCtx = {
     restore: async () => null,
     output: async () => null,
     share: async () => false,
+    resend: async () => false,
   },
   cacheFacts: async () => ({ refs: [], lent: {} }),
 }

@@ -351,6 +351,7 @@ export interface CacheLayer {
   get(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   getSaved?(hash: string, ctx?: CacheGetContext): Promise<CacheEntry | null>
   share?(hash: string): Promise<boolean>
+  resend?(hash: string): Promise<boolean>
   getMany?(
     hashes: readonly string[],
     ctx?: (hash: string) => CacheGetContext,
@@ -2646,6 +2647,7 @@ export interface TaskArtifacts {
   restore(key: string, task: ArtifactTask): Promise<{ stdout: string; stderr: string } | null>
   output(key: string): Promise<{ stdout: string; stderr: string } | null>
   share(key: string): Promise<boolean>
+  resend(key: string): Promise<boolean>
 }
 ```
 

@@ -72,6 +72,11 @@ export interface TaskArtifacts {
    * the run reads the remotes alone. False when none holds it and none took it.
    */
   share(key: string): Promise<boolean>
+  /**
+   * This machine's entry `key` uploaded over each written remote's copy,
+   * which another machine of the run found corrupt. True when one took it.
+   */
+  resend(key: string): Promise<boolean>
 }
 
 export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArtifacts {
@@ -125,6 +130,7 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
     },
 
     share: (key) => cache.share?.(key) ?? Promise.resolve(false),
+    resend: (key) => cache.resend?.(key) ?? Promise.resolve(false),
   }
 }
 
