@@ -116,6 +116,7 @@ describe('package boundaries', () => {
     const mod = (await import('../src/index.js')) as Record<string, unknown>
     const actual = Object.keys(mod).sort()
     const expected = [
+      'BoundedCapture',
       'Cache',
       'LOG_WIRE_VERSION',
       // LayeredCache left (0.0.637): core builds every layer; a plugin returns the remote.

@@ -11,6 +11,7 @@ import {
   resolveWorkspaceOutputs,
   sayRemoteFault,
 } from '../cache/index.js'
+import type { CapturedChunk } from '../exec/index.js'
 import { secretMask } from '../util/index.js'
 import { decodeOutputLog, encodeOutputLog } from './output-log.js'
 
@@ -37,8 +38,8 @@ export interface ArtifactTask {
 
 /** What a task's run left besides its files: its output, and its time and usage. */
 export interface ArtifactRun {
-  readonly stdout: string
-  readonly stderr: string
+  /** Both streams in the order they were written, as a `BoundedCapture` keeps them. */
+  readonly output: readonly CapturedChunk[]
   readonly durationMs: number
   readonly cpuMs?: number
   readonly peakRssBytes?: number
@@ -56,16 +57,17 @@ export interface TaskArtifacts {
   save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
   /**
    * Lays entry `key`'s files into the workspace, from the local store or
-   * else the first remote holding it, and resolves its output; null when
+   * else the first remote holding it, and resolves its output, both streams
+   * in the order written; null when
    * none holds it. A key restored here and then saved is not uploaded
    * again.
    */
-  restore(key: string, task: ArtifactTask): Promise<{ stdout: string; stderr: string } | null>
+  restore(key: string, task: ArtifactTask): Promise<CapturedChunk[] | null>
   /**
    * Entry `key`'s output alone, laying no file; null when no cache holds
    * it. An `exec.remote: 'only'` task's files stay off this disk.
    */
-  output(key: string): Promise<{ stdout: string; stderr: string } | null>
+  output(key: string): Promise<CapturedChunk[] | null>
   /**
    * True once a remote the run reads holds entry `key`, this machine's
    * entry uploaded to those it writes when none does: another machine of
@@ -94,10 +96,7 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
       const files = tree.files.filter(mine)
       const ws = wsFiles.filter(mine)
       const mask = secretMask([process.env, run.env ?? {}])
-      const log = encodeOutputLog([
-        { text: run.stdout, err: false },
-        { text: run.stderr, err: true },
-      ])
+      const log = encodeOutputLog(run.output)
       await cache.save({
         hash: key,
         projectDir: task.projectDir,
@@ -121,28 +120,17 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
       const entry = await (cache.getSaved ? cache.getSaved(key) : cache.get(key))
       if (entry === null) return null
       await cache.restoreOutputs(key, task.projectDir, workspaceRoot, task.outputs)
-      return outputOf(entry.stdout)
+      return decodeOutputLog(entry.stdout)
     },
 
     async output(key) {
       const entry = await (cache.getSaved ? cache.getSaved(key) : cache.get(key))
-      return entry === null ? null : outputOf(entry.stdout)
+      return entry === null ? null : decodeOutputLog(entry.stdout)
     },
 
     share: (key) => cache.share?.(key) ?? Promise.resolve(false),
     resend: (key) => cache.resend?.(key) ?? Promise.resolve(false),
   }
-}
-
-/** A stored output log, split back into its two streams. */
-function outputOf(log: string): { stdout: string; stderr: string } {
-  let stdout = ''
-  let stderr = ''
-  for (const c of decodeOutputLog(log)) {
-    if (c.err) stderr += c.text
-    else stdout += c.text
-  }
-  return { stdout, stderr }
 }
 
 /**

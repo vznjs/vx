@@ -62,21 +62,20 @@ it('restores a task another machine saved by its key: its files and its output, 
   })
   await mkdir(path.join(agent.root, 'app', 'dist'), { recursive: true })
   await writeFile(path.join(agent.root, 'app', 'dist', 'out.js'), 'built')
-  await agent.artifacts.save(KEY, task(agent.root), {
-    stdout: 'compiled\n',
-    stderr: 'a warning\n',
-    durationMs: 12,
-  })
+  // Interleaved, as a run writes it: a replay keeps the order.
+  const output = [
+    { text: 'compiling\n', err: false },
+    { text: 'a warning\n', err: true },
+    { text: 'compiled\n', err: false },
+  ]
+  await agent.artifacts.save(KEY, task(agent.root), { output, durationMs: 12 })
   expect(remote.puts()).toBe(1)
 
   const here = await machine('here', remote.layer)
   expect(await here.artifacts.restore('fedcba9876543210', task(here.root))).toBeNull()
-  expect(await here.artifacts.restore(KEY, task(here.root))).toEqual({
-    stdout: 'compiled\n',
-    stderr: 'a warning\n',
-  })
+  expect(await here.artifacts.restore(KEY, task(here.root))).toEqual(output)
   expect(await readFile(path.join(here.root, 'app', 'dist', 'out.js'), 'utf8')).toBe('built')
-  await here.artifacts.save(KEY, task(here.root), { stdout: '', stderr: '', durationMs: 12 })
+  await here.artifacts.save(KEY, task(here.root), { output: [], durationMs: 12 })
   expect(remote.puts()).toBe(1)
 })
 
@@ -91,8 +90,7 @@ it('masks a secret of the task env out of the stored output', async () => {
   }
   const secret = 's3cr3t-value-for-test'
   await agent.artifacts.save(KEY, task, {
-    stdout: `token ${secret}\n`,
-    stderr: '',
+    output: [{ text: `token ${secret}\n`, err: false }],
     durationMs: 1,
     env: { DEPLOY_TOKEN: secret },
   })
@@ -101,7 +99,7 @@ it('masks a secret of the task env out of the stored output', async () => {
     ...task,
     projectDir: path.join(here.root, 'app'),
   })
-  expect(got?.stdout).not.toContain(secret)
+  expect(got?.[0]?.text).toBe('token ***\n')
 })
 
 // A run whose tasks run on other machines hands them its facts: its refs,
@@ -179,9 +177,12 @@ it('output resolves the output alone and lays no file', async () => {
   }
   await mkdir(path.join(agent.root, 'app', 'node_modules'), { recursive: true })
   await writeFile(path.join(agent.root, 'app', 'node_modules', 'x.js'), 'x')
-  await agent.artifacts.save(KEY, task, { stdout: 'installed\n', stderr: '', durationMs: 3 })
+  await agent.artifacts.save(KEY, task, {
+    output: [{ text: 'installed\n', err: false }],
+    durationMs: 3,
+  })
   const here = await machine('here', remote.layer)
-  expect(await here.artifacts.output(KEY)).toEqual({ stdout: 'installed\n', stderr: '' })
+  expect(await here.artifacts.output(KEY)).toEqual([{ text: 'installed\n', err: false }])
   expect(await Bun.file(path.join(here.root, 'app', 'node_modules', 'x.js')).exists()).toBe(false)
 })
 
@@ -200,8 +201,7 @@ it('leaves the files a task names as others out of its entry', async () => {
   await writeFile(path.join(dist, 'up.js'), 'upstream')
   await writeFile(path.join(dist, 'mine.js'), 'mine')
   await agent.artifacts.save(KEY, task(agent.root, new Set([path.join(dist, 'up.js')])), {
-    stdout: '',
-    stderr: '',
+    output: [],
     durationMs: 1,
   })
   const here = await machine('here', remote.layer)
@@ -227,7 +227,10 @@ it('share uploads an entry only this machine holds, and only that one', async ()
   })
   await mkdir(path.join(here.root, 'app', 'dist'), { recursive: true })
   await writeFile(path.join(here.root, 'app', 'dist', 'out.js'), 'built')
-  await here.artifacts.save(KEY, task(here.root), { stdout: 'ok\n', stderr: '', durationMs: 12 })
+  await here.artifacts.save(KEY, task(here.root), {
+    output: [{ text: 'ok\n', err: false }],
+    durationMs: 12,
+  })
   expect(await here.artifacts.share(KEY)).toBe(true)
   expect(remote.puts()).toBe(1)
   remote.store.delete(KEY)
@@ -237,10 +240,9 @@ it('share uploads an entry only this machine holds, and only that one', async ()
   expect(await later.share('fedcba9876543210')).toBe(false)
 
   const worker = await machine('worker', remote.layer)
-  expect(await worker.artifacts.restore(KEY, task(worker.root))).toEqual({
-    stdout: 'ok\n',
-    stderr: '',
-  })
+  expect(await worker.artifacts.restore(KEY, task(worker.root))).toEqual([
+    { text: 'ok\n', err: false },
+  ])
 })
 
 // A remote copy that does not read back failed the dependant on every
@@ -257,17 +259,19 @@ it('share sends the entry over a remote copy another machine found corrupt', asy
   })
   await mkdir(path.join(here.root, 'app', 'dist'), { recursive: true })
   await writeFile(path.join(here.root, 'app', 'dist', 'out.js'), 'built')
-  await here.artifacts.save(KEY, task(here.root), { stdout: 'ok\n', stderr: '', durationMs: 12 })
+  await here.artifacts.save(KEY, task(here.root), {
+    output: [{ text: 'ok\n', err: false }],
+    durationMs: 12,
+  })
   expect(await here.artifacts.share(KEY)).toBe(true)
   remote.store.set(KEY, remote.store.get(KEY)!.slice(0, 40))
   const worker = await machine('worker', remote.layer)
   expect(await worker.artifacts.restore(KEY, task(worker.root))).toBeNull()
   expect(await here.artifacts.resend(KEY)).toBe(true)
   const again = await machine('worker2', remote.layer)
-  expect(await again.artifacts.restore(KEY, task(again.root))).toEqual({
-    stdout: 'ok\n',
-    stderr: '',
-  })
+  expect(await again.artifacts.restore(KEY, task(again.root))).toEqual([
+    { text: 'ok\n', err: false },
+  ])
 })
 
 it('share uploads nothing to a remote the run does not write', async () => {
@@ -290,7 +294,7 @@ it('share uploads nothing to a remote the run does not write', async () => {
       command: 't',
       outputs: { files: [], workspaceFiles: [] },
     },
-    { stdout: '', stderr: '', durationMs: 1 },
+    { output: [], durationMs: 1 },
   )
   expect(await ro.share(KEY)).toBe(false)
   expect(remote.puts()).toBe(0)

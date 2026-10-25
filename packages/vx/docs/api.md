@@ -116,8 +116,7 @@ What a task's run left besides its files: its output, and its time and usage.
 
 ```ts
 export interface ArtifactRun {
-  readonly stdout: string
-  readonly stderr: string
+  readonly output: readonly CapturedChunk[]
   readonly durationMs: number
   readonly cpuMs?: number
   readonly peakRssBytes?: number
@@ -142,6 +141,27 @@ export interface ArtifactTask {
   }
   readonly nestedProjectDirs?: readonly string[]
   readonly others?: ReadonlySet<string>
+}
+```
+
+## `BoundedCapture`
+
+class · `src/exec/runner.ts`
+
+A head-and-tail accumulator: the head fills once, the tail is a ring
+of chunks trimmed from the front, so memory is bounded by the two
+limits plus one chunk whatever the task prints. Each chunk keeps its
+stream, so one capture can hold both in the order they arrived.
+
+```ts
+export class BoundedCapture {
+  constructor(
+    private readonly headChars = CAPTURE_HEAD_CHARS,
+    private readonly tailChars = CAPTURE_TAIL_CHARS,
+  ) {}
+  push(text: string, err = false): void
+  chunks(): CapturedChunk[]
+  text(): string
 }
 ```
 
@@ -458,6 +478,19 @@ Where a task's result came from, derived ONCE in core from the status.
 
 ```ts
 export type CacheSource = 'miss' | 'local' | 'remote' | 'none'
+```
+
+## `CapturedChunk`
+
+type · `src/exec/runner.ts`
+
+One piece of a task's output and the stream it came on.
+
+```ts
+export interface CapturedChunk {
+  text: string
+  err: boolean
+}
 ```
 
 ## `CiContext`
@@ -2644,8 +2677,8 @@ type · `src/orchestrator/task-artifacts.ts`
 ```ts
 export interface TaskArtifacts {
   save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
-  restore(key: string, task: ArtifactTask): Promise<{ stdout: string; stderr: string } | null>
-  output(key: string): Promise<{ stdout: string; stderr: string } | null>
+  restore(key: string, task: ArtifactTask): Promise<CapturedChunk[] | null>
+  output(key: string): Promise<CapturedChunk[] | null>
   share(key: string): Promise<boolean>
   resend(key: string): Promise<boolean>
 }

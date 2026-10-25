@@ -9,6 +9,7 @@ import { bytes, homeOf, needOf } from '../src/plugin.js'
 import type { Platform } from '@vzn/vx'
 import {
   type CacheFacts,
+  type CapturedChunk,
   type ExecuteRequest,
   type TaskArtifacts,
   type TaskNode,
@@ -356,7 +357,7 @@ it('a size is queued while a worker of it is late, given up beside one online', 
 
 /** A cache by key, in memory: what workers saved, and each restore asked. */
 function fakeArtifacts() {
-  const saved = new Map<string, { stdout: string; stderr: string }>()
+  const saved = new Map<string, CapturedChunk[]>()
   const restored: string[] = []
   const shared: string[] = []
   const artifacts: TaskArtifacts = {
@@ -436,7 +437,7 @@ async function harness(
       key = `k-${task}`,
       result: object = { exitCode: 0, durationMs: 1 },
     ): Promise<void> => {
-      store.saved.set(key, { stdout: `${task} out\n`, stderr: '' })
+      store.saved.set(key, [{ text: `${task} out\n`, err: false }])
       await me.send('orchestrator', { type: 'end', task, key, result })
     }
     const begin = (task: string) => me.send('orchestrator', { type: 'start', task })
@@ -624,7 +625,7 @@ it('books measured tasks at the share of their history the run’s tasks used, a
     expect(await a.batches()).toEqual([['t1', 't2', 't3', 't4']])
     for (const id of ['t1', 't2', 't3', 't4']) {
       await a.begin(id)
-      h.store.saved.set(`k-${id}`, { stdout: '', stderr: '' })
+      h.store.saved.set(`k-${id}`, [])
       // Half a core of the one its history booked.
       await a.say({
         type: 'end',
@@ -1279,7 +1280,7 @@ it('reports a worker still there at the summary online until then', async () => 
     // A failed task is the task's, not its worker's (M, 2026-10-23).
     const t2 = h.o.execute(h.req('t2'))
     expect(await a.batches()).toEqual([['t2']])
-    h.store.saved.set('k-t2', { stdout: '', stderr: '' })
+    h.store.saved.set('k-t2', [])
     await a.say({ type: 'end', task: 't2', key: 'k-t2', result: { exitCode: 1, durationMs: 1 } })
     expect((await t2).exitCode).toBe(1)
     expect(h.o.machines()[0]!.status).toBe('ok')
@@ -1691,6 +1692,106 @@ it('a forced run’s order is fresh, and its worker saves a success under the ru
   }
 })
 
+it('a worker’s output is saved and replayed in the order the task wrote it', async () => {
+  const h = await harness(new Map([node('t')]))
+  try {
+    const a = await h.worker(1)
+    const seen: string[] = []
+    const t = h.o.execute({
+      ...h.req('t', 'k-t'),
+      onStdout: (s: string) => seen.push(`out ${s}`),
+      onStderr: (s: string) => seen.push(`err ${s}`),
+    } as ExecuteRequest)
+    expect(await a.batches()).toEqual([['t']])
+    h.store.saved.set('k-t', [
+      { text: 'a\n', err: false },
+      { text: 'b\n', err: true },
+      { text: 'c\n', err: false },
+    ])
+    await a.say({ type: 'end', task: 't', key: 'k-t', result: { exitCode: 0, durationMs: 1 } })
+    const got = await t
+    expect(seen).toEqual(['out a\n', 'err b\n', 'out c\n'])
+    expect([got.stdout, got.stderr]).toEqual(['a\nc\n', 'b\n'])
+  } finally {
+    await h.stop()
+  }
+  const root = await tmp()
+  const served = servedRelay()
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    let output: readonly CapturedChunk[] = []
+    const artifacts: TaskArtifacts = {
+      async save(_key, _task, run) {
+        output = run.output
+      },
+      async output() {
+        return null
+      },
+      async share() {
+        return false
+      },
+      async resend() {
+        return false
+      },
+      async restore() {
+        return null
+      },
+    }
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => artifacts,
+    })
+    const order: RunOrder = {
+      task: 't',
+      key: 'k-t',
+      runKey: runKey(R, 't'),
+      deps: [],
+      nested: [],
+      command: 'echo a; sleep 0.2; echo b >&2; sleep 0.2; echo c',
+      cwd: '',
+      project: '',
+      env: {},
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    }
+    let ended = false
+    for (let i = 0; i < 100 && !ended; i++)
+      for (const { from, body } of await o.poll()) {
+        const m = body as { type: string; id?: string }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 2,
+            memory: 1e9,
+          })
+          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+        } else if (m.type === 'end') {
+          ended = true
+          await o.send(from, { type: 'exit' })
+        }
+      }
+    expect(await code).toBe(0)
+    expect(output).toEqual([
+      { text: 'a\n', err: false },
+      { text: 'b\n', err: true },
+      { text: 'c\n', err: false },
+    ])
+  } finally {
+    await served.stop()
+  }
+})
+
 // Two tasks begun together needing one dependency: the one whose order
 // did not carry it ran before the other had restored it (2026-10-22).
 it('a worker restores a dependency once, before any task that needs it runs', async () => {
@@ -1719,7 +1820,7 @@ it('a worker restores a dependency once, before any task that needs it runs', as
         restores++
         await Bun.sleep(100)
         await writeFile(path.join(root, 'dep.txt'), 'd')
-        return { stdout: '', stderr: '' }
+        return []
       },
     }
     const code = runWorker({
@@ -1904,7 +2005,7 @@ it('a worker restores a dependency again after a task cleared its files', async 
           restores++
           await mkdir(path.join(root, 'p/dist'), { recursive: true })
           await writeFile(path.join(root, 'p/dist/a.txt'), 'd')
-          return { stdout: '', stderr: '' }
+          return []
         },
       }),
     })

@@ -1,3 +1,13 @@
+== class BoundedCapture (src/exec/runner.ts)
+export class BoundedCapture {
+  constructor(
+    private readonly headChars = CAPTURE_HEAD_CHARS,
+    private readonly tailChars = CAPTURE_TAIL_CHARS,
+  ) {}
+  push(text: string, err = false): void
+  chunks(): CapturedChunk[]
+  text(): string
+}
 == class Cache (src/cache/cache.ts)
 export class Cache implements CacheLayer {
   readonly hasRemote
@@ -476,8 +486,7 @@ export interface ArtifactInfo {
 }
 == type ArtifactRun (src/orchestrator/task-artifacts.ts)
 export interface ArtifactRun {
-  readonly stdout: string
-  readonly stderr: string
+  readonly output: readonly CapturedChunk[]
   readonly durationMs: number
   readonly cpuMs?: number
   readonly peakRssBytes?: number
@@ -693,6 +702,11 @@ export type CacheStatus =
 export interface CaptureConfig {
   stdout?: boolean
   stderr?: boolean
+}
+== type CapturedChunk (src/exec/runner.ts)
+export interface CapturedChunk {
+  text: string
+  err: boolean
 }
 == type CgroupProbe (src/util/cgroup.ts)
 export interface CgroupProbe {
@@ -1802,8 +1816,8 @@ type Style = Tone | 'dim' | 'bold' | 'id'
 == type TaskArtifacts (src/orchestrator/task-artifacts.ts)
 export interface TaskArtifacts {
   save(key: string, task: ArtifactTask, run: ArtifactRun): Promise<void>
-  restore(key: string, task: ArtifactTask): Promise<{ stdout: string; stderr: string } | null>
-  output(key: string): Promise<{ stdout: string; stderr: string } | null>
+  restore(key: string, task: ArtifactTask): Promise<CapturedChunk[] | null>
+  output(key: string): Promise<CapturedChunk[] | null>
   share(key: string): Promise<boolean>
   resend(key: string): Promise<boolean>
 }
