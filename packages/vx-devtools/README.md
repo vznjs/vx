@@ -54,6 +54,7 @@ export function oidcAuth(opts: OidcOptions): Authorize
 - The repository is the token's issuer (`iss` without its scheme) and its
   `repository_id` (GitHub) or `project_id` (GitLab). One no rule names is
   `403`.
-- A token writes its branch (a pull request's head branch on GitHub, else
-  `ref`; GitLab's `ref_path`). A ref a rule names is protected: a token on
+- A token writes its branch (a pull request's head branch on GitHub, a
+  merge queue's base branch for a `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`
+  ref, else `ref`; GitLab's `ref_path`). A ref a rule names is protected: a token on
   it that matches no rule reads only.

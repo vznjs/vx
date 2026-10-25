@@ -40,7 +40,10 @@ rules:
   on GitLab) are the repository it reads and writes; one no rule names
   is `403`. A repository's artifacts are never another's.
 - It writes its branch's scope: on GitHub a pull request's head branch
-  (`refs/heads/<head_ref>`), else its `ref`; on GitLab its `ref_path`.
+  (`refs/heads/<head_ref>`), a merge queue's run
+  (`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, that exact form)
+  its base branch (`refs/heads/<base>`), which its code is about to
+  become, else its `ref`; on GitLab its `ref_path`.
 - A ref a rule names (`refs/heads/main`) is protected: a token on it that
   matches no rule reads only (a write is `403`), so main's runs never
   read a write they did not make.

@@ -78,8 +78,10 @@ What a token may do:
   A repository no rule names is refused (`403`). With `TRUST` empty,
   every request is refused: `the server trusts no CI: set TRUST`.
 - **It writes its own branch only.** A job writes the scope of its own
-  ref: on GitHub a pull request's head branch, else `ref`; on GitLab
-  `ref_path`. No header or client option can change that.
+  ref: on GitHub a pull request's head branch, a merge queue's base
+  branch (its ref `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`,
+  that exact form: its code is about to become the base), else `ref`; on
+  GitLab `ref_path`. No header or client option can change that.
 - **Protected refs.** A ref a rule names, such as `refs/heads/main`, is
   protected. Only a job that matches every claim of the rule writes it.
   Any other job on that ref only reads, so a main run never reads a
@@ -91,8 +93,9 @@ What a token may do:
 
 Always name `event_name`. `pull_request_target` and `issue_comment` runs
 carry main's `ref` while they run a pull request's code. A merge queue's
-runs write their queue ref before their code lands, and queued code is
-approved code.
+run writes main's scope before its code lands (with `merge_group` in
+main's rule): code you merge or queue is code you trust. Run security
+checks on the pull request, before it is queued.
 
 `AUDIENCE` is the `aud` a token must name. By default it is the origin
 the server is reached at, which is what the plugins ask GitHub for.

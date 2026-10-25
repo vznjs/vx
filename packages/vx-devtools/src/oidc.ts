@@ -121,10 +121,15 @@ function matches(rule: TrustRule, claims: JWTPayload): boolean {
   return true
 }
 
+/** GitHub's merge queue ref, `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`. */
+const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-9a-f]{64})$/
+
 /**
  * The scope a token writes: its branch. A GitHub pull request's run writes
  * its head branch (its `ref` is the merge ref the run's own reads never
- * name); any other run its `ref`, GitLab's its `ref_path`.
+ * name); a merge queue's run its base branch, which its code is about to
+ * become (M, 2026-10-25: "just strip it"); any other run its `ref`,
+ * GitLab's its `ref_path`.
  */
 function branchOf(iss: string, claims: JWTPayload): string | undefined {
   const head = claims['head_ref']
@@ -134,7 +139,9 @@ function branchOf(iss: string, claims: JWTPayload): string | undefined {
         ? `refs/heads/${head}`
         : claims['ref']
       : claims['ref_path']
-  return typeof ref === 'string' && ref.startsWith('refs/') && ref.length <= 512 ? ref : undefined
+  if (typeof ref !== 'string' || !ref.startsWith('refs/') || ref.length > 512) return undefined
+  const queued = iss === GITHUB ? QUEUE.exec(ref) : null
+  return queued === null ? ref : `refs/heads/${queued[1]}`
 }
 
 export interface OidcOptions {
