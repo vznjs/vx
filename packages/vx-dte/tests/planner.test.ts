@@ -383,3 +383,20 @@ it('plans 9000 ready tasks of mixed needs in seconds of CPU, not minutes', () =>
   const { user, system } = process.cpuUsage(start)
   expect((user + system) / 1000).toBeLessThan(5000)
 })
+
+// 2026-10-25: measured needs are unrounded, so every task can be its own
+// kind; read kind by kind, a plan of 1000 took 37 s.
+it('plans 3000 ready tasks each of its own need in seconds of CPU', () => {
+  const tasks: PlanTask[] = Array.from({ length: 3000 }, (_, i) => ({
+    id: `t${i}`,
+    cores: 0.25 + ((i * 7919) % 1000) / 700,
+    memory: (i * 104729) % 3e8,
+    ms: 100 + (i % 7) * 30,
+    deps: [],
+  }))
+  const sizes = Array.from({ length: 3 }, () => ({ name: 'small', cpu: 2, memory: 8e9, max: 3 }))
+  const start = process.cpuUsage()
+  plan(tasks, [], sizes, 3000)
+  const { user, system } = process.cpuUsage(start)
+  expect((user + system) / 1000).toBeLessThan(5000)
+})

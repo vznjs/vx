@@ -292,3 +292,8 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
 - A task must never remove the root of its own write grant: the Linux
   sandbox mounts that path, so `rm -rf` of it fails with EROFS. Empty it
   in place. A box with no bwrap cannot show this; CI does (#4097 → #4099).
+- An A/B of a planner speed-up covers the shapes real runs have, not
+  only the shape that found the bug: #4388 proved plans equal and fast
+  on tasks of four needs, and with history every task has its own
+  (unrounded CPU), where it ran 25x slower than before (#4389,
+  2026-10-25).
