@@ -726,11 +726,6 @@ function givenSecret(): string | undefined {
   return process.env['VX_DTE_SECRET'] || undefined
 }
 
-/**
- * What an unmeasured task counts for in the worker ask (`dte({ unmeasured
- * })`): fixed, since a plan cannot know which worker it lands on (M,
- * 2026-10-23: "by default, 2 cores, 4 gigs").
- */
 /** A plan waits this many times the last one's length after it: its share of the CPU at most one in eleven. */
 const PLAN_GAP = 10
 
@@ -772,6 +767,11 @@ export function pace(fn: () => void): { soon(): void; now(): void } {
   }
 }
 
+/**
+ * What an unmeasured task counts for in the worker ask (`dte({ unmeasured
+ * })`): fixed, since a plan cannot know which worker it lands on (M,
+ * 2026-10-23: "by default, 2 cores, 4 gigs").
+ */
 const FRESH: Need = { cores: 2, memory: 4e9 }
 /**
  * What it books: one free core, no memory (M, 2026-10-23: "pack them
