@@ -32,7 +32,9 @@ export default {
   names both by their hashes (`vx-issuer`, `vx-repository`), and the
   server refuses a token of another repository.
 - `timeoutMs` (default 30 000) bounds each read and query, and
-  `uploadTimeoutMs` (default 60 000) each upload.
+  `uploadTimeoutMs` (default 60 000) each upload. A download is bounded
+  the same way until its answer, then only while no bytes arrive: a big
+  artifact still coming in is not cut off.
 - `headers` are sent on every request to the server, for a proxy in
   front of it, such as a Cloudflare Access service token:
   `headers: { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID,
