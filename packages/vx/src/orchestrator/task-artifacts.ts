@@ -45,6 +45,8 @@ export interface ArtifactRun {
   readonly peakRssBytes?: number
   /** Its environment: a secret value in it is masked out of the stored output. */
   readonly env?: Readonly<Record<string, string | undefined>>
+  /** No remote held the key when the run asked: its upload asks none first. */
+  readonly absent?: boolean
 }
 
 export interface TaskArtifacts {
@@ -104,6 +106,7 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
         ...(tree.emptyDirs.length > 0 ? { outputDirs: tree.emptyDirs } : {}),
         workspaceRoot,
         ...(ws.length > 0 ? { workspaceOutputFiles: ws } : {}),
+        ...(run.absent === true ? { absent: true } : {}),
         entry: {
           taskId: task.id,
           command: mask?.mask(task.command) ?? task.command,

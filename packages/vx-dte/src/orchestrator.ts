@@ -267,6 +267,8 @@ export class Orchestrator {
   private readonly late = new Set<string>()
   /** A failed start was given another worker (`failed`). */
   private restarts = 0
+  /** The tasks core's probe found in no cache (`demand`): a worker uploads theirs asking nothing first. */
+  missed: ReadonlySet<string> = new Set()
   private pumping = false
   private joined = 0
   private readonly startedAt = performance.now()
@@ -683,6 +685,9 @@ export class Orchestrator {
           // A held key keeps its entry, and restored here it replaced the
           // forced run's fresh bytes with the ones it bypassed (2026-10-25).
           ...(req.refresh === true ? { fresh: true as const } : {}),
+          // A HEAD per upload was the workers' only remote probe: the run
+          // already knows the key is in no cache (M, 2026-10-25).
+          ...(req.refresh !== true && this.missed.has(req.taskId) ? { absent: true as const } : {}),
           deps,
           nested: node === undefined ? [] : nestedIn(nodes!, node.projectDir, this.o.root),
           command: withForwardArgs(req.command, req.forwardArgs),

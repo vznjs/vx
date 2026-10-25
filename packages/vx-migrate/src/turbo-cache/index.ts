@@ -835,6 +835,10 @@ export class TurboRemoteCache implements RemoteCacheLayer {
     return new Response(unlinkingStream(temp))
   }
 
+  missing(hash: string): void {
+    this.absent.add(hash)
+  }
+
   async put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void> {
     if (this.disabled || this.writesRefused) return
     if (!this.absent.has(hash)) {

@@ -68,6 +68,8 @@ export interface RemoteCacheLayer {
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
   /** Store an artifact (fire-and-forget from LayeredCache's PoV). File-backed when local holds it. */
   put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+  /** Optional: the run found `hash` in no remote and a `put` follows; a wire that checks first can skip it. */
+  missing?(hash: string): void
 }
 
 export class LayeredCache implements CacheLayer {

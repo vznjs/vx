@@ -368,6 +368,15 @@ describe('a put never replaces a stored artifact (M, 2026-10-15)', () => {
     expect(calls.map((r) => r.method)).toEqual(['GET', 'POST', 'PUT', 'PUT'])
   })
 
+  // A DTE worker never saw the run's probe: it HEADed every upload (M, 2026-10-25).
+  it('asks nothing first for a key the run says is absent', async () => {
+    const { fetchImpl, calls } = stub(() => new Response(null))
+    const c = cacheWith(fetchImpl)
+    c.missing('aa')
+    await c.put('aa', new Blob(['x']), { durationMs: 1 })
+    expect(calls.map((r) => r.method)).toEqual(['PUT'])
+  })
+
   it('a HEAD that fails uploads, as before', async () => {
     const { fetchImpl, calls } = stub((method) =>
       method === 'HEAD' ? new Response(null, { status: 500 }) : new Response(null),

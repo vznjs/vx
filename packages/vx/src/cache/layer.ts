@@ -776,6 +776,8 @@ export interface CacheLayer {
      * Only computed on the miss/save path — never on a hit.
      */
     inputComponents?: readonly TaskInputRow[]
+    /** No remote held `hash` when the run asked: an upload asks none first. */
+    absent?: boolean
   }): Promise<void>
   /**
    * Adopt an artifact produced elsewhere — the remote-hit path. Streams
