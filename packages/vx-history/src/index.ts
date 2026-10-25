@@ -27,7 +27,6 @@ import {
   UserError,
   refuseUnknownOptions,
   type PluginOptionKinds,
-  type PluginCache,
 } from '@vzn/vx'
 import type { CommandContext } from '@vzn/vx'
 import path from 'node:path'
@@ -79,19 +78,15 @@ export interface VxHistoryOptions {
    */
   readonly file?: string
   /**
-   * The branch whose CI runs share their timings through the workspace's
-   * cache: on CI on this branch, each task's p50 is written under the
-   * commit after the run; a run whose tasks have no timings on its own
-   * branch first imports those of its merge-base with this branch (at
-   * most 500 ms). Default `'main'`.
+   * The branch whose history-server rows a run reads after its own branch's.
+   * Default `'main'`.
    */
   readonly defaultBranch?: string
   /**
    * A vx-history server's URL (`@vzn/vx-history-server`), or
    * `VX_HISTORY_URL`. On a CI job with a token (GitHub's OIDC, or GitLab's
    * `VX_HISTORY_TOKEN`) each run asks it for its tasks' numbers, without
-   * waiting, and sends its own timings once at its end; the
-   * `defaultBranch` blobs are then neither read nor written.
+   * waiting, and sends its own timings once at its end.
    */
   readonly server?: string
   /**
@@ -317,7 +312,6 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       // tried a default-branch import (and paid a query per group).
       const ids: string[] = []
       for (const n of nodes.values()) if (n.config.exec?.command !== undefined) ids.push(n.id)
-      shared = { cache: ctx.localCache, ids, branch: ctx.branch, defs }
       let table: ReadonlyMap<string, TaskResources>
       let provider: LocalHistoryProvider
       try {
@@ -383,36 +377,6 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
           return undefined
         })
         ctx.refine(weights)
-      } else if (provider.lackedBranchHistory) {
-        // Only a run missing some timing on its branch fetches its merge-base's,
-        // and the run never waits on it: the order from local history stands
-        // until the fetched timings re-rank what has not started.
-        const stopped = new Promise<void>((resolve) => (stopImport = resolve))
-        const weights = (async () => {
-          const imported = await (
-            await import('./shared-timings.js')
-          ).importTimings({
-            root: ctx.workspaceRoot,
-            defaultBranch: options.defaultBranch ?? DEFAULT_BRANCH,
-            cache: ctx.cache,
-            provider,
-            ids,
-            triedFile: path.join(ctx.cacheDir, 'history-base'),
-            branch: ctx.branch !== null && ctx.branch !== (options.defaultBranch ?? DEFAULT_BRANCH),
-            stopped,
-            warn: ctx.warn,
-          })
-          return imported ? order(await provider.resourcesFor(ids)) : undefined
-        })().catch((err: unknown) => {
-          // A hint: a failed import orders the run without it, and says so.
-          ctx.warn(
-            `[vx] vx-history: the shared timings were not applied: ${err instanceof Error ? err.message : String(err)}`,
-          )
-          return undefined
-        })
-        // Promised, so a plugin sizing the run by these timings waits for them.
-        importing = weights.then(() => {})
-        ctx.refine(weights)
       }
       return order(table)
     },
@@ -431,10 +395,8 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   }
   // What the run sends the history server at its end, by task definition.
   let reported: { timings: Map<string, ServerTiming>; warn: (m: string) => void } | undefined
-  // The run's merge-base import, still going; teardown stops it, so no
-  // run waits for history it did not need, and no row lands after the
-  // cache closes.
-  let importing: Promise<void> | undefined
+  // Stops the server's answer from landing once the run is over: no row
+  // lands after the cache closes.
   let stopImport: (() => void) | undefined
   // The timings file is written for a run only: `schedule` also orders a
   // `--dry` plan, which has no `setup` and records nothing.
@@ -452,14 +414,6 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   // A run that executed nothing and restored only tasks the file already
   // times leaves it as it was: an all-cached CI run re-reads no history.
   let changed = false
-  // What the run's export needs, from `schedule` (which a run that starts
-  // no task never calls) and `setup` (which a plan never calls).
-  let shared:
-    | { cache: Cache; ids: string[]; branch: string | null; defs: ReadonlyMap<string, string> }
-    | undefined
-  let exporting:
-    | { cache: PluginCache; root: string; warn: (m: string) => void; ran: Set<string> }
-    | undefined
   let fileWarn: { root: string; warn: (m: string) => void } | undefined
   hooks.setup = async (ctx) => {
     remote ??= await serverOf()
@@ -487,19 +441,6 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         '[vx] vx-history: VX_HISTORY_URL names a server, but vxHistory() names no issuer and repository: the server is not asked',
       )
     }
-    // A branch's write lands under its scope (M, 2026-10-18), for its next
-    // commit's runs to read; a history server takes the run's timings instead.
-    exporting =
-      ctx.ci && remote === undefined
-        ? { cache: ctx.cache, root: ctx.workspaceRoot, warn: ctx.warn, ran: new Set() }
-        : undefined
-    if (exporting !== undefined) {
-      const ran = exporting.ran
-      ctx.on('onTaskComplete', (node, outcome) => {
-        if (outcome.status === 'success' && node.config.exec?.command !== undefined)
-          ran.add(node.id)
-      })
-    }
     if (options.file === undefined) return
     fileWarn = { root: ctx.workspaceRoot, warn: ctx.warn }
     inRun = true
@@ -516,8 +457,6 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   // After the run's history is recorded and before its cache closes.
   hooks.teardown = async () => {
     stopImport?.()
-    await importing
-    importing = undefined
     stopImport = undefined
     const server = remote
     const sent = reported
@@ -529,35 +468,6 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       } catch (err) {
         sent.warn(
           `[vx] vx-history: the timings were not sent to the history server: ${err instanceof Error ? err.message : String(err)}`,
-        )
-      }
-    }
-    const run = shared
-    const out = exporting
-    shared = undefined
-    exporting = undefined
-    if (run !== undefined && out !== undefined) {
-      try {
-        await (
-          await import('./shared-timings.js')
-        ).exportTimings({
-          root: out.root,
-          cache: out.cache,
-          provider: new LocalHistoryProvider(
-            run.cache.dbHandle(),
-            windowOf(options),
-            run.branch,
-            run.defs,
-          ),
-          ids: run.ids,
-          defs: run.defs,
-          ran: out.ran,
-        })
-      } catch (err) {
-        // A hint: the next commit's runs walk back to an older blob, and the
-        // runs it would have measured read as unmeasured, so it is said.
-        out.warn(
-          `[vx] vx-history: the shared timings were not written: ${err instanceof Error ? err.message : String(err)}`,
         )
       }
     }
