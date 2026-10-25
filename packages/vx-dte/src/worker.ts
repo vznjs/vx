@@ -932,8 +932,15 @@ function pieces(output: readonly CapturedChunk[]): CapturedChunk[] {
   return output.flatMap((c) => {
     if (c.text.length <= most) return [c]
     const cut: CapturedChunk[] = []
-    for (let i = 0; i < c.text.length; i += most)
-      cut.push({ ...c, text: c.text.slice(i, i + most) })
+    for (let i = 0; i < c.text.length;) {
+      let end = Math.min(i + most, c.text.length)
+      // Not inside a surrogate pair: each half replayed alone printed as
+      // two replacement characters (2026-10-25).
+      const last = c.text.charCodeAt(end - 1)
+      if (end < c.text.length && last >= 0xd800 && last <= 0xdbff) end--
+      cut.push({ ...c, text: c.text.slice(i, end) })
+      i = end
+    }
     return cut
   })
 }

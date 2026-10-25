@@ -3517,6 +3517,85 @@ it('sends a long non-ASCII output in parts the relay takes', async () => {
   }
 }, 60_000)
 
+// Output cut every 32 768 UTF-16 units split an emoji's surrogate pair:
+// each half replayed alone printed as two replacement characters (2026-10-25).
+it('cuts a long output between characters, never inside one', async () => {
+  const root = await tmp()
+  await writeFile(path.join(root, 'log.txt'), `x${'😀'.repeat(40_000)}`)
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: root })
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  const served = servedRelay()
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      // Shared with no remote: its output goes with its `end`.
+      artifacts: () => ({ ...fakeArtifacts().artifacts, uploaded: async () => false }),
+    })
+    const order: RunOrder = {
+      task: 'log',
+      runKey: runKey(R, 'log'),
+      deps: [],
+      nested: [],
+      command: 'cat log.txt',
+      cwd: '',
+      project: '',
+      env: { PATH: process.env['PATH'] ?? '' },
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    }
+    let text = ''
+    const chunks: string[] = []
+    let ended = false
+    for (let i = 0; i < 400 && !ended; i++)
+      for (const { from, body } of await o.poll()) {
+        const m = body as {
+          type: string
+          id?: string
+          output?: { text: string }[]
+          result?: { output?: { text: string }[] }
+        }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 2,
+            memory: 1e9,
+          })
+          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+        } else if (m.type === 'part') {
+          for (const c of m.output ?? []) chunks.push(c.text)
+        } else if (m.type === 'end') {
+          for (const c of m.result?.output ?? []) chunks.push(c.text)
+          ended = true
+          await o.send(from, { type: 'exit' })
+        }
+      }
+    expect(ended).toBe(true)
+    text = chunks.join('')
+    expect(text).toHaveLength(80_001)
+    expect(chunks.length).toBeGreaterThan(1)
+    const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
+    expect(chunks.filter((c) => lone.test(c))).toEqual([])
+    expect(await code).toBe(0)
+  } finally {
+    await served.stop()
+  }
+}, 60_000)
+
 it('takes a result’s parts ahead of its end as one result', async () => {
   const h = await harness(new Map([node('t')]))
   try {
