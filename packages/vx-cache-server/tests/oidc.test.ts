@@ -98,7 +98,9 @@ describe('CI OIDC tokens', () => {
     expect((await put(await sign(queue), 'e5')).status).toBe(204)
     expect(await status('e5')).toBe(200)
     // Another event on the same ref matches no rule: main is protected.
-    expect((await put(await sign({ ...queue, event_name: 'workflow_dispatch' }), 'e6')).status).toBe(403)
+    expect(
+      (await put(await sign({ ...queue, event_name: 'workflow_dispatch' }), 'e6')).status,
+    ).toBe(403)
     // Only the exact pattern is stripped.
     const near = { ...queue, ref: 'refs/heads/gh-readonly-queue/main/pr-12-xyz' }
     expect((await put(await sign(near), 'e7')).status).toBe(204)
