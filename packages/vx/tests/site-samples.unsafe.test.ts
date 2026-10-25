@@ -302,14 +302,14 @@ describe('the why-vx-is-fast concept quotes the benchmarks page', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     for (const figure of [
       '1 min 53 s',
-      '9.27 s',
-      '11.05 s',
-      '5 min 1 s',
-      '9.89 s',
-      '720 ms',
-      '1.05 s',
-      '26.21 s',
-      '12.89 s',
+      '7.57 s',
+      '9.63 s',
+      '3 min 6 s',
+      '9.01 s',
+      '799 ms',
+      '927 ms',
+      '24.15 s',
+      '12.07 s',
       '9,603 tasks',
       '74 ms',
       '172 ms',
@@ -399,7 +399,7 @@ describe('the no-daemon post quotes the benchmarks page', () => {
   it('each warm-run figure it states is on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'no-daemon.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['720 ms', '1.05 s', '26.21 s']) {
+    for (const figure of ['799 ms', '927 ms', '24.15 s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -500,14 +500,14 @@ describe('the why-vx-is-fast post quotes the benchmarks page', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'why-vx-is-fast.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
     for (const figure of [
-      '720 ms',
-      '1.05 s',
-      '26.21 s',
-      '12.89 s',
-      '9.27 s',
-      '11.05 s',
-      '5 min 1 s',
-      '9.89 s',
+      '799 ms',
+      '927 ms',
+      '24.15 s',
+      '12.07 s',
+      '7.57 s',
+      '9.63 s',
+      '3 min 6 s',
+      '9.01 s',
     ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
@@ -647,16 +647,16 @@ describe('the honest-benchmarks post quotes the benchmarks page', () => {
     // and 340 fixed on two other posts (item 342, 2026-09-19).
     for (const figure of [
       '1 min 53 s',
-      '9.27 s',
-      '11.05 s',
-      '5 min 1 s',
-      '9.89 s',
-      '720 ms',
-      '1.05 s',
-      '26.21 s',
-      '49.58 s',
-      '1 min 30 s',
-      '7 min 43 s',
+      '7.57 s',
+      '9.63 s',
+      '3 min 6 s',
+      '9.01 s',
+      '799 ms',
+      '927 ms',
+      '24.15 s',
+      '36.64 s',
+      '1 min 12 s',
+      '5 min 34 s',
     ]) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
@@ -755,7 +755,7 @@ describe('the from-nx post says how executors run, and names the servers', () =>
   })
   it('the benchmark figures it states are the benchmarks page’s', () => {
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['720 ms', '26.21 s', '49.58 s', '7 min 43 s']) {
+    for (const figure of ['799 ms', '24.15 s', '36.64 s', '5 min 34 s']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -1465,7 +1465,7 @@ describe('the no-choice-on-the-market post quotes the benchmarks page', () => {
   it('its warm figures are on docs/benchmarks.md as written', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'no-choice-on-the-market.md'), 'utf8')
     const bench = readFileSync(path.resolve(import.meta.dir, '..', 'docs', 'benchmarks.md'), 'utf8')
-    for (const figure of ['26.21 s', '1.05 s', '720 ms']) {
+    for (const figure of ['24.15 s', '927 ms', '799 ms']) {
       expect(page).toContain(figure)
       expect(bench).toContain(figure)
     }
@@ -2013,7 +2013,7 @@ describe('the posts state the daemons as the benchmark ran them', () => {
       'utf8',
     )
     expect(harness).toContain("(`CI=1`, so Nx's daemon is off;")
-    expect(post('no-choice-on-the-market.md')).toContain("vx's 720 ms, Nx's daemon off as in CI.")
+    expect(post('no-choice-on-the-market.md')).toContain("vx's 799 ms, Nx's daemon off as in CI.")
     expect(post('honest-benchmarks.md')).toContain(
       "CI (`CI=1`: Nx's daemon off, and Turbo uses none for `turbo run`)",
     )

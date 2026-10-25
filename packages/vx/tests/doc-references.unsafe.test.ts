@@ -532,7 +532,7 @@ describe('benchmarks.md quotes the run results.json recorded', () => {
     m = /^(\d+(?:\.\d+)?) s$/.exec(raw)
     if (m !== null) {
       const decimals = (m[1]!.split('.')[1] ?? '').length
-      return { ms: Number(m[1]) * 1000, step: 1000 / 10 ** decimals }
+      return { ms: Math.round(Number(m[1]) * 1000), step: 1000 / 10 ** decimals }
     }
     m = /^(\d+) ms$/.exec(raw)
     return m === null ? null : { ms: Number(m[1]), step: 1 }
