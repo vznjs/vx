@@ -377,7 +377,7 @@ function resolveWorkspaceFiles(args: {
     root: args.workspaceRoot,
     listed: gitFiles,
     isInput: (rel) =>
-      (isPositive ??= anyTaskGlob(asTrees(positive)))(rel) &&
+      (isPositive ??= throughLinks(positive, anyTaskGlob(asTrees(positive))))(rel) &&
       !excludedByDeclaration(rel) &&
       !own(rel),
     nested: () => false,
@@ -393,7 +393,7 @@ function resolveWorkspaceFiles(args: {
   const hit = args.memo?.get(declared)
   if (hit !== undefined && hit.snapshot === gitFiles) base = hit.result
   if (base === undefined) {
-    isPositive ??= anyTaskGlob(asTrees(positive))
+    isPositive ??= throughLinks(positive, anyTaskGlob(asTrees(positive)))
     base = resolveWorkspaceFilesOver(args, gitFiles, positive, isPositive, excludedByDeclaration)
     args.memo?.set(declared, { snapshot: gitFiles, result: base })
   }
@@ -410,7 +410,7 @@ function resolveWorkspaceFiles(args: {
     if (reach.length === 0) return kept
     // Outside the memo: an ignored file a task writes mid-run leaves the
     // snapshot as it was.
-    isPositive ??= anyTaskGlob(asTrees(positive))
+    isPositive ??= throughLinks(positive, anyTaskGlob(asTrees(positive)))
     const accept = isPositive
     const extra = ignoredInputs(
       args.workspaceRoot,
@@ -1662,13 +1662,34 @@ function filesPlan(
           // stays an input: a tracked file under `dist` the build reads (A-44).
           ownOutput: outputMatcher(ownOutputs),
           positiveGlobs: asTrees(positive).map(globFor),
-          isPositive: anyTaskGlob(asTrees(positive)),
+          isPositive: throughLinks(positive, anyTaskGlob(asTrees(positive))),
           ...reachOf(positive),
           verdicts: new Map<string, boolean>(),
           ownOnly: new Map<string, boolean>(),
         }
   filesPlans.set(key, plan)
   return plan
+}
+
+/**
+ * `isPositive`, and each path a glob's static directory passes through:
+ * git lists a linked directory as one path, the link, so `lib/**` over
+ * `lib -> ../shared` matched nothing, and an edit behind it kept the key
+ * the task's last bytes were saved under (2026-10-25). The link is then
+ * an input, and its key folds every file behind it.
+ */
+function throughLinks(
+  positive: readonly string[],
+  isPositive: (rel: string) => boolean,
+): (rel: string) => boolean {
+  const through = new Set<string>()
+  for (const g of positive) {
+    const prefix = staticPrefix(g)
+    if (prefix === '.' || prefix === '' || path.isAbsolute(prefix)) continue
+    const parts = prefix.split('/')
+    for (let i = 1; i <= parts.length; i++) through.add(parts.slice(0, i).join('/'))
+  }
+  return through.size === 0 ? isPositive : (rel) => isPositive(rel) || through.has(rel)
 }
 
 /**
@@ -1751,7 +1772,7 @@ function workspaceMatcher(decl: readonly string[]): (rel: string) => boolean {
   let m = workspaceMatchers.get(key)
   if (m !== undefined) return m
   const { positive, negative } = splitNegations(decl)
-  const isPositive = anyTaskGlob(asTrees(positive))
+  const isPositive = throughLinks(positive, anyTaskGlob(asTrees(positive)))
   const isExcluded = anyTaskGlob([...WORKSPACE_ALWAYS_IGNORE, ...asTrees(negative)])
   m = (rel) => isPositive(rel) && !isExcluded(rel)
   workspaceMatchers.set(key, m)
