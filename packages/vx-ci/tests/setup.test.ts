@@ -144,6 +144,19 @@ it('takes only its own CI and --debs', async () => {
     )
 })
 
+it('prints its usage for --help and exits 0', async () => {
+  const printed: string[] = []
+  const write = process.stdout.write
+  process.stdout.write = ((chunk: string) => printed.push(chunk) > 0) as typeof write
+  try {
+    for (const argv of [['--help'], ['-h'], ['github', '--help']])
+      expect(await runSetup('github', argv, os.tmpdir())).toBe(0)
+  } finally {
+    process.stdout.write = write
+  }
+  expect(printed).toEqual(Array(3).fill('Usage: vx setup github [--debs <dir>]\n'))
+})
+
 // vx-worker.yml restores by `vx-setup-debs-<runner.os>-<runner.arch>-`
 // (ci-workflow.unsafe.test.ts): a key led by the image matched none.
 it('saves packages under the runner OS and arch, then the image', () => {
