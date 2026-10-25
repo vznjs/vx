@@ -108,10 +108,17 @@ export function assign<B extends Bin>(
     readonly kinds: number
     /** Where it keeps the kinds spent, for the asks to skip them as it reads. */
     readonly spent?: Set<string>
+    /** Where it keeps the bins' bounds as it gives, for the asks to skip each `dead` one as it reads. */
+    readonly bounds?: Bounds
   },
 ): Map<string, B> {
   const out = new Map<string, B>()
   const held = new Set<B>()
+  const bounds = all?.bounds
+  const rebound = (): void => {
+    if (bounds !== undefined) boundsOf(bins, held, bounds, all?.floor)
+  }
+  rebound()
   // Kinds that failed and held nothing since a bin was last given a task:
   // until one is, each ask of them fails alike.
   const spent = all?.spent ?? new Set<string>()
@@ -158,8 +165,10 @@ export function assign<B extends Bin>(
         if (need.cores < b.cores && need.memory <= b.memory - b.used.memory) continue
         if (soonest === undefined || b.used.cores < soonest.used.cores) soonest = b
       }
-      if (soonest !== undefined) held.add(soonest)
-      else if (ask.kind !== undefined) spent.add(ask.kind)
+      if (soonest !== undefined) {
+        held.add(soonest)
+        rebound()
+      } else if (ask.kind !== undefined) spent.add(ask.kind)
       continue
     }
     spent.clear()
@@ -167,8 +176,65 @@ export function assign<B extends Bin>(
     best.used.cores += Math.min(need.cores, best.cores)
     best.used.memory += Math.min(need.memory, best.memory)
     best.running++
+    rebound()
   }
   return out
+}
+
+/**
+ * The bins not held, as an ask `dead` reads them: one asked of nowhere
+ * fits it and holds nothing, so `assign` only spends its kind. With every
+ * task its own kind, a pass read each ready one to learn that: 2.4 million
+ * asks for a plan of 9000 (2026-10-25).
+ */
+export interface Bounds {
+  /** None takes the least any ask needs: the pass is over. */
+  done: boolean
+  /** One is empty: every ask fits it. */
+  open: boolean
+  /** The most cores free on one. */
+  free: number
+  /** The fewest cores one has. */
+  cores: number
+  /** The least memory free on one. */
+  memory: number
+}
+
+function boundsOf(
+  bins: readonly Bin[],
+  held: ReadonlySet<Bin>,
+  out: Bounds,
+  floor: Need | undefined,
+): void {
+  out.done = floor !== undefined
+  out.open = false
+  out.free = -Infinity
+  out.cores = Infinity
+  out.memory = Infinity
+  for (const b of bins) {
+    if (held.has(b)) continue
+    if (floor !== undefined && fits(b, floor)) out.done = false
+    if (b.running === 0) out.open = true
+    out.free = Math.max(out.free, b.cores - b.used.cores)
+    out.cores = Math.min(out.cores, b.cores)
+    out.memory = Math.min(out.memory, b.memory - b.used.memory)
+  }
+}
+
+/**
+ * True when `assign` would fit `need` on no bin and hold none for it, by
+ * `fits` and its hold rule: no bin is empty, and on each it is less than
+ * the bin, fits its memory, and wants more cores than are free.
+ */
+export function dead(need: Need, b: Bounds): boolean {
+  return (
+    need.platform === undefined &&
+    need.above === undefined &&
+    !b.open &&
+    need.cores > b.free + 1e-9 &&
+    need.cores < b.cores &&
+    need.memory <= b.memory
+  )
 }
 
 /** How well `need` suits `b` by `place`: the higher, the better. */

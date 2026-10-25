@@ -618,17 +618,14 @@ export function dte(options: DteOptions) {
         }
       }
       // Events come in bursts (core hands over tasks ready at once): one
-      // plan per tick.
-      let planning = false
+      // plan per tick, paced by its cost.
+      const paced = pace(() => {
+        if (pending !== undefined) shape(pending)
+      })
       const replan = (now?: boolean): void => {
         if (!missed || pending === undefined || !ready()) return
-        if (now === true) return shape(pending)
-        if (planning) return
-        planning = true
-        setImmediate(() => {
-          planning = false
-          if (pending !== undefined) shape(pending)
-        })
+        if (now === true) return paced.now()
+        paced.soon()
       }
       // Until a task misses, demand waits: a run all hits starts no worker.
       let missed = false
@@ -727,6 +724,47 @@ function onGitHub(): boolean {
 /** `VX_DTE_SECRET`: the run's, given. */
 function givenSecret(): string | undefined {
   return process.env['VX_DTE_SECRET'] || undefined
+}
+
+/** A plan waits this many times the last one's length after it: its share of the CPU at most one in eleven. */
+const PLAN_GAP = 10
+
+/**
+ * `fn` at most once a tick (`soon`), and no sooner than `PLAN_GAP` times
+ * its last run's length after that run; `now` runs it at once. Planned
+ * after each task's end, 2000 tasks made 1281 plans and 9 s of the
+ * orchestrator's 19: workers waited on it, and its relay found them lost
+ * (2026-10-25).
+ */
+export function pace(fn: () => void): { soon(): void; now(): void } {
+  let pending: { cancel(): void } | undefined
+  let next = 0
+  const run = (): void => {
+    pending?.cancel()
+    pending = undefined
+    const start = performance.now()
+    try {
+      fn()
+    } finally {
+      const end = performance.now()
+      next = end + PLAN_GAP * (end - start)
+    }
+  }
+  return {
+    now: run,
+    soon() {
+      if (pending !== undefined) return
+      const wait = next - performance.now()
+      if (wait <= 0) {
+        const t = setImmediate(run)
+        pending = { cancel: () => clearImmediate(t) }
+      } else {
+        const t = setTimeout(run, wait)
+        t.unref?.()
+        pending = { cancel: () => clearTimeout(t) }
+      }
+    },
+  }
 }
 
 /**

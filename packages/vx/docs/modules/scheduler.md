@@ -228,7 +228,9 @@ concurrency` check for exec-tier nodes — including its O(1) early-out
    (or with an `admit` policy) a saturated tick instead SCANS the ready
    queue, parking what does not fit and repushing it with its original
    seq; that is the price of a per-task admission predicate, and it is
-   paid only when one exists. `admit(id, running)` is that predicate for
+   paid only when one exists. With pools the scan still skips when every
+   pool is full and no ready task is local: a DTE pool of 6 slots before
+   2,000 ready tasks re-popped them all on every task's end (2026-10-25). `admit(id, running)` is that predicate for
    local exec-tier nodes: asked after the count gate with the set of
    local exec-tier tasks running right now (tracked only while a policy
    exists; a persistent task leaves it at ready, with its slot, since it
