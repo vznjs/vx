@@ -9,7 +9,7 @@ services:
   dte:
     build: ../../packages/vx-dte-server
     command: [--allow, '${DTE_ALLOW:-}', --audience, '${DTE_AUDIENCE:-}']
-    # Stores nothing: a restart ends the runs in flight.
+    # Stores nothing: after a restart, vx-dte joins each run in flight again.
     ports: ['${DTE_PORT:-8080}:8080']
     restart: unless-stopped
   cache:

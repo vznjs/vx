@@ -135,7 +135,8 @@ can reach. It keeps no secret and stores no file.
 - On Cloudflare each run is one Durable Object, and the relay fits the
   free plan: websocket messages count 20 to one Durable Object request,
   against 100,000 a day, and it writes no row. A deploy, or a restart
-  on Bun and Docker, ends the runs in flight.
+  on Bun and Docker, forgets the runs in flight: vx-dte joins each again
+  and the work goes on.
 - The wire is [Switchboard v1](../../../switchboard/), an open protocol: any
   server that speaks it can stand in for this relay.
 - `AUDIENCE` (Cloudflare) is unset by default: tokens must name the URL

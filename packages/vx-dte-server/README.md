@@ -92,7 +92,8 @@ All vx servers at once, this relay with its state on a volume included:
 
 CI builds this image and carries one run through it (`test.live`).
 
-Runs live in memory. Restarting the relay ends the runs it was carrying.
+Runs live in memory. A restarted relay forgets the runs it was carrying,
+and vx-dte joins each again.
 Participants hold websockets here too, so a message reaches its receiver
 the moment it is sent.
 
