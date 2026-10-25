@@ -6,7 +6,16 @@
 // a TETRIS game. every time we get new data we refine next step").
 
 import type { TaskNode } from '@vzn/vx'
-import { assign, dead, kindOf, ordered, type Ask, type Bin, type Bounds, type Need } from './dispatch.js'
+import {
+  assign,
+  dead,
+  kindOf,
+  ordered,
+  type Ask,
+  type Bin,
+  type Bounds,
+  type Need,
+} from './dispatch.js'
 import { DEFAULT_STRATEGY, type Strategy } from './strategy.js'
 
 /**
