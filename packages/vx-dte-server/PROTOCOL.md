@@ -184,7 +184,13 @@ session id cannot open or join it.
 
 ## What the relay knows
 
-Only what routing needs, and no longer:
+A relay stores nothing. It writes no message, participant or session to
+any file, database, key-value store or alarm: what it knows lives in
+memory and in its open sockets, and a restart forgets it. Its host and
+peers carry a session across one by joining it again. The one thing a
+relay may cache is an issuer's published public keys (§ Tokens).
+
+It holds only what routing needs, and no longer:
 
 - A session is a SHA-256 of its id and its tokens' issuer and claims: no
   name says whose it is. A token is checked, never kept.
