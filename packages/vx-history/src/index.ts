@@ -79,7 +79,8 @@ export interface VxHistoryOptions {
   readonly file?: string
   /**
    * The branch whose history-server rows a run reads after its own branch's.
-   * Default `'main'`.
+   * Unset, the run's refs (`baseBranch`, a CI plugin's, else git's), as a
+   * remote cache reads them.
    */
   readonly defaultBranch?: string
   /**
@@ -340,11 +341,17 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         const server = remote
         let late = false
         stopImport = () => (late = true)
+        // The run's refs, as a remote cache reads them: its branch, the
+        // branch it merges into, the default branch. `main` was assumed, so
+        // a `master` or `baseBranch: 'trunk'` repository read no trunk's
+        // numbers. Each ref is sent as its hash, never plain (M, 2026-10-25).
         const main = options.defaultBranch ?? DEFAULT_BRANCH
-        // The branch's own numbers first, then the default branch's, each
-        // ref sent as its hash, never plain (M, 2026-10-25).
-        const scopes = [...new Set([ctx.branch ?? main, main])].map((b) =>
-          new Bun.CryptoHasher('sha256').update(`refs/heads/${b}`).digest('hex').slice(0, 32),
+        const refs =
+          options.defaultBranch === undefined && ctx.refs.length > 0
+            ? ctx.refs
+            : [`refs/heads/${ctx.branch ?? main}`, `refs/heads/${main}`]
+        const scopes = [...new Set(refs)].map((ref) =>
+          new Bun.CryptoHasher('sha256').update(ref).digest('hex').slice(0, 32),
         )
         const weights = (async () => {
           const hashes = [...new Set(ids.flatMap((id) => defs.get(id) ?? []))]

@@ -2612,6 +2612,7 @@ type · `src/orchestrator/plugin.ts`
 export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
   readonly branch: string | null
+  readonly refs: readonly string[]
   readonly cache: PluginCache
   refine(
     weights: ReadonlyMap<string, number> | Promise<ReadonlyMap<string, number> | undefined>,

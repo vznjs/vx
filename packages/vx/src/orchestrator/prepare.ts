@@ -817,6 +817,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
               warn: warnOf(log),
               localCache,
               branch: branch(),
+              refs,
             },
             cacheFor,
             run,

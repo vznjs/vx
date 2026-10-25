@@ -514,6 +514,8 @@ export interface ScheduleHookContext extends BaseContext {
   readonly localCache: Cache
   /** The run's branch (`currentBranch`), the timings a forecast reads first: pass it to `LocalHistoryProvider`. */
   readonly branch: string | null
+  /** The refs the run reads, in order (`CacheContext.refs`): a remote's timings are read by them too. */
+  readonly refs: readonly string[]
   /** This plugin's entries in the workspace's cache, as `setup` has them. */
   readonly cache: PluginCache
   /**

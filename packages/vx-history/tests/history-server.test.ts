@@ -253,4 +253,47 @@ describe('vx run with vxHistory({ server })', () => {
       hashes: [sent[0]!.hash],
     })
   })
+
+  // `main` was assumed: a repository whose trunk is another branch read
+  // no trunk's numbers on any branch.
+  it('asks in the refs the run reads: its branch, then baseBranch', async () => {
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-refs-'))
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { baseBranch: 'trunk', plugins: [vxHistory({ server: ${JSON.stringify(url)}, ...${JSON.stringify(NAMED)} })] }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'feat'], cwd: other })
+      Bun.spawnSync({
+        cmd: [
+          'git',
+          '-c',
+          'user.name=t',
+          '-c',
+          'user.email=t@t',
+          'commit',
+          '-q',
+          '--allow-empty',
+          '-m',
+          'x',
+        ],
+        cwd: other,
+      })
+      const before = seen.length
+      await run({ cwd: other, tasks: ['build'], handleSignals: false })
+      const query = seen.slice(before).find((r) => r.path === '/v1/timings/query')
+      expect((JSON.parse(query!.body) as { scopes: string[] }).scopes).toEqual([
+        await hashPart('refs/heads/feat'),
+        await hashPart('refs/heads/trunk'),
+      ])
+    } finally {
+      await rm(other, { recursive: true, force: true })
+    }
+  })
 })
