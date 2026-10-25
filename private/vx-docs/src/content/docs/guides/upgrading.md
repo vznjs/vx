@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-dte-relay: speak the Switchboard protocol, v1
+
+the relay and vx-dte speak switchboard.v1 only; deploy them together. Kept.role is 'host' | 'peer', PROOF_HEADER is 'relay-proof', and upgrade takes the agreed protocol.
+
 ## vx-dte: replay a worker's output in the order it was written
 
 ArtifactRun takes `output` (CapturedChunk[]) in place of `stdout`/`stderr`; TaskArtifacts.restore and output resolve CapturedChunk[]. BoundedCapture and CapturedChunk are exported.
