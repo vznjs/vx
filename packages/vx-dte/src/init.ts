@@ -206,6 +206,8 @@ on:
       sha: { required: true }
       size: { required: true }
       workers: { required: true }
+      # The variables github({ env }) hands the workers, as a JSON object.
+      env: { required: false, default: '{}' }
 
 permissions:
   contents: read
@@ -228,6 +230,8 @@ ${inDir}    strategy:
     steps:
       - uses: actions/checkout@v4
         with: { ref: '\${{ inputs.sha }}' }
+      - env: { HANDED: '\${{ inputs.env }}' }
+        run: jq -r 'to_entries[] | "\\(.key)=\\(.value)"' <<<"$HANDED" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@v2
 ${install.join('\n')}
       - run: ${vxCommand(setup.manager)} dte worker

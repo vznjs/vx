@@ -272,6 +272,8 @@ on:
       sha: { required: true }
       size: { required: true }
       workers: { required: true }
+      # The variables github({ env }) hands the workers, as a JSON object.
+      env: { required: false, default: '{}' }
 
 permissions:
   contents: read
@@ -294,6 +296,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { ref: '${{ inputs.sha }}' }
+      - env: { HANDED: '${{ inputs.env }}' }
+        run: jq -r 'to_entries[] | "\(.key)=\(.value)"' <<<"$HANDED" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@v2
       # Every project: only pnpm selects by a git diff, as
       # `pnpm install --frozen-lockfile --filter "...[origin/main]"`
@@ -794,7 +798,10 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   of its own on loopback. `DockerOptions` is `{ image, prepare? }`.
 - `github(options?: GithubOptions)` dispatches workers as matrix jobs of
   one workflow, one dispatch per size and demand. `GithubOptions` is
-  `{ workflow? }` (default `vx-worker.yml`). Its workers are `keyless`. It
+  `{ workflow?, env? }`: `workflow` defaults to `vx-worker.yml`; `env`
+  is variables every worker gets (one-line strings), sent as the
+  dispatch's `env` input only when set, which `vx dte init`'s workflow
+  exports. Its workers are `keyless`. It
   needs `GITHUB_TOKEN` with `actions: write`. See [On GitHub](#on-github).
 - `gitlab(options?: GitlabOptions)` triggers a pipeline of the project's
   `.gitlab-ci.yml` per wave and size, with `CI_JOB_TOKEN`. `GitlabOptions` is
