@@ -79,6 +79,27 @@ async function rebuildsAfter(edit: () => Promise<void>, after: string): Promise<
 }
 
 describe('a symlinked input keys what it points to', () => {
+  // 2026-10-25: git lists a linked directory as the link alone, so `lib/**`
+  // over `lib -> ../shared` matched no file: an edit behind it was a hit.
+  it(
+    "a glob whose directory is a link: an edit behind it, and a workspace input's",
+    async () => {
+      app = await addProject(root, 'a', {
+        config: `export default { tasks: { build: { exec: { command: 'cat lib/x.txt ${path.join(root, 'ws', 'x.txt')} > out.txt' }, inputs: { files: ['lib/**'], workspaceFiles: ['ws/**'] }, cache: { outputs: { files: ['out.txt'] } } } } }`,
+      })
+      await symlink(path.relative(app, path.join(root, 'shared')), path.join(app, 'lib'))
+      await mkdir(path.join(root, 'other'))
+      await writeFile(path.join(root, 'other', 'x.txt'), 'W1\n')
+      await symlink('other', path.join(root, 'ws'))
+      commit('fixture')
+      await rebuildsAfter(() => writeFile(path.join(root, 'shared', 'x.txt'), 'V2\n'), 'V2\nW1\n')
+      await writeFile(path.join(root, 'other', 'x.txt'), 'W2\n')
+      expect(statusOf(await build()), said.join('')).toBe('success')
+      expect(await out()).toBe('V2\nW2\n')
+    },
+    TIMEOUT,
+  )
+
   it(
     'a file link to a tracked file outside the project',
     async () => {
