@@ -421,6 +421,24 @@ describe('config', () => {
     }
   })
 
+  // The layer asks for the limits as it starts, before any check: a
+  // refusal there turned the remote off and was never said.
+  it('says a refusal met while it starts, at the first check', async () => {
+    const srv = server()
+    try {
+      const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, {})!, fetch, {})
+      c.refs = [MAIN]
+      c.start()
+      await Bun.sleep(100)
+      await expect(c.has('ab12')).rejects.toThrow(
+        'HTTP 401: no bearer token: a read with no token was refused; remote cache off for this run',
+      )
+      expect(await c.has('ab12')).toBeNull()
+    } finally {
+      await srv.stop()
+    }
+  })
+
   it('says once that a server refuses a read with no token, then asks nothing', async () => {
     const srv = server()
     try {

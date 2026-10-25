@@ -345,11 +345,23 @@ export class VxCacheLayer implements RemoteCacheLayer {
     )
   }
 
+  /** A refusal met while starting, which no call could throw: the next check or download does. */
+  private unsaid: Error | undefined
+
+  /** Throws the refusal met while starting, once. */
+  private sayUnsaid(): void {
+    const err = this.unsaid
+    this.unsaid = undefined
+    if (err !== undefined) throw err
+  }
+
   /** Starts asking for the limits, so the first check need not wait for them. */
   start(): void {
-    this.limitsNow().catch(() => {
-      // quiet here: the first check asks again and reports what it gets
+    this.limitsNow().catch((err: unknown) => {
       this.asked = undefined
+      // A refusal turned the layer off, and is said only once: the first
+      // check says it. Anything else, the first check asks again and says.
+      if (this.disabled) this.unsaid = err instanceof Error ? err : new Error(String(err))
     })
   }
 
@@ -360,6 +372,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
   /** One check of the run's refs' scopes, in order: each hash answers the first that holds it. */
   async hasMany(hashes: readonly string[]): Promise<Map<string, ArtifactInfo>> {
     const held = new Map<string, ArtifactInfo>()
+    this.sayUnsaid()
     if (this.disabled || this.refs.length === 0) return held
     const scopes = this.refs.map(scopeOf)
     const ask = [...new Set(hashes)]
@@ -413,6 +426,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
 
   /** The scope a check found it under, else each ref's in order until one holds it. */
   async get(hash: string): Promise<{ body: Response; durationMs: undefined } | null> {
+    this.sayUnsaid()
     const at = this.found.get(hash)
     for (const scope of at === undefined ? this.refs.map(scopeOf) : [at]) {
       if (this.disabled) return null
