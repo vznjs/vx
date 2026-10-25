@@ -317,7 +317,7 @@ function play(
   // Ready tasks, ordered again only once one joins (`graphene`: or
   // leaves): each step sorted every ready task, and a run of 9000 spent
   // its orchestrator planning (2026-10-25).
-  let ready = new Ready([])
+  const ready = new Ready(tasks)
   let joining = tasks.filter((t) => waits.get(t.id) === 0)
   let readyCount = joining.length
   const spent = new Set<string>()
@@ -329,7 +329,7 @@ function play(
   // every kind, and 9000 kinds made it quadratic (2026-10-25).
   let floor: { cores: number; memory: number } | undefined
   const count = (t: PlanTask, by: number): void => {
-    const k = kindOf(t)
+    const k = ready.kindOf(t.id)
     const e = needs.get(k)
     if (e === undefined) {
       needs.set(k, { cores: t.cores, memory: t.memory, n: by })
@@ -350,14 +350,19 @@ function play(
   const byPlatform = new Map<string | undefined, number>()
   for (;;) {
     if (joining.length > 0 || ready.stale) {
+      // By the longest chain, those still ready keep their order and the
+      // joining are merged in: sorted again with each join, a 9000-task
+      // tree sorted 17 million a plan (2026-10-25).
+      const merge = how.order === 'critical-path' && !ready.stale
       const order = ordered(
-        [...ready.live(), ...joining].map((t) => t.id),
+        (merge ? joining : [...ready.live(), ...joining]).map((t) => t.id),
         how.order,
         tailOf,
         (id) => byId.get(id)!,
         widest,
       )
-      ready = new Ready(order.map((id) => byId.get(id)!))
+      if (merge) ready.add(order, tailOf)
+      else ready.reset(order)
       joining = []
     }
     const joined = slots.filter((s) => s.at <= now)
@@ -374,7 +379,7 @@ function play(
     if (to.size > 0 && how.order === 'graphene') ready.stale = true
     for (const [id, best] of to) {
       const t = byId.get(id)!
-      ready.taken.add(id)
+      ready.take(id)
       readyCount--
       count(t, -1)
       best.first ??= now
@@ -758,35 +763,117 @@ const MAX_JUMP_KINDS = 32
 /**
  * Ready tasks in the order `ordered` gave, by kind (`kindOf`): `assign`
  * reads them in that order, a kind it found spent skipped in one jump,
- * where it read every ready task each step (2026-10-25).
+ * where it read every ready task each step (2026-10-25). A task is its
+ * place in the play's tasks, and its rank (`before`) is fixed once it
+ * joins: rebuilt with each join, a 9000-task tree hashed every ready
+ * task 17 million times a plan (2026-10-25).
  */
 class Ready {
-  private readonly kinds = new Map<string, PlanTask[]>()
-  /** Each task's kind, by its place in `order`. */
-  private readonly kindAt: string[] = []
-  private readonly rank = new Map<string, number>()
+  private readonly ids: readonly string[]
+  private readonly at: Map<string, number>
+  private readonly kindAt: readonly string[]
+  private readonly taken: Uint8Array
+  /** The rank: the lower `primary` first, then the lower `seq`. */
+  private readonly primary: Float64Array
+  private readonly seq: Float64Array
+  private next = 0
+  /** In rank order; taken ones linger until the next join. */
+  private order: number[] = []
+  private kinds = new Map<string, number[]>()
   /** Each kind's first task not taken. */
   private readonly head = new Map<string, number>()
-  /** Given a worker since ordered. */
-  readonly taken = new Set<string>()
   /** No task before this place in `order` is left: a pass began at 0 and read 9000 taken ones (2026-10-25). */
   private lo = 0
   /** Order it again before the next step. */
   stale = false
 
-  constructor(private readonly order: readonly PlanTask[]) {
-    order.forEach((t, i) => {
-      this.rank.set(t.id, i)
-      const k = kindOf(t)
-      this.kindAt.push(k)
-      const q = this.kinds.get(k)
-      if (q === undefined) this.kinds.set(k, [t])
-      else q.push(t)
-    })
+  constructor(private readonly tasks: readonly PlanTask[]) {
+    this.ids = tasks.map((t) => t.id)
+    this.at = new Map(this.ids.map((id, i) => [id, i]))
+    this.kindAt = tasks.map(kindOf)
+    this.taken = new Uint8Array(tasks.length)
+    this.primary = new Float64Array(tasks.length)
+    this.seq = new Float64Array(tasks.length)
+  }
+
+  kindOf(id: string): string {
+    return this.kindAt[this.at.get(id)!]!
+  }
+
+  take(id: string): void {
+    this.taken[this.at.get(id)!] = 1
   }
 
   live(): PlanTask[] {
-    return this.order.filter((t) => !this.taken.has(t.id))
+    return this.order.flatMap((i) => (this.taken[i] === 1 ? [] : [this.tasks[i]!]))
+  }
+
+  /** Joins `ids`, longest tail first, behind every ready task of a tail as long. */
+  add(ids: readonly string[], tail: (id: string) => number): void {
+    const batch = ids.map((id) => {
+      const i = this.at.get(id)!
+      this.primary[i] = -tail(id)
+      this.seq[i] = this.next++
+      return i
+    })
+    this.join(batch)
+  }
+
+  /** Ready tasks are `ids` alone, in that order. */
+  reset(ids: readonly string[]): void {
+    this.order = []
+    this.kinds = new Map()
+    this.head.clear()
+    this.stale = false
+    const batch = ids.map((id) => {
+      const i = this.at.get(id)!
+      this.primary[i] = 0
+      this.seq[i] = this.next++
+      return i
+    })
+    this.join(batch)
+  }
+
+  private before(a: number, b: number): boolean {
+    const pa = this.primary[a]!
+    const pb = this.primary[b]!
+    return pa < pb || (pa === pb && this.seq[a]! < this.seq[b]!)
+  }
+
+  /** `a` without its taken ones, and `b`, in rank order. */
+  private merge(a: readonly number[], b: readonly number[]): number[] {
+    const out: number[] = []
+    let i = 0
+    let j = 0
+    while (i < a.length || j < b.length) {
+      if (i < a.length && this.taken[a[i]!] === 1) i++
+      else if (j === b.length || (i < a.length && this.before(a[i]!, b[j]!))) out.push(a[i++]!)
+      else out.push(b[j++]!)
+    }
+    return out
+  }
+
+  private join(batch: readonly number[]): void {
+    this.order = this.merge(this.order, batch)
+    this.lo = 0
+    const by = new Map<string, number[]>()
+    for (const i of batch) {
+      const k = this.kindAt[i]!
+      const q = by.get(k)
+      if (q === undefined) by.set(k, [i])
+      else q.push(i)
+    }
+    // Kinds keep the order's: a kind left with no task is gone, as one
+    // ordered again from scratch.
+    const kinds = new Map<string, number[]>()
+    for (const [k, q] of this.kinds) {
+      const merged = this.merge(q, by.get(k) ?? [])
+      by.delete(k)
+      if (merged.length > 0) kinds.set(k, merged)
+    }
+    for (const [k, q] of by) kinds.set(k, q)
+    this.kinds = kinds
+    this.head.clear()
   }
 
   /** In order, past each kind in `spent` as `assign` reads it then. */
@@ -794,12 +881,13 @@ class Ready {
     // Measured needs are unrounded, so kinds can be as many as tasks: a
     // jump across every kind then cost more than a read of every task.
     if (this.kinds.size > MAX_JUMP_KINDS) {
-      while (this.lo < this.order.length && this.taken.has(this.order[this.lo]!.id)) this.lo++
-      for (let i = this.lo; i < this.order.length; i++) {
-        const t = this.order[i]!
+      while (this.lo < this.order.length && this.taken[this.order[this.lo]!] === 1) this.lo++
+      for (let p = this.lo; p < this.order.length; p++) {
+        const i = this.order[p]!
         const kind = this.kindAt[i]!
-        if (this.taken.has(t.id) || spent.has(kind)) continue
+        if (this.taken[i] === 1 || spent.has(kind)) continue
         if (bounds?.done === true || (kinds !== undefined && spent.size >= kinds)) return
+        const t = this.tasks[i]!
         if (bounds !== undefined && dead(t, bounds)) spent.add(kind)
         else yield { id: t.id, need: t, kind }
       }
@@ -808,45 +896,44 @@ class Ready {
     const at = new Map<string, number>()
     let cursor = -1
     for (;;) {
-      let next: PlanTask | undefined
+      let next = -1
       let nextKind = ''
-      let nextRank = Infinity
       for (const [k, q] of this.kinds) {
         if (spent.has(k)) continue
-        let i = at.get(k) ?? this.headOf(k, q)
-        if (i < q.length && this.rank.get(q[i]!.id)! <= cursor) i = this.after(q, i, cursor)
-        while (i < q.length && this.taken.has(q[i]!.id)) i++
-        at.set(k, i)
-        const r = i < q.length ? this.rank.get(q[i]!.id)! : Infinity
-        if (r < nextRank) {
-          next = q[i]
+        let p = at.get(k) ?? this.headOf(k, q)
+        if (p < q.length && cursor !== -1 && !this.before(cursor, q[p]!))
+          p = this.after(q, p, cursor)
+        while (p < q.length && this.taken[q[p]!] === 1) p++
+        at.set(k, p)
+        if (p < q.length && (next === -1 || this.before(q[p]!, next))) {
+          next = q[p]!
           nextKind = k
-          nextRank = r
         }
       }
-      if (next === undefined) return
+      if (next === -1) return
       at.set(nextKind, at.get(nextKind)! + 1)
-      cursor = nextRank
-      yield { id: next.id, need: next, kind: nextKind }
+      cursor = next
+      const t = this.tasks[next]!
+      yield { id: t.id, need: t, kind: nextKind }
     }
   }
 
-  private headOf(k: string, q: readonly PlanTask[]): number {
+  private headOf(k: string, q: readonly number[]): number {
     let h = this.head.get(k) ?? 0
-    while (h < q.length && this.taken.has(q[h]!.id)) h++
+    while (h < q.length && this.taken[q[h]!] === 1) h++
     this.head.set(k, h)
     return h
   }
 
-  /** The first index from `i` in `q` ranked past `cursor`. */
-  private after(q: readonly PlanTask[], i: number, cursor: number): number {
+  /** The first place from `p` in `q` ranked past `cursor`. */
+  private after(q: readonly number[], p: number, cursor: number): number {
     let hi = q.length
-    while (i < hi) {
-      const mid = (i + hi) >> 1
-      if (this.rank.get(q[mid]!.id)! <= cursor) i = mid + 1
+    while (p < hi) {
+      const mid = (p + hi) >> 1
+      if (!this.before(cursor, q[mid]!)) p = mid + 1
       else hi = mid
     }
-    return i
+    return p
   }
 }
 
