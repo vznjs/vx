@@ -420,3 +420,22 @@ it('plans 9000 tasks behind one install in seconds of CPU', () => {
   const { user, system } = process.cpuUsage(start)
   expect((user + system) / 1000).toBeLessThan(5000)
 }, 60_000)
+
+it('plans a 6000-task tree in seconds of CPU', () => {
+  let seed = 1
+  const random = (): number => (seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32
+  const tasks: PlanTask[] = []
+  for (let i = 0; i < 6000; i++)
+    tasks.push({
+      id: `t${i}`,
+      cores: 1,
+      memory: 0,
+      ms: 500 + (i % 4) * 250,
+      deps: i === 0 ? [] : [`t${Math.floor(random() * i)}`],
+    })
+  const sizes = candidates([{ ...small, max: 20 }], new Map(), [], tasks.length)
+  const start = process.cpuUsage()
+  plan(tasks, [], sizes, WARM)
+  const { user, system } = process.cpuUsage(start)
+  expect((user + system) / 1000).toBeLessThan(10_000)
+}, 120_000)
