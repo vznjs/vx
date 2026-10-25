@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, it, setSystemTime } from 'bun:test'
 import { hashPart, oidcAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
@@ -64,6 +64,43 @@ describe('HistoryServer', () => {
     const read = await iss.sign('read', new URL(url).origin)
     const client = new HistoryServer(url, { VX_HISTORY_TOKEN: read })
     expect(client.upload(new Map([['b', { durationMs: 1 }]]))).rejects.toThrow('HTTP 403: ')
+  })
+
+  it("asks GitHub for a new token before the job's ends, once for parallel calls", async () => {
+    let asks = 0
+    const t0 = Date.now()
+    const exp = Math.floor(t0 / 1000) + 300
+    const fake = (async (input: string | URL) => {
+      const u = new URL(String(input))
+      if (u.hostname === 'oidc.example') {
+        asks++
+        const body = Buffer.from(JSON.stringify({ exp })).toString('base64url')
+        return Response.json({ value: `h.${body}.s` })
+      }
+      if (u.pathname === '/v1/capabilities') {
+        return Response.json({ maxUploadTimings: 1, maxQueryHashes: 1 })
+      }
+      if (u.pathname === '/v1/timings/query') return Response.json({ timings: {} })
+      return new Response(null, { status: 204 })
+    }) as typeof fetch
+    const env = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: 'https://oidc.example/token',
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: 't',
+    }
+    const client = new HistoryServer('https://h.example', env, fake)
+    try {
+      await client.query(['0'.repeat(32)], ['a', 'b', 'c'])
+      expect(asks).toBe(1)
+      setSystemTime(t0 + 200_000)
+      await client.upload(new Map([['a', { durationMs: 1 }]]))
+      expect(asks).toBe(1)
+      // A run longer than the token: its upload asks again, never sends a dead token.
+      setSystemTime(t0 + 250_000)
+      await client.upload(new Map([['a', { durationMs: 1 }]]))
+      expect(asks).toBe(2)
+    } finally {
+      setSystemTime()
+    }
   })
 
   it('reads the URL over VX_HISTORY_URL', () => {
