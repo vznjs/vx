@@ -3,11 +3,11 @@
 Website: <https://vznjs.github.io/vx/> · source: <https://github.com/vznjs/vx>
 
 `vxCache()`: a remote cache for [`@vzn/vx`](https://vznjs.github.io/vx/)
-on a server you host that speaks the vx-cache protocol, such as
-[`@vzn/vx-cache-server`](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server). The local cache
-stays first; the server is asked on a local miss, and each miss's
-artifact is uploaded to it. Until it is on npm, import it from a
-checkout of this repo:
+CI jobs, on a server you host that speaks the vx-cache protocol, such as
+[`@vzn/vx-cache-server`](https://github.com/vznjs/vx/tree/main/packages/vx-cache-server).
+The local cache stays first; the server is asked on a local miss, and
+each miss's artifact is uploaded to it. Until it is on npm, import it
+from a checkout of this repo:
 
 ```ts
 // .vx/workspace.ts
@@ -16,57 +16,67 @@ import { vxCache } from '/path/to/vx/packages/vx-cache/src/index.ts'
 export default { plugins: [vxCache({ url: 'https://cache.example.com' })] }
 ```
 
-`vxCache({ url?, token?, timeoutMs?, uploadTimeoutMs?, history?, oidc? })`:
+`vxCache({ url?, timeoutMs?, uploadTimeoutMs? })`:
 
 - `url` is the server's base URL, or `VX_CACHE_URL`.
-- `token` is the bearer token every request carries, or `VX_CACHE_TOKEN`.
-  A read token reads; a write token also uploads.
 - `timeoutMs` (default 30 000) bounds each read and query, and
   `uploadTimeoutMs` (default 60 000) each upload.
-- `history` (default `true`) keeps the run history on the server: see
-  below. `false` leaves the order and the server's runs alone.
-- `oidc` (default `false`) sends, on GitHub Actions, the job's OIDC token
-  for the server's origin in place of `token`, asked again before it
-  ends. The server's `TRUST` then decides where the job writes: trusted,
-  or its branch. The job needs `permissions: id-token: write`. On GitLab,
-  name an `id_tokens` entry `VX_CACHE_TOKEN` with the server's origin as
-  `aud`; it is the token.
 
-With `oidc`, a run that hands tasks to other jobs lends them its own
-token (core's `lend()`), and they read and write with it: a job started
-from another workflow would carry a token that writes nowhere the run
-reads, or nowhere at all. A job uses a lent token over its own, needs no
-token of its own, and never lends one on.
+## CI only
 
-With no URL or no token the plugin declines and the run stays local, so it
-is safe to leave declared. A refused token is said once and turns the
-remote off for the run; a read token's refused write turns off writes
-alone. Any other refusal is a warning naming the server's own words, and
-the task reads as a miss.
+Every request carries the CI job's own OIDC token, and the server's
+`TRUST` decides where the job writes: trusted, or its branch.
 
-Every read names the run's refs in `x-artifact-read-scopes` (its branch, then
-the branch it merges into), so a server that keeps branches apart answers
-from the closest one first. One batch query covers up to 1000 hashes.
+- On GitHub Actions the job's token is asked for the server's origin,
+  and asked again before it ends. The job needs
+  `permissions: id-token: write`.
+- On GitLab, name an `id_tokens` entry `VX_CACHE_TOKEN` with the
+  server's origin as `aud`.
 
-## Run history
+Off CI there is no token: the plugin says so once per run and the run
+stays local. There is no local use for now.
 
-After a CI run, `vxCache()` writes its task timings to the server
-(`POST /v1/runs`): each task's duration, exit code, key and whether it was
-cached. A cache hit records the duration of the run that produced it,
-the time the task costs when it runs. A run off CI writes nothing.
+A run that hands tasks to other jobs lends them its token (core's
+`lend()`), and they read and write with it: a job started from another
+workflow would carry a token that writes nowhere the run reads. A job
+uses a lent token over its own and never lends one on.
 
-Every run asks the server for each task's newest timings in its read
-scopes (`POST /v1/tasks/query`) and orders ready tasks by the longest
-remaining chain, as `@vzn/vx-schedule-history` does with local history.
-The run never waits for that answer: it starts on core's own order and
-re-ranks the tasks not yet started when the timings land. A failed run's
-timing is left out.
+A refused token is said once and turns the remote off for the run; a
+refused write (a job that reads only) turns off writes alone. Any other
+refusal is a warning naming the server's own words, and the task reads
+as a miss.
+
+Every read names the run's refs in `x-artifact-read-scopes` (its branch,
+then the branch it merges into), so the server answers from the closest
+one first. One check covers up to 1000 hashes. One or two uploads waiting
+at once go as they are; more go as one batch of the missing, checked
+first, within the limits the server names on each check. Until a check
+has named them, or when one names none (said once), uploads go one at a
+time: no limit is guessed. An artifact over the server's upload limit
+is not sent: it is said once, and its task's timing still goes.
+
+## Timings
+
+For each task a run ran and that succeeded, `vxCache()` keeps a timing
+on the server: its duration, the CPU cores it kept busy and its peak
+memory, named by a hash of the task's definition. Timings ride along
+with the next upload, and the rest go at the run's end. A run lent a
+token leaves the timings to the run that lent it.
+
+Every run asks for each task's newest timings, trusted first, and puts
+them in the local history, where the scheduler and any plugin reading it
+(`onRefine`) find them. It orders ready tasks by the longest remaining
+chain, as `@vzn/vx-schedule-history` does. The run never waits for the
+answer: it starts on core's own order and re-ranks the tasks not yet
+started when the timings land. Declare one of the two, not both.
 
 ## API
 
 - `vxCache(options?: VxCacheOptions)` is the plugin; `VxCacheOptions` is the options above.
-- `VxCacheLayer` is its remote cache layer (core's `RemoteCacheLayer`),
-  and `resolveVxCacheConfig(options, env)` the settings it runs with, or
-  `undefined` when it declines. Its `putRun(run)` writes a run, and
-  `medians(tasks)` reads each task's median duration.
-- `RunTask` is one task of a written run.
+- `VxCacheLayer` is its remote cache layer (core's `RemoteCacheLayer`).
+  Its `addTiming(timing)` keeps a `Timing` for the next upload,
+  `flushTimings()` writes the rest, and `timings(hashes)` reads each
+  hash's newest.
+- `resolveVxCacheConfig(options, env)` is the settings it runs with, or
+  `undefined` with no URL, and `hasCiToken(env, lent)` whether a job has
+  a token to send.

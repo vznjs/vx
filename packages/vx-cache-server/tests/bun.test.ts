@@ -4,32 +4,38 @@ import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { parseTokens, sha256, tokenAuth } from '../src/auth.js'
 import { s3Blobs, sqliteDb } from '../src/bun.js'
+import { oidcAuth } from '../src/oidc.js'
 import { createCacheServer } from '../src/server.js'
 import { firstScopes, sqliteStore } from '../src/store.js'
 import { conformance } from './conformance.js'
 import { fakeS3, type FakeS3 } from './fake-s3.js'
+import { type Issuer, issuer, TRUST, TRUSTED_JOB } from './issuer.js'
+import { upload } from './upload.js'
 
-const READ = 'read-token'
-const WRITE = 'write-token'
 const MAX = 7 * 1024 * 1024
 
 let s3: FakeS3
 let server: Bun.Server<undefined>
+let iss: Issuer
+let token = ''
+let auth: { authorization: string }
 const dir = mkdtempSync(path.join(tmpdir(), 'vx-cache-server-'))
 
 beforeAll(async () => {
   s3 = fakeS3()
+  iss = await issuer()
   const handle = createCacheServer({
     blobs: s3Blobs(
       new Bun.S3Client({ endpoint: s3.url, bucket: 'b', accessKeyId: 'a', secretAccessKey: 's' }),
     ),
     store: sqliteStore(sqliteDb(path.join(dir, 'db.sqlite'))),
-    authorize: tokenAuth(parseTokens(`read:${await sha256(READ)} write:${await sha256(WRITE)}`)),
-    maxArtifactBytes: MAX,
+    authorize: oidcAuth({ trust: TRUST, fetchJson: iss.fetchJson }),
+    maxUploadBytes: MAX,
   })
   server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: handle })
+  token = await iss.sign(TRUSTED_JOB, server.url.origin)
+  auth = { authorization: `Bearer ${token}` }
 })
 
 afterAll(async () => {
@@ -40,24 +46,22 @@ afterAll(async () => {
 
 conformance('Bun with S3', {
   base: () => server.url.href,
-  read: READ,
-  write: WRITE,
-  maxArtifactBytes: MAX,
+  sign: (claims) => iss.sign(claims, server.url.origin),
+  maxUploadBytes: MAX,
 })
 
-it('names blobs by namespace, scope, key and write, and reads no blob for a HEAD', async () => {
+it('names blobs by repository, scope, key and size, and reads no blob for a check', async () => {
   const k = 'abc123'
-  const auth = { authorization: `Bearer ${WRITE}` }
-  await fetch(new URL(`/v1/artifacts/${k}`, server.url), {
-    method: 'PUT',
-    body: 'x',
-    headers: auth,
-  })
-  expect([...s3.objects.keys()].filter((n) => n.startsWith(`/b/v1/default/trusted/${k}/`))).toEqual(
-    [expect.stringMatching(/^\/b\/v1\/default\/trusted\/abc123\/[0-9a-f-]{36}$/)],
-  )
+  await fetch(new URL('/v1/artifacts/upload', server.url), upload([[k, 'x']], token))
+  expect([...s3.objects.keys()].filter((n) => n.startsWith(`/b/v1/42/trusted/${k}/`))).toEqual([
+    `/b/v1/42/trusted/${k}/1`,
+  ])
   const before = s3.log.length
-  await fetch(new URL(`/v1/artifacts/${k}`, server.url), { method: 'HEAD', headers: auth })
+  await fetch(new URL('/v1/artifacts/check', server.url), {
+    method: 'POST',
+    body: JSON.stringify({ hashes: [k] }),
+    headers: { ...auth, 'content-type': 'application/json' },
+  })
   expect(s3.log.slice(before)).toEqual([])
 })
 
@@ -67,8 +71,8 @@ it('answers each key from the first scope that holds it, in the order sent', asy
   await store.init()
   const add = (key: string, scope: string, size: number) =>
     db.run(
-      'INSERT INTO artifacts (ns, key, scope, blob, size, duration_ms, created_at) VALUES (?1, ?2, ?3, ?4, ?5, 0, 0)',
-      ['n', key, scope, `${key}/${scope}`, size],
+      'INSERT INTO artifacts (repo, key, scope, size, created_at) VALUES (?1, ?2, ?3, ?4, 0)',
+      ['n', key, scope, size],
     )
   await add('a', 'trusted', 1)
   await add('a', 'refs/heads/f', 2)
@@ -85,21 +89,10 @@ it('answers each key from the first scope that holds it, in the order sent', asy
   expect(trustedFirst.get('a')?.size).toBe(1)
 })
 
-it('refuses a TOKENS entry that is no hash', () => {
-  expect(() => parseTokens('write:abc')).toThrow('write:abc is not read:<sha256> or write:<sha256>')
-  expect(parseTokens('').size).toBe(0)
-})
-
 it('answers 404 for an artifact whose blob the bucket dropped', async () => {
   const k = 'd0aa1'
-  const auth = { authorization: `Bearer ${WRITE}` }
-  await fetch(new URL(`/v1/artifacts/${k}`, server.url), {
-    method: 'PUT',
-    body: 'abc',
-    headers: auth,
-  })
-  for (const n of s3.objects.keys())
-    if (n.startsWith(`/b/v1/default/trusted/${k}/`)) s3.objects.delete(n)
-  const res = await fetch(new URL(`/v1/artifacts/${k}`, server.url), { headers: auth })
+  await fetch(new URL('/v1/artifacts/upload', server.url), upload([[k, 'abc']], token))
+  s3.objects.delete(`/b/v1/42/trusted/${k}/3`)
+  const res = await fetch(new URL(`/v1/artifacts/download/${k}`, server.url), { headers: auth })
   expect(res.status).toBe(404)
 })

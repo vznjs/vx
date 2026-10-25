@@ -5,24 +5,23 @@
 
 import { Database } from 'bun:sqlite'
 import { parseArgs } from 'node:util'
-import { parseTokens, tokenAuth } from './auth.js'
 import { evict, retentionFrom } from './evict.js'
-import { anyAuth, oidcAuth, parseTrust } from './oidc.js'
+import { oidcAuth, parseTrust } from './oidc.js'
 import { Refusal } from './protocol.js'
-import { createCacheServer, DEFAULT_MAX_ARTIFACT_BYTES } from './server.js'
+import { createCacheServer, DEFAULT_MAX_UPLOAD_BYTES, MAX_BATCH_LINE } from './server.js'
 import { postgresStore } from './postgres.js'
 import { type Blobs, type Db, sqliteStore, type Store } from './store.js'
 
 const USAGE = `usage: vx-cache-server [--db vx-cache.sqlite | --db postgres://…] [--port 8080] [--host 0.0.0.0]
   --db            a SQLite file (one node), or a Postgres URL any number of nodes share
-  TOKENS          who may read and write: read:<sha256> write:<sha256>, space separated
-  TRUST           CI OIDC trust rules, a JSON list (README.md § CI tokens)
+  TRUST           the CI repositories it serves and the jobs it trusts, a JSON list
+                  (README.md § CI tokens); only their OIDC tokens are taken
   AUDIENCE        the aud a CI token names (default: the origin it was sent to)
   S3_BUCKET       the bucket; S3_ENDPOINT, S3_REGION, S3_ACCESS_KEY_ID and
                   S3_SECRET_ACCESS_KEY as Bun's S3 client reads them
-  MAX_ARTIFACT_BYTES  the largest artifact stored (default ${DEFAULT_MAX_ARTIFACT_BYTES})
-  TRUSTED_DAYS, BRANCH_DAYS, RUN_DAYS  days the trusted scope, a branch's scope and
-                  the run history keep what they hold (default 30, 7, 90); swept hourly`
+  MAX_UPLOAD_BYTES  the largest upload, its artifacts together (default ${DEFAULT_MAX_UPLOAD_BYTES})
+  TRUSTED_DAYS, BRANCH_DAYS, TIMING_DAYS  days the trusted scope's artifacts, a branch's
+                  and the timings are kept (default 30, 7, 30); swept hourly`
 
 /** A SQLite file through bun:sqlite. */
 export function sqliteDb(path: string): Db {
@@ -111,9 +110,9 @@ function main(argv: string[]): void {
   const port = Number(values.port)
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
-  const max = env.MAX_ARTIFACT_BYTES === undefined ? undefined : Number(env.MAX_ARTIFACT_BYTES)
+  const max = env.MAX_UPLOAD_BYTES === undefined ? undefined : Number(env.MAX_UPLOAD_BYTES)
   if (max !== undefined && !(Number.isSafeInteger(max) && max > 0)) {
-    fail(`MAX_ARTIFACT_BYTES: not a byte count: ${env.MAX_ARTIFACT_BYTES}`)
+    fail(`MAX_UPLOAD_BYTES: not a byte count: ${env.MAX_UPLOAD_BYTES}`)
   }
   let trust
   try {
@@ -133,8 +132,9 @@ function main(argv: string[]): void {
     : sqliteStore(sqliteDb(values.db))
   const sweep = (): void => {
     evict(store, blobs, retention).then(
-      ({ artifacts, runs }) => {
-        if (artifacts + runs > 0) console.log(`evicted ${artifacts} artifacts, ${runs} runs`)
+      ({ artifacts, timings }) => {
+        if (artifacts + timings > 0)
+          console.log(`evicted ${artifacts} artifacts, ${timings} timings`)
       },
       (err: unknown) => console.error(`eviction failed: ${String(err)}`),
     )
@@ -144,18 +144,13 @@ function main(argv: string[]): void {
   const handle = createCacheServer({
     blobs,
     store,
-    authorize: anyAuth(
-      tokenAuth(parseTokens(env.TOKENS ?? '')),
-      trust.length === 0
-        ? undefined
-        : oidcAuth({ trust, ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}) }),
-    ),
-    ...(max === undefined ? {} : { maxArtifactBytes: max }),
+    authorize: oidcAuth({ trust, ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}) }),
+    ...(max === undefined ? {} : { maxUploadBytes: max }),
   })
   const server = Bun.serve({
     hostname: values.host,
     port,
-    maxRequestBodySize: max ?? DEFAULT_MAX_ARTIFACT_BYTES,
+    maxRequestBodySize: (max ?? DEFAULT_MAX_UPLOAD_BYTES) + MAX_BATCH_LINE,
     fetch: handle,
   })
   console.log(`vx-cache-server on ${server.url.href}`)

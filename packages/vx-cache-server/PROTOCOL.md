@@ -1,50 +1,58 @@
 # vx-cache protocol, v1
 
-An HTTP API for task artifacts and run history. `@vzn/vx-cache-server`
-speaks it on Bun and on Cloudflare Workers; any server that does can take
-its place. Every route sits under `/v1`: a later version gets its own
-prefix, and a server may serve both.
+An HTTP API for task artifacts and the timings a scheduler needs.
+`@vzn/vx-cache-server` speaks it on Bun and on Cloudflare Workers; any
+server that does can take its place. Every route sits under `/v1`: a
+later version gets its own prefix, and a server may serve both.
 
-The artifact routes are Turbo's remote cache API
-([spec](https://turborepo.com/api/remote-cache-spec)) under `/v1` in place
-of `/v8`: the same routes, headers, bodies and status codes. Only what
-that API cannot say is ours: run history, CI tokens and read scopes.
-§ Where it differs from Turbo lists every difference and why.
+| Route                               | What it does                                         |
+| ----------------------------------- | ---------------------------------------------------- |
+| `GET /v1/artifacts/download/<hash>` | one artifact's bytes                                 |
+| `POST /v1/artifacts/download`       | many artifacts' bytes in one answer                  |
+| `POST /v1/artifacts/upload`         | 1 to 100 artifacts, and timings riding along         |
+| `POST /v1/artifacts/check`          | which of up to 1000 hashes are held, and their sizes |
+| `POST /v1/timings/upload`           | a run's timings no upload carried                    |
+| `POST /v1/timings/query`            | each task's newest timings                           |
+| `GET /v1/capabilities`              | the server's limits                                  |
 
 ## Opaque strings, plain numbers
 
 The server never reads a string a client sends. It only stores it and
-compares it for equality: artifact hashes, run ids, task names, artifact
-bytes. A client may send them encrypted (a keyed hash for names, a cipher
-for bytes) and the server works the same. Numbers (sizes, durations,
-times, exit codes) stay plain so the server can sort and query them.
-Refs in `x-artifact-read-scopes` stay plain too: the server matches them against
+compares it for equality: artifact hashes, task hashes, artifact bytes. A
+client may send them encrypted (a keyed hash for names, a cipher for
+bytes) and the server works the same. Numbers (sizes, durations, cores,
+bytes) stay plain so the server can sort and query them. Refs in
+`x-artifact-read-scopes` stay plain too: the server matches them against
 CI tokens, which name them anyway.
 
 ## Tokens
 
-Every request carries `Authorization: Bearer <token>`. A read token reads;
-a write token also writes, always to the **trusted** scope. A missing or
-unknown token is `401`; a write by a read token `403`.
+Every request carries `Authorization: Bearer <token>`, a CI job's OIDC
+token (GitHub Actions, GitLab CI): there is no other. Its signature,
+`RS256`, `exp` and `aud` (the server's own) are checked, and the token
+alone decides what it reads and where it writes, by the server's trust
+rules:
 
-A bearer that is a JWT is a CI job's OIDC token (GitHub Actions, GitLab
-CI). Its signature, `RS256`, `exp` and `aud` (the server's own) are
-checked, and the token alone decides where it writes, by the server's
-trust rules:
-
-- A token of a repository no rule names is `403`.
+- Its repository id (`repository_id` on GitHub, `project_id` on GitLab)
+  is the repository it reads and writes; one no rule names is `403`. A
+  repository's artifacts and timings are never another's.
 - A token that matches one of its repository's rules writes **trusted**.
 - Any other writes its branch's scope: on GitHub a pull request's head
   branch (`refs/heads/<head_ref>`), else its `ref`; on GitLab its
   `ref_path`. A branch a rule trusts (`refs/heads/main`) is never one:
-  such a token reads only, so main's runs never read an untrusted write.
+  such a token reads only (a write is `403`), so main's runs never read
+  an untrusted write.
+
+A missing or bad token is `401`. A server with no rules refuses every
+request: `401`, `the server trusts no CI: set TRUST`.
 
 ## Scopes
 
-An artifact or run lives in one scope. A read walks the refs named in
-`x-artifact-read-scopes`, in order, then the trusted scope, and the first scope
-that holds a key answers it. The header is an RFC 8941 list of strings,
-each `refs/...`, at most 8:
+An artifact or timing lives in one scope. A read walks the refs named in
+`x-artifact-read-scopes`, in order, then the trusted scope, and the first
+scope that holds a hash answers it. A ref a trust rule names
+(`refs/heads/main`) is read as trusted. The header is an RFC 8941 list of
+strings, each `refs/...`, at most 8:
 
 ```
 x-artifact-read-scopes: "refs/heads/feature", "refs/heads/main"
@@ -55,108 +63,102 @@ Absent, a read sees the trusted scope only. Any other value is `400`.
 ## Artifacts
 
 A hash is 1 to 128 hex digits. An artifact is immutable. A server may
-evict one at any time: a `GET` after a `HEAD` or a query that held it may
-be `404`, which a client reads as a miss. `teamId` and `slug` query
-parameters are taken and ignored: the token names the namespace.
+evict one at any time: a download after a check that held it may miss,
+which a client reads as a miss.
 
-| Request                     | Answer                                                                                                                                                                                                                             |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HEAD /v1/artifacts/<hash>` | `200` with `Content-Length`, `x-artifact-duration` and, when stored, `x-artifact-sha` and `x-artifact-dirty-hash`; or `404`. Reads no blob.                                                                                        |
-| `GET /v1/artifacts/<hash>`  | `200` with the bytes (`application/octet-stream`), those headers and, when stored, `x-artifact-tag`; or `404`.                                                                                                                     |
-| `PUT /v1/artifacts/<hash>`  | The bytes, with `Content-Length` (`400` without) and optional `x-artifact-duration`, `x-artifact-tag` (at most 600), `x-artifact-sha`, `x-artifact-dirty-hash`. `202` with `{ "urls": [<this artifact's URL>] }`; `413` too large. |
-| `POST /v1/artifacts`        | `{ "hashes": [<hash>, …] }`, up to 1000 → `{ <hash>: { "size", "taskDurationMs", "tag"? } \| null }`, one entry per hash.                                                                                                          |
-| `GET /v1/artifacts/status`  | `{ "status": "enabled" }`.                                                                                                                                                                                                         |
-| `POST /v1/artifacts/events` | Turbo's list of cache events: `200`, and dropped.                                                                                                                                                                                  |
+`GET /v1/artifacts/download/<hash>`: `200` with the bytes
+(`application/octet-stream`, `Content-Length`), or `404`.
 
-`x-artifact-duration` is how long the task that made the artifact took,
-in whole milliseconds; a PUT without it stores 0. A second PUT of a hash
-already held answers `202` too, and the stored bytes stay.
+`POST /v1/artifacts/check` with `{ "hashes": [<hash>, …] }`, up to 1000:
+`{ <hash>: { "size" } | null }`, one entry per hash. Every answer names
+the server's batch limits, which a client batches by:
 
-## Run history
+```
+x-vx-max-batch-artifacts: 100
+x-vx-max-upload-bytes: 100000000
+```
 
-A run is one record: its tasks are a list inside it.
+`POST /v1/artifacts/download` with `{ "hashes": [<hash>, …] }`, up to
+100: an `application/vnd.vx-cache.batch` body. Its first line is JSON
+naming each held artifact, in the order asked, and its bytes follow in
+that order; a hash it does not name is not held:
 
-`POST /v1/runs` (write token) stores a run in the token's scope: `201`, or
-`200` when that run (same `id` and `startedAt`) is already held.
+```
+{"artifacts":[{"hash":"8f1c","size":4200},{"hash":"a07e","size":12}]}\n
+<4200 bytes><12 bytes>
+```
+
+`POST /v1/artifacts/upload` (a token that writes) takes the same shape,
+`Content-Type: application/vnd.vx-cache.batch` with `Content-Length`: a
+line naming 1 to 100 artifacts, each hash once, then their bytes. The
+line may carry `timings` (below), up to 1000, which the server keeps
+first. An artifact the write's scope or the trusted scope already holds
+keeps its bytes, and its bytes here are skipped; when every one is held
+the server answers before reading them. `204`. Together they are at most
+`x-vx-max-upload-bytes` (`413` past it). A
+`Content-Length` that is not the line's bytes and the sizes it names is
+`400`.
+
+A client sends one or two uploads waiting at once as they are, and asks
+`check` before an upload of more, sending only what is missing. It
+batches only within the limits a check named, and before one has, not at
+all.
+
+## Timings
+
+What a scheduler learns from one run of a task that succeeded: its
+duration, the CPU cores it kept busy on average and its peak memory. A
+task is named by a hash of its definition (opaque to the server):
+
+```json
+{ "hash": "3b0d…", "durationMs": 4200, "cores": 1.8, "rssBytes": 310000000 }
+```
+
+`hash` is a string of up to 512 characters, `durationMs` and `rssBytes`
+whole numbers, `cores` a number; `cores` and `rssBytes` are optional.
+
+`POST /v1/timings/upload` (a token that writes) with
+`{ "timings": [ … ] }`, up to 20 000: `204`. The server stamps each with
+the time it arrived.
+
+`POST /v1/timings/query` with `{ "hashes": [<hash>, …], "limit"?: <n> }`
+(up to 1000 hashes, `limit` 1 to 20, default 5): each hash's newest
+timings, at most `limit`, trusted first, then the read refs in order. A
+hash none holds answers `[]`.
+
+```json
+{ "timings": { "3b0d…": [{ "durationMs": 4200, "cores": 1.8, "rssBytes": 310000000 }] } }
+```
+
+## Limits
+
+`GET /v1/capabilities` names every limit, for a reader that wants them
+all; a run reads the two it batches by off its checks and never asks:
 
 ```json
 {
-  "id": "01JB…",
-  "startedAt": 1729850000000,
-  "durationMs": 61000,
-  "tasks": [
-    {
-      "task": "app#build",
-      "key": "8f1c…",
-      "durationMs": 4200,
-      "exitCode": 0,
-      "cached": false,
-      "startedAt": 120
-    }
-  ]
+  "maxBatchArtifacts": 100,
+  "maxUploadBytes": 100000000,
+  "maxUploadTimings": 1000,
+  "maxCheckHashes": 1000,
+  "maxTimingsUploaded": 20000,
+  "maxQueryHashes": 1000,
+  "maxQueryLimit": 20
 }
 ```
 
-`id` and `task` are strings of up to 512 characters, `key` a key; the
-times are whole milliseconds (`startedAt` of the run since the epoch). A
-task's `key`, `exitCode`, `cached` and `startedAt` are optional; other
-fields are dropped. The body is at most 1 MiB and 20 000 tasks.
-
-`GET /v1/runs?limit=<n>` (1 to 100, default 20) lists the newest runs in
-the read scopes: `{ "runs": [{ "id", "scope", "startedAt", "durationMs",
-"taskCount", "failedCount" }] }`. A failed task has a non-zero `exitCode`.
-
-`POST /v1/tasks/query` with `{ "tasks": [<task>, …], "limit"?: <n> }` (up
-to 1000 tasks, `limit` 1 to 20, default 5) answers each task's newest
-records among the newest 100 runs in the read scopes:
-
-```json
-{
-  "tasks": {
-    "app#build": [
-      {
-        "run": "01JB…",
-        "scope": "trusted",
-        "key": "8f1c…",
-        "durationMs": 4200,
-        "exitCode": 0,
-        "cached": false,
-        "startedAt": 120
-      }
-    ]
-  }
-}
-```
-
-A task no run holds answers `[]`.
+`maxUploadBytes` is the backend's own: on Workers at most what fits a
+100 MB body, on Bun what `MAX_UPLOAD_BYTES` says.
 
 ## Errors
 
-Every refusal is Turbo's spec's `Error`, `application/json`, its
-`message` saying what to fix:
+Every refusal is `{ code, message }`, `application/json`, its `message`
+saying what to fix:
 
 ```json
 { "code": "forbidden", "message": "this token reads only" }
 ```
 
 A JSON body without `Content-Type: application/json` is `400`; an unknown
-route `404`; a route's wrong method `405` with `Allow`. A HEAD answers the
-status alone.
-
-## Where it differs from Turbo
-
-Each is where Turbo's API cannot say what vx needs:
-
-- **`/v1`, not `/v8`.** Our own versioning: this protocol is not Vercel's
-  API at version 8.
-- **`x-artifact-read-scopes`.** Turbo has one shared scope; vx keeps a
-  branch's writes apart from main's (§ Scopes). A client that sends no
-  header reads the trusted scope, as with Turbo.
-- **CI OIDC tokens and `403` on a write.** Turbo leaves tokens to the
-  server; ours decide where a write lands (§ Tokens).
-- **Run history**, `/v1/runs` and `/v1/tasks/query`: Turbo has none.
-- **`413`** for an artifact over the server's limit: Turbo's spec names no
-  limit, and Workers' free plan takes a body of at most 100 MB.
-- **At most 1000 hashes per batch query**, and a hash at most 128 long:
-  the spec sets no bound, and a request must have one.
-- **Events are dropped**: vx keeps run history instead.
+route `404`; a route's wrong method `405` with `Allow`. Turbo's `teamId`
+and `slug` query parameters are `400`: the token names the repository.

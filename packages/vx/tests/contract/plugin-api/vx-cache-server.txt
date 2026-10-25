@@ -1,12 +1,5 @@
-== const DURATION_HEADER (src/protocol.ts)
-export const DURATION_HEADER = 'x-artifact-duration'
 == const READ_SCOPES_HEADER (src/protocol.ts)
 export const READ_SCOPES_HEADER = 'x-artifact-read-scopes'
-== function anyAuth (src/oidc.ts)
-export function anyAuth(
-  tokens: Authorize,
-  oidc: ((token: string, req: Request) => Promise<Access>) | undefined,
-): Authorize
 == function createCacheServer (src/server.ts)
 export function createCacheServer(opts: ServerOptions): (req: Request) => Promise<Response>
 == function evict (src/evict.ts)
@@ -15,11 +8,9 @@ export async function evict(
   blobs: Blobs,
   r: Required<Retention>,
   now: number = Date.now(),
-): Promise<{ artifacts: number; runs: number }>
+): Promise<{ artifacts: number; timings: number }>
 == function oidcAuth (src/oidc.ts)
-export function oidcAuth(opts: OidcOptions): (token: string, req: Request) => Promise<Access>
-== function parseTokens (src/auth.ts)
-export function parseTokens(list: string): Map<string, Access>
+export function oidcAuth(opts: OidcOptions): Authorize
 == function parseTrust (src/oidc.ts)
 export function parseTrust(json: string): TrustRule[]
 == function postgresStore (src/postgres.ts)
@@ -28,25 +19,19 @@ export function postgresStore(url: string): Store & { close(): Promise<void> }
 export function retentionFrom(env: object): Required<Retention>
 == function sqliteStore (src/store.ts)
 export function sqliteStore(db: Db): Store
-== function tokenAuth (src/auth.ts)
-export function tokenAuth(tokens: ReadonlyMap<string, Access>): Authorize
-== type Access (src/auth.ts)
+== type Access (src/oidc.ts)
 export interface Access {
-  ns: string
-  write?: string
+  readonly repo: string
+  readonly write?: string
+  readonly trustedRef: (ref: string) => boolean
 }
 == type ArtifactRow (src/store.ts)
 export interface ArtifactRow {
   key: string
   scope: string
-  blob: string
   size: number
-  duration_ms: number
-  tag: string | null
-  sha: string | null
-  dirty_hash: string | null
 }
-== type Authorize (src/auth.ts)
+== type Authorize (src/oidc.ts)
 export type Authorize = (req: Request) => Promise<Access>
 == type Blobs (src/store.ts)
 export interface Blobs {
@@ -62,13 +47,7 @@ export interface Db {
 }
 == type NewArtifact (src/store.ts)
 export interface NewArtifact extends ArtifactRow {
-  ns: string
-  created_at: number
-}
-== type NewRun (src/store.ts)
-export interface NewRun extends RunRow {
-  ns: string
-  tasks: string
+  repo: string
   created_at: number
 }
 == type OidcOptions (src/oidc.ts)
@@ -82,50 +61,53 @@ export interface OidcOptions {
 export interface Retention {
   readonly trustedDays?: number
   readonly branchDays?: number
-  readonly runDays?: number
-}
-== type RunRow (src/store.ts)
-export interface RunRow {
-  id: string
-  scope: string
-  started_at: number
-  duration_ms: number
-  task_count: number
-  failed_count: number
+  readonly timingDays?: number
 }
 == type ServerOptions (src/server.ts)
 export interface ServerOptions {
   blobs: Blobs
   store: Store
   authorize: Authorize
-  maxArtifactBytes?: number
+  maxUploadBytes?: number
   now?: () => number
 }
 == type Store (src/store.ts)
 export interface Store {
   init(): Promise<void>
-  artifacts(ns: string, keys: readonly string[], scopes: readonly string[]): Promise<ArtifactRow[]>
-  held(ns: string, key: string, scope: string): Promise<boolean>
-  addArtifact(row: NewArtifact): Promise<boolean>
-  addRun(row: NewRun): Promise<boolean>
-  runs(ns: string, scopes: readonly string[], limit: number): Promise<RunRow[]>
-  samples(
-    ns: string,
+  artifacts(
+    repo: string,
+    keys: readonly string[],
     scopes: readonly string[],
-    tasks: readonly string[],
+  ): Promise<ArtifactRow[]>
+  addArtifact(row: NewArtifact): Promise<boolean>
+  addTimings(
+    repo: string,
+    scope: string,
+    createdAt: number,
+    timings: readonly Timing[],
+  ): Promise<void>
+  timings(
+    repo: string,
+    hashes: readonly string[],
+    scopes: readonly string[],
     limit: number,
-    scanned: number,
-  ): Promise<{ run: string; scope: string; task: string }[]>
+  ): Promise<(Timing & { scope: string })[]>
   takeExpired(
     trustedBefore: number,
     branchBefore: number,
     limit: number,
-  ): Promise<{ blob: string }[]>
-  dropRuns(before: number, limit: number): Promise<number>
+  ): Promise<(ArtifactRow & { repo: string })[]>
+  dropTimings(before: number): Promise<number>
+}
+== type Timing (src/store.ts)
+export interface Timing {
+  hash: string
+  durationMs: number
+  cores: number | null
+  rssBytes: number | null
 }
 == type TrustRule (src/oidc.ts)
 export interface TrustRule {
   readonly iss: string
-  readonly ns?: string
-  readonly [claim: string]: string | readonly string[] | undefined
+  readonly [claim: string]: string | readonly string[]
 }
