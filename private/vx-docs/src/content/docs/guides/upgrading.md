@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-devtools: move the CI token check into @vzn/vx-devtools
+
+@vzn/vx-cache-server no longer exports oidcAuth, parseTrust, Access, Authorize, OidcOptions or TrustRule; import them from @vzn/vx-devtools.
+
 ## vx-history: rename vx-schedule-history to vx-history
 
 @vzn/vx-schedule-history is @vzn/vx-history: scheduleHistoryPlugin() is vxHistory(), ScheduleHistoryOptions is VxHistoryOptions, and its notes say "[vx] vx-history:".

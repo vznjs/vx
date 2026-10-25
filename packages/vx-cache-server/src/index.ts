@@ -2,14 +2,6 @@
 // an S3-compatible bucket or on Cloudflare Workers with D1 and R2.
 
 export { evict, type Retention, retentionFrom } from './evict.js'
-export {
-  type Access,
-  type Authorize,
-  oidcAuth,
-  type OidcOptions,
-  parseTrust,
-  type TrustRule,
-} from './oidc.js'
 export { READ_SCOPES_HEADER } from './protocol.js'
 export { createCacheServer, type ServerOptions } from './server.js'
 export { postgresStore } from './postgres.js'

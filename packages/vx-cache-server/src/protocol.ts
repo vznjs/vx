@@ -2,6 +2,8 @@
 // what a request carries. Every string a client sends is opaque to the
 // server, which only compares it, so a client can send it encrypted.
 
+import { Refusal } from '@vzn/vx-devtools'
+
 /** The refs whose scopes a read walks, in order, before the trusted scope. */
 export const READ_SCOPES_HEADER = 'x-artifact-read-scopes'
 
@@ -33,14 +35,7 @@ export const isCount = (n: unknown): n is number =>
   typeof n === 'number' && Number.isSafeInteger(n) && n >= 0
 
 /** A request the server refuses, answered as Turbo's spec's `Error`. */
-export class Refusal extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message)
-  }
-}
+export { Refusal }
 
 /** Turbo's spec's `Error`: `{ code, message }`. */
 export function errorJson(status: number, message: string): Response {

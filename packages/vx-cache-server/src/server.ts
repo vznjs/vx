@@ -2,7 +2,7 @@
 // that the Bun server and the Worker both serve. Artifacts keep Turbo's
 // remote cache shapes under `/v1`; timings are what a scheduler learns.
 
-import type { Access, Authorize } from './oidc.js'
+import type { Access, Authorize } from '@vzn/vx-devtools'
 import {
   BATCH_TYPE,
   errorJson,

@@ -7,7 +7,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test'
-import { createCacheServer, oidcAuth, sqliteStore } from '@vzn/vx-cache-server'
+import { oidcAuth } from '@vzn/vx-devtools'
+import { createCacheServer, sqliteStore } from '@vzn/vx-cache-server'
 import type { JWTPayload } from 'jose'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import {
@@ -193,7 +194,10 @@ describe('VxCacheLayer', () => {
     c.addTiming({ hash: 'test', durationMs: 50 })
     await c.flushTimings()
     expect(srv.seen.at(-1)!.path).toBe('/v1/timings/upload')
-    expect(await layer(srv.url, read).timings(['build', 'test', 'none'])).toEqual(
+    const got = await layer(srv.url, read).timings(['build', 'test', 'none'])
+    // Both builds can land in one millisecond, which orders them no way.
+    got.get('build')?.sort((x, y) => y.durationMs - x.durationMs)
+    expect(got).toEqual(
       new Map([
         [
           'build',

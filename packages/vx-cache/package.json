@@ -27,13 +27,14 @@
     "bun": ">=1.4.4"
   },
   "//": [
-    "@vzn/vx-cache-server: the tests run the plugin against the real server, in process.",
+    "@vzn/vx-cache-server, @vzn/vx-devtools: the tests run the plugin against the real server, in process.",
     "jose: the tests sign the CI tokens the server checks."
   ],
   "devDependencies": {
     "@types/bun": "^1.4.0",
     "@vzn/vx": "workspace:*",
     "@vzn/vx-cache-server": "workspace:*",
+    "@vzn/vx-devtools": "workspace:*",
     "jose": "6.2.13"
   },
   "peerDependencies": {

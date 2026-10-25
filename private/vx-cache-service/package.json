@@ -11,7 +11,7 @@
   "//": [
     "@vzn/vx-cache-server: the worker this deploys, unchanged.",
     "wrangler: Workers Builds deploys src/worker.ts with it by wrangler.jsonc.",
-    "@vzn/vx: vx.config.ts; @types/bun and jose: tests/trust.test.ts signs GitHub-shaped tokens."
+    "@vzn/vx: vx.config.ts; @types/bun, @vzn/vx-devtools and jose: tests/trust.test.ts checks GitHub-shaped tokens against TRUST."
   ],
   "dependencies": {
     "@vzn/vx-cache-server": "workspace:*"
@@ -19,6 +19,7 @@
   "devDependencies": {
     "@types/bun": "^1.4.0",
     "@vzn/vx": "workspace:*",
+    "@vzn/vx-devtools": "workspace:*",
     "jose": "6.2.13",
     "wrangler": "4.149.0"
   }

@@ -2,7 +2,7 @@
 // without a network, and tokens signed for any claims.
 
 import { exportJWK, generateKeyPair, type JWK, type JWTPayload, SignJWT } from 'jose'
-import { parseTrust, type TrustRule } from '../src/oidc.js'
+import { parseTrust, type TrustRule } from '@vzn/vx-devtools'
 
 export const GITHUB = 'https://token.actions.githubusercontent.com'
 export const REPO = '42'

@@ -39,6 +39,7 @@
         "@types/bun": "^1.4.0",
         "@vzn/vx": "workspace:*",
         "@vzn/vx-cache-server": "workspace:*",
+        "@vzn/vx-devtools": "workspace:*",
         "jose": "6.2.13",
       },
       "peerDependencies": {
@@ -52,11 +53,12 @@
         "vx-cache-server": "./src/bun.ts",
       },
       "dependencies": {
-        "jose": "6.2.13",
+        "@vzn/vx-devtools": "*",
       },
       "devDependencies": {
         "@types/bun": "^1.4.0",
         "@vzn/vx": "*",
+        "jose": "6.2.13",
         "miniflare": "5.20261019.1-beta",
         "wrangler": "4.149.0",
       },
@@ -69,6 +71,17 @@
         "@vzn/vx": "workspace:*",
       },
       "peerDependencies": {
+        "@vzn/vx": "*",
+      },
+    },
+    "packages/vx-devtools": {
+      "name": "@vzn/vx-devtools",
+      "version": "0.0.0",
+      "dependencies": {
+        "jose": "6.2.13",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.0",
         "@vzn/vx": "*",
       },
     },
@@ -186,6 +199,7 @@
       "devDependencies": {
         "@types/bun": "^1.4.0",
         "@vzn/vx": "workspace:*",
+        "@vzn/vx-devtools": "workspace:*",
         "jose": "6.2.13",
         "wrangler": "4.149.0",
       },
@@ -781,6 +795,8 @@
     "@vzn/vx-cache-service": ["@vzn/vx-cache-service@workspace:private/vx-cache-service"],
 
     "@vzn/vx-ci": ["@vzn/vx-ci@workspace:packages/vx-ci"],
+
+    "@vzn/vx-devtools": ["@vzn/vx-devtools@workspace:packages/vx-devtools"],
 
     "@vzn/vx-docs": ["@vzn/vx-docs@workspace:private/vx-docs"],
 

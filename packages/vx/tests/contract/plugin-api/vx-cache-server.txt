@@ -9,30 +9,18 @@ export async function evict(
   r: Required<Retention>,
   now: number = Date.now(),
 ): Promise<{ artifacts: number; timings: number }>
-== function oidcAuth (src/oidc.ts)
-export function oidcAuth(opts: OidcOptions): Authorize
-== function parseTrust (src/oidc.ts)
-export function parseTrust(json: string): TrustRule[]
 == function postgresStore (src/postgres.ts)
 export function postgresStore(url: string): Store & { close(): Promise<void> }
 == function retentionFrom (src/evict.ts)
 export function retentionFrom(env: object): Required<Retention>
 == function sqliteStore (src/store.ts)
 export function sqliteStore(db: Db): Store
-== type Access (src/oidc.ts)
-export interface Access {
-  readonly repo: string
-  readonly write?: string
-  readonly trustedRef: (ref: string) => boolean
-}
 == type ArtifactRow (src/store.ts)
 export interface ArtifactRow {
   key: string
   scope: string
   size: number
 }
-== type Authorize (src/oidc.ts)
-export type Authorize = (req: Request) => Promise<Access>
 == type Blobs (src/store.ts)
 export interface Blobs {
   put(name: string, body: ReadableStream<Uint8Array>, size: number): Promise<void>
@@ -49,13 +37,6 @@ export interface Db {
 export interface NewArtifact extends ArtifactRow {
   repo: string
   created_at: number
-}
-== type OidcOptions (src/oidc.ts)
-export interface OidcOptions {
-  readonly trust: readonly TrustRule[]
-  readonly audience?: string
-  readonly fetchJson?: (url: string) => Promise<unknown>
-  readonly now?: () => number
 }
 == type Retention (src/evict.ts)
 export interface Retention {
@@ -105,9 +86,4 @@ export interface Timing {
   durationMs: number
   cores: number | null
   rssBytes: number | null
-}
-== type TrustRule (src/oidc.ts)
-export interface TrustRule {
-  readonly iss: string
-  readonly [claim: string]: string | readonly string[]
 }

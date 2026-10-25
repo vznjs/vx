@@ -3,7 +3,7 @@
 import { Database } from 'bun:sqlite'
 import { expect, it } from 'bun:test'
 import { evict, retentionFrom } from '../src/evict.js'
-import { oidcAuth } from '../src/oidc.js'
+import { oidcAuth } from '@vzn/vx-devtools'
 import { createCacheServer } from '../src/server.js'
 import { type Db, sqliteStore } from '../src/store.js'
 import { issuer, TRUST, TRUSTED_JOB } from './issuer.js'
