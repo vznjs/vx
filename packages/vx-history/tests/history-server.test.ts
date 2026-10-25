@@ -61,6 +61,26 @@ describe('HistoryServer', () => {
     expect(got).toEqual(new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000 }]]))
   })
 
+  // A blip on the run's first call, the query, kept the run's upload
+  // from ever asking again: the run's timings were lost.
+  it('asks for the limits again after a failed ask', async () => {
+    const token = await iss.sign('main', new URL(url).origin)
+    let blips = 1
+    const flaky = (async (u: string, init: RequestInit) => {
+      if (new URL(u).pathname === '/v1/capabilities' && blips-- > 0)
+        throw new Error('connection reset')
+      return fetch(u, init)
+    }) as unknown as typeof fetch
+    const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: token }, flaky)
+    await expect(client.query([await hashPart('refs/heads/main')], ['c1'])).rejects.toThrow(
+      'connection reset',
+    )
+    await client.upload(new Map([['c1', { durationMs: 3 }]]))
+    expect(await client.query([await hashPart('refs/heads/main')], ['c1'])).toEqual(
+      new Map([['c1', { durationMs: 3 }]]),
+    )
+  })
+
   it("says a refusal with the server's own words", async () => {
     const read = await iss.sign('read', new URL(url).origin)
     const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: read })
