@@ -1,0 +1,37 @@
+== const DURATION_HEADER (src/protocol.ts)
+export const DURATION_HEADER = 'vx-duration'
+== const READ_SCOPES_HEADER (src/protocol.ts)
+export const READ_SCOPES_HEADER = 'vx-read-scopes'
+== function createCacheServer (src/server.ts)
+export function createCacheServer(opts: ServerOptions): (req: Request) => Promise<Response>
+== function parseTokens (src/auth.ts)
+export function parseTokens(list: string): Map<string, Access>
+== function tokenAuth (src/auth.ts)
+export function tokenAuth(tokens: ReadonlyMap<string, Access>): Authorize
+== type Access (src/auth.ts)
+export interface Access {
+  ns: string
+  write?: string
+}
+== type Authorize (src/auth.ts)
+export type Authorize = (req: Request) => Promise<Access>
+== type Blobs (src/store.ts)
+export interface Blobs {
+  put(name: string, body: ReadableStream<Uint8Array>, size: number): Promise<void>
+  get(name: string): Promise<ReadableStream<Uint8Array> | Blob | null>
+  delete(name: string): Promise<void>
+}
+== type Db (src/store.ts)
+export interface Db {
+  all<T>(sql: string, params: readonly unknown[]): Promise<T[]>
+  run(sql: string, params: readonly unknown[]): Promise<number>
+  batch(statements: readonly string[]): Promise<void>
+}
+== type ServerOptions (src/server.ts)
+export interface ServerOptions {
+  blobs: Blobs
+  db: Db
+  authorize: Authorize
+  maxArtifactBytes?: number
+  now?: () => number
+}

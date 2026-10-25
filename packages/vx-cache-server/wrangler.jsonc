@@ -1,0 +1,14 @@
+// vx-cache-server on Cloudflare Workers (src/worker.ts): `bunx wrangler
+// deploy` from this directory. Blobs live in R2, the rest in D1.
+{
+  "name": "vx-cache-server",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  // Who may read and write: read:<sha256> / write:<sha256>, space separated,
+  // each the SHA-256 of a token. Hashes, not tokens: no secret. Empty, every
+  // request is refused with "set TOKENS".
+  "vars": { "TOKENS": "" },
+  "d1_databases": [{ "binding": "DB", "database_name": "vx-cache" }],
+  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],
+}

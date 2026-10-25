@@ -1,0 +1,52 @@
+{
+  "name": "@vzn/vx-cache-server",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "description": "A cache and run-history server for vx that you host: on Bun with an S3-compatible bucket, or on Cloudflare Workers with D1 and R2.",
+  "keywords": [
+    "vx",
+    "remote-cache",
+    "cache-server"
+  ],
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "bin": {
+    "vx-cache-server": "./src/bun.ts"
+  },
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./worker": {
+      "types": "./src/worker.ts",
+      "import": "./src/worker.ts"
+    }
+  },
+  "files": [
+    "index.ts",
+    "src",
+    "PROTOCOL.md",
+    "wrangler.jsonc",
+    "README.md"
+  ],
+  "engines": {
+    "bun": ">=1.4.4"
+  },
+  "//": [
+    "wrangler: deploys src/worker.ts by wrangler.jsonc.",
+    "@vzn/vx: vx.config.ts's core; `*`, not workspace:, which npm refuses when a deploy installs this directory alone.",
+    "miniflare: tests/worker.test.ts runs src/worker.ts in workerd with D1 and R2, as Workers deploy it."
+  ],
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "@vzn/vx": "*",
+    "miniflare": "5.20261019.1-beta",
+    "wrangler": "4.149.0"
+  }
+}
