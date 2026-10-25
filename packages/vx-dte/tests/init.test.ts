@@ -87,6 +87,32 @@ it('github({ runsOn }) names a size its runner; pnpm gets its setup step', async
   )
 })
 
+// CI reads its files at the repository's root: a workspace in a
+// subdirectory got them in its own, which no CI reads (2026-10-25).
+it('writes the CI files at the repository’s root, running in the workspace’s directory', async () => {
+  Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
+  const ws = path.join(root, 'ws')
+  await mkdir(ws, { recursive: true })
+  await writeFile(path.join(ws, 'pnpm-lock.yaml'), '')
+  const at = (options: Parameters<typeof dte>[0]) =>
+    Promise.resolve(
+      dte(options).commands!['dte']!.run(['init'], { workspaceRoot: ws } as CommandContext),
+    )
+  expect(await at({ workers: sizes, adapter: github() })).toBe(0)
+  for (const file of [WORKFLOW, '.github/workflows/ci.yml']) {
+    const yml = await readFile(path.join(root, file), 'utf8')
+    expect(yml).toContain('    defaults:\n      run:\n        working-directory: ws\n')
+    expect(yml).toContain(
+      '      - uses: pnpm/action-setup@v4\n        with: { package_json_file: ws/package.json }\n',
+    )
+  }
+  const relay = 'https://relay.example.com'
+  expect(await at({ relay, workers: sizes, adapter: gitlab() })).toBe(0)
+  const ci = await readFile(path.join(root, '.gitlab-ci.yml'), 'utf8')
+  expect(ci).toContain("  before_script:\n    - cd 'ws'\n    - pnpm install --frozen-lockfile\n")
+  expect(ci).toContain("    - git checkout -q FETCH_HEAD\n    - cd 'ws'\n")
+})
+
 it('keeps a workflow its owner changed unless --force, and says when it is up to date', async () => {
   await writeFile(path.join(root, 'bun.lock'), '')
   await mkdir(path.join(root, '.github/workflows'), { recursive: true })
@@ -218,6 +244,7 @@ it('the README shows the workflow vx dte init writes for its sizes', async () =>
   expect(readme).toContain('```yaml\n# .github/workflows/ci.yml\n' + run + '```')
   const gl = await gitlab().init!({
     workspaceRoot: root,
+    dir: '',
     relay: 'https://relay.example.com',
     sizes: [{ name: 'small', max: 4 }],
     manager: 'bun',
@@ -229,6 +256,7 @@ it('the README shows the workflow vx dte init writes for its sizes', async () =>
 it('writes the tasks asked for: main with --all, a change request with --affected', async () => {
   const setup = {
     workspaceRoot: root,
+    dir: '',
     relay: 'https://r',
     sizes: [{ name: 'small', max: 4 }],
     manager: 'bun' as const,
