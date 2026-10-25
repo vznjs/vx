@@ -50,8 +50,14 @@ export function conformance(name: string, target: Target): void {
     delete headers.authorization
     return call('/v1/artifacts/upload', { ...init, headers, token })
   }
+  /** One artifact alone, its bytes the body. */
   const put = (k: string, body: Blob | Uint8Array | string, token = write) =>
-    upload([[k, body]], token)
+    call(`/v1/artifacts/${k}`, {
+      method: 'PUT',
+      body,
+      headers: { 'content-type': 'application/octet-stream' },
+      token,
+    })
   const json = (path: string, body: unknown, token = read) =>
     call(path, {
       method: 'POST',
@@ -97,8 +103,9 @@ export function conformance(name: string, target: Target): void {
         { code: 'not_found', message: 'no artifact under this key' },
       ])
       expect((await put(k, 'first')).status).toBe(204)
-      // Immutable: a second upload keeps the stored bytes.
+      // Immutable: a second upload, alone or in a batch, keeps the stored bytes.
       expect((await put(k, 'second')).status).toBe(204)
+      expect((await upload([[k, 'third']])).status).toBe(204)
       const got = await get(k)
       expect([
         got.status,
@@ -303,6 +310,8 @@ export function conformance(name: string, target: Target): void {
       expect([head.status, head.headers.get('allow')]).toEqual([405, 'GET'])
       const res = await call('/v1/artifacts/check', { method: 'DELETE' })
       expect([res.status, res.headers.get('allow')]).toEqual([405, 'POST'])
+      const one = await call(`/v1/artifacts/${key()}`)
+      expect([one.status, one.headers.get('allow')]).toEqual([405, 'PUT'])
     })
   })
 }
