@@ -1823,18 +1823,25 @@ function sandboxConfigs(nodes: ReadonlyMap<string, TaskNode> | undefined): Sandb
   return [...seen.values()]
 }
 
-/** Every task `id` depends on, transitively. */
+/**
+ * Every task `id` depends on, transitively, each after its own
+ * dependencies: the order a worker restores them in. Dependant first, an
+ * additive task's rewrite of its upstream's file was undone by the
+ * upstream's restore, and its dependants read the old bytes (2026-10-25).
+ */
 function upstream(nodes: ReadonlyMap<string, TaskNode> | undefined, id: string): Set<string> {
   const seen = new Set<string>()
+  const out = new Set<string>()
   const walk = (t: string): void => {
     for (const d of nodes?.get(t)?.deps ?? []) {
       if (seen.has(d)) continue
       seen.add(d)
       walk(d)
+      out.add(d)
     }
   }
   walk(id)
-  return seen
+  return out
 }
 
 /** A worker's run, spelled out: time, CPU, memory and the relay. */
