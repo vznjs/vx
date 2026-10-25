@@ -24,8 +24,9 @@ deployed server may speak different protocols. A push to main that
 changes the server waits for its deploy. `wrangler.jsonc`'s `previews`
 block repeats `TRUST` and the bucket, since a Preview inherits neither.
 
-The R2 bucket is `vx-cache-enam`, made with the `enam` location hint (M,
-2026-10-25): our runners reach Cloudflare across the US, most from the
-east and centre. A bucket's location is fixed when it is made.
+The R2 bucket is `vx-cache` (M, 2026-10-25: every older bucket deleted).
+It asks the `enam` location hint, as our runners reach Cloudflare across
+the US, most from the east and centre, but R2 kept the name's old
+location, WNAM. A bucket's location is fixed when it is made.
 One lifecycle rule expires every object 1 day after its upload: names are
 hashed, so no prefix tells `main` from a branch (M, 2026-10-25).
