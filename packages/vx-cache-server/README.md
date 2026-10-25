@@ -89,7 +89,7 @@ builds and runs all three (`docker compose up -d`).
 ## Limits
 
 `MAX_CHECK_KEYS` (default 500), `MAX_BATCH_ARTIFACTS` (default 100) and
-`MAX_UPLOAD_BYTES` (default 100 MB, an upload's artifacts together) set
+`MAX_UPLOAD_BYTES` (default 100 MB, one artifact) set
 the limits. Every check names them to clients (`x-vx-max-*`), and
 `GET /v1/capabilities` too.
 
@@ -105,8 +105,8 @@ bunx wrangler deploy
 
 Wrangler makes the R2 bucket `wrangler.jsonc` names on the first deploy.
 It fits Workers' free plan: a request makes at most 1000 calls to R2, so
-a check reads up to 990 keys and an upload or batch download carries up
-to 330 artifacts (a higher setting is lowered, and capabilities say so);
+a check reads up to 990 keys and a batch download carries up to 495
+artifacts (a higher setting is lowered, and capabilities say so);
 a request body is at most 100 MB. R2's free plan holds 10 GB.
 
 ## Expiry

@@ -49,9 +49,6 @@ function expiryOf(jwt: string): number {
 const LEND_MARGIN_MS = 5 * 60_000
 /** Uploads open at once; more wait. */
 const IN_FLIGHT = 4
-/** Waiting uploads go as one batch only when more than this many wait. */
-const BATCH_OVER = 2
-const BATCH_TYPE = 'application/vnd.vx-cache.batch'
 
 /** A ref's scope on the wire: its SHA-256's first 128 bits in hex, never the ref (M, 2026-10-25). */
 const scopeOf = (ref: string): string =>
@@ -82,28 +79,20 @@ function deadline(ms: number): AbortSignal {
   return controller.signal
 }
 
-interface Waiting<T, R> {
-  readonly item: T
-  resolve(r: R): void
-  reject(err: unknown): void
-}
-
 /**
- * Uploads: up to `IN_FLIGHT` requests at once, each of one artifact while
- * few wait, and of a batch once more than `BATCH_OVER` do.
+ * Uploads: up to `IN_FLIGHT` at once, each one artifact by `PUT`, whose
+ * bytes reach the bucket untouched (M, 2026-10-25: no batch upload; a
+ * batch is split by the server's code, which on Workers costs CPU by the
+ * byte, and a 40 MB one ran out of it).
  */
-class Lane<T, R> {
-  private readonly waiting: Waiting<T, R>[] = []
+class Lane<T> {
+  private readonly waiting: { item: T; resolve(): void; reject(err: unknown): void }[] = []
   private open = 0
 
-  constructor(
-    /** Takes the batch from the front of `waiting`: at least one. */
-    private readonly take: (waiting: Waiting<T, R>[]) => Waiting<T, R>[],
-    private readonly send: (batch: Waiting<T, R>[]) => Promise<void>,
-  ) {}
+  constructor(private readonly send: (item: T) => Promise<void>) {}
 
-  push(item: T): Promise<R> {
-    const { promise, resolve, reject } = Promise.withResolvers<R>()
+  push(item: T): Promise<void> {
+    const { promise, resolve, reject } = Promise.withResolvers<void>()
     this.waiting.push({ item, resolve, reject })
     this.pump()
     return promise
@@ -111,13 +100,10 @@ class Lane<T, R> {
 
   private pump(): void {
     while (this.open < IN_FLIGHT && this.waiting.length > 0) {
-      const batch =
-        this.waiting.length > BATCH_OVER ? this.take(this.waiting) : this.waiting.splice(0, 1)
+      const w = this.waiting.shift()!
       this.open++
-      void this.send(batch)
-        .catch((err: unknown) => {
-          for (const w of batch) w.reject(err)
-        })
+      void this.send(w.item)
+        .then(w.resolve, w.reject)
         .finally(() => {
           this.open--
           this.pump()
@@ -129,13 +115,11 @@ class Lane<T, R> {
 /** The limits a server names at `/v1/capabilities` and on each check (`x-vx-max-*`). */
 interface Limits {
   readonly maxCheckKeys: number
-  readonly maxBatchArtifacts: number
   readonly maxUploadBytes: number
 }
 
 const LIMIT_HEADERS: Record<keyof Limits, string> = {
   maxCheckKeys: 'x-vx-max-check-keys',
-  maxBatchArtifacts: 'x-vx-max-batch-artifacts',
   maxUploadBytes: 'x-vx-max-upload-bytes',
 }
 
@@ -145,39 +129,15 @@ const count = (n: unknown): number | undefined =>
 /** Each limit, or undefined when one is missing or bad. */
 function limitsOf(read: (k: keyof Limits) => unknown): Limits | undefined {
   const maxCheckKeys = count(read('maxCheckKeys'))
-  const maxBatchArtifacts = count(read('maxBatchArtifacts'))
   const maxUploadBytes = count(read('maxUploadBytes'))
-  return maxCheckKeys === undefined ||
-    maxBatchArtifacts === undefined ||
-    maxUploadBytes === undefined
+  return maxCheckKeys === undefined || maxUploadBytes === undefined
     ? undefined
-    : { maxCheckKeys, maxBatchArtifacts, maxUploadBytes }
-}
-
-/**
- * The front of `waiting` within the server's `limits`, at least one; one
- * alone while the server has named none.
- */
-function takeBatch<T, R>(
-  waiting: Waiting<T, R>[],
-  limits: Limits | undefined,
-  size: (item: T) => number,
-): Waiting<T, R>[] {
-  if (limits === undefined) return waiting.splice(0, 1)
-  let n = 0
-  let bytes = 0
-  while (n < waiting.length && n < limits.maxBatchArtifacts) {
-    const s = size(waiting[n]!.item)
-    if (n > 0 && bytes + s > limits.maxUploadBytes) break
-    bytes += s
-    n++
-  }
-  return waiting.splice(0, Math.max(1, n))
+    : { maxCheckKeys, maxUploadBytes }
 }
 
 /**
  * The seam over vx-cache v1. `has` and `hasMany` are `check`, `get` a
- * download and `put` an upload, alone or in a batch (`Lane`). Every read
+ * download and `put` an upload by `PUT` (`Lane`). Every read
  * names exact `{ scope, hash }` keys, one per ref the run reads, and the
  * first ref holding a hash answers it. A refused token (401/403) throws
  * once, for core to report, and turns the layer off for the run; an
@@ -198,10 +158,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
   warn: (message: string) => void = () => {}
   private limitsMissing = false
 
-  private readonly uploads = new Lane<{ hash: string; body: Blob }, void>(
-    (w) => takeBatch(w, this.limits, (x) => x.body.size),
-    (batch) => this.upload(batch),
-  )
+  private readonly uploads = new Lane<{ hash: string; body: Blob }>((item) => this.upload(item))
 
   constructor(
     private readonly config: Required<VxCacheOptions>,
@@ -314,7 +271,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
   /**
    * The server's limits: `/v1/capabilities`, asked once and kept, then
    * whatever each check names. Unnamed, said once: checks go one ref's
-   * key at a time and uploads one artifact at a time.
+   * key at a time.
    */
   private async limitsNow(): Promise<Limits | undefined> {
     if (this.limits !== undefined) return this.limits
@@ -335,7 +292,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
     if (this.limitsMissing) return
     this.limitsMissing = true
     this.warn(
-      `[vx] vx-cache: ${where} named no limits (maxCheckKeys, maxBatchArtifacts, maxUploadBytes); checks and uploads go one at a time`,
+      `[vx] vx-cache: ${where} named no limits (maxCheckKeys, maxUploadBytes); checks go one key at a time`,
     )
   }
 
@@ -421,39 +378,16 @@ export class VxCacheLayer implements RemoteCacheLayer {
     await this.uploads.push({ hash, body })
   }
 
-  /**
-   * A batch of more than `BATCH_OVER` asks `check` first and sends only the
-   * missing; fewer go straight, and the server answers an upload of held
-   * ones before reading its bytes.
-   */
-  private async upload(batch: Waiting<{ hash: string; body: Blob }, void>[]): Promise<void> {
-    let send = batch
-    if (batch.length > BATCH_OVER) {
-      const held = await this.hasMany(batch.map((w) => w.item.hash))
-      send = batch.filter((w) => !held.has(w.item.hash))
-      for (const w of batch) if (held.has(w.item.hash)) w.resolve()
-      if (send.length === 0) return
-    }
-    const line = JSON.stringify({
-      artifacts: send.map((w) => ({ hash: w.item.hash, size: w.item.body.size })),
-    })
-    // Bun drops a file-backed Blob nested in another (1.4.4): its bytes
-    // are read, or the body falls short of the Content-Length it names.
-    const parts = await Promise.all(
-      send.map(async (w) =>
-        (w.item.body as { name?: unknown }).name === undefined
-          ? w.item.body
-          : await w.item.body.bytes(),
-      ),
-    )
-    const res = await this.request('/v1/artifacts/upload', {
-      body: new Blob([`${line}\n`, ...parts]),
-      headers: { 'content-type': BATCH_TYPE },
+  /** One artifact by `PUT`: the server answers one its scope holds before reading the bytes. */
+  private async upload(item: { hash: string; body: Blob }): Promise<void> {
+    const res = await this.request(`/v1/artifacts/${item.hash}`, {
+      method: 'PUT',
+      body: item.body,
+      headers: { 'content-type': 'application/octet-stream' },
       timeoutMs: this.config.uploadTimeoutMs,
       write: true,
     })
     if (res !== undefined && !res.ok) throw await refusal(res)
-    for (const w of send) w.resolve()
   }
 }
 

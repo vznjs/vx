@@ -53,7 +53,7 @@ conformance('Workers with R2', {
   base: () => base.href,
   sign: (job) => iss.sign(JOBS[job], AUD),
   maxCheckKeys: 500,
-  maxBatchArtifacts: 330,
+  maxBatchArtifacts: 495,
   maxUploadBytes: MAX,
 })
 
@@ -66,9 +66,9 @@ it('refuses every request, saying why, while TRUST or a limit is unset or wrong'
       'TRUST: rule 0: names no project_id (one repository, no *)',
     ],
     [
-      { TRUST: JSON.stringify(TRUST), MAX_UPLOAD_BYTES: '104857600' },
+      { TRUST: JSON.stringify(TRUST), MAX_UPLOAD_BYTES: '104857601' },
       500,
-      'MAX_UPLOAD_BYTES: at most 104841536: Workers take a body of 100 MB',
+      'MAX_UPLOAD_BYTES: at most 104857600: Workers take a body of 100 MB',
     ],
     [
       { TRUST: JSON.stringify(TRUST), MAX_CHECK_KEYS: '0' },

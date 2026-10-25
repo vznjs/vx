@@ -8,7 +8,6 @@ import { createCacheServer, limitsFrom } from '../src/server.js'
 import { conformance, scopeOf } from './conformance.js'
 import { fakeS3, type FakeS3 } from './fake-s3.js'
 import { type Issuer, issuer, JOBS, TRUST, MAIN_JOB } from './issuer.js'
-import { upload } from './upload.js'
 
 const LIMITS = { maxCheckKeys: 50, maxBatchArtifacts: 20, maxUploadBytes: 7 * 1024 * 1024 }
 
@@ -44,7 +43,11 @@ conformance('Bun with S3', {
 
 it('names an object <issuer>/<id>/<scope>/<hash>, each hashed, and checks it with one HEAD', async () => {
   const k = 'abc123'
-  await fetch(new URL('/v1/artifacts/upload', server.url), upload([[k, 'x']], token))
+  await fetch(new URL(`/v1/artifacts/${k}`, server.url), {
+    method: 'PUT',
+    body: 'x',
+    headers: { authorization: `Bearer ${token}` },
+  })
   const main = scopeOf('refs/heads/main')
   const name = await blobName('token.actions.githubusercontent.com', '42', main, k)
   // The write's scope is its token's ref hashed by the server, as a client hashes it.

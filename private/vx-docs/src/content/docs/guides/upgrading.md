@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-cache-server: take uploads one artifact at a time
+
+POST /v1/artifacts/upload is gone; upload each artifact with PUT /v1/artifacts/<hash>. maxUploadBytes is one artifact's size, and Workers clamp maxBatchArtifacts (batch download only) to 495.
+
 ## vx-cache-server: send and store scopes as their refs' hashes
 
 a vx-cache or vx-history scope on the wire is its ref's hash (the first 128 bits of SHA-256, 32 lowercase hex digits), never the ref: `x-vx-scope`, check and download keys, and history query scopes. A plain ref is refused with 400. Upgrade vxCache(), vxHistory() and the servers together.

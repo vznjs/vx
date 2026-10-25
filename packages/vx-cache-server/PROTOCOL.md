@@ -10,7 +10,6 @@ server may serve both.
 | `GET /v1/artifacts/download/<hash>` | one artifact's bytes                      |
 | `POST /v1/artifacts/download`       | many artifacts' bytes in one answer       |
 | `PUT /v1/artifacts/<hash>`          | one artifact's bytes                      |
-| `POST /v1/artifacts/upload`         | 1 to `maxBatchArtifacts` artifacts        |
 | `POST /v1/artifacts/check`          | which exact keys are held, and their size |
 | `GET /v1/capabilities`              | the server's limits                       |
 
@@ -83,29 +82,13 @@ and its bytes follow in that order; a key it does not name is not held:
 `PUT /v8/artifacts/<hash>`), with `Content-Length`: the body is the
 artifact's bytes, stored in the token's scope. One the scope already
 holds keeps its bytes, answered before they are read. `204`; past
-`maxUploadBytes`, `413`.
+`maxUploadBytes`, `413`. A client may `check` first to skip what is
+held.
 
-`POST /v1/artifacts/upload` (a token that writes),
-`Content-Type: application/vnd.vx-cache.batch` with `Content-Length`: a
-line naming 1 to `maxBatchArtifacts` artifacts, each hash once, then
-their bytes. They go to the token's scope:
-
-```
-{"artifacts":[{"hash":"8f1c","size":4200}]}\n
-<4200 bytes>
-```
-
-An artifact the write's scope already holds keeps its bytes, and its bytes here are skipped; when every one is held the
-server answers before reading them. `204`. Together they are at most
-`maxUploadBytes` (`413` past it). A `Content-Length` that is not the
-line's bytes and the sizes it names is `400`.
-
-A client sends one or two uploads waiting at once as they are, and asks
-`check` before an upload of more, sending only what is missing. It
-batches only within the limits a check named, and before one has, not at
-all. An artifact alone goes by `PUT`: a batch's bytes pass through the
-server's code to be split, which on Workers costs CPU by the byte (a
-40 MB batch ran out of it), while a `PUT`'s reach the bucket untouched.
+Uploads go one artifact at a time: there is no batch upload. A batch's
+bytes pass through the server's code to be split, which on Workers costs
+CPU by the byte (a 40 MB one ran out of it), while a `PUT`'s reach the
+bucket untouched.
 
 ## Limits
 
