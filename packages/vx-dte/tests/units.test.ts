@@ -1391,7 +1391,10 @@ it('a task a worker stops saying it holds goes back when its lease ends', async 
 // (2026-10-23).
 it('a task whose command ended keeps its lease while its worker holds it, and a quiet run says what it waits on', async () => {
   const waiting: string[] = []
-  const h = await harness(new Map([node('t1')]), undefined, 100, undefined, undefined, {
+  // A quiet worker is probed at 1.5 heartbeats and lost at 1.9: at 100 ms,
+  // 40 ms of a loaded runner's stall lost the new worker (CI, 2026-10-25).
+  const beat = 200
+  const h = await harness(new Map([node('t1')]), undefined, beat, undefined, undefined, {
     stalled: (w) => waiting.push(w),
     stallMs: 300,
   })
@@ -1403,8 +1406,8 @@ it('a task whose command ended keeps its lease while its worker holds it, and a 
     await a.begin('t1')
     await a.say({ type: 'ran', task: 't1' })
     const b = await h.worker(1)
-    // Saving, it still holds t1: past a run's lease (1.8 s here), t1 stays.
-    const alive = setInterval(() => void a.say({ type: 'held', running: ['t1'] }), 50)
+    // Saving, it still holds t1: past a run's lease (3.6 s here), t1 stays.
+    const alive = setInterval(() => void a.say({ type: 'held', running: ['t1'] }), beat)
     try {
       expect(await b.batches()).toEqual([])
       expect(await b.batches()).toEqual([])
@@ -1416,7 +1419,7 @@ it('a task whose command ended keeps its lease while its worker holds it, and a 
   } finally {
     await h.stop()
   }
-})
+}, 15_000)
 
 // An additive task rewrites its upstream's file: restored after it, the
 // upstream put the old bytes back (2026-10-25).
