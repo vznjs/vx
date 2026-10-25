@@ -106,7 +106,9 @@ describe('ci.yml', () => {
   // 2026-10-25). Before the run, on a PR only.
   it('points a PR’s run at the relay Preview, and main’s at its deploy, before it runs', () => {
     const steps = doc.jobs['linux']!.steps!
-    const at = steps.findIndex((s) => s.run === 'bun private/vx-dte-service/preview.ts')
+    const at = steps.findIndex(
+      (s) => s.run === 'bun private/vx-servers/worker-url.ts private/vx-dte-service VX_DTE_RELAY',
+    )
     expect(steps[at]?.if).toBe(
       "github.event_name == 'pull_request' || github.ref == 'refs/heads/main'",
     )
@@ -114,8 +116,7 @@ describe('ci.yml', () => {
     expect(at).toBeLessThan(steps.indexOf(run))
     expect(steps[at]?.id).toBe('relay')
     const cache = steps.findIndex(
-      (s) =>
-        s.run === 'bun private/vx-dte-service/preview.ts private/vx-cache-service VX_CACHE_URL',
+      (s) => s.run === 'bun private/vx-servers/worker-url.ts private/vx-cache-service VX_CACHE_URL',
     )
     expect(steps[cache]?.if).toBe(steps[at]?.if)
     expect(cache).toBeLessThan(steps.indexOf(run))

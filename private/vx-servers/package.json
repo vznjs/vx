@@ -9,9 +9,10 @@
     "bun": ">=1.4"
   },
   "//": [
-    "@vzn/vx: vx.config.ts."
+    "@vzn/vx: vx.config.ts; @types/bun: worker-url.ts and its tests."
   ],
   "devDependencies": {
+    "@types/bun": "^1.4.0",
     "@vzn/vx": "workspace:*"
   }
 }

@@ -11,7 +11,7 @@
   "//": [
     "@vzn/vx-dte-server: the worker this deploys, unchanged.",
     "wrangler: Workers Builds deploys src/worker.ts with it by wrangler.jsonc.",
-    "@vzn/vx: vx.config.ts; @types/bun: tests and preview.ts."
+    "@vzn/vx: vx.config.ts; @types/bun: tests."
   ],
   "dependencies": {
     "@vzn/vx-dte-server": "workspace:*"
