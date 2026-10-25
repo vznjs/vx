@@ -84,7 +84,8 @@ What a token may do:
   protected. Only a job that matches every claim of the rule writes it.
   Any other job on that ref only reads, so a main run never reads a
   write it did not make.
-- **No tiers.** A scope is a ref and nothing more. A read names the
+- **No tiers.** A scope is a ref's hash (the first 128 bits of its
+  SHA-256, in hex) and nothing more; no server sees a ref plain. A read names the
   scopes it wants, in order, own branch first, and the server answers from
   the first one that holds the key.
 
