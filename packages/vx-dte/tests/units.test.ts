@@ -2954,6 +2954,115 @@ it('fails a task whose key folds a file the run’s tree lacks, naming it', asyn
   }
 })
 
+// One `end` holds what the task left: a formatter's 24 000 changed files
+// (or a sandbox's 9000 violations) made it over the relay's 1 MiB frame,
+// and the run waited for an `end` that never came (2026-10-25).
+it('sends a result too long for one relay frame in parts, all of it arriving', async () => {
+  const root = await tmp()
+  const many = 24_000
+  await mkdir(path.join(root, 'files'))
+  await Promise.all(
+    Array.from({ length: many }, (_, i) =>
+      writeFile(path.join(root, 'files', `a-rather-long-file-name-${i}.txt`), '0\n'),
+    ),
+  )
+  const git = (...a: string[]) =>
+    Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...a], { cwd: root })
+  git('init', '-q')
+  git('add', '-A')
+  git('commit', '-qm', 'i')
+  const served = servedRelay()
+  try {
+    const o = sealOrchestrator(
+      await join(served.url, R, 'orchestrator', null, undefined),
+      R,
+      secretProof('s'),
+    )
+    const code = runWorker({
+      relay: served.url,
+      run: R,
+      root,
+      token: async () => undefined,
+      proof: secretProof('s'),
+      artifacts: () => fakeArtifacts().artifacts,
+    })
+    const order: RunOrder = {
+      task: 'fmt',
+      key: 'k-fmt',
+      runKey: runKey(R, 'fmt'),
+      deps: [],
+      nested: [],
+      command: "find files -type f -print0 | xargs -0 sed -i 's/0/1/'",
+      cwd: '',
+      project: '',
+      env: { PATH: process.env['PATH'] ?? '' },
+      outputs: { files: [], workspaceFiles: [] },
+      cores: 1,
+      memory: 0,
+    }
+    const changed: string[] = []
+    let ended = false
+    for (let i = 0; i < 400 && !ended; i++)
+      for (const { from, body } of await o.poll()) {
+        const m = body as {
+          type: string
+          id?: string
+          changed?: string[]
+          result?: { changed?: string[] }
+        }
+        if (from === 'relay' && m.type === 'joined') {
+          await o.send(m.id!, {
+            type: 'welcome',
+            name: 'a',
+            cache: { refs: [], lent: {} },
+            cores: 2,
+            memory: 1e9,
+          })
+          await o.send(m.id!, { type: 'batch', root, realRoot: root, tasks: [order] })
+        } else if (m.type === 'part') {
+          changed.push(...(m.changed ?? []))
+        } else if (m.type === 'end') {
+          changed.push(...(m.result?.changed ?? []))
+          ended = true
+          await o.send(from, { type: 'exit' })
+        }
+      }
+    expect(ended).toBe(true)
+    expect(changed).toHaveLength(many)
+    expect(await code).toBe(0)
+  } finally {
+    await served.stop()
+  }
+}, 60_000)
+
+it('takes a result’s parts ahead of its end as one result', async () => {
+  const h = await harness(new Map([node('t')]))
+  try {
+    const a = await h.worker(1)
+    const ran = h.o.execute(h.req('t', 'k-t'))
+    expect(await a.batches()).toEqual([['t']])
+    const at = new Date(0).toISOString()
+    await a.say({
+      type: 'part',
+      task: 't',
+      changed: ['a/1'],
+      violations: [{ line: 'v1', timestamp: at }],
+    })
+    await a.say({ type: 'part', task: 't', changed: ['a/2'] })
+    await a.finish('t', 'k-t', {
+      exitCode: 0,
+      durationMs: 1,
+      changed: ['a/3'],
+      violations: [{ line: 'v2', timestamp: at }],
+    })
+    const res = await ran
+    expect(res.changed).toEqual(['a/1', 'a/2', 'a/3'])
+    expect(res.violations.map((v) => v.line)).toEqual(['v1', 'v2'])
+  } finally {
+    await h.stop()
+  }
+})
+
 // A workspace in a repository subdirectory: git named the file from the
 // repository's root, which matched no keyed file, and core saved a task's
 // rewrite of its own input under its key (2026-10-25).

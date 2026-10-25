@@ -153,6 +153,17 @@ export type ToOrchestrator =
   | { type: 'fault'; task: string; reason: string }
   /** It ran the task and saved it under `key`; its output is in that entry. */
   | { type: 'end'; task: string; key: string; result: WiredResult; load?: Load }
+  /**
+   * Ahead of an `end` too long for one relay frame, some of its lists:
+   * the `end` that follows adds its own to them. One `end` with a sandboxed
+   * task's 9000 violations was over the relay's 1 MiB, and the run waited
+   * for it (2026-10-25).
+   */
+  | ({ type: 'part'; task: string } & Partial<Pick<WiredResult, PartList>>)
+
+/** The lists a long result sends ahead of its `end`, in parts. */
+export const PART_LISTS = ['violations', 'changed', 'removed'] as const
+export type PartList = (typeof PART_LISTS)[number]
 
 /** A result as JSON carries it: its output stays in the cache entry, and a violation's time is a string. */
 export type WiredResult = Omit<ExecuteResult, 'violations' | 'outputs' | 'stdout' | 'stderr'> & {

@@ -28,6 +28,8 @@ import {
 import {
   HELD_EVERY,
   HOST_ENV,
+  PART_LISTS,
+  type PartList,
   type WorkerInfo,
   type DepOrder,
   type RunOrder,
@@ -232,6 +234,8 @@ export class Orchestrator {
    */
   private readonly joinLimitMs = new Map<string, number>()
   private endedAt = 0
+  /** A long result's lists, by worker and task, until its `end` comes. */
+  private readonly parts = new Map<string, Partial<Record<PartList, unknown[]>>>()
   /** Workers that joined and left, for the footer. */
   private readonly gone: Worker[] = []
   /** Of `gone`, those the run let go (`release`), not lost. */
@@ -1187,11 +1191,29 @@ export class Orchestrator {
           if (a.faulty && this.spawnedAt.size > 0)
             this.stranded(`${a.label} could not run ${m.task} (${m.reason}) and no worker is left`)
           this.pumpSoon()
+        } else if (m.type === 'part') {
+          a.usage.messagesOut++
+          a.usage.bytesOut += JSON.stringify(m).length
+          const k = `${from}\0${m.task}`
+          const held = this.parts.get(k) ?? {}
+          for (const list of PART_LISTS) {
+            const items = m[list] as readonly unknown[] | undefined
+            if (items !== undefined) held[list] = [...(held[list] ?? []), ...items]
+          }
+          this.parts.set(k, held)
         } else if (m.type === 'end') {
           a.usage.messagesOut++
           a.usage.bytesOut += JSON.stringify(m).length
+          const k = `${from}\0${m.task}`
+          const held = this.parts.get(k)
+          this.parts.delete(k)
+          const result: Record<string, unknown> = { ...m.result }
+          for (const list of PART_LISTS) {
+            const items = m.result[list] as readonly unknown[] | undefined
+            if (held?.[list] !== undefined) result[list] = [...held[list], ...(items ?? [])]
+          }
           // Not awaited: one task's restore holds no other message.
-          void this.finish(a, m.task, m.key, m.result)
+          void this.finish(a, m.task, m.key, result as WiredResult)
         }
       }
     }

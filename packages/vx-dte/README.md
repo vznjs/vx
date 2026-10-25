@@ -409,6 +409,8 @@ use your own instead.
   them.
 - A task's output replays here as its worker read it: stdout and stderr
   in the order the task wrote them, bounded as core bounds a run's.
+- A result too long for one relay frame (thousands of sandbox violations,
+  or of files a formatter changed) is sent in parts, none of it dropped.
 - A task runs with the orchestrator's environment under the worker's
   root. `HOME`, `TMPDIR`, `USER` and the like are the worker's own, unless
   the task's `env.define` sets them.
