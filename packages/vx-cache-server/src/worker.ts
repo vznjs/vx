@@ -30,7 +30,7 @@ declare const FixedLengthStream: new (length: number) => {
 export interface Env {
   readonly BLOBS: R2Bucket
   /** The CI repositories served and the refs they protect (`parseTrust`), a JSON list. */
-  readonly TRUST?: string
+  readonly TRUST?: string | readonly unknown[]
   /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
   readonly AUDIENCE?: string
   /** `public`: a request with no token reads a repository TRUST names. */
@@ -112,7 +112,7 @@ let made: { key: string; authorize: Authorize; limits: Limits } | undefined
 export default {
   async fetch(req: Request, env: Env, ctx: Context): Promise<Response> {
     const key = [
-      env.TRUST,
+      trustOf(env),
       env.AUDIENCE,
       env.READ_ACCESS,
       env.MAX_CHECK_HASHES,
@@ -122,7 +122,7 @@ export default {
       let trust
       let limits
       try {
-        trust = parseTrust(env.TRUST ?? '')
+        trust = parseTrust(trustOf(env))
       } catch (err) {
         return errorJson(500, `TRUST: ${(err as Error).message}`)
       }
@@ -146,4 +146,16 @@ export default {
       limits: made.limits,
     })(req)
   },
+}
+
+/**
+ * `TRUST` as `parseTrust` reads it: wrangler hands a var written as a JSON
+ * list in `wrangler.jsonc` to the Worker as that list, not as text.
+ */
+function trustOf(env: Env): string {
+  return typeof env.TRUST === 'string'
+    ? env.TRUST
+    : env.TRUST === undefined
+      ? ''
+      : JSON.stringify(env.TRUST)
 }
