@@ -1,5 +1,5 @@
 # The reference relay as a container, from the repo root:
-#   docker build -t vx-dte-relay packages/vx-dte-relay
+#   docker build -t vx-dte-server packages/vx-dte-server
 FROM oven/bun:1.4.4-slim
 WORKDIR /relay
 COPY package.json index.ts PROTOCOL.md ./

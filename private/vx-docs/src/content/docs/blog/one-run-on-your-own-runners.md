@@ -11,7 +11,7 @@ excerpt: "vx's CI is one run spread over its own Linux and Mac runners. On Nx Cl
 ---
 
 :::caution[Alpha, not released]
-`@vzn/vx-dte` and `@vzn/vx-dte-relay` are alpha. They are not on npm
+`@vzn/vx-dte` and `@vzn/vx-dte-server` are alpha. They are not on npm
 and not in any vx release. They are open source, MIT, in
 [the vx repository](https://github.com/vznjs/vx/tree/main/packages/vx-dte),
 and vx's own CI runs on them every push. Names and options may still
@@ -90,9 +90,9 @@ worktrees) and `docker()`.
 
 ## The relay stores nothing
 
-[`@vzn/vx-dte-relay`](https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay)
+[`@vzn/vx-dte-server`](https://github.com/vznjs/vx/tree/main/packages/vx-dte-server)
 depends only on [`jose`](https://github.com/panva/jose) and speaks
-[PROTOCOL.md](https://github.com/vznjs/vx/blob/main/packages/vx-dte-relay/PROTOCOL.md).
+[PROTOCOL.md](https://github.com/vznjs/vx/blob/main/packages/vx-dte-server/PROTOCOL.md).
 It has one route: a websocket that joins as it opens. It pushes each
 message down the receiver's socket and keeps no copy. It runs one Durable
 Object per run on Cloudflare's free plan, or on Bun in Docker. One var,
@@ -313,7 +313,7 @@ Not on npm yet: import `dte` and `github` from a checkout's
 `packages/vx-dte/src/index.ts`
 ([README](https://github.com/vznjs/vx/tree/main/packages/vx-dte#try-it)),
 and host a relay
-([README](https://github.com/vznjs/vx/tree/main/packages/vx-dte-relay#run-it)):
+([README](https://github.com/vznjs/vx/tree/main/packages/vx-dte-server#run-it)):
 
 ```ts
 // in .vx/workspace.ts's plugins

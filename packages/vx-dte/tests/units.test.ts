@@ -2502,7 +2502,7 @@ it('a run that is not distributed loads none of it', async () => {
   const probe = `
 const seen = []
 Bun.plugin({ name: 'seen', setup(b) {
-  b.onLoad({ filter: /(vx-dte|vx-dte-relay)\\/src\\/[^/]+\\.ts$/ }, async (a) => {
+  b.onLoad({ filter: /(vx-dte|vx-dte-server)\\/src\\/[^/]+\\.ts$/ }, async (a) => {
     seen.push(a.path.split('/').slice(-3).join('/'))
     return { contents: await Bun.file(a.path).text(), loader: 'ts' }
   })

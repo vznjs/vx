@@ -60,7 +60,7 @@
       "name": "@vzn/vx-dte",
       "version": "0.0.0",
       "dependencies": {
-        "@vzn/vx-dte-relay": "workspace:*",
+        "@vzn/vx-dte-server": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "^1.4.0",
@@ -70,11 +70,11 @@
         "@vzn/vx": "*",
       },
     },
-    "packages/vx-dte-relay": {
-      "name": "@vzn/vx-dte-relay",
+    "packages/vx-dte-server": {
+      "name": "@vzn/vx-dte-server",
       "version": "0.0.0",
       "bin": {
-        "vx-dte-relay": "./src/bun.ts",
+        "vx-dte-server": "./src/bun.ts",
       },
       "dependencies": {
         "jose": "6.2.13",
@@ -185,7 +185,7 @@
       "name": "@vzn/vx-dte-relay-worker",
       "version": "0.0.0",
       "dependencies": {
-        "@vzn/vx-dte-relay": "workspace:*",
+        "@vzn/vx-dte-server": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "^1.4.0",
@@ -753,7 +753,7 @@
 
     "@vzn/vx-dte": ["@vzn/vx-dte@workspace:packages/vx-dte"],
 
-    "@vzn/vx-dte-relay": ["@vzn/vx-dte-relay@workspace:packages/vx-dte-relay"],
+    "@vzn/vx-dte-server": ["@vzn/vx-dte-server@workspace:packages/vx-dte-server"],
 
     "@vzn/vx-dte-relay-worker": ["@vzn/vx-dte-relay-worker@workspace:private/vx-dte-relay-worker"],
 

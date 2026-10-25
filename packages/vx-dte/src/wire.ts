@@ -1,4 +1,4 @@
-// A participant of the relay protocol (@vzn/vx-dte-relay's PROTOCOL.md).
+// A participant of the relay protocol (@vzn/vx-dte-server's PROTOCOL.md).
 
 export interface RelayMessage {
   readonly from: string
@@ -171,7 +171,7 @@ export async function join(
   const auth = bearer(token)
   // The orchestrator signs each request by a key the relay keeps from its join.
   const prover =
-    role === 'orchestrator' ? await (await import('@vzn/vx-dte-relay')).createProver() : undefined
+    role === 'orchestrator' ? await (await import('@vzn/vx-dte-server')).createProver() : undefined
   const headers = async (method: string, url: string, body: string) => {
     const h = await auth()
     if (prover !== undefined) {

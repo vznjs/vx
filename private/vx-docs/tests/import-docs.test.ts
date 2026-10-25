@@ -213,10 +213,13 @@ describe('a run', () => {
             'See [the source](src/index.ts), [docs](https://x.dev/) and <dir> in `<dir>`.\n',
         )
       }
-      await mkdir(path.join(pkgs, 'vx-dte-relay'), { recursive: true })
-      await writeFile(path.join(pkgs, 'vx-dte-relay', 'package.json'), '{"private":true}')
-      await writeFile(path.join(pkgs, 'vx-dte-relay', 'README.md'), '# relay\n')
-      await writeFile(path.join(pkgs, 'vx-dte-relay', 'PROTOCOL.md'), '# Switchboard\n\nA relay.\n')
+      await mkdir(path.join(pkgs, 'vx-dte-server'), { recursive: true })
+      await writeFile(path.join(pkgs, 'vx-dte-server', 'package.json'), '{"private":true}')
+      await writeFile(path.join(pkgs, 'vx-dte-server', 'README.md'), '# relay\n')
+      await writeFile(
+        path.join(pkgs, 'vx-dte-server', 'PROTOCOL.md'),
+        '# Switchboard\n\nA relay.\n',
+      )
       expect(await importDocs(docs, out, pkgs)).toBe(3)
       const listing = await Array.fromAsync(new Bun.Glob('**/*.md').scan({ cwd: out }))
       expect(listing.sort()).toEqual([
@@ -227,7 +230,7 @@ describe('a run', () => {
         'switchboard.md',
       ])
       expect(await readFile(path.join(out, 'switchboard.md'), 'utf8')).toContain(
-        'editUrl: "https://github.com/vznjs/vx/edit/main/packages/vx-dte-relay/PROTOCOL.md"',
+        'editUrl: "https://github.com/vznjs/vx/edit/main/packages/vx-dte-server/PROTOCOL.md"',
       )
       expect(await readFile(path.join(out, 'plugins/vx-a.md'), 'utf8')).toBe(
         `---\n${GENERATED_MARK}\ntitle: "@vzn/vx-a"\n` +

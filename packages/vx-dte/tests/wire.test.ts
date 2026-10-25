@@ -3,7 +3,7 @@
 // whenever it drops.
 
 import { afterEach, expect, it } from 'bun:test'
-import { createRelay, serveRelay, TokenError, type RelayServer } from '@vzn/vx-dte-relay'
+import { createRelay, serveRelay, TokenError, type RelayServer } from '@vzn/vx-dte-server'
 import { join, RelayError, unsent } from '../src/wire.js'
 import { answer } from './served-relay.js'
 

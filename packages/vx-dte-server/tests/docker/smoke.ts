@@ -49,7 +49,7 @@ async function heard(p: Peer, from: string): Promise<unknown> {
 }
 
 const deadline = setTimeout(() => {
-  console.error('vx-dte-relay smoke: no answer in 10 s')
+  console.error('vx-dte-server smoke: no answer in 10 s')
   process.exit(1)
 }, 10_000)
 const o = await dial('host')
@@ -60,9 +60,9 @@ o.ws.send(JSON.stringify({ n: 0, sends: [{ to: w.id, body: 'down' }] }))
 const down = await heard(w, 'host')
 clearTimeout(deadline)
 if (up !== 'up' || down !== 'down') {
-  console.error(`vx-dte-relay smoke: heard ${JSON.stringify([up, down])}`)
+  console.error(`vx-dte-server smoke: heard ${JSON.stringify([up, down])}`)
   process.exit(1)
 }
-console.log('vx-dte-relay smoke: a run carried both ways')
+console.log('vx-dte-server smoke: a run carried both ways')
 o.ws.close()
 w.ws.close()

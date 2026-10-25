@@ -11,7 +11,7 @@ import { appendFile } from 'node:fs/promises'
 import path from 'node:path'
 
 /** Workers Builds' watch paths for this Worker, as the dashboard holds them (README). */
-export const WATCH = ['packages/vx-dte-relay/', 'private/vx-dte-relay-worker/', 'bun.lock']
+export const WATCH = ['packages/vx-dte-server/', 'private/vx-dte-relay-worker/', 'bun.lock']
 
 /** Whether Workers Builds builds a commit that changes `files`. */
 export function watched(files: readonly string[]): boolean {
