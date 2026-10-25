@@ -57,9 +57,12 @@ as the item it describes.
 
 ## Next
 
-- Planned: `vxCache()`, the client plugin: a remote for core's cache
-  seam, and the run's history written after it and read for scheduling,
-  in place of `@vzn/vx-schedule-history` where a server is deployed.
+- Shipped: `vxCache()` (`@vzn/vx-cache`), the client plugin: a remote for
+  core's cache seam, every read naming the run's refs in
+  `Vx-Read-Scopes`. Tested against the real server, in process.
+- Planned: `vxCache()` writes the run's history after it and reads it for
+  scheduling, in place of `@vzn/vx-schedule-history` where a server is
+  deployed.
 - Planned: eviction on a Cron Trigger (Workers' free plan has five) and a
   timer on Bun, by age per scope.
 - Planned (with the server): flaky-task reruns and a dashboard, both read

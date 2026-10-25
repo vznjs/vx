@@ -1,0 +1,40 @@
+{
+  "name": "@vzn/vx-cache",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "description": "vxCache(): a vx cache plugin for a server that speaks the vx-cache protocol, such as @vzn/vx-cache-server.",
+  "keywords": [
+    "vx",
+    "vx-plugin",
+    "remote-cache"
+  ],
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "files": [
+    "index.ts",
+    "src",
+    "README.md"
+  ],
+  "engines": {
+    "bun": ">=1.4.4"
+  },
+  "//": [
+    "@vzn/vx-cache-server: the tests run the plugin against the real server, in process."
+  ],
+  "devDependencies": {
+    "@types/bun": "^1.4.0",
+    "@vzn/vx": "workspace:*",
+    "@vzn/vx-cache-server": "workspace:*"
+  },
+  "peerDependencies": {
+    "@vzn/vx": "*"
+  }
+}

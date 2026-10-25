@@ -92,6 +92,7 @@ packages/vx-lockfile    pnpm() bun() npm() yarn(): each claims its lockfile (`fi
                         This repo declares bun()
 packages/vx-cache-server  a cache + run-history server anyone hosts (PROTOCOL.md, /v1): Bun + S3 + SQLite, or Workers +
                         R2 + D1, one handler, one conformance suite. Private until npm has it
+packages/vx-cache       vxCache(): the remote cache over vx-cache-server's /v1 wire. Private until npm has it
 private/vx-docs         Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts
 packages/vx-dte         distributed runs: `dte()` executor + `vx dte worker` over the relay, `local()` adapter
                         (workers in git worktrees). Private until npm has it
