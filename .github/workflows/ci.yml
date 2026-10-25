@@ -25,8 +25,8 @@ on:
 # a default token may hold write access (L-29).
 permissions:
   contents: read
-  # The remote cache's token: turboCache({ oidc }) exchanges the job's OIDC
-  # token with Vercel, no long-lived secret (.vx/workspace.ts).
+  # vxCache() and vxHistory() sign in to our servers with the job's OIDC
+  # token, no long-lived secret (.vx/workspace.ts).
   id-token: write
 
 # A newer push to the same PR supersedes an older run, which is cancelled:
