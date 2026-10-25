@@ -81,16 +81,11 @@ export function docker(options: DockerOptions): DteAdapter {
       const store = path.join(home, '.vx')
       mkdirSync(store, { recursive: true })
       const mounts = [store]
-      const cacheDir = process.env['VX_CACHE_DIR']
       const cacheEnv: Record<string, string> = {}
-      if (cacheDir !== undefined && cacheDir.trim() !== '') {
-        const abs =
-          cacheDir === '~' || cacheDir.startsWith('~/')
-            ? path.join(home, cacheDir.slice(1))
-            : path.resolve(a.workspaceRoot, cacheDir)
-        mkdirSync(abs, { recursive: true })
-        mounts.push(abs)
-        cacheEnv['VX_CACHE_DIR'] = abs
+      if (a.cacheDir !== undefined) {
+        mkdirSync(a.cacheDir, { recursive: true })
+        mounts.push(a.cacheDir)
+        cacheEnv['VX_CACHE_DIR'] = a.cacheDir
       }
       const inHome = asUser ? '/tmp' : home
       const env = {

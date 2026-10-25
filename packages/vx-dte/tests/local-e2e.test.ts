@@ -181,6 +181,30 @@ it('runs a task on a worker with its dependency’s outputs, and brings its outp
   expect(second.stdout.toString()).not.toMatch(/\d+ workers? ·/)
 }, 60_000)
 
+// 2026-10-25: a `cache.dir` the workspace names, relative, named each
+// worktree's own store, and every task failed: the run read no entry.
+it('saves where the run reads under a relative cache.dir', async () => {
+  const ws = path.join(root, '.vx/workspace.mjs')
+  const text = await readFile(ws, 'utf8')
+  await writeFile(
+    ws,
+    text.replace('export default { ', "export default { cache: { dir: '.vx/store' }, "),
+  )
+  await writeFile(path.join(root, '.gitignore'), 'out\n.vx/cache\n.vx/store\n')
+  const git = (...a: string[]) => Bun.spawnSync(['git', ...a], { cwd: root })
+  git('-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'store')
+  const run = vx(['run', 'a#gen'], 'e2e-store', { VX_CACHE_DIR: '' })
+  const out = run.stdout.toString() + run.stderr.toString()
+  expect([run.exitCode, out]).toEqual([0, expect.stringContaining('local 1↑')])
+  expect(await readFile(path.join(root, 'a/out/a.txt'), 'utf8')).toBe('made\n')
+}, 60_000)
+
+it('saves where the run reads under --cache-dir', async () => {
+  const run = vx(['run', 'a#gen', '--cache-dir', '.vx/elsewhere'], 'e2e-flag', { VX_CACHE_DIR: '' })
+  const out = run.stdout.toString() + run.stderr.toString()
+  expect([run.exitCode, out]).toEqual([0, expect.stringContaining('local 1↑')])
+}, 60_000)
+
 // `--force` reads no hit, but a worker's entry is the run's own work: it
 // came back unreadable and every task failed.
 // The run in time (owner, 2026-10-23): --profile holds the workers' lanes.

@@ -73,7 +73,8 @@ itself). It is a random UUID, so no one can guess a run to
 open it first or join it; vx and the relay refuse any other. `local()` starts each worker as a process in its own
 git worktree of the tracked files as they are, uncommitted changes
 included (untracked files are not: a task that keys one fails), at the
-workspace's place in it (a workspace in a subdirectory of its repository too). When a worker fails, its row names
+workspace's place in it (a workspace in a subdirectory of its repository too),
+saving to the run's store (a relative `cache.dir` or `--cache-dir` too). When a worker fails, its row names
 the error line and the log that holds its whole stderr. At the run's end,
 or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
 a detached shell removes them and prunes git's records.
@@ -84,7 +85,8 @@ checkout (mounted read-only) into its own filesystem at its tracked
 files as they are, uncommitted changes too, runs
 `prepare`, then the workspace's own `node_modules/.bin/vx dte worker`, so
 the image needs Bun and git, and `prepare` installs vx. This machine's store
-(`~/.vx`) and `VX_CACHE_DIR` are mounted at their own paths, and the
+(`~/.vx`) and a cache dir the workspace names (`cache.dir`, `VX_CACHE_DIR`, `--cache-dir`)
+are mounted at their own paths, and the
 clone keeps this checkout's `origin`, so the workers save where the run
 reads, as `local()`'s do; no remote is needed. On Linux a container runs
 as this user (its home is `/tmp`, where the store is mounted), so what it
@@ -723,11 +725,13 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   described only by the cores and memory its machine reports. It exits 0
   when the run ended before it joined.
 - `DteAdapter` is `{ spawn(worker: WorkerSpawn), relay?(), close?(), cancel?(ids), init?(setup: DteSetup), runId?(), adopt?(worker), report?(warn) }`; `init` gets a `DteSetup` (workspace root, its directory in the repository, relay, sizes, the `PackageManager` read from the lockfile, the tasks asked for) and returns a `DteInit`: the CI files `vx dte init` writes and the steps it prints; `report` hands it the run's warning channel as the run starts, where `github()` says a status poll or a cancel the CI API refused, by status and body; `adopt` hands each worker the CI started before the run to `worker(id, size)`, which counts it and returns its spawn; `cancel` stops workers the run no longer needs that have not joined; `runId` names the run, in the adapter's own CI, when `VX_DTE_RUN` is unset; `workerId` names a worker in a job its CI started for several, when `VX_DTE_WORKER` is unset.
-  `WorkerSpawn` is `{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, commit, env }`,
+  `WorkerSpawn` is `{ run, relay, size, max, cpu, memory, index, id, workspaceRoot, commit, cacheDir?, env }`,
   with `memory` in bytes and `max` its size's (`Infinity` uncapped),
   where `id` is the worker's name (`small#2`, numbered within its size), `commit` the
   tracked files as the run saw them at its start (uncommitted changes included), whose
-  tree a worker must check out, and `env` holds the three variables the worker reads.
+  tree a worker must check out, `cacheDir` the run's cache dir (absolute) when the
+  workspace names one, for workers on this machine to save where the run reads, and
+  `env` holds the three variables the worker reads.
 - `docker(options: DockerOptions)` starts workers as containers and a relay
   of its own on loopback. `DockerOptions` is `{ image, prepare? }`.
 - `github(options?: GithubOptions)` dispatches workers as matrix jobs of
