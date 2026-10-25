@@ -13,7 +13,7 @@
   "vars": {
     "TRUST": "[{\"iss\":\"https://token.actions.githubusercontent.com\",\"repository_id\":\"1235245958\",\"workflow_ref\":\"vznjs/vx/.github/workflows/ci.yml@*\",\"event_name\":[\"push\",\"merge_group\",\"workflow_dispatch\"],\"ref\":[\"refs/heads/main\",\"refs/heads/gh-readonly-queue/main/*\"],\"ref_protected\":\"true\"}]",
   },
-  // Expiry: one bucket lifecycle rule, every object after 7 days
+  // Expiry: one bucket lifecycle rule, every object after 1 day
   // (README): names are hashed, so no prefix tells main from a branch.
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache-enam" }],
   "observability": {
