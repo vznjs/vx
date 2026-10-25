@@ -1441,6 +1441,19 @@ describe('runCommand — the rows its sweep asked for', () => {
     }
   }, 10_000)
 
+  it('a timed-out command that traps the TERM and exits 0 exits non-zero', async () => {
+    // A DTE worker read the 0 as a pass and said so (2026-10-25): a
+    // timeout is a failure for every executor built on the runner.
+    const r = await runCommand({
+      command: `trap 'exit 0' TERM; echo up; sleep 30 & wait`,
+      cwd: dir,
+      env: { PATH: process.env.PATH ?? '' },
+      timeoutMs: START_WINDOW_MS,
+      onStdout: () => {},
+    })
+    expect([r.timedOut, r.exitCode]).toEqual([true, signalExitCode('SIGTERM')])
+  }, 10_000)
+
   it('a finished command is struck from the guard: what it left runs past a vx kill -9', async () => {
     const runner = path.resolve(import.meta.dir, '..', 'src', 'exec', 'runner.ts')
     const script = `
