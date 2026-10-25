@@ -318,7 +318,7 @@ export function parseStraceViolations(
   args,
   baselines,
   widened?,
-): Promise<SandboxViolation[]> // widened: `widenedEntries` at task start; none, no read parse
+): Promise<SandboxViolation[]> // widened: `widenedEntries` at task start; none, no read parse. Judges each distinct call once and yields every 500: a worker's heartbeat is not held
 export function reportableViolations(
   violations: readonly SandboxViolation[],
   opts: { within: string; linked?: readonly string[]; config: ResolvedSandboxConfig },
