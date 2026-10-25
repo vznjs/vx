@@ -83,7 +83,7 @@ export type { Logger, OutputView } from './report/index.js'
 // with only `taskId()` to JOIN an id and nothing exported to SPLIT one,
 // consumers roll their own `split('#', 2)` and drift from the graph, which
 // splits on the FIRST '#'.
-export { outputsOverlap, splitTaskId, taskDefinitions } from './graph/index.js'
+export { criticalPath, outputsOverlap, splitTaskId, taskDefinitions } from './graph/index.js'
 export type { TaskNode, TaskOutcome, TaskStatus } from './graph/index.js'
 
 // Cache classes + the layer interface (the `cache` capability's currency).

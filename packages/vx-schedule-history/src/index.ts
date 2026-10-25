@@ -22,6 +22,7 @@ import {
   type TaskResources,
   type VxPlugin,
   loadResolvedProjects,
+  criticalPath,
   taskDefinitions,
   UserError,
   refuseUnknownOptions,
@@ -30,10 +31,7 @@ import {
 } from '@vzn/vx'
 import type { CommandContext } from '@vzn/vx'
 import path from 'node:path'
-import { criticalPath } from './critical-path.js'
 import type { HistoryRow } from './history-view.js'
-
-export { criticalPath, criticalPathPriorities } from './critical-path.js'
 
 export interface ScheduleHistoryOptions {
   /** How many recent invocations to learn from. Default 20. */

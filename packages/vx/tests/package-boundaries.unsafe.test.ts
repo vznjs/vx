@@ -137,6 +137,7 @@ describe('package boundaries', () => {
       'answerRuntime',
       'applyMigration',
       'branchCacheScope',
+      'criticalPath',
       'currentBranch',
       'definePlugin',
       'defineProject',
