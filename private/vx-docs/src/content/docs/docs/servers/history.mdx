@@ -114,6 +114,9 @@ export default defineWorkspace({
 <Aside title="Not on npm yet">
   Until `@vzn/vx-history` is on npm, import it from a checkout of the vx
   repository, as above.
+  Run vx from the same checkout: `bun install` there, then
+  `bun /path/to/vx/packages/vx/src/bin.ts run …` in your repository. A
+  plugin from main does not load into the vx on npm.
 </Aside>
 
 `issuer` (the CI issuer's URL, as its tokens name it) and `repository`

@@ -36,7 +36,8 @@ flowchart LR
     ```
 
     [`@vzn/vx-cache-server`](../servers/cache/), which you host on Workers,
-    Bun or Docker. No token is stored: each CI job proves itself with its
+    Bun or Docker. Until it is on npm, run vx from the same checkout
+    ([how](../servers/cache/#point-vx-at-it-vxcache)). No token is stored: each CI job proves itself with its
     OIDC token.
   </TabItem>
   <TabItem label="Bazel REAPI">
