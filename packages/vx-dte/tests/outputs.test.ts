@@ -40,3 +40,12 @@ it('finds a task’s outputs reading only the trees its globs reach', async () =
     'p/src/a.js',
   ])
 })
+
+it('names no file under a path that is a file', async () => {
+  await fs.mkdir(path.join(root, 'q'), { recursive: true })
+  await fs.writeFile(path.join(root, 'q/dist'), '')
+  await fs.writeFile(path.join(root, 'q/bin'), '')
+  expect(
+    await outputFiles(root, 'q', { files: ['dist/index.js', 'bin'], workspaceFiles: [] }),
+  ).toEqual(['q/bin'])
+})
