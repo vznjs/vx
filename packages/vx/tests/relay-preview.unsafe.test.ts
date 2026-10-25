@@ -1,0 +1,106 @@
+// A PR that changes the relay runs its DTE run on Workers Builds' Preview
+// of its commit, and any other PR on the deployed relay (owner,
+// 2026-10-25): its client and the deployed relay may speak different
+// protocols (Switchboard v1, #4333).
+//
+// `.unsafe`: it reads private/vx-dte-relay-worker, outside this project.
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { describe, expect, it } from 'bun:test'
+import {
+  previewUrl,
+  relayFor,
+  watched,
+  WATCH,
+  type PreviewDeps,
+} from '../../../private/vx-dte-relay-worker/preview.ts'
+
+const dir = path.resolve(import.meta.dir, '..', '..', '..', 'private', 'vx-dte-relay-worker')
+
+const SUMMARY = [
+  'Build ID: [b](https://dash.cloudflare.com/acc/workers/services/view/vx-dte-relay/production/builds/b)',
+  'Preview URL: https://feat-relay-vx-dte-relay.exelord.workers.dev',
+].join('\n')
+
+function deps(changed: string[], runs: PreviewDeps['checks'][]): PreviewDeps & { slept: number } {
+  let t = 0
+  let i = 0
+  const d = {
+    slept: 0,
+    changed: async () => changed,
+    checks: () => runs[Math.min(i++, runs.length - 1)]!(),
+    sleep: async (ms: number) => {
+      d.slept++
+      t += ms
+    },
+    now: () => t,
+  }
+  return d
+}
+
+const check =
+  (status: string, conclusion: string | null = null, summary = SUMMARY) =>
+  async () => [
+    { name: 'VX DTE', status: 'in_progress', conclusion: null, app: { slug: 'github-actions' } },
+    {
+      name: 'Workers Builds: vx-dte-relay',
+      status,
+      conclusion,
+      app: { slug: 'cloudflare-workers-and-pages' },
+      output: { summary },
+    },
+  ]
+
+describe('the relay a PR’s run uses', () => {
+  it('is the deployed one when the PR changes no watched path, asked nothing', async () => {
+    const d = deps(['packages/vx/src/index.ts'], [() => Promise.reject(new Error('asked'))])
+    expect(await relayFor('vx-dte-relay', d)).toBeUndefined()
+  })
+
+  it('is the Preview of the head commit once its build ends', async () => {
+    const d = deps(
+      ['packages/vx-dte-relay/src/relay.ts'],
+      [async () => [], check('in_progress'), check('completed', 'success')],
+    )
+    expect(await relayFor('vx-dte-relay', d)).toBe(
+      'https://feat-relay-vx-dte-relay.exelord.workers.dev',
+    )
+    expect(d.slept).toBe(2)
+  })
+
+  it('fails on a failed build, and on none within the wait, naming it', async () => {
+    const failed = deps(['bun.lock'], [check('completed', 'failure')])
+    await expect(relayFor('vx-dte-relay', failed)).rejects.toThrow(
+      'Workers Builds: vx-dte-relay ended failure',
+    )
+    const none = deps(['private/vx-dte-relay-worker/wrangler.jsonc'], [async () => []])
+    await expect(relayFor('vx-dte-relay', none)).rejects.toThrow(
+      'Workers Builds: vx-dte-relay: no check on the head commit after 5 min',
+    )
+  })
+
+  it('reads the workers.dev URL, not the dashboard’s', () => {
+    expect(previewUrl(SUMMARY)).toBe('https://feat-relay-vx-dte-relay.exelord.workers.dev')
+    expect(previewUrl('Build ID: https://dash.cloudflare.com/x')).toBeUndefined()
+  })
+
+  // Workers Builds builds what its watch paths match, and the run waits for
+  // that build: a path one names and the other does not hangs or skips.
+  it('watches what the README says Workers Builds watches', () => {
+    const readme = readFileSync(path.join(dir, 'README.md'), 'utf8')
+    const line = readme.split('\n').find((l) => l.startsWith('- Watch paths:'))!
+    expect([...line.matchAll(/`([^`]+)`/g)].map((m) => m[1]!.replace(/\*$/, ''))).toEqual(WATCH)
+    expect(watched(['packages/vx-dte-relay-x/a'])).toBe(false)
+  })
+
+  // A Preview inherits no production setting.
+  it('gives a Preview the production ALLOW and binding', () => {
+    const cfg = Bun.JSONC.parse(readFileSync(path.join(dir, 'wrangler.jsonc'), 'utf8')) as {
+      vars: Record<string, string>
+      durable_objects: unknown
+      previews: { vars: Record<string, string>; durable_objects: unknown }
+    }
+    expect(cfg.previews.vars['ALLOW']).toBe(cfg.vars['ALLOW']!)
+    expect(cfg.previews.durable_objects).toEqual(cfg.durable_objects)
+  })
+})
