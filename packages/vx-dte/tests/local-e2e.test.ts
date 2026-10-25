@@ -470,10 +470,11 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)} })] }
   }
 }, 60_000)
 
-// A worker started by hand before its run exited 0 and said nothing, and
-// the run then waited on no worker (the README starts the worker first,
-// 2026-10-25).
-it('a worker started by hand with no live run says so and fails', async () => {
+// A worker started by hand before its run exited and said nothing, and
+// the run then waited on no worker (the README started the worker first,
+// 2026-10-25). It still exits 0: a CI job late for a run that ended is no
+// failure.
+it('a worker started by hand with no live run says so', async () => {
   const { serveRelay } = await import('@vzn/vx-dte-server')
   const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
   try {
@@ -493,9 +494,9 @@ export default { plugins: [dte({ relay: ${JSON.stringify(relay.url)} })] }
     })
     const [exited, err] = await Promise.all([worker.exited, new Response(worker.stderr).text()])
     expect([exited, err]).toEqual([
-      1,
+      0,
       expect.stringContaining(
-        `the relay has no live run ${run}: start the run first, then its workers`,
+        `the relay has no live run ${run}: it ended, or has not started (start the run first, then its workers)`,
       ),
     ])
   } finally {

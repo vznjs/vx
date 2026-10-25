@@ -96,12 +96,21 @@ export async function runWorker(opts: {
     )
   } catch (err) {
     if (err instanceof RelayError && err.status === 410) {
-      // The run that started this worker ended before it came up: nothing is left for it.
-      if (opts.id !== undefined) return 0
-      // One started by hand came first, or late: an exit 0 left the run waiting on nobody.
-      throw new UserError(
-        `the relay has no live run ${opts.run}: start the run first, then its workers`,
-      )
+      // The run ended before this worker came up: nothing is left for it,
+      // and its CI job is no failure. One started by hand may have come
+      // before its run, so it says so: an exit with no word left the run
+      // waiting on nobody (2026-10-25).
+      if (opts.id === undefined) {
+        ui.print(
+          'err',
+          ui.status(
+            'warn',
+            'vx dte worker',
+            `the relay has no live run ${opts.run}: it ended, or has not started (start the run first, then its workers)`,
+          ),
+        )
+      }
+      return 0
     }
     throw err
   }

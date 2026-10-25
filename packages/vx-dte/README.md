@@ -163,7 +163,7 @@ vx dte worker                                                             # a wo
 ```
 
 A worker started before its run finds no run on the relay: it says so
-and exits 1.
+and exits.
 
 A worker prints its name, the run, the relay and its machine, then a row
 as each task starts and ends:
