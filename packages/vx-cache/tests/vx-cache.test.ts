@@ -108,6 +108,14 @@ describe('VxCacheLayer', () => {
     expect(srv.seen.slice(-2).map((r) => r.scope)).toEqual(['refs/heads/f', MAIN])
   })
 
+  it('uploads an artifact held in a file whole', async () => {
+    const file = path.join(await mkdtemp(path.join(tmpdir(), 'vx-cache-')), 'a.tar')
+    await Bun.write(file, 'from a file')
+    const c = layer(srv.url, write)
+    await c.put('f11e', Bun.file(file), { durationMs: 1 })
+    expect(await (await c.get('f11e'))!.body.text()).toBe('from a file')
+  })
+
   it("asks the server's limits once, then checks in chunks of its maxCheckKeys", async () => {
     const before = srv.seen.length
     const keys = Array.from({ length: 1200 }, (_, i) => i.toString(16))
