@@ -96,17 +96,9 @@ export function local(options: LocalOptions = {}): DteAdapter {
         })
         const at = path.join(dir, (await new Response(prefix.stdout).text()).trim())
         const env: Record<string, string | undefined> = { ...process.env, ...a.env }
-        // A relative cache dir would name each worktree's own store, where
-        // the run cannot read what the worker saved.
-        const cacheDir = env['VX_CACHE_DIR']
-        if (
-          cacheDir !== undefined &&
-          cacheDir !== '' &&
-          !path.isAbsolute(cacheDir) &&
-          !cacheDir.startsWith('~')
-        ) {
-          env['VX_CACHE_DIR'] = path.resolve(a.workspaceRoot, cacheDir)
-        }
+        // A cache dir the workspace names, relative, would name each
+        // worktree's own store, where the run cannot read what it saved.
+        if (a.cacheDir !== undefined) env['VX_CACHE_DIR'] = a.cacheDir
         if (options.prepare !== undefined && !closed) {
           const p = await run(['sh', '-c', options.prepare], at, env)
           if (p.code !== 0 && !closed)

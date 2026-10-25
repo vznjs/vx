@@ -49,6 +49,12 @@ export interface WorkerSpawn {
   readonly workspaceRoot: string
   /** The commit of the tracked files as the run saw them at its start, whose tree a worker must check out. */
   readonly commit: string
+  /**
+   * The run's cache directory, absolute, when the workspace names one
+   * (`cache.dir`, `VX_CACHE_DIR`): an adapter starting workers on this
+   * machine points them at it, where the run reads what they save.
+   */
+  readonly cacheDir?: string
   /** What the worker's `vx dte worker` reads: `VX_DTE_RUN`, `VX_DTE_WORKER` (`id`), `VX_DTE_RELAY`, `VX_DTE_SECRET` (the run’s). */
   readonly env: Readonly<Record<string, string>>
   /** Says the worker's job or process ended, a success too, and why (its exit, its last stderr line). */
@@ -177,6 +183,8 @@ export function dte(options: DteOptions) {
       (await import('./github.js').then((g) => g.githubRelayToken(relay))))
 
   let nodes: ReadonlyMap<string, TaskNode> | undefined
+  /** The workspace names its cache dir (`cache.dir`): `config` reads it. */
+  let namesCache = false
   let peaks: ReadonlyMap<string, TaskResources> = new Map()
   /** Each size's warm-up an earlier run learned (`warm-ups.ts`), and the read of it. */
   let learned: ReadonlyMap<string, number> = new Map()
@@ -307,6 +315,10 @@ export function dte(options: DteOptions) {
           })
         },
       },
+    },
+
+    config(workspace) {
+      namesCache = workspace.cache?.dir !== undefined
     },
 
     setup(ctx) {
@@ -483,6 +495,7 @@ export function dte(options: DteOptions) {
           id,
           workspaceRoot: ctx.workspaceRoot,
           commit,
+          ...(namesCache || process.env['VX_CACHE_DIR'] ? { cacheDir: ctx.cacheDir } : {}),
           env: {
             VX_DTE_RUN: run,
             VX_DTE_WORKER: id,
