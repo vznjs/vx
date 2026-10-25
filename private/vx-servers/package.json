@@ -1,0 +1,17 @@
+{
+  "name": "@vzn/vx-servers",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "vx's three servers (the DTE relay, the cache, the timings) in one docker compose file.",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.4"
+  },
+  "//": [
+    "@vzn/vx: vx.config.ts."
+  ],
+  "devDependencies": {
+    "@vzn/vx": "workspace:*"
+  }
+}

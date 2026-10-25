@@ -121,8 +121,8 @@
       "devDependencies": {
         "@types/bun": "^1.4.0",
         "@vzn/vx": "workspace:*",
-        "@vzn/vx-history-server": "workspace:*",
         "@vzn/vx-devtools": "workspace:*",
+        "@vzn/vx-history-server": "workspace:*",
         "jose": "6.2.13",
       },
       "peerDependencies": {
@@ -261,6 +261,13 @@
       "version": "0.0.0",
       "devDependencies": {
         "@types/bun": "^1.4.0",
+        "@vzn/vx": "workspace:*",
+      },
+    },
+    "private/vx-servers": {
+      "name": "@vzn/vx-servers",
+      "version": "0.0.0",
+      "devDependencies": {
         "@vzn/vx": "workspace:*",
       },
     },
@@ -839,6 +846,8 @@
     "@vzn/vx-plugin-examples": ["@vzn/vx-plugin-examples@workspace:private/vx-plugin-examples"],
 
     "@vzn/vx-reapi": ["@vzn/vx-reapi@workspace:packages/vx-reapi"],
+
+    "@vzn/vx-servers": ["@vzn/vx-servers@workspace:private/vx-servers"],
 
     "am-i-vibing": ["am-i-vibing@0.4.0", "", { "dependencies": { "process-ancestry": "^0.1.0" }, "bin": { "am-i-vibing": "dist/cli.mjs" } }, "sha512-MxT4XZL7pzLHpuvhDKdMaQHMGGkJDLluKBLsbstn+8wv9sWcFT6h+0ve9qkml95amVTZtZV83gQe2hY+ojgHLg=="],
 

@@ -17,4 +17,4 @@ Workers Builds deploys it on each push to `main` that touches it:
 - Watch paths: `packages/vx-cache-server/*`, `private/vx-cache-service/*`, `bun.lock`
 
 The first deploy makes the R2 bucket `vx-cache` when it does not exist.
-Its lifecycle rules expire `trusted/` after 30 days and `branch/` after 7.
+Its lifecycle rules expire `trusted/` after 30 days and `branch/` after 2 (M, 2026-10-25: no cache for closed PRs).

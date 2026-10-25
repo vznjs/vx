@@ -14,7 +14,7 @@
     "TRUST": "[{\"iss\":\"https://token.actions.githubusercontent.com\",\"repository_id\":\"1235245958\",\"workflow_ref\":\"vznjs/vx/.github/workflows/ci.yml@*\",\"event_name\":[\"push\",\"merge_group\"],\"ref\":[\"refs/heads/main\",\"refs/heads/gh-readonly-queue/main/*\"],\"ref_protected\":\"true\"}]",
   },
   // Expiry: the bucket's lifecycle rules, trusted/ after 30 days and
-  // branch/ after 7 (README); made on the first deploy when absent.
+  // branch/ after 2 (README); made on the first deploy when absent.
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],
   "observability": {
     "enabled": true,
