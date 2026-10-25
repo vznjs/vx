@@ -137,6 +137,12 @@ export function contractBreaks(
       ANNOTATIONS.has(k) && !at.endsWith('properties')
     return gone(leaves(b, '', [], prose), leaves(a, '', [], prose))
   }
+  if (name === 'lock.json') {
+    // A digest of the body that no reader consults: any change to the lock,
+    // an added task included, moved it, and read as a lost leaf.
+    const digest = (k: string, at: string): boolean => k === 'validated' && at === ''
+    return gone(leaves(b, '', [], digest), leaves(a, '', [], digest))
+  }
   if (name === 'config-schema-rules.json') {
     const keys = (v: unknown): string[] => leaves(v).map((l) => l.slice(0, l.indexOf('=')))
     return gone(keys(b), keys(a))
