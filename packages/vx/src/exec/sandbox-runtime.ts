@@ -2125,7 +2125,10 @@ async function runSandboxedOnce(
   releaseGroup(proc)
   closeSignalChannel(proc)
   releaseBridges(tag)
-  const exitCode = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
+  const exited = proc.exitCode ?? (proc.signalCode ? signalExitCode(proc.signalCode) : 1)
+  // A timeout is a failure, whatever the child said: one that traps the
+  // TERM and exits 0 reported success to every executor built on this.
+  const exitCode = exited === 0 && timeout.timedOut() ? signalExitCode('SIGTERM') : exited
 
   // macOS: read the violation store keyed by our tagged command.
   //

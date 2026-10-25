@@ -361,7 +361,10 @@ spawn returned left a `kill -9`'s orphan in 4 of 40 runs under load
 - **Doesn't time out unless asked.** One-shot commands run unbounded
   by default; pass `timeoutMs` (from `exec.timeout`) to SIGTERM the
   child after a deadline. A timed-out result is flagged `timedOut` so
-  the orchestrator classifies it `failed` (not an `aborted` shutdown).
+  the orchestrator classifies it `failed` (not an `aborted` shutdown),
+  and its exit is never 0: a child that traps the TERM and exits 0
+  reports 143, so an executor built on the runner (a DTE worker) never
+  reads a timeout as a pass (sandboxed runs too).
 - **Doesn't sandbox.** `runCommand` spawns with full process
   privileges; a task's `exec.sandbox` runs through
   `sandbox-runtime.ts` (`@anthropic-ai/sandbox-runtime`) instead.

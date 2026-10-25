@@ -639,7 +639,7 @@ describe.skipIf(!available || process.platform !== 'linux')('runSandboxed, drive
     const got = existsSync(path.join(dir, 'got.txt'))
       ? readFileSync(path.join(dir, 'got.txt'), 'utf8').trim()
       : null
-    expect([trapped.timedOut, trapped.exitCode, got]).toEqual([true, 0, 'trapped'])
+    expect([trapped.timedOut, trapped.exitCode, got]).toEqual([true, 143, 'trapped'])
     const deaf = await runSandboxed(
       args(`trap '' TERM; echo up; while :; do sleep 0.05; done`, { timeoutMs: 1000 }),
     )
