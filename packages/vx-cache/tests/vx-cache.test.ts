@@ -432,3 +432,27 @@ describe('vx run with vxCache()', () => {
     expect(paths).not.toContain('/v1/timings/upload')
   })
 })
+
+it('reads past a ref the read-scopes header cannot carry', async () => {
+  const srv = server()
+  const saved = { ...Bun.env }
+  delete Bun.env.ACTIONS_ID_TOKEN_REQUEST_URL
+  delete Bun.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN
+  Bun.env.VX_CACHE_TOKEN = await srv.token(READ_JOB)
+  try {
+    const hooks = vxCache({ url: srv.url }) as unknown as {
+      cache(ctx: object): VxCacheLayer
+    }
+    // Git takes any UTF-8 in a branch name; the header takes printable ASCII alone.
+    const l = hooks.cache({
+      refs: ['refs/heads/café', `refs/heads/${'x'.repeat(300)}`, 'refs/heads/main'],
+      warn: () => {},
+    })
+    expect(l.reads).toEqual({ 'x-artifact-read-scopes': '"refs/heads/main"' })
+    expect(await l.has('ab')).toBeNull()
+  } finally {
+    for (const k of Object.keys(Bun.env)) if (!(k in saved)) delete Bun.env[k]
+    Object.assign(Bun.env, saved)
+    await srv.stop()
+  }
+})

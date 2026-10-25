@@ -52,7 +52,8 @@ An artifact or timing lives in one scope. A read walks the refs named in
 `x-artifact-read-scopes`, in order, then the trusted scope, and the first
 scope that holds a hash answers it. A ref a trust rule names
 (`refs/heads/main`) is read as trusted. The header is an RFC 8941 list of
-strings, each `refs/...`, at most 8:
+strings, each `refs/...` in printable ASCII and at most 255 long, at
+most 8:
 
 ```
 x-artifact-read-scopes: "refs/heads/feature", "refs/heads/main"
