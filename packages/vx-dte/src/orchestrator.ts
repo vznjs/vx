@@ -1961,7 +1961,7 @@ export class Orchestrator {
             [
               '',
               ui.dim(
-                `${'probe'.padEnd(width)}  at ${seconds(this.probe.at)}: ${this.probe.left} tasks left to run, ${this.probe.misses} known misses`,
+                `${'probe'.padEnd(width)}  at ${seconds(this.probe.at)}: ${plural(this.probe.left, 'task')} left to run, ${plural(this.probe.misses, 'known miss')}`,
               ),
             ] as [string, ui.Inline],
           ]
@@ -1974,7 +1974,7 @@ export class Orchestrator {
                 `${'asked'.padEnd(width)}  ${this.asks
                   .map(
                     (x) =>
-                      `${x.workers} at ${seconds(x.at)} for ${x.tasks} tasks (${x.measured} measured), plan ${seconds(x.endsInMs)}`,
+                      `${x.workers} at ${seconds(x.at)} for ${plural(x.tasks, 'task')} (${x.measured} measured), plan ${seconds(x.endsInMs)}`,
                   )
                   .join(' · ')}`,
               ),
@@ -2167,7 +2167,8 @@ function describe(st: UsageStats, u: Usage): string[] {
   ]
 }
 
-const plural = (n: number, w: string): string => `${n} ${w}${n === 1 ? '' : 's'}`
+const plural = (n: number, w: string): string =>
+  `${n} ${w}${n === 1 ? '' : w.endsWith('s') ? 'es' : 's'}`
 const percent = (n: number): string => `${Math.round(n * 100)}%`
 const bytes = (n: number): string =>
   n >= 1e9

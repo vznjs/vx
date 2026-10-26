@@ -33,3 +33,10 @@ it('a resources value that is neither false nor an object is refused', () => {
   expect(refusal(() => vxHistory({ resources: false }))).toBe('taken')
   expect(refusal(() => vxHistory({ resources: { headroom: 1.2 } }))).toBe('taken')
 })
+
+it('an empty file is refused: it named the workspace root', () => {
+  expect(refusal(() => vxHistory({ file: '' }))).toBe(
+    'vxHistory() option "file" must be a path, got ""',
+  )
+  expect(refusal(() => vxHistory({ file: '.vx/timings.json' }))).toBe('taken')
+})

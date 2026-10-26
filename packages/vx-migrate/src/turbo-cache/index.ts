@@ -304,6 +304,9 @@ export function resolveTurboCacheConfig(
     (token || teamId || teamSlug ? VERCEL_API : undefined)
   )?.replace(/\/+$/, '')
   if (!apiUrl) return undefined
+  // With no scheme every request failed on its own, as a bare "Invalid URL".
+  if (!/^https?:\/\//.test(apiUrl))
+    throw new Error(`vx/turbo-cache: apiUrl must be http(s), got ${apiUrl}`)
   const oidc =
     options.oidc === undefined
       ? undefined

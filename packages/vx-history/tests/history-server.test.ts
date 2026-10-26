@@ -11,7 +11,7 @@ import { hashPart, oidcAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { type Issuer, issuer, NAMED, trustOf } from './issuer.js'
-import { HistoryServer, proxyHeaders, serverUrlOf } from '../src/history-server.js'
+import { HistoryServer, proxyHeaders, serverUrlOf, timingOf } from '../src/history-server.js'
 import { vxHistory } from '../src/index.js'
 
 let iss: Issuer
@@ -85,6 +85,19 @@ describe('HistoryServer', () => {
     const read = await iss.sign('read', new URL(url).origin)
     const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: read })
     expect(client.upload(new Map([['b', { durationMs: 1 }]]))).rejects.toThrow('HTTP 403: ')
+  })
+
+  // The server sees the names hashed: it cannot say which the workspace sent.
+  it('says which repository it named when the token is of another', async () => {
+    const token = await iss.sign('main', new URL(url).origin)
+    const client = new HistoryServer(
+      url,
+      { ...NAMED, repository: 'acme/other' },
+      { VX_HISTORY_TOKEN: token },
+    )
+    await expect(client.query([await hashPart('refs/heads/main')], ['p1'])).rejects.toThrow(
+      `, not the repository named (this workspace names acme/other at ${NAMED.issuer})`,
+    )
   })
 
   it('says why a read with no token was refused, and what lets it in', async () => {
@@ -196,6 +209,13 @@ describe('HistoryServer', () => {
     expect(auths).toEqual([null, null])
   })
 
+  it('sends how long a task on a crowded machine would have taken alone, as local history keeps it', () => {
+    const ran = { status: 'success', durationMs: 75_000, cpuMs: 20_000 } as const
+    // One core's work at a third of a core: two thirds of 20 s was waiting.
+    expect(timingOf({ ...ran, cpuShare: 1 / 3 } as never)?.durationMs).toBe(35_000)
+    expect(timingOf(ran as never)?.durationMs).toBe(75_000)
+  })
+
   it('refuses a workspace that names a server but no issuer or repository', () => {
     expect(() => vxHistory({ server: 'https://h.example', repository: 'acme/app' })).toThrow(
       "vxHistory(): issuer must be the CI issuer's URL",
@@ -211,6 +231,9 @@ describe('HistoryServer', () => {
       'https://h.example',
     )
     expect(() => serverUrlOf('h.example', {})).toThrow('vxHistory(): server must be http(s)')
+    expect(() => serverUrlOf('https://h.example/v1/', {})).toThrow(
+      "vxHistory(): server is the server's base, without /v1: https://h.example",
+    )
   })
 })
 
@@ -260,6 +283,46 @@ describe('vx run with vxHistory({ server })', () => {
       hashes: [sent[0]!.hash],
     })
   })
+
+  it('names the server it could not reach, reading and sending', async () => {
+    const gone = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response() })
+    const dead = `http://127.0.0.1:${gone.port}`
+    await gone.stop(true)
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-dead-'))
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { plugins: [vxHistory({ server: ${JSON.stringify(dead)}, ...${JSON.stringify(NAMED)} })] }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
+      const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+      Bun.spawnSync({ cmd: [process.execPath, bin, 'lock'], cwd: other })
+      const cli = Bun.spawnSync({
+        cmd: [process.execPath, bin, 'run', 'build', '--all'],
+        cwd: other,
+        env: { ...Bun.env, NO_COLOR: '1' },
+      })
+      const said = `${cli.stdout.toString()}${cli.stderr.toString()}`
+        .split('\n')
+        .filter((l) => l.startsWith('[vx] vx-history:'))
+        .map((l) => l.split(': ')[1])
+      expect([cli.exitCode, said]).toEqual([
+        0,
+        [
+          `the timings of the history server at ${dead} were not applied`,
+          `the timings were not sent to the history server at ${dead}`,
+        ],
+      ])
+    } finally {
+      await rm(other, { recursive: true, force: true })
+    }
+  }, 30_000)
 
   // `main` was assumed: a repository whose trunk is another branch read
   // no trunk's numbers on any branch.

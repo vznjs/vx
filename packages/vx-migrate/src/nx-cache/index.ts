@@ -60,6 +60,9 @@ export function resolveNxCacheConfig(
 ): NxCacheConfig | undefined {
   const server = (options.server ?? env['NX_SELF_HOSTED_REMOTE_CACHE_SERVER'])?.replace(/\/+$/, '')
   if (!server) return undefined
+  // With no scheme every request failed on its own, as a bare "Invalid URL".
+  if (!/^https?:\/\//.test(server))
+    throw new Error(`vx/nx-cache: server must be http(s), got ${server}`)
   // The URL is printed in every refusal line, so a `user:pass@` in it would
   // leak to the log. Credentials go in the access token.
   if (URL.canParse(server)) {

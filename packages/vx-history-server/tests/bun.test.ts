@@ -141,3 +141,78 @@ it('refuses a query body past its limit as it arrives', async () => {
   ])
   expect(pulled).toBeLessThan(100)
 })
+
+// A 401 tells a client its token is refused; the issuer's keys being out
+// of reach is not that (2026-10-26).
+it("answers 502 while the issuer's keys cannot be read", async () => {
+  const handle = createHistoryServer({
+    store: sqliteStore(sqliteDb(path.join(dir, 'keys.sqlite'))),
+    authorize: oidcAuth({
+      trust: trustOf(),
+      fetchJson: async (url) => {
+        throw new Error(`${url}: 503`)
+      },
+    }),
+  })
+  const res = await handle(
+    new Request('http://127.0.0.1/v1/capabilities', {
+      headers: {
+        authorization: `Bearer ${await iss.sign('main', 'http://127.0.0.1')}`,
+        'vx-issuer': scopeOf(GITHUB),
+        'vx-repository': scopeOf(REPO),
+      },
+    }),
+  )
+  expect([res.status, await res.json()]).toEqual([
+    502,
+    { code: 'bad_gateway', message: `could not read ${GITHUB}'s keys` },
+  ])
+})
+
+it('answers a flag it does not know with its usage', () => {
+  const cli = Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--bogus'], {
+    stderr: 'pipe',
+  })
+  const [said, usage] = cli.stderr.toString().split('\n')
+  expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
+    2,
+    "Unknown option '--bogus'",
+    'usage: vx-history-server',
+  ])
+})
+
+it('names TRUST when it cannot be read', () => {
+  const said = (trust: string) => {
+    const cli = Bun.spawnSync(
+      ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', ':memory:'],
+      { env: { ...process.env, TRUST: trust }, stderr: 'pipe' },
+    )
+    return [cli.exitCode, cli.stderr.toString()]
+  }
+  expect([said('notjson'), said('{}')]).toEqual([
+    [2, 'TRUST: JSON Parse error: Unexpected identifier "notjson"\n'],
+    [2, 'TRUST: not a JSON list of rules\n'],
+  ])
+})
+
+it('names --db when it cannot be opened, and refuses an empty one', () => {
+  const said = (db: string) => {
+    const cli = Bun.spawnSync(
+      ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', db],
+      { env: { ...process.env, TRUST: '[]' }, stderr: 'pipe' },
+    )
+    return [cli.exitCode, cli.stderr.toString().split('\n')[0]]
+  }
+  expect([said('/proc/no/such/dir/x.db'), said('')]).toEqual([
+    [2, '--db /proc/no/such/dir/x.db: unable to open database file'],
+    [2, "--db: needs a file path, got ''"],
+  ])
+})
+
+it('refuses an empty --port: Number of it is 0, a random port', () => {
+  const cli = Bun.spawnSync(
+    ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '', '--db', ':memory:'],
+    { env: { ...process.env, TRUST: '[]' }, stderr: 'pipe' },
+  )
+  expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+})

@@ -200,8 +200,18 @@ export function dte(options: DteOptions) {
   if (adapter !== undefined && typeof adapter.spawn !== 'function') {
     throw new UserError('dte(): adapter is an adapter, such as local()')
   }
+  // With none, no worker was ever asked for and the run waited until killed.
+  if (adapter !== undefined && !sizes.some((s) => s.max > 0)) {
+    throw new UserError(
+      "dte(): workers names no size the adapter may start (one with max above 0), such as small: { cpu: 2, memory: '8GB' }",
+    )
+  }
   if (adapter === undefined && options.relay === undefined) {
     throw new UserError('dte(): with no adapter, set relay: the workers that join it run the tasks')
+  }
+  // With no scheme the run failed in the executor as a bare "Invalid URL".
+  if (options.relay !== undefined && !/^https?:\/\//.test(options.relay)) {
+    throw new UserError(`dte(): relay must be http(s), got ${options.relay}`)
   }
   // On GitHub Actions with none given, one for the relay's URL.
   const token = async (relay: string): Promise<string | undefined> =>
@@ -315,14 +325,23 @@ export function dte(options: DteOptions) {
             return 0
           }
           if (argv[0] === 'init') return init(argv.slice(1), ctx)
-          if (argv[0] !== 'worker' || argv.length > 1) throw new UserError(USAGE)
+          // The bare usage said nothing of what was wrong with the line typed.
+          if (argv[0] === undefined) throw new UserError(`missing subcommand\n${USAGE}`)
+          if (argv[0] !== 'worker') throw new UserError(`unknown subcommand: ${argv[0]}\n${USAGE}`)
+          if (argv.length > 1)
+            throw new UserError(`vx dte worker takes no arguments: ${argv.slice(1).join(' ')}`)
           const run = runOf()
           const relay = process.env['VX_DTE_RELAY'] ?? options.relay
+          // Only what is missing: with VX_DTE_RUN set, the old line still asked for it.
           if (run === undefined || relay === undefined) {
-            throw new UserError(
-              'vx dte worker needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })',
-            )
+            const missing = [
+              ...(run === undefined ? ['VX_DTE_RUN'] : []),
+              ...(relay === undefined ? ['VX_DTE_RELAY or dte({ relay })'] : []),
+            ]
+            throw new UserError(`vx dte worker needs ${missing.join(', and ')}`)
           }
+          if (!/^https?:\/\//.test(relay))
+            throw new UserError(`vx dte worker: VX_DTE_RELAY must be http(s), got ${relay}`)
           const secret = givenSecret()
           if (secret === undefined && !onGitHub()) {
             throw new UserError(

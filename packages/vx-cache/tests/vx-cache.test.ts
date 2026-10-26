@@ -220,7 +220,9 @@ describe('VxCacheLayer', () => {
 
   it('says a refused token once, then asks nothing', async () => {
     const c = layer(srv.url, 'nope')
-    expect(c.get('aa11')).rejects.toThrow(': the token was refused; remote cache off for this run')
+    await expect(c.get('aa11')).rejects.toThrow(
+      ': the token was refused (this workspace names acme/app at https://token.actions.githubusercontent.com); remote cache off for this run',
+    )
     const n = srv.seen.length
     expect(await c.has('aa11')).toBeNull()
     expect(await c.hasMany(['aa11'])).toEqual(new Map())
@@ -472,6 +474,9 @@ describe('config', () => {
     })
     expect(() => resolveVxCacheConfig({ ...NAMED, url: 'c.example' }, {})).toThrow(
       'vxCache(): url must be http(s), got c.example',
+    )
+    expect(() => resolveVxCacheConfig({ ...NAMED, url: 'https://c.example/v1' }, {})).toThrow(
+      "vxCache(): url is the server's base, without /v1: https://c.example",
     )
     expect(hasCiToken({}, false)).toBe(false)
     expect(hasCiToken({}, true)).toBe(true)

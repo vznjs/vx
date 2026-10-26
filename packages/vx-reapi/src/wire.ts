@@ -308,6 +308,12 @@ function isRetryable(code: number | undefined): boolean {
   )
 }
 
+/** grpc-js ends an UNAVAILABLE with `Resolution note: ` and nothing after it. */
+function spent(err: unknown): unknown {
+  if (err instanceof Error) err.message = err.message.replace(/\s*Resolution note:\s*$/, '')
+  return err
+}
+
 const RETRY_DELAYS_MS = [100, 400, 1600]
 
 const deadlineOf = (bounds: grpc.CallOptions): number => (bounds.deadline as Date).getTime()
@@ -574,7 +580,7 @@ export class ReapiClient {
         return res
       } catch (err) {
         const delay = this.retryDelay(attempt, (err as grpc.ServiceError).code)
-        if (delay === undefined) throw err
+        if (delay === undefined) throw spent(err)
         await Bun.sleep(delay)
       }
     }
@@ -1084,7 +1090,7 @@ export class ReapiClient {
           continue
         }
         const delay = this.retryDelay(attempt, code)
-        if (delay === undefined) throw err
+        if (delay === undefined) throw spent(err)
         if (!compressed) {
           // Identity path: ask how far the server got and resume there.
           const status = await this.queryWriteStatus(resource).catch(() => null)
@@ -1210,7 +1216,7 @@ export class ReapiClient {
         return blob
       } catch (err) {
         const delay = this.retryDelay(attempt, (err as grpc.ServiceError).code)
-        if (delay === undefined) throw err
+        if (delay === undefined) throw spent(err)
         await Bun.sleep(delay)
       }
     }
@@ -1307,7 +1313,7 @@ export class ReapiClient {
         } catch (err) {
           const code = (err as grpc.ServiceError).code
           const delay = this.retryDelay(attempt++, code)
-          if (delay === undefined) throw err
+          if (delay === undefined) throw spent(err)
           await Bun.sleep(delay)
           open(size)
         }

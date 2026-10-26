@@ -84,13 +84,19 @@ function main(argv: string[]): void {
   }
   const env = Bun.env
   if (env.S3_BUCKET === undefined || env.S3_BUCKET === '') fail(`set S3_BUCKET\n${USAGE}`)
-  const port = Number(values.port)
+  // Number('') is 0: `--port "$PORT"` with PORT unset bound a random port.
+  const port = values.port.trim() === '' ? Number.NaN : Number(values.port)
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
   let trust
   let limits
   try {
     trust = parseTrust(env.TRUST ?? '')
+  } catch (err) {
+    // A bare JSON parse error named no variable (the Worker's says TRUST).
+    fail(`TRUST: ${(err as Error).message}`)
+  }
+  try {
     limits = { ...DEFAULT_LIMITS, ...limitsFrom(env) }
   } catch (err) {
     fail((err as Error).message)
@@ -125,6 +131,8 @@ if (import.meta.main) {
   try {
     main(process.argv.slice(2))
   } catch (err) {
-    fail(err instanceof Error ? err.message : String(err))
+    // parseArgs names the flag it refused, not the ones there are.
+    const usage = (err as { code?: string }).code?.startsWith('ERR_PARSE_ARGS') ? `\n${USAGE}` : ''
+    fail(`${err instanceof Error ? err.message : String(err)}${usage}`)
   }
 }

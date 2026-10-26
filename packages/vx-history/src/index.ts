@@ -281,6 +281,13 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       `vxHistory() option "resources" must be false or an object, got ${JSON.stringify(resources) ?? String(resources)}`,
     )
   }
+  // `''` resolved to the workspace root: each run warned it could not read
+  // a directory and failed in teardown renaming its timings over it.
+  if (options.file !== undefined && options.file.trim() === '') {
+    throw new UserError(
+      `vxHistory() option "file" must be a path, got ${JSON.stringify(options.file)}`,
+    )
+  }
   const hooks: Parameters<typeof definePlugin>[1] = {
     commands: {
       history: {
@@ -378,7 +385,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         })().catch((err: unknown) => {
           if (!late) {
             ctx.warn(
-              `[vx] vx-history: the history server's timings were not applied: ${err instanceof Error ? err.message : String(err)}`,
+              `[vx] vx-history: the timings of the history server at ${server.url} were not applied: ${err instanceof Error ? err.message : String(err)}`,
             )
           }
           return undefined
@@ -474,7 +481,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         await server.upload(sent.timings)
       } catch (err) {
         sent.warn(
-          `[vx] vx-history: the timings were not sent to the history server: ${err instanceof Error ? err.message : String(err)}`,
+          `[vx] vx-history: the timings were not sent to the history server at ${server.url}: ${err instanceof Error ? err.message : String(err)}`,
         )
       }
     }

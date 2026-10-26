@@ -29,14 +29,23 @@ function main(argv: string[]): void {
   const noAuth = values['no-auth']
   const host = values.host ?? (noAuth ? '127.0.0.1' : '0.0.0.0')
   if (noAuth && !LOOPBACK.has(host)) fail('--no-auth listens on loopback only')
-  if (!noAuth && (values.allow === undefined || values.audience === undefined)) fail(USAGE)
+  // The bare usage said nothing of which was missing.
+  if (!noAuth) {
+    const missing = [
+      // An empty one is missing too: it started a relay that refused every token.
+      ...((values.allow ?? []).every((a) => a.trim() === '') ? ['--allow'] : []),
+      ...(values.audience === undefined || values.audience.trim() === '' ? ['--audience'] : []),
+    ]
+    if (missing.length > 0) fail(`missing ${missing.join(' and ')} (or --no-auth)\n${USAGE}`)
+  }
   let allow: ReturnType<typeof parseAllow> = []
   try {
     allow = parseAllow((values.allow ?? []).join(' '))
   } catch (err) {
     fail(`--allow: ${(err as Error).message}`)
   }
-  const port = Number(values.port)
+  // Number('') is 0: `--port "$PORT"` with PORT unset bound a random port.
+  const port = values.port.trim() === '' ? Number.NaN : Number(values.port)
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
   const server = serveRelay({
@@ -60,5 +69,7 @@ function fail(message: string): never {
 try {
   main(process.argv.slice(2))
 } catch (err) {
-  fail(err instanceof Error ? err.message : String(err))
+  // parseArgs names the flag it refused, not the ones there are.
+  const usage = (err as { code?: string }).code?.startsWith('ERR_PARSE_ARGS') ? `\n${USAGE}` : ''
+  fail(`${err instanceof Error ? err.message : String(err)}${usage}`)
 }

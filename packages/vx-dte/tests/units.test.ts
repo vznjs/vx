@@ -1331,7 +1331,7 @@ it('the final summary says how each worker ended, its size and machine under it'
   expect(rows.filter((r) => /^\S+ +online/.test(r))).toEqual([])
   // What the cache probe left to run, the first answer only: why the asks counted what they did.
   expect(rows.filter((r) => r.startsWith('probe'))).toEqual([
-    expect.stringMatching(/^probe +at 0\.\ds: 3 tasks left to run, 1 known misses$/),
+    expect.stringMatching(/^probe +at 0\.\ds: 3 tasks left to run, 1 known miss$/),
   ])
   // When the run asked for workers, for which work, and when its plan ended: why it had as many as it did.
   expect(rows.filter((r) => r.startsWith('asked'))).toEqual([
@@ -1522,7 +1522,10 @@ it('a worker that could not run a task it began gets no more; two such fail it',
 })
 
 it('a task a worker stops saying it holds goes back when its lease ends', async () => {
-  const h = await harness(new Map([node('t1')]), undefined, 100)
+  // At 100 ms a beat, the test process held its loop past 190 ms once on
+  // CI and its worker lost the orchestrator (main ae800d6, 2026-10-26).
+  const beat = 300
+  const h = await harness(new Map([node('t1')]), undefined, beat)
   try {
     const a = await h.worker(1)
     await Bun.sleep(50)
@@ -1538,8 +1541,8 @@ it('a task a worker stops saying it holds goes back when its lease ends', async 
       let got: string[][] = []
       for (let i = 0; i < 3 && got.length === 0; i++) got = await b.batches()
       expect(got).toEqual([['t1']])
-      // Six heartbeats a `held`, the lease was 1.8 s here (90 s live).
-      expect(performance.now() - said).toBeLessThan(1_200)
+      // A `held` lasts three heartbeats: well under a lease of six.
+      expect(performance.now() - said).toBeLessThan(6 * beat)
     } finally {
       clearInterval(alive)
     }
@@ -3045,7 +3048,8 @@ const refusal = (make: () => unknown): string => {
 
 it('refuses options it does not read and workers it cannot start', () => {
   const adapter = local()
-  expect(refusal(() => dte({ workers: {}, adapter, relays: 'x' } as never))).toContain(
+  const W = { s: { cpu: 1, memory: '1GB' } }
+  expect(refusal(() => dte({ workers: W, adapter, relays: 'x' } as never))).toContain(
     'dte() has unknown option "relays"',
   )
   expect(refusal(() => dte({ workers: { s: { max: 1, cpu: 0, memory: '1GB' } }, adapter }))).toBe(
@@ -3059,10 +3063,10 @@ it('refuses options it does not read and workers it cannot start', () => {
       dte({ workers: { s: { cpu: 1, memory: '1GB', platform: 'win32-x64' as never } }, adapter }),
     ),
   ).toBe('dte(): workers.s.platform is one of linux-x64, linux-arm64, darwin-x64, darwin-arm64')
-  expect(refusal(() => dte({ workers: {}, adapter, scheduler: { order: 'lifo' } as never }))).toBe(
+  expect(refusal(() => dte({ workers: W, adapter, scheduler: { order: 'lifo' } as never }))).toBe(
     'dte(): scheduler.order is one of critical-path, graphene, fifo',
   )
-  expect(refusal(() => dte({ workers: {}, adapter, scheduler: { pace: 'x' } as never }))).toBe(
+  expect(refusal(() => dte({ workers: W, adapter, scheduler: { pace: 'x' } as never }))).toBe(
     'dte(): scheduler.pace is no layer: the layers are order, place, book, scale',
   )
   expect(refusal(() => dte({}))).toBe(
@@ -3073,7 +3077,14 @@ it('refuses options it does not read and workers it cannot start', () => {
   expect(refusal(() => local({ prepar: 'x' } as never))).toContain(
     'local() has unknown option "prepar"',
   )
-  expect(refusal(() => dte({ workers: {}, adapter }))).toBe('taken')
+  // An adapter with no size it may start ran nothing, and the run waited until killed.
+  const none =
+    "dte(): workers names no size the adapter may start (one with max above 0), such as small: { cpu: 2, memory: '8GB' }"
+  expect(refusal(() => dte({ workers: {}, adapter }))).toBe(none)
+  expect(refusal(() => dte({ adapter }))).toBe(none)
+  expect(refusal(() => dte({ workers: { s: { max: 0, cpu: 1, memory: '1GB' } }, adapter }))).toBe(
+    none,
+  )
   expect(refusal(() => docker({} as never))).toBe(
     "docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git",
   )
@@ -3091,7 +3102,7 @@ Bun.plugin({ name: 'seen', setup(b) {
   })
 } })
 const m = await import(process.argv[1])
-m.dte({ workers: {}, adapter: m.local() })
+m.dte({ workers: { s: { cpu: 1, memory: '1GB' } }, adapter: m.local() })
 console.log(JSON.stringify(seen.sort()))
 `
   const p = Bun.spawnSync([
@@ -3176,7 +3187,9 @@ it('docker() starts each worker as a container of its size, on a fresh clone', a
         `git fetch -q --upload-pack='git -c uploadpack.allowAnySHA1InWant=true upload-pack' /src ${sha}`,
         `git checkout -q --detach ${sha}`,
         "cd 'sub'",
+        '{',
         'bun install',
+        '} >&2',
         'exec ./node_modules/.bin/vx dte worker',
       ].join('\n'),
     )

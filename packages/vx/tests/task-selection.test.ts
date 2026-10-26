@@ -185,12 +185,17 @@ describe('task selection', () => {
         await said('deploy'),
         await said('zzz#build'),
         await said('a#deploy'),
+        // A near project name with a wrong task said nothing past the name.
+        await said('aa#deploy'),
+        await said('aa#tset'),
         // CONTROL: a near miss still gets the one name, not the list.
         await said('biuld'),
       ]).toEqual([
         'no projects declare task(s): deploy. Tasks: build, test. A run reads the lock: after editing a vx.config, run `vx lock`.',
         'no projects declare task(s): zzz#build. No project is named zzz; projects: a, b. A run reads the lock: after editing a vx.config, run `vx lock`.',
         "no projects declare task(s): a#deploy. a's tasks: build, test. A run reads the lock: after editing a vx.config, run `vx lock`.",
+        "no projects declare task(s): aa#deploy. No project is named aa; a's tasks: build, test. A run reads the lock: after editing a vx.config, run `vx lock`.",
+        'no projects declare task(s): aa#tset. Did you mean a#test?',
         'no projects declare task(s): biuld. Did you mean build?',
       ])
     },

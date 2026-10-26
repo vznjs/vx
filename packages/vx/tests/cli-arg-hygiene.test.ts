@@ -326,7 +326,9 @@ describe('value flags accept the = form', () => {
 
   it('--verbosity=', () => {
     expect(parseRunArgs(['build', '--verbosity=2']).verbosity).toBe(2)
-    expect(parseRunArgs(['build', '--verbosity=']).error).toMatch(/--verbosity must be/)
+    expect(parseRunArgs(['build', '--verbosity=']).error).toBe(
+      '--verbosity requires a value (a non-negative integer)',
+    )
   })
 
   it('leaves the =-ONLY flags =-only — a space form would eat the task name', () => {

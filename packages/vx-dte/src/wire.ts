@@ -645,8 +645,9 @@ export async function join(
         // its loss is said apart.
         if (err instanceof RelayError && err.status === 404 && ended === undefined && heard.has(to))
           return
-        // Refused: the caller hears it; nothing waits on an ack.
-        o.unacked.delete(seq)
+        // Refused: the caller hears it. Its number still goes, delivering
+        // nothing: dropped, its receiver waited on it and on every send after.
+        o.unacked.set(seq, { body: PROBED, at: 0 })
         throw err
       }
     },

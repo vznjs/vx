@@ -26,6 +26,9 @@ export function serverUrlOf(
   const url = (option ?? env.VX_HISTORY_URL)?.replace(/\/+$/, '')
   if (url === undefined || url === '') return undefined
   if (!/^https?:\/\//.test(url)) throw new Error(`vxHistory(): server must be http(s), got ${url}`)
+  // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
+  if (url.endsWith('/v1'))
+    throw new Error(`vxHistory(): server is the server's base, without /v1: ${url.slice(0, -3)}`)
   return url
 }
 
@@ -52,10 +55,22 @@ export function timingOf(o: TaskOutcome): ServerTiming | undefined {
       ? undefined
       : o.cpuMs / (o.durationMs * (o.cpuShare ?? 1))
   return {
-    durationMs: Math.max(0, Math.round(o.durationMs)),
+    durationMs: Math.max(0, aloneMs(o)),
     ...(cores === undefined ? {} : { cores }),
     ...(o.peakRssBytes === undefined ? {} : { rssBytes: o.peakRssBytes }),
   }
+}
+
+/**
+ * How long it would have taken alone, as core's local history stores it
+ * (`run-history.ts` aloneMs): on a crowded DTE worker (`cpuShare` < 1) each
+ * thread waited for a core. Sent as it ran, every crowded run raised the
+ * shared number a forecast reads (2026-10-26).
+ */
+function aloneMs(o: TaskOutcome): number {
+  const { durationMs: d, cpuMs: c, cpuShare: s } = o
+  if (c === undefined || s === undefined || !(s > 0 && s < 1) || !(d > 0)) return Math.round(d)
+  return Math.round(d - (c / s - c) / Math.max(1, c / (d * s)))
 }
 
 const deadline = (): AbortSignal => {
@@ -122,7 +137,7 @@ export class HistoryServer {
 
   constructor(
     readonly url: string,
-    named: Named,
+    private readonly named: Named,
     private readonly env: Record<string, string | undefined> = Bun.env,
     private readonly fetchImpl: typeof fetch = fetch,
     headers: Readonly<Record<string, string>> = {},
@@ -185,6 +200,13 @@ export class HistoryServer {
       const err = await refusal(res)
       throw new Error(
         `${err.message}: a read with no CI token was refused (off CI, a server reads only with READ_ACCESS=public)`,
+      )
+    }
+    // The server sees the names hashed: only here can a refusal say which were sent.
+    if (res.status === 403 && bearer !== '') {
+      const err = await refusal(res)
+      throw new Error(
+        `${err.message} (this workspace names ${this.named.repository} at ${this.named.issuer})`,
       )
     }
     if (!res.ok) throw await refusal(res)

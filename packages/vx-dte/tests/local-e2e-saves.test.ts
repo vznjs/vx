@@ -471,6 +471,26 @@ export default { plugins: [dte({ workers: { small: { max: 1, cpu: 1, memory: '1G
   if (log !== undefined) await rm(path.dirname(log), { recursive: true, force: true })
 }, 60_000)
 
+// pnpm prints an install's error on stdout: a prepare that said only there
+// failed with no reason and no log.
+it("says a prepare's reason it printed on stdout", async () => {
+  await writeFile(
+    path.join(root, '.vx/workspace.mjs'),
+    `import { dte, local } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ workers: { small: { max: 1, cpu: 1, memory: '1GB' } }, adapter: local({ prepare: 'echo ERR_PNPM_NO_LOCKFILE none; exit 4' }) })] }
+`,
+  )
+  Bun.spawnSync(
+    ['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', 'commit', '-qam', 'p'],
+    { cwd: root },
+  )
+  const r = vx(['run', 'a#gen'], 'e2e-stdout')
+  const out = r.stdout.toString() + r.stderr.toString()
+  const log = out.match(/\(log: ([^)]+)\)/)?.[1]
+  if (log !== undefined) await rm(path.dirname(log), { recursive: true, force: true })
+  expect(out).toMatch(/small#1  failed  prepare exited 4: ERR_PNPM_NO_LOCKFILE none/)
+}, 60_000)
+
 it('workers run the tracked files as they are, uncommitted changes too', async () => {
   // Committed without dte(), as a user trying it first: a worktree of HEAD
   // alone had no `dte` verb, so every worker exited.

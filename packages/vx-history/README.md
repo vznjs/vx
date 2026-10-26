@@ -33,7 +33,7 @@ A recorded p50 always wins over an assumption, and assumptions never feed the wo
 
 ## Timings from a history server
 
-`server` (or `VX_HISTORY_URL`) names a
+`server` (or `VX_HISTORY_URL`), its base URL without `/v1`, names a
 [`@vzn/vx-history-server`](https://github.com/vznjs/vx/tree/main/packages/vx-history-server).
 On a CI job with a token (GitHub's OIDC token, which needs
 `permissions: id-token: write`, or a GitLab `id_tokens` entry
@@ -45,7 +45,9 @@ instead reads its branch's, then that branch's.
 The run starts on its local history and re-ranks the tasks not yet
 started when they land; it never waits for them. At its end it sends the
 timings of the tasks it ran, once: under DTE that is the orchestrator,
-with each worker's measurements. A refusal is said with the server's
+with each worker's measurements. A task that shared a crowded worker's
+cores is sent as long as it would have taken alone, as local history
+keeps it. A refusal is said with the server's
 words, and a CI job with no token says so once (on GitHub Actions,
 `GITHUB_ACTIONS`, naming the permission).
 A run with no token (off CI) reads only, from a server whose

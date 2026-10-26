@@ -112,3 +112,66 @@ it('refuses a body of another length than its Content-Length, and stores nothing
   }
   expect(s3.objects.size).toBe(before)
 })
+
+// Past 5 MB Bun's S3 client uploads in parts: a body that ends short
+// must abort the upload, never complete it with the parts sent.
+it('stores nothing of a multipart upload that ends short', async () => {
+  const before = s3.objects.size
+  const blobs = s3Blobs(
+    new Bun.S3Client({ endpoint: s3.url, bucket: 'b', accessKeyId: 'a', secretAccessKey: 's' }),
+  )
+  const sent = 12 * 1024 * 1024
+  let pulled = 0
+  const body = new ReadableStream<Uint8Array>({
+    pull(c) {
+      if (pulled >= sent) return c.close()
+      pulled += 1024 * 1024
+      c.enqueue(new Uint8Array(1024 * 1024).fill(97))
+    },
+  })
+  await expect(blobs.put('short', body, sent + 1)).rejects.toThrow(
+    `the body is ${sent} bytes, not ${sent + 1}`,
+  )
+  // The abort goes out after the write rejects.
+  const aborted = () => s3.log.some((l) => l.startsWith('DELETE /b/short?uploadId='))
+  for (let i = 0; i < 100 && !aborted(); i++) await Bun.sleep(50)
+  expect(s3.log.filter((l) => l.startsWith('POST /b/short?')).map((l) => l.split('=')[0])).toEqual([
+    'POST /b/short?uploads',
+  ])
+  expect(aborted()).toBe(true)
+  expect(s3.objects.size).toBe(before)
+})
+
+it('answers a flag it does not know with its usage', () => {
+  const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--bogus'], {
+    stderr: 'pipe',
+  })
+  const [said, usage] = cli.stderr.toString().split('\n')
+  expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
+    2,
+    "Unknown option '--bogus'",
+    'usage: vx-cache-server',
+  ])
+})
+
+it('names TRUST when it cannot be read', () => {
+  const said = (trust: string) => {
+    const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
+      env: { ...process.env, S3_BUCKET: 'b', TRUST: trust },
+      stderr: 'pipe',
+    })
+    return [cli.exitCode, cli.stderr.toString()]
+  }
+  expect([said('notjson'), said('{}')]).toEqual([
+    [2, 'TRUST: JSON Parse error: Unexpected identifier "notjson"\n'],
+    [2, 'TRUST: not a JSON list of rules\n'],
+  ])
+})
+
+it('refuses an empty --port: Number of it is 0, a random port', () => {
+  const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', ''], {
+    env: { ...process.env, S3_BUCKET: 'b', TRUST: '[]' },
+    stderr: 'pipe',
+  })
+  expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+})

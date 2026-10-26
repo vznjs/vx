@@ -125,7 +125,8 @@ git worktree of the tracked files as they are, uncommitted changes
 included (untracked files are not: a task that keys one fails), at the
 workspace's place in it (a workspace in a subdirectory of its repository too),
 saving to the run's store (a relative `cache.dir` or `--cache-dir` too). When a worker fails, its row names
-the error line and the log that holds its whole stderr. At the run's end,
+the error line and the log that holds its whole stderr and all `prepare`
+printed. At the run's end,
 or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
 a detached shell removes them and prunes git's records.
 
@@ -141,7 +142,7 @@ clone keeps this checkout's `origin`, so the workers save where the run
 reads, as `local()`'s do; no remote is needed. On Linux a container runs
 as this user (its home is `/tmp`, where the store is mounted), so what it
 writes is this user's and git trusts the mounted checkout. A container that fails
-names its error line and the log of its whole stderr:
+names its error line and the log of its whole stderr and all `prepare` printed:
 
 ```ts
 dte({
@@ -584,7 +585,9 @@ use your own instead.
   on, a line a task: which worker, and whether it runs or saves.
 - A message the relay would not take is a warning naming it, its
   receiver and the relay's answer; one to a participant the relay already
-  lost (404) is not, since its loss is reported on its own. A worker whose
+  lost (404) is not, since its loss is reported on its own. Its number
+  still reaches the receiver, carrying nothing, so the sends after it are
+  not held up. A worker whose
   OIDC token could not be checked is refused by that cause, not as a key
   mismatch, and the run says so.
 
@@ -783,9 +786,10 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
     alone on the smallest bigger size, which the run starts for it. Each
     run's history keeps where every task ran and that machine's size, so
     sizing improves run by run.
-  - `adapter` is the `DteAdapter` that starts workers. Absent, the run
-    starts none and uses the workers that join `relay`.
-  - `relay` is the relay's URL; absent, the adapter's own.
+  - `adapter` is the `DteAdapter` that starts workers, of the sizes in
+    `workers`: at least one with `max` above 0, or `dte()` is refused.
+    Absent, the run starts none and uses the workers that join `relay`.
+  - `relay` is the relay's URL, http(s); absent, the adapter's own.
   - `token` answers the relay's bearer token (default `VX_DTE_TOKEN`). It
     is asked again a minute before the token's `exp`, when it has one.
   - `unmeasured`, `{ cpu, memory }` (default 2 cores, `'4GB'`), is what a

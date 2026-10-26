@@ -594,7 +594,8 @@ their bare forms: `--profile=` writes `profile.json` and
 `--affected=` uses the default base. Every other flag refuses an empty
 value: `--dry=`, `--continue=` and
 `--exclude-dependencies=` as well as the ones with no bare form
-(`--retries=`, `--timeout=`, `--cache-dir=`, `--filter=`, `--cache-policy=`).
+(`--retries=`, `--timeout=`, `--cache-dir=`, `--filter=`, `--cache-policy=`,
+`--verbosity=`).
 
 #### Cache control: `--cache-policy`, `--no-cache`, `--force`
 
@@ -3034,7 +3035,8 @@ stdout is empty and stderr says so, exit 0. A kept log that is empty
 says the task printed nothing. With
 `--format json` it is `{ runId, taskId, status, source, output }`,
 `source` `'failure'`, `'cache'` or `null`. A task no run recorded is
-refused, exit 1.
+refused, exit 1. A bare name (`--log build`) is the one project that ran
+it; with several, the one the cwd is in, else it is refused listing them.
 `vx last app#build --log` reads the same as `--log app#build`: a `--log`
 with no value takes the positional as its task.
 

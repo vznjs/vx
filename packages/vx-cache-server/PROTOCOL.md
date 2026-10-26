@@ -63,7 +63,9 @@ rules:
   read a write they did not make.
 
 A bad token is `401`. A server with no rules refuses every
-request: `401`, `the server trusts no CI: set TRUST`.
+request: `401`, `the server trusts no CI: set TRUST`. A server that
+cannot fetch the issuer's keys answers `502`: the token is not refused,
+so a client keeps the remote for its next request.
 
 ## Keys
 

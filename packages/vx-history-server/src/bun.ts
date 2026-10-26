@@ -43,19 +43,35 @@ function main(argv: string[]): void {
     return
   }
   const env = Bun.env
-  const port = Number(values.port)
+  // Number('') is 0: `--port "$PORT"` with PORT unset bound a random port.
+  const port = values.port.trim() === '' ? Number.NaN : Number(values.port)
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
   let trust
   let timingDays
   try {
     trust = parseTrust(env.TRUST ?? '')
+  } catch (err) {
+    // A bare JSON parse error named no variable (the Worker's says TRUST).
+    fail(`TRUST: ${(err as Error).message}`)
+  }
+  try {
     timingDays = timingDaysOf(env.TIMING_DAYS)
   } catch (err) {
     fail((err as Error).message)
   }
+  // bun:sqlite opens '' as a temporary database: every timing was gone at
+  // the next restart, and nothing said so.
+  if (values.db === '') fail(`--db: needs a file path, got ''\n${USAGE}`)
+  let db
+  try {
+    db = sqliteDb(values.db)
+  } catch (err) {
+    // SQLite's own message ("unable to open database file") named no path.
+    fail(`--db ${values.db}: ${(err as Error).message}`)
+  }
   const handle = createHistoryServer({
-    store: sqliteStore(sqliteDb(values.db)),
+    store: sqliteStore(db),
     authorize: oidcAuth({
       trust,
       readAccess: env.READ_ACCESS,
@@ -79,6 +95,8 @@ if (import.meta.main) {
   try {
     main(process.argv.slice(2))
   } catch (err) {
-    fail(err instanceof Error ? err.message : String(err))
+    // parseArgs names the flag it refused, not the ones there are.
+    const usage = (err as { code?: string }).code?.startsWith('ERR_PARSE_ARGS') ? `\n${USAGE}` : ''
+    fail(`${err instanceof Error ? err.message : String(err)}${usage}`)
   }
 }

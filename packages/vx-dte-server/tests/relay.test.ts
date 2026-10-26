@@ -795,3 +795,46 @@ beforeAll(() => {
 })
 afterAll(() => served?.stop())
 conformance('the Bun relay', { base: () => served!.url, headers: () => ({}) })
+
+it('names the flags it lacks', () => {
+  const said = (...args: string[]) =>
+    Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), ...args], {
+      stderr: 'pipe',
+    })
+      .stderr.toString()
+      .split('\n')[0]
+  const allow = ['--allow', 'https://token.actions.githubusercontent.com:acme/app:ci.yml']
+  expect([
+    said(),
+    said(...allow),
+    said('--audience', 'x'),
+    said('--allow', '', '--audience', ''),
+    said(...allow, '--audience', ' '),
+  ]).toEqual([
+    'missing --allow and --audience (or --no-auth)',
+    'missing --audience (or --no-auth)',
+    'missing --allow (or --no-auth)',
+    'missing --allow and --audience (or --no-auth)',
+    'missing --audience (or --no-auth)',
+  ])
+})
+
+it('answers a flag it does not know with its usage', () => {
+  const cli = Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--bogus'], {
+    stderr: 'pipe',
+  })
+  const [said, usage] = cli.stderr.toString().split('\n')
+  expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
+    2,
+    "Unknown option '--bogus'",
+    'usage: vx-dte-server',
+  ])
+})
+
+it('refuses an empty --port: Number of it is 0, a random port', () => {
+  const cli = Bun.spawnSync(
+    ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--no-auth', '--port', ''],
+    { stderr: 'pipe' },
+  )
+  expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+})
