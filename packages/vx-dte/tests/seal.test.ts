@@ -108,6 +108,21 @@ it('admits a worker its secret signed, and the relay carries no body it can read
   expect(r.bodies.join('\n')).not.toContain('build-secret-name')
 })
 
+// Sealing is async: a big body sealed first reached the wire after a small
+// one sealed next (a worker's `end` before its `ran`, 2026-10-26).
+it('sends bodies in the order they were asked for, however long each takes to seal', async () => {
+  const { o, a } = await pair()
+  await until(o)
+  await o.send(a.id, { type: 'welcome' })
+  await until(a)
+  const big = noise(400_000)
+  await Promise.all([
+    a.send('orchestrator', { type: 'ran', task: big }),
+    a.send('orchestrator', { type: 'end', task: 't' }),
+  ])
+  expect((await until(o, 2)).map((m) => (m.body as { type: string }).type)).toEqual(['ran', 'end'])
+})
+
 it('pads each body to its size class, so the relay learns no size within one', async () => {
   const { r, o, a } = await pair()
   await until(o)

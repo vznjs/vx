@@ -158,13 +158,31 @@ function padded(n: number): number {
 class Session {
   private sent = 0
   private readonly seen = new Set<number>()
+  /** The last send handed to the wire, or still sealing: the next waits on it. */
+  private turn: Promise<unknown> = Promise.resolve()
 
   constructor(
     private readonly tx: CipherState,
     private readonly rx: CipherState,
   ) {}
 
-  async seal(body: unknown): Promise<{ seal: string[] }> {
+  /**
+   * `body` sealed and handed to `wire`, in the order sends were asked for:
+   * sealing is async, and a big body sealed first reached the wire after a
+   * small one sealed next (a worker's `end` before its `ran`, 2026-10-26).
+   * The wire numbers a send as it is handed over, so only the handing waits.
+   */
+  async send(body: unknown, wire: (sealed: { seal: string[] }) => Promise<void>): Promise<void> {
+    let sent: Promise<void> | undefined
+    const mine = this.turn.then(async () => {
+      sent = wire(await this.seal(body))
+    })
+    this.turn = mine.catch(() => undefined)
+    await mine
+    await sent
+  }
+
+  private async seal(body: unknown): Promise<{ seal: string[] }> {
     const plain = squeeze(text.encode(JSON.stringify(body)))
     // Trailing spaces: JSON.parse reads past them, and `unsqueeze` stops before them.
     const bytes = new Uint8Array(padded(plain.length)).fill(0x20)
@@ -298,7 +316,7 @@ export function sealOrchestrator(
     async send(to, body) {
       const s = sessions.get(to)
       if (s === undefined) throw new Error(`no session with ${to}`)
-      await me.send(to, await s.seal(body))
+      await s.send(body, (sealed) => me.send(to, sealed))
     },
     async poll(signal) {
       const out: RelayMessage[] = []
@@ -392,7 +410,7 @@ export async function sealWorker(
     resumed: (f) => me.resumed(f),
     async send(to, body) {
       if (session === undefined) throw new Error('no session with the orchestrator yet')
-      await me.send(to, await session.seal(body))
+      await session.send(body, (sealed) => me.send(to, sealed))
     },
     async poll(signal) {
       const out: RelayMessage[] = []
