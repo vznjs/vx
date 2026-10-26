@@ -261,6 +261,46 @@ describe('vx run with vxHistory({ server })', () => {
     })
   })
 
+  it('names the server it could not reach, reading and sending', async () => {
+    const gone = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response() })
+    const dead = `http://127.0.0.1:${gone.port}`
+    await gone.stop(true)
+    const other = await mkdtemp(path.join(tmpdir(), 'vx-history-dead-'))
+    try {
+      await mkdir(path.join(other, 'pkg'), { recursive: true })
+      await writeFile(
+        path.join(other, 'pkg', 'vx.config.mjs'),
+        "export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: [] } } } }\n",
+      )
+      await Bun.write(
+        path.join(other, '.vx/workspace.mjs'),
+        `import { vxHistory } from ${JSON.stringify(path.resolve(import.meta.dir, '..', 'src', 'index.ts'))}\n` +
+          `export default { plugins: [vxHistory({ server: ${JSON.stringify(dead)}, ...${JSON.stringify(NAMED)} })] }\n`,
+      )
+      Bun.spawnSync({ cmd: ['git', 'init', '-q', '-b', 'main'], cwd: other })
+      const bin = path.resolve(import.meta.dir, '..', '..', 'vx', 'src', 'bin.ts')
+      Bun.spawnSync({ cmd: [process.execPath, bin, 'lock'], cwd: other })
+      const cli = Bun.spawnSync({
+        cmd: [process.execPath, bin, 'run', 'build', '--all'],
+        cwd: other,
+        env: { ...Bun.env, NO_COLOR: '1' },
+      })
+      const said = `${cli.stdout.toString()}${cli.stderr.toString()}`
+        .split('\n')
+        .filter((l) => l.startsWith('[vx] vx-history:'))
+        .map((l) => l.split(': ')[1])
+      expect([cli.exitCode, said]).toEqual([
+        0,
+        [
+          `the timings of the history server at ${dead} were not applied`,
+          `the timings were not sent to the history server at ${dead}`,
+        ],
+      ])
+    } finally {
+      await rm(other, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   // `main` was assumed: a repository whose trunk is another branch read
   // no trunk's numbers on any branch.
   it('asks in the refs the run reads: its branch, then baseBranch', async () => {
