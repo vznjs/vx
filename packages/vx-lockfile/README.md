@@ -24,6 +24,8 @@ export default defineWorkspace({
 
 That is the whole setup. The plugin **claims** its lockfile and its manager's install settings (`VxPlugin.fingerprint`), and its `key` hook folds one digest per project plus each settings file present. `vx why <task>` names the material as `plugin @vzn/vx-lockfile/pnpm` (or `/bun`, `/npm`, `/yarn`) and `plugin @vzn/vx-lockfile/.npmrc` (or the settings file that moved).
 
+With no lockfile at the workspace root (before the first install), it warns and keys no package's dependencies; a `^build` then has no edges to follow, and the run refuses it.
+
 | Option  | Values                               | Meaning                                                                                                                                                                   |
 | ------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `scope` | `'project'` (default), `'workspace'` | `project`: each task folds its own project's closure. `workspace`: the whole file into every task — the coarse key, for a workspace not yet ready to trust the precision. |

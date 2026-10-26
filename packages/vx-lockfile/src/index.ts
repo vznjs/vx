@@ -325,7 +325,13 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       )
       dirs.catch(() => {})
       const read = await readImporters(ctx, manifest)
-      if (read === undefined) return []
+      if (read === undefined) {
+        // Core's word for the edges this leaves out names the plugin, not the file.
+        ctx.warn(
+          `[vx] ${manager.name}(): no ${manager.files.join(' or ')} in ${ctx.workspaceRoot} — run \`${manager.name} install\`; until then it orders and keys no package's dependencies`,
+        )
+        return []
+      }
       const { importers, file } = read
       // A lockfile older than the manifests drops edges: a workspace it does
       // not list yet (a renamed folder, lerna's 31 added Nx projects) is
