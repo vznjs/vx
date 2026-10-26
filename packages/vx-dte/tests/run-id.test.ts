@@ -14,7 +14,8 @@ afterEach(() => {
 /** The events `setup` subscribes: none when the run is not distributed. */
 function subscribed(options: Parameters<typeof dte>[0]): string[] {
   const on: string[] = []
-  const setup = dte(options).setup as unknown as (ctx: { on(event: string): void }) => void
+  const setup = dte({ workers: { s: { cpu: 1, memory: '1GB' } }, ...options })
+    .setup as unknown as (ctx: { on(event: string): void }) => void
   setup({ on: (event) => on.push(event) })
   return on
 }

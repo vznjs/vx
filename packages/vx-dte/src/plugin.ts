@@ -200,6 +200,12 @@ export function dte(options: DteOptions) {
   if (adapter !== undefined && typeof adapter.spawn !== 'function') {
     throw new UserError('dte(): adapter is an adapter, such as local()')
   }
+  // With none, no worker was ever asked for and the run waited until killed.
+  if (adapter !== undefined && !sizes.some((s) => s.max > 0)) {
+    throw new UserError(
+      "dte(): workers names no size the adapter may start (one with max above 0), such as small: { cpu: 2, memory: '8GB' }",
+    )
+  }
   if (adapter === undefined && options.relay === undefined) {
     throw new UserError('dte(): with no adapter, set relay: the workers that join it run the tasks')
   }

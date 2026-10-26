@@ -3045,7 +3045,8 @@ const refusal = (make: () => unknown): string => {
 
 it('refuses options it does not read and workers it cannot start', () => {
   const adapter = local()
-  expect(refusal(() => dte({ workers: {}, adapter, relays: 'x' } as never))).toContain(
+  const W = { s: { cpu: 1, memory: '1GB' } }
+  expect(refusal(() => dte({ workers: W, adapter, relays: 'x' } as never))).toContain(
     'dte() has unknown option "relays"',
   )
   expect(refusal(() => dte({ workers: { s: { max: 1, cpu: 0, memory: '1GB' } }, adapter }))).toBe(
@@ -3059,10 +3060,10 @@ it('refuses options it does not read and workers it cannot start', () => {
       dte({ workers: { s: { cpu: 1, memory: '1GB', platform: 'win32-x64' as never } }, adapter }),
     ),
   ).toBe('dte(): workers.s.platform is one of linux-x64, linux-arm64, darwin-x64, darwin-arm64')
-  expect(refusal(() => dte({ workers: {}, adapter, scheduler: { order: 'lifo' } as never }))).toBe(
+  expect(refusal(() => dte({ workers: W, adapter, scheduler: { order: 'lifo' } as never }))).toBe(
     'dte(): scheduler.order is one of critical-path, graphene, fifo',
   )
-  expect(refusal(() => dte({ workers: {}, adapter, scheduler: { pace: 'x' } as never }))).toBe(
+  expect(refusal(() => dte({ workers: W, adapter, scheduler: { pace: 'x' } as never }))).toBe(
     'dte(): scheduler.pace is no layer: the layers are order, place, book, scale',
   )
   expect(refusal(() => dte({}))).toBe(
@@ -3073,7 +3074,14 @@ it('refuses options it does not read and workers it cannot start', () => {
   expect(refusal(() => local({ prepar: 'x' } as never))).toContain(
     'local() has unknown option "prepar"',
   )
-  expect(refusal(() => dte({ workers: {}, adapter }))).toBe('taken')
+  // An adapter with no size it may start ran nothing, and the run waited until killed.
+  const none =
+    "dte(): workers names no size the adapter may start (one with max above 0), such as small: { cpu: 2, memory: '8GB' }"
+  expect(refusal(() => dte({ workers: {}, adapter }))).toBe(none)
+  expect(refusal(() => dte({ adapter }))).toBe(none)
+  expect(refusal(() => dte({ workers: { s: { max: 0, cpu: 1, memory: '1GB' } }, adapter }))).toBe(
+    none,
+  )
   expect(refusal(() => docker({} as never))).toBe(
     "docker() needs image: one with Bun and git, such as 'oven/bun:1.4' plus git",
   )
@@ -3091,7 +3099,7 @@ Bun.plugin({ name: 'seen', setup(b) {
   })
 } })
 const m = await import(process.argv[1])
-m.dte({ workers: {}, adapter: m.local() })
+m.dte({ workers: { s: { cpu: 1, memory: '1GB' } }, adapter: m.local() })
 console.log(JSON.stringify(seen.sort()))
 `
   const p = Bun.spawnSync([
