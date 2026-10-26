@@ -477,11 +477,12 @@ it('says what gives a job with no token a way onto a relay that wants one', asyn
     hostname: '127.0.0.1',
     verify: () => Promise.reject(new Error('no token is good')),
   })
+  const aud = String(relay.url).replace(/\/+$/, '')
   try {
     await writeFile(
       path.join(root, '.vx/workspace.mjs'),
       `import { dte } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ relay: ${JSON.stringify(relay.url)} })] }
+export default { plugins: [dte({ relay: ${JSON.stringify(aud)} })] }
 `,
     )
     const {
@@ -490,19 +491,21 @@ export default { plugins: [dte({ relay: ${JSON.stringify(relay.url)} })] }
       ACTIONS_ID_TOKEN_REQUEST_URL: ___,
       ...env
     } = process.env
-    const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#use'], {
-      cwd: root,
-      env: { ...env, VX_DTE_RUN: crypto.randomUUID(), VX_DTE_SECRET: 's', NO_COLOR: '1' },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const err = await new Response(run.stderr).text()
-    expect([await run.exited, err]).toEqual([
-      1,
-      expect.stringContaining(
-        `401 no bearer token: this job has no token for the relay (on GitLab, an id_tokens entry VX_DTE_TOKEN with aud ${relay.url}; on GitHub Actions, permissions: id-token: write)`,
-      ),
-    ])
+    const hint = `401 no bearer token: this job has no token for the relay (on GitLab, an id_tokens entry VX_DTE_TOKEN with aud ${aud}; on GitHub Actions, permissions: id-token: write)`
+    // The run, then a worker: each dials the relay with no token.
+    for (const args of [
+      ['run', 'b#use'],
+      ['dte', 'worker'],
+    ]) {
+      const p = Bun.spawn([process.execPath, CORE_BIN, ...args], {
+        cwd: root,
+        env: { ...env, VX_DTE_RUN: crypto.randomUUID(), VX_DTE_SECRET: 's', NO_COLOR: '1' },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const err = await new Response(p.stderr).text()
+      expect([args, await p.exited, err]).toEqual([args, 1, expect.stringContaining(hint)])
+    }
   } finally {
     await relay.stop()
   }
