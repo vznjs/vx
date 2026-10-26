@@ -238,3 +238,31 @@ describe('a server that trusts no CI', () => {
     expect(await detail(res)).toEqual([401, 'the server trusts no CI: set TRUST'])
   })
 })
+
+// A 401 tells vx-cache its token is refused, and it turned the remote cache
+// off for the run when only the issuer's keys could not be fetched.
+it("answers 502 while the issuer's keys cannot be read, never 401", async () => {
+  for (const down of ['/.well-known/openid-configuration', '/keys']) {
+    const other = createCacheServer({
+      blobs: memBlobs(),
+      authorize: oidcAuth({
+        trust,
+        audience: AUD,
+        fetchJson: async (url) => {
+          if (url.endsWith(down)) throw new Error(`${url}: 503`)
+          return { jwks_uri: `${GITHUB}/keys` }
+        },
+      }),
+    })
+    const res = await other(
+      new Request(`${AUD}/v1/artifacts/abc`, {
+        headers: {
+          ...NAMED,
+          authorization: `Bearer ${read}`,
+          'vx-scope': scopeOf('refs/heads/main'),
+        },
+      }),
+    )
+    expect(await detail(res)).toEqual([502, `could not read ${GITHUB}'s keys`])
+  }
+})
