@@ -531,7 +531,7 @@ describe('TurboRemoteCache against the spec server', () => {
       'has-b': null,
       get: null,
       hasMany: new Map(),
-      put: undefined,
+      put: false,
     }
     const names = ['has-a', 'has-b', 'get', 'hasMany', 'put']
     const settled = await Promise.allSettled([
@@ -560,7 +560,8 @@ describe('TurboRemoteCache against the spec server', () => {
     const n = srv.seen.length
     expect(await c.has('aa11')).toBeNull()
     expect(await c.get('aa11')).toBeNull()
-    await c.put('ee55', new Blob(['x']), { durationMs: 1 })
+    // Not sent, so core counts no upload.
+    expect(await c.put('ee55', new Blob(['x']), { durationMs: 1 })).toBe(false)
     expect(await c.hasMany(['aa11'])).toEqual(new Map())
     expect(srv.seen.length).toBe(n) // no further requests
   })

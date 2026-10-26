@@ -186,7 +186,7 @@ describe('NxRemoteCache against the spec server', () => {
       'get-a': null,
       'get-b': null,
       has: null,
-      put: undefined,
+      put: false,
     }
     const settled = await Promise.allSettled([
       c.get('aa11'),
@@ -213,7 +213,8 @@ describe('NxRemoteCache against the spec server', () => {
     const n = srv.seen.length
     expect(await bad.get('aa11')).toBeNull()
     expect(await bad.has('aa11')).toBeNull()
-    await bad.put('cc33', new Blob(['x']))
+    // Not sent, so core counts no upload.
+    expect(await bad.put('cc33', new Blob(['x']))).toBe(false)
     expect(srv.seen.length).toBe(n)
     const ro = cache(READONLY)
     expect(await ro.has('aa11')).not.toBeNull() // reads are allowed
@@ -222,7 +223,7 @@ describe('NxRemoteCache against the spec server', () => {
     // lookup still hits, and a later upload is not sent (nor said again).
     expect(await ro.has('aa11')).not.toBeNull()
     const m = srv.seen.length
-    await ro.put('ee55', new Blob(['x']))
+    expect(await ro.put('ee55', new Blob(['x']))).toBe(false)
     expect(srv.seen.length).toBe(m)
   })
 })

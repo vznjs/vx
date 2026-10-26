@@ -149,14 +149,14 @@ function streamed(res: Response, controller: AbortController, ms: number): Respo
  * batch passes through the server's code, which on Workers costs CPU by the
  * byte, and a 40 MB one ran out of it).
  */
-class Lane<T> {
-  private readonly waiting: { item: T; resolve(): void; reject(err: unknown): void }[] = []
+class Lane<T, R> {
+  private readonly waiting: { item: T; resolve(r: R): void; reject(err: unknown): void }[] = []
   private open = 0
 
-  constructor(private readonly send: (item: T) => Promise<void>) {}
+  constructor(private readonly send: (item: T) => Promise<R>) {}
 
-  push(item: T): Promise<void> {
-    const { promise, resolve, reject } = Promise.withResolvers<void>()
+  push(item: T): Promise<R> {
+    const { promise, resolve, reject } = Promise.withResolvers<R>()
     this.waiting.push({ item, resolve, reject })
     this.pump()
     return promise
@@ -222,7 +222,9 @@ export class VxCacheLayer implements RemoteCacheLayer {
   warn: (message: string) => void = () => {}
   private limitsMissing = false
 
-  private readonly uploads = new Lane<{ hash: string; body: Blob }>((item) => this.upload(item))
+  private readonly uploads = new Lane<{ hash: string; body: Blob }, void | false>((item) =>
+    this.upload(item),
+  )
 
   /** The issuer and repository, named on every request by their hashes. */
   private readonly named: Readonly<Record<string, string>>
@@ -501,22 +503,24 @@ export class VxCacheLayer implements RemoteCacheLayer {
   }
 
   /** An artifact over the server's upload limit is not sent: it is said. */
-  async put(hash: string, body: Blob, _meta: { durationMs: number }): Promise<void> {
-    // With no token a job reads only: nothing is uploaded.
+  async put(hash: string, body: Blob, _meta: { durationMs: number }): Promise<void | false> {
+    // With no token a job reads only: nothing is uploaded, and none counted.
     if (this.disabled || this.writesRefused || !hasCiToken(this.env, this.lent?.() !== undefined))
-      return
+      return false
     const max = this.limits?.maxUploadBytes
     if (max !== undefined && body.size > max) {
       this.warn(
         `[vx] vx-cache: ${hash} is ${body.size} bytes, over the server's upload limit of ${max}: not uploaded`,
       )
-      return
+      return false
     }
-    await this.uploads.push({ hash, body })
+    return this.uploads.push({ hash, body })
   }
 
   /** One artifact by `PUT`: the server answers one its scope holds before reading the bytes. */
-  private async upload(item: { hash: string; body: Blob }): Promise<void> {
+  private async upload(item: { hash: string; body: Blob }): Promise<void | false> {
+    // Queued before the remote or its writes were turned off.
+    if (this.disabled || this.writesRefused) return false
     const res = await this.request(`/v1/artifacts/${item.hash}`, {
       method: 'PUT',
       body: item.body,
@@ -524,7 +528,8 @@ export class VxCacheLayer implements RemoteCacheLayer {
       timeoutMs: this.config.uploadTimeoutMs,
       write: true,
     })
-    if (res !== undefined && !res.ok) throw await refusal(res)
+    if (res === undefined) return false
+    if (!res.ok) throw await refusal(res)
   }
 }
 

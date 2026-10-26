@@ -241,10 +241,11 @@ export class NxRemoteCache implements RemoteCacheLayer {
   }
 
   // Nx's record carries no duration.
-  async put(hash: string, body: Blob): Promise<void> {
-    if (this.disabled || this.writesRefused) return
+  async put(hash: string, body: Blob): Promise<void | false> {
+    // Nothing sent, so no upload is counted.
+    if (this.disabled || this.writesRefused) return false
     const res = await this.request('PUT', hash, body)
-    if (res === undefined) return
+    if (res === undefined) return false
     // The spec answers 200; a store behind it may say 201 or 204.
     if (res.ok || res.status === 409) return
     throw await refusal(res)

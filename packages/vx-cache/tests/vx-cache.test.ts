@@ -200,7 +200,8 @@ describe('VxCacheLayer', () => {
     expect(c.put('cc33', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
       'HTTP 403: this request reads only: the write was refused (this job reads only); writes off for this run, reads go on',
     )
-    await c.put('dd44', new Blob(['x']), { durationMs: 1 })
+    // Not sent, so core counts no upload.
+    expect(await c.put('dd44', new Blob(['x']), { durationMs: 1 })).toBe(false)
     expect(await c.has('aa11')).not.toBeNull()
   })
 
@@ -498,7 +499,7 @@ describe('config', () => {
       const c = new VxCacheLayer(resolveVxCacheConfig({ ...NAMED, url: srv.url }, {})!, fetch, {})
       c.refs = [MAIN]
       expect(await c.has('ab12')).toEqual({ size: 1 })
-      await c.put('cd34', new Blob(['y']), { durationMs: 1 })
+      expect(await c.put('cd34', new Blob(['y']), { durationMs: 1 })).toBe(false)
       expect(srv.seen.filter((r) => r.method === 'PUT').map((r) => r.path)).toEqual([
         '/v1/artifacts/ab12',
       ])

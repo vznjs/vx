@@ -66,8 +66,8 @@ export interface RemoteCacheLayer {
   hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   /** Fetch an artifact; `null` = miss. Errors THROW. `body` is read once, by core. */
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
-  /** Store an artifact (fire-and-forget from LayeredCache's PoV). File-backed when local holds it. */
-  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+  /** Store an artifact (fire-and-forget from LayeredCache's PoV). File-backed when local holds it. `false`: nothing sent, nothing failed; no upload counted. */
+  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void | false>
   /** Optional: the run found `hash` in no remote and a `put` follows; a wire that checks first can skip it. */
   missing?(hash: string): void
 }

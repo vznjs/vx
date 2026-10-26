@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## cache,vx-cache,vx-migrate: count no upload a remote skipped
+
+RemoteCacheLayer.put resolves void or false; false means nothing was sent and no upload is counted.
+
 ## vx-history: drop timings shared through the remote cache
 
 vxHistory() no longer writes or reads timings through the remote cache (ctx.cache); share them with a history server.

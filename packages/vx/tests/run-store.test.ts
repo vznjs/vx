@@ -34,4 +34,19 @@ describe('putRunEntry', () => {
     expect(calls).toHaveLength(1)
     expect(calls[0]!.startsWith('put ')).toBe(true)
   })
+
+  it('keeps nothing where every put declined with false', async () => {
+    const remote: RemoteCacheLayer = {
+      has: async () => null,
+      get: async () => null,
+      put: async () => false,
+    }
+    const kept = await putRunEntry(
+      [{ remote, read: true, write: true }],
+      undefined,
+      'log',
+      new Uint8Array([1]),
+    )
+    expect(kept).toBe(false)
+  })
 })

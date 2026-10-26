@@ -189,8 +189,10 @@ export interface RemoteCacheLayer {
    * read of it sees the same bytes. An entry is immutable: a `put` of a
    * key the remote holds keeps the stored bytes. Core never asks `has`
    * first; a wire that would overwrite checks inside, unless told `missing`.
+   * `false`: nothing was sent and nothing failed (a layer that writes
+   * nothing this run, such as one with no token), so no upload is counted.
    */
-  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void | false>
   /**
    * The run found `hash` in no remote, and a `put` of it follows: a wire
    * that checks before it overwrites can skip that request.

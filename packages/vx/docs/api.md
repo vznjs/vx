@@ -2131,7 +2131,7 @@ export interface RemoteCacheLayer {
   has(hash: string): Promise<ArtifactInfo | null>
   hasMany?(hashes: readonly string[]): Promise<Map<string, ArtifactInfo> | null>
   get(hash: string): Promise<{ body: Blob | Response; durationMs: number | undefined } | null>
-  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void>
+  put(hash: string, body: Blob, meta: { durationMs: number }): Promise<void | false>
   missing?(hash: string): void
 }
 ```
