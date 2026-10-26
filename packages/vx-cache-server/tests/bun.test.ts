@@ -153,3 +153,17 @@ it('answers a flag it does not know with its usage', () => {
     'usage: vx-cache-server',
   ])
 })
+
+it('names TRUST when it cannot be read', () => {
+  const said = (trust: string) => {
+    const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', '0'], {
+      env: { ...process.env, S3_BUCKET: 'b', TRUST: trust },
+      stderr: 'pipe',
+    })
+    return [cli.exitCode, cli.stderr.toString()]
+  }
+  expect([said('notjson'), said('{}')]).toEqual([
+    [2, 'TRUST: JSON Parse error: Unexpected identifier "notjson"\n'],
+    [2, 'TRUST: not a JSON list of rules\n'],
+  ])
+})
