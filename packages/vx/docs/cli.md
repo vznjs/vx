@@ -594,7 +594,8 @@ their bare forms: `--profile=` writes `profile.json` and
 `--affected=` uses the default base. Every other flag refuses an empty
 value: `--dry=`, `--continue=` and
 `--exclude-dependencies=` as well as the ones with no bare form
-(`--retries=`, `--timeout=`, `--cache-dir=`, `--filter=`, `--cache-policy=`).
+(`--retries=`, `--timeout=`, `--cache-dir=`, `--filter=`, `--cache-policy=`,
+`--verbosity=`).
 
 #### Cache control: `--cache-policy`, `--no-cache`, `--force`
 

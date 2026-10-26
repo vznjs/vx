@@ -249,7 +249,7 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       out.continueMode = v
     } else if (a === '--verbosity' || a?.startsWith('--verbosity=')) {
       const v = a === '--verbosity' ? before[++i] : a.slice('--verbosity='.length)
-      if (v === undefined)
+      if (v === undefined || v === '')
         return { ...out, error: `--verbosity requires a value (a non-negative integer)` }
       const n = parseDecimalInt(v)
       if (n === null)
@@ -259,6 +259,9 @@ export function parseRunArgs(args: readonly string[], verb: 'run' | 'watch' = 'r
       out.dry = 'text'
     } else if (a?.startsWith('--dry=')) {
       const fmt = a.slice('--dry='.length)
+      if (fmt === '') {
+        return { ...out, error: `--dry= requires a format (text or json); bare --dry prints text` }
+      }
       if (fmt !== 'text' && fmt !== 'json') {
         return { ...out, error: `--dry must be text or json (got ${fmt})` }
       }

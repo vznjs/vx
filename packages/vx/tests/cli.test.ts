@@ -1827,6 +1827,15 @@ describe('parseRunArgs', () => {
     )
   })
 
+  it('an empty `=` value is a missing value, not a bad one', () => {
+    expect(parseRunArgs(['build', '--dry=']).error).toBe(
+      '--dry= requires a format (text or json); bare --dry prints text',
+    )
+    expect(parseRunArgs(['build', '--verbosity=']).error).toBe(
+      '--verbosity requires a value (a non-negative integer)',
+    )
+  })
+
   it('parses --profile (default profile.json) and --profile=<path>', () => {
     expect(parseRunArgs(['build', '--profile']).profile).toBe('profile.json')
     expect(parseRunArgs(['build', '--profile=trace.json']).profile).toBe('trace.json')
