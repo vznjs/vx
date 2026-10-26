@@ -1547,7 +1547,10 @@ describe('a config sample imports the schema from @vzn/vx/config', () => {
   // The exception: cli.md shows the starter `vx init` writes where there is
   // no package.json, so nothing installed; only `@vzn/vx` resolves there,
   // served by the running vx (core-alias.ts), and no tsc walks it.
-  const init = readFileSync(path.resolve(import.meta.dir, '..', 'src', 'cli', 'init.ts'), 'utf8')
+  // init.ts writes the workspace file; migration.ts holds the project starter.
+  const init = ['cli/init.ts', 'workspace/migration.ts']
+    .map((f) => readFileSync(path.resolve(import.meta.dir, '..', 'src', f), 'utf8'))
+    .join('\n')
   const STARTER = [
     "import { defineWorkspace } from '@vzn/vx'",
     "import { defineProject } from '@vzn/vx'",
