@@ -795,3 +795,15 @@ beforeAll(() => {
 })
 afterAll(() => served?.stop())
 conformance('the Bun relay', { base: () => served!.url, headers: () => ({}) })
+
+it('answers a flag it does not know with its usage', () => {
+  const cli = Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--bogus'], {
+    stderr: 'pipe',
+  })
+  const [said, usage] = cli.stderr.toString().split('\n')
+  expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
+    2,
+    "Unknown option '--bogus'",
+    'usage: vx-dte-server',
+  ])
+})

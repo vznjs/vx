@@ -168,3 +168,15 @@ it("answers 502 while the issuer's keys cannot be read", async () => {
     { code: 'bad_gateway', message: `could not read ${GITHUB}'s keys` },
   ])
 })
+
+it('answers a flag it does not know with its usage', () => {
+  const cli = Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--bogus'], {
+    stderr: 'pipe',
+  })
+  const [said, usage] = cli.stderr.toString().split('\n')
+  expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
+    2,
+    "Unknown option '--bogus'",
+    'usage: vx-history-server',
+  ])
+})

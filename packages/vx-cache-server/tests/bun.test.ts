@@ -141,3 +141,15 @@ it('stores nothing of a multipart upload that ends short', async () => {
   expect(aborted()).toBe(true)
   expect(s3.objects.size).toBe(before)
 })
+
+it('answers a flag it does not know with its usage', () => {
+  const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--bogus'], {
+    stderr: 'pipe',
+  })
+  const [said, usage] = cli.stderr.toString().split('\n')
+  expect([cli.exitCode, said, usage?.split(' ').slice(0, 2).join(' ')]).toEqual([
+    2,
+    "Unknown option '--bogus'",
+    'usage: vx-cache-server',
+  ])
+})
