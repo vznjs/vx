@@ -182,6 +182,11 @@ export async function runSetup(
   defaultDebs: string,
 ): Promise<number> {
   const usage = `Usage: vx setup ${ci} [--debs <dir>]`
+  // Asked for, the usage is an answer: `vx setup --help` exited 1 (2026-10-26).
+  if (argv.includes('--help') || argv.includes('-h')) {
+    process.stdout.write(`${usage}\n`)
+    return 0
+  }
   if (argv[0] !== ci) throw new UserError(usage)
   let debs = defaultDebs
   for (let i = 1; i < argv.length; i++) {
