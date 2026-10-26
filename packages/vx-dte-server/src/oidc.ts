@@ -55,7 +55,7 @@ export interface VerifiedToken {
 export class TokenError extends Error {
   constructor(
     message: string,
-    readonly status: 401 | 403,
+    readonly status: 401 | 403 | 502,
   ) {
     super(message)
   }
@@ -141,8 +141,10 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
   }
   const verifyWith = async (token: string, iss: string, fresh: boolean): Promise<JWTPayload> => {
     const entry = (fresh ? undefined : keys.get(iss)) ?? load(iss, fresh)
+    // The issuer's outage, not the token's fault: a client ends its run on
+    // a 401, and retries a 5xx.
     const set = await entry.set.catch(() => {
-      throw new TokenError(`could not read ${iss}'s keys`, 401)
+      throw new TokenError(`could not read ${iss}'s keys`, 502)
     })
     const { payload } = await jwtVerify(token, set, {
       algorithms: ['RS256'],
@@ -180,7 +182,7 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
         return verifyWith(token, iss, true)
       })
     } catch (err) {
-      throw refusal(err)
+      throw refusal(err, iss)
     }
     let ofRepo = ofIssuer
     if (ofIssuer.some((a) => a.repository !== undefined)) {
@@ -216,8 +218,10 @@ export function createVerifier(opts: OidcOptions): (token: string) => Promise<Ve
 }
 
 /** What jose's refusal of a token says, as the relay answers it. */
-function refusal(err: unknown): TokenError {
+function refusal(err: unknown, iss: string): TokenError {
   if (err instanceof TokenError) return err
+  // A refetch of the keys for a kid not held failed: the network, not the token.
+  if (!(err instanceof errors.JOSEError)) return new TokenError(`could not read ${iss}'s keys`, 502)
   if (err instanceof errors.JOSEAlgNotAllowed) return new TokenError('alg is not RS256', 401)
   if (err instanceof errors.JWKSNoMatchingKey) return new TokenError('unknown signing key', 401)
   if (err instanceof errors.JWSSignatureVerificationFailed)

@@ -175,6 +175,23 @@ describe('a CI OIDC token', () => {
 
   // A worker test's unsigned token fetched gitlab.com's keys once jose
   // checked tokens (main, 2026-10-22): anyone could make the relay fetch.
+  // vx-dte ends its run on a 401 and retries a 5xx: an issuer's outage
+  // during a join or rejoin ended the run.
+  it("answers 502 while the issuer's keys cannot be read, never 401", async () => {
+    for (const down of ['/.well-known/openid-configuration', '/jwks']) {
+      const verify = createVerifier({
+        allow: [{ issuer: ISS }],
+        audience: AUD,
+        now: () => now,
+        fetchJson: async (url) => {
+          if (url.endsWith(down)) throw new Error(`${url}: 503`)
+          return { jwks_uri: `${ISS}/jwks` }
+        },
+      })
+      expect(await refusal(verify(await sign(good)))).toEqual([502, `could not read ${ISS}'s keys`])
+    }
+  })
+
   it('is refused before any key fetch when it carries no signature or another alg', async () => {
     const fetched: string[] = []
     const verify = verifier(fetched)
