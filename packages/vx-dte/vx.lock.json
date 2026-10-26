@@ -114,6 +114,7 @@
       "dependsOn": [
         "test.wire",
         "test.local-e2e",
+        "test.local-e2e-saves",
         "test.units",
         "test.gitlab",
         "test.rest"
@@ -167,6 +168,50 @@
       "description": "bun test ./tests/local-e2e.test.ts",
       "exec": {
         "command": "bun test --only-failures ./tests/local-e2e.test.ts",
+        "env": {
+          "define": {
+            "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "VX_CACHE_DIR": ".vx/cache"
+          }
+        },
+        "sandbox": {
+          "allow": {
+            "read": [
+              "**/*"
+            ],
+            "systemInfo": [
+              "vfs.disk-space",
+              "net.link.addr"
+            ],
+            "machLookup": [
+              "com.apple.sysmond"
+            ],
+            "localBinding": true
+          }
+        }
+      },
+      "dependsOn": [
+        "install"
+      ],
+      "inputs": {
+        "files": [
+          "src/**",
+          "tests/**",
+          "package.json"
+        ]
+      },
+      "cache": {
+        "outputs": {
+          "files": []
+        }
+      }
+    },
+    "test.local-e2e-saves": {
+      "description": "bun test ./tests/local-e2e-saves.test.ts",
+      "exec": {
+        "command": "bun test --only-failures ./tests/local-e2e-saves.test.ts",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
@@ -298,7 +343,7 @@
     "test.rest": {
       "description": "bun test the files no other shard runs",
       "exec": {
-        "command": "bun test --only-failures $(ls tests/*.test.ts | grep -v -e /wire.test.ts -e /local-e2e.test.ts -e /units.test.ts -e /gitlab.test.ts)",
+        "command": "bun test --only-failures $(ls tests/*.test.ts | grep -v -e /wire.test.ts -e /local-e2e.test.ts -e /local-e2e-saves.test.ts -e /units.test.ts -e /gitlab.test.ts)",
         "env": {
           "define": {
             "BUN_RUNTIME_TRANSPILER_CACHE_PATH": "0",
