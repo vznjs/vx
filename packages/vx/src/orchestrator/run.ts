@@ -1877,8 +1877,12 @@ function didYouMean(
     }
     if (!projects.has(proj)) {
       const p = projectNamed(proj, projects) ?? nearest(proj, projects.keys())
-      if (p !== undefined && tasksOf(projects.get(p)).includes(task)) hints.add(`${p}#${task}`)
-      else if (p === undefined && projects.size > 0) {
+      if (p !== undefined) {
+        const tasks = tasksOf(projects.get(p))
+        const t = tasks.includes(task) ? task : nearest(task, tasks)
+        if (t !== undefined) hints.add(`${p}#${t}`)
+        else lists.add(`No project is named ${proj}; ${p}'s tasks: ${listed(tasks)}.`)
+      } else if (projects.size > 0) {
         lists.add(`No project is named ${proj}; projects: ${listed(projects.keys())}.`)
       }
       continue
