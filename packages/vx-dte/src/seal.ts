@@ -177,6 +177,8 @@ class Session {
     const mine = this.turn.then(async () => {
       sent = wire(await this.seal(body))
     })
+    // quiet: `await mine` below hands the caller this error; the next turn
+    // must not inherit it.
     this.turn = mine.catch(() => undefined)
     await mine
     await sent
