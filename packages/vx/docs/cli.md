@@ -2214,7 +2214,11 @@ Beside a lockfile at that `package.json` (`pnpm-lock.yaml`, `bun.lock`,
 
 plus `.vx/.gitignore` and `.vx/.gitattributes`. It then runs `vx lock`'s
 step, and `next:` says to declare a task and run `vx lock && vx run
-<task>`, preceded by `git init` outside a git work tree. The `@vzn/vx`
+<task>`, preceded by `git init` outside a git work tree. Where that
+`package.json` has scripts, or declares a workspace (`workspaces`,
+`pnpm-workspace.yaml`), `next:` first names `bunx @vzn/vx-migrate`,
+which makes each package's scripts its tasks; it maps over the root
+`vx.config.ts` init wrote while that file is unchanged. The `@vzn/vx`
 import needs no install: the running vx serves its own core to that
 specifier (bin.ts registers the alias). A file already there is kept
 and named under `kept`; `--force` replaces it, a file of another

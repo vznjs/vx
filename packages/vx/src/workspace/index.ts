@@ -72,9 +72,11 @@ export type { LoadReads } from './load-reads.js'
 export {
   applyMigration,
   foldScriptHooks,
+  isStarterConfig,
   PERSISTENT_TODO,
   pruneOrphanPersistentNotes,
   quoteTsLiteral,
+  STARTER_PROJECT,
   type ApplyMigrationArgs,
   type MigrationFormat,
   type MigrationMember,

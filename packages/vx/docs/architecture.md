@@ -34,7 +34,7 @@ specifier — enforced by `tests/package-boundaries.unsafe.test.ts`):
 | `private/vx-history-service` | vznjs's own history server deploy: `@vzn/vx-history-server`'s worker with this repo's `TRUST`, built by Workers Builds (private)                                                     |
 
 Core never imports a sibling package. The integrations reach core
-through two seams: the public API (56 runtime symbols, a deliberate
+through two seams: the public API (57 runtime symbols, a deliberate
 snapshot) and the plugin capabilities (below).
 
 ## Module map

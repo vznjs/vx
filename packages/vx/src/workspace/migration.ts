@@ -13,6 +13,22 @@ import { DOT_VX_GITIGNORE, executablePath, gitEnv, relPosix, UserError, ui } fro
 import { VERSION } from '../version.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 
+/** The root config `vx init` writes outside a Turbo or Nx repo: no task yet. */
+export const STARTER_PROJECT =
+  "import { defineProject } from '@vzn/vx'\n\nexport default defineProject({ tasks: {} })\n"
+
+/**
+ * Whether `file` is `vx init`'s starter, untouched: a migration maps over it
+ * as over no config, so the scripts `vx init` pointed at become tasks.
+ */
+export function isStarterConfig(file: string): boolean {
+  try {
+    return readFileSync(file, 'utf8') === STARTER_PROJECT
+  } catch {
+    return false
+  }
+}
+
 /**
  * Escape an arbitrary string into a single-quoted TS literal. Escapes
  * backslash + quote AND raw newlines/CR — a value with an embedded newline
@@ -321,7 +337,7 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
     // scan alone would miss an existing vx.config.ts at that path and clobber
     // it. This also covers the extraFiles (vx-preset.ts).
     for (const f of files) {
-      if (await Bun.file(f.abs).exists()) conflicts.add(f.relPath)
+      if ((await Bun.file(f.abs).exists()) && !isStarterConfig(f.abs)) conflicts.add(f.relPath)
     }
     if (conflicts.size > 0) {
       throw new UserError(

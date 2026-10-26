@@ -130,6 +130,7 @@ export type { ProjectEntry } from './workspace/index.js'
 export {
   applyMigration,
   foldScriptHooks,
+  isStarterConfig,
   PERSISTENT_TODO,
   pruneOrphanPersistentNotes,
   quoteTsLiteral,

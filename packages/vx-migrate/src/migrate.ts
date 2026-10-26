@@ -19,6 +19,7 @@ import path from 'node:path'
 import {
   applyMigration,
   findWorkspaceRoot,
+  isStarterConfig,
   isUserError,
   VERSION,
   type MigrationFormat,
@@ -162,7 +163,13 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   })
   const workspace = bare ? { root, packageGlobs: [] } : await loadPackageWorkspace(root, reads)
   const nameless: string[] = []
-  const metas = bare ? [] : await discoverPackages(workspace, nameless)
+  // `vx init`'s starter at the root holds no task: mapped as if absent, so
+  // the root's own scripts become its tasks.
+  const metas = bare
+    ? []
+    : (await discoverPackages(workspace, nameless)).filter(
+        (m) => !(m.dir === root && m.configPath !== null && isStarterConfig(m.configPath)),
+      )
 
   const turboFile = await turboConfigFile(root)
   const hasTurbo = turboFile !== null

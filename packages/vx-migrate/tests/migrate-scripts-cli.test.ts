@@ -3,7 +3,7 @@
 // the lockfile plugin its lockfile calls for. `vx init` hands such a repo
 // here (M, 2026-10-14: core reads no package.json).
 
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'bun:test'
@@ -77,5 +77,29 @@ describe('vx-migrate on package.json scripts', () => {
       1,
       "vx-migrate: --keep answers a Turbo or Nx repo's question, and no turbo.json or nx.json is at .\n",
     ])
+  })
+
+  // `vx init` in a Bun workspace with scripts writes an empty root project
+  // and names vx-migrate; its starter was kept, and the root's scripts lost.
+  it("maps over vx init's starter: the root's scripts become its tasks", async () => {
+    const root = await bunRepo()
+    await writeFile(
+      path.join(root, 'package.json'),
+      '{"name":"r","workspaces":["packages/*"],"scripts":{"lint":"oxlint ."}}\n',
+    )
+    const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
+    expect(Bun.spawnSync(['git', 'init', '-q'], { cwd: root, env }).exitCode).toBe(0)
+    const init = Bun.spawnSync(
+      [process.execPath, path.resolve(import.meta.dir, '../../vx/src/bin.ts'), 'init'],
+      { cwd: root, env, stdout: 'pipe', stderr: 'pipe' },
+    )
+    expect([init.exitCode, init.stdout.toString()]).toEqual([
+      0,
+      expect.stringContaining('bunx @vzn/vx-migrate to make package.json scripts tasks'),
+    ])
+    const r = await migrate(root, ['--no-install'])
+    expect([r.code, r.err]).toEqual([0, ''])
+    expect(r.out).not.toContain('kept')
+    expect(await readFile(path.join(root, 'vx.config.ts'), 'utf8')).toContain("command: 'oxlint .'")
   })
 })

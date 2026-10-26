@@ -185,6 +185,27 @@ describe('vx init in a repo with a package.json and no Turbo or Nx', () => {
       existsSync(path.join(sub, 'vx.config.ts')),
     ]).toEqual([PROJECT, true, false])
   })
+
+  // A Bun workspace with scripts got an empty root project and a `next`
+  // that never named the tool that makes scripts tasks (2026-10-26).
+  it('names vx-migrate in next when there are scripts to map', async () => {
+    const next = async (manifest: string, extra?: [string, string]): Promise<string> => {
+      const root = await tmp('vx-init-scripts-')
+      await writeFile(path.join(root, 'package.json'), manifest)
+      if (extra !== undefined) await writeFile(path.join(root, extra[0]), extra[1])
+      const r = await vx(root, ['init', '--dry', '--format', 'json'])
+      expect([r.code, r.err]).toEqual([0, ''])
+      return (JSON.parse(r.out) as { next: string }).next
+    }
+    const declare = 'declare a task in vx.config.ts, then vx lock && vx run <task>'
+    const mapped = `bunx @vzn/vx-migrate to make package.json scripts tasks, or ${declare}`
+    expect([
+      await next('{"name":"r","scripts":{"build":"tsc"}}'),
+      await next('{"name":"r","private":true,"workspaces":["packages/*"]}'),
+      await next('{"name":"r"}', ['pnpm-workspace.yaml', 'packages:\n  - packages/*\n']),
+      await next('{"name":"r","scripts":{}}'),
+    ]).toEqual([mapped, mapped, mapped, declare])
+  })
 })
 
 describe('initInstalls', () => {

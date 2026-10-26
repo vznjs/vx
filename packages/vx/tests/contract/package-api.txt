@@ -343,6 +343,8 @@ export function isLiteralPattern(glob: string): boolean
 export function isPassStatus(status: string): boolean
 == function isSecretUnavailable (src/util/secrets.ts)
 export function isSecretUnavailable(err: unknown): err is SecretUnavailable
+== function isStarterConfig (src/workspace/migration.ts)
+export function isStarterConfig(file: string): boolean
 == function isUserError (src/util/errors.ts)
 export function isUserError(err: unknown): err is UserError
 == function loadProjectConfig (src/workspace/project-loader.ts)

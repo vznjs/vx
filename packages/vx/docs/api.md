@@ -1132,6 +1132,17 @@ A `secret` rejection that is a missing secret, not a fault. By name: a plugin ma
 export function isSecretUnavailable(err: unknown): err is SecretUnavailable
 ```
 
+## `isStarterConfig`
+
+function · `src/workspace/migration.ts`
+
+Whether `file` is `vx init`'s starter, untouched: a migration maps over it
+as over no config, so the scripts `vx init` pointed at become tasks.
+
+```ts
+export function isStarterConfig(file: string): boolean
+```
+
 ## `isUserError`
 
 function · `src/util/errors.ts`
