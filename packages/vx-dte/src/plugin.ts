@@ -203,6 +203,10 @@ export function dte(options: DteOptions) {
   if (adapter === undefined && options.relay === undefined) {
     throw new UserError('dte(): with no adapter, set relay: the workers that join it run the tasks')
   }
+  // With no scheme the run failed in the executor as a bare "Invalid URL".
+  if (options.relay !== undefined && !/^https?:\/\//.test(options.relay)) {
+    throw new UserError(`dte(): relay must be http(s), got ${options.relay}`)
+  }
   // On GitHub Actions with none given, one for the relay's URL.
   const token = async (relay: string): Promise<string | undefined> =>
     (await options.token?.()) ??
@@ -330,6 +334,8 @@ export function dte(options: DteOptions) {
             ]
             throw new UserError(`vx dte worker needs ${missing.join(', and ')}`)
           }
+          if (!/^https?:\/\//.test(relay))
+            throw new UserError(`vx dte worker: VX_DTE_RELAY must be http(s), got ${relay}`)
           const secret = givenSecret()
           if (secret === undefined && !onGitHub()) {
             throw new UserError(

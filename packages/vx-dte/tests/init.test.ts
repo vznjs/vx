@@ -341,6 +341,33 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
   ])
 })
 
+it('a relay URL with no http(s) scheme is refused, named', async () => {
+  await mkdir(path.join(root, '.vx'))
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+  const workspace = (relay: string) =>
+    writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { dte, local } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ relay: ${JSON.stringify(relay)}, workers: { small: { cpu: 2, memory: '8GB' } }, adapter: local() })] }
+`,
+    )
+  Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
+  const said = (env: Record<string, string>) => {
+    const { VX_DTE_RELAY: _, ...rest } = process.env
+    return Bun.spawnSync([process.execPath, CORE_BIN, 'dte', 'worker'], {
+      cwd: root,
+      env: { ...rest, ...env, NO_COLOR: '1', VX_DTE_RUN: crypto.randomUUID() },
+      stderr: 'pipe',
+    }).stderr.toString()
+  }
+  await workspace('relay.example.com')
+  expect(said({})).toContain('dte(): relay must be http(s), got relay.example.com')
+  await workspace('https://relay.example.com')
+  expect(said({ VX_DTE_RELAY: 'relay.example.com' })).toStartWith(
+    '✗ vx dte  vx dte worker: VX_DTE_RELAY must be http(s), got relay.example.com\n',
+  )
+})
+
 it('vx dte worker names only what it lacks', async () => {
   await mkdir(path.join(root, '.vx'))
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
