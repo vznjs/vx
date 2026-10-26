@@ -208,3 +208,11 @@ it('names --db when it cannot be opened, and refuses an empty one', () => {
     [2, "--db: needs a file path, got ''"],
   ])
 })
+
+it('refuses an empty --port: Number of it is 0, a random port', () => {
+  const cli = Bun.spawnSync(
+    ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '', '--db', ':memory:'],
+    { env: { ...process.env, TRUST: '[]' }, stderr: 'pipe' },
+  )
+  expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+})
