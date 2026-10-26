@@ -279,7 +279,13 @@ export async function applyMigration(args: ApplyMigrationArgs): Promise<number> 
   // A plan never maps a workspace root that has a config (D-45), even
   // under `--force`; its file stays, so it is named with the rest (X-27).
   const rootConfig = metas.find((m) => m.dir === root)?.configPath
-  if (init && rootConfig && !projects.some((p) => p.dir === root && p.tasks.length > 0)) {
+  // A one-package repo's root is a mapped member too: the filter kept it already.
+  if (
+    init &&
+    rootConfig &&
+    !kept.includes(relPosix(root, rootConfig)) &&
+    !projects.some((p) => p.dir === root && p.tasks.length > 0)
+  ) {
     kept.push(relPosix(root, rootConfig))
   }
   if (empty && !init) {
