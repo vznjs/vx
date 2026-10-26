@@ -470,6 +470,44 @@ export default { plugins: [dte({ relay: ${JSON.stringify(url)} })] }
   }
 }, 60_000)
 
+it('says what gives a job with no token a way onto a relay that wants one', async () => {
+  const { serveRelay } = await import('@vzn/vx-dte-server')
+  const relay = serveRelay({
+    port: 0,
+    hostname: '127.0.0.1',
+    verify: () => Promise.reject(new Error('no token is good')),
+  })
+  try {
+    await writeFile(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { dte } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ relay: ${JSON.stringify(relay.url)} })] }
+`,
+    )
+    const {
+      VX_DTE_RUN: _,
+      VX_DTE_TOKEN: __,
+      ACTIONS_ID_TOKEN_REQUEST_URL: ___,
+      ...env
+    } = process.env
+    const run = Bun.spawn([process.execPath, CORE_BIN, 'run', 'b#use'], {
+      cwd: root,
+      env: { ...env, VX_DTE_RUN: crypto.randomUUID(), VX_DTE_SECRET: 's', NO_COLOR: '1' },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const err = await new Response(run.stderr).text()
+    expect([await run.exited, err]).toEqual([
+      1,
+      expect.stringContaining(
+        `401 no bearer token: this job has no token for the relay (on GitLab, an id_tokens entry VX_DTE_TOKEN with aud ${relay.url}; on GitHub Actions, permissions: id-token: write)`,
+      ),
+    ])
+  } finally {
+    await relay.stop()
+  }
+}, 60_000)
+
 // A worker started by hand before its run exited and said nothing, and
 // the run then waited on no worker (the README started the worker first,
 // 2026-10-25). It still exits 0: a CI job late for a run that ended is no
