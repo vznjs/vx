@@ -10,6 +10,10 @@ claim or a timed test. Add a lesson here, not to CLAUDE.md.
   often as the claim — and suspect a second copy of the rule first.
 - A skip is a silent pass. Gate on an env var CI sets.
 - Assert the exact expected set, not the absence of one string.
+- A test that expects a failure passes on any failure. The credential-store
+  test in `dte-sandbox.unsafe.test.ts` expected exit 1, and its config was
+  refused (`local: 0`, an option `dte()` does not take) before any worker
+  joined (2026-10-26). Also assert where the failure came from.
 - A test that reads the constant it guards is a tautology, and a
   GENERATED table makes it a silent one. The cache-layer gate's
   fixture built its expected message by mapping over
