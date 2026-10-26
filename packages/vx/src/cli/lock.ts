@@ -509,7 +509,9 @@ async function checkLock(root: string, json: boolean): Promise<number> {
     for (const f of stale) if (f !== null) failures.push(f)
     for (const file of await strayCopies(check)) failures.push(strayLine(root, file))
   }
-  for (const dir of Object.keys(lock.projects)) {
+  // A config that does not load evaluated none: every locked project
+  // read as gone, the healthy ones too.
+  for (const dir of broken === null ? Object.keys(lock.projects) : []) {
     if (!Object.hasOwn(check.fresh.projects, dir)) {
       failures.push(`the lock holds ${dir}, which has no vx.config now — run 'vx lock'`)
     }
