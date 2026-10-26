@@ -125,7 +125,7 @@ export class HistoryServer {
 
   constructor(
     readonly url: string,
-    named: Named,
+    private readonly named: Named,
     private readonly env: Record<string, string | undefined> = Bun.env,
     private readonly fetchImpl: typeof fetch = fetch,
     headers: Readonly<Record<string, string>> = {},
@@ -188,6 +188,13 @@ export class HistoryServer {
       const err = await refusal(res)
       throw new Error(
         `${err.message}: a read with no CI token was refused (off CI, a server reads only with READ_ACCESS=public)`,
+      )
+    }
+    // The server sees the names hashed: only here can a refusal say which were sent.
+    if (res.status === 403 && bearer !== '') {
+      const err = await refusal(res)
+      throw new Error(
+        `${err.message} (this workspace names ${this.named.repository} at ${this.named.issuer})`,
       )
     }
     if (!res.ok) throw await refusal(res)
