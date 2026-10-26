@@ -187,11 +187,17 @@ export async function runSetup(
     process.stdout.write(`${usage}\n`)
     return 0
   }
-  if (argv[0] !== ci) throw new UserError(usage)
+  // The bare usage said nothing of what was wrong with the line typed.
+  const wrong = (what: string): never => {
+    throw new UserError(`${what}\n${usage}`)
+  }
+  if (argv[0] === undefined) wrong(`missing the CI: vx setup ${ci}`)
+  if (argv[0] !== ci) wrong(`unknown CI: ${argv[0]} (this workspace sets up ${ci})`)
   let debs = defaultDebs
   for (let i = 1; i < argv.length; i++) {
-    if (argv[i] === '--debs' && argv[i + 1] !== undefined) debs = path.resolve(argv[++i]!)
-    else throw new UserError(usage)
+    if (argv[i] !== '--debs') wrong(`unknown argument: ${argv[i]}`)
+    if (argv[i + 1] === undefined) wrong('--debs needs a directory')
+    debs = path.resolve(argv[++i]!)
   }
   await mkdir(debs, { recursive: true })
   const output = ci === 'github' ? process.env['GITHUB_OUTPUT'] : undefined

@@ -137,10 +137,16 @@ it('fails, named, where bwrap cannot start a sandbox', async () => {
   expect(m.go()).rejects.toThrow('bwrap cannot start a sandbox here (exit 1)')
 })
 
-it('takes only its own CI and --debs', async () => {
-  for (const argv of [[], ['gitlab'], ['github', '--debs'], ['github', '--x']])
-    expect(runSetup('github', argv, os.tmpdir())).rejects.toThrow(
-      'Usage: vx setup github [--debs <dir>]',
+it('takes only its own CI and --debs, and says what is wrong', async () => {
+  const cases: [string[], string][] = [
+    [[], 'missing the CI: vx setup github'],
+    [['gitlab'], 'unknown CI: gitlab (this workspace sets up github)'],
+    [['github', '--debs'], '--debs needs a directory'],
+    [['github', '--x'], 'unknown argument: --x'],
+  ]
+  for (const [argv, said] of cases)
+    await expect(runSetup('github', argv, os.tmpdir())).rejects.toThrow(
+      `${said}\nUsage: vx setup github [--debs <dir>]`,
     )
 })
 
