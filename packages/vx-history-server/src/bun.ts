@@ -59,8 +59,18 @@ function main(argv: string[]): void {
   } catch (err) {
     fail((err as Error).message)
   }
+  // bun:sqlite opens '' as a temporary database: every timing was gone at
+  // the next restart, and nothing said so.
+  if (values.db === '') fail(`--db: needs a file path, got ''\n${USAGE}`)
+  let db
+  try {
+    db = sqliteDb(values.db)
+  } catch (err) {
+    // SQLite's own message ("unable to open database file") named no path.
+    fail(`--db ${values.db}: ${(err as Error).message}`)
+  }
   const handle = createHistoryServer({
-    store: sqliteStore(sqliteDb(values.db)),
+    store: sqliteStore(db),
     authorize: oidcAuth({
       trust,
       readAccess: env.READ_ACCESS,

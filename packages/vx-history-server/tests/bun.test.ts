@@ -194,3 +194,17 @@ it('names TRUST when it cannot be read', () => {
     [2, 'TRUST: not a JSON list of rules\n'],
   ])
 })
+
+it('names --db when it cannot be opened, and refuses an empty one', () => {
+  const said = (db: string) => {
+    const cli = Bun.spawnSync(
+      ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--port', '0', '--db', db],
+      { env: { ...process.env, TRUST: '[]' }, stderr: 'pipe' },
+    )
+    return [cli.exitCode, cli.stderr.toString().split('\n')[0]]
+  }
+  expect([said('/proc/no/such/dir/x.db'), said('')]).toEqual([
+    [2, '--db /proc/no/such/dir/x.db: unable to open database file'],
+    [2, "--db: needs a file path, got ''"],
+  ])
+})
