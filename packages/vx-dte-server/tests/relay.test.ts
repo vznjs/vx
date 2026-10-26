@@ -804,10 +804,18 @@ it('names the flags it lacks', () => {
       .stderr.toString()
       .split('\n')[0]
   const allow = ['--allow', 'https://token.actions.githubusercontent.com:acme/app:ci.yml']
-  expect([said(), said(...allow), said('--audience', 'x')]).toEqual([
+  expect([
+    said(),
+    said(...allow),
+    said('--audience', 'x'),
+    said('--allow', '', '--audience', ''),
+    said(...allow, '--audience', ' '),
+  ]).toEqual([
     'missing --allow and --audience (or --no-auth)',
     'missing --audience (or --no-auth)',
     'missing --allow (or --no-auth)',
+    'missing --allow and --audience (or --no-auth)',
+    'missing --audience (or --no-auth)',
   ])
 })
 
