@@ -134,7 +134,7 @@ export default { plugins: [dte({ workers: { small: { max: 1, cpu: 2, memory: '1G
       await writeFile(
         config,
         `import { dte } from ${JSON.stringify(DTE)}
-export default { plugins: [dte({ relay: ${JSON.stringify(server.url)}, local: 0 })] }
+export default { plugins: [dte({ relay: ${JSON.stringify(server.url)} })] }
 `,
       )
       commit()
@@ -151,11 +151,21 @@ export default { plugins: [dte({ relay: ${JSON.stringify(server.url)}, local: 0 
           stdout: 'pipe',
           stderr: 'pipe',
         })
-      const worker = spawn(['dte', 'worker'], 'worker')
       const run = spawn(['run', 'k#key'], 'orc')
+      // A worker before the run is live leaves at once ("has no live run"),
+      // and the run waits for one: started again until it joins.
+      for (let i = 0; ; i++) {
+        const worker = spawn(['dte', 'worker'], 'worker')
+        const [said] = await Promise.all([new Response(worker.stderr).text(), worker.exited])
+        if (!said.includes('has no live run') || i === 50) break
+        await Bun.sleep(100)
+      }
       const out = (await new Response(run.stdout).text()) + (await new Response(run.stderr).text())
       expect([await run.exited, out.includes('WORKER-KEY')]).toEqual([1, false])
-      await worker.exited
+      // On the worker, and walled there: with an option dte() does not take
+      // (`local: 0`), the config was refused and this passed with no task run.
+      expect(out).toContain('k#key · worker#1')
+      expect(out).toContain(path.join(homes, 'worker/.ssh/id'))
     } finally {
       await server.stop()
       await rm(homes, { recursive: true, force: true })
