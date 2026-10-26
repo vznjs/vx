@@ -89,6 +89,12 @@ describe('resolveNxCacheConfig', () => {
     })
   })
 
+  it('refuses a server with no http(s) scheme', () => {
+    expect(() => resolveNxCacheConfig({ server: 'cache.example.com' }, {})).toThrow(
+      'vx/nx-cache: server must be http(s), got cache.example.com',
+    )
+  })
+
   it('refuses a server carrying user:pass@, from options or the env (gaps §8 L232)', () => {
     const refusal = (f: () => unknown): string => {
       try {

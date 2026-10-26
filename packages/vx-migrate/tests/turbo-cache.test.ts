@@ -270,14 +270,23 @@ describe('resolveTurboCacheConfig', () => {
   it('a signature key must be Turbo’s minimum length and come with a team id', () => {
     expect(() =>
       resolveTurboCacheConfig(
-        { apiUrl: 'u', token: 't', signatureKey: 'short', teamId: 'team_1' },
+        { apiUrl: 'https://u', token: 't', signatureKey: 'short', teamId: 'team_1' },
         {},
       ),
     ).toThrow(/at least 32 bytes/)
     expect(() =>
-      resolveTurboCacheConfig({ apiUrl: 'u', token: 't', signatureKey: KEY }, {}),
+      resolveTurboCacheConfig({ apiUrl: 'https://u', token: 't', signatureKey: KEY }, {}),
     ).toThrow(/needs teamId/)
     expect(MIN_SIGNATURE_KEY_LENGTH).toBe(32)
+  })
+
+  it('refuses an apiUrl with no http(s) scheme, from options or TURBO_API', () => {
+    expect(() => resolveTurboCacheConfig({ apiUrl: 'cache.example.com', token: 't' }, {})).toThrow(
+      'vx/turbo-cache: apiUrl must be http(s), got cache.example.com',
+    )
+    expect(() =>
+      resolveTurboCacheConfig({ token: 't' }, { TURBO_API: 'cache.example.com/' }),
+    ).toThrow('vx/turbo-cache: apiUrl must be http(s), got cache.example.com')
   })
 
   it('refuses an apiUrl carrying user:pass@, from options or TURBO_API (gaps §8 L232)', () => {
