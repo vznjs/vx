@@ -262,6 +262,29 @@ describe('vx init source detection', () => {
   )
 
   it(
+    "a one-package repo's own config is kept once",
+    async () => {
+      const root = await makeRoot('vx-init-root-once-')
+      try {
+        await rm(path.join(root, 'pnpm-workspace.yaml'))
+        await writeFile(
+          path.join(root, 'package.json'),
+          JSON.stringify({ name: 'solo', private: true, scripts: { build: 'echo hi' } }),
+        )
+        await writeFile(path.join(root, 'vx.config.ts'), 'export default { tasks: {} }\n')
+        const r = await vx(root, ['init', '--dry'])
+        expect(r.code).toBe(0)
+        expect(r.out.split('\n').filter((l) => l.includes('(has a vx config)'))).toEqual([
+          '  kept      vx.config.ts (has a vx config)',
+        ])
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'the run init points at loads over a dependency cycle',
     async () => {
       const root = await makeRoot('vx-init-cycle-')
