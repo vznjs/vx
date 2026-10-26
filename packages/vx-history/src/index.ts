@@ -281,6 +281,13 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
       `vxHistory() option "resources" must be false or an object, got ${JSON.stringify(resources) ?? String(resources)}`,
     )
   }
+  // `''` resolved to the workspace root: each run warned it could not read
+  // a directory and failed in teardown renaming its timings over it.
+  if (options.file !== undefined && options.file.trim() === '') {
+    throw new UserError(
+      `vxHistory() option "file" must be a path, got ${JSON.stringify(options.file)}`,
+    )
+  }
   const hooks: Parameters<typeof definePlugin>[1] = {
     commands: {
       history: {
