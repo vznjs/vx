@@ -1087,8 +1087,8 @@ Semantics:
   a changed local tool replayed the old output.
 - The command **runs whenever a task's key is derived** — that's every
   run (warm runs included, since the key decides hit vs miss), plus
-  `vx run --dry` / `--graph` (which predict the key) and `vx run
---no-cache` (which still derives the key). Keep runtime commands pure
+  `vx run --dry` (which predicts the key) and `vx run --no-cache`
+  (which still derives the key). Keep runtime commands pure
   probes with no side effects.
 - The command runs as part of **hash derivation, before** the task's
   `exec` — so it is **not** constrained by the task's own `sandbox`
