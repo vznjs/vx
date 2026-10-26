@@ -1,4 +1,5 @@
 @vzn/vx-cache GITHUB_ACTIONS
+@vzn/vx-cache GITLAB_CI
 @vzn/vx-ci CI_COMMIT_REF_NAME
 @vzn/vx-ci CI_COMMIT_TAG
 @vzn/vx-ci CI_DEFAULT_BRANCH

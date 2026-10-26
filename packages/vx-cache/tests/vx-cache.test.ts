@@ -507,6 +507,29 @@ describe('config', () => {
     }
   })
 
+  it('says a CI job with no token reads only, on GitLab as on GitHub', async () => {
+    const saved = { ...Bun.env }
+    const names = ['GITHUB_ACTIONS', 'GITLAB_CI', 'ACTIONS_ID_TOKEN_REQUEST_URL', 'VX_CACHE_TOKEN']
+    for (const k of names) delete Bun.env[k]
+    const warned: string[] = []
+    const srv = server(64)
+    try {
+      const plugin = vxCache({ ...NAMED, url: srv.url })
+      for (const ci of ['GITHUB_ACTIONS', 'GITLAB_CI']) {
+        Bun.env[ci] = 'true'
+        void plugin.cache?.({ refs: [MAIN], warn: (m: string) => warned.push(m) } as never)
+        delete Bun.env[ci]
+      }
+    } finally {
+      for (const k of names) if (saved[k] !== undefined) Bun.env[k] = saved[k]
+      await srv.stop()
+    }
+    expect(warned).toEqual([
+      '[vx] vx-cache: this job gets no OIDC token (give it `permissions: id-token: write`): it reads only',
+      '[vx] vx-cache: no CI token for the cache server (name an id_tokens entry VX_CACHE_TOKEN): it reads only',
+    ])
+  })
+
   // The second failed ask of the limits was kept: every later check threw
   // it, though the server was back (2026-10-26).
   it('asks the limits again after each failed ask, and reads once the server is back', async () => {

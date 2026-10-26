@@ -592,9 +592,15 @@ export function vxCache(options: VxCacheOptions): VxPlugin {
       const config = resolveVxCacheConfig(options)
       if (config === undefined) return undefined
       const lent = ctx.lent?.() !== undefined
-      if (!hasCiToken(Bun.env, lent) && Bun.env.GITHUB_ACTIONS === 'true')
+      // A GitLab job with no `id_tokens` entry read only, unsaid (2026-10-26).
+      if (
+        !hasCiToken(Bun.env, lent) &&
+        (Bun.env.GITHUB_ACTIONS === 'true' || Bun.env.GITLAB_CI === 'true')
+      )
         ctx.warn(
-          '[vx] vx-cache: this job gets no OIDC token (give it `permissions: id-token: write`): it reads only',
+          Bun.env.GITHUB_ACTIONS === 'true'
+            ? '[vx] vx-cache: this job gets no OIDC token (give it `permissions: id-token: write`): it reads only'
+            : '[vx] vx-cache: no CI token for the cache server (name an id_tokens entry VX_CACHE_TOKEN): it reads only',
         )
       if (ctx.refs.length === 0) {
         ctx.warn(
