@@ -212,8 +212,10 @@ export function oidcAuth(opts: OidcOptions): Authorize {
       // A failed discovery is not kept: the next token tries again.
       set.catch(() => keys.get(iss) === set && keys.delete(iss))
     }
+    // The issuer's outage, not the token's fault: a 401 tells a client its
+    // token is refused, and vx-cache turns the remote off for the run.
     return set.catch(() => {
-      throw new Refusal(401, `could not read ${iss}'s keys`)
+      throw new Refusal(502, `could not read ${iss}'s keys`)
     })
   }
 
@@ -256,7 +258,7 @@ export function oidcAuth(opts: OidcOptions): Authorize {
         })
       ).payload
     } catch (err) {
-      throw refusal(err)
+      throw refusal(err, iss)
     }
     const claim = repoClaimOf(iss)
     // GitHub and GitLab names ignore case; a checkout's origin may spell it either way.
@@ -288,8 +290,11 @@ export function oidcAuth(opts: OidcOptions): Authorize {
 const issuerOf = (iss: string): string => iss.replace(/\/$/, '')
 
 /** What jose's refusal of a token says. */
-function refusal(err: unknown): Refusal {
+function refusal(err: unknown, iss: string): Refusal {
   if (err instanceof Refusal) return err
+  // A refetch of the keys for a kid not held failed: the network, not the token.
+  if (!(err instanceof errors.JOSEError) || err instanceof errors.JWKSTimeout)
+    return new Refusal(502, `could not read ${iss}'s keys`)
   if (err instanceof errors.JOSEAlgNotAllowed) return new Refusal(401, 'alg is not RS256')
   if (err instanceof errors.JWKSNoMatchingKey) return new Refusal(401, 'unknown signing key')
   if (err instanceof errors.JWSSignatureVerificationFailed) return new Refusal(401, 'bad signature')
