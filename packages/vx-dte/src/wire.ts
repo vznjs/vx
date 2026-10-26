@@ -1014,7 +1014,13 @@ async function connect(
       await me.close()
       const status = refusal(code)
       if (status === undefined) return undefined
-      const why = `${status} ${reason}`
+      // A GitLab job with no `id_tokens` entry was told only `401 no bearer
+      // token`, not what gives it one (2026-10-26).
+      const hint =
+        status === 401 && headers['authorization'] === undefined
+          ? `: this job has no token for the relay (on GitLab, an id_tokens entry VX_DTE_TOKEN with aud ${base.replace(/\/v1\/sessions\/.*$/, '')}; on GitHub Actions, permissions: id-token: write)`
+          : ''
+      const why = `${status} ${reason}${hint}`
       throw new RelayError(
         status,
         status === 401 || status === 403

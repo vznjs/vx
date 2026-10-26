@@ -423,7 +423,7 @@ export function dte(options: DteOptions) {
         throw new UserError('dte(): no relay: set relay, or use an adapter that has one')
       const [
         { Orchestrator },
-        { join, RelayError },
+        { join },
         { decide, knownMisses, slowdown, tailsMs, WARM_UP_MS },
         { snapshot },
         seal,
@@ -454,24 +454,13 @@ export function dte(options: DteOptions) {
       const need = (id: string): Need => booked(needOf(peaks.get(id), unmeasured), how.book)
       // The run plans again on it, now when `now`; set once the plan is.
       let onChange = (_now?: boolean): void => {}
-      // A GitLab job with no `id_tokens` entry was told only `401 no bearer
-      // token`, not what gives it one (2026-10-26).
-      let tokenless = false
-      const relayToken = async (): Promise<string | undefined> => {
-        const t = await token(relay)
-        tokenless = t === undefined
-        return t
-      }
-      const joined = await join(relay, run, 'orchestrator', null, relayToken, headers).catch(
-        (err: unknown) => {
-          if (!tokenless || !(err instanceof RelayError) || err.status !== 401) throw err
-          throw new UserError(
-            `${err.message}: this job has no token for the relay (on GitLab, an id_tokens entry VX_DTE_TOKEN with aud ${relay}; on GitHub Actions, permissions: id-token: write)`,
-          )
-        },
-      )
       const o = new Orchestrator({
-        me: seal.sealOrchestrator(joined, run, proof, ctx.warn),
+        me: seal.sealOrchestrator(
+          await join(relay, run, 'orchestrator', null, () => token(relay), headers),
+          run,
+          proof,
+          ctx.warn,
+        ),
         root: ctx.workspaceRoot,
         tree,
         nodes: () => nodes,
