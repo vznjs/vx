@@ -32,8 +32,9 @@ function main(argv: string[]): void {
   // The bare usage said nothing of which was missing.
   if (!noAuth) {
     const missing = [
-      ...(values.allow === undefined ? ['--allow'] : []),
-      ...(values.audience === undefined ? ['--audience'] : []),
+      // An empty one is missing too: it started a relay that refused every token.
+      ...((values.allow ?? []).every((a) => a.trim() === '') ? ['--allow'] : []),
+      ...(values.audience === undefined || values.audience.trim() === '' ? ['--audience'] : []),
     ]
     if (missing.length > 0) fail(`missing ${missing.join(' and ')} (or --no-auth)\n${USAGE}`)
   }
