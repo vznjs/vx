@@ -79,6 +79,8 @@ if (import.meta.main) {
   try {
     main(process.argv.slice(2))
   } catch (err) {
-    fail(err instanceof Error ? err.message : String(err))
+    // parseArgs names the flag it refused, not the ones there are.
+    const usage = (err as { code?: string }).code?.startsWith('ERR_PARSE_ARGS') ? `\n${USAGE}` : ''
+    fail(`${err instanceof Error ? err.message : String(err)}${usage}`)
   }
 }
