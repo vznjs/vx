@@ -554,6 +554,9 @@ export function resolveVxCacheConfig(
   const url = (options.url ?? env.VX_CACHE_URL)?.replace(/\/+$/, '')
   if (url === undefined || url === '') return undefined
   if (!/^https?:\/\//.test(url)) throw new Error(`vxCache(): url must be http(s), got ${url}`)
+  // Each route is the url's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
+  if (url.endsWith('/v1'))
+    throw new Error(`vxCache(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
   return {
     url,
     ...named,

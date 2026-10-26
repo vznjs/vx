@@ -211,6 +211,9 @@ describe('HistoryServer', () => {
       'https://h.example',
     )
     expect(() => serverUrlOf('h.example', {})).toThrow('vxHistory(): server must be http(s)')
+    expect(() => serverUrlOf('https://h.example/v1/', {})).toThrow(
+      "vxHistory(): server is the server's base, without /v1: https://h.example",
+    )
   })
 })
 

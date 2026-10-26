@@ -473,6 +473,9 @@ describe('config', () => {
     expect(() => resolveVxCacheConfig({ ...NAMED, url: 'c.example' }, {})).toThrow(
       'vxCache(): url must be http(s), got c.example',
     )
+    expect(() => resolveVxCacheConfig({ ...NAMED, url: 'https://c.example/v1' }, {})).toThrow(
+      "vxCache(): url is the server's base, without /v1: https://c.example",
+    )
     expect(hasCiToken({}, false)).toBe(false)
     expect(hasCiToken({}, true)).toBe(true)
     expect(hasCiToken({ VX_CACHE_TOKEN: 'jwt' }, false)).toBe(true)

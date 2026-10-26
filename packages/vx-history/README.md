@@ -33,7 +33,7 @@ A recorded p50 always wins over an assumption, and assumptions never feed the wo
 
 ## Timings from a history server
 
-`server` (or `VX_HISTORY_URL`) names a
+`server` (or `VX_HISTORY_URL`), its base URL without `/v1`, names a
 [`@vzn/vx-history-server`](https://github.com/vznjs/vx/tree/main/packages/vx-history-server).
 On a CI job with a token (GitHub's OIDC token, which needs
 `permissions: id-token: write`, or a GitLab `id_tokens` entry
