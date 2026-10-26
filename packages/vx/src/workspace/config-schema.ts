@@ -910,8 +910,8 @@ export function validateProjectConfig(
         if (hasParentSegment(g)) {
           throw new UserError(
             `${where}.cache.outputs.files: '..' path segments are not allowed (got "${g}") — ` +
-              `outputs must stay within the project (a glob that escapes the project dir would ` +
-              `let cleanOutputs delete files outside it)`,
+              `outputs must stay within the project (vx clears a task's outputs before it runs, ` +
+              `so a glob that escapes the project would delete files outside it)`,
           )
         }
         assertPosixGlob(g, `${where}.cache.outputs.files`, 'project')
