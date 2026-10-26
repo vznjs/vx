@@ -149,6 +149,23 @@ describe('reapi(): lifecycle and failure messages', () => {
     },
     30_000,
   )
+
+  it.skipIf(!CHUNKING_SUPPORTED)(
+    'a refused port says so without the empty tail grpc-js leaves',
+    async () => {
+      await withoutReapiEnv(async () => {
+        const p = reapi({ endpoint: 'grpc://127.0.0.1:1' })
+        const remote = (await p.cache?.(ctx([])))!
+        const err = await remote.has('h1').then(
+          () => undefined,
+          (e: unknown) => e as Error,
+        )
+        await p.teardown?.()
+        expect(err?.message).toMatch(/^14 UNAVAILABLE: .*ECONNREFUSED 127\.0\.0\.1:1\.$/)
+      })
+    },
+    30_000,
+  )
 })
 
 // F-14: a malformed endpoint failed each request far from the setting —
