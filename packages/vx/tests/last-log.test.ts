@@ -42,6 +42,13 @@ export default { tasks: {
   runIds['bad'] = lastRunId()
   expect(vx('run', 'a#quiet').code).toBe(0)
   expect(vx('run', 'a#mute').code).toBe(1)
+  await addProject(
+    root,
+    'b',
+    `export default { tasks: { build: { exec: { command: 'echo b' } }, own: { exec: { command: 'echo own' } } } }\n`,
+  )
+  expect(vx('run', 'b#build').code).toBe(0)
+  expect(vx('run', 'b#own').code).toBe(0)
 }, 60_000)
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
@@ -103,7 +110,7 @@ it('a failed task whose kept failures were pruned says so, not that it printed n
       code: 0,
       out: '',
       err: noticed(
-        "vx last: a#bad ended failed, and vx kept no output for it: it keeps the newest 50 failed runs'\n",
+        'vx last: a#bad ended failed, and vx kept no output for it: it keeps the newest 50 failed runs\n',
         'info',
       ),
     })
@@ -131,4 +138,20 @@ it('--log takes a task id and combines only with a run id', () => {
   expect(vx('last', '--log').err).toContain('--log requires a task id')
   expect(vx('last', '--log', 'a#bad', '--list').err).toContain('combines only with a run id')
   expect(vx('last', '--log', 'a#bad', '--failed').err).toContain('combines only with a run id')
+})
+
+it('--log takes a bare task name: the one project that ran it, else the ones to pick', () => {
+  expect(vx('last', '--log', 'own')).toEqual({
+    code: 0,
+    out: '',
+    err: noticed(
+      'vx last: b#own ended success. vx keeps output only for failed and cached tasks\n',
+      'info',
+    ),
+  })
+  expect(vx('last', '--log', 'build')).toEqual({
+    code: 1,
+    out: '',
+    err: noticed('vx last: "build" ran in 2 projects — pick one:\n  a#build\n  b#build\n'),
+  })
 })

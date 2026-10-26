@@ -30,6 +30,7 @@ import {
 import { outcomeWord } from '../report/index.js'
 import { formatElapsed, refusal, splitTaskId, UserError, sayNotice, ui } from '../util/index.js'
 import { findWorkspaceRoot } from '../workspace/index.js'
+import { findCwdProject } from './select.js'
 import { cliCacheDir, parseCacheDirFlag } from './workspace-config.js'
 
 interface LastArgs {
@@ -457,6 +458,27 @@ export function formatRunList(
   )
 }
 
+/**
+ * A bare task name as `--log` reads it: the one project that ran it, the
+ * cwd's among several (as `vx why` picks), else refused naming them. It
+ * read as an id and said "no recorded run of build" for a task that ran.
+ */
+async function bareTaskId(db: Database, task: string): Promise<string> {
+  if (task.includes('#')) return task
+  const ids = (
+    db.query('SELECT DISTINCT project FROM runs WHERE task = ? ORDER BY project').all(task) as {
+      project: string
+    }[]
+  ).map((r) => `${r.project}#${task}`)
+  if (ids.length <= 1) return ids[0] ?? task
+  const here = await findCwdProject(process.cwd())
+  if (here !== null && ids.includes(`${here}#${task}`)) return `${here}#${task}`
+  throw new UserError(
+    `vx last: "${task}" ran in ${ids.length} projects — pick one:\n${ids.map((id) => `  ${id}`).join('\n')}`,
+    'VX_E_AMBIGUOUS',
+  )
+}
+
 export async function lastCmd(args: readonly string[]): Promise<number> {
   const parsed = parseLastArgs(args)
   if (parsed.error !== undefined) throw new UserError(`vx last: ${parsed.error}`, 'VX_E_USAGE')
@@ -481,7 +503,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
         parsed.runId === undefined
           ? undefined
           : (resolveRunId(db, parsed.runId, 'vx last') ?? parsed.runId)
-      const log = taskLog(cacheDir, db, parsed.log, runId)
+      const log = taskLog(cacheDir, db, await bareTaskId(db, parsed.log), runId)
       if (log === null) {
         throw new UserError(
           `vx last: no recorded run of ${parsed.log}${parsed.runId === undefined ? '' : ` in run ${parsed.runId}`} (a task id is project#task)`,
@@ -496,7 +518,7 @@ export async function lastCmd(args: readonly string[]): Promise<number> {
           'info',
           'vx last',
           log.status === 'failed'
-            ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs'`
+            ? `${log.taskId} ended failed, and vx kept no output for it: it keeps the newest 50 failed runs`
             : `${log.taskId} ended ${log.status}. vx keeps output only for failed and cached tasks`,
         )
       } else if (log.output === '') {
