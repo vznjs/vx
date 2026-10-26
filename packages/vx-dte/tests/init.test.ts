@@ -316,6 +316,31 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
   }
 })
 
+it('vx dte says what is wrong with the line typed', async () => {
+  await mkdir(path.join(root, '.vx'))
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+  await writeFile(
+    path.join(root, '.vx/workspace.mjs'),
+    `import { dte, local } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, adapter: local() })] }
+`,
+  )
+  Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
+  const said = (args: string[]) =>
+    Bun.spawnSync([process.execPath, CORE_BIN, 'dte', ...args], {
+      cwd: root,
+      env: { ...process.env, NO_COLOR: '1' },
+      stderr: 'pipe',
+    })
+      .stderr.toString()
+      .split('\n')[0]
+  expect([said([]), said(['bogus']), said(['worker', '--bogus'])]).toEqual([
+    '✗ vx dte  missing subcommand',
+    '✗ vx dte  unknown subcommand: bogus',
+    '✗ vx dte  vx dte worker takes no arguments: --bogus',
+  ])
+})
+
 it('vx dte worker names only what it lacks', async () => {
   await mkdir(path.join(root, '.vx'))
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
