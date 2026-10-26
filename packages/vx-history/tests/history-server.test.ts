@@ -87,6 +87,19 @@ describe('HistoryServer', () => {
     expect(client.upload(new Map([['b', { durationMs: 1 }]]))).rejects.toThrow('HTTP 403: ')
   })
 
+  // The server sees the names hashed: it cannot say which the workspace sent.
+  it('says which repository it named when the token is of another', async () => {
+    const token = await iss.sign('main', new URL(url).origin)
+    const client = new HistoryServer(
+      url,
+      { ...NAMED, repository: 'acme/other' },
+      { VX_HISTORY_TOKEN: token },
+    )
+    await expect(client.query([await hashPart('refs/heads/main')], ['p1'])).rejects.toThrow(
+      `, not the repository named (this workspace names acme/other at ${NAMED.issuer})`,
+    )
+  })
+
   it('says why a read with no token was refused, and what lets it in', async () => {
     const client = new HistoryServer(url, NAMED, {})
     await expect(client.query([await hashPart('refs/heads/main')], ['p1'])).rejects.toThrow(

@@ -356,7 +356,7 @@ export class VxCacheLayer implements RemoteCacheLayer {
       this.disabled = true
       if (!first) return undefined
       throw new Error(
-        `${(await refusal(res)).message}: ${bearer === '' ? 'a read with no token was refused' : 'the token was refused'}; remote cache off for this run`,
+        `${(await refusal(res)).message}: ${bearer === '' ? 'a read with no token was refused' : `the token was refused (this workspace names ${this.config.repository} at ${this.config.issuer})`}; remote cache off for this run`,
       )
     }
     return res
