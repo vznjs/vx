@@ -11,7 +11,7 @@ import { hashPart, oidcAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { type Issuer, issuer, NAMED, trustOf } from './issuer.js'
-import { HistoryServer, proxyHeaders, serverUrlOf } from '../src/history-server.js'
+import { HistoryServer, proxyHeaders, serverUrlOf, timingOf } from '../src/history-server.js'
 import { vxHistory } from '../src/index.js'
 
 let iss: Issuer
@@ -207,6 +207,13 @@ describe('HistoryServer', () => {
       new Map([['p1', { durationMs: 7 }]]),
     )
     expect(auths).toEqual([null, null])
+  })
+
+  it('sends how long a task on a crowded machine would have taken alone, as local history keeps it', () => {
+    const ran = { status: 'success', durationMs: 75_000, cpuMs: 20_000 } as const
+    // One core's work at a third of a core: two thirds of 20 s was waiting.
+    expect(timingOf({ ...ran, cpuShare: 1 / 3 } as never)?.durationMs).toBe(35_000)
+    expect(timingOf(ran as never)?.durationMs).toBe(75_000)
   })
 
   it('refuses a workspace that names a server but no issuer or repository', () => {

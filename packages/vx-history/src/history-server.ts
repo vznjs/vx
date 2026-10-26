@@ -55,10 +55,22 @@ export function timingOf(o: TaskOutcome): ServerTiming | undefined {
       ? undefined
       : o.cpuMs / (o.durationMs * (o.cpuShare ?? 1))
   return {
-    durationMs: Math.max(0, Math.round(o.durationMs)),
+    durationMs: Math.max(0, aloneMs(o)),
     ...(cores === undefined ? {} : { cores }),
     ...(o.peakRssBytes === undefined ? {} : { rssBytes: o.peakRssBytes }),
   }
+}
+
+/**
+ * How long it would have taken alone, as core's local history stores it
+ * (`run-history.ts` aloneMs): on a crowded DTE worker (`cpuShare` < 1) each
+ * thread waited for a core. Sent as it ran, every crowded run raised the
+ * shared number a forecast reads (2026-10-26).
+ */
+function aloneMs(o: TaskOutcome): number {
+  const { durationMs: d, cpuMs: c, cpuShare: s } = o
+  if (c === undefined || s === undefined || !(s > 0 && s < 1) || !(d > 0)) return Math.round(d)
+  return Math.round(d - (c / s - c) / Math.max(1, c / (d * s)))
 }
 
 const deadline = (): AbortSignal => {
