@@ -112,3 +112,32 @@ it('answers an upload it folded even when the sweep after it fails, and sweeps o
   expect(sweeps).toBe(2)
   expect(errors).toEqual(['vx-history-server: the sweep: Error: the database is busy'])
 })
+
+// A chunked body names no length: it was read whole, however large,
+// before it was measured (2026-10-26).
+it('refuses a query body past its limit as it arrives', async () => {
+  const handle = createHistoryServer({
+    store: sqliteStore(sqliteDb(path.join(dir, 'large.sqlite'))),
+    authorize: async () => ({ issuer: GITHUB, repository: REPO }),
+  })
+  let pulled = 0
+  // 8 MB in all, so a read of the whole body ends, and fails below.
+  const large = new ReadableStream<Uint8Array>({
+    pull(c) {
+      if (++pulled > 128) return c.close()
+      c.enqueue(new Uint8Array(64 * 1024).fill(32))
+    },
+  })
+  const res = await handle(
+    new Request('https://history.example.com/v1/timings/query', {
+      method: 'POST',
+      body: large,
+      headers: { 'content-type': 'application/json' },
+    }),
+  )
+  expect([res.status, ((await res.json()) as { message: string }).message]).toEqual([
+    413,
+    'the body is at most 6001000 bytes',
+  ])
+  expect(pulled).toBeLessThan(100)
+})

@@ -154,8 +154,7 @@ async function readJson(req: Request, max: number): Promise<unknown> {
   if (Number(req.headers.get('content-length') ?? 0) > max) {
     throw new Refusal(413, `the body is at most ${max} bytes`)
   }
-  const text = await req.text()
-  if (text.length > max) throw new Refusal(413, `the body is at most ${max} bytes`)
+  const text = await textUpTo(req, max)
   try {
     return JSON.parse(text)
   } catch {
@@ -197,4 +196,21 @@ function parseReports(body: unknown): Report[] {
       ...(rssBytes === undefined ? {} : { rssBytes: rssBytes as number }),
     }
   })
+}
+
+/**
+ * The body as text, refused past `max` bytes as they arrive: a chunked body
+ * names no length, and was read whole before it was measured.
+ */
+async function textUpTo(req: Request, max: number): Promise<string> {
+  const decoder = new TextDecoder()
+  let text = ''
+  let seen = 0
+  // Leaving the loop by a throw cancels the stream.
+  for await (const chunk of req.body ?? []) {
+    seen += chunk.byteLength
+    if (seen > max) throw new Refusal(413, `the body is at most ${max} bytes`)
+    text += decoder.decode(chunk, { stream: true })
+  }
+  return text + decoder.decode()
 }
