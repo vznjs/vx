@@ -38,13 +38,15 @@ export function local(options: LocalOptions = {}): DteAdapter {
     cwd: string,
     env?: Record<string, string | undefined>,
     helper = true,
+    // A prepare's reason can be on stdout: pnpm prints its install errors there.
+    stdout = false,
   ) => {
     const p = start(
       Bun.spawn(argv, {
         cwd,
         env: env ?? process.env,
         stdin: 'ignore',
-        stdout: 'ignore',
+        stdout: stdout ? 'pipe' : 'ignore',
         stderr: 'pipe',
       }),
     )
@@ -53,9 +55,13 @@ export function local(options: LocalOptions = {}): DteAdapter {
       void p.exited.then(() => helpers.delete(p))
     }
     const chunks: Uint8Array[] = []
-    const reading = (async () => {
-      for await (const c of p.stderr) chunks.push(c)
-    })()
+    const read = async (from: ReadableStream<Uint8Array>) => {
+      for await (const c of from) chunks.push(c)
+    }
+    const reading = Promise.all([
+      read(p.stderr),
+      p.stdout instanceof ReadableStream ? read(p.stdout) : undefined,
+    ])
     const code = await p.exited
     // A grandchild of `sh -c` that outlives it keeps the pipe open; what it
     // said by then is enough.
@@ -100,7 +106,7 @@ export function local(options: LocalOptions = {}): DteAdapter {
         // worktree's own store, where the run cannot read what it saved.
         if (a.cacheDir !== undefined) env['VX_CACHE_DIR'] = a.cacheDir
         if (options.prepare !== undefined && !closed) {
-          const p = await run(['sh', '-c', options.prepare], at, env)
+          const p = await run(['sh', '-c', options.prepare], at, env, true, true)
           if (p.code !== 0 && !closed)
             throw new Error(await why(`prepare exited ${p.code}`, a.id, p.err))
         }

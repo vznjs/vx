@@ -3176,7 +3176,9 @@ it('docker() starts each worker as a container of its size, on a fresh clone', a
         `git fetch -q --upload-pack='git -c uploadpack.allowAnySHA1InWant=true upload-pack' /src ${sha}`,
         `git checkout -q --detach ${sha}`,
         "cd 'sub'",
+        '{',
         'bun install',
+        '} >&2',
         'exec ./node_modules/.bin/vx dte worker',
       ].join('\n'),
     )

@@ -125,7 +125,8 @@ git worktree of the tracked files as they are, uncommitted changes
 included (untracked files are not: a task that keys one fails), at the
 workspace's place in it (a workspace in a subdirectory of its repository too),
 saving to the run's store (a relative `cache.dir` or `--cache-dir` too). When a worker fails, its row names
-the error line and the log that holds its whole stderr. At the run's end,
+the error line and the log that holds its whole stderr and all `prepare`
+printed. At the run's end,
 or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
 a detached shell removes them and prunes git's records.
 
@@ -141,7 +142,7 @@ clone keeps this checkout's `origin`, so the workers save where the run
 reads, as `local()`'s do; no remote is needed. On Linux a container runs
 as this user (its home is `/tmp`, where the store is mounted), so what it
 writes is this user's and git trusts the mounted checkout. A container that fails
-names its error line and the log of its whole stderr:
+names its error line and the log of its whole stderr and all `prepare` printed:
 
 ```ts
 dte({
