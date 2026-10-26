@@ -410,7 +410,7 @@ export default defineProject({
 - **On CI** (`CI` or a provider's variable set) every task runs or the run
   fails: one whose platforms leave the machine out refuses the run before
   any task starts. Run a target that holds only this platform's tasks, or
-  one distributed run with a worker of each platform.
+  one DTE run with a worker of each platform.
 - **With an executor that routes by platform** (`@vzn/vx-dte`, whose
   worker sizes each name a `platform`), the task
   runs on a worker of one of its platforms: this machine's if the

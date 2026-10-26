@@ -506,7 +506,7 @@ export function platformVerdict(
       refuse:
         `on CI every task runs or the run fails, and ${skipped.size === 1 ? 'this task' : 'these tasks'} cannot run on ${host}:\n` +
         [...skipped.keys()].map((id) => `  ${needs(id)}`).join('\n') +
-        `\nrun a target that holds only ${host} tasks, or one distributed run with a worker of each platform`,
+        `\nrun a target that holds only ${host} tasks, or one DTE run with a worker of each platform`,
     }
   }
   return {

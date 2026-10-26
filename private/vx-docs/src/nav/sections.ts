@@ -67,7 +67,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
         { label: 'Sandboxing', link: '/docs/sandboxing/' },
         { label: 'CI', link: '/docs/ci/' },
         { label: 'Remote cache', link: '/docs/remote-cache/' },
-        { label: 'Distributed runs', link: '/docs/distributed-runs/' },
+        { label: 'Distributed task execution', link: '/docs/distributed-task-execution/' },
         { label: 'Remote execution', link: '/docs/remote-execution/' },
       ],
     },

@@ -740,7 +740,7 @@ export default defineWorkspace({
     },
     image: 'remote-execution.png',
     imageAlt: 'vx sending tasks to a REAPI server.',
-    docs: { label: 'Distributed runs', href: 'docs/distributed-runs/' },
+    docs: { label: 'Distributed task execution', href: 'docs/distributed-task-execution/' },
     deepDive: { label: 'Remote execution', href: 'blog/remote-execution/' },
   },
   {

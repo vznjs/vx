@@ -98,7 +98,7 @@ packages/vx-history-server  the task timings vx-history reads, one folded row pe
                         SQLite, Workers + D1, or Docker
 packages/vx-cache       vxCache(): the remote cache, CI jobs only, over vx-cache-server's /v1 wire
 private/vx-docs         Astro Starlight site; packages/vx/docs is imported by scripts/import-docs.ts
-packages/vx-dte         distributed runs: `dte()` executor + `vx dte worker` over the relay, `local()` adapter
+packages/vx-dte         distributed task execution: `dte()` executor + `vx dte worker` over the relay, `local()` adapter
                         (workers in git worktrees). Private until npm has it
 packages/vx-dte-server  the reference relay of `@vzn/vx-dte` (PROTOCOL.md): passes a run's messages, storing none, behind CI
                         OIDC tokens; imports only jose, not even core. Private until npm has it

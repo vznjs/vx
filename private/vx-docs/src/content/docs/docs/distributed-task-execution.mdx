@@ -1,30 +1,18 @@
 ---
-title: Distributed runs
-description: Spread one vx run over workers your own CI starts, reported as one run.
+title: Distributed task execution
+description: Run your tasks on several CI machines at once, and get one result.
 ---
 
-import { Aside } from '@astrojs/starlight/components'
+When one CI machine is too slow for your build, vx can run your tasks
+on several machines at once. You still start one CI job, and you still
+get one result.
 
-When one CI runner is too slow for your whole run, `@vzn/vx-dte` spreads
-it over several. You still start one job that runs `vx run`. That job
-starts workers on your own CI, hands each one tasks, and reports every
-task as if it ran in one place.
+That job works out which tasks need to run. It starts more CI jobs,
+called workers, and gives each one tasks. When a worker finishes a task,
+its output and logs come back to your job, as if the task had run there.
 
-```text frame="terminal"
- ⏺︎   308ms success miss     c#build · small#1
-  workers    small#1  online    3 done · 2 running
-            small#2  starting
-```
-
-The job you start runs no task itself. It plans, hands out tasks, and
-restores what the cache already has. Workers start only when a task
-misses the cache, so a run with nothing to do starts none.
-
-<Aside title="Not on npm yet">
-  `@vzn/vx-dte` ships to npm with an upcoming release. Until then you can
-  [try it on your machine](#try-it-on-your-machine) from a checkout of the
-  vx repository.
-</Aside>
+A task the cache already has never runs, so a push that changes nothing
+starts no workers.
 
 ## How it works
 
@@ -61,6 +49,10 @@ Follow [DTE server](../servers/dte/) to deploy it. Its URL looks like
 `https://vx-dte-server.acme.workers.dev`. Leave `ALLOW` for step 4.
 
 ### 2. Declare `dte()`
+
+```sh
+bun add -d @vzn/vx-dte
+```
 
 ```ts title=".vx/workspace.ts" ins={4,12-16}
 import { defineWorkspace } from '@vzn/vx/config'
@@ -132,7 +124,11 @@ The run's log and job summary show each worker beside the tasks it ran.
 ## Try it on your machine
 
 `local()` starts each worker as a process in its own git worktree, so
-you can watch a distributed run with no CI and no relay:
+you can watch a DTE run with no CI and no relay:
+
+```sh
+bun add -d @vzn/vx-dte @vzn/vx-lockfile
+```
 
 ```ts title=".vx/workspace.ts"
 import { defineWorkspace } from '@vzn/vx/config'
@@ -169,17 +165,6 @@ VX_DTE_RUN=$(uuidgen) vx run build --all
 A worker checks out your files as git has them, uncommitted changes
 included. A file git does not track is not there: a task that reads one
 fails, naming it.
-
-Until `@vzn/vx-dte` is on npm, link it from a checkout of the vx
-repository. The vx you run must come from the same checkout:
-
-```sh
-git clone https://github.com/vznjs/vx ~/vx
-cd ~/vx && bun install
-(cd packages/vx && bun link) && (cd packages/vx-dte && bun link) && (cd packages/vx-lockfile && bun link)
-cd ~/your-repo
-bun link --save @vzn/vx @vzn/vx-dte @vzn/vx-lockfile
-```
 
 ---
 
