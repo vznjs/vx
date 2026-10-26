@@ -1522,7 +1522,10 @@ it('a worker that could not run a task it began gets no more; two such fail it',
 })
 
 it('a task a worker stops saying it holds goes back when its lease ends', async () => {
-  const h = await harness(new Map([node('t1')]), undefined, 100)
+  // At 100 ms a beat, the test process held its loop past 190 ms once on
+  // CI and its worker lost the orchestrator (main ae800d6, 2026-10-26).
+  const beat = 300
+  const h = await harness(new Map([node('t1')]), undefined, beat)
   try {
     const a = await h.worker(1)
     await Bun.sleep(50)
@@ -1538,8 +1541,8 @@ it('a task a worker stops saying it holds goes back when its lease ends', async 
       let got: string[][] = []
       for (let i = 0; i < 3 && got.length === 0; i++) got = await b.batches()
       expect(got).toEqual([['t1']])
-      // Six heartbeats a `held`, the lease was 1.8 s here (90 s live).
-      expect(performance.now() - said).toBeLessThan(1_200)
+      // A `held` lasts three heartbeats: well under a lease of six.
+      expect(performance.now() - said).toBeLessThan(6 * beat)
     } finally {
       clearInterval(alive)
     }
