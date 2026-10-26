@@ -315,7 +315,11 @@ export function dte(options: DteOptions) {
             return 0
           }
           if (argv[0] === 'init') return init(argv.slice(1), ctx)
-          if (argv[0] !== 'worker' || argv.length > 1) throw new UserError(USAGE)
+          // The bare usage said nothing of what was wrong with the line typed.
+          if (argv[0] === undefined) throw new UserError(`missing subcommand\n${USAGE}`)
+          if (argv[0] !== 'worker') throw new UserError(`unknown subcommand: ${argv[0]}\n${USAGE}`)
+          if (argv.length > 1)
+            throw new UserError(`vx dte worker takes no arguments: ${argv.slice(1).join(' ')}`)
           const run = runOf()
           const relay = process.env['VX_DTE_RELAY'] ?? options.relay
           // Only what is missing: with VX_DTE_RUN set, the old line still asked for it.
