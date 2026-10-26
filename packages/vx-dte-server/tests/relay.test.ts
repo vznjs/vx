@@ -796,6 +796,21 @@ beforeAll(() => {
 afterAll(() => served?.stop())
 conformance('the Bun relay', { base: () => served!.url, headers: () => ({}) })
 
+it('names the flags it lacks', () => {
+  const said = (...args: string[]) =>
+    Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), ...args], {
+      stderr: 'pipe',
+    })
+      .stderr.toString()
+      .split('\n')[0]
+  const allow = ['--allow', 'https://token.actions.githubusercontent.com:acme/app:ci.yml']
+  expect([said(), said(...allow), said('--audience', 'x')]).toEqual([
+    'missing --allow and --audience (or --no-auth)',
+    'missing --audience (or --no-auth)',
+    'missing --allow (or --no-auth)',
+  ])
+})
+
 it('answers a flag it does not know with its usage', () => {
   const cli = Bun.spawnSync(['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--bogus'], {
     stderr: 'pipe',

@@ -29,7 +29,14 @@ function main(argv: string[]): void {
   const noAuth = values['no-auth']
   const host = values.host ?? (noAuth ? '127.0.0.1' : '0.0.0.0')
   if (noAuth && !LOOPBACK.has(host)) fail('--no-auth listens on loopback only')
-  if (!noAuth && (values.allow === undefined || values.audience === undefined)) fail(USAGE)
+  // The bare usage said nothing of which was missing.
+  if (!noAuth) {
+    const missing = [
+      ...(values.allow === undefined ? ['--allow'] : []),
+      ...(values.audience === undefined ? ['--audience'] : []),
+    ]
+    if (missing.length > 0) fail(`missing ${missing.join(' and ')} (or --no-auth)\n${USAGE}`)
+  }
   let allow: ReturnType<typeof parseAllow> = []
   try {
     allow = parseAllow((values.allow ?? []).join(' '))
