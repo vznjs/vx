@@ -110,6 +110,19 @@ describe('CI OIDC tokens', () => {
     expect(await status('e7', near.ref)).toBe(200)
   })
 
+  // A pull_request_target run carries a fork's head_ref, named by the
+  // fork: it wrote that branch's scope, so a fork poisoned a branch of the
+  // same name (found 2026-10-26).
+  it("a pull_request_target token writes its base ref, never the fork's branch", async () => {
+    const target = await sign({
+      event_name: 'pull_request_target',
+      ref: 'refs/heads/main',
+      head_ref: 'feature',
+    })
+    expect(await detail(await put(target, 'f8'))).toEqual([403, 'this request reads only'])
+    expect(await status('f8', 'refs/heads/feature')).toBe(404)
+  })
+
   it('a job matching no rule on a protected ref writes nothing', async () => {
     const res = await put(await sign({ ...MAIN, event_name: 'workflow_dispatch' }), 'c3')
     expect(await detail(res)).toEqual([403, 'this request reads only'])
