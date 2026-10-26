@@ -236,8 +236,13 @@ describe('discover', () => {
     })
   }
 
-  it('no lockfile: no entries', async () => {
-    expect(await discover(bun())).toEqual([])
+  it('no lockfile: no entries, and says which file it found none of', async () => {
+    const warnings: string[] = []
+    expect(await discover(bun(), undefined, warnings)).toEqual([])
+    // Core's refusal of a `^build` with no edges says to add the plugin already declared.
+    expect(warnings).toEqual([
+      `[vx] bun(): no bun.lock in ${root} — run \`bun install\`; until then it orders and keys no package's dependencies`,
+    ])
   })
 
   it('a name two importers share is given to neither', async () => {
