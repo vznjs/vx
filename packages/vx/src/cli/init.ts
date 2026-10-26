@@ -6,7 +6,7 @@
 // `vx init --plugin <seam>` writes a runnable plugin for one seam and its
 // test instead (plugin-templates.ts, the examples the gate runs).
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
 import { gitTop, workspaceFileWritten } from '../handoff.js'
@@ -26,6 +26,7 @@ import { DOT_VX_GITATTRIBUTES, DOT_VX_GITIGNORE, ui, UserError, sayNotice } from
 import {
   findWorkspaceRoot,
   PROJECT_CONFIG_FILENAMES,
+  STARTER_PROJECT,
   WORKSPACE_CONFIG_FILENAMES,
 } from '../workspace/index.js'
 
@@ -290,8 +291,28 @@ function workspaceSource(plugin: string | null): string {
     return "import { defineWorkspace } from '@vzn/vx'\n\nexport default defineWorkspace({ plugins: [] })\n"
   return `import { defineWorkspace } from '@vzn/vx'\nimport { ${plugin} } from '@vzn/vx-lockfile'\n\nexport default defineWorkspace({ plugins: [${plugin}()] })\n`
 }
-const PROJECT =
-  "import { defineProject } from '@vzn/vx'\n\nexport default defineProject({ tasks: {} })\n"
+
+/**
+ * Whether `pkgRoot` has package.json scripts to map: its own, or a
+ * workspace's members (`workspaces`, `pnpm-workspace.yaml`). Core maps none
+ * (M, 2026-10-20), so `next` names the tool that does.
+ */
+function hasScripts(pkgRoot: string | null): boolean {
+  if (pkgRoot === null) return false
+  if (existsSync(path.join(pkgRoot, 'pnpm-workspace.yaml'))) return true
+  try {
+    const pj = JSON.parse(readFileSync(path.join(pkgRoot, 'package.json'), 'utf8')) as {
+      scripts?: unknown
+      workspaces?: unknown
+    }
+    return (
+      pj.workspaces !== undefined ||
+      (typeof pj.scripts === 'object' && pj.scripts !== null && Object.keys(pj.scripts).length > 0)
+    )
+  } catch {
+    return false
+  }
+}
 
 /**
  * No Turbo or Nx config: the installs, then `.vx/workspace.ts` declaring
@@ -327,7 +348,7 @@ async function starter(
   const replaced: string[] = []
   for (const [names, name, contents] of [
     [WORKSPACE_CONFIG_FILENAMES, `.vx/workspace.${ext}`, workspaceSource(plugin)],
-    [PROJECT_CONFIG_FILENAMES, config, PROJECT],
+    [PROJECT_CONFIG_FILENAMES, config, STARTER_PROJECT],
   ] as const) {
     const existing = names.find((n) => existsSync(path.join(root, n)))
     if (existing !== undefined && !args.force) kept.push(existing)
@@ -343,7 +364,8 @@ async function starter(
   ] as const) {
     if (!existsSync(path.join(root, name))) files.push({ path: name, contents })
   }
-  const next = `${noGit ? 'git init, ' : ''}declare a task in ${kept.find((f) => f.startsWith('vx.config.')) ?? config}, then vx lock && vx run <task>`
+  const declare = `declare a task in ${kept.find((f) => f.startsWith('vx.config.')) ?? config}, then vx lock && vx run <task>`
+  const next = `${noGit ? 'git init, ' : ''}${hasScripts(pkgRoot) ? `bunx @vzn/vx-migrate${args.mjs ? ' --mjs' : ''} to make package.json scripts tasks, or ${declare}` : declare}`
   if (args.json === true) {
     process.stdout.write(
       `${JSON.stringify({ dry: true, source: 'no turbo.json or nx.json', files, kept, replaced, todos: [], notes: [], next, installs })}\n`,

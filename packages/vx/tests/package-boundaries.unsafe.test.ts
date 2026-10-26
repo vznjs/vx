@@ -155,6 +155,8 @@ describe('package boundaries', () => {
       'isPassStatus',
       // Widened 2026-10-17: a plugin tells a missing `ctx.secret` from a fault.
       'isSecretUnavailable',
+      // Widened 2026-10-26: `@vzn/vx-migrate` maps over `vx init`'s untouched starter.
+      'isStarterConfig',
       'isUserError',
       'loadProjectConfig',
       'loadResolvedProjects',

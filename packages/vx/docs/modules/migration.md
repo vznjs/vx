@@ -63,6 +63,10 @@ export interface ApplyMigrationArgs {
   plugins?: readonly WorkspacePlugin[] // { pkg, factory }: what the written workspace file declares
 }
 export function applyMigration(args: ApplyMigrationArgs): Promise<number>
+// The root config `vx init` writes outside a Turbo or Nx repo, and whether
+// a file is it, untouched: a migration maps over it (its write is no conflict).
+export const STARTER_PROJECT: string
+export function isStarterConfig(file: string): boolean
 export function quoteTsLiteral(s: string): string
 export const PERSISTENT_TODO: string
 // Drops `note` from each persistent task no `dependsOn` in the mapping
