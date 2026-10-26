@@ -830,3 +830,11 @@ it('answers a flag it does not know with its usage', () => {
     'usage: vx-dte-server',
   ])
 })
+
+it('refuses an empty --port: Number of it is 0, a random port', () => {
+  const cli = Bun.spawnSync(
+    ['bun', path.join(import.meta.dir, '..', 'src', 'bun.ts'), '--no-auth', '--port', ''],
+    { stderr: 'pipe' },
+  )
+  expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+})

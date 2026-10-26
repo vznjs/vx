@@ -84,7 +84,8 @@ function main(argv: string[]): void {
   }
   const env = Bun.env
   if (env.S3_BUCKET === undefined || env.S3_BUCKET === '') fail(`set S3_BUCKET\n${USAGE}`)
-  const port = Number(values.port)
+  // Number('') is 0: `--port "$PORT"` with PORT unset bound a random port.
+  const port = values.port.trim() === '' ? Number.NaN : Number(values.port)
   if (!Number.isInteger(port) || port < 0 || port > 65_535)
     fail(`--port: not a port: ${values.port}`)
   let trust

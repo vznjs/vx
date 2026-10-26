@@ -167,3 +167,11 @@ it('names TRUST when it cannot be read', () => {
     [2, 'TRUST: not a JSON list of rules\n'],
   ])
 })
+
+it('refuses an empty --port: Number of it is 0, a random port', () => {
+  const cli = Bun.spawnSync(['bun', `${import.meta.dir}/../src/bun.ts`, '--port', ''], {
+    env: { ...process.env, S3_BUCKET: 'b', TRUST: '[]' },
+    stderr: 'pipe',
+  })
+  expect([cli.exitCode, cli.stderr.toString()]).toEqual([2, '--port: not a port: \n'])
+})
