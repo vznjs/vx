@@ -72,7 +72,8 @@ export function docker(options: DockerOptions): DteAdapter {
         `git fetch -q --upload-pack='git -c uploadpack.allowAnySHA1InWant=true upload-pack' /src ${sha}`,
         `git checkout -q --detach ${sha}`,
         `cd ${quote(rel)}`,
-        ...(options.prepare === undefined ? [] : [options.prepare]),
+        // On stderr, which names why a container failed: pnpm prints an install's error on stdout.
+        ...(options.prepare === undefined ? [] : ['{', options.prepare, '} >&2']),
         'exec ./node_modules/.bin/vx dte worker',
       ].join('\n')
       // This machine's store and cache dir at their own paths, as local()'s
