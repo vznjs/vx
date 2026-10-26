@@ -19,6 +19,9 @@ import {
 import { placeholderSweeper, prepareSandbox, sandboxRequestFor } from './sandbox-request.js'
 import { forwardedSignal, terminateChildren } from './signals.js'
 
+/** How much of a server's output before ready a failure to start quotes. */
+const HEARD_BYTES = 8192
+
 export interface LocalFloor {
   execute(req: ExecuteRequest): Promise<ExecuteResult>
   /** Arms the sandbox runtime for `sandboxes` from the next sandboxed task on; its servers keep running. */
@@ -78,19 +81,32 @@ export function localFloor(
         return swept()
       }
     }
+    // Its output until ready, the tail kept: a server that dies first says
+    // why (`docker run` exiting 125 said nothing on CI, 2026-10-26).
+    let heard: string | undefined = ''
+    const hear = (t: string): void => {
+      if (heard !== undefined) heard = (heard + t).slice(-HEARD_BYTES)
+    }
     const spawn = runPersistent({
       command,
       cwd: spec.cwd,
       env: spec.env,
-      onStdout: () => {},
-      onStderr: () => {},
+      onStdout: hear,
+      onStderr: hear,
       ...(spec.readyWhen === undefined ? {} : { readyWhen: spec.readyWhen }),
       ...(spec.timeoutMs === undefined ? {} : { timeoutMs: spec.timeoutMs }),
       ...(signalChannel ? { signalChannel } : {}),
     })
     children.push(spawn.child)
     void spawn.child.exited.then(gone, gone)
-    await spawn.ready
+    try {
+      await spawn.ready
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err)
+      const said = (heard ?? '').trimEnd()
+      throw new Error(said === '' ? why : `${why}; its output:\n${said}`)
+    }
+    heard = undefined
     return spawn.child
   }
   const serve = (spec: ServerSpec, root: string): Promise<unknown> => {
