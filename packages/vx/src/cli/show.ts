@@ -117,6 +117,12 @@ export async function showCmd(args: readonly string[]): Promise<number> {
         ? parsed.target
         : parsed.target.slice(0, hashAt)
   const taskName = hashAt === -1 ? undefined : parsed.target!.slice(hashAt + 1)
+  if (projectName === '' && taskName !== undefined && taskName !== '') {
+    throw new UserError(
+      `vx show: missing project name before '#' in "${parsed.target}" (vx show ${taskName} shows it in every project)`,
+      'VX_E_USAGE',
+    )
+  }
   if (taskName === '') {
     const list = projectName === '' ? 'vx show' : `vx show ${projectName}`
     throw new UserError(

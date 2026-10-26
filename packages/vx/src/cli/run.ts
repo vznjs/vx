@@ -404,8 +404,15 @@ export async function resolveRunOptions(
     if (idx >= 0) {
       const project = t.slice(0, idx)
       const task = t.slice(idx + 1)
-      if (!project || !task) {
-        return { error: `invalid pkg#task: ${t}` }
+      if (!project) {
+        return {
+          error: `missing project name before '#' in "${t}" (vx ${verb} ${task} runs it in every project)`,
+        }
+      }
+      if (!task) {
+        return {
+          error: `missing task name after '#' in "${t}" (vx show ${project} lists the tasks)`,
+        }
       }
     }
   }

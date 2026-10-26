@@ -33,8 +33,10 @@ describe('vx run', () => {
       refused.push(await resolveRunOptions(parseRunArgs([spec]), root, [spec]))
     }
     expect(refused).toEqual([
-      { error: 'invalid pkg#task: #build' },
-      { error: 'invalid pkg#task: app#' },
+      {
+        error: `missing project name before '#' in "#build" (vx run build runs it in every project)`,
+      },
+      { error: `missing task name after '#' in "app#" (vx show app lists the tasks)` },
     ])
   })
 
