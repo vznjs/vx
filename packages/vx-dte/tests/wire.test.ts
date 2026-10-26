@@ -845,6 +845,23 @@ it('sends asked for together that would pass the relay’s body limit go as seve
   await o.leave()
 })
 
+// A refused send's number was dropped: its receiver waited on it, and
+// every send after it, forever.
+it('a send the relay refuses holds up none after it', async () => {
+  const s = serveRelay({ hostname: '127.0.0.1', port: 0, heartbeatMs: 200 })
+  servers.push(s)
+  const o = await join(s.url, R, 'orchestrator', null, undefined)
+  const a = await join(s.url, R, 'worker', null, undefined)
+  await o.poll()
+  await expect(a.send('orchestrator', 'x'.repeat(1 << 20))).rejects.toThrow('413')
+  await a.send('orchestrator', 'after')
+  const got: unknown[] = []
+  for (let i = 0; i < 10 && got.length === 0; i++) got.push(...(await o.poll()).map((m) => m.body))
+  expect(got).toEqual(['after'])
+  await a.leave()
+  await o.leave()
+})
+
 // One 500 from the relay's host on join failed a whole CI run before any
 // task started (PR #3911, 2026-10-22): join asks again.
 it('joins again after its socket is refused 5xx', async () => {

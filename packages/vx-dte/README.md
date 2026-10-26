@@ -585,7 +585,9 @@ use your own instead.
   on, a line a task: which worker, and whether it runs or saves.
 - A message the relay would not take is a warning naming it, its
   receiver and the relay's answer; one to a participant the relay already
-  lost (404) is not, since its loss is reported on its own. A worker whose
+  lost (404) is not, since its loss is reported on its own. Its number
+  still reaches the receiver, carrying nothing, so the sends after it are
+  not held up. A worker whose
   OIDC token could not be checked is refused by that cause, not as a key
   mismatch, and the run says so.
 
