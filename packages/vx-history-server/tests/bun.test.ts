@@ -141,3 +141,30 @@ it('refuses a query body past its limit as it arrives', async () => {
   ])
   expect(pulled).toBeLessThan(100)
 })
+
+// A 401 tells a client its token is refused; the issuer's keys being out
+// of reach is not that (2026-10-26).
+it("answers 502 while the issuer's keys cannot be read", async () => {
+  const handle = createHistoryServer({
+    store: sqliteStore(sqliteDb(path.join(dir, 'keys.sqlite'))),
+    authorize: oidcAuth({
+      trust: trustOf(),
+      fetchJson: async (url) => {
+        throw new Error(`${url}: 503`)
+      },
+    }),
+  })
+  const res = await handle(
+    new Request('http://127.0.0.1/v1/capabilities', {
+      headers: {
+        authorization: `Bearer ${await iss.sign('main', 'http://127.0.0.1')}`,
+        'vx-issuer': scopeOf(GITHUB),
+        'vx-repository': scopeOf(REPO),
+      },
+    }),
+  )
+  expect([res.status, await res.json()]).toEqual([
+    502,
+    { code: 'bad_gateway', message: `could not read ${GITHUB}'s keys` },
+  ])
+})

@@ -125,6 +125,7 @@ const CODES: Record<number, string> = {
   405: 'method_not_allowed',
   413: 'payload_too_large',
   500: 'internal_error',
+  502: 'bad_gateway',
 }
 
 /** Every refusal: `{ code, message }`, the message saying what to fix. */
