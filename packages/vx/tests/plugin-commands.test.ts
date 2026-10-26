@@ -313,7 +313,7 @@ describe('plugin commands', () => {
     await Bun.write(path.join(root, '.vx/workspace.mjs'), localWorkspaceSource([]))
     expect(await cli(['mcp'])).toBe(1)
     expect(err.join('')).toContain(
-      'A plugin declared in .vx/workspace.ts can add verbs; this workspace declares none\n',
+      'A plugin declared in .vx/workspace.ts can add verbs; no plugin here adds one\n',
     )
   })
 
