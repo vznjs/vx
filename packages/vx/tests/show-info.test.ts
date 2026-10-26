@@ -349,6 +349,20 @@ describe('vx show (e2e)', () => {
   )
 
   it(
+    'a target starting with `#` names the missing PROJECT, not an empty one',
+    async () => {
+      const r = await vx(root, ['show', '#build'])
+      expect(r.code).toBe(1)
+      expect(r.err.trim()).toBe(
+        noticed(
+          `vx show: missing project name before '#' in "#build" (vx show build shows it in every project)`,
+        ).trimEnd(),
+      )
+    },
+    TIMEOUT,
+  )
+
+  it(
     'an unknown project in the `pkg#task` form is named, not a crash',
     async () => {
       // The bare form has a row above; this is the other arm of the same
