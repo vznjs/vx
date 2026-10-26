@@ -4,7 +4,7 @@ import { defineProject } from '@vzn/vx'
 // touched this package (PR #4314): each heavy file is a task of its own,
 // the rest one more. The rest is every file but those, so a new one is
 // never left out.
-const HEAVY = ['wire', 'local-e2e', 'units', 'gitlab']
+const HEAVY = ['wire', 'local-e2e', 'local-e2e-saves', 'units', 'gitlab']
 const rest = `$(ls tests/*.test.ts | grep -v ${HEAVY.map((f) => `-e /${f}.test.ts`).join(' ')})`
 
 /** `bun test` over `files`, a shard of the suite. */
@@ -103,10 +103,18 @@ export default defineProject({
     },
 
     test: {
-      dependsOn: ['test.wire', 'test.local-e2e', 'test.units', 'test.gitlab', 'test.rest'],
+      dependsOn: [
+        'test.wire',
+        'test.local-e2e',
+        'test.local-e2e-saves',
+        'test.units',
+        'test.gitlab',
+        'test.rest',
+      ],
     },
     'test.wire': testTask('./tests/wire.test.ts'),
     'test.local-e2e': testTask('./tests/local-e2e.test.ts'),
+    'test.local-e2e-saves': testTask('./tests/local-e2e-saves.test.ts'),
     'test.units': testTask('./tests/units.test.ts'),
     'test.gitlab': testTask('./tests/gitlab.test.ts'),
     'test.rest': testTask(rest),
