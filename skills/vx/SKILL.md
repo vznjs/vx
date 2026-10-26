@@ -82,7 +82,8 @@ vx last --list --format json             # recent runs, newest first
 ## Workspace health
 
 ```sh
-vx info --format json   # vx and Bun versions, projects, config errors, plugins, cache
+vx info --format json        # vx and Bun versions, projects, plugins, cache
+vx lock --check --format json  # a vx.config that changed since the lock, or no longer loads
 ```
 
 ## Rules
