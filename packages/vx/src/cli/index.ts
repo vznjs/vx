@@ -298,6 +298,6 @@ function verbSourceNote(resolved: unknown, declaredVerbs: readonly string[]): st
   if (declaredVerbs.length > 0) {
     return `  This workspace's plugins declare: ${[...declaredVerbs].sort().join(', ')}.\n`
   }
-  const here = resolved === null ? 'there is no workspace here' : 'this workspace declares none'
+  const here = resolved === null ? 'there is no workspace here' : 'no plugin here adds one'
   return `  A plugin declared in .vx/workspace.ts can add verbs; ${here}.\n`
 }

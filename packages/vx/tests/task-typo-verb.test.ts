@@ -57,7 +57,7 @@ it('a closer verb, a far word and a flag keep their own lines (controls)', () =>
   expect(vx(root, 'deploy')).toEqual([
     1,
     noticed(
-      'vx: unknown command: deploy (see `vx help`)\n  A plugin declared in .vx/workspace.ts can add verbs; this workspace declares none',
+      'vx: unknown command: deploy (see `vx help`)\n  A plugin declared in .vx/workspace.ts can add verbs; no plugin here adds one',
     ),
   ])
   expect(vx(root, '--biuld')[1]).toStartWith('✗ vx  unknown flag: --biuld')

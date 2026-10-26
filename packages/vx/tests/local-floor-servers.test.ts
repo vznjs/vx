@@ -68,7 +68,7 @@ it('says why a server did not start through the stream a worker ships', async ()
       servers: [
         {
           taskId: 's#srv',
-          command: 'exit 3',
+          command: 'echo "port is already allocated" >&2; exit 3',
           cwd: dir,
           env: { PATH: process.env['PATH'] },
           readyWhen: 'up',
@@ -77,6 +77,8 @@ it('says why a server did not start through the stream a worker ships', async ()
     })
     expect(r.exitCode).toBe(1)
     expect(heard.join('')).toContain('s#srv, which s#live depends on, did not start')
+    // The server's own words, not only its exit code.
+    expect(heard.join('')).toContain('its output:\nport is already allocated\n')
   } finally {
     await floor.close()
   }

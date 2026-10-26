@@ -105,13 +105,11 @@ export default defineProject({
     'services.cache': {
       description: 'bazel-remote (REAPI cache) on :19092',
       exec: {
-        command:
-          'docker run --rm -p 19092:9092 -e BAZEL_REMOTE_DIR=/data -e BAZEL_REMOTE_MAX_SIZE=1 ' +
-          '-e BAZEL_REMOTE_GRPC_ADDRESS=0.0.0.0:9092 -e BAZEL_REMOTE_HTTP_ADDRESS=0.0.0.0:8080 ' +
-          'mirror.gcr.io/buchgr/bazel-remote-cache:latest',
+        command: 'sh tests/helpers/bazel-remote.sh',
         persistent: { readyWhen: 'Starting gRPC server' },
         timeout: '5m',
       },
+      inputs: { files: ['tests/helpers/bazel-remote.sh'] },
     },
 
     'services.exec': {
