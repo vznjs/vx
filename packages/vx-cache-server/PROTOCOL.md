@@ -52,8 +52,9 @@ rules:
 - Its issuer and repository name (`repository` on GitHub, `project_path`
   on GitLab, `org/name`, any case) are the repository it reads and writes; one no rule names
   is `403`. A repository's artifacts are never another's.
-- It writes its branch's scope: on GitHub a pull request's head branch
-  (`refs/heads/<head_ref>`), a merge queue's run
+- It writes its branch's scope: on GitHub a `pull_request` run's head
+  branch (`refs/heads/<head_ref>`; a `pull_request_target` run's
+  `head_ref` names a fork's branch, so it writes its `ref`), a merge queue's run
   (`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, that exact form)
   its base branch (`refs/heads/<base>`), which its code is about to
   become, else its `ref`; on GitLab its `ref_path`.

@@ -142,10 +142,12 @@ const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-
  * its head branch (its `ref` is the merge ref the run's own reads never
  * name); a merge queue's run its base branch, which its code is about to
  * become (M, 2026-10-25: "just strip it"); any other run its `ref`,
- * GitLab's its `ref_path`.
+ * GitLab's its `ref_path`. Only a `pull_request` run takes its head
+ * branch: a `pull_request_target` run's `head_ref` is a fork's branch name,
+ * chosen by the fork, so it writes its `ref` (the base, protected) instead.
  */
 function branchOf(iss: string, claims: JWTPayload): string | undefined {
-  const head = claims['head_ref']
+  const head = claims['event_name'] === 'pull_request' ? claims['head_ref'] : undefined
   const ref =
     iss === GITHUB
       ? typeof head === 'string' && head !== ''

@@ -62,7 +62,8 @@ export function oidcAuth(opts: OidcOptions): Authorize
 - With `readAccess: 'public'` (`READ_ACCESS`), a request with no token
   reads the repository it names when a rule names it (else `403`), and
   writes nothing. Any other value than `public` or unset throws.
-- A token writes its branch (a pull request's head branch on GitHub, a
+- A token writes its branch (a `pull_request` run's head branch on GitHub,
+  never a `pull_request_target` run's, whose `head_ref` a fork names; a
   merge queue's base branch for a `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`
   ref, else `ref`; GitLab's `ref_path`). A ref a rule names is protected: a token on
   it that matches no rule reads only.
