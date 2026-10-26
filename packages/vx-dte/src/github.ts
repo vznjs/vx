@@ -180,8 +180,16 @@ export function github(options: GithubOptions = {}): DteAdapter {
       })
       if (res.ok) break
       const text = (await res.text()).slice(0, 200)
-      if (res.status !== 422 || !text.includes('No ref found') || !refs[i + 1])
-        throw new Error(`github(): dispatching ${workflow}: ${res.status} ${text}`)
+      if (res.status !== 422 || !text.includes('No ref found') || !refs[i + 1]) {
+        // GitHub's own words named no fix for the two a first run meets (2026-10-26).
+        const fix =
+          res.status === 404
+            ? `: .github/workflows/${workflow} is not on ${refs[i]} (vx dte init writes it; commit and push it)`
+            : res.status === 403
+              ? ': the job needs `permissions: actions: write` to start workers'
+              : ''
+        throw new Error(`github(): dispatching ${workflow}: ${res.status} ${text}${fix}`)
+      }
     }
     if (res.status === 200) {
       const id = ((await res.json()) as { workflow_run_id?: number }).workflow_run_id

@@ -134,8 +134,32 @@ it('says why for each worker of a dispatch GitHub refused', async () => {
     void adapter.spawn(spawn('small#2', 'small', (w) => why.push(`small#2: ${w}`)))
     await Bun.sleep(100)
     expect(why).toEqual([
-      'small#1: github(): dispatching workers.yml: 403 nope',
-      'small#2: github(): dispatching workers.yml: 403 nope',
+      'small#1: github(): dispatching workers.yml: 403 nope: the job needs `permissions: actions: write` to start workers',
+      'small#2: github(): dispatching workers.yml: 403 nope: the job needs `permissions: actions: write` to start workers',
+    ])
+  } finally {
+    await server.stop(true)
+  }
+})
+
+it('says the workflow is not on the branch when GitHub answers 404', async () => {
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch: () => Response.json({ message: 'Not Found' }, { status: 404 }),
+  })
+  Object.assign(process.env, {
+    GITHUB_API_URL: `http://127.0.0.1:${server.port}`,
+    GITHUB_REPOSITORY: 'o/r',
+    GITHUB_TOKEN: 'ght',
+    GITHUB_REF_NAME: 'feat',
+  })
+  try {
+    const why: string[] = []
+    void github().spawn(spawn('small#1', 'small', (w) => why.push(w)))
+    await Bun.sleep(100)
+    expect(why).toEqual([
+      'github(): dispatching vx-worker.yml: 404 {"message":"Not Found"}: .github/workflows/vx-worker.yml is not on feat (vx dte init writes it; commit and push it)',
     ])
   } finally {
     await server.stop(true)
