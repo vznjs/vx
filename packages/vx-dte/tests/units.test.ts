@@ -1331,7 +1331,7 @@ it('the final summary says how each worker ended, its size and machine under it'
   expect(rows.filter((r) => /^\S+ +online/.test(r))).toEqual([])
   // What the cache probe left to run, the first answer only: why the asks counted what they did.
   expect(rows.filter((r) => r.startsWith('probe'))).toEqual([
-    expect.stringMatching(/^probe +at 0\.\ds: 3 tasks left to run, 1 known misses$/),
+    expect.stringMatching(/^probe +at 0\.\ds: 3 tasks left to run, 1 known miss$/),
   ])
   // When the run asked for workers, for which work, and when its plan ended: why it had as many as it did.
   expect(rows.filter((r) => r.startsWith('asked'))).toEqual([
