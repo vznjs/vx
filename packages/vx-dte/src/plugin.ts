@@ -318,10 +318,13 @@ export function dte(options: DteOptions) {
           if (argv[0] !== 'worker' || argv.length > 1) throw new UserError(USAGE)
           const run = runOf()
           const relay = process.env['VX_DTE_RELAY'] ?? options.relay
+          // Only what is missing: with VX_DTE_RUN set, the old line still asked for it.
           if (run === undefined || relay === undefined) {
-            throw new UserError(
-              'vx dte worker needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })',
-            )
+            const missing = [
+              ...(run === undefined ? ['VX_DTE_RUN'] : []),
+              ...(relay === undefined ? ['VX_DTE_RELAY or dte({ relay })'] : []),
+            ]
+            throw new UserError(`vx dte worker needs ${missing.join(', and ')}`)
           }
           const secret = givenSecret()
           if (secret === undefined && !onGitHub()) {

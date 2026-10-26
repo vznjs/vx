@@ -315,3 +315,33 @@ export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, 
     ])
   }
 })
+
+it('vx dte worker names only what it lacks', async () => {
+  await mkdir(path.join(root, '.vx'))
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+  await writeFile(
+    path.join(root, '.vx/workspace.mjs'),
+    `import { dte, local } from ${JSON.stringify(DTE)}
+export default { plugins: [dte({ workers: { small: { cpu: 2, memory: '8GB' } }, adapter: local() })] }
+`,
+  )
+  Bun.spawnSync(['git', 'init', '-q'], { cwd: root })
+  const said = (env: Record<string, string>) => {
+    const { VX_DTE_RUN: _, VX_DTE_RELAY: __, ...rest } = process.env
+    const r = Bun.spawnSync([process.execPath, CORE_BIN, 'dte', 'worker'], {
+      cwd: root,
+      env: { ...rest, ...env, NO_COLOR: '1' },
+      stderr: 'pipe',
+    })
+    return r.stderr.toString().split('\n')[0]
+  }
+  expect([
+    said({}),
+    said({ VX_DTE_RUN: crypto.randomUUID() }),
+    said({ VX_DTE_RELAY: 'http://127.0.0.1:9' }),
+  ]).toEqual([
+    '✗ vx dte  vx dte worker needs VX_DTE_RUN, and VX_DTE_RELAY or dte({ relay })',
+    '✗ vx dte  vx dte worker needs VX_DTE_RELAY or dte({ relay })',
+    '✗ vx dte  vx dte worker needs VX_DTE_RUN',
+  ])
+})
