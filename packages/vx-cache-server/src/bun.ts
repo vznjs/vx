@@ -91,6 +91,11 @@ function main(argv: string[]): void {
   let limits
   try {
     trust = parseTrust(env.TRUST ?? '')
+  } catch (err) {
+    // A bare JSON parse error named no variable (the Worker's says TRUST).
+    fail(`TRUST: ${(err as Error).message}`)
+  }
+  try {
     limits = { ...DEFAULT_LIMITS, ...limitsFrom(env) }
   } catch (err) {
     fail((err as Error).message)

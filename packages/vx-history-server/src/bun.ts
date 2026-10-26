@@ -50,6 +50,11 @@ function main(argv: string[]): void {
   let timingDays
   try {
     trust = parseTrust(env.TRUST ?? '')
+  } catch (err) {
+    // A bare JSON parse error named no variable (the Worker's says TRUST).
+    fail(`TRUST: ${(err as Error).message}`)
+  }
+  try {
     timingDays = timingDaysOf(env.TIMING_DAYS)
   } catch (err) {
     fail((err as Error).message)
