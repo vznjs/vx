@@ -55,7 +55,8 @@ decides whether the job writes its own ref or only reads.
   `permissions: id-token: write`; without it (`GITHUB_ACTIONS` is set
   but no token comes), the plugin warns and the job reads only.
 - On GitLab, name an `id_tokens` entry `VX_CACHE_TOKEN` with the
-  server's origin as `aud`.
+  server's origin as `aud`; without it, the plugin warns and the job
+  reads only.
 
 With no token (off CI) a run reads only and uploads nothing, from a
 server whose `READ_ACCESS` is `public`; any other server refuses the
