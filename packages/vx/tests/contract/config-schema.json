@@ -3666,7 +3666,7 @@
         "$CONFIG: tasks.c.cache.outputs.files: absolute paths are not allowed (got \"!/x\") — outputs must be project-relative globs": [
           "[\"!/x\"]"
         ],
-        "$CONFIG: tasks.c.cache.outputs.files: '..' path segments are not allowed (got \"../x\") — outputs must stay within the project (a glob that escapes the project dir would let cleanOutputs delete files outside it)": [
+        "$CONFIG: tasks.c.cache.outputs.files: '..' path segments are not allowed (got \"../x\") — outputs must stay within the project (vx clears a task's outputs before it runs, so a glob that escapes the project would delete files outside it)": [
           "[\"../x\"]"
         ],
         "$CONFIG: tasks.c.cache.outputs.files: every entry is a negation, which selects NOTHING (got [\"!x\"]) — a '!' entry only takes back what a positive glob selected. Add the outputs the task produces, e.g. ['dist/**', \"!x\"], or declare [] for none.": [

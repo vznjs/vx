@@ -429,7 +429,7 @@ describe('loadProjectConfig', () => {
 
     it('refuses an escaping glob wherever the `..` sits, and under a `!`', async () => {
       // The `..` refusal exists because a glob that leaves the project dir
-      // "would let cleanOutputs delete files outside it" — its own words.
+      // "would delete files outside it" — its own words.
       // Every fixture spells the escape as a LEADING `../`, so the check
       // could be narrowed to that one shape and nothing would move, while
       // `dist/../../etc/**` walked straight out of the project. The scan is
