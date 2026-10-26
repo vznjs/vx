@@ -89,6 +89,17 @@ describe('vx docs', () => {
     for (const h of doc.hits) expect(pages).toContain(h.page)
   })
 
+  it('--limit takes a plain whole number, and an empty one is missing', async () => {
+    const errs = []
+    for (const v of ['--limit=', '--limit=0x2', '--limit=1e1'])
+      errs.push((await vx(['cache', v])).err)
+    expect(errs.map((e) => e.split('\n')[0]!.trim())).toEqual([
+      '✗ vx docs  --limit requires a value: a whole number above 0',
+      '✗ vx docs  --limit takes a whole number above 0 (got 0x2)',
+      '✗ vx docs  --limit takes a whole number above 0 (got 1e1)',
+    ])
+  })
+
   it('no match is an answer; no query is a usage refusal', async () => {
     const none = await vx(['zzqx'])
     expect([none.code, none.out.startsWith('vx docs: no section of the docs at ')]).toEqual([

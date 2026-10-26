@@ -228,6 +228,13 @@ describe('vx init --plugin <seam>', () => {
             `vx init: --plugin takes a seam: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (got 'nope') (see \`vx init --help\`)\n`,
           ),
         ])
+        const empty = await vx(root, ['init', '--plugin='])
+        expect([empty.code, empty.err]).toEqual([
+          1,
+          noticed(
+            `vx init: --plugin takes a seam: one of ${Object.keys(PLUGIN_TEMPLATES).join(', ')} (see \`vx init --help\`)\n`,
+          ),
+        ])
         // --dry writes nothing.
         const dry = await vx(root, ['init', '--plugin=graph', '--dry'])
         expect(dry.code).toBe(0)

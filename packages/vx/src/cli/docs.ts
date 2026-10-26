@@ -5,6 +5,7 @@
 // whole, best first.
 
 import { VERSION } from '../version.js'
+import { parseDecimalInt } from '../util/index.js'
 import { flagHint, formatValue, refuse, refusedWord, seeHelp } from './help.js'
 
 const SITE = 'https://vznjs.github.io/vx/'
@@ -29,11 +30,17 @@ function parseDocsArgs(args: readonly string[]): DocsArgs {
       out.json = fv === 'json'
     } else if (a === '--limit' || a.startsWith('--limit=')) {
       const v = a === '--limit' ? args[++i] : a.slice('--limit='.length)
-      const n = Number(v)
-      if (!Number.isInteger(n) || n < 1) {
+      if (v === undefined || v === '') {
         return {
           ...out,
-          error: `--limit takes a whole number above 0 (got ${v ?? 'nothing'})${seeHelp('docs')}`,
+          error: `--limit requires a value: a whole number above 0${seeHelp('docs')}`,
+        }
+      }
+      const n = parseDecimalInt(v)
+      if (n === null || n < 1) {
+        return {
+          ...out,
+          error: `--limit takes a whole number above 0 (got ${v})${seeHelp('docs')}`,
         }
       }
       out.limit = n
