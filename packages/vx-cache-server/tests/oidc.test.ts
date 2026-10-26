@@ -187,6 +187,28 @@ describe('READ_ACCESS=public', () => {
       }),
     )
 
+  // A chunked body names no length: it was read whole, however large,
+  // before it was measured, by anyone a public server lets in (2026-10-26).
+  it('refuses a check body past its limit as it arrives, unread', async () => {
+    let pulled = 0
+    const large = new ReadableStream<Uint8Array>({
+      pull(c) {
+        // 4 MB in all, so a read of the whole body ends, and fails below.
+        if (++pulled > 64) return c.close()
+        c.enqueue(new Uint8Array(64 * 1024).fill(32))
+      },
+    })
+    const res = await open('public')(
+      new Request(`${AUD}/v1/artifacts`, {
+        method: 'POST',
+        body: large,
+        headers: { ...NAMED, 'content-type': 'application/json' },
+      }),
+    )
+    expect(await detail(res)).toEqual([413, 'the body is at most 70100 bytes'])
+    expect(pulled).toBeLessThan(10)
+  })
+
   it('reads a repository TRUST names with no token, and writes nothing', async () => {
     const h = open('public')
     expect((await tokenless(h, NAMED)).status).toBe(404)
