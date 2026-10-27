@@ -229,6 +229,8 @@ keeps the first bytes.
 A download through Workers goes through Cloudflare's cache: after R2
 serves a result once, that data center answers it without R2.
 
+Whether a result exists is asked of R2 alone, so every data center agrees.
+
 ## API
 
 Turbo's routes under `/v1`, each read naming the branches it reads

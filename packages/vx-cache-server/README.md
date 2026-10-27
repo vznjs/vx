@@ -115,11 +115,14 @@ By default a check makes 6 lookups: a Worker request has 6 calls
 waiting at once and queues the rest, so checks of 6 sent at once are
 the fastest (from a GitHub runner, 134 hashes: 168 to 216 ms, against
 1.9 s for one check of 134, 2026-10-25). Each lookup is one subrequest
-(a cache match), so a higher `MAX_CHECK_HASHES` must fit your plan's
+(an R2 head), so a higher `MAX_CHECK_HASHES` must fit your plan's
 subrequests a request, and `MAX_UPLOAD_BYTES` your plan's request body.
 The server lowers neither. A download is read through the data center's cache: an
 artifact never changes, so after R2 serves it once, that data center
-answers it without R2 (free on every plan).
+answers it without R2 (free on every plan). Whether R2 holds an
+artifact (a check, a `HEAD`, an upload's skip) is asked of R2 alone: the
+data center's copy can outlive R2's, and a writer told "held" there
+would skip an upload another data center then cannot read.
 
 ## Expiry
 

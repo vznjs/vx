@@ -89,7 +89,7 @@ it('refuses every request, saying why, while TRUST, a limit or READ_ACCESS is un
   }
 })
 
-it("answers a read from the data center's cache once R2 served it", async () => {
+it("answers a read from the data center's cache once R2 served it, and whether it holds one from R2 alone", async () => {
   const hash = crypto.randomUUID().replaceAll('-', '')
   const url = new URL(`/v1/artifacts/${hash}`, base)
   const auth = (job: 'main' | 'read') => iss.sign(JOBS[job], AUD).then((t) => `Bearer ${t}`)
@@ -122,7 +122,8 @@ it("answers a read from the data center's cache once R2 served it", async () => 
   await bucket.delete((await bucket.list()).objects.map((o) => o.key))
   const again = await read()
   expect([again.status, await again.text()]).toEqual([200, 'cached'])
-  // A check and a HEAD answer from it too.
+  // Not a check, a HEAD or a PUT: R2 alone says what it holds, so a
+  // writer sends it again and every data center can read it.
   const head = await fetch(url, {
     method: 'HEAD',
     headers: {
@@ -131,13 +132,20 @@ it("answers a read from the data center's cache once R2 served it", async () => 
       'vx-scope': scopeOf('refs/heads/main'),
     },
   })
-  expect([head.status, head.headers.get('content-length')]).toEqual([200, '6'])
+  expect(head.status).toBe(404)
   const check = await fetch(new URL('/v1/artifacts', base), {
     method: 'POST',
     body: JSON.stringify({ hashes: [hash], scopes: [scopeOf('refs/heads/main')] }),
     headers: { ...NAMED, authorization: await auth('read'), 'content-type': 'application/json' },
   })
-  expect(await check.json()).toEqual({ [hash]: { size: 6, scope: scopeOf('refs/heads/main') } })
+  expect(await check.json()).toEqual({ [hash]: null })
+  const resent = await fetch(url, {
+    method: 'PUT',
+    body: 'cached',
+    headers: { ...NAMED, authorization: await auth('main') },
+  })
+  expect(resent.status).toBe(204)
+  expect((await bucket.list()).objects).toHaveLength(1)
   // The token is still checked first: no token, no bytes.
   expect(
     (await fetch(url, { headers: { ...NAMED, 'vx-scope': scopeOf('refs/heads/main') } })).status,
