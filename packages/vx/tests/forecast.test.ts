@@ -227,8 +227,18 @@ describe('the tasks line counts what is blocked', () => {
     )
 
   it('between scheduled and the total, and not when nothing is', () => {
-    expect(legend({})?.trim()).toBe('30 success · 4 running · 12 scheduled · 16 blocked · 62 total')
+    expect(legend({})?.trim()).toBe(
+      '30 success · 4 running · 12 scheduled · 16 blocked · 32 left · 62 total',
+    )
     expect(legend({ blocked: 0 })).not.toContain('blocked')
+  })
+
+  // 2026-10-27: done and total were there, what remains was not.
+  it('says how many tasks are left, running included, until none is', () => {
+    expect(legend({ blocked: 0, scheduled: 0, running: 0, left: 5 })?.trim()).toBe(
+      '30 success · 5 left · 62 total',
+    )
+    expect(legend({ blocked: 0, scheduled: 0, running: 0, left: 0 })).not.toContain('left')
   })
 
   it('takes its share of the bar from what is left', () => {
@@ -355,7 +365,7 @@ describe('the logger asks for a forecast only a second in', () => {
   it('a run that ends sooner never loads history', async () => {
     const r = await run(300, { TERM_PROGRAM: 'ghostty' })
     expect(r.asked).toBe(0)
-    expect(r.region).not.toContain('left')
+    expect(r.region).not.toMatch(/s left/)
     // CONTROL past the gate: the progress escape did go out, and was cleared.
     expect(r.all).toContain('\x1b]9;4;1;0\x07')
     expect(r.all.lastIndexOf(PROGRESS_CLEAR)).toBeGreaterThan(r.all.lastIndexOf('\x1b]9;4;1;'))
@@ -372,7 +382,7 @@ describe('the logger asks for a forecast only a second in', () => {
   it('a run past its forecast counts up instead of going blank', async () => {
     const r = await run(1300, {}, 0)
     expect(r.region).toContain('+1s over')
-    expect(r.region).not.toContain('left')
+    expect(r.region).not.toMatch(/s left/)
   })
 })
 

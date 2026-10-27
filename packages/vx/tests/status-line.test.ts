@@ -481,12 +481,12 @@ describe('defaultLogger status line integration', () => {
         .findLast((l) => l.includes(' total')) ?? ''
     log.taskStart?.(a)
     expect(row()).toBe('')
-    expect(tasks()).toMatch(/^ +1 scheduled · 2 total$/)
+    expect(tasks()).toMatch(/^ +1 scheduled · 2 left · 2 total$/)
     await Bun.sleep(1100)
     at = 'small#1'
     log.taskStart?.(mkNode('b#x'))
     expect(row()).toMatch(/ \d+ms running +0 a#x · small#1$/)
-    expect(tasks()).toMatch(/^ +2 running · 2 total$/)
+    expect(tasks()).toMatch(/^ +2 running · 2 left · 2 total$/)
     log.runEnd?.()
   })
 
