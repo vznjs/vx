@@ -196,7 +196,7 @@ seams (`@vzn/vx-reapi`).
 | Test splitting (Nx atomizer)                                                | Nx            | `graph`-stage plugin. Not core.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Import boundaries (`turbo boundaries`)                                      | Turbo         | A lint; out of scope.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Shell completions                                                           | both          | SHIPPED 2026-09-10: `vx completions bash\|zsh\|fish` over the verb table and each verb's help cut.                                                                                                                                                                                                                                                                                                                                                                                                  |
-| Windows                                                                     | both          | Under WSL (owner, 2026-09-10): POSIX shell is the API, and WSL is where it is on Windows. A native port is not proposed.                                                                                                                                                                                                                                                                                                                                                                            |
+| Windows                                                                     | both          | Under WSL (2026-09-10): POSIX shell is the API, and WSL is where it is on Windows. A native port is not proposed.                                                                                                                                                                                                                                                                                                                                                                                   |
 
 Net: core is at parity or ahead on the must-haves; the gap that costs
 adoption is the trial with no generated files, and its core half is a
@@ -377,7 +377,7 @@ deliberate design pass.
   per-language plugin.
 - **Native Windows.** vx spawns POSIX shell. Binaries are built for
   linux/darwin × x64/arm64, and Windows runs the Linux one under WSL2;
-  there is no native Windows build, by decision (owner, 2026-10-09).
+  there is no native Windows build, by decision (2026-10-09).
 
 ## Where vx is ahead
 

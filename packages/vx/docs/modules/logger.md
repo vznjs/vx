@@ -180,7 +180,7 @@ before the final footer prints, removes it for good. A stop
 (`runStop`) keeps the region: running rows read `aborting` with their
 timers, blocked rows and the forecast go, each task that exits lists as
 an `aborted` (or `not run`) row, and the live footer counts them, so a
-slow stop never shows a blank screen (M, 2026-10-17); the first
+slow stop never shows a blank screen (2026-10-17); the first
 requested-task start in focused mode removes it too. A step
 (`stepStart` / `stepEnd`, ids `<owner>:<step>`) shows as a row below
 the worker rows once it has run `STEP_SHOWN_MS` (150 ms), bounded by
@@ -188,8 +188,8 @@ no worker slot, and ends as a list row (`formatStepLine`), `internal`
 in the cache column; a step can draw the region before `runStart`,
 with no footer. No step touches a counter. Only a step the run waits
 on is one: a background step (`vx:prefetch`) never reaches the logger
-and is kept for `vx last` (M, 2026-10-16). `showsSteps` is true only
-where the region can draw, and `run()` times no step otherwise (M, 2026-10-15;
+and is kept for `vx last` (2026-10-16). `showsSteps` is true only
+where the region can draw, and `run()` times no step otherwise (2026-10-15;
 `tests/run-tail.test.ts`, `tests/steps.test.ts`). Every ordinary write
 clears it first, writes, then redraws, so it never interleaves with content.
 

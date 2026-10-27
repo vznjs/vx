@@ -1,6 +1,6 @@
 # Language-agnostic core (2026-10)
 
-> **Status:** proposal. Owner decision (M, 2026-10-14): core drops all
+> **Status:** proposal. Owner decision (2026-10-14): core drops all
 > package.json / package-manager logic. Builds on lock-only runs
 > (`feat(lock)!: runs read only .vx/projects.lock.json`, in flight):
 > only `vx lock` evaluates configs; workspace config, plugins and the

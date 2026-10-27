@@ -2,7 +2,7 @@
 // workspace's `.vx/cache` and the store its index names (`~/.vx/<id>/cache`),
 // and nothing else in `.vx`; `--global` takes every store under `~/.vx`.
 // Before it, a bare prune was refused and the docs said to delete the
-// store by hand (M, 2026-10-14).
+// store by hand (2026-10-14).
 
 import { Database } from 'bun:sqlite'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'

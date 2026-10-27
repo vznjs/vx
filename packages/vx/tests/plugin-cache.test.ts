@@ -139,7 +139,7 @@ describe('ctx.cache', () => {
     await c.put('x', bytes('first'))
     await c.put('x', bytes('second'))
     expect(text(await c.get('x'))).toBe('first')
-    // Core asks no `has` before a put (M, 2026-10-15): the remote keeps
+    // Core asks no `has` before a put (2026-10-15): the remote keeps
     // what it holds.
     expect(remote.calls.filter((k) => !k.startsWith('get'))).toEqual([
       `put ${[...remote.store.keys()][0]}`,

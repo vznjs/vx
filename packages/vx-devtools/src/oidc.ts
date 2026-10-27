@@ -1,10 +1,10 @@
 // CI OIDC tokens, the only tokens vx's servers take (@vzn/vx-cache-server,
 // @vzn/vx-history-server): a job's token names its repository and the one
 // scope it writes, its own ref, never a header or a client option. Every
-// request names its issuer and repository by their hashes (M, 2026-10-25:
+// request names its issuer and repository by their hashes (2026-10-25:
 // the user names them, no client guesses), which a token must match;
 // `READ_ACCESS=public` lets a request with no token read one TRUST names. The
-// servers know no tier (M, 2026-10-25): a scope is an opaque ref. A ref a
+// servers know no tier (2026-10-25): a scope is an opaque ref. A ref a
 // `TRUST` rule names is protected: only a token matching a rule writes it,
 // so a pull request never writes main's. Any other repository is refused.
 // The JWT itself is jose's to check: signature, algorithm, audience and
@@ -50,7 +50,7 @@ export interface Access {
   readonly issuer: string
   /**
    * The repository at that issuer, lowercased: `org/name` (`repository`,
-   * GitLab's `project_path`, M 2026-10-25), what a checkout's origin names.
+   * GitLab's `project_path`, 2026-10-25), what a checkout's origin names.
    */
   readonly repository: string
   /** The token's own ref: the one scope it writes. */
@@ -141,7 +141,7 @@ const QUEUE = /^refs\/heads\/gh-readonly-queue\/(.+)\/pr-\d+-(?:[0-9a-f]{40}|[0-
  * The scope a token writes: its branch. A GitHub pull request's run writes
  * its head branch (its `ref` is the merge ref the run's own reads never
  * name); a merge queue's run its base branch, which its code is about to
- * become (M, 2026-10-25: "just strip it"); any other run its `ref`,
+ * become (2026-10-25: "just strip it"); any other run its `ref`,
  * GitLab's its `ref_path`. Only a `pull_request` run takes its head
  * branch: a `pull_request_target` run's `head_ref` is a fork's branch name,
  * chosen by the fork, so it writes its `ref` (the base, protected) instead.

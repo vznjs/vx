@@ -1,6 +1,6 @@
 import { defineMdastPlugin } from 'satteri'
 
-// Measurements drawn as bars, not read as digits (owner, 2026-10-04:
+// Measurements drawn as bars, not read as digits (2026-10-04:
 // "present data visually not by text and numbers"). One renderer for the
 // landing's benchmark and every timing table in the Markdown pages, so the
 // two look alike. Static HTML and CSS: no script, no animation (the

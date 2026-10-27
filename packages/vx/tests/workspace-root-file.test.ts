@@ -1,5 +1,5 @@
 // The workspace root is the directory holding the nearest `.vx/workspace.*`
-// (owner, 2026-10-13: "Workspace file is the ultimate"), from the start up
+// (2026-10-13: "Workspace file is the ultimate"), from the start up
 // to the git top-level and never above it ("never go out of git root"). A
 // worktree's `.git` is a file and is a top-level; a submodule's points into
 // the superproject's `.git/modules`, so the walk goes on to it. Outside git

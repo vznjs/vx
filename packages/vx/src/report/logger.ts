@@ -234,7 +234,7 @@ export function resolveOutputView(
 const FORECAST_AFTER_MS = 1000
 /** A run shorter than this ends without a desktop notification. */
 const NOTIFY_AFTER_MS = 10_000
-// A step of vx's own quicker than this shows nowhere (M, 2026-10-15).
+// A step of vx's own quicker than this shows nowhere (2026-10-15).
 const STEP_SHOWN_MS = 150
 
 export function defaultLogger(
@@ -390,10 +390,10 @@ export function defaultLogger(
   // Each finished task's cache bucket by its key: its remote traffic moves it.
   const buckets = new Map<string, CacheBucket>()
   // The graph is done and vx's own closing steps run: the region stays,
-  // footer and step rows, until the footer replaces it (M, 2026-10-15).
+  // footer and step rows, until the footer replaces it (2026-10-15).
   let tail = false
   // The run was stopped: the region stays, its running rows say
-  // `aborting`, and nothing is forecast or held (M, 2026-10-17).
+  // `aborting`, and nothing is forecast or held (2026-10-17).
   let stopping = false
   // Counted live once the run is stopping, as the footer counts them.
   let stopped = 0
@@ -487,7 +487,7 @@ export function defaultLogger(
         if (x.waiting) x.startedMs = now
       }
     // A free row shows what it holds from the first frame: the graph
-    // knows, without history (M, 2026-10-17).
+    // knows, without history (2026-10-17).
     if (forecastFn === undefined && graphForecast !== undefined && !tail && !stopping)
       for (let i = 0; i < shownSlots; i++)
         if (slots[i] === null) {
@@ -576,7 +576,7 @@ export function defaultLogger(
       formatStatusRegion(
         {
           pinnedPersistent,
-          // Every running task has a row: one beyond the slots follows them (M, 2026-10-21).
+          // Every running task has a row: one beyond the slots follows them (2026-10-21).
           slots: [...slots.slice(0, shownSlots), ...slotQueue],
           ...(held !== undefined ? { blocked: held } : {}),
           ...(stopping ? { stopping } : {}),
@@ -594,7 +594,7 @@ export function defaultLogger(
     )
   }
   // Each idle worker row holds a blocked task, in scheduler order. A row
-  // with none left to hold leaves the region (M, 2026-10-15): blocked tasks
+  // with none left to hold leaves the region (2026-10-15): blocked tasks
   // only dwindle, so it is never needed again, and the rows below close up.
   const holdRows = (list: readonly BlockedTask[]): (BlockedTask | null)[] => {
     const started = new Set<string>()
@@ -652,7 +652,7 @@ export function defaultLogger(
   }
 
   // The task log opens with one blank line before its first row, on a
-  // terminal and off one (M, 2026-10-14). A note vx prints before it is
+  // terminal and off one (2026-10-14). A note vx prints before it is
   // no task row (`status`). Without a footer, the caller frames the log
   // (`vx watch` opens each cycle with its own line).
   let logOpened = opts.footer === false
@@ -673,7 +673,7 @@ export function defaultLogger(
     lineEmitted = true
   }
   // The list's header, once over its first row, where the live region
-  // heads its own rows the same way (M, 2026-10-21).
+  // heads its own rows the same way (2026-10-21).
   let headed = !writer.enabled
   const emitRow = (line: string): void => {
     if (!headed) {

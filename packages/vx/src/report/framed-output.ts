@@ -366,7 +366,7 @@ export function formatTaskRow(
 }
 
 /**
- * The dim header over a task list, on the row grid (M, 2026-10-21).
+ * The dim header over a task list, on the row grid (2026-10-21).
  * `worker` when an executor places tasks: the name after the id's dot.
  */
 export function formatListHeader(worker: boolean, colors: ColorSupport = NO_COLOR): string {
@@ -426,14 +426,14 @@ export function pathNote(colors: ColorSupport = NO_COLOR): string {
   return `  ${paint(WARN, 'critical path', colors)}`
 }
 
-/** Where an executor ran the task, when not here, right after its id: `@small#2` (M, 2026-10-21). */
+/** Where an executor ran the task, when not here, right after its id: `@small#2` (2026-10-21). */
 export function whereNote(o: TaskOutcome, colors: ColorSupport = NO_COLOR): string {
   return o.where === undefined ? '' : placeNote(o.where, colors)
 }
 
 /**
  * ` · <where>` after the id: the dot dim, the place in its own hue. Last
- * on the row, as a worker's name has no width to pad to (M, 2026-10-21).
+ * on the row, as a worker's name has no width to pad to (2026-10-21).
  */
 export function placeNote(where: string, colors: ColorSupport = NO_COLOR): string {
   return `${paint('', ' \u00b7', colors, { dim: true })} ${ui.inline(ui.place(where), colors)}`
@@ -541,8 +541,8 @@ export function formatFrameOpen(
  * sees them in context with the failing task, not as loose status output
  * above the box. Shared by BOTH renderers: the focused/live frame used to
  * omit it, so a single-task run — exactly how someone debugging one task
- * invokes vx — showed a failure with no violations at all (owner,
- * 2026-09-05).
+ * invokes vx — showed a failure with no violations at all
+ * (2026-09-05).
  */
 function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] {
   const vlines = outcome.sandboxViolationLines
@@ -556,7 +556,7 @@ function violationSection(outcome: TaskOutcome, colors: ColorSupport): string[] 
   // Red, not amber: a violation fails the task, so it reads as a failure.
   // vx's note, after the evidence: the grants that would have allowed it.
   // A read the output depends on is a key input too; the sandbox never
-  // adds one (owner, 2026-10-09), so the note names the reads no input
+  // adds one (2026-10-09), so the note names the reads no input
   // glob matches and the user decides.
   const fix = outcome.sandboxFix
   const line = fix === undefined ? undefined : sandboxFixLine(fix)

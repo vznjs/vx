@@ -38,7 +38,7 @@ export interface Named {
   readonly repository: string
 }
 
-/** A value on the wire: its SHA-256's first 128 bits in hex, never the value (M, 2026-10-25). */
+/** A value on the wire: its SHA-256's first 128 bits in hex, never the value (2026-10-25). */
 const hashOf = (text: string): string =>
   new Bun.CryptoHasher('sha256').update(text).digest('hex').slice(0, 32)
 

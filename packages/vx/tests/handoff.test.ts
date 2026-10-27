@@ -1,5 +1,5 @@
-// A global vx hands every call to the project's own @vzn/vx (owner,
-// 2026-10-13). Both halves: npm-launcher.sh's walk, driven against fake
+// A global vx hands every call to the project's own @vzn/vx
+// (2026-10-13). Both halves: npm-launcher.sh's walk, driven against fake
 // install trees with a PATH holding only the tools the script uses, and
 // the compiled binary's (`localVx`, `handOff`).
 
@@ -82,7 +82,7 @@ describe.skipIf(!loaderPresent)('npm-launcher.sh hands off', () => {
     expect(run(path.join(repo, 'apps', 'web'))).toBe(`local [${globalLauncher}] run a`)
   })
 
-  it('runs `vx upgrade -g` itself: it moves only the global (owner, 2026-10-16)', () => {
+  it('runs `vx upgrade -g` itself: it moves only the global (2026-10-16)', () => {
     const repo = path.join(root, 'repo')
     for (const argv of [
       ['upgrade', '-g'],

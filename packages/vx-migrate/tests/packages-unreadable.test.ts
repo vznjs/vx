@@ -1,6 +1,6 @@
 // A member directory this user may not open: a scanned glob refuses naming
 // the glob, and a listed member is named and skipped (D-132; core's until
-// M, 2026-10-14, when package discovery left core).
+// 2026-10-14, when package discovery left core).
 import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'

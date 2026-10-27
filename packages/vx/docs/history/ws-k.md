@@ -120,7 +120,7 @@
   command). A line is hidden only during its own delay (`backwards` fill),
   so no animation or reduced motion still shows the whole run; the landing
   test holds that.
-- **K-20** README top rewritten for a Turbo or Nx user (owner, 2026-09-28:
+- **K-20** README top rewritten for a Turbo or Nx user (2026-09-28:
   "hard to parse … remove moon"): the hero says what vx is for them, a
   vx / Turborepo / Nx table `update-site.ts` generates (time added, CPU,
   fully cached, per package; a unit in every cell) replaces the chart and
@@ -181,12 +181,12 @@
 
 - **N**: with the moon, wireit and lage adapters gone, the migrate guide's
   sections and title, and core docs (`architecture.md`, `cli.md`,
-  `comparison.md`, `benchmarks.md`), still name them (owner, 2026-09-28:
+  `comparison.md`, `benchmarks.md`), still name them (2026-09-28:
   Turbo and Nx only). K cut them from the README and landing (K-20, K-21).
 - **I**: `update-site.ts` gained the chart (K-1); it is stream I's file.
 - **K-34** The migrate guide is Turbo and Nx only, its `vx init` file, output, cache line and `vx-migrate` report held byte-exact by `try-it.unsafe.test.ts`; the README leads with both benchmark tables.
 - **K-35** The migrate guide's `bunx @vzn/vx-migrate` report ended `next: vx run build --all`; bunx runs it as `bun/…` in `npm_config_user_agent`, so it prints `next: bunx vx run build --all`. `try-it.unsafe.test.ts` spawned the bin with no runner named and held the wrong line; it now spawns it as bunx does (probed: `bun/1.4.2 npm/? …`). The quickstart's `pnpm add -D @vzn/vx` at a workspace root was checked and stands: pnpm 10 accepts it without `-w`.
 - **K-36** `examples.unsafe.test.ts` › matches a real run of examples/basic spawns a whole vx run under bun's 5 s default and timed out at 5,006 ms in a loaded gate (B-41's lead; it passes alone 3 of 3). It takes 20 s, as the other rows that spawn a sandboxed run do.
-- **K-37** Data as bars, not digits (owner, 2026-10-04): the landing's benchmark table is four bar charts, and every timing table in the Markdown pages (benchmarks, the blog, design notes) is drawn as bars above it, the table one click away in a `<details>`. One renderer, `vx-docs/src/plugins/data-charts.ts` (a remark plugin plus `renderBars`), static HTML and CSS, no script or animation; a table quoted in a blockquote is sample output and stays a table. `BenchChart`/`BenchBar`, used by no page, went. Rows: `data-charts.test.ts`, `landing.test.ts`.
-- **K-38** Multiples, not percentages (owner, 2026-10-04: "say how many X"): every competitor cell, generated or hand-typed, reads `(vx N× faster)`, the slower tool's time over the faster's, rounded against vx (whole from 10×, one decimal under, two under 1.1× so a small win never reads as a tie); `update-site.ts`, `bench-percent.test.ts` and the posts that quote the benchmarks page moved with it. The landing shows off vx (owner, same day): the hero carries three of the chart's own multiples (only columns the Nx harness fault did not inflate), and a new `#edge` section compares vx, Turborepo and Nx trait by trait from the choosing page's model. Rows: `landing.test.ts`.
-- **K-39** The landing on a phone (owner, 2026-10-04: "look bad on mobile"): the hero's three multiples are one compact list, not three cards that pushed the buttons off the first screen; the recorded run, whose text is unreadable at phone width, is hidden there; the vx/Turborepo/Nx table is one block per trait with a line per tool; sections are tighter. Checked by screenshots at 375 and 390 px.
+- **K-37** Data as bars, not digits (2026-10-04): the landing's benchmark table is four bar charts, and every timing table in the Markdown pages (benchmarks, the blog, design notes) is drawn as bars above it, the table one click away in a `<details>`. One renderer, `vx-docs/src/plugins/data-charts.ts` (a remark plugin plus `renderBars`), static HTML and CSS, no script or animation; a table quoted in a blockquote is sample output and stays a table. `BenchChart`/`BenchBar`, used by no page, went. Rows: `data-charts.test.ts`, `landing.test.ts`.
+- **K-38** Multiples, not percentages (2026-10-04: "say how many X"): every competitor cell, generated or hand-typed, reads `(vx N× faster)`, the slower tool's time over the faster's, rounded against vx (whole from 10×, one decimal under, two under 1.1× so a small win never reads as a tie); `update-site.ts`, `bench-percent.test.ts` and the posts that quote the benchmarks page moved with it. The landing shows off vx (owner, same day): the hero carries three of the chart's own multiples (only columns the Nx harness fault did not inflate), and a new `#edge` section compares vx, Turborepo and Nx trait by trait from the choosing page's model. Rows: `landing.test.ts`.
+- **K-39** The landing on a phone (2026-10-04: "look bad on mobile"): the hero's three multiples are one compact list, not three cards that pushed the buttons off the first screen; the recorded run, whose text is unreadable at phone width, is hidden there; the vx/Turborepo/Nx table is one block per trait with a line per tool; sections are tighter. Checked by screenshots at 375 and 390 px.

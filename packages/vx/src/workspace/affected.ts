@@ -147,7 +147,7 @@ export async function affectedProjects(args: AffectedArgs): Promise<Set<string>>
 }
 
 /**
- * What `--affected` seeds its tasks from (owner, 2026-10-04): the changed
+ * What `--affected` seeds its tasks from (2026-10-04): the changed
  * projects, each one's changed paths relative to it, and the projects a
  * change reaches as a whole — every task in one is affected whatever its
  * inputs say, because the reason was no path of its own (a lockfile claim,
@@ -727,7 +727,7 @@ async function isPartialClone(workspaceRoot: string): Promise<boolean> {
  * The base a bare `--affected` compares with: the merge base of HEAD and
  * the base branch (`origin/<baseBranch>`, or the local branch in a clone
  * with no remote; its tip when they share no history). On the base branch
- * itself there is none (owner, 2026-10-17): what a push to main changed
+ * itself there is none (2026-10-17): what a push to main changed
  * is the last good commit's to say (`--affected=<sha>`), and `HEAD~1`
  * guessed it wrong after any multi-commit push.
  */
@@ -906,7 +906,7 @@ async function gitMergeBase(workspaceRoot: string, ref: string): Promise<string 
 /**
  * A shallow clone (CI's checkout fetches one commit) lacks the base, or
  * the history between it and HEAD: this fetches from origin what the
- * merge base needs and nothing more (owner, 2026-10-24: "we only need
+ * merge base needs and nothing more (2026-10-24: "we only need
  * current commit and branch out commit"). The base's tip at depth 1, then
  * both tips deepened 1, 2, 4… commits until git finds the merge base;
  * commits and trees only, as `--name-only` reads no blob. A pull request's

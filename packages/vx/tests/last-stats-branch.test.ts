@@ -1,6 +1,6 @@
 // `vx last --stats` reports the p50 a run forecasts: the median of the
 // task's last five timings on the run's branch, else on any branch, so an
-// agent's numbers match the live estimate (EA for M, 2026-10-14).
+// agent's numbers match the live estimate (EA for 2026-10-14).
 import { rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterAll, beforeAll, expect, it } from 'bun:test'

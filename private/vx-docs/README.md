@@ -52,7 +52,7 @@ link to all of them.
   size (the `#bench` kicker) from `results.json`; `check.site` fails
   when either drifted. Edit the generator or its source, not those
   regions. Every competitor cell reads `(vx N× faster)` or
-  `(vx N× slower)` (owner, 2026-10-04), and the formula line under the
+  `(vx N× slower)` (2026-10-04), and the formula line under the
   table defines N. The page draws them as bars (`renderBars` in
   `src/plugins/data-charts.ts`), each as long as its time against the
   slowest tool's.
@@ -73,7 +73,7 @@ mkdir -p /tmp/pw && cd /tmp/pw && bun add playwright-core
 
 ## For AI agents
 
-vx is AI first (owner, 2026-10-08): the site is markdown for agents
+vx is AI first (2026-10-08): the site is markdown for agents
 before it is HTML for people. `src/pages/[...slug].md.ts` serves every
 docs and blog page raw beside its HTML (`quickstart.md`),
 `src/pages/llms.txt.ts` indexes them by section, and

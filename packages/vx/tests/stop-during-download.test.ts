@@ -1,6 +1,6 @@
 // A stop while a remote read is in flight ends the run without waiting on
 // it. A Ctrl-C during a slow download waited for the whole body, showed a
-// blank screen, then printed every task as a success (M, 2026-10-17).
+// blank screen, then printed every task as a success (2026-10-17).
 import { rm } from 'node:fs/promises'
 import { expect, it } from 'bun:test'
 import { addProject, makeWorkspace, silentLogger, TIMEOUT } from './helpers/orchestrator-fixture.js'

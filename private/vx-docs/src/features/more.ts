@@ -1,4 +1,4 @@
-// The features the hub gained after the first 37 (owner, 2026-10-09: every
+// The features the hub gained after the first 37 (2026-10-09: every
 // feature in features.md a card and a page of its own, value first). Same
 // shape as features.ts; images are 1600×900 cards in the campaign's style.
 

@@ -1,6 +1,6 @@
 // A red run's footer said "1 skipped" and nothing about which task or by
 // what (item 266). A Skipped section under the footer named each; since
-// nothing prints below the footer (owner, 2026-10-06), each skip is a row
+// nothing prints below the footer (2026-10-06), each skip is a row
 // in the task list naming its blocker, and the footer is the last line.
 import { rm } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'

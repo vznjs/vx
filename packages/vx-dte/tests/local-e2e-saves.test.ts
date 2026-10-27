@@ -12,7 +12,7 @@ import { CORE_BIN, DTE, root, setup, teardown, vx } from './local-e2e-fixture.ts
 beforeEach(setup)
 afterEach(teardown)
 
-// M, 2026-10-21: "After I kill it, long delay". Removing a worktree an
+// 2026-10-21: "After I kill it, long delay". Removing a worktree an
 // install filled took seconds, all of them before vx exited. An `rm` that
 // takes 3 s stands in for that install's 300k files, which took 45 s to
 // make on a CI-sized machine.

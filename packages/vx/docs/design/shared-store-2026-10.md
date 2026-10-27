@@ -13,7 +13,7 @@ A workspace's cache splits in two:
   `entry_stdout`, `output_files`, `entry_inputs`, `store_meta` in
   `store.db`, and `<hash>.tar.zst` beside it. Content-addressed.
   Default: `~/.vx/<id>/cache` on every platform, one per
-  repository, as Nx 23 keeps `~/.nx/<id>/cache` (owner, 2026-10-06:
+  repository, as Nx 23 keeps `~/.nx/<id>/cache` (2026-10-06:
   "do exactly like nx"; the first cut used `~/.cache/vx`, one for every
   repository).
 - **The workspace index** — `<root>/.vx/cache/cache.db`: run history,
@@ -45,7 +45,7 @@ its rules, without the Nx Cloud id:
 - the walk to `.git` stops at one not ours (owner, `HEAD`, `objects`),
   reads files with `O_NOFOLLOW`, and `~/.vx`, `~/.vx/<id>` and its
   `cache` are made 0700 one level at a time; a level of ours open to
-  other users is chmodded 0700 (owner, 2026-10-06), and one not ours, or
+  other users is chmodded 0700 (2026-10-06), and one not ours, or
   one the chmod fails on, sends the store to the workspace, said once.
 
 Entries are content-addressed, so one store for every repository would
@@ -74,8 +74,8 @@ keyed by the workspace, not the cache dir, so the entries share as is.
 
 ## Decisions
 
-- **The artifact is the record; the index its inventory (owner,
-  2026-10-06).** Every key is seeded with `CACHE_VERSION`, bumped when
+- **The artifact is the record; the index its inventory
+  (2026-10-06).** Every key is seeded with `CACHE_VERSION`, bumped when
   hashing or the artifact layout changes, so an artifact one vx wrote is
   never a hit for another and the store needs no versioned directory.
   `store.db` records its own schema (`store_meta.schema`); a vx of
@@ -100,7 +100,7 @@ keyed by the workspace, not the cache dir, so the entries share as is.
   write it unless a grant names it; an unsandboxed one can write
   anywhere, as before.
 
-## v38: shared memos (owner, 2026-10-14 20:59)
+## v38: shared memos (2026-10-14 20:59)
 
 `blob_sizes` (fixed for its OID) and the flaky record, `task_outcomes`,
 moved to the store: a worktree reads the blob sizes another learned, and

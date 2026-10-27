@@ -15,7 +15,7 @@ const trust = parseTrust(
   JSON.stringify([
     {
       iss: GITHUB,
-      // A name, matched whatever its case (M, 2026-10-25: org/name, not id).
+      // A name, matched whatever its case (2026-10-25: org/name, not id).
       repository: 'Acme/App',
       event_name: ['push', 'merge_group'],
       ref: ['refs/heads/main', 'refs/heads/gh-readonly-queue/main/*'],

@@ -1,5 +1,5 @@
 // An uncached task that declares `inputs` has a key only so its dependants
-// can fold it (owner, 2026-10-16): it always runs, and no cache layer,
+// can fold it (2026-10-16): it always runs, and no cache layer,
 // local or remote, is asked about, or handed, anything under that key.
 // Whether a lookup happens follows `cache`, never a key existing.
 

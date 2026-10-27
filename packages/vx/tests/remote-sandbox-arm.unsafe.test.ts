@@ -1,6 +1,6 @@
 // A `sandbox` executor enforces a task's sandbox where it runs it, so the
 // machine that only places the task arms none: a distributed run's
-// orchestrator needs no bwrap (owner, 2026-10-22). Unsafe: it strips PATH
+// orchestrator needs no bwrap (2026-10-22). Unsafe: it strips PATH
 // of the runtime's binaries for a child vx.
 import { mkdtemp, rm, symlink } from 'node:fs/promises'
 import os from 'node:os'

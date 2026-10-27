@@ -5,7 +5,7 @@
 What `setup` and `schedule` receive as `ctx.cache` (plugin.md § `ctx.cache`;
 design `design/shared-timings-2026-10.md`): a plugin keeps small blobs in
 the cache the workspace declares, through the layers tasks use, without
-reaching a remote itself (M 2026-10-14 21:06). `@vzn/vx-history`
+reaching a remote itself (2026-10-14 21:06). `@vzn/vx-history`
 is its first user.
 
 ## Public surface
@@ -47,7 +47,7 @@ export function packRunOutputs(
 - **Policy and scope.** The local axes gate the local store; each
   remote's policy (the run's) gates it. The local store keeps every
   entry under its name's key. A scoped run writes a remote only under the
-  scope's key (`scopedKey`) and reads one key per request (M, 2026-10-18):
+  scope's key (`scopedKey`) and reads one key per request (2026-10-18):
   the scope's, or with `scoped` false the default. A run
   with no scope uses the default key either way.
 - **Immutable.** A local write is `INSERT OR IGNORE`; a remote write

@@ -1,6 +1,6 @@
 // turboCache() and nxCache() read a missing token from core's plugin
 // keychain (`ctx.secret`) last, after the option, the variable and the
-// config files, from the layer's `open` alone (owner, 2026-10-17). A
+// config files, from the layer's `open` alone (2026-10-17). A
 // stand-in `ctx`: the real keychain is never touched.
 import { describe, expect, it } from 'bun:test'
 import type { RemoteOpenContext, SecretUnavailableReason } from '@vzn/vx'

@@ -1,4 +1,4 @@
-// `npx skills add vznjs/vx` installs the vx skill alone (owner, 2026-10-15).
+// `npx skills add vznjs/vx` installs the vx skill alone (2026-10-15).
 // The skills CLI looks in the root, `skills/` and each `<dir>/skills/` at the
 // root (`.claude/skills/` among them), three levels deep, and offers every
 // SKILL.md it finds there unless its frontmatter sets `metadata.internal`.

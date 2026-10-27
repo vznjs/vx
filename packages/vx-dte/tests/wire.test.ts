@@ -53,7 +53,7 @@ it('talks over the socket the relay offers: sends, removes and leaves, polling n
   expect(asked).toEqual([])
 })
 
-// M, 2026-10-25: "We don't need double compressed". Each body is zstd'd
+// 2026-10-25: "We don't need double compressed". Each body is zstd'd
 // before it is sealed, so the socket offers no deflate.
 it('offers the relay no socket compression', async () => {
   const s = servedRelay()
@@ -207,7 +207,7 @@ function sockets(heartbeatMs?: number, options: Partial<Parameters<typeof create
 
 // Each frame is a message a relay host may bill: pings at two a heartbeat
 // were nearly all of a run's (2026-10-23). Quiet, a pair trades one probe
-// and its ack each heartbeat and a half (owner, 2026-10-23: "if not ask
+// and its ack each heartbeat and a half (2026-10-23: "if not ask
 // to send") and pings nothing; talking, it is asked nothing.
 it('a quiet pair trades one probe and its ack, a talking one none, and none pings', async () => {
   const { url, pings, frames, answers } = sockets(500)
@@ -318,7 +318,7 @@ async function heard(p: { poll(): Promise<unknown[]> }): Promise<unknown[]> {
   }
 }
 
-// Only `leave` ends a participant at once (owner, 2026-10-25): one whose
+// Only `leave` ends a participant at once (2026-10-25): one whose
 // socket dropped dials again and is still in the run.
 it('keeps a worker whose socket dropped, by its redial; one that leaves is lost at once', async () => {
   const { url, open } = sockets(500)
@@ -333,7 +333,7 @@ it('keeps a worker whose socket dropped, by its redial; one that leaves is lost 
   await o.leave()
 })
 
-// M, 2026-10-25: a proxy in front of the relay (an Access service token).
+// 2026-10-25: a proxy in front of the relay (an Access service token).
 it('carries dte({ headers }) on every dial, its redial too, never over the token', async () => {
   const { url, open, dials } = sockets(500)
   const extra = { 'CF-Access-Client-Id': 'id' }
@@ -369,7 +369,7 @@ it('keeps the run through its orchestrator’s dropped socket: both carry on', a
   await expect(polls()).rejects.toThrow('relay: the run is closed')
 })
 
-// A relay stores nothing (owner, 2026-10-25: "no storage on relay"): a
+// A relay stores nothing (2026-10-25: "no storage on relay"): a
 // restart forgets every run. The orchestrator joins again as its host, each
 // worker joins again naming the id it had, and the run goes on: "offline
 // orchestrator or relay does not matter to the system".
@@ -420,7 +420,7 @@ it('a worker that joins again before its orchestrator waits for it, within two h
   }
 })
 
-// "If they can't rejoin for 2 heartbeats, it's over" (owner, 2026-10-25).
+// "If they can't rejoin for 2 heartbeats, it's over" (2026-10-25).
 it('a worker whose orchestrator does not come back ends two heartbeats after the restart', async () => {
   const served = servedRelay({ heartbeatMs: 500 })
   try {
@@ -872,8 +872,8 @@ it('joins again after its socket is refused 5xx', async () => {
   await o.leave()
 })
 
-// A run its relay did not admit fails at once, naming the relay (owner,
-// 2026-10-23), with its status and message as every remote error; a
+// A run its relay did not admit fails at once, naming the relay
+// (2026-10-23), with its status and message as every remote error; a
 // refusal is never waited out as a fault is.
 it('does not join again after a 4xx, and names the relay that refused it', async () => {
   let asked = 0
@@ -925,7 +925,7 @@ it('gives up on a relay that answers nothing in 10 s in all, and names it', asyn
   expect(performance.now() - at).toBeLessThan(11_000)
 }, 25_000)
 
-// M, 2026-10-23: a remote fault is at least a warning. Every send the
+// 2026-10-23: a remote fault is at least a warning. Every send the
 // orchestrator and a worker make unawaited dropped its error.
 it('a send the relay would not take is said; one to a participant it lost is not', () => {
   const said: string[] = []

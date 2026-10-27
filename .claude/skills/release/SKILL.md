@@ -7,7 +7,7 @@ metadata:
 
 # Release vx
 
-Releases are on demand (owner, 2026-10-08): at least once a day when
+Releases are on demand (2026-10-08): at least once a day when
 `main` has changes, and whenever someone asks. Each release gets a blog
 post, and the post is shared on Bluesky. Nothing here is skipped.
 
@@ -28,8 +28,8 @@ always a patch: `v0.0.N` → `v0.0.N+1` (`scripts/release-notes.ts`,
 Read `private/vx-docs/README.md` § Release posts and the newest
 `private/vx-docs/src/content/docs/releases/vx-0-0-*.md` (the model).
 
-The post is built from the change files, not from PR titles (owner,
-2026-10-15: "each PR should be like a real release doc. So later on docs
+The post is built from the change files, not from PR titles
+(2026-10-15: "each PR should be like a real release doc. So later on docs
 should just combine them into 1 doc and merge what's common"). Every
 user-facing PR in `git log $last..origin/main` has a file in
 `/mnt/project-files/org/changes/` written to `TEMPLATE.md` there: a
@@ -53,13 +53,13 @@ its real output, breaking changes, and what it was verified against.
 4. List the doc line or test behind each section in the PR body
    (`Verified against`).
 
-The post is a release story, not a changelog (owner, 2026-10-15:
+The post is a release story, not a changelog (2026-10-15:
 "not a changelog but explaining reasons and presenting the feature,
 like Home Assistant releases"). Fewest words; no speed claims; never
 "best". Its shape:
 
-- Title = what vx can now do overall, not one feature (owner,
-  2026-10-15: "not focusing one particular feature but the new overall
+- Title = what vx can now do overall, not one feature
+  (2026-10-15: "not focusing one particular feature but the new overall
   capabilities"): `Any language, one lock, a cache PRs share`. It is
   the cover's `head` without its `[brackets]`. The version is not in
   the title; the Releases page shows it as a `v0.0.<N+1>` chip, read
@@ -72,16 +72,16 @@ like Home Assistant releases"). Fewest words; no speed claims; never
   problem it solves, how it works now, an example with its real output,
   then a link to its guide or blog post. No PR numbers: the GitHub
   release links the commits.
-- A feature big enough to show gets its own blog post first (owner,
-  2026-10-08), and its row in `packages/vx/docs/features.md` links it.
+- A feature big enough to show gets its own blog post first
+  (2026-10-08), and its row in `packages/vx/docs/features.md` links it.
 - `## Other noteworthy changes`: one bullet each for the smaller
   user-visible changes. Skip internals, tests, refactors, docs, CI.
 - `## Breaking changes`, short, at the end: one bullet per `old → new`
-  rename or removal in the range (owner, 2026-10-14; until 1.0 the code
+  rename or removal in the range (2026-10-14; until 1.0 the code
   keeps no aliases or rename notices, so this list is the only notice),
   and a link to [Upgrading](../../guides/upgrading/).
 - `## How to update`: only a `frame="terminal"` block with `vx upgrade`
-  (owner, 2026-10-18: upgrading is always `vx upgrade`).
+  (2026-10-18: upgrading is always `vx upgrade`).
 - Rules the site tests hold: speed as "N× faster" or "from X to Y",
   never percentages; no benchmark tables; no `--` at the start of a
   heading; never say vx runs or works in a Turbo or Nx repo (it maps
@@ -104,7 +104,7 @@ like Home Assistant releases"). Fewest words; no speed claims; never
 
 Gate the docs (`bun packages/vx/src/bin.ts run @vzn/vx-docs#ci`), then
 open a PR `docs(vx-docs): release post for v0.0.<N+1>`. No release post
-publishes unreviewed (owner, 2026-10-15: "ensure this won't happen
+publishes unreviewed (2026-10-15: "ensure this won't happen
 again"): send the PR to Marketing for sign-off and to the EA to read,
 and squash-merge only with Marketing's ✓, the EA's go and CI green.
 

@@ -1,6 +1,6 @@
 // What the server keeps: one row per issuer, repository name, scope and task
-// definition (M, 2026-10-25, the cache's key), already the
-// numbers a scheduler asks for (M, 2026-10-25: a history, not a log). Each
+// definition (2026-10-25, the cache's key), already the
+// numbers a scheduler asks for (2026-10-25: a history, not a log). Each
 // report folds into its row in one statement, so racing jobs lose nothing.
 // A row holds the issuer and id hashed (`hashPart`) and the scope as the
 // ref's hash a client sends: never a plain value.

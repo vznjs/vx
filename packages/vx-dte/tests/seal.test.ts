@@ -180,7 +180,7 @@ it('refuses a worker with another secret, and a worker refuses an orchestrator w
   await expect(a2.poll()).rejects.toThrow(SealError)
 })
 
-// M, 2026-10-23: a fault is at least a warning. A token check that could
+// 2026-10-23: a fault is at least a warning. A token check that could
 // not run (GitHub's keys unreachable) was refused as a key mismatch, and
 // the orchestrator said nothing.
 it('a token it could not check refuses the worker by that cause, and says it', async () => {

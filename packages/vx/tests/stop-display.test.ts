@@ -1,4 +1,4 @@
-// M, 2026-10-17: a Ctrl-C blanked the live region until the summary, so a
+// 2026-10-17: a Ctrl-C blanked the live region until the summary, so a
 // slow stop looked hung. Now the region stays: running rows say
 // `aborting` with their timers, blocked and idle rows leave, each task
 // that exits is an `aborted` row, and the footer replaces the region.

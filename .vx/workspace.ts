@@ -25,7 +25,7 @@ export default defineWorkspace({
     // a run with no VX_DTE_RUN, as on a laptop, is not distributed.
     dte({
       ...(relay ? { relay } : {}),
-      // One run, every platform (owner, 2026-10-23): ubuntu-latest on a
+      // One run, every platform (2026-10-23): ubuntu-latest on a
       // public repo for the Linux work; ubuntu-24.04-arm for the arm64
       // binary; macos-latest, whose account cap is 5, for the Mac tasks. A
       // platform's worker starts only when a task of it is in the graph.

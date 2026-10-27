@@ -737,7 +737,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 Bump `SCHEMA_VERSION` (independently — the gate drops + recreates
 tables) when the SQLite schema changes. Any other schema, earlier or
-newer, is dropped by a writing opener (owner, 2026-10-06: the index is
+newer, is dropped by a writing opener (2026-10-06: the index is
 an inventory the artifacts rebuild); `Cache.inspect(dir)` (a reading
 verb) refuses a schema it cannot read with a `UserError` that names the
 directory and both versions and leaves the index as it was (item 896). Over a directory
@@ -761,7 +761,7 @@ every later one). A `CACHE_VERSION` bump alone keeps the index, so
 the new version (from `schema_meta.cache_version`; a store with entries
 and no record reads `an earlier format`). Neither is printed, nor is a
 shared store moved to or fallen back from: the cache is vx's to keep
-(owner, 2026-10-06; `tests/schema-reset-notice.test.ts`). A new
+(2026-10-06; `tests/schema-reset-notice.test.ts`). A new
 `CacheKeyInput` field that is **NOT folded** (a pure side-channel like
 `captureInto` / `upstreamIds`) needs neither bump: the key is
 byte-identical. The Tier-3 tables (`invocations`, `entry_inputs`)

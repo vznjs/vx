@@ -1,6 +1,6 @@
 // What packages.ts needs of the file system and of globs, as core has
 // them: core's copies are not on the façade, and these left core with the
-// package-manager discovery (M, 2026-10-14).
+// package-manager discovery (2026-10-14).
 
 import { readlinkSync, realpathSync } from 'node:fs'
 import path from 'node:path'

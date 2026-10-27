@@ -111,12 +111,12 @@ import type { CacheKeyInput } from './layer.js'
 // v44: the sidecar lists the empty directories under the outputs; a v43
 // artifact holds none and a hit left them out (Growth's parity, 2026-10-16).
 // v45: the sidecar lists the symlinks under the outputs and a hit makes
-// them; a v44 artifact holds a link as a copy of its target (M, 2026-10-16).
+// them; a v44 artifact holds a link as a copy of its target (2026-10-16).
 // v46: vx's names are reserved only at the project root; a v45 artifact
 // left out a build's own `dist/.git/**`, `dist/.vx/**` and nested
 // `vx.lock.json` (Growth's parity, 2026-10-17).
 // v47: the local store keeps plain files (`cache.store`).
-// v48: a task glob is standard again (M, 2026-10-18): `app/[id]/page.js` is
+// v48: a task glob is standard again (2026-10-18): `app/[id]/page.js` is
 // a class, and a v47 entry under its unchanged key holds the literal route.
 export const CACHE_VERSION = 'vx-cache-v48'
 

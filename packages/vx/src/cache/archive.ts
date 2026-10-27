@@ -1260,7 +1260,7 @@ class Extractor {
     // fail-closed outcome the plain write had.
     // Staged under `.vx/tmp/`, so no output folder ever holds a temp: a
     // reader or a key taken meanwhile saw `.vx-tmp-*` files beside the
-    // outputs, and a killed restore left them there (M, 2026-10-16).
+    // outputs, and a killed restore left them there (2026-10-16).
     const staged = this.stageRoot !== undefined
     const tmp = staged
       ? path.join(await stagingDir(this.stageRoot!), (tmpSeq++).toString(36))

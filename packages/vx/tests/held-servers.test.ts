@@ -1,4 +1,4 @@
-// A server whose dependants a remote holds never starts (M 2026-10-22), as
+// A server whose dependants a remote holds never starts (2026-10-22), as
 // one behind local hits never does; one dependant the remote misses starts
 // it before any of them is fetched.
 

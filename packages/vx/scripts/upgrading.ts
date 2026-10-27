@@ -46,7 +46,7 @@ export function page(commits: readonly Commit[]): string {
     .map(entry)
     .filter(({ footer }) => footer === '' || (!seen.has(footer) && !!seen.add(footer)))
     .toReversed()
-    // Old commits say `npx`; the site teaches `bunx` only (owner, 2026-10-22).
+    // Old commits say `npx`; the site teaches `bunx` only (2026-10-22).
     .map(({ title, footer }) => ({
       title: title.replace(/\bnpx /g, 'bunx '),
       footer: footer.replace(/\bnpx /g, 'bunx '),

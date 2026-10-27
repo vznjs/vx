@@ -1919,7 +1919,7 @@ describe('parseRunArgs', () => {
     ])
   })
 
-  // vx owns its flags (owner, 2026-10-22): another runner's spelling is an
+  // vx owns its flags (2026-10-22): another runner's spelling is an
   // unknown flag like any other, never rewritten or answered with vx's.
   // `vx run build --format json` was told "did you mean --force?": a run
   // with cache reads off, never the JSON the agent asked for.

@@ -565,7 +565,7 @@ describe('managedInstall', () => {
   })
 
   it('moves every @vzn/vx-* plugin the manifest lists to the same release, in one install', async () => {
-    // M, 2026-10-16: core and a plugin on different releases is a broken
+    // 2026-10-16: core and a plugin on different releases is a broken
     // workspace; one `add` installs them all or none. Platform packages and
     // workspace links are no plugins to pin.
     const manifest = (deps: Record<string, string>): string =>
@@ -696,7 +696,7 @@ describe('npmOwnedBinary', () => {
 describe('upgradeGlobal: the global vx that handed the run to the project', () => {
   // A global vx run inside a project hands `vx upgrade` to the project's
   // own; the global that started the run moves to the same version
-  // (owner, 2026-10-15), the way it was installed.
+  // (2026-10-15), the way it was installed.
   const HOST = `@vzn/vx-${process.platform}-${process.arch}`
   const answering = async (file: string, version: string): Promise<string> => {
     await mkdir(path.dirname(file), { recursive: true })
@@ -932,7 +932,7 @@ describe('vx upgrade (CLI)', () => {
 })
 
 describe('relock', () => {
-  // M, 2026-10-18: an upgrade locks with the new vx; a failed lock says to run it.
+  // 2026-10-18: an upgrade locks with the new vx; a failed lock says to run it.
   const workspace = async (name: string, lock: string): Promise<{ root: string; bin: string }> => {
     const root = path.join(dir, name)
     await mkdir(path.join(root, '.vx', 'sub'), { recursive: true })

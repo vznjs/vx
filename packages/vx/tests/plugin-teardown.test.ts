@@ -225,7 +225,7 @@ describe('the lifecycle is reached on a run that FAILED', () => {
     expect(seen).toEqual(['flush', 'teardown'])
   })
 
-  // Nothing prints below the footer (owner, 2026-10-06): a teardown's
+  // Nothing prints below the footer (2026-10-06): a teardown's
   // warning lands above it, so the footer's result line is the last word.
   it("a teardown's warning prints above the footer", async () => {
     await Bun.write(

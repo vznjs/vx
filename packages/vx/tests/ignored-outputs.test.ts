@@ -1,4 +1,4 @@
-// An output git ignores is no input overlap (M, 2026-10-15): a key reads
+// An output git ignores is no input overlap (2026-10-15): a key reads
 // only what git lists, so a gitignored output never enters it. Solid's
 // shape, a `**/*` reader beside a `**/dist/**` producer with dist ignored,
 // passes `vx lock` and keys up front, the key the same before and

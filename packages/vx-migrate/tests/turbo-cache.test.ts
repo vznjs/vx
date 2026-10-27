@@ -683,7 +683,7 @@ describe('vx run with turboCache() layered over the local cache', () => {
   })
 
   // A plugin moves bytes; core's cache.policy alone decides reads and
-  // writes (M, 2026-10-16), so Turbo's own switches change nothing.
+  // writes (2026-10-16), so Turbo's own switches change nothing.
   it('TURBO_CACHE and TURBO_REMOTE_CACHE_READ_ONLY leave the remote as it is', () => {
     const saved = { ...process.env }
     try {

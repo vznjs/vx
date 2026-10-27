@@ -86,7 +86,7 @@ describe('writeRunProfile', () => {
     expect(ev['dur']).toBe(100) // (200_000 - 100_000) / 1000 = 100 us
   })
 
-  // A distributed run's workers, in time (owner, 2026-10-23): an executor's
+  // A distributed run's workers, in time (2026-10-23): an executor's
   // events join the run's, its processes after the run's own, on one clock.
   it('adds each executor’s events after the run’s process, on the runner’s clock', async () => {
     const now = performance.now()

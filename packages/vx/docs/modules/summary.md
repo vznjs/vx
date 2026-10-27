@@ -89,13 +89,13 @@ export function formatOutcomeTable(outcomes: readonly TaskOutcome[]): string[]
 export function neverStarted(o: TaskOutcome): boolean
 ```
 
-Nothing prints below the footer (owner, 2026-10-06): a task's own facts
+Nothing prints below the footer (2026-10-06): a task's own facts
 ride its row. A skip is a row naming its blocker
 (`formatTaskSkippedLine`), a flaky task a dim note on its row and frame
 (`flakyNote`, framed-output.md). An aborted task is a row too
 (`formatTaskAbortedLine`), and the tasks legend counts it in the
 total, each state its own bar segment: `2 success · 1 aborted · 1 not
-run · 4 total` (M, 2026-10-14; history and telemetry still record only
+run · 4 total` (2026-10-14; history and telemetry still record only
 the tasks that ran). A total is always the last word on its line.
 `aborted` is killed by a shutdown
 signal; `not run` is reached by the stop before it ran. `neverStarted`
@@ -136,7 +136,7 @@ cache mode: the layers the run's policy uses, `local + remote cache`,
 sum, said as one — and `run <id>`, the run's whole id as
 `vx last <id>` takes it, live from the run's start) and the `time` row: the wall time, the live
 forecast (`~3s left`), then the dim `max / avg / min` spread over
-executed tasks. The footer never says a fact twice (M, 2026-10-14):
+executed tasks. The footer never says a fact twice (2026-10-14):
 no `result` row (it only repeated the tasks, cache and time rows), a
 skipped count on the tasks legend alone (skips still ride the cache
 bar), and a spread value equal to one already on the row is left out,
@@ -150,7 +150,7 @@ that context, pinned in `tests/summary.test.ts`.
 ### The cache bar: one segment per state, each task once
 
 With a `RunContext.cache`, the cache bar has a segment per legend state
-and each task fills one (M, 2026-10-15), in bar order: miss (ran, saved
+and each task fills one (2026-10-15), in bar order: miss (ran, saved
 nothing; red), `∅` no cache (dim), `✓` fresh (green), local `↓` and
 `↑` (local blue), remote `↓` and `↑` (remote dark blue), `⇡` uploading
 (cyan), `✗` a remote read or write failed (red), skipped (yellow), and
@@ -161,7 +161,7 @@ state is its key's entry in `traffic.keys` (failures, then uploads
 running, then one landed), which moves it. A task still running is
 counted once it ends. The legend's numbers are the segments', each in
 its segment's colour, number and glyph alike; the `local` and `remote`
-words are dim (M, 2026-10-15).
+words are dim (2026-10-15).
 A state that shares a colour gets no new one: `↓` and `↑` of a layer
 are its colour. Under `NO_COLOR` the glyphs carry the meaning. An empty
 segment paints nothing. With no run context, the plain legend's

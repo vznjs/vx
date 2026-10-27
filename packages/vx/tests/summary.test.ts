@@ -213,7 +213,7 @@ describe('formatRunSummary', () => {
     expect(info({ local: false, remote: false })).toBe('  info      no cache')
   })
 
-  describe('the cache legend reads per layer: ✓ fresh, ↓ restored, ↑ saved, ✗ failed, ⇡ uploading (M, 2026-10-15)', () => {
+  describe('the cache legend reads per layer: ✓ fresh, ↓ restored, ↑ saved, ✗ failed, ⇡ uploading (2026-10-15)', () => {
     const cached = (
       id: string,
       status: TaskOutcome['status'],
@@ -336,12 +336,12 @@ describe('formatRunSummary', () => {
       expect(legendLine).toContain(`${RED}1✗`)
       expect(legendLine).toContain(`${CYAN}1⇡`)
       expect(legendLine).toContain(`${YELLOW}1 not saved`)
-      // The layer words are dim, never a layer colour (M, 2026-10-15).
+      // The layer words are dim, never a layer colour (2026-10-15).
       expect(legendLine).toContain('\x1b[2mlocal\x1b[0m')
       expect(legendLine).toContain('\x1b[2mremote\x1b[0m')
     })
 
-    // M, 2026-10-21: a red cell with no count under it.
+    // 2026-10-21: a red cell with no count under it.
     it('a miss that was not saved for failing is a red count of its own', () => {
       const lines = formatRunSummary(
         [cached('a#build', 'success', { saved: true }), cached('b#build', 'failed')],
@@ -460,14 +460,14 @@ describe('formatRunSummary', () => {
     const last = (outcomes: TaskOutcome[], ms: number): string | undefined =>
       formatRunSummary(outcomes, ms, { enabled: false }, ctx).at(-1)
     // A hit's stored exec time is not said: summed, it overstated the wall
-    // time hits would have taken side by side (M, 2026-10-18).
+    // time hits would have taken side by side (2026-10-18).
     const hit: TaskOutcome = {
       ...outcome('a#x', 'cache-hit'),
       durationMs: 2,
       storedDurationMs: 2010,
     }
     expect(last([hit, outcome('c#x', 'success')], 90)).toBe('  time      90ms')
-    // The wall time is said once (M, 2026-10-14).
+    // The wall time is said once (2026-10-14).
     const footer = formatRunSummary([outcome('a#x', 'cache-hit')], 4321, { enabled: false }, ctx)
     expect(footer.filter((l) => l.includes('4.32s'))).toEqual(['  time      4.32s'])
     for (const run of [[], [outcome('a#x', 'failed', 1)]])
@@ -520,7 +520,7 @@ describe('aborted and not-run tasks', () => {
     outcome('b#x', 'success'),
   ]
 
-  // M, 2026-10-14: every task in the run counts toward the total, each
+  // 2026-10-14: every task in the run counts toward the total, each
   // state its own segment of the bar; no "not counted".
   it('the tasks legend counts each in the total, a group in neither', () => {
     const ctx = { version: '0.0.0', packageCount: 1, remoteCacheEnabled: false }
@@ -574,7 +574,7 @@ describe('aborted and not-run tasks', () => {
 })
 
 describe('a flaky task says so on its own row', () => {
-  // Nothing prints below the footer (owner, 2026-10-06): the Flaky section
+  // Nothing prints below the footer (2026-10-06): the Flaky section
   // under it became a dim note on the task's row and frame.
   const node = (id: string): TaskNode => {
     const [projectName, taskName] = id.split('#') as [string, string]
@@ -665,7 +665,7 @@ describe('docs/modules/summary.md shows what the footer prints', () => {
   })
 })
 
-// M, 2026-10-14: the footer never says a fact twice. `result` only
+// 2026-10-14: the footer never says a fact twice. `result` only
 // repeated the tasks, cache and time rows (its one new fact, saved, moved
 // to `time`), skipped was counted on both legends, and one executed task
 // read as its own max, avg and min.
@@ -732,7 +732,7 @@ describe('the footer never repeats a value or a count', () => {
   })
 })
 
-// M, 2026-10-14: on every footer line with a total, the total comes last.
+// 2026-10-14: on every footer line with a total, the total comes last.
 describe('a total is the last word on its line', () => {
   it('projects and tasks, with every kind of task in the run', () => {
     const ctx = {

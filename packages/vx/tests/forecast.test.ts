@@ -191,7 +191,7 @@ describe('the live time row', () => {
   })
 })
 
-// M, 2026-10-21: blocked tasks are a number on the tasks line, a dim
+// 2026-10-21: blocked tasks are a number on the tasks line, a dim
 // segment of its bar; rows carry none of it.
 describe('the tasks line counts what is blocked', () => {
   const stats = {
@@ -238,7 +238,7 @@ describe('the tasks line counts what is blocked', () => {
   })
 })
 
-// M, 2026-10-21: in DTE the list is what runs; a task on the critical
+// 2026-10-21: in DTE the list is what runs; a task on the critical
 // path says so on its finished row too; the lists have a dim header.
 describe('rows under an executor that places tasks', () => {
   it('no idle or blocked rows, only running ones', () => {
@@ -399,7 +399,7 @@ describe('a long run ends with a desktop notification', () => {
   })
 })
 
-// M, 2026-10-21: `blocks N` said nothing worth a column; the critical path stays.
+// 2026-10-21: `blocks N` said nothing worth a column; the critical path stays.
 describe('a worker row says when it holds the critical path', () => {
   it('critical path on its row alone, and no count of what it blocks', () => {
     const lines = formatStatusRegion(
@@ -420,7 +420,7 @@ describe('a worker row says when it holds the critical path', () => {
   })
 })
 
-// M, 2026-10-15: an idle worker row holds a task an unfinished dependency
+// 2026-10-15: an idle worker row holds a task an unfinished dependency
 // blocks, in the order the scheduler would start it; a row with none left
 // to hold leaves the region.
 describe('idle worker rows hold blocked tasks', () => {
@@ -517,8 +517,8 @@ describe('idle worker rows hold blocked tasks', () => {
   })
 })
 
-// What a free worker row shows is the graph's to say, not history's (M,
-// 2026-10-17: "core should already know that"): from the first frame, an
+// What a free worker row shows is the graph's to say, not history's
+// (2026-10-17: "core should already know that"): from the first frame, an
 // idle row holds a blocked task, and one with nothing to hold never draws.
 // History only times the run.
 describe('the live view knows blocked tasks from the graph, from the first frame', () => {

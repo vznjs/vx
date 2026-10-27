@@ -56,7 +56,7 @@ talks about these four packages and nothing else.
 | 9   | `inside-vx/`: How vx is built   | How does one tool fit every team's setup without special code for each?              | The pipeline (config, project, graph, key, schedule, executor, cache, telemetry) with a seam at each stage; the local floor; a plugin in 20 lines.                                                         | PipelineExplorer            |
 | 10  | `try-it/`: Try it               | —                                                                                    | The playground on the same four packages: edit a file, the env or a config and read which tasks run and why. Then the labs, then the quickstart.                                                           | Playground, labs            |
 
-A chapter is pictures first (owner, 2026-09-24: "simple language, as
+A chapter is pictures first (2026-09-24: "simple language, as
 little text as possible and as visual as possible … people read that
 without context"). It has three to five small build-time SVGs, each with
 one to three short sentences, and about 300 words of prose in all. Its

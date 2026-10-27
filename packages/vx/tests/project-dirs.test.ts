@@ -1,4 +1,4 @@
-// A project is a directory holding a vx.config (owner, 2026-10-14): `vx lock`
+// A project is a directory holding a vx.config (2026-10-14): `vx lock`
 // finds them, records each by directory, and a run takes its projects from
 // the lock. A project is named by its config's `name`, else by a `discover`
 // plugin, else by its root-relative path, `//` for the root. Core reads no

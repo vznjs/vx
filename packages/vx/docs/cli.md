@@ -321,7 +321,7 @@ git: <root> is not inside a git work tree`, as a plain run does, and a
   forked (Turbo and Nx do the same). Refs with no common ancestor diff
   from the ref.
 
-**It selects the tasks the change reaches (owner, 2026-10-04).** A
+**It selects the tasks the change reaches (2026-10-04).** A
 change seeds tasks in the projects it touches:
 
 - a cached task when a changed path is one of its declared inputs
@@ -1682,7 +1682,7 @@ listing the directories.
 
 Every run, `vx watch` cycle, `--affected` selection and the picker takes
 its projects and their configs only from the committed
-`.vx/projects.lock.json` (owner, 2026-10-14). A run never walks for
+`.vx/projects.lock.json` (2026-10-14). A run never walks for
 configs, never evaluates one, never checks the graph rules
 (`run.rules`) and never writes the lock: only `vx lock` does. With no
 lock, a run fails with `no lock: run \`vx lock\``. A run trusts the
@@ -1875,7 +1875,7 @@ would replay the broken file, which is pinned to the tag.
 
 Every step of the three workflows past the setup (checkout, Bun, Node,
 `bun install`, the runner action) is one vx task: CI runs no command of
-its own (owner, 2026-10-03), and `tests/workflow-runner.unsafe.test.ts`
+its own (2026-10-03), and `tests/workflow-runner.unsafe.test.ts`
 holds it. The tasks are `@vzn/vx`'s `release.*`, all uncached and in no
 `ci` graph:
 
@@ -1946,7 +1946,7 @@ nearest `.vx/workspace.ts` (or `.mts`, `.js`, `.mjs`, `.cts`, `.cjs`) from
 the working directory up. vx never looks above the git top-level (a
 worktree is its own; a submodule looks on into its superproject), and
 outside git it looks up to `/`. Nothing else marks the root: not a
-`package.json`, `pnpm-workspace.yaml` or a lockfile (owner, 2026-10-13).
+`package.json`, `pnpm-workspace.yaml` or a lockfile (2026-10-13).
 Without one, every verb but `vx init` stops with `VX_E_NO_WORKSPACE`;
 `vx init` writes one (`@vzn/vx-migrate` beside a `turbo.json` or
 `nx.json`). A project inside the
@@ -1957,8 +1957,8 @@ root is a directory holding a `vx.config.*`, which `vx lock` finds
 
 A global vx (installed with a package manager, or a compiled binary
 installed by hand) hands every call to the project's own `@vzn/vx` when
-there is one, so a project runs the version its lockfile pins (owner,
-2026-10-13). There is no opt-out. The workspace root's
+there is one, so a project runs the version its lockfile pins
+(2026-10-13). There is no opt-out. The workspace root's
 `node_modules/@vzn/vx` runs, through its
 `node_modules/.bin/vx`. One hop: the receiving vx sees `VX_HANDED_OFF`
 and does not look again. A vx never hands off to itself (the same
@@ -2168,7 +2168,7 @@ $ vx init --dry
 `vx init` first installs `@vzn/vx` globally (the package manager that
 ran it, else npm; skipped when the `vx` on `PATH` is already that
 version) and, under the topmost `package.json`, as a root
-devDependency with that repo's own manager (M, 2026-10-20). A failed
+devDependency with that repo's own manager (2026-10-20). A failed
 install stops init.
 
 ### In a Turborepo or Nx repo
@@ -2176,10 +2176,10 @@ install stops init.
 When the directory it runs in, or one above it up
 to the git top-level, holds a `turbo.json`, `turbo.jsonc` or `nx.json`,
 it runs `@vzn/vx-migrate` there, so `vx init` is the one command
-(owner, 2026-10-08): the latest release through `bun x`,
+(2026-10-08): the latest release through `bun x`,
 never an installed one, so init always installs the latest `@vzn/vx`
-and moves every `@vzn/vx-*` plugin the root lists to it (M,
-2026-10-16; a source checkout runs the nearest installed
+and moves every `@vzn/vx-*` plugin the root lists to it
+(2026-10-16; a source checkout runs the nearest installed
 `node_modules/@vzn/vx-migrate` instead) (`BUN_BE_BUN=1` makes the compiled
 binary that runtime). `--dry`, `--format`, `--force`, `--mjs`,
 `--native` and `--keep` pass through, and the exit is vx-migrate's.

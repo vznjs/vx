@@ -556,7 +556,7 @@ describe('a host that keeps runs and holds websockets', () => {
     ])
   })
 
-  // An object kept a day per run held 100+ on one host (owner, 2026-10-22).
+  // An object kept a day per run held 100+ on one host (2026-10-22).
   // Kept closed ten minutes, or opened by a late worker, a run held that
   // worker's runner ten minutes (main, 2026-10-23).
   it('keeps nothing of a run its orchestrator signed off: a worker after it finds none', async () => {

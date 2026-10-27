@@ -1,9 +1,9 @@
 // The report every plugin's teardown reads, and the run's own bytes kept
-// in a remote that takes its writes (owner 2026-10-15): a failed task's
+// in a remote that takes its writes (2026-10-15): a failed task's
 // log and the files its outputs left (`cache.upload.failures`), and the
-// log of a task that saved no entry, on every run (M, 2026-10-16: "Always
+// log of a task that saved no entry, on every run (2026-10-16: "Always
 // keep"). Each task's bytes leave when it ends, off its path, like its
-// entry's upload (owner 2026-10-16); the run only waits for them where it
+// entry's upload (2026-10-16); the run only waits for them where it
 // waits for every upload, and the footer counts them as the task's remote
 // traffic.
 

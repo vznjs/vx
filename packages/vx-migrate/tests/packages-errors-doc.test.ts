@@ -1,6 +1,6 @@
 // The README's table of what reading the members refuses, held to the
 // messages src/packages.ts throws, both ways: a row nothing provokes, or a
-// message no row names, fails (core's schema.md held it until M, 2026-10-14).
+// message no row names, fails (core's schema.md held it until 2026-10-14).
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'

@@ -2,7 +2,7 @@
 // the vx-cache protocol (`@vzn/vx-cache-server`, its PROTOCOL.md, /v1).
 // Nothing is on by default: declare it in `.vx/workspace.ts` with the
 // server's URL, the CI issuer and the repository, which every request
-// names by their hashes (M, 2026-10-25: the user names them, nothing
+// names by their hashes (2026-10-25: the user names them, nothing
 // guesses). A CI job's requests carry its OIDC token and write; with no
 // token it reads only, from a server with `READ_ACCESS=public`. Every read
 // names exact scopes: the run's branch, then the branches it reads after it.
@@ -32,7 +32,7 @@ export interface VxCacheOptions {
   /**
    * Headers every request to the server carries, for a proxy in front of
    * it (`{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }`, an
-   * Access service token, M 2026-10-25). An unset value is left out;
+   * Access service token, 2026-10-25). An unset value is left out;
    * `authorization` stays the CI token's.
    */
   headers?: Record<string, string | undefined>
@@ -83,7 +83,7 @@ function proxyHeaders(
   return out
 }
 
-/** A ref's scope, an issuer or a repository on the wire: its SHA-256's first 128 bits in hex, never the value (M, 2026-10-25). */
+/** A ref's scope, an issuer or a repository on the wire: its SHA-256's first 128 bits in hex, never the value (2026-10-25). */
 const scopeOf = (ref: string): string =>
   new Bun.CryptoHasher('sha256').update(ref).digest('hex').slice(0, 32)
 
@@ -145,7 +145,7 @@ function streamed(res: Response, controller: AbortController, ms: number): Respo
 
 /**
  * Uploads: up to `IN_FLIGHT` at once, each one artifact by `PUT`, whose
- * bytes reach the bucket untouched (M, 2026-10-25: no batch upload; a
+ * bytes reach the bucket untouched (2026-10-25: no batch upload; a
  * batch passes through the server's code, which on Workers costs CPU by the
  * byte, and a 40 MB one ran out of it).
  */

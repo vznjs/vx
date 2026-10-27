@@ -1,8 +1,8 @@
 // `gitlab()` names the run's branch through `setBranch`, as `github()`
-// does on Actions (owner, 2026-10-18): the default branch and a merge
+// does on Actions (2026-10-18): the default branch and a merge
 // train keep the default keys, a branch or its merge request gets
 // `<project path>:<branch>`, and a merge request its diff base. Each
-// names the refs a remote reads (M, 2026-10-25).
+// names the refs a remote reads (2026-10-25).
 import { expect, it } from 'bun:test'
 import type { BranchFacts } from '@vzn/vx'
 import { gitlab } from '../src/index.js'
@@ -104,7 +104,7 @@ it('a merge train is trusted: no scope, compared with its diff base, reading onl
     base: 'b4se',
     refs: ['refs/heads/release'],
   })
-  // M, 2026-10-25: a train reads its target only, never the default branch.
+  // 2026-10-25: a train reads its target only, never the default branch.
   expect(await branchOf(train, {}, 'trunk')).toMatchObject({ refs: ['refs/heads/release'] })
 })
 

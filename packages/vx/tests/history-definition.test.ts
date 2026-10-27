@@ -1,4 +1,4 @@
-// A task's history is of the task as it is now (M, 2026-10-23: "task can
+// A task's history is of the task as it is now (2026-10-23: "task can
 // disappear and appear as a completely new one with the same name"): each
 // row carries the task's definition (`taskDefinition`), and a reader given
 // the run's definitions reads only the matching rows. A changed command

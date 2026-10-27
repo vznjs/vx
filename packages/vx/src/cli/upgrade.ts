@@ -440,8 +440,8 @@ const PLATFORM = /^@vzn\/vx-(?:darwin|linux)-(?:x64|arm64)$/
 /**
  * The `@vzn/vx-*` plugins `dir`'s package.json lists from the registry
  * (a `workspace:` or `file:` link is the repo's own). Every @vzn package
- * releases together, so they move with core in its one install (M,
- * 2026-10-16); one in another field would move fields under core's flag,
+ * releases together, so they move with core in its one install
+ * (2026-10-16); one in another field would move fields under core's flag,
  * so it is refused.
  */
 function pluginsBeside(dir: string, field: NonNullable<ManagedInstall['field']>): string[] {
@@ -716,7 +716,7 @@ export async function upgradeGlobal(
 
 /**
  * `vx upgrade -g`: bring this vx, the global one, to `version` and nothing
- * else (owner, 2026-10-16) — no project's package.json, no plugin. The
+ * else (2026-10-16) — no project's package.json, no plugin. The
  * project's own vx refuses: no global ran.
  */
 export async function upgradeOnlyGlobal(
@@ -784,7 +784,7 @@ export async function upgradeCmd(argv: readonly string[]): Promise<number> {
   }
   const install = managedInstall(dest, process.cwd())
   // A global vx handed this run to the project's own: both move, to one
-  // version, the project first (owner, 2026-10-15).
+  // version, the project first (2026-10-15).
   const from = handedOffFrom
   if (from !== undefined) {
     const version = await targetVersion(tag)
@@ -813,7 +813,7 @@ const newVx = (install: ManagedInstall | null, dest: string): string =>
   install === null ? dest : path.join(install.cwd, 'node_modules', '.bin', 'vx')
 
 /**
- * Lock the workspace with the vx just installed at `bin` (M, 2026-10-18):
+ * Lock the workspace with the vx just installed at `bin` (2026-10-18):
  * a release may record the lock differently. `-g` never re-locks. A lock
  * that fails leaves the upgrade done and says what to run.
  */

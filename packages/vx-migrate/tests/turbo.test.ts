@@ -624,7 +624,7 @@ describe('a committed file under an output', () => {
   // typescript-eslint's website build caches `data`, which holds the
   // committed `sponsors.json`: Turbo and Nx never clean an output, vx does,
   // and the first run deleted it (2026-09-29). Core never cleans a
-  // committed file (owner, 2026-10-14), so the output stays as declared.
+  // committed file (2026-10-14), so the output stays as declared.
   it(
     'survives the clean, and the task keeps its cache',
     async () => {
@@ -1314,7 +1314,7 @@ describe('turbo() under vx lock', () => {
     TIMEOUT,
   )
 
-  // solid-js (M, 2026-10-15): two tasks on one output path printed the
+  // solid-js (2026-10-15): two tasks on one output path printed the
   // gap on every run and never at `vx lock`. Runs check nothing; the lock
   // reports what the mapping could not say, once, as a warning.
   it(

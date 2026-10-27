@@ -199,7 +199,7 @@ describe('placeTasks (item 650)', () => {
   })
 })
 
-// Nothing runs on a distributed run's orchestrator (owner, 2026-10-22): a
+// Nothing runs on a distributed run's orchestrator (2026-10-22): a
 // `servers` executor takes a server's dependants and starts the server
 // where each runs, so the server is never spawned here.
 describe('placeTasks — a servers executor carries persistent dependencies', () => {
@@ -295,7 +295,7 @@ describe('placeTasks — a servers executor carries persistent dependencies', ()
 })
 
 // No task runs on a distributed run's orchestrator; only hits restore
-// there (owner, 2026-10-24): an `exclusive` executor lifts every pin, and a
+// there (2026-10-24): an `exclusive` executor lifts every pin, and a
 // task that would still land here refuses the run.
 describe('placeTasks — an exclusive executor leaves this machine nothing', () => {
   const floor = localExecutor()

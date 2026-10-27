@@ -1,6 +1,6 @@
 // `vx init` outside a Turbo or Nx repo writes the workspace file and one
 // empty root project, then the lock; a Turbo or Nx repo is handed to
-// @vzn/vx-migrate (M, 2026-10-20). A source checkout installs nothing:
+// @vzn/vx-migrate (2026-10-20). A source checkout installs nothing:
 // `initInstalls` is the plan a release runs.
 
 import { existsSync, realpathSync } from 'node:fs'

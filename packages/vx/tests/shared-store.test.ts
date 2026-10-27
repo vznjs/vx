@@ -244,7 +244,7 @@ describe('the shared store', () => {
       { status: 'success' },
       { status: 'cache-hit' },
     ])
-    // The move is vx's own upkeep: nothing printed (owner, 2026-10-06).
+    // The move is vx's own upkeep: nothing printed (2026-10-06).
     expect(said(a)).toEqual({
       log: ['task app#build success', 'task app#build success', 'task app#build cache-hit'],
       err: [],

@@ -1,5 +1,5 @@
 // A run's own entries (failed tasks' outputs, logs) go to each remote the
-// run writes with a plain `put`: core asks no `has` first (M, 2026-10-15),
+// run writes with a plain `put`: core asks no `has` first (2026-10-15),
 // since an entry is immutable and the remote keeps what it holds.
 
 import { describe, expect, it } from 'bun:test'

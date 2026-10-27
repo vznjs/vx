@@ -346,7 +346,7 @@ export interface StatusRegionState {
   stopping?: boolean
   /**
    * vx's own steps still running, shown below the worker rows: no worker
-   * slot or `--concurrency` bounds them (M, 2026-10-15).
+   * slot or `--concurrency` bounds them (2026-10-15).
    */
   steps?: readonly WorkerSlot[]
   /** Clock value used for per-slot elapsed (injectable for tests). */
@@ -401,7 +401,7 @@ const INTERNAL = 'internal'
 /**
  * The list row of one of vx's own steps (`vx:uploads`), on the task grid
  * with `internal` in the cache column: a step is no task and caches
- * nothing (M, 2026-10-16: `4.60s success internal vx:keep-run`).
+ * nothing (2026-10-16: `4.60s success internal vx:keep-run`).
  */
 export function formatStepLine(
   id: string,
@@ -463,7 +463,7 @@ export function formatStatusRegion(
   const busy = s.slots.filter((x) => x !== null && x.waiting !== true).length
   for (const [row, slot] of s.slots.entries()) {
     // Placed by an executor (DTE), the list is what runs: blocked tasks are
-    // the tasks line's count alone (M, 2026-10-21).
+    // the tasks line's count alone (2026-10-21).
     if (slot === null && (s.stopping === true || s.where !== undefined)) continue
     if (slot === null) {
       const w = s.blocked?.[row]
@@ -491,7 +491,7 @@ export function formatStatusRegion(
       continue
     }
     // Handed to an executor that has no machine on it yet: no row, only
-    // the tasks line's `scheduled` (M, 2026-10-21).
+    // the tasks line's `scheduled` (2026-10-21).
     if (slot.waiting === true) continue
     const at = s.where?.(slot.id)
     const critical = s.critical === slot.id && busy > 1
@@ -528,7 +528,7 @@ export function formatStatusRegion(
   if (lines.length > 1) lines.splice(1, 0, formatListHeader(s.where !== undefined, colors))
   // A region taller than the terminal (a row spared) folds the rows past
   // what fits into one line: the writer would cut the summary at its
-  // foot, and lines never printed cannot be scrolled to (M, 2026-10-21).
+  // foot, and lines never printed cannot be scrolled to (2026-10-21).
   const room = s.rows === undefined ? Infinity : s.rows - 1 - s.summaryLines.length
   if (lines.length > room && room >= 3) {
     const kept = room - 1
@@ -544,7 +544,7 @@ export function formatStatusRegion(
 
 /**
  * A running task's usual duration, fixed while the elapsed time counts up
- * toward it (M, 2026-10-14): `~5.2s`, `~42s`, `~2m 05s`. Fits the cache
+ * toward it (2026-10-14): `~5.2s`, `~42s`, `~2m 05s`. Fits the cache
  * column below 100 minutes.
  */
 function formatExpected(ms: number): string {

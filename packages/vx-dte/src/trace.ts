@@ -1,4 +1,4 @@
-// A distributed run in time, for `vx run --profile` (owner, 2026-10-23: "a
+// A distributed run in time, for `vx run --profile` (2026-10-23: "a
 // Chrome profile with all workers and tasks they executed in time"): Trace
 // Event Format events, one process per machine.
 // A worker's first row is its life (warm-up, idle, leave); each task gets

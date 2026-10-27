@@ -100,7 +100,7 @@ const CHECK_LOOKUPS = 6
 
 /**
  * The limits as set, unclamped: a plan's limits are the operator's to set
- * (M, 2026-10-25: never optimize for the free plan).
+ * (2026-10-25: never optimize for the free plan).
  */
 function workerLimits(env: Env): Limits {
   return { ...DEFAULT_LIMITS, maxCheckHashes: CHECK_LOOKUPS, ...limitsFrom(env) }

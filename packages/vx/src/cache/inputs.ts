@@ -831,7 +831,7 @@ async function scanOutputs(
 
 /**
  * Whether git tracks a file under `dir`. No clean deletes a committed (or
- * `git add`ed) file an output glob reaches (owner, 2026-10-14: "never
+ * `git add`ed) file an output glob reaches (2026-10-14: "never
  * delete committed file"); the task may rewrite it and a restore writes the
  * bytes it left. It stays in the task's key, so those bytes follow from
  * the key. Turbo and Nx never clean an output at all.
@@ -1456,7 +1456,7 @@ function lowerBound(files: readonly string[], key: string): number {
  * The entries a declaration names outright that git answers nothing for: a
  * literal, or a glob's fixed prefix (`dist` of `dist/**`), with no listed
  * path at or under it. Such a path is gitignored or absent, and naming it
- * is asking for it (owner, 2026-10-16), so {@link ignoredInputs} reads it
+ * is asking for it (2026-10-16), so {@link ignoredInputs} reads it
  * from disk. A broad glob (`**`, or `src/**` over a listed `src`) reaches
  * no ignored file: `node_modules` is never walked.
  */
@@ -1510,7 +1510,7 @@ function outright(reach: { prefixes: readonly string[]; literals: readonly strin
  * The files on disk under the {@link ignoredReach} entries that `accept`
  * keeps, sorted and absolute. A file is hashed from disk like any untracked
  * one; nothing here is stored or restored. `node_modules` is no special
- * case (owner, 2026-10-16): an ignored path named outright is an input,
+ * case (2026-10-16): an ignored path named outright is an input,
  * a generated client (`node_modules/.prisma/client/**`) too; skipping
  * installs here folded such an entry to nothing, silently. lstat, not
  * `exists()`: that answers false for a directory. Never memoized: a
@@ -1697,7 +1697,7 @@ function throughLinks(
  * `projectRel` (the path relative to the project that owns it) against
  * `files`, `workspaceRel` (relative to the workspace root) against
  * `workspaceFiles`; null skips that half, by the globs and `!` exclusions (a path under
- * the task's own outputs counts: a committed one is keyed). `--affected` seeds a task with it (owner, 2026-10-04).
+ * the task's own outputs counts: a committed one is keyed). `--affected` seeds a task with it (2026-10-04).
  */
 export function declaresInput(
   task: TaskConfig,

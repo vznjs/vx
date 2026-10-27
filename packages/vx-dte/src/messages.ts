@@ -6,7 +6,7 @@ import type { CacheFacts, CapturedChunk, ExecuteResult, SandboxConfig } from '@v
 
 /**
  * A worker says what it holds every this many heartbeats, and a task's
- * lease is three of them. Every heartbeat (M, 2026-10-25: the fastest, not
+ * lease is three of them. Every heartbeat (2026-10-25: the fastest, not
  * a free plan's message count): a task its worker dropped while alive
  * goes back in 15 s, not 90.
  */
@@ -130,7 +130,7 @@ export type ToWorker =
 /**
  * What its machine uses now: cores busy over the last second and bytes of
  * memory in use. Each frame a worker sends carries it, so the run places
- * by what is free, not only by what history booked (M, 2026-10-23: "you
+ * by what is free, not only by what history booked (2026-10-23: "you
  * watch instruments and play most efficient as they go").
  */
 export interface Load {

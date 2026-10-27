@@ -1,4 +1,4 @@
-// vx's own steps are named `<owner>:<step>` (M, 2026-10-15): `:` is no task
+// vx's own steps are named `<owner>:<step>` (2026-10-15): `:` is no task
 // id's separator, so a step never collides with a project named `vx` or a
 // plugin package's own `#setup` task. No step is a task: the outcomes and
 // the run history hold the tasks alone.
@@ -87,7 +87,7 @@ it(
   TIMEOUT,
 )
 
-// A run shows only the steps it waits on (M, 2026-10-16). The remote
+// A run shows only the steps it waits on (2026-10-16). The remote
 // prefetch runs beside the tasks: it showed as a row of its own, and a
 // local run never had it. `vx last` keeps it for debugging.
 const CACHED = `

@@ -9,17 +9,17 @@ signature over `name@version:integrity` against npm's key pinned here,
 verifies the tarball's SHA-512 against that integrity, extracts
 `package/vx` and renames it over the current executable. The signature
 is what proves the bytes are npm's: the host serving the tarball cannot
-make it (owner, 2026-10-13; pnpm/get checks the same). A vx a package
+make it (2026-10-13; pnpm/get checks the same). A vx a package
 manager installed is upgraded by that manager (`managedInstall`,
 `upgradeArgv`); vx never installs Node or a package manager.
 
 Handed off by a global vx (`VX_HANDED_OFF` names it), the project's vx
 moves both to one version: its own install first, then the global
 (`upgradeGlobal`), each its own way; a refusal names the install that
-failed (owner, 2026-10-15). `vx upgrade -g` moves only the global: the
+failed (2026-10-15). `vx upgrade -g` moves only the global: the
 compiled binary and npm-launcher.sh skip the hand-off for it
 (`upgradesOnlyItself`), and `upgradeOnlyGlobal` upgrades this vx its
-own way, refusing when it is a project's install (owner, 2026-10-16).
+own way, refusing when it is a project's install (2026-10-16).
 
 ## Public surface
 
@@ -111,7 +111,7 @@ A host the box cannot reach is one line naming the host and the step
   (the tree's root, else the nearest above cwd), its manager by lockfile,
   then `packageManager`. A `bunx` cache is refused.
 - Core and every `@vzn/vx-*` plugin beside it move in one install to one
-  release (M, 2026-10-16); a plugin in another field is refused before
+  release (2026-10-16); a plugin in another field is refused before
   anything runs.
 - The compiled path against the real registry stays manual (proven
   2026-10-13: `@vzn/vx-<os>-<arch>@0.0.635` for all four targets verified,
