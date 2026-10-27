@@ -493,7 +493,7 @@ export class LayeredCache implements CacheLayer {
   ): Promise<boolean | null> {
     const fetchStart = performance.now()
     // A stopped run waits on no read, as on no upload: a lookup or download
-    // in flight held a Ctrl-C until its last byte (M, 2026-10-17). The
+    // in flight held a Ctrl-C until its last byte (2026-10-17). The
     // plugin's request is left to the exit, and its body is cancelled.
     const stopped = lane.whenStopped.then((): typeof STOPPED => STOPPED)
     const pending = lane.get(hash, fresh)

@@ -1,4 +1,4 @@
-// M, 2026-10-09: a shared blog or release link must show its own banner,
+// 2026-10-09: a shared blog or release link must show its own banner,
 // not the site's. Every built post and release page names an absolute
 // og:image that is not the site default, and the image ships in the build.
 import { existsSync, readFileSync, readdirSync } from 'node:fs'

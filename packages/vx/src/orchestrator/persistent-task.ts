@@ -74,7 +74,7 @@ export async function executePersistentTask(args: ExecuteArgs): Promise<TaskOutc
         })))
 
   // Every dependant starts it where it runs (`ServerSpec`): nothing to spawn
-  // here, and nothing that ran (owner, 2026-10-22: nothing runs on a
+  // here, and nothing that ran (2026-10-22: nothing runs on a
   // distributed run's orchestrator).
   if (args.carried === true)
     return {

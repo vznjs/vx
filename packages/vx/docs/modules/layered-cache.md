@@ -126,7 +126,7 @@ clears its `read` and `write` (`ResolvedRemote`'s, which the lanes read
 live), so the run goes on without it; every remote off this way is no
 remote layer for the run's policy. `ctx.secret` is the supplying plugin's
 keychain (`util-secrets.md`); `@vzn/vx-migrate`'s `turboCache()` and
-`nxCache()` read a missing token from it here (owner, 2026-10-17).
+`nxCache()` read a missing token from it here (2026-10-17).
 
 ## The never-fail contract
 
@@ -148,7 +148,7 @@ the same way, never reported as a corrupt artifact.
 A probe's answer (`has`, `hasMany`, or one recorded by an earlier run)
 is a hint, never the artifact: a key it says is held whose `get` returns
 `null` (the server dropped it since) is a plain miss, and the task runs
-(owner, 2026-10-23).
+(2026-10-23).
 
 What `hasMany` said is recorded in the index's `remote_hits`
 (`remote-hits.ts`), hits only, so another process trusts it

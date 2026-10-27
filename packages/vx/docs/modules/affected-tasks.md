@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`--affected` selects tasks, not projects (owner, 2026-10-04). The diff
+`--affected` selects tasks, not projects (2026-10-04). The diff
 (`affectedChanges`, affected.md) seeds tasks:
 
 - a group seeds nothing (it runs nothing), but for the default `build`;

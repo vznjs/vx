@@ -1,11 +1,11 @@
-// A global vx hands off to the project's own (owner, 2026-10-13), found
+// A global vx hands off to the project's own (2026-10-13), found
 // from the workspace root, the one lookup every verb shares. Here for
 // the compiled binary installed by hand; an npm install's launcher
 // (npm-launcher.sh) walks the same way and `exec`s, which Bun cannot. The
 // walk runs before anything else loads, through `Bun.file(…).exists()`:
 // importing `node:fs` alone was ~1.1 ms of a 4 ms start (2026-10-13).
 
-/** `vx upgrade -g`: moves only the global vx, so it never hands off (owner, 2026-10-16). */
+/** `vx upgrade -g`: moves only the global vx, so it never hands off (2026-10-16). */
 export function upgradesOnlyItself(argv: readonly string[]): boolean {
   return argv[0] === 'upgrade' && argv.some((a) => a === '-g' || a === '--global')
 }
@@ -44,7 +44,7 @@ export async function localVx(
 
 /**
  * The workspace config's paths under the root, in lookup order: one marks
- * the workspace root, the directory holding its `.vx` (owner, 2026-10-14).
+ * the workspace root, the directory holding its `.vx` (2026-10-14).
  */
 export const WORKSPACE_CONFIG_FILENAMES = [
   '.vx/workspace.ts',
@@ -67,7 +67,7 @@ const files = new Map<string, Promise<string | null>>()
 /**
  * The workspace config that marks the root for `dir`: the first
  * `.vx/workspace.*` from `dir` up to the git top-level ({@link gitTop}),
- * inclusive, or to `/` outside git (owner, 2026-10-13: "Workspace file is
+ * inclusive, or to `/` outside git (2026-10-13: "Workspace file is
  * the ultimate" and "never go out of git root"). Null when there is none.
  * Learned once per directory per run: the hand-off and the workspace root
  * share it (principle 9).

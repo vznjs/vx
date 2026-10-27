@@ -21,7 +21,7 @@ export interface AdmitContext {
 
 type · `src/workspace/affected.ts`
 
-What `--affected` seeds its tasks from (owner, 2026-10-04): the changed
+What `--affected` seeds its tasks from (2026-10-04): the changed
 projects, each one's changed paths relative to it, and the projects a
 change reaches as a whole — every task in one is affected whatever its
 inputs say, because the reason was no path of its own (a lockfile claim,
@@ -178,13 +178,13 @@ export function branchCacheScope(repo: string, branch: string): string
 
 type · `src/orchestrator/plugin.ts`
 
-What a CI knows of the run's branch (owner, 2026-10-17): `scope`, the
+What a CI knows of the run's branch (2026-10-17): `scope`, the
 cache scope (`'vznjs/vx:feat-x'`; `VX_CACHE_SCOPE` beats it, and it
 beats the one git names), and `base`, the commit the branch is compared
 with (a pull request's base), for a bare `--affected`. `trusted`: the
-run has no scope, whatever git names (a merge queue's run, owner
+run has no scope, whatever git names (a merge queue's run,
 2026-10-18). The scope keys plugin entries only. `refs`: the refs a
-remote reads, in order (`CacheContext.refs`; M 2026-10-25: a pull
+remote reads, in order (`CacheContext.refs`; 2026-10-25: a pull
 request its head branch, then its base, then the default branch; a
 merge queue or train only its base); unset, git's. A later plugin's
 field wins.
@@ -823,7 +823,7 @@ function · `src/workspace/workspace.ts`
 The workspace root for `start`: the directory holding the first
 `.vx/workspace.*` from `start` up to the git top-level, or up to `/`
 outside git ({@link workspaceFile}, shared with the hand-off). Nothing
-else decides it (owner, 2026-10-13: "Workspace file is the ultimate"):
+else decides it (2026-10-13: "Workspace file is the ultimate"):
 not a `package.json`, not `pnpm-workspace.yaml`, not a lockfile. Throws
 `VX_E_NO_WORKSPACE` when there is none.
 
@@ -2505,7 +2505,7 @@ package linked there.
 INVALIDATES a task, `allow` says what it may TOUCH, and deriving one
 from the other coupled them both ways — a declaration added for
 caching silently widened the sandbox, and a path the task needed had
-to be laundered through the cache key to get it (owner, 2026-09-05).
+to be laundered through the cache key to get it (2026-09-05).
 A declared `cache.outputs` is NOT a write grant; the request
 `sandbox-request.ts` builds carries no write of its own and binds
 `allow.write` alone. This comment claimed the opposite — here and on
@@ -2587,7 +2587,7 @@ function · `src/orchestrator/sandbox-request.ts`
 The sandbox half of an `ExecuteRequest` for one task, shared by the
 cached path (through the executor) and the persistent path (spawned here).
 
-The user's grants derive NOTHING from `cache` (owner, 2026-09-05). Those
+The user's grants derive NOTHING from `cache` (2026-09-05). Those
 are two different questions: `inputs` says what INVALIDATES the
 task, `sandbox.allow` says what it may TOUCH. Deriving one from the other
 coupled them in both directions — a declaration added for caching

@@ -17,7 +17,7 @@ export interface LiveForecast {
   /**
    * Tasks not started because a dependency has not finished, in the order
    * the scheduler would start them, at most one per worker: what an idle
-   * worker row holds (M, 2026-10-15).
+   * worker row holds (2026-10-15).
    */
   blocked?: readonly BlockedTask[]
 }

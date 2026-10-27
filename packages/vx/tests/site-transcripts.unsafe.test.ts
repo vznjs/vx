@@ -28,7 +28,7 @@ const ENV = {
   GIT_COMMITTER_EMAIL: 't@t',
   NO_COLOR: '1',
 }
-// An `ansi` sample is pasted with vx's colours (owner, 2026-10-26: never
+// An `ansi` sample is pasted with vx's colours (2026-10-26: never
 // plain white output on the site), so it is compared escape for escape.
 const { NO_COLOR: _nc, ...UNCOLOURED } = ENV
 const COLOUR = { ...UNCOLOURED, FORCE_COLOR: '1' }

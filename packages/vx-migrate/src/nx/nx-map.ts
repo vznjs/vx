@@ -894,7 +894,7 @@ function buildTask(
   // vx cleans outputs before a run and Nx never does. With git's file list
   // known, a wildcard-first output (`**/*.d.ts`) stays cached: core never
   // cleans a committed file, so what the clean removes is what the task
-  // writes (owner, 2026-10-03). Without it, the sources cannot be told apart.
+  // writes (2026-10-03). Without it, the sources cannot be told apart.
   const wild =
     opts.tracked === undefined
       ? (wildcardOutput(outFiles) ?? wildcardOutput(wsOutFiles))
@@ -979,7 +979,7 @@ function buildTask(
   // dependencies again. `LERNA_PACKAGE_NAME` is the project too: Lerna
   // runs on Nx's runner and documents it to scripts. Only a command that
   // still runs Nx or Lerna gets them: a native task names no other runner
-  // (owner, 2026-10-22). A run-commands `env` still wins, as in Nx.
+  // (2026-10-22). A run-commands `env` still wins, as in Nx.
   const define = {
     ...(RUNS_NX.test(mapped.command)
       ? {

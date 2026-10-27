@@ -2,7 +2,7 @@
 // process. Not a plugin — "run it on this machine" is not a capability
 // someone else supplies differently, it is what running MEANS when no
 // plugin claims the task, so it sits at the TAIL of every executor list
-// (owner, 2026-09-05). An executor plugin places work ELSEWHERE; its
+// (2026-09-05). An executor plugin places work ELSEWHERE; its
 // absence is "here".
 import { runCommand, signalExitCode, stopSignal } from './runner.js'
 import { runSandboxed } from './sandbox-runtime.js'

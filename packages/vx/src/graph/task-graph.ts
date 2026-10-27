@@ -296,7 +296,7 @@ export interface BuildGraphOptions {
 
 /**
  * `run.rules` as the graph applies them. `locked`: a run, which never
- * checks them; `vx lock` and `vx lock --check` do (owner, 2026-10-14).
+ * checks them; `vx lock` and `vx lock --check` do (2026-10-14).
  */
 export type GraphRules = WorkspaceRules & { readonly locked?: boolean }
 
@@ -996,7 +996,7 @@ function witnessed(a: string, b: string): boolean {
   }
   // Each glob filled in whole, every wildcard a name and `**` one level or
   // none: `**/dist/**` beside `**/*` meets at `x/dist/x`, a path neither
-  // last segment builds (solid, M 2026-10-15).
+  // last segment builds (solid, 2026-10-15).
   for (const glob of [a, b]) {
     const segs = glob.split('/')
     if (segs.some((s) => /[[\]{}()!+@]/.test(s))) continue
@@ -1688,10 +1688,10 @@ interface Side {
 
 /**
  * Refuse a task whose input globs can match another task's declared
- * outputs (X-54; no opt-out, owner 2026-10-16). Such a key reads bytes a
+ * outputs (X-54; no opt-out, 2026-10-16). Such a key reads bytes a
  * producer writes this run, so it is not known until the producer ran;
  * refused, every key reads only what no task writes and can be derived
- * before anything runs (M, 2026-10-07: "hash ahead of time, not
+ * before anything runs (2026-10-07: "hash ahead of time, not
  * waterfall"). A dependency's own key already cascades through
  * `dependsOn`, so the bytes it wrote add nothing a key needs; the one
  * exception is `refuseOverlaps`'s unfolded dependency.
@@ -1827,9 +1827,9 @@ type Found = Map<string, Overlap[]>
  * Which overlaps stand. A reader may read the outputs of a task in its
  * `dependsOn` closure whose key its own does not fold (it sets
  * `inputs.tasks` and leaves the producer out, also through the tasks it
- * folds): its key waits for the producer and hashes the bytes (owner,
- * 2026-10-16). Otherwise an output git ignores whole is no overlap (M,
- * 2026-10-15), a key reading only what git lists, unless the reader's
+ * folds): its key waits for the producer and hashes the bytes
+ * (2026-10-16). Otherwise an output git ignores whole is no overlap
+ * (2026-10-15), a key reading only what git lists, unless the reader's
  * glob starts in an ignored path (`dist/**`): naming it is asking for it.
  * Git is asked once, for every output and prefix together; one it cannot
  * speak for is refused. The answer holds for the lock; a run's stability

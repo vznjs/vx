@@ -75,7 +75,7 @@ describe('Nx parity — running targets (`nx run`, `nx run-many`, `nx affected`)
   )
 
   it(
-    '`nx affected -t lint` selects changed projects AND their dependents; `--affected` follows task edges as Nx 23.3 task selection does, so a `lint` no task edge joins stays in lib (owner, 2026-10-04); `...[ref]` is the project walk',
+    '`nx affected -t lint` selects changed projects AND their dependents; `--affected` follows task edges as Nx 23.3 task selection does, so a `lint` no task edge joins stays in lib (2026-10-04); `...[ref]` is the project walk',
     async () => {
       await writeFile(path.join(root, 'packages', 'lib', 'src', 'in.txt'), 'lib-v2\n')
       const git = gitIn(root)

@@ -110,7 +110,7 @@ holds keeps its bytes, answered before they are read. `204`; past
 held.
 
 Downloads and uploads go one artifact at a time, many at once: there is
-no batch of either (M, 2026-10-25: "use the put and get"). A batch's
+no batch of either (2026-10-25: "use the put and get"). A batch's
 bytes pass through the server's code, which on Workers costs CPU by the
 byte (a 40 MB one ran out of it), and its artifacts arrive one after
 another; a `GET`'s and a `PUT`'s bytes pass untouched, in parallel.

@@ -57,7 +57,7 @@ export function oidcAuth(opts: OidcOptions): Authorize
   `org/name` lowercased; one missing or not a hash is `400`.
 - The token's repository is its issuer and its name, `org/name`
   lowercased: `repository` (GitHub) or `project_path` (GitLab), what a
-  checkout's origin names (M, 2026-10-25). One no rule names is `403`, and
+  checkout's origin names (2026-10-25). One no rule names is `403`, and
   so is one other than the request names.
 - With `readAccess: 'public'` (`READ_ACCESS`), a request with no token
   reads the repository it names when a rule names it (else `403`), and

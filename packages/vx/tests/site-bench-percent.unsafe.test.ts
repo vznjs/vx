@@ -1,5 +1,5 @@
 // No post or guide quotes a benchmark figure with how much faster vx is
-// (owner, 2026-10-12: never say how much faster vx is; the numbers speak).
+// (2026-10-12: never say how much faster vx is; the numbers speak).
 // update-site.ts prints raw figures; a hand-typed `(vx N× faster)` would
 // bring the claim back.
 import { readFileSync, readdirSync } from 'node:fs'

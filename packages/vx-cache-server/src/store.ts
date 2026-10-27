@@ -1,5 +1,5 @@
 // Where a server keeps what it is sent: one bucket (S3 or R2), no
-// database (M, 2026-10-25). An artifact is one object whose name is its
+// database (2026-10-25). An artifact is one object whose name is its
 // issuer, repository name, scope and hash and whose size is the bucket's
 // own, so any number of nodes share a bucket and nothing else.
 
@@ -22,8 +22,8 @@ export interface Blobs {
 }
 
 /**
- * An artifact's object name, `<issuer>/<id>/<scope>/<hash>` (M,
- * 2026-10-25): issuer and id each hashed (`hashPart`), `scope` the ref's
+ * An artifact's object name, `<issuer>/<id>/<scope>/<hash>`
+ * (2026-10-25): issuer and id each hashed (`hashPart`), `scope` the ref's
  * hash the client sent, so no segment is a plain value and a ref's slashes
  * or any byte stay one segment. The server knows no tier.
  */

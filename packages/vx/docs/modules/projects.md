@@ -16,7 +16,7 @@ watch` cycle).
 
 A project whose config and plugins declare no `build` gets one, after the
 `project` stage: a group with `dependsOn: ['^build']` keyed on `**`
-(owner, 2026-10-04; `computeGroupKey`, task-hash.md), the graph module's
+(2026-10-04; `computeGroupKey`, task-hash.md), the graph module's
 `DEFAULT_BUILD` (task-graph.md).
 
 ## Public surface

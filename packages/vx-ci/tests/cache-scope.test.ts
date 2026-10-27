@@ -164,7 +164,7 @@ it("an event that runs in main's context for a pull request is the PR's", async 
 
 // Owner, 2026-10-18: a merge queue builds what is about to land on main,
 // so it reads and writes the default keys; its queue branch is a scope
-// nobody reads. M, 2026-10-25: it reads its base branch only.
+// nobody reads. 2026-10-25: it reads its base branch only.
 it("a merge queue's run is trusted: no scope, compared with the queue's base, reading only it", async () => {
   const sha = 'a'.repeat(40)
   const ref = `refs/heads/gh-readonly-queue/release/pr-7-${sha}`

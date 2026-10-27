@@ -174,7 +174,7 @@ describe('Turbo parity — `--filter` (package selection)', () => {
         'ui#lint',
       ])
       // `--affected=<ref>` follows task edges, as Turbo's
-      // `affectedUsingTaskInputs` does: no `lint` depends on lib's (owner, 2026-10-04).
+      // `affectedUsingTaskInputs` does: no `lint` depends on lib's (2026-10-04).
       expect(await planned(root, ['lint', '--affected=HEAD~1'])).toEqual(['lib#lint'])
     },
     TIMEOUT,

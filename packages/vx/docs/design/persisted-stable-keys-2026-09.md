@@ -1,6 +1,6 @@
 # Persisted stable keys — design
 
-> **Decision (owner, 2026-09-25, item 756): DEFERRED.** The design below
+> **Decision (2026-09-25, item 756): DEFERRED.** The design below
 > holds, and its prototype saved 13–21 ms at min of a 476-package warm run.
 > It is not built now: the saving exists only on an exact-repeat run (a run
 > after any edit pays today's cost plus about 1 ms), part of it reappears

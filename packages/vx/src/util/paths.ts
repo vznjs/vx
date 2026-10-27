@@ -206,7 +206,7 @@ export function isLiteralPattern(glob: string): boolean {
  * class written out nine times — a spelling that drifts is how two guards
  * come to answer differently for one pattern.
  *
- * A task glob is a standard glob (M, 2026-10-18): `[...]` is a character
+ * A task glob is a standard glob (2026-10-18): `[...]` is a character
  * class and `\[id\]` names the route directory `[id]`. An escape counts as
  * a wildcard too: such a pattern is matched by `Bun.Glob`, which reads the
  * escape, never compared as a string; `asTrees` still reads an escaped-only

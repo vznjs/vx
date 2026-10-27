@@ -144,7 +144,7 @@ describe('--affected and the dependents of what changed', () => {
   )
 })
 
-describe('--affected follows task edges (owner, 2026-10-04)', () => {
+describe('--affected follows task edges (2026-10-04)', () => {
   it(
     "a source edit reaches the dependent's tasks behind ^build, not its lint",
     () => {
@@ -254,7 +254,7 @@ describe('--affected follows task edges (owner, 2026-10-04)', () => {
     'a package without build gets one keyed on all its files',
     async () => {
       // lib declares no build, so it gets the default: a group behind ^build
-      // keyed on every file of lib (owner, 2026-10-04).
+      // keyed on every file of lib (2026-10-04).
       await write(
         path.join(root, 'pkgs/lib/vx.config.mjs'),
         `export default { tasks: { test: { exec: { command: 'true' }, inputs: { files: ['src/**'] }, cache: { outputs: { files: [] } } } } }\n`,

@@ -1970,7 +1970,7 @@ function buildTask(
   }
 
   // With git's file list known, a wildcard-first output stays cached as
-  // nx() keeps it (owner, 2026-10-03; turbo() 2026-10-14): core never
+  // nx() keeps it (2026-10-03; turbo() 2026-10-14): core never
   // cleans a committed file. Turbo never cleans, so the untracked files
   // it reaches are named. An X added for `X/**` is judged with it.
   const wild = wildcardOutput(
@@ -1991,7 +1991,7 @@ function buildTask(
       if (!covers(outFiles, rel)) outFiles.push(literalGlob(rel))
   // An output over the project's own package.json (trpc's builds list
   // it: tsdown rewrites `exports`) is taken back and keeps the cache, as
-  // nx() does (owner, 2026-10-03). The build rewrites an input the key
+  // nx() does (2026-10-03). The build rewrites an input the key
   // folds, so its identical rewrite counts as unchanged ('mutable').
   const takeBacks = ownFileTakeBacks(outFiles, opts.ownConfig?.(pkgDir))
   outFiles.push(...takeBacks)

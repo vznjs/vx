@@ -342,7 +342,7 @@ describe('cache.inputStability: what a write during the command means', () => {
   )
 
   it(
-    'on CI the default still withholds (owner, 2026-10-12: a concurrent task can put an input back)',
+    'on CI the default still withholds (2026-10-12: a concurrent task can put an input back)',
     async () => {
       const ci = process.env['CI']
       process.env['CI'] = 'true'

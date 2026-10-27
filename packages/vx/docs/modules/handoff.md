@@ -4,12 +4,12 @@
 
 The workspace root is the directory holding the nearest `.vx/workspace.*`
 from the working directory up to the git top-level, or up to `/` outside
-git (owner, 2026-10-13: "Workspace file is the ultimate", "never go out
+git (2026-10-13: "Workspace file is the ultimate", "never go out
 of git root"). Nothing else decides it. `findWorkspaceRoot` (workspace
 module) and the hand-off both ask `workspaceFile`, once per run.
 
-A global vx runs the project's own `@vzn/vx` when one exists (owner,
-2026-10-13): the root's `node_modules/@vzn/vx`, through its
+A global vx runs the project's own `@vzn/vx` when one exists
+(2026-10-13): the root's `node_modules/@vzn/vx`, through its
 `node_modules/.bin/vx`. This module is the compiled binary's half;
 `npm-launcher.sh` does the same walk in the shell for an npm install and
 `exec`s. `bin.ts` calls it before anything else loads.

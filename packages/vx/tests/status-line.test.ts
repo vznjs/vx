@@ -443,7 +443,7 @@ describe('defaultLogger status line integration', () => {
     expect(s.text().endsWith('└─ one#test ── (100ms) success\n\n')).toBe(true)
   })
 
-  // M, 2026-10-21: a task an executor holds for a machine has no row, only
+  // 2026-10-21: a task an executor holds for a machine has no row, only
   // a count (`scheduled`); its row and clock start when a machine begins it.
   it('a task its executor holds is counted scheduled, its row starting when a machine begins it', async () => {
     const s = tty()
@@ -662,7 +662,7 @@ describe('formatStatusRegion', () => {
     const lines = formatStatusRegion({ ...base, slots: [slot('a#build'), null] })
     expect(lines).toHaveLength(7)
     expect(lines[0]).toBe('')
-    // A dim header names the grid's columns (M, 2026-10-21).
+    // A dim header names the grid's columns (2026-10-21).
     expect(lines[1]).toBe('      time status  cache    task')
     expect(lines[2]).toContain('a#build')
     // Live elapsed (right-aligned) + the `running` tag, no spinner.
@@ -672,7 +672,7 @@ describe('formatStatusRegion', () => {
     expect(lines.slice(4)).toEqual(SUMMARY)
   })
 
-  // M, 2026-10-21: a region taller than the terminal cut the summary, and
+  // 2026-10-21: a region taller than the terminal cut the summary, and
   // what never printed cannot be scrolled to. The rows give way instead.
   it('a region taller than the terminal keeps its summary and folds the rows it cannot fit', () => {
     const slots = Array.from({ length: 10 }, (_, i) => slot(`p#t${i}`))
@@ -702,7 +702,7 @@ describe('formatStatusRegion', () => {
     expect(lines.slice(2, 12).every((l) => l.includes('idle'))).toBe(true)
   })
 
-  // M, 2026-10-14: a running row says how long the task usually takes, in
+  // 2026-10-14: a running row says how long the task usually takes, in
   // the column a finished row says miss / hit, as a fixed value the
   // elapsed time counts up toward. With no history the column stays empty.
   it('a running row shows its expected duration in the cache column', () => {
@@ -925,7 +925,7 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
   // Cursor-up stops at the top of the screen: rows that scrolled into the
   // scrollback cannot be erased. A region taller than the terminal left its
   // top behind on every redraw, so each tick stacked a new block (VS Code's
-  // short panel, M, 2026-10-14). The region is cut to fit.
+  // short panel, 2026-10-14). The region is cut to fit.
   it('a region taller than the terminal is cut to fit, so the erase reaches its top', () => {
     const s: StatusStream & { chunks: string[]; text(): string } = { ...ttyW(40), rows: 5 }
     const w = createOutputWriter(s, { forceFloorMs: 0 })
@@ -1065,7 +1065,7 @@ describe('createOutputWriter region erase accounts for wrapped rows', () => {
   })
 })
 
-// M, 2026-10-14: the task log always opens with one empty line before its
+// 2026-10-14: the task log always opens with one empty line before its
 // first row, on a terminal and off one, whatever the view.
 describe('the task log opens with one blank line', () => {
   const firstRow = (chunks: readonly string[], id: string): string | undefined =>

@@ -93,7 +93,7 @@ export interface VxHistoryOptions {
   /**
    * Headers every request to `server` carries, for a proxy in front of it
    * (`{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }`, an
-   * Access service token, M 2026-10-25). An unset value is left out;
+   * Access service token, 2026-10-25). An unset value is left out;
    * `authorization` stays the CI token's.
    */
   readonly serverHeaders?: Record<string, string | undefined>
@@ -101,7 +101,7 @@ export interface VxHistoryOptions {
    * The CI issuer whose tokens `server` takes, as they name it
    * (`https://token.actions.githubusercontent.com`), and the repository at
    * it, `org/name`: required with a server. Every request names them by
-   * their hashes (M, 2026-10-25: the user names them, nothing guesses).
+   * their hashes (2026-10-25: the user names them, nothing guesses).
    */
   readonly issuer?: string
   readonly repository?: string
@@ -351,7 +351,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         // The run's refs, as a remote cache reads them: its branch, the
         // branch it merges into, the default branch. `main` was assumed, so
         // a `master` or `baseBranch: 'trunk'` repository read no trunk's
-        // numbers. Each ref is sent as its hash, never plain (M, 2026-10-25).
+        // numbers. Each ref is sent as its hash, never plain (2026-10-25).
         const main = options.defaultBranch ?? DEFAULT_BRANCH
         const refs =
           options.defaultBranch === undefined && ctx.refs.length > 0

@@ -32,7 +32,7 @@ function taskRefusal(task: unknown): string | null {
   }
 }
 
-// A branch is the checkout's, never the config's (M, 2026-10-14): a
+// A branch is the checkout's, never the config's (2026-10-14): a
 // committed one would mislabel every other branch's runs.
 describe('run.branch in the workspace config', () => {
   it('is refused as an unknown key', () => {

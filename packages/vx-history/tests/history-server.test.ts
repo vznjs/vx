@@ -144,7 +144,7 @@ describe('HistoryServer', () => {
     }
   })
 
-  // M, 2026-10-25: a proxy in front of the server (an Access service token).
+  // 2026-10-25: a proxy in front of the server (an Access service token).
   it('sends serverHeaders on every request, never over the CI token', async () => {
     const seen: Headers[] = []
     const fake = (async (_u: string, init: RequestInit) => {
@@ -278,7 +278,7 @@ describe('vx run with vxHistory({ server })', () => {
     await run({ cwd: root, tasks: ['build'], handleSignals: false })
     const query = seen.slice(mid).find((r) => r.path === '/v1/timings/query')
     expect(JSON.parse(query!.body)).toEqual({
-      // The ref's hash, never the ref (M, 2026-10-25).
+      // The ref's hash, never the ref (2026-10-25).
       scopes: [await hashPart('refs/heads/main')],
       hashes: [sent[0]!.hash],
     })

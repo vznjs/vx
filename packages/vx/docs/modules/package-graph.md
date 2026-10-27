@@ -38,7 +38,7 @@ export function checkDependencyRules(
 ```
 
 `checkDependencyRules` is `vx lock`'s check of `run.rules.dependencies`
-(lock-only, owner 2026-10-13): for each project a rule's `from` selects,
+(lock-only, 2026-10-13): for each project a rule's `from` selects,
 each `directDeps` entry must match an `allow` selector when `allow` is
 given, and no `deny` one. A selector is `tag:<glob>` or a name glob
 (`compileNameGlob`, `--filter`'s matcher).

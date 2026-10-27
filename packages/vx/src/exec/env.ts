@@ -73,7 +73,7 @@ export function buildIsolatedEnv(opts: BuildEnvOptions): NodeJS.ProcessEnv {
  * A tool that runs other scripts reads it to call the same manager back
  * (npm-run-all's `run-s`, `run-p`) and falls back to `npm` without it:
  * solidjs/solid's `npm-run-all -nl build:*` needed a global npm under vx,
- * where `pnpm run build` passed (owner, 2026-10-06). It names a binary on
+ * where `pnpm run build` passed (2026-10-06). It names a binary on
  * this machine, so it is not in the key, as PATH is not.
  */
 export const PM_EXEC_ENV = 'npm_execpath'

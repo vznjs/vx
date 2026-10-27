@@ -191,7 +191,7 @@ export async function runWorker(opts: {
       )
     }
     // No remote took it: the orchestrator reads the remotes alone, so its
-    // dependants come here and its output goes with the `end` (M, 2026-10-25).
+    // dependants come here and its output goes with the `end` (2026-10-25).
     const saved = keys.at(-1)!
     const wired: WiredResult =
       (await artifacts.uploaded?.(saved)) === false

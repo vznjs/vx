@@ -2,7 +2,7 @@
 // which kind of adoption (native configs, or the runner's config read live),
 // and installing vx with the repo's own package manager (solidjs/solid,
 // 2026-10-04: the configs were written with no vx installed to run them).
-// The repo's own scripts are never edited (owner, 2026-10-06).
+// The repo's own scripts are never edited (2026-10-06).
 
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -104,7 +104,7 @@ export function ownVersion(): string | null {
  * (at `version`, given one). Either alone is not adopted: a reset
  * package.json leaves node_modules behind, and a listing is not an
  * install; on solidjs/solid vx-migrate 0.0.512 skipped @vzn/vx that
- * package.json did not list (owner, 2026-10-06).
+ * package.json did not list (2026-10-06).
  */
 export function missingPackages(
   root: string,
@@ -156,7 +156,7 @@ export function listedPackages(root: string, packages: readonly string[]): strin
  * The `@vzn/vx-*` plugins the root lists from the registry (a `workspace:`
  * or `file:` link is the repo's own; a platform binary comes with core).
  * Every @vzn package releases together: an install moves them with core,
- * as `vx upgrade` does (M, 2026-10-16: "always install latest and upgrade all").
+ * as `vx upgrade` does (2026-10-16: "always install latest and upgrade all").
  */
 export function listedPlugins(root: string): string[] {
   const pj = JSON.parse(readText(path.join(root, 'package.json')) || '{}') as Record<
@@ -179,7 +179,7 @@ export function listedPlugins(root: string): string[] {
  * The `@vzn/vx*` packages a workspace file imports, parsed, not matched (a
  * formatter's quotes hid a match). Each is installed with core: a file an
  * earlier init wrote imports @vzn/vx-lockfile that package.json need not
- * list, and the lock could not find it (M, 2026-10-16).
+ * list, and the lock could not find it (2026-10-16).
  */
 export function importedPackages(text: string): string[] {
   const out = new Set<string>()

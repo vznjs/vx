@@ -610,8 +610,8 @@
 /* ─────────────────────────  Motion in posts  ───────────────────────── */
 
 /* A post's terminal prints line by line as it scrolls up past the bottom
-   quarter of the screen (owner, 2026-10-24: "Do a lot of graphs, viz,
-   animations"). Bars render at full size: no grow-in (owner, 2026-10-24).
+   quarter of the screen (2026-10-24: "Do a lot of graphs, viz,
+   animations"). Bars render at full size: no grow-in (2026-10-24).
    What is already on screen at load shows whole. CSS
    only: a browser without view timelines, or a reader who asks for less
    motion, sees everything at once. */

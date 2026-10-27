@@ -1,5 +1,5 @@
 // Off Actions `github()` is undefined, which `plugins` skips: no option is
-// checked and no hook exists to run (owner, 2026-10-09).
+// checked and no hook exists to run (2026-10-09).
 import { afterEach, expect, it } from 'bun:test'
 import { github } from '../src/index.js'
 

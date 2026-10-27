@@ -1,7 +1,7 @@
 # util/hide-env
 
 `hideEnvFromTasks()`, called once at the start of every verb
-(`cli/index.ts`, owner 2026-10-13). A task gets only the variables it
+(`cli/index.ts`, 2026-10-13). A task gets only the variables it
 declares, but vx's own process still holds the rest, and an unsandboxed
 task, which runs as the same user, could read them: on Linux from
 `/proc/<vx pid>/environ`, on macOS through `ps eww`.
@@ -21,8 +21,8 @@ tracee's memory, so it prints no paths, and a debugger cannot list
 **macOS.** No flag closes `ps eww` (sysctl `KERN_PROCARGS2`) to the same
 user: it reads the env strings the kernel copied above vx's stack. vx
 zeroes the value of every variable there except `ESSENTIAL_ENV`
-(`util/essential-env.ts`), which every task gets anyway (owner,
-2026-10-13). It finds them through the original `envp` array, which
+(`util/essential-env.ts`), which every task gets anyway
+(2026-10-13). It finds them through the original `envp` array, which
 follows `argv` (`_NSGetArgv`) and never moves, unlike `environ`. Bun
 copied the env at startup, so `process.env`, and every task env built
 from it, keeps the values; libc's `getenv` answers `''` for a wiped name.

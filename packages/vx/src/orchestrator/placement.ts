@@ -480,7 +480,7 @@ export function poolOfPlacement(
 /**
  * What a run says of its `otherPlatform` tasks: a refusal when an executor
  * that routes by platform could not take one, or the run is on CI (each
- * task runs there or the run fails, owner 2026-10-23), else the warning a
+ * task runs there or the run fails, 2026-10-23), else the warning a
  * local run prints as it skips them and what depends on them.
  */
 export function platformVerdict(

@@ -90,7 +90,7 @@ export class LocalHistoryProvider implements HistoryProvider {
 
 ## The forecast
 
-Every `p50DurationMs` (and `p50sFor`) is a forecast (owner, 2026-10-14):
+Every `p50DurationMs` (and `p50sFor`) is a forecast (2026-10-14):
 the median of the task's last five timings on this run's branch, else
 the default branch's newest imported timing, else the median of the last
 five on any branch, else none. A timing from a crowded worker (`cpuShare`
@@ -122,7 +122,7 @@ A reader given the run's definitions (`taskDefinitions`, the fourth
 argument) reads only the rows of each task as it is now. Every row
 carries the task's definition: an xxh3 of its id, command and
 `env.define` (`graph/definition.ts`). A task whose command or defines
-changed under the same name starts over (M, 2026-10-23); editing its
+changed under the same name starts over (2026-10-23); editing its
 inputs, outputs, cache, sandbox grants, timeout, description or
 dependencies keeps its history. An imported timing carries the
 definition it was taken of (the blob's `defs`); a row of none (a blob

@@ -22,7 +22,7 @@ export interface ServerOptions {
   readonly now?: () => number
 }
 
-/** A scope on the wire: its ref's `hashPart`, so no ref is ever sent or stored plain (M, 2026-10-25). */
+/** A scope on the wire: its ref's `hashPart`, so no ref is ever sent or stored plain (2026-10-25). */
 const SCOPE = /^[0-9a-f]{32}$/
 
 export function createHistoryServer(opts: ServerOptions): (req: Request) => Promise<Response> {
@@ -40,7 +40,7 @@ export function createHistoryServer(opts: ServerOptions): (req: Request) => Prom
     maxQueryScopes: MAX_QUERY_SCOPES,
   }
 
-  // The fold is one upsert, a few ms for a thousand tasks: done inline (M, 2026-10-25).
+  // The fold is one upsert, a few ms for a thousand tasks: done inline (2026-10-25).
   async function upload(req: Request): Promise<Response> {
     const access = await authorize(req)
     if (access.write === undefined) throw new Refusal(403, 'this request reads only')

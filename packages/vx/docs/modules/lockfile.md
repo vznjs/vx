@@ -55,10 +55,10 @@ by name), is a `UserError` asking to re-run `vx lock`. `frozenProjectConfigs` is
 of an evaluation: an entry missing for the project is a
 `UserError` naming the project and the remedy. No entry is validated:
 `vx lock` validated what it wrote, and `--check` re-evaluates
-(owner, 2026-10-14). A hand-broken entry that then crashes a run is
+(2026-10-14). A hand-broken entry that then crashes a run is
 named, not shown as a raw TypeError: on that crash's path only, a task
-or the CLI asks `lockEntryBroken` and prints `LOCK_INVALID` (owner,
-2026-10-14). `writeLockfile` ends the lock with a `validated`
+or the CLI asks `lockEntryBroken` and prints `LOCK_INVALID`
+(2026-10-14). `writeLockfile` ends the lock with a `validated`
 field, a digest of the bytes above it under vx's version; no reader
 consults it. The CLI's own selection load (`loadCliProjects`, what a
 filter that walks the graph stages) reads the lock the same way, so
@@ -70,7 +70,7 @@ any refusal that comes first.
 ## Invariants
 
 - Deliberate asymmetry: runs TRUST the lock outright — a
-  config edited since `vx lock` runs as locked (owner, 2026-06-13: a
+  config edited since `vx lock` runs as locked (2026-06-13: a
   byte-hash re-check cannot see import closures or env, so it would be
   a weaker guarantee pretending to add safety); only `--check` pays the
   full re-evaluation, and the CI recipe is `vx lock --check && vx run`.

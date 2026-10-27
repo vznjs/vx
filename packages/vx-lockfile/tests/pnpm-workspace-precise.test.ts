@@ -66,7 +66,7 @@ it('any other pnpm-workspace.yaml setting keys every task, and a file that does 
 
 // Where a patch applies is the lockfile's to say: pnpm-lock.yaml records
 // each patch's hash, and the package it patches sits in some projects'
-// closures only (M, 2026-10-17: "Our pnpm should be able to tell where
+// closures only (2026-10-17: "Our pnpm should be able to tell where
 // the patch version is used").
 const lock = (hash: string): string => `lockfileVersion: '9.0'
 

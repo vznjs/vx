@@ -98,7 +98,7 @@ describe('renderJobSummary', () => {
     expect(md).not.toContain('| Verify |')
   })
 
-  // M, 2026-10-23: "Sort summary by status and then time".
+  // 2026-10-23: "Sort summary by status and then time".
   it('lists tasks by status, failures first, then the longest first', () => {
     const md = renderJobSummary(
       summary([
@@ -168,10 +168,10 @@ describe('renderJobSummary', () => {
       ),
     )
     expect(md).toContain('### Workers')
-    // Not a 0 ms run: its time is its dependants' (M, 2026-10-23).
+    // Not a 0 ms run: its time is its dependants' (2026-10-23).
     expect(md).toContain('| c#services | 🔗 served |  |')
     // A carried server ran in its dependants; a task that ran on the run's
-    // own machine is named, and the counts add up (owner, 2026-10-23).
+    // own machine is named, and the counts add up (2026-10-23).
     expect(md).toContain('| this machine | ok |  |  |  |  |  | 1 |  |  |  |  |')
     expect(md).toContain('3 executed: 2 on workers, 1 on this machine: e#gen.')
     expect(md).toContain(
@@ -184,7 +184,7 @@ describe('renderJobSummary', () => {
       "Over their online time, tasks booked 78% of the workers' cores and used 40%.",
     )
     expect(renderJobSummary(summary([task({})]))).not.toContain('### Workers')
-    // "13 (1 failed)" read as 13 in all (owner, 2026-10-23).
+    // "13 (1 failed)" read as 13 in all (2026-10-23).
     const one = renderJobSummary(
       summary([task({ where: 'small#1' })], {
         machines: [
@@ -546,7 +546,7 @@ describe('every output the vx-ci sweep found unheld', () => {
     )
     const one = renderJobSummary(summary([task({})]))
     expect(one.split('\n')[2]).toBe('**1** task · **1** executed · **0** cache hits · 4.3s')
-    // M, 2026-10-23: the ideal time of a distributed run, beside the real one.
+    // 2026-10-23: the ideal time of a distributed run, beside the real one.
     const ideal = renderJobSummary(summary([task({})], { idealMs: 3_000 }))
     expect(ideal.split('\n')[2]).toBe(
       '**1** task · **1** executed · **0** cache hits · 4.3s (ideal 3.0s)',

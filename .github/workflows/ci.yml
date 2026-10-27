@@ -40,12 +40,12 @@ concurrency:
 
 # A stack's top pull request holds every layer below it, and merging it
 # merges them all: only it runs CI, so a stack costs one run, not one per
-# layer (owner, 2026-10-22). Off a stack both sides are null and it runs.
+# layer (2026-10-22). Off a stack both sides are null and it runs.
 jobs:
   # One distributed run (@vzn/vx-dte, .vx/workspace.ts) for every platform
-  # (owner, 2026-10-23): a task bound to one (exec.platforms) runs on a
+  # (2026-10-23): a task bound to one (exec.platforms) runs on a
   # worker of it, started only when the graph has one. It checks out, installs Bun and the deps, checks the lock and runs vx,
-  # as any repo would (owner, 2026-10-23: "super simple, same as devs
+  # as any repo would (2026-10-23: "super simple, same as devs
   # would add it"). vx names the run, plans it, starts as many workers
   # (vx-worker.yml) as the plan's width needs, cancels them at the end and
   # reads the remote cache; @vzn/vx-ci writes the job summary.
@@ -113,7 +113,7 @@ jobs:
         id: cache
         run: bun private/vx-servers/worker-url.ts private/vx-cache-service VX_CACHE_URL
       # The Pages deploy is a task of the run (@vzn/vx-docs#deploy.pages,
-      # owner, 2026-10-24). GitHub hands the job's runtime token, which
+      # 2026-10-24). GitHub hands the job's runtime token, which
       # uploads the site's artifact, only to JavaScript actions: this hands
       # it to the run, whose env isolation passes it to that task alone.
       - name: Hand the Pages token to the run
@@ -125,7 +125,7 @@ jobs:
             core.exportVariable('ACTIONS_RESULTS_URL', process.env.ACTIONS_RESULTS_URL)
       # Plans the graph, starts the workers its width needs, then
       # orchestrates them. A PR runs what its diff affects, inputs outside
-      # a project included (owner, 2026-10-23); main runs everything.
+      # a project included (2026-10-23); main runs everything.
       # The tasks say what each needs: `ci` is every change's checks, the
       # platform's own tests on Mac workers included, and main's `release`
       # adds the release binaries, their launch checks, the release notes
@@ -153,8 +153,8 @@ jobs:
         run: echo "[Run profile]($URL), opened in https://ui.perfetto.dev" >> "$GITHUB_STEP_SUMMARY"
 
   # The benchmarks, on a runner of their own: they time the machine, and a
-  # DTE worker is packed for the run's wall time, not a task's (owner,
-  # 2026-10-24). Beside the run, so off its critical path; no relay, so
+  # DTE worker is packed for the run's wall time, not a task's
+  # (2026-10-24). Beside the run, so off its critical path; no relay, so
   # vx runs them here.
   perf:
     name: Perf

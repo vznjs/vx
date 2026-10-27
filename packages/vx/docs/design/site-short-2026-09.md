@@ -1,4 +1,4 @@
-# The site, short (owner, 2026-09-24)
+# The site, short (2026-09-24)
 
 > 2026-09-28 (owner: "hard to parse … we care turbo and nx"): the landing
 > now leads a Turborepo or Nx user: a one-line hero and its sub, the

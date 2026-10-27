@@ -21,7 +21,7 @@ function blocks(rel: string, needle: string): string[] {
 describe('summary.md says the footer never repeats a fact', () => {
   it('a skipped task is counted once, there is no result row, and the page says so', () => {
     // #2212 put a skip in the hit rate; the rate went with the result row,
-    // which only repeated other rows (M, 2026-10-14).
+    // which only repeated other rows (2026-10-14).
     const node = (id: string): TaskNode =>
       ({
         id,
@@ -455,7 +455,7 @@ describe('util-settle.md names every grace killGraceMs serves', () => {
 
 // cli-watch.md listed "doesn't re-read the package globs" under what watch
 // does not do, after item 1018 made a glob edit re-read the bases (J2-66).
-// Since a project is a directory the lock records (owner, 2026-10-14) the
+// Since a project is a directory the lock records (2026-10-14) the
 // lock is what changes the set; the page says so and names no glob.
 describe("cli-watch.md's account of the watched set is the loop's", () => {
   it('says the lock re-reads the set, and names no package glob', () => {

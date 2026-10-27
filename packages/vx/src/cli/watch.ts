@@ -1033,7 +1033,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // A project directory still the one its arm holds is no change:
             // its arm judges what is in it. macOS reports the directory's
             // mtime here on every write at its top level, and a cycle's own
-            // write started the next (solid's `types`, M 2026-10-15).
+            // write started the next (solid's `types`, 2026-10-15).
             if (heldDirs.get(abs) === (inodeOf(abs) ?? '')) return
             reread = true
             trigger(path.relative(workspaceRoot, abs), abs)

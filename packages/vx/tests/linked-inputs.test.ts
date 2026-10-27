@@ -1,5 +1,5 @@
 // An input that is a symlink keys the content behind it, as Nx reads a
-// linked file where it points (owner, 2026-10-16: "Do like nx"). Its target
+// linked file where it points (2026-10-16: "Do like nx"). Its target
 // string alone (git's mode-120000 blob) let an edit behind it replay the old
 // output under a green run (Growth's symlink-input.sh): a file link and a
 // directory link alike, inside or outside the project or the workspace.

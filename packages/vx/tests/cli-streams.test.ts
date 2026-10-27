@@ -3,7 +3,7 @@
 // Each row runs a verb whose stdout is a product (a JSON document, the
 // plan, a completion script) against a cache whose index
 // is from an older vx, and requires the product alone on stdout: the
-// reset is vx's own upkeep and says nothing (owner, 2026-10-06). The reading verbs refuse such a
+// reset is vx's own upkeep and says nothing (2026-10-06). The reading verbs refuse such a
 // cache: on stderr, stdout empty. `vx run`'s own stdout is the run's frame
 // (the tasks' output it carries), so it is not a product here.
 

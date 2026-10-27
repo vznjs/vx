@@ -3,7 +3,7 @@
 // existing Turbo or Nx setup (`--keep`: the workspace file that reads it
 // live instead), from Vite Task, or from package.json scripts, and vx
 // installed with the repo's manager. `vx init` hands every repo with a
-// package.json here (M, 2026-10-14: core reads no package.json).
+// package.json here (2026-10-14: core reads no package.json).
 // Without either mode flag a terminal is asked; anything else is native. Source auto-detect: turbo.json → Turbo;
 // .nx/workspace-data/project-graph.json, nx.json or a Lerna-on-Nx lerna.json → Nx (the resolved
 // graph, exported by nx if absent); `vite-plus` in the root package.json → Vite Task:
@@ -364,7 +364,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
   // adoption's install of it is dropped with turbo() / nx().
   const finalWorkspace = workspaceText ?? readFileSync(path.join(root, existingWorkspace!), 'utf8')
   // Imports parsed, not matched: a formatter's double quotes hid it, and
-  // the file still imported the package removed (owner, 2026-10-16).
+  // the file still imported the package removed (2026-10-16).
   const imported = importedPackages(finalWorkspace)
   const needsSelf = runsBins || imported.includes('@vzn/vx-migrate')
   const cacheNote =
@@ -665,7 +665,7 @@ export function adoptionNext(
     (p) => !existsSync(path.join(root, 'node_modules', p, 'package.json')),
   )
   // `vx init` installs vx globally first: vx alone, never a package
-  // manager's runner (owner, 2026-10-22: vx owns the command).
+  // manager's runner (2026-10-22: vx owns the command).
   const run = `vx run ${firstTask(path.join(root, source), runner)} --all`
   if (missing.length === 0) return run
   const pinned = version === null ? missing : missing.map((p) => `${p}@${version}`)
@@ -694,7 +694,7 @@ function firstTask(file: string, runner: 'turbo' | 'nx'): string {
 /**
  * package.json scripts → one vx.config.ts per package, and the workspace
  * file declaring the lockfile plugin its lockfile calls for: `vx init`'s
- * mapper until core stopped reading package.json (M, 2026-10-14).
+ * mapper until core stopped reading package.json (2026-10-14).
  */
 async function scripts(
   root: string,

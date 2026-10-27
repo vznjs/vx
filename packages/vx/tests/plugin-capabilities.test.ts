@@ -719,7 +719,7 @@ describe('executor capability — end-to-end via run()', () => {
       })
       expect(seen.sort()).toEqual([
         "pkg-a#a: [vx] pkg-a#a: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
-        // Each failed task's own block says why in full (M, 2026-10-22).
+        // Each failed task's own block says why in full (2026-10-22).
         "pkg-a#b: [vx] pkg-a#b: plugin 'org/down' (executor 'down') failed in execute: pool down\n",
       ])
     } finally {
@@ -1692,7 +1692,7 @@ describe('executor capability — end-to-end via run()', () => {
     }
   })
 
-  // .vx/workspace.* marks the root (owner, 2026-10-13): without one there is
+  // .vx/workspace.* marks the root (2026-10-13): without one there is
   // no workspace to run.
   it('NO WORKSPACE FILE: the run is refused, naming `vx init`', async () => {
     const { workspaceRoot, cleanup } = await writeFixture()

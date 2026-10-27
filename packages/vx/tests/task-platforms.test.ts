@@ -1,6 +1,6 @@
 // `exec.platforms`: a task runs on a machine it lists. Off one, a local run
 // skips it and what depends on it, green; CI and an executor that routes by
-// platform refuse the run before any task starts (owner, 2026-10-23).
+// platform refuse the run before any task starts (2026-10-23).
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'

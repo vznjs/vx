@@ -1,4 +1,4 @@
-# Workstream DX — developer experience picks (owner, 2026-10-08)
+# Workstream DX — developer experience picks (2026-10-08)
 
 The owner picked from a DX review: `vx why` walks to the root cause, the
 live run predicts its end, the result line says what the cache saved,
@@ -41,7 +41,7 @@ and log output reads better. Each must cost the warm path nothing.
   plain output stays the task's bytes; a line the task coloured keeps its colours. The logger keeps
   one ordered buffer per task instead of two. Rows:
   `framed-output.test.ts` › "interleaved streams keep their order".
-- **DX-7.** A cache hit replays stderr too (owner, 2026-10-08: "store
+- **DX-7.** A cache hit replays stderr too (2026-10-08: "store
   mixed same as in output"). The entry's output is both streams in the
   order the run printed them, one string (`output-log.ts`: RS + `e` /
   `o` where the stream switches, a literal RS doubled), so every layer

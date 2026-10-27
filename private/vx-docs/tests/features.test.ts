@@ -59,7 +59,7 @@ describe('the feature data', () => {
   })
 
   // The site's copy rules: plain words, speed as "N× faster" (a percentage
-  // under 2×, owner 2026-10-09), and Turbo or Nx only as the origin of a
+  // under 2×, 2026-10-09), and Turbo or Nx only as the origin of a
   // migration.
   it('says nothing loud, no stray percentage, no “unchanged” Turbo or Nx repo', () => {
     const bad: string[] = []

@@ -53,7 +53,7 @@ let dashMissedOn: string | undefined
  * The shell vx runs commands in: `dash` on macOS when vx's PATH has it,
  * else `sh` on vx's PATH. macOS's `/bin/sh` is a stub that execs bash, two
  * images for one shell, and bash where Linux runs dash, so a command read
- * one way on a Mac and another on Linux CI (owner, 2026-10-04).
+ * one way on a Mac and another on Linux CI (2026-10-04).
  */
 export function taskShell(): string {
   if (process.platform === 'darwin') {

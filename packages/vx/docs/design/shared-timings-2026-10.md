@@ -1,6 +1,6 @@
 # Task timings through the remote cache (2026-10)
 
-**Status:** built (EA go 2026-10-15). Owner call M 2026-10-14 20:51 (via EA).
+**Status:** built (EA go 2026-10-15). Owner call 2026-10-14 20:51 (via EA).
 Built as designed, except: no `VX_DEBUG` output (core has no such
 setting; every refusal is silent), and only CI on `defaultBranch` writes
 (M 22:19).
@@ -46,12 +46,12 @@ declares. No new wire, no mutable entry.
   up to 5 commits for a missing blob, so each repo downloads it once for
   all its worktrees. So most runs
   make no network call and no extra git spawn. A fetch never holds the
-  run (M 2026-10-16, replacing 20:55's "wait for download"): the run
+  run (2026-10-16, replacing 20:55's "wait for download"): the run
   orders from local history at once, and the fetched timings re-rank the
   tasks not yet started through `ctx.refine` when they land, within a
   500 ms deadline; on timeout or error they are dropped, silently. A
   merge-base with no blob is asked once.
-- **Forecast order** (M 2026-10-14 20:54), per task: this machine's
+- **Forecast order** (2026-10-14 20:54), per task: this machine's
   current-branch runs (median of the last 5), then the remote file, then
   its runs on any branch (median of the last 5), then `assume`. On CI the
   history is empty, so the remote file comes first.

@@ -51,7 +51,7 @@ import {
 const available = await sandboxAvailable('sandbox-runtime tests')
 
 describe.skipIf(!available)('a cache declaration grants the sandbox nothing', () => {
-  // "The sandbox derives NOTHING from `cache`" (owner, 2026-09-05) is stated
+  // "The sandbox derives NOTHING from `cache`" (2026-09-05) is stated
   // in `sandbox-request.ts` and in schema.md — `inputs` says what
   // INVALIDATES a task, `sandbox.allow` says what it may TOUCH, and deriving
   // one from the other coupled them in both directions: a declaration added

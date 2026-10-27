@@ -1,6 +1,6 @@
 #!/bin/sh
 # compose.yaml as a user runs it: all three images built, each answering
-# on its published port, then a clean stop (M, 2026-10-25: one compose file
+# on its published port, then a clean stop (2026-10-25: one compose file
 # for all vx servers). Each image's own suite is its package's test.live;
 # this proves the file wires them.
 set -eu

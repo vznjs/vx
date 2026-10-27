@@ -336,7 +336,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
   const asked =
     options.cache ?? applyCacheFlags(workspacePolicy ?? FULL_CACHE_POLICY, options.cacheFlags)
   // A laptop reads the shared cache and does not write it unless a policy
-  // names the remote (owner, 2026-10-03; Security F1, 2026-10-14): a key
+  // names the remote (2026-10-03; Security F1, 2026-10-14): a key
   // holds only declared inputs, so a laptop's write could be replayed on CI.
   // A workspace policy naming the remote asks to write it, as `--cache-policy` does.
   const readOnly =
@@ -369,7 +369,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
 
   // Configs load FROM .vx/projects.lock.json with no evaluation and no check of
   // the configs (`vx lock --check` re-evaluates them; a run does not):
-  // only `vx lock` evaluates (owner, 2026-10-14).
+  // only `vx lock` evaluates (2026-10-14).
   // See docs/design/config-lock-2026-06.md.
   // Read once, and only when a config is to be read from it: the CLI's
   // selection pass may have staged every config (`options.staged`), and
@@ -591,7 +591,7 @@ export async function prepareRun(options: RunOptions, log: Logger): Promise<Prep
     // by a config the scope left out, so the builder hands it back instead of
     // refusing it, and the rest decide.
     // A run never checks the graph rules: `vx lock` and `vx lock --check`
-    // do (owner, 2026-10-14). `exclusiveOutputs: false` still asks the walk
+    // do (2026-10-14). `exclusiveOutputs: false` still asks the walk
     // for its addition marks.
     const graphRules: GraphRules = { ...runRules(workspaceConfig), locked: true }
     const unproven: Array<[taskId: string, name: string]> = []

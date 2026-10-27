@@ -5,7 +5,7 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
-  // Plain vars, never secrets (owner, 2026-10-23). CI jobs sign in with
+  // Plain vars, never secrets (2026-10-23). CI jobs sign in with
   // their OIDC token. TRUST: only ci.yml's own runs of
   // main (pushed, queued or dispatched) write main's scope, which every run reads after its own. vx-worker.yml is left out: it may be
   // dispatched on main to run a fork PR's code. Any other job of this repo

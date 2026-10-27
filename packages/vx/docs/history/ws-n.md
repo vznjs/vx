@@ -376,7 +376,7 @@ core's (lead A).
   Turbo caches it. A digest compare for those paths would decide it by
   content.
 - D / coordinator, for `nx()` (Turbo and Nx are the only adoption
-  paths, owner 2026-09-28): an integrated Nx repo does not run under
+  paths, 2026-09-28): an integrated Nx repo does not run under
   vx. analogjs/analog (40cc8b4) keeps its libraries out of
   `pnpm-workspace.yaml`; each is an Nx project by `project.json`, and
   some (`@analogjs/router`) have a `package.json` no workspace lists.

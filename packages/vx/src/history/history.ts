@@ -80,7 +80,7 @@ export interface TaskHistory {
    * over its whole run, averaged over the window's runs on machines that
    * size, or 90% of the memory in any one. A burst to every core is
    * not one: tasks beside it slow for a moment, and booking a machine for
-   * it left CI agents half idle (M, 2026-10-22). A
+   * it left CI agents half idle (2026-10-22). A
    * task that filled a machine wanted a bigger one. Set by `resourcesFor`.
    */
   saturatedCores?: number
@@ -343,7 +343,7 @@ export class LocalHistoryProvider implements HistoryProvider {
   }
 
   /**
-   * Each task's duration forecast (owner, 2026-10-14): the median of its
+   * Each task's duration forecast (2026-10-14): the median of its
    * last `FORECAST_RUNS` timings on this branch, else the default branch's
    * newest imported timing (`importTimings`), else the median on any
    * branch, else none. The timings are the shared store's `task_durations`, so every

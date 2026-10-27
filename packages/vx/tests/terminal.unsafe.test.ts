@@ -446,7 +446,7 @@ describe('a vx that paints its own output on a terminal', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  // A task's stdout is a pipe, so vx forces colour (owner, 2026-10-03,
+  // A task's stdout is a pipe, so vx forces colour (2026-10-03,
   // reversing the nx#23259 stance) and strips it where it prints plain. A
   // task that writes its own output to a file sets FORCE_COLOR=0 itself.
   it('vx on a terminal sets FORCE_COLOR=1 for a task, and NO_COLOR keeps it unset', async () => {

@@ -4,7 +4,7 @@
 
 A key reads only what git lists, so an output git ignores whole never
 reaches a reader's key: it is no input overlap for `vx lock` (X-54)
-and no reach for the stability gate (M, 2026-10-15). Git is asked, never
+and no reach for the stability gate (2026-10-15). Git is asked, never
 a `.gitignore` read: git alone knows every rule source (nested files,
 `info/exclude`, `core.excludesFile`) and that a directory holding a
 tracked file is not ignored.

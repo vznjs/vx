@@ -236,7 +236,7 @@ describe('examples/turbo', () => {
 // The CI guide's workflow, step by step, as GitHub would run it: a push to
 // main and a pull request, each with the env the runner sets. No remote is
 // configured: the local cache never knows a scope
-// (owner, 2026-10-17), so one disk is one pool for every ref.
+// (2026-10-17), so one disk is one pool for every ref.
 describe('examples/ci', () => {
   const root = fixture('ci', ['vx', 'vx-ci'])
   const workflow = readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8')

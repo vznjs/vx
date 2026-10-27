@@ -165,7 +165,7 @@ describe('stale cache hits', () => {
     'a committed file under an output survives the clean before a run',
     async () => {
       // gen/b.ts is committed under codegen's `gen/**`: never an output
-      // (owner, 2026-10-14: "never delete committed file"), so the clean
+      // (2026-10-14: "never delete committed file"), so the clean
       // before codegen's run leaves it, and the consumer still reads it
       // after codegen stops writing it. Until then the clean deleted it.
       //

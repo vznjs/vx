@@ -739,7 +739,7 @@ describe('resolveInputs — git ls-files path (v14)', () => {
   })
 
   it("Bun's compile temp files are userland: a broad glob reads them unless the task excludes them", async () => {
-    // Core names no tool's temp files (M, 2026-10-16): a compile task's own
+    // Core names no tool's temp files (2026-10-16): a compile task's own
     // `inputs` excludes what `bun build --compile` writes beside it.
     await write(path.join(projectDir, '.18bf7d9ff3ffeffe-00000001.bun-build'))
     await write(path.join(projectDir, '.cd5e87e3246b0795-00000000.tmp', 'bun'))

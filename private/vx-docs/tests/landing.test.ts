@@ -1,4 +1,4 @@
-// The landing page is the whole story (owner, 2026-09-28; design/site-short-2026-09.md
+// The landing page is the whole story (2026-09-28; design/site-short-2026-09.md
 // § Laws; 2026-10-02: vx is its own tool, Turbo and Nx only via migration):
 // the hero, the benchmark chart and why, how to start, the one picture with its six
 // callouts, the four pillars, and a strip of the feature pages. These rows read the page as it shipped,
@@ -285,7 +285,7 @@ describe('the landing page', () => {
   })
 
   // The numbers are check.site's; the shape is here: one chart per number,
-  // vx's bar first, no bar saying how much faster vx is (owner, 2026-10-12), each bar
+  // vx's bar first, no bar saying how much faster vx is (2026-10-12), each bar
   // as long as its time against the slowest, the formula under the chart,
   // and three reasons under it.
   it('draws one benchmark chart, vx, Turborepo and Nx, and why it is faster', () => {
@@ -303,7 +303,7 @@ describe('the landing page', () => {
       'Cold build: CPU the runner burns',
     ])
     // Every chart is the time a runner adds over the ideal run, never a
-    // total (owner, 2026-10-09: "the overhead is what matters").
+    // total (2026-10-09: "the overhead is what matters").
     for (const f of figures) {
       const bars = [
         ...f.matchAll(/<div class="vx-bar([^"]*)" style="--w:([\d.]+)%">([\s\S]*?)<\/div>/g),
@@ -319,7 +319,7 @@ describe('the landing page', () => {
     expect(text(/<p class="bench-formula">([\s\S]*?)<\/p>/.exec(bench)![1]!)).toBe(
       'Time each tool adds over the ideal run; lower is better.',
     )
-    // The workload sits under every bench chart (owner, 2026-10-09).
+    // The workload sits under every bench chart (2026-10-09).
     expect(
       text(/<p class="bench-formula bench-workload">([\s\S]*?)<\/p>/.exec(bench)![1]!),
     ).toMatch(
@@ -334,7 +334,7 @@ describe('the landing page', () => {
   })
 
   // The hero's three facts: ownership and extensibility, never a speed
-  // multiple (owner, 2026-10-12: the benchmark shows speed, copy does not).
+  // multiple (2026-10-12: the benchmark shows speed, copy does not).
   it('leads with seams, no paid tier and nothing to run beside it', () => {
     const wins = [
       ...hero.matchAll(/<li>\s*<strong>([\s\S]*?)<\/strong>\s*<span>([\s\S]*?)<\/span>/g),
@@ -391,7 +391,7 @@ describe('the landing page', () => {
     expect(/vx lock +# ([^\n]*)/.exec(start)![1]).toContain('declare a task')
     const subs = [...start.matchAll(/<p class="sub">([\s\S]*?)<\/p>/g)].map((m) => text(m[1]!))
     expect(subs).toEqual([
-      // `vx init` is the one way to start, Turbo and Nx included (M, 2026-10-14).
+      // `vx init` is the one way to start, Turbo and Nx included (2026-10-14).
       'Coming from Turbo or Nx: the same vx init writes the native vx config from it.',
     ])
     expect(text(start)).not.toMatch(/turbo\.json|nx\.json|unchanged|faster/i)

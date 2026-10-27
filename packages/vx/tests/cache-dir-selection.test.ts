@@ -79,7 +79,7 @@ describe.skipIf(skipAsRoot('a cache directory this user cannot write into'))(
       async () => {
         // A first run fills the cache as this user; then the directory and
         // its files stop being writable, the way a CI image's baked cache
-        // or another user's `.vx` is (M, 2026-10-16: serve hits). The task
+        // or another user's `.vx` is (2026-10-16: serve hits). The task
         // writes an output, so the hit restores a file.
         const app = path.join(root, 'packages', 'app')
         await Bun.write(

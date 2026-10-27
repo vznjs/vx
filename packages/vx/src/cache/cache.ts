@@ -144,7 +144,7 @@ const ADOPT_STATS = 64
  * close, ~30 ms of it. So `accessed_at` trails the last use by at most
  * this much, and the prune policy reads it plus this as the last use:
  * an entry used within the limit is never pruned, and one may stay up to
- * this long past it (owner, 2026-10-08).
+ * this long past it (2026-10-08).
  */
 const ACCESS_REFRESH_MS = 60 * 60 * 1000
 
@@ -701,7 +701,7 @@ function ensurePrivateDir(dir: string): string | null {
   if ((st.mode & 0o022) !== 0) return `${dir} is writable by other users`
   // The user's own directory open to others (a `~/.vx` made at the
   // default umask, 0755) is vx's to close: refusing it left the store
-  // unused on a stock macOS home (owner, 2026-10-06: "you should own it").
+  // unused on a stock macOS home (2026-10-06: "you should own it").
   if ((st.mode & 0o077) !== 0) {
     try {
       chmodSync(dir, 0o700)
@@ -725,7 +725,7 @@ const IGNORE_ALL = '*\n'
 /**
  * The ignore file that keeps `cacheDir` out of git, and its text. The
  * default `.vx/cache` is named by `.vx/.gitignore` (`/cache`), committed
- * beside the workspace config and the lock (owner, 2026-10-14); any other
+ * beside the workspace config and the lock (2026-10-14); any other
  * cache directory holds a `*` one of its own. Written only when missing:
  * an existing file is the user's.
  */
@@ -944,7 +944,7 @@ export class Cache implements CacheLayer {
    * Set when THIS open found an index written by another `SCHEMA_VERSION`
    * and dropped every table. The next open sees the current version and
    * reports null. vx prints nothing for it: the cache is vx's to keep
-   * (owner, 2026-10-06).
+   * (2026-10-06).
    */
   readonly schemaReset: SchemaReset | null = null
 
@@ -1112,8 +1112,8 @@ export class Cache implements CacheLayer {
           | undefined
       )?.value
     // Any other schema is reset by an opener that may write it: the index is
-    // an inventory the artifacts rebuild, whichever vx wrote it (owner,
-    // 2026-10-06; a newer one used to be refused, item 896). A reading verb
+    // an inventory the artifacts rebuild, whichever vx wrote it
+    // (2026-10-06; a newer one used to be refused, item 896). A reading verb
     // leaves it as it was.
     const refuseUnreadable = (found: string): void => {
       if (mode !== 'open') {
@@ -1385,7 +1385,7 @@ export class Cache implements CacheLayer {
   /**
    * The store is an inventory of the artifacts beside it, and only this vx
    * reads it: a store another `SCHEMA_VERSION` wrote has its tables dropped
-   * (owner, 2026-10-06), the artifacts kept. Each is indexed again from its
+   * (2026-10-06), the artifacts kept. Each is indexed again from its
    * own bytes on its next hit (`adopt`). A reading verb reads such a store
    * as empty and changes nothing. Creates the store's tables either way.
    */
@@ -1639,8 +1639,8 @@ export class Cache implements CacheLayer {
 
   /**
    * Index an artifact the index does not know, from its own bytes: the
-   * artifact is the record, the index only an inventory of it (owner,
-   * 2026-10-06). A reset index (a `SCHEMA_VERSION` change, a `cache.db` or
+   * artifact is the record, the index only an inventory of it
+   * (2026-10-06). A reset index (a `SCHEMA_VERSION` change, a `cache.db` or
    * `store.db` deleted) loses nothing a task asks for again. The artifact
    * is checked as an ingest checks a remote's (its recorded key, its names
    * against the declared outputs); one that fails is a miss, and the run
@@ -1859,7 +1859,7 @@ export class Cache implements CacheLayer {
 
   /**
    * The subset of `hashes` this store holds, `has` for each: the prefetch
-   * pass asks the remote only about the rest (M, 2026-10-15).
+   * pass asks the remote only about the rest (2026-10-15).
    */
   async localHasMany(hashes: readonly string[]): Promise<Set<string>> {
     const out = new Set<string>()
@@ -2315,7 +2315,7 @@ export class Cache implements CacheLayer {
 
   /**
    * A run over a cache directory it cannot write: one holding entries
-   * serves its hits and saves nothing (M, 2026-10-16), and the line this
+   * serves its hits and saves nothing (2026-10-16), and the line this
    * returns says so; an empty one has nothing to serve and refuses.
    */
   readOnlyNotice(): string | null {
@@ -3196,8 +3196,8 @@ export class Cache implements CacheLayer {
       if (!isIndexFull(err)) throw err
     }
     // History and memo rows a month old go with a prune, never a run's
-    // close: five DELETEs on every run's exit was its slowest step (owner,
-    // 2026-10-18). `invocations` shares the window with `runs`, or `vx last`
+    // close: five DELETEs on every run's exit was its slowest step
+    // (2026-10-18). `invocations` shares the window with `runs`, or `vx last`
     // would list a run whose task rows are gone.
     const cutoff = now - HISTORY_RETENTION_MS
     this.history.pruneOlderThan(cutoff)
