@@ -236,6 +236,8 @@ export interface RunContext {
   }
   /** Total projects discovery found — the bar's denominator. */
   workspaceProjectCount?: number
+  /** The run's warnings no task owns, as they were said: the footer's `warn` row. */
+  warnings?: () => readonly string[]
 }
 
 export function formatSummarySection(
@@ -484,11 +486,31 @@ export function formatSummarySection(
       )
     }
     if (context.runId !== undefined) info.push(`run ${context.runId}`)
-    lines.push('', row('info', join(info)), timeRow)
+    lines.push('', ...warnRows(context.warnings?.() ?? [], row, colors))
+    lines.push(row('info', join(info)), timeRow)
   } else {
     lines.push('', timeRow)
   }
   return lines
+}
+
+/**
+ * A long run scrolls its warnings (a remote cache's 403, a plugin's
+ * failed flush) out of sight, and the footer read as a clean run
+ * (2026-10-27). The footer counts the distinct ones; it does not repeat
+ * them, so a warning stays one line in a log (a refused token costs
+ * ONE line, tests/remote-cache-degrade.test.ts in @vzn/vx-migrate).
+ */
+function warnRows(
+  warnings: readonly string[],
+  row: (label: string, value: string) => string,
+  colors: ColorSupport,
+): string[] {
+  const n = new Set(
+    warnings.map((w) => Bun.stripANSI(w).split('\n')[0]!.trim()).filter((w) => w !== ''),
+  ).size
+  if (n === 0) return []
+  return [row('warn', paint(WARN, `${n} ${n === 1 ? 'warning' : 'warnings'} above`, colors))]
 }
 
 /**

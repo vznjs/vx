@@ -171,6 +171,45 @@ describe('formatRunSummary', () => {
     )
   })
 
+  it("counts the run's distinct warnings on a warn row above info", () => {
+    const lines = formatRunSummary(
+      [outcome('a#x', 'success')],
+      10,
+      { enabled: false },
+      {
+        version: '1.2.3',
+        packageCount: 1,
+        remoteCacheEnabled: true,
+        warnings: () => [
+          '\x1b[31m[vx] remote cache: upload a1 failed: HTTP 403\x1b[0m',
+          '[vx] remote cache: upload a1 failed: HTTP 403',
+          'second\nwith a second line',
+          '',
+        ],
+      },
+    )
+    const at = lines.findIndex((l) => l.startsWith('  warn'))
+    expect(lines.slice(at, at + 2)).toEqual([
+      '  warn      2 warnings above',
+      expect.stringMatching(/^ {2}info/),
+    ])
+  })
+
+  it('has no warn row when nothing warned', () => {
+    const lines = formatRunSummary(
+      [outcome('a#x', 'success')],
+      10,
+      { enabled: false },
+      {
+        version: '1.2.3',
+        packageCount: 1,
+        remoteCacheEnabled: false,
+        warnings: () => [],
+      },
+    )
+    expect(lines.some((l) => l.startsWith('  warn'))).toBe(false)
+  })
+
   it('names the cache scope after the cache mode when the run has one', () => {
     const lines = formatRunSummary(
       [outcome('a#x', 'success')],
