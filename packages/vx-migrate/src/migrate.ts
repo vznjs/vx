@@ -144,11 +144,11 @@ async function noRootReason(cwd: string, err: Error): Promise<Error> {
 export async function migrateCmd(args: readonly string[]): Promise<number> {
   const parsed = parseMigrateArgs(args)
   if (parsed.help) {
-    process.stdout.write(`${USAGE}\n`)
+    ui.say('info', USAGE, 'out')
     return 0
   }
   if (parsed.error) {
-    process.stderr.write(`vx-migrate: ${parsed.error}\n`)
+    ui.say('error', `vx-migrate: ${parsed.error}`)
     return 1
   }
   const reads: LoadReads = new Map()
@@ -560,7 +560,7 @@ async function keep(
     args,
   )
   if (args.json)
-    for (const [label, value] of steps) process.stderr.write(`vx-migrate: ${label}: ${value}\n`)
+    for (const [label, value] of steps) ui.say('info', `vx-migrate: ${label}: ${value}`)
   const ignore = existsSync(path.join(root, '.vx', '.gitignore')) ? [] : ['.vx/.gitignore']
   if (!args.dry) {
     if (before === undefined) {
@@ -609,7 +609,7 @@ async function keep(
     )
     return 0
   }
-  if (args.dry && before === undefined) process.stdout.write(`── ${name} ──\n${text}\n`)
+  if (args.dry && before === undefined) ui.print('out', ui.excerpt(name, text))
   // A run reads only the lock; with the plugins installed it is written
   // now, else `next` names `vx lock` after the install.
   const lock = !args.dry && !next.includes(' lock && ') ? await lockWorkspace(root) : undefined

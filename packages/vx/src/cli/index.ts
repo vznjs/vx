@@ -132,7 +132,8 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<nu
         )
         return 1
       }
-      process.stdout.write(`vx ${VERSION}\n`)
+      // Painted, and the same words piped: a script reads `vx <version>`.
+      ui.print('out', ui.text([ui.cmd('vx'), ' ', ui.tone('info', VERSION)]))
       return 0
     }
     case 'run':

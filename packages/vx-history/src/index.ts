@@ -26,6 +26,7 @@ import {
   taskDefinitions,
   UserError,
   refuseUnknownOptions,
+  ui,
   type PluginOptionKinds,
 } from '@vzn/vx'
 import type { CommandContext } from '@vzn/vx'
@@ -631,8 +632,12 @@ async function historyCmd(
     const a = argv[i]!
     // A plugin verb owns its help; completions offer `--help` for every verb.
     if (a === '--help' || a === '-h') {
-      process.stdout.write(
-        'Usage: vx history [--format pretty|json]\n\nWhat vx-history learned per task (p50, peak RSS, CPU parallelism) and the reservation it packs.\n',
+      ui.say('info', 'Usage: vx history [--format pretty|json]', 'out')
+      process.stdout.write('\n')
+      ui.say(
+        'info',
+        'What vx-history learned per task (p50, peak RSS, CPU parallelism) and the reservation it packs.',
+        'out',
       )
       return 0
     }

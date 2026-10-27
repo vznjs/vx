@@ -10,6 +10,7 @@
 // 2026-10-16).
 
 import path from 'node:path'
+import * as core from '@vzn/vx'
 import { isUserError, UserError, VERSION } from '@vzn/vx'
 import { ownVersion } from './adopt.js'
 
@@ -27,7 +28,11 @@ try {
   process.exitCode = await migrateCmd(process.argv.slice(2))
 } catch (err) {
   if (isUserError(err)) {
-    process.stderr.write(`vx-migrate: ${err.message}\n`)
+    // `ui` by namespace: a core older than it has none, and its refusal
+    // still reaches the reader.
+    const ui = (core as Partial<typeof core>).ui
+    if (ui === undefined) process.stderr.write(`vx-migrate: ${err.message}\n`)
+    else ui.say('error', `vx-migrate: ${err.message}`)
     process.exitCode = 1
   } else {
     throw err

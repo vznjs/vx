@@ -38,7 +38,7 @@ import {
 import { CLOSED, fsClockNow, type WatchHandle, WatcherPool } from './watch-fs.js'
 import { ChangeJudge } from './watch-judge.js'
 import { type WatchCycle, watchCycle } from './watch-cycle.js'
-import { hangupIgnored, maskedLine, restartTimings, sayNotice, sayLine } from '../util/index.js'
+import { hangupIgnored, maskedLine, restartTimings, sayNotice, sayLine, ui } from '../util/index.js'
 import { sweepConfigs, watchedProjects } from './watch-set.js'
 
 /** One line for a watcher or re-read the OS refused; the loop goes on without it. */
@@ -136,7 +136,10 @@ export async function watchCmd(args: readonly string[]): Promise<number> {
   // Said once the loop is down, the last line: written as the signal
   // landed, the aborted cycle's summary printed below it.
   const stopped = (): number => {
-    if (stop.signal.reason === 'SIGINT') process.stdout.write('\nvx watch: stopped\n')
+    if (stop.signal.reason === 'SIGINT') {
+      process.stdout.write('\n')
+      ui.say('info', 'vx watch: stopped', 'out')
+    }
     return 0
   }
   process.once('SIGTERM', () => stop.abort('SIGTERM'))
@@ -485,7 +488,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             // after the run stays, for what the run itself changed.
             lockAtRun = lockStamp()
             if (reread) await rearm(false)
-            process.stdout.write(`\nchanged ${label}\n`)
+            process.stdout.write('\n')
+            ui.say('info', `changed ${label}`, 'out')
             if (stop.aborted) break
             restartTimings()
             // On the mtime clock, as the arm is: from `Date.now()` a write the
@@ -829,8 +833,10 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
             const now = Date.now()
             if (now - (staleNamed.get(abs) ?? 0) < 1_000) return
             staleNamed.set(abs, now)
-            process.stdout.write(
+            ui.say(
+              'warn',
               `vx watch: ${rel} changed; the workspace config imports it, and this process loaded it at start — restart vx watch to apply the edit\n`,
+              'out',
             )
           }),
         )
@@ -908,11 +914,11 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`
   const sayWatching = (count: number): void => {
     const tasks = lastTasks === undefined ? '' : ` · ${plural(lastTasks, 'task')}`
-    process.stdout.write(`watching ${plural(count, 'project')}${tasks}\n`)
+    ui.say('info', `watching ${plural(count, 'project')}${tasks}`, 'out')
   }
   const debugArms = resolveSetting('debug.watch', undefined).value === true
   const sayArmed = (count: number): void => {
-    if (debugArms) process.stderr.write(`vx watch: armed ${plural(count, 'project')}\n`)
+    if (debugArms) ui.say('info', `vx watch: armed ${plural(count, 'project')}`)
   }
 
   const rearm = async (say = true): Promise<void> => {

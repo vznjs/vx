@@ -139,7 +139,7 @@ it('keeps a workflow its owner changed unless --force, and says when it is up to
   expect(await readFile(path.join(root, WORKFLOW), 'utf8')).toBe('mine\n')
   expect(await init({ workers: sizes, adapter: github() }, '--dry')).toBe(0)
   expect(await readFile(path.join(root, WORKFLOW), 'utf8')).toBe('mine\n')
-  expect(printed.join('')).toContain('# .github/workflows/vx-worker.yml\n')
+  expect(printed.join('')).toContain('── .github/workflows/vx-worker.yml ──\n')
   expect(await init({ workers: sizes, adapter: github() }, '--force')).toBe(0)
   printed = []
   expect(await init({ workers: sizes, adapter: github() })).toBe(0)
