@@ -18,6 +18,6 @@ Bun.serve({
 })
 console.log(
   JSON.stringify([
-    { iss, project_path: '42', pipeline_source: 'push', ref_path: 'refs/heads/main' },
+    { iss, project_path: 'acme/app', pipeline_source: 'push', ref_path: 'refs/heads/main' },
   ]),
 )

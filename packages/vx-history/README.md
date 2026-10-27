@@ -53,8 +53,8 @@ words, and a CI job with no token says so once (on GitHub Actions,
 A run with no token (off CI) reads only, from a server whose
 `READ_ACCESS` is `public`, and sends nothing.
 `issuer` (the CI issuer's URL, as its tokens name it) and `repository`
-(`org/name` there) are required with a server: every request names both
-by their hashes (`vx-issuer`, `vx-repository`), and nothing guesses
+(`org/name` there) are required with a server: the run's one query
+names them, with its refs and every task hash, and nothing guesses
 them; `VX_HISTORY_URL` alone, with neither declared, is said and not asked.
 `serverHeaders` are sent on every request to the server, for a proxy in
 front of it (a Cloudflare Access service token:

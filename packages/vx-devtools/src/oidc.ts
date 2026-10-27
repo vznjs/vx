@@ -1,9 +1,10 @@
 // CI OIDC tokens, the only tokens vx's servers take (@vzn/vx-cache-server,
 // @vzn/vx-history-server): a job's token names its repository and the one
-// scope it writes, its own ref, never a header or a client option. Every
+// scope it writes, its own ref, never a header or a client option. A cache
 // request names its issuer and repository by their hashes (2026-10-25:
 // the user names them, no client guesses), which a token must match;
-// `READ_ACCESS=public` lets a request with no token read one TRUST names. The
+// `READ_ACCESS=public` lets a request with no token read one TRUST names.
+// A history request names them plainly in its body (`oidcTokenAuth`). The
 // servers know no tier (2026-10-25): a scope is an opaque ref. A ref a
 // `TRUST` rule names is protected: only a token matching a rule writes it,
 // so a pull request never writes main's. Any other repository is refused.
@@ -176,9 +177,7 @@ const LEEWAY_S = 60
 
 /** The `Access` a request's verified CI token has; a refused one throws a 401 or 403. */
 export function oidcAuth(opts: OidcOptions): Authorize {
-  if (opts.readAccess !== undefined && opts.readAccess !== '' && opts.readAccess !== 'public')
-    throw new Error(`READ_ACCESS: public, or unset, not ${opts.readAccess}`)
-  const open = opts.readAccess === 'public'
+  const open = readAccessOf(opts)
   // The repositories TRUST names, by their hashes: what a public read may name.
   let named: Promise<Map<string, Access>> | undefined
   const trusted = () =>
@@ -194,6 +193,96 @@ export function oidcAuth(opts: OidcOptions): Authorize {
         ]
       }),
     ).then((pairs) => new Map(pairs)))
+  const verify = tokenVerifier(opts)
+
+  return async (req) => {
+    if (opts.trust.length === 0) throw new Refusal(401, 'the server trusts no CI: set TRUST')
+    const asked = `${req.headers.get(ISSUER_HEADER)}/${req.headers.get(REPOSITORY_HEADER)}`
+    if (!asked.split('/').every((p) => PART.test(p)))
+      throw new Refusal(
+        400,
+        `${ISSUER_HEADER} and ${REPOSITORY_HEADER}: the issuer's and the repository's hashes (PROTOCOL.md § Keys)`,
+      )
+    const bearer = bearerOf(req)
+    if (bearer === undefined) {
+      if (!open) throw new Refusal(401, 'no bearer token')
+      const repo = (await trusted()).get(asked)
+      if (repo === undefined)
+        throw new Refusal(403, "the repository named is not in this server's TRUST")
+      return repo
+    }
+    const access = await verify(bearer, req)
+    if (`${await hashPart(access.issuer)}/${await hashPart(access.repository)}` !== asked)
+      throw new Refusal(
+        403,
+        `the token is of ${repoClaimOf(access.issuer)} ${access.repository} at ${access.issuer}, not the repository named`,
+      )
+    return access
+  }
+}
+
+/** A repository as a request names it plainly: the issuer's URL and `org/name` there. */
+export interface Repo {
+  readonly issuer: string
+  readonly repository: string
+}
+
+/**
+ * A server whose requests name their repository plainly, in the body
+ * (@vzn/vx-history-server). A token must be of `named`, when one is named;
+ * with no token, `READ_ACCESS=public` reads a repository TRUST names, and
+ * answers `undefined` where none is named. Else a 401 or 403.
+ */
+export function oidcTokenAuth(
+  opts: OidcOptions,
+): (req: Request, named?: Repo) => Promise<Access | undefined> {
+  const open = readAccessOf(opts)
+  const verify = tokenVerifier(opts)
+  return async (req, asked) => {
+    if (opts.trust.length === 0) throw new Refusal(401, 'the server trusts no CI: set TRUST')
+    const named = asked === undefined ? undefined : repoOf(asked)
+    const bearer = bearerOf(req)
+    if (bearer === undefined) {
+      if (!open) throw new Refusal(401, 'no bearer token')
+      if (named === undefined) return undefined
+      const trusted = opts.trust.some(
+        (r) =>
+          issuerOf(r.iss) === named.issuer &&
+          String(r[repoClaimOf(r.iss)]).toLowerCase() === named.repository,
+      )
+      if (!trusted) throw new Refusal(403, `${named.repository} is not in this server's TRUST`)
+      return named
+    }
+    const access = await verify(bearer, req)
+    if (
+      named !== undefined &&
+      (access.issuer !== named.issuer || access.repository !== named.repository)
+    )
+      throw new Refusal(
+        403,
+        `the token is of ${access.repository} at ${access.issuer}, not ${named.repository} at ${named.issuer}`,
+      )
+    return access
+  }
+}
+
+/** A named repository as a token names it: the issuer's URL with no trailing slash, `org/name` lowercased. */
+const repoOf = (r: Repo): Repo => ({
+  issuer: issuerOf(r.issuer),
+  repository: r.repository.toLowerCase(),
+})
+
+function readAccessOf(opts: OidcOptions): boolean {
+  if (opts.readAccess !== undefined && opts.readAccess !== '' && opts.readAccess !== 'public')
+    throw new Error(`READ_ACCESS: public, or unset, not ${opts.readAccess}`)
+  return opts.readAccess === 'public'
+}
+
+const bearerOf = (req: Request): string | undefined =>
+  /^Bearer\s+(\S+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]
+
+/** A token checked: jose's checks, then TRUST's repository and the ref it may write. */
+function tokenVerifier(opts: OidcOptions): (token: string, req: Request) => Promise<Access> {
   const fetchJson = opts.fetchJson ?? defaultFetchJson
   const now = opts.now ?? (() => Date.now() / 1000)
   // jose keeps each issuer's keys, and refetches them for a key it lacks.
@@ -219,23 +308,7 @@ export function oidcAuth(opts: OidcOptions): Authorize {
     })
   }
 
-  return async (req) => {
-    if (opts.trust.length === 0) throw new Refusal(401, 'the server trusts no CI: set TRUST')
-    const asked = `${req.headers.get(ISSUER_HEADER)}/${req.headers.get(REPOSITORY_HEADER)}`
-    if (!asked.split('/').every((p) => PART.test(p)))
-      throw new Refusal(
-        400,
-        `${ISSUER_HEADER} and ${REPOSITORY_HEADER}: the issuer's and the repository's hashes (PROTOCOL.md § Keys)`,
-      )
-    const bearer = /^Bearer\s+(\S+)$/i.exec(req.headers.get('authorization') ?? '')
-    if (bearer === null) {
-      if (!open) throw new Refusal(401, 'no bearer token')
-      const repo = (await trusted()).get(asked)
-      if (repo === undefined)
-        throw new Refusal(403, "the repository named is not in this server's TRUST")
-      return repo
-    }
-    const token = bearer[1]!
+  return async (token, req) => {
     let iss: unknown
     try {
       iss = decodeJwt(token).iss
@@ -269,11 +342,6 @@ export function oidcAuth(opts: OidcOptions): Authorize {
     if (ofRepo.length === 0)
       throw new Refusal(403, `${claim} ${repository} is not in this server's TRUST`)
     const repo = { issuer: issuerOf(iss), repository }
-    if (`${await hashPart(repo.issuer)}/${await hashPart(repository)}` !== asked)
-      throw new Refusal(
-        403,
-        `the token is of ${claim} ${repository} at ${repo.issuer}, not the repository named`,
-      )
     const branch = branchOf(iss, claims)
     if (branch === undefined) return repo
     if (ofRepo.some((r) => matches(r, claims))) return { ...repo, write: branch }

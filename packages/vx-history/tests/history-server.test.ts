@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { afterAll, beforeAll, describe, expect, it, setSystemTime } from 'bun:test'
-import { hashPart, oidcAuth } from '@vzn/vx-devtools'
+import { oidcTokenAuth } from '@vzn/vx-devtools'
 import { createHistoryServer, sqliteStore } from '@vzn/vx-history-server'
 import { run } from '../../vx/tests/helpers/orchestrator.js'
 import { type Issuer, issuer, NAMED, trustOf } from './issuer.js'
@@ -28,7 +28,7 @@ beforeAll(async () => {
         db.query(sql).all(...(p as never[])) as T[],
       run: async (sql, p) => db.query(sql).run(...(p as never[])).changes,
     }),
-    authorize: oidcAuth({ trust: trustOf(), fetchJson: (u) => iss.fetchJson(u) }),
+    authorize: oidcTokenAuth({ trust: trustOf(), fetchJson: (u) => iss.fetchJson(u) }),
   })
   seen = []
   srv = Bun.serve({
@@ -54,10 +54,7 @@ describe('HistoryServer', () => {
       '/v1/capabilities',
       '/v1/timings/upload',
     ])
-    const got = await client.query(
-      [await hashPart('refs/heads/feature'), await hashPart('refs/heads/main')],
-      ['a1', 'none'],
-    )
+    const got = await client.query(['refs/heads/feature', 'refs/heads/main'], ['a1', 'none'])
     expect(got).toEqual(new Map([['a1', { durationMs: 100, cores: 2, rssBytes: 1000 }]]))
   })
 
@@ -72,11 +69,9 @@ describe('HistoryServer', () => {
       return fetch(u, init)
     }) as unknown as typeof fetch
     const client = new HistoryServer(url, NAMED, { VX_HISTORY_TOKEN: token }, flaky)
-    await expect(client.query([await hashPart('refs/heads/main')], ['c1'])).rejects.toThrow(
-      'connection reset',
-    )
+    await expect(client.query(['refs/heads/main'], ['c1'])).rejects.toThrow('connection reset')
     await client.upload(new Map([['c1', { durationMs: 3 }]]))
-    expect(await client.query([await hashPart('refs/heads/main')], ['c1'])).toEqual(
+    expect(await client.query(['refs/heads/main'], ['c1'])).toEqual(
       new Map([['c1', { durationMs: 3 }]]),
     )
   })
@@ -87,7 +82,6 @@ describe('HistoryServer', () => {
     expect(client.upload(new Map([['b', { durationMs: 1 }]]))).rejects.toThrow('HTTP 403: ')
   })
 
-  // The server sees the names hashed: it cannot say which the workspace sent.
   it('says which repository it named when the token is of another', async () => {
     const token = await iss.sign('main', new URL(url).origin)
     const client = new HistoryServer(
@@ -95,14 +89,14 @@ describe('HistoryServer', () => {
       { ...NAMED, repository: 'acme/other' },
       { VX_HISTORY_TOKEN: token },
     )
-    await expect(client.query([await hashPart('refs/heads/main')], ['p1'])).rejects.toThrow(
-      `, not the repository named (this workspace names acme/other at ${NAMED.issuer})`,
+    await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
+      `HTTP 403: the token is of ${NAMED.repository} at ${NAMED.issuer}, not acme/other at ${NAMED.issuer}`,
     )
   })
 
   it('says why a read with no token was refused, and what lets it in', async () => {
     const client = new HistoryServer(url, NAMED, {})
-    await expect(client.query([await hashPart('refs/heads/main')], ['p1'])).rejects.toThrow(
+    await expect(client.query(['refs/heads/main'], ['p1'])).rejects.toThrow(
       'HTTP 401: no bearer token: a read with no CI token was refused (off CI, a server reads only with READ_ACCESS=public)',
     )
   })
@@ -130,7 +124,7 @@ describe('HistoryServer', () => {
     }
     const client = new HistoryServer('https://h.example', NAMED, env, fake)
     try {
-      await client.query(['0'.repeat(32)], ['a', 'b', 'c'])
+      await client.query(['refs/heads/main'], ['a', 'b', 'c'])
       expect(asks).toBe(1)
       setSystemTime(t0 + 200_000)
       await client.upload(new Map([['a', { durationMs: 1 }]]))
@@ -149,7 +143,7 @@ describe('HistoryServer', () => {
     const seen: Headers[] = []
     const fake = (async (_u: string, init: RequestInit) => {
       seen.push(new Headers(init.headers))
-      return new Response(JSON.stringify({ maxQueryHashes: 10, maxQueryScopes: 2, rows: [] }))
+      return new Response(JSON.stringify({ maxUploadTimings: 10, maxQueryHashes: 10, rows: [] }))
     }) as unknown as typeof fetch
     const headers = proxyHeaders({ 'CF-Access-Client-Id': 'id', 'X-Unset': undefined })
     expect(headers).toEqual({ 'CF-Access-Client-Id': 'id' })
@@ -160,7 +154,7 @@ describe('HistoryServer', () => {
       fake,
       headers,
     )
-    await client.query(['0'.repeat(32)], ['a']).catch(() => {})
+    await client.query(['refs/heads/main'], ['a']).catch(() => {})
     expect(seen.length).toBeGreaterThan(0)
     for (const h of seen)
       expect([
@@ -168,12 +162,7 @@ describe('HistoryServer', () => {
         h.get('authorization'),
         h.get('vx-issuer'),
         h.get('vx-repository'),
-      ]).toEqual([
-        'id',
-        'Bearer jwt',
-        await hashPart(NAMED.issuer),
-        await hashPart(NAMED.repository),
-      ])
+      ]).toEqual(['id', 'Bearer jwt', null, null])
     for (const bad of [{ Authorization: 'x' }, { 'a b': 'x' }, { a: 'x\ny' }])
       expect(() => proxyHeaders(bad)).toThrow('vxHistory(): ')
   })
@@ -186,10 +175,10 @@ describe('HistoryServer', () => {
       run: async (sql, p) => db.query(sql).run(...(p as never[])).changes,
     })
     await store.init()
-    await store.fold(NAMED, await hashPart('refs/heads/main'), 1, [{ hash: 'p1', durationMs: 7 }])
+    await store.fold(NAMED, 'refs/heads/main', 1, [{ hash: 'p1', durationMs: 7 }])
     const handle = createHistoryServer({
       store,
-      authorize: oidcAuth({
+      authorize: oidcTokenAuth({
         trust: trustOf(),
         readAccess: 'public',
         fetchJson: (u) => iss.fetchJson(u),
@@ -203,7 +192,7 @@ describe('HistoryServer', () => {
     }) as unknown as typeof fetch
     const client = new HistoryServer('https://h.example', NAMED, {}, fake)
     expect(client.writes).toBe(false)
-    expect(await client.query([await hashPart('refs/heads/main')], ['p1'])).toEqual(
+    expect(await client.query(['refs/heads/main'], ['p1'])).toEqual(
       new Map([['p1', { durationMs: 7 }]]),
     )
     expect(auths).toEqual([null, null])
@@ -277,9 +266,10 @@ describe('vx run with vxHistory({ server })', () => {
     const mid = seen.length
     await run({ cwd: root, tasks: ['build'], handleSignals: false })
     const query = seen.slice(mid).find((r) => r.path === '/v1/timings/query')
+    // One query a run: the repository, its refs and every hash, plainly.
     expect(JSON.parse(query!.body)).toEqual({
-      // The ref's hash, never the ref (2026-10-25).
-      scopes: [await hashPart('refs/heads/main')],
+      ...NAMED,
+      refs: ['refs/heads/main'],
       hashes: [sent[0]!.hash],
     })
   })
@@ -358,9 +348,9 @@ describe('vx run with vxHistory({ server })', () => {
       const before = seen.length
       await run({ cwd: other, tasks: ['build'], handleSignals: false })
       const query = seen.slice(before).find((r) => r.path === '/v1/timings/query')
-      expect((JSON.parse(query!.body) as { scopes: string[] }).scopes).toEqual([
-        await hashPart('refs/heads/feat'),
-        await hashPart('refs/heads/trunk'),
+      expect((JSON.parse(query!.body) as { refs: string[] }).refs).toEqual([
+        'refs/heads/feat',
+        'refs/heads/trunk',
       ])
     } finally {
       await rm(other, { recursive: true, force: true })

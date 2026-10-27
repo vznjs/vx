@@ -1,7 +1,7 @@
 # vx-history protocol, v1
 
 An HTTP API for the task timings a scheduler asks for. It is a history,
-not a log: a server keeps one row per task and scope, and folds each
+not a log: a server keeps one row per task and ref, and folds each
 report into it. `@vzn/vx-history-server` speaks it on Bun, on Cloudflare
 Workers and as a Docker image; any server that does can take its place.
 
@@ -11,25 +11,21 @@ Workers and as a Docker image; any server that does can take its place.
 | `POST /v1/timings/query`  | each task's numbers, ready to use |
 | `GET /v1/capabilities`    | the server's limits               |
 
-## Tokens and scopes
+## Repositories and tokens
 
-Every request names its repository as vx-cache-server's do:
-`vx-issuer` and `vx-repository`, the hashes of the CI issuer's URL and
-of its `org/name` (one missing is `400`). A request's
-`Authorization: Bearer <token>` is a CI job's OIDC token, checked as
-`@vzn/vx-devtools` checks it (the same rules as vx-cache-server's
-`TRUST`): a token of another repository than the one named is `403`;
-its repository is what it reads and writes; it writes its branch (`refs/heads/<branch>`; a merge
-queue's run, `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, its base
-branch), and one
-on a ref a rule protects that matches no rule reads only. A scope is its
-ref's hash: the first 128 bits of the SHA-256 of its UTF-8, 32 lowercase
-hex digits; no ref goes on the wire plain, and the server hashes the
-token's ref the same way for a write. A server whose `READ_ACCESS` is
-`public` takes a query with no token for a repository its rules name;
-an upload with none is `403`. A row is keyed by issuer,
-repository name, scope and task hash, the first three stored hashed,
-never plain.
+A row is keyed by the issuer (the CI issuer's URL, no trailing slash),
+the repository (`org/name` there, lowercased), the ref
+(`refs/heads/main`) and the task's definition hash, each stored plainly.
+
+A request's `Authorization: Bearer <token>` is a CI job's OIDC token,
+checked as `@vzn/vx-devtools` checks it (the same rules as
+vx-cache-server's `TRUST`): a repository `TRUST` does not name is `403`.
+A token writes its own ref (`refs/heads/<branch>`; a merge queue's run,
+`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, its base branch);
+one on a ref a rule protects that matches no rule reads only. A query
+names its repository; a token of another is `403`. A server whose
+`READ_ACCESS` is `public` takes a query with no token for a repository
+`TRUST` names; an upload with none is `403`.
 
 ## Upload
 
@@ -37,7 +33,7 @@ never plain.
 `{ "timings": [{ "hash", "durationMs", "cores"?, "rssBytes"? }] }`, up to
 10 000, each task once: `204`. `hash` names the task's definition, a
 string of up to 512 characters the server never reads. Each folds into
-its row of the token's scope:
+its row of the token's repository and ref:
 
 - `durationMs` and `cores`: `old × 0.7 + new × 0.3`. A median needs the
   samples and a mean never forgets; this follows a task that got slower
@@ -55,11 +51,11 @@ the row's. A row not reported for `TIMING_DAYS` (30) is deleted.
 
 ## Query
 
-`POST /v1/timings/query` with
-`{ "scopes": [<hash of refs/heads/feature>, <hash of refs/heads/main>], "hashes": [ … ] }`,
-1 to 8 scopes and up to 10 000 hashes: each hash's row in the first scope
-named that holds one. A hash none holds is
-absent. The numbers are the scheduler's as they are:
+One request a run: `POST /v1/timings/query` with
+`{ "issuer", "repository", "refs": ["refs/heads/feature", "refs/heads/main"], "hashes": [ … ] }`,
+1 to 8 refs and up to 10 000 hashes: each hash's row in the first ref
+named that holds one. A hash none holds is absent. The numbers are the
+scheduler's as they are:
 
 ```json
 { "timings": { "3b0d…": { "durationMs": 4200, "cores": 1.8, "rssBytes": 310000000, "runs": 12 } } }
@@ -67,7 +63,7 @@ absent. The numbers are the scheduler's as they are:
 
 ## Limits and errors
 
-`GET /v1/capabilities`: `{ "maxUploadTimings": 10000, "maxQueryHashes": 10000, "maxQueryScopes": 8 }`.
+`GET /v1/capabilities`: `{ "maxUploadTimings": 10000, "maxQueryHashes": 10000, "maxQueryRefs": 8 }`.
 
 Every refusal is `{ code, message }`, the message saying what to fix. A
 JSON body without `Content-Type: application/json` is `400`, an unknown

@@ -1,11 +1,8 @@
-// What the server keeps: one row per issuer, repository name, scope and task
-// definition (2026-10-25, the cache's key), already the
-// numbers a scheduler asks for (2026-10-25: a history, not a log). Each
-// report folds into its row in one statement, so racing jobs lose nothing.
-// A row holds the issuer and id hashed (`hashPart`) and the scope as the
-// ref's hash a client sends: never a plain value.
-
-import { hashPart } from '@vzn/vx-devtools'
+// What the server keeps: one row per issuer, repository, ref and task
+// definition, already the numbers a scheduler asks for (2026-10-25: a
+// history, not a log). Each report folds into its row in one statement, so
+// racing jobs lose nothing. Every column is plain (2026-10-27): the
+// server is the user's own, and a hash only hid its rows from them.
 
 /** A SQLite database, as bun:sqlite and D1 both serve one. */
 export interface Db {
@@ -51,21 +48,24 @@ export const RSS_DECAY = 0.9
 const NOISE = 0.05
 const DAY_MS = 86_400_000
 
-/** A repository: its token's issuer and its `org/name` there (stored hashed, in `repo_id`). */
+/** A repository: its issuer's URL, no trailing slash, and its `org/name` there, lowercased. */
 export interface Repo {
   readonly issuer: string
   readonly repository: string
 }
 
-const SCHEMA = `CREATE TABLE IF NOT EXISTS task_timings (issuer TEXT NOT NULL, repo_id TEXT NOT NULL, scope TEXT NOT NULL, hash TEXT NOT NULL, duration_ms INTEGER NOT NULL, cores REAL, rss_bytes INTEGER, runs INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (issuer, repo_id, scope, hash)) WITHOUT ROWID`
+// 2026-10-27: rows were keyed by hashes of these; nothing that table
+// holds can be read by plain values.
+const DROP_OLD = 'DROP TABLE IF EXISTS task_timings'
+const SCHEMA = `CREATE TABLE IF NOT EXISTS timings (issuer TEXT NOT NULL, repository TEXT NOT NULL, ref TEXT NOT NULL, hash TEXT NOT NULL, duration_ms INTEGER NOT NULL, cores REAL, rss_bytes INTEGER, runs INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (issuer, repository, ref, hash)) WITHOUT ROWID`
 
 // One statement for a whole report, its rows passed as one JSON parameter:
 // D1 binds at most 100 parameters, and a free plan's Worker runs at most
 // 50 queries a request.
-const FOLD = `INSERT INTO task_timings (issuer, repo_id, scope, hash, duration_ms, cores, rss_bytes, runs, updated_at)
+const FOLD = `INSERT INTO timings (issuer, repository, ref, hash, duration_ms, cores, rss_bytes, runs, updated_at)
 SELECT ?1, ?2, ?3, j.value ->> '$.hash', j.value ->> '$.durationMs', j.value ->> '$.cores', j.value ->> '$.rssBytes', 1, ?4
 FROM json_each(?5) AS j WHERE true
-ON CONFLICT (issuer, repo_id, scope, hash) DO UPDATE SET
+ON CONFLICT (issuer, repository, ref, hash) DO UPDATE SET
   duration_ms = CAST(round(duration_ms * ${1 - WEIGHT} + excluded.duration_ms * ${WEIGHT}) AS INTEGER),
   cores = CASE WHEN excluded.cores IS NULL THEN cores WHEN cores IS NULL THEN excluded.cores
     ELSE cores * ${1 - WEIGHT} + excluded.cores * ${WEIGHT} END,
@@ -78,45 +78,41 @@ WHERE abs(excluded.duration_ms - duration_ms) > duration_ms * ${NOISE}
   OR (excluded.rss_bytes IS NOT NULL AND (rss_bytes IS NULL OR excluded.rss_bytes > rss_bytes))
   OR excluded.updated_at - updated_at >= ${DAY_MS}`
 
-/** The rows of `scopes` for the hashes asked; a hash the first scope lacks reads the next. */
-const READ = `SELECT hash, scope, duration_ms, cores, rss_bytes, runs FROM task_timings
-WHERE issuer = ?1 AND repo_id = ?2 AND scope IN (SELECT value FROM json_each(?3)) AND hash IN (SELECT value FROM json_each(?4))`
+/** The rows of `refs` for the hashes asked; a hash the first ref lacks reads the next. */
+const READ = `SELECT hash, ref, duration_ms, cores, rss_bytes, runs FROM timings
+WHERE issuer = ?1 AND repository = ?2 AND ref IN (SELECT value FROM json_each(?3)) AND hash IN (SELECT value FROM json_each(?4))`
 
 export interface Store {
   init(): Promise<void>
-  /** Folds each report into its row of `scope` (a ref's hash). */
-  fold(repo: Repo, scope: string, now: number, reports: readonly Report[]): Promise<void>
-  /** Each hash's row in the first of `scopes` (refs' hashes) that holds one. */
-  read(
-    repo: Repo,
-    scopes: readonly string[],
-    hashes: readonly string[],
-  ): Promise<Map<string, Timing>>
+  /** Folds each report into its row of `ref`. */
+  fold(repo: Repo, ref: string, now: number, reports: readonly Report[]): Promise<void>
+  /** Each hash's row in the first of `refs` that holds one. */
+  read(repo: Repo, refs: readonly string[], hashes: readonly string[]): Promise<Map<string, Timing>>
   /** Deletes the rows not reported since `before`; how many. */
   sweep(before: number): Promise<number>
 }
 
-const keyOf = (repo: Repo): Promise<[string, string]> =>
-  Promise.all([hashPart(repo.issuer), hashPart(repo.repository)])
-
 export function sqliteStore(db: Db): Store {
   return {
-    init: async () => void (await db.run(SCHEMA, [])),
-    async fold(repo, scope, now, reports) {
-      if (reports.length > 0)
-        await db.run(FOLD, [...(await keyOf(repo)), scope, now, JSON.stringify(reports)])
+    async init() {
+      await db.run(DROP_OLD, [])
+      await db.run(SCHEMA, [])
     },
-    async read(repo, scopes, hashes) {
+    async fold(repo, ref, now, reports) {
+      if (reports.length > 0)
+        await db.run(FOLD, [repo.issuer, repo.repository, ref, now, JSON.stringify(reports)])
+    },
+    async read(repo, refs, hashes) {
       const rows = await db.all<{
         hash: string
-        scope: string
+        ref: string
         duration_ms: number
         cores: number | null
         rss_bytes: number | null
         runs: number
-      }>(READ, [...(await keyOf(repo)), JSON.stringify(scopes), JSON.stringify(hashes)])
-      // A hash's row in the earliest scope asked wins.
-      rows.sort((a, b) => scopes.indexOf(b.scope) - scopes.indexOf(a.scope))
+      }>(READ, [repo.issuer, repo.repository, JSON.stringify(refs), JSON.stringify(hashes)])
+      // A hash's row in the earliest ref asked wins.
+      rows.sort((a, b) => refs.indexOf(b.ref) - refs.indexOf(a.ref))
       return new Map(
         rows.map((r) => [
           r.hash,
@@ -124,6 +120,6 @@ export function sqliteStore(db: Db): Store {
         ]),
       )
     },
-    sweep: (before) => db.run('DELETE FROM task_timings WHERE updated_at < ?1', [before]),
+    sweep: (before) => db.run('DELETE FROM timings WHERE updated_at < ?1', [before]),
   }
 }

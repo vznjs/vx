@@ -20,7 +20,7 @@ const claims = {
 conformance('the Docker image', {
   base: () => env('VX_HISTORY_SMOKE'),
   sign: async (job) =>
-    new SignJWT({ project_path: '42', ...claims[job] })
+    new SignJWT({ project_path: 'acme/app', ...claims[job] })
       .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
       .setIssuer(env('VX_HISTORY_ISSUER'))
       .setAudience(new URL(env('VX_HISTORY_SMOKE')).origin)
@@ -28,5 +28,5 @@ conformance('the Docker image', {
       .setExpirationTime('1h')
       .sign(await key),
   issuer: env('VX_HISTORY_ISSUER'),
-  repository: '42',
+  repository: 'acme/app',
 })
