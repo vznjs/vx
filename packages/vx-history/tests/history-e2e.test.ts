@@ -258,7 +258,7 @@ describe('vx-history plugin end to end', () => {
           cmd: [process.execPath, CORE_BIN, 'history', flag],
           cwd: root,
         })
-        expect([help.exitCode, help.stdout.toString().split('\n')[0]]).toEqual([
+        expect([help.exitCode, Bun.stripANSI(help.stdout.toString()).split('\n')[0]]).toEqual([
           0,
           'Usage: vx history [--format pretty|json]',
         ])
@@ -394,7 +394,7 @@ describe('vx-history plugin end to end', () => {
       expect(a.reservation?.memory).toBe(
         Math.ceil((a.maxPeakRssBytes * 1.25) / (1024 * 1024) / 64) * 64,
       )
-      expect(json.stderr.toString()).toContain(
+      expect(Bun.stripANSI(json.stderr.toString())).toContain(
         '[vx] vx-history: ignores memory NaN (using what this process may use), resources.headroom NaN (using 1.25) — each must be a finite number above 0',
       )
     },
