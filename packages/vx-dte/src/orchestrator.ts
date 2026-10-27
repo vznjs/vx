@@ -1372,8 +1372,6 @@ export class Orchestrator {
         this.fail(`the relay is unreachable (${(err as Error).message})`)
         return
       }
-      this.expire()
-      this.stall()
       for (const { from, body } of messages) {
         if (from === 'relay') {
           this.onRelay(body as { type?: string })
@@ -1438,6 +1436,11 @@ export class Orchestrator {
           void this.finish(a, m.task, m.key, result as WiredResult)
         }
       }
+      // After the batch: a `held` in it renews its lease first. Expired
+      // before, a stalled loop's waiting `held` came too late and the task
+      // ran again on another worker (2026-10-27).
+      this.expire()
+      this.stall()
     }
   }
 
