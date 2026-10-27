@@ -43,8 +43,7 @@ the same `VX_DTE_SECRET` on the run and each worker. A message the relay
 changes loses its worker; one it replays is dropped. The key never
 encrypts a message, so a leaked one opens no past run.
 
-It is not on npm yet: it is being built in this repo. It runs workers with
-`local()`, `docker()`, `github()` and `gitlab()`.
+It runs workers with `local()`, `docker()`, `github()` and `gitlab()`.
 
 ### Bodies
 
@@ -86,16 +85,8 @@ end to end, and a quiet peer probed (Switchboard § Delivery, § Liveness).
 
 ## Try it
 
-Until it is on npm, link it from a checkout of this repo. The vx you run
-must come from the same checkout: the published one lacks exports this
-package needs.
-
 ```sh
-git clone https://github.com/vznjs/vx ~/vx
-cd ~/vx && bun install
-(cd packages/vx && bun link) && (cd packages/vx-dte && bun link)
-cd ~/your-repo
-bun link --save @vzn/vx @vzn/vx-dte
+bun add -d @vzn/vx-dte
 ```
 
 ```ts
@@ -273,7 +264,7 @@ is kept unless `--force`. For the sizes above:
 ```yaml
 # .github/workflows/vx-worker.yml
 # Written by vx dte init from dte() in .vx/workspace.ts: the workers of a
-# distributed run, which github() dispatches once per size. Run vx dte init
+# DTE run, which github() dispatches once per size. Run vx dte init
 # again after changing the sizes.
 name: vx-worker
 
@@ -841,4 +832,4 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
   each worktree runs before its worker starts.
 
 `@vzn/vx-dte-server` is a dependency for `local()`'s and `docker()`'s relay, loaded only
-when a distributed run starts.
+when a DTE run starts.

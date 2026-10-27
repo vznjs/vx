@@ -31,7 +31,7 @@ stands for (`exit 137 (128 + SIGKILL)`, as the run's own frame and
 `vx last` say it), a timeout as `timed out, exit 143`, a persistent task
 that never became ready as `never ready (timed out)`, a sandboxed task's
 violation count, and the tasks each failure blocked. A server a
-distributed run carried to its dependants' workers reads `served`,
+DTE run carried to its dependants' workers reads `served`,
 with no duration of its own. When an executor
 ran the run on other machines (`@vzn/vx-dte`'s workers), a Workers table
 shows each one's status, when it was asked for, its total time (warm-up

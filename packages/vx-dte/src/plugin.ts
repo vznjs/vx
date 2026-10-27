@@ -316,8 +316,7 @@ export function dte(options: DteOptions) {
   return definePlugin(import.meta, {
     commands: {
       dte: {
-        description:
-          'dte init: write the CI of a distributed run; dte worker: run tasks for a distributed run',
+        description: 'dte init: write the CI of a DTE run; dte worker: run tasks for a DTE run',
         async run(argv, ctx) {
           // Asked for, the usage is an answer: `vx dte --help` exited 1 (2026-10-26).
           if (argv.some((a) => a === '--help' || a === '-h') || argv[0] === 'help') {
@@ -469,7 +468,7 @@ export function dte(options: DteOptions) {
       }
       proof ??= seal.secretProof(secret!)
       const { commit, tree } = await snapshot(ctx.workspaceRoot)
-      if (tree === '') throw new UserError('dte(): a distributed run needs a git commit')
+      if (tree === '') throw new UserError('dte(): a DTE run needs a git commit')
       const need = (id: string): Need => booked(needOf(peaks.get(id), unmeasured), how.book)
       // The run plans again on it, now when `now`; set once the plan is.
       let onChange = (_now?: boolean): void => {}

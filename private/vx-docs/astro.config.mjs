@@ -43,6 +43,7 @@ export default defineConfig({
   // target.
   redirects: {
     '/docs/relay/': `${root}docs/servers/dte/`,
+    '/docs/distributed-runs/': `${root}docs/distributed-task-execution/`,
     '/introduction/': `${root}quickstart/`,
     '/features/fastest/': `${root}features/benchmarks/`,
     '/features/vx-prune/': `${root}features/`,

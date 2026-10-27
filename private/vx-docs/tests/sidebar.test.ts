@@ -37,7 +37,7 @@ const DOCS_PAGES: [string, string][] = [
   ['Sandboxing', 'docs/sandboxing/'],
   ['CI', 'docs/ci/'],
   ['Remote cache', 'docs/remote-cache/'],
-  ['Distributed runs', 'docs/distributed-runs/'],
+  ['Distributed task execution', 'docs/distributed-task-execution/'],
   ['Remote execution', 'docs/remote-execution/'],
   ['Servers', 'docs/servers/'],
   ['Cache server', 'docs/servers/cache/'],

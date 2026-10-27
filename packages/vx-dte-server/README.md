@@ -63,17 +63,14 @@ the button made, or in the Worker's settings in the Cloudflare dashboard:
 
 ### On Bun
 
-It is not on npm yet. From a checkout of this repo:
-
 ```sh
-bun packages/vx-dte-server/src/bun.ts --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com --port 8080
+bunx @vzn/vx-dte-server --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com --port 8080
 ```
 
-Or as a container, built from this directory:
+Or as a container:
 
 ```sh
-docker build -t vx-dte-server packages/vx-dte-server
-docker run -p 8080:8080 vx-dte-server --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com
+docker run -p 8080:8080 ghcr.io/vznjs/vx-dte-server --allow https://gitlab.com:group/app:.gitlab-ci.yml --audience https://relay.example.com
 ```
 
 All vx servers at once, this relay with its state on a volume included:

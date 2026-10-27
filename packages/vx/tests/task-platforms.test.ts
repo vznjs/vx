@@ -80,7 +80,7 @@ describe('exec.platforms', () => {
     expect(said).toBe(
       `on CI every task runs or the run fails, and this task cannot run on ${HOST}:\n` +
         `  app#other needs ${OTHER}\n` +
-        `run a target that holds only ${HOST} tasks, or one distributed run with a worker of each platform`,
+        `run a target that holds only ${HOST} tasks, or one DTE run with a worker of each platform`,
     )
     expect(await Bun.file(path.join(dir, 'here.txt')).exists()).toBe(false)
   })

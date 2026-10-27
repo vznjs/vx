@@ -20,7 +20,7 @@ is pre-folded, bigint wallclock spans are decimal strings.
   read as a failure with nothing failed.
 - `assembleRunSummary(run, tasks, timing)` — builds the `RunSummaryRecord`
   from the context and the `TaskTelemetry[]`, the per-task tallies
-  derived from `tasks`, so a distributed run and a local one produce
+  derived from `tasks`, so a DTE run and a local one produce
   the same summary.
 - `taskTelemetryOf(outcome)` — the one projection of a `TaskOutcome` into
   `TaskTelemetry`, used by the streaming `task.end` record and the
