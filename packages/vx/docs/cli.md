@@ -1,9 +1,6 @@
 # CLI reference
 
-The `vx` binary is the user-facing entry point. The implementation is
-intentionally simple: a hand-rolled argv parser (no commander / yargs)
-in `src/cli/index.ts` dispatches to per-subcommand handlers under
-`src/cli/<name>.ts`.
+Every `vx` command, flag and output. Each verb has a section below.
 
 ```sh
 # The prebuilt standalone binary; inside a project
@@ -14,17 +11,20 @@ bun add -g @vzn/vx
 bun src/bin.ts --version
 ```
 
-Below that floor vx still runs, and `vx info`'s `bun` row says so, because
-what an older Bun breaks is the ANSWER, not the start: a large `--format json`
-write is truncated mid-stream, no task reports what it used, and a config
-syntax error surfaces as an internal error rather than the usual message.
+On a Bun older than 1.4.4, vx still runs, and `vx info`'s `bun` row
+warns. What breaks is the output, not the start:
+
+- a large `--format json` write is cut off;
+- no task reports what it used;
+- a config syntax error shows as an internal error.
+
+The released binary carries its own Bun, so the row never warns there.
 [`modules/util-bun-version.md`](./modules/util-bun-version.md) has the
-measurements and why the verdict lives on that row rather than on stderr. The
-released binary carries its own Bun and the row never says it.
+measurements.
 
 ## Top-level shape
 
-```
+```sh
 # Core
 vx run [OPTIONS] [TASK | PKG#TASK ...] [-- forwarded-args...]
 vx watch [OPTIONS] [--poll] TASK [-- forwarded-args...]
@@ -51,59 +51,66 @@ Each verb's lines are the usage lines `vx <verb> --help` prints, word
 for word (`tests/cli-help-synopsis.test.ts`); the flags a verb accepts
 are read from that line.
 
-Multiple positional tasks run in one orchestrator invocation with a
-shared task graph: `vx run build lint test` fans out all three across
-the resolved project scope. Anchored entries (`pkg#task`) target a
-specific project; bare entries follow the usual scope rules
-(default = the cwd project; broaden with `--all` / `--filter` /
-`--affected`). The cwd project is the deepest member holding the
-directory, a member reached through a link (`packages/b -> ../ext/b`)
-included.
+Several tasks run as one graph: `vx run build lint test` runs all
+three across the selected projects.
 
-**Every requested name must resolve.** If any positional matches no
-project in scope, the run refuses to start — `vx run: no projects
-declare task(s): <name>.` on stderr, a run and `--dry` alike
-(a run printed it to stdout until 2026-10-03), exit 1, with `Did you mean <task>?` when a
-declared task (or, for `pkg#task`, a runnable spec) is within two edits,
-and with no name that near, what exists: `Tasks: build, test.`, `No
+- `pkg#task` names one project's task.
+- A bare name runs in the cwd project, or wherever `--all`, `--filter`
+  or `--affected` points.
+
+The cwd project is the deepest project holding the directory, one
+reached through a link (`packages/b -> ../ext/b`) included.
+
+**Every requested name must resolve.** When a name matches no project
+in scope, the run and `--dry` both refuse, exit 1, and print to stderr:
+`vx run: no projects declare task(s): <name>.`
+
+The refusal adds what helps:
+
+- `Did you mean <task>?` when a declared task (or, for `pkg#task`, a
+  runnable one) is within two edits.
+- Otherwise what exists: `Tasks: build, test.`, `No
 project is named zzz; projects: a, b.`, or `a's tasks: build, test.`
-(M-56), each followed by ``A run reads the lock: after editing a
-vx.config, run `vx lock`.`` (a task just added is not in the lock yet),
-and with `Only projects outside the selection declare <name> — pass
---all, or --filter to pick them.` when the run was scoped (the cwd's
-project, a `--filter`) and a project outside the scope declares it
-— even when the other names resolved fine. A bare name declared by only SOME projects is normal and stays
-green; the guard fires only when a name matched nowhere. So a CI job
-running `vx run lint test typecheck` goes red the day `typecheck` is
-renamed, instead of silently running two of three. Under a scope a git
-diff chose (`--affected`, a `[ref]` filter) a bare name is judged against
-the whole workspace instead, since which projects hold it depends on what
-changed: `vx run test --affected` after a commit that changed only a
-project without `test` exits 0 with `No affected project declares
-task(s): test.`, and a name no project declares is still refused (item
-1024). A change that reaches no requested task exits 0 with `Nothing
-affected: the change reaches no test task.` A diff that touched no project stops before that check:
-`nothing affected since <ref>` on stderr, exit 0, a typo unseen.
+- Then ``A run reads the lock: after editing a
+vx.config, run `vx lock`.``, since a task added since the last lock is not in it.
+- `Only projects outside the selection declare <name> — pass
+--all, or --filter to pick them.` when the run was scoped and a project
+  outside the scope declares it.
 
-(No `-V` for version; `vx --version` only — matches Turbo.)
+A name declared by only some projects is fine; the check fires only when
+a name matches nowhere. So `vx run lint test typecheck` fails on CI the
+day `typecheck` is renamed, instead of running two of three.
 
-`vx <verb> --help` (and `-h`, and `vx help <verb>`) prints this reference
-cut to that core verb — its usage lines and sections, then
-`Full reference: vx help` —
-and every argument error points at it. `vx help <name>` for a name that
-is no verb here (core, a plugin's, or a moved one) is refused as
-`vx <name>` is: one line, a guess when one is close, exit 1.
-Past a `--` the flag belongs to the command being run, so
-`vx run build -- --help` forwards it to the task instead. A plugin verb
-owns its own arguments, `--help` included.
+Under `--affected` or a `[ref]` filter, a bare name is checked against
+the whole workspace, since what changed decides the projects:
+
+- A change that reached no project declaring `test` exits 0 with `No affected project declares
+task(s): test.` A name no project declares is still refused.
+- A change that reaches no requested task exits 0 with `Nothing
+affected: the change reaches no test task.`
+- A diff that touched no project exits 0 with
+  `nothing affected since <ref>` on stderr, before any name is checked.
+
+There is no `-V`; use `vx --version`, as in Turbo.
+
+`vx <verb> --help` (also `-h` and `vx help <verb>`) prints this
+reference for that verb: its usage lines and sections, then
+`Full reference: vx help`. Every argument error points at it.
+
+`vx help <name>` for a name that is no verb is refused like
+`vx <name>`: one line, a guess when one is close, exit 1.
+
+After `--`, a flag belongs to the task: `vx run build -- --help` passes
+`--help` to it. A plugin verb handles its own arguments, `--help` included.
 
 ## `vx run`
 
-`vx run` runs the named task(s) in dependency order and skips any whose
-inputs did not change. By default only the project containing the
-current working directory is selected — `dependsOn` still expands so
-the project's upstream workspace deps run too. Override with `--all`,
-`--filter`, `--affected`, or an explicit `pkg#task`.
+`vx run` runs the named tasks in dependency order and skips any whose
+inputs did not change.
+
+By default it runs the project holding the current directory, plus what
+its `dependsOn` needs from other projects. `--all`, `--filter`,
+`--affected` or a `pkg#task` choose other projects.
 
 ### Usage
 
@@ -161,18 +168,19 @@ The [Flags](#flags) table lists every option.
 
 If no task name is given:
 
-- **In a TTY** — an interactive picker lists every `pkg#task` entry
-  across the workspace (only the selected projects' under `--filter` /
-  `--affected`; `--affected` selecting nothing exits `0` as a run does), prints `description` next to each, prompts
-  for a number, runs the chosen one. The menu and prompt go to stderr,
-  so `vx run > out.txt` still asks on the terminal. Ctrl-C at the prompt exits `130`
-  as an interrupted run does; Ctrl-D exits `1` with `no task picked`.
-  A workspace with no task exits `1` naming how to declare one (under
-  `tasks` in a vx.config, or `vx init`).
+- **In a TTY** — a picker lists every `pkg#task` in the workspace, each
+  with its `description`, and runs the number you type.
+  - Under `--filter` or `--affected` it lists only the selected
+    projects; `--affected` selecting nothing exits `0`.
+  - The menu goes to stderr, so `vx run > out.txt` still asks.
+  - Ctrl-C exits `130`, as an interrupted run does; Ctrl-D exits `1`
+    with `no task picked`.
+  - A workspace with no task exits `1` and says how to declare one
+    (under `tasks` in a vx.config, or `vx init`).
 - **Not a TTY** — exits `1` with
-  `missing task name (stdin is not a TTY, so no picker; tasks here: build, test)`,
-  naming the cwd project's tasks, else every project's (twelve, then
-  `and N more`); outside a workspace it reads `vx run <task>, e.g. vx run build`.
+  `missing task name (stdin is not a TTY, so no picker; tasks here: build, test)`.
+  It names the cwd project's tasks, else every project's (twelve, then
+  `and N more`). Outside a workspace it reads `vx run <task>, e.g. vx run build`.
 - **Under `--dry=json`**, on a terminal too — the
   same refusal (`a JSON answer opens no picker; …`), with the
   `VX_E_USAGE` error document on stdout: a program cannot pick.
@@ -188,29 +196,29 @@ If no task name is given:
 | `--filter <pat>` (repeatable) | pnpm-style filter DSL (see below).                                                                 |
 | `--affected[=<base>]`         | The tasks a git change reaches: the ones it touches and those whose `dependsOn` closure holds one. |
 
-Combining: every include (`--filter <pat>`, `--affected`) is taken
-first and every `!` exclude after them all, as pnpm does, so an
-exclude removes what any include added, whichever side of it it sits
-(items 955, 979). The union holds for tasks too: `--affected --filter
-other` runs other's tasks whether or not the change reaches them
-(X-10). `--all` with a filter is the filter's selection:
-the filters refine it rather than being overridden by it
-(`--all --filter '!docs'` is everything but docs).
+Combining them, as pnpm does:
+
+- Every include (`--filter <pat>`, `--affected`) is taken first, then
+  every `!` exclude, so an exclude removes what any include added.
+- Includes add up: `--affected --filter other` runs other's tasks
+  whether or not the change reaches them.
+- `--all` with a filter is the filter's selection: `--all --filter
+'!docs'` is everything but docs.
 
 ### Filter DSL (`--filter`)
 
-The full DSL lives in `src/workspace/filter.ts`; this is the user-
-facing summary.
+A filter that matches nothing refuses the run with `no projects matched
+filter(s): …`, plus a hint:
 
-A filter that matches nothing refuses the run (`no projects matched
-filter(s): …`) with `Did you mean <name>?` when a project name is within
-two edits, or when exactly one scoped project's name after its `/` is
-(`--filter vx-otel` hints `@vzn/vx-otel`), and `Projects: a, b` otherwise
-(M-56). A list names eight, then a count. An unmatched `tag:` filter
-hints the nearest tag instead (`Did you mean tag:scope:web?`), else
-lists the tags. When every pattern matched and an exclusion took back
-all of it, the refusal names the exclusion instead (`no projects
-selected: !app excluded every project the other filters matched`).
+- `Did you mean <name>?` when a project name is within two edits, or
+  when one scoped name matches after its `/` (`--filter vx-otel` hints
+  `@vzn/vx-otel`).
+- `Projects: a, b` otherwise: eight names, then a count.
+- For a `tag:` filter, the nearest tag (`Did you mean tag:scope:web?`),
+  else the list of tags.
+- When an exclusion took back everything the filters matched, it names
+  it: `no projects
+selected: !app excluded every project the other filters matched`.
 
 | Form              | Meaning                                                                                                                                                                                                                                                                                                                                 |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -231,22 +239,23 @@ selected: !app excluded every project the other filters matched`).
 | `!<pattern>`      | Exclude packages matching `<pattern>`, from everything the includes select, in any order.                                                                                                                                                                                                                                               |
 | `[<git-ref>]`     | Projects whose files changed since `<git-ref>` (`main`, `HEAD~5`, …).                                                                                                                                                                                                                                                                   |
 
-An edge is one a plugin supplies — a `discover` entry's `deps` (order
-and selection) or `reach` (selection only); the lockfile plugins
-(`bun()`, `pnpm()`, `npm()`, `yarn()` from `@vzn/vx-lockfile`) supply
-what the package manager installed, and core reads no edge from a
-`package.json` — OR a cross-project `dependsOn` entry (`e2e`'s `test: {
-dependsOn: ['app#build'] }` makes `e2e` a dependent of `app`). The task
-graph knows both, so selection follows both: `vx run test --filter
-'...app'` runs `e2e#test` even though no plugin gives `e2e` an edge to
-`app`. There
-is no `implicitDependencies` field — declare the edge where the task
-needs it.
+A dependency between projects comes from one of two places:
 
-A filter that names no project (`...`, a bare `!`) is refused, and one
-whose pattern matched but whose walk selected nothing says what it
-matched: `no projects selected: filter "...^core" matched core, and no
-project depends on it` (item 1030).
+- **A plugin.** A `discover` entry's `deps` (order and selection) or
+  `reach` (selection only). The lockfile plugins (`bun()`, `pnpm()`,
+  `npm()`, `yarn()` from `@vzn/vx-lockfile`) supply what the package
+  manager installed. vx reads none from a `package.json` itself.
+- **A cross-project `dependsOn`.** `e2e`'s `test: {
+dependsOn: ['app#build'] }` makes `e2e` a dependent of `app`.
+
+Filters follow both: `vx run test --filter '...app'` runs `e2e#test`
+even though no plugin links `e2e` to `app`. There is no
+`implicitDependencies` field: declare the dependency on the task.
+
+A filter that names no project (`...`, a bare `!`) is refused. One
+whose pattern matched but selected nothing says what it matched:
+`no projects selected: filter "...^core" matched core, and no
+project depends on it`.
 
 Examples:
 
@@ -263,105 +272,98 @@ vx run build --filter '[origin/main]'         # projects with files changed sinc
 
 Run the task only in projects whose files changed since `<base>`.
 
-- `--affected` (no value) uses `VX_AFFECTED_BASE` when set, else a
-  plugin's base commit when one names it (`setBranch({ base })`:
-  `github()` a pull request's base, `nx()` `NX_BASE`, `turbo()`
-  `TURBO_SCM_BASE`, else, `turbo()` only, as Turbo does, on GitHub
-  Actions the pull request's base branch or the push's `before`), else the
-  merge base of HEAD and `origin/<baseBranch>` ([schema](schema.md):
-  `baseBranch` is `origin/HEAD`'s branch, then `main`, then `master`; the
-  local branch in a clone with no remote; its tip when they share no
-  history). On the base branch itself there is no default (set
-  `VX_AFFECTED_BASE` or pass one): vx refuses (`--affected has no default
+- `--affected` with no value picks its base, the first that applies:
+  1. `VX_AFFECTED_BASE`;
+  2. a plugin's base commit (`setBranch({ base })`): `github()` a pull
+     request's base, `nx()` `NX_BASE`, `turbo()` `TURBO_SCM_BASE`, or,
+     for `turbo()` on GitHub Actions as Turbo does, the pull request's
+     base branch or the push's `before`;
+  3. the merge base of HEAD and `origin/<baseBranch>`. `baseBranch` is
+     `origin/HEAD`'s branch, then `main`, then `master`
+     ([schema](schema.md)); in a clone with no remote, the local branch.
+- On the base branch itself there is no default, so vx refuses: `--affected has no default
 on the base branch (main): run --all (the cache skips what did not
-change), or name the last good commit, --affected=<sha>`), since
-  `HEAD~1` saw one commit of a multi-commit push. CI on main needs only
-  the current commit: `--all` reads no history, and the cache runs only
-  what changed. A shallow clone (CI's one-commit checkout) needs no
-  more history: vx fetches from origin what the merge base needs, the
-  base's tip at depth 1, then both tips deepened 1, 2, 4… commits until
-  git finds it, commits and trees only (no blobs). A pull request's merge
-  checkout has its base as HEAD's parent, so that is one fetch. With no
-  base branch and no origin to fetch it from, vx says so (`--affected has
-no base here`). And when an explicit base IS the commit you are on, the
-  `nothing affected since <ref>` note says the ref is HEAD itself and
-  names the two bases you probably meant (`--affected=origin/main`,
-  `--affected=HEAD~1`).
-- Without git on PATH, every shape is one line — `vx requires git:
-failed to spawn 'git' … Install git and re-run` — the same the input
-  enumeration prints; a minimal image met a stack here before
-  (2026-09-16). Outside a git work tree every shape says `vx requires
-git: <root> is not inside a git work tree`, as a plain run does, and a
-  repository with no commit yet says so, not "no base branch" (X-52).
-- `--affected=<ref>` uses the given git ref. A value that is empty or
-  starts with `-` is refused before git sees it: the ref is an argument,
-  never a shell command, and an option-like one (`--output=<path>`)
-  would be a real `git diff` option. A range that does not end at HEAD (`HEAD~2..HEAD~1`,
-  `main...feature`) is refused there too, naming the base to pass
-  alone — `ranges are not supported — pass the base alone ("HEAD~2")`
-  — because the other end is always the working tree; `<base>...HEAD`,
-  Turbo's CI spelling, is read as `<base>`, since vx diffs from the merge
-  base to a working tree that holds HEAD (D-117). Its two-dot `<base>..HEAD` diffs from
-  `<base>` itself, not the merge base. An exclusion (`^main`) is refused
-  the same way, naming `main`. A ref that does
-  not exist is `git ref "<ref>" did not resolve`; in a shallow clone whose
-  origin did not give it, it adds that the clone is shallow and how to
-  fetch the base (`git fetch --depth=1 origin <base>`). A ref naming
-  a path inside a commit (`main:packages`) is refused, naming the commit
-  to pass: its paths lack the prefix, so the diff would select the wrong
-  projects. A root tree (`main^{tree}`) is still a base.
-- A member whose directory is a symlink to a place elsewhere under the
-  workspace root (`packages/b -> ../ext/b`) is selected by a change at
-  that real place too: git names the files where they live, not by the
-  link (item 1079). A link to a directory outside the root is outside
-  git's view, and a change there selects nothing.
-- The diff runs from the **merge base** of the ref and `HEAD`, not from
-  the ref itself, so a branch whose base has moved on sees only its own
-  changes — never the files other people landed on `main` since it
-  forked (Turbo and Nx do the same). Refs with no common ancestor diff
-  from the ref.
+change), or name the last good commit, --affected=<sha>`. `HEAD~1`
+  would see only one commit of a multi-commit push.
+- CI on the base branch needs only the current commit: `--all` reads no
+  history, and the cache runs only what changed.
+- A shallow clone needs no more history. vx fetches what the merge base
+  needs: commits and trees only, no file contents, deepening 1, 2, 4…
+  commits until git finds it. A pull request's merge checkout needs one
+  fetch.
+- With no base branch and no origin to fetch from, vx says `--affected has
+no base here`.
+- When the base you name is the commit you are on, the
+  `nothing affected since <ref>` note says so and names the bases you
+  probably meant (`--affected=origin/main`, `--affected=HEAD~1`).
+- Without git on `PATH`, it prints one line: `vx requires git:
+failed to spawn 'git' … Install git and re-run`. Outside a git work tree it says `vx requires
+git: <root> is not inside a git work tree`. A repository with no commit
+  yet says so.
+- `--affected=<ref>` uses the given git ref. vx refuses before git sees it:
+  - an empty value, or one starting with `-` (it would be a `git diff`
+    option);
+  - a range not ending at HEAD (`HEAD~2..HEAD~1`, `main...feature`):
+    `ranges are not supported — pass the base alone ("HEAD~2")`. The
+    other end is always the working tree;
+  - an exclusion (`^main`), naming `main`;
+  - a path inside a commit (`main:packages`), naming the commit to pass.
+    A root tree (`main^{tree}`) is still a base.
+- `<base>...HEAD`, Turbo's CI spelling, reads as `<base>`. Two-dot
+  `<base>..HEAD` diffs from `<base>` itself, not the merge base.
+- A ref that does not exist is `git ref "<ref>" did not resolve`. In a
+  shallow clone it adds how to fetch it (`git fetch --depth=1 origin <base>`).
+- A project whose directory is a symlink inside the workspace
+  (`packages/b -> ../ext/b`) is selected by a change at the real place
+  too. A link to outside the workspace is outside git's view.
+- The diff runs from the **merge base** of the ref and `HEAD`, so a
+  branch sees only its own changes, never what others landed on `main`
+  since it forked (as in Turbo and Nx). Refs with no common ancestor
+  diff from the ref.
 
-**It selects the tasks the change reaches (2026-10-04).** A
-change seeds tasks in the projects it touches:
+**It selects the tasks the change reaches.** A change marks tasks in
+the projects it touches:
 
-- a cached task when a changed path is one of its declared inputs
-  (`files`, `workspaceFiles`), or a changed submodule or embedded
-  repository is one its `workspaceFiles` may reach into (git reports it
-  as one path; a glob whose fixed prefix is above or inside it counts);
-- every task of a project whose `vx.config.*`
-  changed, or that holds a changed path no task of its declares
-  (vx cannot prove that path re-keys nothing), or that holds a changed
-  submodule or embedded repository (git reports it as one path, and no
-  task's globs can say whether they reach inside), or that a lockfile
-  claim or a config import names (a dependency an install added or
-  removed reaches here as the lockfile's change);
-- a task with no `inputs` when a changed path lies in its project or the
-  project is reached whole; a root file another task of its declares
-  (`workspaceFiles`) is no change there. A group seeds nothing.
+- a cached task, when a changed path is one of its declared inputs
+  (`files`, `workspaceFiles`), or is a submodule or embedded repository
+  its `workspaceFiles` may reach into;
+- every task of a project when:
+  - its `vx.config.*` changed;
+  - it holds a changed path no task of its declares, since vx cannot
+    prove that path changes no key;
+  - it holds a changed submodule or embedded repository;
+  - a lockfile plugin or a config import names it (an install that
+    added or removed a dependency shows as the lockfile's change);
+- a task with no `inputs`, when a changed path lies in its project or
+  the whole project is marked. A root file another task of its declares
+  (`workspaceFiles`) is no change there. A group marks nothing.
 
-A requested task runs when its `dependsOn` closure holds a seeded task,
-so a change reaches another project only along a task edge. With
-`app#test` behind `^build`, an edit to `ui/src/button.ts` that
-`ui#build`'s inputs read runs `ui`'s tasks and `app#test`; an edit to
-`ui/src/button.test.ts` that only `ui#test` reads runs `ui#test` alone,
-and `app#lint`, which depends on nothing, never runs for a change in
-`ui`. A `pkg#task` you name runs whatever the diff. This is the edge
-the cache key folds (a cached `app#test` with no edge to `ui` never
-sees `ui`'s files either). A project that declares no `build` gets one
-keyed on all its files (`schema.md`), so any change there reaches a
-dependant behind `^build`; a package `^name` passes through for want of a
-config reaches it the same way.
-The graph is the one a `graph` plugin leaves: an edge or an input it
-adds reaches a task as a declared one does, and a task it marks
-requested runs whatever the diff. With such a plugin every project is a
-candidate once the diff touched anything, and its hook sees every
-candidate task before the selection prunes the graph.
+A requested task runs when its `dependsOn` closure holds a marked task,
+so a change reaches another project only along a task's dependency.
+With `app#test` behind `^build`:
+
+- an edit to `ui/src/button.ts`, which `ui#build` reads, runs `ui`'s
+  tasks and `app#test`;
+- an edit to `ui/src/button.test.ts`, which only `ui#test` reads, runs
+  `ui#test` alone;
+- `app#lint`, which depends on nothing, never runs for a change in `ui`.
+
+A `pkg#task` you name runs whatever the diff. This matches the cache
+key: a cached `app#test` with no dependency on `ui` never sees `ui`'s
+files either.
+
+A project with no `build` gets one keyed on all its files
+([schema](schema.md)), so any change there reaches a dependent behind
+`^build`.
+
+A `graph` plugin's changes count too: a dependency or input it adds
+works as a declared one, and a task it marks requested runs whatever
+the diff. With such a plugin, every project is a candidate once the diff
+touched anything.
+
 Nx 23.3 (`NX_LEGACY_AFFECTED=false`) and Turbo
 (`affectedUsingTaskInputs`) select tasks the same way, behind flags.
-
-Until 2026-09-16 the sugar was the changed-only `[<base>]` form (item
-287), and until 2026-10-04 it took every task of every manifest
-dependent, which the filter forms still do:
+The filter forms select whole projects instead:
 
 ```bash
 vx run test --affected                # the tasks the change reaches
@@ -369,104 +371,101 @@ vx run test --filter '...[main]'      # what changed + every dependent project
 vx run test --filter '[main]'         # only the projects that changed
 ```
 
-Its candidate projects are `--filter '...[<base>]'`'s; both are resolved by
-`src/workspace/affected.ts`, which unions `git diff` against `<base>`
-with `git ls-files --others` so a brand-new untracked source file counts
-as a change (input hashing sees it, so `--affected` must too). A
-project inside a submodule or an embedded repository is selected when
-git reports that repository changed — a dirty or moved submodule
-(`vendor/sub`), an untracked embedded repository (`vendor/nested/`):
-the workspace repository sees the nested one as a single path (`git
-diff --raw`'s gitlink mode, 160000, on either side names one), so a change inside is a
-change to it, and every project under it is selected, the project that
-holds it included. A repository's own request to hide submodules from a diff
-(`diff.ignoreSubmodules`, `submodule.<name>.ignore`) does not apply:
-the key sees the change whatever git is told to show.
-A symlinked input keys what it points to, so a link whose target
-changed (a file the diff names, or one under a linked directory) is a
-changed path of its project, and a link to a target git cannot diff
-(outside the workspace, or git-ignored) is one on every run.
-A gitignored file a task's inputs name outright (`.env.local`,
-`dist/**`) never selects the task on its own, as in Nx: `--affected`
-reflects only what git sees. The key still hashes it, so a run of the
-task misses when it changed.
-`.vx/projects.lock.json` is filtered out of the changed set — a `vx lock`
-re-write never marks every project affected.
+What counts as a change:
 
-**A lockfile change selects everything.** The root lockfiles,
-`pnpm-workspace.yaml`, `.yarnrc.yml`, `.npmrc`, `bunfig.toml` and the patches `bun.lock` names are folded into the [workspace
-fingerprint](./caching.md), which is part of _every_ task's cache key —
-so a `bun install` / `pnpm update` invalidates the whole cache. Those
-files sit at the workspace root and belong to no project, so mapping
-changed paths to project directories would select nothing; `--affected`
-widens to every project instead, for the same reason it unions in
-untracked files. Only the ROOT copies count: a lockfile vendored inside
-a package is not hashed and selects just that package. A lockfile a
-plugin CLAIMS (`VxPlugin.fingerprint`, e.g. `pnpm-lock.yaml` under
-`@vzn/vx-lockfile`) is the exception on both sides: the key folds what the
-plugin says per project, so `--affected` asks the plugin which projects
-the change touches — given the bytes at the base ref and in the working
-tree — and selects those. An edit to a file the lockfile names but does
-not pin (a patch `bun.lock` names, a `file:` directory dependency under
-any of the four managers, or a directory one links) is asked about the same way; only a plugin that cannot tell widens, as
+- `git diff` against the base, plus untracked files (`git ls-files
+--others`), so a new source file counts, as it does in the key.
+- A submodule or embedded repository that git reports changed (a dirty
+  or moved `vendor/sub`, an untracked `vendor/nested/`) selects every
+  project under it, and the project holding it. A repository's
+  `diff.ignoreSubmodules` or `submodule.<name>.ignore` does not apply:
+  the key sees the change anyway.
+- A symlinked input is its target: a link whose target changed is a
+  change, and a link to a target git cannot diff (outside the
+  workspace, or ignored) is one on every run.
+- A gitignored file a task names (`.env.local`, `dist/**`) never
+  selects it, as in Nx. The key still hashes it, so the task misses when
+  it changed.
+- `.vx/projects.lock.json` is left out, so `vx lock` never marks every
+  project affected.
+
+**A lockfile change selects everything.** These root files are in
+every task's key (the [workspace fingerprint](./caching.md)), so a
+`bun install` or `pnpm update` re-runs every task:
+
+- the root lockfiles;
+- `pnpm-workspace.yaml`, `.yarnrc.yml`, `.npmrc`, `bunfig.toml`;
+- the patches `bun.lock` names.
+
+They belong to no project, so `--affected` selects every project when
+one changes. A lockfile inside a package is not hashed and selects only
+that package.
+
+A lockfile a plugin claims (`VxPlugin.fingerprint`, such as
+`pnpm-lock.yaml` under `@vzn/vx-lockfile`) is different. The key holds
+what the plugin says per project, so `--affected` gives the plugin the
+lockfile at the base and now, and selects the projects it names.
+
+The same goes for a file the lockfile names but does not pin: a patch
+`bun.lock` names, a `file:` directory dependency, or a linked
+directory. Only a plugin that cannot tell selects everything, as
 `@vzn/vx-lockfile` does for the install settings it claims (`.npmrc`,
 `bunfig.toml`, `pnpm-workspace.yaml`, `.yarnrc.yml`).
 
-**A dropped edge selects its dependent.** A package the change deleted
-(its `package.json` was there at the base and is gone) is no project
-now, so its paths map to nothing; and one whose `version` or `name`
-moved may no longer satisfy what a dependent declares (`lib: ^1.0.0`
-after a bump to 2.0.0). Either drops an edge the dependent's key folded,
-while today's graph shows no dependent to walk to. So the package graph
-is built again over the changed manifests as the base had them, and
-every project whose workspace dependencies differ is selected, and so
-is a project whose task names a removed or renamed package in
-`dependsOn: ['lib#build']`, an edge the package graph cannot see
-(item 1085). An edit to the root manifest's `workspaces` selects every project:
-which packages left the workspace is a discovery at the base.
+**A dropped dependency selects its dependent.** Two changes remove a
+dependency today's graph cannot show:
+
+- a deleted package (its `package.json` is gone);
+- a `version` or `name` change, after which a dependent's range
+  (`lib: ^1.0.0` after a bump to 2.0.0) may no longer match.
+
+So vx rebuilds the package graph as the base had it, and selects every
+project whose workspace dependencies differ. It also selects a project
+whose task names a removed or renamed package (`dependsOn:
+['lib#build']`).
+
+An edit to the root manifest's `workspaces` selects every project.
 
 **A new nested project selects the project above it.** A project's
-inputs stop at every project below it, so a `package.json` that makes
-an existing directory a project re-keys the project that held it; the
-change maps to the new project alone, so the one above it is selected
-too. "New" is judged at the base: no manifest there, or one with no
-`name`.
+inputs stop at every project below it. A `package.json` that turns a
+directory into a project changes the key of the project that held it,
+so that one is selected too. "New" means it had no manifest at the
+base, or one with no `name`.
 
-**A workspace config change selects everything.** An edit to
-`.vx/workspace.*` selects every project: the `config` and `project` stages its plugins install
-shape every resolved config, so the edit can re-key any task, and
-selection cannot tell which. It is not in the fingerprint (a key moves
-only when a stage's output does). A root file a plugin's stages read
-without importing it is seen when the plugin CLAIMS it
+**A workspace config change selects everything.** The plugins in
+`.vx/workspace.*` shape every resolved config, so an edit there can
+change any key, and vx cannot tell which. A root file a plugin reads
+without importing it counts when the plugin claims it
 (`VxPlugin.fingerprint`): `turbo()` claims `turbo.json` and
-`turbo.jsonc`, `nx()` claims `nx.json`, and an edit asks the claimant,
-which answers every project (item 961).
+`turbo.jsonc`, `nx()` claims `nx.json`, and either answers every project.
 
-**A file your config IMPORTS selects that project.** vx hashes the
+**A file your config imports selects that project.** The key holds the
 resolved config, so a shared preset a `vx.config.*` imports is part of
-the cache key — and selection follows the same rule. Editing
-`shared/preset.ts` selects every project whose config imports it,
-directly or through another shared file, even though the file belongs
-to no project and no `workspaceFiles` glob names it. The scan is
-STATIC (nothing is evaluated) and follows RELATIVE specifiers, and a
-bare one the nearest tsconfig maps through `paths` or `baseUrl`; any
-other bare specifier is a package, and a lockfile change already selects
-everything. It crosses project boundaries as the evaluation does: a
-config importing `../../packages/lib/preset.ts` is selected when
-`preset.ts` or a file it imports inside `lib` changes. Import your
-helpers by bare specifier to opt out. See
+it. Editing `shared/preset.ts` selects every project whose config
+imports it, directly or through another shared file.
+
+- The scan reads the source; it runs nothing.
+- It follows relative imports, and a bare one the nearest tsconfig maps
+  through `paths` or `baseUrl`. Any other bare import is a package,
+  which the lockfile covers.
+- It crosses projects as the config does: a config importing
+  `../../packages/lib/preset.ts` is selected when that file, or one it
+  imports, changes.
+
+To opt a helper out, import it by a bare package name. See
 [`docs/modules/config-imports.md`](./modules/config-imports.md).
 
-**Nothing changed exits 0.** When the selection comes only from
-`--affected` / `[<ref>]` and resolves to zero projects, vx prints
-`nothing affected since <ref>` and exits 0 — a docs-only commit must not
-fail `vx run lint test build --affected=origin/main`. When the diff
-did match and an exclusion or an empty walk took it all back, the exit-0
-note says that instead (`no projects selected: !app excluded every
-project the other filters matched`), never that nothing changed. A name or path
-pattern that matches nothing is still an error (a probable typo), and a
-pattern that matches nothing alongside one that matched is warned about
-on stderr.
+**Nothing changed exits 0.** When only `--affected` or `[<ref>]`
+selects and nothing matches, vx prints `nothing affected since <ref>`
+and exits 0, so a docs-only commit passes `vx run lint test build
+--affected=origin/main`.
+
+- When the diff matched but an exclusion or an empty walk took it all
+  back, the note says so (`no projects selected: !app excluded every
+project the other filters matched`).
+- A name or path pattern that matches nothing is still an error, as a
+  likely typo. One that matches nothing beside one that matched prints a
+  warning.
 
 **An empty selection never cancels an anchored task.** Project scope
 applies to bare names only, so `vx run app#deploy build
