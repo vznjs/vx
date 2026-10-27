@@ -280,6 +280,8 @@ export function formatSummarySection(
   if (running > 0) taskParts.push(paint(RUNNING, `${running} running`, colors))
   if (scheduled > 0) taskParts.push(dim(`${scheduled} scheduled`))
   if (blocked > 0) taskParts.push(dim(`${blocked} blocked`))
+  // What is not done yet, running included: the count the bar's unfilled part shows.
+  if (left > 0) taskParts.push(dim(`${left} left`))
   if (runTotal > 0) taskParts.push(dim(`${runTotal} total`))
   const taskBar = segmentBar(
     [
