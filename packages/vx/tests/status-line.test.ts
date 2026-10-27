@@ -345,8 +345,9 @@ describe('defaultLogger status line integration', () => {
     expect(s.chunks[s.chunks.length - 1]).toContain('one#a')
     log.taskComplete(a, mkOutcome(a, 'success'))
     const after = s.chunks[s.chunks.length - 1]!
-    // A row that was busy holds its place, idle, so no row moves.
-    expect(after).toContain('idle')
+    // A freed row stays, blank, so the list keeps its height (2 workers).
+    expect(after).toContain('blocked task\n\n\n')
+    expect(after).not.toContain('idle')
     // The live section speaks the summary's language as it fills in.
     expect(after).toContain('1 success')
     expect(after).toContain('1 no-cache')
@@ -444,7 +445,7 @@ describe('defaultLogger status line integration', () => {
     const after = s.chunks.slice(before)
     expect(after).toContain('raw output\n')
     const redrawn = after.slice(after.indexOf('raw output\n') + 1).join('')
-    expect(redrawn).toMatch(/running +one#test/)
+    expect(redrawn).toMatch(/running +0 one#test/)
     expect(redrawn).toContain('run R1')
     log.taskComplete(req, mkOutcome(req, 'success'))
     log.runEnd?.()
@@ -484,7 +485,7 @@ describe('defaultLogger status line integration', () => {
     await Bun.sleep(1100)
     at = 'small#1'
     log.taskStart?.(mkNode('b#x'))
-    expect(row()).toMatch(/ \d+ms running +a#x · small#1$/)
+    expect(row()).toMatch(/ \d+ms running +0 a#x · small#1$/)
     expect(tasks()).toMatch(/^ +2 running · 2 total$/)
     log.runEnd?.()
   })
@@ -665,54 +666,82 @@ describe('formatStatusRegion', () => {
   const slot = (id: string, startedMs = 8000): WorkerSlot => ({ id, startedMs })
 
   // The region leads with a blank line separating it from the
-  // completed-task list scrolling above (owner request).
-  it('renders slot rows then the live summary section verbatim', () => {
-    const lines = formatStatusRegion({ ...base, slots: [slot('a#build'), null] })
-    expect(lines).toHaveLength(7)
-    expect(lines[0]).toBe('')
-    // A dim header names the grid's columns (2026-10-21).
-    expect(lines[1]).toBe('      time status  cache    task')
-    expect(lines[2]).toContain('a#build')
-    // Live elapsed (right-aligned) + the `running` tag, no spinner.
-    expect(lines[2]).toContain('2.00s')
-    expect(lines[2]).toContain('running')
-    expect(lines[3]).toContain('idle')
-    expect(lines.slice(4)).toEqual(SUMMARY)
+  // completed-task list scrolling above.
+  it('renders running rows, blank rows to the worker count, then the live summary verbatim', () => {
+    const lines = formatStatusRegion({ ...base, slots: [slot('a#build'), null], size: 2 })
+    expect(lines).toEqual([
+      '',
+      '      time status  cache    blocked task',
+      '     2.00s running                0 a#build',
+      '',
+      ...SUMMARY,
+    ])
   })
 
-  // 2026-10-21: a region taller than the terminal cut the summary, and
-  // what never printed cannot be scrolled to. The rows give way instead.
-  it('a region taller than the terminal keeps its summary and folds the rows it cannot fit', () => {
-    const slots = Array.from({ length: 10 }, (_, i) => slot(`p#t${i}`))
-    const lines = formatStatusRegion({ ...base, slots, rows: 8 })
-    expect(lines).toHaveLength(7)
-    expect(lines[2]).toContain('p#t0')
-    expect(lines[3]).toBe('           +9 more')
-    expect(lines.slice(4)).toEqual(SUMMARY)
-    // One that fits is as it was.
-    expect(formatStatusRegion({ ...base, slots, rows: 40 })).toEqual(
-      formatStatusRegion({ ...base, slots }),
-    )
+  // The list never folds: every running task has its row, the summary below.
+  it('every running task has a row, past the terminal height too', () => {
+    const slots = Array.from({ length: 30 }, (_, i) => slot(`p#t${i}`))
+    const lines = formatStatusRegion({ ...base, slots, size: 30 })
+    expect(lines).toHaveLength(2 + 30 + SUMMARY.length)
+    expect(lines.filter((l) => l.includes('more'))).toEqual([])
+    expect(lines[31]).toEndWith(' p#t29')
   })
 
   it('a running row says where an executor runs it', () => {
     const where = (id: string) => (id === 'a#x' ? 'small#2' : undefined)
-    const lines = formatStatusRegion({ ...base, slots: [slot('a#x'), slot('b#x')], where })
-    expect(lines[1]).toBe('      time status  cache    task · worker')
+    const lines = formatStatusRegion({
+      ...base,
+      slots: [slot('a#x'), slot('b#x')],
+      size: 8,
+      where,
+    })
+    expect(lines[1]).toBe('      time status  cache    blocked task · worker')
     expect(lines[2]).toMatch(/ a#x · small#2$/)
     expect(lines[3]).toMatch(/b#x$/)
+    // An executor's machines are not the size: no blank rows under it.
+    expect(lines.slice(4)).toEqual(SUMMARY)
   })
 
-  it('idle rows hold their place so the slot zone height never changes', () => {
-    const slots = Array.from({ length: 10 }, () => null)
-    const lines = formatStatusRegion({ ...base, slots })
-    expect(lines).toHaveLength(15)
-    expect(lines.slice(2, 12).every((l) => l.includes('idle'))).toBe(true)
+  it('the list keeps its height with nothing running', () => {
+    const lines = formatStatusRegion({
+      ...base,
+      slots: Array.from({ length: 10 }, () => null),
+      size: 10,
+    })
+    expect(lines).toEqual([
+      '',
+      '      time status  cache    blocked task',
+      ...Array.from({ length: 10 }, () => ''),
+      ...SUMMARY,
+    ])
   })
 
-  // 2026-10-14: a running row says how long the task usually takes, in
-  // the column a finished row says miss / hit, as a fixed value the
-  // elapsed time counts up toward. With no history the column stays empty.
+  it('a running row counts the tasks it holds back, and the planned ones nest under it', () => {
+    const lines = formatStatusRegion({
+      ...base,
+      slots: [slot('a#x'), slot('b#x'), null, null],
+      size: 4,
+      blockedBy: new Map([['a#x', 7]]),
+      // c#x and d#x fill the two free rows; e#x is further ahead and not shown.
+      next: [
+        { id: 'c#x', by: 'b#x' },
+        { id: 'd#x', by: 'a#x' },
+        { id: 'e#x', by: 'a#x' },
+      ],
+      critical: 'a#x',
+    })
+    expect(lines.slice(2, 6)).toEqual([
+      '     2.00s running                7 a#x  critical path',
+      '           blocked                  └ d#x',
+      '     2.00s running                0 b#x',
+      '           blocked                  └ c#x',
+    ])
+    expect(lines.slice(6)).toEqual(SUMMARY)
+  })
+
+  // A running row says how long the task usually takes, in the column a
+  // finished row says miss / hit, as a fixed value the elapsed time counts
+  // up toward. With no history the column stays empty.
   it('a running row shows its expected duration in the cache column', () => {
     const expected = new Map([
       ['a#x', 5200],
@@ -722,18 +751,18 @@ describe('formatStatusRegion', () => {
     ])
     const ids = ['a#x', 'b#x', 'c#x', 'd#x', 'e#x']
     const lines = formatStatusRegion({ ...base, slots: ids.map((id) => slot(id)), expected })
-    expect(lines[2]).toBe('     2.00s running ~5.2s    a#x')
-    expect(lines[3]).toBe('     2.00s running ~42s     b#x')
-    expect(lines[4]).toBe('     2.00s running ~2m 05s  c#x')
-    expect(lines[5]).toBe('     2.00s running ~300ms   d#x')
+    expect(lines[2]).toBe('     2.00s running ~5.2s          0 a#x')
+    expect(lines[3]).toBe('     2.00s running ~42s           0 b#x')
+    expect(lines[4]).toBe('     2.00s running ~2m 05s        0 c#x')
+    expect(lines[5]).toBe('     2.00s running ~300ms         0 d#x')
     // No history for it: the column holds its width, empty.
-    expect(lines[6]).toBe('     2.00s running          e#x')
+    expect(lines[6]).toBe('     2.00s running                0 e#x')
   })
 
   it('an expected duration that rounds to a second prints in seconds', () => {
     const expected = new Map([['a#x', 999.6]])
     const lines = formatStatusRegion({ ...base, slots: [slot('a#x')], expected })
-    expect(lines[2]).toBe('     2.00s running ~1.0s    a#x')
+    expect(lines[2]).toBe('     2.00s running ~1.0s          0 a#x')
   })
 
   it('long ids are shown in full (never truncated — name is the last column)', () => {
@@ -748,12 +777,16 @@ describe('formatStatusRegion', () => {
       ...base,
       pinnedPersistent: ['web#dev', 'api#dev'],
       slots: [null],
+      size: 1,
     })
-    expect(lines).toHaveLength(8)
-    expect(lines[2]).toBe(' ▸         running          web#dev')
-    expect(lines[3]).toBe(' ▸         running          api#dev')
-    expect(lines[4]).toContain('idle')
-    expect(lines.slice(5)).toEqual(SUMMARY)
+    expect(lines).toEqual([
+      '',
+      '      time status  cache    blocked task',
+      ' ▸         running          web#dev',
+      ' ▸         running          api#dev',
+      '',
+      ...SUMMARY,
+    ])
   })
 
   it('persistent pins keep ids identity-colored, never status-colored', () => {
@@ -765,24 +798,16 @@ describe('formatStatusRegion', () => {
     expect(lines[2]).toContain('\x1b[')
   })
 
-  it('an idle row aligns its word under the running rows’ status column', () => {
-    // The height row above proves an idle slot holds its PLACE; this proves
-    // it holds its COLUMN. The whole point of the display is that nothing
-    // shifts as tasks come and go, so `idle` has to sit exactly where
-    // `running` sits on a busy row.
-    const busy = formatStatusRegion({
+  it('a nested row aligns its status under the running rows’ status column', () => {
+    const lines = formatStatusRegion({
       pinnedPersistent: [],
-      slots: [{ id: 'a#build', startedMs: 0 }],
+      slots: [{ id: 'a#build', startedMs: 0 }, null],
+      size: 2,
+      next: [{ id: 'b#build', by: 'a#build' }],
       nowMs: 1000,
       summaryLines: [],
     })
-    const idle = formatStatusRegion({
-      pinnedPersistent: [],
-      slots: [null],
-      nowMs: 1000,
-      summaryLines: [],
-    })
-    expect(busy[2]!.indexOf('running')).toBe(idle[2]!.indexOf('idle'))
+    expect(lines[2]!.indexOf('running')).toBe(lines[3]!.indexOf('blocked'))
   })
 
   it('a slot whose start is in the FUTURE renders zero, never a negative age', () => {

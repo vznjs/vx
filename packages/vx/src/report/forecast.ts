@@ -20,6 +20,12 @@ export interface LiveForecast {
    * worker row holds (2026-10-15).
    */
   blocked?: readonly BlockedTask[]
+  /**
+   * Each running task's count of the tasks not started whose longest
+   * chain waits on it: its row's `blocked` cell. They sum to `waiting`
+   * less what waits on no running task.
+   */
+  blockedBy: ReadonlyMap<string, number>
 }
 
 /** A task an unfinished dependency holds back, and what holds it: the running task its longest chain waits on, else that dependency. */
@@ -106,6 +112,7 @@ export function createForecast(
     let overrun = false
     // The best `workers` blocked tasks, kept sorted as the pass meets them.
     const held: BlockedTask[] = []
+    const blockedBy = new Map<string, number>()
     for (const n of order) {
       if (finished.has(n.id)) continue
       let start = 0
@@ -124,6 +131,8 @@ export function createForecast(
         since === undefined ? (head.get(n.id) ?? n.deps.find((d) => end.has(d))) : undefined
       if (by !== undefined && !isGroupTask(n)) {
         waiting++
+        const on = head.get(n.id)
+        if (on !== undefined) blockedBy.set(on, (blockedBy.get(on) ?? 0) + 1)
         let at = held.length
         while (at > 0 && before(n.id, held[at - 1]!.id)) at--
         if (at < workers) {
@@ -146,7 +155,7 @@ export function createForecast(
       }
       work += own
     }
-    if (!known || overrun) return { waiting, expected, blocked: held }
+    if (!known || overrun) return { waiting, expected, blocked: held, blockedBy }
     const critical = chainEnd === undefined ? undefined : head.get(chainEnd)
     return {
       etaMs: Math.max(chain, work / workers),
@@ -154,6 +163,7 @@ export function createForecast(
       waiting,
       expected,
       blocked: held,
+      blockedBy,
     }
   }
 }

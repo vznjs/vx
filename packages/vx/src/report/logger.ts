@@ -354,9 +354,7 @@ export function defaultLogger(
   let blockedCount = 0
   let expected: ReadonlyMap<string, number> | undefined
   let blocked: readonly BlockedTask[] | undefined
-  // The blocked task each idle worker row holds, by slot: a row keeps its
-  // task until it starts, in that row, or leaves the list, so nothing hops.
-  const heldRows: (string | null)[] = []
+  let blockedBy: ReadonlyMap<string, number> | undefined
   let etaAtMs = 0
   const signals = writer.enabled
     ? terminalSignals(opts.env ?? process.env)
@@ -365,17 +363,11 @@ export function defaultLogger(
   let progressShown = -1
   let progressRed = false
 
-  // Every interactive view renders the fixed-height worker region:
-  // one row per worker slot so a task's name never moves while it
-  // runs (the display derives from the stable worker set, not the
-  // churning task set). Sized at runStart from concurrency, capped at
-  // 10 rows; excess running tasks queue for a freed slot, each shown
-  // in its own row after the slots.
+  // Every interactive view renders the fixed-height running list: one
+  // row per worker, sized at runStart from concurrency, so its height
+  // never changes; a task keeps its slot for its whole life. Excess
+  // running tasks queue for a freed slot, each shown after the slots.
   let slots: (WorkerSlot | null)[] = []
-  // Rows shown: the most workers busy at once so far. An idle row past it
-  // was noise (a 10-core machine drew 9 on a one-chain run); it never
-  // shrinks, so a row never jumps.
-  let shownSlots = 0
   const slotQueue: WorkerSlot[] = []
   let succeeded = 0
   // Executed with no `cache` block: never a miss, counted apart.
@@ -485,16 +477,13 @@ export function defaultLogger(
         x.waiting = where(x.id) === null
         if (x.waiting) x.startedMs = now
       }
-    // A free row shows what it holds from the first frame: the graph
-    // knows, without history (2026-10-17).
-    if (forecastFn === undefined && graphForecast !== undefined && !tail && !stopping)
-      for (let i = 0; i < shownSlots; i++)
-        if (slots[i] === null) {
-          forecastFn = graphForecast()
-          graphForecast = undefined
-          force = true
-          break
-        }
+    // The rows' blocked counts and planned tasks from the first frame: the
+    // graph knows, without history.
+    if (forecastFn === undefined && graphForecast !== undefined && !tail && !stopping) {
+      forecastFn = graphForecast()
+      graphForecast = undefined
+      force = true
+    }
     // Twice a second at most: one pass over the unfinished graph.
     if (forecastFn !== undefined && !tail && !stopping && (force || now - etaAtMs >= 500)) {
       etaAtMs = now
@@ -507,6 +496,7 @@ export function defaultLogger(
       blockedCount = f.waiting
       expected = f.expected
       blocked = f.blocked
+      blockedBy = f.blockedBy
     }
     if (signals.progress && total > 0) {
       const elapsed = now - startedAtMs
@@ -531,7 +521,7 @@ export function defaultLogger(
         if (x.waiting === true) scheduled++
         else running++
       }
-    if (critical !== undefined && running > 1) onPath.add(critical)
+    if (critical !== undefined && running > 0) onPath.add(critical)
     // The live summary IS the final summary's section, built from the
     // same formatter so the region visually becomes the printout.
     const summaryLines =
@@ -567,7 +557,6 @@ export function defaultLogger(
             colors,
             runContext,
           )
-    const held = blocked === undefined || stopping ? undefined : holdRows(blocked)
     const shownSteps: WorkerSlot[] = []
     for (const [id, startedMs] of steps)
       if (now - startedMs >= STEP_SHOWN_MS) shownSteps.push({ id, startedMs })
@@ -575,14 +564,15 @@ export function defaultLogger(
       formatStatusRegion(
         {
           pinnedPersistent,
-          // Every running task has a row: one beyond the slots follows them (2026-10-21).
-          slots: [...slots.slice(0, shownSlots), ...slotQueue],
-          ...(held !== undefined ? { blocked: held } : {}),
+          // Every running task has a row: one beyond the slots follows them.
+          slots: [...slots, ...slotQueue],
+          size: slots.length,
+          ...(blocked !== undefined && !stopping ? { next: blocked } : {}),
+          ...(blockedBy !== undefined && !stopping ? { blockedBy } : {}),
           ...(stopping ? { stopping } : {}),
           ...(shownSteps.length > 0 ? { steps: shownSteps } : {}),
           nowMs: Date.now(),
           summaryLines,
-          ...(out.rows !== undefined && out.rows > 0 ? { rows: out.rows } : {}),
           ...(runContext?.whereRunning !== undefined ? { where: runContext.whereRunning } : {}),
           ...(expected !== undefined ? { expected } : {}),
           ...(critical !== undefined ? { critical } : {}),
@@ -591,35 +581,6 @@ export function defaultLogger(
       ),
       { force },
     )
-  }
-  // Each idle worker row holds a blocked task, in scheduler order. A row
-  // with none left to hold leaves the region (2026-10-15): blocked tasks
-  // only dwindle, so it is never needed again, and the rows below close up.
-  const holdRows = (list: readonly BlockedTask[]): (BlockedTask | null)[] => {
-    const started = new Set<string>()
-    for (const s of slots) if (s !== null) started.add(s.id)
-    for (const s of slotQueue) started.add(s.id)
-    const open = new Map<string, BlockedTask>()
-    for (const b of list) if (!started.has(b.id)) open.set(b.id, b)
-    const rows: (BlockedTask | null)[] = []
-    for (let i = 0; i < shownSlots; i++) {
-      const kept = slots[i] === null ? open.get(heldRows[i] ?? '') : undefined
-      rows.push(kept ?? null)
-      if (kept !== undefined) open.delete(kept.id)
-    }
-    const rest = open.values()
-    for (let i = 0; i < shownSlots; i++)
-      if (slots[i] === null && rows[i] === null) rows[i] = rest.next().value ?? null
-    for (let i = shownSlots - 1; i >= 0; i--) {
-      if (slots[i] !== null || rows[i] !== null) continue
-      rows.splice(i, 1)
-      slots.splice(i, 1)
-      slots.push(null)
-      shownSlots--
-    }
-    heldRows.length = 0
-    for (const r of rows) heldRows.push(r?.id ?? null)
-    return rows
   }
   const tick = (): void => {
     if (!writer.enabled || statusDead || ticker !== null) return
@@ -760,9 +721,7 @@ export function defaultLogger(
       runContext = info.context
       startedAtMs = Date.now()
       started = true
-      const cap = Math.max(1, Math.min(info.concurrency ?? 10, 10))
-      slots = Array.from({ length: cap }, () => null)
-      shownSlots = 0
+      slots = Array.from({ length: Math.max(1, info.concurrency ?? 10) }, () => null)
       tick()
       refresh(true)
     },
@@ -782,7 +741,7 @@ export function defaultLogger(
       if (stopping) return
       stopping = true
       blocked = undefined
-      heldRows.length = 0
+      blockedBy = undefined
       refresh(true)
     },
     runDone() {
@@ -812,18 +771,9 @@ export function defaultLogger(
       // The rows are the status region's; with none, nothing reads them.
       if (statusDead) return
       const slot: WorkerSlot = { id: node.id, startedMs: Date.now() }
-      // A blocked task starts in the row that held it; another takes a free
-      // row, else the last held one, whose task moves to the next free row.
-      const own = heldRows.indexOf(node.id)
-      let free = own >= 0 && slots[own] === null ? own : -1
-      if (free < 0)
-        free = slots.findIndex((s, i) => s === null && i < shownSlots && heldRows[i] == null)
-      if (free < 0) free = slots.findLastIndex((s, i) => s === null && i < shownSlots)
-      if (free < 0) free = slots.indexOf(null)
-      if (free >= 0) {
-        slots[free] = slot
-        shownSlots = Math.max(shownSlots, free + 1)
-      } else slotQueue.push(slot)
+      const free = slots.indexOf(null)
+      if (free >= 0) slots[free] = slot
+      else slotQueue.push(slot)
       refresh(true)
     },
     holdStatus: () => writer.hold(),
@@ -860,7 +810,7 @@ export function defaultLogger(
         tail = true
         slots = []
         blocked = undefined
-        shownSlots = 0
+        blockedBy = undefined
         slotQueue.length = 0
         refresh(true)
       } else if (!tail) killStatus()
