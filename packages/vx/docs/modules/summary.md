@@ -34,6 +34,7 @@ export interface SummaryStats {
   spread: { maxMs: number; minMs: number; sumMs: number; count: number } | null // the time row's per-task spread
   held?: { count: number; sumMs: number } // what an `admit` policy held, summed
   etaMs?: number // live section only: the forecast of what is left (`~3s left` on the time row)
+  overMs?: number // live section only: how long the run has gone past that forecast (`+3s over`)
   emptyGroups?: readonly string[] // a run of command-less groups: their names, after `0 tasks`
   buckets?: ReadonlyMap<string, CacheBucket> // each finished task's cache bucket by its key
 }
