@@ -347,7 +347,8 @@ export function defaultLogger(
   let forecastFn: Forecast | undefined
   let graphForecast: (() => Forecast) | undefined
   let forecastTimer: ReturnType<typeof setTimeout> | null = null
-  let etaMs: number | undefined
+  // When the forecast says the run ends; past it, the region counts up.
+  let deadlineMs: number | undefined
   let critical: string | undefined
   // Tasks the region showed on the critical path: their finished rows say so too.
   const onPath = new Set<string>()
@@ -491,17 +492,23 @@ export function defaultLogger(
       for (const s of slots) if (s !== null) running.set(s.id, s.startedMs)
       for (const s of slotQueue) running.set(s.id, s.startedMs)
       const f = forecastFn(finished, running, now)
-      etaMs = f.etaMs
+      deadlineMs =
+        f.etaMs === undefined
+          ? undefined
+          : f.etaMs > 0
+            ? now + f.etaMs
+            : Math.min(deadlineMs ?? now, now)
       critical = f.critical
       blockedCount = f.waiting
       expected = f.expected
       blocked = f.blocked
       blockedBy = f.blockedBy
     }
+    const etaMs = deadlineMs === undefined ? undefined : deadlineMs - now
     if (signals.progress && total > 0) {
       const elapsed = now - startedAtMs
       const pct = Math.floor(
-        etaMs !== undefined && elapsed + etaMs > 0
+        etaMs !== undefined && etaMs > 0
           ? (elapsed / (elapsed + etaMs)) * 100
           : (done / total) * 100,
       )
@@ -546,7 +553,11 @@ export function defaultLogger(
               ...(running > 0 ? { running } : {}),
               ...(scheduled > 0 ? { scheduled } : {}),
               ...(blockedCount > 0 && !tail && !stopping ? { blocked: blockedCount } : {}),
-              ...(etaMs !== undefined && !tail && !stopping ? { etaMs } : {}),
+              ...(etaMs !== undefined && !tail && !stopping
+                ? etaMs > 0
+                  ? { etaMs }
+                  : { overMs: -etaMs }
+                : {}),
               buckets,
               spread:
                 spreadCount > 0

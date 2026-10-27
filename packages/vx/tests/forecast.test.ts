@@ -54,13 +54,15 @@ describe('createForecast', () => {
     const f = createForecast(nodes, p50s, 8)
     // b ran 1,500 of its 2,000: 500 left, then c.
     expect(f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 1500).etaMs).toBe(1000)
-    // b at 2,400 (within the overrun slack): 0 left, then c.
+    // b at 2,400: 0 left, then c.
     expect(f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 2400).etaMs).toBe(500)
   })
 
-  it('gives up once a running task is well past its p50', () => {
+  // 2026-10-27: it used to give up 25% past a p50, so the estimate came and went.
+  it('keeps forecasting once a running task is well past its p50', () => {
     const f = createForecast(nodes, p50s, 8)
-    expect(f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 2600).etaMs).toBeUndefined()
+    expect(f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 9000).etaMs).toBe(500)
+    expect(f(new Set(['p#a', 'p#b', 'p#d']), new Map([['p#c', 0]]), 9000).etaMs).toBe(0)
   })
 
   it('names the running task the longest chain waits on, and counts what waits', () => {
@@ -99,9 +101,9 @@ describe('createForecast', () => {
     )
     expect(later.critical).toBe('p#b')
     expect(later.waiting).toBe(1)
-    // Past its p50 the time is unknown, and so is the path; what waits is not.
+    // Past its p50 it still heads the path, and what waits still waits.
     const over = f(new Set(['p#a', 'p#d']), new Map([['p#b', 0]]), 2600)
-    expect(over.critical).toBeUndefined()
+    expect(over.critical).toBe('p#b')
     expect(over.waiting).toBe(1)
   })
 
@@ -188,6 +190,16 @@ describe('the live time row', () => {
     expect(time(400)).toBe('  time      1.50s · <1s left')
     expect(time(3001)).toBe('  time      1.50s · ~4s left')
     expect(time(125_000)).toBe('  time      1.50s · ~2m 05s left')
+  })
+
+  it('counts up past the forecast', () => {
+    const over = (overMs: number): string | undefined =>
+      formatSummarySection({ ...stats, overMs }, 1500, { enabled: false }).find((l) =>
+        l.startsWith('  time'),
+      )
+    expect(over(0)).toBe('  time      1.50s · +1s over')
+    expect(over(4200)).toBe('  time      1.50s · +5s over')
+    expect(over(65_000)).toBe('  time      1.50s · +1m 05s over')
   })
 })
 
@@ -319,7 +331,7 @@ function tty(): StatusStream & { text(): string } {
 }
 
 describe('the logger asks for a forecast only a second in', () => {
-  const run = async (lastsMs: number, env: Record<string, string>) => {
+  const run = async (lastsMs: number, env: Record<string, string>, etaMs = 4000) => {
     const out = tty()
     const log = defaultLogger({ enabled: false }, { mode: 'broad' }, out, { env })
     let asked = 0
@@ -328,7 +340,7 @@ describe('the logger asks for a forecast only a second in', () => {
       () => () => ({ blockedBy: new Map(), waiting: 0 }),
       async () => {
         asked++
-        return () => ({ etaMs: 4000, blockedBy: new Map(), waiting: 0 })
+        return () => ({ etaMs, blockedBy: new Map(), waiting: 0 })
       },
     )
     const a = node('p#a')
@@ -355,6 +367,12 @@ describe('the logger asks for a forecast only a second in', () => {
     expect(r.region).toContain('~4s left')
     // No terminal named: no escape at all.
     expect(r.all).not.toContain('\x1b]9;')
+  })
+
+  it('a run past its forecast counts up instead of going blank', async () => {
+    const r = await run(1300, {}, 0)
+    expect(r.region).toContain('+1s over')
+    expect(r.region).not.toContain('left')
   })
 })
 
@@ -419,7 +437,9 @@ describe('a worker row says when it holds the critical path', () => {
     expect(lines[3]).toEndWith(' 0 p#d')
   })
 
-  it('the forecast counts what waits on each running task, by the chain it waits on', () => {
+  // 2026-10-27: the count was every task whose longest chain waits on the
+  // row, so a root read as blocking the whole graph.
+  it('the forecast counts what waits directly on each running task', () => {
     // a runs, b and c wait on it, d on c; e runs, f waits on it; x is ready.
     const f = createForecast(
       graph(
@@ -443,7 +463,34 @@ describe('a worker row says when it holds the critical path', () => {
       0,
     )
     expect([...r.blockedBy].sort(([x], [y]) => x.localeCompare(y))).toEqual([
-      ['p#a', 3],
+      ['p#a', 2],
+      ['p#e', 1],
+    ])
+    expect(r.waiting).toBe(4)
+  })
+
+  it('a task waiting on two running tasks counts under both, a group looked through', () => {
+    // g is a group over a and e; h waits on g and on e.
+    const f = createForecast(
+      graph(
+        node('p#a'),
+        node('p#e'),
+        node('p#g', ['p#a', 'p#e'], true),
+        node('p#h', ['p#g', 'p#e']),
+      ),
+      new Map(),
+      4,
+    )
+    const r = f(
+      new Set(),
+      new Map([
+        ['p#a', 0],
+        ['p#e', 0],
+      ]),
+      0,
+    )
+    expect([...r.blockedBy].sort(([x], [y]) => x.localeCompare(y))).toEqual([
+      ['p#a', 1],
       ['p#e', 1],
     ])
   })

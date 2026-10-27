@@ -21,9 +21,10 @@ export interface LiveForecast {
    */
   blocked?: readonly BlockedTask[]
   /**
-   * Each running task's count of the tasks not started whose longest
-   * chain waits on it: its row's `blocked` cell. They sum to `waiting`
-   * less what waits on no running task.
+   * Each running task's count of the tasks not started that depend on it
+   * directly (through a group, which runs nothing): its row's `blocked`
+   * cell, why they are not running. A task waiting on two running tasks
+   * counts under both.
    */
   blockedBy: ReadonlyMap<string, number>
 }
@@ -40,16 +41,13 @@ export type Forecast = (
   nowMs: number,
 ) => LiveForecast
 
-/** How far past its p50 a running task may go before the forecast gives up. */
-const OVERRUN = 1.25
-
 /**
  * The later of the longest unfinished chain and the unfinished work spread
  * over the workers. A task still to run costs its p50 (a pending task may
  * yet hit, so this leans long, and the hits finish first); a running one
  * costs what its p50 has left, never below zero; a group or a task with no
- * history costs nothing. A running task well past its p50 means history
- * no longer describes this run, and the forecast says nothing of time.
+ * history costs nothing. Zero while tasks still run means the run is past
+ * its estimate: the live region counts the time since (2026-10-27).
  */
 export function createForecast(
   nodes: ReadonlyMap<string, TaskNode>,
@@ -90,6 +88,22 @@ export function createForecast(
   // graph order: once per run, as the scheduler computes it.
   const rank = computeReverseDepCount(nodes)
   const position = new Map(order.map((n, i) => [n.id, i]))
+  // The tasks each node waits on directly, a group's own looked through.
+  const direct = new Map<string, readonly string[]>()
+  const through = (id: string, into: Set<string>, seen: Set<string>): void => {
+    if (seen.has(id)) return
+    seen.add(id)
+    const d = nodes.get(id)
+    if (d === undefined || !isGroupTask(d)) into.add(id)
+    else for (const x of d.deps) through(x, into, seen)
+  }
+  for (const n of order) {
+    if (isGroupTask(n) || n.deps.length === 0) continue
+    const into = new Set<string>()
+    const seen = new Set<string>()
+    for (const d of n.deps) through(d, into, seen)
+    direct.set(n.id, [...into])
+  }
   const before = (a: string, b: string): boolean => {
     const d = (rank.get(a) ?? 0) - (rank.get(b) ?? 0)
     return d !== 0 ? d > 0 : position.get(a)! < position.get(b)!
@@ -109,7 +123,6 @@ export function createForecast(
     let chainEnd: string | undefined
     let work = 0
     let known = false
-    let overrun = false
     // The best `workers` blocked tasks, kept sorted as the pass meets them.
     const held: BlockedTask[] = []
     const blockedBy = new Map<string, number>()
@@ -131,8 +144,8 @@ export function createForecast(
         since === undefined ? (head.get(n.id) ?? n.deps.find((d) => end.has(d))) : undefined
       if (by !== undefined && !isGroupTask(n)) {
         waiting++
-        const on = head.get(n.id)
-        if (on !== undefined) blockedBy.set(on, (blockedBy.get(on) ?? 0) + 1)
+        for (const on of direct.get(n.id) ?? [])
+          if (running.has(on)) blockedBy.set(on, (blockedBy.get(on) ?? 0) + 1)
         let at = held.length
         while (at > 0 && before(n.id, held[at - 1]!.id)) at--
         if (at < workers) {
@@ -144,7 +157,6 @@ export function createForecast(
       let own = 0
       if (p !== undefined) {
         known = true
-        if (since !== undefined && nowMs - since > p * OVERRUN) overrun = true
         own = since === undefined ? p : Math.max(0, p - (nowMs - since))
       }
       const e = start + own
@@ -155,7 +167,7 @@ export function createForecast(
       }
       work += own
     }
-    if (!known || overrun) return { waiting, expected, blocked: held, blockedBy }
+    if (!known) return { waiting, expected, blocked: held, blockedBy }
     const critical = chainEnd === undefined ? undefined : head.get(chainEnd)
     return {
       etaMs: Math.max(chain, work / workers),

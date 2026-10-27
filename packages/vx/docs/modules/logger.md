@@ -95,7 +95,10 @@ export function fileMemo(): (abs: string) => boolean
 // same pass lists `blocked`: up to one task per worker that an unfinished
 // dependency holds back, ranked as the scheduler ranks
 // (computeReverseDepCount, once per run), each `by` the running task its
-// longest chain waits on, else that dependency.
+// longest chain waits on, else that dependency; `blockedBy`, per running
+// task, the tasks not started that depend on it directly. A running task
+// past its p50 costs zero: an ETA of zero with tasks running is the region's
+// `+Ns over`, counted from when it reached zero.
 export interface BlockedTask {
   id: string
   by: string
