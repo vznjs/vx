@@ -2040,6 +2040,25 @@ before the download. Every refusal comes before anything is written.
 There is no fallback to GitHub's release digest: when the registry is
 unreachable, the upgrade is refused.
 
+### Which registry
+
+`vx upgrade` and `vx init` read releases from the registry your package
+manager uses, so a company that blocks registry.npmjs.org and serves a
+mirror needs no extra setting. The first that names one wins:
+
+1. `@vzn:registry` in a `.npmrc`
+2. `npm_config_registry` in the environment
+3. `registry` in a `.npmrc`, the nearest from the working directory up,
+   then the user's (`~/.npmrc`, or `npm_config_userconfig`)
+4. bunfig.toml's `[install.scopes]` `vzn`, then `install.registry`, the
+   nearest from the working directory up, then `~/.bunfig.toml`
+5. registry.npmjs.org
+
+The credential configured for that registry (`//<host>/<path>/:_authToken`
+or `:_auth` in a `.npmrc`, `token` or user and password in bunfig, with
+`${VAR}` read from the environment) is sent to URLs under it only. A
+mirror must pass on npm's signature: the check above does not change.
+
 A host it cannot reach (no route, a proxy that is down) is one line,
 `could not reach registry.npmjs.org to read the release (…) — check the
 network or the proxy and re-run`, never a stack; so is a document cut
@@ -2168,8 +2187,9 @@ $ vx init --dry
 `vx init` first installs `@vzn/vx` globally (the package manager that
 ran it, else npm; skipped when the `vx` on `PATH` is already that
 version) and, under the topmost `package.json`, as a root
-devDependency with that repo's own manager (2026-10-20). A failed
-install stops init.
+devDependency with that repo's own manager (2026-10-20). The latest
+version is read from the registry that manager is configured for
+([Which registry](#which-registry)). A failed install stops init.
 
 ### In a Turborepo or Nx repo
 
