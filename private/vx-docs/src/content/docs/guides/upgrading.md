@@ -9,6 +9,10 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
+## vx-history-server: refuse the query body of a client before refs
+
+/v1/timings/query takes {issuer, repository, refs, hashes} in the body; capabilities name maxQueryRefs. Update @vzn/vx-history with the server.
+
 ## vx-dte-server: answer 502 when the issuer's keys cannot be read
 
 TokenError's status may now be 502 (the issuer's keys could not be read), besides 401 and 403. Treat 502 as a retry, not a refusal.
