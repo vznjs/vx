@@ -113,17 +113,21 @@ Each run writes a summary on the workflow run's page:
 A task that fails on inputs it passed on before is marked flaky in the
 log:
 
-```
- ◼︎   4.21s failed  miss     web#test flaky - passed 3× before
+```ansi
+ [38;2;239;68;68m◼︎[0m     [2m3ms[0m [38;2;239;68;68mfailed[0m  [2mmiss[0m     [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;96;165;250mtest[0m [2mflaky - passed 3× before[0m
 ```
 
 ### When to run `vx lock`
 
 Every run reads `.vx/projects.lock.json`, not your `vx.config.ts` files.
-After you edit a `vx.config.ts`, `.vx/workspace.ts`, a file a config
-imports, or your dependencies, run `vx lock` and commit the lock.
-`vx lock --check` is the workflow's first vx step: it fails, naming the
-project, when someone forgot.
+Run `vx lock` and commit the lock after you change any of these:
+
+- a `vx.config.ts` or `.vx/workspace.ts`
+- a file a config imports
+- your dependencies
+
+Make `vx lock --check` the workflow's first vx step. When someone
+forgot, it fails and names the project.
 
 ### Sandboxed tasks
 
@@ -151,12 +155,18 @@ import { bun } from '@vzn/vx-lockfile'
 export default defineWorkspace({ plugins: [bun(), gitlab()] })
 ```
 
-Run the same two lines as the GitHub workflow: `bun vx lock --check`,
-then `bun vx run ci`, with `--affected` in a merge request pipeline and
-`--all` on the default branch. In a merge request, `gitlab()` gives
-`--affected` the request's diff base. Both plugins do nothing outside
-their own CI, so you can declare both. For sandboxed tasks, run
-`bun vx setup gitlab` before vx.
+Run the same two lines as the GitHub workflow:
+
+```sh
+bun vx lock --check
+bun vx run ci --affected   # --all on the default branch
+```
+
+In a merge request, `gitlab()` gives `--affected` the request's diff
+base. Each plugin does nothing outside its own CI, so you can declare
+both.
+
+For sandboxed tasks, run `bun vx setup gitlab` before vx.
 
 ---
 

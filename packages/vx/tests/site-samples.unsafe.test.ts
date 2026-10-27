@@ -175,7 +175,10 @@ describe('no page says a task sees only what it declares, past the allowlist', (
 describe('the configure guide names the essential allowlist', () => {
   it('its "always gets a small essential allowlist" sentence names every name in ESSENTIAL_ENV', () => {
     const page = readFileSync(path.join(DOCS, 'docs', 'environment-variables.mdx'), 'utf8')
-    const m = /essential allowlist so normal CLI tools\s+work:([\s\S]*?)\. vx sets/.exec(page)
+    const m =
+      /Every task gets these variables, so everyday CLI tools work:([\s\S]*?)vx also sets/.exec(
+        page,
+      )
     expect(m).not.toBeNull()
     const named = new Set([...m![1]!.matchAll(/`([A-Z_]+)`/g)].map((x) => x[1]!))
     expect([...named]).toEqual([...ESSENTIAL_ENV])
@@ -375,10 +378,12 @@ describe('the flaky-tasks post shows the rows a run prints', () => {
     ])
   })
 
-  it("the CI guide's copy is the same row", () => {
+  it("the CI guide's copy is the same row, in its colours", () => {
     const page = readFileSync(path.join(DOCS, 'docs', 'ci.mdx'), 'utf8')
-    const sample = fencedBlock(page, '', ' ◼\uFE0E').replace(/\n$/, '')
-    expect(sample.split('\n')).toEqual([row('web#test', 'failed', 4210, 3, 1)])
+    const sample = /```ansi\n(.*flaky.*)\n```/.exec(page)![1]!
+    // eslint-disable-next-line no-control-regex
+    expect(sample.replace(/\x1b\[[0-9;]*m/g, '')).toBe(row('@demo/web#test', 'failed', 3, 3, 1))
+    expect(sample).toContain('\x1b[')
   })
 })
 
@@ -1110,9 +1115,9 @@ describe('the plugins guide names the remote seam core defines', () => {
       readFileSync(path.join(DOCS, 'docs', 'writing-plugins.mdx'), 'utf8'),
       'Your own cache',
     )
-    for (const m of methods) expect(page).toContain('`' + m.name + '`')
+    for (const m of methods) expect(page).toMatch(new RegExp('`' + m.name + '[`(]'))
     expect(methods.find((m) => m.name === 'hasMany')!.optional).toBe(true)
-    expect(page.replace(/\s+/g, ' ')).toContain('an optional `hasMany`')
+    expect(page).toMatch(/`hasMany\([^`]*\)` \| optional/)
   })
 })
 
@@ -1179,7 +1184,7 @@ describe('the tasks guide names every exec field a task can declare', () => {
     )
     expect(hash).toContain('const { remote: _remote, ...execRest } = cfg.exec')
     const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8').replace(/\s+/g, ' ')
-    expect(page).toContain('the one `exec` field stripped from the key')
+    expect(page).toContain('the one `exec` field left out of the key')
   })
 
   it('it says a `description` reaches the key, as the contract page does', () => {
@@ -1195,7 +1200,7 @@ describe('the tasks guide names every exec field a task can declare', () => {
     ).replace(/\s+/g, ' ')
     expect(contract).toContain('Editing a description therefore costs one re-run')
     const page = readFileSync(path.join(DOCS, 'docs', 'tasks.mdx'), 'utf8').replace(/\s+/g, ' ')
-    expect(page).toContain('editing a description costs one re-run')
+    expect(page).toContain('editing even `description` re-runs the task once')
   })
 })
 
@@ -1235,8 +1240,7 @@ describe('the dev-tasks guide bounds the teardown the way signals.ts does', () =
       /\s+/g,
       ' ',
     )
-    expect(page).toContain(`${Number(m![1]) / 1000}-second grace`)
-    expect(page).toContain('`SIGKILL`ed')
+    expect(page).toContain(`still alive ${Number(m![1]) / 1000} seconds later gets \`SIGKILL\``)
   })
 })
 
@@ -1311,8 +1315,10 @@ describe('the plugins guide rosters every hook a shipped plugin fills', () => {
     const shipped = readdirSync(packagesDir)
       .map((d) => path.join(packagesDir, d, 'package.json'))
       .filter((f) => existsSync(f))
-      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string; private?: boolean })
-      .filter((m) => m.private !== true && m.name !== '@vzn/vx')
+      // A package still marked private ships too: the docs describe the
+      // released product (owner, 2026-10-26).
+      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string })
+      .filter((m) => m.name !== '@vzn/vx')
       .map((m) => m.name)
       .sort()
     const page = readFileSync(path.join(DOCS, 'docs', 'plugins.mdx'), 'utf8')
@@ -1515,8 +1521,10 @@ describe('the README and the Docs say which packages npm has', () => {
     const plugins = readdirSync(packagesDir)
       .map((d) => path.join(packagesDir, d, 'package.json'))
       .filter((f) => existsSync(f))
-      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string; private?: boolean })
-      .filter((m) => m.private !== true && m.name !== '@vzn/vx')
+      // A package still marked private ships too: the docs describe the
+      // released product (owner, 2026-10-26).
+      .map((f) => JSON.parse(readFileSync(f, 'utf8')) as { name: string })
+      .filter((m) => m.name !== '@vzn/vx')
       .map((m) => m.name.replace('/', '\\/'))
     const use = new RegExp(
       `(?:bunx|npx|add(?: -[dDW])*|install(?: -[DgW])*|from) '?(?:${plugins.join('|')})\\b`,
@@ -2324,7 +2332,7 @@ describe('the sandbox pages say a refused temp write points at $TMPDIR', () => {
       "or, for a path under the host's shared temp directory",
     )
     expect(flat(path.join(DOCS, 'docs', 'sandboxing.mdx'))).toContain(
-      "under the host's temp directory it names `$TMPDIR` instead",
+      "Under the host's temp directory, it names `$TMPDIR` instead",
     )
   })
 })

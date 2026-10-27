@@ -22,10 +22,11 @@ flowchart LR
 
 1. **Start from a template**
 
-   `vx init --plugin <seam>` writes one, with its test, into your
-   workspace. A runnable plugin for each of nine seams, each held by a test
-   that runs it, is in
-   [`private/vx-plugin-examples`](https://github.com/vznjs/vx/tree/main/private/vx-plugin-examples).
+   `vx init --plugin <hook>` writes one, with its test, into your
+   workspace.
+
+   [`private/vx-plugin-examples`](https://github.com/vznjs/vx/tree/main/private/vx-plugin-examples)
+   holds a runnable plugin for each of nine hooks, each with a test.
 
 2. **Fill the hooks you need**
 
@@ -143,10 +144,13 @@ export function scriptsProject(): VxPlugin {
 }
 ```
 
-An entry also gives a project edges. `deps` orders `^build` and reaches
-`--filter app...` and `--affected`; `reach` only reaches. vx reads no
-edges from a `package.json`, so with no plugin returning `deps`, a
-`^build` is refused:
+An entry also says which projects it depends on:
+
+- `deps` orders `^build`, and is followed by `--filter app...` and `--affected`.
+- `reach` is followed by those two, and orders nothing.
+
+vx reads no dependencies from a `package.json`. With no plugin
+returning `deps`, a `^build` is refused:
 
 ```ts
 discover: () => [{ dir: 'apps/web', deps: ['packages/ui'], reach: ['packages/config'] }]
@@ -242,17 +246,21 @@ export function taskLog(): VxPlugin {
 ```
 
 `ctx.cache` keeps your plugin's own small entries (`get`, `put`, `has`,
-`hasMany`) in the local cache and every remote. An entry is written once,
-at most 1 MiB; a failure is an empty answer. `ctx.ci` and `ctx.branch`
-say where the run is.
+`hasMany`) in the local cache and every remote. An entry is written
+once, at most 1 MiB. A failure reads as an empty answer.
+
+`ctx.ci` and `ctx.branch` say where the run is.
 
 ### Secrets
 
-`ctx.secret({ key, prompt })` reads a token from the OS keychain. When
-it is missing and a terminal is attached (not on CI), it asks with the
-input hidden and saves the answer. Otherwise it rejects, and
-`isSecretUnavailable(err)` is true. Check your env var first.
-`ctx.forgetSecret({ key })` drops a token your server refused.
+`ctx.secret({ key, prompt })` reads a token from the OS keychain.
+
+- Missing, with a terminal (not on CI): it asks, hides the input, and
+  saves the answer.
+- Missing otherwise: it rejects, and `isSecretUnavailable(err)` is true.
+
+Check your env var first. `ctx.forgetSecret({ key })` drops a token your
+server refused.
 
 ```ts
 import { definePlugin, isSecretUnavailable, type VxPlugin } from '@vzn/vx'
@@ -358,8 +366,10 @@ export function dots(): VxPlugin {
 
 `executor` returns a `TaskExecutor`: a `name`, an optional `accepts`,
 and `execute`, which runs one command. A task every executor declines
-runs here. Stop on `req.signal` (Ctrl-C or `exec.timeout`), and stop the
-shell's children too: core cannot reach them.
+runs on this machine.
+
+Stop on `req.signal` (Ctrl-C or `exec.timeout`), and stop the shell's
+children too: vx cannot reach them.
 
 ```ts
 import { definePlugin, type ExecuteResult, type VxPlugin } from '@vzn/vx'
@@ -406,14 +416,18 @@ export function nice(): VxPlugin {
 
 ## Your own cache
 
-Return core's `RemoteCacheLayer` from the `cache` hook: `has`, `get` and
-`put`, plus an optional `hasMany`. `has` answers `null` for a key the
-remote lacks, else what it knows: `{ size, durationMs }` or `{}`. Write
-`hasMany` only when your wire answers many keys in one call. An entry is
-immutable: a `put` of a key the remote holds keeps the stored bytes.
-Core calls the optional `missing` with a key the run found in no remote
-before its `put`: check nothing first. A `put` that sends nothing (no
-token, writes off) resolves `false`, so the run counts no upload.
+Return a `RemoteCacheLayer` from the `cache` hook:
+
+| Method | Does |
+| --- | --- |
+| `has(hash)` | `null` when the remote lacks it, else what it knows: `{ size, durationMs }` or `{}` |
+| `get(hash)` | `{ body, durationMs }`, or `null` for a miss |
+| `put(hash, body, meta)` | stores it; resolves `false` when it sent nothing (no token, writes off), so no upload is counted |
+| `hasMany(hashes)` | optional: only when your server answers many keys in one call |
+| `missing(hash)` | optional: called before a `put` with a key no remote had, so check nothing first |
+
+An entry never changes: a `put` of a key the remote holds keeps the
+stored bytes.
 
 vx asks the local cache first, then each remote in `plugins` order, under
 `--cache-policy`. A remote error is a miss and one warning. Core bounds
@@ -463,10 +477,12 @@ function acmeCache(): VxPlugin {
 export default defineWorkspace({ plugins: [acmeCache()] })
 ```
 
-A remote that needs a credential adds `open`, asked once per run before
-the first task; a throw sits the remote out. `ctx.secret` works there.
-An optional `lend` hands this run's own access (never a stored secret)
-to a machine that runs its tasks elsewhere, such as a `@vzn/vx-dte` worker.
+A remote that needs a credential adds `open`. vx calls it once per run,
+before the first task; if it throws, the run goes on without that
+remote. `ctx.secret` works there.
+
+An optional `lend` hands this run's own access, never a stored secret,
+to a machine that runs its tasks, such as a `@vzn/vx-dte` worker.
 
 ### Signed artifacts
 
@@ -524,9 +540,15 @@ export function signedCache(remote: RemoteCacheLayer, trustedPem: string): VxPlu
 ```
 
 Declare `signedCache(new AcmeRemote(url), PUBLIC_KEY_PEM)` and set
-`CACHE_SIGNING_KEY` only in main's CI. Make the pair with
-`openssl genpkey -algorithm ed25519` and `openssl pkey -pubout`. `has()`
-is unchecked, so `--dry` can predict a hit the run then misses.
+`CACHE_SIGNING_KEY` only in main's CI. Make the key pair with:
+
+```sh
+openssl genpkey -algorithm ed25519 -out key.pem
+openssl pkey -in key.pem -pubout
+```
+
+`has()` checks no signature, so `--dry` can predict a hit the run then
+misses.
 
 ---
 
@@ -546,5 +568,5 @@ run with one warning. A verb that throws fails in one line.
 
 <CardGrid>
   <LinkCard title="@vzn/vx API" description="Every type a plugin sees." href="../../api/" />
-  <LinkCard title="Plugin examples" description="One runnable plugin per seam, each with its test." href="https://github.com/vznjs/vx/tree/main/private/vx-plugin-examples" />
+  <LinkCard title="Plugin examples" description="One runnable plugin per hook, each with its test." href="https://github.com/vznjs/vx/tree/main/private/vx-plugin-examples" />
 </CardGrid>

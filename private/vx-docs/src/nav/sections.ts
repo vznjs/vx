@@ -47,6 +47,7 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
         { label: 'What is vx?', link: '/docs/' },
         { label: 'Quickstart', link: '/quickstart/' },
         { label: 'Upgrading to 1.0', link: '/guides/upgrading/' },
+        { label: 'AI agents', link: '/docs/agents/' },
       ],
     },
     {
@@ -57,7 +58,6 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
         { label: 'Caching', link: '/docs/caching/' },
         { label: 'Environment variables', link: '/docs/environment-variables/' },
         { label: 'Dev servers', link: '/docs/dev-servers/' },
-        { label: 'Lockfiles', link: '/docs/lockfiles/' },
       ],
     },
     {
@@ -66,26 +66,23 @@ const SIDEBAR_GROUPS: Record<'Docs' | 'Guides' | 'Reference', SidebarItem[]> = {
         { label: 'Running tasks', link: '/docs/running-tasks/' },
         { label: 'Sandboxing', link: '/docs/sandboxing/' },
         { label: 'CI', link: '/docs/ci/' },
+      ],
+    },
+    // Everything that is not core (owner, 2026-10-26): each plugin, the
+    // servers they talk to, and how to write one.
+    {
+      label: 'Plugins',
+      items: [
+        { label: 'Plugins', link: '/docs/plugins/' },
+        { label: 'Lockfiles', link: '/docs/lockfiles/' },
         { label: 'Remote cache', link: '/docs/remote-cache/' },
         { label: 'Distributed task execution', link: '/docs/distributed-task-execution/' },
         { label: 'Remote execution', link: '/docs/remote-execution/' },
-      ],
-    },
-    {
-      label: 'Servers',
-      items: [
         { label: 'Servers', link: '/docs/servers/' },
         { label: 'Cache server', link: '/docs/servers/cache/' },
         { label: 'History server', link: '/docs/servers/history/' },
         { label: 'DTE server', link: '/docs/servers/dte/' },
-      ],
-    },
-    {
-      label: 'Extend',
-      items: [
-        { label: 'Plugins', link: '/docs/plugins/' },
         { label: 'Write a plugin', link: '/docs/writing-plugins/' },
-        { label: 'AI agents', link: '/docs/agents/' },
       ],
     },
   ],

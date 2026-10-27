@@ -38,11 +38,14 @@ prints names its own fix too.
 
 A typo in `--filter` names the closest project:
 
-```text
-$ vx run build --filter @demo/ap
-✗ vx run  no projects matched filter(s): @demo/ap
+```sh
+vx run build --filter @demo/ap
+```
 
-  fix  @demo/app
+```ansi
+[38;2;239;68;68m✗[0m [1mvx run[0m  no projects matched filter(s): @demo/ap
+
+  [2mfix[0m  [1m@demo/app[0m
 ```
 
 ## vx did something unexpected
@@ -89,11 +92,12 @@ $ vx run build --filter @demo/ap
   allowlist (`PATH`, `HOME`, `CI` and a few more), vx passes only what
   you list: add it to `exec.env.passThrough`
   ([Environment variables](../../docs/environment-variables/)).
-- **`dist/` is empty after `tsc -b`.** With `rootDir: "src"`, tsc writes
-  `tsconfig.tsbuildinfo` beside `tsconfig.json`, outside `dist/`. vx
-  empties `dist/` before a miss, tsc sees the buildinfo, thinks it is
-  current and writes nothing. Add `tsconfig.tsbuildinfo` to
-  `outputs.files`, or point `tsBuildInfoFile` into `dist/`.
+- **`dist/` is empty after `tsc -b`.** With `rootDir: "src"`, tsc
+  writes `tsconfig.tsbuildinfo` outside `dist/`. vx empties `dist/`
+  before a run, tsc finds the buildinfo, and writes nothing.
+
+  Add `tsconfig.tsbuildinfo` to `outputs.files`, or point
+  `tsBuildInfoFile` into `dist/`.
 - **The editor cannot resolve `@vzn/vx`.** Add it as a devDependency.
   vx itself runs a config without it.
 - **A package has no `vx.config.ts`.** It gets a default `build`: a
@@ -114,7 +118,9 @@ release binary needs neither Node nor Bun.
 <Tabs>
   <TabItem label="Linux">
     glibc, not Alpine's musl. The sandbox needs `bubblewrap`, `socat` and
-    `ripgrep`, and no root in a container, or set
+    `ripgrep`.
+
+    In a container, run as a user other than root, or set
     `exec.sandbox.weakerWhenNested: true` on each sandboxed task
     ([Sandboxing](../../docs/sandboxing/#requirements--platform-support)).
   </TabItem>

@@ -8,8 +8,10 @@ on several machines at once. You still start one CI job, and you still
 get one result.
 
 That job works out which tasks need to run. It starts more CI jobs,
-called workers, and gives each one tasks. When a worker finishes a task,
-its output and logs come back to your job, as if the task had run there.
+called **workers**, and gives each one tasks.
+
+When a worker finishes a task, its output and logs come back to your
+job, as if the task had run there.
 
 A task the cache already has never runs, so a push that changes nothing
 starts no workers.
@@ -76,10 +78,12 @@ export default defineWorkspace({
 ```
 
 `workers` names the kinds of worker the run may start. Here: up to 8
-`small` workers, each with 4 cores and 16 GB, as GitHub's
-`ubuntu-latest` runner has for a public repository. Declare what your
-runners really have: vx plans by it. To use other runners, add sizes and name
-their label in `github({ runsOn: { large: 'ubuntu-latest-16-cores' } })`.
+`small` workers with 4 cores and 16 GB each, as GitHub's `ubuntu-latest`
+runner has for a public repository.
+
+Declare what your runners really have: vx plans by it. For other
+runners, add a size and name its label:
+`github({ runsOn: { large: 'ubuntu-latest-16-cores' } })`.
 
 ### 3. Write the workflows
 
@@ -93,9 +97,10 @@ vx dte init: wrote .github/workflows/vx-worker.yml
 
 Next:
   1. The relay at https://vx-dte-server.acme.workers.dev must admit these workflows.
-     Its ALLOW (a plain var, no secret): https://token.actions.githubusercontent.com:<owner>/<repo>:ci.yml https://token.actions.githubusercontent.com:<owner>/<repo>:vx-worker.yml
+     Its ALLOW (a plain var, no secret): https://token.actions.githubusercontent.com:acme/app:ci.yml https://token.actions.githubusercontent.com:acme/app:vx-worker.yml
   2. A remote cache the run and the workers share: workers hand back outputs only through it. https://vznjs.github.io/vx/docs/remote-cache/
   3. Commit .github/workflows/ci.yml, .github/workflows/vx-worker.yml, .vx/workspace.ts and the lock (vx lock), and push.
+  How a run spreads over workers: https://vznjs.github.io/vx/docs/distributed-task-execution/
 ```
 
 `ci.yml` is the job that runs `vx run`. `vx-worker.yml` is the job each
@@ -111,8 +116,7 @@ Run `vx dte init` again after you change `workers`.
 ### 4. Let the workflows in
 
 Put the `ALLOW` line `vx dte init` printed into the relay's settings,
-with your repository in place of `<owner>/<repo>`, and deploy the relay
-again ([DTE server](../servers/dte/#2-say-who-may-use-it-allow)).
+and deploy the relay again ([DTE server](../servers/dte/#2-say-who-may-use-it-allow)).
 
 ### 5. Push
 
@@ -152,11 +156,11 @@ git add -A && git commit -m "try vx-dte"
 VX_DTE_RUN=$(uuidgen) vx run build --all
 ```
 
-```text frame="terminal"
- ⏺︎    10ms success miss     @demo/ui#build · small#1
- ⏺︎     6ms success miss     @demo/web#build · small#1
+```ansi
+ [38;2;34;197;94m⏺︎[0m   [2m1.35s[0m [38;2;34;197;94msuccess[0m [2mmiss[0m     [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ·[0m [38;2;192;132;252msmall[0m[2m#[0m[38;2;167;139;250m1[0m
+ [38;2;34;197;94m⏺︎[0m   [2m1.55s[0m [38;2;34;197;94msuccess[0m [2mmiss[0m     [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m[2m ·[0m [38;2;192;132;252msmall[0m[2m#[0m[38;2;167;139;250m1[0m
 
-  workers   small#1  stopped  2 done · warm-up 0.1s · @demo/ui#build, @demo/web#build
+  [2mworkers [0m  [38;2;192;132;252msmall[0m[2m#[0m[38;2;167;139;250m1[0m  stopped  2 done · warm-up 0.4s · @demo/ui#build, @demo/web#build
 ```
 
 `VX_DTE_RUN` names the run and turns distribution on. Without it,

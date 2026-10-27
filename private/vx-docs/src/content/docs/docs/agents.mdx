@@ -30,11 +30,12 @@ vx last --failed --format json
 
 2. **Give it the docs**
 
-   [llms.txt](https://vznjs.github.io/vx/llms.txt) indexes every page as
-   markdown; [llms-full.txt](https://vznjs.github.io/vx/llms-full.txt) is
-   all of them in one file. Add `.md` to any page's path for its markdown.
-   `vx docs <query>` prints the matching reference sections for your vx's
-   version.
+   - [llms.txt](https://vznjs.github.io/vx/llms.txt) lists every page as
+     markdown, and [llms-full.txt](https://vznjs.github.io/vx/llms-full.txt)
+     holds them all in one file.
+   - Add `.md` to any page's path for its markdown.
+   - `vx docs <query>` prints the matching reference sections for your
+     vx's version.
 
 3. **Let it run tasks**
 
@@ -76,12 +77,14 @@ Each `--format json` prints one JSON document to stdout; notices go to
 stderr, so stdout always parses. Every shape is a JSON Schema in the
 package's `schemas/`, with a closed key set.
 
-`--dry=json` under `--affected` gives each task the reason it was kept. A
-failed row of `vx last --format json` carries the task's `output` and the
-files it names (`locations`). `vx why --format json` gives each changed
-part of the key, so an agent fixes the cause instead of re-running:
+Three outputs tell an agent what to fix instead of re-running:
 
-```text
+- `--dry=json` with `--affected` gives each task the reason it was kept.
+- A failed row of `vx last --format json` carries the task's `output`
+  and the files it names (`locations`).
+- `vx why --format json` gives each changed part of the key:
+
+```json
 {"kind":"file","name":"packages/app/src/a.ts","change":"changed","before":"d00491fd7e5bb6fa28c517a0bb32b8b506539d4d","after":"0cfbf08886fca9a91cb753ec8734c84fcbe52c9f"}
 ```
 

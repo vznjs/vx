@@ -25,8 +25,11 @@ A workspace is a git repository with a `.vx/workspace.ts` at its root and a
 ## Projects
 
 A project is any directory with a `vx.config.ts`, in any language. Its
-name is the config's `name`, else a plugin's (`@vzn/vx-lockfile` gives
-the `package.json` name), else its path (`apps/web`; `//` for the root).
+name is the first of these that exists:
+
+1. the config's `name`
+2. a plugin's name for it (`@vzn/vx-lockfile` gives the `package.json` name)
+3. its path, such as `apps/web` (`//` for the root)
 
 ---
 
@@ -39,8 +42,8 @@ After you add or edit a `vx.config.ts`, run `vx lock` and commit the lock.
 vx lock
 ```
 
-```text
-✓ vx lock  2 project configs → .vx/projects.lock.json
+```ansi
+[38;2;34;197;94m✓[0m [1mvx lock[0m  2 project configs → .vx/projects.lock.json
 ```
 
 <Aside type="tip">
@@ -51,8 +54,10 @@ vx lock
 
 ## `.vx/workspace.ts`
 
-`.vx/workspace.ts` is required: the nearest one up from where you run,
-within your git checkout, marks the workspace root (`vx init` writes it).
+`.vx/workspace.ts` marks the workspace root, and every workspace needs
+one. vx uses the nearest one above where you run, inside your git
+checkout. `vx init` writes it.
+
 With no plugins in it, vx runs and caches on this machine.
 
 ```ts title=".vx/workspace.ts"
@@ -71,10 +76,12 @@ export default defineWorkspace({
 })
 ```
 
-Each setting has one path, and its variable and flag come from it:
-`run.timeout` is `VX_RUN_TIMEOUT` and `vx run --timeout`. A flag beats the
-variable, which beats this file. Durations and sizes carry a unit
-(`'30s'`, `'10m'`, `'32KiB'`). All of them: [the settings table](../../schema/workspace/#settings).
+Each setting's variable and flag come from its path: `run.timeout` is
+`VX_RUN_TIMEOUT` and `vx run --timeout`. A flag beats the variable, and
+the variable beats this file.
+
+Durations and sizes carry a unit: `'30s'`, `'10m'`, `'32KiB'`. Every
+setting is in [the settings table](../../schema/workspace/#settings).
 
 ---
 
@@ -96,8 +103,10 @@ variable, which beats this file. Durations and sizes carry a unit
 | `watch.poll` | `vx watch` polls instead of using the OS watcher |
 
 For a timeout, the first one set wins: a task's `exec.timeout`, then
-`--timeout`, then `VX_RUN_TIMEOUT`, then `run.timeout`. Only `exec.timeout`
-is in the cache key. There is no `globalInputs`: import a shared array instead.
+`--timeout`, then `VX_RUN_TIMEOUT`, then `run.timeout`. Only
+`exec.timeout` is in the cache key.
+
+To share inputs between projects, import one array into each config.
 
 </details>
 

@@ -28,11 +28,28 @@ const ENV = {
   GIT_COMMITTER_EMAIL: 't@t',
   NO_COLOR: '1',
 }
+// An `ansi` sample is pasted with vx's colours (owner, 2026-10-26: never
+// plain white output on the site), so it is compared escape for escape.
+const { NO_COLOR: _nc, ...UNCOLOURED } = ENV
+const COLOUR = { ...UNCOLOURED, FORCE_COLOR: '1' }
 let root = ''
 
 function vx(...args: string[]): { code: number | null; stdout: string; stderr: string } {
   const r = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: root, env: ENV })
   return { code: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() }
+}
+
+function vxColour(...args: string[]): { code: number | null; stderr: string } {
+  const r = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: root, env: COLOUR })
+  return { code: r.exitCode, stderr: r.stderr.toString() }
+}
+
+/** The fenced block after the one whose line is `command`. */
+function printed(page: string, command: string): string {
+  const at = page.indexOf(`\n${command}\n`)
+  expect(at).toBeGreaterThan(-1)
+  const after = page.indexOf('```', page.indexOf('```', at) + 3)
+  return /```[^\n]*\n([\s\S]*?)\n```/.exec(page.slice(after))![1]!
 }
 
 function git(...args: string[]): void {
@@ -122,9 +139,9 @@ describe('the guides show what vx prints', () => {
 
   it("troubleshooting's filter typo is what vx prints", () => {
     const page = readFileSync(path.join(GUIDES, 'troubleshooting.mdx'), 'utf8')
-    const run = vx('run', 'build', '--filter', '@demo/ap')
+    const run = vxColour('run', 'build', '--filter', '@demo/ap')
     expect(run.code).toBe(1)
-    expect(sample(page, '$ vx run build --filter @demo/ap')).toBe(run.stderr.trim())
+    expect(printed(page, 'vx run build --filter @demo/ap')).toBe(run.stderr.trim())
   })
 })
 
@@ -138,16 +155,13 @@ describe('the one-task guides show what vx prints', () => {
     const r = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: two, env: ENV })
     return { code: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() }
   }
+  const runColour = (...args: string[]) => {
+    const r = Bun.spawnSync({ cmd: [process.execPath, BIN, ...args], cwd: two, env: COLOUR })
+    return { code: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() }
+  }
   const sh = (...args: string[]) =>
     expect(Bun.spawnSync({ cmd: args, cwd: two, env: ENV }).exitCode).toBe(0)
   const guide = (rel: string) => readFileSync(path.join(GUIDES, rel), 'utf8')
-  /** The fenced block after the one holding `command`. */
-  const printed = (page: string, command: string): string => {
-    const at = page.indexOf(`\n${command}\n`)
-    expect(at).toBeGreaterThan(-1)
-    const after = page.indexOf('```', page.indexOf('```', at) + 3)
-    return /```[^\n]*\n([\s\S]*?)\n```/.exec(page.slice(after))![1]!
-  }
   /** What changes run to run in a plan: its keys and predicted times too. */
   const plan = (text: string) =>
     stable(text)
@@ -180,7 +194,7 @@ describe('the one-task guides show what vx prints', () => {
       await writeFile(path.join(two, `packages/${name}/src/index.ts`), '1\n')
     }
     sh('git', 'init', '-q', '-b', 'main')
-    const lock = run('lock')
+    const lock = runColour('lock')
     expect(lock.code).toBe(0)
     locked = (lock.stdout + lock.stderr).trim()
     sh('git', 'add', '-A')
@@ -217,9 +231,9 @@ describe('the one-task guides show what vx prints', () => {
     const page = guide('ci/check-the-lock.md')
     const file = path.join(two, 'packages/ui/vx.config.ts')
     await writeFile(file, config('ui', '').replace("'src/**'", "'src/**', 'package.json'"))
-    const drift = run('lock', '--check')
+    const drift = runColour('lock', '--check')
     await writeFile(file, config('ui', ''))
-    const ok = run('lock', '--check')
+    const ok = runColour('lock', '--check')
     expect(drift.code).toBe(1)
     expect(printed(page, 'vx lock --check')).toBe(drift.stderr.trim())
     expect(ok.code).toBe(0)
@@ -346,7 +360,7 @@ describe("the quickstart's output", () => {
   it('the second run is up-to-date, and vx why names the edited file', async () => {
     const page = readFileSync(path.resolve(GUIDES, '..', 'quickstart.mdx'), 'utf8')
     // Each sits in a step, indented three spaces.
-    const hit = /```text frame="terminal" title="second run"\n {3}(.*)\n/.exec(page)![1]!
+    const hit = /```ansi title="second run"\n(?: {3}.*\n)*? {3}(.*└─.*)\n/.exec(page)![1]!
     const verdict = /```text frame="terminal"\n {3}( +verdict .*)\n/.exec(page)![1]!
     const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-site-quickstart-'))
     try {
@@ -374,10 +388,16 @@ describe("the quickstart's output", () => {
       at('git', 'add', '-A')
       at('git', 'commit', '-qm', 'one')
       const run = (...args: string[]) => at(process.execPath, BIN, ...args)
+      const runColour = (...args: string[]) =>
+        Bun.spawnSync({
+          cmd: [process.execPath, BIN, ...args],
+          cwd: dir,
+          env: COLOUR,
+        }).stdout.toString() as string
       run('lock')
       run('run', 'build')
       const ms = (t: string) => t.replace(/\(\d+ms\)/g, '(<ms>)')
-      expect(ms(run('run', 'build')).split('\n')).toContain(ms(hit))
+      expect(ms(runColour('run', 'build')).split('\n')).toContain(ms(hit))
       await writeFile(path.join(dir, 'src/index.ts'), '2\n')
       run('run', 'build')
       expect(run('why', 'build').split('\n')).toContain(verdict)

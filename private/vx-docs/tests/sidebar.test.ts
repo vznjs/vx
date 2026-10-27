@@ -27,15 +27,17 @@ const DOCS_PAGES: [string, string][] = [
   ['What is vx?', 'docs/'],
   ['Quickstart', 'quickstart/'],
   ['Upgrading to 1.0', 'guides/upgrading/'],
+  ['AI agents', 'docs/agents/'],
   ['Workspace', 'docs/workspace/'],
   ['Tasks', 'docs/tasks/'],
   ['Caching', 'docs/caching/'],
   ['Environment variables', 'docs/environment-variables/'],
   ['Dev servers', 'docs/dev-servers/'],
-  ['Lockfiles', 'docs/lockfiles/'],
   ['Running tasks', 'docs/running-tasks/'],
   ['Sandboxing', 'docs/sandboxing/'],
   ['CI', 'docs/ci/'],
+  ['Plugins', 'docs/plugins/'],
+  ['Lockfiles', 'docs/lockfiles/'],
   ['Remote cache', 'docs/remote-cache/'],
   ['Distributed task execution', 'docs/distributed-task-execution/'],
   ['Remote execution', 'docs/remote-execution/'],
@@ -43,11 +45,10 @@ const DOCS_PAGES: [string, string][] = [
   ['Cache server', 'docs/servers/cache/'],
   ['History server', 'docs/servers/history/'],
   ['DTE server', 'docs/servers/dte/'],
-  ['Plugins', 'docs/plugins/'],
   ['Write a plugin', 'docs/writing-plugins/'],
-  ['AI agents', 'docs/agents/'],
 ]
-const DOCS_GROUPS = ['Get started', 'Configure', 'Run', 'Servers', 'Extend']
+// Everything that is not core sits under Plugins (owner, 2026-10-26).
+const DOCS_GROUPS = ['Get started', 'Configure', 'Run', 'Plugins']
 const GUIDES_GROUPS = ['Get started', 'Caching', 'Running', 'CI', 'Debugging']
 const REFERENCE_GROUPS = ['CLI', 'Config', 'Benchmarks', 'Compare', 'Plugins', 'Protocols']
 const INTERNALS_TOP = ['overview/', 'architecture/', 'optimizations/', 'patterns/', 'flows/']
