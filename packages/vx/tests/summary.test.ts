@@ -171,8 +171,7 @@ describe('formatRunSummary', () => {
     )
   })
 
-  it("repeats the run's warnings on a warn row above info, each once, first lines, the rest counted", () => {
-    const long = 'x'.repeat(150)
+  it("counts the run's distinct warnings on a warn row above info", () => {
     const lines = formatRunSummary(
       [outcome('a#x', 'success')],
       10,
@@ -184,18 +183,14 @@ describe('formatRunSummary', () => {
         warnings: () => [
           '\x1b[31m[vx] remote cache: upload a1 failed: HTTP 403\x1b[0m',
           '[vx] remote cache: upload a1 failed: HTTP 403',
-          `${long}\nsecond line`,
-          'third',
-          'fourth',
+          'second\nwith a second line',
+          '',
         ],
       },
     )
     const at = lines.findIndex((l) => l.startsWith('  warn'))
-    expect(lines.slice(at, at + 5)).toEqual([
-      '  warn      [vx] remote cache: upload a1 failed: HTTP 403',
-      `            ${'x'.repeat(99)}\u2026`,
-      '            third',
-      '            1 more above',
+    expect(lines.slice(at, at + 2)).toEqual([
+      '  warn      2 warnings above',
       expect.stringMatching(/^ {2}info/),
     ])
   })
