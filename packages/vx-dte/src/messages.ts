@@ -195,21 +195,6 @@ export type WiredResult = Omit<ExecuteResult, 'violations' | 'outputs' | 'stdout
 }
 
 /**
- * Whether a task asking `need` begins beside the work holding `used` of
- * a worker's `of`: while a core is free and its memory fits. Packed only
- * to whole needs, a worker kept the cores no queued task fit: main's
- * booked 3.2 of 4 and used 2.6 (2026-10-23). A task asking the whole
- * worker waits for an idle one.
- */
-export function shares(
-  used: { readonly cores: number; readonly memory: number },
-  need: { readonly cores: number; readonly memory: number },
-  of: { readonly cores: number; readonly memory: number },
-): boolean {
-  return need.cores < of.cores && used.cores < of.cores && used.memory + need.memory <= of.memory
-}
-
-/**
  * Names whose value is the worker's own: the orchestrator sends one only
  * when a task's `env.define` sets it, a value its key folds.
  */

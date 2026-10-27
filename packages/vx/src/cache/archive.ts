@@ -1681,7 +1681,7 @@ async function settle(renames: readonly Promise<void>[]): Promise<void> {
 let tmpSeq = 0
 
 /** `.vx/<STAGING>/`: where restores stage, each process in its own `<pid>-0` directory. */
-export const STAGING = 'tmp'
+const STAGING = 'tmp'
 
 const stagingMade = new Set<string>()
 
