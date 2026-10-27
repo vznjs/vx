@@ -25,10 +25,10 @@ export function serverUrlOf(
 ): string | undefined {
   const url = (option ?? env.VX_HISTORY_URL)?.replace(/\/+$/, '')
   if (url === undefined || url === '') return undefined
-  if (!/^https?:\/\//.test(url)) throw new Error(`vxHistory(): server must be http(s), got ${url}`)
+  if (!/^https?:\/\//.test(url)) throw new Error(`vxHistory(): url must be http(s), got ${url}`)
   // Each route is the server's /v1/…: one that names /v1 asked /v1/v1/…, and every answer was a 404.
   if (url.endsWith('/v1'))
-    throw new Error(`vxHistory(): server is the server's base, without /v1: ${url.slice(0, -3)}`)
+    throw new Error(`vxHistory(): url is the server's base, without /v1: ${url.slice(0, -3)}`)
   return url
 }
 
@@ -108,7 +108,7 @@ interface Limits {
   readonly maxQueryHashes: number
 }
 
-/** `vxHistory({ serverHeaders })` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
+/** `vxHistory({ headers })` with unset values left out; a name or value no header can carry, or `authorization`, refused. */
 export function proxyHeaders(
   headers: Record<string, string | undefined> | undefined,
 ): Record<string, string> {
@@ -116,7 +116,7 @@ export function proxyHeaders(
   for (const [name, value] of Object.entries(headers ?? {})) {
     if (value === undefined) continue
     if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) || name.toLowerCase() === 'authorization')
-      throw new Error(`vxHistory(): serverHeaders cannot set "${name}"`)
+      throw new Error(`vxHistory(): headers cannot set "${name}"`)
     if (typeof value !== 'string' || /[\r\n\0]/.test(value))
       throw new Error(`vxHistory(): header "${name}" must be one line of text`)
     out[name] = value

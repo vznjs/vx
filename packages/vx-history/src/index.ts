@@ -89,19 +89,19 @@ export interface VxHistoryOptions {
    * `VX_HISTORY_TOKEN`) each run asks it for its tasks' numbers, without
    * waiting, and sends its own timings once at its end.
    */
-  readonly server?: string
+  readonly url?: string
   /**
-   * Headers every request to `server` carries, for a proxy in front of it
+   * Headers every request to `url` carries, for a proxy in front of it
    * (`{ 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }`, an
    * Access service token, 2026-10-25). An unset value is left out;
    * `authorization` stays the CI token's.
    */
-  readonly serverHeaders?: Record<string, string | undefined>
+  readonly headers?: Record<string, string | undefined>
   /**
-   * The CI issuer whose tokens `server` takes, as they name it
+   * The CI issuer whose tokens `url` takes, as they name it
    * (`https://token.actions.githubusercontent.com`), and the repository at
-   * it, `org/name`: required with a server. Every request names them by
-   * their hashes (2026-10-25: the user names them, nothing guesses).
+   * it, `org/name`: required with a server. The run's query names them
+   * (2026-10-25: the user names them, nothing guesses).
    */
   readonly issuer?: string
   readonly repository?: string
@@ -246,8 +246,8 @@ const VX_HISTORY_KEYS: PluginOptionKinds<VxHistoryOptions> = {
   assume: 'object',
   file: 'string',
   defaultBranch: 'string',
-  server: 'string',
-  serverHeaders: 'object',
+  url: 'string',
+  headers: 'object',
   issuer: 'string',
   repository: 'string',
 }
@@ -266,7 +266,7 @@ function namedOf(issuer: unknown, repository: unknown): Named {
 export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   refuseUnknownOptions('vxHistory()', options, VX_HISTORY_KEYS)
   const named =
-    options.server === undefined && options.issuer === undefined && options.repository === undefined
+    options.url === undefined && options.issuer === undefined && options.repository === undefined
       ? undefined
       : namedOf(options.issuer, options.repository)
   // `'any'` above lets `null` through, and every run then failed in
@@ -396,13 +396,13 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
   let remote: HistoryServer | undefined
   // Loaded only when a server is named: every run evaluates the config.
   const serverOf = async (): Promise<HistoryServer | undefined> => {
-    if ((options.server ?? Bun.env.VX_HISTORY_URL ?? '') === '') return undefined
+    if ((options.url ?? Bun.env.VX_HISTORY_URL ?? '') === '') return undefined
     const m = await import('./history-server.js')
-    const url = m.serverUrlOf(options.server)
+    const url = m.serverUrlOf(options.url)
     if (url === undefined) return undefined
     // VX_HISTORY_URL alone: the workspace names no repository to ask for.
     if (named === undefined) return undefined
-    return new m.HistoryServer(url, named, Bun.env, fetch, m.proxyHeaders(options.serverHeaders))
+    return new m.HistoryServer(url, named, Bun.env, fetch, m.proxyHeaders(options.headers))
   }
   // What the run sends the history server at its end, by task definition.
   let reported: { timings: Map<string, ServerTiming>; warn: (m: string) => void } | undefined
@@ -447,7 +447,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
             ? '[vx] vx-history: this job gets no OIDC token for the history server (give it `permissions: id-token: write`): it reads only'
             : '[vx] vx-history: no CI token for the history server (name an id_tokens entry VX_HISTORY_TOKEN): it reads only',
         )
-    } else if ((options.server ?? Bun.env.VX_HISTORY_URL ?? '') !== '') {
+    } else if ((options.url ?? Bun.env.VX_HISTORY_URL ?? '') !== '') {
       ctx.warn(
         '[vx] vx-history: VX_HISTORY_URL names a server, but vxHistory() names no issuer and repository: the server is not asked',
       )
