@@ -24,52 +24,35 @@ CI job's carries its own OIDC token: there are no stored tokens
 `VX_CACHE_TOKEN`). The token must be of the repository named, and it
 decides where the job writes: its own branch's scope, never another's.
 
-- A ref a rule names (`refs/heads/main`) is protected: only a job
-  matching the rule writes it. Any other job on it only reads.
-- Any other job of the same repository writes its branch's own scope,
-  which only runs of that branch read: a pull request's work never
-  reaches main's runs.
-- A job of another repository is refused.
+`ALLOW` says who may take part, the same string the DTE relay reads:
+entries separated by spaces, each `issuer:owner/repo:workflow`. For
+example:
 
-`TRUST` is a JSON list of rules. Each names the issuer (`iss`), the
-repository's name (`repository` on GitHub, `project_path` on GitLab: `org/name`, any case), the
-refs it protects (`ref`, `ref_path` on GitLab) and any other claim the
-job writing them holds. A value is a string (`*` matches anything) or a
-list of them. With `TRUST` empty, every request is refused. For example:
-
-```json
-[
-  {
-    "iss": "https://token.actions.githubusercontent.com",
-    "repository": "acme/app",
-    "event_name": ["push", "merge_group"],
-    "ref": ["refs/heads/main", "refs/heads/gh-readonly-queue/main/*"],
-    "ref_protected": "true"
-  },
-  {
-    "iss": "https://gitlab.com",
-    "project_path": "acme/web",
-    "ref_path": "refs/heads/main",
-    "ref_protected": "true",
-    "pipeline_source": ["push", "schedule"]
-  }
-]
+```sh
+ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml https://gitlab.com:acme/web:.gitlab-ci.yml'
 ```
 
-Name `event_name`: `pull_request_target` and `issue_comment` runs carry
-main's `ref` while running a pull request's code. A merge queue's run
-(`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`) writes its base
-branch's scope before its code lands: queued code is trusted code.
+Only jobs of a workflow it names get in; any other job is refused. With
+`ALLOW` empty, every request is refused. A job writes its branch's own
+scope, which only runs of that branch read:
+
+- A push writes its branch, so a run of `main` writes `main`.
+- A pull request writes its head branch: its work never reaches `main`'s
+  runs.
+- A merge queue's run (`refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`)
+  writes its base branch, since queued code is about to land.
+- A `pull_request_target` run writes nothing: it may run a fork's code.
+
 `AUDIENCE` is the `aud` a token must name, by default the origin the
 server is reached at, which is what `vxCache()` asks GitHub for.
 `READ_ACCESS=public` lets a request with no token read a repository
-`TRUST` names (a developer's laptop): it writes nothing. Unset, a
+`ALLOW` names (a developer's laptop): it writes nothing. Unset, a
 request with no token is `401`.
 
 ## On Bun
 
 ```sh
-TRUST='[…]' \
+ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' \
 S3_BUCKET=vx-cache S3_ENDPOINT=https://s3.example.com \
 S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… \
 bun packages/vx-cache-server/src/bun.ts --port 8080
@@ -85,7 +68,7 @@ From the repo root:
 
 ```sh
 docker build -f packages/vx-cache-server/Dockerfile -t vx-cache-server .
-docker run -p 8080:8080 -e TRUST='[…]' -e S3_BUCKET=… -e S3_ENDPOINT=… \
+docker run -p 8080:8080 -e ALLOW='…' -e S3_BUCKET=… -e S3_ENDPOINT=… \
   -e S3_ACCESS_KEY_ID=… -e S3_SECRET_ACCESS_KEY=… vx-cache-server
 ```
 
@@ -102,7 +85,7 @@ the limits. Every check names them to clients (`vx-max-*`), and
 
 ## On Cloudflare Workers
 
-From this directory, with `TRUST` filled in `wrangler.jsonc`:
+From this directory, with `ALLOW` filled in `wrangler.jsonc`:
 
 ```sh
 bun install
@@ -155,7 +138,7 @@ over a bucket of your own (`src/index.ts`):
   `<issuer>/<repository>/<scope>/<hash>`, issuer and repository each the first 128 bits
   of their SHA-256 in hex and `scope` the ref's hash as a client sends
   it (PROTOCOL.md § Keys), so no segment is a plain value.
-- `TRUST` and the CI token check are [`@vzn/vx-devtools`](https://github.com/vznjs/vx/tree/main/packages/vx-devtools)'s,
+- `ALLOW` and the CI token check are [`@vzn/vx-devtools`](https://github.com/vznjs/vx/tree/main/packages/vx-devtools)'s,
   the check every vx server shares.
 - `SCOPE_HEADER` (`vx-scope`) and `LIMIT_HEADERS` are the header names
   (PROTOCOL.md).

@@ -55,9 +55,10 @@ scopes }` (M: "checks can ask many scopes"), up to `maxCheckHashes`
 ## Access
 
 - Shipped: CI OIDC tokens only (`@vzn/vx-devtools`, shared with vx's other
-  servers): a token writes its own branch's scope; a ref a `TRUST` rule
-  names is protected, written only by a token matching the rule; another
-  repository gets nothing.
+  servers), admitted by `ALLOW` (`issuer:owner/repo:workflow`, the
+  relay's string): a token writes its own branch's scope, a
+  `pull_request_target` run nothing; another repository or workflow
+  gets nothing.
 
 ## Next
 

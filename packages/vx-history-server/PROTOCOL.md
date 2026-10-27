@@ -17,16 +17,16 @@ Every request names its repository as vx-cache-server's do:
 `vx-issuer` and `vx-repository`, the hashes of the CI issuer's URL and
 of its `org/name` (one missing is `400`). A request's
 `Authorization: Bearer <token>` is a CI job's OIDC token, checked as
-`@vzn/vx-devtools` checks it (the same rules as vx-cache-server's
-`TRUST`): a token of another repository than the one named is `403`;
+`@vzn/vx-devtools` checks it (the same `ALLOW` as vx-cache-server's):
+a token of another repository than the one named, or of a workflow
+`ALLOW` does not name, is `403`;
 its repository is what it reads and writes; it writes its branch (`refs/heads/<branch>`; a merge
 queue's run, `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, its base
-branch), and one
-on a ref a rule protects that matches no rule reads only. A scope is its
+branch); a `pull_request_target` run reads only. A scope is its
 ref's hash: the first 128 bits of the SHA-256 of its UTF-8, 32 lowercase
 hex digits; no ref goes on the wire plain, and the server hashes the
 token's ref the same way for a write. A server whose `READ_ACCESS` is
-`public` takes a query with no token for a repository its rules name;
+`public` takes a query with no token for a repository its `ALLOW` names;
 an upload with none is `403`. A row is keyed by issuer,
 repository name, scope and task hash, the first three stored hashed,
 never plain.

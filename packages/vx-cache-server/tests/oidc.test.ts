@@ -3,7 +3,7 @@
 
 import { beforeAll, describe, expect, it } from 'bun:test'
 import { exportJWK, generateKeyPair, type JWTPayload, SignJWT } from 'jose'
-import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
+import { oidcAuth, parseAllow } from '@vzn/vx-devtools'
 import { createCacheServer } from '../src/server.js'
 import { scopeOf } from './conformance.js'
 import { NAMED } from './issuer.js'
@@ -11,18 +11,8 @@ import { memBlobs } from './mem-blobs.js'
 
 const GITHUB = 'https://token.actions.githubusercontent.com'
 const AUD = 'https://cache.example.com'
-const trust = parseTrust(
-  JSON.stringify([
-    {
-      iss: GITHUB,
-      // A name, matched whatever its case (M, 2026-10-25: org/name, not id).
-      repository: 'Acme/App',
-      event_name: ['push', 'merge_group'],
-      ref: ['refs/heads/main', 'refs/heads/gh-readonly-queue/main/*'],
-      ref_protected: 'true',
-    },
-  ]),
-)
+// A name, matched whatever its case (M, 2026-10-25: org/name, not id).
+const allow = parseAllow(`${GITHUB}:Acme/App:ci.yml`)
 
 let sign: (claims: JWTPayload, aud?: string) => Promise<string>
 let handle: (req: Request) => Promise<Response>
@@ -32,7 +22,11 @@ beforeAll(async () => {
   const { privateKey, publicKey } = await generateKeyPair('RS256')
   const jwk = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256' }
   sign = (claims, aud = AUD) =>
-    new SignJWT({ repository: 'acme/app', ...claims })
+    new SignJWT({
+      repository: 'acme/app',
+      job_workflow_ref: 'acme/app/.github/workflows/ci.yml@refs/heads/main',
+      ...claims,
+    })
       .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
       .setIssuer(GITHUB)
       .setAudience(aud)
@@ -42,7 +36,7 @@ beforeAll(async () => {
   handle = createCacheServer({
     blobs: memBlobs(),
     authorize: oidcAuth({
-      trust,
+      allow,
       audience: AUD,
       fetchJson: async (url) =>
         url.endsWith('/.well-known/openid-configuration')
@@ -73,7 +67,7 @@ const detail = async (res: Response) =>
 const MAIN = { event_name: 'push', ref: 'refs/heads/main', ref_protected: 'true' }
 
 describe('CI OIDC tokens', () => {
-  it('a token matching a rule writes the protected ref it runs on', async () => {
+  it('a job of a workflow ALLOW names writes the ref it runs on', async () => {
     expect((await put(await sign(MAIN), 'a1')).status).toBe(204)
     expect(await status('a1')).toBe(200)
   })
@@ -90,7 +84,7 @@ describe('CI OIDC tokens', () => {
     expect(await status('b2', 'refs/heads/feature')).toBe(200)
   })
 
-  it("a merge queue's token writes its base branch, and only by matching a rule", async () => {
+  it("a merge queue's token writes its base branch", async () => {
     const SHA = 'a'.repeat(40)
     const queue = {
       event_name: 'merge_group',
@@ -99,10 +93,6 @@ describe('CI OIDC tokens', () => {
     }
     expect((await put(await sign(queue), 'e5')).status).toBe(204)
     expect(await status('e5')).toBe(200)
-    // Another event on the same ref matches no rule: main is protected.
-    expect(
-      (await put(await sign({ ...queue, event_name: 'workflow_dispatch' }), 'e6')).status,
-    ).toBe(403)
     // Only the exact pattern is stripped.
     const near = { ...queue, ref: 'refs/heads/gh-readonly-queue/main/pr-12-xyz' }
     expect((await put(await sign(near), 'e7')).status).toBe(204)
@@ -112,35 +102,37 @@ describe('CI OIDC tokens', () => {
 
   // A pull_request_target run carries a fork's head_ref, named by the
   // fork: it wrote that branch's scope, so a fork poisoned a branch of the
-  // same name (found 2026-10-26).
-  it("a pull_request_target token writes its base ref, never the fork's branch", async () => {
+  // same name (found 2026-10-26). Its ref is the base: a fork's code never
+  // writes it either.
+  it('a pull_request_target token writes nothing', async () => {
     const target = await sign({
       event_name: 'pull_request_target',
       ref: 'refs/heads/main',
       head_ref: 'feature',
     })
     expect(await detail(await put(target, 'f8'))).toEqual([403, 'this request reads only'])
+    expect(await status('f8')).toBe(404)
     expect(await status('f8', 'refs/heads/feature')).toBe(404)
   })
 
-  it('a job matching no rule on a protected ref writes nothing', async () => {
-    const res = await put(await sign({ ...MAIN, event_name: 'workflow_dispatch' }), 'c3')
-    expect(await detail(res)).toEqual([403, 'this request reads only'])
-    const pr = await sign({
-      event_name: 'pull_request',
-      head_ref: 'main',
-      ref: 'refs/pull/8/merge',
+  it('refuses a job of a workflow ALLOW does not name', async () => {
+    const other = await sign({
+      ...MAIN,
+      job_workflow_ref: 'acme/app/.github/workflows/release.yml@refs/heads/main',
     })
-    expect((await put(pr, 'c3')).status).toBe(403)
+    expect(await detail(await put(other, 'c3'))).toEqual([
+      403,
+      "job_workflow_ref acme/app/.github/workflows/release.yml is not in this server's ALLOW",
+    ])
     expect(await status('c3')).toBe(404)
   })
 
   it('refuses another repository, another audience and a forged signature', async () => {
-    expect(await detail(await put(await sign({ ...MAIN, repository: '9' }), 'd4'))).toEqual([
+    expect(await detail(await put(await sign({ ...MAIN, repository: 'acme/9' }), 'd4'))).toEqual([
       403,
-      "repository 9 is not in this server's TRUST",
+      "repository acme/9 is not in this server's ALLOW",
     ])
-    // A token of a repository TRUST names, sent naming another.
+    // A token of a repository ALLOW names, sent naming another.
     const named = { ...NAMED, 'vx-repository': scopeOf('acme/other') }
     const res = await handle(
       new Request(`${AUD}/v1/artifacts/d4`, {
@@ -169,7 +161,7 @@ describe('READ_ACCESS=public', () => {
   const open = (readAccess?: string) =>
     createCacheServer({
       blobs: memBlobs(),
-      authorize: oidcAuth({ trust, readAccess, fetchJson: async () => ({}) }),
+      authorize: oidcAuth({ allow, readAccess, fetchJson: async () => ({}) }),
     })
   const tokenless = (
     h: (req: Request) => Promise<Response>,
@@ -209,7 +201,7 @@ describe('READ_ACCESS=public', () => {
     expect(pulled).toBeLessThan(10)
   })
 
-  it('reads a repository TRUST names with no token, and writes nothing', async () => {
+  it('reads a repository ALLOW names with no token, and writes nothing', async () => {
     const h = open('public')
     expect((await tokenless(h, NAMED)).status).toBe(404)
     const write = await tokenless(h, NAMED, {
@@ -219,7 +211,7 @@ describe('READ_ACCESS=public', () => {
     })
     expect(await detail(write)).toEqual([403, 'this request reads only'])
     const other = await tokenless(h, { ...NAMED, 'vx-repository': scopeOf('acme/other') })
-    expect(await detail(other)).toEqual([403, "the repository named is not in this server's TRUST"])
+    expect(await detail(other)).toEqual([403, "the repository named is not in this server's ALLOW"])
   })
 
   it('takes no tokenless read unless set, and no value but public', async () => {
@@ -228,14 +220,14 @@ describe('READ_ACCESS=public', () => {
   })
 })
 
-describe('a server that trusts no CI', () => {
-  it('refuses every request while it trusts no CI', async () => {
+describe('a server that admits no CI', () => {
+  it('refuses every request while ALLOW is empty', async () => {
     const none = createCacheServer({
       blobs: memBlobs(),
-      authorize: oidcAuth({ trust: [] }),
+      authorize: oidcAuth({ allow: [] }),
     })
     const res = await none(new Request(`${AUD}/v1/artifacts/abc`))
-    expect(await detail(res)).toEqual([401, 'the server trusts no CI: set TRUST'])
+    expect(await detail(res)).toEqual([401, 'the server admits no CI: set ALLOW'])
   })
 })
 
@@ -246,7 +238,7 @@ it("answers 502 while the issuer's keys cannot be read, never 401", async () => 
     const other = createCacheServer({
       blobs: memBlobs(),
       authorize: oidcAuth({
-        trust,
+        allow,
         audience: AUD,
         fetchJson: async (url) => {
           if (url.endsWith(down)) throw new Error(`${url}: 503`)

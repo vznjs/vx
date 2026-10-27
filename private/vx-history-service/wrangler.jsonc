@@ -6,11 +6,11 @@
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
   // Plain vars, never secrets (owner, 2026-10-23). CI jobs sign in with
-  // their OIDC token. TRUST: only ci.yml's own runs of main write main's
-  // rows. vx-worker.yml is left out: it may be dispatched on main to run a
-  // fork PR's code. Any other job of this repo writes its branch's rows.
+  // their OIDC token. ALLOW: only ci.yml's jobs get in; a run of main
+  // writes main's rows, a branch's run its own. vx-worker.yml is left out:
+  // it may be dispatched on main to run a fork PR's code.
   "vars": {
-    "TRUST": "[{\"iss\":\"https://token.actions.githubusercontent.com\",\"repository\":\"vznjs/vx\",\"workflow_ref\":\"vznjs/vx/.github/workflows/ci.yml@*\",\"event_name\":[\"push\",\"merge_group\",\"workflow_dispatch\"],\"ref\":[\"refs/heads/main\",\"refs/heads/gh-readonly-queue/main/*\"],\"ref_protected\":\"true\"}]",
+    "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml",
   },
   "d1_databases": [
     {

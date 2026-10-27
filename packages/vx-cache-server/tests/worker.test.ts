@@ -4,7 +4,7 @@ import { afterAll, beforeAll, expect, it } from 'bun:test'
 import path from 'node:path'
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
 import { conformance, scopeOf } from './conformance.js'
-import { GITHUB, type Issuer, issuer, JOBS, NAMED, REPO, TRUST } from './issuer.js'
+import { ALLOW_VAR, GITHUB, type Issuer, issuer, JOBS, NAMED, REPO } from './issuer.js'
 
 const MAX = 7 * 1024 * 1024
 /** The Worker's own origin, its tokens' audience. */
@@ -41,7 +41,7 @@ beforeAll(async () => {
   mf = await start({
     MAX_UPLOAD_BYTES: String(MAX),
     MAX_CHECK_HASHES: '40',
-    TRUST: JSON.stringify(TRUST),
+    ALLOW: ALLOW_VAR,
   })
   base = await mf.ready
 })
@@ -57,24 +57,20 @@ conformance('Workers with R2', {
   maxUploadBytes: MAX,
 })
 
-it('refuses every request, saying why, while TRUST, a limit or READ_ACCESS is unset or wrong', async () => {
+it('refuses every request, saying why, while ALLOW, a limit or READ_ACCESS is unset or wrong', async () => {
   for (const [bindings, status, detail] of [
-    [{ TRUST: '' }, 401, 'the server trusts no CI: set TRUST'],
+    [{ ALLOW: '' }, 401, 'the server admits no CI: set ALLOW'],
     [
-      { TRUST: '[{"iss":"https://gitlab.com"}]' },
+      { ALLOW: 'https://gitlab.com:group/app' },
       500,
-      'TRUST: rule 0: names no project_path (one repository, no *)',
+      'ALLOW: https://gitlab.com:group/app is not issuer:owner/repo:workflow',
     ],
     [
-      { TRUST: JSON.stringify(TRUST), MAX_CHECK_HASHES: '0' },
+      { ALLOW: ALLOW_VAR, MAX_CHECK_HASHES: '0' },
       500,
       'MAX_CHECK_HASHES: not a whole number above 0: 0',
     ],
-    [
-      { TRUST: JSON.stringify(TRUST), READ_ACCESS: 'yes' },
-      500,
-      'READ_ACCESS: public, or unset, not yes',
-    ],
+    [{ ALLOW: ALLOW_VAR, READ_ACCESS: 'yes' }, 500, 'READ_ACCESS: public, or unset, not yes'],
   ] as const) {
     const other = await start(bindings)
     try {
@@ -145,26 +141,12 @@ it("answers a read from the data center's cache once R2 served it", async () => 
 })
 
 it('checks 6 lookups by default: one round of the calls a request has waiting', async () => {
-  const other = await start({ TRUST: JSON.stringify(TRUST) })
+  const other = await start({ ALLOW: ALLOW_VAR })
   try {
     const res = await fetch(new URL('/v1/capabilities', await other.ready), {
       headers: { ...NAMED, authorization: `Bearer ${await iss.sign(JOBS.read, AUD)}` },
     })
     expect(((await res.json()) as { maxCheckHashes: number }).maxCheckHashes).toBe(6)
-  } finally {
-    await other.dispose()
-  }
-})
-
-// wrangler hands a var written as a JSON list in wrangler.jsonc to the
-// Worker as that list: TRUST.trim threw, and every request was a 500.
-it('takes TRUST written as a list in wrangler.jsonc', async () => {
-  const other = await start({ TRUST: JSON.parse(JSON.stringify(TRUST)) as unknown })
-  try {
-    const res = await fetch(new URL('/v1/capabilities', await other.ready), {
-      headers: { ...NAMED, authorization: `Bearer ${await iss.sign(JOBS.read, AUD)}` },
-    })
-    expect(res.status).toBe(200)
   } finally {
     await other.dispose()
   }

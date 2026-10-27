@@ -4,11 +4,11 @@
 
 export {
   type Access,
+  type Allowed,
   type Authorize,
   oidcAuth,
   type OidcOptions,
-  parseTrust,
+  parseAllow,
   Refusal,
-  type TrustRule,
 } from './oidc.js'
 export { hashPart } from './hash-part.js'

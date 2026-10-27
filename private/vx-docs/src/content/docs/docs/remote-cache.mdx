@@ -42,20 +42,13 @@ cd vx/packages/vx-cache-server
 bun install
 ```
 
-Open `wrangler.jsonc` and say which repository the server serves, in
-`TRUST`. With this rule, every GitHub Actions run of `acme/app` may use
-the cache, and only a push to `main` may write `main`'s results:
+Open `wrangler.jsonc` and say who may use the server, in `ALLOW`.
+With this, every run of `acme/app`'s `ci.yml` workflow on GitHub
+Actions may use the cache:
 
 ```jsonc title="wrangler.jsonc"
 "vars": {
-  "TRUST": [
-    {
-      "iss": "https://token.actions.githubusercontent.com",
-      "repository": "acme/app",
-      "event_name": "push",
-      "ref": "refs/heads/main"
-    }
-  ]
+  "ALLOW": "https://token.actions.githubusercontent.com:acme/app:ci.yml"
 },
 ```
 
@@ -82,7 +75,7 @@ works:
 {"code":"bad_request","message":"vx-issuer and vx-repository: the issuer's and the repository's hashes (PROTOCOL.md § Keys)"}
 ```
 
-If it says `the server trusts no CI: set TRUST`, `TRUST` is empty: fill
+If it says `the server admits no CI: set ALLOW`, `ALLOW` is empty: fill
 it in and deploy again.
 
 ## 3. Point vx at it
@@ -126,7 +119,7 @@ export default defineWorkspace({
 })
 ```
 
-`issuer` and `repository` must match your `TRUST` rule. `github()` tells
+`issuer` and `repository` must match your `ALLOW` entry. `github()` tells
 the cache which branch a run is on, so a pull request reads its own
 results first, then `main`'s.
 
@@ -173,9 +166,9 @@ bunx wrangler r2 bucket lifecycle add vx-cache all '' --expire-days 1
 
 | Run | Reads | Writes |
 | --- | --- | --- |
-| push to `main` (matches the `TRUST` rule) | `main` | `main` |
+| push to `main` | `main` | `main` |
 | pull request from `feat-x` | `feat-x`, then `main` | `feat-x` |
-| any other run on `main`, such as a manual one | `main` | nothing |
+| `pull_request_target` | `main` | nothing |
 | a laptop | nothing, unless the server sets `READ_ACCESS=public` | nothing |
 | another repository | refused | refused |
 
@@ -187,7 +180,7 @@ token; no option in your config can change it.
 
 A laptop has no CI token, so by default it reads nothing from the
 server and runs with its local cache. To let anyone who can reach the
-server read from it, set `READ_ACCESS` to `public` beside `TRUST`.
+server read from it, set `READ_ACCESS` to `public` beside `ALLOW`.
 Writes still need a CI token.
 
 To keep the server private, put Cloudflare Access or another proxy in
@@ -204,10 +197,8 @@ vx says what went wrong once, then runs on without the remote:
 
 - **`no bearer token`** on CI: the job lacks `id-token: write`. On a
   laptop it is expected; see [Your laptop](#your-laptop).
-- **`403`**: the token's repository is not in `TRUST`, or does not
-  match `vxCache({ repository })`.
-- **Nothing uploads from a run on `main`**: the run does not match the
-  rule that protects `main`. Check its `event_name` and `ref`.
+- **`403`**: the token's repository or workflow is not in `ALLOW`, or
+  the repository does not match `vxCache({ repository })`.
 
 ---
 

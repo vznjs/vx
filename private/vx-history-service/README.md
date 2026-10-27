@@ -1,13 +1,13 @@
 # @vzn/vx-history-service
 
 vznjs's own history server: [`@vzn/vx-history-server`](../../packages/vx-history-server)'s
-worker, deployed with this repo's settings, `TRUST` included, so the
+worker, deployed with this repo's settings, `ALLOW` included, so the
 server package stays generic. It runs on Workers' free plan, with D1
 (`vx-history`).
 
 No static token: CI jobs sign in with their OIDC token. Only `ci.yml`'s
-runs of `main` write `main`'s rows; any other job of this repository
-writes its branch's (`wrangler.jsonc`).
+jobs get in (`ALLOW` in `wrangler.jsonc`): a run of `main` writes `main`'s
+rows, a branch's run its own.
 
 Workers Builds deploys it on each push to `main` that touches it:
 

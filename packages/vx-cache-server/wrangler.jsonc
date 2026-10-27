@@ -5,11 +5,12 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
-  // TRUST: the CI OIDC trust rules, a list (README.md § CI tokens);
-  // empty, every request is refused with "set TRUST". AUDIENCE: the aud a
+  // ALLOW: who may take part, issuer:owner/repo:workflow entries
+  // separated by spaces (README.md § CI tokens); empty, every request is
+  // refused with "set ALLOW". AUDIENCE: the aud a
   // CI token names, unset the Worker's own origin. MAX_CHECK_HASHES
   // and MAX_UPLOAD_BYTES set the limits (PROTOCOL.md).
-  "vars": { "TRUST": [] },
+  "vars": { "ALLOW": "" },
   // Expiry is the bucket's lifecycle rules (README.md § Expiry).
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],
 }

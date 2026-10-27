@@ -1,8 +1,8 @@
 // `vx-history-server` on Cloudflare Workers, the timings in D1.
-// `wrangler.jsonc` deploys it; TRUST, AUDIENCE and TIMING_DAYS are vars in
+// `wrangler.jsonc` deploys it; ALLOW, AUDIENCE and TIMING_DAYS are vars in
 // it.
 
-import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
+import { oidcAuth, parseAllow } from '@vzn/vx-devtools'
 import { timingDaysOf } from './days.js'
 import { createHistoryServer, errorJson } from './server.js'
 import { type Db, sqliteStore } from './store.js'
@@ -19,11 +19,11 @@ export interface D1Database {
 
 export interface Env {
   readonly DB: D1Database
-  /** The CI repositories served and the refs they protect (`parseTrust`), a JSON list. */
-  readonly TRUST?: string | readonly unknown[]
+  /** Who may take part (`parseAllow`): `issuer:owner/repo:workflow` entries, space separated. */
+  readonly ALLOW?: string
   /** The `aud` a CI token names; unset, the origin the Worker is reached at. */
   readonly AUDIENCE?: string
-  /** `public`: a request with no token reads a repository TRUST names. */
+  /** `public`: a request with no token reads a repository ALLOW names. */
   readonly READ_ACCESS?: string
   /** Days a task's timings outlive its last report (default 30). */
   readonly TIMING_DAYS?: string
@@ -53,14 +53,20 @@ let made: { key: string; handle: (req: Request) => Promise<Response> } | undefin
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
-    const key = [trustOf(env), env.AUDIENCE, env.READ_ACCESS, env.TIMING_DAYS].join('\0')
+    const key = [env.ALLOW, env.AUDIENCE, env.READ_ACCESS, env.TIMING_DAYS].join('\0')
     if (made?.key !== key) {
+      let allow
+      try {
+        allow = parseAllow(env.ALLOW ?? '')
+      } catch (err) {
+        return errorJson(500, `ALLOW: ${(err as Error).message}`)
+      }
       let authorize
       let timingDays
       try {
         timingDays = timingDaysOf(env.TIMING_DAYS)
         authorize = oidcAuth({
-          trust: parseTrust(trustOf(env)),
+          allow,
           readAccess: env.READ_ACCESS,
           ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),
         })
@@ -78,16 +84,4 @@ export default {
     }
     return made.handle(req)
   },
-}
-
-/**
- * `TRUST` as `parseTrust` reads it: wrangler hands a var written as a JSON
- * list in `wrangler.jsonc` to the Worker as that list, not as text.
- */
-function trustOf(env: Env): string {
-  return typeof env.TRUST === 'string'
-    ? env.TRUST
-    : env.TRUST === undefined
-      ? ''
-      : JSON.stringify(env.TRUST)
 }

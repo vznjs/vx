@@ -6,12 +6,12 @@
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
   // Plain vars, never secrets (owner, 2026-10-23). CI jobs sign in with
-  // their OIDC token. TRUST: only ci.yml's own runs of
-  // main (pushed, queued or dispatched) write main's scope, which every run reads after its own. vx-worker.yml is left out: it may be
-  // dispatched on main to run a fork PR's code. Any other job of this repo
-  // writes its branch's scope.
+  // their OIDC token. ALLOW: only ci.yml's jobs get in; a run of main
+  // writes main's scope, which every run reads after its own, and a
+  // branch's run its own. vx-worker.yml is left out: it may be dispatched
+  // on main to run a fork PR's code, and writes with its run's lent token.
   "vars": {
-    "TRUST": "[{\"iss\":\"https://token.actions.githubusercontent.com\",\"repository\":\"vznjs/vx\",\"workflow_ref\":\"vznjs/vx/.github/workflows/ci.yml@*\",\"event_name\":[\"push\",\"merge_group\",\"workflow_dispatch\"],\"ref\":[\"refs/heads/main\",\"refs/heads/gh-readonly-queue/main/*\"],\"ref_protected\":\"true\"}]",
+    "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml",
   },
   // Expiry: one bucket lifecycle rule, every object after 1 day
   // (README): names are hashed, so no prefix tells main from a branch.
@@ -23,10 +23,10 @@
   },
   // A PR that changes the server runs on Workers Builds' Preview of its
   // commit (README), which inherits no production setting: the same
-  // TRUST and bucket, so a PR reads main's artifacts as the deployed one.
+  // ALLOW and bucket, so a PR reads main's artifacts as the deployed one.
   "previews": {
     "vars": {
-      "TRUST": "[{\"iss\":\"https://token.actions.githubusercontent.com\",\"repository\":\"vznjs/vx\",\"workflow_ref\":\"vznjs/vx/.github/workflows/ci.yml@*\",\"event_name\":[\"push\",\"merge_group\",\"workflow_dispatch\"],\"ref\":[\"refs/heads/main\",\"refs/heads/gh-readonly-queue/main/*\"],\"ref_protected\":\"true\"}]",
+      "ALLOW": "https://token.actions.githubusercontent.com:vznjs/vx:ci.yml",
     },
     "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "vx-cache" }],
     "observability": {

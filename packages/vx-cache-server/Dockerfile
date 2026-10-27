@@ -1,6 +1,6 @@
 # vx-cache-server as a container, built from the repo root:
 #   docker build -f packages/vx-cache-server/Dockerfile -t vx-cache-server .
-#   docker run -p 8080:8080 -e TRUST='[…]' -e S3_BUCKET=… -e S3_ENDPOINT=… vx-cache-server
+#   docker run -p 8080:8080 -e ALLOW='https://token.actions.githubusercontent.com:acme/app:ci.yml' -e S3_BUCKET=… -e S3_ENDPOINT=… vx-cache-server
 # One bundled file: the server and the CI token check it shares with
 # vx's other servers (@vzn/vx-devtools), with jose.
 FROM oven/bun:1.4.4-slim AS build

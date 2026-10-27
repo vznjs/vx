@@ -9,7 +9,7 @@ const relay = process.env['VX_DTE_RELAY']
 // A PR that changes the cache server runs on its Preview (ci.yml), and
 // hands it to the workers.
 const cacheUrl = process.env['VX_CACHE_URL'] || 'https://vx-cache.exelord.workers.dev'
-// What our servers' TRUST names: every request names it, hashed.
+// What our servers' ALLOW names: every request names it, hashed.
 const repo = { issuer: 'https://token.actions.githubusercontent.com', repository: 'vznjs/vx' }
 
 export default defineWorkspace({

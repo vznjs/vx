@@ -17,13 +17,13 @@ import {
   issuer,
   READ_JOB,
   REPO,
-  TRUST,
+  ALLOW,
   MAIN_JOB,
 } from '../../vx-cache-server/tests/issuer.js'
 import { memBlobs } from '../../vx-cache-server/tests/mem-blobs.js'
 import { hasCiToken, resolveVxCacheConfig, vxCache, VxCacheLayer } from '../src/index.js'
 
-/** The repository the server's TRUST serves, as a workspace names it. */
+/** The repository the server's ALLOW names, as a workspace names it. */
 const NAMED = { issuer: GITHUB, repository: 'Acme/App' }
 
 let iss: Issuer
@@ -37,7 +37,7 @@ function server(maxUploadBytes = 1 << 20, readAccess?: string) {
   const seen: { method: string; path: string; body: string; scope: string | null }[] = []
   const handle = createCacheServer({
     blobs: memBlobs(blobs),
-    authorize: oidcAuth({ trust: TRUST, readAccess, fetchJson: (u) => iss.fetchJson(u) }),
+    authorize: oidcAuth({ allow: ALLOW, readAccess, fetchJson: (u) => iss.fetchJson(u) }),
     limits: { maxUploadBytes },
   })
   const srv = Bun.serve({
@@ -400,7 +400,7 @@ describe('lend', () => {
       expect(lent?.token.split('.')).toHaveLength(3)
       expect(lent!.expiresAt! - Date.now()).toBeGreaterThan(4 * 60_000)
 
-      // Its own token reads only: main's ref from a job no rule trusts.
+      // Its own token reads only: a pull_request_target job writes nothing.
       await expect(on('other').put('a1', new Blob(['x']), { durationMs: 1 })).rejects.toThrow(
         'writes off for this run',
       )

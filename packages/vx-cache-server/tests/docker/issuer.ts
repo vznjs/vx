@@ -1,5 +1,5 @@
 // The CI issuer and the bucket the container uses, on the host's loopback:
-// it serves its keys and an S3 bucket, and prints the TRUST naming it;
+// it serves its keys and an S3 bucket, and prints the ALLOW naming it;
 // conformance.docker.ts signs with the same key (written beside it).
 import { exportJWK, exportPKCS8, generateKeyPair } from 'jose'
 import path from 'node:path'
@@ -18,13 +18,4 @@ Bun.serve({
       : Response.json(jwks),
 })
 fakeS3(Number(process.env['VX_CACHE_S3_PORT']))
-console.log(
-  JSON.stringify([
-    {
-      iss,
-      project_path: '42',
-      pipeline_source: 'push',
-      ref_path: ['refs/heads/main', 'refs/heads/gh-readonly-queue/main/*'],
-    },
-  ]),
-)
+console.log(`${iss}:acme/app:.gitlab-ci.yml`)
