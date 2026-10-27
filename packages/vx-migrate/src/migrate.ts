@@ -392,7 +392,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
             needsSelf ? [] : ['@vzn/vx-migrate'],
           )),
         ]
-  return applyMigration({
+  const code = await applyMigration({
     root,
     metas,
     plan,
@@ -407,6 +407,7 @@ export async function migrateCmd(args: readonly string[]): Promise<number> {
     // The written workspace file imports plugins `--no-install` left out.
     ...(parsed.noInstall === true ? {} : { lock: lockWorkspace }),
   })
+  return exitAfter(code, steps)
 }
 
 /**
@@ -506,15 +507,34 @@ async function prepareRepo(
   const missing = missingPackages(root, all, version)
   if (missing.length > 0) {
     steps.push(
-      args.dry ? ['install', missing.join(' ')] : ['ran', await install(root, missing, version)],
+      args.dry ? ['install', missing.join(' ')] : await ran(() => install(root, missing, version)),
     )
   }
   // Last: the package removed may be the one running this.
   const listed = listedPackages(root, unwanted)
   if (listed.length > 0) {
-    steps.push(args.dry ? ['remove', listed.join(' ')] : ['ran', await uninstall(root, listed)])
+    steps.push(args.dry ? ['remove', listed.join(' ')] : await ran(() => uninstall(root, listed)))
   }
   return steps
+}
+
+/**
+ * A manager step's row. Its failure is a `failed` row, not the end of the
+ * migration: the configs are still written and the report names what to
+ * re-run, where a throw left a repo with neither.
+ */
+async function ran(step: () => Promise<string>): Promise<Step> {
+  try {
+    return ['ran', await step()]
+  } catch (e) {
+    if (!isUserError(e)) throw e
+    return ['failed', e.message]
+  }
+}
+
+/** The exit a migration ends with: 1 when a manager step failed, whatever the rest did. */
+function exitAfter(code: number, steps: readonly Step[]): number {
+  return code === 0 && steps.some(([label]) => label === 'failed') ? 1 : code
 }
 
 /**
@@ -632,7 +652,7 @@ async function keep(
     ],
   ]
   ui.print('out', ui.report(`vx-migrate ${VERSION}`, rows))
-  return lock?.code ?? 0
+  return exitAfter(lock?.code ?? 0, steps)
 }
 
 /** `vx lock`'s outcome as the report's row. */
@@ -733,7 +753,7 @@ async function scripts(
         ]
       : []
   const installed = await prepareRepo(root, [...new Set(plugins.map((p) => p.pkg))], args)
-  return applyMigration({
+  const code = await applyMigration({
     root,
     metas,
     plan,
@@ -751,6 +771,7 @@ async function scripts(
     plugins,
     ...(args.noInstall === true ? {} : { lock: lockWorkspace }),
   })
+  return exitAfter(code, installed)
 }
 
 /**
