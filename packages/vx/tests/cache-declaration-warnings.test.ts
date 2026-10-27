@@ -42,7 +42,8 @@ async function runTask(task: string): Promise<string[]> {
     handleSignals: false,
   })
   expect(summary.ok).toBe(true)
-  return lines.filter((l) => l.includes('matched no files'))
+  // As said, not as the footer's warn row says it again.
+  return lines.filter((l) => l.includes('matched no files') && !l.startsWith('  '))
 }
 
 describe('cache declarations that match nothing', () => {
@@ -89,6 +90,19 @@ describe('cache declarations that match nothing', () => {
   })
   afterEach(async () => {
     await rm(root, { recursive: true, force: true })
+  })
+
+  it('the footer repeats the warning on its warn row', async () => {
+    const lines: string[] = []
+    await run({
+      cwd: root,
+      tasks: ['lost'],
+      projects: ['app'],
+      log: logger(lines),
+      handleSignals: false,
+    })
+    const warn = lines.flatMap((l) => l.split('\n')).find((l) => l.startsWith('  warn'))
+    expect(warn).toContain('matched no files')
   })
 
   it('an input glob and an output glob that match nothing are each named once, on the miss only', async () => {

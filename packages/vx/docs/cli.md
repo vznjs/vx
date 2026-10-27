@@ -3369,7 +3369,10 @@ every count show only when non-zero. `vx last` names each remote
 failure on its task's row. A task an executor plugin ran elsewhere
 says where last on its row and after the id on its frame (`app#build · small#2`), and the plugin may
 add rows of its own above `info` (`workers`), in which case `info`
-names no worker pool. The `info` row ends with `run <id>`: the
+names no worker pool. A run that warned (a remote cache's 403, a
+plugin's failed flush) gets a yellow `warn` row above `info`: each
+warning's first line once, up to three, and `N more above`. The
+`info` row ends with `run <id>`: the
 run's whole id, as `vx last <id>` takes it. The
 `time` row is the wall time, then the spread over executed tasks
 only — a hit's restore time never enters it. The footer never says a

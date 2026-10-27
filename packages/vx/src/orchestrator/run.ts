@@ -377,6 +377,11 @@ async function runOnBus(
   takeOutput?: (claimed: { logger: Logger; owner: string }) => void,
 ): Promise<RunSummary> {
   const log = busLogger(bus)
+  // What the run warned of, no task's: the footer repeats it (`warn`).
+  const warned: string[] = []
+  bus.subscribe((e) => {
+    if (e.kind === 'run:status' && 'warn' in e) warned.push(e.line)
+  })
   const steps = createSteps(log, showsSteps)
   const { step, stepSync } = steps
   // A server's output goes through a cell of its own: a later watch cycle
@@ -891,6 +896,7 @@ async function runOnBus(
       workspaceProjectCount,
       // Live too: a long run is read while it runs (2026-10-21).
       runId,
+      warnings: () => warned,
     }
 
     // Asked only when a plugin declares `output`: a plain run pays nothing.

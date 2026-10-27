@@ -67,6 +67,7 @@ export interface RunContext {
     notDownloaded: () => number
   } // the layers the run used: the legend's `local 1✓ 1∅ 2↓ 1↑ · remote 3↓ 12 MB 4↑ 2.1 MB 2✗ 1⇡`
   workspaceProjectCount?: number // total projects → the bar's denominator
+  warnings?: () => readonly string[] // the run's warnings → the footer's `warn` row
 }
 
 // The footer section from counted stats — the live status region renders it as the run proceeds.

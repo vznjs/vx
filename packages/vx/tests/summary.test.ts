@@ -171,6 +171,50 @@ describe('formatRunSummary', () => {
     )
   })
 
+  it("repeats the run's warnings on a warn row above info, each once, first lines, the rest counted", () => {
+    const long = 'x'.repeat(150)
+    const lines = formatRunSummary(
+      [outcome('a#x', 'success')],
+      10,
+      { enabled: false },
+      {
+        version: '1.2.3',
+        packageCount: 1,
+        remoteCacheEnabled: true,
+        warnings: () => [
+          '\x1b[31m[vx] remote cache: upload a1 failed: HTTP 403\x1b[0m',
+          '[vx] remote cache: upload a1 failed: HTTP 403',
+          `${long}\nsecond line`,
+          'third',
+          'fourth',
+        ],
+      },
+    )
+    const at = lines.findIndex((l) => l.startsWith('  warn'))
+    expect(lines.slice(at, at + 5)).toEqual([
+      '  warn      [vx] remote cache: upload a1 failed: HTTP 403',
+      `            ${'x'.repeat(99)}\u2026`,
+      '            third',
+      '            1 more above',
+      expect.stringMatching(/^ {2}info/),
+    ])
+  })
+
+  it('has no warn row when nothing warned', () => {
+    const lines = formatRunSummary(
+      [outcome('a#x', 'success')],
+      10,
+      { enabled: false },
+      {
+        version: '1.2.3',
+        packageCount: 1,
+        remoteCacheEnabled: false,
+        warnings: () => [],
+      },
+    )
+    expect(lines.some((l) => l.startsWith('  warn'))).toBe(false)
+  })
+
   it('names the cache scope after the cache mode when the run has one', () => {
     const lines = formatRunSummary(
       [outcome('a#x', 'success')],

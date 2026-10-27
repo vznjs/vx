@@ -236,6 +236,8 @@ export interface RunContext {
   }
   /** Total projects discovery found — the bar's denominator. */
   workspaceProjectCount?: number
+  /** The run's warnings no task owns, as they were said: the footer's `warn` row. */
+  warnings?: () => readonly string[]
 }
 
 export function formatSummarySection(
@@ -484,11 +486,46 @@ export function formatSummarySection(
       )
     }
     if (context.runId !== undefined) info.push(`run ${context.runId}`)
-    lines.push('', row('info', join(info)), timeRow)
+    lines.push('', ...warnRows(context.warnings?.() ?? [], row, colors))
+    lines.push(row('info', join(info)), timeRow)
   } else {
     lines.push('', timeRow)
   }
   return lines
+}
+
+/** The most warnings the footer repeats; the rest it counts. */
+const WARN_ROWS = 3
+/** A repeated warning's length: the full text is above, where it was said. */
+const WARN_CHARS = 100
+
+/**
+ * A long run scrolls its warnings (a remote cache's 403, a plugin's
+ * failed flush) out of sight, and the footer read as a clean run
+ * (2026-10-27). Each distinct one's first line, cut, once.
+ */
+function warnRows(
+  warnings: readonly string[],
+  row: (label: string, value: string) => string,
+  colors: ColorSupport,
+): string[] {
+  const seen = [...new Set(warnings.map((w) => Bun.stripANSI(w).split('\n')[0]!.trim()))].filter(
+    (w) => w !== '',
+  )
+  if (seen.length === 0) return []
+  const cut = (w: string) => (w.length > WARN_CHARS ? `${w.slice(0, WARN_CHARS - 1)}\u2026` : w)
+  const out = seen
+    .slice(0, WARN_ROWS)
+    .map((w, i) =>
+      i === 0
+        ? row('warn', paint(WARN, cut(w), colors))
+        : `${' '.repeat(12)}${paint(WARN, cut(w), colors)}`,
+    )
+  if (seen.length > WARN_ROWS)
+    out.push(
+      `${' '.repeat(12)}${paint('', `${seen.length - WARN_ROWS} more above`, colors, { dim: true })}`,
+    )
+  return out
 }
 
 /**
