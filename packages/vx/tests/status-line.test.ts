@@ -423,24 +423,32 @@ describe('defaultLogger status line integration', () => {
     log.runEnd?.()
   })
 
-  it('focused: status lives only while deps run; a requested start kills it for good', () => {
+  it('focused: the region stays under a requested task streaming raw output', () => {
     const s = tty()
     const log = defaultLogger(NO_COLORS, { mode: 'focused' }, s, { forceFloorMs: 0 })
-    log.runStart?.({ total: 2 })
+    log.runStart?.({
+      total: 2,
+      context: { version: '0', packageCount: 1, remoteCacheEnabled: false, runId: 'R1' },
+    })
     const dep = mkNode('lib#build')
     log.taskStart?.(dep)
     expect(s.text()).toContain('lib#build')
     log.taskComplete(dep, mkOutcome(dep, 'success'))
     const req = mkNode('one#test', { requested: true })
     log.taskStart?.(req)
-    // Permanently cleared: after the frame-open, streamed output
-    // flows raw with no status rewrites around it.
+    // The output lands raw, then the region (its row, the summary with the
+    // run's id) is drawn again below it: it was taken down for good here,
+    // and the summary stayed away until the task ended.
     const before = s.chunks.length
     log.taskStdout(req, 'raw output\n')
-    expect(s.chunks.slice(before)).toEqual(['raw output\n'])
+    const after = s.chunks.slice(before)
+    expect(after).toContain('raw output\n')
+    const redrawn = after.slice(after.indexOf('raw output\n') + 1).join('')
+    expect(redrawn).toMatch(/running +one#test/)
+    expect(redrawn).toContain('run R1')
     log.taskComplete(req, mkOutcome(req, 'success'))
     log.runEnd?.()
-    expect(s.text().endsWith('└─ one#test ── (100ms) success\n\n')).toBe(true)
+    expect(s.text()).toContain('└─ one#test ── (100ms) success\n')
   })
 
   // 2026-10-21: a task an executor holds for a machine has no row, only

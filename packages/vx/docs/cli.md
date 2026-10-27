@@ -716,7 +716,8 @@ What the shapes mean in each column:
 - **focused, requested task.** The frame is LIVE when it is the only
   requested task: `┌─` prints at task start, the command's output (or a
   hit's replayed stdout) streams raw between the brackets, `└─` closes
-  it. With several requested tasks the same frame is buffered and
+  it. The status region stays below the streamed output, summary and
+  run id included, redrawn after each write. With several requested tasks the same frame is buffered and
   emitted atomically (see below). Every outcome that ran or was cached
   gets one — including an `up-to-date` hit, whose frame carries the
   `$ cmd` line so a requested task looks the same whether it ran or not.

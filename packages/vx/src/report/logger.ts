@@ -370,8 +370,7 @@ export function defaultLogger(
   // runs (the display derives from the stable worker set, not the
   // churning task set). Sized at runStart from concurrency, capped at
   // 10 rows; excess running tasks queue for a freed slot, each shown
-  // in its own row after the slots. Focused flow keeps its lifecycle:
-  // the region dies the moment a requested node starts streaming.
+  // in its own row after the slots.
   let slots: (WorkerSlot | null)[] = []
   // Rows shown: the most workers busy at once so far. An idle row past it
   // was noise (a 10-core machine drew 9 on a one-chain run); it never
@@ -797,19 +796,17 @@ export function defaultLogger(
         // What is coalesced lands before the task writes past it.
         writer.settle()
       }
-      // Focused flow: the status line exists for the dependency
-      // phase only. The moment a requested node starts streaming,
-      // clear it for good — its raw output owns the terminal now.
+      // Focused flow: a requested node streams raw, and the region stays
+      // under its output (the writer erases and redraws it around each
+      // write): taken down, the summary and the run's id were gone until
+      // the task ended.
       if (streamsLive(node)) {
-        killStatus()
         // Open the live frame: full task info even when the command
         // streams nothing (or the hit replays nothing).
         emitLine(formatFrameOpen(node, colors, forwardArgs))
-        return
-      }
-      // Bound a persistent task's output from its FIRST chunk. Waiting for
-      // its outcome would leave a never-ready one uncapped forever.
-      if (node.config.exec?.persistent !== undefined && !persistentTails.has(node.id)) {
+      } else if (node.config.exec?.persistent !== undefined && !persistentTails.has(node.id)) {
+        // Bound a persistent task's output from its FIRST chunk. Waiting for
+        // its outcome would leave a never-ready one uncapped forever.
         persistentTails.set(node.id, { node, out: createTail(), err: createTail() })
       }
       // The rows are the status region's; with none, nothing reads them.
