@@ -6,8 +6,10 @@ description: A task runner and cache for JavaScript monorepos, built on Bun.
 import { CardGrid, LinkCard } from '@astrojs/starlight/components'
 
 vx is a task runner and cache for JavaScript monorepos. Each project
-declares its tasks in a `vx.config.ts`; `vx run` runs them in dependency
-order, in parallel, and skips any task whose inputs did not change.
+declares its tasks in a `vx.config.ts`.
+
+`vx run` runs them in dependency order, in parallel, and skips any task
+whose inputs did not change.
 
 ```sh
 bunx @vzn/vx init

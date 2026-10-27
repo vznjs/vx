@@ -11,15 +11,15 @@ Runs read every project's config from `.vx/projects.lock.json`, which
 vx lock --check
 ```
 
-```text
-✗ vx lock --check  packages/ui/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
+```ansi
+[38;2;239;68;68m✗[0m [1mvx lock --check[0m  packages/ui/vx.config.ts evaluates differently from the lock here — its config, a file it imports, or the environment it reads changed; run 'vx lock'
 ```
 
 It exits `1` and names each project that drifted. With a current lock it
 exits `0`:
 
-```text
-✓ vx lock --check  up to date (2 projects)
+```ansi
+[38;2;34;197;94m✓[0m [1mvx lock --check[0m  up to date (2 projects)
 ```
 
 ---

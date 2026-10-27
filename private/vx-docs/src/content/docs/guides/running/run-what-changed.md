@@ -37,10 +37,10 @@ vx run test --affected=origin/main
 vx run test --affected=HEAD~1
 ```
 
-On the base branch itself there is no default: run `--all`, and the cache
-runs only what changed, so CI on `main` needs only the current commit.
-On a branch, CI's default one-commit checkout is enough: vx fetches the
-base commit and the history down to where the branch started, without
-file contents.
+On the base branch itself, `--affected` has no default. Run `--all`
+there: the cache still runs only what changed.
+
+On a branch, CI's default one-commit checkout is enough. vx fetches the
+history back to where the branch started, without file contents.
 
 See [`--affected`](../../../cli/run/#--affectedbase).
