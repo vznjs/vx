@@ -20,7 +20,7 @@ option.
   them (its options an `OidcOptions`), answering its `Access` or throwing a `Refusal` (`status` and what
   to fix). `oidcTokenAuth(options)` is the check for a server whose
   requests name their repository plainly, in the body (`@vzn/vx-history-server`):
-  `(req, named?)` answers the token's `Access`, refusing a token of
+  `(req, named?)`, `named` a `Repo`, answers the token's `Access`, refusing a token of
   another repository than `named`; with no token where `readAccess` is
   `public`, `named` when TRUST names it, or `undefined` when none is named.
 - `hashPart(text)` is what a server stores in place of an issuer, a repository name or a scope: the first
