@@ -147,6 +147,12 @@ export function conformance(name: string, target: Target): void {
       }
     })
 
+    it('refuses the body a client before plain refs sent, saying what it takes', async () => {
+      const res = await post('/v1/timings/query', { scopes: ['refs/heads/main'], hashes: ['a'] })
+      expect(res.status).toBe(400)
+      expect(JSON.stringify(await res.json())).toContain('issuer')
+    })
+
     it('refuses a token of another repository than the query names', async () => {
       const res = await post('/v1/timings/query', {
         ...named(),
