@@ -266,6 +266,9 @@ function paintTaskId(node: TaskNode, colors: ColorSupport, opts: { bold?: boolea
 export const TIME_COL = 7 // "0ms" … "999.99s"
 const STATUS_COL = 7 // "success" / "running" / "skipped" / "aborted" / "not run"
 const CACHE_COL = 8 // "no-cache" / "remote" / "local" / "fresh" / "miss"
+const BLOCKED_COL = 7 // the live list's count of tasks a running one holds back
+/** The list header's colour: violet-400, the summary rule's first stop. */
+const HEADER = '#a78bfa'
 
 /** Right-align the duration in a TIME_COL cell (pad on the left). */
 function timeCell(ms: number | null, colors: ColorSupport): string {
@@ -358,20 +361,32 @@ export function formatTaskRow(
   cacheColor: string,
   paintedId: string,
   colors: ColorSupport = NO_COLOR,
+  /** The live list's `blocked` cell, right-aligned before the id; absent off that list. */
+  blocked?: string,
 ): string {
   const st = cell(status, statusColor, STATUS_COL, colors)
   // `aborting` runs one into the cache cell, which is blank beside it.
   const ca = cell(cache, cacheColor, CACHE_COL - Math.max(0, status.length - STATUS_COL), colors)
-  return ` ${glyph} ${timeCell(ms, colors)} ${st} ${ca} ${paintedId}`
+  const bl =
+    blocked === undefined
+      ? ''
+      : `${' '.repeat(Math.max(0, BLOCKED_COL - blocked.length))}${paint(WARN, blocked, colors)} `
+  return ` ${glyph} ${timeCell(ms, colors)} ${st} ${ca} ${bl}${paintedId}`
 }
 
 /**
- * The dim header over a task list, on the row grid (2026-10-21).
- * `worker` when an executor places tasks: the name after the id's dot.
+ * The header over a task list, on the row grid: bold and coloured, so it
+ * reads apart from the rows (dim, it was lost among them). `worker` when an
+ * executor places tasks: the name after the id's dot. `blocked` on the live
+ * list, whose rows count the tasks each running one holds back.
  */
-export function formatListHeader(worker: boolean, colors: ColorSupport = NO_COLOR): string {
-  const head = `   ${'time'.padStart(TIME_COL)} ${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} task${worker ? ' \u00b7 worker' : ''}`
-  return paint('', head, colors, { dim: true })
+export function formatListHeader(
+  worker: boolean,
+  colors: ColorSupport = NO_COLOR,
+  blocked = false,
+): string {
+  const head = `   ${'time'.padStart(TIME_COL)} ${'status'.padEnd(STATUS_COL)} ${'cache'.padEnd(CACHE_COL)} ${blocked ? `${'blocked'.padStart(BLOCKED_COL)} ` : ''}task${worker ? ' \u00b7 worker' : ''}`
+  return paint(HEADER, head, colors, { bold: true })
 }
 
 /** Compact one-liner for a cache hit with nothing to replay. */
@@ -423,7 +438,7 @@ function formatOutcomeRow(
 
 /** `critical path`: the row's task held the run's end while others ran beside it. */
 export function pathNote(colors: ColorSupport = NO_COLOR): string {
-  return `  ${paint(WARN, 'critical path', colors)}`
+  return `  ${paint(ERROR, 'critical path', colors)}`
 }
 
 /** Where an executor ran the task, when not here, right after its id: `@small#2` (2026-10-21). */

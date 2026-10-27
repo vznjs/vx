@@ -793,25 +793,24 @@ other persistent task`), and a non-zero exit makes the run exit 1
    each one's id (`app#dev │ Local: http://localhost:5173`), except
    under `--output-logs errors-only`, `hash-only` or `none`; a single
    requested server in the focused flow streams raw from its frame.
-3. **Worker rows** — one per worker slot that has been busy (at most
-   `min(concurrency, 10)`), no glyph and no spinner: the live ticking
-   elapsed time leads (`     568ms running  <id>`). A task stays in
-   its row for its whole life, so nothing jumps; a task running beyond
-   the slots gets a row after them until one frees. A dim header names
-   the columns over the rows (`time status cache task`, `· worker` when an
-   executor places tasks), and once over the list's first row on a
-   terminal. From the first frame, an idle worker row holds a task an
-   unfinished dependency blocks, one per row, in the order the
-   scheduler starts them (most dependents first):
-   `blocked  solid-js#build  by solid-js#types` (dim `blocked`, the id,
-   then the running task that holds it back). The task starts in the
-   row that held it. A row with no blocked task left to hold leaves the
-   region and the rows below close up; blocked tasks only dwindle, so
-   it never comes back. When an executor places tasks (`@vzn/vx-dte`),
-   the rows are only what runs: no idle or blocked row, blocked tasks
-   are the tasks line's dim `N blocked` alone. `critical path` (yellow)
-   follows the running task the longest unfinished chain waits on, by
-   the same p50s as the forecast below and only while two or more run;
+3. **The running list** — one row per worker (`--concurrency`), always,
+   so its height never changes. No glyph and no spinner: the live
+   ticking elapsed time leads, then `running`, the usual duration, and
+   `blocked`, how many tasks not yet started depend on that task
+   directly (why they are not running), right before the id
+   (`     568ms running ~1.2s      3 <id>`). A task stays in its slot
+   for its whole life; a task running beyond the slots gets a row after
+   them until one frees, and none is ever folded away. A bold header
+   names the columns (`time status cache blocked task`, `· worker`
+   when an executor places tasks); the list of finished tasks has its
+   own header once over its first row. The rows no task runs in hold
+   the tasks the scheduler has picked for the next free workers, as
+   many as there are free rows and nothing further ahead, each nested
+   under the running task it waits on (`blocked  └ solid-js#build`);
+   the rest stay blank. When an executor places tasks (`@vzn/vx-dte`),
+   the rows are only what runs: no blank or nested row, blocked tasks
+   are the tasks line's dim `N blocked` alone. `critical path` (red)
+   follows the running task the longest unfinished chain waits on;
    its row in the list says it too once it ends. Where
    local history knows the task, its row also shows its usual duration
    (its executed p50) in the cache column, fixed while the elapsed time
@@ -843,8 +842,9 @@ other persistent task`), and a non-zero exit makes the run exit 1
    unfinished task's executed p50 from local history, the longer of
    the longest unfinished chain and that work spread over the
    workers, a running task's spent time taken off its own. It says
-   nothing when history knows none of what is left, or once a running
-   task is 25% past its p50. A run that ends inside the second never
+   nothing when history knows none of what is left. Past the estimate
+   it counts up how long the run has waited (`time  9.02s · +3s over`)
+   until new work makes a forecast again. A run that ends inside the second never
    reads history for it, and the final summary never shows it. A p50
    here is the median of the task's last five timings on this branch,
    else on any branch; the timings are shared by every worktree of the

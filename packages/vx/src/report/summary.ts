@@ -113,6 +113,8 @@ export interface SummaryStats {
   held?: { count: number; sumMs: number }
   /** Live section only: the forecast of what is left, from history. */
   etaMs?: number
+  /** Live section only: how long the run has gone past that forecast. */
+  overMs?: number
   /** A run of groups only: their names, so `0 tasks` says why. */
   emptyGroups?: readonly string[]
   /** Each finished task's cache bucket by its key and its id (its run bytes), so its remote traffic can move it. */
@@ -442,6 +444,8 @@ export function formatSummarySection(
   // that is about the future.
   if (stats.etaMs !== undefined)
     timeParts.push(paint(ACCENT, `${formatEta(stats.etaMs)} left`, colors))
+  else if (stats.overMs !== undefined)
+    timeParts.push(paint(ACCENT, `${formatOver(stats.overMs)} over`, colors))
   for (const p of spreadParts) timeParts.push(dim(p))
   const timeRow = row('time', join(timeParts))
   // Run-shape footer (final summary only): worker pool + cache mode,
@@ -496,6 +500,11 @@ function formatEta(ms: number): string {
   const s = Math.ceil(ms / 1000)
   if (s < 60) return `~${s}s`
   return `~${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
+}
+
+function formatOver(ms: number): string {
+  const s = Math.max(1, Math.ceil(ms / 1000))
+  return s < 60 ? `+${s}s` : `+${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`
 }
 
 /**
