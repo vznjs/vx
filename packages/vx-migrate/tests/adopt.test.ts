@@ -791,7 +791,7 @@ try { await install(${JSON.stringify(path.join(root, 'ws'))}, ['@vzn/vx']) } cat
 
   it('names minimumReleaseAgeExclude when pnpm ran and refused', async () => {
     expect(await probe('', '#!/bin/sh\nexit 1\n')).toBe(
-      'installing vx failed (pnpm add -D -w @vzn/vx exited 1); run it, then vx-migrate again; if pnpm refused a version published within its minimumReleaseAge, list @vzn/vx under minimumReleaseAgeExclude in pnpm-workspace.yaml',
+      'installing vx failed (pnpm add -D -w @vzn/vx exited 1); run it, then vx lock; if pnpm refused a version published within its minimumReleaseAge, list @vzn/vx under minimumReleaseAgeExclude in pnpm-workspace.yaml',
     )
   })
 

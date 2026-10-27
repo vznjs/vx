@@ -2476,6 +2476,40 @@ describe('vx init declares the lockfile plugin', () => {
   )
 
   it(
+    'a failed install is reported and the migration still writes its files',
+    async () => {
+      const root = await lockfileWorkspace()
+      const bin = await mkdtemp(path.join(os.tmpdir(), 'vx-init-pm-fail-'))
+      try {
+        await writeFile(path.join(bin, 'pnpm'), '#!/bin/sh\necho registry-blocked >&2\nexit 1\n', {
+          mode: 0o755,
+        })
+        const proc = Bun.spawn([process.execPath, '--no-install', BIN], {
+          cwd: root,
+          env: { ...process.env, PATH: `${bin}:${process.env['PATH']}` },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        })
+        const [out, err, code] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+          proc.exited,
+        ])
+        expect(code).toBe(1)
+        expect(err).toContain('registry-blocked')
+        expect(row(out, 'failed')[0]).toStartWith(
+          'installing vx failed (pnpm add -D -w @vzn/vx-lockfile',
+        )
+        expect(await Bun.file(path.join(root, '.vx/workspace.ts')).text()).toContain('pnpm()')
+      } finally {
+        await rm(root, { recursive: true, force: true })
+        await rm(bin, { recursive: true, force: true })
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a dry run installs nothing and says what it would run',
     async () => {
       const root = await lockfileWorkspace()

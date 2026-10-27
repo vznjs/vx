@@ -282,7 +282,7 @@ async function runManager(
     const missing = notServed(said)
     throw new UserError(
       missing === undefined
-        ? `${what} failed (${line} exited ${code}${failed}); run it, then vx-migrate again${code > 0 ? ranHint : ''}`
+        ? `${what} failed (${line} exited ${code}${failed}); run it, then vx lock${code > 0 ? ranHint : ''}`
         : `${what} failed: the npm registry does not serve ${missing} yet (404), as a release can take minutes to reach it; run vx init again`,
     )
   }
