@@ -2,7 +2,8 @@
 // colors on, every non-blank line of every verb carries a color or a weight.
 // `vx run --dry`, `vx last` and `vx why` printed whole blocks of bare text,
 // and a notice's body was bare under its painted headline. A task's own
-// output, between its frame's `┌` and `└`, is the task's bytes, not vx's.
+// output, between its frame's `┌` and `└`, is the task's bytes, not vx's;
+// a `::error` line is a CI's workflow command, which its log never shows.
 
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -64,7 +65,7 @@ it('every line of every verb is painted', () => {
       .filter((l) => {
         if (l.includes('┌')) framed = true
         if (l.includes('└')) framed = false
-        return !framed && l.trim() !== '' && !l.includes('\x1b[')
+        return !framed && l.trim() !== '' && !l.startsWith('::') && !l.includes('\x1b[')
       })
       .map((l) => `vx ${args.join(' ')}: ${l}`)
   })
