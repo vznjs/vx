@@ -9,8 +9,6 @@ export interface GithubPluginOptions {
   summaryFile?: string
   title?: string
   cacheScope?: boolean
-  append?: (file: string, markdown: string) => Promise<void>
-  sizeOf?: (file: string) => Promise<number>
 }
 == type GitlabPluginOptions (src/gitlab.ts)
 export interface GitlabPluginOptions {

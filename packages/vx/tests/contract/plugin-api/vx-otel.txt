@@ -13,19 +13,4 @@ export interface OtelPluginOptions {
   live?: boolean
   timeoutMs?: number
   compression?: 'gzip' | 'none'
-  post?: PostFn
 }
-== type OtlpTls (src/sink.ts)
-export interface OtlpTls {
-  ca?: string
-  cert?: string
-  key?: string
-}
-== type PostFn (src/sink.ts)
-export type PostFn = (
-  url: string,
-  body: string,
-  headers: Record<string, string>,
-  signal?: AbortSignal,
-  tls?: OtlpTls,
-) => Promise<void>
