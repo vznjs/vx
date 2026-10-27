@@ -3702,6 +3702,9 @@ it('sends a long non-ASCII output in parts the relay takes', async () => {
     expect(await code).toBe(0)
   } finally {
     await served.stop()
+    // Here, under the test's minute: 24 000 files outlast the 5 s hook
+    // below on a loaded runner, which failed the test after it passed.
+    await rm(root, { recursive: true, force: true })
   }
 }, 60_000)
 
