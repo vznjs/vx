@@ -351,18 +351,15 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
         // The run's refs, as a remote cache reads them: its branch, the
         // branch it merges into, the default branch. `main` was assumed, so
         // a `master` or `baseBranch: 'trunk'` repository read no trunk's
-        // numbers. Each ref is sent as its hash, never plain (2026-10-25).
+        // numbers. No ref goes on the wire: each is in its keys' hash.
         const main = options.defaultBranch ?? DEFAULT_BRANCH
         const refs =
           options.defaultBranch === undefined && ctx.refs.length > 0
             ? ctx.refs
             : [`refs/heads/${ctx.branch ?? main}`, `refs/heads/${main}`]
-        const scopes = [...new Set(refs)].map((ref) =>
-          new Bun.CryptoHasher('sha256').update(ref).digest('hex').slice(0, 32),
-        )
         const weights = (async () => {
           const hashes = [...new Set(ids.flatMap((id) => defs.get(id) ?? []))]
-          const got = await server.query(scopes, hashes)
+          const got = await server.query([...new Set(refs)], hashes)
           const timings = new Map<string, number>()
           const needs = new Map<string, TaskResources>()
           for (const id of ids) {

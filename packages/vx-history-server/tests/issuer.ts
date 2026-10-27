@@ -7,9 +7,9 @@ import { exportJWK, generateKeyPair, type JWK, type JWTPayload, SignJWT } from '
 import { parseTrust, type TrustRule } from '@vzn/vx-devtools'
 
 export const GITHUB = 'https://token.actions.githubusercontent.com'
-export const REPO = '42'
+export const REPO = 'acme/app'
 
-/** Trusts main's pushes of repository 42 at `iss`. */
+/** Trusts main's pushes of repository acme/app at `iss`. */
 export function trustOf(iss: string = GITHUB): TrustRule[] {
   const github = iss === GITHUB
   return parseTrust(
@@ -29,7 +29,7 @@ export interface Issuer {
   readonly jwks: { keys: JWK[] }
   /** Serves the issuer's discovery document and keys, as `OidcOptions.fetchJson`. */
   fetchJson(url: string): Promise<unknown>
-  /** A token of repository 42 for `aud`: of main, of `feature`, or reading only. */
+  /** A token of repository acme/app for `aud`: of main, of `feature`, or reading only. */
   sign(job: 'main' | 'branch' | 'read', aud: string, extra?: JWTPayload): Promise<string>
 }
 

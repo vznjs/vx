@@ -18,7 +18,11 @@ option.
 
 - `parseTrust(json)` reads `TRUST` into `TrustRule`s; `oidcAuth(options)` is the `Authorize` checking a request's CI token against
   them (its options an `OidcOptions`), answering its `Access` or throwing a `Refusal` (`status` and what
-  to fix).
+  to fix). `oidcTokenAuth(options)` is the check for a server whose
+  requests name their repository plainly, in the body (`@vzn/vx-history-server`):
+  `(req, named?)`, `named` a `Repo`, answers the token's `Access`, refusing a token of
+  another repository than `named`; with no token where `readAccess` is
+  `public`, `named` when TRUST names it, or `undefined` when none is named.
 - `hashPart(text)` is what a server stores in place of an issuer, a repository name or a scope: the first
   128 bits of its SHA-256 in hex (Web Crypto, so Bun and Workers agree), never the plain value.
 
@@ -45,6 +49,13 @@ export interface OidcOptions {
 }
 export function parseTrust(json: string): TrustRule[]
 export function oidcAuth(opts: OidcOptions): Authorize
+export interface Repo {
+  readonly issuer: string
+  readonly repository: string
+}
+export function oidcTokenAuth(
+  opts: OidcOptions,
+): (req: Request, named?: Repo) => Promise<Access | undefined>
 ```
 
 ## How it decides
@@ -52,7 +63,7 @@ export function oidcAuth(opts: OidcOptions): Authorize
 - jose checks the JWT: `RS256`, the signature against the issuer's keys
   (found through its `/.well-known/openid-configuration`, kept and
   refetched by `createRemoteJWKSet`), `aud`, `exp` and `nbf` within 60 s.
-- Every request names its repository: `vx-issuer` and `vx-repository`,
+- With `oidcAuth`, every request names its repository: `vx-issuer` and `vx-repository`,
   the `hashPart`s of the issuer's URL (no trailing slash) and of its
   `org/name` lowercased; one missing or not a hash is `400`.
 - The token's repository is its issuer and its name, `org/name`

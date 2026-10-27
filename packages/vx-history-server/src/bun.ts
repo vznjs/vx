@@ -4,7 +4,7 @@
 
 import { Database } from 'bun:sqlite'
 import { parseArgs } from 'node:util'
-import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
+import { oidcTokenAuth, parseTrust } from '@vzn/vx-devtools'
 import { timingDaysOf } from './days.js'
 import { createHistoryServer } from './server.js'
 import { type Db, sqliteStore } from './store.js'
@@ -72,7 +72,7 @@ function main(argv: string[]): void {
   }
   const handle = createHistoryServer({
     store: sqliteStore(db),
-    authorize: oidcAuth({
+    authorize: oidcTokenAuth({
       trust,
       readAccess: env.READ_ACCESS,
       ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),

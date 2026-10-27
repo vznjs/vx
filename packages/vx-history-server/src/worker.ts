@@ -2,7 +2,7 @@
 // `wrangler.jsonc` deploys it; TRUST, AUDIENCE and TIMING_DAYS are vars in
 // it.
 
-import { oidcAuth, parseTrust } from '@vzn/vx-devtools'
+import { oidcTokenAuth, parseTrust } from '@vzn/vx-devtools'
 import { timingDaysOf } from './days.js'
 import { createHistoryServer, errorJson } from './server.js'
 import { type Db, sqliteStore } from './store.js'
@@ -59,7 +59,7 @@ export default {
       let timingDays
       try {
         timingDays = timingDaysOf(env.TIMING_DAYS)
-        authorize = oidcAuth({
+        authorize = oidcTokenAuth({
           trust: parseTrust(trustOf(env)),
           readAccess: env.READ_ACCESS,
           ...(env.AUDIENCE ? { audience: env.AUDIENCE } : {}),

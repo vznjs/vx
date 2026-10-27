@@ -1,7 +1,7 @@
 == const MAX_QUERY_HASHES (src/server.ts)
 export const MAX_QUERY_HASHES = 10_000
-== const MAX_QUERY_SCOPES (src/server.ts)
-export const MAX_QUERY_SCOPES = 8
+== const MAX_QUERY_REFS (src/server.ts)
+export const MAX_QUERY_REFS = 8
 == const MAX_UPLOAD_TIMINGS (src/server.ts)
 export const MAX_UPLOAD_TIMINGS = 10_000
 == const RSS_DECAY (src/store.ts)
@@ -34,19 +34,15 @@ export interface Report {
 == type ServerOptions (src/server.ts)
 export interface ServerOptions {
   readonly store: Store
-  readonly authorize: Authorize
+  readonly authorize: (req: Request, named?: Repo) => Promise<Access | undefined>
   readonly timingDays?: number
   readonly now?: () => number
 }
 == type Store (src/store.ts)
 export interface Store {
   init(): Promise<void>
-  fold(repo: Repo, scope: string, now: number, reports: readonly Report[]): Promise<void>
-  read(
-    repo: Repo,
-    scopes: readonly string[],
-    hashes: readonly string[],
-  ): Promise<Map<string, Timing>>
+  fold(repo: Repo, ref: string, now: number, reports: readonly Report[]): Promise<void>
+  read(repo: Repo, refs: readonly string[], hashes: readonly string[]): Promise<Map<string, Timing>>
   sweep(before: number): Promise<number>
 }
 == type Timing (src/store.ts)

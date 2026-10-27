@@ -5,7 +5,7 @@ export {
   createHistoryServer,
   errorJson,
   MAX_QUERY_HASHES,
-  MAX_QUERY_SCOPES,
+  MAX_QUERY_REFS,
   MAX_UPLOAD_TIMINGS,
   type ServerOptions,
 } from './server.js'
