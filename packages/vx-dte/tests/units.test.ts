@@ -1580,6 +1580,46 @@ it('a task held across a relay restart stays its worker’s: its lease waits for
   }
 })
 
+// The loop expired leases before it read the batch it polled: a `held`
+// read late came too late, and the task ran again on
+// another worker (main CI, 2026-10-27).
+it('a held read late renews its lease before the lease is judged', async () => {
+  const beat = 300
+  const h = await harness(new Map([node('t1')]), undefined, beat)
+  // The poll in flight when `lag` is set returns its batch late.
+  let lag = 0
+  const me = (h.o as unknown as { o: { me: { poll: (s: AbortSignal) => Promise<unknown[]> } } }).o
+    .me
+  const poll = me.poll.bind(me)
+  me.poll = async (signal) => {
+    const got = await poll(signal)
+    if (lag > 0) await Bun.sleep(lag)
+    lag = 0
+    return got
+  }
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    void h.o.execute(h.req('t1'))
+    expect(await a.batches()).toEqual([['t1']])
+    await a.begin('t1')
+    const b = await h.worker(1)
+    await a.say({ type: 'held', running: ['t1'], queued: [] })
+    await Bun.sleep(beat * 2.3)
+    // Said within the lease (3 beats), read after it: the loop was busy.
+    lag = beat
+    await a.say({ type: 'held', running: ['t1'], queued: [] })
+    const until = performance.now() + beat * 2
+    const got: string[] = []
+    while (performance.now() < until)
+      for (const m of await b.poll()) got.push((m.body as { type: string }).type)
+    expect(got.filter((t) => t === 'batch')).toEqual([])
+    expect(h.o.where('t1')).toBe('worker#1')
+  } finally {
+    await h.stop()
+  }
+})
+
 // Main 32f73ed: a run stuck 13 min said nothing of what it waited on
 // (2026-10-23).
 it('a task whose command ended keeps its lease while its worker holds it, and a quiet run says what it waits on', async () => {
@@ -3628,6 +3668,9 @@ it('sends a result too long for one relay frame in parts, all of it arriving', a
     expect(await code).toBe(0)
   } finally {
     await served.stop()
+    // Here, under the test's minute: 24 000 files outlast the 5 s hook
+    // below on a loaded runner, which failed the test after it passed.
+    await rm(root, { recursive: true, force: true })
   }
 }, 60_000)
 
