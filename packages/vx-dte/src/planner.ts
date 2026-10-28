@@ -367,8 +367,13 @@ function play(
     }
     const joined = slots.filter((s) => s.at <= now)
     // A task that filled a size waits for a bigger one still to join.
-    const later = (above: { cores: number; memory: number }): boolean =>
-      slots.some((s) => s.at > now && (s.cores > above.cores || s.memory > above.memory))
+    const later = (above: { cores: number; memory: number }, platform?: string): boolean =>
+      slots.some(
+        (s) =>
+          s.at > now &&
+          (platform === undefined || s.platform === platform) &&
+          (s.cores > above.cores || s.memory > above.memory),
+      )
     const to = assign(ready.asks(spent, bounds, needs.size), joined, later, how.place, {
       floor: (floor ??= floorOf(needs.values())),
       kinds: needs.size,
@@ -592,7 +597,7 @@ export function plan(
 
 /**
  * The sizes the run would start next, in order: for each task that
- * filled its worker last time (`above`), one of the smallest size bigger
+ * filled its worker last time (`above`), one of the smallest size of its platform bigger
  * than it while the run has none of that size; for each platform tasks
  * run on, its sizes in declared order, up to one per task of it; then
  * sizes in declared order up to each one's max.
@@ -600,7 +605,7 @@ export function plan(
 export function candidates(
   sizes: readonly Size[],
   started: ReadonlyMap<string, number>,
-  above: Iterable<{ cores: number; memory: number }>,
+  above: Iterable<{ cores: number; memory: number; platform?: string | undefined }>,
   limit: number,
   platforms: ReadonlyMap<string, number> = new Map(),
 ): Size[] {
@@ -612,7 +617,11 @@ export function candidates(
   }
   const up = [...sizes].sort((x, y) => x.cpu - y.cpu || x.memory - y.memory)
   for (const a of above) {
-    const z = up.find((s) => s.cpu > a.cores || s.memory > a.memory)
+    const z = up.find(
+      (s) =>
+        (a.platform === undefined || s.platform === a.platform) &&
+        (s.cpu > a.cores || s.memory > a.memory),
+    )
     if (z !== undefined && (count.get(z.name) ?? 0) === 0 && z.max > 0) add(z)
   }
   // A platform the declared order reaches late gets its workers too, one
@@ -687,7 +696,7 @@ export function decide(input: {
           ? input.sizes
           : input.sizes.filter((s) => !input.queued!.has(s.name)),
         input.started,
-        tasks.flatMap((t) => t.above ?? []),
+        tasks.flatMap((t) => (t.above === undefined ? [] : [{ ...t.above, platform: t.platform }])),
         tasks.length,
         platforms,
       )

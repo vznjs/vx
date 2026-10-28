@@ -3511,6 +3511,26 @@ it('gives an unmeasured task a whole worker, and one that filled its worker a bi
   }
 }, 30_000)
 
+// A bigger worker of another platform cannot take it: a Mac task that
+// filled its Mac waited for a Linux worker to join, and then ran on the Mac.
+it('a task that filled its worker waits for no bigger one of another platform', async () => {
+  const h = await harness(new Map([node('heavy')]), () => ({
+    cores: Infinity,
+    memory: Infinity,
+    above: { cores: 2, memory: 100 },
+  }))
+  try {
+    const mac = await h.worker(2, undefined, 'darwin-arm64')
+    h.o.spawned('big#1', { size: 'big', cpu: 8, memory: 1000, platform: 'linux-x64' })
+    await Bun.sleep(50)
+    void h.o.execute({ ...h.req('heavy'), platform: 'darwin-arm64' })
+    const sent = await Promise.race([mac.batches(), Bun.sleep(2_000).then(() => 'none')])
+    expect(sent).toEqual([['heavy']])
+  } finally {
+    await h.stop()
+  }
+}, 30_000)
+
 it('a worker’s reason is its error line, not the hint after it', () => {
   expect([
     errorLine("\u001b[31m✗\u001b[0m vx  'dte' is not a vx command\n  fix  vx run dev --all\n"),

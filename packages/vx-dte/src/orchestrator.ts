@@ -547,7 +547,7 @@ export class Orchestrator {
       floor.memory = Math.min(floor.memory, need.memory)
       asks.push({ id: job.req.taskId, need, up, ...pin })
     }
-    const to = assign(asks, bins, (above) => this.bigger(above), how.place, {
+    const to = assign(asks, bins, (above, platform) => this.bigger(above, platform), how.place, {
       floor,
       kinds: Infinity,
     })
@@ -748,14 +748,18 @@ export class Orchestrator {
     this.trace.load(a.label, a.load.cpu, a.load.at, Number.isFinite(tasks) ? tasks : undefined)
   }
 
-  /** Whether a worker bigger than `above` is starting: a task that filled that size waits for it. */
-  private bigger(above: { readonly cores: number; readonly memory: number }): boolean {
+  /** Whether a worker of `platform` bigger than `above` is starting: a task that filled that size waits for it. */
+  private bigger(
+    above: { readonly cores: number; readonly memory: number },
+    platform: string | undefined,
+  ): boolean {
     const joined = new Set([...this.workers.values(), ...this.gone].map((x) => x.label))
     for (const [id, { declared }] of this.spawnedAt)
       if (
         !joined.has(id) &&
         !this.unstarted.has(id) &&
         !this.cancelled.has(id) &&
+        (platform === undefined || (declared.platform ?? hostPlatform()) === platform) &&
         (declared.cpu > above.cores || declared.memory > above.memory)
       )
         return true
