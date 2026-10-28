@@ -34,10 +34,12 @@ const hasToken = (env: Record<string, string | undefined>): boolean =>
 /** A task the run ran and that succeeded, as the server takes its timing; else undefined. */
 export function timingOf(o: TaskOutcome): ServerTiming | undefined {
   if (o.status !== 'success') return undefined
-  const cores =
+  const need =
     o.cpuMs === undefined || o.durationMs <= 0
       ? undefined
       : o.cpuMs / (o.durationMs * (o.cpuShare ?? 1))
+  // A share rounded to 0 divides by it, and the server refuses the upload.
+  const cores = need !== undefined && Number.isFinite(need) ? need : undefined
   return {
     durationMs: Math.max(0, aloneMs(o)),
     ...(cores === undefined ? {} : { cores }),

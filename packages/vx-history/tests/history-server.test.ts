@@ -325,6 +325,19 @@ describe('HistoryServer', () => {
     expect(timingOf(ran as never)?.durationMs).toBe(75_000)
   })
 
+  // A worker's share rounds to 0 at 0.0005 of a core: cores came out
+  // Infinity (NaN with no CPU time), JSON sent null, and the server
+  // refused the whole upload — every task's timing lost.
+  it('sends no cores it cannot count, so one task never costs the upload', () => {
+    const ran = { status: 'success', durationMs: 1000, peakRssBytes: 1024 } as const
+    for (const cpuMs of [0, 500])
+      expect(timingOf({ ...ran, cpuMs, cpuShare: 0 } as never)).toEqual({
+        durationMs: 1000,
+        rssBytes: 1024,
+      })
+    expect(timingOf({ ...ran, cpuMs: 500, cpuShare: 0.5 } as never)?.cores).toBe(1)
+  })
+
   it('refuses a workspace that names a server but no issuer or repository', () => {
     expect(() => vxHistory({ url: 'https://h.example', repository: 'acme/app' })).toThrow(
       "vxHistory(): issuer must be the CI issuer's URL",
