@@ -2230,7 +2230,8 @@ rules; [`bunx @vzn/vx-migrate`](#bunx-vznvx-migrate) below sums them up.
 
 With none of those files, it writes a workspace whose one project is
 the root, at the nearest workspace root up from the working directory,
-else at the topmost `package.json`, else there:
+else at the topmost `package.json`, else there (the report names it
+under `root` when it is not the working directory):
 
 ```ts
 // .vx/workspace.ts
