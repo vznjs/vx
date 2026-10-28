@@ -13,6 +13,7 @@ import { realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import {
+  hostPlatform,
   ui,
   UserError,
   withForwardArgs,
@@ -130,7 +131,7 @@ export interface Declared {
   readonly size: string
   readonly cpu: number
   readonly memory: number
-  /** Its size's platform: a worker reporting another is refused. */
+  /** Its size's platform: a worker reporting another is refused. None: planned as this machine's. */
   readonly platform?: string
 }
 
@@ -1632,7 +1633,10 @@ export class Orchestrator {
           id,
           cores: declared.cpu,
           memory: declared.memory,
-          platform: declared.platform,
+          // A size naming none is planned as this machine's, as `dte()`
+          // planned it: on no platform, no task naming one fit it, and the
+          // next plan cancelled it.
+          platform: declared.platform ?? hostPlatform(),
           size: declared.size,
           at: Math.max(
             0,
