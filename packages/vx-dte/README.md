@@ -798,7 +798,7 @@ HEAD^`), and every task after one (`src/forecast.ts`): a lockfile or
       `first-fit`;
     - `book`, what a task holds: `measured` (its history), `margin`
       (a fifth more), `whole` (a worker each);
-    - `scale`, how many workers: `plan` (above), `backlog` (cores for
+    - `scale`, how many workers: `plan` (above), `backlog` (cores, of each platform, for
       what is ready or running, Spark's dynamic allocation).
       `tests/sim.test.ts` plays main's runs with each.
 - `vx dte worker` is a worker. It reads `VX_DTE_RUN`, `VX_DTE_RELAY` (else
