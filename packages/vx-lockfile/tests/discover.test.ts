@@ -253,6 +253,32 @@ describe('discover', () => {
     expect(names).toEqual(['c', 'd', undefined, undefined, 'root'])
   })
 
+  it('bun(): a manifest with no name under a workspaces glob is no workspace, as bun keeps it', async () => {
+    // Build output (dist/esm/package.json = {"type":"module"}): bun install
+    // leaves it out of bun.lock, so "run `bun install`" never cleared the
+    // refusal (Turbo #7025, #7280). Probed on bun 1.4.4: a name that is not
+    // a non-empty string is left out; no version is kept.
+    await writeFile(path.join(root, 'bun.lock'), BUN)
+    const metas = await projects({
+      root: { name: 'root', workspaces: ['packages/**'], devDependencies: { b: '*' } },
+    })
+    for (const [dir, pkg] of [
+      ['packages/a/dist/esm', { type: 'module' }],
+      ['packages/g', { name: '', version: '1.0.0' }],
+      ['packages/h', { name: 5 }],
+    ] as const) {
+      await mkdir(path.join(root, dir), { recursive: true })
+      await writeFile(path.join(root, dir, 'package.json'), JSON.stringify(pkg))
+    }
+    expect(await discover(bun(), metas)).toEqual(EXPECTED)
+    // CONTROL: a name with no version is a workspace bun lists.
+    await mkdir(path.join(root, 'packages/f'), { recursive: true })
+    await writeFile(path.join(root, 'packages/f/package.json'), JSON.stringify({ name: 'f' }))
+    await expect(discover(bun(), metas)).rejects.toThrow(
+      'bun.lock is out of date: it does not list the workspace packages/f — run `bun install`',
+    )
+  })
+
   it('pnpm(): a lockfile dependency the manifest declares only as a peer is a peer', async () => {
     // pnpm writes an auto-installed peer under `dependencies`; read as an
     // installed entry, d → a closed a → c → d → a and `^build` cycled.
