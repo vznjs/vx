@@ -172,6 +172,12 @@ export class BoundedCapture {
 
 function · `src/workspace/config-schema.ts`
 
+A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
+branch and a laptop on it reads (2026-10-17). The repository's
+identity, not a remote's local name, so a clone whose `origin` is a fork
+names the fork. A name may hold characters a scope may not; each
+becomes `_`.
+
 ```ts
 export function branchCacheScope(repo: string, branch: string): string
 ```

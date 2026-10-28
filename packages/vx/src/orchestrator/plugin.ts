@@ -634,7 +634,7 @@ export interface PluginHookHandlers {
 }
 
 export interface Plugin {
-  /** Logged on errors; the convention is `'org/plugin-name'`. */
+  /** The plugin's package name (`definePlugin` sets it), logged on errors. */
   readonly name: string
   /**
    * Called once at the start of every run. Register hooks via

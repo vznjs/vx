@@ -53,13 +53,6 @@ export function isCacheScope(v: unknown): v is string {
   return typeof v === 'string' && /^[\w.@/:-]{1,128}$/.test(v)
 }
 
-/**
- * A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
- * branch and a laptop on it reads (2026-10-17). The repository's
- * identity, not a remote's local name, so a clone whose `origin` is a fork
- * names the fork. A name may hold characters a scope may not; each
- * becomes `_`.
- */
 const BASE_BRANCH_RULE = "must be a branch name like 'main'"
 
 /**
@@ -74,6 +67,13 @@ function isBaseBranch(value: unknown): value is string {
   )
 }
 
+/**
+ * A branch's cache scope, `<owner>/<repo>:<branch>`: what CI writes for a
+ * branch and a laptop on it reads (2026-10-17). The repository's
+ * identity, not a remote's local name, so a clone whose `origin` is a fork
+ * names the fork. A name may hold characters a scope may not; each
+ * becomes `_`.
+ */
 export function branchCacheScope(repo: string, branch: string): string {
   return `${repo.toLowerCase()}:${branch}`.replace(/[^\w.@/:-]/g, '_').slice(0, 128)
 }
