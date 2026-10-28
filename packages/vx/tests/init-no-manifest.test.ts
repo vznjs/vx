@@ -115,6 +115,14 @@ describe('vx init with no package.json', () => {
     ]).toEqual([0, false, PROJECT])
   })
 
+  it('a lock that is not written fails init, as vx-migrate fails', async () => {
+    // A kept config that does not load printed `lock  not written` and exited 0.
+    const root = await tmp('vx-init-bare-badlock-')
+    await writeFile(path.join(root, 'vx.config.mjs'), 'export default { tasks: { b: 5 } }\n')
+    const r = await vx(root, ['init'])
+    expect([r.code, r.out.includes('  lock      not written\n')]).toEqual([1, true])
+  })
+
   it('--native and --keep answer a Turbo or Nx question, and are refused here', async () => {
     const root = await tmp('vx-init-bare-keep-')
     const r = await vx(root, ['init', '--keep'])
