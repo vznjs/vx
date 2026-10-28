@@ -716,6 +716,35 @@ it('a worker reads the cache as the run does, and is lent its remotes’ access 
   }
 })
 
+// Core's lend lends nothing for a remote whose lend threw (a CI OIDC 5xx):
+// the run sent that to its workers, which lost the remote while its token
+// still held, and, as that token ended no relend came, for the rest of the run.
+it('a relend that lends a remote nothing keeps the token it lent before', async () => {
+  const h = await harness(new Map())
+  try {
+    h.cache.facts = {
+      refs: ['refs/heads/main'],
+      lent: { '@vzn/vx-cache': 't1' },
+      expiresAt: Date.now() + 4 * 60_000 + 200,
+    }
+    const a = await h.worker(2)
+    const got: { type: string; cache?: { lent: Record<string, string> } }[] = []
+    const until = Date.now() + 1200
+    while (Date.now() < until) {
+      got.push(
+        ...(await Promise.race([a.poll(), Bun.sleep(until - Date.now()).then(() => [])])).map(
+          (m) => m.body as (typeof got)[number],
+        ),
+      )
+      if (got.length === 1) h.cache.facts = { refs: ['refs/heads/main'], lent: {} }
+    }
+    expect(got[0]?.type).toBe('welcome')
+    for (const m of got) expect(m.cache?.lent).toEqual({ '@vzn/vx-cache': 't1' })
+  } finally {
+    await h.stop()
+  }
+})
+
 it('a lent token already ended is not lent again at once, in a loop', async () => {
   const h = await harness(new Map())
   try {

@@ -340,6 +340,8 @@ export class Orchestrator {
   /** What workers read the cache under, asked once and again before its lent tokens end. */
   private facts: Promise<CacheFacts> | undefined
   private relend: ReturnType<typeof setTimeout> | undefined
+  /** The plugins any of the run's lends lent a token. */
+  private readonly lenders = new Set<string>()
 
   constructor(private readonly o: OrchestratorOptions) {
     this.sent = o.sent ?? new Map()
@@ -424,27 +426,53 @@ export class Orchestrator {
 
   /** The run's cache facts; once they end, every worker is sent them again before then. */
   private cache(): Promise<CacheFacts> {
-    if (this.facts !== undefined) return this.facts
-    const asked = this.o.cacheFacts()
-    this.facts = asked
+    this.facts ??= this.lend(undefined)
+    return this.facts
+  }
+
+  /**
+   * The run's cache facts, asked now. A remote whose lend failed this time
+   * (core lends it nothing) keeps the token `held` lent it until that ends,
+   * and is asked again `RELEND_FLOOR_MS` on: sent without it, workers lost
+   * the remote while its token held, and for the rest of the run when it
+   * was the one remote whose token ends (no relend came again).
+   */
+  private lend(held: CacheFacts | undefined): Promise<CacheFacts> {
+    let short = false
+    const asked = this.o.cacheFacts().then((fresh) => {
+      for (const p of Object.keys(fresh.lent)) this.lenders.add(p)
+      short = [...this.lenders].some((p) => !(p in fresh.lent))
+      const live =
+        held !== undefined && (held.expiresAt === undefined || held.expiresAt > Date.now())
+      if (!short || !live) return fresh
+      const lent = { ...fresh.lent }
+      for (const [p, t] of Object.entries(held.lent)) if (!(p in lent)) lent[p] = t
+      const expiresAt = Math.min(fresh.expiresAt ?? Infinity, held.expiresAt ?? Infinity)
+      return { ...fresh, lent, ...(expiresAt === Infinity ? {} : { expiresAt }) }
+    })
     void asked.then(
       (f) => {
-        if (f.expiresAt === undefined || this.ended) return
+        if ((f.expiresAt === undefined && !short) || this.ended) return
+        const left = (f.expiresAt ?? Infinity) - Date.now()
         this.relend = setTimeout(
           () => {
-            this.facts = undefined
-            void this.cache().then((cache) => {
-              for (const a of this.workers.values()) this.post(a, { type: 'cache', cache })
-            })
+            const next = this.lend(f)
+            this.facts = next
+            void next.then(
+              (cache) => {
+                if (JSON.stringify(cache) === JSON.stringify(f)) return
+                for (const a of this.workers.values()) this.post(a, { type: 'cache', cache })
+              },
+              // quiet: the workers keep what they hold, and the next ask asks again
+              () => {},
+            )
           },
-          f.expiresAt - Date.now() > RELEND_MS
-            ? f.expiresAt - Date.now() - RELEND_MS
-            : RELEND_FLOOR_MS,
+          short ? RELEND_FLOOR_MS : left > RELEND_MS ? left - RELEND_MS : RELEND_FLOOR_MS,
         )
         this.relend.unref()
       },
       () => {
-        this.facts = undefined
+        if (this.facts === asked) this.facts = undefined
       },
     )
     return asked
