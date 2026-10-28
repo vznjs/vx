@@ -1273,6 +1273,20 @@ describe('persistent post-ready output', () => {
     }
   })
 
+  // `vx watch` hands its dev server to the next cycle's run, which writes
+  // the server's output from that run's start: before the run reaches the
+  // task it was buffered as a task's that has yet to run, and never shown.
+  it('a server held from an earlier run streams under its id before this run reaches it', () => {
+    for (const mode of ['broad', 'full'] as const) {
+      const out = sink()
+      const log = defaultLogger(NO_COLORS, { mode }, out)
+      const n = mkPersistent('app#server')
+      log.taskStdout(n, 'rebuilt lib\n')
+      log.taskStderr(n, 'warn: slow\n')
+      expect(out.text()).toBe('app#server │ rebuilt lib\napp#server │ warn: slow\n')
+    }
+  })
+
   // A server that writes only `\r` updates never ends a line: what it
   // held grew without bound and never printed.
   it("a kept server's line that never ends prints at the cap", () => {

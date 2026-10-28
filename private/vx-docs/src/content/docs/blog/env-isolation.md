@@ -85,7 +85,8 @@ goes in `secret`.
 
 Masking covers every place vx prints: logs, cache replays, `vx show`,
 `vx why`, `vx last`, telemetry and JSON. A value split across two output
-chunks is still caught.
+chunks is still caught. Split by a pause, it can show on screen, but no
+stored copy keeps it.
 
 ## When a variable changes the output
 

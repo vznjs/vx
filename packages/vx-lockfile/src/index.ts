@@ -133,9 +133,15 @@ const MANAGERS = {
     recorded: (t) => pnpmLock().recordedImporters(t),
     // pnpm's walk skips bower_components as it does node_modules (pnpm 10).
     skippedDirs: ['node_modules', 'bower_components'],
-    settings: ['pnpm-workspace.yaml', '.npmrc'],
+    // The root package.json for its `pnpm` field: pnpm reads install
+    // settings there that the lockfile does not record.
+    settings: ['pnpm-workspace.yaml', '.npmrc', 'package.json'],
     settingsText: (file, text) =>
-      file === 'pnpm-workspace.yaml' ? pnpmSettings().workspaceSettings(text) : undefined,
+      file === 'pnpm-workspace.yaml'
+        ? pnpmSettings().workspaceSettings(text)
+        : file === 'package.json'
+          ? pnpmSettings().packageSettings(text)
+          : undefined,
     peersInManifest: true,
   },
   bun: {

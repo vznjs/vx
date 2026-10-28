@@ -703,7 +703,11 @@ key) is also masked line by line, each line of six characters or more,
 and a value holding a `'` also as a shell-quoted line spells it (`'\''`).
 A value
 split across two output chunks is still caught; the output holds back
-that many characters until the next chunk. A plugin that reads a task's
+that many characters until the next chunk. On screen the hold lasts
+25 ms, so a value written in two pieces with a longer pause between
+them shows; every stored copy (the entry a hit replays and a remote
+cache receives, the failure record `vx last` reads) is masked again
+whole and never holds it. A plugin that reads a task's
 config directly sees it as written. A secret whose name holds none of
 those words (`GH_PAT`, `NPM_AUTH`) is listed in `exec.env.secret`, and is
 then masked in the same places.

@@ -15,6 +15,8 @@ export interface AffectedArgs {
   projects: readonly ProjectMeta[] | Promise<readonly ProjectMeta[]> // awaited after the diff starts
   /** false skips the config-import scan: a branch scope's routing. */
   configImports?: false
+  /** Assume-unchanged / skip-worktree paths from the run's enumeration; null or absent asks `git ls-files -v`. */
+  flagged?: () => Promise<readonly string[] | null>
   /** Which projects declare a `workspaceFiles` glob matching these paths.
    *  Asked about every changed path, once something changed (item 954). */
   workspaceGlobOwners?: (

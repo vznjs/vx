@@ -329,6 +329,21 @@ export function killTree(child: Child, signal: 'SIGINT' | 'SIGTERM' | 'SIGKILL')
 }
 
 /**
+ * Stop or continue `child`'s group with vx (Ctrl-Z, `fg`). Straight to
+ * the group, never down a sandbox's channel: its watcher passes one
+ * signal and is gone. Under a Linux sandbox that stops bwrap, and the
+ * command inside blocks once its output pipe fills.
+ */
+export function pauseTree(child: Child, signal: 'SIGSTOP' | 'SIGCONT'): void {
+  if (!(child.pid > 0) || goneGroups.has(child)) return
+  try {
+    process.kill(-child.pid, signal)
+  } catch {
+    // The group is gone, or not ours: nothing of it to stop.
+  }
+}
+
+/**
  * How often a group whose leader has exited is asked again whether any
  * member is left. Only a group that outlived its leader is polled.
  */

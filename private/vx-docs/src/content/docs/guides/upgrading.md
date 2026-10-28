@@ -9,16 +9,55 @@ Before 1.0 a release may break what the last one did. Each heading below
 is a breaking commit (`type!:` or a `BREAKING CHANGE:` footer), newest
 first; its text is that footer: what changed and what to do.
 
-## vx-devtools,vx-dte-server: read ALLOW as space separated only
+## cache: restore the modes of output directories a hit makes
 
-ALLOW no longer takes commas between entries. Separate them with spaces or newlines.
-## vx-dte-server: read ALLOW and AUDIENCE from the environment
+CACHE_VERSION is vx-cache-v49: every cached task misses once after upgrading.
 
-vx-dte-server no longer takes --allow or --audience; set ALLOW and AUDIENCE in its environment. In compose.yaml set CACHE_ALLOW, CACHE_AUDIENCE, CACHE_READ_ACCESS and HISTORY_ALLOW, HISTORY_AUDIENCE, HISTORY_READ_ACCESS in place of ALLOW, AUDIENCE and READ_ACCESS.
+## workspace: refuse project names dependsOn or --filter misread
+
+a project name with '*', a leading '^' or '!', 'tag:', '...', a trailing '[ref]', './x' or '{x}' is refused at vx lock; rename it.
+
+## workspace: refuse a baseBranch spelled as a ref
+
+a baseBranch or VX_BASE_BRANCH starting with origin/ or refs/ is refused; name the branch alone ('main').
+
+## vx-cache,vx-history: refuse an http:// url to another host
+
+vxCache({ url }) / VX_CACHE_URL and vxHistory({ url }) / VX_HISTORY_URL refuse http:// unless the host is 127.0.0.1, ::1 or localhost. Serve the server over https.
 
 ## inputs: run a runtime probe with the essential env only
 
 inputs.runtime and inputs.workspaceRuntime probes see only the essential env allowlist, not vx's full environment; declare a variable a probe read as an inputs.env name.
+
+## vx-history-server: sweep once a day across every node
+
+a Store implements sweptAt() and sweep(before, now), which records the sweep at now. sqliteStore does both.
+
+## vx-cache-server,vx-history-server: require AUDIENCE on Bun
+
+the Bun and Docker vx-cache-server and vx-history-server refuse to start without AUDIENCE; compose reads CACHE_AUDIENCE and HISTORY_AUDIENCE.
+
+## vx-devtools: refuse writes from issue_comment and workflow_run
+
+the cache and history servers refuse writes from issue_comment and workflow_run jobs, as from pull_request_target.
+
+## vx-dte-server: read ALLOW and AUDIENCE from the environment
+
+vx-dte-server no longer takes --allow or --audience; set ALLOW and AUDIENCE in its environment. In compose.yaml set CACHE_ALLOW, CACHE_AUDIENCE, CACHE_READ_ACCESS and HISTORY_ALLOW, HISTORY_AUDIENCE, HISTORY_READ_ACCESS in place of ALLOW, AUDIENCE and READ_ACCESS.
+
+## vx-devtools: one refusal body for every vx server
+
+@vzn/vx-history-server no longer exports errorJson; import it from @vzn/vx-devtools.
+
+## vx-devtools,vx-dte-server: read ALLOW as space separated only
+
+ALLOW no longer takes commas between entries. Separate them with spaces or newlines.
+## vx-reapi: read every setting from options, none from the env
+
+reapi() no longer reads VX_REAPI_ENDPOINT, VX_REAPI_INSTANCE, VX_REAPI_EXECUTE or VX_REAPI_TLS_*. Pass them as options: reapi({ endpoint: process.env.VX_REAPI_ENDPOINT, execute: true }).
+## util: refuse M as a duration unit, minutes are m
+
+a duration in `M` (`5M`) is refused; write `5m`.
 
 ## vx-devtools: admit CI by the relay's ALLOW string, not TRUST
 

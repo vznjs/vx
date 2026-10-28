@@ -39,7 +39,10 @@ vulnerability), never in a public issue.
 - **Your lockfile and your repo.** vx parses a lockfile (and
   `turbo.json` or an Nx graph when migrating) into keys and refuses one
   it cannot read, naming the file. A lockfile that names another
-  install is a different key, never a code path.
+  install is a different key, never a code path. A file vx generates
+  (`vx init`, `vx lock`'s review copies, `@vzn/vx-migrate`,
+  `vx dte init`) is never written through a symlink the repo carries:
+  vx refuses it, naming where it points.
 - **Whoever can write your remote cache.** A cache key names the
   inputs, not the bytes, so a store that answers a key with bytes of its
   choosing is trusted as a writer, as it is in every action cache. Use a
@@ -261,3 +264,10 @@ full commit SHA; and a workflow hands an event's or a dispatcher's value
 to a script through `env`, never pasted in (a release tag is checked as a
 version first); every workflow names its token's permissions, and CI's
 is read-only. A test holds each rule.
+
+The publishing workflows build a release tag only: `release.yml` checks
+out `refs/tags/<tag>`, and `npm.yml` a dispatch's `ref` as a tag, so a
+dispatch naming a branch or a commit builds nothing. npm's trusted
+publisher takes a token only from a job of the `npm` environment, whose
+branch rule admits `main` and the release tags
+(`tests/auto-release.unsafe.test.ts`).

@@ -500,7 +500,7 @@ everything in `cache.db`.
     ├── outputs/             #   declared output files, project-relative
     ├── workspace-outputs/   #   declared outputs.workspaceFiles,
     │                        #   WORKSPACE-ROOT-relative (when any)
-    ├── .vx-meta.json        #   { version, key, files: { <entry>: [mode, mtimeMs] }, exec? }
+    ├── .vx-meta.json        #   { version, key, files: { <entry>: [mode, mtimeMs] }, dirs?, links?, dirModes?, exec? }
     └── .vx-sum              #   CRC-32 of every entry above (v36)
 ```
 
@@ -738,7 +738,7 @@ Outputs` additionally refuses when the archive cannot produce an output
 
 ## `CACHE_VERSION` / `SCHEMA_VERSION`
 
-`CACHE_VERSION` is currently `'vx-cache-v48'`; `SCHEMA_VERSION` is
+`CACHE_VERSION` is currently `'vx-cache-v49'`; `SCHEMA_VERSION` is
 `'v49'`. Bump `CACHE_VERSION` when:
 
 - A new field is added to the cache KEY derivation (folded inside

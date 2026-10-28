@@ -1006,6 +1006,77 @@ describe('signal handling during vx run (e2e)', () => {
   )
 })
 
+/** A process's state letter from /proc (`T` stopped, `S` sleeping). */
+function procState(pid: number): string {
+  const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+  return stat.slice(stat.lastIndexOf(')') + 2, stat.lastIndexOf(')') + 3)
+}
+
+async function untilState(pid: number, want: string, timeoutMs: number): Promise<string> {
+  const deadline = Date.now() + timeoutMs
+  let got = procState(pid)
+  while (got !== want && Date.now() < deadline) {
+    await Bun.sleep(20)
+    got = procState(pid)
+  }
+  return got
+}
+
+// Ctrl-Z stops the terminal's foreground group, which is vx's alone: a
+// task runs in its own session. vx stopped and its tasks ran on, so an
+// interactive one kept reading the terminal the shell had taken back.
+describe.skipIf(process.platform !== 'linux')('Ctrl-Z (SIGTSTP) during vx run', () => {
+  let fixture: Fixture
+  beforeEach(async () => {
+    fixture = await makeWorkspace()
+  })
+  afterEach(async () => {
+    await rm(fixture.root, { recursive: true, force: true })
+  })
+
+  it(
+    'stops every task with vx, and continues them with it',
+    async () => {
+      const dir = await addProject(
+        fixture.root,
+        'app',
+        `
+          export default {
+            tasks: {
+              slow: { exec: { command: 'echo $$ > pid.txt; exec sleep 30' } },
+            },
+          }
+        `,
+      )
+      const proc = Bun.spawn([process.execPath, BIN, 'run', 'slow', '--all'], {
+        cwd: fixture.root,
+        env: { ...process.env },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const pid = await waitForPid(path.join(dir, 'pid.txt'), 10_000)
+      try {
+        proc.kill('SIGTSTP')
+        expect(await untilState(proc.pid, 'T', 5_000)).toBe('T')
+        expect(await untilState(pid, 'T', 5_000)).toBe('T')
+        proc.kill('SIGCONT')
+        expect(await untilState(pid, 'S', 5_000)).toBe('S')
+        proc.kill('SIGTERM')
+        expect(await proc.exited).toBe(143)
+        expect(await waitForDead(pid, 3_000)).toBe(true)
+      } finally {
+        proc.kill('SIGKILL')
+        try {
+          process.kill(pid, 'SIGKILL')
+        } catch {
+          // gone
+        }
+      }
+    },
+    TIMEOUT,
+  )
+})
+
 describe('terminateChildren — the second sweep re-reads what is live', () => {
   it(
     'a child that appears DURING the grace is killed by the second sweep',

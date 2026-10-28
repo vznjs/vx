@@ -133,11 +133,43 @@ describe('vx watch loop (e2e)', () => {
     await until(() => w.cycles() === 1, 'the cycle the config edit starts')
     await Bun.sleep(SETTLE_MS)
     expect(await executions(f.log)).toBe(1)
+    // Said, or the cycle read as the edit applied: it printed `changed` and
+    // no row, the same as an edit that changed nothing.
+    const hint = noticed(
+      'vx watch: packages/app/vx.config.mjs changed; runs read the lock, so run `vx lock` to apply it',
+      'warn',
+    )
+    expect(w.err()).toContain(hint)
 
     // The re-lock is the edit that changes what a cycle runs.
     lock(f.root)
     await until(async () => (await executions(f.log)) === 2, 'the re-run after a re-lock')
+    expect(w.err().split(hint).length - 1).toBe(1)
+
+    // A config gone is the run's own refusal to say, not a second line.
+    await rm(config)
+    await until(() => w.err().includes('but its vx.config.mjs is gone'), 'the refusal')
+    expect(w.err().split(hint).length - 1).toBe(1)
     expect(await readFile(path.join(f.dir, 'dist', 'out.txt'), 'utf8')).toBe('a1\na1\n')
+  }, 40_000)
+
+  it('a lock removed under watch is said once per cycle, by the cycle', async () => {
+    // The re-read before the cycle said `cannot re-read the workspace: no
+    // lock` and the cycle then said `no lock` again: two lines, one cause.
+    f.watch = startWatch(f.root)
+    const w = f.watch
+    await until(() => w.out().includes('watching '), 'the watching marker')
+    const lockFile = path.join(f.root, '.vx', 'projects.lock.json')
+    const locked = await readFile(lockFile, 'utf8')
+    await rm(lockFile)
+    await until(() => w.err().includes('cycle failed: no lock'), 'the failed cycle')
+    await Bun.sleep(SETTLE_MS)
+    expect(w.err()).not.toContain('cannot re-read the workspace')
+    expect(w.err().split('no lock: run `vx lock`').length - 1).toBe(1)
+
+    // Restored, the loop runs again.
+    await writeFile(lockFile, locked)
+    await until(() => w.cycles() === 2, 'the cycle the restored lock starts')
   }, 40_000)
 
   it('a task with no cache re-runs on a git-ignored file it reads (item 947)', async () => {
@@ -223,6 +255,12 @@ describe('vx watch loop (e2e)', () => {
     await Bun.sleep(SETTLE_MS)
     expect(await executions(f.log)).toBe(2)
     expect(await readFile(said, 'utf8')).toBe('ONE\n')
+    expect(w.err()).toContain(
+      noticed(
+        'vx watch: shared/preset.mjs changed; runs read the lock, so run `vx lock` to apply it',
+        'warn',
+      ),
+    )
 
     lock(f.root)
     await until(async () => (await executions(f.log)) === 3, 'the re-run after a re-lock')

@@ -136,3 +136,36 @@ it('a patch edit moves only the projects whose closure holds the patched package
   expect([...one.keys()].sort()).toEqual(['.', 'packages/a', 'packages/b'])
   expect([...one.keys()].filter((d) => one.get(d) !== two.get(d))).toEqual(['packages/b'])
 })
+
+// pnpm 10 reads install settings from the root package.json's `pnpm`
+// field too, and the lockfile records none of `onlyBuiltDependencies`:
+// adding `dep` there ran its postinstall under a byte-identical
+// pnpm-lock.yaml (probed, pnpm 10.28), and no key moved. The rest of the
+// manifest is the lockfile's to record, or the root's own input.
+it("the root package.json's pnpm field keys every task, but for what the lockfile records", async () => {
+  const manifest = (pkg: Record<string, unknown>): Promise<void> =>
+    writeFile(path.join(root, 'package.json'), JSON.stringify(pkg))
+  await manifest({ name: 'root', private: true })
+  const base = await key()
+  await manifest({ name: 'root', private: true, devDependencies: { x: '1.0.0' } })
+  expect(await key()).toBe(base)
+  await manifest({ name: 'root', pnpm: { overrides: { x: '2' }, patchedDependencies: { x: 'p' } } })
+  expect(await key()).toBe(base)
+  await manifest({ name: 'root', pnpm: { onlyBuiltDependencies: ['dep'] } })
+  expect(await key()).not.toBe(base)
+  const enc = new TextEncoder()
+  const ctx = { workspaceRoot: root, cacheDir: root, warn() {}, projects: [] }
+  const affectedBy = (before: unknown, after: unknown): unknown =>
+    pnpm().fingerprint!.affected(
+      {
+        file: 'package.json',
+        before: enc.encode(JSON.stringify(before)),
+        after: enc.encode(JSON.stringify(after)),
+      },
+      ctx,
+    )
+  expect(await affectedBy({ name: 'root' }, { name: 'root', dependencies: { x: '1' } })).toEqual([])
+  expect(
+    await affectedBy({ name: 'root' }, { name: 'root', pnpm: { neverBuiltDependencies: ['x'] } }),
+  ).toBeUndefined()
+})

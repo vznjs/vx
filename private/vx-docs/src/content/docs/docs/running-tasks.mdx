@@ -19,15 +19,15 @@ vx run build --all --dry               # the plan, nothing runs
 vx watch test --all                    # re-run whenever its files change
 ```
 
-`--dry` prints what would run and where each result would come from:
+`--dry` prints what would run and where each result would come from.
+Here both builds would come from the local cache:
 
-```text
-would run:
-  ✓  @acme/api#build  cache hit (local)         8625b603
-  ✓  @acme/ui#build   cache hit (local)         71e5d9a0
-  ✓  @acme/web#build  cache hit (local)         42e9b39d
+```ansi
+[1mwould run:[0m
+  [38;2;34;197;94m✓[0m  [38;2;192;132;252m@demo/ui[0m[2m#[0m[38;2;244;114;182mbuild[0m   [38;2;34;197;94mcache hit (local)       [0m  [2me0464997[0m[2m[0m
+  [38;2;34;197;94m✓[0m  [38;2;244;114;182m@demo/web[0m[2m#[0m[38;2;244;114;182mbuild[0m  [38;2;34;197;94mcache hit (local)       [0m  [2mb421f74f[0m[2m[0m
 
-3 task(s) planned, 3 cache hits (3 local).
+[2m2 task(s) planned, 2 cache hits (2 local).[0m
 ```
 
 | Flag                | Does                                                        |

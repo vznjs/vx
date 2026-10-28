@@ -81,6 +81,10 @@ A name declared by only some projects is fine; the check fires only when
 a name matches nowhere. So `vx run lint test typecheck` fails on CI the
 day `typecheck` is renamed, instead of running two of three.
 
+A name no config can declare is refused before the lookup: an empty one
+(`vx run ''`) and one with surrounding whitespace (`vx run 'build '`),
+which the refusal quotes so the space shows.
+
 Under `--affected` or a `[ref]` filter, a bare name is checked against
 the whole workspace, since what changed decides the projects:
 
@@ -399,10 +403,10 @@ What counts as a change:
 lockfile and no install setting: without a lockfile plugin, the root
 `bun.lock` or `pnpm-lock.yaml` is a root file like any other, and a
 change to it selects the root project (when the workspace has one), not
-every project.
+every project. One inside a package selects only that package.
 
 A lockfile a plugin claims (`VxPlugin.fingerprint`, such as
-`pnpm-lock.yaml` under `@vzn/vx-lockfile`) is different. The key holds
+`pnpm-lock.yaml` under `@vzn/vx-lockfile`) is in the key: the key holds
 what the plugin says per project, so `--affected` gives the plugin the
 lockfile at the base and now, and selects the projects it names.
 
@@ -994,7 +998,10 @@ cache entry for them, so the next run is a plain local hit.
 | `130` / `143` / `129` | Interrupted (SIGINT / SIGTERM / SIGHUP): each task's process group (the task and what it forked) gets vx's signal once (a SIGHUP as a SIGTERM), a 2 s grace to go, then SIGKILL; a second signal skips the grace. vx then dies of the signal, so a shell script running it stops too (a run that handed a task the terminal exits with the code, so the terminal is restored). |
 
 A task runs in its own session, so a terminal's Ctrl-C reaches vx alone,
-and each task hears it once: from vx, as SIGINT. A stop starts no more remote
+and each task hears it once: from vx, as SIGINT. Ctrl-Z (SIGTSTP) stops
+each task's process group, then vx; `fg` or `bg` continues vx, and vx
+continues them. A Linux sandboxed task's command is not stopped, only
+held once its output pipe fills. A stop starts no more remote
 cache uploads and does not wait on one in flight, nor on a remote lookup or
 download: what was half-read is dropped and fetched again next run.
 
@@ -1271,8 +1278,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
 ### Lifecycle
 
 1. **Initial run.** Same code path as `vx run` — same scope resolution,
-   same task graph, same cache behaviour. The line `vx watch: initial
-run...` precedes it.
+   same task graph, same cache behaviour, printed as its rows alone.
 2. **Watch loop.** After the initial run finishes (or once it waits only
    on a server's readiness, X-139), the directory of
    every project a cycle can run — the scope (the bare tasks' scope
@@ -1384,7 +1390,8 @@ watch events within 2000 ms; polling every 250 ms instead`.
 3. **On change.** A cycle opens with a blank line and
    `changed <project> <relpath>`, plus ` (+N more)` when more paths
    changed, then its task rows as `vx run` prints them, with no footer.
-   The named path is the first changed one that still exists, so an
+   The named path is the first changed file that still exists (a
+   directory only when no file changed), so an
    editor's temporary file renamed away names nothing; a deletion names
    the cycle when nothing else changed. The `watching` line is said
    once: a cycle that re-reads the watched set (a member came or went,
@@ -1456,8 +1463,10 @@ decide which projects actually re-run: core keys no package file, so a
 lockfile edit re-keys only through its claimant
 ([cache key derivation](./caching.md#cache-key-derivation)). Every
 cycle's configs come from `.vx/projects.lock.json`, so a config edit
-alone changes no command, and a re-lock (`vx lock`) is a cycle that
-re-reads the watched set (item 971).
+alone changes no command: the cycle it starts says so on stderr,
+`vx watch: packages/app/vx.config.ts changed; runs read the lock, so run
+\`vx lock\` to apply it` (a config import's edit too). A re-lock
+(`vx lock`) is a cycle that re-reads the watched set (item 971).
 
 ### Constraints
 
@@ -1475,7 +1484,8 @@ once and stays up across cycles; each cycle re-runs what it depends on,
 as the cache keys decide. So `vx watch dev`, with `dev` depending on
 `^build`, rebuilds only the libraries an edit reaches on the way to the
 app and leaves the server running; the dev tool's own reload picks up
-what was rebuilt. What the server writes keeps printing. It restarts
+what was rebuilt. What the server writes keeps printing, under its id
+above the rows while a cycle rebuilds. It restarts
 only when its own task config (or the args forwarded to it) changed, or
 when it died: the old one is stopped first (the kill grace, then
 SIGKILL), so the two never hold one port. One that dies while watch
@@ -1483,7 +1493,8 @@ idles is said (`vx: app#dev exited with code 3`); the next change
 starts it again. A cycle in which a task the server depends on fails
 stops it. An edit while a cycle waits only on a server that has not
 printed its `readyWhen` line stops that cycle and starts the next, so a
-fix reaches a server stuck before ready, in the initial run too.
+fix reaches a server stuck before ready, in the initial run too; the
+servers already up stay up through it.
 Stopping watch stops the server too. A one-shot task (`vx watch build`)
 re-runs itself and what it depends on.
 
@@ -1502,9 +1513,10 @@ re-runs itself and what it depends on.
   same `Did you mean` hint, and watch exits rather than re-run the
   refusal on every change.
 
-A cycle that throws — a `vx.config.*` that does not parse — prints
-`vx watch: cycle failed: <reason>` and watch keeps watching, the initial
-run included, so saving the fix re-runs (item 1017).
+A cycle that throws — no `.vx/projects.lock.json`, or one that locks a
+config since removed — prints `vx watch: cycle failed: <reason>` once
+and watch keeps watching, the initial run included, so the `vx lock`
+that fixes it re-runs (item 1017).
 
 Re-run cycles whose orchestrator returns `{ ok: false }` do NOT exit
 the watch loop — a failed cycle just prints the framed FAILED block
@@ -1515,7 +1527,7 @@ watch`.
 
 `vx cache clean` evicts old or oversized cache entries, or with no
 bound clears the cache. It operates on the entries and
-`<hash>.tar.zst` artifacts of the store the workspace's index records
+`<hash>.tar.zst` artifacts of the store a run opens
 (`~/.vx/<id>/cache`, shared by every checkout of the repository), or of
 `<cacheDir>` itself when the workspace names one (`cache.dir`,
 `VX_CACHE_DIR`, `--cache-dir`).
@@ -1571,8 +1583,9 @@ history and hash memos older than 30 days; a run never does.
 
 Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
-**Duration units**: `s`, `m`, `h`, `d`, case-insensitive. Examples:
-`30d`, `24h`, `60m`, `30s`, `30D`.
+**Duration units**: `ms`, `s`, `m`, `h`, `d`, case-insensitive, except
+minutes, which are `m` only: `1M` is refused, since some tools read it
+as a month. Examples: `30d`, `24h`, `60m`, `30s`, `30D`.
 
 **Size units**: `K`, `M`, `G`, `T` (powers of 1024), case-insensitive, with an optional `B` or `iB` (`512MB`, `32KiB`).
 Optional `B` suffix is accepted. Examples: `500M`, `1G`, `100K`, `2T`,
@@ -1652,7 +1665,8 @@ are part of [`vx info`](#vx-info), and `vx cache stats`, `list`, `ls`,
 `vx cache clean` with neither `--older-than` nor `--max-size` clears
 the whole cache: the cache directory (`.vx/cache`, or `cache.dir` /
 `--cache-dir`: the index and this workspace's run history, so `vx last`
-and `vx why` start over) and the store its index names, where the
+and `vx why` start over), the store a run opens and the one its index
+last named, if another (a changed HOME, an origin added), where the
 entries live (`~/.vx/<id>/cache`, shared by this repository's
 checkouts, so their entries go too). `--global` also clears every other
 repository's store under `~/.vx` (`~/.vx/*/cache`); it takes no bound
@@ -1668,6 +1682,10 @@ index is a file in the checkout, which a commit or a restored CI cache
 could point at any directory. A workspace that never ran says
 `› vx cache clean  nothing to free`. The next run misses every task once
 and saves again.
+
+A `.vx/cache` linked to another directory (a CI cache volume) is
+emptied through the link, and the link stays. An index SQLite cannot
+read is cleared like any other.
 
 ```
 $ vx cache clean
@@ -2689,7 +2707,7 @@ $ vx info
   memory            13 GB usable — cgroup limit; the machine has 16 GB
   cache dir         /work/repo/.vx/cache (8.2 MB, this workspace's run history)
   cache store       /home/me/.vx/3f2a9c1e7b4d5a60/cache (1.3 GB, shared by this repo's checkouts)
-  cache versions    keys vx-cache-v48 · index schema v49
+  cache versions    keys vx-cache-v49 · index schema v49
   cache entries     42 (1.3 GB)
   orphans           3 artifacts (12 MB) the index does not know — `vx cache clean` reaps them
   task runs (24h)   7 (5 cache hits)
@@ -2817,7 +2835,8 @@ there is no second source.
 
 `vx why` tells you why a task re-ran: the file, variable or dependency
 that moved its cache key since the run before. It reads the local
-`cache.db` only: no config evaluation, no re-hash.
+`cache.db`, no re-hash; configs are evaluated only when a moved
+dependency is a group, which records no run of its own.
 
 ### Usage
 
@@ -2909,9 +2928,13 @@ count), and `what to do` speaks to those kinds instead:
     app#build ← lib#build ← file packages/lib/src/index.ts
 ```
 
-A dependency the walk cannot find in the run keeps the `upstream` line,
-which names the `vx why` to run next; a `config` line names the
-`vx show` that prints the task's config now.
+A group records no run, so the walk goes through the tasks it gathers
+(`app#pack ← app#all ← lib#build ← file packages/lib/src.txt`). A
+dependency the walk cannot find in the run keeps the `upstream` line,
+which names the `vx why` to run next, or, for a group, the `vx show`
+that names what it gathers. A dependency added or removed moved no key:
+its line says the graph changed (`dependsOn` or a project edge). A
+`config` line names the `vx show` that prints the task's config now.
 
 **Changed during a run.** A moved input file whose last change fell inside a recorded task's run
 window names that task: a task that writes a file another key reads (a
@@ -3044,7 +3067,9 @@ read it, `failed (exit 137)`, with the signal an exit above 128 stands
 for at the row's end (`128 + SIGKILL`; the shell's convention, so a
 command that exits 137 on its own reads the same). Where the run's
 footer gave a reason, the row ends with it instead: `timed out`,
-`never ready: exited`, `2 sandbox violations`, and for a skipped task
+`never ready: exited`, `src/a.ts changed during the run` (an
+`inputStability.severity: 'error'` failure, read from its kept output),
+`2 sandbox violations`, and for a skipped task
 `after lib#build failed` (the v27 columns; rows older than them read
 as before). A task that retried ends with its attempts, `2 attempts`,
 passed or failed (`attempts` in `--format json`, null for a task run

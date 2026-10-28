@@ -42,3 +42,27 @@ export function sharedWorkspaceLockfile(
   }
   return npmrc?.match(/^[ \t]*shared-workspace-lockfile[ \t]*=[ \t]*(\S*)/m)?.[1] !== 'false'
 }
+
+/**
+ * The root package.json as every task folds it: only its `pnpm` field,
+ * which pnpm reads install settings from (`onlyBuiltDependencies`,
+ * `supportedArchitectures`, …) and the lockfile records none of, without
+ * the patches and overrides it does record. Its dependencies are the
+ * lockfile's to record. Undefined for a file that does not parse to a
+ * mapping, folded whole.
+ */
+export function packageSettings(text: string): string | undefined {
+  let doc: unknown
+  try {
+    doc = JSON.parse(text)
+  } catch {
+    return undefined
+  }
+  const map = record(doc)
+  if (map === undefined) return undefined
+  const rest: Json = {}
+  for (const [k, v] of Object.entries(record(map['pnpm']) ?? {})) {
+    if (k !== 'patchedDependencies' && k !== 'overrides') rest[k] = v
+  }
+  return `pnpm-package\0${stable(rest)}`
+}

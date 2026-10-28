@@ -165,6 +165,8 @@ terminal and a task succeeding or failing. Read it alongside
  │                runs in its own session, so a closing terminal
  │                reaches vx and nothing else. A second signal
  │                SIGKILLs and exits at once.
+ │    • SIGTSTP/SIGCONT handlers: Ctrl-Z SIGSTOPs every task group,
+ │                then vx; SIGCONT (fg, bg) continues them.
  │
  ├─ Cache acceleration (before scheduling)
  │    • REMOTE PREFETCH (a cache layer with a remote only) — derive every

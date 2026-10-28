@@ -51,3 +51,17 @@ export function squashBreakingError(title: string, commits: readonly Commit[]): 
     return 'the title is breaking and no commit is: mark one commit `!` (or a `BREAKING CHANGE:` footer)'
   return `${branch} commits are breaking and the squash makes ${main}: ${main === 0 ? 'mark the title `!`' : 'keep one breaking commit'}`
 }
+
+/**
+ * Whether `base..head` lands other PRs as `chore: land #N` merges: such a
+ * branch merges into main by a merge commit, each PR's commits as
+ * themselves, so no squash counts its breaking commits (2026-10-28).
+ */
+export function landsByMerge(base: string, head: string, cwd: string): boolean {
+  const r = Bun.spawnSync(['git', 'log', '--merges', '--format=%s', `${base}..${head}`], { cwd })
+  if (r.exitCode !== 0) throw new Error(`git log ${base}..${head}: ${r.stderr.toString().trim()}`)
+  return r.stdout
+    .toString()
+    .split('\n')
+    .some((s) => /^chore: land #\d+$/.test(s))
+}

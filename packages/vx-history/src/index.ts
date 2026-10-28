@@ -85,8 +85,9 @@ export interface VxHistoryOptions {
    */
   readonly defaultBranch?: string
   /**
-   * A vx-history server's URL (`@vzn/vx-history-server`), or
-   * `VX_HISTORY_URL`. On a CI job with a token (GitHub's OIDC, or GitLab's
+   * A vx-history server's https URL (`@vzn/vx-history-server`; http only to
+   * this machine), or `VX_HISTORY_URL`. On a CI job with a token (GitHub's
+   * OIDC, or GitLab's
    * `VX_HISTORY_TOKEN`) each run asks it for its tasks' numbers, without
    * waiting, and sends its own timings once at its end.
    */
