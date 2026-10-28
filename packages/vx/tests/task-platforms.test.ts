@@ -70,6 +70,26 @@ describe('exec.platforms', () => {
     ])
   })
 
+  // `--continue=always` runs a FAILURE's dependants; a platform skip is no
+  // failure, and its dependant ran with nothing beneath it and turned the
+  // run red.
+  it('skips the dependants under --continue=always too', async () => {
+    const dir = await addProject(root, 'app', CONFIG)
+    const r = await run({
+      cwd: dir,
+      tasks: ['after', 'here'],
+      continueMode: 'always',
+      log: logger([]),
+    })
+    const by = new Map(r.outcomes.map((o) => [o.node.id, o]))
+    expect(r.ok).toBe(true)
+    expect([by.get('app#after')?.status, by.get('app#after')?.blockedBy]).toEqual([
+      'skipped',
+      'app#other',
+    ])
+    expect(await Bun.file(path.join(dir, 'after.txt')).exists()).toBe(false)
+  })
+
   it('refuses the run on CI before any task starts', async () => {
     const dir = await addProject(root, 'app', CONFIG)
     process.env['CI'] = 'true'
