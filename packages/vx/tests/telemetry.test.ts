@@ -945,6 +945,11 @@ describe('telemetry — end-to-end through run()', () => {
       'vx run build -- <2 arguments>',
     )
     expect(invocationCommand(['vx', 'run', 'build'])).toBe('vx run build')
+    // The CLI's line is shell-quoted: split at every blank, `'a b'` counted
+    // two arguments.
+    expect(invocationCommand("vx run --filter 'my app' build -- 'a b' 'it'\\''s'")).toBe(
+      "vx run --filter 'my app' build -- <2 arguments>",
+    )
     const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'vx-telemetry-argv-'))
     const argv = process.argv
     try {
