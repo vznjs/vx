@@ -1,5 +1,6 @@
 // The Bun server: an S3-compatible bucket, and nothing else.
 
+import { createServer, type AddressInfo } from 'node:net'
 import { afterAll, beforeAll, expect, it } from 'bun:test'
 import { oidcAuth } from '@vzn/vx-devtools'
 import { s3Blobs } from '../src/bun.js'
@@ -215,5 +216,31 @@ it('reads sizes off the bytes as stored, never a compressed answer', async () =>
     )
   } finally {
     await gzipping.stop(true)
+  }
+})
+
+// Number(null) is 0: a HEAD naming no Content-Length was an artifact of
+// 0 bytes to a check and a HEAD. A download sent chunked still serves:
+// Bun frames a streamed answer itself.
+it('takes no size the bucket did not state', async () => {
+  const unsized = createServer((sock) =>
+    sock.once('data', () =>
+      sock.end('HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\n\r\n'),
+    ),
+  )
+  await new Promise<void>((r) => unsized.listen(0, '127.0.0.1', r))
+  try {
+    const blobs = s3Blobs(
+      new Bun.S3Client({
+        endpoint: `http://127.0.0.1:${(unsized.address() as AddressInfo).port}`,
+        bucket: 'b',
+        accessKeyId: 'a',
+        secretAccessKey: 's',
+      }),
+    )
+    await expect(blobs.size('x')).rejects.toThrow('the bucket answered HEAD with no Content-Length')
+    expect(await new Response((await blobs.get('x'))!.body).text()).toBe('abc')
+  } finally {
+    unsized.close()
   }
 })
