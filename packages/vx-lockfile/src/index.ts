@@ -69,6 +69,8 @@ interface Manager {
   /** Each importer's dependency names the file records, whatever they resolve to. */
   readonly recorded: (text: string) => ReadonlyMap<string, ReadonlyMap<string, unknown>>
   readonly extraFiles?: (text: string) => readonly string[]
+  /** Dirs the manager's workspace walk never enters (default `node_modules`). */
+  readonly skippedDirs?: readonly string[]
   /** Root files no lockfile records that lay the install out: folded whole into every task. */
   readonly settings: readonly string[]
   /**
@@ -115,6 +117,8 @@ const MANAGERS = {
     importers: (t) => pnpmLock().importerLinks(pnpmParse(t)),
     extraFiles: (t) => pnpmLock().fileDeps(pnpmParse(t)),
     recorded: (t) => pnpmLock().recordedImporters(t),
+    // pnpm's walk skips bower_components as it does node_modules (pnpm 10).
+    skippedDirs: ['node_modules', 'bower_components'],
     settings: ['pnpm-workspace.yaml', '.npmrc'],
     settingsText: (file, text) =>
       file === 'pnpm-workspace.yaml' ? pnpmSettings().workspaceSettings(text) : undefined,
@@ -323,7 +327,7 @@ function plugin(manager: Manager, options: LockfileOptions): VxPlugin {
       const manifest = manifestReader(ctx.workspaceRoot)
       // The staleness check's walk overlaps the lockfile read.
       const dirs = workspaceGlobs(ctx.workspaceRoot, manager.name, manifest).then((globs) =>
-        workspaceDirs(ctx.workspaceRoot, globs),
+        workspaceDirs(ctx.workspaceRoot, globs, manager.skippedDirs),
       )
       dirs.catch(() => {})
       const read = await readImporters(ctx, manifest)
@@ -533,21 +537,27 @@ async function workspaceGlobs(
 
 /**
  * The directories the globs name that hold a `package.json`, root-relative
- * POSIX, sorted; none a `!` glob excludes, none under `node_modules`.
+ * POSIX, sorted; none a `!` glob excludes, none under a `skipped` dir.
  */
-async function workspaceDirs(root: string, globs: readonly unknown[]): Promise<string[]> {
+async function workspaceDirs(
+  root: string,
+  globs: readonly unknown[],
+  skipped: readonly string[] = ['node_modules'],
+): Promise<string[]> {
   const strip = (p: string): string => p.replace(/^\.\//, '').replace(/\/+$/, '')
   const excluded = globs
     .filter((p): p is string => typeof p === 'string' && p.startsWith('!'))
-    .map((p) => new Bun.Glob(strip(p.slice(1))))
+    // Matched as the managers match it, against the manifest's path: a
+    // bare `!**/test/**` matched against the dir never drops packages/a/test.
+    .map((p) => new Bun.Glob(`${strip(p.slice(1))}/package.json`))
   const dirs = new Set<string>()
   for (const pattern of globs) {
     if (typeof pattern !== 'string' || pattern.startsWith('!')) continue
     const glob = new Bun.Glob(`${strip(pattern)}/package.json`)
     for await (const file of glob.scan({ cwd: root, onlyFiles: true })) {
       const dir = path.dirname(file).split(path.sep).join('/')
-      if (dir === '.' || dir.split('/').includes('node_modules')) continue
-      if (!excluded.some((g) => g.match(dir))) dirs.add(dir)
+      if (dir === '.' || dir.split('/').some((seg) => skipped.includes(seg))) continue
+      if (!excluded.some((g) => g.match(`${dir}/package.json`))) dirs.add(dir)
     }
   }
   return [...dirs].sort()

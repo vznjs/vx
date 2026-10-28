@@ -336,6 +336,43 @@ describe('discover', () => {
       expect(warnings).toEqual([])
     })
 
+    if (c.name !== 'yarn') {
+      it(`${c.name}(): a workspace a negated glob excludes under a globstar is no workspace`, async () => {
+        // `packages/**` with `!**/test/**`: the manager drops packages/a/test
+        // (pnpm 10, npm 10, bun 1.4 probed), but the negation was matched
+        // against the bare dir, which `**/test/**` does not match, so the
+        // lock refused a lockfile the install had just written.
+        await writeFile(path.join(root, c.file), c.text)
+        const globs = ['packages/**', '!**/test/**']
+        if (c.name === 'pnpm') {
+          await writeFile(
+            path.join(root, 'pnpm-workspace.yaml'),
+            `packages:\n${globs.map((g) => `  - '${g}'\n`).join('')}`,
+          )
+        }
+        const metas = await projects({ root: { ...rootPkg, workspaces: globs } })
+        await mkdir(path.join(root, 'packages/a/test'), { recursive: true })
+        await writeFile(path.join(root, 'packages/a/test/package.json'), '{"name":"a-test"}')
+        expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+      })
+    }
+
+    if (c.name === 'pnpm') {
+      it('pnpm(): a manifest under bower_components is no workspace', async () => {
+        // pnpm's own walk skips `**/bower_components/**` as it does
+        // node_modules (probed, pnpm 10.28); npm and bun list it.
+        await writeFile(path.join(root, c.file), c.text)
+        await writeFile(path.join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/**'\n")
+        const metas = await projects({ root: rootPkg })
+        await mkdir(path.join(root, 'packages/a/bower_components/z'), { recursive: true })
+        await writeFile(
+          path.join(root, 'packages/a/bower_components/z/package.json'),
+          '{"name":"z"}',
+        )
+        expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+      })
+    }
+
     it(`${c.name}(): a manifest dependency on a workspace the lockfile lacks refuses until the install`, async () => {
       // c gained "a" in package.json before the install: no edge, so c built
       // beside a and hit with a's old output.
