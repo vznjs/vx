@@ -2771,7 +2771,8 @@ there is no second source.
 
 `vx why` tells you why a task re-ran: the file, variable or dependency
 that moved its cache key since the run before. It reads the local
-`cache.db` only: no config evaluation, no re-hash.
+`cache.db`, no re-hash; configs are evaluated only when a moved
+dependency is a group, which records no run of its own.
 
 ### Usage
 
@@ -2863,9 +2864,13 @@ count), and `what to do` speaks to those kinds instead:
     app#build ← lib#build ← file packages/lib/src/index.ts
 ```
 
-A dependency the walk cannot find in the run keeps the `upstream` line,
-which names the `vx why` to run next; a `config` line names the
-`vx show` that prints the task's config now.
+A group records no run, so the walk goes through the tasks it gathers
+(`app#pack ← app#all ← lib#build ← file packages/lib/src.txt`). A
+dependency the walk cannot find in the run keeps the `upstream` line,
+which names the `vx why` to run next, or, for a group, the `vx show`
+that names what it gathers. A dependency added or removed moved no key:
+its line says the graph changed (`dependsOn` or a project edge). A
+`config` line names the `vx show` that prints the task's config now.
 
 **Changed during a run.** A moved input file whose last change fell inside a recorded task's run
 window names that task: a task that writes a file another key reads (a
