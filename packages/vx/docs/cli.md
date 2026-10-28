@@ -2876,7 +2876,8 @@ cache (nothing re-ran), it re-executed on the same key, or it recorded
 no cache outcome at all, in which case vx says so instead of guessing.
 A re-execution names its cause when the index shows one: the previous
 run on the key failed and saved nothing, the run did not read the cache
-(`--force`, or a `--cache-policy` without read), no entry for the key was
+(`--force`, or a `--cache-policy` without read) or did not use it at all
+(`--no-cache`, or a `--cache-policy` without read or write), no entry for the key was
 there when it ran (pruned or evicted), the previous run was not saved
 because it ran beside a failed task (a task run past a failed dependency
 under `--continue` is never cached; said ahead of a prune, and as
