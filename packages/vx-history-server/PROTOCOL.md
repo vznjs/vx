@@ -20,9 +20,10 @@ the repository (`org/name` there, lowercased), the ref
 A request's `Authorization: Bearer <token>` is a CI job's OIDC token,
 checked as `@vzn/vx-devtools` checks it (the same `ALLOW` as
 vx-cache-server's): a repository, or a workflow, `ALLOW` does not name
-is `403`. A token writes its own branch (`refs/heads/<branch>`; a merge
-queue's run, `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, its
-base branch); a `pull_request_target` run reads only. A query names its
+is `403`. A token writes its own branch (`refs/heads/<branch>`; a
+`merge_group` run, `refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>`, its
+base branch); a `pull_request_target` run reads only, and so does a
+`pull_request` run whose head branch has its base branch's name. A query names its
 repository; a token of another is `403`. A server whose `READ_ACCESS`
 is `public` takes a query with no token for a repository `ALLOW` names;
 an upload with none is `403`.
