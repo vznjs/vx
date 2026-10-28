@@ -1255,8 +1255,7 @@ vx watch build -- --sourcemap       # forwarded args carry through every cycle
 ### Lifecycle
 
 1. **Initial run.** Same code path as `vx run` — same scope resolution,
-   same task graph, same cache behaviour. The line `vx watch: initial
-run...` precedes it.
+   same task graph, same cache behaviour, printed as its rows alone.
 2. **Watch loop.** After the initial run finishes (or once it waits only
    on a server's readiness, X-139), the directory of
    every project a cycle can run — the scope (the bare tasks' scope
@@ -1488,9 +1487,10 @@ re-runs itself and what it depends on.
   same `Did you mean` hint, and watch exits rather than re-run the
   refusal on every change.
 
-A cycle that throws — a `vx.config.*` that does not parse — prints
-`vx watch: cycle failed: <reason>` and watch keeps watching, the initial
-run included, so saving the fix re-runs (item 1017).
+A cycle that throws — no `.vx/projects.lock.json`, or one that locks a
+config since removed — prints `vx watch: cycle failed: <reason>` once
+and watch keeps watching, the initial run included, so the `vx lock`
+that fixes it re-runs (item 1017).
 
 Re-run cycles whose orchestrator returns `{ ok: false }` do NOT exit
 the watch loop — a failed cycle just prints the framed FAILED block
