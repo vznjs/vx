@@ -22,6 +22,7 @@ export function readTimings(file: string, warn: (m: string) => void): Record<str
   try {
     parsed = JSON.parse(text)
   } catch {
+    // quiet: not JSON is not a timings file, which the warning below says
     parsed = undefined
   }
   const tasks = (parsed as { version?: unknown; tasks?: unknown } | undefined)?.tasks

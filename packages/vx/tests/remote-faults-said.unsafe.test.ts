@@ -20,6 +20,10 @@ const REMOTE = [
   /^packages\/vx-dte\/src\/.+\.ts$/,
   /^packages\/vx-otel\/src\/.+\.ts$/,
   /^packages\/vx-ci\/src\/(?:checks|gitlab)\.ts$/,
+  // The cache and history clients and every server: each talks to a remote.
+  /^packages\/vx-(?:cache|history)\/src\/.+\.ts$/,
+  /^packages\/vx-(?:cache|history|dte)-server\/src\/.+\.ts$/,
+  /^packages\/vx-devtools\/src\/.+\.ts$/,
 ]
 /** A handler that takes no error: it cannot say one. */
 const DROPS = /\.catch\(\(\) =>|\bcatch \{/
