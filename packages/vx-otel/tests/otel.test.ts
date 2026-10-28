@@ -1992,6 +1992,18 @@ describe('config the sweep left unpinned', () => {
     ).toEqual(['off', 'off', 'on'])
   })
 
+  // A disabled SDK exports nothing, so a bad endpoint it would never use
+  // is nothing to warn about: the scheme check warned before it was read.
+  it('OTEL_SDK_DISABLED declines in silence', () => {
+    const warns: string[] = []
+    const c = resolveOtelConfig(
+      {},
+      { OTEL_EXPORTER_OTLP_ENDPOINT: 'localhost:4318', OTEL_SDK_DISABLED: 'true' },
+      (m) => void warns.push(m),
+    )
+    expect([c, warns]).toEqual([undefined, []])
+  })
+
   it('each signal reads its own headers variable; options top env for endpoint and name', () => {
     const c = resolveOtelConfig(
       { logsEndpoint: 'http://opt/logs', serviceName: 'svc-opt' },
