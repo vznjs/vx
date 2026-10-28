@@ -89,6 +89,19 @@ async function refusal(res: Response): Promise<Error> {
   return new Error(`HTTP ${res.status}${said === '' ? '' : `: ${said}`}`)
 }
 
+/** A 200's JSON; one that is none (a website's page) names the likely fault, the url. */
+async function jsonOf(res: Response, path: string): Promise<unknown> {
+  const text = await res.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    const type = res.headers.get('content-type') ?? 'no content type'
+    throw new Error(
+      `${path} answered ${res.status} with ${type}, not JSON: is the url a vx-history server?`,
+    )
+  }
+}
+
 /** A JWT's `exp` in ms; 0 when it names none. */
 function expiryOf(jwt: string): number {
   try {
@@ -197,7 +210,10 @@ export class HistoryServer {
   /** `/v1/capabilities`, asked once a run, and again after a failed ask: nothing is guessed. */
   private limitsNow(): Promise<Limits> {
     const asked = (this.limits ??= (async () => {
-      const body = (await (await this.call('/v1/capabilities')).json()) as Partial<Limits> | null
+      const body = (await jsonOf(
+        await this.call('/v1/capabilities'),
+        '/v1/capabilities',
+      )) as Partial<Limits> | null
       const n = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) && v > 0 ? v : 0)
       const limits = {
         maxUploadTimings: n(body?.maxUploadTimings),
@@ -227,7 +243,7 @@ export class HistoryServer {
           refs,
           hashes: hashes.slice(i * per, (i + 1) * per),
         })
-        const body = (await res.json()) as { timings?: unknown } | null
+        const body = (await jsonOf(res, '/v1/timings/query')) as { timings?: unknown } | null
         if (typeof body?.timings !== 'object' || body.timings === null) {
           throw new Error('the query answered no `timings` object')
         }
