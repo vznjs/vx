@@ -229,7 +229,7 @@ vx says what went wrong once, then runs on without the remote:
     import { reapi } from '@vzn/vx-reapi'
 
     export default defineWorkspace({
-      plugins: [reapi({ endpoint: 'grpcs://cache.example.com:443' })], // or VX_REAPI_ENDPOINT
+      plugins: [reapi({ endpoint: process.env.REAPI_ENDPOINT })], // grpcs://cache.example.com:443
     })
     ```
   </TabItem>

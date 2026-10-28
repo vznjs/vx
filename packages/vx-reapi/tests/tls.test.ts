@@ -109,7 +109,7 @@ it('a server that asks for a client certificate is reached with the pair, and no
   expect(await probe(mutual, { ca: 'ca.pem', cert: 'client.pem', key: 'client.key' })).toBe('ok')
 })
 
-it('the plugin reads the PEM files its options or VX_REAPI_TLS_* name; an unreadable one is refused by name', async () => {
+it('the plugin reads the PEM files its options name, never VX_REAPI_TLS_*; an unreadable one is refused by name', async () => {
   const warn = () => undefined
   /** 'ok', or the refusal the plugin threw. */
   const cacheOf = async (opts: Parameters<typeof reapi>[0]): Promise<string> => {
@@ -131,7 +131,7 @@ it('the plugin reads the PEM files its options or VX_REAPI_TLS_* name; an unread
   }
   expect(await cacheOf({ tlsCertificate: file('ca.pem') })).toBe('ok')
   expect(await cacheOf({ tlsClientCertificate: file('client.pem') })).toBe(
-    'vx/reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey (VX_REAPI_TLS_CLIENT_CERTIFICATE / VX_REAPI_TLS_CLIENT_KEY), or neither',
+    'vx/reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey, or neither',
   )
   expect(await cacheOf({ tlsCertificate: file('nope.pem') })).toBe(
     `vx/reapi: \`reapi({ tlsCertificate })\` names ${file('nope.pem')}, which cannot be read (ENOENT)`,
@@ -139,9 +139,7 @@ it('the plugin reads the PEM files its options or VX_REAPI_TLS_* name; an unread
   const prev = process.env['VX_REAPI_TLS_CLIENT_KEY']
   process.env['VX_REAPI_TLS_CLIENT_KEY'] = file('missing.key')
   try {
-    expect(await cacheOf({})).toBe(
-      `vx/reapi: VX_REAPI_TLS_CLIENT_KEY names ${file('missing.key')}, which cannot be read (ENOENT)`,
-    )
+    expect(await cacheOf({})).toBe('ok')
   } finally {
     if (prev === undefined) delete process.env['VX_REAPI_TLS_CLIENT_KEY']
     else process.env['VX_REAPI_TLS_CLIENT_KEY'] = prev
@@ -207,7 +205,7 @@ it('reapi() options reach the connection: CA and client pair through the plugin'
   }
 })
 
-it('a TLS option wins over its env var; an env path is trimmed and an empty one unset; a key alone is refused', async () => {
+it('a TLS option is read and its env var never; a path is trimmed and an empty one unset; a key alone is refused', async () => {
   const keys = ['VX_REAPI_TLS_CERTIFICATE', 'VX_REAPI_TLS_CLIENT_KEY'] as const
   const prev = keys.map((k) => process.env[k])
   const cacheOf = async (opts: Parameters<typeof reapi>[0]): Promise<string> => {
@@ -224,10 +222,8 @@ it('a TLS option wins over its env var; an env path is trimmed and an empty one 
   try {
     process.env['VX_REAPI_TLS_CERTIFICATE'] = file('missing.pem')
     const optionWins = await cacheOf({ tlsCertificate: file('ca.pem') })
-    process.env['VX_REAPI_TLS_CERTIFICATE'] = ` ${file('ca.pem')}\n`
-    const trimmed = await cacheOf({})
-    process.env['VX_REAPI_TLS_CERTIFICATE'] = ''
-    const empty = await cacheOf({})
+    const trimmed = await cacheOf({ tlsCertificate: ` ${file('ca.pem')}\n` })
+    const empty = await cacheOf({ tlsCertificate: '' })
     delete process.env['VX_REAPI_TLS_CERTIFICATE']
     const keyAlone = await cacheOf({ tlsClientKey: file('client.key') })
     const unreadable = await cacheOf({
@@ -239,7 +235,7 @@ it('a TLS option wins over its env var; an env path is trimmed and an empty one 
       'ok',
       'ok',
       `vx/reapi: \`reapi({ tlsClientCertificate })\` names ${file('nope.pem')}, which cannot be read (ENOENT)`,
-      'vx/reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey (VX_REAPI_TLS_CLIENT_CERTIFICATE / VX_REAPI_TLS_CLIENT_KEY), or neither',
+      'vx/reapi: a client certificate and its key go together — set both tlsClientCertificate and tlsClientKey, or neither',
     ])
   } finally {
     keys.forEach((k, i) => {

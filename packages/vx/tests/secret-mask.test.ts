@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { Database } from 'bun:sqlite'
+import { readFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import { run as runFromLock } from '../src/orchestrator/index.js'
@@ -263,6 +264,79 @@ describe('a secret-named value in what vx prints, stores and exports', () => {
       leaked: all.filter((t) => t.includes(SECRET) || t.includes(DEFINED)).length,
       masked: all.map((t) => t.includes(MASKED)),
     }).toEqual({ ok: [true, true], leaked: 0, masked: [true, true, true, true, true, true] })
+  })
+})
+
+// A value written in two pieces with a pause between them outlasts the
+// live stream's 25 ms hold, so the terminal shows it whole. The stored
+// copies did too: the entry's stdout (which a hit replays and a remote
+// cache receives) and the failure record `vx last` reads kept the raw
+// value, though only the terminal cannot be taken back.
+describe('a value split by a pause is masked in every stored copy', () => {
+  let root: string
+  const saved = process.env['API_TOKEN']
+  beforeEach(async () => {
+    process.env['API_TOKEN'] = SECRET
+    root = await makeWorkspace({ prefix: 'vx-split-' })
+    await writeLocalWorkspace(root)
+  })
+  afterEach(async () => {
+    if (saved === undefined) delete process.env['API_TOKEN']
+    else process.env['API_TOKEN'] = saved
+    await rm(root, { recursive: true, force: true })
+  })
+  const split = (exit: number): string =>
+    `printf %s "$API_TOKEN" | head -c 7; sleep 0.2; printf "%s\\n" "$API_TOKEN" | tail -c +8; echo done > out.txt; exit ${exit}`
+  const project = (exit: number): Promise<string> =>
+    addProject(root, 'p', {
+      files: { 'in.txt': 'x' },
+      config: `
+        export default {
+          tasks: {
+            t: {
+              exec: { command: ${JSON.stringify(split(exit))}, env: { passThrough: ['API_TOKEN'] } },
+              inputs: { files: ['in.txt'] }, cache: { outputs: { files: ['out.txt'] } },
+            },
+          },
+        }
+      `,
+    })
+  const quiet = defaultLogger({ enabled: false }, { mode: 'focused' }, { write: () => true })
+  const runOnce = async (exit: number) => {
+    await project(exit)
+    delete process.env['API_TOKEN']
+    await lock(root)
+    process.env['API_TOKEN'] = SECRET
+    return runFromLock({ cwd: root, tasks: ['t'], log: quiet, handleSignals: false })
+  }
+
+  it("the entry's stored stdout", async () => {
+    const r = await runOnce(0)
+    const db = new Database(path.join(root, '.vx', 'cache', 'cache.db'), { readonly: true })
+    const stored = db
+      .query<{ stdout: string }, []>('SELECT stdout FROM entry_stdout')
+      .all()
+      .map((row) => row.stdout)
+      .join('\n')
+    db.close()
+    expect({ ok: r.ok, leaked: stored.includes(SECRET), masked: stored.includes(MASKED) }).toEqual({
+      ok: true,
+      leaked: false,
+      masked: true,
+    })
+  })
+
+  it('the failure record', async () => {
+    const r = await runOnce(1)
+    const dir = path.join(root, '.vx', 'cache', 'failures')
+    const stored = (await Array.fromAsync(new Bun.Glob('*.json').scan({ cwd: dir })))
+      .map((f) => readFileSync(path.join(dir, f), 'utf8'))
+      .join('\n')
+    expect({ ok: r.ok, leaked: stored.includes(SECRET), masked: stored.includes(MASKED) }).toEqual({
+      ok: false,
+      leaked: false,
+      masked: true,
+    })
   })
 })
 
