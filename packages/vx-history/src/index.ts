@@ -279,7 +279,7 @@ export function vxHistory(options: VxHistoryOptions = {}): VxPlugin {
     (resources === null || typeof resources !== 'object' || Array.isArray(resources))
   ) {
     throw new UserError(
-      `vxHistory() option "resources" must be false or an object, got ${JSON.stringify(resources) ?? String(resources)}`,
+      `vxHistory() option "resources" must be false or an object, got ${typeof resources === 'number' ? String(resources) : (JSON.stringify(resources) ?? String(resources))}`,
     )
   }
   // `''` resolved to the workspace root: each run warned it could not read
