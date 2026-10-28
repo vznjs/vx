@@ -9,7 +9,13 @@
 // appends a job summary: verdict, stats, failures, and the per-task table.
 // Anywhere else the plugin declines and costs nothing.
 import { createRequire } from 'node:module'
-import type { RunSummaryRecord, VxPlugin } from '@vzn/vx'
+import {
+  type PluginOptionKinds,
+  refuseUnknownOptions,
+  type RunSummaryRecord,
+  UserError,
+  type VxPlugin,
+} from '@vzn/vx'
 import type { GithubPluginOptions } from './plugin.js'
 import type { GitlabPluginOptions } from './gitlab.js'
 
@@ -21,12 +27,33 @@ export type { GithubPluginOptions, GitlabPluginOptions }
 // factories are synchronous.
 const load = createRequire(import.meta.url)
 
-export function github(options?: GithubPluginOptions): VxPlugin | undefined {
+// Options are checked here, on CI or not: a typo checked only on CI passed
+// on a laptop and failed the first CI run (2026-10-28).
+const GITHUB_KEYS: PluginOptionKinds<GithubPluginOptions> = {
+  summaryFile: 'string',
+  title: 'string',
+  cacheScope: 'boolean',
+}
+
+const GITLAB_KEYS: PluginOptionKinds<GitlabPluginOptions> = {
+  cacheScope: 'boolean',
+}
+
+export function github(options: GithubPluginOptions = {}): VxPlugin | undefined {
+  refuseUnknownOptions('github()', options, GITHUB_KEYS)
+  // '' passes the kind check but reads wrong: `??` keeps it, so summaryFile
+  // declined instead of using GITHUB_STEP_SUMMARY and title rendered an
+  // empty heading.
+  for (const key of ['summaryFile', 'title'] as const) {
+    if (options[key] === '')
+      throw new UserError(`github() option "${key}" must be a non-empty string, got ""`)
+  }
   if (process.env['GITHUB_ACTIONS'] !== 'true') return undefined
   return (load('./plugin.js') as typeof import('./plugin.js')).github(options)
 }
 
-export function gitlab(options?: GitlabPluginOptions): VxPlugin | undefined {
+export function gitlab(options: GitlabPluginOptions = {}): VxPlugin | undefined {
+  refuseUnknownOptions('gitlab()', options, GITLAB_KEYS)
   if (process.env['GITLAB_CI'] !== 'true') return undefined
   return (load('./gitlab.js') as typeof import('./gitlab.js')).gitlab(options)
 }
