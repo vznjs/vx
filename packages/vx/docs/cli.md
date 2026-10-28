@@ -380,6 +380,9 @@ What counts as a change:
   project under it, and the project holding it. A repository's
   `diff.ignoreSubmodules` or `submodule.<name>.ignore` does not apply:
   the key sees the change anyway.
+- A file git was told not to look at (`git update-index
+--assume-unchanged` or `--skip-worktree`) counts when its bytes on disk
+  differ, as the key hashes them. One a sparse checkout left out does not.
 - A symlinked input is its target: a link whose target changed is a
   change, and a link to a target git cannot diff (outside the
   workspace, or ignored) is one on every run.

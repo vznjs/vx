@@ -1455,6 +1455,8 @@ export interface GitEnumeration {
   scopes: readonly string[]
   /** Workspace-relative path → index OID, for files whose worktree state matched the index. */
   trusted: Map<string, string>
+  /** Tracked paths git does not look at on disk (assume-unchanged, skip-worktree), workspace-relative. */
+  flagged: readonly string[]
   /** Whether the worktree had uncommitted changes; null when `git status` failed. */
   dirty: boolean | null
   /** `git var -l`'s listing (merged config, then git's variables); null when it failed. */
@@ -1883,6 +1885,7 @@ export async function startGitEnumeration(
     tracked: gitlinks.size === 0 ? tracked : tracked.concat([...gitlinks]),
     scopes: pathspecs,
     trusted,
+    flagged: [...flagged],
     dirty: worktreeDirty,
     vars: vars !== null && vars.exitCode === 0 ? vars.stdout : null,
     changed: dirty === null ? null : [...dirty, ...untracked],

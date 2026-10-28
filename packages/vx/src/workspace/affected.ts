@@ -122,6 +122,12 @@ export interface AffectedArgs {
    * -s` here. A changed or untracked link is a changed path already.
    */
   links?: () => Promise<readonly string[] | null>
+  /**
+   * The tracked paths git does not look at on disk (assume-unchanged,
+   * skip-worktree), workspace-relative, from the run's enumeration; null or
+   * absent asks `git ls-files -v` here.
+   */
+  flagged?: () => Promise<readonly string[] | null>
 }
 
 export interface FingerprintClaims {
@@ -281,13 +287,24 @@ export async function affectedChanges(
   // A symlinked input keys the content behind it (cache/linked-inputs.ts),
   // and the diff names that content's path, never the link's: a link whose
   // target changed is a changed path itself.
-  changed.push(
-    ...(await linkedChanges(
-      args.workspaceRoot,
-      (await args.links?.().catch(() => null)) ?? (await trackedLinks(args.workspaceRoot)),
-      changed,
-    )),
-  )
+  // One index listing serves both when the run's enumeration did not.
+  let index: Promise<IndexEntry[]> | undefined
+  const listIndex = () => (index ??= indexEntries(args.workspaceRoot))
+  const [links, flagged] = await Promise.all([
+    (async () =>
+      (await args.links?.().catch(() => null)) ??
+      (await listIndex()).filter((e) => e.mode === '120000').map((e) => e.path))(),
+    (async () =>
+      (await args.flagged?.().catch(() => null)) ??
+      (await listIndex()).filter((e) => e.flagged).map((e) => e.path))(),
+  ])
+  changed.push(...(await linkedChanges(args.workspaceRoot, links, changed)))
+  // A path git was told not to look at (`update-index --assume-unchanged`,
+  // `--skip-worktree`): `git diff` reports no edit to it, and the key
+  // hashes it from disk, so the task missed and selection left it out.
+  if (flagged.length > 0) {
+    changed.push(...(await flaggedChanges(args.workspaceRoot, flagged, await listIndex(), changed)))
+  }
   // The nested repositories git reports as one path: a gitlink, or an
   // untracked embedded repository (`dir/`, the only path git prints so).
   const nested = new Set(diffed.gitlinks)
@@ -587,12 +604,84 @@ async function bytesOrNull(file: string): Promise<Uint8Array | null> {
   return (await f.exists()) ? await f.bytes() : null
 }
 
-/** The symlinks the index lists, workspace-relative. */
-async function trackedLinks(workspaceRoot: string): Promise<string[]> {
-  const out: string[] = []
-  for (const record of await gitPaths(workspaceRoot, ['ls-files', '-s', '-z'])) {
-    if (record.startsWith('120000 ')) out.push(record.slice(record.indexOf('\t') + 1))
+interface IndexEntry {
+  path: string
+  mode: string
+  oid: string
+  /** Assume-unchanged or skip-worktree: git does not look at it on disk. */
+  flagged: boolean
+  skipWorktree: boolean
+}
+
+/**
+ * The index's stage-0 entries, workspace-relative. `ls-files -v` prefixes
+ * a tag: `S` skip-worktree, a lowercase letter assume-unchanged (`s` both).
+ */
+async function indexEntries(workspaceRoot: string): Promise<IndexEntry[]> {
+  const out: IndexEntry[] = []
+  for (const record of await gitPaths(workspaceRoot, ['ls-files', '-s', '-v', '-z'])) {
+    const m = /^(\S) (\d+) ([0-9a-f]+) 0\t(.*)$/s.exec(record)
+    if (m === null) continue
+    const tag = m[1]!
+    out.push({
+      path: m[4]!,
+      mode: m[2]!,
+      oid: m[3]!,
+      flagged: tag === 'S' || (tag >= 'a' && tag <= 'z'),
+      skipWorktree: tag === 'S' || tag === 's',
+    })
   }
+  return out
+}
+
+/**
+ * The flagged paths whose disk side moved from the index (`git diff` covers
+ * the index against the base): a file whose bytes hash to another blob, a
+ * link, or an assume-unchanged file deleted. An absent skip-worktree file
+ * is a sparse checkout's: the key leaves it out, and so does this.
+ */
+async function flaggedChanges(
+  workspaceRoot: string,
+  flagged: readonly string[],
+  index: readonly IndexEntry[],
+  changed: readonly string[],
+): Promise<string[]> {
+  const byPath = new Map(index.map((e) => [e.path, e]))
+  const seen = new Set(changed)
+  const out: string[] = []
+  const hash: IndexEntry[] = []
+  for (const rel of flagged) {
+    const entry = byPath.get(rel)
+    if (entry === undefined || seen.has(rel)) continue
+    const present = await stat(path.join(workspaceRoot, rel)).then(
+      () => true,
+      () => false,
+    )
+    if (!present) {
+      if (!entry.skipWorktree) out.push(rel)
+    } else if (entry.mode === '120000' || rel.includes('\n')) out.push(rel)
+    else hash.push(entry)
+  }
+  if (hash.length === 0) return out
+  // `--stdin-paths` hashes each file as `git add` would (its clean
+  // filters), so an unchanged one names the index's blob.
+  const proc = spawnGit(
+    ['hash-object', '--stdin-paths'],
+    workspaceRoot,
+    new TextEncoder().encode(hash.map((e) => `${e.path}\n`).join('')),
+  )
+  const [stdout, stderr, exit] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exit !== 0) {
+    throw new UserError(`git hash-object failed (exit ${exit}): ${stderr.trim()}`, 'VX_E_GIT')
+  }
+  const oids = stdout.split('\n')
+  hash.forEach((e, i) => {
+    if (oids[i] !== e.oid) out.push(e.path)
+  })
   return out
 }
 
