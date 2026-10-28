@@ -1832,6 +1832,30 @@ it('sends a dependency a worker could not read over the remotes’ copy, and the
   }
 })
 
+// A task sent again over a dependency it could not read left its cores
+// booked on its worker for the rest of the run: the summary's booked avg
+// climbed while the worker sat idle.
+it('a task sent again over a dependency it could not read gives its booked cores back', async () => {
+  const h = await harness(new Map([node('t')]))
+  try {
+    const a = await h.worker(1)
+    await Bun.sleep(50)
+    const ran = h.o.execute(h.req('t'))
+    expect(await a.batches()).toEqual([['t']])
+    await a.begin('t')
+    await a.finish('t', a.orders[0]!.runKey, { exitCode: 1, durationMs: 0, unread: ['k-d'] })
+    expect(await a.batches()).toEqual([['t']])
+    await a.begin('t')
+    await a.finish('t')
+    expect((await ran).exitCode).toBe(0)
+    const before = h.o.machines()[0]!.bookedAvg
+    await Bun.sleep(300)
+    expect(h.o.machines()[0]!.bookedAvg).toBeLessThan(before)
+  } finally {
+    await h.stop()
+  }
+})
+
 // `vx watch` runs again under one run id: its next run sent a task under
 // the last run's run key, which a remote holds the first bytes of
 // (2026-10-24).

@@ -1055,6 +1055,9 @@ export class Orchestrator {
     // the task's failure, it failed every run, the remote saying it held the
     // key (2026-10-25).
     if (head.unread !== undefined && (await this.resend(head.unread)) && a.busy.get(task) === job) {
+      // Its cores back while it still counts as begun, which `unhold` reads;
+      // then not begun, so `retry` holds no fault against its worker.
+      this.unhold(a, job)
       a.started.delete(task)
       const again = this.retry(a, job, `could not read ${head.unread.join(', ')}`)
       if (again !== undefined) {
