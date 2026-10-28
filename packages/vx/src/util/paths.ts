@@ -600,3 +600,9 @@ const CONTROL = /[\x00-\x1f\x7f-\x9f]/g
 export function printable(s: string): string {
   return s.replace(CONTROL, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`)
 }
+
+/** Whether `s` holds a C0/C1 control or DEL, which `printable` would escape. */
+export function hasControl(s: string): boolean {
+  // oxlint-disable-next-line no-control-regex
+  return /[\x00-\x1f\x7f-\x9f]/.test(s)
+}
