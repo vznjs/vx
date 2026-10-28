@@ -1366,7 +1366,8 @@ positive globs, so a task with a `!` entry keeps it (A-46).
   from the cache entry into the project dir. The post-restore tree
   is the cached snapshot, byte-for-byte.
 - A file git tracks is never wiped (2026-10-14). It is still saved and
-  restored, and stays in the task's key, so an edit to it moves the key.
+  restored, and is in the task's key even when no `inputs.files` glob
+  reaches it, so an edit to it moves the key.
 
 Skipped when `cache.outputs.files` is empty (nothing declared as
 output) and when no cache-write axis is enabled (e.g. `--no-cache`,

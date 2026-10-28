@@ -1618,9 +1618,9 @@ interface FilesPlan {
    */
   verdicts: Map<string, boolean>
   /**
-   * Whether a path is an input but for the task's own outputs: one git
-   * tracks stays an input (`committedFiles`), so the key sees an edit to a
-   * committed file an output glob reaches.
+   * Whether a path is under the task's own outputs, and no exclude takes it
+   * back: one git tracks is an input (`committedFiles`) whether or not a
+   * positive glob reaches it, since a hit writes the artifact's copy over it.
    */
   ownOnly: Map<string, boolean>
 }
@@ -1651,8 +1651,9 @@ function filesPlan(
       else positive.push(entry)
     }
   }
+  // Outputs alone still make a plan: a committed file under them is keyed.
   const plan =
-    positive.length === 0
+    positive.length === 0 && splitNegations(ownOutputs).positive.length === 0
       ? null
       : {
           positive,
@@ -1759,7 +1760,7 @@ function inPlan(plan: FilesPlan, rel: string): boolean {
 function ownOnly(plan: FilesPlan, rel: string): boolean {
   let own = plan.ownOnly.get(rel)
   if (own === undefined) {
-    own = plan.ownOutput(rel) && plan.isPositive(rel) && !plan.isExcluded(rel)
+    own = plan.ownOutput(rel) && !plan.isExcluded(rel)
     plan.ownOnly.set(rel, own)
   }
   return own

@@ -121,6 +121,44 @@ describe('stale cache hits', () => {
   )
 
   it(
+    'an edit to a committed file under its own output moves the key though no input glob reaches it',
+    async () => {
+      // `dist/LICENSE` is committed under `dist/**`, outside `src/**`. A hit
+      // writes the artifact's copy of it back, so the key must fold it: left
+      // out, a committed edit hit and the restore put the old bytes back
+      // (turborepo#14831).
+      await write(path.join(root, 'package.json'), '{"name":"r","private":true}')
+      await writeLocalWorkspace(root)
+      await write(
+        path.join(root, 'vx.config.mjs'),
+        `export default {
+           tasks: {
+             build: {
+               exec: { command: 'mkdir -p dist && cat src/*.txt > dist/out.txt' },
+               inputs: { files: ['src/**'] }, cache: { outputs: { files: ['dist/**'] } },
+             },
+           },
+         }`,
+      )
+      await write(path.join(root, 'src/a.txt'), 'a')
+      await write(path.join(root, 'dist/LICENSE'), 'license v1')
+      await write(path.join(root, '.gitignore'), '.vx/cache/\ndist/out.txt\n')
+      git(root, 'init', '-q')
+      git(root, 'add', '-A')
+      git(root, 'commit', '-q', '-m', 'initial')
+
+      await writeLocalWorkspace(root)
+      vx(root, 'run', 'build')
+      expect(vx(root, 'run', 'build')).toMatch(/build[^\n]*up-to-date/)
+      await write(path.join(root, 'dist/LICENSE'), 'license v2')
+      git(root, 'commit', '-q', '-am', 'license v2')
+      expect(vx(root, 'run', 'build')).not.toMatch(/build[^\n]*(up-to-date|restored)/)
+      expect(await readFile(path.join(root, 'dist/LICENSE'), 'utf8')).toBe('license v2')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a codegen that rewrites its committed output is saved, and a hit writes what it left',
     async () => {
       // TanStack Router's committed `routeTree.gen.ts`, declared an output

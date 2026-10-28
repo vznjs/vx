@@ -940,9 +940,14 @@ installed `.js`, and a `workspaceFiles` output glob reached even `.git`.
 No clean deletes a file git tracks (2026-10-14). Under an output
 glob it is still an output: the task may rewrite it (TanStack Router's
 committed `routeTree.gen.ts`), the artifact saves the bytes the run left,
-and a restore writes them. It also stays in the task's key, even under its
-own output glob, so an edit moves the key and the saved bytes follow from
-it; the task's rewrite is no input that moved mid-run. Until then the
+and a restore writes them. It is also in the task's key, even under its
+own output glob and when no `inputs.files` glob reaches it (`dist/LICENSE`
+under `dist/**` with inputs `src/**`; until 2026-10-28 that one was left
+out, and a hit wrote the old bytes over a committed edit, as
+turborepo#14831 fixed in Turbo), so an edit moves the key and the saved
+bytes follow from it; the task's rewrite is no input that moved mid-run.
+A committed file under `outputs.workspaceFiles` is keyed only where
+`inputs.workspaceFiles` reaches it. Until then the
 clean deleted a committed file under an output, and a reader with no edge
 to its producer failed naming only the file (A-48, vueuse's
 `metadata/index.json`). Untracked files under the glob are cleaned as
