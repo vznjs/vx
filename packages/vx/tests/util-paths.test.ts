@@ -515,6 +515,25 @@ describe('asTrees', () => {
     // CONTROL: a literal is itself and its tree; a pattern is itself.
     expect(asTrees(['dist/', 'src/*.ts'])).toEqual(['dist', 'dist/**', 'src/*.ts'])
   })
+
+  // A brace was one pattern here: `{src,lib}` never became the `src` and
+  // `lib` trees, and `{./src,lib}/**` kept a `./` no git path holds, so an
+  // edit under either keyed nothing (a stale hit), and the same output glob
+  // saved an empty artifact. Each alternative means what it means alone.
+  it('takes each brace alternative as its own entry', () => {
+    expect(asTrees(['{src,lib}'])).toEqual(['src', 'src/**', 'lib', 'lib/**'])
+    expect(asTrees(['{./src,lib}/**'])).toEqual(['src/**', 'lib/**'])
+    expect(asTrees(['{.,src}/*.ts'])).toEqual(['*.ts', 'src/*.ts'])
+    expect(asTrees(['{./,src/}*.ts'])).toEqual(['*.ts', 'src/*.ts'])
+    const any = anyTaskGlob(asTrees(['{src,lib}', '{.,app}/*.ts']))
+    expect(['src/deep/a.ts', 'lib', 'a.ts', 'app/b.ts', 'other/c.ts'].map(any)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      false,
+    ])
+  })
 })
 
 describe('staticPrefix and a brace set', () => {

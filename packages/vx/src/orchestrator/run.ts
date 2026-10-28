@@ -1801,12 +1801,14 @@ async function unresolvedHint(prepared: {
   hintProjects: ReadonlyMap<string, ProjectEntry>
   declaredElsewhere: readonly string[]
   anyProjectConfig: boolean
+  taskless: (name: string) => boolean
 }): Promise<string> {
   const elsewhere = elsewhereHint(prepared.declaredElsewhere)
   const near = didYouMean(
     prepared.unresolvedTasks,
     prepared.hintProjects,
     prepared.declaredElsewhere,
+    prepared.taskless,
   )
   const init = await initHint(prepared)
   const lock =
@@ -1836,7 +1838,8 @@ async function initHint(prepared: { anyProjectConfig: boolean }): Promise<string
 function didYouMean(
   unresolved: readonly string[],
   projects: ReadonlyMap<string, ProjectEntry>,
-  elsewhere: readonly string[] = [],
+  elsewhere: readonly string[],
+  taskless: (name: string) => boolean,
 ): string {
   const tasksOf = (p: ProjectEntry | undefined): string[] => Object.keys(p?.config.tasks ?? {})
   // What a bare name can select: a default `build` is no match (X-102).
@@ -1878,6 +1881,12 @@ function didYouMean(
     if (!isLiteralPattern(proj) && !projects.has(proj)) {
       lists.add(
         `\`${spec}\` names one project, not a pattern: run \`${task}\` with --filter '${proj}' instead.`,
+      )
+      continue
+    }
+    if (taskless(proj)) {
+      lists.add(
+        `${proj} has no vx config, and no configured project depends on it: it has no tasks.`,
       )
       continue
     }
