@@ -307,7 +307,8 @@ function hasScripts(pkgRoot: string | null): boolean {
   if (pkgRoot === null) return false
   if (existsSync(path.join(pkgRoot, 'pnpm-workspace.yaml'))) return true
   try {
-    const pj = JSON.parse(readFileSync(path.join(pkgRoot, 'package.json'), 'utf8')) as {
+    const text = readFileSync(path.join(pkgRoot, 'package.json'), 'utf8').replace(/^﻿/, '')
+    const pj = JSON.parse(text) as {
       scripts?: unknown
       workspaces?: unknown
     }
