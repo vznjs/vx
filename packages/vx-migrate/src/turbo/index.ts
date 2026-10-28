@@ -218,7 +218,10 @@ async function run(root: string, projects: readonly ProjectMeta[]): Promise<Adop
       process.env['TURBO_ENV_MODE'] ?? '',
       ...configs,
       yarnrc,
-      // Its dependencies are global inputs, a member or not.
+      // Whether pnpm or npm runs a script's `pre` / `post` hooks (`runsScriptHooks`).
+      await textOf(path.join(root, '.npmrc')),
+      await textOf(path.join(root, 'pnpm-workspace.yaml')),
+      // Its dependencies are global inputs, a member or not; its `packageManager` names who runs hooks.
       rootManifest,
       JSON.stringify(microfrontendsConfigs(root, dirs)),
       // A config file added beside mapped tasks changes what an output may cover.
