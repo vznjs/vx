@@ -1810,6 +1810,38 @@ it('sends a dependency a worker could not read over the remotes’ copy, and the
   }
 })
 
+// Two dependants of one dependency fail to read it together: the first's
+// end sent it again and ran it again, the second's found the key sent and
+// failed its task, though the copy it could not read was now replaced.
+it('runs again each task that could not read a dependency sent again for them', async () => {
+  const h = await harness(new Map([node('t1'), node('t2')]))
+  try {
+    const a = await h.worker(2)
+    await Bun.sleep(50)
+    const ran = [h.o.execute(h.req('t1')), h.o.execute(h.req('t2'))]
+    expect((await a.batches()).flat().sort()).toEqual(['t1', 't2'])
+    const unread = { exitCode: 1, durationMs: 0, unread: ['k-d'] }
+    const key = (t: string) => a.orders.find((o) => o.task === t)!.runKey
+    await a.finish('t1', key('t1'), unread)
+    await a.finish('t2', key('t2'), unread)
+    const t2 = await Promise.race([ran[1]!.then((r) => r.exitCode), Bun.sleep(300)])
+    expect(t2).toBeUndefined()
+    const again: string[] = []
+    while (again.length < 2) {
+      const b = (await a.batches()).flat()
+      if (b.length === 0) break
+      again.push(...b)
+    }
+    expect(again.sort()).toEqual(['t1', 't2'])
+    expect(h.store.shared).toEqual(['k-d again'])
+    const resends = a.orders.slice(2)
+    for (const o of resends) await a.finish(o.task, o.runKey)
+    expect((await Promise.all(ran)).map((r) => r.exitCode)).toEqual([0, 0])
+  } finally {
+    await h.stop()
+  }
+})
+
 // `vx watch` runs again under one run id: its next run sent a task under
 // the last run's run key, which a remote holds the first bytes of
 // (2026-10-24).

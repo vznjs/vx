@@ -78,6 +78,8 @@ interface Job {
   fellBack?: true
   /** An uncached task run again for a dependant (`kept`): its result is the run's alone. */
   again?: { readonly only?: string; readonly avoid?: string }
+  /** Dependency keys it ran again for, sent again from this machine (`resend`). */
+  reread?: Set<string>
   /** Its upstreams, once the graph named it: walked again at every pump, 8000 queued spent 5 ms a pump on it (2026-10-25). */
   up?: Set<string>
 }
@@ -260,8 +262,8 @@ export class Orchestrator {
   private readonly sent: Map<string, number>
   /** Each hit's key, once on a remote a worker reads (`TaskArtifacts.share`). */
   private readonly shared = new Map<string, Promise<boolean>>()
-  /** Keys a worker could not read, sent again over the remotes' copy: once each. */
-  private readonly resent = new Set<string>()
+  /** Keys a worker could not read, sent again over the remotes' copy: once each, whether one reached a remote. */
+  private readonly resent = new Map<string, Promise<boolean>>()
   /** When each worker this run started was asked for, by `WorkerSpawn.index`. */
   private readonly spawnedAt = new Map<string, { at: number; declared: Declared }>()
   private ended = false
@@ -800,12 +802,27 @@ export class Orchestrator {
     )
   }
 
-  /** True when one of `keys` not sent again before reached a remote. */
-  private async resend(keys: readonly string[]): Promise<boolean> {
-    const fresh = keys.filter((k) => typeof k === 'string' && !this.resent.has(k))
-    for (const k of fresh) this.resent.add(k)
-    // quiet: a key no remote took fails the task, by name
-    const got = await Promise.all(fresh.map((k) => this.o.artifacts.resend(k).catch(() => false)))
+  /**
+   * True when one of `keys` `job` did not run again for already reached a
+   * remote. Each key is sent once and each job runs again once for it:
+   * two dependants failing on one key together, the second found it sent
+   * and failed, though the copy it could not read was replaced.
+   */
+  private async resend(job: Job, keys: readonly string[]): Promise<boolean> {
+    const fresh = keys.filter((k) => typeof k === 'string' && job.reread?.has(k) !== true)
+    if (fresh.length === 0) return false
+    job.reread = new Set([...(job.reread ?? []), ...fresh])
+    const got = await Promise.all(
+      fresh.map((k) => {
+        let sent = this.resent.get(k)
+        if (sent === undefined) {
+          // quiet: a key no remote took fails the task, by name
+          sent = this.o.artifacts.resend(k).catch(() => false)
+          this.resent.set(k, sent)
+        }
+        return sent
+      }),
+    )
     return got.includes(true)
   }
 
@@ -1054,7 +1071,11 @@ export class Orchestrator {
     // upload): sent again from this machine, the task runs again. Taken as
     // the task's failure, it failed every run, the remote saying it held the
     // key (2026-10-25).
-    if (head.unread !== undefined && (await this.resend(head.unread)) && a.busy.get(task) === job) {
+    if (
+      head.unread !== undefined &&
+      (await this.resend(job, head.unread)) &&
+      a.busy.get(task) === job
+    ) {
       a.started.delete(task)
       const again = this.retry(a, job, `could not read ${head.unread.join(', ')}`)
       if (again !== undefined) {
