@@ -134,6 +134,13 @@ export function formatTaskBlock(
   return lines.join('\n') + '\n'
 }
 
+/** What a bounded capture dropped from its head, so a capped log never reads as whole. */
+function droppedNote(lost: number, colors: ColorSupport): string {
+  return paint('', `… ${lost} earlier character${lost === 1 ? '' : 's'} dropped`, colors, {
+    dim: true,
+  })
+}
+
 /**
  * One `├─ <LABEL>` section of captured output, with the head-dropped notice
  * when the capture was bounded. Shared by the task frame and the persistent
@@ -150,7 +157,7 @@ function pushStreamSection(
   if (text.trim().length === 0) return
   lines.push(sectionLine(title, color, colors), '')
   if (lost > 0) {
-    lines.push(paint('', `… ${lost} earlier characters dropped`, colors, { dim: true }))
+    lines.push(droppedNote(lost, colors))
   }
   pushBodyLines(lines, text)
   lines.push('')
@@ -174,7 +181,7 @@ function pushOutputSection(
   if (output.every((c) => c.text.trim().length === 0)) return
   lines.push(sectionLine('OUTPUT', '', colors), '')
   if (lost > 0) {
-    lines.push(paint('', `… ${lost} earlier characters dropped`, colors, { dim: true }))
+    lines.push(droppedNote(lost, colors))
   }
   const body: Array<{ text: string; err: boolean }> = []
   let open: { parts: string[]; err: boolean } | null = null

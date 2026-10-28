@@ -5,6 +5,7 @@ import {
   formatFrameClose,
   formatFrameOpen,
   formatPersistentList,
+  formatPersistentTailBlock,
   formatTaskBlock,
   formatTaskExecutedLine,
   formatTaskHitLine,
@@ -583,6 +584,22 @@ describe('formatTaskBlock', () => {
 })
 
 describe('persistent task framing', () => {
+  it('a capped tail counts what it dropped in the right number', () => {
+    const tail = (n: number): string =>
+      formatPersistentTailBlock(
+        persistentNode('app#dev', 'vite'),
+        outcome('app#dev', 'success'),
+        { stdout: 'ready\n' },
+        { stdout: n },
+      )
+        .split('\n')
+        .find((l) => l.startsWith('…'))!
+    expect([tail(1), tail(2)]).toEqual([
+      '… 1 earlier character dropped',
+      '… 2 earlier characters dropped',
+    ])
+  })
+
   it('marks both frame ends with ▸ and closes as running, not success', () => {
     const n = persistentNode('@vzn/vx-docs#dev', 'astro dev')
     const open = formatFrameOpen(n)
