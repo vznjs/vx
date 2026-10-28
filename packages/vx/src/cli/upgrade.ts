@@ -457,6 +457,14 @@ function readJson(file: string): Record<string, unknown> | null {
   }
 }
 
+function lockText(file: string): string {
+  try {
+    return readFileSync(file, 'utf8')
+  } catch {
+    return ''
+  }
+}
+
 /** The field of `dir`'s package.json that lists `@vzn/vx`, if one does. */
 function listingField(dir: string): ManagedInstall['field'] | undefined {
   const pkg = readJson(path.join(dir, 'package.json'))
@@ -600,6 +608,14 @@ export function upgradeArgv(install: ManagedInstall, version: string): string[] 
   // pnpm refuses an `add` at a workspace's root without saying it means the root.
   if (manager === 'pnpm' && existsSync(path.join(install.cwd, 'pnpm-workspace.yaml')))
     argv.push('--workspace-root')
+  // Yarn 1 refuses one there without -W; Berry, whose lockfile carries
+  // `__metadata`, has no such flag.
+  if (
+    manager === 'yarn' &&
+    readJson(path.join(install.cwd, 'package.json'))?.['workspaces'] !== undefined &&
+    !lockText(path.join(install.cwd, 'yarn.lock')).includes('__metadata:')
+  )
+    argv.push('-W')
   return argv
 }
 

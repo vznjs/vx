@@ -2102,8 +2102,9 @@ A project's package.json is the tree's root, or for a hoisted workspace
 the nearest one above the current directory that lists `@vzn/vx`. Its
 manager is its lockfile (`pnpm-lock.yaml`, `bun.lock`, `yarn.lock`,
 `package-lock.json`), else `packageManager`, else npm; the field it is
-listed in is kept (`--save-dev`, `--dev`, …), and pnpm at a workspace
-root adds `--workspace-root`. The lockfile is updated by that manager.
+listed in is kept (`--save-dev`, `--dev`, …), pnpm at a workspace
+root adds `--workspace-root`, and Yarn 1 there adds `-W`. The lockfile
+is updated by that manager.
 Every `@vzn/vx-*` plugin the same package.json lists from the registry
 moves in the same install, to the same release, since every @vzn
 package releases together: `pnpm add @vzn/vx@0.0.2 @vzn/vx-otel@0.0.2

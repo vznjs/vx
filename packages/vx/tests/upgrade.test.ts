@@ -671,6 +671,27 @@ describe('managedInstall', () => {
     ])
   })
 
+  // Yarn 1 refuses an `add` at a workspace's root without -W ("Running this
+  // command will add the dependency to the workspace root…"), so `vx init`
+  // and `vx upgrade` failed there; Berry has no such flag. vx-migrate's
+  // install (adopt.ts) already passed it.
+  it('a Yarn 1 workspace root adds with -W; Berry and a lone package do not', async () => {
+    const ws = JSON.stringify({ workspaces: ['apps/*'], devDependencies: { '@vzn/vx': '^0.0.1' } })
+    const argv = async (files: Record<string, string>) => {
+      const root = await tree(files)
+      return upgradeArgv(managedInstall(path.join(root, BIN), root)!, '1.2.3').join(' ')
+    }
+    expect([
+      await argv({ 'package.json': ws, 'yarn.lock': '# yarn lockfile v1\n' }),
+      await argv({ 'package.json': ws, 'yarn.lock': '__metadata:\n  version: 8\n' }),
+      await argv({ 'package.json': lists('devDependencies'), 'yarn.lock': '' }),
+    ]).toEqual([
+      'yarn add @vzn/vx@1.2.3 --dev -W',
+      'yarn add @vzn/vx@1.2.3 --dev',
+      'yarn add @vzn/vx@1.2.3 --dev',
+    ])
+  })
+
   it('moves every @vzn/vx-* plugin the manifest lists to the same release, in one install', async () => {
     // 2026-10-16: core and a plugin on different releases is a broken
     // workspace; one `add` installs them all or none. Platform packages and
