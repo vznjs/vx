@@ -22,7 +22,7 @@ import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners, realpathOr } from './config-imports.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles } from './fingerprint.js'
-import { PROJECT_CONFIG_FILENAMES, type ProjectMeta } from './workspace.js'
+import { PROJECT_CONFIG_FILENAMES, REVIEW_FILE, type ProjectMeta } from './workspace.js'
 
 /**
  * Every git call here goes through these two: a git that is not on PATH
@@ -275,8 +275,15 @@ export async function affectedChanges(
   // file: re-running `vx lock` must not mark every project affected.
   // An untracked file under `node_modules` is an install, which the input
   // enumeration drops too (`isInstalledPath`); a tracked one is a source.
+  // So is each project's `vx.lock.json`, the review copy `vx lock` writes
+  // beside its config and nothing reads: a re-lock rewriting them all
+  // selected every project while no key moved.
+  const reviewCopies = new Set(projects.map((p) => path.join(p.dir, REVIEW_FILE)))
+  const rootDir = path.resolve(args.workspaceRoot)
   const changed = [...diffed.paths, ...untracked.filter((s) => !isInstalledPath(s))].filter(
-    (s) => s !== LOCKFILE_NAME,
+    (s) =>
+      s !== LOCKFILE_NAME &&
+      (path.posix.basename(s) !== REVIEW_FILE || !reviewCopies.has(path.join(rootDir, s))),
   )
   // A symlinked input keys the content behind it (cache/linked-inputs.ts),
   // and the diff names that content's path, never the link's: a link whose
@@ -333,7 +340,6 @@ export async function affectedChanges(
     string,
     Map<string, { before: Uint8Array | null; after: Uint8Array | null }>
   >()
-  const rootDir = path.resolve(args.workspaceRoot)
   const loose = changed.filter((rel) => {
     const abs = path.join(rootDir, rel)
     return !projects.some((p) => p.dir !== rootDir && abs.startsWith(p.dir + path.sep))

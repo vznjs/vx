@@ -93,13 +93,14 @@ affected: the change reaches no test task.`
 
 There is no `-V`; use `vx --version`, as in Turbo.
 
-`vx <verb> --help` (also `-h` and `vx help <verb>`) prints this
+`vx <verb> --help` (also `-h`, `vx help <verb>` and `vx --help <verb>`) prints this
 reference for that verb: its usage lines and sections, then
 `Full reference: vx help`. Every argument error points at it.
 `vx help <plugin verb>` is `vx <plugin verb> --help`: the plugin answers.
 
 `vx help <name>` for a name that is no verb is refused like
-`vx <name>`: one line, a guess when one is close, exit 1.
+`vx <name>`: one line, a guess when one is close, exit 1. A second
+word after the verb is refused too.
 
 After `--`, a flag belongs to the task: `vx run build -- --help` passes
 `--help` to it. A plugin verb handles its own arguments, `--help` included.
@@ -392,8 +393,8 @@ What counts as a change:
 - A gitignored file a task names (`.env.local`, `dist/**`) never
   selects it, as in Nx. The key still hashes it, so the task misses when
   it changed.
-- `.vx/projects.lock.json` is left out, so `vx lock` never marks every
-  project affected.
+- `.vx/projects.lock.json` and each project's `vx.lock.json` review
+  copy are left out, so `vx lock` never marks a project affected.
 
 **A lockfile change selects everything.** These root files are in
 every task's key (the [workspace fingerprint](./caching.md)), so a
@@ -1570,7 +1571,7 @@ history and hash memos older than 30 days; a run never does.
 
 Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
-**Duration units**: `s`, `m`, `h`, `d`, case-insensitive. Examples:
+**Duration units**: `ms`, `s`, `m`, `h`, `d`, case-insensitive. Examples:
 `30d`, `24h`, `60m`, `30s`, `30D`.
 
 **Size units**: `K`, `M`, `G`, `T` (powers of 1024), case-insensitive, with an optional `B` or `iB` (`512MB`, `32KiB`).
@@ -2592,10 +2593,11 @@ it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 `vx show <project>` prints a block per task, headed by its
 `project#task`, with every field the run reads: description, command (`(group)` for group tasks), `dependsOn`,
 `timeout`, `retries`, `env.passThrough` / `env.define` / `env.secret`,
-`remote`, `sandbox`, `persistent`, `interactive` (`yes` / `no`), and the
-cache block
+`remote`, `platforms`, `sandbox`, `persistent`, `interactive` (`yes` /
+`no`), and the cache block
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
-`.workspaceRuntime`, `outputs.files` / `.workspaceFiles`). Fields the
+`.workspaceRuntime`, `outputs.files` / `.workspaceFiles` / `.clean`,
+`inputStability.strategy` / `.severity`). Fields the
 task does not set are not printed, an empty list prints `none`; a value that spans lines (a
 multi-line command) continues under its first line. `--format json` emits `{ name, dir,
 config }` with the config exactly as resolved. `vx show <pkg>#<task>`

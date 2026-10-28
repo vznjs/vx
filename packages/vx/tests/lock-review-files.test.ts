@@ -168,3 +168,20 @@ it('vx lock --check reads a review copy as JSON: a formatter may lay it out its 
   await Bun.write(file, JSON.stringify(JSON.parse((await text(file))!)))
   expect(vx(r, 'lock', '--check').code).toBe(0)
 })
+
+// A review copy is vx's own output, never read: a re-lock that rewrote
+// every one (a new vx, a format change) selected every project under
+// --affected, while no key moved. One inside a project's sources is a file.
+it('a changed review copy selects nothing under --affected', async () => {
+  const r = (root = await makeWorkspace({ prefix: 'vx-lock-review-aff-', edges: {} }))
+  const cfg = `export default { tasks: { build: { exec: { command: 'true' }, inputs: { files: ['**'] } } } }\n`
+  const dir = await addProject(r, 'a', { config: cfg, files: { 'src/vx.lock.json': '1' } })
+  expect(vx(r, 'lock').code).toBe(0)
+  gitIn(r)('add', '-A')
+  gitIn(r)('commit', '-q', '-m', 'init')
+  await Bun.write(path.join(dir, 'vx.lock.json'), '{}\n')
+  const none = vx(r, 'show', '--affected=HEAD')
+  expect(none.err).toContain('nothing affected since HEAD')
+  await Bun.write(path.join(dir, 'src/vx.lock.json'), '2')
+  expect(vx(r, 'show', '--affected=HEAD').out).toContain('packages/a')
+})
