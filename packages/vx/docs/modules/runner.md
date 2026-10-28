@@ -177,7 +177,8 @@ export class TaskPipes {
   `#` is safe past a word's first character), by
   `withForwardArgs` — before a `#` comment still open at the command's
   end (the earliest, when comment-only lines follow a commented
-  line), so no comment can swallow them; one scan reads quotes,
+  line), so no comment can swallow them, and before a trailing
+  unescaped `;` or `&`, so they do not run as a command; one scan reads quotes,
   comments and heredoc bodies together, as sh does. The sandbox wrapper and the
   persistent path build the line the same way.
 - **Encoding:** UTF-8 via `TextDecoder({ stream: true })`. Non-UTF8
@@ -236,7 +237,7 @@ full byte size in heap for the task's whole life:
   by `execute-task.ts` from the live callbacks, both streams in arrival
   order in one `BoundedCapture`: entry-sized when the task **will write
   a cache entry**, else 8 KiB head and 56 KiB tail, kept only for a
-  failure's `failedOutput` (what `vx last` and `getFailures` read).
+  failure's `failedOutput` (what `vx last` and `runFailures` read).
 - What is retained is **bounded**: the first `CAPTURE_HEAD_CHARS` and
   the last `CAPTURE_TAIL_CHARS` (8 MiB each), with the dropped middle
   counted and named where it was (`droppedOutputLine`). The live

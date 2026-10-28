@@ -57,6 +57,7 @@ Status symbols:
 | `▶`    | `miss`       |
 | `∅`    | `no-cache`   |
 | `·`    | `@noop`      |
+| `·`    | `skipped`    |
 | `○`    | `group`      |
 
 The `predicted:` footer prints only when history gave the plan
@@ -90,6 +91,12 @@ and the summary counts it as `noop`, never as would-run. See
 [`schema.md` § `remote`](../schema.md#remote-optional) for what pins a task
 locally and what `'only'` means.
 
+**`skipped`** is what the run skips here: a task whose `exec.platforms`
+leave this machine out, and each task that depends on one. Its line
+says why, as the run's frame does (`· … skipped — needs darwin-arm64,
+this is linux-x64`, `· … skipped — blocked by mac#build`), and the
+summary counts it as `skipped`.
+
 ## `formatPlanJson`
 
 One JSON object on one line, each task a `PlanTaskJson`, led by `affectedBase` (the ref the diff
@@ -100,7 +107,8 @@ states it and `tests/cli-json-schemas.test.ts` holds it:
 {"tasks":[{"id":"@vzn/vx#lint","project":"@vzn/vx","task":"lint","hash":"d66cfed2a1b2c3d4","cacheStatus":"hit-remote","deps":[],"description":"oxlint with tsgolint-backed type-aware checks"}]}
 ```
 
-`p50Ms`, `executor`, `download` and `affected` ride a task only when set, and
+`p50Ms`, `executor`, `download`, `affected`, `otherPlatform` and
+`blockedBy` ride a task only when set, and
 `predicted` and `downloadDowngrades` ride the object only when the plan
 has them. The object enumerates its fields on purpose — the plan's
 internal shape is not the wire — so a new `PlannedTask` field is not on

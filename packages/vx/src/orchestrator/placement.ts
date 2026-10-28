@@ -371,16 +371,20 @@ export function placeTasks(
  * inspection command and must not fail over a label. The error is still
  * said, on the status line, in the plugin's name: the run this plan
  * previews would refuse on it, and a plan that hid that would read as
- * "everything lands locally".
+ * "everything lands locally". The tasks `exec.platforms` skip here ride
+ * along, and a platform refusal (CI, an executor that cannot route) throws
+ * as the run's does.
  */
 export async function planExecutorOf(
   prepared: Awaited<ReturnType<typeof prepareRun>>,
   log: Logger,
   policy: 'all' | 'toplevel' | 'none',
+  ci: boolean,
 ): Promise<{
   executorOf?: (id: string) => string | undefined
   downloadOf?: (id: string) => 'eager' | 'deferred' | 'never' | undefined
   downloadDowngrades?: ReadonlyArray<{ taskId: string; reason: string }>
+  otherPlatform?: ReadonlyMap<string, readonly string[]>
 }> {
   let executors: readonly TaskExecutor[]
   try {
@@ -399,6 +403,9 @@ export async function planExecutorOf(
     return {}
   }
   const placements = placeTasks(prepared.nodes, executors)
+  // What the run refuses on, the plan refuses on: on CI a skip fails the run.
+  const platforms = platformVerdict(placements, ci)
+  if (platforms !== undefined && 'refuse' in platforms) throw new UserError(platforms.refuse)
   // Download modes need placement regardless of how many executors there
   // are (a single REMOTE one still defers); executor LABELS only earn their
   // column when there is a choice to report.
@@ -412,6 +419,7 @@ export async function planExecutorOf(
           remoteOnly: placements.remoteOnly,
         })
   return {
+    ...(placements.otherPlatform.size > 0 ? { otherPlatform: placements.otherPlatform } : {}),
     ...(executors.length < 2 && placements.remoteOnlyNoop.size === 0
       ? {}
       : {

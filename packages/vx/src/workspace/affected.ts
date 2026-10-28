@@ -22,7 +22,7 @@ import { LOCKFILE_NAME } from './lockfile.js'
 import { configImportOwners, realpathOr } from './config-imports.js'
 import { WORKSPACE_CONFIG_FILENAMES } from './project-loader.js'
 import { bunPatchFiles } from './fingerprint.js'
-import { PROJECT_CONFIG_FILENAMES, type ProjectMeta } from './workspace.js'
+import { PROJECT_CONFIG_FILENAMES, REVIEW_FILE, type ProjectMeta } from './workspace.js'
 
 /**
  * Every git call here goes through these two: a git that is not on PATH
@@ -275,8 +275,15 @@ export async function affectedChanges(
   // file: re-running `vx lock` must not mark every project affected.
   // An untracked file under `node_modules` is an install, which the input
   // enumeration drops too (`isInstalledPath`); a tracked one is a source.
+  // So is each project's `vx.lock.json`, the review copy `vx lock` writes
+  // beside its config and nothing reads: a re-lock rewriting them all
+  // selected every project while no key moved.
+  const reviewCopies = new Set(projects.map((p) => path.join(p.dir, REVIEW_FILE)))
+  const rootDir = path.resolve(args.workspaceRoot)
   const changed = [...diffed.paths, ...untracked.filter((s) => !isInstalledPath(s))].filter(
-    (s) => s !== LOCKFILE_NAME,
+    (s) =>
+      s !== LOCKFILE_NAME &&
+      (path.posix.basename(s) !== REVIEW_FILE || !reviewCopies.has(path.join(rootDir, s))),
   )
   // A symlinked input keys the content behind it (cache/linked-inputs.ts),
   // and the diff names that content's path, never the link's: a link whose
@@ -333,7 +340,6 @@ export async function affectedChanges(
     string,
     Map<string, { before: Uint8Array | null; after: Uint8Array | null }>
   >()
-  const rootDir = path.resolve(args.workspaceRoot)
   const loose = changed.filter((rel) => {
     const abs = path.join(rootDir, rel)
     return !projects.some((p) => p.dir !== rootDir && abs.startsWith(p.dir + path.sep))
@@ -428,6 +434,11 @@ export async function affectedChanges(
   const configs = changed.filter((rel) => CONFIG_NAMES.has(path.posix.basename(rel)))
   if (configs.length > 0) {
     const atBase = await gitBlobsAt(args.workspaceRoot, base, configs)
+    // A config the base had in a directory that is no project now: the
+    // project is gone, and with it the edge naming who depended on it,
+    // while their keys lost an upstream. Today's graph cannot say who.
+    const gone = await removedProjectConfig(args.workspaceRoot, atBase, projects)
+    if (gone !== undefined) return everything(gone)
     for (const name of parentsOfNewNested(args.workspaceRoot, atBase, projects)) {
       owned.add(name)
       whole.add(name)
@@ -503,6 +514,23 @@ function parentsOfNewNested(
     if (parent !== undefined) out.add(parent)
   }
   return out
+}
+
+/** The first config in `atBase` the base had whose file and project are both gone now. */
+async function removedProjectConfig(
+  workspaceRoot: string,
+  atBase: ReadonlyMap<string, Uint8Array | null>,
+  projects: readonly ProjectMeta[],
+): Promise<string | undefined> {
+  const dirs = new Set(projects.map((p) => p.dir.normalize('NFC')))
+  for (const [rel, bytes] of atBase) {
+    if (bytes === null) continue
+    const dir = path.resolve(workspaceRoot, path.posix.dirname(rel)).normalize('NFC')
+    if (dirs.has(dir)) continue
+    if (await Bun.file(path.join(workspaceRoot, rel)).exists()) continue
+    return rel
+  }
+  return undefined
 }
 
 /**

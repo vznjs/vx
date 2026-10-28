@@ -101,6 +101,28 @@ describe('a symlinked input keys what it points to', () => {
   )
 
   it(
+    'a brace glob whose alternative directory is a link: an edit behind it',
+    async () => {
+      // The link was found by each glob's static prefix, and a brace has
+      // none: `{lib,src}/**` and `{lib/**,src/**}` matched no file behind
+      // `lib -> ../shared`, so an edit there was a hit.
+      app = await addProject(root, 'a', {
+        config: `export default { tasks: { build: { exec: { command: 'cat lib/x.txt etc/x.txt > out.txt' }, inputs: { files: ['{lib,src}/**', '{etc/**,src/**}'] }, cache: { outputs: { files: ['out.txt'] } } } } }`,
+      })
+      await mkdir(path.join(root, 'other'))
+      await writeFile(path.join(root, 'other', 'x.txt'), 'W1\n')
+      await symlink(path.relative(app, path.join(root, 'shared')), path.join(app, 'lib'))
+      await symlink(path.relative(app, path.join(root, 'other')), path.join(app, 'etc'))
+      commit('fixture')
+      await rebuildsAfter(() => writeFile(path.join(root, 'shared', 'x.txt'), 'V2\n'), 'V2\nW1\n')
+      await writeFile(path.join(root, 'other', 'x.txt'), 'W2\n')
+      expect(statusOf(await build()), said.join('')).toBe('success')
+      expect(await out()).toBe('V2\nW2\n')
+    },
+    TIMEOUT,
+  )
+
+  it(
     'a file link to a tracked file outside the project',
     async () => {
       await project('src/x.txt')
