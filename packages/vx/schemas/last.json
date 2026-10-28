@@ -10,6 +10,11 @@
       "properties": {
         "invocation": { "$ref": "#/$defs/invocation" },
         "tasks": { "type": "array", "items": { "$ref": "#/$defs/task" } },
+        "warnings": {
+          "type": "array",
+          "description": "what the run warned of, plain text; absent when it warned of nothing",
+          "items": { "type": "string" }
+        },
         "steps": {
           "type": "array",
           "description": "vx's own steps the run did not wait on (vx:prefetch); absent when it had none or they are no longer kept",

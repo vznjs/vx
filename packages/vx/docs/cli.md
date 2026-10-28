@@ -292,7 +292,8 @@ change), or name the last good commit, --affected=<sha>`. `HEAD~1`
 - A shallow clone needs no more history. vx fetches what the merge base
   needs: commits and trees only, no file contents, deepening 1, 2, 4…
   commits until git finds it. A pull request's merge checkout needs one
-  fetch. When origin cannot give that history, vx refuses (`has no merge
+  fetch. A base it lacks is fetched as named: a commit id, `origin/<branch>`,
+  or a tag (`v1`, `refs/tags/v1`). When origin cannot give that history, vx refuses (`has no merge
 base with HEAD in this shallow clone`) rather than diff from the base's tip.
 - With no base branch and no origin to fetch from, vx says `--affected has
 no base here`.
@@ -1838,7 +1839,9 @@ environment and `Bun.deepEquals`-compares it with the frozen object. A
 project that differs gets one message, whether its config, a file it
 imports or the environment it reads changed. A lock an earlier vx wrote,
 or one that is not valid JSON, is a problem the audit names (a
-`problems` entry under `--format json`, not a refusal) and asks for `vx lock`. It also checks the graph rules over the configs as they
+`problems` entry under `--format json`, not a refusal) and asks for `vx lock`. Every config that does
+not load is named, as `vx lock` names them: each with its line and frame,
+and root-relative under `--format json`. It also checks the graph rules over the configs as they
 evaluate now, and that each `vx.lock.json` is what its project resolves to
 here, and that none is left where a `vx.config` was deleted, the
 directory still a project or not (delete that one yourself: vx never
@@ -3066,6 +3069,13 @@ remote's downloads beside the tasks), which its own output never shows:
 newest 50, in `<cache dir>/steps/<run id>.json`, written only by a run
 that had one; `--format json` adds them as `steps`.
 
+**Warnings.** Below the steps, what the run warned of (a glob that
+matched no files, a remote's 403, a plugin's notice), each as it said
+it, colour stripped, under `warnings`: on a terminal they scroll past,
+and the footer keeps only their count. Kept per run like the steps, the
+newest 50, in `<cache dir>/warnings/<run id>.json`, written only by a
+run that warned.
+
 **Re-run what failed.** A replayed run with
 failures ends with the command that re-runs them (`re-run what failed:
 vx run app#test -- …`, with the arguments the run forwarded to the
@@ -3160,8 +3170,8 @@ change with `SCHEMA_VERSION`; read `sqlite_schema` rather than assume.
 ### JSON
 
 `--format json`
-emits `{ invocation, tasks, steps }` for scripting (`steps` only when the
-run kept some, above); `--list --format json`
+emits `{ invocation, tasks, steps, warnings }` for scripting (`steps`
+and `warnings` only when the run kept some, above); `--list --format json`
 an array of the same `invocation` objects, newest first. A failed task's row adds
 `output` (its output as plain text, the first 8 KiB and last 56 KiB,
 secrets masked) and `locations` (the existing files it names,

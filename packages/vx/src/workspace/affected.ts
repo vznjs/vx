@@ -1043,13 +1043,19 @@ function parentsOf(workspaceRoot: string, sha: string): string[] {
 /**
  * What to ask origin for a base: a commit id as it is (GitHub serves any
  * commit a ref reaches), `origin/<branch>` as that branch into its
- * remote-tracking ref. Anything else is a name only this clone knows.
+ * remote-tracking ref, any other plain name as origin's tag of that name
+ * (a release base, `v1`; `--no-tags` fetched none). An expression (`v1~2`)
+ * is a name only this clone knows.
  */
 function originSpec(ref: string): string | undefined {
   if (/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(ref)) return ref
   const branch = /^(?:refs\/remotes\/)?origin\/(.+)$/s.exec(ref)?.[1]
-  if (branch === undefined || branch === 'HEAD') return undefined
-  return `+refs/heads/${branch}:refs/remotes/origin/${branch}`
+  if (branch !== undefined) {
+    return branch === 'HEAD' ? undefined : `+refs/heads/${branch}:refs/remotes/origin/${branch}`
+  }
+  const tag = /^(?:refs\/tags\/)?([^\s~^:?*[\\@{]+)$/.exec(ref)?.[1]
+  if (tag === undefined || tag === 'HEAD' || tag.startsWith('refs/')) return undefined
+  return `+refs/tags/${tag}:refs/tags/${tag}`
 }
 
 /**

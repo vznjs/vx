@@ -42,6 +42,19 @@ describe('run.branch in the workspace config', () => {
   })
 })
 
+// JSON writes a non-finite number as null: `concurrency: 1e400` was
+// refused as "(got null)", a value the file never held.
+describe('a non-finite number in the workspace config', () => {
+  it('is quoted as written', () => {
+    const rule = "must be a positive integer, or a share of the cores like '50%'"
+    expect([Infinity, -Infinity, NaN].map((n) => refusal({ run: { concurrency: n } }))).toEqual([
+      `${WS}: \`run.concurrency\` ${rule} (got Infinity)`,
+      `${WS}: \`run.concurrency\` ${rule} (got -Infinity)`,
+      `${WS}: \`run.concurrency\` ${rule} (got NaN)`,
+    ])
+  })
+})
+
 // Item 1099: a command of whitespace alone passed as non-empty and ran as
 // a no-op success, cached.
 describe('an empty command in any spelling', () => {

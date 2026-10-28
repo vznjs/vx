@@ -13,7 +13,7 @@ import {
 } from '../cache/index.js'
 import type { CapturedChunk } from '../exec/index.js'
 import { secretMask } from '../util/index.js'
-import { decodeOutputLog, encodeOutputLog } from './output-log.js'
+import { decodeOutputLog, encodeOutputLog, maskedOutputLog } from './output-log.js'
 
 /** The task a `TaskArtifacts` call names: where its outputs are and what ran. */
 export interface ArtifactTask {
@@ -106,7 +106,7 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
       const files = tree.files.filter(mine)
       const ws = wsTree.files.filter(mine)
       const mask = secretMask([process.env, run.env ?? {}], run.secret)
-      const log = encodeOutputLog(run.output)
+      const log = mask === null ? encodeOutputLog(run.output) : maskedOutputLog(run.output, mask)
       await cache.save({
         hash: key,
         projectDir: task.projectDir,
@@ -120,7 +120,7 @@ export function taskArtifacts(cache: CacheLayer, workspaceRoot: string): TaskArt
           taskId: task.id,
           command: mask?.mask(task.command) ?? task.command,
           durationMs: run.durationMs,
-          stdout: mask?.mask(log) ?? log,
+          stdout: log,
           ...(run.cpuMs !== undefined ? { cpuMs: run.cpuMs } : {}),
           ...(run.peakRssBytes !== undefined ? { peakRssBytes: run.peakRssBytes } : {}),
         },
