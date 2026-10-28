@@ -23,7 +23,7 @@ flowchart LR
 
 ## npm hooks keep their order
 
-npm runs `prebuild` before `build` and `postbuild` after it. The
+npm calls `prebuild` before `build` and `postbuild` after it. The
 migrator puts the hooks into the task's command, in that order, and
 tells you:
 

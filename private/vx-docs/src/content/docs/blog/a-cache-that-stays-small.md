@@ -87,7 +87,7 @@ $ vx cache clean --max-size 50M --dry-run --format json
 ```
 
 A clean waits for a running `vx run` on the same workspace. If another
-workspace shares the cache, a deleted entry just becomes a miss and the
+workspace shares the cache, a deleted entry becomes a miss and the
 task runs.
 
 Reference: [`vx cache clean`](../../cli/cache/) and the

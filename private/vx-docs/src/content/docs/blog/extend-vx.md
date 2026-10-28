@@ -19,9 +19,9 @@ Declare it in .vx/workspace.ts: import { dirCache } from '../plugins/cache.ts', 
 Test it: bun test plugins/cache.test.ts (needs @vzn/vx installed)
 ```
 
-Drop `--dry` to write the files. There is a template for every seam
-(`executor`, `cache`, `telemetry`, `schedule`, `admit`, `commands`,
-`project`, `graph`, `key`). vx's own CI runs each one, so they keep
+Drop `--dry` to write the files. There is a template for every plugin
+stage (`executor`, `cache`, `telemetry`, `schedule`, `admit`,
+`commands`, `project`, `graph`, `key`). vx's own CI runs each one, so they keep
 working.
 
 ## A remote cache is three methods

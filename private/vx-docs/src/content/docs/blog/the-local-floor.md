@@ -1,5 +1,5 @@
 ---
-title: 'The local floor: running here is not a plugin'
+title: 'Running here is not a plugin'
 date: 2026-09-10T23:40:00Z
 authors:
   - vzn
@@ -50,10 +50,10 @@ hits the local cache.
 
 <small>Linux x64 · vx 0be0367 · 2026-10-23</small>
 
-Running here and caching here aren't plugins. We call them the
-**floor**.
+Running here and caching here aren't plugins. They are built into
+vx.
 
-## Two lists, one floor
+## Two lists, one built-in end
 
 ```mermaid
 flowchart LR
@@ -67,14 +67,14 @@ flowchart LR
   style C1 stroke:#c6f84e,stroke-width:2px
 ```
 
-You never write the floor and can't remove it. With no plugins,
+You never declare them and can't remove them. With no plugins,
 `vx run build` still works. A save reaches every remote. The local
 artifacts live in `~/.vx/<id>/cache`, shared by every checkout
 ([storage](../../caching/#storage-layout)).
 
 ## A plugin may say no
 
-Because the floor is always there, a plugin can turn a task down
+Because this machine is always there, a plugin can turn a task down
 without failing the run:
 
 | Case                                         | Runs where       |
@@ -97,7 +97,7 @@ the default is gone unless you remember it, and a declined task has
 nowhere to go. As part of every list, no setup can leave a task with
 nowhere to run.
 
-Everything above the floor, like a remote cache, exists only if you
+Everything else, like a remote cache, exists only if you
 name it in the workspace file.
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

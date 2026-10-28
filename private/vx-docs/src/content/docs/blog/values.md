@@ -48,7 +48,7 @@ project. What one project needs from another comes through the graph.
 **No defaults.** Core turns on no plugin. A remote cache exists only if
 you name it in `.vx/workspace.ts`.
 
-**Seam over special case.** If core grows a branch for one user, the
+**Plugin point over special case.** If core grows a branch for one user, the
 plugin point is too narrow. The Turbo and Nx mappers and the
 history-based scheduler moved to their own packages this way.
 

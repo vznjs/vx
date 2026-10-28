@@ -71,9 +71,9 @@ the cache index, `Bun.zstd*` for compression, `Bun.spawn`, `Bun.Glob`,
 and `bun build --compile` for the binary. So vx has very few
 dependencies.
 
-None of that reaches you. A workspace on Node 18 with pnpm runs under
+None of that reaches you. A workspace on Node 18 with pnpm works under
 vx as it does under Turborepo. Only running vx *from source* needs
-Bun ≥ 1.4.
+Bun ≥ 1.4.4.
 
 ## No daemon, no service
 
