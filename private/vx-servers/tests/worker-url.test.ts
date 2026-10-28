@@ -79,7 +79,17 @@ describe('the relay a PR’s run uses', () => {
     )
     const none = deps(['private/vx-dte-service/wrangler.jsonc'], [async () => []])
     await expect(workerUrl('vx-dte', WATCH, DEPLOYED, none)).rejects.toThrow(
-      'Workers Builds: vx-dte: no build of the head after 5 min',
+      'Workers Builds: vx-dte: no build of the head after 12 min',
+    )
+  })
+
+  // With many PRs pushed at once, Workers Builds queues: #4578's build
+  // began 8 min after its job asked (2026-10-28), past a 5 min wait.
+  it('waits out a busy Workers Builds queue, its build arriving 8 min late', async () => {
+    const late = Array.from({ length: 8 * 12 }, () => async () => [] as CheckRun[])
+    const d = deps(['bun.lock'], [...late, check('completed', 'success')])
+    expect(await workerUrl('vx-dte', WATCH, DEPLOYED, d)).toBe(
+      'https://feat-relay-vx-dte.exelord.workers.dev',
     )
   })
 
