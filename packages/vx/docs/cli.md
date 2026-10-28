@@ -389,17 +389,11 @@ What counts as a change:
 - `.vx/projects.lock.json` is left out, so `vx lock` never marks every
   project affected.
 
-**A lockfile change selects everything.** These root files are in
-every task's key (the [workspace fingerprint](./caching.md)), so a
-`bun install` or `pnpm update` re-runs every task:
-
-- the root lockfiles;
-- `pnpm-workspace.yaml`, `.yarnrc.yml`, `.npmrc`, `bunfig.toml`;
-- the patches `bun.lock` names.
-
-They belong to no project, so `--affected` selects every project when
-one changes. A lockfile inside a package is not hashed and selects only
-that package.
+**A lockfile change selects what its plugin says.** Core keys no
+lockfile and no install setting: without a lockfile plugin, the root
+`bun.lock` or `pnpm-lock.yaml` is a root file like any other, and a
+change to it selects the root project (when the workspace has one), not
+every project.
 
 A lockfile a plugin claims (`VxPlugin.fingerprint`, such as
 `pnpm-lock.yaml` under `@vzn/vx-lockfile`) is different. The key holds
