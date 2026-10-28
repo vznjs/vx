@@ -1725,7 +1725,7 @@ describe('Cache storage (v10)', () => {
     ).toEqual(['h-warm-b'])
   })
 
-  it('prune({ dryRun }) reports the victims and orphans and deletes nothing', async () => {
+  it('prune({ dry }) reports the victims and orphans and deletes nothing', async () => {
     const { mkdir, writeFile, utimes } = await import('node:fs/promises')
     await mkdir(projectDir, { recursive: true })
     const f = path.join(projectDir, 'a.txt')
@@ -1742,7 +1742,7 @@ describe('Cache storage (v10)', () => {
     await utimes(aged, twoHoursAgo, twoHoursAgo)
     await new Promise((r) => setTimeout(r, 10))
 
-    const dry = await cache.prune({ olderThanMs: Date.now() + REFRESH, dryRun: true })
+    const dry = await cache.prune({ olderThanMs: Date.now() + REFRESH, dry: true })
     expect(dry.evicted).toBe(1)
     expect(dry.bytesFreed).toBeGreaterThanOrEqual(3)
     expect(dry.orphans).toBe(1)
@@ -1940,13 +1940,13 @@ describe('Cache storage (v10)', () => {
 
     // By age too: the phantom is older than the cutoff and still neither
     // evicted nor counted as freed; the real entry is.
-    const byAge = await cache.prune({ olderThanMs: hourAgo + REFRESH + 1, dryRun: true })
+    const byAge = await cache.prune({ olderThanMs: hourAgo + REFRESH + 1, dry: true })
     expect({ evicted: byAge.evicted, bytesFreed: byAge.bytesFreed }).toEqual({
       evicted: 1,
       bytesFreed: 100,
     })
 
-    const dry = await cache.prune({ maxBytes: 200, dryRun: true })
+    const dry = await cache.prune({ maxBytes: 200, dry: true })
     expect({ evicted: dry.evicted, bytesFreed: dry.bytesFreed }).toEqual({
       evicted: 0,
       bytesFreed: 0,

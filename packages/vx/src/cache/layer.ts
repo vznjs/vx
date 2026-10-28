@@ -327,7 +327,7 @@ export interface PruneOptions {
    * Pick the victims and count the orphans, delete nothing: the result
    * says what a real prune with the same policy would reap right now.
    */
-  dryRun?: boolean
+  dry?: boolean
 }
 
 export interface PruneResult {

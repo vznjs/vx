@@ -107,7 +107,7 @@ describe('docs/cli.md prints each verb JSON shape as its schema closes it', () =
     ])
     expect(shapes('`{ ok: false }` and `{a, b}`')).toEqual(['ok'])
     expect(jsonText('vx cache clean')).not.toContain('olderThan')
-    expect(jsonText('vx cache clean')).toContain('{ dryRun, evicted')
+    expect(jsonText('vx cache clean')).toContain('{ dry, evicted')
   })
 
   for (const [verb, headings] of Object.entries(SECTIONS)) {

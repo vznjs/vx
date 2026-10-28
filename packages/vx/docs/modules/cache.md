@@ -213,7 +213,7 @@ export class Cache implements CacheLayer {
 export interface PruneOptions {
   olderThanMs?: number // ms-epoch cutoff; entries with accessed_at < this are evicted
   maxBytes?: number // after age pruning, evict LRU until total <= maxBytes
-  dryRun?: boolean // pick victims and count orphans, delete nothing
+  dry?: boolean // pick victims and count orphans, delete nothing
 }
 
 export interface PruneResult {
@@ -548,7 +548,7 @@ asks `artifacts` only then. Its own version is `artifacts_meta.layout`
 where the schema was not this vx's (a reset, a new index or store, a
 store moved), so a warm open spends no statement on it and a layout
 change bumps `SCHEMA_VERSION` too. A reading open over an index or store
-of another schema (`vx cache clean --dry-run` after an upgrade) reads
+of another schema (`vx cache clean --dry` after an upgrade) reads
 them through a TEMP view over the file, so it names the row-less ones
 the real prune reaps. A workspace index whose entries move to a store
 drops its own `artifacts`, which an unqualified name would otherwise

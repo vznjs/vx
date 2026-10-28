@@ -234,9 +234,9 @@ beforeAll(async () => {
   // A config that does not load: \`vx info\` names it.
   await addProject(root, 'broken', { config: 'export default { tasks: 1 }' })
   json('info', [])
-  json('cache', ['clean', '--max-size', '1K', '--dry-run'])
+  json('cache', ['clean', '--max-size', '1K', '--dry'])
   json('cache', ['clean', '--max-size', '1K'])
-  json('cache', ['clean', '--dry-run'])
+  json('cache', ['clean', '--dry'])
   // A refusal: exit 1, and the error document on stdout.
   const refused = vx(['show', 'nope', '--format', 'json'])
   if (refused.code !== 1) throw new Error(`vx show nope: ${refused.code}\n${refused.err}`)
@@ -552,8 +552,8 @@ describe('each schema object is its source type', () => {
 
   it('cache', () => {
     expect(def('cache', 'prune')).toEqual(
-      keys<PruneResult & { dryRun: boolean }>({
-        dryRun: true,
+      keys<PruneResult & { dry: boolean }>({
+        dry: true,
         evicted: true,
         bytesFreed: true,
         orphans: true,
@@ -561,7 +561,7 @@ describe('each schema object is its source type', () => {
       }),
     )
     expect(def('cache', 'clear')).toEqual(
-      keys<ClearResult>({ dryRun: true, cleared: true, bytesFreed: true }),
+      keys<ClearResult>({ dry: true, cleared: true, bytesFreed: true }),
     )
   })
 
