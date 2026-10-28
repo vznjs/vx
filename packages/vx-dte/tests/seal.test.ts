@@ -2,7 +2,7 @@
 // Noise handshake, the relay sees no body, and a body it changes or replays
 // does not get through.
 
-import { afterEach, expect, it } from 'bun:test'
+import { afterEach, expect, it, setSystemTime } from 'bun:test'
 import {
   githubProof,
   oidcToken,
@@ -336,6 +336,74 @@ it('on GitHub, admits by OIDC tokens of this repository whose audience is the ke
       },
     ])
   } finally {
+    for (const k of [
+      'ACTIONS_ID_TOKEN_REQUEST_URL',
+      'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
+      'GITHUB_REPOSITORY_ID',
+    ])
+      delete process.env[k]
+  }
+})
+
+// Each check made a verifier of its own over keys read once per process,
+// so a key GitHub rotated in was never read: every token it signed was
+// refused as a key mismatch.
+it('reads GitHub’s keys again for a token signed by one it has not seen, once a minute at most', async () => {
+  const rsa = async () =>
+    (await crypto.subtle.generateKey(
+      {
+        name: 'RSASSA-PKCS1-v1_5',
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: 'SHA-256',
+      },
+      true,
+      ['sign', 'verify'],
+    )) as CryptoKeyPair
+  const [k1, k2] = [await rsa(), await rsa()]
+  const ISS = 'https://token.actions.githubusercontent.com'
+  const b64 = (v: unknown): string => Buffer.from(JSON.stringify(v)).toString('base64url')
+  let signer = { kid: 'k1', key: k1 }
+  let published = [{ ...(await crypto.subtle.exportKey('jwk', k1.publicKey)), kid: 'k1' }]
+  const issuer = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    async fetch(req) {
+      const aud = new URL(req.url).searchParams.get('audience')
+      const head = `${b64({ alg: 'RS256', kid: signer.kid })}.${b64({ iss: ISS, aud, exp: Date.now() / 1000 + 300, repository_id: '11' })}`
+      const sig = await crypto.subtle.sign(
+        'RSASSA-PKCS1-v1_5',
+        signer.key.privateKey,
+        Buffer.from(head),
+      )
+      return Response.json({ value: `${head}.${Buffer.from(sig).toString('base64url')}` })
+    },
+  })
+  stops.push(async () => {
+    await issuer.stop(true)
+  })
+  process.env['ACTIONS_ID_TOKEN_REQUEST_URL'] = `http://127.0.0.1:${issuer.port}/token?v=1`
+  process.env['ACTIONS_ID_TOKEN_REQUEST_TOKEN'] = 'req-token'
+  process.env['GITHUB_REPOSITORY_ID'] = '11'
+  let reads = 0
+  const proof = githubProof(async (url) => {
+    reads++
+    if (url === `${ISS}/.well-known/openid-configuration`) return { jwks_uri: `${ISS}/jwks` }
+    return { keys: published }
+  })
+  const parts = ['join', R3, 'n']
+  try {
+    expect(await proof.check!(await proof.sign!(parts), parts)).toBe(true)
+    expect(reads).toBe(2)
+    signer = { kid: 'k2', key: k2 }
+    published = [{ ...(await crypto.subtle.exportKey('jwk', k2.publicKey)), kid: 'k2' }]
+    // Within a minute of the last read: refused, and GitHub not asked.
+    expect(await proof.check!(await proof.sign!(parts), parts)).toBe(false)
+    expect(reads).toBe(2)
+    setSystemTime(new Date(Date.now() + 61_000))
+    expect(await proof.check!(await proof.sign!(parts), parts)).toBe(true)
+  } finally {
+    setSystemTime()
     for (const k of [
       'ACTIONS_ID_TOKEN_REQUEST_URL',
       'ACTIONS_ID_TOKEN_REQUEST_TOKEN',
