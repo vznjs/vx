@@ -163,3 +163,19 @@ it('kills a group that ignores SIGTERM after a grace', async () => {
   } as never)
   expect([r.exitCode, Date.now() - started < 10_000]).toEqual([137, true])
 }, 40_000)
+
+// A pipe ends only when every writer closes it: a process the command
+// left running (`server &`) held the task open until it exited.
+it('ends when the shell exits, though a process it left holds the pipes', async () => {
+  const executor = (await shellExecutor().executor!({} as never))!
+  const started = Date.now()
+  const r = await executor.execute({
+    command: 'sleep 5 & echo up',
+    cwd: root,
+    env: { PATH: process.env['PATH'] ?? '' },
+    forwardArgs: [],
+    onStdout() {},
+    onStderr() {},
+  } as never)
+  expect([r.exitCode, r.stdout, Date.now() - started < 3_000]).toEqual([0, 'up\n', true])
+}, 20_000)

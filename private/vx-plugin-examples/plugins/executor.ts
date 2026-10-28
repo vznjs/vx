@@ -44,21 +44,30 @@ export function shellExecutor(): VxPlugin {
         killTimer = setTimeout(() => kill('SIGKILL'), 1_000)
       }
       req.signal?.addEventListener('abort', stop, { once: true })
+      const readers: { cancel(): Promise<void> }[] = []
       const drain = async (stream: ReadableStream<Uint8Array>, on: (s: string) => void) => {
+        const reader = stream.getReader()
+        readers.push(reader)
         const decoder = new TextDecoder()
         let all = ''
-        for await (const chunk of stream) {
-          const text = decoder.decode(chunk, { stream: true })
+        for (let r = await reader.read(); !r.done; r = await reader.read()) {
+          const text = decoder.decode(r.value, { stream: true })
           all += text
           on(text)
         }
         return all
       }
-      const [stdout, stderr, exitCode] = await Promise.all([
+      const drained = Promise.all([
         drain(child.stdout, req.onStdout),
         drain(child.stderr, req.onStderr),
-        child.exited,
       ])
+      const exitCode = await child.exited
+      // A pipe ends only when every writer closes it: a process the command
+      // left running (`server &`) would hold the task open. What it writes
+      // after a short grace is not the task's.
+      const cut = setTimeout(() => readers.forEach((r) => void r.cancel()), 250)
+      const [stdout, stderr] = await drained
+      clearTimeout(cut)
       req.signal?.removeEventListener('abort', stop)
       clearTimeout(killTimer)
       return {
