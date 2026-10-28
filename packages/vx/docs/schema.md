@@ -2078,7 +2078,11 @@ own output path, or set run.rules.exclusiveOutputs: false in
     tasks' cross-project `dependsOn`). Each rule is
     `{ from, allow?, deny? }`; a selector is `tag:<tag>` (a project
     carrying the tag) or a project name, and `*` matches any characters
-    in either (`tag:scope:*`, `@acme/*`). Every rule whose `from`
+    in either (`tag:scope:*`, `@acme/*`). A `--filter` form that is no
+    name (`./apps/*`, `{apps/web}`, `!x`, `x...`, `...x`, `x[main]`) or a
+    selector with surrounding whitespace is refused, naming the field
+    (`run.rules.dependencies[0].deny[1]`): it would match no project, so
+    a `deny` of it passed every edge. Every rule whose `from`
     selects a project applies: each dependency must match an `allow`
     selector when `allow` is given, and none of `deny`, so a deny beats
     any allow. A project no rule selects is free, and an untagged
