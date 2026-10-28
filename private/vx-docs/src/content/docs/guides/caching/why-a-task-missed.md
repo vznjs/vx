@@ -13,7 +13,7 @@ vx why @demo/ui#build
 ```text
 @demo/ui#build — run 01a16ac2-358b-71ea-9f9a-3893813f3fe5
   this run   2026-10-23T21:54:35.035Z · success · executed · key ea371b1a95a3f4d4
-  previous   2026-10-23T21:54:34.326Z · success · key 58326ea9fe2ca71f
+  previous   2026-10-23T21:54:34.326Z · success · executed · key 58326ea9fe2ca71f
   verdict    cache key changed: file packages/ui/src/index.ts
 
   what changed (1 component, 2 unchanged):
@@ -35,7 +35,7 @@ vx why @demo/web#build
 ```text
 @demo/web#build — run 01a16ac2-358b-71ea-9f9a-3893813f3fe5
   this run   2026-10-23T21:54:35.065Z · success · executed · key 3bc7cf8209349dfd
-  previous   2026-10-23T21:54:34.351Z · success · key 90ae2fa5dbcfde91
+  previous   2026-10-23T21:54:34.351Z · success · executed · key 90ae2fa5dbcfde91
   verdict    cache key changed: upstream @demo/ui#build
 
   what changed (1 component, 3 unchanged):

@@ -249,7 +249,7 @@ describe('vx show (e2e)', () => {
         'inputs.files: src/**/*.ts',
         'inputs.workspaceFiles: tsconfig.base.json',
         'inputs.runtime: node -v',
-        'outputs.files',
+        'outputs.files: none',
       ])
     },
     TIMEOUT,

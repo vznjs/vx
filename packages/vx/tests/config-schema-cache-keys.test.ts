@@ -40,7 +40,7 @@ it("names vx's home for a cache key another tool spells", () => {
     files: "vx spells it the task's `inputs.files`",
     output: 'vx spells it `outputs.files`',
     env: "vx spells it the task's `inputs.env`",
-    dependencies: "vx spells it the task's `dependsOn` (an upstream's key folds into this one)",
+    dependencies: "vx spells it the task's `dependsOn` (an upstream's key goes into this one)",
     enabled:
       'vx spells it no field: a task with a `cache` block caches, one without runs every time',
     inputGlobs: 'vx spells it `files`',

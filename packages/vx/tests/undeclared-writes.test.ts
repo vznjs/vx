@@ -1,6 +1,6 @@
 // A task with no `cache` block declares no outputs, yet it writes: `gen`
 // copies a seed into `config.json`, and a same-project `build` that runs
-// after it (`dependsOn`, with `tasks: []` so its key folds no upstream
+// after it (`dependsOn`, with `tasks: []` so its key includes no upstream
 // key) reads that file. Its run-start facts — the git snapshot, the index
 // OIDs, the up-front key the local short-circuit took — describe the bytes
 // BEFORE `gen` ran, and a key built from them replays the wrong artifact

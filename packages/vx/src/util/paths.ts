@@ -440,6 +440,22 @@ export function outputMatcher(globs: readonly string[]): (rel: string) => boolea
 const OUTPUT_NEVER = ['.git/**', '.vx/**', 'vx.lock.json']
 
 /**
+ * Whether vx may write or delete at `real`, a path a link on the way
+ * resolved: under `realBase` and in no `.git` there, in any case (a
+ * case-insensitive disk reads `.GIT` as `.git`). Names are held to
+ * `OUTPUT_NEVER` lexically; this holds where a link lands
+ * (vercel/turborepo#14808).
+ */
+export function writableUnder(real: string, realBase: string): boolean {
+  if (real === realBase) return true
+  if (!real.startsWith(realBase + path.sep)) return false
+  return !real
+    .slice(realBase.length + 1)
+    .split(path.sep)
+    .some((part) => part.toLowerCase() === '.git')
+}
+
+/**
  * `OUTPUT_NEVER` relative to the workspace root, for `outputs.workspaceFiles`:
  * those globs cross into other projects, and every project's `vx.lock.json`
  * is vx's.

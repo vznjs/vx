@@ -58,7 +58,7 @@ No run deletes cache entries. Trim it by hand or on a schedule, and
 look first:
 
 ```sh frame="terminal"
-$ vx cache clean --max-size 4KB --dry-run
+$ vx cache clean --max-size 4KB --dry
 › vx cache clean  would free 1.9 KB (dry run)
 
   5 entries

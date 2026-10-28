@@ -4,7 +4,7 @@
 
 import { Database } from 'bun:sqlite'
 import { parseArgs } from 'node:util'
-import { oidcTokenAuth, parseAllow } from '@vzn/vx-devtools'
+import { oidcTokenAuth, parseAllow, statusLine } from '@vzn/vx-devtools'
 import { timingDaysOf } from './days.js'
 import { createHistoryServer } from './server.js'
 import { type Db, sqliteStore } from './store.js'
@@ -79,14 +79,14 @@ function main(argv: string[]): void {
     ...(timingDays === undefined ? {} : { timingDays }),
   })
   const server = Bun.serve({ hostname: values.host, port, fetch: handle })
-  console.log(`vx-history-server on ${server.url.href}`)
+  process.stdout.write(statusLine('ok', 'vx-history-server', `listening on ${server.url.href}`))
   const stop = (): void => void server.stop().then(() => process.exit(0))
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
 }
 
 function fail(message: string): never {
-  process.stderr.write(`${message}\n`)
+  process.stderr.write(statusLine('err', 'vx-history-server', message))
   process.exit(2)
 }
 

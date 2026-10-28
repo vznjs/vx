@@ -437,7 +437,7 @@ describe('project stage', () => {
       // dir there, and which spelling discovery reports is not this row's.
       const message = err?.message ?? ''
       expect(message.slice(message.indexOf('/packages/a/vx.config.mjs'))).toBe(
-        `/packages/a/vx.config.mjs (after plugin 'org/map'): tasks.build.exec.sandbox is an instance of Map — a config must be JSON data, because the cache key folds its JSON`,
+        `/packages/a/vx.config.mjs (after plugin 'org/map'): tasks.build.exec.sandbox is an instance of Map — a config must be JSON data, because the cache key is built from its JSON`,
       )
     },
     TIMEOUT,

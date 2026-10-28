@@ -9,7 +9,7 @@
   "watch: a rejected flag: vx watch build --all --dry": 1,
   "watch: nothing affected since the ref: vx watch build --affected=HEAD": 0,
   "cache clean: a policy: vx cache clean --older-than 1d": 0,
-  "cache clean: no bound clears: vx cache clean --dry-run": 0,
+  "cache clean: no bound clears: vx cache clean --dry": 0,
   "lock: write: vx lock": 0,
   "lock --check: up to date: vx lock --check": 0,
   "show: vx show": 0,

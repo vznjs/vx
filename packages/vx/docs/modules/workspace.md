@@ -65,8 +65,11 @@ export function lockedProjects(
   root: string,
   locked: Readonly<Record<string, { readonly file: string; readonly config: ProjectConfig }>>,
 ): ProjectMeta[]
+// `dir` at the directory it leads to, under `root` as given; `dir` when
+// that lies outside the root, null when absent
+export function canonicalDir(root: string, dir: string): string | null
 // The project a `discover` entry names: new (`added`) or the one already
-// at its dir, renamed when its path named it. `deps` / `reach` are
+// at its real dir, renamed when its path named it. `deps` / `reach` are
 // checked to be string arrays here and resolved by linkDiscoveredEdges
 export function discoveredProject(
   root: string,
@@ -148,6 +151,19 @@ names each, since an edit to it changes nothing. The same listing names each `vx
 which `vx lock --check` names. Left where a project's config was
 deleted, it is a source of the project around it, and a `**` reader
 there was keyed on a copy no `vx lock` rewrites (2026-10-23).
+
+### A directory reached through a symlink
+
+A project is its real directory. A `discover` entry, an edge or a
+`./path` filter naming a link (pnpm's `widgets/**` with
+`widgets/a -> ../submodules/a`) is the project at the directory it
+leads to, spelled under the root as given (`canonicalDir`); git lists
+the config there, not at the link. Joined by spelling, one directory
+was two projects: the configured one, which nothing depended on, and a
+config-less twin at the link taking every `^task` edge
+(vercel/turborepo#12489). A link leading out of the root stays a
+project at the link. Only a directory no project holds is resolved, so
+locked projects cost no syscall (`tests/discover-stage.test.ts`).
 
 ### Names
 

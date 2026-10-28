@@ -122,7 +122,7 @@ describe('cli run()', () => {
       [
         1,
         noticed(
-          'vx cache: unknown subcommand: bogus. The subcommand is clean (see `vx cache --help`)\n',
+          'vx cache: unknown subcommand: bogus. Its one subcommand is `vx cache clean` (see `vx cache --help`)\n',
         ),
       ],
       [
@@ -351,7 +351,7 @@ describe('cli run()', () => {
       ['show', '--formt'],
       ['why', 'x', '--rn', '1'],
       ['cache', 'clean', '--dry-rn'],
-      ['cache', 'clean', '--dry'],
+      ['cache', 'clean', '--dry-run'],
       ['run', 'build', '--dry-run'],
       ['run', 'build', '--concurency', '2'],
       ['info', '--json'],
@@ -390,10 +390,10 @@ describe('cli run()', () => {
       ).trimEnd(),
       'vx why: unknown flag: --rn (did you mean --run?) (see `vx why --help`)',
       noticed(
-        'vx cache clean: unknown flag: --dry-rn (did you mean --dry-run?) (see `vx cache --help`)',
+        'vx cache clean: unknown flag: --dry-rn (did you mean --dry?) (see `vx cache --help`)',
       ).trimEnd(),
       noticed(
-        'vx cache clean: unknown flag: --dry (did you mean --dry-run?) (see `vx cache --help`)',
+        'vx cache clean: unknown flag: --dry-run (did you mean --dry?) (see `vx cache --help`)',
       ).trimEnd(),
       noticed(
         'vx run: unknown flag: --dry-run (did you mean --dry?) (see `vx run --help`)',
@@ -1561,7 +1561,7 @@ describe('parseRunArgs', () => {
     expect(run).toContain('Full reference: vx help')
     const cache = verbHelpText('cache')
     expect(cache).toContain('vx cache clean --older-than 30d')
-    expect(cache).toContain('--dry-run')
+    expect(cache).toContain('--dry')
     expect(cache).not.toContain('Selection (for run):')
     const last = verbHelpText('last')
     expect(last).toContain('--list[=N]')
@@ -1595,7 +1595,7 @@ describe('parseRunArgs', () => {
     ])
     expect(flagsIn(verbHelpText('cache'))).toEqual([
       '--cache-dir',
-      '--dry-run',
+      '--dry',
       '--format',
       '--global',
       '--max-size',

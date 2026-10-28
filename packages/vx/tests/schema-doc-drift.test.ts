@@ -118,7 +118,7 @@ const CASES: Array<[string, () => string | null | Promise<string | null>]> = [
     },
   ],
   [
-    '<path> is <what> — a config must be JSON data, because the cache key folds its JSON',
+    '<path> is <what> — a config must be JSON data, because the cache key is built from its JSON',
     () => validated({ tasks: { b: { ...ok, description: () => 'b' } } }),
   ],
   ['<level> has unknown field "<key>"', () => validated({ tasks: { b: { ...ok, caches: {} } } })],

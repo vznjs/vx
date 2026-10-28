@@ -345,11 +345,7 @@ function renderList(
     }
   })
   if (format === 'json') {
-    return `${JSON.stringify(
-      rows.map(({ name, dir, tags, tasks }) => ({ name, dir, tags, tasks })),
-      null,
-      2,
-    )}\n`
+    return `${JSON.stringify(rows.map(({ name, dir, tags, tasks }) => ({ name, dir, tags, tasks })))}\n`
   }
   if (rows.length === 0) return ''
   const anyTags = rows.some((r) => r.tags.length > 0)
@@ -453,8 +449,9 @@ function taskReport(name: string, dir: string, taskName: string, task: TaskConfi
 function taskRows(raw: TaskConfig): ui.FieldRow[] {
   const task = shownTask(raw)
   const rows: ui.FieldRow[] = []
+  // An empty list is a value: a bare label read as a cut-off line.
   const list = (xs: readonly string[] | undefined): string | undefined =>
-    xs === undefined ? undefined : xs.join(', ')
+    xs === undefined ? undefined : xs.length === 0 ? 'none' : xs.join(', ')
   const add = (label: string, value: string | number | boolean | undefined): void => {
     if (value !== undefined) rows.push([label, String(value)])
   }

@@ -925,11 +925,11 @@ export const MORE: readonly Feature[] = [
     hook: 'Evict by age or size, oldest use first, by hand or on a schedule.',
     body: [
       'Caches grow. `vx cache clean` removes entries older than a cutoff or trims the cache to a size, least recently used first.',
-      'No run evicts: run it from a schedule or CI; `--dry-run` shows what would go first.',
+      'No run evicts: run it from a schedule or CI; `--dry` shows what would go first.',
     ],
     example: {
       lang: 'sh',
-      code: 'vx cache clean --older-than 30d\nvx cache clean --max-size 10G --dry-run',
+      code: 'vx cache clean --older-than 30d\nvx cache clean --max-size 10G --dry',
     },
     image: 'cache-prune.png',
     imageAlt: 'Cache pruning by age and size.',

@@ -319,7 +319,7 @@ export function placeTasks(
       refuse(
         node.id,
         pinsOf(sole).has(node.id)
-          ? 'its key folds a runtime probe, which it does not check'
+          ? 'its key includes a runtime probe, which it does not check'
           : routes(sole)
             ? 'it declined the task'
             : `it offers ${sole.platforms?.join(', ') ?? 'no platform'}, and exec.platforms asks for ${wants!.join(', ')}`,

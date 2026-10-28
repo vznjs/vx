@@ -250,7 +250,7 @@ per-task (`exec.sandbox`), no workspace inheritance. Baseline policy:
 read and write nothing, deny-read = workspace root; core adds
 `node_modules` and the workspace packages linked there (never a link to
 the task's own project or above it; for a task that declares `cache`,
-only the packages its key folds a task of —
+only the packages its key includes a task of —
 `orchestrator/keyed-projects.ts`), and the task's own `allow` grants add
 the rest. Reporting is scoped to the project and the withheld packages.
 
@@ -293,7 +293,7 @@ flowchart TD
 Every `get` notes its hash, and the `accessed_at` bumps land in one
 batched UPDATE at prune, stats or close, so LRU reflects real use. A
 `vx run --dry` plan probes with `has`, which does not bump it — planning
-is read-only. (Prune's own rehearsal flag is `--dry-run`.)
+is read-only.
 
 ## 9. `--dry` — the plan path
 

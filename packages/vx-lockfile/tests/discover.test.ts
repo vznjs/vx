@@ -505,7 +505,7 @@ describe('vx run with bun() declared', () => {
     const moved = Object.keys(after).filter(
       (id) => after[id] !== before[id] && id.endsWith('#build'),
     )
-    // a builds after b, so its key folds b's: the cascade, not the input.
+    // a builds after b, so its key includes b's: the cascade, not the input.
     expect(moved.sort()).toEqual(['a#build', 'b#build'])
   })
 

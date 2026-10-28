@@ -1979,7 +1979,7 @@ function readsOutputs(
           new UserError(
             `${reader.node.id} reads ${JSON.stringify(gi.slice(at.length))} in inputs.${field}, which matches ` +
               `${writer.node.id}'s output ${JSON.stringify(shown)} — a task's key must not read ` +
-              `the outputs of a task it does not depend on, or whose key it already folds. ` +
+              `the outputs of a task it does not depend on, or whose key it already includes. ` +
               `Exclude it: add ${JSON.stringify(`!${out}`)} to ${reader.node.id}'s ` +
               `inputs.${field}, or depend on ${writer.node.id} and leave it out of ` +
               `${reader.node.id}'s inputs.tasks, so its key hashes those bytes instead.`,

@@ -1084,7 +1084,7 @@ the same selection `inputs.tasks` applies at hash time
 `selectFoldedDeps`); every other link target inside the root is
 withheld, so an import of a sibling the key never sees fails and is
 reported instead of caching a result an edit there would not re-run.
-Any exec task counts, cached or not: its key folds its project's files
+Any exec task counts, cached or not: its key includes its project's files
 through its `inputs`, and one with no `inputs` is keyless, so a key that
 folds it is never stored or read. A persistent task counts the same way,
 so a cached e2e behind a dev server keyed on its sources re-runs when
@@ -1279,7 +1279,7 @@ any task, then restores what it holds and runs the rest without saving
 it. An empty one has nothing to serve and fails the run before any task:
 `cache directory <path> is not writable (EACCES: …)`, with
 `--cache-dir <path>` as the way out. `vx cache clean` is refused the
-same way (its `--dry-run` only reads, and reads). The readers (`vx show`, `why`,
+same way (its `--dry` only reads, and reads). The readers (`vx show`, `why`,
 `last`, `info`) open such a directory read-only and go on.
 Where the directory cannot be created at all (a read-only checkout with
 no cache yet) a run says `cannot create cache directory <path>
@@ -1550,7 +1550,11 @@ followed). An output directory that is a symlink (`dist -> real-out`) is
 followed by the clean as by the save and restore, so its target is the
 output and an entry holds only what its run wrote (X-88); one that
 resolves outside the project refuses the task, naming the link, and
-nothing is deleted through it (X-5). The clean prunes the directories it emptied (before a miss it keeps
+nothing is deleted through it (X-5). So does one, in either scope, that
+resolves into a `.git` (any case) or the root's `.vx`: for the root
+project and `outputs.workspaceFiles` those are inside, and `dist -> .git`
+under `dist/**` had the clean delete the repository. A recorded row
+reached through such a link is never removed either. The clean prunes the directories it emptied (before a miss it keeps
 the directory a wildcard glob is rooted at, `dist` for `dist/**`, as the
 task writes there), so a task whose
 output changed shape — `dist/out` a directory one run and a file the
@@ -1575,7 +1579,12 @@ following a chain of links to its end — and writes through it, the
 link kept. Whether a link stays inside is decided on where it resolves,
 so a dangling link to `../elsewhere` or to an absolute path out of the
 project is the same refusal, nothing created outside, and a cycle of
-links is refused by name. (A link the output globs themselves cover,
+links is refused by name. Nor is a link written through into Git's
+metadata: a path that resolves into a `.git` directory under the
+project (or the workspace, for `outputs.workspaceFiles`), in any case,
+is refused naming the link (`dist/g -> ../.git` carried
+`dist/g/hooks/pre-commit` into `.git/hooks`), and an artifact's own link
+into `.git` fails its restore (vercel/turborepo#14808). (A link the output globs themselves cover,
 `dist/sub` under `dist/**`, is an output: the clean unlinks it.) Entry NAMES are
 validated by vx before anything decides where to write, and a bad
 entry anywhere, even the last, rejects the WHOLE archive: the temps
@@ -1636,7 +1645,7 @@ and stamp are one write transaction, so another version's open waits
 rather than landing between them; an index already current is opened
 without the lock.
 A reading verb (`vx why`, `vx last`, `vx info`) leaves it untouched and
-says why (item 896; `vx cache clean --dry-run` previews the reset
+says why (item 896; `vx cache clean --dry` previews the reset
 instead, item 1083).
 That open prints nothing (2026-10-06: the cache is vx's to
 keep). The artifacts stay: each is indexed again from its own bytes
