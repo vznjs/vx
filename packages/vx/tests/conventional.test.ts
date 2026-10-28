@@ -1,6 +1,9 @@
 // scripts/conventional.ts: which headers pass the Conventional Commits rule.
+import { mkdtemp, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 import { expect, it } from 'bun:test'
-import { conventionalError, squashBreakingError } from '../scripts/conventional.js'
+import { conventionalError, landsByMerge, squashBreakingError } from '../scripts/conventional.js'
 
 it('accepts type, optional scope and !, and names why anything else fails', () => {
   const check = (lines: string[]): Array<[string, string | null]> =>
@@ -58,4 +61,45 @@ it("a squash lands as many breaking commits as the PR's branch holds", () => {
     null,
     null,
   ])
+})
+
+// A mega branch gathers other PRs as `chore: land #N` merges and lands by a
+// merge commit, so each PR's commits reach main as themselves and GitHub
+// marks the PR merged (2026-10-28: 255 PRs, one CI run). No squash, so the
+// squash's breaking count does not apply to it.
+it('tells a branch that lands PRs by merge from one main is merged into', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'vx-conv-'))
+  const git = (...args: string[]): string => {
+    const r = Bun.spawnSync(['git', '-c', 'commit.gpgsign=false', ...args], { cwd: dir })
+    if (r.exitCode !== 0) throw new Error(r.stderr.toString())
+    return r.stdout.toString().trim()
+  }
+  try {
+    git('init', '-q', '-b', 'main')
+    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'a')
+    const base = git('rev-parse', 'HEAD')
+    git('checkout', '-q', '-b', 'pr')
+    git(
+      '-c',
+      'user.name=t',
+      '-c',
+      'user.email=t@t',
+      'commit',
+      '-q',
+      '--allow-empty',
+      '-m',
+      'fix: b',
+    )
+    git('checkout', '-q', '-b', 'mega', base)
+    const merge = (m: string): string => {
+      git('-c', 'user.name=t', '-c', 'user.email=t@t', 'merge', '-q', '--no-ff', '-m', m, 'pr')
+      return git('rev-parse', 'HEAD')
+    }
+    expect(landsByMerge(base, merge('chore: land #1'), dir)).toBe(true)
+    git('checkout', '-q', '-B', 'mega', base)
+    expect(landsByMerge(base, merge("Merge branch 'main'"), dir)).toBe(false)
+    expect(landsByMerge(base, base, dir)).toBe(false)
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })
