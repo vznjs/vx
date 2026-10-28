@@ -22,6 +22,14 @@ export function clampInt(n: number, min: number, max: number): number {
 }
 
 /**
+ * A timing or need SQLite may keep: finite and not below zero. Infinity
+ * stored as REAL reads back through `group_concat` as `Inf`, a NaN forecast.
+ */
+export function isMeasure(v: number): boolean {
+  return Number.isFinite(v) && v >= 0
+}
+
+/**
  * Parse a PLAIN decimal integer from user input; `null` for anything else.
  *
  * `Number()` is the wrong tool at an argument boundary: it silently accepts

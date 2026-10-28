@@ -48,7 +48,7 @@ export {
   stageTimes,
   type StageTime,
 } from './timing.js'
-export { clampInt, formatElapsed, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
+export { clampInt, formatElapsed, isMeasure, MAX_TIMEOUT_MS, parseDecimalInt } from './num.js'
 export {
   asTrees,
   BUN_GLOB_WILDCARDS,

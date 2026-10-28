@@ -234,9 +234,14 @@ export class HistoryServer {
         return Object.entries(body.timings as Record<string, ServerTiming | null>)
       }),
     )
+    // A number the parse took as Infinity (`1e400`) or below zero is a
+    // malformed row: skipped whole, as one with no `durationMs`.
+    const ok = (v: unknown, min: number) => typeof v === 'number' && Number.isFinite(v) && v >= min
     const out = new Map<string, ServerTiming>()
     for (const [hash, t] of parts.flat()) {
-      if (typeof t?.durationMs !== 'number' || !(t.durationMs >= 0)) continue
+      if (t === null || !ok(t.durationMs, 0)) continue
+      if (typeof t.cores === 'number' && !(ok(t.cores, 0) && t.cores > 0)) continue
+      if (typeof t.rssBytes === 'number' && !ok(t.rssBytes, 0)) continue
       out.set(hash, {
         durationMs: t.durationMs,
         ...(typeof t.cores === 'number' ? { cores: t.cores } : {}),

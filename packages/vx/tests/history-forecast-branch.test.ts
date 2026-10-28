@@ -264,6 +264,32 @@ it('a repeat import of one commit adds no row, from any worktree', async () => {
   }
 })
 
+// A server's `1e400` parsed as Infinity, stored, and every later run's
+// schedule failed on a NaN weight: the row is INSERT OR IGNORE, so forever.
+it('keeps no non-finite or negative timing or need', async () => {
+  const provider = new LocalHistoryProvider(cache.dbHandle(), undefined, 'feature')
+  provider.importTimings(
+    'abc',
+    new Map([
+      ['p#t', Infinity],
+      ['p#u', -1],
+      ['p#v', 5],
+      ['p#w', 6],
+    ]),
+    new Map([
+      ['p#v', { p50DurationMs: 5, maxCpuParallelism: -3, maxPeakRssBytes: Infinity }],
+      ['p#w', { p50DurationMs: 6, maxCpuParallelism: 2 }],
+    ]),
+  )
+  record('feature', 'x', Infinity)
+  record('feature', 'y', -2)
+  const ids = ['p#t', 'p#u', 'p#v', 'p#w', 'p#x', 'p#y']
+  expect(await provider.p50sFor(ids)).toEqual(new Map([['p#w', 6]]))
+  expect(await provider.resourcesFor(ids.slice(0, 4))).toEqual(
+    new Map([['p#w', { p50DurationMs: 6, maxCpuParallelism: 2 }]]),
+  )
+})
+
 // A fresh CI machine has no run of a task: its need is the default
 // branch's, imported with the timings, so `vx-dte` packs it.
 it("a task never run here takes its need from the default branch's import", async () => {
