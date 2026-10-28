@@ -380,7 +380,10 @@ The child process gets, in priority order (lowest first):
 4. **PATH augmentation** — `<projectDir>/node_modules/.bin`, then
    `<workspaceRoot>/node_modules/.bin`, are prepended so installed
    tools (`oxlint`, `vite`, etc.) run by name. Never a sibling
-   project's bin; those stay invisible. A bin directory whose path holds
+   project's bin; those stay invisible, even when vx itself runs from
+   `npm run` in a sibling: the PATH vx inherits loses each
+   `node_modules/.bin` inside the workspace first, and so does an
+   `inputs.runtime` probe's. A bin directory whose path holds
    PATH's delimiter (`:`) is left out: PATH cannot name it, and split it
    became two entries, one relative to the task's cwd. A task whose shell exits 127 or 126 gets one more frame line
    (`orchestrator/shell-verdict.ts`): for a bare word, that 127 is the
