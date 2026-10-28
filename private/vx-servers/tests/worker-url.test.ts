@@ -97,14 +97,17 @@ describe('the relay a PR’s run uses', () => {
   // With many PRs pushed at once, Workers Builds queues: #4578's build
   // began 8 min after its job asked (2026-10-28), past a 5 min wait.
   it('waits out a busy Workers Builds queue, its build arriving 8 min late', async () => {
-    const late = Array.from({ length: 8 * 12 }, () => async () => [] as CheckRun[])
+    const late = Array.from({ length: 8 * 2 }, () => async () => [] as CheckRun[])
     const d = deps(['bun.lock'], [...late, check('completed', 'success')])
     expect(await workerUrl('vx-dte', WATCH, DEPLOYED, d)).toBe(
       'https://feat-relay-vx-dte.exelord.workers.dev',
     )
     // Every CI job shares the repository's API limit: a PR's commits do
-    // not change while it waits, so they are asked once.
+    // not change while it waits, so they are asked once, and the checks
+    // every 30 s, not every 5 s (2026-10-28: a dozen jobs at 5 s spent it).
     expect(d.asked).toBe(1)
+    expect(d.slept).toBe(16)
+    expect(d.now()).toBe(16 * 30_000)
   })
 
   // Workers Builds skips a push that changes no watch path, so a head

@@ -300,7 +300,10 @@ describe('a server whose ALLOW is empty', () => {
       authorize: oidcAuth({ allow: [] }),
     })
     const res = await none(new Request(`${AUD}/v1/artifacts/abc`))
-    expect(await detail(res)).toEqual([401, 'ALLOW is empty: set it to the CI workflows this server serves'])
+    expect(await detail(res)).toEqual([
+      401,
+      'ALLOW is empty: set it to the CI workflows this server serves',
+    ])
   })
 })
 

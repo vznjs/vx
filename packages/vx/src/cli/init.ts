@@ -27,10 +27,12 @@ import {
   DOT_VX_GITATTRIBUTES,
   DOT_VX_GITIGNORE,
   paint,
+  refuseSymlink,
+  sayNotice,
   SUCCESS,
   ui,
   UserError,
-  sayNotice,
+  writeNoFollow,
 } from '../util/index.js'
 import {
   findWorkspaceRoot,
@@ -426,9 +428,10 @@ async function starter(
     ui.print('out', ui.report(`vx init ${VERSION}`, [...rows, null, ['next', next]]))
     return 0
   }
+  for (const f of files) refuseSymlink(path.join(root, f.path))
   const ran = await install(pkgRoot, false, plugins)
   if (ran.length > 0) rows.push(['installed', ...ran])
-  for (const f of files) await Bun.write(path.join(root, f.path), f.contents)
+  for (const f of files) await writeNoFollow(path.join(root, f.path), f.contents)
   for (const f of replaced) await unlink(path.join(root, f))
   // The lock that follows loads the workspace file just written.
   workspaceFileWritten()

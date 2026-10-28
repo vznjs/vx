@@ -2,7 +2,7 @@
 // `wrangler.jsonc` deploys it; ALLOW, AUDIENCE and the limits are vars in
 // it (README.md § On Cloudflare Workers).
 
-import { type Authorize, errorJson, oidcAuth, parseAllow, Refusal } from '@vzn/vx-devtools'
+import { type Authorize, errorJson, oidcAuth, parseAllow } from '@vzn/vx-devtools'
 import { createCacheServer, DEFAULT_LIMITS, type Limits, limitsFrom } from './server.js'
 import type { Blobs } from './store.js'
 
