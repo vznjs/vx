@@ -92,9 +92,9 @@ no bytes.
 to `maxCheckHashes` lookups (hashes × scopes): `{ "<hash>": { "size":
 <bytes>, "scope": <scope> } | null, … }`, one per hash, naming the first
 scope asked that holds it, which its download names. Each lookup is
-exact, and its time does not grow with what a scope holds. Every answer
-names the server's limits, which a client chunks its checks by, sending
-the chunks at once:
+exact, and its time does not grow with what a scope holds. Every
+`/v1/artifacts` answer, a refusal too, names the server's limits, which
+a client chunks its checks by, sending the chunks at once:
 
 ```
 vx-max-check-hashes: 500
