@@ -24,7 +24,7 @@
 import path from 'node:path'
 import { BUN_GLOB_WILDCARDS, relPosix, UserError } from '../util/index.js'
 import type { PackageGraph } from './package-graph.js'
-import type { ProjectMeta } from './workspace.js'
+import { canonicalDir, type ProjectMeta } from './workspace.js'
 
 export interface ParsedFilter {
   raw: string
@@ -54,7 +54,7 @@ export interface ParsedFilter {
   pathGlob?: Bun.Glob
   /** `./a/**`'s `a`: a trailing `**` matches zero dirs, and `Bun.Glob` does not (D-84). */
   pathGlobBase?: Bun.Glob
-  /** The workspace root `pathGlob` is relative to. */
+  /** The workspace root a path form is relative to. */
   pathRoot?: string
   /** `//`: the project at `matcher` itself, never the ones under it. */
   exactDir?: true
@@ -213,7 +213,8 @@ export function parseFilter(raw: string, workspaceRoot: string): ParsedFilter {
     isPath,
     matcher,
     ...(dirFallback !== undefined ? { dirFallback } : {}),
-    ...(pathGlob !== undefined ? { pathGlob, pathRoot: workspaceRoot } : {}),
+    ...(isPath ? { pathRoot: workspaceRoot } : {}),
+    ...(pathGlob !== undefined ? { pathGlob } : {}),
     ...(pathGlobBase !== undefined ? { pathGlobBase } : {}),
     ...(gitSince !== undefined ? { gitSince } : {}),
     ...(sinceViaDeps ? { sinceViaDeps: true as const } : {}),
@@ -261,7 +262,13 @@ function matchSelector(
     // pnpm read it: `.` is the root project, never every project under the
     // root, and `./packages/app` leaves the examples nested in it (D-43).
     // A directory that is no project keeps the "at or under" reading.
-    const exact = projects.find((p) => p.dir === filter.matcher)
+    // A link to a project's directory (`./widgets/a -> ../submodules/a`)
+    // names that project, which discovery holds at its real directory.
+    let exact = projects.find((p) => p.dir === filter.matcher)
+    if (exact === undefined && filter.pathRoot !== undefined) {
+      const real = canonicalDir(filter.pathRoot, filter.matcher)
+      if (real !== null && real !== filter.matcher) exact = projects.find((p) => p.dir === real)
+    }
     if (exact !== undefined) return [exact.name]
     if (filter.exactDir === true) return out
     const prefix = filter.matcher + path.sep

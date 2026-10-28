@@ -115,7 +115,10 @@ open it first or join it; vx and the relay refuse any other. `local()` starts ea
 git worktree of the tracked files as they are, uncommitted changes
 included (untracked files are not: a task that keys one fails), at the
 workspace's place in it (a workspace in a subdirectory of its repository too),
-saving to the run's store (a relative `cache.dir` or `--cache-dir` too). When a worker fails, its row names
+saving to the run's store (a relative `cache.dir` or `--cache-dir` too).
+A run from a git hook works too: the worktree and its worker drop the
+hook's repository variables (`git rev-parse --local-env-vars`), so the
+index being committed is left as it is. When a worker fails, its row names
 the error line and the log that holds its whole stderr and all `prepare`
 printed. At the run's end,
 or on Ctrl-C, vx exits without waiting for the worktrees to be removed:
