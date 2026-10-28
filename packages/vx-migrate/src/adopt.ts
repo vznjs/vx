@@ -63,6 +63,15 @@ export function packageManagerOf(root: string, userAgent?: string): PackageManag
   )
 }
 
+/**
+ * pnpm's `-w` where pnpm-workspace.yaml makes `root` a workspace: pnpm
+ * refuses it in a single-package repo ("--workspace-root may only be used
+ * inside a workspace").
+ */
+function pnpmRoot(root: string): string[] {
+  return existsSync(path.join(root, 'pnpm-workspace.yaml')) ? ['-w'] : []
+}
+
 /** argv that adds `packages` as root dev dependencies. */
 export function installArgv(
   root: string,
@@ -71,7 +80,7 @@ export function installArgv(
 ): string[] {
   switch (pm) {
     case 'pnpm':
-      return ['pnpm', 'add', '-D', '-w', ...packages]
+      return ['pnpm', 'add', '-D', ...pnpmRoot(root), ...packages]
     case 'yarn':
       // Yarn 1 refuses `add` at a workspace root without `-W`; Berry has no
       // such flag. A Berry lockfile carries `__metadata`.
@@ -129,7 +138,7 @@ export function removeArgv(
 ): string[] {
   switch (pm) {
     case 'pnpm':
-      return ['pnpm', 'remove', '-w', ...packages]
+      return ['pnpm', 'remove', ...pnpmRoot(root), ...packages]
     case 'yarn':
       return readText(path.join(root, 'yarn.lock')).includes('__metadata:')
         ? ['yarn', 'remove', ...packages]
