@@ -163,3 +163,85 @@ it('numbers workers within their size', async () => {
     await rm(root, { recursive: true, force: true })
   }
 }, 30_000)
+
+// `spawn` may return void: one that threw at once escaped the plan, which
+// runs in a timer, and ended the process with a stack, not the run's
+// "no worker could start".
+it('takes an adapter spawn that throws as a worker that could not start', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vx-dte-order-'))
+  const relay = serveRelay({ port: 0, hostname: '127.0.0.1' })
+  const env = { run: process.env['VX_DTE_RUN'], secret: process.env['VX_DTE_SECRET'] }
+  process.env['VX_DTE_RUN'] = crypto.randomUUID()
+  process.env['VX_DTE_SECRET'] = 'order-secret'
+  try {
+    await writeFile(path.join(root, 'f'), 'x')
+    const git = (...args: string[]) =>
+      Bun.spawnSync(['git', '-c', 'user.email=t@vx.local', '-c', 'user.name=t', ...args], {
+        cwd: root,
+      })
+    git('init', '-q')
+    git('add', '.')
+    git('commit', '-qm', 'r')
+    const graph = new Map([
+      ['t1', { id: 't1', deps: [], projectDir: root, config: { exec: { command: 'true' } } }],
+    ]) as unknown as Map<string, TaskNode>
+    const warn = () => {}
+    // CONTROL: one that rejects was always heard.
+    for (const sync of [false, true]) {
+      const spawned: string[] = []
+      const plugin = dte({
+        relay: relay.url,
+        workers: { small: { max: 1, cpu: 1, memory: '1GB' } },
+        adapter: {
+          spawn: (a) => {
+            spawned.push(a.id)
+            if (sync) throw new Error('no quota')
+            return Promise.reject(new Error('no quota'))
+          },
+        },
+      })
+      try {
+        const ex = (await plugin.executor!({
+          workspaceRoot: root,
+          cacheDir: root,
+          warn,
+          concurrency: 1,
+          artifacts: {},
+          cacheFacts: () => ({}),
+        } as never)) as {
+          demand(remaining: ReadonlySet<string>, misses: ReadonlySet<string>): void
+        }
+        await plugin.schedule!(graph, {
+          workspaceRoot: root,
+          cacheDir: root,
+          warn,
+          branch: null,
+          localCache: {
+            dbHandle: () => {
+              throw new Error('no history')
+            },
+          },
+          refine: () => {},
+          onRefine: () => {},
+          refining: async () => {},
+        } as never)
+        ex.demand(new Set(graph.keys()), new Set(graph.keys()))
+        // A start that failed gets another go: the failure was heard.
+        for (let i = 0; i < 40 && spawned.length < 2; i++) await Bun.sleep(25)
+        expect({ sync, again: spawned.slice(0, 2) }).toEqual({
+          sync,
+          again: ['small#1', 'small#2'],
+        })
+      } finally {
+        await plugin.teardown?.({} as never)
+      }
+    }
+  } finally {
+    await relay.stop()
+    if (env.run === undefined) delete process.env['VX_DTE_RUN']
+    else process.env['VX_DTE_RUN'] = env.run
+    if (env.secret === undefined) delete process.env['VX_DTE_SECRET']
+    else process.env['VX_DTE_SECRET'] = env.secret
+    await rm(root, { recursive: true, force: true })
+  }
+}, 30_000)
