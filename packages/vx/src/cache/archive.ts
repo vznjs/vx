@@ -744,6 +744,21 @@ function throughLink(
   return undefined
 }
 
+/**
+ * Whether a restore may write at `real`: under `realBase` and in no `.git`
+ * there, in any case (a case-insensitive disk reads `.GIT` as `.git`). The
+ * entry names are held to this lexically; this holds the path a link on
+ * the way resolves to (vercel/turborepo#14808).
+ */
+function writable(real: string, realBase: string): boolean {
+  if (real === realBase) return true
+  if (!real.startsWith(realBase + path.sep)) return false
+  return !real
+    .slice(realBase.length + 1)
+    .split(path.sep)
+    .some((part) => part.toLowerCase() === '.git')
+}
+
 /** `p` is `root` or under it, lexically. */
 const inside = (p: string, root: string): boolean => {
   const r = path.resolve(root)
@@ -869,7 +884,8 @@ export async function extractArtifactStream(
       if (dest === null || dest.rel.length === 0) continue
       const target = path.join(dest.base, dest.rel)
       await x.assertContained(dest.base, target, name)
-      if (!inside(path.resolve(path.dirname(target), to), bound)) {
+      const at = path.resolve(path.dirname(target), to)
+      if (!inside(at, bound)) {
         throw new ArchiveSecurityError(`archive link ${name} points out of the workspace: ${to}`)
       }
       const via = throughLink(path.dirname(target), to, linked)
@@ -877,6 +893,11 @@ export async function extractArtifactStream(
         throw new ArchiveSecurityError(
           `archive link ${name} points through ${linked.get(via)}, another link it restores: ${to}`,
         )
+      }
+      // Lexical: a write through a link is judged where it resolves, so an
+      // alias chain into .git gets no further than this link would.
+      if (!writable(at, path.resolve(bound))) {
+        throw new ArchiveSecurityError(`archive link ${name} points into .git: ${to}`)
       }
       await x.stageLink(name, dest.base, target, to)
       provided.add(name)
@@ -1114,7 +1135,7 @@ class Extractor {
       )
       if (real !== null) {
         const realBase = await this.realBaseOf(base)
-        if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+        if (!writable(real, realBase)) {
           throw await linkOutError(baseResolved, probe, realBase)
         }
         return
@@ -1143,7 +1164,7 @@ class Extractor {
     if (err.code !== 'EEXIST' && err.code !== 'ENOENT' && err.code !== 'ELOOP') throw err
     const real = await resolveThrough(dir)
     const realBase = await this.realBaseOf(base)
-    if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+    if (!writable(real, realBase)) {
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
     // What stands there without a link on the way (a file named like the
@@ -1617,7 +1638,7 @@ class Extractor {
     checked.add(dir)
     const realBase = await this.realBaseOf(base)
     const real = await realOf(dir, true)
-    if (real !== realBase && !real.startsWith(realBase + path.sep)) {
+    if (!writable(real, realBase)) {
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
   }
@@ -1643,7 +1664,7 @@ class Extractor {
     for (const [dir, { base, placed }] of landed) {
       const realBase = await this.realBaseOf(base)
       const real = await realOf(dir, true).catch(() => null)
-      if (real === null || real === realBase || real.startsWith(realBase + path.sep)) continue
+      if (real === null || writable(real, realBase)) continue
       await Promise.allSettled(placed.map((p) => rm(p, { recursive: true, force: true })))
       throw await linkOutError(path.resolve(base), dir, realBase)
     }
@@ -1788,7 +1809,13 @@ async function linkOutError(base: string, probe: string, realBase: string): Prom
   for (const part of path.relative(base, probe).split(path.sep)) {
     dir = path.join(dir, part)
     real = await resolveThrough(dir)
-    if (real !== realBase && !real.startsWith(realBase + path.sep)) break
+    if (!writable(real, realBase)) break
+  }
+  if (real.startsWith(realBase + path.sep)) {
+    return new UserError(
+      `${dir} is a symbolic link to ${real}, Git's metadata — a cache restore never writes ` +
+        'into a .git directory. Remove the link and re-run, or stop declaring outputs under it.',
+    )
   }
   return new UserError(
     `${dir} is a symbolic link to ${real}, outside ${base} — a cache restore never writes ` +
