@@ -226,3 +226,48 @@ it('says a timings file git does not ignore re-keys the tasks over it', async ()
   warnUnignored(path.join(os.tmpdir(), 'elsewhere.json'), root, (m) => said.push(m))
   expect(said).toHaveLength(1)
 })
+
+// A chain's weight is its durations summed: two `1e308`s from a CI cache's
+// file (or `assume`) summed to Infinity, and core refused the weight —
+// `failed in schedule` — so an ordering hint failed every run.
+it(
+  'a duration no run takes is dropped, from the file and from assume: the run stays green',
+  async () => {
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'ws', private: true }))
+    await writeFile(path.join(root, 'pnpm-workspace.yaml'), 'packages:\n  - "packages/*"\n')
+    await writeFile(path.join(root, '.gitignore'), 't.json\n')
+    Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root })
+    const dir = path.join(root, 'packages', 'a')
+    await mkdir(dir, { recursive: true })
+    await writeFile(path.join(dir, 'package.json'), JSON.stringify({ name: 'a', version: '1.0.0' }))
+    await writeFile(
+      path.join(dir, 'vx.config.mjs'),
+      "export default { name: 'a', tasks: { build: { exec: { command: 'true' } }, test: { dependsOn: ['build'], exec: { command: 'true' } }, lint: { dependsOn: ['test'], exec: { command: 'true' } } } }\n",
+    )
+    await Bun.write(
+      path.join(root, '.vx/workspace.mjs'),
+      `import { vxHistory } from ${JSON.stringify(PLUGIN_INDEX)}\n` +
+        "export default { cache: { dir: '.cache' }, plugins: [vxHistory({ file: 't.json', assume: { 'a#lint': 1e308 } })] }\n",
+    )
+    await writeFile(
+      path.join(root, 't.json'),
+      '{"version":1,"tasks":{"a#build":1e308,"a#test":1e308,"a#x":5}}',
+    )
+    const warnings: string[] = []
+    const summary = await run({
+      cwd: root,
+      tasks: ['lint'],
+      concurrency: 1,
+      handleSignals: false,
+      log: silent(warnings),
+    })
+    expect([summary.ok, warnings.filter((w) => w.includes('vx-history'))]).toEqual([
+      true,
+      ['[vx] vx-history: assume ignores "a#lint" — each must be a finite number of ms'],
+    ])
+    // The rewrite keeps no such duration either.
+    const kept = readTimings(path.join(root, 't.json'), () => {})
+    expect([kept['a#build'] !== undefined && kept['a#build'] < 1e6, kept['a#x']]).toEqual([true, 5])
+  },
+  TIMEOUT,
+)

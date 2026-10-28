@@ -29,7 +29,7 @@ export default {
 }
 ```
 
-A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. A duration that is not a finite non-negative number (`Number()` of an unset variable is NaN) is dropped with one warning naming its task ids; the rest still order the run. vx's own CI declares four, this one among them — its docs build was the 29 s tail of a 99 s cold gate, ready from the second second and started last (2026-09-10).
+A recorded p50 always wins over an assumption, and assumptions never feed the workspace median: they are a hint for the cold run, not evidence. A duration that is not a number of ms from 0 to 2⁵³ − 1 (`Number()` of an unset variable is NaN; two `1e308`s on a chain sum past any number) is dropped with one warning naming its task ids; the rest still order the run. vx's own CI declares four, this one among them — its docs build was the 29 s tail of a 99 s cold gate, ready from the second second and started last (2026-09-10).
 
 ## Timings from a history server
 
@@ -108,8 +108,9 @@ export default {
 The file is `{ "version": 1, "tasks": { "<task id>": <ms> } }`, keys
 sorted. A p50 recorded on this machine wins over it, and it wins over
 `assume`; like `assume`, it never feeds the workspace median. A task the
-run did not see keeps its time. A file that is not one warns and is read
-as empty; `--dry` writes nothing.
+run did not see keeps its time; one past 2⁵³ − 1 ms is dropped, as
+`assume` drops it. A file that is not one warns and is read as empty;
+`--dry` writes nothing.
 
 ## Reservations learned from history
 
