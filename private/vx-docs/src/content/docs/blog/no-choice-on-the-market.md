@@ -60,9 +60,10 @@ flowchart LR
 ## The bar
 
 vx has to do what both do. A parity suite writes each Turborepo or Nx
-habit in vx and tests it against the real CLI. Where vx differs (no
-`--parallel`, because `dependsOn` says the order), the page says so.
-Full matrix, with upstream sources:
-[Compared to Turborepo, Nx, vite-task](../../comparison/).
+habit in vx and tests it against the real CLI.
+
+Where vx differs (no `--parallel`, because `dependsOn` says the order),
+the page says so. Full matrix, with upstream sources: [Compared to
+Turborepo, Nx, vite-task](../../comparison/).
 
 More at [vznjs.github.io/vx](https://vznjs.github.io/vx/).

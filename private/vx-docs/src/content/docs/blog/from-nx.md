@@ -94,9 +94,10 @@ export default {
 ```
 
 Each becomes an `nx-exec` line that runs the executor through Nx's
-public `runExecutor`, so nothing breaks on day one. An executor target
-is written as its `nx-exec` line, and you rewrite it as the real
-command when you want Nx gone:
+public `runExecutor`, so nothing breaks on day one.
+
+An executor target is written as its `nx-exec` line, and you rewrite it
+as the real command when you want Nx gone:
 
 ```ts
 build: {
@@ -105,11 +106,14 @@ build: {
 }
 ```
 
-Server executors come through as persistent tasks: `@nx/vite:dev-server`,
-`@nx/vite:preview-server`, `@nx/webpack:dev-server`, `@nx/next:server`,
-`@nx/storybook:storybook`, `@nx/js:node`, `@nx/js:verdaccio`,
-`@nx/web:file-server`, `@angular-devkit/build-angular:dev-server`, and
-any target Nx marks `continuous`.
+These server executors come through as persistent tasks, and so does
+any target Nx marks `continuous`:
+
+- `@nx/vite:dev-server`, `@nx/vite:preview-server`
+- `@nx/webpack:dev-server`, `@nx/next:server`
+- `@nx/storybook:storybook`, `@nx/web:file-server`
+- `@nx/js:node`, `@nx/js:verdaccio`
+- `@angular-devkit/build-angular:dev-server`
 
 ## What maps
 

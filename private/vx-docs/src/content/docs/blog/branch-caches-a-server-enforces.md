@@ -29,10 +29,11 @@ sequenceDiagram
 
 ## The token decides writes
 
-The server checks the CI's signed OIDC token against its trust policy.
-A matching token writes the trusted cache. Any other token from the repo
-writes only its own branch. No token writes nothing. No header or key
-can change that.
+The server checks the CI's signed OIDC token against its trust policy. A
+matching token writes the trusted cache. Any other token from the repo
+writes only its own branch. No token writes nothing.
+
+No header or key can change that.
 
 ## One header steers reads
 
@@ -47,8 +48,9 @@ A server that ignores the header keeps one shared cache.
 
 CI refs come from env (`GITHUB_HEAD_REF` or `GITHUB_REF`, then
 `GITHUB_BASE_REF`; `CI_COMMIT_REF_NAME`, then
-`CI_MERGE_REQUEST_TARGET_BRANCH_NAME`). On a laptop they come from git:
-the current branch, then `origin/HEAD`.
+`CI_MERGE_REQUEST_TARGET_BRANCH_NAME`).
+
+On a laptop they come from git: the current branch, then `origin/HEAD`.
 
 ## Two client modes
 
@@ -79,6 +81,7 @@ export default defineWorkspace({
 
 `'key'` separates branches but secures nothing: anyone can compute
 `main`'s key. Only a server can enforce, so `'header'` is the default.
+
 `nxCache()` sends plain requests, since the Nx spec has no batch query.
 
 ## Building the server half
@@ -88,10 +91,14 @@ header.
 
 ### Server config
 
-vx ships no cache server, so this is an example for one you run: a
-trust policy per team. A rule names token claims; each
-value is an exact string, a glob, or a list. A token matches a rule when
-every claim in it matches.
+vx's own [cache server](../../docs/servers/cache/) does this over its
+`/v1` wire. For a server on the Turbo wire, here is an example: a trust
+policy per team.
+
+A rule names token claims; each value is an exact string, a glob, or a
+list.
+
+A token matches a rule when every claim in it matches.
 
 ```ts
 export default {
@@ -119,9 +126,10 @@ export default {
 ```
 
 Pin `repository_id` or `project_id`, not the name: after a rename or
-delete, another repository can take the name, never the id. Trusted is `main`
-and its merge queue only: anyone who can push can tag any commit, so a
-tag's run writes to its own scope, as a branch does.
+delete, another repository can take the name, never the id.
+
+Trusted is `main` and its merge queue only: anyone who can push can tag
+any commit, so a tag's run writes to its own scope, as a branch does.
 
 ### Write scope
 
@@ -136,9 +144,11 @@ writes to:
 
 1. **Auth.** Accept GitHub and GitLab OIDC tokens as `Authorization:
    Bearer`, and verify the signature (the issuer's JWKS), `iss`, `aud`
-   and `exp`. Every read needs a token. Each developer creates their own
-   read-only token, and a shared read-only token may serve other CIs;
-   neither ever writes.
+   and `exp`.
+
+   Every read needs a token. Each developer creates their own read-only
+   token, and a shared read-only token may serve other CIs; neither ever
+   writes.
 2. **Audience.** `aud` must be this server's own, so a token minted for
    another service can't be replayed here.
 3. **Trust match.** As above: every claim a rule names must match.
@@ -187,10 +197,11 @@ writes to:
 | local on feature | personal token (read-only) | `refs/heads/feature, refs/heads/main` | feature, trusted | nothing |
 
 A GitLab token has no merge-train claim, so the server would store a
-train's results in the source branch's scope. Those results are built
-from the branch merged with main and the MRs ahead of it, so the branch
-almost never reuses them. The CI knows it is a train, so turn writes off
-there:
+train's results in the source branch's scope.
+
+Those results are built from the branch merged with main and the MRs
+ahead of it, so the branch almost never reuses them. The CI knows it is
+a train, so turn writes off there:
 
 ```yaml
 build:

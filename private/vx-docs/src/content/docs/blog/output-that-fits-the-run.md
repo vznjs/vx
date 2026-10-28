@@ -51,15 +51,15 @@ success packages/b#build e8c0e9d5b1f5d0c9
 
 The glyph at the start of a line says where the result came from:
 
-```text
-⏺  ran (cache miss)
-►  up-to-date, nothing to restore
-⇢  restored from the local cache
-⇣  restored from the remote cache
-◼  failed
-⊘  skipped, with the failure that blocked it
-▸  persistent, like a dev server
-```
+| Glyph | Result |
+| ----- | ------ |
+| `⏺` | ran (cache miss) |
+| `►` | up to date, nothing to restore |
+| `⇢` | restored from the local cache |
+| `⇣` | restored from the remote cache |
+| `◼` | failed |
+| `⊘` | skipped, with the failure that blocked it |
+| `▸` | persistent, like a dev server |
 
 ## A report for the pull request
 

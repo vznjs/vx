@@ -48,7 +48,7 @@ project. What one project needs from another comes through the graph.
 **No defaults.** Core turns on no plugin. A remote cache exists only if
 you name it in `.vx/workspace.ts`.
 
-**Seam over special case.** If core grows a branch for one user, the
+**Plugin point over special case.** If core grows a branch for one user, the
 plugin point is too narrow. The Turbo and Nx mappers and the
 history-based scheduler moved to their own packages this way.
 
@@ -60,8 +60,9 @@ without a written reason.
 
 Named inputs and global env. Guessing inputs by tracing. `NODE_OPTIONS`
 in the key. Lookahead scheduling. Our own dashboard or cloud. Turbo's
-cache protocol in core. HTTP/3. Each lost a measurement or broke a rule
-above.
+cache protocol in core. HTTP/3.
+
+Each lost a measurement or broke a rule above.
 
 ## vx builds itself under these rules
 

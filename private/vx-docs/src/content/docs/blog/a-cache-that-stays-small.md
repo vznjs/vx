@@ -75,9 +75,10 @@ A zero or a bare number is usually a mistake. To clear everything, run
 ## Files no index knows
 
 The cache is a SQLite index plus entry files. They can drift apart, for
-example after a crashed save. Every clean sweeps these orphans. Nothing
-younger than an hour is taken, and only file names vx writes. Your own
-`release.tar.zst` in a shared folder is never touched.
+example after a crashed save. Every clean sweeps these orphans.
+
+Nothing younger than an hour is taken, and only file names vx writes.
+Your own `release.tar.zst` in a shared folder is never touched.
 
 ## For scripts and agents
 
@@ -87,7 +88,7 @@ $ vx cache clean --max-size 50M --dry-run --format json
 ```
 
 A clean waits for a running `vx run` on the same workspace. If another
-workspace shares the cache, a deleted entry just becomes a miss and the
+workspace shares the cache, a deleted entry becomes a miss and the
 task runs.
 
 Reference: [`vx cache clean`](../../cli/cache/) and the

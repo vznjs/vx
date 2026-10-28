@@ -43,8 +43,10 @@ export default defineWorkspace({
 })
 ```
 
-Nothing runs remotely until you set `execute: true`. `capacity` gives the
-pool its own slots, so 64 workers are not held to your laptop's cores.
+Nothing runs remotely until you set `execute: true`. `capacity` gives
+the pool its own slots, so 64 workers are not held to your laptop's
+cores.
+
 `vx run --dry` shows where each task goes: `@vx/reapi`, `@local` or
 `@noop`.
 
@@ -84,8 +86,9 @@ build: {
 
 With `remote: 'only'`, `install` runs on a worker once per lockfile
 change. Its outputs go worker to store to worker and never touch your
-disk. Tested against a live NativeLink pool. With no remote executor,
-`install` does nothing locally.
+disk. Tested against a live NativeLink pool.
+
+With no remote executor, `install` does nothing locally.
 
 ## A remote error is a local run
 

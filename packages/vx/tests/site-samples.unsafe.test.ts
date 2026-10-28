@@ -371,7 +371,11 @@ describe('the flaky-tasks post shows the rows a run prints', () => {
 
   it('its sample is the two rows of the findings it describes', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'flaky-tasks.md'), 'utf8')
-    const sample = fencedBlock(page, '', ' ◼\uFE0E').replace(/\n$/, '')
+    // eslint-disable-next-line no-control-regex
+    const painted = /```ansi\n( \x1b\[[^\n]*◼[\s\S]*?)\n```/.exec(page)![1]!
+    expect(painted).toContain('\x1b[')
+    // eslint-disable-next-line no-control-regex
+    const sample = painted.replace(/\x1b\[[0-9;]*m/g, '')
     expect(sample.split('\n')).toEqual([
       row('app#test', 'failed', 4210, 3, 1),
       row('api#e2e', 'success', 12840, 1, 1, 2),
@@ -469,7 +473,7 @@ describe('the watch-mode post states what watch.ts does', () => {
     expect(src).toContain('const DEBOUNCE_MS = 150')
     expect(page).toContain('about 150 ms')
     expect(src).toContain('const WATCH_PROBE_TIMEOUT_MS = 2_000')
-    expect(page).toContain('silent for\ntwo seconds')
+    expect(page.replace(/\s+/g, ' ')).toContain('silent for two seconds')
   })
   it('its always-ignored list names every ignored segment and suffix', () => {
     const list = (name: string): string[] => {
@@ -1461,7 +1465,8 @@ describe('the documented glyph set is the set the renderer prints', () => {
 describe('the what-vx-is post names every plugin hook', () => {
   it('each of PLUGIN_HOOKS is a code span in its pipeline paragraph', () => {
     const page = readFileSync(path.join(DOCS, 'blog', 'what-vx-is.md'), 'utf8')
-    const para = /In plugin terms the stages are named([\s\S]*?)\n\n/.exec(page)
+    const para =
+      /In plugin terms the stages are named([\s\S]*?)\nA plugin can fill any of them\./.exec(page)
     expect(para).not.toBeNull()
     for (const hook of PLUGIN_HOOKS) expect(para![1]!).toContain('`' + hook + '`')
   })

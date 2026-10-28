@@ -56,11 +56,14 @@ own output path is faster.
 
 ## It is also the fast path
 
-vx records each output file `(size, mode, mtime-ms, inode, ctime)`. On
-the next hit, if the set and every file match, the restore is a few
+vx records each output file `(size, mode, mtime-ms, inode, ctime)`.
+
+On the next hit, if the set and every file match, the restore is a few
 stats and no writes, and it is the no-op row in the
-[benchmarks](../../benchmarks/). Their restore row deletes the outputs
-first, so every artifact is extracted, and it costs more.
+[benchmarks](../../benchmarks/).
+
+Their restore row deletes the outputs first, so every artifact is
+extracted, and it costs more.
 
 ## What the wipe never touches
 

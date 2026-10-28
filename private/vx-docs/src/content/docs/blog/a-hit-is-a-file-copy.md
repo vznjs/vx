@@ -75,10 +75,11 @@ as one `tar.zst`, as in the table.
 
 ## A local hit checks nothing
 
-Only vx writes to its local store, so checking each file on a hit
-would guard against nothing and slow every save. Anything from the
-network is checked: a remote entry ends with a CRC-32, and a wrong sum
-is a miss.
+Only vx writes to its local store, so checking each file on a hit would
+guard against nothing and slow every save.
+
+Anything from the network is checked: a remote entry ends with a CRC-32,
+and a wrong sum is a miss.
 
 ## A download is decompressed once
 

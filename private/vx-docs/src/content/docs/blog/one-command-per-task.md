@@ -67,9 +67,11 @@ carriage returns and colours included.
 
 Each task gets an isolated environment: a small essential allowlist
 (`PATH`, `HOME`, `CI`, `NODE_OPTIONS` and a few more), then what
-`exec.env` says. Values you `define` are in the key. Variables you
-`passThrough` are not. `inputs.env` puts a variable in the key without
-passing it, so a variable that changes the output goes in both.
+`exec.env` says. Values you `define` are in the key.
+
+Variables you `passThrough` are not. `inputs.env` puts a variable in the
+key without passing it, so a variable that changes the output goes in
+both.
 
 The most common mistake is a variable that changes the output but is
 missing from `inputs.env`. The key doesn't change, so vx restores the

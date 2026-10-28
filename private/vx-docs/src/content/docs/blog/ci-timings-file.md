@@ -22,7 +22,7 @@ the slow tasks start first.
 <small>8 packages with a `build` → `check` → `pack` chain (0.5 s each) and 3 slow `e2e` tasks (10 s each) · `sleep` tasks · linux x64, 4 cores, 4 workers · vx 0.0.634 · `bun private/vx-bench/timings-file-bench.ts`</small>
 
 Every task runs in all three. Only the order changes. The file saves
-1.4 s and matches a machine with its full history. The floor is 10.5 s.
+1.4 s and matches a machine with its full history. No order finishes under 10.5 s.
 
 ## Turn it on
 
