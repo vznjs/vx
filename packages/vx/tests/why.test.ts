@@ -377,8 +377,13 @@ describe('parseWhyArgs', () => {
     // the space form refusing a flag-shaped value.
     expect(parseWhyArgs(['build', '--cache-dir', 'x']).cacheDir).toBe('x')
     expect(parseWhyArgs(['build', '--cache-dir=y/z']).cacheDir).toBe('y/z')
-    expect(parseWhyArgs(['build', '--cache-dir']).error).toMatch(/requires a path/)
-    expect(parseWhyArgs(['build', '--cache-dir=']).error).toMatch(/requires a path/)
+    // As `vx last`, `vx info` and `vx cache clean` say it: with where to look.
+    expect(parseWhyArgs(['build', '--cache-dir']).error).toBe(
+      '--cache-dir requires a path (see `vx why --help`)',
+    )
+    expect(parseWhyArgs(['build', '--cache-dir=']).error).toBe(
+      '--cache-dir requires a path (see `vx why --help`)',
+    )
     expect(parseWhyArgs(['build', '--cache-dir', '--format']).error).toMatch(/got flag/)
     expect(parseWhyArgs(['--format', 'xml']).error).toBe(
       '--format must be pretty or json (got xml) (see `vx why --help`)',

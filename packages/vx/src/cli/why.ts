@@ -79,7 +79,7 @@ export function parseWhyArgs(args: readonly string[]): WhyArgs {
     }
     const cd = parseCacheDirFlag(args, i)
     if (cd !== null) {
-      if ('error' in cd) return { ...out, error: cd.error }
+      if ('error' in cd) return { ...out, error: `${cd.error}${seeHelp('why')}` }
       out.cacheDir = cd.cacheDir
       i = cd.next
       continue
