@@ -233,7 +233,9 @@ export interface VxPlugin {
    * renderer in place. The first plugin, in declaration order, that
    * returns one renders the run; the rest are not asked. Not consulted
    * when an embedder passed its own `log`. A logger that throws or rejects
-   * hands the rest of the run back to core's renderer with one warning.
+   * hands the rest of the run back to core's renderer with one warning; a
+   * hook that does not answer within the teardown bound (3 s) is passed
+   * over with one.
    */
   output?(ctx: OutputContext): Logger | undefined | Promise<Logger | undefined>
 
