@@ -237,7 +237,7 @@ full byte size in heap for the task's whole life:
   by `execute-task.ts` from the live callbacks, both streams in arrival
   order in one `BoundedCapture`: entry-sized when the task **will write
   a cache entry**, else 8 KiB head and 56 KiB tail, kept only for a
-  failure's `failedOutput` (what `vx last` and `getFailures` read).
+  failure's `failedOutput` (what `vx last` and `runFailures` read).
 - What is retained is **bounded**: the first `CAPTURE_HEAD_CHARS` and
   the last `CAPTURE_TAIL_CHARS` (8 MiB each), with the dropped middle
   counted and named where it was (`droppedOutputLine`). The live
