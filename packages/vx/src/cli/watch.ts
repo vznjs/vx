@@ -1033,7 +1033,8 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
       dropMode()
       workspaceWide = next.workspaceWide
       armMode(next.projects)
-    } else if (!workspaceWide) {
+    } else if (workspaceWide) wide = next.projects
+    else {
       streamed = oneStream ? toStream(next.projects) : []
       const inStream = new Set(streamed.map((s) => s.proj))
       const own = next.projects.filter((p) => !inStream.has(p))
