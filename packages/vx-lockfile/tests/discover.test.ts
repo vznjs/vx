@@ -357,6 +357,22 @@ describe('discover', () => {
       })
     }
 
+    if (c.name === 'pnpm') {
+      it('pnpm(): a manifest under bower_components is no workspace', async () => {
+        // pnpm's own walk skips `**/bower_components/**` as it does
+        // node_modules (probed, pnpm 10.28); npm and bun list it.
+        await writeFile(path.join(root, c.file), c.text)
+        await writeFile(path.join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/**'\n")
+        const metas = await projects({ root: rootPkg })
+        await mkdir(path.join(root, 'packages/a/bower_components/z'), { recursive: true })
+        await writeFile(
+          path.join(root, 'packages/a/bower_components/z/package.json'),
+          '{"name":"z"}',
+        )
+        expect(await discover(c.make(), metas)).toEqual(EXPECTED)
+      })
+    }
+
     it(`${c.name}(): a manifest dependency on a workspace the lockfile lacks refuses until the install`, async () => {
       // c gained "a" in package.json before the install: no edge, so c built
       // beside a and hit with a's old output.
