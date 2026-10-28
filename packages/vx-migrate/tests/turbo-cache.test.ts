@@ -240,6 +240,30 @@ describe('resolveTurboCacheConfig', () => {
     ])
   })
 
+  // A workflow's `${{ vars.TURBO_API }}` is `''` when the variable is unset,
+  // and Turbo reads `''` as unset. `??` took it as set: the empty URL turned
+  // the cache off over turbo.json's apiUrl, and an empty TURBO_TOKEN hid a
+  // Vercel build's VERCEL_ARTIFACTS_TOKEN.
+  it('an empty TURBO_* variable is unset, as Turbo reads it', () => {
+    const empty = { TURBO_API: '', TURBO_TOKEN: '', TURBO_TEAMID: '', TURBO_TEAM: '' }
+    const c = resolveTurboCacheConfig({}, empty, {
+      apiUrl: 'https://c.example',
+      teamId: 'team_json',
+    })
+    const v = resolveTurboCacheConfig(
+      {},
+      {
+        ...empty,
+        VERCEL_ARTIFACTS_TOKEN: 'vt',
+        VERCEL_ARTIFACTS_OWNER: 'team_v',
+      },
+    )
+    const slug = resolveTurboCacheConfig({}, { TURBO_TEAM: '' }, { teamSlug: 'acme' })
+    expect([c && [c.apiUrl, c.teamId], v && [v.apiUrl, v.token, v.teamId], slug?.teamSlug]).toEqual(
+      [['https://c.example', 'team_json'], ['https://vercel.com/api', 'vt', 'team_v'], 'acme'],
+    )
+  })
+
   // Turbo signs only under `remoteCache.signature: true`: a short env key
   // with the flag off refused the cache here and signed nothing there.
   it('the env signature key applies only where turbo.json turns signing on', () => {
