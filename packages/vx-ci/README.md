@@ -182,7 +182,7 @@ and the job is on GitLab CI. Core has no `setup` verb.
 ## How it works
 
 `github()` contributes one observe-only telemetry sink through vx's
-`telemetry` seam. It receives the versioned `RunSummaryRecord` at run end
+`telemetry` hook. It receives the versioned `RunSummaryRecord` at run end
 and renders + appends the markdown in `flush()` — it holds no run handle,
 streams no per-event records (`wants: []`), and a slow or failing write can
 never fail or stall the run (core's crash-isolation + flush deadline).

@@ -27,7 +27,7 @@ option.
   128 bits of its SHA-256 in hex (Web Crypto, so Bun and Workers agree), never the plain value.
 - `statusLine(tone, name, text)` is the line a server prints when it starts (`'ok'`) or refuses to
   (`'err'`): `✓ vx-cache-server  listening on …`, painted as vx's own status lines (NO_COLOR, then
-  FORCE_COLOR, then a terminal), with any lines after the first dim.
+  FORCE_COLOR, then a terminal whose `TERM` is not `dumb`), with any lines after the first dim.
 
 ```ts
 export class Refusal extends Error {
