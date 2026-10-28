@@ -205,7 +205,15 @@ export function oidcTokenAuth(
   opts: OidcOptions,
 ): (req: Request, named?: Repo) => Promise<Access | undefined> {
   const open = readAccessOf(opts)
-  const verify = tokenVerifier(opts)
+  const check = tokenVerifier(opts)
+  // A request is asked twice, before its body names the repository and
+  // after: its token is verified once.
+  const verified = new WeakMap<Request, Promise<Access>>()
+  const verify = (token: string, req: Request): Promise<Access> => {
+    let got = verified.get(req)
+    if (got === undefined) verified.set(req, (got = check(token, req)))
+    return got
+  }
   return async (req, asked) => {
     if (opts.allow.length === 0) throw new Refusal(401, 'the server admits no CI: set ALLOW')
     const named = asked === undefined ? undefined : repoOf(asked)

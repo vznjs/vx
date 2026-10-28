@@ -902,6 +902,8 @@ describe('whyDidThisRerunQuery', () => {
       entryAt?: number
       /** Failed tasks in the previous run and in this one. */
       failed?: [number, number]
+      /** The previous run's blocker, and whether that run recorded it. */
+      prevBlockedBy?: [string, boolean]
     }): string =>
       (() => {
         let note = ''
@@ -916,7 +918,19 @@ describe('whyDidThisRerunQuery', () => {
                 startedAt: 1000,
                 status: setup.prevStatus ?? 'success',
                 cacheHit: setup.prevHit ?? false,
+                ...(setup.prevBlockedBy === undefined ? {} : { blockedBy: setup.prevBlockedBy[0] }),
               }),
+              ...(setup.prevBlockedBy?.[1] === true
+                ? [
+                    mkRun({
+                      hash: 'd',
+                      project: 'pkg',
+                      task: 'build',
+                      runId: 'r-1',
+                      startedAt: 900,
+                    }),
+                  ]
+                : []),
             ],
             invocation: mkInvocation({
               runId: 'r-1',
@@ -970,6 +984,13 @@ describe('whyDidThisRerunQuery', () => {
     const unsaved =
       'cache key unchanged — the previous run on this key executed but no entry for it is in the cache (its save failed, or it was pruned since), so there was nothing to hit'
     expect(verdict({})).toBe(unsaved)
+    // The previous run passed behind a dependency it never ran: the one
+    // --exclude-dependencies left out, so nothing built on it was saved.
+    expect(verdict({ prevBlockedBy: ['pkg#build', false] })).toBe(
+      'cache key unchanged — the previous run on this key built on a dependency it left out (pkg#build, --exclude-dependencies), so it saved nothing and there was nothing to hit',
+    )
+    // CONTROL: a blocker that run recorded is no left-out dependency.
+    expect(verdict({ prevBlockedBy: ['pkg#build', true] })).toBe(unsaved)
     expect(verdict({ prevPolicy: 'local:r,remote:' })).toBe(
       'cache key unchanged — the previous run on this key did not write the cache (--no-cache, or a --cache-policy without write), so there was nothing to hit',
     )

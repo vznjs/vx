@@ -657,6 +657,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
   const restoreRoom = (): boolean =>
     serial ? active + activeRestore < 1 : activeRestore < restoreConcurrency
   let resolved = false
+  let stopListening = (): void => {}
   // A refusal's text → the first task that said it. A corrupt cache index
   // reaches every lookup as one UserError; on bare stderr a repeat names the first.
   const refusedBy = new Map<string, string>()
@@ -862,8 +863,12 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
         return true
       }
       if (inRestoreTier(id)) return false
-      if (continueMode === 'always') return false
       const node = nodes.get(id) as TaskNode
+      // `always` runs past a FAILURE only. Under it a skipped dep is one
+      // `exec.platforms` left off this machine (or a dependant of one): no
+      // failure, and what depends on it is skipped in every mode.
+      if (continueMode === 'always')
+        return node.deps.some((d) => outcomes.get(d)?.status === 'skipped')
       return node.deps.some((d) => {
         const u = outcomes.get(d)
         // `aborted` propagates even though it is counted nowhere: the
@@ -1164,6 +1169,7 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
       // condition survived the whole core suite (item 644).
       if (outcomes.size + settledIdle === nodes.size) {
         resolved = true
+        stopListening()
         resolve(outcomes)
       }
     }
@@ -1188,6 +1194,16 @@ export async function runGraph(options: ScheduleOptions): Promise<Map<string, Ta
           (ids) => answer(id, ids),
           () => answer(id, []),
         )
+    }
+    // A stop reaches the scheduler through a completion, and a held server
+    // waiting on the remote has none: the run waited out the remote's answer.
+    const signal = options.signal
+    if (unanswered.size > 0 && signal !== undefined) {
+      const stop = (): void => {
+        for (const id of [...unanswered]) answer(id, [])
+      }
+      signal.addEventListener('abort', stop, { once: true })
+      stopListening = () => signal.removeEventListener('abort', stop)
     }
 
     tick()
