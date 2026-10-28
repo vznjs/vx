@@ -39,6 +39,7 @@ import {
 } from '../settings.js'
 import { compileNameGlob, parseFilter } from './filter.js'
 import { nonJsonMessage, nonJsonPaths } from './json-data.js'
+import { projectNameProblem } from './workspace.js'
 
 // Mirrors `WorkspaceConfig` in src/config.ts. Unknown keys are REJECTED for
 // the same reason the task levels reject them: `plugin: [...]` (singular)
@@ -463,6 +464,12 @@ export function validateProjectConfig(
     if (typeof name !== 'string' || name === '' || name.trim() !== name || name.includes('#')) {
       throw new UserError(
         `${configPath}: \`name\` must be a non-empty string with no surrounding whitespace and no "#" (a task is <name>#<task>)`,
+      )
+    }
+    const why = projectNameProblem(name)
+    if (why !== null) {
+      throw new UserError(
+        `${configPath}: \`name\` ${JSON.stringify(name)} ${why} — dependsOn, --filter and the CLI could not name the project. Rename it.`,
       )
     }
   }
