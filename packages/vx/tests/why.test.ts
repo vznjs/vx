@@ -966,6 +966,13 @@ describe('vx why — an input another task rewrites', () => {
           '  changed during a run:\n    packages/lib/src/gen.txt  while app#build ran\n',
         )
         expect(r.out).toContain('a task that writes a file a key reads re-keys it every run')
+        // The `written` row is padded with the kinds it stands beside: a
+        // lone `file` kind left it one column of its own.
+        const own = (await vx(root, ['why', 'lib#check'])).out.split('\n')
+        expect(own.slice(own.indexOf('  what to do:') + 1, -1)).toEqual([
+          `    file     ${WHAT_TO_DO['file']}`,
+          '    written  a task that writes a file a key reads re-keys it every run; give that write its own task with the file as an output, or keep the file out of inputs.files',
+        ])
         const j = JSON.parse((await vx(root, ['why', 'app#build', '--format', 'json'])).out)
         expect(j.writers).toEqual([
           { taskId: 'lib#check', file: 'packages/lib/src/gen.txt', writers: ['app#build'] },

@@ -372,6 +372,9 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
       )
       if (kinds.length > 0) {
         lines.push('', `  ${head('what to do')}:`)
+        // Its own column: a root cause's kind and the `written` row are
+        // not in the table above, and overflowed its width.
+        const todoW = Math.max(kindW, ...kinds.map((k) => k.length), writers.length > 0 ? 7 : 0)
         // An upstream row names the task to ask next: the command, not a
         // placeholder to fill in from the row above.
         const upstream = diff.entries.filter((e) => e.kind === 'upstream').map((e) => e.name)
@@ -385,12 +388,12 @@ export async function whyCmd(args: readonly string[]): Promise<number> {
               : k === 'config'
                 ? WHAT_TO_DO[k]!.replace('`vx show <that task>`', `\`vx show ${taskId}\``)
                 : WHAT_TO_DO[k]
-          lines.push(`    ${dim(k.padEnd(kindW))}  ${todo}`)
+          lines.push(`    ${dim(k.padEnd(todoW))}  ${todo}`)
         }
         if (writers.length > 0) {
           // A task re-writing a file a key reads moves that key every run:
           // the miss is right, and only moving the write ends it.
-          lines.push(`    ${dim('written'.padEnd(kindW))}  ${WRITTEN_TODO}`)
+          lines.push(`    ${dim('written'.padEnd(todoW))}  ${WRITTEN_TODO}`)
         }
       }
     } else if (why.hashChanged === true) {
