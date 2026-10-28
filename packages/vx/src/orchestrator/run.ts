@@ -2,6 +2,7 @@
 // run with caching. Each step delegates to a single-purpose sibling file
 // so the layers can be swapped without touching the others.
 
+import type { InputStability } from '../config.js'
 import type { ProjectEntry } from '../workspace/index.js'
 import { inputStabilityEnv, LOCK_INVALID, lockEntryBroken } from '../workspace/index.js'
 import { realpathSync } from 'node:fs'
@@ -404,7 +405,6 @@ async function runOnBus(
   }
 
   const prepared = await step('vx:load', () => prepareRun(options, log))
-  options = withRunSettings(options, prepared.workspaceConfig)
   mark('plugin stages')
   // Every exit from here tears the plugins down: their capability
   // factories ran in prepareRun, and teardown is what releases what those
@@ -418,6 +418,27 @@ async function runOnBus(
     tornDown = true
     const plugins = prepared.plugins.filter((p) => p !== except)
     await teardownPlugins(plugins, warnOf(log), report, step)
+  }
+  // The setting variables are read before any task, so a bad value is
+  // refused here, not mid-run; an embedder's (the CLI refuses it first)
+  // threw past the teardown and the cache close.
+  let inputStability: { run: InputStability; workspace?: InputStability }
+  let cleanOutputs: boolean | undefined
+  try {
+    options = withRunSettings(options, prepared.workspaceConfig)
+    inputStability = {
+      run: inputStabilityEnv(),
+      ...(prepared.workspaceConfig?.cache?.inputStability !== undefined
+        ? { workspace: prepared.workspaceConfig.cache.inputStability }
+        : {}),
+    }
+    cleanOutputs = resolveSetting('cache.outputs.clean', prepared.workspaceConfig).value as
+      | boolean
+      | undefined
+  } catch (err) {
+    await teardown()
+    prepared.cache.close()
+    throw err
   }
   // A task whose command re-enters `vx run` in the workspace running it
   // is refused. When the inner run reaches this task again it forks a run
@@ -544,7 +565,6 @@ async function runOnBus(
   }
   const {
     workspaceRoot,
-    workspaceConfig,
     cacheDir,
     cache,
     nodes,
@@ -644,17 +664,6 @@ async function runOnBus(
 
   // `run.timeout` (ms), for any task WITHOUT its own `exec.timeout`.
   const taskTimeoutDefault = options.timeout
-  // Read once, before any task: a bad value is refused here, not mid-run.
-  const inputStability = {
-    run: inputStabilityEnv(),
-    ...(workspaceConfig?.cache?.inputStability !== undefined
-      ? { workspace: workspaceConfig.cache.inputStability }
-      : {}),
-  }
-
-  const cleanOutputs = resolveSetting('cache.outputs.clean', workspaceConfig).value as
-    | boolean
-    | undefined
 
   const stop = runStop({
     log,
@@ -1685,8 +1694,8 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
   const log = options.log ?? defaultLogger(undefined, undefined, process.stderr)
   const reasons = new Map<string, AffectedReason>()
   const prepared = await prepareRun({ ...options, affectedReasons: reasons }, log)
-  options = withRunSettings(options, prepared.workspaceConfig)
   try {
+    options = withRunSettings(options, prepared.workspaceConfig)
     if (prepared.unresolvedTasks.length > 0) {
       return {
         tasks: [],
