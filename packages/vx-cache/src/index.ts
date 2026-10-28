@@ -461,14 +461,22 @@ export class VxCacheLayer implements RemoteCacheLayer {
     const scopes = this.refs.map(scopeOf)
     const ask = [...new Set(hashes)]
     const max = (await this.limitsNow())?.maxCheckHashes ?? scopes.length
-    const per = Math.max(1, Math.floor(max / scopes.length))
+    // More refs than a check's lookups: each check names a slice of them
+    // (one naming all was refused 400), and a hash takes the earliest slice's answer.
+    const slices = Array.from({ length: Math.ceil(scopes.length / max) }, (_, i) =>
+      scopes.slice(i * max, (i + 1) * max),
+    )
     const parts = await Promise.all(
-      Array.from({ length: Math.ceil(ask.length / per) }, (_, i) =>
-        this.check(scopes, ask.slice(i * per, (i + 1) * per)),
-      ),
+      slices.flatMap((slice) => {
+        const per = Math.max(1, Math.floor(max / slice.length))
+        return Array.from({ length: Math.ceil(ask.length / per) }, (_, i) =>
+          this.check(slice, ask.slice(i * per, (i + 1) * per)),
+        )
+      }),
     )
     for (const part of parts)
       for (const [hash, { size, scope }] of part) {
+        if (held.has(hash)) continue
         held.set(hash, { size })
         this.found.set(hash, scope)
       }

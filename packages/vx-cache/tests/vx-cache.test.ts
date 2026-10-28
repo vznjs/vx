@@ -143,6 +143,37 @@ describe('VxCacheLayer', () => {
     expect(sizes.sort((a, b) => b - a)).toEqual([500, 500, 200, 1])
   })
 
+  // Every check named all the run's refs, so more refs than the server's
+  // maxCheckHashes made each one more lookups than it takes: a 400, and
+  // every read of the run missed.
+  it('reads more refs than a check takes lookups, the earliest ref first', async () => {
+    const blobs = new Map<string, Uint8Array>()
+    const small = createCacheServer({
+      blobs: memBlobs(blobs),
+      authorize: oidcAuth({ allow: ALLOW, fetchJson: (u) => iss.fetchJson(u) }),
+      limits: { maxCheckHashes: 2 },
+    })
+    const srv = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: (req) => small(req as never) })
+    try {
+      const url = srv.url.href.replace(/\/$/, '')
+      const aud = new URL(url).origin
+      const [main, branch] = await Promise.all([iss.sign(MAIN_JOB, aud), iss.sign(BRANCH_JOB, aud)])
+      await layer(url, main).put('c1', new Blob(['main']), { durationMs: 1 })
+      await layer(url, main).put('c2', new Blob(['main']), { durationMs: 1 })
+      await layer(url, branch, [BRANCH_JOB.ref]).put('c1', new Blob(['feature']), { durationMs: 1 })
+      const c = layer(url, main, ['refs/heads/a', 'refs/heads/b', BRANCH_JOB.ref, MAIN])
+      expect(await c.hasMany(['c1', 'c2', 'c3'])).toEqual(
+        new Map([
+          ['c1', { size: 7 }],
+          ['c2', { size: 4 }],
+        ]),
+      )
+      expect(await (await c.get('c1'))!.body.text()).toBe('feature')
+    } finally {
+      await srv.stop(true)
+    }
+  })
+
   it('uploads each artifact alone by PUT, at most four at once', async () => {
     let open = 0
     let most = 0

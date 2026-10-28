@@ -81,7 +81,8 @@ a run reads git's branch and the default branch only), and the first ref
 holding a hash answers it; its download names that ref. A run that reads
 no ref says so and stays local. The run asks the server's limits once
 (`/v1/capabilities`) and checks in chunks of its `maxCheckHashes`
-lookups, all at once. Each
+lookups, all at once; more refs than that are split across checks, the
+earliest ref still answering first. Each
 upload is one artifact by `PUT`, up to four at once: its bytes reach the
 bucket untouched by the server's code (a batch, split by that code, ran
 out of Workers' CPU). While the server names no limits (said once),
