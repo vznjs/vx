@@ -908,7 +908,8 @@ function keep(s: Staged, ino: number, mode: number, mtimeMs: number | undefined)
   const fd = openSync(s.target, constants.O_RDONLY | constants.O_NOFOLLOW)
   try {
     const st = fstatSync(fd)
-    if (st.ino !== ino || st.nlink !== 1) {
+    // An in-place write since the compare keeps the inode and bumps the ctime.
+    if (st.ino !== ino || st.nlink !== 1 || st.ctimeMs !== s.sameCtimeMs) {
       throw new Error(`${s.target} changed while it was restored`)
     }
     if ((st.mode & 0o7777) !== restoredMode(mode)) fchmodSync(fd, restoredMode(mode))
@@ -936,6 +937,8 @@ interface Staged {
   base: string
   /** The target already holds the entry's bytes: nothing was written, and only its mode and mtime may change. */
   same?: number
+  /** The kept target's ctime when its bytes were compared. */
+  sameCtimeMs?: number
   /** `tmp` was copied beside `target`, which is on another filesystem than the staging (`crossOver`). */
   beside?: true
   /** A symlink to this target, made at `tmp`: no mode, no mtime. */
@@ -1258,6 +1261,7 @@ class Extractor {
           streamed: false,
           base,
           same: st.ino,
+          sameCtimeMs: st.ctimeMs,
         })
         return
       }
