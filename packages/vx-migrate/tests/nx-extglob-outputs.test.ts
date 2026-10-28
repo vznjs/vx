@@ -36,6 +36,17 @@ describe('extglob outputs', () => {
     ])
   })
 
+  // Nx's native glob reads a bare `(a|b)` as `{a,b}`: read as literal text,
+  // the build saved nothing and a hit restored no `dist`.
+  it('a bare group is its alternatives, beside a whole-segment negation', () => {
+    const r = map(['{projectRoot}/dist/*.(js|map)', '{projectRoot}/out/!(tmp)/**/*.(js|ts)'])
+    expect(r).toEqual({
+      outFiles: ['dist/*.{js,map}', 'out/*/**/*.{js,ts}', '!out/tmp/**/*.{js,ts}'],
+      wsOutFiles: [],
+      todos: [],
+    })
+  })
+
   it('other minimatch forms in vx grammar; one with no spelling is dropped', () => {
     const r = map(['{projectRoot}/dist/*.@(js|map)', '!{projectRoot}/dist/!(keep)'])
     expect(r.outFiles).toEqual(['dist/*.{js,map}'])
