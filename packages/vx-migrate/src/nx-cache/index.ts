@@ -59,18 +59,23 @@ export function resolveNxCacheConfig(
   options: NxCacheOptions,
   env: Record<string, string | undefined> = Bun.env,
 ): NxCacheConfig | undefined {
+  // Named by its source: the env's was refused as a `server` option.
+  const from =
+    options.server !== undefined
+      ? 'nxCache() option "server"'
+      : 'NX_SELF_HOSTED_REMOTE_CACHE_SERVER'
   const server = (options.server ?? env['NX_SELF_HOSTED_REMOTE_CACHE_SERVER'])?.replace(/\/+$/, '')
   if (!server) return undefined
   // With no scheme every request failed on its own, as a bare "Invalid URL".
   if (!/^https?:\/\//.test(server))
-    throw new Error(`vx/nx-cache: server must be http(s), got ${server}`)
+    throw new UserError(`${from} must be an http(s) URL, got ${JSON.stringify(server)}`)
   // The URL is printed in every refusal line, so a `user:pass@` in it would
   // leak to the log. Credentials go in the access token.
   if (URL.canParse(server)) {
     const u = new URL(server)
     if (u.username !== '' || u.password !== '')
-      throw new Error(
-        'vx/nx-cache: server carries credentials (user:pass@); pass them as the accessToken instead',
+      throw new UserError(
+        `${from} carries credentials (user:pass@); pass them as the accessToken instead`,
       )
   }
   const accessToken = options.accessToken ?? env['NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN']

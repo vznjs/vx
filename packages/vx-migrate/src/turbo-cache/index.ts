@@ -297,17 +297,23 @@ export function resolveTurboCacheConfig(
   // Vercel's hosted Remote Cache. A token alone is a configured cache, as it
   // is for `turbo`; a URL or a team without one asks the OS keychain at
   // `open`; none of them is the declined, local run.
-  const apiUrl = (
-    options.apiUrl ??
-    env['TURBO_API'] ??
-    fromFile(local.apiUrl) ??
-    fromFile(file.apiUrl) ??
-    (token || teamId || teamSlug ? VERCEL_API : undefined)
-  )?.replace(/\/+$/, '')
+  // Each source with its name: TURBO_API was refused as an `apiUrl`
+  // option the workspace never set.
+  const [rawUrl, urlFrom] =
+    options.apiUrl !== undefined
+      ? [options.apiUrl, 'turboCache() option "apiUrl"']
+      : env['TURBO_API'] !== undefined
+        ? [env['TURBO_API'], 'TURBO_API']
+        : fromFile(local.apiUrl) !== undefined
+          ? [fromFile(local.apiUrl), '.turbo/config.json apiUrl']
+          : fromFile(file.apiUrl) !== undefined
+            ? [fromFile(file.apiUrl), 'turbo.json remoteCache.apiUrl']
+            : [token || teamId || teamSlug ? VERCEL_API : undefined, 'apiUrl']
+  const apiUrl = rawUrl?.replace(/\/+$/, '')
   if (!apiUrl) return undefined
   // With no scheme every request failed on its own, as a bare "Invalid URL".
   if (!/^https?:\/\//.test(apiUrl))
-    throw new Error(`vx/turbo-cache: apiUrl must be http(s), got ${apiUrl}`)
+    throw new UserError(`${urlFrom} must be an http(s) URL, got ${JSON.stringify(apiUrl)}`)
   const oidc =
     options.oidc === undefined
       ? undefined
@@ -317,8 +323,8 @@ export function resolveTurboCacheConfig(
   if (URL.canParse(apiUrl)) {
     const u = new URL(apiUrl)
     if (u.username !== '' || u.password !== '')
-      throw new Error(
-        'vx/turbo-cache: apiUrl carries credentials (user:pass@); pass them as the token instead',
+      throw new UserError(
+        `${urlFrom} carries credentials (user:pass@); pass them as the token instead`,
       )
   }
   const fault = token === undefined ? null : headerValueFault(token)

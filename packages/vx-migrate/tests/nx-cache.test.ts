@@ -89,10 +89,13 @@ describe('resolveNxCacheConfig', () => {
     })
   })
 
-  it('refuses a server with no http(s) scheme', () => {
+  it('refuses a server with no http(s) scheme, naming where it came from', () => {
     expect(() => resolveNxCacheConfig({ server: 'cache.example.com' }, {})).toThrow(
-      'vx/nx-cache: server must be http(s), got cache.example.com',
+      'nxCache() option "server" must be an http(s) URL, got "cache.example.com"',
     )
+    expect(() =>
+      resolveNxCacheConfig({}, { NX_SELF_HOSTED_REMOTE_CACHE_SERVER: 'cache.example.com' }),
+    ).toThrow('NX_SELF_HOSTED_REMOTE_CACHE_SERVER must be an http(s) URL, got "cache.example.com"')
   })
 
   it('refuses a server carrying user:pass@, from options or the env (gaps §8 L232)', () => {
@@ -105,13 +108,15 @@ describe('resolveNxCacheConfig', () => {
       }
     }
     const MSG =
-      'vx/nx-cache: server carries credentials (user:pass@); pass them as the accessToken instead'
+      'nxCache() option "server" carries credentials (user:pass@); pass them as the accessToken instead'
+    const ENV =
+      'NX_SELF_HOSTED_REMOTE_CACHE_SERVER carries credentials (user:pass@); pass them as the accessToken instead'
     expect([
       refusal(() => resolveNxCacheConfig({ server: 'https://u:p@c.example' }, {})),
       refusal(() =>
         resolveNxCacheConfig({}, { NX_SELF_HOSTED_REMOTE_CACHE_SERVER: 'https://u@c.example/' }),
       ),
-    ]).toEqual([MSG, MSG])
+    ]).toEqual([MSG, ENV])
     // CONTROL: the same host without userinfo resolves.
     expect(resolveNxCacheConfig({ server: 'https://c.example' }, {})?.server).toBe(
       'https://c.example',
