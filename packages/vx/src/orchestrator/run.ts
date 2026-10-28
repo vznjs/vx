@@ -1730,7 +1730,7 @@ export async function planRun(options: RunOptions): Promise<RunPlan> {
       // line would carry the same label. Resolving the executors here is
       // the same plugin-factory call `prepareRun` already makes for the
       // cache capability, so plan mode gains no new class of side effect.
-      ...(await planExecutorOf(prepared, log, options.download ?? 'all')),
+      ...(await planExecutorOf(prepared, log, options.download ?? 'all', detectCi(process.env).ci)),
       ...(await planRestorable(prepared, policy, options.forwardArgs)),
     })
     mark('plan')
