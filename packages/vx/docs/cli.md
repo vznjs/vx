@@ -1453,7 +1453,9 @@ says so once (`vx watch: polling every 250 ms (VX_WATCH_POLL)`). A
 watcher the OS refuses for its watch limit (`ENOSPC`, `EMFILE`) is
 polled too, with a notice naming the limit to raise. The
 poller walks the same tree the event filter keeps: the always-ignored
-segments and the run's declared output containers are never sampled.
+segments and the run's declared output containers are never sampled,
+unless a task's inputs can lie in one (`src/**/*.ts` beside an output
+`src/**/*.js`) or git tracks a file there.
 It samples each file's later clock of mtime and ctime, so a replacement
 that carries the old file's mtime (`cp -p`, `rsync -a`, a `mv`) is an
 edit to it as it is to the OS watcher.

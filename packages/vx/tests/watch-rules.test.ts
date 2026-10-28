@@ -116,6 +116,30 @@ describe("a path some task reads is never ignored as another task's output (item
     )
     expect(read(dir, 'dist/a.js')).toBe(false)
   })
+
+  it('the poller walks an output directory that holds inputs, and skips one that cannot', () => {
+    const dir = path.resolve('/w/app')
+    const skip = makeWatchIgnore(
+      '/w/.vx',
+      new Map([[dir, ['src/**/*.js', 'dist/**']]]),
+      new Map([[dir, [['src/**/*.ts', '!src/**/*.js', '!dist/**'], ['*.json']]]]),
+      new Set([path.join(dir, 'gen', 'keep.txt')]),
+    )
+    expect(skip(dir, 'src', true)).toBe(false)
+    expect(skip(dir, 'dist', true)).toBe(true)
+    expect(skip(dir, 'node_modules', true)).toBe(true)
+    // `*.json` reaches no subdirectory.
+    expect(skip(dir, 'out', true)).toBe(false)
+    const outOnly = makeWatchIgnore(
+      '/w/.vx',
+      new Map([[dir, ['out/**', 'gen/**']]]),
+      new Map([[dir, [['*.json']]]]),
+      new Set([path.join(dir, 'gen', 'keep.txt')]),
+    )
+    expect(outOnly(dir, 'out', true)).toBe(true)
+    // A tracked file under it is an edit, so the directory is walked.
+    expect(outOnly(dir, 'gen', true)).toBe(false)
+  })
 })
 
 describe("a task's own outputs are not edits, a bracket a class or, escaped, a route", () => {

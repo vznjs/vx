@@ -636,7 +636,7 @@ async function runWatchLoop(args: WatchLoopArgs): Promise<void> {
   // unconditional segments AND this run's declared output containers. Read
   // through `isIgnoredPath` rather than captured, because `rearm` replaces
   // the filter when the selection changes.
-  const pool = new WatcherPool((dir, rel) => isIgnoredPath(dir, rel), args.poll)
+  const pool = new WatcherPool((dir, rel) => isIgnoredPath(dir, rel, true), args.poll)
   const arm = (dir: string, recursive: boolean, onEvent: (filename: string) => void): WatchHandle =>
     pool.arm(dir, recursive, onEvent)
 
