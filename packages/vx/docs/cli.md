@@ -1786,6 +1786,10 @@ Masking it instead would freeze a `***` that every run runs. Let the
 shell expand it: `$API_TOKEN` in the command, the name in
 `exec.env.passThrough` (L-42).
 
+The review copies are written before the lock: one that cannot be
+written (a directory in its place, a read-only file) is named and the
+lock is left as it was.
+
 ### How runs read it
 
 Every run consumes it: configs come from the
