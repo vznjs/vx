@@ -48,7 +48,9 @@ timings of the tasks it ran, once: under DTE that is the orchestrator,
 with each worker's measurements. A task that shared a crowded worker's
 cores is sent as long as it would have taken alone, as local history
 keeps it. A refusal is said with the server's
-words, and a CI job with no token says so once (on GitHub Actions,
+words; a refused token (401) also names the repository and issuer the
+workspace declares and the audience it must carry, and the server is
+off for the rest of the run. A CI job with no token says so once (on GitHub Actions,
 `GITHUB_ACTIONS`, naming the permission).
 A run with no token (off CI) reads only, from a server whose
 `READ_ACCESS` is `public`, and sends nothing.
