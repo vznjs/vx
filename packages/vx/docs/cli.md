@@ -934,7 +934,8 @@ down with it:
   clean run a stale hit. A server that died after it became ready is
   such a failure to what starts after its death. A cache hit still
   restores (that artifact came from a healthy run), and the next run
-  without the failure rebuilds the rest.
+  without the failure rebuilds the rest. A task `exec.platforms` skips
+  here is no failure: its dependents are skipped in every mode.
 
 The mode is the local scheduler's: a task a plugin executor runs
 elsewhere is one dispatch, failed or not, like any other.
