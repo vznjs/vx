@@ -544,9 +544,7 @@ export function validateProjectConfig(
       }
       const retries = (exec as { retries?: unknown }).retries
       if (retries !== undefined) {
-        if (typeof retries !== 'number' || !Number.isInteger(retries) || retries < 0) {
-          throw new UserError(`${where}.exec.retries must be a non-negative integer`)
-        }
+        validateSettingValue(retries, 'run.retries', `${where}.exec.retries`)
       }
       const remote = (exec as { remote?: unknown }).remote
       if (remote !== undefined && typeof remote !== 'boolean' && remote !== 'only') {

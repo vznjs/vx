@@ -230,9 +230,9 @@ number is refused by `vx lock`. Omitted → no limit.
 build: { exec: { command: 'tsc -b', timeout: '2m' } }
 ```
 
-- For a **normal task**, `timeout` bounds the total run time, counted
-  from the spawn (a sandbox's setup, its wrap included, is vx's, not the
-  task's). A task
+- For a **normal task**, `timeout` bounds each attempt's run time,
+  counted from its spawn (a sandbox's setup, its wrap included, is vx's,
+  not the task's); a [retry](#retries-optional) gets the whole limit again. A task
   that overruns is killed — its whole process group, so what it forked
   goes with it — and reported `failed` (timed out) — never cached. (A timeout SIGTERM is a real failure, distinct from a Ctrl-C
   teardown, which is reported `aborted`.)
@@ -1013,8 +1013,8 @@ Env var names whose host values are folded into the cache key.
 - Listing a name here does NOT forward it to the child process.
 
 To both forward AND track, list it in both places. Yes, the
-double-declaration is mild noise; a preset helper
-(`envTracked('NODE_ENV')`) can sugar it.
+double-declaration is mild noise; vx ships no helper for it, but a
+config is TypeScript, so a function of your own can return both lists.
 
 Names are exact: a wildcard (`NEXT_PUBLIC_*`) is refused, and so is
 Turbo's `!NAME` exclusion, here, in `exec.env.passThrough` and in

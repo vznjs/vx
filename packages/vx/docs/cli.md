@@ -318,7 +318,9 @@ git: <root> is not inside a git work tree`. A repository with no commit
 - `<base>...HEAD`, Turbo's CI spelling, reads as `<base>`. Two-dot
   `<base>..HEAD` diffs from `<base>` itself, not the merge base; a shallow
   clone fetches that commit as it fetches the merge base.
-- A ref that does not exist is `git ref "<ref>" did not resolve`. In a
+- A ref that does not exist is `git ref "<ref>" did not resolve`, with
+  git's reason when it gives one (`main@{9}`: `log for 'main' only has 2
+entries`). In a
   shallow clone it adds how to fetch it (`git fetch --depth=1 origin <base>`).
 - A project whose directory is a symlink inside the workspace
   (`packages/b -> ../ext/b`) is selected by a change at the real place
@@ -393,8 +395,8 @@ What counts as a change:
 - A gitignored file a task names (`.env.local`, `dist/**`) never
   selects it, as in Nx. The key still hashes it, so the task misses when
   it changed.
-- `.vx/projects.lock.json` is left out, so `vx lock` never marks every
-  project affected.
+- `.vx/projects.lock.json` and each project's `vx.lock.json` review
+  copy are left out, so `vx lock` never marks a project affected.
 
 **A lockfile change selects everything.** These root files are in
 every task's key (the [workspace fingerprint](./caching.md)), so a
@@ -1571,7 +1573,7 @@ history and hash memos older than 30 days; a run never does.
 
 Both flags take either form: `--older-than 30d` or `--older-than=30d`.
 
-**Duration units**: `s`, `m`, `h`, `d`, case-insensitive. Examples:
+**Duration units**: `ms`, `s`, `m`, `h`, `d`, case-insensitive. Examples:
 `30d`, `24h`, `60m`, `30s`, `30D`.
 
 **Size units**: `K`, `M`, `G`, `T` (powers of 1024), case-insensitive, with an optional `B` or `iB` (`512MB`, `32KiB`).
@@ -2594,10 +2596,11 @@ it's an array of `{ name, dir, tags: string[], tasks: string[] }`.
 `vx show <project>` prints a block per task, headed by its
 `project#task`, with every field the run reads: description, command (`(group)` for group tasks), `dependsOn`,
 `timeout`, `retries`, `env.passThrough` / `env.define` / `env.secret`,
-`remote`, `sandbox`, `persistent`, `interactive` (`yes` / `no`), and the
-cache block
+`remote`, `platforms`, `sandbox`, `persistent`, `interactive` (`yes` /
+`no`), and the cache block
 (`inputs.files` / `.workspaceFiles` / `.env` / `.tasks` / `.runtime` /
-`.workspaceRuntime`, `outputs.files` / `.workspaceFiles`). Fields the
+`.workspaceRuntime`, `outputs.files` / `.workspaceFiles` / `.clean`,
+`inputStability.strategy` / `.severity`). Fields the
 task does not set are not printed, an empty list prints `none`; a value that spans lines (a
 multi-line command) continues under its first line. `--format json` emits `{ name, dir,
 config }` with the config exactly as resolved. `vx show <pkg>#<task>`
@@ -2874,7 +2877,8 @@ cache (nothing re-ran), it re-executed on the same key, or it recorded
 no cache outcome at all, in which case vx says so instead of guessing.
 A re-execution names its cause when the index shows one: the previous
 run on the key failed and saved nothing, the run did not read the cache
-(`--force`, or a `--cache-policy` without read), no entry for the key was
+(`--force`, or a `--cache-policy` without read) or did not use it at all
+(`--no-cache`, or a `--cache-policy` without read or write), no entry for the key was
 there when it ran (pruned or evicted), the previous run was not saved
 because it ran beside a failed task (a task run past a failed dependency
 under `--continue` is never cached; said ahead of a prune, and as
