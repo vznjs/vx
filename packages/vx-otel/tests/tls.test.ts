@@ -152,7 +152,7 @@ it('a certificate file that cannot be read warns once, naming the variable and t
     OTEL_EXPORTER_OTLP_CERTIFICATE: missing,
   })
   expect(got.warns[0]).toBe(
-    `[vx-otel] OTEL_EXPORTER_OTLP_CERTIFICATE: cannot read ${missing} (ENOENT) — not used`,
+    `[vx] vx-otel: OTEL_EXPORTER_OTLP_CERTIFICATE: cannot read ${missing} (ENOENT) — not used`,
   )
   // The same file for all three signals is read, and reported, once.
   expect(got.warns.filter((w) => w.includes('cannot read')).length).toBe(1)
