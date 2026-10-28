@@ -10,6 +10,7 @@ export {
 } from './env.js'
 export {
   runCommand,
+  restoreTerminalModes,
   runPersistent,
   PersistentReadyError,
   withForwardArgs,

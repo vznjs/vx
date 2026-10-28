@@ -15,7 +15,7 @@
 
 import { signalExitCode } from '../exec/index.js'
 import { claimExitForSignal, hangupIgnored, killGraceMs, settleWithin } from '../util/index.js'
-import { holdGroups, killTree, untilGroupsGone } from '../exec/index.js'
+import { holdGroups, killTree, restoreTerminalModes, untilGroupsGone } from '../exec/index.js'
 import type { Logger } from '../report/index.js'
 
 /**
@@ -135,6 +135,9 @@ export function forwardSignals(args: {
       // teardown must not throw on the way out
     }
     for (const child of everyChild()) killTree(child, 'SIGKILL')
+    // The runner restores a task's terminal modes when the task exits,
+    // which this exit does not wait for.
+    restoreTerminalModes()
     try {
       args.cache.close()
     } catch {

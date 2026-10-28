@@ -60,6 +60,8 @@ export interface PersistentSpawn {
 }
 
 export function runPersistent(opts: PersistentOptions): PersistentSpawn
+// Put back the terminal modes of every task still holding it (a second signal exits without waiting for them).
+export function restoreTerminalModes(): void
 
 export function shellQuote(arg: string): string
 export function withForwardArgs(command: string, args: readonly string[] | undefined): string
