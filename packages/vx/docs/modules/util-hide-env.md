@@ -43,3 +43,13 @@ can. `exec.sandbox` is the boundary (`docs/security.md`).
 `tests/hide-env.unsafe.test.ts` holds both directions on both systems
 and prints the cost; `tests/sandbox-parent-env.unsafe.test.ts` holds a
 real run.
+
+## util/env-flag
+
+```ts
+// A flag-like variable (`CI`, `GITHUB_ACTIONS`) is on: set, and not '', '0' or 'false' in any case.
+export function envFlagOn(v: string | undefined): boolean
+```
+
+Every reader of `CI` asks this one, so a run cannot be CI to one part of
+vx and a laptop to another.

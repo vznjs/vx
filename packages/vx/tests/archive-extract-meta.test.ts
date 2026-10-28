@@ -62,6 +62,29 @@ describe('an artifact with no sidecar', () => {
     await extractArtifactStream(streamOf(tar), dest, undefined)
     expect(statSync(path.join(dest, 'a.txt')).mtimeMs).toBeGreaterThan(before)
   })
+
+  it('a base-256 header mtime past what a Date holds is refused, and nothing lands', async () => {
+    // Read as given, it threw a TypeError out of the commit's utimes after
+    // the renames before it had landed: a restore that "leaves nothing
+    // behind" left part of the artifact.
+    const tar = await bareTar([
+      { name: 'outputs/a.txt', size: 1, body: 'a', mtime: 1_700_000_000 },
+      { name: 'outputs/b.txt', size: 1, body: 'b', mtime: 1 },
+    ])
+    // b.txt's header: after stdout's (empty body), a.txt's and its body.
+    const h = tar.subarray(512 * 3, 512 * 4)
+    expect(new TextDecoder().decode(h.subarray(0, 13))).toBe('outputs/b.txt')
+    h.fill(0xff, 136, 148)
+    h[136] = 0x80
+    h.fill(0x20, 148, 156)
+    let sum = 0
+    for (const b of h) sum += b
+    h.set(new TextEncoder().encode(sum.toString(8).padStart(6, '0') + '\0 '), 148)
+    await expect(scanArtifact(streamOf(tar))).rejects.toThrow(/mtime/)
+    const dest = fresh()
+    await expect(extractArtifactStream(streamOf(tar), dest, undefined)).rejects.toThrow(/mtime/)
+    expect(existsSync(path.join(dest, 'a.txt'))).toBe(false)
+  })
 })
 
 describe('extractArtifactStream', () => {
