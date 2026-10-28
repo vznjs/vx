@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'bun:test'
 import { Cache, type RemoteCacheLayer } from '../src/cache/index.js'
+import { BoundedCapture } from '../src/exec/index.js'
 import { cacheFacts, resolveCache, taskArtifacts } from '../src/orchestrator/index.js'
 import { layeredOver } from './helpers/layered.js'
 
@@ -119,6 +120,34 @@ it("masks a value the task's env.secret names, whatever its name", async () => {
     secret: ['GH_PAT'],
   })
   expect(await agent.artifacts.output(KEY)).toEqual([{ text: 'auth ***\n', err: false }])
+})
+
+// A worker's capture is raw: a value its dropped middle cut left a piece
+// either side that the whole-value mask missed, stored and replayed.
+it('masks the pieces of a secret the capture bound cut', async () => {
+  const remote = memoryRemote()
+  const agent = await machine('agent', remote.layer)
+  const task = {
+    id: 'app#t',
+    projectDir: path.join(agent.root, 'app'),
+    command: 'deploy',
+    outputs: { files: [], workspaceFiles: [] },
+  }
+  const capture = new BoundedCapture(16, 16)
+  capture.push(`${'h'.repeat(8)}hunter2-`)
+  capture.push('m'.repeat(40), true)
+  capture.push('sekret-value tail', true)
+  await agent.artifacts.save(KEY, task, {
+    output: capture.chunks(),
+    durationMs: 1,
+    env: { API_TOKEN: 'hunter2-sekret-value' },
+  })
+  const [head, dropped, tail] = capture.chunks()
+  expect(await agent.artifacts.output(KEY)).toEqual([
+    { text: `${'h'.repeat(8)}***${dropped!.text}`, err: false },
+    { text: '*** tail', err: true },
+  ])
+  expect([head!.text.endsWith('hunter2-'), tail!.text]).toEqual([true, 'ekret-value tail'])
 })
 
 // A run whose tasks run on other machines hands them its facts: its refs,
