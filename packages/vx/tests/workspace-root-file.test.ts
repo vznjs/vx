@@ -82,10 +82,13 @@ it('an embedded repository walks on to the workspace that lists it, unless git i
   git('outer/vendor', 'init', '-q', 'lib')
   git('outer/vendor', 'init', '-q', 'kept')
   await file('outer/.gitignore', '/vendor/kept/\n')
-  expect([await found('outer/vendor/lib/src'), await found('outer/vendor/kept/src')]).toEqual([
-    'outer',
-    'VX_E_NO_WORKSPACE',
-  ])
+  // A worktree inside the checkout is another checkout, its own top-level.
+  await file('outer/wt/.git', `gitdir: ${shared}/outer/.git/worktrees/wt\n`)
+  expect([
+    await found('outer/vendor/lib/src'),
+    await found('outer/vendor/kept/src'),
+    await found('outer/wt'),
+  ]).toEqual(['outer', 'VX_E_NO_WORKSPACE', 'VX_E_NO_WORKSPACE'])
 })
 
 it('outside git the walk reaches the file above', async () => {
