@@ -250,8 +250,8 @@ export async function restoreHit(given: RestoreHitArgs): Promise<TaskOutcome> {
     let staleRels: string[] = []
     let staleWsRels: string[] = []
     if (!additive) {
-      sweepRestoreTemps(node.projectDir, outputs)
-      sweepRestoreTemps(args.workspaceRoot, wsOutputs)
+      sweepRestoreTemps(node.projectDir, outputs, cleanArgs.committed)
+      sweepRestoreTemps(args.workspaceRoot, wsOutputs, wsCleanArgs.committed)
       if (outputs.length > 0) {
         const abs = walked?.proj ?? (await resolveOutputs(cleanArgs))
         foundRels = abs.map((f) => relPosix(node.projectDir, f))
