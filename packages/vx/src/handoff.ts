@@ -24,7 +24,8 @@ export async function localVx(
   compiled: boolean,
   uid = process.getuid?.(),
 ): Promise<string | null> {
-  if (process.env['VX_HANDED_OFF'] !== undefined || !compiled) return null
+  // Empty is unset, as the launcher's `[ -z "${VX_HANDED_OFF-}" ]` reads it.
+  if (process.env['VX_HANDED_OFF'] || !compiled) return null
   if (execPath.includes('/node_modules/')) return null
   const file = await workspaceFile(cwd)
   if (file === null) return null

@@ -25,7 +25,7 @@ async function main(): Promise<void> {
       // ~7 ms, half of this verb (2026-10-02). A reader gone (EPIPE) is no
       // failure of the line.
       // Handed off, it says which vx ran and which one handed it the call.
-      const from = process.env['VX_HANDED_OFF']
+      const from = process.env['VX_HANDED_OFF'] || undefined
       const where = from === undefined ? '' : ` (${vxPath()}, handed off from ${from})`
       await Bun.write(Bun.stdout, `vx ${(await import('./version.js')).VERSION}${where}\n`).catch(
         () => {},

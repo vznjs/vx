@@ -194,6 +194,24 @@ describe('the compiled binary hands off', () => {
     expect(await localVx(nested, standalone, true)).toBeNull()
   })
 
+  // The launcher's `[ -z "${VX_HANDED_OFF-}" ]` reads empty as unset; the
+  // binary read it as handed off and stayed global.
+  it('an empty VX_HANDED_OFF is no hand-off yet, as the launcher reads it', async () => {
+    const was = process.env['VX_HANDED_OFF']
+    try {
+      process.env['VX_HANDED_OFF'] = ''
+      expect(await localVx(repo, standalone, true)).toBe(
+        path.join(repo, 'node_modules', '.bin', 'vx'),
+      )
+      // Control: a set one stops the hop.
+      process.env['VX_HANDED_OFF'] = '/elsewhere/vx'
+      expect(await localVx(repo, standalone, true)).toBeNull()
+    } finally {
+      if (was === undefined) delete process.env['VX_HANDED_OFF']
+      else process.env['VX_HANDED_OFF'] = was
+    }
+  })
+
   it("from a submodule to the superproject's install", async () => {
     const sub = path.join(repo, 'mods', 'sub')
     mkdirSync(sub, { recursive: true })
